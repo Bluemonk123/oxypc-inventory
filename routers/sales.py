@@ -1680,7 +1680,8 @@ async def sales_list_data(
 
     base_join = (
         select(Sale, Device.barcode, Device.brand, Device.model, Device.grade,
-               Lot.lot_number, Lot.buying_price, Lot.qty, Device.sub_lot_number)
+               Lot.lot_number, Lot.buying_price, Lot.qty, Device.sub_lot_number,
+               Device.device_price)
         .join(Device, Sale.device_id == Device.id)
         .join(Lot, Device.lot_id == Lot.id)
     )
@@ -1762,14 +1763,23 @@ async def sales_list_data(
              else '<span class="badge bg-success">Finish Good</span>'),
         ]
         if show_pricing:
-            cost_unit = 0.0
-            if r.buying_price and r.qty and r.qty > 0:
-                cost_unit = round(float(r.buying_price) / r.qty)
+            # Same rule as Ready for Sale's Unit Cost (services/ready_pricing.
+            # unit_price): the tag's own Device Price when set, otherwise the
+            # lot average (buying price / qty), marked "avg".
+            if r.device_price:
+                cost_unit, cost_is_avg = float(r.device_price), False
+            elif r.qty and r.qty > 0 and r.buying_price:
+                cost_unit, cost_is_avg = float(r.buying_price) / r.qty, True
+            else:
+                cost_unit, cost_is_avg = 0.0, False
             price = float(s.sale_price or 0)
             margin = price - cost_unit
             mcls = "text-success" if margin > 0 else ("text-danger" if margin < 0 else "text-muted")
+            avg_tag = (' <span class="text-muted ms-1" style="font-size:.7rem">avg</span>'
+                       if cost_is_avg else '')
             cells += [
-                f'<span class="text-muted">₹{cost_unit:,.0f}</span>' if cost_unit else '<span class="text-muted">—</span>',
+                (f'<span class="text-nowrap fw-semibold">₹{cost_unit:,.0f}{avg_tag}</span>'
+                 if cost_unit else '<span class="text-muted">—</span>'),
                 f'<span class="fw-semibold text-success">₹{price:,.0f}</span>',
                 (f'<span class="fw-semibold {mcls}">{"+" if margin >= 0 else ""}₹{margin:,.0f}</span>'
                  if cost_unit else '<span class="text-muted">—</span>'),
