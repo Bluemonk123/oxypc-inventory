@@ -39,7 +39,7 @@
       {% for device, lot_number in devices %}
       <a href="#" class="list-group-item list-group-item-action fqc-card {% if loop.first %}active{% endif %}"
          data-target="dev-{{ device.id }}" data-barcode="{{ device.barcode }}">
-        <div class="font-monospace fw-semibold">{{ device.barcode }}</div>
+        <div class="font-monospace fw-semibold">{{ device.barcode }}{{ flag_badge(device) }}</div>
         <div class="small {% if loop.first %}text-white-50{% else %}text-muted{% endif %}">
           {{ device.serial_no or '—' }} — {{ device.brand or '' }} {{ device.model or '' }}
         </div>
@@ -57,10 +57,16 @@
       <div class="card border-0 shadow-sm mb-2">
         <div class="card-body py-2 d-flex align-items-center gap-2">
           <a href="/devices/{{ device.barcode }}" class="font-monospace fw-semibold text-decoration-none">{{ device.barcode }}</a>
+          {{ flag_badge(device) }}
+          <span class="badge bg-secondary">{{ lot_number }}</span>
+          <span class="text-muted small">L1/L2 Engineer: <span class="fw-semibold">{{ l1l2_engineer_map.get(device.id|string, '—') }}</span></span>
+          <span class="ms-auto small">Grade:
+            {% if device.grade %}<span class="badge bg-info text-dark">{{ device.grade.value }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+          </span>
           {% set sr = stress_map.get(device.barcode) %}
           {% if sr %}
           <a href="/stress/{{ device.barcode }}/report?result_id={{ sr.result_id }}"
-             class="btn btn-sm btn-primary py-0 px-2 text-nowrap"
+             class="btn btn-sm btn-outline-primary py-0 px-2 text-nowrap"
              title="Download Stress/QC Report{% if sr.overall_status %} — {{ sr.overall_status }}{% endif %}">
             <i class="bi bi-file-earmark-arrow-down me-1"></i>Stress/QC Report{% if sr.overall_status %}
             <span class="badge bg-{{ 'success' if sr.overall_status == 'PASS' else 'danger' if sr.overall_status == 'FAIL' else 'warning text-dark' }} ms-1">{{ sr.overall_status }}</span>{% endif %}
@@ -71,11 +77,6 @@
             <i class="bi bi-file-earmark-x me-1"></i>No Stress/QC Report
           </button>
           {% endif %}
-          <span class="badge bg-secondary">{{ lot_number }}</span>
-          <span class="text-muted small">L1/L2 Engineer: <span class="fw-semibold">{{ l1l2_engineer_map.get(device.id|string, '—') }}</span></span>
-          <span class="ms-auto small">Grade:
-            {% if device.grade %}<span class="badge bg-info text-dark">{{ device.grade.value }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
-          </span>
         </div>
       </div>
 

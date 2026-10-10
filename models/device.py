@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from utils.timezone import app_now
-from sqlalchemy import Column, String, DateTime, Integer, Float, Boolean, ForeignKey, Enum as SAEnum, Text, Numeric, text
+from sqlalchemy import Column, String, DateTime, Date, Integer, Float, Boolean, ForeignKey, Enum as SAEnum, Text, Numeric, text, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 import enum
@@ -169,6 +169,17 @@ class Device(Base):
     fqc_pass_notes = Column(Text, nullable=True)      # set when final_qc_status="pass"; shown on Devices Passed table
     fqc_final_notes = Column(Text, nullable=True)     # raw "Final Notes" field from the Final QC fail form; shown as its own column on Devices Failed
     touch_type = Column(String(10), nullable=True)    # "touch" / "non_touch" — set by the Final QC form; blank shows as NT (Non-Touch)
+    # ── Urgent flag (Inventory Manager → "Flag Items") ─────────────────────
+    # Set/edited/removed in bulk from the Inventory Manager Tag table and shown
+    # as a red FLAG badge next to the Tag Number on the main pages. Cleared
+    # automatically whenever the tag moves (back) INTO Stock In — see the
+    # _clear_flag_on_stock_in listener at the bottom of this file.
+    flag_authorized_by = Column(String(100), nullable=True)   # user display name
+    flag_request_date  = Column(Date, nullable=True)
+    flag_target_date   = Column(Date, nullable=True)
+    flag_reason        = Column(Text, nullable=True)
+    flagged_at         = Column(DateTime, nullable=True)      # when the flag was last saved
+    flagged_by         = Column(String(50), nullable=True)    # username who saved it
     current_stage = Column(SAEnum(DeviceStage), nullable=False, default=DeviceStage.iqc, index=True)
     floor = Column(String(50), nullable=True)          # holds the Zone value (ZoneType) selected on IQC/Edit
     warehouse = Column(String(100), nullable=True)     # legacy free-text; now best-effort mirrors location display_name
@@ -286,3 +297,23 @@ class TagNumberMovement(Base):
     by_user_name     = Column(String(100), nullable=True)  # denormalized, survives user deletion
     invoice_pdf_path = Column(String(255), nullable=True)
     notes            = Column(String(255), nullable=True)
+
+
+def _clear_flag_fields(device) -> None:
+    device.flag_authorized_by = None
+    device.flag_request_date = None
+    device.flag_target_date = None
+    device.flag_reason = None
+    device.flagged_at = None
+    device.flagged_by = None
+
+
+@event.listens_for(Device.current_stage, "set", active_history=True)
+def _clear_flag_on_stock_in(target, value, oldvalue, initiator):
+    """Every time a tag moves INTO Stock In (from any other stage), its urgent
+    flag is reset. Done here, on the attribute itself, so all of the ~20 code
+    paths that move a device into stock_in are covered without touching each
+    one. Re-setting stock_in on a tag already at stock_in leaves the flag alone.
+    """
+    if value == DeviceStage.stock_in and oldvalue != DeviceStage.stock_in:
+        _clear_flag_fields(target)

@@ -59,11 +59,11 @@
                 {% set loc = location_map.get(device.id | string) %}
                 {% if loc and loc.unit_id %}{{ loc.unit_id }}{% endif %}
               </td>
-              <td class="text-center">
+              <td class="text-center text-nowrap">
                 {% if sr %}
                   {% set ov = sr.overall_status or '' %}
                   <a href="/stress/{{ device.barcode }}/report?result_id={{ sr.result_id }}"
-                     class="btn btn-sm py-0 px-1
+                     class="btn btn-sm py-0 px-1 text-nowrap
                      {% if ov == 'PASS' %}btn-outline-success
                      {% elif ov == 'FAIL' %}btn-outline-danger
                      {% else %}btn-outline-warning{% endif %}"
@@ -81,6 +81,7 @@
                     data-barcode="{{ device.barcode }}"
                     data-brand="{{ device.brand or '' }}"
                     data-model="{{ device.model or '' }}"
+                    data-touch="{{ device.touch_type or '' }}"
                     onclick="activateStressTest(this)"
                     title="Start Stress Test for this device">
                     <i class="bi bi-lightning-charge-fill me-1"></i>Stress
@@ -126,7 +127,7 @@
             </div>
           </div>
 
-          {# 20 checklist items, each with a Pass / Fail checkbox pair #}
+          {# Checklist items, each with a Pass / Fail checkbox pair (+ N/A on optional ones) #}
           <div id="stressChecklist" class="d-flex flex-column gap-1 mb-3"></div>
 
           <div class="d-flex gap-2 mt-2 pt-2 border-top">
@@ -200,12 +201,16 @@
 .c-name { font-size:12px; color:#212529; font-weight:600; flex:1; }
 .c-check { display:flex; align-items:center; gap:3px; font-size:11px; }
 .c-row.c-fail { background:#fff5f5; }
+.c-row.c-na { opacity:.7; }
 .start-test-btn.active-test { background:#198754 !important; color:#fff !important; border-color:#198754 !important; }
 #qcTable tbody tr.stress-active-row { background:#fff9db !important; }
 </style>
 
 <script>
 const CHECKLIST_ITEMS = {{ checklist_items|tojson }};
+// Items that can be marked N/A (e.g. Touch Screen on a non-touch device).
+const OPTIONAL_ITEMS = {{ optional_items|tojson }};
+let _isTouch = false;
 
 let _barcode = null;
 // Read CSRF token from cookie (set by server on login)
@@ -217,17 +222,25 @@ function buildChecklist() {
   const box = document.getElementById('stressChecklist');
   box.innerHTML = CHECKLIST_ITEMS.map(name => {
     const s = _slug(name);
+    const optional = OPTIONAL_ITEMS.includes(name);
+    // Optional items (Touch Screen) start as N/A unless Final QC already
+    // recorded this tag as a Touch device.
+    const startNa = optional && !_isTouch;
     return `
-    <div class="c-row" id="crow-${s}">
-      <span class="c-name">${name}</span>
+    <div class="c-row${startNa ? ' c-na' : ''}" id="crow-${s}">
+      <span class="c-name">${name}${optional ? ' <span class="text-muted fw-normal">(if exists)</span>' : ''}</span>
       <label class="c-check text-success mb-0">
-        <input type="checkbox" class="c-pass" id="cpass-${s}" data-item="${name}" checked
+        <input type="checkbox" class="c-pass" id="cpass-${s}" data-item="${name}" ${startNa ? '' : 'checked'}
                onchange="onCheckChanged('${s}', 'pass')"> Pass
       </label>
       <label class="c-check text-danger mb-0">
         <input type="checkbox" class="c-fail" id="cfail-${s}" data-item="${name}"
                onchange="onCheckChanged('${s}', 'fail')"> Fail
       </label>
+      ${optional ? `<label class="c-check text-secondary mb-0">
+        <input type="checkbox" class="c-na" id="cna-${s}" data-item="${name}" ${startNa ? 'checked' : ''}
+               onchange="onCheckChanged('${s}', 'na')"> N/A
+      </label>` : ''}
     </div>`;
   }).join('');
   document.getElementById('allPassCheck').checked = true;
@@ -240,9 +253,14 @@ function onCheckChanged(slug, which) {
   const pass = document.getElementById('cpass-' + slug);
   const fail = document.getElementById('cfail-' + slug);
   const row  = document.getElementById('crow-' + slug);
-  if (which === 'pass' && pass.checked) fail.checked = false;
-  if (which === 'fail' && fail.checked) pass.checked = false;
+  const na   = document.getElementById('cna-' + slug);   // optional items only
+  if (which === 'pass' && pass.checked) { fail.checked = false; if (na) na.checked = false; }
+  if (which === 'fail' && fail.checked) { pass.checked = false; if (na) na.checked = false; }
+  if (which === 'na' && na && na.checked) { pass.checked = false; fail.checked = false; }
   row.classList.toggle('c-fail', fail.checked);
+  row.classList.toggle('c-na', !!(na && na.checked));
+  // N/A on an optional item doesn't break "All Pass".
+  if (na && na.checked) return;
   // Unchecking a Pass box — whether the operator unchecked it directly, or it
   // got force-unchecked just now by checking that row's Fail box — means
   // "All Pass" no longer reflects reality until re-confirmed via the master
@@ -255,11 +273,14 @@ function toggleAllPass(checked) {
     const s = _slug(name);
     const pass = document.getElementById('cpass-' + s);
     const fail = document.getElementById('cfail-' + s);
+    const na = document.getElementById('cna-' + s);
     if (checked) {
+      if (na && na.checked) return;   // keep N/A items as N/A
       pass.checked = true;
       fail.checked = false;
       document.getElementById('crow-' + s).classList.remove('c-fail');
     } else {
+      if (na && na.checked) return;
       pass.checked = false;
     }
   });
@@ -268,12 +289,31 @@ function toggleAllPass(checked) {
 function collectFailedItems() {
   return CHECKLIST_ITEMS.filter(name => document.getElementById('cfail-' + _slug(name)).checked);
 }
+function collectNaItems() {
+  return CHECKLIST_ITEMS.filter(name => {
+    const el = document.getElementById('cna-' + _slug(name));
+    return el && el.checked;
+  });
+}
+// Every item needs exactly one choice before Save / Fail / Complete.
+function uncheckedItems() {
+  return CHECKLIST_ITEMS.filter(name => {
+    const s = _slug(name), na = document.getElementById('cna-' + s);
+    return !document.getElementById('cpass-' + s).checked && !document.getElementById('cfail-' + s).checked
+           && !(na && na.checked);
+  });
+}
+function checklistBody() {
+  return 'failed_items=' + encodeURIComponent(collectFailedItems().join(',')) +
+         '&na_items=' + encodeURIComponent(collectNaItems().join(','));
+}
 
 function activateStressTest(btn) {
   document.querySelectorAll('.start-test-btn').forEach(b => b.classList.remove('active-test'));
   btn.classList.add('active-test');
 
   _barcode = btn.dataset.barcode;
+  _isTouch = (btn.dataset.touch || '') === 'touch';
   const brand = btn.dataset.brand;
   const model = btn.dataset.model;
 
@@ -309,7 +349,8 @@ async function submitFail() {
   const engineerId = document.getElementById('failEngineerSelect').value;
   if (!engineerId) { alert('Please select an L1/L2 engineer'); return; }
   const notes = document.getElementById('failNotes').value;
-  const failedItems = collectFailedItems().join(',');
+  const missing = uncheckedItems();
+  if (missing.length) { alert('Mark Pass / Fail' + (OPTIONAL_ITEMS.length ? ' / N/A' : '') + ' for: ' + missing.join(', ')); return; }
   const btn = document.getElementById('failAssignBtn');
   btn.disabled = true;
   try {
@@ -318,7 +359,7 @@ async function submitFail() {
       headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': CSRF},
       body: 'engineer_user_id=' + encodeURIComponent(engineerId) +
             '&notes=' + encodeURIComponent(notes) +
-            '&failed_items=' + encodeURIComponent(failedItems) +
+            '&' + checklistBody() +
             '&csrf_token=' + encodeURIComponent(CSRF),
     });
     if (!r.ok) {
@@ -343,13 +384,18 @@ async function submitFail() {
 
 async function submitComplete() {
   if (!_barcode) return;
+  const missing = uncheckedItems();
+  if (missing.length) { alert('Mark Pass / Fail / N/A for: ' + missing.join(', ')); return; }
+  const failed = collectFailedItems();
+  if (failed.length && !confirm(failed.length + ' item(s) are marked Fail (' + failed.join(', ') +
+      '). Complete anyway and send to Cosmetic? Use Fail to send it to an L1/L2 engineer instead.')) return;
   const btn = document.getElementById('stressCompleteBtn');
   btn.disabled = true;
   try {
     const r = await fetch(`/stress/${_barcode}/complete-to-paint`, {
       method: 'POST',
       headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': CSRF},
-      body: 'csrf_token=' + encodeURIComponent(CSRF),
+      body: checklistBody() + '&csrf_token=' + encodeURIComponent(CSRF),
     });
     if (!r.ok) {
       const text = await r.text().catch(() => '');
@@ -373,7 +419,8 @@ async function submitComplete() {
 async function submitSave() {
   if (!_barcode) return;
   const btn = document.getElementById('stressSaveBtn');
-  const failedItems = collectFailedItems().join(',');
+  const missing = uncheckedItems();
+  if (missing.length) { alert('Mark Pass / Fail / N/A for: ' + missing.join(', ')); return; }
   btn.disabled = true;
   btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Saving…';
 
@@ -381,7 +428,7 @@ async function submitSave() {
     const r = await fetch(`/stress/${_barcode}/save`, {
       method: 'POST',
       headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': CSRF},
-      body: 'failed_items=' + encodeURIComponent(failedItems) + '&csrf_token=' + encodeURIComponent(CSRF),
+      body: checklistBody() + '&csrf_token=' + encodeURIComponent(CSRF),
     });
     const d = await r.json();
     if (d.saved) {

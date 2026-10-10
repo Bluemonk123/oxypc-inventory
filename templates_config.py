@@ -288,3 +288,15 @@ templates.env.globals["master_options"] = _master_options
 from utils.grades import grade_options as _grade_options
 
 templates.env.globals["grade_options"] = _grade_options
+
+# flag_badge(device) → red FLAG badge (with tooltip) for a flagged device's
+# Tag Number; renders nothing when the device isn't flagged. utils/flag.py.
+from markupsafe import Markup as _Markup
+from utils.flag import flag_badge_html as _flag_badge_html
+
+
+def _flag_badge(device):
+    return _Markup(_flag_badge_html(device)) if device is not None else ""
+
+
+templates.env.globals["flag_badge"] = _flag_badge

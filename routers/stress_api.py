@@ -29,7 +29,7 @@ from auth.dependencies import get_current_user, verify_csrf
 from database import get_db
 from models.device import Device, DeviceStage, StageMovement
 from models.user import User, UserRole
-from models.stress import StressTestResult, STRESS_CHECKLIST_ITEMS
+from models.stress import StressTestResult, STRESS_CHECKLIST_ITEMS, STRESS_OPTIONAL_ITEMS
 from models.work_order import WorkOrder
 from routers.transfers import _gen_work_id
 from services.audit_engine import audit
@@ -85,7 +85,8 @@ def _pdf_item_source(record: StressTestResult):
     results = record.results_json or {}
     if any(k in results for k in sr.ALL_KEYS):
         return sr.ALL_KEYS, sr.TEST_NAMES
-    keys = [k for k in STRESS_CHECKLIST_ITEMS if k in results] or list(results.keys())
+    keys = ([k for k in STRESS_CHECKLIST_ITEMS if k in results]
+            or [k for k in results.keys() if not str(k).startswith("_")])
     return keys, {k: k for k in keys}
 
 
@@ -95,6 +96,8 @@ def _result_status_summary(entry) -> tuple[str, str]:
     if isinstance(entry, dict):
         return entry.get("status", "PENDING"), entry.get("summary", "—")
     if isinstance(entry, str):
+        if entry.lower() == "na":
+            return "N/A", "Not present on this device"
         return entry.upper(), "Manually checked on the Stress Test page"
     return "PENDING", "—"
 
@@ -117,6 +120,7 @@ def _pdf_fpdf(record: StressTestResult) -> bytes:
         "SKIP":    (226, 227, 229),
         "RUNNING": (207, 226, 255),
         "PENDING": (226, 227, 229),
+        "N/A":     (226, 227, 229),
     }
 
     results = record.results_json or {}
@@ -289,6 +293,7 @@ async def stop_stress(barcode: str, current_user: User = Depends(get_current_use
 async def save_results(
     barcode: str,
     failed_items: str = Form(""),
+    na_items: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -301,29 +306,9 @@ async def save_results(
         raise HTTPException(404, f"Device {barcode} not found")
 
     try:
-        failed_list = _parse_checklist_items(failed_items)
-        record = StressTestResult(
-            barcode=barcode,
-            brand=dev.brand,
-            model_name=dev.model,
-            run_at=app_now(),
-            overall_status="FAIL" if failed_list else "PASS",
-            results_json={item: ("fail" if item in failed_list else "pass")
-                          for item in STRESS_CHECKLIST_ITEMS},
-            run_by=current_user.username,
-        )
-        db.add(record)
-        await db.flush()
-
-        # Generate PDF (failure is non-fatal — record still saved)
-        try:
-            pdf_bytes = _generate_pdf(record)
-            fname     = _pdf_filename(barcode, record.id)
-            fpath     = REPORTS_DIR / fname
-            fpath.write_bytes(pdf_bytes)
-            record.pdf_path = str(fpath)
-        except Exception:
-            record.pdf_path = None
+        record = await _record_checklist_result(
+            db, dev, _parse_checklist_items(failed_items), _parse_checklist_items(na_items),
+            current_user.username)
 
         await db.commit()
         return {
@@ -471,6 +456,64 @@ async def list_results(
     ]
 
 
+async def _record_checklist_result(db: AsyncSession, device: Device, failed_list: list[str],
+                                   na_list: list[str], run_by: str,
+                                   overall: str | None = None) -> StressTestResult:
+    """Save the manual checklist for this device and attach its PDF report.
+
+    One report per visit to the Stress Test stage: Save / Fail / Complete in
+    the same visit update the same StressTestResult (so the attached report
+    always matches the latest checklist), while a tag that comes back to
+    Stress Test again gets a fresh one — and since every viewer (Stress Test
+    page, Final QC, Device Detail) shows the latest report, that new one
+    replaces the old one everywhere. The visit is identified by the
+    StageMovement that brought the tag into qc_check, stored in results_json
+    under "_visit" (keys starting with "_" are metadata, never checklist items).
+    """
+    results = {}
+    for item in STRESS_CHECKLIST_ITEMS:
+        if item in STRESS_OPTIONAL_ITEMS and item in na_list:
+            results[item] = "na"
+        else:
+            results[item] = "fail" if item in failed_list else "pass"
+    overall = overall or ("FAIL" if failed_list else "PASS")
+
+    visit = (await db.execute(
+        select(StageMovement.id).where(StageMovement.device_id == device.id,
+                                       StageMovement.to_stage == DeviceStage.qc_check)
+        .order_by(StageMovement.moved_at.desc()).limit(1)
+    )).scalar_one_or_none()
+    visit_key = str(visit) if visit else "none"
+    results["_visit"] = visit_key
+
+    latest = (await db.execute(
+        select(StressTestResult).where(StressTestResult.barcode == device.barcode)
+        .order_by(desc(StressTestResult.id)).limit(1)
+    )).scalars().first()
+    record = latest if (latest is not None and isinstance(latest.results_json, dict)
+                        and latest.results_json.get("_visit") == visit_key) else None
+    if record is None:
+        record = StressTestResult(barcode=device.barcode)
+        db.add(record)
+    record.brand = device.brand
+    record.model_name = device.model
+    record.run_at = app_now()
+    record.overall_status = overall
+    record.results_json = results
+    record.run_by = run_by
+    await db.flush()
+
+    # PDF (failure is non-fatal — the checklist is still saved and the
+    # download endpoint regenerates on the fly when no file is attached).
+    try:
+        fpath = REPORTS_DIR / _pdf_filename(device.barcode, record.id)
+        fpath.write_bytes(_generate_pdf(record))
+        record.pdf_path = str(fpath)
+    except Exception:
+        record.pdf_path = None
+    return record
+
+
 def _parse_checklist_items(raw: str) -> list[str]:
     """Comma-separated item names from the checklist form -> the subset that
     actually match STRESS_CHECKLIST_ITEMS, in canonical order. Anything else
@@ -487,6 +530,7 @@ async def stress_fail_assign(
     engineer_user_id: str = Form(...),
     notes: str = Form(""),
     failed_items: str = Form(""),
+    na_items: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -557,12 +601,11 @@ async def stress_fail_assign(
     # StressTestResult rather than a new table — it was already a flexible
     # per-run JSON blob, just previously only ever populated by the automated
     # benchmark's Save button. Same table now also serves the manual result.
-    db.add(StressTestResult(
-        barcode=device.barcode, brand=device.brand, model_name=device.model,
-        run_at=app_now(), overall_status="FAIL",
-        results_json={item: ("fail" if item in failed_list else "pass") for item in STRESS_CHECKLIST_ITEMS},
-        run_by=current_user.username,
-    ))
+    # Checklist + attached PDF for this visit (see _record_checklist_result).
+    # Recorded before the stage move below so the visit lookup still sees
+    # the movement that brought the tag INTO Stress Test.
+    await _record_checklist_result(db, device, failed_list, _parse_checklist_items(na_items),
+                                   current_user.username, overall="FAIL")
 
     # Self-attribution (2026-09-02, same pattern as Final QC's decision WorkID
     # in routers/cosmetic.py): whoever submits this Stress Test result gets
@@ -614,6 +657,8 @@ async def stress_complete_to_paint(
     barcode: str,
     engineer_user_id: str = Form(""),
     notes: str = Form(""),
+    failed_items: str = Form(""),
+    na_items: str = Form(""),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -666,12 +711,11 @@ async def stress_complete_to_paint(
     db.add(StageMovement(device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.cosmetic_received,
                          moved_by=current_user.username, notes=move_notes))
 
-    db.add(StressTestResult(
-        barcode=device.barcode, brand=device.brand, model_name=device.model,
-        run_at=app_now(), overall_status="PASS",
-        results_json={item: "pass" for item in STRESS_CHECKLIST_ITEMS},
-        run_by=current_user.username,
-    ))
+    # The checklist exactly as ticked on the panel (it used to record every
+    # item as Pass regardless), plus its attached PDF — see
+    # _record_checklist_result for the one-report-per-visit rule.
+    await _record_checklist_result(db, device, _parse_checklist_items(failed_items),
+                                   _parse_checklist_items(na_items), current_user.username)
 
     # Self-attribution (2026-09-02, same pattern as Final QC's decision WorkID
     # in routers/cosmetic.py): whoever submits this Stress Test result gets

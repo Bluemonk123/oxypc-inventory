@@ -38,6 +38,7 @@ from routers.transfers import _gen_work_id
 from services.notifications import create_notification
 from services.work_order_close import close_open_work_orders
 from services.location_defaults import ensure_stage_location
+from utils.flag import flag_badge_html, is_flagged
 
 _log = logging.getLogger(__name__)
 
@@ -867,15 +868,26 @@ async def stock_in_data(
         .correlate(Device)
         .scalar_subquery()
     )
+    # Column 9 is "Returned" (2026-10-10, replaced Assigned User): sorts by
+    # whether the tag has any Return on record. With no explicit sort the
+    # table keeps its old default — latest assignment first.
+    has_return = (
+        select(func.count(Return.id)).where(Return.device_id == Device.id)
+        .correlate(Device).scalar_subquery()
+    )
     col_map = {1: Device.barcode, 2: Lot.lot_number, 4: Device.brand, 5: Device.model,
-               6: Device.device_type, 7: Device.grade, 9: latest_assigned_at}
+               6: Device.device_type, 7: Device.grade, 9: has_return}
+    order_param = request.query_params.get("order[0][column]")
     try:
-        order_col = int(request.query_params.get("order[0][column]", 9))
+        order_col = int(order_param) if order_param is not None else None
     except ValueError:
-        order_col = 9
+        order_col = None
     order_dir = request.query_params.get("order[0][dir]", "desc")
-    sort_expr = col_map.get(order_col, Device.updated_at)
-    order_by = _asc(sort_expr) if order_dir == "asc" else _desc(sort_expr)
+    if order_col is None:
+        order_by = _desc(latest_assigned_at).nulls_last()
+    else:
+        sort_expr = col_map.get(order_col, Device.updated_at)
+        order_by = _asc(sort_expr) if order_dir == "asc" else _desc(sort_expr)
 
     rows = (await db.execute(
         base.where(*search_filters).order_by(order_by, Device.barcode)
@@ -903,25 +915,33 @@ async def stock_in_data(
             )).all():
                 location_map[str(did)] = unit_id
 
-    assigned_dept_map = {}
+    # Returned column: latest Return per device (Reason / Condition / Complaint
+    # shown in the info-icon tooltip).
+    return_map = {}
     if device_ids:
-        for did, dept in (await db.execute(
-            select(StockTransfer.device_id, StockTransfer.department)
-            .where(StockTransfer.device_id.in_(device_ids), StockTransfer.department != None)
-            .order_by(StockTransfer.transfer_date.desc())
-        )).all():
-            assigned_dept_map.setdefault(str(did), dept)
+        for r in (await db.execute(
+            select(Return).where(Return.device_id.in_(device_ids))
+            .order_by(Return.return_date.desc())
+        )).scalars().all():
+            return_map.setdefault(str(r.device_id), r)
 
     def esc(v):
         return escape(str(v)) if v is not None else ""
 
+    def returned_cell(r):
+        if not r:
+            return '<span class="badge bg-light text-dark border">No</span>'
+        tip = (f"Reason: {r.reason or '—'}\nCondition: {r.condition_on_return or '—'}\n"
+               f"Complaint: {r.complaint_text or '—'}")
+        return (f'<span class="badge bg-warning text-dark">Yes</span>'
+                f'<i class="bi bi-info-circle text-primary ms-1" style="cursor:help" title="{esc(tip)}"></i>')
+
     data = []
     for d, lot_number_val in rows:
-        dept = assigned_dept_map.get(str(d.id))
         data.append([
             f'<input type="checkbox" class="form-check-input stockChk" value="{esc(d.barcode)}">',
-            (f'<a href="/devices/{esc(d.barcode)}" class="font-monospace text-decoration-none">'
-             f'<code>{esc(d.barcode)}</code></a>'
+            (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="font-monospace text-decoration-none">'
+             f'<code>{esc(d.barcode)}</code></a>{flag_badge_html(d)}</span>'
              f'<div style="color:#999999;font-size:12px;">{esc(d.entity) if d.entity else "—"}</div>'),
             f'<span class="badge bg-info text-dark">{esc(lot_number_val)}</span>',
             (f'<span class="font-monospace small">{esc(location_map[str(d.id)])}</span>'
@@ -931,7 +951,7 @@ async def stock_in_data(
             esc(d.brand or "—"), esc(d.model or "—"), esc(d.device_type or "—"),
             esc(d.grade or "—"),
             f'<span class="bkt-cell" data-barcode="{esc(d.barcode)}"><span class="text-muted">—</span></span>',
-            (f'<span class="badge bg-secondary">{esc(dept)}</span>' if dept else '<span class="text-muted">—</span>'),
+            returned_cell(return_map.get(str(d.id))),
             # Every row here is already at Stock In (see _stock_filters), so
             # both actions are always valid. Move to Production is hidden
             # (d-none, not removed — same form/endpoint still works if it's
@@ -951,6 +971,116 @@ async def stock_in_data(
         ])
 
     return {"draw": draw, "recordsTotal": total, "recordsFiltered": filtered, "data": data}
+
+
+def _parse_barcodes(raw: str) -> list:
+    seen, out = set(), []
+    for b in (raw or "").replace("\n", ",").split(","):
+        b = b.strip()
+        if b and b not in seen:
+            seen.add(b)
+            out.append(b)
+    return out
+
+
+@router.get("/stock/flag-info")
+async def stock_flag_info(
+    barcodes: str = "",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Flag Items modal prefill: how many of the selected tags are flagged, and
+    the flag details when every flagged one shares the same values (so Edit
+    starts from them)."""
+    codes = _parse_barcodes(barcodes)
+    if not codes:
+        return {"ok": True, "selected": 0, "flagged": 0, "common": None}
+    devices = (await db.execute(select(Device).where(Device.barcode.in_(codes)))).scalars().all()
+    flagged = [d for d in devices if is_flagged(d)]
+    common = None
+    if flagged:
+        vals = {(d.flag_authorized_by or "", d.flag_request_date, d.flag_target_date, d.flag_reason or "")
+                for d in flagged}
+        if len(vals) == 1:
+            a, rq, tg, rs = next(iter(vals))
+            common = {"authorized_by": a,
+                      "request_date": rq.isoformat() if rq else "",
+                      "target_date": tg.isoformat() if tg else "",
+                      "reason": rs}
+    return {"ok": True, "selected": len(devices), "flagged": len(flagged), "common": common}
+
+
+@router.post("/stock/flag")
+async def stock_flag_save(
+    request: Request,
+    barcodes: str = Form(...),
+    action: str = Form("save"),
+    authorized_by: str = Form(""),
+    request_date: str = Form(""),
+    target_date: str = Form(""),
+    reason: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Flag Items (Urgent at inventory) — add/edit (action=save) or remove
+    (action=remove) the flag on every selected tag. The flag also clears
+    itself when a tag moves back into Stock In (models/device.py)."""
+    from datetime import date as _date
+    codes = _parse_barcodes(barcodes)
+    if not codes:
+        return JSONResponse({"ok": False, "error": "No tags selected."}, status_code=400)
+    devices = (await db.execute(
+        select(Device).where(Device.barcode.in_(codes), Device.is_trashed.isnot(True))
+    )).scalars().all()
+    if not devices:
+        return JSONResponse({"ok": False, "error": "None of the selected tags were found."}, status_code=404)
+
+    if action == "remove":
+        for d in devices:
+            d.flag_authorized_by = d.flag_request_date = d.flag_target_date = None
+            d.flag_reason = d.flagged_at = d.flagged_by = None
+        await audit(db, user=current_user, action="DEVICE_FLAG_REMOVED", table_name="devices",
+                    record_id=f"bulk:{len(devices)}",
+                    new_value={"barcodes": [d.barcode for d in devices][:200]}, request=request)
+        await db.commit()
+        return {"ok": True, "updated": len(devices), "removed": True}
+
+    authorized_by = authorized_by.strip()
+    reason = reason.strip()
+    def _d(v):
+        v = (v or "").strip()
+        if not v:
+            return None
+        try:
+            return _date.fromisoformat(v)
+        except ValueError:
+            raise HTTPException(400, f"Invalid date: {v}")
+    try:
+        rq, tg = _d(request_date), _d(target_date)
+    except HTTPException as e:
+        return JSONResponse({"ok": False, "error": e.detail}, status_code=400)
+    missing = [n for n, v in (("Flag Authorized By", authorized_by), ("Flag Request Date", rq),
+                              ("Flag Target Date", tg), ("Flag Reason", reason)) if not v]
+    if missing:
+        return JSONResponse({"ok": False, "error": "Required: " + ", ".join(missing)}, status_code=400)
+    if tg < rq:
+        return JSONResponse({"ok": False, "error": "Flag Target Date can't be before the Request Date."},
+                            status_code=400)
+    now = app_now()
+    for d in devices:
+        d.flag_authorized_by = authorized_by[:100]
+        d.flag_request_date = rq
+        d.flag_target_date = tg
+        d.flag_reason = reason
+        d.flagged_at = now
+        d.flagged_by = current_user.username
+    await audit(db, user=current_user, action="DEVICE_FLAG_SET", table_name="devices",
+                record_id=f"bulk:{len(devices)}",
+                new_value={"barcodes": [d.barcode for d in devices][:200], "authorized_by": authorized_by,
+                           "request_date": rq.isoformat(), "target_date": tg.isoformat(), "reason": reason},
+                request=request)
+    await db.commit()
+    return {"ok": True, "updated": len(devices)}
 
 
 @router.get("/stock", response_class=HTMLResponse)
@@ -1127,8 +1257,13 @@ async def stock_in_list(
         })
     return_stock_rows.sort(key=lambda r: r["ret"].return_date or app_now(), reverse=True)
 
+    # Flag Items modal: "Flag Authorized By" = active users' display names.
+    flag_users = sorted({(u.full_name or u.username) for u in (await db.execute(
+        select(User).where(User.status == True)
+    )).scalars().all() if (u.full_name or u.username)})
     return templates.TemplateResponse("lots/stock_in.html", {
         "request": request, "current_user": current_user,
+        "flag_users": flag_users,
         "analytics": analytics,
         "departments": STOCK_DEPARTMENTS,
         "total": total,

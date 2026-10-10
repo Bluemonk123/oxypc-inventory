@@ -42,6 +42,7 @@ from services.ready_pricing import (
 )
 from services.event_bus import EventType, publish
 from utils.touch_type import touch_badge_html
+from utils.flag import flag_badge_html
 from services.location_defaults import ensure_stage_location
 from utils.warranty import (
     warranty_from_sold_at, latest_sold_at_map,
@@ -301,7 +302,7 @@ async def ready_list_data(
             (f'<input type="checkbox" class="form-check-input readyChk" value="{esc(d.barcode)}" '
              f'data-serial="{esc(d.serial_no or "")}">'),
             (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="text-decoration-none"><code class="fw-bold">{esc(d.barcode)}</code></a>'
-             + touch_badge_html(d.touch_type) + '</span>'
+             + touch_badge_html(d.touch_type) + flag_badge_html(d) + '</span>'
              + (f'<br><span class="badge bg-info text-dark">{esc(d.entity)}</span>' if d.entity else '')),
             (f'<a href="/devices?lot={esc(lot_number)}" class="btn btn-sm py-0 px-2 small text-decoration-none" '
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),
@@ -1638,6 +1639,7 @@ def _sales_search_filter(search: str):
         Device.model.ilike(like), Sale.sale_number.ilike(like),
         Sale.customer_name.ilike(like), Sale.sales_person.ilike(like),
         Sale.sold_by.ilike(like), Lot.lot_number.ilike(like),
+        Sale.invoice_no.ilike(like),
     )]
 
 
@@ -1713,17 +1715,19 @@ async def sales_list_data(
     # place later than before: with pricing (Cost/Unit, Price, Margin at 8-10)
     # Customer=11, Payment=12, By=13, Sales Person=14; without pricing
     # Customer=8, Payment=9, By=10, Sales Person=11.
+    # Column 2 is Invoice (2026-10-10, after Sale#), so every index from Date
+    # onward is one later again than the note above describes.
     stock_type_expr = case((func.coalesce(Device.sub_lot_number, "") != "", 1), else_=0)
-    col_map = {1: Sale.sale_number, 2: Sale.sold_at, 3: Device.barcode,
-               6: Device.grade, 7: stock_type_expr}
+    col_map = {1: Sale.sale_number, 2: Sale.invoice_no, 3: Sale.sold_at, 4: Device.barcode,
+               7: Device.grade, 8: stock_type_expr}
     if show_pricing:
-        col_map.update({9: Sale.sale_price, 12: Sale.payment_mode, 13: Sale.sold_by, 14: Sale.sales_person})
+        col_map.update({10: Sale.sale_price, 13: Sale.payment_mode, 14: Sale.sold_by, 15: Sale.sales_person})
     else:
-        col_map.update({9: Sale.payment_mode, 10: Sale.sold_by, 11: Sale.sales_person})
+        col_map.update({10: Sale.payment_mode, 11: Sale.sold_by, 12: Sale.sales_person})
     try:
-        order_col = int(request.query_params.get("order[0][column]", 2))
+        order_col = int(request.query_params.get("order[0][column]", 3))
     except ValueError:
-        order_col = 2
+        order_col = 3
     order_dir = request.query_params.get("order[0][dir]", "desc")
     sort_expr = col_map.get(order_col, Sale.sold_at)
     order_by = _asc(sort_expr) if order_dir == "asc" else _desc(sort_expr)
@@ -1745,6 +1749,8 @@ async def sales_list_data(
         cells = [
             f'<input type="checkbox" class="row-check" value="{s.id}">',
             f'<a href="/sales/{s.id}" class="text-decoration-none fw-semibold">{esc(s.sale_number)}</a>',
+            (f'<span class="font-monospace">{esc(s.invoice_no)}</span>' if s.invoice_no
+             else '<span class="text-muted">—</span>'),
             s.sold_at.strftime("%d-%m-%Y") if s.sold_at else "—",
             f'<a href="/devices/{esc(r.barcode)}" class="text-decoration-none"><code>{esc(r.barcode)}</code></a>',
             esc(f"{r.brand or ''} {r.model or ''}".strip()),

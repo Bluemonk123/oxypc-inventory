@@ -18,7 +18,7 @@ from models.device import Device, DeviceStage, StageMovement
 from models.lot import Lot
 from models.qc import QCCheck
 from models.work_order import WorkOrder
-from models.stress import STRESS_CHECKLIST_ITEMS
+from models.stress import STRESS_CHECKLIST_ITEMS, STRESS_OPTIONAL_ITEMS
 from auth.dependencies import get_current_user, require_roles, verify_csrf, require_module_perm
 from services.control_engine import validate_transition, get_allowed_next_stages, assert_device_in_stage
 from services.audit_engine import audit
@@ -145,6 +145,7 @@ async def qc_list(request: Request, db: AsyncSession = Depends(get_db),
         "total": total,
         "l1l2_engineers": l1l2_engineers, "paint_engineers": paint_engineers,
         "checklist_items": STRESS_CHECKLIST_ITEMS,
+        "optional_items": sorted(STRESS_OPTIONAL_ITEMS),
     })
 
 

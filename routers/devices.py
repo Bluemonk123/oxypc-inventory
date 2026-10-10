@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse,
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func, and_, update, case, cast, String
 from utils.touch_type import touch_badge_html
+from utils.flag import flag_badge_html
 from database import get_db
 from models.user import User, UserRole
 from models.device import Device, DeviceGrade, DeviceStage, StageMovement, STAGE_LABELS, DROPDOWN_STAGES
@@ -559,8 +560,8 @@ async def device_search_data(
         storage = d.hdd_summary or (f"{d.storage_gb}GB {d.storage_type or ''}".strip() if d.storage_gb else "—")
         cells = [
             f'<input type="checkbox" class="form-check-input rowChk" value="{esc(d.barcode)}">',
-            (f'<a href="/devices/{esc(d.barcode)}" class="font-monospace fw-bold text-decoration-none">{esc(d.barcode)}</a>'
-             + touch_badge_html(d.touch_type) +
+            (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="font-monospace fw-bold text-decoration-none">{esc(d.barcode)}</a>'
+             + touch_badge_html(d.touch_type) + flag_badge_html(d) + '</span>' +
              f'<div><span class="badge bg-light text-dark border">{esc(d.entity) if d.entity else "—"}</span></div>'),
             (f'<a href="/devices?lot={esc(lot_number)}" class="btn btn-sm py-0 px-2 small text-decoration-none" '
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),

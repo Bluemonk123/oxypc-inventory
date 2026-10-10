@@ -115,10 +115,58 @@
         data-bs-toggle="modal" data-bs-target="#addToBucketModal">
   <i class="bi bi-box me-1"></i>Assign Bucket (<span id="bktSelCount">0</span>)
 </button>
+<!-- Flag Items modal — add / edit / remove the Urgent flag on the selected tags.
+     The flag also clears itself whenever a tag moves back into Stock In. -->
+<div class="modal fade" id="flagItemsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="flagItemsForm" novalidate>
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-flag-fill text-danger me-2"></i>Flag Items — Urgent at Inventory</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="flagInfo" class="small text-muted mb-2"></div>
+        <div id="flagError" class="alert alert-danger small d-none"></div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Flag Authorized By <span class="text-danger">*</span></label>
+          <select id="flagAuthorizedBy" class="form-select form-select-sm">
+            <option value="">— Select user —</option>
+            {% for name in flag_users %}<option value="{{ name }}">{{ name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="row g-2 mb-2">
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Flag Request Date <span class="text-danger">*</span></label>
+            <input type="date" id="flagRequestDate" class="form-control form-control-sm">
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold">Flag Target Date <span class="text-danger">*</span></label>
+            <input type="date" id="flagTargetDate" class="form-control form-control-sm">
+          </div>
+        </div>
+        <div class="mb-1">
+          <label class="form-label small fw-semibold">Flag Reason <span class="text-danger">*</span></label>
+          <textarea id="flagReason" class="form-control form-control-sm" rows="3" placeholder="Why is this urgent?"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" id="flagRemoveBtn" class="btn btn-outline-danger btn-sm me-auto d-none">
+          <i class="bi bi-trash3 me-1"></i>Remove Flag
+        </button>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" id="flagSaveBtn" class="btn btn-danger btn-sm"><i class="bi bi-flag-fill me-1"></i>Save Flag</button>
+      </div>
+    </form>
+  </div>
+</div>
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-archive me-2"></i>Inventory Stock</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
+      <button type="button" id="flagItemsBtn" class="btn btn-outline-danger btn-sm d-none text-nowrap me-2" disabled
+              title="Flag the selected tags as Urgent at inventory">
+        <i class="bi bi-flag-fill me-1"></i>Flag Items (<span id="flagItemsCount">0</span>)
+      </button>
       <button type="button" id="bulkMoveL1L2Btn" class="btn btn-outline-warning btn-sm d-none text-nowrap" disabled>
         <i class="bi bi-tools me-1"></i>Bulk Move to L1/L2 (<span id="bulkMoveL1L2Count">0</span>)
       </button>
@@ -136,7 +184,7 @@
   <div class="card-body p-0">
     <div class="table-responsive">
       <table id="stockTable" class="table table-hover mb-0 small">
-        <thead class="table-dark"><tr><th style="width:32px"><input type="checkbox" id="selectAllStock" class="form-check-input"></th><th>Tag Number</th><th>Lot</th><th>Location ID</th><th>Brand</th><th>Model</th><th>Device Type</th><th>Grade</th><th>Inside Bucket</th><th>Assigned User</th><th>Action</th><th>GRN</th><th>Invoice</th></tr></thead>
+        <thead class="table-dark"><tr><th style="width:32px"><input type="checkbox" id="selectAllStock" class="form-check-input"></th><th>Tag Number</th><th>Lot</th><th>Location ID</th><th>Brand</th><th>Model</th><th>Device Type</th><th>Grade</th><th>Inside Bucket</th><th>Returned</th><th>Action</th><th>GRN</th><th>Invoice</th></tr></thead>
         {# Rows are supplied by /stock/data (DataTables server-side). GRN and
            Invoice are hidden via DataTables' columnDefs (visible:false) below,
            not a d-none class — that pairing broke the moment rows stopped being
@@ -512,7 +560,9 @@ $(document).ready(function(){
     serverSide: true,
     processing: true,
     pageLength: 12,
-    order: [[9, 'desc']],  // Date Assigned — most recently assigned first
+    // No client-side default sort: the server then keeps the old default
+    // (most recently assigned first). Column 9 is now Returned (Yes/No).
+    order: [],
     searchDelay: 400,
     {# 'l' leads the top row so the Show-entries dropdown sits top left, ahead of
        the button and scan-box slots. #}
@@ -555,6 +605,7 @@ $(document).ready(function(){
   // box top right, inside the table wrapper.
   $('#entityBadgeArea').append($('#entityBadges').removeClass('d-none'));
   $('#stkBtnArea').append($('#assignBucketBtn').removeClass('d-none'));
+  $('#stkBtnArea').append($('#flagItemsBtn').removeClass('d-none'));
   $('#stkBtnArea').append($('#bulkMoveL1L2Btn').removeClass('d-none'));
   $('#stkScanArea').append($('#stockScanInput').removeClass('d-none'));
 
@@ -576,6 +627,79 @@ $(document).ready(function(){
           alert(d.detail || 'Failed to move tags.');
         }
       });
+  });
+
+
+  // ── Flag Items: add / edit / remove the Urgent flag on the selected tags ──
+  var flagModalEl = document.getElementById('flagItemsModal');
+  var flagModal = flagModalEl ? new bootstrap.Modal(flagModalEl) : null;
+  function flagErr(msg) {
+    var e = document.getElementById('flagError');
+    e.textContent = msg || ''; e.classList.toggle('d-none', !msg);
+  }
+  $('#flagItemsBtn').on('click', function () {
+    var bcs = selectedStockBarcodes();
+    if (!bcs.length || !flagModal) return;
+    flagErr('');
+    var today = new Date(); today.setMinutes(today.getMinutes() - today.getTimezoneOffset());
+    $('#flagAuthorizedBy').val(''); $('#flagReason').val('');
+    $('#flagRequestDate').val(today.toISOString().slice(0, 10)); $('#flagTargetDate').val('');
+    $('#flagRemoveBtn').addClass('d-none');
+    $('#flagInfo').text(bcs.length + ' tag(s) selected');
+    fetch('/stock/flag-info?barcodes=' + encodeURIComponent(bcs.join(',')))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.flagged) {
+          $('#flagInfo').text(bcs.length + ' tag(s) selected — ' + d.flagged + ' already flagged'
+            + (d.common ? ' (details loaded below; Save updates them)' : ' with different details; Save replaces them'));
+          $('#flagRemoveBtn').removeClass('d-none');
+        }
+        if (d.common) {
+          if (d.common.authorized_by && !$('#flagAuthorizedBy option').filter(function(){ return this.value === d.common.authorized_by; }).length) {
+            $('#flagAuthorizedBy').append($('<option>').val(d.common.authorized_by).text(d.common.authorized_by));
+          }
+          $('#flagAuthorizedBy').val(d.common.authorized_by);
+          $('#flagRequestDate').val(d.common.request_date);
+          $('#flagTargetDate').val(d.common.target_date);
+          $('#flagReason').val(d.common.reason);
+        }
+      });
+    flagModal.show();
+  });
+  function postFlag(action) {
+    var fd = new FormData();
+    fd.append('csrf_token', getCsrf());
+    fd.append('barcodes', selectedStockBarcodes().join(','));
+    fd.append('action', action);
+    if (action === 'save') {
+      fd.append('authorized_by', $('#flagAuthorizedBy').val() || '');
+      fd.append('request_date', $('#flagRequestDate').val() || '');
+      fd.append('target_date', $('#flagTargetDate').val() || '');
+      fd.append('reason', ($('#flagReason').val() || '').trim());
+    }
+    return fetch('/stock/flag', { method: 'POST', body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { flagErr(d.error || d.detail || 'Could not save the flag.'); return; }
+        flagModal.hide();
+        dtStock.ajax.reload(null, false);
+      })
+      .catch(function () { flagErr('Could not save the flag — please try again.'); });
+  }
+  $('#flagItemsForm').on('submit', function (e) {
+    e.preventDefault();
+    var missing = [];
+    if (!$('#flagAuthorizedBy').val()) missing.push('Flag Authorized By');
+    if (!$('#flagRequestDate').val()) missing.push('Flag Request Date');
+    if (!$('#flagTargetDate').val()) missing.push('Flag Target Date');
+    if (!($('#flagReason').val() || '').trim()) missing.push('Flag Reason');
+    if (missing.length) { flagErr('Required: ' + missing.join(', ')); return; }
+    if ($('#flagTargetDate').val() < $('#flagRequestDate').val()) { flagErr("Flag Target Date can't be before the Request Date."); return; }
+    postFlag('save');
+  });
+  $('#flagRemoveBtn').on('click', function () {
+    if (!confirm('Remove the flag from the selected tag(s)?')) return;
+    postFlag('remove');
   });
 
   // Single scan/search box: each scan narrows the table, ticks the match and
@@ -634,6 +758,9 @@ function updateStockSel(){
   $('#bulkMoveL1L2Btn').toggleClass('btn-primary', n > 0).toggleClass('btn-outline-warning', n === 0);
   $('#customiseCount').text(n);
   $('#customiseBtn').toggleClass('d-none', n === 0);
+  $('#flagItemsCount').text(n);
+  $('#flagItemsBtn').prop('disabled', n === 0)
+    .toggleClass('btn-danger', n > 0).toggleClass('btn-outline-danger', n === 0);
 }
 // "Select all" reaches only the rows currently rendered (this page's/this
 // search's result set) — same page-scoped convention used elsewhere for

@@ -34,7 +34,7 @@
       <table id="psTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
-            <th class="ps-3">Sale ID</th><th>Date</th><th>Part Name</th>
+            <th class="ps-3">Sale ID</th><th>Invoice</th><th>Date</th><th>Part Name</th>
             <th>Part Make</th><th>Part Model</th><th>Qty</th>
             {% if can_view_pricing(current_user) %}
             <th>Stock Unit Price</th><th>Sale Unit Price</th><th>Margin</th>
@@ -46,6 +46,7 @@
           {% for s in sales %}
           <tr>
             <td class="ps-3 font-monospace fw-bold">{{ s.sale_number }}</td>
+            <td class="font-monospace">{{ s.invoice_no or '—' }}</td>
             <td>{{ s.sold_at.strftime('%d-%b-%Y %H:%M') if s.sold_at else '—' }}</td>
             <td>{{ s.part_name or '—' }}</td>
             <td>{{ s.make or '—' }}</td>
@@ -66,7 +67,7 @@
             <td>{{ s.sold_by or '—' }}</td>
           </tr>
           {% else %}
-          <tr><td colspan="11" class="text-center text-muted py-4">No spare parts sold yet.</td></tr>
+          <tr><td colspan="12" class="text-center text-muted py-4">No spare parts sold yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>

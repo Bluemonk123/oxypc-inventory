@@ -18,7 +18,16 @@
 <!-- Header row -->
 <div class="d-flex justify-content-between align-items-start mb-3">
   <div>
-    <h4 class="mb-0 font-monospace fw-bold">{{ device.barcode }}</h4>
+    <h4 class="mb-0 font-monospace fw-bold">{{ device.barcode }}<span class="fs-6 align-middle">{{ flag_badge(device) }}</span></h4>
+    {% if device.flagged_at or device.flag_reason %}
+    <div class="alert alert-danger py-1 px-2 my-1 small d-inline-block">
+      <i class="bi bi-flag-fill me-1"></i><strong>Urgent at inventory</strong> —
+      Authorized by {{ device.flag_authorized_by or '—' }} ·
+      Requested {{ device.flag_request_date.strftime('%d-%m-%Y') if device.flag_request_date else '—' }} ·
+      Target {{ device.flag_target_date.strftime('%d-%m-%Y') if device.flag_target_date else '—' }} ·
+      Reason: {{ device.flag_reason or '—' }}
+    </div>
+    {% endif %}
     {# Same source as the "Location ID" row further down in Identity &
        Location (device.location_id) — kept identical so the two don't ever
        disagree on the same page. #}

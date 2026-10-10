@@ -103,6 +103,7 @@ async def gate_pass_data(
             Device.barcode.ilike(like), Device.brand.ilike(like),
             Device.model.ilike(like), Sale.sale_number.ilike(like),
             Sale.customer_name.ilike(like), Lot.lot_number.ilike(like),
+            Sale.invoice_no.ilike(like),
         ))
 
     total = (await db.execute(count_join.where(*page_filters))).scalar() or 0
@@ -110,12 +111,13 @@ async def gate_pass_data(
         count_join.where(*page_filters, *search_filters))).scalar() or 0
 
     # Column indices match templates/gate_pass/list.html's <thead>: 0=checkbox,
-    # 1=Tag Number, 2=Lot, 3=Device, 4=Sale No, 5=Customer, 6=Sold At, ...
-    col_map = {4: Sale.sale_number, 5: Sale.customer_name, 6: Sale.sold_at}
+    # 1=Sale No, 2=Sold At, 3=Invoice, 4=Tag Number, 5=Lot, 6=Device,
+    # 7=Customer, 8=Status, 9=Delivery Challan, 10=Action (2026-10-10 order).
+    col_map = {1: Sale.sale_number, 2: Sale.sold_at, 3: Sale.invoice_no, 7: Sale.customer_name}
     try:
-        order_col = int(request.query_params.get("order[0][column]", 6))
+        order_col = int(request.query_params.get("order[0][column]", 2))
     except ValueError:
-        order_col = 6
+        order_col = 2
     order_dir = request.query_params.get("order[0][dir]", "desc")
     sort_expr = col_map.get(order_col, Sale.sold_at)
     order_by = asc(sort_expr) if order_dir == "asc" else desc(sort_expr)
@@ -167,12 +169,14 @@ async def gate_pass_data(
 
         data.append([
             checkbox_html,
+            f'<span class="font-monospace">{esc(sale.sale_number)}</span>',
+            sale.sold_at.strftime("%d-%b-%Y %H:%M") if sale.sold_at else "—",
+            (f'<span class="font-monospace">{esc(sale.invoice_no)}</span>' if sale.invoice_no
+             else '<span class="text-muted">—</span>'),
             tag_html,
             f'<span class="font-monospace">{esc(lot_number_val) or "—"}</span>',
             esc(f"{brand or ''} {model or ''}".strip()) or "—",
-            f'<span class="font-monospace">{esc(sale.sale_number)}</span>',
             esc(sale.customer_name or "—"),
-            sale.sold_at.strftime("%d-%b-%Y %H:%M") if sale.sold_at else "—",
             status_html,
             f'<a href="/invoices/waybill/{sale.id}" target="_blank" '
             f'class="btn btn-sm btn-outline-primary py-0 px-2">'

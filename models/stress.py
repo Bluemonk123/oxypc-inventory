@@ -17,7 +17,14 @@ STRESS_CHECKLIST_ITEMS = [
     "Logic Card", "Camera", "Speaker", "Battery", "Wi-fi", "DC Jack",
     "LAN Port", "USB Ports", "Bluetooth", "Fingerprint", "Display & GPU",
     "Thermal", "Power Button",
+    # Added 2026-10-10
+    "HDMI Port", "Microphone", "Touch Screen", "Cosmetic Check",
+    "Diagnostic Cleaning Test", "Startup/Critical Drivers", "Software/License Key",
 ]
+
+# Items that may not exist on every device — the checklist gives these a
+# third "N/A" choice (stored as "na", never counted as a failure).
+STRESS_OPTIONAL_ITEMS = {"Touch Screen"}
 
 
 class StressTestResult(Base):

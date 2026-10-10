@@ -899,6 +899,7 @@ async def iqc_bulk_apply_grade_type(
     total_hdd_count: str = Form(""),
     total_hdd_size: str = Form(""),
     hdd_summary: str = Form(""),
+    touch_type: str = Form(""),
     to_stage: str = Form(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
@@ -977,7 +978,7 @@ async def iqc_bulk_apply_grade_type(
             and not generation.strip() and not ram_gb.strip() and not storage_gb.strip()
             and not total_ram_count.strip() and not total_ram_size.strip()
             and not total_hdd_count.strip() and not total_hdd_size.strip()
-            and not hdd_summary.strip() and not to_stage):
+            and not hdd_summary.strip() and not touch_type.strip() and not to_stage):
         return RedirectResponse(url=f"{return_to}?error=Select+a+field+to+apply", status_code=302)
 
     result = await db.execute(select(Device).where(Device.barcode.in_(barcodes)))
@@ -1053,8 +1054,16 @@ async def iqc_bulk_apply_grade_type(
             url=f"{return_to}?error=Select+a+Location+ID+to+choose+a+Bin", status_code=302
         )
 
+    # Touch Type: "touch" / "non_touch" (blank = leave unchanged). Anything
+    # else is rejected before any device is touched.
+    new_touch_type = touch_type.strip().lower() or None
+    if new_touch_type and new_touch_type not in ("touch", "non_touch"):
+        return RedirectResponse(url=f"{return_to}?error=Invalid+touch+type", status_code=302)
+
     is_admin = current_user.role.value == "admin"
     for device in devices:
+        if new_touch_type:
+            device.touch_type = new_touch_type
         if device_type.strip():
             device.device_type = device_type.strip()
         if entity.strip():
@@ -1137,6 +1146,7 @@ async def iqc_bulk_apply_grade_type(
                            "grn_number": grn_number or None, "location_id": location_id or None,
                            "device_price": device_price or None,
                            "min_selling_price": min_selling_price or None,
+                           "touch_type": new_touch_type,
                            "bin_location": bin_location or None,
                            "cpu": cpu or None, "cpu_make": cpu_make or None,
                            "generation": generation or None,

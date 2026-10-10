@@ -15,7 +15,7 @@
         number, open the Delivery Challan, then confirm the exit.
       </span>
       <input type="text" id="gpSearch" class="form-control form-control-sm font-monospace" style="max-width:320px"
-             placeholder="Scan or type tag / sale number…">
+             placeholder="Scan or type tag / sale / invoice number…">
     </div>
     <form class="d-flex flex-wrap gap-2 align-items-center" method="get" action="/gate-pass" id="filterForm">
       <div>
@@ -60,8 +60,8 @@
         <thead class="table-dark">
           <tr>
             <th style="width:36px"><input type="checkbox" id="gpSelectAll" title="Select all visible rows"></th>
-            <th class="ps-3">Tag Number</th><th>Lot</th><th>Device</th>
-            <th>Sale No</th><th>Customer</th><th>Sold At</th>
+            <th>Sale ID</th><th>Date</th><th>Invoice</th><th class="ps-3">Tag Number</th>
+            <th>Lot</th><th>Device</th><th>Customer</th>
             <th>Status</th><th>Delivery Challan</th><th>Action</th>
           </tr>
         </thead>
@@ -129,7 +129,7 @@ $(document).ready(function () {
     serverSide: true,
     processing: true,
     pageLength: 25,
-    order: [[6, 'desc']],   // Sold At, newest first
+    order: [[2, 'desc']],   // Date (Sold At), newest first
     searchDelay: 400,
     ajax: {
       url: '/gate-pass/data',
@@ -140,7 +140,7 @@ $(document).ready(function () {
       },
     },
     columnDefs: [
-      { orderable: false, targets: [0, 1, 2, 3, 8, 9] },
+      { orderable: false, targets: [0, 4, 5, 6, 8, 9, 10] },
     ],
     drawCallback: function () {
       gpSelectAll.checked = false;
