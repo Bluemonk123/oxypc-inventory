@@ -21,10 +21,8 @@
 {%- endmacro %}
 {# Value cell for a row a part can be changed on:
      pending change          -> IQC value (black) + orange "Changed" badge
-     Final QC passed / sold  -> new value in green / blue. RAM and Hard Drive
-                                 were written onto the device at the pass, so
-                                 the cell already holds the new value; other
-                                 rows show the IQC value struck through and
+     Final QC passed / sold  -> ONLY the new value, in green / blue. RAM and
+                                 Hard Drive show the new spec; other rows show
                                  "Replaced". The old value is in the tooltip. #}
 {% macro _cell(cp, key, capacity=False) -%}
   {%- set slot = cp.by_key.get(key) -%}
@@ -35,8 +33,10 @@
     {%- if d and capacity and d.applied -%}
       <span class="text-{{ d.color }} fw-semibold" style="cursor:help" title="{{ d.tooltip }}">{{ v }}</span>
     {%- elif d -%}
-      {%- if v|trim not in ['—', '-', ''] -%}<span class="text-muted text-decoration-line-through me-1" title="IQC value">{{ v }}</span>{%- endif -%}
-      <span class="text-{{ d.color }} fw-semibold" style="cursor:help" title="{{ d.tooltip }}">Replaced{% if d.details %} → {{ d.details }}{% endif %}</span>
+      {#- After Final QC pass / sale only the NEW value shows — the IQC value
+          is in the tooltip, never next to it. RAM / Hard Drive show what the
+          part became; other rows show "Replaced". -#}
+      <span class="text-{{ d.color }} fw-semibold" style="cursor:help" title="{{ d.tooltip }}{% if v|trim not in ['—', '-', ''] %} · IQC value: {{ v|striptags|trim }}{% endif %}">{% if capacity and d.details %}{{ d.details }}{% else %}Replaced{% endif %}</span>
     {%- else -%}{{ v }}
     {%- endif -%}
     {{ _pending_badge(slot) }}

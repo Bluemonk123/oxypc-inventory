@@ -100,13 +100,13 @@ def effective_label(r: PartRequest, sp=None) -> str:
 
 
 def _details(r: PartRequest, sp=None) -> str:
-    """What the part became, e.g. "256GB SSD". Make / model come from the
-    LIVE Part Master row (part_id) when it still exists, so renaming a part
-    there updates every tag that used it; the request's own snapshot is the
-    fallback for a part since deleted from Part Master."""
-    make = (sp.make if sp is not None else None) or r.part_make
+    """What the part became, e.g. "256GB SSD". Shows the Part MODEL only —
+    never the make alongside it. The model comes from the LIVE Part Master
+    row (part_id) when it still exists, so renaming a part there updates
+    every tag that used it; the request's own snapshot is the fallback for a
+    part since deleted from Part Master."""
     model = (sp.model if sp is not None else None) or r.part_model
-    bits = [r.part_capacity, r.part_type, make, model]
+    bits = [r.part_capacity, r.part_type, model]
     out, seen = [], set()
     for b in bits:
         b = (b or "").strip()
@@ -363,7 +363,8 @@ def spec_cell(data: dict, device_id, key: str, text_html: str) -> str:
         passed   -> value in green  (already the new value, written at the pass)
         sold     -> value in blue
     A change that passed before values were written automatically (legacy,
-    never applied) keeps the stored value and adds "→ new part" in colour.
+    never applied) still shows only the new part, coloured; the stored value
+    is in the tooltip.
     `text_html` must already be escaped."""
     entry = data.get(str(device_id)) if data else None
     slot = entry["by_key"].get(key) if entry else None
@@ -377,8 +378,11 @@ def spec_cell(data: dict, device_id, key: str, text_html: str) -> str:
         if d["applied"]:
             out = f'<span class="fw-semibold {cls}" style="cursor:help" title="{tip}">{text_html}</span>'
         elif d["details"]:
-            out = (f'{text_html} <span class="fw-semibold small {cls}" style="cursor:help" '
-                   f'title="{tip}">→ {escape(d["details"])}</span>')
+            # Not written onto the device (passed before this was automatic):
+            # still show ONLY the new value — the stored one goes in the tooltip.
+            was = re.sub(r"<[^>]+>", "", text_html).strip()
+            out = (f'<span class="fw-semibold {cls}" style="cursor:help" '
+                   f'title="{tip} · stored value: {was}">{escape(d["details"])}</span>')
     if slot["pending"]:
         p = slot["pending"][-1]
         label = f"→ {escape(p['details'])}" if p["details"] else "Changed"
@@ -419,10 +423,9 @@ def apply_part_to_device(device, r: PartRequest, sp=None):
     if not gb:
         return None
     rtype = (r.request_type or "new").lower()
-    make = ((sp.make if sp is not None else None) or r.part_make or "").strip() or None
-    if make and (parse_capacity_gb(make, need_unit=True) or _TYPE_RE.search(make)):
-        make = None             # a "make" like "256GB SSD" is the spec itself, not a brand
-    piece = " ".join(b for b in [_gb_text(gb), ptype, make] if b)
+    # Capacity + type only (e.g. "256GB SSD") — the part's make is not
+    # written into the device's RAM / Hard Drive text.
+    piece = " ".join(b for b in [_gb_text(gb), ptype] if b)
     if label == "RAM":
         old = _ram_text(device)
         if rtype == "new" and device.ram_gb:
