@@ -3,14 +3,15 @@ Device Management — Search, Detail, Edit
 Provides a global inventory browser and per-device history view.
 """
 from templates_config import templates
-import csv, io, uuid as uuid_module
+import csv, io, re, uuid as uuid_module
 from datetime import datetime
 from utils.timezone import app_now
 from utils.csv_decode import decode_csv_bytes
 from fastapi import APIRouter, Depends, Form, Request, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_, func, and_, update, case
+from sqlalchemy import select, or_, func, and_, update, case, cast, String
+from utils.touch_type import touch_badge_html
 from database import get_db
 from models.user import User, UserRole
 from models.device import Device, DeviceGrade, DeviceStage, StageMovement, STAGE_LABELS, DROPDOWN_STAGES
@@ -318,6 +319,34 @@ def _multi(value) -> list:
     return [v.strip() for v in raw if v and str(v).strip()]
 
 
+def _spec_search_clause(term: str, extra_cols=()):
+    """Multi-word search across Tag Number + Make/Model/CPU/RAM/Storage.
+
+    Every word must match at least one field (AND across words, OR across
+    fields), so "Dell 8GB i5" finds a Dell with 8 GB RAM and an i5 CPU, while a
+    single word still works on its own. RAM/Storage are matched on their
+    packed summaries ("8GB_DDR4…") and on the plain size ("8GB", "512GB",
+    "1TB"), since the integer columns alone can never match "8GB". Returns
+    None for a blank term.
+    """
+    words = [w for w in re.split(r"\s+", (term or "").strip()) if w]
+    if not words:
+        return None
+    ram_txt = func.concat(cast(Device.ram_gb, String), "GB")
+    sto_txt = func.concat(cast(Device.storage_gb, String), "GB")
+    sto_tb = case((Device.storage_gb >= 1000,
+                   func.concat(cast(func.round(Device.storage_gb / 1000.0), String), "TB")),
+                  else_="")
+    cols = [Device.barcode, Device.serial_no, Device.brand, Device.model, Device.cpu,
+            Device.device_type, Device.ram_summary, Device.hdd_summary, Device.storage_type,
+            ram_txt, sto_txt, sto_tb, *extra_cols]
+    clauses = []
+    for w in words:
+        like = f"%{w}%"
+        clauses.append(or_(*[c.ilike(like) for c in cols]))
+    return and_(*clauses)
+
+
 def _device_search_filters(q, stage, lot, grade, category, device_type, date_from, date_to, entity="", exclude_sold=False):
     """Filter clauses shared by the Inventory Search page and its data endpoint.
 
@@ -330,12 +359,9 @@ def _device_search_filters(q, stage, lot, grade, category, device_type, date_fro
     """
     w = []
     if q:
-        q_like = f"%{q}%"
-        w.append(or_(
-            Device.barcode.ilike(q_like), Device.brand.ilike(q_like),
-            Device.model.ilike(q_like), Device.serial_no.ilike(q_like),
-            Device.cpu.ilike(q_like), Device.grn_number.ilike(q_like),
-        ))
+        _spec = _spec_search_clause(q, extra_cols=(Device.grn_number,))
+        if _spec is not None:
+            w.append(_spec)
 
     stage_vals = _multi(stage)
     if stage_vals:
@@ -459,12 +485,9 @@ async def device_search_data(
     search = (request.query_params.get("search[value]") or "").strip()
     search_filters = []
     if search:
-        like = f"%{search}%"
-        search_filters.append(or_(
-            Device.barcode.ilike(like), Device.brand.ilike(like), Device.model.ilike(like),
-            Device.cpu.ilike(like), Device.serial_no.ilike(like), Lot.lot_number.ilike(like),
-            Device.device_type.ilike(like),
-        ))
+        _spec = _spec_search_clause(search, extra_cols=(Lot.lot_number,))
+        if _spec is not None:
+            search_filters.append(_spec)
 
     total = (await db.execute(count_base.where(*page_filters))).scalar() or 0
     # With no search term the two counts are the same query over 22k+ rows, and
@@ -537,6 +560,7 @@ async def device_search_data(
         cells = [
             f'<input type="checkbox" class="form-check-input rowChk" value="{esc(d.barcode)}">',
             (f'<a href="/devices/{esc(d.barcode)}" class="font-monospace fw-bold text-decoration-none">{esc(d.barcode)}</a>'
+             + touch_badge_html(d.touch_type) +
              f'<div><span class="badge bg-light text-dark border">{esc(d.entity) if d.entity else "—"}</span></div>'),
             (f'<a href="/devices?lot={esc(lot_number)}" class="btn btn-sm py-0 px-2 small text-decoration-none" '
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),

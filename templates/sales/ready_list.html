@@ -3,6 +3,14 @@
 {% block title %}Ready to Sale — OxyPC{% endblock %}
 {% block page_title %}Ready to Sale{% endblock %}
 {% block content %}
+<style>
+  /* Tab sets on this page — same look as Final QC's Devices Passed/Failed
+     tabs: tabs sit on the page, the active one joins a white bordered panel. */
+  .ready-tabs .nav-link { font-weight: 600; color: #495057; display: inline-flex; align-items: center; gap: .15rem; }
+  .ready-tabs .nav-link.active { color: #0d6efd; background: #fff; }
+  .ready-tab-content { background: #fff; border: 1px solid #dee2e6; border-top: 0;
+                       border-radius: 0 0 .5rem .5rem; padding: 1rem; }
+</style>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <span class="text-muted">{{ devices|length }} device(s) ready</span>
   <a href="/sales/new" class="btn btn-success"><i class="bi bi-cart-plus me-2"></i>New Sale</a>
@@ -37,9 +45,90 @@
 </div>
 {% endif %}
 
-<div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span><i class="bi bi-upc-scan me-2"></i>Ready to Sale Tag Numbers</span>
+{# Two tab sets (2026-10-10): Ready for Sale Tags + its Model Summary, then
+   As-Is Lot + its Model Summary. Each summary is built only from the tags of
+   the table beside it (routers/sales.py _build_model_summary). #}
+{% macro touch_select(id, value='') %}
+<select id="{{ id }}" class="form-select form-select-sm ready-touch-filter" style="width:auto;min-width:170px" title="Touch Type">
+  <option value="" {{ 'selected' if not value }}>All Touch Types</option>
+  <option value="touch" {{ 'selected' if value == 'touch' }}>Touch (T)</option>
+  <option value="non_touch" {{ 'selected' if value == 'non_touch' }}>Non-Touch (NT)</option>
+</select>
+{% endmacro %}
+{% macro model_summary_table(table_id, rows, selectable, empty_text) %}
+<table id="{{ table_id }}" class="table table-hover mb-0 small w-100">
+  <thead class="table-dark">
+    <tr>
+      {% if selectable %}<th><input type="checkbox" id="modelSumSelectAll"></th>{% endif %}
+      <th>Model</th><th>Make</th><th>Device Type</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th>
+      <th>Total Quantity</th><th>Total Purchase Price</th>
+      <th title="Sum of each tag's Min Selling Price (saved Set price, else unit price + Other Rates + margin)">Min Selling Price</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for g in rows %}
+    <tr>
+      {% if selectable %}
+      <td><input type="checkbox" class="modelSumChk" value="{{ loop.index0 }}"
+                 data-model="{{ g.model }}" data-make="{{ g.make }}"
+                 data-barcodes='{{ g.barcodes | tojson }}'></td>
+      {% endif %}
+      <td>{{ g.model }}</td>
+      <td>{{ g.make }}</td>
+      <td>{{ g.device_type }}</td>
+      <td>{{ g.cpu }}</td>
+      <td class="text-nowrap">{{ g.gen }}</td>
+      <td class="text-nowrap">{{ g.ram }}</td>
+      <td class="text-nowrap">{{ g.storage }}</td>
+      <td class="text-nowrap" data-order="{{ g.total_count }}">
+        <span class="badge bg-success">Available {{ g.total_count }}</span>
+        <span class="badge bg-secondary">Sold {{ g.total_sold }}</span>
+      </td>
+      <td class="text-nowrap" data-order="{{ g.total_purchase_price }}">₹{{ "{:,.0f}".format(g.total_purchase_price) }}</td>
+      <td class="text-nowrap" data-order="{{ g.min_total }}">
+        {% if g.min_lo is not none %}
+          <span class="fw-semibold">₹{{ "{:,.0f}".format(g.min_total) }}</span>
+          <div class="text-muted" style="font-size:.7rem">
+            {% if g.min_lo == g.min_hi %}₹{{ "{:,.0f}".format(g.min_lo) }} / tag{% else %}₹{{ "{:,.0f}".format(g.min_lo) }} – ₹{{ "{:,.0f}".format(g.min_hi) }} / tag{% endif %}
+            {% if g.min_missing %}· {{ g.min_missing }} without price{% endif %}
+          </div>
+        {% else %}<span class="text-muted">—</span>{% endif %}
+      </td>
+      <td>
+        <div class="d-flex gap-1">
+          {% if selectable %}
+          <button type="button" class="btn btn-sm btn-outline-primary modelReqBtn d-none"
+                  data-model="{{ g.model }}" data-make="{{ g.make }}"
+                  data-barcodes='{{ g.barcodes | tojson }}' data-max="{{ g.total_count }}">Request</button>
+          {% endif %}
+          {% if g.barcodes %}
+          <button type="button" class="btn btn-sm btn-outline-success py-0 model-sum-sell-btn"
+                  data-barcodes='{{ g.barcodes | tojson }}'>Sell</button>
+          {% endif %}
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+<ul class="nav nav-tabs ready-tabs" id="readyTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#readyTagsPane" type="button" role="tab">
+      <i class="bi bi-upc-scan me-1"></i>Ready for Sale Tags <span class="badge rounded-pill bg-success ms-1">{{ ready_tag_count }}</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#readyModelSumPane" type="button" role="tab">
+      <i class="bi bi-collection me-1"></i>Ready for Sale Model Summary <span class="badge rounded-pill bg-secondary ms-1" id="msCountBadge">{{ model_summary_ready|length }}</span>
+    </button>
+  </li>
+</ul>
+<div class="tab-content ready-tab-content">
+  <div class="tab-pane fade show active" id="readyTagsPane" role="tabpanel">
+  <div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
     <div class="d-flex gap-2 align-items-center flex-wrap">
       {# Moved into the table's own DataTables toolbar (top right) by JS below.
          It is the only search box on this table; DataTables' 'f' box is left
@@ -47,6 +136,8 @@
       <input type="text" id="readyScanInput" class="d-none form-control form-control-sm font-monospace"
              style="max-width:280px" autocomplete="off" placeholder="Scan Tag/Serial, or search…">
       {# Entity filter: reloads the table server-side (and Select All follows it). #}
+      {{ touch_select('readyTouch') }}
+      {{ ms.multiselect_inline('device_type', 'Device Types', device_type_options, '') }}
       {{ ms.multiselect_inline('entity', 'Entity', entity_options, '') }}
       <button type="button" id="multiRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Multi-Request with selected (<span id="readySelCount">0</span>)
@@ -68,7 +159,7 @@
       </button>
     </div>
   </div>
-  <div class="card-body p-0">
+  <div>
     <table id="readyTable" class="table table-hover mb-0 small">
       <thead class="table-dark">
         <tr>
@@ -90,13 +181,39 @@
       <tbody></tbody>
     </table>
   </div>
-</div>
-
-<div class="card border-0 shadow-sm mt-3">
-  <div class="card-header bg-transparent fw-semibold">
-    <span><i class="bi bi-box-seam me-2"></i>Ready to Sale As-Is Lot</span>
+  </div>{# /readyTagsPane #}
+  <div class="tab-pane fade" id="readyModelSumPane" role="tabpanel">
+    <div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
+      {{ touch_select('msTouch', f.ms_touch) }}
+      {{ ms.multiselect_inline('ms_dtype', 'Device Types', device_type_options, f.ms_dtype) }}
+      {{ ms.multiselect_inline('ms_entity', 'Entity', entity_options, f.ms_entity) }}
+      <button type="button" id="modelSumRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
+        <i class="bi bi-telephone-outbound me-1"></i>Request Selected (<span id="modelSumSelCount">0</span>)
+      </button>
+    </div>
+    {{ model_summary_table('readyModelSummaryTable', model_summary_ready, true, 'No Ready for Sale tags.') }}
   </div>
-  <div class="card-body p-0">
+</div>{# /tab-content #}
+
+<ul class="nav nav-tabs ready-tabs mt-4" id="asIsTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#asIsLotPane" type="button" role="tab">
+      <i class="bi bi-box-seam me-1"></i>As-Is Lot <span class="badge rounded-pill bg-warning text-dark ms-1" id="alCountBadge">{{ as_is_lots|length }}</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#asIsModelSumPane" type="button" role="tab">
+      <i class="bi bi-collection me-1"></i>As-Is Model Summary <span class="badge rounded-pill bg-secondary ms-1" id="amCountBadge">{{ model_summary_as_is|length }}</span>
+    </button>
+  </li>
+</ul>
+<div class="tab-content ready-tab-content">
+  <div class="tab-pane fade show active" id="asIsLotPane" role="tabpanel">
+    <div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
+      {{ touch_select('alTouch', f.al_touch) }}
+      {{ ms.multiselect_inline('al_dtype', 'Device Types', device_type_options, f.al_dtype) }}
+      {{ ms.multiselect_inline('al_entity', 'Entity', entity_options, f.al_entity) }}
+    </div>
     <table id="asIsLotTable" class="table table-hover mb-0 small">
       <thead class="table-dark">
         <tr>
@@ -172,8 +289,16 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>{# /asIsLotPane #}
+  <div class="tab-pane fade" id="asIsModelSumPane" role="tabpanel">
+    <div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
+      {{ touch_select('amTouch', f.am_touch) }}
+      {{ ms.multiselect_inline('am_dtype', 'Device Types', device_type_options, f.am_dtype) }}
+      {{ ms.multiselect_inline('am_entity', 'Entity', entity_options, f.am_entity) }}
+    </div>
+    {{ model_summary_table('asIsModelSummaryTable', model_summary_as_is, false, 'No As-Is tags.') }}
   </div>
-</div>
+</div>{# /tab-content #}
 
 <!-- As-Is Lot Edit modal — sets Min/Max Selling Price for every Tag Number in this Lot + Sub-Lot -->
 <div class="modal fade" id="asIsLotEditModal" tabindex="-1" aria-hidden="true">
@@ -269,56 +394,6 @@
         </table>
       </div>
     </div>
-  </div>
-</div>
-
-<div class="card border-0 shadow-sm mt-3">
-  <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span><i class="bi bi-collection me-2"></i>Model Summary for Ready to Sale</span>
-    <button type="button" id="modelSumRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
-      <i class="bi bi-telephone-outbound me-1"></i>Request Selected (<span id="modelSumSelCount">0</span>)
-    </button>
-  </div>
-  <div class="card-body p-0">
-    <table id="readyModelSummaryTable" class="table table-hover mb-0 small">
-      <thead class="table-dark">
-        <tr>
-          <th><input type="checkbox" id="modelSumSelectAll"></th>
-          <th>Model Name</th><th>Model Make</th><th>Device Type</th>
-          <th>Total Count</th><th>Total Purchase Price</th><th>Total Sale Price</th>
-          <th>Total Count Sold</th><th>Action</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for g in model_summary_ready %}
-        <tr>
-          <td><input type="checkbox" class="modelSumChk" value="{{ loop.index0 }}"
-                     data-model="{{ g.model }}" data-make="{{ g.make }}"
-                     data-barcodes='{{ g.barcodes | tojson }}'></td>
-          <td class="small">{{ g.model }}</td>
-          <td class="small">{{ g.make }}</td>
-          <td class="small">{{ g.device_type }}</td>
-          <td class="small">{{ g.total_count }}</td>
-          <td class="small">₹{{ "{:,.0f}".format(g.total_purchase_price) }}</td>
-          <td class="small">{% if g.total_sale_price %}₹{{ "{:,.0f}".format(g.total_sale_price) }}{% else %}—{% endif %}</td>
-          <td class="small">{{ g.total_sold }}</td>
-          <td class="small">
-            <div class="d-flex gap-1">
-              <button type="button" class="btn btn-sm btn-outline-primary modelReqBtn d-none"
-                      data-model="{{ g.model }}" data-make="{{ g.make }}"
-                      data-barcodes='{{ g.barcodes | tojson }}' data-max="{{ g.total_count }}">Request</button>
-              {% if g.barcodes %}
-              <button type="button" class="btn btn-sm btn-outline-success model-sum-sell-btn"
-                      data-barcodes='{{ g.barcodes | tojson }}'>Sell</button>
-              {% endif %}
-            </div>
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="9" class="text-center text-muted small py-3">No ready-to-sale devices.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
   </div>
 </div>
 
@@ -511,7 +586,11 @@ $(document).ready(function(){
          '<"d-flex justify-content-end align-items-center flex-wrap gap-3 mt-3"<"small text-muted"i>p>',
     ajax: {
       url: '/sales/ready/data',
-      data: function (d) { d.entity = (document.getElementById('ms_val_entity') || {}).value || ''; },
+      data: function (d) {
+        d.entity = (document.getElementById('ms_val_entity') || {}).value || '';
+        d.touch = (document.getElementById('readyTouch') || {}).value || '';
+        d.device_type = (document.getElementById('ms_val_device_type') || {}).value || '';
+      },
       dataSrc: function (json) { return json.data; },
     },
     // Warranty column index shifts by 1 depending on whether Unit Cost
@@ -534,6 +613,12 @@ $(document).ready(function(){
 
   // Entity filter: reload the table (page 1) whenever the multi-select changes.
   document.getElementById('ms_val_entity').addEventListener('ms:change', function () {
+    readyDt.ajax.reload(null, true);
+  });
+  document.getElementById('readyTouch').addEventListener('change', function () {
+    readyDt.ajax.reload(null, true);
+  });
+  document.getElementById('ms_val_device_type').addEventListener('ms:change', function () {
     readyDt.ajax.reload(null, true);
   });
 
@@ -658,10 +743,10 @@ document.getElementById('newBulkSaleBtn').addEventListener('click', function(){
 // barcode list too (a whole sub-lot or an entire model's stock) — same 414
 // risk as Multi-Sell above, so they submit through the same hidden POST
 // form instead of a GET link.
-document.querySelectorAll('.model-sum-sell-btn').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    sellBarcodesList(JSON.parse(this.getAttribute('data-barcodes') || '[]'));
-  });
+// Delegated: DataTables detaches rows on other pages, so a per-button
+// binding at load would miss every Sell button past page 1.
+$(document).on('click', '.model-sum-sell-btn', function(){
+  sellBarcodesList(JSON.parse(this.getAttribute('data-barcodes') || '[]'));
 });
 
 $('#readyTable').on('change', '.readyChk', function(){
@@ -673,7 +758,9 @@ $('#readyTable').on('change', '.readyChk', function(){
 document.getElementById('readySelectAll').addEventListener('change', async function(){
   var ck = this.checked;
   if (ck) {
-    var r = await fetch('/sales/ready/barcodes?entity=' + encodeURIComponent((document.getElementById('ms_val_entity') || {}).value || ''));
+    var r = await fetch('/sales/ready/barcodes?entity=' + encodeURIComponent((document.getElementById('ms_val_entity') || {}).value || '')
+      + '&touch=' + encodeURIComponent((document.getElementById('readyTouch') || {}).value || '')
+      + '&device_type=' + encodeURIComponent((document.getElementById('ms_val_device_type') || {}).value || ''));
     var d = await r.json();
     (d.barcodes || []).forEach(function(bc){ readySelected.add(bc); });
   } else {
@@ -789,14 +876,16 @@ function wireBreakdownModal(btnSelector, modalId, labelId, bodyId){
 // tbody — that table is server-rendered from Jinja on GET /sales/ready, not
 // DataTables ajax, so there is no `.ajax.reload()` equivalent for it.
 function refreshAsIsLotTable(){
-  return fetch(window.location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+  return fetch(readyPageUrl(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     .then(function (r) { return r.text(); })
     .then(function (html) {
       var doc = new DOMParser().parseFromString(html, 'text/html');
+      if ($.fn.dataTable.isDataTable('#asIsLotTable')) { dtAsIsLot.destroy(); }
       var newTbody = doc.querySelector('#asIsLotTable tbody');
       var curTbody = document.querySelector('#asIsLotTable tbody');
       if (!newTbody || !curTbody) return;
       curTbody.innerHTML = newTbody.innerHTML;
+      copyBadge(doc, 'alCountBadge');
       buildAsIsLotTable();
       wireAsIsLotButtons();
     });
@@ -817,8 +906,71 @@ document.getElementById('asIsLotOpenForm').addEventListener('submit', function (
 });
 
 // ── Model Summary: checkboxes + per-row Request modal + Request Selected ──
-if (!$.fn.dataTable.isDataTable('#readyModelSummaryTable'))
-  $('#readyModelSummaryTable').DataTable({pageLength:12, columnDefs:[{orderable:false, targets:[0,8]}]});
+var SUMMARY_OPTS = {
+  readyModelSummaryTable: {pageLength:12, order:[[8,'desc']], language:{emptyTable:'No Ready for Sale tags.'}, columnDefs:[{orderable:false, targets:[0,11]}, {visible:false, targets:[0]}]},
+  asIsModelSummaryTable:  {pageLength:12, order:[[7,'desc']], language:{emptyTable:'No As-Is tags.'}, columnDefs:[{orderable:false, targets:[10]}]},
+};
+function buildSummaryTable(id){
+  if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();
+  $('#' + id).DataTable(SUMMARY_OPTS[id]);
+}
+buildSummaryTable('readyModelSummaryTable');
+buildSummaryTable('asIsModelSummaryTable');
+
+// ── Per-tab filters (Touch Type + Entity) ───────────────────────────────────
+// The Tag table filters through its own ajax feed (above). The other three
+// tables are built server-side, so a filter change re-fetches this page with
+// every tab's filters and swaps just that one table's rows — the other tabs,
+// selections and scroll position stay as they are.
+function readyPageUrl(){
+  var p = new URLSearchParams();
+  function v(id){ return (document.getElementById(id) || {}).value || ''; }
+  [['ms_touch','msTouch'],['ms_entity','ms_val_ms_entity'],['ms_dtype','ms_val_ms_dtype'],
+   ['al_touch','alTouch'],['al_entity','ms_val_al_entity'],['al_dtype','ms_val_al_dtype'],
+   ['am_touch','amTouch'],['am_entity','ms_val_am_entity'],['am_dtype','ms_val_am_dtype']].forEach(function(x){
+    if (v(x[1])) p.set(x[0], v(x[1]));
+  });
+  var q = p.toString();
+  return window.location.pathname + (q ? '?' + q : '');
+}
+function copyBadge(doc, id){
+  var a = doc.getElementById(id), b = document.getElementById(id);
+  if (a && b) b.textContent = a.textContent;
+}
+function refreshSummaryTable(id, badgeId){
+  return fetch(readyPageUrl(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(function (r) { return r.text(); })
+    .then(function (html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var fresh = doc.querySelector('#' + id + ' tbody');
+      if (!fresh) return;
+      if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();
+      document.querySelector('#' + id + ' tbody').innerHTML = fresh.innerHTML;
+      copyBadge(doc, badgeId);
+      buildSummaryTable(id);
+      if (id === 'readyModelSummaryTable') {
+        var all = document.getElementById('modelSumSelectAll'); if (all) all.checked = false;
+        if (typeof updateModelSumSel === 'function') updateModelSumSel();
+      }
+    });
+}
+[['msTouch','ms_val_ms_entity','ms_val_ms_dtype', function(){ return refreshSummaryTable('readyModelSummaryTable', 'msCountBadge'); }],
+ ['amTouch','ms_val_am_entity','ms_val_am_dtype', function(){ return refreshSummaryTable('asIsModelSummaryTable', 'amCountBadge'); }],
+ ['alTouch','ms_val_al_entity','ms_val_al_dtype', function(){ return refreshAsIsLotTable(); }]].forEach(function(x){
+  var sel = document.getElementById(x[0]);
+  if (sel) sel.addEventListener('change', x[3]);
+  [x[1], x[2]].forEach(function(id){
+    var el = document.getElementById(id);
+    if (el) el.addEventListener('ms:change', x[3]);
+  });
+});
+// Tables inside a tab that was hidden at load measure their columns as zero
+// width — re-measure whenever a tab is shown.
+document.querySelectorAll('#readyTabs button[data-bs-toggle="tab"], #asIsTabs button[data-bs-toggle="tab"]').forEach(function(btn){
+  btn.addEventListener('shown.bs.tab', function(){
+    $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+  });
+});
 
 function selectedModelSumRows(){ return Array.from(document.querySelectorAll('.modelSumChk:checked')); }
 function updateModelSumSel(){
@@ -827,7 +979,8 @@ function updateModelSumSel(){
   $('#modelSumRequestBtn').prop('disabled', n === 0);
 }
 $('#readyModelSummaryTable').on('change', '.modelSumChk', updateModelSumSel);
-document.getElementById('modelSumSelectAll').addEventListener('change', function(){
+var _msAll = document.getElementById('modelSumSelectAll');
+if (_msAll) _msAll.addEventListener('change', function(){
   var ck = this.checked;
   document.querySelectorAll('.modelSumChk').forEach(function(c){ c.checked = ck; });
   updateModelSumSel();

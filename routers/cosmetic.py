@@ -12,6 +12,7 @@ from sqlalchemy import select, func, update, or_
 from database import get_db
 from models.user import User, UserRole
 from models.device import Device, DeviceStage, StageMovement
+from models.stress import StressTestResult
 from models.bucket import Bucket, _new_bucket_number
 from models.lot import Lot
 from models.iqc_inspection import IQCInspection
@@ -715,6 +716,20 @@ async def cosmetic_stage_list(stage_name: str, request: Request, db: AsyncSessio
             # since this feeds a form value, not read-only display text.
             bucket_name_map = {str(d.id): bname_by_id.get(d.bucket_id, "") for d, _ in devices if d.bucket_id}
 
+        # ── Latest Stress/QC report per device, for the "Stress/QC Report"
+        # download button next to the Tag Number in the right panel (same
+        # latest-row rule as the Stress Test page, routers/qc.py). ─────────
+        stress_map: dict[str, dict] = {}
+        _bcs = [d.barcode for d, _ in devices if d.barcode]
+        if _bcs:
+            for bc, rid, ov in (await db.execute(
+                select(StressTestResult.barcode, StressTestResult.id, StressTestResult.overall_status)
+                .where(StressTestResult.barcode.in_(_bcs))
+                .order_by(StressTestResult.barcode, StressTestResult.id.desc())
+                .distinct(StressTestResult.barcode)
+            )).all():
+                stress_map[bc] = {"result_id": rid, "overall_status": ov or ""}
+
         passed_devices = await _passed_device_rows(db)
         failed_devices = await _failed_device_rows(db)
 
@@ -741,7 +756,7 @@ async def cosmetic_stage_list(stage_name: str, request: Request, db: AsyncSessio
             "parts_map": parts_map, "price_map": price_map,
             "l1l2_engineer_map": l1l2_engineer_map,
             "pipeline": COSMETIC_NAV_STAGES, "stage_labels": STAGE_LABELS,
-            "bucket_name_map": bucket_name_map,
+            "bucket_name_map": bucket_name_map, "stress_map": stress_map,
             "passed_devices": passed_devices, "failed_devices": failed_devices,
             "entity_options": await entity_values(db), "f_entity": entity,
         })
@@ -854,6 +869,7 @@ async def advance_stage(
     updated_generation: str = Form(""),
     updated_ram: str = Form(""),
     updated_hdd: str = Form(""),
+    touch_type: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
@@ -939,6 +955,11 @@ async def advance_stage(
         if updated_cpu: device.cpu = updated_cpu
         if updated_generation: device.generation = updated_generation
         if warehouse: device.warehouse = warehouse
+        # Touch Type radio (Touch / Non-Touch) — saved on both Pass and Fail.
+        # Only a recognised value overwrites; anything else leaves it as-is.
+        _tt = (touch_type or "").strip().lower()
+        if _tt in ("touch", "non_touch"):
+            device.touch_type = _tt
         # Case-insensitive: master data stores "Fail"/"Pass" (title case), so an exact
         # == "fail" match silently treats every Fail as a Pass in production.
         _is_fail = final_qc_status.strip().lower() == "fail"

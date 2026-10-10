@@ -14,7 +14,7 @@
       <div class="col-md-4">
         <label class="form-label small fw-semibold mb-1">Search</label>
         <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm barcode-field font-monospace"
-               placeholder="Tag Number, brand, model, serial, CPU, GRN…">
+               placeholder="Tag, make, model, CPU, RAM, storage — e.g. Dell i5 8GB">
       </div>
       {{ ms.multiselect('stage', 'Stage', stage_choices, stage) }}
       {{ ms.multiselect('lot', 'Lot', lot_choices, lot) }}

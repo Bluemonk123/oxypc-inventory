@@ -41,6 +41,7 @@ from services.ready_pricing import (
     load_ready_rates, unit_price, tag_min_price, lot_price, as_is_min_price,
 )
 from services.event_bus import EventType, publish
+from utils.touch_type import touch_badge_html
 from services.location_defaults import ensure_stage_location
 from utils.warranty import (
     warranty_from_sold_at, latest_sold_at_map,
@@ -69,9 +70,47 @@ def _entity_values(raw: str) -> list:
     return [v.strip() for v in (raw or "").split(",") if v.strip()]
 
 
+
+def _touch_clause(touch: str):
+    """Touch Type filter for the Ready to Sale tables: "touch" = only tags Final
+    QC marked Touch; "non_touch" = everything else (blank shows as NT)."""
+    t = (touch or "").strip().lower()
+    if t == "touch":
+        return Device.touch_type == "touch"
+    if t == "non_touch":
+        return or_(Device.touch_type.is_(None), Device.touch_type != "touch")
+    return None
+
+
+def _device_type_of(device) -> str:
+    """Device Type as these tables show it: device_type, else sub_category
+    (blank on many records, sub_category means the same thing)."""
+    return (device.device_type or "").strip() or (device.sub_category or "").strip()
+
+
+_device_type_expr = func.coalesce(func.nullif(func.trim(Device.device_type), ""), Device.sub_category)
+
+
+def _row_passes(device, touch: str, entities: list, dtypes: list | None = None) -> bool:
+    """Same Touch Type + Entity filter as _touch_clause, applied in Python to the
+    already-loaded rows behind the Model Summary / As-Is Lot tables."""
+    t = (touch or "").strip().lower()
+    is_touch = (device.touch_type or "").strip().lower() == "touch"
+    if t == "touch" and not is_touch:
+        return False
+    if t == "non_touch" and is_touch:
+        return False
+    if entities and (device.entity or "") not in entities:
+        return False
+    if dtypes and _device_type_of(device) not in dtypes:
+        return False
+    return True
+
 @router.get("/sales/ready/barcodes")
 async def ready_list_barcodes(
     entity: str = "",
+    touch: str = "",
+    device_type: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(ready_allowed),
 ):
@@ -91,6 +130,8 @@ async def ready_list_barcodes(
             Device.is_trashed == False,
             or_(Device.sub_lot_number.is_(None), Device.sub_lot_number == ""),
             *([Device.entity.in_(entities)] if entities else []),
+            *([_touch_clause(touch)] if _touch_clause(touch) is not None else []),
+            *([_device_type_expr.in_(_entity_values(device_type))] if _entity_values(device_type) else []),
         )
     )).scalars().all()
     return {"barcodes": [b for b in barcodes if b]}
@@ -101,6 +142,8 @@ async def ready_list_data(
     request: Request,
     draw: int = 1, start: int = 0, length: int = 25,
     entity: str = "",
+    touch: str = "",
+    device_type: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(ready_allowed),
 ):
@@ -131,6 +174,10 @@ async def ready_list_data(
     # totals and the paging alike, so the table and its counts always agree.
     entities = _entity_values(entity)
     entity_filter = [Device.entity.in_(entities)] if entities else []
+    if _touch_clause(touch) is not None:
+        entity_filter.append(_touch_clause(touch))
+    if _entity_values(device_type):
+        entity_filter.append(_device_type_expr.in_(_entity_values(device_type)))
 
     base = (
         select(Device, Lot.lot_number, Lot.buying_price, Lot.qty, Lot.selling_price)
@@ -253,7 +300,8 @@ async def ready_list_data(
         cells = [
             (f'<input type="checkbox" class="form-check-input readyChk" value="{esc(d.barcode)}" '
              f'data-serial="{esc(d.serial_no or "")}">'),
-            (f'<a href="/devices/{esc(d.barcode)}" class="text-decoration-none"><code class="fw-bold">{esc(d.barcode)}</code></a>'
+            (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="text-decoration-none"><code class="fw-bold">{esc(d.barcode)}</code></a>'
+             + touch_badge_html(d.touch_type) + '</span>'
              + (f'<br><span class="badge bg-info text-dark">{esc(d.entity)}</span>' if d.entity else '')),
             (f'<a href="/devices?lot={esc(lot_number)}" class="btn btn-sm py-0 px-2 small text-decoration-none" '
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),
@@ -318,6 +366,16 @@ async def ready_list_data(
 @router.get("/sales/ready", response_class=HTMLResponse)
 async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
                      current_user: User = Depends(ready_allowed)):
+    # Per-tab filters (Touch Type + Entity) for the three server-rendered tabs:
+    # ms_* = Ready for Sale Model Summary, al_* = As-Is Lot, am_* = As-Is
+    # Model Summary. The Tag table filters through /sales/ready/data instead.
+    qp = request.query_params
+    ms_touch, ms_entities = qp.get("ms_touch", ""), _entity_values(qp.get("ms_entity", ""))
+    al_touch, al_entities = qp.get("al_touch", ""), _entity_values(qp.get("al_entity", ""))
+    am_touch, am_entities = qp.get("am_touch", ""), _entity_values(qp.get("am_entity", ""))
+    ms_dtypes = _entity_values(qp.get("ms_dtype", ""))
+    al_dtypes = _entity_values(qp.get("al_dtype", ""))
+    am_dtypes = _entity_values(qp.get("am_dtype", ""))
     result = await db.execute(
         select(Device, Lot.lot_number, Lot.buying_price, Lot.qty, Lot.selling_price)
         .join(Lot, Device.lot_id == Lot.id)
@@ -329,40 +387,84 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
     # ── Model Summary for Ready to Sale: one row per (model, brand), aggregated
     # purchase/sale price using the same per-device-else-lot-average logic as
     # the main table's Unit Cost column. ──────────────────────────────────────
-    model_summary_ready: dict = {}
-    for device, lot_number, buying_price, lot_qty, selling_price in devices:
-        if device.device_price:
-            unit_cost = float(device.device_price)
-        elif lot_qty:
-            unit_cost = float(buying_price or 0) / lot_qty
-        else:
-            unit_cost = 0.0
-        unit_sale = (float(selling_price) / lot_qty) if (selling_price and lot_qty) else 0.0
-        key = (device.model or "Unknown Model", device.brand or "Unknown Make")
-        g = model_summary_ready.setdefault(key, {
-            "model": key[0], "make": key[1], "device_type": device.device_type or "—",
-            "total_count": 0, "total_purchase_price": 0.0, "total_sale_price": 0.0,
-            "barcodes": [],
-        })
-        g["total_count"] += 1
-        g["total_purchase_price"] += unit_cost
-        g["total_sale_price"] += unit_sale
-        g["barcodes"].append(device.barcode)
-    model_summary_ready = sorted(model_summary_ready.values(), key=lambda g: g["total_count"], reverse=True)
+    # Two summaries (2026-10-10): "Ready for Sale Model Summary" covers only
+    # the Ready for Sale tags (no sub-lot) and "As-Is Model Summary" only the
+    # As-Is tags (sub-lot set), each shown in the tab next to its own table.
+    # One row per configuration (Model + Make + CPU + Gen + RAM + Storage).
+    #   Available         = tags of that configuration Ready for Sale now
+    #   Sold              = tags of that configuration already sold (same
+    #                       Ready-for-Sale / As-Is split, by sub-lot)
+    #   Total Purchase    = sum of unit prices (device price, else lot average)
+    #   Min Selling Price = sum of the tags' own Min Selling Price (a saved
+    #                       "Set price" wins, else the same formula as the
+    #                       Tag table: unit price + Other Rates + margin)
+    summary_rates = await load_ready_rates(db)
 
-    # ── Total Count Sold (item 2): historical sales count for this model/make,
-    # regardless of current stage — lets the telecaller see how well a model sells. ──
-    sold_count_by_model = {}
-    if model_summary_ready:
+    def _cfg_key(model, brand, cpu, ram_gb, storage_gb, storage_type, generation=None):
+        return ((model or "Unknown Model"), (brand or "Unknown Make"), (cpu or "").strip(),
+                ram_gb or 0, storage_gb or 0, (storage_type or "").strip(),
+                (generation or "").strip())
+
+    def _build_model_summary(rows):
+        summary: dict = {}
+        for device, lot_number, buying_price, lot_qty, selling_price in rows:
+            unit = unit_price(device, buying_price, lot_qty)
+            unit_cost = float(unit) if unit is not None else 0.0
+            if device.min_selling_price is not None:
+                tag_min = float(device.min_selling_price)
+            else:
+                _auto = tag_min_price(unit, summary_rates)
+                tag_min = float(_auto) if _auto is not None else None
+            key = _cfg_key(device.model, device.brand, device.cpu, device.ram_gb,
+                           device.storage_gb, device.storage_type, device.generation)
+            g = summary.setdefault(key, {
+                "key": key, "model": key[0], "make": key[1],
+                "device_type": device.device_type or device.sub_category or "—",
+                "cpu": key[2] or "—",
+                "gen": key[6] or "—",
+                "ram": f"{key[3]} GB" if key[3] else "—",
+                "storage": (f"{key[4]} GB" + (f" {key[5]}" if key[5] else "")) if key[4] else "—",
+                "total_count": 0, "total_sold": 0, "total_purchase_price": 0.0,
+                "min_total": 0.0, "min_units": [], "barcodes": [],
+            })
+            g["total_count"] += 1
+            g["total_purchase_price"] += unit_cost
+            if tag_min is not None:
+                g["min_total"] += tag_min
+                g["min_units"].append(tag_min)
+            g["barcodes"].append(device.barcode)
+        out = sorted(summary.values(), key=lambda g: g["total_count"], reverse=True)
+        for g in out:
+            g["min_lo"] = min(g["min_units"]) if g["min_units"] else None
+            g["min_hi"] = max(g["min_units"]) if g["min_units"] else None
+            g["min_missing"] = g["total_count"] - len(g["min_units"])
+        return out
+
+    model_summary_ready = _build_model_summary(
+        [r for r in devices if not (r[0].sub_lot_number or "").strip()
+         and _row_passes(r[0], ms_touch, ms_entities, ms_dtypes)])
+    model_summary_as_is = _build_model_summary(
+        [r for r in devices if (r[0].sub_lot_number or "").strip()
+         and _row_passes(r[0], am_touch, am_entities, am_dtypes)])
+
+    # Sold count per configuration, split the same way (sub-lot = As-Is).
+    if model_summary_ready or model_summary_as_is:
+        as_is_flag = case((func.coalesce(func.trim(Device.sub_lot_number), "") != "", 1), else_=0)
         sold_rows = (await db.execute(
-            select(Device.model, Device.brand, func.count(Sale.id))
-            .join(Sale, Sale.device_id == Device.id)
-            .group_by(Device.model, Device.brand)
+            select(Device.model, Device.brand, Device.cpu, Device.ram_gb, Device.storage_gb,
+                   Device.storage_type, Device.generation, as_is_flag, func.count(Device.id))
+            .where(Device.current_stage == DeviceStage.sold, Device.is_trashed.isnot(True))
+            .group_by(Device.model, Device.brand, Device.cpu, Device.ram_gb, Device.storage_gb,
+                      Device.storage_type, Device.generation, as_is_flag)
         )).all()
-        for model, brand, cnt in sold_rows:
-            sold_count_by_model[(model or "Unknown Model", brand or "Unknown Make")] = cnt
-    for g in model_summary_ready:
-        g["total_sold"] = sold_count_by_model.get((g["model"], g["make"]), 0)
+        sold_map = {}
+        for model, brand, cpu, ram_gb, storage_gb, storage_type, gen, flag, cnt in sold_rows:
+            k = (_cfg_key(model, brand, cpu, ram_gb, storage_gb, storage_type, gen), int(flag))
+            sold_map[k] = sold_map.get(k, 0) + cnt
+        for g in model_summary_ready:
+            g["total_sold"] = sold_map.get((g["key"], 0), 0)
+        for g in model_summary_as_is:
+            g["total_sold"] = sold_map.get((g["key"], 1), 0)
 
     # Dispatch-request state (approved/requested/rejected) and warranty used to
     # be computed here for every ready-to-sale device (~4,500 with no filter),
@@ -409,6 +511,8 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
     as_is_groups: dict = {}
     for device, lot_number, buying_price, lot_qty, _selling_price in devices:
         if not device.sub_lot_number:
+            continue
+        if not _row_passes(device, al_touch, al_entities, al_dtypes):
             continue
         key = (device.lot_id, device.sub_lot_number)
         g = as_is_groups.setdefault(key, {
@@ -510,6 +614,16 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
         "request": request, "devices": devices, "current_user": current_user,
         "interested_dealers": interested_dealers,
         "model_summary_ready": model_summary_ready,
+        "model_summary_as_is": model_summary_as_is,
+        "f": {"ms_touch": ms_touch, "ms_entity": qp.get("ms_entity", ""),
+              "al_touch": al_touch, "al_entity": qp.get("al_entity", ""),
+              "am_touch": am_touch, "am_entity": qp.get("am_entity", ""),
+              "ms_dtype": qp.get("ms_dtype", ""), "al_dtype": qp.get("al_dtype", ""),
+              "am_dtype": qp.get("am_dtype", "")},
+        # Device Type filter options: the types actually present in Ready to Sale.
+        "device_type_options": sorted({_device_type_of(r[0]) for r in devices if _device_type_of(r[0])}),
+        "ready_tag_count": sum(1 for r in devices if not (r[0].sub_lot_number or "").strip()),
+        "as_is_tag_count": sum(1 for r in devices if (r[0].sub_lot_number or "").strip()),
         "as_is_lots": as_is_lots,
     })
 

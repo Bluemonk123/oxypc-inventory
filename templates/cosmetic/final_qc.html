@@ -57,6 +57,20 @@
       <div class="card border-0 shadow-sm mb-2">
         <div class="card-body py-2 d-flex align-items-center gap-2">
           <a href="/devices/{{ device.barcode }}" class="font-monospace fw-semibold text-decoration-none">{{ device.barcode }}</a>
+          {% set sr = stress_map.get(device.barcode) %}
+          {% if sr %}
+          <a href="/stress/{{ device.barcode }}/report?result_id={{ sr.result_id }}"
+             class="btn btn-sm btn-primary py-0 px-2 text-nowrap"
+             title="Download Stress/QC Report{% if sr.overall_status %} — {{ sr.overall_status }}{% endif %}">
+            <i class="bi bi-file-earmark-arrow-down me-1"></i>Stress/QC Report{% if sr.overall_status %}
+            <span class="badge bg-{{ 'success' if sr.overall_status == 'PASS' else 'danger' if sr.overall_status == 'FAIL' else 'warning text-dark' }} ms-1">{{ sr.overall_status }}</span>{% endif %}
+          </a>
+          {% else %}
+          <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 text-nowrap" disabled
+                  title="No stress test report saved for this tag yet">
+            <i class="bi bi-file-earmark-x me-1"></i>No Stress/QC Report
+          </button>
+          {% endif %}
           <span class="badge bg-secondary">{{ lot_number }}</span>
           <span class="text-muted small">L1/L2 Engineer: <span class="fw-semibold">{{ l1l2_engineer_map.get(device.id|string, '—') }}</span></span>
           <span class="ms-auto small">Grade:
@@ -141,6 +155,23 @@
               <input type="text" name="bucket_name" class="form-control form-control-sm"
                      value="{{ bucket_name_map.get(device.id|string, '') }}"
                      placeholder="Type a bucket name…">
+            </div>
+            {# Touch Type — saved on both Pass and Fail; defaults to Non-Touch
+               unless this tag already has Touch recorded. Shown as T/NT next
+               to the Tag Number on Ready for Sale and All Inventory. #}
+            {% set is_touch = device.touch_type == 'touch' %}
+            <div class="mb-2">
+              <label class="form-label small d-block">Touch Type</label>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="touch_type" value="touch"
+                       id="tt-t-{{ loop.index }}" {{ 'checked' if is_touch }}>
+                <label class="form-check-label small" for="tt-t-{{ loop.index }}">Touch</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="touch_type" value="non_touch"
+                       id="tt-nt-{{ loop.index }}" {{ 'checked' if not is_touch }}>
+                <label class="form-check-label small" for="tt-nt-{{ loop.index }}">Non-Touch</label>
+              </div>
             </div>
             <div class="mb-2">
               <label class="form-label small">Final Status</label>
