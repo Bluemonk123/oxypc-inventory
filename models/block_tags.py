@@ -41,6 +41,9 @@ class BlockRecord(Base):
     block_id = Column(String(40), nullable=False, unique=True, index=True)
     block_date = Column(Date, nullable=False, index=True)
     container = Column(SAEnum(UnitType), nullable=False)
+    # Optional physical box the blocked tags are packed in — shown as a badge
+    # next to the Block ID and printed on the barcode label.
+    box_number = Column(String(50), nullable=True)
     location_zone = Column(SAEnum(ZoneType), nullable=True, index=True)
     block_for_user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     customer_name = Column(String(150), nullable=True)

@@ -19,7 +19,13 @@ PAGE_WIDTH = 4 * inch
 PAGE_HEIGHT = 2 * inch
 
 
-def render_block_id_barcode_pdf(block_id: str) -> bytes:
+def render_block_id_barcode_pdf(block_id: str, quantity: int | None = None, released: int = 0,
+                                box_number: str | None = None) -> bytes:
+    """quantity = tags currently held under this Block ID; printed under the
+    Block ID text when given. released = tags since released from the block,
+    shown alongside so a reprinted label explains why the count dropped.
+    box_number = optional physical box, printed on the same line:
+    "Quantity: 3 - Box Number: B-12"."""
     code128 = barcode.get("code128", block_id, writer=ImageWriter())
     png_buf = io.BytesIO()
     code128.write(png_buf, options={
@@ -52,6 +58,19 @@ def render_block_id_barcode_pdf(block_id: str) -> bytes:
         font_size -= 1
     c.setFont("Helvetica-Bold", font_size)
     c.drawCentredString(PAGE_WIDTH / 2, barcode_y - 0.25 * inch, block_id)
+
+    parts = []
+    if quantity is not None:
+        parts.append(f"Quantity: {quantity}" + (f" ({released} released)" if released else ""))
+    if box_number:
+        parts.append(f"Box Number: {box_number}")
+    if parts:
+        info = " - ".join(parts)
+        info_size = 11
+        while info_size > 6 and c.stringWidth(info, "Helvetica-Bold", info_size) > max_text_width:
+            info_size -= 1
+        c.setFont("Helvetica-Bold", info_size)
+        c.drawCentredString(PAGE_WIDTH / 2, barcode_y - 0.49 * inch, info)
 
     c.showPage()
     c.save()
