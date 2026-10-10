@@ -78,26 +78,97 @@ ORANGE = "#fd7e14"
 AUDIT_ACTION = "DEVICE_SPEC_FROM_PARTS"
 
 
-def _details(r: PartRequest) -> str:
-    bits = [r.part_capacity, r.part_type, r.part_make, r.part_model]
-    return " ".join(b.strip() for b in bits if b and b.strip())
+# Part Master category -> parts-list label, for requests whose part_name is
+# a Part Master name that isn't itself one of the fixed labels.
+_CATEGORY_LABEL = {"ram": "RAM", "hdd": "Hard Drive", "ssd": "Hard Drive",
+                   "hard drive": "Hard Drive", "nvme": "Hard Drive", "nvme ssd": "Hard Drive"}
+
+
+def effective_label(r: PartRequest, sp=None) -> str:
+    """The fixed parts-list label this request is for ("RAM", "Hard Drive",
+    "Keyboard", …). part_name normally IS the label; otherwise the live Part
+    Master name, then its category, decide. Falls back to part_name."""
+    if r.part_name in SPEC_ROW or r.part_name in CAPACITY_PARTS:
+        return r.part_name
+    if sp is not None and sp.name in SPEC_ROW:
+        return sp.name
+    for cat in (r.part_category, sp.category if sp is not None else None):
+        lab = _CATEGORY_LABEL.get((cat or "").strip().lower())
+        if lab:
+            return lab
+    return r.part_name
+
+
+def _details(r: PartRequest, sp=None) -> str:
+    """What the part became, e.g. "256GB SSD". Make / model come from the
+    LIVE Part Master row (part_id) when it still exists, so renaming a part
+    there updates every tag that used it; the request's own snapshot is the
+    fallback for a part since deleted from Part Master."""
+    make = (sp.make if sp is not None else None) or r.part_make
+    model = (sp.model if sp is not None else None) or r.part_model
+    bits = [r.part_capacity, r.part_type, make, model]
+    out, seen = [], set()
+    for b in bits:
+        b = (b or "").strip()
+        if b and b.lower() not in seen:
+            seen.add(b.lower())
+            out.append(b)
+    return " ".join(out)
+
+
+_TYPE_RE = re.compile(r"\b(nvme|ssd|hdd|emmc|ddr\d\w*|lpddr\d\w*)\b", re.I)
+
+
+def capacity_and_type(r: PartRequest, sp=None):
+    """(capacity_gb, type) for a RAM / Hard Drive change — the request's own
+    capacity / type fields first, else read from the Part Master make/model
+    text (e.g. "256GB SSD" -> (256, "SSD"))."""
+    text = " ".join(t for t in [
+        (sp.model if sp is not None else None) or r.part_model,
+        (sp.make if sp is not None else None) or r.part_make,
+        sp.name if sp is not None else None] if t)
+    gb = parse_capacity_gb(r.part_capacity) or parse_capacity_gb(text, need_unit=True)
+    ptype = (r.part_type or "").strip() or None
+    if not ptype:
+        m = _TYPE_RE.search(text)
+        if m:
+            t = m.group(1)
+            ptype = "NVMe" if t.lower() == "nvme" else t.upper()
+    return gb, ptype
+
+
+async def spare_parts_for(db: AsyncSession, rows) -> dict:
+    """{part_id: SparePart} for the live Part Master rows behind `rows`."""
+    from models.spare_parts import SparePart
+    ids = {r.part_id for r in rows if r.part_id}
+    if not ids:
+        return {}
+    return {sp.id: sp for sp in (await db.execute(
+        select(SparePart).where(SparePart.id.in_(ids)))).scalars().all()}
 
 
 def _fmt(dt: datetime | None) -> str:
     return dt.strftime("%d %b %Y") if dt else "—"
 
 
-def parse_capacity_gb(text: str | None) -> int | None:
-    """'8GB' / '8 GB' / '1TB' / '512' -> GB as int; None when unreadable."""
+def parse_capacity_gb(text: str | None, need_unit: bool = False) -> int | None:
+    """'8GB' / '8 GB' / '1TB' -> GB as int; None when unreadable.
+
+    The first number WITH a GB/TB unit wins, so "Laptop M.2 256GB" reads as
+    256, not the 2 in "M.2". A bare number ("512") is accepted only when it
+    is the whole value and need_unit is False."""
     if not text:
         return None
-    m = re.search(r"(\d+(?:\.\d+)?)\s*(tb|gb)?", str(text).lower())
-    if not m:
-        return None
-    n = float(m.group(1))
-    if m.group(2) == "tb":
-        n *= 1024
-    return int(round(n)) if n > 0 else None
+    t = str(text).lower()
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(tb|gb)\b", t)
+    if m:
+        n = float(m.group(1)) * (1024 if m.group(2) == "tb" else 1)
+        return int(round(n)) if n > 0 else None
+    if not need_unit:
+        m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*", t)
+        if m and float(m.group(1)) > 0:
+            return int(round(float(m.group(1))))
+    return None
 
 
 def _first_after(times: list[datetime], t: datetime) -> datetime | None:
@@ -189,8 +260,11 @@ async def changed_parts_by_device(db: AsyncSession, device_ids) -> dict[str, dic
         return out
     passes, sales = await _events(db, ids)
     applied = await _applied(db, ids)
+    sps = await spare_parts_for(db, rows)
     for r in rows:
         did = str(r.device_id)
+        sp = sps.get(r.part_id)
+        label = effective_label(r, sp)
         when = r.actioned_at or r.created_at
         state, pass_at, sold_at = classify(when, passes.get(did, []), sales.get(did, []))
         rtype = (r.request_type or "new").lower()
@@ -199,14 +273,14 @@ async def changed_parts_by_device(db: AsyncSession, device_ids) -> dict[str, dic
         ap = applied.get(str(r.id))
         item = {
             "id": str(r.id),
-            "part_name": r.part_name,
-            "details": _details(r),
+            "part_name": label,
+            "details": _details(r, sp),
             "request_type": rtype_label,
             "stage": _STAGE_LABEL.get((r.stage or "").lower(), (r.stage or "").upper() or "—"),
             "qty": r.qty_handed_over or r.qty_requested or 1,
             "date": _fmt(when),
             "by": r.actioned_by or r.engineer_name or r.requested_by or "—",
-            "spec_key": SPEC_ROW.get(r.part_name),
+            "spec_key": SPEC_ROW.get(label),
             "state": state,
             "color": STATE_COLOR[state],
             "pass_date": _fmt(pass_at),
@@ -330,19 +404,26 @@ def _hdd_text(device) -> str:
     return " ".join(b for b in bits if b) or "—"
 
 
-def apply_part_to_device(device, r: PartRequest):
+def apply_part_to_device(device, r: PartRequest, sp=None):
     """Write one verified RAM / Hard Drive PartRequest onto the device.
 
     Replace / Downgrade set the value; New adds to what is there (a second
-    stick or drive), or sets it when the device had none. Returns
-    (old_text, new_text), or None when the capacity can't be read."""
-    gb = parse_capacity_gb(r.part_capacity)
-    if not gb or r.part_name not in CAPACITY_PARTS:
+    stick or drive), or sets it when the device had none. Capacity and type
+    come from the request, else the live Part Master row (`sp`). Returns
+    (old_text, new_text), or None when it isn't RAM / Hard Drive or the
+    capacity can't be read."""
+    label = effective_label(r, sp)
+    if label not in CAPACITY_PARTS:
+        return None
+    gb, ptype = capacity_and_type(r, sp)
+    if not gb:
         return None
     rtype = (r.request_type or "new").lower()
-    ptype = (r.part_type or "").strip() or None
-    piece = " ".join(b for b in [_gb_text(gb), ptype, (r.part_make or "").strip() or None] if b)
-    if r.part_name == "RAM":
+    make = ((sp.make if sp is not None else None) or r.part_make or "").strip() or None
+    if make and (parse_capacity_gb(make, need_unit=True) or _TYPE_RE.search(make)):
+        make = None             # a "make" like "256GB SSD" is the spec itself, not a brand
+    piece = " ".join(b for b in [_gb_text(gb), ptype, make] if b)
+    if label == "RAM":
         old = _ram_text(device)
         if rtype == "new" and device.ram_gb:
             device.ram_gb = device.ram_gb + gb
@@ -396,20 +477,21 @@ async def apply_spec_changes_on_pass(db: AsyncSession, device, user=None, reques
         .order_by(StageMovement.moved_at.desc()).limit(1)
     )).scalar_one_or_none()
     q = select(PartRequest).where(
-        PartRequest.device_id == device.id, PartRequest.status == "received",
-        PartRequest.part_name.in_(CAPACITY_PARTS))
+        PartRequest.device_id == device.id, PartRequest.status == "received")
     rows = (await db.execute(
         q.order_by(PartRequest.actioned_at.asc().nulls_last(), PartRequest.created_at.asc())
     )).scalars().all()
+    sps = await spare_parts_for(db, rows)
     applied = []
     for r in rows:
         when = r.actioned_at or r.created_at
         if last_pass is not None and when is not None and when <= last_pass:
             continue
-        res = apply_part_to_device(device, r)
+        sp = sps.get(r.part_id)
+        res = apply_part_to_device(device, r, sp)
         if not res:
             continue
-        applied.append({"part_request_id": str(r.id), "part": r.part_name,
+        applied.append({"part_request_id": str(r.id), "part": effective_label(r, sp),
                         "request_type": (r.request_type or "new").lower(),
                         "old": res[0], "new": res[1]})
     if applied:

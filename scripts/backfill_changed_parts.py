@@ -50,9 +50,14 @@ from models.device import Device, DeviceStage  # noqa: E402
 from models.part_request import PartRequest  # noqa: E402
 from services.audit_engine import audit  # noqa: E402
 from services.parts_changed import (  # noqa: E402
-    AUDIT_ACTION, CAPACITY_PARTS, _applied, _events, _hdd_text, _ram_text,
-    apply_part_to_device, classify, parse_capacity_gb,
+    AUDIT_ACTION, CAPACITY_PARTS, _applied, _details as live_details, _events, _gb_text,
+    _hdd_text, _ram_text, apply_part_to_device, capacity_and_type, classify,
+    effective_label, spare_parts_for,
 )
+
+
+def _gb_label(gb) -> str:
+    return _gb_text(gb) or "?"
 
 REPAIR_STAGES = {DeviceStage.l1, DeviceStage.l2, DeviceStage.l3}
 STAGE_TEXT = {DeviceStage.l1: "L1/L2", DeviceStage.l2: "L1/L2", DeviceStage.l3: "L3/L4"}
@@ -101,9 +106,14 @@ async def run(apply: bool, out_dir: str) -> int:
         # ── Step 2: backfill RAM / Hard Drive onto the device ────────────────
         prs = (await db.execute(
             select(PartRequest)
-            .where(PartRequest.status == "received", PartRequest.part_name.in_(CAPACITY_PARTS))
+            .where(PartRequest.status == "received")
             .order_by(PartRequest.actioned_at.asc().nulls_last(), PartRequest.created_at.asc())
         )).scalars().all()
+        # RAM / Hard Drive only — judged by the live Part Master row too, so a
+        # request raised under a Part Master name (category RAM / SSD / HDD)
+        # still counts.
+        sps = await spare_parts_for(db, prs)
+        prs = [p for p in prs if effective_label(p, sps.get(p.part_id)) in CAPACITY_PARTS]
         dev_ids = list({p.device_id for p in prs})
         passes, sales = await _events(db, dev_ids) if dev_ids else ({}, {})
         already = await _applied(db, dev_ids) if dev_ids else {}
@@ -122,12 +132,14 @@ async def run(apply: bool, out_dir: str) -> int:
             if state == "pending":
                 continue                    # the next Final QC pass will apply it
             d = devices[r.device_id]
-            gb = parse_capacity_gb(r.part_capacity)
+            sp = sps.get(r.part_id)
+            label = effective_label(r, sp)
+            gb, _ptype = capacity_and_type(r, sp)
             rtype = (r.request_type or "new").lower()
-            row = {"barcode": d.barcode, "stage": _stage(d), "part": r.part_name,
-                   "request_type": rtype, "details": _details(r)}
-            current_gb = d.ram_gb if r.part_name == "RAM" else d.storage_gb
-            current_txt = _ram_text(d) if r.part_name == "RAM" else _hdd_text(d)
+            row = {"barcode": d.barcode, "stage": _stage(d), "part": label,
+                   "request_type": rtype, "details": live_details(r, sp)}
+            current_gb = d.ram_gb if label == "RAM" else d.storage_gb
+            current_txt = _ram_text(d) if label == "RAM" else _hdd_text(d)
             if not gb:
                 counts["unreadable_capacity"] += 1
                 report.append({**row, "action": "unreadable_capacity", "old": current_txt, "new": ""})
@@ -135,17 +147,17 @@ async def run(apply: bool, out_dir: str) -> int:
             if rtype == "new" and current_gb:
                 counts["needs_review"] += 1
                 report.append({**row, "action": "needs_review", "old": current_txt,
-                               "new": f"? (+{r.part_capacity})"})
+                               "new": f"? (+{_gb_label(gb)})"})
                 continue
             if current_gb == gb:
                 counts["spec_already_matched"] += 1
-                entry = {"part_request_id": str(r.id), "part": r.part_name,
+                entry = {"part_request_id": str(r.id), "part": label,
                          "request_type": rtype, "old": current_txt, "new": current_txt}
                 report.append({**row, "action": "spec_already_matched", "old": current_txt, "new": current_txt})
             else:
-                old, new = apply_part_to_device(d, r)
+                old, new = apply_part_to_device(d, r, sp)
                 counts["spec_updated"] += 1
-                entry = {"part_request_id": str(r.id), "part": r.part_name,
+                entry = {"part_request_id": str(r.id), "part": label,
                          "request_type": rtype, "old": old, "new": new}
                 report.append({**row, "action": "spec_updated", "old": old, "new": new})
             per_device.setdefault(r.device_id, []).append(entry)
