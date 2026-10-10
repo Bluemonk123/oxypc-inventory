@@ -248,12 +248,7 @@ def _badge(icon: str, color: str, title: str) -> str:
             f'title="{escape(title)}" aria-label="Parts changed"></i>')
 
 
-async def parts_badge_map(db: AsyncSession, device_ids) -> dict[str, str]:
-    """{device_id: badge HTML} for the Tag Number cell on pipeline pages.
-
-    Pending change -> green arrows; all QC-passed -> green check; the latest
-    passed change already sold -> blue check. Hover lists every change."""
-    data = await changed_parts_by_device(db, device_ids)
+def _badges_from(data: dict) -> dict[str, str]:
     out = {}
     for did, entry in data.items():
         items = entry["items"]
@@ -268,6 +263,53 @@ async def parts_badge_map(db: AsyncSession, device_ids) -> dict[str, str]:
             out[did] = _badge("bi-check-circle-fill", "primary", title)
         else:
             out[did] = _badge("bi-check-circle-fill", "success", title)
+    return out
+
+
+async def parts_badge_map(db: AsyncSession, device_ids) -> dict[str, str]:
+    """{device_id: badge HTML} for the Tag Number cell on pipeline pages.
+
+    Pending change -> orange arrows; all QC-passed -> green check; the latest
+    passed change already sold -> blue check. Hover lists every change."""
+    return _badges_from(await changed_parts_by_device(db, device_ids))
+
+
+async def parts_display_map(db: AsyncSession, device_ids):
+    """(badges, data) — the Tag Number badges plus the raw per-device change
+    data, for tables that also colour their RAM / Storage cells with
+    spec_cell(). One query set for both."""
+    data = await changed_parts_by_device(db, device_ids)
+    return _badges_from(data), data
+
+
+def spec_cell(data: dict, device_id, key: str, text_html: str) -> str:
+    """Colour a table's RAM ("RAM") or Storage ("Hard Drive") cell the same
+    way the spec card does:
+        pending  -> current value + orange "→ new part"
+        passed   -> value in green  (already the new value, written at the pass)
+        sold     -> value in blue
+    A change that passed before values were written automatically (legacy,
+    never applied) keeps the stored value and adds "→ new part" in colour.
+    `text_html` must already be escaped."""
+    entry = data.get(str(device_id)) if data else None
+    slot = entry["by_key"].get(key) if entry else None
+    if not slot:
+        return text_html
+    out = text_html
+    d = slot["done"]
+    if d:
+        cls = "text-success" if d["color"] == "success" else "text-primary"
+        tip = escape(d["tooltip"])
+        if d["applied"]:
+            out = f'<span class="fw-semibold {cls}" style="cursor:help" title="{tip}">{text_html}</span>'
+        elif d["details"]:
+            out = (f'{text_html} <span class="fw-semibold small {cls}" style="cursor:help" '
+                   f'title="{tip}">→ {escape(d["details"])}</span>')
+    if slot["pending"]:
+        p = slot["pending"][-1]
+        label = f"→ {escape(p['details'])}" if p["details"] else "Changed"
+        out += (f' <span class="fw-semibold small text-nowrap" style="color:{ORANGE};cursor:help" '
+                f'title="{escape(p["tooltip"])}"><i class="bi bi-arrow-repeat"></i> {label}</span>')
     return out
 
 
@@ -288,14 +330,62 @@ def _hdd_text(device) -> str:
     return " ".join(b for b in bits if b) or "—"
 
 
+def apply_part_to_device(device, r: PartRequest):
+    """Write one verified RAM / Hard Drive PartRequest onto the device.
+
+    Replace / Downgrade set the value; New adds to what is there (a second
+    stick or drive), or sets it when the device had none. Returns
+    (old_text, new_text), or None when the capacity can't be read."""
+    gb = parse_capacity_gb(r.part_capacity)
+    if not gb or r.part_name not in CAPACITY_PARTS:
+        return None
+    rtype = (r.request_type or "new").lower()
+    ptype = (r.part_type or "").strip() or None
+    piece = " ".join(b for b in [_gb_text(gb), ptype, (r.part_make or "").strip() or None] if b)
+    if r.part_name == "RAM":
+        old = _ram_text(device)
+        if rtype == "new" and device.ram_gb:
+            device.ram_gb = device.ram_gb + gb
+            device.ram_summary = f"{device.ram_summary}, {piece}" if device.ram_summary else None
+            try:
+                device.total_ram_count = str(int(device.total_ram_count or 1) + 1)
+            except ValueError:
+                pass
+        else:
+            device.ram_gb = gb
+            device.ram_summary = piece
+            device.total_ram_count = "1"
+        if ptype:
+            device.ram_type = ptype
+        device.total_ram_size = _gb_text(device.ram_gb)
+        return old, _ram_text(device)
+    old = _hdd_text(device)
+    if rtype == "new" and device.storage_gb:
+        device.hdd_capacity_gb = gb
+        device.hdd_type = ptype
+        device.hdd_summary = f"{device.hdd_summary}, {piece}" if device.hdd_summary else None
+        try:
+            device.total_hdd_count = str(int(device.total_hdd_count or 1) + 1)
+        except ValueError:
+            pass
+        device.total_hdd_size = _gb_text((device.storage_gb or 0) + gb)
+    else:
+        device.storage_gb = gb
+        if ptype:
+            device.storage_type = ptype
+        device.hdd_summary = piece
+        device.total_hdd_count = "1"
+        device.total_hdd_size = _gb_text(gb)
+    return old, _hdd_text(device)
+
+
 async def apply_spec_changes_on_pass(db: AsyncSession, device, user=None, request=None) -> list[dict]:
     """Write pending RAM / Hard Drive changes onto the device at Final QC pass.
 
     "Pending" = verified after the device's previous Final QC pass (or ever,
     if it never passed), so a rework loop never applies the same change
-    twice. Replace / Downgrade set the value; New adds to what is there
-    (a second stick or drive), or sets it when the device had none.
-    Must run BEFORE the pass StageMovement is added. Returns what changed."""
+    twice. Must run BEFORE the pass StageMovement is added. Returns what
+    changed."""
     from models.device import StageMovement, DeviceStage
     from services.audit_engine import audit
 
@@ -316,50 +406,12 @@ async def apply_spec_changes_on_pass(db: AsyncSession, device, user=None, reques
         when = r.actioned_at or r.created_at
         if last_pass is not None and when is not None and when <= last_pass:
             continue
-        gb = parse_capacity_gb(r.part_capacity)
-        if not gb:
+        res = apply_part_to_device(device, r)
+        if not res:
             continue
-        rtype = (r.request_type or "new").lower()
-        ptype = (r.part_type or "").strip() or None
-        piece = " ".join(b for b in [_gb_text(gb), ptype, (r.part_make or "").strip() or None] if b)
-        if r.part_name == "RAM":
-            old = _ram_text(device)
-            if rtype == "new" and device.ram_gb:
-                device.ram_gb = device.ram_gb + gb
-                device.ram_summary = f"{device.ram_summary}, {piece}" if device.ram_summary else None
-                try:
-                    device.total_ram_count = str(int(device.total_ram_count or 1) + 1)
-                except ValueError:
-                    pass
-            else:
-                device.ram_gb = gb
-                device.ram_summary = piece
-                device.total_ram_count = "1"
-            if ptype:
-                device.ram_type = ptype
-            device.total_ram_size = _gb_text(device.ram_gb)
-            new = _ram_text(device)
-        else:  # Hard Drive
-            old = _hdd_text(device)
-            if rtype == "new" and device.storage_gb:
-                device.hdd_capacity_gb = gb
-                device.hdd_type = ptype
-                device.hdd_summary = f"{device.hdd_summary}, {piece}" if device.hdd_summary else None
-                try:
-                    device.total_hdd_count = str(int(device.total_hdd_count or 1) + 1)
-                except ValueError:
-                    pass
-                device.total_hdd_size = _gb_text((device.storage_gb or 0) + gb)
-            else:
-                device.storage_gb = gb
-                if ptype:
-                    device.storage_type = ptype
-                device.hdd_summary = piece
-                device.total_hdd_count = "1"
-                device.total_hdd_size = _gb_text(gb)
-            new = _hdd_text(device)
         applied.append({"part_request_id": str(r.id), "part": r.part_name,
-                        "request_type": rtype, "old": old, "new": new})
+                        "request_type": (r.request_type or "new").lower(),
+                        "old": res[0], "new": res[1]})
     if applied:
         await audit(db, user=user, action=AUDIT_ACTION, table_name="devices",
                     record_id=str(device.id),

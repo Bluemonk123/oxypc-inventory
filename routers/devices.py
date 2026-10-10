@@ -2,7 +2,7 @@
 Device Management — Search, Detail, Edit
 Provides a global inventory browser and per-device history view.
 """
-from services.parts_changed import changed_parts_by_device, parts_badge_map
+from services.parts_changed import changed_parts_by_device, parts_badge_map, parts_display_map, spec_cell
 from templates_config import templates
 import csv, io, re, uuid as uuid_module
 from datetime import datetime
@@ -547,7 +547,7 @@ async def device_search_data(
             )).all():
                 location_map[str(did)] = (unit_id, slot)
 
-    parts_badges = await parts_badge_map(db, device_ids)
+    parts_badges, parts_data = await parts_display_map(db, device_ids)
 
     def esc(v):
         return escape(str(v)) if v is not None else ""
@@ -576,7 +576,8 @@ async def device_search_data(
              if str(d.id) in location_map else
              f'<a href="/locations/device/{d.id}" class="btn btn-sm btn-outline-primary py-0 px-2">Assign</a>'),
             esc(d.brand or "—"), esc(d.model or "—"), esc(d.device_type or "—"), esc(d.cpu or "—"),
-            esc(ram), esc(storage),
+            spec_cell(parts_data, d.id, "RAM", esc(ram)),
+            spec_cell(parts_data, d.id, "Hard Drive", esc(storage)),
             (f'<span class="badge bg-{gcls}">{esc(g)}</span>' if g else "—"),
             # Stock Type: "As-Is" when the tag has a sub-lot, else "Finish Good"
             ('<span class="badge bg-warning text-dark">As-Is</span>' if (d.sub_lot_number or "").strip()
@@ -1372,6 +1373,20 @@ async def device_detail(
     )).scalars().all()
     req_by_part = {}
     req_by_partid = {}
+    # Parts Consumption statuses are per VISIT: only requests raised since the
+    # tag's latest Final QC pass drive the action column. A tag that passed
+    # (or was sold) and came back starts every part clean — New / Replace —
+    # instead of being stuck on an old "Part Changed" with no buttons. Earlier
+    # changes stay in the spec card's Updated Parts list, and in
+    # prev_changed_by_part for the small "changed in an earlier visit" note.
+    # Still-open requests (requested / handed over) always count, whenever
+    # they were raised, so nothing in flight can disappear.
+    last_fqc_pass = (await db.execute(
+        select(func.max(StageMovement.moved_at)).where(
+            StageMovement.device_id == device.id,
+            StageMovement.to_stage == DeviceStage.final_qc_pass_hold)
+    )).scalar()
+    prev_changed_by_part = {}
     for r in pr_rows:
         # A cancelled request is not a request. Leaving it here pinned the row
         # to a "cancelled" badge with no buttons, so cancelling a request left
@@ -1379,6 +1394,12 @@ async def device_detail(
         # it and the latest surviving request wins; if there is none, the New /
         # Replace buttons come back.
         if r.status == "cancelled":
+            continue
+        if (last_fqc_pass is not None and r.created_at is not None
+                and r.created_at <= last_fqc_pass
+                and r.status not in ("requested", "handed_over")):
+            if r.status == "received":
+                prev_changed_by_part.setdefault(r.part_name, r)
             continue
         req_by_part.setdefault(r.part_name, r)  # latest per part (rows ordered desc)
         if r.part_id:
@@ -1506,6 +1527,7 @@ async def device_detail(
             "part_id": str(sp.id) if sp else "",
             "part_code": sp.part_code if sp else None,
             "request": existing,
+            "prev_changed": prev_changed_by_part.get(row["label"]),
         })
 
     # ── All active spare parts, for the New Request/Replace modal's

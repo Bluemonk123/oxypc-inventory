@@ -37,7 +37,7 @@ from services.cost_engine import (
     check_below_cost_warning, get_or_create_costings, below_cost_warning_for,
 )
 from services.audit_engine import audit
-from services.parts_changed import parts_badge_map
+from services.parts_changed import parts_badge_map, parts_display_map, spec_cell
 from services.ready_pricing import (
     load_ready_rates, unit_price, tag_min_price, lot_price, as_is_min_price,
 )
@@ -275,7 +275,7 @@ async def ready_list_data(
             for u in (await db.execute(select(User).where(User.id.in_(assigned_ids)))).scalars().all()
         }
 
-    parts_badges = await parts_badge_map(db, device_ids)
+    parts_badges, parts_data = await parts_display_map(db, device_ids)
 
     def esc(v):
         return escape(str(v)) if v is not None else ""
@@ -312,7 +312,8 @@ async def ready_list_data(
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),
             f'<span class="font-monospace">{esc(loc_name)}</span>' if loc_name else '<span class="text-muted">—</span>',
             esc(d.brand or "—"), esc(d.model or "—"),
-            f"{d.ram_gb}GB" if d.ram_gb else "—", f"{d.storage_gb}GB" if d.storage_gb else "—",
+            spec_cell(parts_data, d.id, "RAM", f"{d.ram_gb}GB" if d.ram_gb else "—"),
+            spec_cell(parts_data, d.id, "Hard Drive", f"{d.storage_gb}GB" if d.storage_gb else "—"),
             f'<span class="badge bg-{gcls}">{esc(gv) or "—"}</span>',
         ]
         if show_pricing:

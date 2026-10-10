@@ -280,6 +280,14 @@
                       <i class="bi bi-exclamation-triangle"></i> Faulty</button>
                     <span id="changedPill_{{ r.id }}" class="badge bg-primary d-none">Part Changed</span>
                   {% elif r.status == 'received' %}<span class="badge bg-primary">Part Changed</span>
+                    {# Changed this visit, but the new part turned out bad (found at
+                       Stress Test / Cosmetic / Final QC fail): raise a Faulty request
+                       for it — the row goes back to Requested -> Handed Over ->
+                       Verify. The first change stays in the history. #}
+                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 faulty-part-btn"
+                            data-label="{{ p.label | e }}" data-category="{{ p.category | e }}" data-part-id="{{ p.part_id }}"
+                            title="The changed part is faulty — raise a Faulty request">
+                      <i class="bi bi-exclamation-triangle"></i> Faulty</button>
                   {% elif r.status == 'not_in_stock' %}<span class="badge bg-danger">Not In Stock</span>
                   {% elif r.status == 'procure' %}<span class="badge bg-info text-dark">Sent for Sourcing</span>
                   {% else %}<span class="badge bg-secondary">{{ r.status }}</span>{% endif %}
@@ -289,6 +297,11 @@
                    bench that the inspection never recorded, and gating the
                    buttons on `required` left them with no way to raise it. #}
                 <div class="d-flex align-items-center gap-1 flex-wrap" data-part-actions="{{ p.part_id }}">
+                  {% if p.prev_changed %}{% set pc = p.prev_changed %}
+                  <span class="badge bg-light text-muted border" style="cursor:help"
+                        title="Changed in an earlier visit ({{ (pc.actioned_at or pc.created_at).strftime('%d %b %Y') if (pc.actioned_at or pc.created_at) else '' }}) — before the last Final QC pass. Raise a new request if it needs changing again.">
+                    <i class="bi bi-clock-history me-1"></i>Changed earlier</span>
+                  {% endif %}
                   <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
                           onclick="openPartRequestModal('new', 1, '{{ p.category | e }}', '{{ p.part_id }}', '{{ p.label | e }}')">
                     <i class="bi bi-bag-plus"></i> New Request</button>
