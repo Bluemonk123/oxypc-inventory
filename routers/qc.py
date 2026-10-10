@@ -2,6 +2,7 @@
 QC Router — Component scoring + grade assignment + fail counter + audit
 """
 from __future__ import annotations
+from services.parts_changed import parts_badge_map
 from templates_config import templates
 from datetime import datetime
 from utils.timezone import app_now
@@ -140,6 +141,7 @@ async def qc_list(request: Request, db: AsyncSession = Depends(get_db),
 
     return templates.TemplateResponse("qc/list.html", {
         "request": request, "devices": devices, "current_user": current_user,
+        "parts_badges": await parts_badge_map(db, [d.id for d, *_ in devices]),
         "location_map": location_map, "stress_map": stress_map,
         "l1l2_engineer_map": l1l2_engineer_map,
         "total": total,

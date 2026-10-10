@@ -53,7 +53,7 @@
               <td><input type="checkbox" class="cosmeticRecvRowCheck" value="{{ device.barcode }}"></td>
               {% endif %}
               <td>
-                <code>{{ device.barcode }}</code>
+                <code>{{ device.barcode }}</code>{{ parts_badge(parts_badges, device.id) }}
                 {% if failed_fqc %}<br><span class="text-nowrap"><span class="badge bg-danger">Failed from Final QC</span>
                 <i class="bi bi-info-circle text-danger ms-1" style="cursor:help"
                    data-bs-toggle="tooltip" data-bs-placement="top"

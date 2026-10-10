@@ -26,7 +26,7 @@
             <tbody>
               {% for it in items %}
               <tr data-pna="{{ (pna_map.get(it.device_id|string, []) | length) if pna_map is defined else 0 }}">
-                <td><a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a></td>
+                <td class="text-nowrap"><a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a>{{ parts_badge(parts_badges, it.device_id) }}</td>
                 <td><span class="font-monospace fw-bold">{{ it.work_id }}</span></td>
                 {# data-order carries the sortable ISO value; DataTables reads it
                    natively, so the visible date can stay in DD-MM-YYYY without

@@ -37,6 +37,7 @@ from services.cost_engine import (
     check_below_cost_warning, get_or_create_costings, below_cost_warning_for,
 )
 from services.audit_engine import audit
+from services.parts_changed import parts_badge_map
 from services.ready_pricing import (
     load_ready_rates, unit_price, tag_min_price, lot_price, as_is_min_price,
 )
@@ -274,6 +275,8 @@ async def ready_list_data(
             for u in (await db.execute(select(User).where(User.id.in_(assigned_ids)))).scalars().all()
         }
 
+    parts_badges = await parts_badge_map(db, device_ids)
+
     def esc(v):
         return escape(str(v)) if v is not None else ""
 
@@ -302,7 +305,8 @@ async def ready_list_data(
             (f'<input type="checkbox" class="form-check-input readyChk" value="{esc(d.barcode)}" '
              f'data-serial="{esc(d.serial_no or "")}">'),
             (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="text-decoration-none"><code class="fw-bold">{esc(d.barcode)}</code></a>'
-             + touch_badge_html(d.touch_type) + flag_badge_html(d) + '</span>'
+             + touch_badge_html(d.touch_type) + flag_badge_html(d)
+             + parts_badges.get(did, '') + '</span>'
              + (f'<br><span class="badge bg-info text-dark">{esc(d.entity)}</span>' if d.entity else '')),
             (f'<a href="/devices?lot={esc(lot_number)}" class="btn btn-sm py-0 px-2 small text-decoration-none" '
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),
@@ -1681,7 +1685,7 @@ async def sales_list_data(
     base_join = (
         select(Sale, Device.barcode, Device.brand, Device.model, Device.grade,
                Lot.lot_number, Lot.buying_price, Lot.qty, Device.sub_lot_number,
-               Device.device_price)
+               Device.device_price, Device.id.label("device_id"))
         .join(Device, Sale.device_id == Device.id)
         .join(Lot, Device.lot_id == Lot.id)
     )
@@ -1739,6 +1743,8 @@ async def sales_list_data(
         .offset(max(0, start)).limit(min(max(1, length), 500))
     )).all()
 
+    parts_badges = await parts_badge_map(db, [r.device_id for r in rows])
+
     def esc(v):
         from html import escape
         return escape(str(v)) if v is not None else ""
@@ -1753,7 +1759,8 @@ async def sales_list_data(
             (f'<span class="font-monospace">{esc(s.invoice_no)}</span>' if s.invoice_no
              else '<span class="text-muted">—</span>'),
             s.sold_at.strftime("%d-%m-%Y") if s.sold_at else "—",
-            f'<a href="/devices/{esc(r.barcode)}" class="text-decoration-none"><code>{esc(r.barcode)}</code></a>',
+            (f'<span class="text-nowrap"><a href="/devices/{esc(r.barcode)}" class="text-decoration-none"><code>{esc(r.barcode)}</code></a>'
+             + parts_badges.get(str(r.device_id), '') + '</span>'),
             esc(f"{r.brand or ''} {r.model or ''}".strip()),
             f'<a href="/devices?lot={esc(r.lot_number)}" class="text-decoration-none">'
             f'<span class="badge bg-info text-dark">{esc(r.lot_number)}</span></a>',

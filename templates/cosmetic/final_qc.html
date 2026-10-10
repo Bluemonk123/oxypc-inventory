@@ -39,7 +39,7 @@
       {% for device, lot_number in devices %}
       <a href="#" class="list-group-item list-group-item-action fqc-card {% if loop.first %}active{% endif %}"
          data-target="dev-{{ device.id }}" data-barcode="{{ device.barcode }}">
-        <div class="font-monospace fw-semibold">{{ device.barcode }}{{ flag_badge(device) }}</div>
+        <div class="font-monospace fw-semibold">{{ device.barcode }}{{ flag_badge(device) }}{{ parts_badge(parts_badges, device.id) }}</div>
         <div class="small {% if loop.first %}text-white-50{% else %}text-muted{% endif %}">
           {{ device.serial_no or '—' }} — {{ device.brand or '' }} {{ device.model or '' }}
         </div>
@@ -57,7 +57,7 @@
       <div class="card border-0 shadow-sm mb-2">
         <div class="card-body py-2 d-flex align-items-center gap-2">
           <a href="/devices/{{ device.barcode }}" class="font-monospace fw-semibold text-decoration-none">{{ device.barcode }}</a>
-          {{ flag_badge(device) }}
+          {{ flag_badge(device) }}{{ parts_badge(parts_badges, device.id) }}
           <span class="badge bg-secondary">{{ lot_number }}</span>
           <span class="text-muted small">L1/L2 Engineer: <span class="fw-semibold">{{ l1l2_engineer_map.get(device.id|string, '—') }}</span></span>
           <span class="ms-auto small">Grade:
@@ -90,6 +90,7 @@
         <!-- Tab 0: Full IQC (hardware + cosmetics) -->
         <div class="tab-pane fade show active" id="fiqc-{{ loop.index }}">
           {% set id_suffix = loop.index %}
+          {% set changed_parts = changed_parts_map.get(device.id|string) if changed_parts_map is defined else None %}
           {% include "devices/_iqc_full_report.html" with context %}
         </div>
 

@@ -44,7 +44,7 @@
             {% for device, lot_number in devices %}
             {% set a = assigned_map.get(device.id|string, {}) %}
             <tr data-stage="{{ device.current_stage.value }}">
-              <td><code>{{ device.barcode }}</code></td>
+              <td class="text-nowrap"><code>{{ device.barcode }}</code>{{ parts_badge(parts_badges, device.id) }}</td>
               <td class="text-muted small">{{ l1l2_engineer_map.get(device.id|string, '—') }}</td>
               <td><span class="badge bg-secondary">{{ lot_number }}</span></td>
               <td>

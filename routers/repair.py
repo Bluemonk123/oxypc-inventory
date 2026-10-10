@@ -1,6 +1,7 @@
 """
 Repair Router - L1/L2/L3 with Control Engine, Cost Engine, Audit Engine, RepairAttempt
 """
+from services.parts_changed import parts_badge_map
 from templates_config import templates
 import uuid as uuid_module
 from datetime import datetime
@@ -734,6 +735,7 @@ async def l3l4_list(request: Request,
         "request": request, "current_user": current_user,
         "items": items, "total": len(items),
         "pna_map": await _pna_map(db, [it["device_id"] for it in items]),
+        "parts_badges": await parts_badge_map(db, [it["device_id"] for it in items]),
     })
 
 
@@ -1224,6 +1226,7 @@ async def repair_list(stage: str, request: Request,
 
     return templates.TemplateResponse(f"repair/{stage}.html", {
         "request": request, "devices": devices, "open_jobs": open_jobs,
+        "parts_badges": await parts_badge_map(db, [d.id for d, *_ in devices]),
         "l3l4_engineers": l3l4_engineers, "stress_engineers": stress_engineers,
         "stage": stage.upper(), "current_user": current_user,
         "returned_job_ids": returned_job_ids,

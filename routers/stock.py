@@ -1,6 +1,7 @@
 from templates_config import templates
 import logging
 import uuid
+from services.parts_changed import parts_badge_map
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Form, Query, Request, HTTPException, BackgroundTasks
@@ -936,12 +937,14 @@ async def stock_in_data(
         return (f'<span class="badge bg-warning text-dark">Yes</span>'
                 f'<i class="bi bi-info-circle text-primary ms-1" style="cursor:help" title="{esc(tip)}"></i>')
 
+    parts_badges = await parts_badge_map(db, device_ids)
+
     data = []
     for d, lot_number_val in rows:
         data.append([
             f'<input type="checkbox" class="form-check-input stockChk" value="{esc(d.barcode)}">',
             (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="font-monospace text-decoration-none">'
-             f'<code>{esc(d.barcode)}</code></a>{flag_badge_html(d)}</span>'
+             f'<code>{esc(d.barcode)}</code></a>{flag_badge_html(d)}{parts_badges.get(str(d.id), "")}</span>'
              f'<div style="color:#999999;font-size:12px;">{esc(d.entity) if d.entity else "—"}</div>'),
             f'<span class="badge bg-info text-dark">{esc(lot_number_val)}</span>',
             (f'<span class="font-monospace small">{esc(location_map[str(d.id)])}</span>'

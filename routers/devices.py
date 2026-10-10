@@ -2,6 +2,7 @@
 Device Management — Search, Detail, Edit
 Provides a global inventory browser and per-device history view.
 """
+from services.parts_changed import changed_parts_by_device, parts_badge_map
 from templates_config import templates
 import csv, io, re, uuid as uuid_module
 from datetime import datetime
@@ -546,6 +547,8 @@ async def device_search_data(
             )).all():
                 location_map[str(did)] = (unit_id, slot)
 
+    parts_badges = await parts_badge_map(db, device_ids)
+
     def esc(v):
         return escape(str(v)) if v is not None else ""
 
@@ -561,7 +564,8 @@ async def device_search_data(
         cells = [
             f'<input type="checkbox" class="form-check-input rowChk" value="{esc(d.barcode)}">',
             (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="font-monospace fw-bold text-decoration-none">{esc(d.barcode)}</a>'
-             + touch_badge_html(d.touch_type) + flag_badge_html(d) + '</span>' +
+             + touch_badge_html(d.touch_type) + flag_badge_html(d)
+             + parts_badges.get(str(d.id), '') + '</span>' +
              f'<div><span class="badge bg-light text-dark border">{esc(d.entity) if d.entity else "—"}</span></div>'),
             (f'<a href="/devices?lot={esc(lot_number)}" class="btn btn-sm py-0 px-2 small text-decoration-none" '
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),
@@ -1567,6 +1571,9 @@ async def device_detail(
         "pna_parts": pna_parts,
         "changed_parts_consumed": changed_parts_consumed,
         "total_changed_parts_cost": total_changed_parts_cost,
+        # Hardware Specification card's "Changed" badges + Updated Parts list
+        "changed_parts": (await changed_parts_by_device(db, [device.id])).get(str(device.id)),
+        "parts_badges": await parts_badge_map(db, [device.id]),
         "all_spare_parts": all_spare_parts,
         "work_orders": work_orders,
         "repair_status": repair_status,

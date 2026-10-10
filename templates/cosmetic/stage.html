@@ -48,7 +48,7 @@
               {% if current_user.role.value == 'admin' %}
               <td><input type="checkbox" class="cosmeticRowCheck" value="{{ device.barcode }}"></td>
               {% endif %}
-              <td><code>{{ device.barcode }}</code></td>
+              <td class="text-nowrap"><code>{{ device.barcode }}</code>{{ parts_badge(parts_badges, device.id) }}</td>
               <td>{% if wo %}<code class="small">{{ wo.work_id }}</code>{% else %}—{% endif %}</td>
               <td class="text-muted small">{{ l1l2_engineer_map.get(device.id|string, '—') }}</td>
               <td>{{ device.brand or '—' }}</td>

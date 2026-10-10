@@ -300,3 +300,20 @@ def _flag_badge(device):
 
 
 templates.env.globals["flag_badge"] = _flag_badge
+
+
+# parts_badge(parts_badges, device_id) → the parts-changed icon after the Tag
+# Number on pipeline pages. `parts_badges` is the {device_id: html} map a
+# router builds with services/parts_changed.parts_badge_map(); a page whose
+# router doesn't pass one simply renders nothing.
+def _parts_badge(badges, device_id):
+    if not badges or device_id is None:
+        return ""
+    try:
+        html = badges.get(str(device_id))
+    except AttributeError:
+        return ""
+    return _Markup(html) if html else ""
+
+
+templates.env.globals["parts_badge"] = _parts_badge

@@ -3,6 +3,54 @@
    Pass `id_suffix` (e.g. loop.index) when this partial is rendered more than
    once on the same page, so the Cosmetics accordion's ids stay unique. #}
 {% set id_suffix = id_suffix if id_suffix is defined else '' %}
+{# Changed parts lifecycle (services/parts_changed.py): black = as inspected,
+   orange "Changed" badge = verified part awaiting Final QC, green value =
+   Final QC passed, blue value = sold. Every change is listed at the top. #}
+<style>
+  .text-orange{color:#e8590c!important}
+  .bg-orange{background-color:#fd7e14!important;color:#fff!important}
+  .border-orange{border-color:#fd7e14!important}
+</style>
+{% set _cp = changed_parts if changed_parts is defined and changed_parts else {"items": [], "by_key": {}} %}
+{% macro _pending_badge(slot) -%}
+  {%- if slot.pending -%}
+  {%- set lp = slot.pending[-1] -%}
+  <span class="badge bg-orange ms-2" style="cursor:help;text-transform:none" title="{% for p in slot.pending %}{{ p.tooltip }}{% if not loop.last %}&#10;{% endif %}{% endfor %}"><i class="bi bi-arrow-repeat me-1"></i>Changed{% if slot.pending|length > 1 %} ×{{ slot.pending|length }}{% endif %}</span>
+  {%- if lp.details %}<span class="small text-orange ms-1" style="text-transform:none">→ {{ lp.details }}</span>{% endif -%}
+  {%- endif -%}
+{%- endmacro %}
+{# Value cell for a row a part can be changed on:
+     pending change          -> IQC value (black) + orange "Changed" badge
+     Final QC passed / sold  -> new value in green / blue. RAM and Hard Drive
+                                 were written onto the device at the pass, so
+                                 the cell already holds the new value; other
+                                 rows show the IQC value struck through and
+                                 "Replaced". The old value is in the tooltip. #}
+{% macro _cell(cp, key, capacity=False) -%}
+  {%- set slot = cp.by_key.get(key) -%}
+  {%- set v = caller() -%}
+  {%- if not slot -%}{{ v }}
+  {%- else -%}
+    {%- set d = slot.done -%}
+    {%- if d and capacity and d.applied -%}
+      <span class="text-{{ d.color }} fw-semibold" style="cursor:help" title="{{ d.tooltip }}">{{ v }}</span>
+    {%- elif d -%}
+      {%- if v|trim not in ['—', '-', ''] -%}<span class="text-muted text-decoration-line-through me-1" title="IQC value">{{ v }}</span>{%- endif -%}
+      <span class="text-{{ d.color }} fw-semibold" style="cursor:help" title="{{ d.tooltip }}">Replaced{% if d.details %} → {{ d.details }}{% endif %}</span>
+    {%- else -%}{{ v }}
+    {%- endif -%}
+    {{ _pending_badge(slot) }}
+  {%- endif -%}
+{%- endmacro %}
+{# Cosmetics section heading for a body part that was replaced. #}
+{% macro _hdr(cp, key) -%}
+  {%- set slot = cp.by_key.get(key) -%}
+  {%- if slot -%}
+    {%- set d = slot.done -%}
+    {%- if d %}<span class="badge bg-{{ d.color }} ms-2" style="cursor:help;text-transform:none" title="{{ d.tooltip }}"><i class="bi bi-check-circle me-1"></i>Replaced</span>{% endif -%}
+    {{ _pending_badge(slot) }}
+  {%- endif -%}
+{%- endmacro %}
 
 <!-- Device Specs -->
 <div class="card border-0 shadow-sm mb-3">
@@ -10,6 +58,20 @@
     <i class="bi bi-laptop me-2"></i>Hardware Specification
   </div>
   <div class="card-body p-0">
+    {% if _cp["items"] %}
+    <div class="px-3 pt-2 pb-1 border-bottom bg-light">
+      <div class="small fw-semibold text-dark mb-1"><i class="bi bi-arrow-repeat me-1"></i>Updated Parts ({{ _cp["items"]|length }})</div>
+      {% for p in _cp["items"] %}
+      <div class="d-flex justify-content-between align-items-start gap-2 py-1{% if not loop.last %} border-bottom{% endif %} small">
+        <div>
+          <span class="fw-semibold text-{{ p.color }}">{{ p.part_name }}</span>{% if p.details %} <span class="text-{{ p.color }}">→ {{ p.details }}</span>{% endif %}
+          <div class="text-muted" style="font-size:.75rem">{{ p.request_type }} · {{ p.stage }} · {{ p.date }} · {{ p.by }}{% if p.qty and p.qty > 1 %} · qty {{ p.qty }}{% endif %}{% if p.old_value %} · was {{ p.old_value }}{% endif %}</div>
+        </div>
+        <div class="text-nowrap">{% if p.state == 'pending' %}<span class="badge border border-orange text-orange">Pending Final QC</span>{% elif p.state == 'passed' %}<span class="badge bg-success">QC Passed {{ p.pass_date }}</span>{% else %}<span class="badge bg-primary">Sold {{ p.sold_date }}</span>{% endif %}</div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
     <table class="table table-sm mb-0">
       <tbody>
         <tr><th class="ps-3 text-muted small w-40">Serial Number</th><td class="font-monospace small">{{ device.serial_no or '—' }}</td></tr>
@@ -21,12 +83,12 @@
         <tr><th class="ps-3 text-muted small">Generation</th><td>{{ device.generation or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Total RAM Count</th><td>{{ device.total_ram_count or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Total RAM Size</th><td>{{ device.total_ram_size or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">RAM</th><td>{{ device.ram_summary or (device.ram_gb ~ ' GB' if device.ram_gb else '—') }}</td></tr>
+        <tr><th class="ps-3 text-muted small">RAM</th><td>{% call _cell(_cp, 'RAM', True) %}{{ device.ram_summary or (device.ram_gb ~ ' GB' if device.ram_gb else '—') }}{% endcall %}</td></tr>
         <tr><th class="ps-3 text-muted small">Total Hard Drive Count</th><td>{{ device.total_hdd_count or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Total Hard Drive Size</th><td>{{ device.total_hdd_size or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Hard Drive</th><td>{{ device.hdd_summary or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Hard Drive</th><td>{% call _cell(_cp, 'Hard Drive', True) %}{{ device.hdd_summary or (((device.storage_gb ~ 'GB ' ~ (device.storage_type or ''))|trim) if device.storage_gb else '—') }}{% endcall %}</td></tr>
         <tr><th class="ps-3 text-muted small">Screen Size</th><td>{{ device.screen_size or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Battery Cable</th><td>{{ (iqc.battery_cable if iqc else None) or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Battery Cable</th><td>{% call _cell(_cp, 'Battery Cable', False) %}{{ (iqc.battery_cable if iqc else None) or '—' }}{% endcall %}</td></tr>
         <tr><th class="ps-3 text-muted small">Battery Health %</th>
           <td>
             {% if device.battery_health_pct is not none %}
@@ -36,29 +98,29 @@
             {% else %}—{% endif %}
           </td>
         </tr>
-        <tr><th class="ps-3 text-muted small">Internal Battery</th><td>{{ (iqc.battery_present if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Charging Port</th><td>{{ (iqc.charging_port if iqc else None) or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Internal Battery</th><td>{% call _cell(_cp, 'Internal Battery', False) %}{{ (iqc.battery_present if iqc else None) or '—' }}{% endcall %}</td></tr>
+        <tr><th class="ps-3 text-muted small">Charging Port</th><td>{% call _cell(_cp, 'Charging Port', False) %}{{ (iqc.charging_port if iqc else None) or '—' }}{% endcall %}</td></tr>
         <tr><th class="ps-3 text-muted small">Does the Laptop Switch On?</th><td>{{ (iqc.power_on if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Power Status</th><td>{{ (iqc.status if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Keyboard Working?</th><td>{{ (iqc.keyboard_working if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Click Function Working?</th><td>{{ (iqc.touchpad_click_working if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Touchpad Working?</th><td>{{ (iqc.touchpad_working if iqc else None) or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Power Status</th><td>{% call _cell(_cp, 'Power Status', False) %}{{ (iqc.status if iqc else None) or '—' }}{% endcall %}</td></tr>
+        <tr><th class="ps-3 text-muted small">Keyboard Working?</th><td>{% call _cell(_cp, 'Keyboard Working?', False) %}{{ (iqc.keyboard_working if iqc else None) or '—' }}{% endcall %}</td></tr>
+        <tr><th class="ps-3 text-muted small">Click Function Working?</th><td>{% call _cell(_cp, 'Click Function Working?', False) %}{{ (iqc.touchpad_click_working if iqc else None) or '—' }}{% endcall %}</td></tr>
+        <tr><th class="ps-3 text-muted small">Touchpad Working?</th><td>{% call _cell(_cp, 'Touchpad Working?', False) %}{{ (iqc.touchpad_working if iqc else None) or '—' }}{% endcall %}</td></tr>
         <tr><th class="ps-3 text-muted small">Touchpad Missing</th><td>{{ (iqc.touchpad_missing if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">HDMI Port Working?</th><td>{{ (iqc.port_hdmi if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">USB Ports Working?</th><td>{{ (iqc.port_usb_working if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Audio Jack Working?</th><td>{{ (iqc.port_audio_jack if iqc else None) or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">HDMI Port Working?</th><td>{% call _cell(_cp, 'HDMI Port Working?', False) %}{{ (iqc.port_hdmi if iqc else None) or '—' }}{% endcall %}</td></tr>
+        <tr><th class="ps-3 text-muted small">USB Ports Working?</th><td>{% call _cell(_cp, 'USB Ports Working?', False) %}{{ (iqc.port_usb_working if iqc else None) or '—' }}{% endcall %}</td></tr>
+        <tr><th class="ps-3 text-muted small">Audio Jack Working?</th><td>{% call _cell(_cp, 'Audio Jack Working?', False) %}{{ (iqc.port_audio_jack if iqc else None) or '—' }}{% endcall %}</td></tr>
         {# Port counts are integers — 0 is a real answer, so test for none rather than falsiness #}
         <tr><th class="ps-3 text-muted small">USB-A Ports</th><td>{{ iqc.usb_a_ports if iqc and iqc.usb_a_ports is not none else '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">USB-C Ports</th><td>{{ iqc.usb_c_ports if iqc and iqc.usb_c_ports is not none else '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Ethernet Ports</th><td>{{ iqc.ethernet_ports if iqc and iqc.ethernet_ports is not none else '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Speaker Status</th><td>{{ (iqc.speaker_status if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Wi-Fi</th><td>{{ (iqc.wifi_status if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Web Cam</th><td>{{ (iqc.webcam_status if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">HDD Connector</th><td>{{ (iqc.hdd_connector if iqc else None) or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Ethernet Ports</th><td>{% call _cell(_cp, 'Ethernet Ports', False) %}{{ iqc.ethernet_ports if iqc and iqc.ethernet_ports is not none else '—' }}{% endcall %}</td></tr>
+        <tr><th class="ps-3 text-muted small">Speaker Status</th><td>{% call _cell(_cp, 'Speaker Status', False) %}{{ (iqc.speaker_status if iqc else None) or '—' }}{% endcall %}</td></tr>
+        <tr><th class="ps-3 text-muted small">Wi-Fi</th><td>{% call _cell(_cp, 'Wi-Fi', False) %}{{ (iqc.wifi_status if iqc else None) or '—' }}{% endcall %}</td></tr>
+        <tr><th class="ps-3 text-muted small">Web Cam</th><td>{% call _cell(_cp, 'Web Cam', False) %}{{ (iqc.webcam_status if iqc else None) or '—' }}{% endcall %}</td></tr>
+        <tr><th class="ps-3 text-muted small">HDD Connector</th><td>{% call _cell(_cp, 'HDD Connector', False) %}{{ (iqc.hdd_connector if iqc else None) or '—' }}{% endcall %}</td></tr>
         <tr><th class="ps-3 text-muted small">HDD Casing</th><td>{{ (iqc.hdd_casing if iqc else None) or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">DVD Drive</th><td>{{ (iqc.dvd_drive if iqc else None) or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">DVD Drive</th><td>{% call _cell(_cp, 'DVD Drive', False) %}{{ (iqc.dvd_drive if iqc else None) or '—' }}{% endcall %}</td></tr>
         <tr><th class="ps-3 text-muted small">Storage Health (%)</th><td>{{ iqc.storage_health_pct if iqc and iqc.storage_health_pct is not none else '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Fan Working</th><td>{{ (iqc.fan_working if iqc else None) or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Fan Working</th><td>{% call _cell(_cp, 'Fan Working', False) %}{{ (iqc.fan_working if iqc else None) or '—' }}{% endcall %}</td></tr>
       </tbody>
     </table>
   </div>
@@ -78,21 +140,21 @@
       <div class="accordion-body p-0">
     <table class="table table-sm mb-0">
       <tbody>
-        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-primary">Display Panel</th></tr>
+        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-primary">Display Panel{{ _hdr(_cp, 'Display Panel') }}</th></tr>
         <tr><th class="ps-3 text-muted small w-40">Scratch</th><td>{{ (iqc.panel_a_scratch if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Broken / Crack</th><td>{{ (iqc.panel_a_broken if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Missing</th><td>{{ (iqc.panel_a_missing if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Dent</th><td>{{ (iqc.panel_a_dent if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Colour Fade</th><td>{{ (iqc.panel_a_colour_fade if iqc else None) or '—' }}</td></tr>
 
-        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-warning">Bezel Frame</th></tr>
+        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-warning">Bezel Frame{{ _hdr(_cp, 'Bezel Frame') }}</th></tr>
         <tr><th class="ps-3 text-muted small">Scratch</th><td>{{ (iqc.panel_c_scratch if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Broken / Crack</th><td>{{ (iqc.panel_c_broken if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Missing</th><td>{{ (iqc.panel_c_missing if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Dent</th><td>{{ (iqc.panel_c_dent if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Colour Fade</th><td>{{ (iqc.panel_c_colour_fade if iqc else None) or '—' }}</td></tr>
 
-        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-info">Screen/Display</th></tr>
+        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-info">Screen/Display{{ _hdr(_cp, 'Screen/Display') }}</th></tr>
         <tr><th class="ps-3 text-muted small">Dot</th><td>{{ (iqc.screen_dot if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Line</th><td>{{ (iqc.screen_line if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Colour Discoloration</th><td>{{ (iqc.screen_discoloration if iqc else None) or '—' }}</td></tr>
@@ -104,7 +166,7 @@
         <tr><th class="ps-3 text-muted small">Broken</th><td>{{ (iqc.screen_broken if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Keyboard Mark</th><td>{{ (iqc.screen_keyboard_mark if iqc else None) or '—' }}</td></tr>
 
-        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-dark">Hinge</th></tr>
+        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-dark">Hinge{{ _hdr(_cp, 'Hinge') }}</th></tr>
         <tr><th class="ps-3 text-muted small">Hinge</th><td>{{ (iqc.hinge_condition if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Loose</th><td>{{ (iqc.screen_loose if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Hinge Broken</th><td>{{ (iqc.screen_hinge_broken if iqc else None) or '—' }}</td></tr>
@@ -115,7 +177,7 @@
         <tr><th class="ps-3 text-muted small">Touchpad Colour Fade</th><td>{{ (iqc.touchpad_colour_fade if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Touchpad Logicboard</th><td>{{ (iqc.touchpad_logicboard if iqc else None) or '—' }}</td></tr>
 
-        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-success">Bottom Base</th></tr>
+        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-success">Bottom Base{{ _hdr(_cp, 'Bottom Base') }}</th></tr>
         <tr><th class="ps-3 text-muted small">Scratch</th><td>{{ (iqc.panel_b_scratch if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Broken / Crack</th><td>{{ (iqc.panel_b_broken if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Missing</th><td>{{ (iqc.panel_b_missing if iqc else None) or '—' }}</td></tr>
@@ -129,7 +191,7 @@
 
         {# IQC labels this last card "Touchpad" too, but the fields are the
            Panel D / palmrest set — kept under the IQC heading verbatim. #}
-        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-danger">Touchpad</th></tr>
+        <tr class="table-light"><th colspan="2" class="ps-3 small text-uppercase text-danger">Touchpad{{ _hdr(_cp, 'Palmrest') }}</th></tr>
         <tr><th class="ps-3 text-muted small">Scratch</th><td>{{ (iqc.panel_d_scratch if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Broken / Crack</th><td>{{ (iqc.panel_d_broken if iqc else None) or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Missing</th><td>{{ (iqc.panel_d_missing if iqc else None) or '—' }}</td></tr>

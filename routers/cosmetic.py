@@ -2,6 +2,7 @@
 Cosmetic Refurbishment Pipeline
 Stages: QC Check → Cleaning → Dry Sanding → Masking → Painting → Water Sanding → Final QC → Ready to Sale
 """
+from services.parts_changed import changed_parts_by_device, apply_spec_changes_on_pass, parts_badge_map
 from templates_config import templates
 from datetime import datetime
 from utils.timezone import app_now
@@ -493,6 +494,7 @@ async def cosmetic_all_tags(request: Request, db: AsyncSession = Depends(get_db)
     return templates.TemplateResponse("cosmetic/all_tags.html", {
         "request": request, "current_user": current_user,
         "devices": devices, "now": app_now(),
+        "parts_badges": await parts_badge_map(db, [d.id for d, *_ in devices]),
         "pipeline": COSMETIC_NAV_STAGES, "stage_labels": STAGE_LABELS,
         "l1l2_engineer_map": l1l2_engineer_map,
         "assigned_map": assigned_map, "manager_mode": manager_mode,
@@ -754,6 +756,8 @@ async def cosmetic_stage_list(stage_name: str, request: Request, db: AsyncSessio
             "stage": stage, "stage_label": STAGE_LABELS[stage],
             "devices": devices, "iqc_map": iqc_map, "repairs_map": repairs_map,
             "parts_map": parts_map, "price_map": price_map,
+            "changed_parts_map": await changed_parts_by_device(db, device_ids),
+            "parts_badges": await parts_badge_map(db, device_ids),
             "l1l2_engineer_map": l1l2_engineer_map,
             "pipeline": COSMETIC_NAV_STAGES, "stage_labels": STAGE_LABELS,
             "bucket_name_map": bucket_name_map, "stress_map": stress_map,
@@ -837,6 +841,7 @@ async def cosmetic_stage_list(stage_name: str, request: Request, db: AsyncSessio
             "l1l2_engineer_map": l1l2_engineer_map, "l1l2_engineers": l1l2_engineers,
             "workid_map": workid_map, "now": app_now(),
             "manager_mode": manager_mode, "move_pool": move_pool,
+            "parts_badges": await parts_badge_map(db, [d.id for d, *_ in devices]),
         })
 
     return templates.TemplateResponse("cosmetic/stage.html", {
@@ -848,6 +853,7 @@ async def cosmetic_stage_list(stage_name: str, request: Request, db: AsyncSessio
         "pipeline": COSMETIC_NAV_STAGES, "stage_labels": STAGE_LABELS,
         "l1l2_engineer_map": l1l2_engineer_map, "l1l2_engineers": l1l2_engineers,
         "workid_map": workid_map, "manager_mode": manager_mode, "move_pool": move_pool,
+        "parts_badges": await parts_badge_map(db, [d.id for d, *_ in devices]),
     })
 
 
@@ -1007,6 +1013,11 @@ async def advance_stage(
 
         # Pass only — the Grade dropdown is hidden on fail but still posts its value.
         if grade: device.grade = grade
+
+        # Verified RAM / Hard Drive part changes since the previous pass are
+        # written onto the device's own spec now (services/parts_changed.py)
+        # — before the pass StageMovement below, which is what marks them done.
+        await apply_spec_changes_on_pass(db, device, current_user)
 
         # Pricing gate: on Final QC pass, finalize the device price as
         # acquisition price + consumed parts + changed (received) parts —

@@ -41,7 +41,7 @@
             {% set failed_fqc = device.final_qc_status == 'fail' %}
             <tr id="row-{{ device.barcode }}" class="{% if sr %}table-light{% endif %}" data-failed-fqc="{{ '1' if failed_fqc else '0' }}">
               <td>
-                <a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none text-dark" title="View device details">{{ device.barcode }}</a>
+                <a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none text-dark" title="View device details">{{ device.barcode }}</a>{{ parts_badge(parts_badges, device.id) }}
                 {% if failed_fqc %}<br><span class="text-nowrap"><span class="badge bg-danger">Failed from Final QC</span>
                 <i class="bi bi-info-circle text-danger ms-1" style="cursor:help"
                    data-bs-toggle="tooltip" data-bs-placement="top"

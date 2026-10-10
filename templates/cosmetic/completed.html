@@ -47,7 +47,7 @@
             {% for device, lot_number in devices %}
             {% set wo = workid_map.get(device.id|string) %}
             <tr>
-              <td><code>{{ device.barcode }}</code></td>
+              <td class="text-nowrap"><code>{{ device.barcode }}</code>{{ parts_badge(parts_badges, device.id) }}</td>
               <td>{% if wo %}<code class="small">{{ wo.work_id }}</code>{% else %}—{% endif %}</td>
               <td><span class="badge bg-teal">{{ stage_labels.get(device.current_stage, device.current_stage.value) }}</span></td>
               <td class="text-muted small">{{ l1l2_engineer_map.get(device.id|string, '—') }}</td>
