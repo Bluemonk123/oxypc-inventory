@@ -149,6 +149,20 @@ async def block_tags_home(
 
 # ── Table data (DataTables server-side) ──────────────────────────────────────
 
+def _matching_blocks(q, block_date, container, block_for, location_zone):
+    """Block ids (subquery) that still hold at least one blocked tag and match
+    the filter bar. Filters can hit either the block header (Block ID, Box,
+    Customer, Date, ...) or any of its tags (Tag Number, Lot), and a match on
+    one tag brings in the whole block — the table shows one row per block."""
+    filters = _block_filters(q, block_date, container, block_for, location_zone)
+    return (
+        select(BlockRecordItem.block_record_id)
+        .join(BlockRecord, BlockRecordItem.block_record_id == BlockRecord.id)
+        .where(BlockRecordItem.status == BlockItemStatus.blocked, *filters)
+        .distinct()
+    )
+
+
 @router.get("/data")
 async def block_tags_data(
     request: Request,
@@ -158,93 +172,84 @@ async def block_tags_data(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module_perm("block_tags")),
 ):
+    """One row per block. Released tags drop out entirely (per product
+    decision — Release = cancel the hold and remove it from view); a block
+    with no tags left blocked disappears too. Both stay in the DB and in the
+    CSV exports for history. The Tags and Models cells open modals fed by
+    /block-tags/{id}/items."""
     from html import escape
 
     def esc(v):
         return escape(str(v)) if v is not None else ""
 
-    # Released tags drop out of this table entirely (per product decision —
-    # Release = cancel the hold and remove it from view); they're still kept
-    # in the DB and still show up in the CSV exports for history.
-    still_blocked = BlockRecordItem.status == BlockItemStatus.blocked
-    base = (
-        select(BlockRecordItem, BlockRecord)
-        .join(BlockRecord, BlockRecordItem.block_record_id == BlockRecord.id)
-        .where(still_blocked)
-    )
-    count_base = select(func.count()).select_from(BlockRecordItem).join(
-        BlockRecord, BlockRecordItem.block_record_id == BlockRecord.id).where(still_blocked)
+    total = (await db.execute(
+        select(func.count()).select_from(_matching_blocks("", "", "", "", "").subquery())
+    )).scalar() or 0
+    matching = _matching_blocks(q, block_date, container, block_for, location_zone)
+    filtered = (await db.execute(select(func.count()).select_from(matching.subquery()))).scalar() or 0
 
-    filters = _block_filters(q, block_date, container, block_for, location_zone)
-    total = (await db.execute(count_base)).scalar() or 0
-    filtered = (await db.execute(count_base.where(*filters))).scalar() or 0
-
-    rows = (await db.execute(
-        base.where(*filters)
-        .order_by(BlockRecord.created_at.desc(), BlockRecordItem.created_at.asc())
+    records = (await db.execute(
+        select(BlockRecord).where(BlockRecord.id.in_(matching))
+        .order_by(BlockRecord.created_at.desc())
         .offset(max(0, start)).limit(min(max(1, length), 500))
-    )).all()
+    )).scalars().all()
 
-    block_for_ids = {r.block_for_user_id for _, r in rows if r.block_for_user_id}
+    # Per-block stats for this page in one query: still-blocked tag count,
+    # distinct model count, and the item ids (row checkbox selects these).
+    stats = {}
+    rec_ids = [r.id for r in records]
+    if rec_ids:
+        for rid, n_tags, n_models, item_ids in (await db.execute(
+            select(BlockRecordItem.block_record_id, func.count(BlockRecordItem.id),
+                   func.count(func.distinct(func.nullif(func.trim(BlockRecordItem.model), ""))),
+                   func.array_agg(BlockRecordItem.id))
+            .where(BlockRecordItem.block_record_id.in_(rec_ids),
+                   BlockRecordItem.status == BlockItemStatus.blocked)
+            .group_by(BlockRecordItem.block_record_id)
+        )).all():
+            stats[rid] = (n_tags, n_models, [str(i) for i in item_ids])
+
+    block_for_ids = {r.block_for_user_id for r in records if r.block_for_user_id}
     user_map = {}
     if block_for_ids:
         users = (await db.execute(select(User).where(User.id.in_(block_for_ids)))).scalars().all()
         user_map = {u.id: (u.full_name or u.username) for u in users}
 
-    # Lot Number column and the Stock Type badge under the Tag Number are read
-    # live from the device (one query for the page): Lot = the device's actual
-    # lot; Stock Type follows the rule used on All Inventory / Sales — As-Is
-    # when the tag carries a sub-lot, otherwise Ready for Sale.
-    dev_ids = {item.device_id for item, _ in rows}
-    dev_info = {}
-    if dev_ids:
-        for dev_id, lot_no, sub_lot in (await db.execute(
-            select(Device.id, Lot.lot_number, Device.sub_lot_number)
-            .outerjoin(Lot, Device.lot_id == Lot.id).where(Device.id.in_(dev_ids))
-        )).all():
-            dev_info[dev_id] = (lot_no, (sub_lot or "").strip())
-
     data = []
-    for item, rec in rows:
-        lot_no, sub_lot = dev_info.get(item.device_id, (None, ""))
-        tag_badges = []
-        if sub_lot:
-            tag_badges.append(f'<span class="badge bg-warning text-dark" title="As-Is sub-lot {esc(sub_lot)}">As-Is</span>')
-        else:
-            tag_badges.append('<span class="badge bg-success">Ready for Sale</span>')
-        tag_cell = (
-            f'<a href="/devices/{esc(item.barcode)}" class="text-decoration-none"><code>{esc(item.barcode)}</code></a>'
-            f'<div class="d-flex flex-nowrap text-nowrap gap-1 mt-1">{"".join(tag_badges)}</div>'
-        )
+    for rec in records:
+        n_tags, n_models, item_ids = stats.get(rec.id, (0, 0, []))
 
-        # Block ID with its Box Number (high-contrast pill) and the barcode
-        # label download right underneath, so everything about the physical
-        # box sits in one place.
-        under_block = []
-        if rec.box_number:
-            under_block.append(
-                f'<span class="badge rounded-pill bg-dark" style="font-size:.78rem;letter-spacing:.02em" '
-                f'title="Box Number"><i class="bi bi-box-seam me-1"></i>{esc(rec.box_number)}</span>')
-        under_block.append(
+        # Block ID and the barcode label download on one line.
+        barcode_btn = (
             f'<a href="#" class="btn btn-primary btn-sm py-0 px-2 fw-semibold block-barcode-btn" '
             f'data-id="{rec.id}" data-blockid="{esc(rec.block_id)}" title="Preview / download barcode label">'
             f'<i class="bi bi-download"></i> <i class="bi bi-upc-scan"></i> barcode</a>')
-        block_cell = (f'<span class="fw-semibold text-nowrap">{esc(rec.block_id)}</span>'
-                      f'<div class="d-flex flex-nowrap text-nowrap align-items-center gap-1 mt-1">{"".join(under_block)}</div>')
+        block_cell = (f'<div class="d-flex flex-nowrap text-nowrap align-items-center gap-2">'
+                      f'<span class="fw-semibold">{esc(rec.block_id)}</span>{barcode_btn}</div>')
+        # Box Number in its own column, as a high-contrast pill.
+        box_cell = (f'<span class="badge rounded-pill bg-dark text-nowrap" style="font-size:.78rem;letter-spacing:.02em">'
+                    f'<i class="bi bi-box-seam me-1"></i>{esc(rec.box_number)}</span>' if rec.box_number else "—")
 
+        tags_cell = (f'<a href="#" class="block-tags-link fw-semibold text-decoration-none text-nowrap" '
+                     f'data-id="{rec.id}" data-blockid="{esc(rec.block_id)}" title="View tags in this block">'
+                     f'<i class="bi bi-tags me-1"></i>{n_tags} tag{"s" if n_tags != 1 else ""}</a>')
+        models_cell = (f'<a href="#" class="block-models-link fw-semibold text-decoration-none text-nowrap" '
+                       f'data-id="{rec.id}" data-blockid="{esc(rec.block_id)}" title="View model summary">'
+                       f'<i class="bi bi-laptop me-1"></i>{n_models} model{"s" if n_models != 1 else ""}</a>')
+
+        ids_attr = ",".join(item_ids)
         actions = (
             f'<a href="#" class="btn btn-outline-secondary btn-sm py-0 px-1 block-edit-btn" data-id="{rec.id}" title="Edit"><i class="bi bi-pencil"></i></a>'
-            f' <a href="#" class="btn btn-outline-primary btn-sm py-0 px-1 block-release-btn" data-id="{item.id}" title="Release"><i class="bi bi-unlock"></i></a>'
+            f' <a href="#" class="btn btn-outline-primary btn-sm py-0 px-1 block-release-btn" data-items="{ids_attr}" '
+            f'data-blockid="{esc(rec.block_id)}" data-count="{n_tags}" title="Release all tags in this block"><i class="bi bi-unlock"></i></a>'
         )
         data.append([
-            f'<input type="checkbox" class="row-check" value="{item.id}">',
+            f'<input type="checkbox" class="row-check" value="{rec.id}" data-items="{ids_attr}">',
             block_cell,
-            tag_cell,
-            f'<span class="text-nowrap">{esc(lot_no or "—")}</span>',
-            esc(item.model or "—"),
-            f'<span class="text-nowrap">{esc(item.cpu or "—")}</span>',
-            f"{item.ram_gb} GB" if item.ram_gb else "—",
-            f"{item.storage_gb} GB" if item.storage_gb else "—",
+            box_cell,
+            esc(rec.customer_name or "—"),
+            tags_cell,
+            models_cell,
             f'<span class="text-nowrap">{rec.block_date.isoformat() if rec.block_date else ""}</span>',
             esc(user_map.get(rec.block_for_user_id, "—")),
             actions,
@@ -260,20 +265,62 @@ async def block_tags_ids(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module_perm("block_tags")),
 ):
-    """Every (still-blocked) BlockRecordItem id matching the current filters,
-    for Select All on the Tags Blocked table — same cross-page fix pattern as
-    /sales/ids. Released items never appear in this table, so they're never
-    selectable here either."""
+    """Every still-blocked tag (BlockRecordItem id) in every block matching the
+    current filters, for Select All — same cross-page fix pattern as
+    /sales/ids. Selection stays at tag level so bulk actions and Upload to
+    Select act on exactly the tags chosen, even within a block."""
     MAX_SELECT_ALL = 5000
-    filters = _block_filters(q, block_date, container, block_for, location_zone)
+    matching = _matching_blocks(q, block_date, container, block_for, location_zone)
     ids = (await db.execute(
         select(BlockRecordItem.id)
         .join(BlockRecord, BlockRecordItem.block_record_id == BlockRecord.id)
-        .where(BlockRecordItem.status == BlockItemStatus.blocked, *filters)
+        .where(BlockRecordItem.status == BlockItemStatus.blocked, BlockRecordItem.block_record_id.in_(matching))
         .order_by(BlockRecord.created_at.desc())
         .limit(MAX_SELECT_ALL)
     )).scalars().all()
     return JSONResponse({"ids": [str(i) for i in ids], "truncated": len(ids) == MAX_SELECT_ALL})
+
+
+@router.get("/{record_id}/items")
+async def block_items(record_id: str, db: AsyncSession = Depends(get_db),
+                      current_user: User = Depends(require_module_perm("block_tags"))):
+    """Still-blocked tags in one block (Tags modal) plus the per-configuration
+    summary (Models modal). Lot Number and Stock Type are read live from the
+    device: Lot = the device's actual lot; Stock Type follows the rule used
+    on All Inventory / Sales — As-Is when the tag carries a sub-lot,
+    otherwise Ready for Sale."""
+    try:
+        rid = _uuid.UUID(record_id)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": "Block not found."}, status_code=404)
+    record = (await db.execute(select(BlockRecord).where(BlockRecord.id == rid))).scalar_one_or_none()
+    if not record:
+        return JSONResponse({"ok": False, "error": "Block not found."}, status_code=404)
+
+    rows = (await db.execute(
+        select(BlockRecordItem, Lot.lot_number, Device.sub_lot_number)
+        .outerjoin(Device, BlockRecordItem.device_id == Device.id)
+        .outerjoin(Lot, Device.lot_id == Lot.id)
+        .where(BlockRecordItem.block_record_id == rid, BlockRecordItem.status == BlockItemStatus.blocked)
+        .order_by(BlockRecordItem.barcode)
+    )).all()
+
+    items, summary = [], {}
+    for it, lot_no, sub_lot in rows:
+        as_is = bool((sub_lot or "").strip())
+        items.append({
+            "id": str(it.id), "tag": it.barcode, "lot": lot_no or "",
+            "model": it.model or "", "cpu": it.cpu or "",
+            "ram": f"{it.ram_gb} GB" if it.ram_gb else "", "storage": f"{it.storage_gb} GB" if it.storage_gb else "",
+            "stock_type": "As-Is" if as_is else "Ready for Sale", "sub_lot": (sub_lot or "").strip(),
+        })
+        key = (it.model or "", it.cpu or "", it.ram_gb or 0, it.storage_gb or 0)
+        summary[key] = summary.get(key, 0) + 1
+
+    models = [{"model": m, "cpu": c, "ram": f"{r} GB" if r else "", "storage": f"{st} GB" if st else "", "qty": n}
+              for (m, c, r, st), n in sorted(summary.items(), key=lambda kv: (kv[0][0].lower(), -kv[1]))]
+    return JSONResponse({"ok": True, "block_id": record.block_id, "box_number": record.box_number or "",
+                         "items": items, "models": models})
 
 
 # ── New Block Tags modal: tag search + create ────────────────────────────────
@@ -682,27 +729,105 @@ async def export_all(db: AsyncSession = Depends(get_db),
 @router.post("/export/selected")
 async def export_selected(item_ids: str = Form(""), db: AsyncSession = Depends(get_db),
                            current_user: User = Depends(require_module_perm("block_tags"))):
-    import csv
-    ids = [i.strip() for i in item_ids.split(",") if i.strip()]
+    """One .xlsx with two sheets for the selected tags:
+    Summary      — one row per block, like the on-screen table (counts are of
+                   the tags selected in that block).
+    Tags Details — one row per selected tag, with Make/Model/Grade/Stock Type
+                   read live from the device and its lot."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+
+    ids = []
+    for raw in item_ids.split(","):
+        try:
+            ids.append(_uuid.UUID(raw.strip()))
+        except ValueError:
+            continue
     if not ids:
         return JSONResponse({"ok": False, "error": "No rows selected."})
+
     rows = (await db.execute(
-        select(BlockRecordItem, BlockRecord).join(BlockRecord, BlockRecordItem.block_record_id == BlockRecord.id)
-        .where(BlockRecordItem.id.in_(ids)).order_by(BlockRecord.created_at.desc())
+        select(BlockRecordItem, BlockRecord, Device, Lot.lot_number)
+        .join(BlockRecord, BlockRecordItem.block_record_id == BlockRecord.id)
+        .outerjoin(Device, BlockRecordItem.device_id == Device.id)
+        .outerjoin(Lot, Device.lot_id == Lot.id)
+        .where(BlockRecordItem.id.in_(ids))
+        .order_by(BlockRecord.created_at.desc(), BlockRecordItem.barcode)
     )).all()
-    user_ids = {r.block_for_user_id for _, r in rows if r.block_for_user_id}
+    if not rows:
+        return JSONResponse({"ok": False, "error": "Selected tags were not found."})
+
+    user_ids = {rec.block_for_user_id for _, rec, _, _ in rows if rec.block_for_user_id}
     user_map = {}
     if user_ids:
         users = (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars().all()
         user_map = {u.id: (u.full_name or u.username) for u in users}
 
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(_export_header())
-    for item, rec in rows:
-        writer.writerow(_export_row(item, rec, user_map))
-    output.seek(0)
+    def make_model(item, dev):
+        if dev is not None and (dev.brand or dev.model):
+            return (dev.brand or ""), (dev.model or "")
+        return "", (item.model or "")
+
+    details, summary = [], {}
+    for item, rec, dev, lot_no in rows:
+        make, model = make_model(item, dev)
+        sub_lot = (dev.sub_lot_number or "").strip() if dev is not None else ""
+        grade = dev.grade.value if dev is not None and dev.grade else ""
+        details.append([
+            rec.block_id, rec.box_number or "", rec.block_date, user_map.get(rec.block_for_user_id, ""),
+            rec.customer_name or "", item.barcode, lot_no or "", make, model, item.cpu or "",
+            item.ram_gb, item.storage_gb, grade.capitalize() if grade == "scrap" else grade,
+            "As-Is" if sub_lot else "Ready for Sale",
+        ])
+        s_row = summary.setdefault(rec.id, {"rec": rec, "tags": 0, "models": set()})
+        s_row["tags"] += 1
+        label = f"{make} {model}".strip()
+        if label:
+            s_row["models"].add(label.lower())
+
+    wb = Workbook()
+    head_font = Font(bold=True, color="FFFFFF")
+    head_fill = PatternFill("solid", fgColor="212529")
+
+    def write_sheet(ws, header, data, date_cols=(), num_cols=()):
+        ws.append(header)
+        for c in ws[1]:
+            c.font, c.fill, c.alignment = head_font, head_fill, Alignment(vertical="center")
+        for r in data:
+            ws.append(r)
+        for idx in date_cols:
+            for cell in ws.iter_cols(min_col=idx, max_col=idx, min_row=2):
+                for c in cell:
+                    c.number_format = "dd-mm-yyyy"
+        for idx in num_cols:
+            for cell in ws.iter_cols(min_col=idx, max_col=idx, min_row=2):
+                for c in cell:
+                    c.alignment = Alignment(horizontal="right")
+        for i, h in enumerate(header, start=1):
+            longest = max([len(h)] + [len(str(r[i - 1])) for r in data if r[i - 1] is not None])
+            ws.column_dimensions[get_column_letter(i)].width = min(max(10, longest + 2), 45)
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = ws.dimensions
+
+    ws = wb.active
+    ws.title = "Summary"
+    write_sheet(ws, ["Block ID", "Box Number", "Customer", "Tags", "Models", "Block Date", "Block For"],
+                [[v["rec"].block_id, v["rec"].box_number or "", v["rec"].customer_name or "", v["tags"],
+                  len(v["models"]), v["rec"].block_date, user_map.get(v["rec"].block_for_user_id, "")]
+                 for v in summary.values()],
+                date_cols=(6,), num_cols=(4, 5))
+    write_sheet(wb.create_sheet("Tags Details"),
+                ["Block ID", "Box Number", "Block Date", "Block For", "Customer Name", "Tag Number",
+                 "Lot Number", "Make", "Model", "CPU", "RAM (GB)", "Storage (GB)", "Grade", "Stock Type"],
+                details, date_cols=(3,), num_cols=(11, 12))
+
+    out = io.BytesIO()
+    wb.save(out)
+    out.seek(0)
+    from utils.timezone import app_now
+    stamp = app_now().strftime("%Y%m%d_%H%M")   # IST, matches the rest of the app
     return StreamingResponse(
-        io.BytesIO(output.getvalue().encode()), media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=block_tags_selected.csv"},
+        out, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="block_tags_{stamp}.xlsx"'},
     )

@@ -9,39 +9,41 @@
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent d-flex align-items-center justify-content-between flex-wrap gap-2">
         <span class="fw-semibold"><i class="bi bi-lock me-2"></i>Tags Blocked</span>
-        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newBlockModal">
-          <i class="bi bi-plus-lg me-1"></i>New Block Tags
-        </button>
+        <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end">
+          {# ── Filter Bar (in the header, before New Block Tags) ── #}
+          <div class="d-flex flex-wrap gap-2 align-items-center">
+            <input type="text" id="bfSearch" placeholder="Search Block ID / Box / Tag / Lot / Customer"
+                   class="form-control form-control-sm" style="width:240px">
+            <input type="date" id="bfDate" class="form-control form-control-sm" style="width:150px">
+            {# Container filter hidden (2026-10-10, on request) — remove d-none to show it again. #}
+            <select id="bfContainer" class="form-select form-select-sm d-none" style="width:140px">
+              <option value="">All Containers</option>
+              {% for val, label in container_options %}
+              <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+            <select id="bfBlockFor" class="form-select form-select-sm" style="width:170px">
+              <option value="">All Block For</option>
+              {% for u in block_for_options %}
+              <option value="{{ u.id }}">{{ u.label }}</option>
+              {% endfor %}
+            </select>
+            <select id="bfLocation" class="form-select form-select-sm" style="width:150px">
+              <option value="">All Locations</option>
+              {% for val, label in location_options %}
+              <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="bfClear">Clear</button>
+          </div>
+          <button type="button" class="btn btn-sm btn-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#newBlockModal">
+            <i class="bi bi-plus-lg me-1"></i>New Block Tags
+          </button>
+        </div>
       </div>
       <div class="card-body">
         <div id="blockAlert" class="alert alert-success py-2 small d-none no-autohide"></div>
         <div id="blockErrorAlert" class="alert alert-danger py-2 small d-none"></div>
-
-        {# ── Filter Bar ── #}
-        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
-          <input type="text" id="bfSearch" placeholder="Search Block ID / Box / Tag / Lot / Customer"
-                 class="form-control form-control-sm" style="width:240px">
-          <input type="date" id="bfDate" class="form-control form-control-sm" style="width:150px">
-          <select id="bfContainer" class="form-select form-select-sm" style="width:140px">
-            <option value="">All Containers</option>
-            {% for val, label in container_options %}
-            <option value="{{ val }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-          <select id="bfBlockFor" class="form-select form-select-sm" style="width:170px">
-            <option value="">All Block For</option>
-            {% for u in block_for_options %}
-            <option value="{{ u.id }}">{{ u.label }}</option>
-            {% endfor %}
-          </select>
-          <select id="bfLocation" class="form-select form-select-sm" style="width:150px">
-            <option value="">All Locations</option>
-            {% for val, label in location_options %}
-            <option value="{{ val }}">{{ label }}</option>
-            {% endfor %}
-          </select>
-          <button type="button" class="btn btn-sm btn-outline-secondary" id="bfClear">Clear</button>
-        </div>
 
         {# Moved into the table's own toolbar (before pagination) once the
            DataTable initializes below — see the $('.gtable-right-toolbar')
@@ -56,7 +58,8 @@
           </button>
           {# Upload a list of Block IDs / Tag Numbers to tick those rows for the
              bulk actions above. Read-only on the server (/block-tags/match-upload). #}
-          <div class="btn-group">
+          {# Hidden for now (2026-10-10, on request) — remove d-none to bring it back. #}
+          <div class="btn-group d-none">
             <button type="button" id="blockUploadBtn" class="btn btn-sm btn-outline-dark"
                     title="Upload a .csv or .xlsx with block_id and/or tag_number columns to select those rows">
               <i class="bi bi-upload me-1"></i>Upload to Select
@@ -76,8 +79,7 @@
             <thead class="table-dark">
               <tr>
                 <th style="width:36px"><input type="checkbox" id="blockSelectAll" title="Select all matching rows"></th>
-                <th>Block ID</th><th>Tag Number</th><th>Lot Number</th>
-                <th>Model</th><th>CPU</th><th>RAM</th><th>Storage</th>
+                <th>Block ID</th><th>Box Number</th><th>Customer</th><th>Tags</th><th>Models</th>
                 <th>Block Date</th><th>Block For</th><th>Action</th>
               </tr>
             </thead>
@@ -152,6 +154,50 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" id="nbSubmitBtn" class="btn btn-primary">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Block Tags detail modal (Tags column) ── #}
+<div class="modal fade" id="blockTagsModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Tags in <span class="btm-blockid"></span>
+          <span class="badge bg-primary ms-1 btm-count"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="table-responsive">
+          <table class="table table-sm table-hover align-middle mb-0 small">
+            <thead class="table-light"><tr>
+              <th>Tag Number</th><th>Lot Number</th><th>Model</th><th>CPU</th><th>RAM</th><th>Storage</th><th class="text-end">Release</th>
+            </tr></thead>
+            <tbody id="btmBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Block Models summary modal (Models column) ── #}
+<div class="modal fade" id="blockModelsModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Model summary — <span class="bmm-blockid"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <table class="table table-sm table-hover align-middle mb-0 small">
+          <thead class="table-light"><tr>
+            <th>Model</th><th>CPU</th><th>RAM</th><th>Storage</th><th class="text-end">Quantity</th>
+          </tr></thead>
+          <tbody id="bmmBody"></tbody>
+          <tfoot><tr class="fw-semibold"><td colspan="4" class="text-end">Total</td><td class="text-end" id="bmmTotal"></td></tr></tfoot>
+        </table>
       </div>
     </div>
   </div>
@@ -262,14 +308,30 @@ function showBlockError(msg) {
 }
 
 // ── Select All / row checkboxes (cross-page, same fix pattern as /sales) ────
+// Each row is a block, but the selection is kept per TAG (BlockRecordItem
+// ids): ticking a row selects every tag in it, Upload to Select can pick
+// individual tags (that row then shows a partial tick), and Export / Bulk
+// Release act on exactly the tags selected.
 const selectedBlockIds = new Set();
+function rowItems(el) { return (el.dataset.items || '').split(',').filter(Boolean); }
 function updateBlockExportBtn() {
   var n = selectedBlockIds.size;
   var exp = document.getElementById('blockExportSelectedBtn');
   var rel = document.getElementById('blockBulkReleaseBtn');
   exp.disabled = rel.disabled = n === 0;
-  exp.innerHTML = '<i class="bi bi-download me-1"></i>Export Selected' + (n ? ' (' + n + ')' : '');
-  rel.innerHTML = '<i class="bi bi-unlock me-1"></i>Bulk Release' + (n ? ' (' + n + ')' : '');
+  var label = n ? ' (' + n + ' tag' + (n === 1 ? '' : 's') + ')' : '';
+  exp.innerHTML = '<i class="bi bi-download me-1"></i>Export Selected' + label;
+  rel.innerHTML = '<i class="bi bi-unlock me-1"></i>Bulk Release' + label;
+}
+function syncRowChecks() {
+  document.querySelectorAll('.row-check').forEach(function (cb) {
+    var items = rowItems(cb);
+    var sel = items.filter(function (id) { return selectedBlockIds.has(id); }).length;
+    cb.checked = items.length > 0 && sel === items.length;
+    cb.indeterminate = sel > 0 && sel < items.length;
+    cb.title = sel ? (sel + ' of ' + items.length + ' tags selected') : '';
+  });
+  updateBlockExportBtn();
 }
 
 function blockFilterParams() {
@@ -306,13 +368,10 @@ $(document).ready(function () {
       url: '/block-tags/data',
       data: function (d) { Object.assign(d, blockFilterParams()); },
     },
-    columnDefs: [{ orderable: false, targets: [0, 10] }],
+    columnDefs: [{ orderable: false, targets: [0, 1, 2, 3, 4, 5, 6, 7, 8] }],
     language: { emptyTable: 'No tags currently blocked.' },
     drawCallback: function () {
-      document.querySelectorAll('.row-check').forEach(function (cb) {
-        cb.checked = selectedBlockIds.has(cb.value);
-      });
-      updateBlockExportBtn();
+      syncRowChecks();
       wireRowActions();
     },
   });
@@ -342,8 +401,9 @@ $(document).ready(function () {
 
 document.addEventListener('change', function (e) {
   if (e.target.classList.contains('row-check')) {
-    if (e.target.checked) selectedBlockIds.add(e.target.value); else selectedBlockIds.delete(e.target.value);
-    updateBlockExportBtn();
+    var on = e.target.checked;
+    rowItems(e.target).forEach(function (id) { if (on) selectedBlockIds.add(id); else selectedBlockIds.delete(id); });
+    syncRowChecks();
   }
 });
 
@@ -354,12 +414,11 @@ document.getElementById('blockSelectAll').addEventListener('change', async funct
     var r = await fetch('/block-tags/ids?' + params.toString());
     var d = await r.json();
     (d.ids || []).forEach(function (id) { selectedBlockIds.add(id); });
-    if (d.truncated) alert('Selected the first ' + d.ids.length + ' matching rows (capped at that size).');
+    if (d.truncated) alert('Selected the first ' + d.ids.length + ' matching tags (capped at that size).');
   } else {
     selectedBlockIds.clear();
   }
-  document.querySelectorAll('.row-check').forEach(function (cb) { cb.checked = ck; });
-  updateBlockExportBtn();
+  syncRowChecks();
 });
 
 document.getElementById('blockExportSelectedBtn').addEventListener('click', function () {
@@ -382,7 +441,7 @@ async function blockBulkRelease() {
   var d = await r.json();
   if (d.ok) {
     showBlockAlert(d.count + ' tag(s) released.');
-    selectedBlockIds.clear(); updateBlockExportBtn(); blockDt.ajax.reload(null, false);
+    selectedBlockIds.clear(); syncRowChecks(); blockDt.ajax.reload(null, false);
   } else {
     showBlockError(d.error || 'Action failed.');
   }
@@ -417,8 +476,7 @@ document.getElementById('blockUploadFile').addEventListener('change', async func
     if (!d.ok) { showBlockError(d.error || 'Upload failed.'); return; }
     var before = selectedBlockIds.size;
     (d.ids || []).forEach(function (id) { selectedBlockIds.add(id); });
-    document.querySelectorAll('.row-check').forEach(function (cb) { cb.checked = selectedBlockIds.has(cb.value); });
-    updateBlockExportBtn();
+    syncRowChecks();
     var added = selectedBlockIds.size - before;
     var msg = file.name + ': ' + d.matched_rows + ' of ' + d.rows + ' row(s) matched, ' +
               d.ids.length + ' tag(s) selected' + (added < d.ids.length ? ' (' + (d.ids.length - added) + ' were already selected)' : '') +
@@ -441,12 +499,24 @@ function wireRowActions() {
   document.querySelectorAll('.block-release-btn').forEach(function (btn) {
     btn.onclick = async function (e) {
       e.preventDefault();
-      var fd = new FormData(); fd.append('csrf_token', blockCsrf());
-      var r = await fetch('/block-tags/' + btn.dataset.id + '/release', { method: 'POST', body: fd, credentials: 'same-origin' });
+      var ids = rowItems(btn);
+      if (!ids.length) return;
+      if (!confirm('Release all ' + ids.length + ' tag(s) in block ' + btn.dataset.blockid + '? They become sellable again.')) return;
+      var fd = new FormData(); fd.append('csrf_token', blockCsrf()); fd.append('item_ids', ids.join(','));
+      var r = await fetch('/block-tags/bulk-release', { method: 'POST', body: fd, credentials: 'same-origin' });
       var d = await r.json();
-      if (d.ok) { showBlockAlert('Released — tag is sellable again.'); blockDt.ajax.reload(null, false); }
-      else showBlockError(d.error || 'Could not update.');
+      if (d.ok) {
+        ids.forEach(function (id) { selectedBlockIds.delete(id); });
+        showBlockAlert(d.count + ' tag(s) released from ' + btn.dataset.blockid + '.');
+        blockDt.ajax.reload(null, false);
+      } else showBlockError(d.error || 'Could not update.');
     };
+  });
+  document.querySelectorAll('.block-tags-link').forEach(function (a) {
+    a.onclick = function (e) { e.preventDefault(); openBlockTags(a.dataset.id); };
+  });
+  document.querySelectorAll('.block-models-link').forEach(function (a) {
+    a.onclick = function (e) { e.preventDefault(); openBlockModels(a.dataset.id); };
   });
   document.querySelectorAll('.block-edit-btn').forEach(function (btn) {
     btn.onclick = async function (e) {
@@ -649,5 +719,87 @@ document.getElementById('nbSubmitBtn').addEventListener('click', async function 
     err.textContent = d.error || 'Could not create block.'; err.classList.remove('d-none');
   }
 });
+
+// ── Tags / Models detail modals ──────────────────────────────────────────────
+function cellText(v) { return (v === null || v === undefined || v === '') ? '—' : String(v); }
+function td(text, cls) {
+  var c = document.createElement('td'); c.textContent = cellText(text); if (cls) c.className = cls; return c;
+}
+async function fetchBlockItems(recordId) {
+  var r = await fetch('/block-tags/' + recordId + '/items');
+  var d = await r.json();
+  if (!d.ok) { showBlockError(d.error || 'Could not load block details.'); return null; }
+  return d;
+}
+async function openBlockTags(recordId) {
+  var d = await fetchBlockItems(recordId);
+  if (!d) return;
+  var m = document.getElementById('blockTagsModal');
+  m.querySelector('.btm-blockid').textContent = d.block_id + (d.box_number ? ' (Box ' + d.box_number + ')' : '');
+  m.querySelector('.btm-count').textContent = d.items.length + ' tag' + (d.items.length === 1 ? '' : 's');
+  var body = document.getElementById('btmBody');
+  body.innerHTML = '';
+  if (!d.items.length) {
+    var tr = document.createElement('tr'); var c = td('No tags left in this block.', 'text-muted text-center');
+    c.colSpan = 7; tr.appendChild(c); body.appendChild(tr);
+  }
+  d.items.forEach(function (it) {
+    var tr = document.createElement('tr');
+    var tagTd = document.createElement('td');
+    var a = document.createElement('a'); a.href = '/devices/' + encodeURIComponent(it.tag);
+    a.className = 'text-decoration-none'; var code = document.createElement('code'); code.textContent = it.tag;
+    a.appendChild(code); tagTd.appendChild(a);
+    var badge = document.createElement('span');
+    badge.className = 'badge ms-2 ' + (it.stock_type === 'As-Is' ? 'bg-warning text-dark' : 'bg-success');
+    badge.textContent = it.stock_type;
+    if (it.sub_lot) badge.title = 'As-Is sub-lot ' + it.sub_lot;
+    tagTd.appendChild(badge);
+    tr.appendChild(tagTd);
+    tr.appendChild(td(it.lot, 'text-nowrap'));
+    tr.appendChild(td(it.model)); tr.appendChild(td(it.cpu, 'text-nowrap'));
+    tr.appendChild(td(it.ram, 'text-nowrap')); tr.appendChild(td(it.storage, 'text-nowrap'));
+    var act = document.createElement('td'); act.className = 'text-end';
+    var rel = document.createElement('button'); rel.type = 'button';
+    rel.className = 'btn btn-outline-primary btn-sm py-0 px-1'; rel.title = 'Release this tag';
+    rel.innerHTML = '<i class="bi bi-unlock"></i>';
+    rel.onclick = async function () {
+      if (!confirm('Release ' + it.tag + '? It becomes sellable again.')) return;
+      var fd = new FormData(); fd.append('csrf_token', blockCsrf());
+      var r = await fetch('/block-tags/' + it.id + '/release', { method: 'POST', body: fd, credentials: 'same-origin' });
+      var res = await r.json();
+      if (res.ok) {
+        selectedBlockIds.delete(it.id);
+        showBlockAlert(it.tag + ' released — sellable again.');
+        blockDt.ajax.reload(null, false);
+        openBlockTags(recordId);
+      } else showBlockError(res.error || 'Could not release.');
+    };
+    act.appendChild(rel); tr.appendChild(act);
+    body.appendChild(tr);
+  });
+  bootstrap.Modal.getOrCreateInstance(m).show();
+  // The clicked Release button is gone after the list re-renders, which
+  // leaves keyboard focus on the page body — put it back on the modal so
+  // Esc still closes it.
+  m.focus();
+}
+async function openBlockModels(recordId) {
+  var d = await fetchBlockItems(recordId);
+  if (!d) return;
+  var m = document.getElementById('blockModelsModal');
+  m.querySelector('.bmm-blockid').textContent = d.block_id + (d.box_number ? ' (Box ' + d.box_number + ')' : '');
+  var body = document.getElementById('bmmBody');
+  body.innerHTML = '';
+  var total = 0;
+  d.models.forEach(function (row) {
+    var tr = document.createElement('tr');
+    tr.appendChild(td(row.model)); tr.appendChild(td(row.cpu, 'text-nowrap'));
+    tr.appendChild(td(row.ram, 'text-nowrap')); tr.appendChild(td(row.storage, 'text-nowrap'));
+    tr.appendChild(td(row.qty, 'text-end fw-semibold'));
+    total += row.qty; body.appendChild(tr);
+  });
+  document.getElementById('bmmTotal').textContent = total;
+  bootstrap.Modal.getOrCreateInstance(m).show();
+}
 </script>
 {% endblock %}
