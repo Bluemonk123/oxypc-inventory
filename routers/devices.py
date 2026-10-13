@@ -748,8 +748,16 @@ async def device_search(
     lots_result = await db.execute(select(Lot).order_by(Lot.lot_number))
     lots = lots_result.scalars().all()
 
-    model_summary = await _build_model_summary(db, filters)
     lot_summary = await _build_lot_summary(db, filters)
+    # Model Summary rows load by AJAX (/devices/model-summary/data); only its
+    # Make / Device Type filter options are needed up front.
+    _ms_opts = (await db.execute(
+        select(Device.brand, Device.device_type).select_from(Device)
+        .join(Lot, Device.lot_id == Lot.id)
+        .where(Device.is_trashed == False, *filters).distinct()  # noqa: E712
+    )).all()
+    ms_make_options = sorted({b or MS_UNKNOWN_MAKE for b, _ in _ms_opts}, key=str.lower)
+    ms_dtype_options = sorted({d or MS_NONE for _, d in _ms_opts}, key=str.lower)
 
     # Per-entity counts over the currently filtered set (not a separate
     # unfiltered query) — the summary strip above the Tag Number table.
@@ -790,8 +798,9 @@ async def device_search(
         "stage_options": [(s.value, STAGE_LABELS.get(s, s.value)) for s in DROPDOWN_STAGES],
         "storage_locations": storage_locations,
         "total": total,
-        "model_summary": model_summary,
         "lot_summary": lot_summary,
+        "ms_make_options": ms_make_options,
+        "ms_dtype_options": ms_dtype_options,
         "entity_counts": entity_counts,
     })
 
@@ -967,33 +976,212 @@ async def _build_model_summary(db: AsyncSession, filters: list) -> list:
     return summary
 
 
-@router.get("/model-summary/tags")
-async def model_summary_tags(
-    model: str = "",
-    make: str = "",
-    q: str = "",
-    stage: str = "",
-    lot: str = "",
-    grade: str = "",
-    category: str = "",
-    device_type: str = "",
-    date_from: str = "",
-    date_to: str = "",
-    employee: str = "",
-    entity: str = "",
+# ── All Inventory: Model Summary (AJAX) ──────────────────────────────────────
+# One row per distinct Model + Make + Device Type + CPU + RAM + Storage, built
+# from the same devices the Tag table above shows: the page filters PLUS the Tag
+# table's own search box (tsearch). Its own filters (s_*) narrow only this
+# table. Per row: Touch / Grade / Stock Type / Entity breakdowns as counts.
+
+MS_UNKNOWN_MODEL, MS_UNKNOWN_MAKE, MS_NONE = "Unknown Model", "Unknown Make", "—"
+MS_GRADE_ORDER = ["A", "B", "C", "D", "E", "scrap", "NA"]
+MS_STOCK_LABELS = {"finish_good": "Finish Good", "as_is": "As-Is"}
+MS_TOUCH_LABELS = {"touch": "T", "non_touch": "NT"}
+
+
+def entity_abbr(name: str | None) -> str:
+    """'OxyPC Computers' -> 'OC', 'Renew Circuits' -> 'RC', 'Deshwal' -> 'DES'."""
+    n = (name or "").strip()
+    if not n or n == "Unassigned":
+        return "NA"
+    words = n.split()
+    return "".join(w[0] for w in words).upper() if len(words) > 1 else n[:3].upper()
+
+
+def _ms_ram_text(ram_summary, ram_gb) -> str:
+    # Same rule as the Tag table's RAM cell.
+    return ram_summary or (f"{ram_gb}GB" if ram_gb else MS_NONE)
+
+
+def _ms_storage_text(hdd_summary, storage_gb, storage_type) -> str:
+    # Same rule as the Tag table's Storage cell.
+    return hdd_summary or (f"{storage_gb}GB {storage_type or ''}".strip() if storage_gb else MS_NONE)
+
+
+def _ms_is_touch(touch_type) -> bool:
+    return (touch_type or "").strip().lower() == "touch"
+
+
+def _ms_null_or(col, values, null_label):
+    """col IN values, where null_label stands for NULL / empty."""
+    real = [v for v in values if v != null_label]
+    clauses = [col.in_(real)] if real else []
+    if len(real) != len(values):
+        clauses.append(or_(col.is_(None), col == ""))
+    return or_(*clauses)
+
+
+def _ms_own_filters(s_entity="", s_make="", s_device_type="", s_touch="", s_stock="", s_grade="") -> list:
+    w = []
+    if _multi(s_entity):
+        w.append(_ms_null_or(Device.entity, _multi(s_entity), "Unassigned"))
+    if _multi(s_make):
+        w.append(_ms_null_or(Device.brand, _multi(s_make), MS_UNKNOWN_MAKE))
+    if _multi(s_device_type):
+        w.append(_ms_null_or(Device.device_type, _multi(s_device_type), MS_NONE))
+    touch = set(_multi(s_touch))
+    if touch and touch != {"touch", "non_touch"}:
+        is_touch = func.lower(func.trim(func.coalesce(Device.touch_type, ""))) == "touch"
+        w.append(is_touch if "touch" in touch else ~is_touch)
+    stock = set(_multi(s_stock))
+    if stock and stock != {"finish_good", "as_is"}:
+        as_is = func.coalesce(Device.sub_lot_number, "") != ""
+        w.append(as_is if "as_is" in stock else ~as_is)
+    grades = _multi(s_grade)
+    if grades:
+        real = []
+        for g in grades:
+            try:
+                real.append(DeviceGrade(g))
+            except ValueError:
+                pass
+        clauses = [Device.grade.in_(real)] if real else []
+        if "NA" in grades:
+            clauses.append(Device.grade.is_(None))
+        if clauses:
+            w.append(or_(*clauses))
+    return w
+
+
+async def _ms_page_scope(db, q, stage, lot, grade, category, device_type, date_from, date_to,
+                         employee, entity, exclude_sold, fs, tsearch) -> list:
+    """Exactly the devices the Tag table shows (its feed: /devices/data)."""
+    f = _device_search_filters(q, stage, lot, grade, category, device_type, date_from, date_to,
+                               entity=entity, exclude_sold=_exclude_sold(exclude_sold, fs))
+    if employee:
+        f.append(await _employee_device_id_filter(db, employee))
+    t = _spec_search_clause(tsearch, extra_cols=(Lot.lot_number,))
+    if t is not None:
+        f.append(t)
+    return f
+
+
+def _ms_key(model, brand, device_type, cpu, ram_summary, ram_gb, hdd_summary, storage_gb, storage_type):
+    return (model or MS_UNKNOWN_MODEL, brand or MS_UNKNOWN_MAKE, device_type or MS_NONE,
+            (cpu or "").strip() or MS_NONE, _ms_ram_text(ram_summary, ram_gb),
+            _ms_storage_text(hdd_summary, storage_gb, storage_type))
+
+
+@router.get("/model-summary/data")
+async def model_summary_data(
+    q: str = "", stage: str = "", lot: str = "", grade: str = "", category: str = "",
+    device_type: str = "", date_from: str = "", date_to: str = "", employee: str = "",
+    entity: str = "", exclude_sold: str = "", fs: str = "", tsearch: str = "",
+    s_entity: str = "", s_make: str = "", s_device_type: str = "",
+    s_touch: str = "", s_stock: str = "", s_grade: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(view_allowed),
 ):
-    """Per-tag detail for one Model Based row, loaded when the modal opens.
+    """Rows for the All Inventory Model Summary table. Grouped in SQL on the raw
+    columns (one row per distinct combination incl. entity / touch / stock /
+    grade), then folded in Python into the displayed rows — the RAM / Storage
+    text is derived from several columns, same as the Tag table."""
+    from models.role_permissions import can_view_pricing as _cvp
+    show_pricing = _cvp(getattr(current_user.role, "value", current_user.role))
 
-    Takes the same filter parameters as the page so the modal shows the same
-    devices the summary counted. "Unknown Model" / "Unknown Make" match rows
-    whose column is NULL or empty, mirroring how the summary folds them.
-    """
-    filters = _device_search_filters(q, stage, lot, grade, category, device_type,
-                                     date_from, date_to, entity=entity)
-    if employee:
-        filters.append(await _employee_device_id_filter(db, employee))
+    page_scope = await _ms_page_scope(db, q, stage, lot, grade, category, device_type, date_from,
+                                      date_to, employee, entity, exclude_sold, fs, tsearch)
+    scope = [Device.is_trashed == False, *page_scope]  # noqa: E712
+    own = _ms_own_filters(s_entity, s_make, s_device_type, s_touch, s_stock, s_grade)
+
+    costing = (
+        select(DeviceCosting.device_id.label("device_id"),
+               func.max(DeviceCosting.total_cost).label("total_cost"))
+        .group_by(DeviceCosting.device_id).subquery()
+    )
+    # Raw columns only in GROUP BY — Postgres won't match an expression that
+    # carries its own bind parameters (see _build_model_summary).
+    cols = (Device.model, Device.brand, Device.device_type, Device.cpu, Device.ram_summary,
+            Device.ram_gb, Device.hdd_summary, Device.storage_gb, Device.storage_type,
+            Device.entity, Device.touch_type, Device.grade, Device.sub_lot_number)
+    rows = (await db.execute(
+        select(*cols, func.count(Device.id).label("n"),
+               func.sum(_device_price_expr(costing)).label("price"))
+        .select_from(Device).join(Lot, Device.lot_id == Lot.id)
+        .outerjoin(costing, costing.c.device_id == Device.id)
+        .where(*scope, *own)
+        .group_by(*cols)
+    )).all()
+
+    groups: dict = {}
+    for r in rows:
+        key = _ms_key(r.model, r.brand, r.device_type, r.cpu, r.ram_summary, r.ram_gb,
+                      r.hdd_summary, r.storage_gb, r.storage_type)
+        g = groups.get(key)
+        if g is None:
+            g = groups[key] = {"model": key[0], "make": key[1], "device_type": key[2], "cpu": key[3],
+                               "ram": key[4], "storage": key[5], "total": 0, "price": 0.0,
+                               "entity": {}, "touch": {}, "stock": {}, "grade": {}}
+        n = r.n or 0
+        g["total"] += n
+        g["price"] += float(r.price or 0)
+        ent = (r.entity or "").strip() or "Unassigned"
+        g["entity"][ent] = g["entity"].get(ent, 0) + n
+        t = "T" if _ms_is_touch(r.touch_type) else "NT"
+        g["touch"][t] = g["touch"].get(t, 0) + n
+        st = "As-Is" if (r.sub_lot_number or "").strip() else "Finish Good"
+        g["stock"][st] = g["stock"].get(st, 0) + n
+        gr = getattr(r.grade, "value", r.grade) or "NA"
+        g["grade"][gr] = g["grade"].get(gr, 0) + n
+
+    out = sorted(groups.values(), key=lambda g: g["total"], reverse=True)
+    for g in out:
+        g["price"] = round(g["price"], 2) if show_pricing else None
+
+    # Make / Device Type options = what the Tag table's devices actually hold
+    opt_rows = (await db.execute(
+        select(Device.brand, Device.device_type).select_from(Device)
+        .join(Lot, Device.lot_id == Lot.id).where(*scope).distinct()
+    )).all()
+    makes = sorted({b or MS_UNKNOWN_MAKE for b, _ in opt_rows}, key=str.lower)
+    dtypes = sorted({d or MS_NONE for _, d in opt_rows}, key=str.lower)
+    entities = list(await entity_values(db))
+    for g in out:
+        for e in g["entity"]:
+            if e not in entities:
+                entities.append(e)
+    if "Unassigned" not in entities:
+        entities.append("Unassigned")
+    from utils.grades import grade_options as _grade_options
+    return JSONResponse({
+        "rows": out,
+        "show_pricing": show_pricing,
+        "entity_abbr": {e: entity_abbr(e) for e in entities},
+        "grade_order": MS_GRADE_ORDER,
+        "options": {
+            "make": makes, "device_type": dtypes, "entity": entities,
+            "grade": [[v, l] for v, l in _grade_options()] + [["NA", "No Grade"]],
+        },
+    })
+
+
+@router.get("/model-summary/tags")
+async def model_summary_tags(
+    model: str = "", make: str = "", m_device_type: str = "", m_cpu: str = "",
+    m_ram: str = "", m_storage: str = "",
+    q: str = "", stage: str = "", lot: str = "", grade: str = "", category: str = "",
+    device_type: str = "", date_from: str = "", date_to: str = "", employee: str = "",
+    entity: str = "", exclude_sold: str = "", fs: str = "", tsearch: str = "",
+    s_entity: str = "", s_make: str = "", s_device_type: str = "",
+    s_touch: str = "", s_stock: str = "", s_grade: str = "",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(view_allowed),
+):
+    """Per-tag detail for one Model Summary row, loaded when the modal opens.
+    Same scope as the row (page filters + Tag table search + summary filters),
+    matched on all six grouping fields."""
+    page_scope = await _ms_page_scope(db, q, stage, lot, grade, category, device_type, date_from,
+                                      date_to, employee, entity, exclude_sold, fs, tsearch)
+    own = _ms_own_filters(s_entity, s_make, s_device_type, s_touch, s_stock, s_grade)
 
     def _match(col, value, unknown_label):
         if value == unknown_label:
@@ -1001,23 +1189,32 @@ async def model_summary_tags(
         return col == value
 
     rows = (await db.execute(
-        select(Device.barcode, Device.grade, StorageLocation.unit_id,
-               StorageLocation.unit_type)
+        select(Device.barcode, Device.grade, Device.device_type, Device.cpu, Device.ram_summary,
+               Device.ram_gb, Device.hdd_summary, Device.storage_gb, Device.storage_type,
+               Device.model, Device.brand, StorageLocation.unit_id, StorageLocation.unit_type)
         .select_from(Device)
         .join(Lot, Device.lot_id == Lot.id)
         .outerjoin(StorageLocation, Device.location_id == StorageLocation.id)
-        .where(Device.is_trashed == False, *filters,
-               _match(Device.model, model, "Unknown Model"),
-               _match(Device.brand, make, "Unknown Make"))
+        .where(Device.is_trashed == False, *page_scope, *own,  # noqa: E712
+               _match(Device.model, model, MS_UNKNOWN_MODEL),
+               _match(Device.brand, make, MS_UNKNOWN_MAKE))
         .order_by(Device.barcode)
     )).all()
-
-    return JSONResponse({"tags": [{
-        "barcode": barcode,
-        "location_id": unit_id or "—",
-        "location_type": UNIT_TYPE_LABELS.get(unit_type, unit_type) if unit_type else "—",
-        "grade": getattr(g, "value", g) if g else "—",
-    } for barcode, g, unit_id, unit_type in rows]})
+    want = (model, make, m_device_type, m_cpu, m_ram, m_storage)
+    tags = []
+    for r in rows:
+        key = _ms_key(r.model, r.brand, r.device_type, r.cpu, r.ram_summary, r.ram_gb,
+                      r.hdd_summary, r.storage_gb, r.storage_type)
+        # Fields not sent (older callers) are not compared
+        if any(w and k != w for k, w in zip(key, want)):
+            continue
+        tags.append({
+            "barcode": r.barcode,
+            "location_id": r.unit_id or "—",
+            "location_type": UNIT_TYPE_LABELS.get(r.unit_type, r.unit_type) if r.unit_type else "—",
+            "grade": getattr(r.grade, "value", r.grade) if r.grade else "—",
+        })
+    return JSONResponse({"tags": tags})
 
 
 _EXPORT_HEADER = [

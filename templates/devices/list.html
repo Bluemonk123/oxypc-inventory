@@ -178,50 +178,59 @@
 </div>
 
 <!-- Model Based Table -->
+{# Model Summary (2026-10-10): one row per Model + Make + Device Type + CPU +
+   RAM + Storage, built from exactly the devices the Tag table above shows
+   (page filters + the Tag table's own search box). Rows load by AJAX from
+   /devices/model-summary/data and reload when the Tag table's search or this
+   table's own filters change. Its search box covers Make / Model / CPU / RAM /
+   Storage (words together or alone); the Total row (tfoot) sums only the rows
+   that search leaves visible. #}
 <div class="card border-0 shadow-sm mt-3">
-  {# Global Table convention (static/js/global-table.js): search lives in the
-     table's own toolbar now, scoped to the Model Names column via the
-     columnDefs searchable:false/true pair on its initGlobalTable call below
-     — no separate header search box duplicating it. No .table-responsive
-     wrapper either, for the same reason devicesTable above has none:
-     initGlobalTable's own scrollX already owns horizontal scrolling. #}
-  <div class="card-header bg-white py-2 d-flex justify-content-between align-items-center">
-    <strong class="small"><i class="bi bi-collection me-1"></i>Model Based Summary</strong>
+  <div class="card-header bg-white py-2">
+    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <strong class="small"><i class="bi bi-collection me-1"></i>Model Based Summary</strong>
+      <div id="msFilters" class="d-flex flex-wrap gap-2 align-items-center">
+        {{ ms.multiselect_inline('s_entity', 'Entity', entity_options + ['Unassigned'], '') }}
+        {{ ms.multiselect_inline('s_make', 'Make', ms_make_options, '') }}
+        {{ ms.multiselect_inline('s_device_type', 'Device Type', ms_dtype_options, '') }}
+        {{ ms.multiselect_inline('s_touch', 'Touch Type', [('touch', 'Touch (T)'), ('non_touch', 'Non-Touch (NT)')], '') }}
+        {{ ms.multiselect_inline('s_stock', 'Stock Type', [('finish_good', 'Finish Good'), ('as_is', 'As-Is')], '') }}
+        {{ ms.multiselect_inline('s_grade', 'Grade', grade_options() + [('NA', 'No Grade')], '') }}
+        <button type="button" id="msResetBtn" class="btn btn-sm btn-outline-secondary" title="Clear these filters">Reset</button>
+      </div>
+    </div>
   </div>
   <div class="card-body p-0">
-      <table id="modelSummaryTable" class="table table-hover table-sm mb-0">
+      <table id="modelSummaryTable" class="table table-hover table-sm mb-0" style="width:100%">
         <thead class="table-dark">
           <tr>
             <th>Model Names</th>
             <th>Model Make</th>
             <th>Device Type</th>
+            <th>CPU</th>
+            <th>RAM</th>
+            <th>Storage</th>
+            <th>Touch Type</th>
+            <th>Grade</th>
+            <th>Stock Type</th>
             <th>Total Count</th>
             {% if can_view_pricing(current_user) %}<th>Total Price</th>{% endif %}
-            <th>Repaired</th>
             <th></th>
           </tr>
         </thead>
-        <tbody>
-          {% for g in model_summary %}
-          <tr>
-            <td class="small">{{ g.model }}</td>
-            <td class="small">{{ g.make }}</td>
-            <td class="small">{{ g.device_type }}</td>
-            <td class="small">{{ g.total_count }}</td>
-            {% if can_view_pricing(current_user) %}<td class="small">₹{{ "{:,.0f}".format(g.total_price) }}</td>{% endif %}
-            <td class="small">{{ g.repaired_count }}</td>
-            <td class="text-nowrap">
-              <button type="button" class="btn btn-xs btn-outline-primary py-0 px-1 small"
-                      title="View" onclick='showModelDetail({{ g | tojson }})'>
-                <i class="bi bi-eye"></i>
-              </button>
-            </td>
+        <tbody></tbody>
+        <tfoot>
+          <tr class="table-light fw-semibold" id="msTotalRow">
+            <td class="fw-bold">Total</td>
+            <td></td><td></td><td></td><td></td><td></td>
+            <td class="ms-foot-touch"></td>
+            <td class="ms-foot-grade"></td>
+            <td class="ms-foot-stock"></td>
+            <td class="ms-foot-total"></td>
+            {% if can_view_pricing(current_user) %}<td class="ms-foot-price"></td>{% endif %}
+            <td></td>
           </tr>
-          {% endfor %}
-          {% if not model_summary %}
-          <tr><td colspan="7" class="text-center text-muted small py-3">No models found.</td></tr>
-          {% endif %}
-        </tbody>
+        </tfoot>
       </table>
   </div>
 </div>
@@ -316,15 +325,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <div class="d-flex gap-2 mb-3 flex-wrap">
-          <span class="badge bg-success">Grade A: <span id="mdGradeA">0</span></span>
-          <span class="badge bg-warning text-dark">Grade B: <span id="mdGradeB">0</span></span>
-          <span class="badge bg-secondary">Grade C: <span id="mdGradeC">0</span></span>
-          {% if can_view_pricing(current_user) %}
-          <span class="badge bg-light text-dark">Unit Price: ₹<span id="mdUnitPrice">0</span></span>
-          <span class="badge bg-light text-dark">Total Price: ₹<span id="mdTotalPrice">0</span></span>
-          {% endif %}
-        </div>
+        <div class="d-flex gap-2 mb-3 flex-wrap" id="mdBadges"></div>
         <div class="table-responsive">
           <table class="table table-sm table-hover mb-0">
             <thead class="table-light">
@@ -552,26 +553,150 @@ $(document).ready(function() {
     f.submit();
   });
 
-  // Model Based table (Global Table module — static/js/global-table.js).
-  // The old header search box only ever searched the Model Names column
-  // (never Make/Device Type/counts); reusing initGlobalTable's own search
-  // box for that means restricting *it* to column 0 instead, or the box
-  // would start matching Make/Device Type too — a real behavior change,
-  // not just a relocation. NOT a targets:'_all'+override:0 pair — DataTables
-  // resolves '_all' columnDefs last regardless of array position, so a
-  // more-specific same-key override placed after it (or before it) still
-  // loses to '_all'; found live 2026-09-03 (search for "HP" against Model
-  // Make matched despite the "override" entry). Listing the actual
-  // not-column-0 indices sidesteps that resolution order entirely.
-  var MODEL_NOT_SEARCHABLE_COLS = CAN_VIEW_PRICING ? [1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5];
+  // ── Model Based Summary ─────────────────────────────────────────────────
+  // Search covers Make / Model / CPU / RAM / Storage only (cols 0-5 minus
+  // Device Type); DataTables' smart search ANDs the words, so "Dell i5 8GB"
+  // works together or one word alone. Listing the not-searchable indices
+  // instead of targets:'_all' + override — '_all' is resolved last and would
+  // win (found live 2026-09-03).
+  var MS_PRICE = CAN_VIEW_PRICING;
+  var MS_TOTAL_COL = 9;
+  var MODEL_NOT_SEARCHABLE_COLS = MS_PRICE ? [2, 6, 7, 8, 9, 10, 11] : [2, 6, 7, 8, 9, 10];
+  var MS = { abbr: {}, gradeOrder: [], tsearch: null, req: 0 };
+  function msEsc(v) { return $('<div>').text(v == null ? '' : String(v)).html(); }
+  function msGradeCls(g) {
+    return g === 'A' ? 'success' : g === 'B' ? 'warning text-dark' : g === 'C' ? 'secondary'
+         : (g === 'D' || g === 'scrap') ? 'danger' : 'light text-dark border';
+  }
+  function msBadge(text, cls, title) {
+    return '<span class="badge bg-' + cls + ' me-1"' + (title ? ' title="' + msEsc(title) + '"' : '') + '>' + msEsc(text) + '</span>';
+  }
+  function msOrdered(map, order) {
+    var keys = Object.keys(map || {}).filter(function (k) { return map[k] > 0; });
+    if (order) keys.sort(function (a, b) {
+      var ia = order.indexOf(a), ib = order.indexOf(b);
+      return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib) || a.localeCompare(b);
+    });
+    return keys;
+  }
+  function msTouchHtml(m) {
+    return '<span class="text-nowrap">' + msOrdered(m, ['T', 'NT']).map(function (k) {
+      return msBadge(k + '-' + m[k], k === 'T' ? 'primary' : 'secondary', k === 'T' ? 'Touch' : 'Non-Touch');
+    }).join('') + '</span>';
+  }
+  function msGradeHtml(m) {
+    return '<span class="text-nowrap">' + msOrdered(m, MS.gradeOrder).map(function (k) {
+      return msBadge((k === 'scrap' ? 'Scrap' : k) + '-' + m[k], msGradeCls(k), k === 'NA' ? 'No Grade' : 'Grade ' + k);
+    }).join('') + '</span>';
+  }
+  function msStockHtml(m) {
+    return '<span class="text-nowrap">' + msOrdered(m, ['Finish Good', 'As-Is']).map(function (k) {
+      return msBadge(k + '-' + m[k], k === 'As-Is' ? 'warning text-dark' : 'success');
+    }).join('') + '</span>';
+  }
+  function msTotalHtml(total, m) {
+    return '<span class="text-nowrap"><strong class="me-1">' + total + '</strong>' +
+      msOrdered(m).map(function (k) {
+        return msBadge((MS.abbr[k] || k) + '-' + m[k], 'light text-dark border', k);
+      }).join('') + '</span>';
+  }
+  function msMoney(v) { return '₹' + Math.round(Number(v || 0)).toLocaleString('en-IN'); }
+
+  var msColumns = [
+    { data: 'model', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
+    { data: 'make', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
+    { data: 'device_type', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
+    { data: 'cpu', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
+    { data: 'ram', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
+    { data: 'storage', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
+    { data: 'touch', orderable: false, render: function (d, t) { return t === 'display' ? msTouchHtml(d) : ''; } },
+    { data: 'grade', orderable: false, render: function (d, t) { return t === 'display' ? msGradeHtml(d) : ''; } },
+    { data: 'stock', orderable: false, render: function (d, t) { return t === 'display' ? msStockHtml(d) : ''; } },
+    { data: 'total', render: function (d, t, row) { return t === 'display' ? msTotalHtml(d, row.entity) : d; } },
+  ];
+  if (MS_PRICE) msColumns.push({ data: 'price', render: function (d, t) { return t === 'display' ? msMoney(d) : (d || 0); } });
+  msColumns.push({ data: null, orderable: false, render: function (d, t, row, meta) {
+    return '<button type="button" class="btn btn-xs btn-outline-primary py-0 px-1 small ms-view-btn" title="View" data-row="' + meta.row + '"><i class="bi bi-eye"></i></button>';
+  } });
+
   var dtModel = initGlobalTable('#modelSummaryTable', {
-    order: [],
+    data: [],
+    columns: msColumns,
+    order: [[MS_TOTAL_COL, 'desc']],
     columnDefs: [
-      { orderable: false, targets: [-1] },
       { searchable: false, targets: MODEL_NOT_SEARCHABLE_COLS },
     ],
+    language: { emptyTable: 'No models found.' },
+    footerCallback: function () { msUpdateTotals(this.api()); },
   });
-  $(dtModel.table().container()).find('input[type="search"]').attr('placeholder', 'Search Model Names…');
+  $(dtModel.table().container()).find('input[type="search"]').attr('placeholder', 'Search Make, Model, CPU, RAM, Storage…');
+
+  // Total row: only the rows the search leaves visible (all pages)
+  function msUpdateTotals(api) {
+    var sum = { total: 0, price: 0, entity: {}, touch: {}, stock: {}, grade: {} };
+    api.rows({ search: 'applied' }).data().each(function (r) {
+      sum.total += r.total || 0;
+      sum.price += Number(r.price || 0);
+      ['entity', 'touch', 'stock', 'grade'].forEach(function (k) {
+        Object.keys(r[k] || {}).forEach(function (x) { sum[k][x] = (sum[k][x] || 0) + r[k][x]; });
+      });
+    });
+    var $f = $(api.table().footer());
+    $f.find('.ms-foot-touch').html(msTouchHtml(sum.touch));
+    $f.find('.ms-foot-grade').html(msGradeHtml(sum.grade));
+    $f.find('.ms-foot-stock').html(msStockHtml(sum.stock));
+    $f.find('.ms-foot-total').html(msTotalHtml(sum.total, sum.entity));
+    $f.find('.ms-foot-price').html(msMoney(sum.price));
+  }
+
+  function msParams() {
+    var p = new URLSearchParams(window.location.search);
+    var params = new URLSearchParams();
+    ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'employee', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
+      .forEach(function (k) { params.set(k, p.get(k) || ''); });
+    params.set('tsearch', MS.tsearch || '');
+    ['s_entity', 's_make', 's_device_type', 's_touch', 's_stock', 's_grade'].forEach(function (k) {
+      var el = document.getElementById('ms_val_' + k);
+      params.set(k, el ? el.value : '');
+    });
+    return params;
+  }
+  window._msParams = msParams;
+  function msLoad() {
+    var my = ++MS.req;
+    $('#modelSummaryTable_processing').show();
+    fetch('/devices/model-summary/data?' + msParams().toString())
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (d) {
+        if (my !== MS.req) return;          // a newer request superseded this one
+        MS.abbr = d.entity_abbr || {};
+        MS.gradeOrder = d.grade_order || [];
+        dtModel.clear().rows.add(d.rows || []).draw();
+      })
+      .catch(function () {
+        if (my !== MS.req) return;
+        dtModel.clear().draw();
+      });
+  }
+  var msTimer = null;
+  function msSchedule() { clearTimeout(msTimer); msTimer = setTimeout(msLoad, 300); }
+  // The shared .ms-filter handler (top of this script) writes the hidden
+  // ms_val_* input first; these run after it.
+  $('#msFilters').on('change', '.ms-opt', msSchedule);
+  document.querySelectorAll('#msFilters .ms-all, #msFilters .ms-none').forEach(function (b) {
+    b.addEventListener('click', msSchedule);
+  });
+  $('#msResetBtn').on('click', function () {
+    document.querySelectorAll('#msFilters .ms-none').forEach(function (b) { b.click(); });
+  });
+  // Follow the Tag table's own search box: reload when its term changes.
+  dt.on('draw', function () {
+    var term = dt.search() || '';
+    if (term !== MS.tsearch) { MS.tsearch = term; msLoad(); }
+  });
+  $(dtModel.table().container()).on('click', '.ms-view-btn', function () {
+    showModelDetail(dtModel.row(this.closest('tr')).data());
+  });
 
   // Lot Based table (Global Table module). Unlike Model Based above, the old
   // header search box here already searched every column (dtLot.search(),
@@ -626,32 +751,39 @@ function openCustomiseModal(source){
 }
 
 function showModelDetail(g){
-  $('#modelDetailTitle').text(g.model + ' (' + g.make + ')');
-  $('#mdGradeA').text(g.grade_counts.A || 0);
-  $('#mdGradeB').text(g.grade_counts.B || 0);
-  $('#mdGradeC').text(g.grade_counts.C || 0);
-  $('#mdUnitPrice').text(Number(g.unit_price || 0).toLocaleString('en-IN'));
-  $('#mdTotalPrice').text(Number(g.total_price || 0).toLocaleString('en-IN'));
+  if (!g) return;
+  $('#modelDetailTitle').text(g.model + ' (' + g.make + ') — ' + [g.device_type, g.cpu, g.ram, g.storage].join(' · '));
+  var gradeHtml = Object.keys(g.grade || {}).map(function (k) {
+    return '<span class="badge bg-light text-dark border">Grade ' + (k === 'NA' ? 'none' : k) + ': ' + g.grade[k] + '</span>';
+  }).join(' ');
+  var price = '';
+  if (CAN_VIEW_PRICING && g.total) {
+    price = ' <span class="badge bg-light text-dark">Unit Price: ₹' + Math.round(g.price / g.total).toLocaleString('en-IN') + '</span>' +
+            ' <span class="badge bg-light text-dark">Total Price: ₹' + Math.round(g.price || 0).toLocaleString('en-IN') + '</span>';
+  }
+  $('#mdBadges').html(gradeHtml + price);
   $('#mdTagsBody').html('<tr><td colspan="4" class="text-center text-muted small py-2">Loading tags…</td></tr>');
   var modal = new bootstrap.Modal(document.getElementById('modelDetailModal'));
   modal.show();
 
-  // Tags are fetched per group rather than embedded in every row of the page.
-  // The whole inventory's tag list used to be serialised into this HTML —
-  // ~22,000 entries — just so a modal could read one group of it.
-  // The page's own filters ride along so the modal shows what the row counted.
-  var params = new URLSearchParams(window.location.search);
+  // Same scope as the row: page filters + Tag table search + summary filters,
+  // matched on all six grouping fields.
+  var params = window._msParams ? window._msParams() : new URLSearchParams(window.location.search);
   params.set('model', g.model);
   params.set('make', g.make);
+  params.set('m_device_type', g.device_type);
+  params.set('m_cpu', g.cpu);
+  params.set('m_ram', g.ram);
+  params.set('m_storage', g.storage);
   fetch('/devices/model-summary/tags?' + params.toString())
     .then(function(r){ return r.ok ? r.json() : Promise.reject(r.status); })
     .then(function(d){
       var rows = '';
       (d.tags || []).forEach(function(t){
-        rows += '<tr><td class="small"><a href="/devices/' + encodeURIComponent(t.barcode) + '" target="_blank" class="font-monospace text-decoration-none">' + t.barcode + '</a></td>' +
-                '<td class="small">' + t.location_id + '</td>' +
-                '<td class="small">' + t.location_type + '</td>' +
-                '<td class="small">' + t.grade + '</td></tr>';
+        rows += '<tr><td class="small"><a href="/devices/' + encodeURIComponent(t.barcode) + '" target="_blank" class="font-monospace text-decoration-none">' + $('<div>').text(t.barcode).html() + '</a></td>' +
+                '<td class="small">' + $('<div>').text(t.location_id).html() + '</td>' +
+                '<td class="small">' + $('<div>').text(t.location_type).html() + '</td>' +
+                '<td class="small">' + $('<div>').text(t.grade).html() + '</td></tr>';
       });
       $('#mdTagsBody').html(rows || '<tr><td colspan="4" class="text-center text-muted small py-2">No tags.</td></tr>');
     })

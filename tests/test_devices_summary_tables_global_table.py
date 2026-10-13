@@ -30,18 +30,27 @@ def test_model_summary_table_uses_global_table():
     assert 'id="modelSearchBox"' not in src  # replaced by the module's own search box
 
 
-def test_model_summary_search_is_still_scoped_to_model_names_column():
-    # NOT targets:'_all' + a same-key override on targets:0 — DataTables
-    # resolves '_all' columnDefs last regardless of array position, so that
-    # pair silently leaves column 0 unsearchable too (found live 2026-09-03:
-    # searching "HP" against Model Make matched despite the "override").
-    # Listing the actual not-column-0 indices sidesteps the issue.
+def test_model_summary_search_covers_make_model_cpu_ram_storage():
+    # 2026-10-10: the search box covers Make / Model / CPU / RAM / Storage
+    # (cols 0,1,3,4,5). Still NOT targets:'_all' + a same-key override —
+    # DataTables resolves '_all' columnDefs last regardless of array position
+    # (found live 2026-09-03), so the not-searchable indices are listed.
     src = _read()
     block = src[src.index("initGlobalTable('#modelSummaryTable'"):][:700]
     assert "_all" not in block
     assert "MODEL_NOT_SEARCHABLE_COLS" in block
-    assert "[1, 2, 3, 4, 5, 6] : [1, 2, 3, 4, 5]" in src
-    assert "Search Model Names…" in src  # placeholder preserved on the relocated box
+    assert "[2, 6, 7, 8, 9, 10, 11] : [2, 6, 7, 8, 9, 10]" in src
+    assert "Search Make, Model, CPU, RAM, Storage…" in src
+
+
+def test_model_summary_has_total_row_and_own_filters():
+    src = _read()
+    assert 'id="msTotalRow"' in src
+    assert "rows({ search: 'applied' })" in src      # total follows the search
+    for f in ("s_entity", "s_make", "s_device_type", "s_touch", "s_stock", "s_grade"):
+        assert f"multiselect_inline('{f}'" in src
+    assert "/devices/model-summary/data" in src
+    assert "<th>Repaired</th>" not in src
 
 
 def test_lot_summary_table_uses_global_table():
