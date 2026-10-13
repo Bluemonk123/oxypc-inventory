@@ -16,7 +16,9 @@ from services.audit_engine import audit
 from routers.dealers import (
     _tc_field_options, _sub_category_filter, _can_manage_dealers,
     _assignee_name_map, _split_ids, dealer_export_response,
+    prune_unused_sub_categories,
 )
+from utils.master_data import refresh_master_cache
 from utils.master_data import master_values
 
 router = APIRouter(prefix="/assign-dealer-leads", tags=["assign-dealer-leads"])
@@ -185,7 +187,11 @@ async def delete_dealer_lead(
     )
     dealer.trashed_at = app_now()
     dealer.trashed_by = current_user.username
+    # Its Sub Category leaves the Master Dropdown if no other dealer uses it.
+    removed_subs = await prune_unused_sub_categories(db, [dealer.dealer_sub_category], current_user, request)
     await db.commit()
+    if removed_subs:
+        await refresh_master_cache(db)
     return RedirectResponse(url="/assign-dealer-leads?success=Dealer+deleted", status_code=302)
 
 

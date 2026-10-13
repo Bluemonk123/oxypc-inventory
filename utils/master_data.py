@@ -90,24 +90,32 @@ async def ensure_master_defaults(db: AsyncSession, categories=ENSURE_SEEDED_CATE
     return added
 
 
-async def add_missing_master_values(db: AsyncSession, category: str, values) -> list:
+async def add_missing_master_values(db: AsyncSession, category: str, values, reactivate: bool = False) -> list:
     """Add each value not already in the category (compared case-insensitively,
-    active or not) to the end of its display order. Returns the values added.
+    active or not) to the end of its display order. With reactivate=True a value
+    that exists but was switched off is switched back on, so it shows in the
+    dropdown again. Returns the values added or switched back on.
     Does not commit; the caller commits with its own changes."""
-    from sqlalchemy import func
     rows = (await db.execute(
-        select(MasterData.value, MasterData.display_order).where(MasterData.category == category)
-    )).all()
-    have = {(r.value or "").strip().lower() for r in rows}
+        select(MasterData).where(MasterData.category == category)
+    )).scalars().all()
+    have = {(r.value or "").strip().lower(): r for r in rows}
     order = max([r.display_order or 0 for r in rows], default=-1)
     added = []
     for v in values:
         v = (v or "").strip()
-        if not v or v.lower() in have:
+        if not v:
+            continue
+        existing = have.get(v.lower())
+        if existing is not None:
+            if reactivate and existing.is_active is False:
+                existing.is_active = True
+                added.append(existing.value)
             continue
         order += 1
-        db.add(MasterData(category=category, value=v, display_order=order))
-        have.add(v.lower())
+        row = MasterData(category=category, value=v, display_order=order)
+        db.add(row)
+        have[v.lower()] = row
         added.append(v)
     return added
 

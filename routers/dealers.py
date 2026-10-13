@@ -897,15 +897,20 @@ async def bulk_delete_dealers(
                    "by": current_user.username},
         request=request,
     )
+    sub_cats = [d.dealer_sub_category for d in dealers]
     counts = await _hard_delete_dealers(db, deletable)
+    removed_subs = await prune_unused_sub_categories(db, sub_cats, current_user, request)
     await db.commit()
+    if removed_subs:
+        await refresh_master_cache(db)
 
     calls = counts.get("dealer_calls", 0)
     # The pages send large selections in batches (the server refuses a request
     # with 1000+ form fields), so they ask for a JSON reply and total it up.
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
         return JSONResponse({"success": True, "deleted": counts.get("dealers", 0),
-                             "calls_removed": calls, "kept": len(blocked)})
+                             "calls_removed": calls, "kept": len(blocked),
+                             "sub_categories_removed": removed_subs})
 
     import urllib.parse
     parts = [f"{counts.get('dealers', 0)} dealer(s) deleted permanently"]
@@ -954,6 +959,46 @@ _DEALER_FINANCIAL_TABLES = [
     ("dealer_quotations", "quotations"),
     ("customer_receipts", "receipts"),
 ]
+
+
+async def prune_unused_sub_categories(db: AsyncSession, values, current_user, request=None) -> list:
+    """After dealers are deleted (Dealer Management, Assign Dealer Leads, single
+    or bulk): remove each of THEIR Sub Category values from the Master Dropdown
+    when no remaining live dealer uses it. Matched case-insensitively. Values no
+    deleted dealer had (e.g. added by hand in Master Dropdown) are never touched.
+    Archived dealers do not count as using a value: they are off every list.
+    Audits before deleting; does not commit; returns the values removed."""
+    wanted = {(v or "").strip().lower() for v in values if (v or "").strip()}
+    if not wanted:
+        return []
+    await db.flush()
+    norm = func.lower(func.trim(Dealer.dealer_sub_category))
+    still_used = set((await db.execute(
+        select(norm).where(Dealer.trashed_at.is_(None), norm.in_(wanted)).distinct()
+    )).scalars().all())
+    unused = wanted - still_used
+    if not unused:
+        return []
+    rows = (await db.execute(
+        select(MasterData).where(
+            MasterData.category == "dealer_sub_category",
+            func.lower(func.trim(MasterData.value)).in_(unused),
+        )
+    )).scalars().all()
+    if not rows:
+        return []
+    removed = [r.value for r in rows]
+    await audit(
+        db, user=current_user, action="MASTER_SUB_CATEGORY_AUTO_REMOVED",
+        table_name="master_data", record_id=f"bulk:{len(rows)}",
+        old_value={"category": "dealer_sub_category",
+                   "values": [{"id": str(r.id), "value": r.value, "is_active": r.is_active} for r in rows]},
+        new_value={"reason": "no dealer uses it after a dealer delete"},
+        request=request,
+    )
+    for r in rows:
+        await db.delete(r)
+    return removed
 
 
 async def _partition_deletable(db: AsyncSession, ids: list[str]) -> tuple[list[str], dict]:
@@ -1047,7 +1092,10 @@ async def delete_dealer(
             new_value={"business_name": name, "retained_because": reason},
             request=request,
         )
+        removed_subs = await prune_unused_sub_categories(db, [dealer.dealer_sub_category], current_user, request)
         await db.commit()
+        if removed_subs:
+            await refresh_master_cache(db)
         import urllib.parse
         msg = urllib.parse.quote(
             f"{name} has {reason} and was archived instead of deleted — "
@@ -1063,8 +1111,12 @@ async def delete_dealer(
         new_value={"deleted": True, "by": current_user.username},
         request=request,
     )
+    sub_cat = dealer.dealer_sub_category
     counts = await _hard_delete_dealers(db, deletable)
+    removed_subs = await prune_unused_sub_categories(db, [sub_cat], current_user, request)
     await db.commit()
+    if removed_subs:
+        await refresh_master_cache(db)
     calls = counts.get("dealer_calls", 0)
     import urllib.parse
     msg = urllib.parse.quote(
@@ -1456,6 +1508,14 @@ async def dealers_bulk_upload_submit(
         select(Dealer.google_cid).where(Dealer.google_cid.isnot(None), Dealer.trashed_at.is_(None))
     )).scalars().all())
     sub_categories_seen: list = []
+    # Existing Sub Category spellings (active or switched off), so "law firm" in
+    # a file is stored as the dropdown's "Law firm" and the Edit popup can
+    # pre-select it; the first spelling seen in the file wins for a new value.
+    sub_cat_canon = {
+        (v or "").strip().lower(): v for v in (await db.execute(
+            select(MasterData.value).where(MasterData.category == "dealer_sub_category")
+        )).scalars().all() if (v or "").strip()
+    }
 
     for i, row in enumerate(rows_data, start=2):  # row 1 = header
         business_name = row.get("business_name", "").strip()
@@ -1489,6 +1549,7 @@ async def dealers_bulk_upload_submit(
             sub_category = category_raw
         sub_category = sub_category[:150] or None
         if sub_category:
+            sub_category = sub_cat_canon.setdefault(sub_category.lower(), sub_category)
             sub_categories_seen.append(sub_category)
 
         pincode = (row.get("pincode", "").strip() or None)
@@ -1544,11 +1605,14 @@ async def dealers_bulk_upload_submit(
         except Exception as exc:
             errors.append({"row": i, "business_name": business_name, "reason": str(exc)})
 
-    # New Sub Category values from the file join the Master Dropdown, so the
-    # Add/Edit Dealer dropdown can show what these dealers were imported with.
+    # Sub Category values from the file that are not in the dropdown are
+    # created in the Master Dropdown (or switched back on if an admin had
+    # switched them off), so the Add/Edit Dealer dropdown shows what these
+    # dealers were imported with.
     new_sub_categories = []
     if added and sub_categories_seen:
-        new_sub_categories = await add_missing_master_values(db, "dealer_sub_category", sub_categories_seen)
+        new_sub_categories = await add_missing_master_values(
+            db, "dealer_sub_category", sub_categories_seen, reactivate=True)
 
     if added:
         await audit(
