@@ -61,7 +61,8 @@
     <tr>
       {% if selectable %}<th><input type="checkbox" id="modelSumSelectAll"></th>{% endif %}
       <th>Model</th><th>Make</th><th>Device Type</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th>
-      <th>Total Quantity</th><th>Total Purchase Price</th>
+      {# Total Purchase Price hidden by request (2026-10-13). #}
+      <th>Total Quantity</th><th>Grades</th>
       <th title="Sum of each tag's Min Selling Price (saved Set price, else unit price + Other Rates + margin)">Min Selling Price</th>
       <th>Action</th>
     </tr>
@@ -81,18 +82,17 @@
       <td class="text-nowrap">{{ g.gen }}</td>
       <td class="text-nowrap">{{ g.ram }}</td>
       <td class="text-nowrap">{{ g.storage }}</td>
-      {# Line 1: total tags; line 2: the same tags split by grade. #}
       <td class="text-nowrap" data-order="{{ g.total_count }}">
-        <div><span class="badge bg-primary">Total {{ g.total_count }}</span></div>
-        {% if g.grades %}
-        <div class="d-flex flex-wrap gap-1 mt-1">
+        <span class="badge bg-primary">{{ g.total_count }}</span>
+      </td>
+      {# The same tags split by grade (A, B, C, D, E, NG). #}
+      <td>
+        <div class="d-flex flex-wrap gap-1">
           {% for label, count, cls in g.grades %}
           <span class="badge {{ cls }}" title="{{ 'No grade' if label == 'NG' else 'Grade ' ~ label }}">{{ label }} {{ count }}</span>
           {% endfor %}
         </div>
-        {% endif %}
       </td>
-      <td class="text-nowrap" data-order="{{ g.total_purchase_price }}">₹{{ "{:,.0f}".format(g.total_purchase_price) }}</td>
       <td class="text-nowrap" data-order="{{ g.min_total }}">
         {% if g.min_lo is not none %}
           <span class="fw-semibold">₹{{ "{:,.0f}".format(g.min_total) }}</span>
@@ -258,7 +258,7 @@
             {% if r.model_breakdown %}
             <button type="button" class="btn btn-sm btn-info text-dark py-0 px-2 as-is-lot-model-btn"
                     data-label="{{ r.lot_number or '' }} / {{ r.sub_lot_number }}"
-                    data-items='{{ r.model_breakdown | tojson }}'>
+                    data-items='{{ r.model_details | tojson }}'>
               <i class="bi bi-tag me-1"></i>{{ r.model_count }}
             </button>
             {% else %}<span class="text-muted">0</span>{% endif %}
@@ -394,7 +394,7 @@
   </div>
 </div>
 <div class="modal fade" id="asIsLotModelModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title"><i class="bi bi-tag me-2"></i>Model Names
@@ -403,8 +403,15 @@
       </div>
       <div class="modal-body p-0">
         <table class="table table-sm mb-0">
-          <thead class="table-light"><tr><th>Model Name</th><th class="text-end">Count</th></tr></thead>
+          {# One row per configuration + grade of the sub-lot's available tags. #}
+          <thead class="table-light"><tr>
+            <th>Model</th><th>Make</th><th>Device Type</th><th>CPU</th><th>Gen</th>
+            <th>RAM</th><th>Storage</th><th>Grade</th><th class="text-end">Quantity</th>
+          </tr></thead>
           <tbody id="modelModalBody"></tbody>
+          <tfoot class="table-light"><tr>
+            <th colspan="8" class="text-end">Total</th><th class="text-end" id="modelModalTotal"></th>
+          </tr></tfoot>
         </table>
       </div>
     </div>
@@ -846,7 +853,7 @@ function wireAsIsLotButtons(){
     });
   });
   wireBreakdownModal('.as-is-lot-devtype-btn', 'asIsLotDevTypeModal', 'devTypeModalLabel', 'devTypeModalBody');
-  wireBreakdownModal('.as-is-lot-model-btn', 'asIsLotModelModal', 'modelModalLabel', 'modelModalBody');
+  wireModelDetailModal();
   document.querySelectorAll('.as-is-lot-sell-btn').forEach(function(btn){
     btn.addEventListener('click', function(){
       sellBarcodesList(JSON.parse(this.getAttribute('data-barcodes') || '[]'));
@@ -869,6 +876,40 @@ function escHtml(v){
   d.textContent = v == null ? '' : String(v);
   return d.innerHTML;
 }
+// Model Names popup (As-Is Lot): Model, Make, Device Type, CPU, Gen, RAM,
+// Storage, Grade, Quantity — one row per configuration + grade.
+var _gradeBadge = { A: 'bg-success', B: 'bg-warning text-dark', C: 'bg-danger', D: 'bg-danger',
+                    E: 'bg-info text-dark', Scrap: 'bg-dark', NG: 'bg-light text-dark border' };
+// One delegated listener (bound once), so buttons on every page of the
+// DataTable — and rows swapped in by refreshAsIsLotTable — all respond.
+var _modelDetailWired = false;
+function wireModelDetailModal(){
+  if (_modelDetailWired) return;
+  _modelDetailWired = true;
+  var modalEl = document.getElementById('asIsLotModelModal');
+  var modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+  document.addEventListener('click', function(e){
+    var btn = e.target.closest && e.target.closest('.as-is-lot-model-btn');
+    if (!btn) return;
+    (function(){
+      document.getElementById('modelModalLabel').textContent = this.getAttribute('data-label') || '';
+      var items = JSON.parse(this.getAttribute('data-items') || '[]');
+      var total = 0;
+      document.getElementById('modelModalBody').innerHTML = items.map(function(it){
+        total += Number(it.qty) || 0;
+        return '<tr><td>' + escHtml(it.model) + '</td><td>' + escHtml(it.make) + '</td><td>' +
+          escHtml(it.device_type) + '</td><td>' + escHtml(it.cpu) + '</td><td class="text-nowrap">' +
+          escHtml(it.gen) + '</td><td class="text-nowrap">' + escHtml(it.ram) + '</td><td class="text-nowrap">' +
+          escHtml(it.storage) + '</td><td><span class="badge ' + (_gradeBadge[it.grade] || 'bg-secondary') + '"' +
+          (it.grade === 'NG' ? ' title="No grade"' : '') + '>' + escHtml(it.grade) + '</span></td>' +
+          '<td class="text-end">' + escHtml(it.qty) + '</td></tr>';
+      }).join('') || '<tr><td colspan="9" class="text-center text-muted">None</td></tr>';
+      document.getElementById('modelModalTotal').textContent = total;
+      modal.show();
+    }).call(btn);
+  });
+}
+
 function wireBreakdownModal(btnSelector, modalId, labelId, bodyId){
   var modalEl = document.getElementById(modalId);
   var modal = new bootstrap.Modal(modalEl);
@@ -921,8 +962,8 @@ document.getElementById('asIsLotOpenForm').addEventListener('submit', function (
 
 // ── Model Summary: checkboxes + per-row Request modal + Request Selected ──
 var SUMMARY_OPTS = {
-  readyModelSummaryTable: {pageLength:12, order:[[8,'desc']], language:{emptyTable:'No Ready for Sale tags.'}, columnDefs:[{orderable:false, targets:[0,11]}, {visible:false, targets:[0]}]},
-  asIsModelSummaryTable:  {pageLength:12, order:[[7,'desc']], language:{emptyTable:'No As-Is tags.'}, columnDefs:[{orderable:false, targets:[10]}]},
+  readyModelSummaryTable: {pageLength:12, order:[[8,'desc']], language:{emptyTable:'No Ready for Sale tags.'}, columnDefs:[{orderable:false, targets:[0,9,11]}, {visible:false, targets:[0]}]},
+  asIsModelSummaryTable:  {pageLength:12, order:[[7,'desc']], language:{emptyTable:'No As-Is tags.'}, columnDefs:[{orderable:false, targets:[8,10]}]},
 };
 function buildSummaryTable(id){
   if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();

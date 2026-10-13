@@ -530,7 +530,8 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
         key = (device.lot_id, device.sub_lot_number)
         g = as_is_groups.setdefault(key, {
             "lot_number": lot_number, "device_types": Counter(),
-            "models": Counter(), "cpus": set(), "rams": set(), "storages": set(),
+            "models": Counter(), "model_configs": Counter(),
+            "cpus": set(), "rams": set(), "storages": set(),
             "availability": 0, "barcodes": [], "unit_prices": [], "max_prices": [],
             "assigned_to_user_id": device.assigned_to_user_id,
         })
@@ -540,6 +541,17 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
         g["device_types"][device.device_type or device.sub_category or "—"] += 1
         if device.model:
             g["models"][device.model] += 1
+        # Model Names popup: one line per configuration + grade.
+        _grade = getattr(device.grade, "value", device.grade) if device.grade else ""
+        g["model_configs"][(
+            device.model or "—", device.brand or "—",
+            device.device_type or device.sub_category or "—",
+            (device.cpu or "").strip() or "—", (device.generation or "").strip() or "—",
+            f"{device.ram_gb} GB" if device.ram_gb else "—",
+            (f"{device.storage_gb} GB" + (f" {device.storage_type}" if device.storage_type else ""))
+            if device.storage_gb else "—",
+            "NG" if not _grade else ("Scrap" if _grade == "scrap" else _grade),
+        )] += 1
         if device.cpu:
             g["cpus"].add(device.cpu)
         if device.ram_gb:
@@ -586,6 +598,14 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
         for (lot_id, sub_lot), g in as_is_groups.items():
             device_type_breakdown = [{"name": n, "count": c} for n, c in sorted(g["device_types"].items())]
             model_breakdown = [{"name": n, "count": c} for n, c in sorted(g["models"].items())]
+            _grade_order = {"A": 0, "B": 1, "C": 2, "D": 3, "E": 4, "Scrap": 5, "NG": 6}
+            model_details = [
+                {"model": k[0], "make": k[1], "device_type": k[2], "cpu": k[3], "gen": k[4],
+                 "ram": k[5], "storage": k[6], "grade": k[7], "qty": c}
+                for k, c in sorted(g["model_configs"].items(),
+                                   key=lambda kc: (kc[0][0], kc[0][1], kc[0][2], kc[0][3], kc[0][4],
+                                                   kc[0][5], kc[0][6], _grade_order.get(kc[0][7], 9)))
+            ]
             # Lot Price = what the available tags are worth together (sum of
             # their unit prices); Min Selling Price = Lot Price + As-Is margin
             # unless "Set price" saved an explicit override for this lot.
@@ -601,6 +621,7 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
                 "device_type_breakdown": device_type_breakdown,
                 "device_type_count": len(device_type_breakdown),
                 "model_breakdown": model_breakdown,
+                "model_details": model_details,
                 "model_count": len(model_breakdown),
                 "cpu": ", ".join(sorted(g["cpus"])),
                 "ram": ", ".join(sorted(g["rams"])),
