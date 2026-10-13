@@ -121,6 +121,14 @@ def _row_passes(device, touch: str, entities: list, dtypes: list | None = None) 
         return False
     return True
 
+def _grade_passes(device, grades: set) -> bool:
+    """Model Summary Grades filter: empty = every grade; "NG" = no grade set."""
+    if not grades:
+        return True
+    g = getattr(device.grade, "value", device.grade) if device.grade else ""
+    return (g or "NG") in grades
+
+
 @router.get("/sales/ready/barcodes")
 async def ready_list_barcodes(
     entity: str = "",
@@ -395,6 +403,9 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
     ms_touch, ms_entities = qp.get("ms_touch", ""), _entity_values(qp.get("ms_entity", ""))
     al_touch, al_entities = qp.get("al_touch", ""), _entity_values(qp.get("al_entity", ""))
     am_touch, am_entities = qp.get("am_touch", ""), _entity_values(qp.get("am_entity", ""))
+    # Grades filter on the two Model Summary tabs: A/B/C/D/E, "NG" = no grade.
+    ms_grades = set(_entity_values(qp.get("ms_grade", "")))
+    am_grades = set(_entity_values(qp.get("am_grade", "")))
     ms_dtypes = _entity_values(qp.get("ms_dtype", ""))
     al_dtypes = _entity_values(qp.get("al_dtype", ""))
     am_dtypes = _entity_values(qp.get("am_dtype", ""))
@@ -473,10 +484,12 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
 
     model_summary_ready = _build_model_summary(
         [r for r in devices if not (r[0].sub_lot_number or "").strip()
-         and _row_passes(r[0], ms_touch, ms_entities, ms_dtypes)])
+         and _row_passes(r[0], ms_touch, ms_entities, ms_dtypes)
+         and _grade_passes(r[0], ms_grades)])
     model_summary_as_is = _build_model_summary(
         [r for r in devices if (r[0].sub_lot_number or "").strip()
-         and _row_passes(r[0], am_touch, am_entities, am_dtypes)])
+         and _row_passes(r[0], am_touch, am_entities, am_dtypes)
+         and _grade_passes(r[0], am_grades)])
 
 
     # Dispatch-request state (approved/requested/rejected) and warranty used to
@@ -654,7 +667,10 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
               "al_touch": al_touch, "al_entity": qp.get("al_entity", ""),
               "am_touch": am_touch, "am_entity": qp.get("am_entity", ""),
               "ms_dtype": qp.get("ms_dtype", ""), "al_dtype": qp.get("al_dtype", ""),
-              "am_dtype": qp.get("am_dtype", "")},
+              "am_dtype": qp.get("am_dtype", ""),
+              "ms_grade": qp.get("ms_grade", ""), "am_grade": qp.get("am_grade", "")},
+        "summary_grade_options": [(code or "NG", label if code else "NG (No grade)")
+                                  for code, label, _cls in _SUMMARY_GRADES],
         # Device Type filter options: the types actually present in Ready to Sale.
         "device_type_options": sorted({_device_type_of(r[0]) for r in devices if _device_type_of(r[0])}),
         "ready_tag_count": sum(1 for r in devices if not (r[0].sub_lot_number or "").strip()),
@@ -790,32 +806,41 @@ async def edit_as_is_lot(
             return JSONResponse({"ok": False, "error": f"This lot already has a Sub-Lot {new_sub}. "
                                  "Choose a different Sub-Lot Number."}, status_code=400)
 
-    result = await db.execute(
-        update(Device).where(*group)
-        .values(sub_lot_number=new_sub, assigned_to_user_id=assign_uid)
-    )
-    if renamed:
-        price = (await db.execute(
-            select(AsIsLotPrice).where(AsIsLotPrice.lot_id == lid, AsIsLotPrice.sub_lot_number == old_sub)
-        )).scalar_one_or_none()
-        if price:
-            stale_target = (await db.execute(
-                select(AsIsLotPrice).where(AsIsLotPrice.lot_id == lid, AsIsLotPrice.sub_lot_number == new_sub)
+    # Any database error is reported in the popup (and logged) instead of a
+    # bare 500, so a failure on one deployment can be diagnosed from the UI.
+    try:
+        result = await db.execute(
+            update(Device).where(*group)
+            .values(sub_lot_number=new_sub, assigned_to_user_id=assign_uid)
+        )
+        if renamed:
+            price = (await db.execute(
+                select(AsIsLotPrice).where(AsIsLotPrice.lot_id == lid, AsIsLotPrice.sub_lot_number == old_sub)
             )).scalar_one_or_none()
-            if stale_target:  # left over from a lot opened earlier under that number
-                await db.delete(stale_target)
-                await db.flush()
-            price.sub_lot_number = new_sub
+            if price:
+                stale_target = (await db.execute(
+                    select(AsIsLotPrice).where(AsIsLotPrice.lot_id == lid, AsIsLotPrice.sub_lot_number == new_sub)
+                )).scalar_one_or_none()
+                if stale_target:  # left over from a lot opened earlier under that number
+                    await db.delete(stale_target)
+                    await db.flush()
+                price.sub_lot_number = new_sub
 
-    await audit(db, user=current_user, action="AS_IS_LOT_EDITED",
-                table_name="devices", record_id=f"{lot_id}:{old_sub}",
-                old_value={"sub_lot_number": old_sub,
-                           "assigned_to_user_id": {str(u) if u else None: c for u, c in before}},
-                new_value={"sub_lot_number": new_sub,
-                           "assigned_to_user_id": str(assign_uid) if assign_uid else None,
-                           "tags_updated": result.rowcount},
-                request=request)
-    await db.commit()
+        await audit(db, user=current_user, action="AS_IS_LOT_EDITED",
+                    table_name="devices", record_id=f"{lot_id}:{old_sub}",
+                    old_value={"sub_lot_number": old_sub,
+                               "assigned_to_user_id": {str(u) if u else None: c for u, c in before}},
+                    new_value={"sub_lot_number": new_sub,
+                               "assigned_to_user_id": str(assign_uid) if assign_uid else None,
+                               "tags_updated": result.rowcount},
+                    request=request)
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001
+        await db.rollback()
+        import logging
+        logging.getLogger(__name__).exception("As-Is lot edit failed for %s / %s", lot_id, old_sub)
+        msg = str(getattr(exc, "orig", exc)).strip().splitlines()[0][:300] if str(exc) else exc.__class__.__name__
+        return JSONResponse({"ok": False, "error": f"Could not save: {msg}"}, status_code=500)
     return JSONResponse({"ok": True, "tags_updated": result.rowcount, "sub_lot_number": new_sub})
 
 

@@ -197,6 +197,7 @@
   <div class="tab-pane fade" id="readyModelSumPane" role="tabpanel">
     <div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
       {{ touch_select('msTouch', f.ms_touch) }}
+      {{ ms.multiselect_inline('ms_grade', 'Grades', summary_grade_options, f.ms_grade) }}
       {{ ms.multiselect_inline('ms_dtype', 'Device Types', device_type_options, f.ms_dtype) }}
       {{ ms.multiselect_inline('ms_entity', 'Entity', entity_options, f.ms_entity) }}
       <button type="button" id="modelSumRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
@@ -317,6 +318,7 @@
   <div class="tab-pane fade" id="asIsModelSumPane" role="tabpanel">
     <div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
       {{ touch_select('amTouch', f.am_touch) }}
+      {{ ms.multiselect_inline('am_grade', 'Grades', summary_grade_options, f.am_grade) }}
       {{ ms.multiselect_inline('am_dtype', 'Device Types', device_type_options, f.am_dtype) }}
       {{ ms.multiselect_inline('am_entity', 'Entity', entity_options, f.am_entity) }}
     </div>
@@ -1073,6 +1075,7 @@ function readyPageUrl(){
   var p = new URLSearchParams();
   function v(id){ return (document.getElementById(id) || {}).value || ''; }
   [['ms_touch','msTouch'],['ms_entity','ms_val_ms_entity'],['ms_dtype','ms_val_ms_dtype'],
+   ['ms_grade','ms_val_ms_grade'],['am_grade','ms_val_am_grade'],
    ['al_touch','alTouch'],['al_entity','ms_val_al_entity'],['al_dtype','ms_val_al_dtype'],
    ['am_touch','amTouch'],['am_entity','ms_val_am_entity'],['am_dtype','ms_val_am_dtype']].forEach(function(x){
     if (v(x[1])) p.set(x[0], v(x[1]));
@@ -1101,12 +1104,12 @@ function refreshSummaryTable(id, badgeId){
       }
     });
 }
-[['msTouch','ms_val_ms_entity','ms_val_ms_dtype', function(){ return refreshSummaryTable('readyModelSummaryTable', 'msCountBadge'); }],
- ['amTouch','ms_val_am_entity','ms_val_am_dtype', function(){ return refreshSummaryTable('asIsModelSummaryTable', 'amCountBadge'); }],
+[['msTouch','ms_val_ms_entity','ms_val_ms_dtype', function(){ return refreshSummaryTable('readyModelSummaryTable', 'msCountBadge'); }, 'ms_val_ms_grade'],
+ ['amTouch','ms_val_am_entity','ms_val_am_dtype', function(){ return refreshSummaryTable('asIsModelSummaryTable', 'amCountBadge'); }, 'ms_val_am_grade'],
  ['alTouch','ms_val_al_entity','ms_val_al_dtype', function(){ return refreshAsIsLotTable(); }]].forEach(function(x){
   var sel = document.getElementById(x[0]);
   if (sel) sel.addEventListener('change', x[3]);
-  [x[1], x[2]].forEach(function(id){
+  [x[1], x[2], x[4]].forEach(function(id){
     var el = document.getElementById(id);
     if (el) el.addEventListener('ms:change', x[3]);
   });
