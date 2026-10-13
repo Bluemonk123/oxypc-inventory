@@ -43,18 +43,18 @@
 </div>
 
 <div class="row g-3 mb-3" id="assignDealerSummaryCards">
+  {% for count, label, color, cid in [
+       (active_count, 'Active Dealers', 'text-success', 'assignActiveCount'),
+       (inactive_count, 'Inactive Dealers', 'text-secondary', 'assignInactiveCount'),
+       (unassigned_count, 'Unassigned Dealers', 'text-warning', 'assignUnassignedCount'),
+       (assigned_count, 'Assigned Dealers', 'text-primary', 'assignAssignedCount')] %}
   <div class="col-6 col-md-3">
     <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold text-primary" id="assignTotalCount">{{ total_count }}</div>
-      <div class="small text-muted">Total Dealers</div>
+      <div class="fs-4 fw-bold {{ color }}" id="{{ cid }}">{{ count }}</div>
+      <div class="small text-muted">{{ label }}</div>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold text-warning" id="assignUnassignedCount">{{ unassigned_count }}</div>
-      <div class="small text-muted">Unassigned</div>
-    </div>
-  </div>
+  {% endfor %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -311,8 +311,8 @@
   });
 
   // Two checkboxes before the table's search box, mutually exclusive:
-  //   "Unassigned user"     — only rows with nobody in Assigned To
-  //   "Exclude Unassigned"  — only rows that DO have a user
+  //   "Unassigned Dealers" — only rows with nobody in Assigned To
+  //   "Assigned Dealers"   — only rows that DO have a user
   // Client-side filters, so they combine with the search box, drive what the
   // header select-all picks (it selects matching rows only), and survive the
   // table being rebuilt after an Assign.
@@ -327,12 +327,14 @@
     var $filter = $(dt.table().container()).find('.dataTables_filter');
     if ($filter.find('#adlUnassignedOnly').length) return;
     var box = function(id, label){
-      return $('<div class="form-check form-check-inline mb-0 me-2 text-nowrap">' +
+      // ms-2 on the label: the page's form-check styling left the text
+      // touching the box.
+      return $('<div class="form-check form-check-inline mb-0 me-3 text-nowrap">' +
         '<input class="form-check-input" type="checkbox" id="' + id + '">' +
-        '<label class="form-check-label small" for="' + id + '">' + label + '</label></div>');
+        '<label class="form-check-label small ms-2" for="' + id + '">' + label + '</label></div>');
     };
-    var $un = box('adlUnassignedOnly', 'Unassigned user');
-    var $ex = box('adlExcludeUnassigned', 'Exclude Unassigned');
+    var $un = box('adlUnassignedOnly', 'Unassigned Dealers');
+    var $ex = box('adlExcludeUnassigned', 'Assigned Dealers');
     $un.find('input').prop('checked', adlAssignFilter === 'unassigned');
     $ex.find('input').prop('checked', adlAssignFilter === 'assigned');
     var apply = function(){

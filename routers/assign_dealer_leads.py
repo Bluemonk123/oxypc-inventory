@@ -85,6 +85,9 @@ async def list_assign_dealer_leads(
 
     total_count = len(dealers)
     unassigned_count = sum(1 for d in dealers if not d.assigned_to)
+    # Tile cards (for the current filters). Inactive = every status other than
+    # active (inactive + blacklisted), so Active + Inactive = all dealers shown.
+    active_count = sum(1 for d in dealers if (d.status or "").lower() == "active")
     tc_options = await _tc_field_options(db)
 
     return templates.TemplateResponse("assign_dealer_leads/list.html", {
@@ -107,6 +110,9 @@ async def list_assign_dealer_leads(
         "can_manage_dealers": await _can_manage_dealers(db, current_user, "/dealers/bulk-delete"),
         "total_count": total_count,
         "unassigned_count": unassigned_count,
+        "assigned_count": total_count - unassigned_count,
+        "active_count": active_count,
+        "inactive_count": total_count - active_count,
         "whom_to_sell_options": tc_options["whom_to_sell"],
         "deals_in_options": tc_options["deals_in"],
         "call_mode_options": await master_values(db, "call_mode"),
