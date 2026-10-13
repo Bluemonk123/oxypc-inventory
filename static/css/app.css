@@ -338,6 +338,35 @@ fieldset:disabled .btn {
   overflow: visible;
 }
 
+/* Every Global Table uses normal cell padding (8px), even where the page
+   wrote .table-sm — one row/header height across the app (2026-10-13,
+   matched to Inventory Manager). DataTables' own sort-icon padding on
+   header cells is more specific and still wins. */
+.gtable.table-sm > :not(caption) > * > * {
+  padding: .5rem .5rem;
+}
+
+/* Rounded corners for scrolling Global Tables. The overflow:visible above
+   switches off the ".card-body table" rounding, so the rounding goes on the
+   scroll containers instead — the header strip and the body — which stay put
+   while the columns scroll sideways, so the corners never scroll away.
+   clip-path rather than border-radius + overflow, because the frozen
+   (sticky) first column escapes an overflow clip in Chrome. */
+.gtable-scroll-wrap .dataTables_scrollHead {
+  clip-path: inset(0 round .5em .5em 0 0);
+}
+.gtable-scroll-wrap .dataTables_scrollBody {
+  clip-path: inset(0 round 0 0 .5em .5em);
+}
+/* DataTables gives the header table a 6px top margin, which put the rounded
+   edge on empty space above the dark header; the space moves outside. */
+.gtable-scroll-wrap .dataTables_scrollHead table {
+  margin-top: 0 !important;
+}
+.gtable-scroll-wrap {
+  margin-top: 6px;
+}
+
 /* Table fills the card when content is narrower than it; scrollX computes and
    sets its own (wider) inline width once real column widths exceed that, and
    an inline style naturally outranks this class rule, so scrolling still

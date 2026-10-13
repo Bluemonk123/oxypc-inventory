@@ -360,6 +360,10 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
     var $firstBodyCell = $table.find('tbody tr:first-child td:first-child');
     var isCheckbox = $firstBodyCell.find('input[type="checkbox"]').length > 0;
     $table.toggleClass('gtable-checkbox-first', isCheckbox);
+    // With scrollX the visible header lives in a separate table
+    // (.dataTables_scrollHead); give it the same class so the select-all
+    // checkbox centres over the row checkboxes (app.css rule above).
+    $(dt.table().header()).closest('table').toggleClass('gtable-checkbox-first', isCheckbox);
     return isCheckbox;
   };
   dt.on('draw.dt', markCheckboxFirstColumn);

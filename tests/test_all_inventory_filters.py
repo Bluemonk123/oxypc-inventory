@@ -55,7 +55,7 @@ def test_page_renders_with_multiselect_and_no_movement(app_client, make_user):  
     _login(app_client, username, password)
     html = app_client.get("/devices", follow_redirects=True).text
 
-    for name in ("stage", "lot", "grade", "device_type", "employee", "entity"):
+    for name in ("stage", "lot", "grade", "device_type", "stock_type", "entity"):
         assert f'id="ms_val_{name}"' in html, f"{name} is not a multi-select"
     assert "ms-opt" in html
     # Movement table is gone, loader and all.

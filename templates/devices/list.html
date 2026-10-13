@@ -2,6 +2,13 @@
 {% block title %}Inventory Search — OxyPC{% endblock %}
 {% block head %}
 <link rel="stylesheet" href="/static/vendor/tom-select/css/tom-select.bootstrap5.min.css">
+<style>
+  /* One line per cell (Tag Number keeps its entity line underneath), so row
+     height matches Inventory Manager; a narrow window scrolls sideways with
+     the first column frozen instead of wrapping Model / CPU / Lot. */
+  #devicesTable tbody td { white-space: nowrap; vertical-align: middle; }
+  #devicesTable tbody td .gtable-clamp2 { white-space: nowrap; }
+</style>
 {% endblock %}
 {% block page_title %}Inventory Search{% endblock %}
 {% block content %}
@@ -16,12 +23,13 @@
         <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm barcode-field font-monospace"
                placeholder="Tag, make, model, CPU, RAM, storage — e.g. Dell i5 8GB">
       </div>
-      {{ ms.multiselect('stage', 'Stage', stage_choices, stage) }}
-      {{ ms.multiselect('lot', 'Lot', lot_choices, lot) }}
-      {{ ms.multiselect('grade', 'Grade', grade_options(), grade) }}
-      {{ ms.multiselect('device_type', 'Device Type', device_type_options, device_type) }}
-      {{ ms.multiselect('employee', 'Employee', employee_options, employee) }}
       {{ ms.multiselect('entity', 'Entity', entity_options, entity) }}
+      {{ ms.multiselect('device_type', 'Device Type', device_type_options, device_type) }}
+      {{ ms.multiselect('grade', 'Grade', grade_options(), grade) }}
+      {{ ms.multiselect('lot', 'Lot', lot_choices, lot) }}
+      {{ ms.multiselect('stock_type', 'Stock Type', stock_type_options, stock_type) }}
+      {{ ms.multiselect('stage', 'Stage', stage_choices, stage) }}
+      {# Date From/To filter on the date the tag reached its current stage. #}
       {% include "_date_range_fields.html" %}
       <div class="col-md-2 d-flex align-items-end">
         <div class="form-check mb-1">
@@ -101,7 +109,7 @@
         <i class="bi bi-upload me-1"></i>Upload Tags
       </button>
       <a id="exportCsvLink"
-         href="/devices/export?q={{ q | urlencode }}&stage={{ stage | urlencode }}&lot={{ lot | urlencode }}&grade={{ grade | urlencode }}&category={{ category | urlencode }}&device_type={{ device_type | urlencode }}&entity={{ entity | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}"
+         href="/devices/export?q={{ q | urlencode }}&stage={{ stage | urlencode }}&lot={{ lot | urlencode }}&grade={{ grade | urlencode }}&category={{ category | urlencode }}&device_type={{ device_type | urlencode }}&entity={{ entity | urlencode }}&stock_type={{ stock_type | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}"
          class="btn btn-sm btn-outline-success" onclick="return submitExport(event)"
          title="Exports the selected Tag Numbers, or every filtered result if none are ticked">
         <i class="bi bi-download me-1"></i>Export CSV
@@ -109,7 +117,7 @@
     </div>
   </div>
   <div class="card-body p-0">
-      <table id="devicesTable" class="table table-hover table-sm mb-0" style="width:100%">
+      <table id="devicesTable" class="table table-hover mb-0" style="width:100%">
         <thead class="table-dark">
           <tr>
             <th style="width:32px"><input type="checkbox" id="selectAllChk" class="form-check-input" title="Select all on this page"></th>
@@ -450,7 +458,7 @@ $(document).ready(function() {
       url: '/devices/data',
       data: function (d) {
         var p = new URLSearchParams(window.location.search);
-        ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'employee', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
+        ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
           .forEach(function (k) { d[k] = p.get(k) || ''; });
       },
       dataSrc: function (json) { return json.data; },
@@ -531,7 +539,7 @@ $(document).ready(function() {
     if (checked) {
       var p = new URLSearchParams(window.location.search);
       var params = new URLSearchParams();
-      ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'employee', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
+      ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
         .forEach(function (k) { params.set(k, p.get(k) || ''); });
       var r = await fetch('/devices/barcodes?' + params.toString());
       var d = await r.json();
@@ -652,7 +660,7 @@ $(document).ready(function() {
   function msParams() {
     var p = new URLSearchParams(window.location.search);
     var params = new URLSearchParams();
-    ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'employee', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
+    ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
       .forEach(function (k) { params.set(k, p.get(k) || ''); });
     params.set('tsearch', MS.tsearch || '');
     ['s_entity', 's_make', 's_device_type', 's_touch', 's_stock', 's_grade'].forEach(function (k) {
