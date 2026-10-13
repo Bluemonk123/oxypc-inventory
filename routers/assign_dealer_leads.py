@@ -16,7 +16,7 @@ from services.audit_engine import audit
 from routers.dealers import (
     _tc_field_options, _sub_category_filter, _can_manage_dealers,
     _assignee_name_map, _split_ids, dealer_export_response,
-    prune_unused_sub_categories,
+    prune_unused_dealer_values, _dealer_type_filter,
 )
 from utils.master_data import refresh_master_cache
 from utils.master_data import master_values
@@ -61,8 +61,7 @@ async def list_assign_dealer_leads(
         ))
     if status:
         base_query = base_query.where(Dealer.status == status)
-    if dealer_type:
-        base_query = base_query.where(Dealer.dealer_type == dealer_type)
+    base_query = _dealer_type_filter(base_query, dealer_type)
     base_query = _sub_category_filter(base_query, sub_category)
     if source:
         # Not shown as a control: lets a link (or a one-off clean-up) open just
@@ -187,8 +186,10 @@ async def delete_dealer_lead(
     )
     dealer.trashed_at = app_now()
     dealer.trashed_by = current_user.username
-    # Its Sub Category leaves the Master Dropdown if no other dealer uses it.
-    removed_subs = await prune_unused_sub_categories(db, [dealer.dealer_sub_category], current_user, request)
+    # Its Sub Category / Dealer Type leave the Master Dropdown if no other
+    # dealer uses them.
+    removed_subs = await prune_unused_dealer_values(
+        db, [(dealer.dealer_sub_category, dealer.dealer_type)], current_user, request)
     await db.commit()
     if removed_subs:
         await refresh_master_cache(db)

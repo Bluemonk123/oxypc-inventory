@@ -83,7 +83,7 @@
             <tr><td>city</td><td>No</td><td>Any city name</td></tr>
             <tr><td>state</td><td>No</td><td>State name (from Master Dropdown). Not a state? Taken from the pincode</td></tr>
             <tr><td>pincode</td><td>No</td><td>6-digit PIN code</td></tr>
-            <tr><td>dealer_type</td><td>No</td><td>retail, wholesale, online, corporate</td></tr>
+            <tr><td>dealer_type</td><td>No</td><td>A Dealer Type from Master Dropdown ({{ master_options('dealer_dealer_type') | join(', ') }}). Blank = Retail; a new type is added to the Master Dropdown</td></tr>
             <tr><td>dealer_sub_category <span class="text-muted">(or category)</span></td><td>No</td><td>Any text; new values are added to the Master Dropdown</td></tr>
             <tr><td>gst_number</td><td>No</td><td>15-char GST number</td></tr>
             <tr><td>address</td><td>No</td><td>Full address</td></tr>
@@ -118,6 +118,13 @@
             <div class="small text-muted">Errors</div>
           </div>
         </div>
+
+        {% if results.new_dealer_types %}
+        <div class="alert alert-info py-2 small">
+          <i class="bi bi-plus-circle me-1"></i>{{ results.new_dealer_types|length }} new Dealer Type
+          value(s) added to Master Dropdown: {{ results.new_dealer_types[:15]|join(', ') }}{% if results.new_dealer_types|length > 15 %}, …{% endif %}
+        </div>
+        {% endif %}
 
         {% if results.new_sub_categories %}
         <div class="alert alert-info py-2 small">

@@ -29,8 +29,13 @@
             <div class="col-md-4">
               <label class="form-label fw-semibold">Dealer Type</label>
               <select name="dealer_type" class="form-select">
+                {# Case-insensitive ("retail" stored, "Retail" listed); a type no
+                   longer listed stays selected, so saving never changes it. #}
+                {% set _cur = ((dealer.dealer_type if dealer else '') or '') %}
+                {% set _listed = dealer_type_options | map('lower') | list %}
+                {% if _cur and _cur | lower not in _listed %}<option value="{{ _cur }}" selected>{{ _cur if _cur != _cur | lower else _cur | title }}</option>{% endif %}
                 {% for t in dealer_type_options %}
-                <option value="{{ t }}" {% if dealer and dealer.dealer_type==t %}selected{% endif %}>{{ t | title }}</option>
+                <option value="{{ t }}" {% if _cur and _cur | lower == t | lower %}selected{% endif %}>{{ t if t != t | lower else t | title }}</option>
                 {% endfor %}
               </select>
             </div>

@@ -5,6 +5,7 @@ import csv
 import io
 import json
 import math
+import re
 from html import escape as esc
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Form, Request, Query
@@ -194,6 +195,45 @@ def _dealer_text_search(query, text: str):
 SUB_CATEGORY_NOT_SET = "__none__"
 
 
+def _dealer_type_filter(query, dealer_type: str):
+    """Dealer Type filter shared by Dealer Management and Assign Dealer Leads.
+    Case-insensitive: older dealers are stored as "retail" while the Master
+    Dropdown may list "Retail", and both must match the same option."""
+    dealer_type = (dealer_type or "").strip().lower()
+    if not dealer_type:
+        return query
+    return query.where(func.lower(func.trim(Dealer.dealer_type)) == dealer_type)
+
+
+# The four built-in Dealer Types. Never removed automatically when their last
+# dealer is deleted (types created by an upload are).
+STANDARD_DEALER_TYPES = ("retail", "wholesale", "corporate", "service")
+
+
+def dealer_type_label(value) -> str:
+    """Display text for a Dealer Type: older all-lowercase values ("retail")
+    read as "Retail"; anything else as entered, so "CA" stays "CA"."""
+    v = (value or "").strip()
+    return v.title() if v and v == v.lower() else v
+
+
+# Common spellings in uploaded files for the standard types.
+_DEALER_TYPE_ALIASES = {
+    "retailer": "retail", "retailers": "retail", "wholesaler": "wholesale",
+    "wholesalers": "wholesale", "corporates": "corporate", "services": "service",
+}
+
+
+def dealer_type_lookup(type_options) -> dict:
+    """{lowercased spelling: Master Dropdown value} for Dealer Type, including
+    the aliases above when their target is in the dropdown."""
+    m = {(t or "").strip().lower(): t for t in type_options if (t or "").strip()}
+    for alias, target in _DEALER_TYPE_ALIASES.items():
+        if target in m and alias not in m:
+            m[alias] = m[target]
+    return m
+
+
 def _sub_category_filter(query, sub_category: str):
     """Dealer Sub Category filter shared by Dealer Management and Assign Dealer
     Leads; "__none__" picks dealers with no Sub Category."""
@@ -229,8 +269,7 @@ def _dealer_base_query(
         base_query = base_query.where(Dealer.assigned_to == current_user.username)
     if city:
         base_query = base_query.where(Dealer.city.ilike(f"%{city}%"))
-    if dealer_type:
-        base_query = base_query.where(Dealer.dealer_type == dealer_type)
+    base_query = _dealer_type_filter(base_query, dealer_type)
     base_query = _sub_category_filter(base_query, sub_category)
 
     # Latest-call-derived filters (calling date range, quantities, whom-to-sell,
@@ -681,7 +720,7 @@ async def dealers_data(
         # popup); Status sits after Sub Category.
         row.extend([
             f'<a href="/dealers/{d.id}" class="fw-semibold text-decoration-none">{esc(d.business_name or "")}</a>',
-            f'<span class="badge bg-secondary">{esc((d.dealer_type or "").title())}</span>',
+            f'<span class="badge bg-secondary">{esc(dealer_type_label(d.dealer_type))}</span>',
             f'<span class="small">{esc(d.dealer_sub_category or "—")}</span>',
             status_cell,
             f'<span class="small">{esc(d.contact_person or "—")}</span>',
@@ -794,7 +833,7 @@ async def dealer_export_response(db: AsyncSession, dealer_ids: list, filename_pr
         rc = recent_call_map.get(str(d.id), {})
         outcome = rc.get("outcome", "")
         w.writerow([_csv_cell(v) for v in (
-            d.dealer_code, d.business_name, (d.dealer_type or "").title(), d.dealer_sub_category,
+            d.dealer_code, d.business_name, dealer_type_label(d.dealer_type), d.dealer_sub_category,
             OUTCOME_LABELS.get(outcome, (outcome or "").replace("_", " ").title()),
             d.contact_person, d.phone, d.email, d.address, d.city, d.state, d.pincode,
             d.website, d.google_cid, d.gstin,
@@ -897,9 +936,9 @@ async def bulk_delete_dealers(
                    "by": current_user.username},
         request=request,
     )
-    sub_cats = [d.dealer_sub_category for d in dealers]
+    used_values = [(d.dealer_sub_category, d.dealer_type) for d in dealers]
     counts = await _hard_delete_dealers(db, deletable)
-    removed_subs = await prune_unused_sub_categories(db, sub_cats, current_user, request)
+    removed_subs = await prune_unused_dealer_values(db, used_values, current_user, request)
     await db.commit()
     if removed_subs:
         await refresh_master_cache(db)
@@ -910,7 +949,7 @@ async def bulk_delete_dealers(
     if request.headers.get("x-requested-with") == "XMLHttpRequest":
         return JSONResponse({"success": True, "deleted": counts.get("dealers", 0),
                              "calls_removed": calls, "kept": len(blocked),
-                             "sub_categories_removed": removed_subs})
+                             "master_values_removed": removed_subs})
 
     import urllib.parse
     parts = [f"{counts.get('dealers', 0)} dealer(s) deleted permanently"]
@@ -961,18 +1000,15 @@ _DEALER_FINANCIAL_TABLES = [
 ]
 
 
-async def prune_unused_sub_categories(db: AsyncSession, values, current_user, request=None) -> list:
-    """After dealers are deleted (Dealer Management, Assign Dealer Leads, single
-    or bulk): remove each of THEIR Sub Category values from the Master Dropdown
-    when no remaining live dealer uses it. Matched case-insensitively. Values no
-    deleted dealer had (e.g. added by hand in Master Dropdown) are never touched.
-    Archived dealers do not count as using a value: they are off every list.
-    Audits before deleting; does not commit; returns the values removed."""
-    wanted = {(v or "").strip().lower() for v in values if (v or "").strip()}
+async def _prune_unused_master(db, column, category, values, current_user, request, protect=()) -> list:
+    """Remove each given value from a Master Dropdown category when no live
+    dealer has it in `column` any more (case-insensitive). Values in `protect`
+    are always kept. Audits before deleting; does not commit."""
+    wanted = {(v or "").strip().lower() for v in values if (v or "").strip()} - set(protect)
     if not wanted:
         return []
     await db.flush()
-    norm = func.lower(func.trim(Dealer.dealer_sub_category))
+    norm = func.lower(func.trim(column))
     still_used = set((await db.execute(
         select(norm).where(Dealer.trashed_at.is_(None), norm.in_(wanted)).distinct()
     )).scalars().all())
@@ -981,23 +1017,41 @@ async def prune_unused_sub_categories(db: AsyncSession, values, current_user, re
         return []
     rows = (await db.execute(
         select(MasterData).where(
-            MasterData.category == "dealer_sub_category",
+            MasterData.category == category,
             func.lower(func.trim(MasterData.value)).in_(unused),
         )
     )).scalars().all()
     if not rows:
         return []
-    removed = [r.value for r in rows]
     await audit(
-        db, user=current_user, action="MASTER_SUB_CATEGORY_AUTO_REMOVED",
+        db, user=current_user, action="MASTER_VALUE_AUTO_REMOVED",
         table_name="master_data", record_id=f"bulk:{len(rows)}",
-        old_value={"category": "dealer_sub_category",
+        old_value={"category": category,
                    "values": [{"id": str(r.id), "value": r.value, "is_active": r.is_active} for r in rows]},
         new_value={"reason": "no dealer uses it after a dealer delete"},
         request=request,
     )
+    removed = [r.value for r in rows]
     for r in rows:
         await db.delete(r)
+    return removed
+
+
+async def prune_unused_dealer_values(db: AsyncSession, dealers, current_user, request=None) -> list:
+    """After dealers are deleted (Dealer Management, Assign Dealer Leads, single
+    or bulk): remove THEIR Sub Category and Dealer Type values from the Master
+    Dropdown when no remaining live dealer uses them. Values no deleted dealer
+    had (e.g. added by hand in Master Dropdown) are never touched, nor are the
+    four built-in types. Archived dealers do not count as using a value: they
+    are off every list. Takes (sub_category, dealer_type) pairs; does not
+    commit; returns the values removed."""
+    pairs = list(dealers)
+    removed = await _prune_unused_master(
+        db, Dealer.dealer_sub_category, "dealer_sub_category",
+        [p[0] for p in pairs], current_user, request)
+    removed += await _prune_unused_master(
+        db, Dealer.dealer_type, "dealer_dealer_type",
+        [p[1] for p in pairs], current_user, request, protect=STANDARD_DEALER_TYPES)
     return removed
 
 
@@ -1092,7 +1146,8 @@ async def delete_dealer(
             new_value={"business_name": name, "retained_because": reason},
             request=request,
         )
-        removed_subs = await prune_unused_sub_categories(db, [dealer.dealer_sub_category], current_user, request)
+        removed_subs = await prune_unused_dealer_values(
+            db, [(dealer.dealer_sub_category, dealer.dealer_type)], current_user, request)
         await db.commit()
         if removed_subs:
             await refresh_master_cache(db)
@@ -1111,9 +1166,9 @@ async def delete_dealer(
         new_value={"deleted": True, "by": current_user.username},
         request=request,
     )
-    sub_cat = dealer.dealer_sub_category
+    used_values = [(dealer.dealer_sub_category, dealer.dealer_type)]
     counts = await _hard_delete_dealers(db, deletable)
-    removed_subs = await prune_unused_sub_categories(db, [sub_cat], current_user, request)
+    removed_subs = await prune_unused_dealer_values(db, used_values, current_user, request)
     await db.commit()
     if removed_subs:
         await refresh_master_cache(db)
@@ -1498,7 +1553,19 @@ async def dealers_bulk_upload_submit(
     errors = []
 
     seq = 0
-    valid_types = {"retail", "wholesale", "online", "corporate"}
+    # Dealer Type comes from the Master Dropdown (Dealers: Dealer Type), the
+    # same list the Add/Edit popup and the filters show — not a fixed list, so
+    # "Service" or a type an admin added is kept instead of becoming Retail.
+    # Every Dealer Type spelling already in Master Dropdown (active or switched
+    # off), so "ca" in a file is stored as the dropdown's "CA". A type that is
+    # not there yet is created, like Sub Category.
+    type_options = (await db.execute(
+        select(MasterData.value).where(MasterData.category == "dealer_dealer_type")
+        .order_by(MasterData.display_order, MasterData.value)
+    )).scalars().all() or list(STANDARD_DEALER_TYPES)
+    type_map = dealer_type_lookup(type_options)
+    default_type = type_map.get("retail") or "retail"
+    dealer_types_seen: list = []
     state_options = await master_values(db, "dealer_state")
 
     # Google CID is a true identity (one place on Google Maps), unlike name or
@@ -1538,14 +1605,21 @@ async def dealers_bulk_upload_submit(
         phone_raw = row.get("phone", "").strip()
         phone = phone_raw or None
 
+        # Dealer Type cell: used as given; a type not in Master Dropdown yet
+        # is created there (spelling matched case-insensitively). No Type
+        # cell: a "category" cell (Google Maps) that names a Dealer Type is
+        # the Type, else Retail. A category that is not a type is the Sub
+        # Category.
         category_raw = row.get("category", "").strip()
-        dealer_type = (row.get("dealer_type", "").strip().lower()
-                       or (category_raw.lower() if category_raw.lower() in valid_types else "")
-                       or "retail")
-        if dealer_type not in valid_types:
-            dealer_type = "retail"
+        type_raw = re.sub(r"\s+", " ", row.get("dealer_type", "")).strip()[:30]
+        if type_raw:
+            dealer_type = type_map.setdefault(type_raw.lower(), type_raw)
+            dealer_types_seen.append(dealer_type)
+        else:
+            dealer_type = type_map.get(category_raw.lower()) or default_type
         sub_category = row.get("dealer_sub_category", "").strip()
-        if not sub_category and category_raw and category_raw.lower() not in valid_types:
+        if not sub_category and category_raw and not (
+                not type_raw and category_raw.lower() in type_map):
             sub_category = category_raw
         sub_category = sub_category[:150] or None
         if sub_category:
@@ -1562,7 +1636,9 @@ async def dealers_bulk_upload_submit(
         keyword = row.get("keyword", "").strip()
         location = row.get("location", "").strip()
         source = None
-        if keyword or google_cid:
+        # A Google Maps export always has a Cid column, even where the cell is
+        # empty ("?cid="), so its CID-less rows are still traced to the file.
+        if keyword or google_cid or "google_cid" in row:
             source = "Google Maps" + (f": {keyword}" if keyword else "") + (f" ({location})" if location else "")
 
         dealer_code = alloc_code()
@@ -1613,6 +1689,10 @@ async def dealers_bulk_upload_submit(
     if added and sub_categories_seen:
         new_sub_categories = await add_missing_master_values(
             db, "dealer_sub_category", sub_categories_seen, reactivate=True)
+    new_dealer_types = []
+    if added and dealer_types_seen:
+        new_dealer_types = await add_missing_master_values(
+            db, "dealer_dealer_type", dealer_types_seen, reactivate=True)
 
     if added:
         await audit(
@@ -1620,15 +1700,16 @@ async def dealers_bulk_upload_submit(
             table_name="dealers", record_id=f"bulk:{len(added)}",
             new_value={"file": getattr(upload, "filename", "") or "", "added": len(added),
                        "skipped": len(skipped), "errors": len(errors),
-                       "new_sub_categories": new_sub_categories[:200]},
+                       "new_sub_categories": new_sub_categories[:200],
+                       "new_dealer_types": new_dealer_types[:200]},
             request=request,
         )
         await db.commit()
-        if new_sub_categories:
+        if new_sub_categories or new_dealer_types:
             await refresh_master_cache(db)
 
     results = {"added": added, "skipped": skipped, "errors": errors,
-               "new_sub_categories": new_sub_categories}
+               "new_sub_categories": new_sub_categories, "new_dealer_types": new_dealer_types}
     return templates.TemplateResponse("dealers/bulk_upload.html", {
         "request": request, "current_user": current_user,
         "results": results,

@@ -372,18 +372,21 @@ function _setSelectValue(id, v){
   var sel = document.getElementById(id);
   if (!sel) return;
   v = v || '';
-  if (v && !Array.prototype.some.call(sel.options, function(o){ return o.value === v; })) {
-    var opt = document.createElement('option');
-    opt.value = v; opt.textContent = v;
-    sel.appendChild(opt);
+  // Match case-insensitively ("retail" stored, "Retail" listed), and add a
+  // value the list no longer has so saving never silently changes it.
+  var hit = Array.prototype.find.call(sel.options, function(o){ return o.value.toLowerCase() === v.toLowerCase(); });
+  if (v && !hit) {
+    hit = document.createElement('option');
+    hit.value = v; hit.textContent = v;
+    sel.appendChild(hit);
   }
-  sel.value = v;
+  sel.value = hit ? hit.value : v;
 }
 
 function _fillDealerForm(d){
   document.getElementById('deId').value = d.call_id || '';
   document.getElementById('deBusinessName').value = d.business_name || '';
-  document.getElementById('deType').value = d.dealer_type || 'retail';
+  _setSelectValue('deType', d.dealer_type || 'retail');
   _setSelectValue('deSubCategory', d.dealer_sub_category);
   document.getElementById('deCity').value = d.city || '';
   _setSelectValue('deState', d.state);

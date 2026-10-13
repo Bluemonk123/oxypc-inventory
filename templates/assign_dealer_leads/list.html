@@ -114,7 +114,7 @@
             <td><input type="checkbox" class="dealerChk" name="dealer_ids" value="{{ d.id }}"></td>
             <td class="fw-semibold">{{ d.business_name }}</td>
             <td class="small">{{ d.preferred_categories or '—' }}</td>
-            <td><span class="badge bg-secondary">{{ d.dealer_type | title }}</span></td>
+            <td><span class="badge bg-secondary">{{ (d.dealer_type or '') if (d.dealer_type or '') != (d.dealer_type or '') | lower else (d.dealer_type or '') | title }}</span></td>
             <td class="small">{{ d.dealer_sub_category or '—' }}</td>
             <td class="small">{{ d.contact_person or '—' }}</td>
             <td class="small">{{ d.phone or '—' }}</td>

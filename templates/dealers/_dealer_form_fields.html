@@ -12,10 +12,12 @@
   <div class="col-md-4">
     <label class="form-label small fw-semibold">Type</label>
     <select name="dealer_type" id="deType" class="form-select form-select-sm">
-      <option value="retail">Retail</option>
-      <option value="wholesale">Wholesale</option>
-      <option value="corporate">Corporate</option>
-      <option value="service">Service</option>
+      {# From Master Dropdown (Dealers: Dealer Type), like the filters and the
+         bulk upload, so every page offers the same types. Retail stays the
+         default for Add Dealer whatever order the list is in. #}
+      {% for t in (master_options('dealer_dealer_type') or ['retail', 'wholesale', 'corporate', 'service']) %}
+      <option value="{{ t }}" {% if t | lower == 'retail' %}selected{% endif %}>{{ t if t != t | lower else t | title }}</option>
+      {% endfor %}
     </select>
   </div>
   <div class="col-md-4">
