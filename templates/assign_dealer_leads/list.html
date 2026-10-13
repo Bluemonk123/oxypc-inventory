@@ -459,12 +459,22 @@
       var ids = Array.prototype.map.call(assignHiddenIds.querySelectorAll('input[name="dealer_ids"]'), function(i){ return i.value; });
       var who = assignForm.querySelector('select[name="assigned_to"]').value;
       if (!ids.length || !who) { if (submitBtn) submitBtn.disabled = false; return; }
+      var whoSel = assignForm.querySelector('select[name="assigned_to"]');
+      var whoName = (whoSel.options[whoSel.selectedIndex].text || '').replace(/\s*\([^)]*\)\s*$/, '');
       postInBatches(assignForm.action, ids, { assigned_to: who })
-        .then(function(){
+        .then(function(replies){
+          var done = 0;
+          replies.forEach(function(r){ done += r.count || 0; });
           var modalEl = document.getElementById('assignUserModal');
           var modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
           modal.hide();
-          return refreshDealerLeadsTable();
+          return refreshDealerLeadsTable().then(function(){
+            if (window.showFlash) {
+              window.showFlash('success', who === '__unassigned__'
+                ? done + ' dealer(s) unassigned'
+                : done + ' dealer(s) assigned to ' + whoName);
+            }
+          });
         })
         .catch(function(err){
           alert(err.message || 'Could not assign dealer(s). Please try again.');

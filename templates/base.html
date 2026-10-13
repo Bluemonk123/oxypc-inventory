@@ -899,8 +899,8 @@
     </nav>
     {% endif %}
 
-    <!-- Flash messages -->
-    <div class="px-4 pt-2">
+    <!-- Flash messages (window.showFlash adds one without a page reload) -->
+    <div class="px-4 pt-2" id="flashMessages">
       {% if request.query_params.get('success') %}
       <div class="alert alert-success alert-dismissible fade show py-2" role="alert">
         <i class="bi bi-check-circle me-2"></i>{{ request.query_params.get('success') | replace('+', ' ') }}
@@ -1407,6 +1407,28 @@ $.extend(true, $.fn.dataTable.defaults, {
 })();
 </script>
 <script>
+/* window.showFlash(type, message): the same alert the ?success= / ?error= /
+   ?warning= query params render, for pages that save without reloading.
+   type = 'success' | 'danger' | 'warning'. Text only (no HTML). */
+window.showFlash = function (type, message) {
+  var box = document.getElementById('flashMessages');
+  if (!box) return;
+  var icon = { success: 'bi-check-circle', danger: 'bi-exclamation-circle', warning: 'bi-exclamation-triangle' }[type] || 'bi-info-circle';
+  var el = document.createElement('div');
+  // no-autohide: app.js closes success alerts 4s after page load; this one
+  // has its own timer below, so it must not be caught by that sweep.
+  el.className = 'alert alert-' + (type || 'info') + ' alert-dismissible fade show py-2 no-autohide';
+  el.setAttribute('role', 'alert');
+  var i = document.createElement('i'); i.className = 'bi ' + icon + ' me-2';
+  var btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'btn-close'; btn.setAttribute('data-bs-dismiss', 'alert');
+  el.appendChild(i); el.appendChild(document.createTextNode(message)); el.appendChild(btn);
+  box.appendChild(el);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  setTimeout(function () { if (el.parentNode) el.remove(); }, 6000);
+};
+</script>
+<script>
 /* Global processing bar — a 60%-wide segment sliding continuously across the
    4px bar placed right under the topbar. Shown for as long as any of these
    real in-flight operations are running (not a fixed-duration animation):
@@ -1432,7 +1454,13 @@ $.extend(true, $.fn.dataTable.defaults, {
   window.addEventListener('load', hide);
 
   document.addEventListener('submit', function (e) {
-    if (e.target && e.target.tagName === 'FORM') show();
+    if (!(e.target && e.target.tagName === 'FORM')) return;
+    show();
+    // A form saved by JavaScript (preventDefault + fetch) never navigates,
+    // so no new page load would clear the bar and it kept running forever.
+    // Once the submit has finished dispatching, release it if the browser
+    // won't submit; the fetch that does the work shows the bar itself.
+    setTimeout(function () { if (e.defaultPrevented) hide(); }, 0);
   }, true);
 
   // Background polling (connection watchdog every 4s, notification bell
