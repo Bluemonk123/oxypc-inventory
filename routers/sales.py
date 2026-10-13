@@ -745,9 +745,12 @@ async def set_as_is_lot_price(
                             updated_by=current_user.username))
 
     await audit(db, user=current_user, action="AS_IS_LOT_PRICE_SET",
-                table_name="as_is_lot_prices", record_id=f"{lot_id}:{sub_lot}",
+                # record_id is VARCHAR(50): the lot id alone fits; the Sub-Lot
+                # Number lives in the logged values (lot id + ":" + Sub-Lot
+                # overflowed for any Sub-Lot over 13 characters).
+                table_name="as_is_lot_prices", record_id=str(lot_id),
                 old_value=old_value,
-                new_value={"min_selling_price": str(min_val) if min_val is not None else None,
+                new_value={"sub_lot_number": sub_lot, "min_selling_price": str(min_val) if min_val is not None else None,
                            "max_selling_price": str(max_val) if max_val is not None else None},
                 request=request)
     await db.commit()
@@ -827,7 +830,7 @@ async def edit_as_is_lot(
                 price.sub_lot_number = new_sub
 
         await audit(db, user=current_user, action="AS_IS_LOT_EDITED",
-                    table_name="devices", record_id=f"{lot_id}:{old_sub}",
+                    table_name="devices", record_id=str(lot_id),  # VARCHAR(50); Sub-Lot in values
                     old_value={"sub_lot_number": old_sub,
                                "assigned_to_user_id": {str(u) if u else None: c for u, c in before}},
                     new_value={"sub_lot_number": new_sub,
@@ -883,7 +886,8 @@ async def open_as_is_lot(
         await db.delete(stale)
 
     await audit(db, user=current_user, action="AS_IS_LOT_OPENED",
-                table_name="devices", record_id=f"{lot_id}:{sub_lot}",
+                table_name="devices", record_id=str(lot_id),  # VARCHAR(50); Sub-Lot in values
+                old_value={"sub_lot_number": sub_lot},
                 new_value={"sub_lot_number": None, "tags_released": result.rowcount},
                 request=request)
     await db.commit()
