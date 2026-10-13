@@ -1842,7 +1842,7 @@ async def sales_list_data(
     base_join = (
         select(Sale, Device.barcode, Device.brand, Device.model, Device.grade,
                Lot.lot_number, Lot.buying_price, Lot.qty, Device.sub_lot_number,
-               Device.device_price, Device.id.label("device_id"))
+               Device.device_price, Device.id.label("device_id"), Device.replaced)
         .join(Device, Sale.device_id == Device.id)
         .join(Lot, Device.lot_id == Lot.id)
     )
@@ -1910,11 +1910,21 @@ async def sales_list_data(
     for r in rows:
         s = r.Sale
         gv = getattr(r.grade, "value", r.grade) or "—"
+        # Replace Now (Product Return) replacement sale: same test the Returns
+        # page uses — Device.replaced "Replaced with <tag>" and a ₹0 sale.
+        repl_text = (r.replaced or "").strip()
+        is_replacement = repl_text.startswith("Replaced with ") and not float(s.sale_price or 0)
+        invoice_cell = (f'<span class="font-monospace">{esc(s.invoice_no)}</span>' if s.invoice_no
+                        else '<span class="text-muted">—</span>')
+        if is_replacement:
+            repl_badge = f'<span class="badge bg-info text-dark">{esc(repl_text)}</span>'
+            # No "—" above the badge when there is no invoice number.
+            invoice_cell = (f'<span class="font-monospace">{esc(s.invoice_no)}</span><br>{repl_badge}'
+                            if s.invoice_no else repl_badge)
         cells = [
             f'<input type="checkbox" class="row-check" value="{s.id}">',
             f'<a href="/sales/{s.id}" class="text-decoration-none fw-semibold">{esc(s.sale_number)}</a>',
-            (f'<span class="font-monospace">{esc(s.invoice_no)}</span>' if s.invoice_no
-             else '<span class="text-muted">—</span>'),
+            invoice_cell,
             s.sold_at.strftime("%d-%m-%Y") if s.sold_at else "—",
             (f'<span class="text-nowrap"><a href="/devices/{esc(r.barcode)}" class="text-decoration-none"><code>{esc(r.barcode)}</code></a>'
              + parts_badges.get(str(r.device_id), '') + '</span>'),
@@ -1950,7 +1960,8 @@ async def sales_list_data(
             ]
         cells += [
             esc(s.customer_name or "—"),
-            f'<span class="badge bg-secondary">{esc(s.payment_mode or "—")}</span>',
+            ('<span class="badge bg-info text-dark">Replaced</span>' if is_replacement
+             else f'<span class="badge bg-secondary">{esc(s.payment_mode or "—")}</span>'),
             f'<span class="text-muted">{esc(s.sold_by or "—")}</span>',
             esc(s.sales_person or "—"),
             (f'<a href="/sales/{s.id}/download-invoice" class="btn btn-outline-secondary btn-sm py-0 px-1" '
@@ -2248,6 +2259,34 @@ async def return_receipt(return_id: str, request: Request, db: AsyncSession = De
     })
 
 
+async def _return_received_by_options(db: AsyncSession) -> list:
+    """Active users' display names, for the Return New page's "Return
+    Received By" dropdown (all three tabs)."""
+    names = (await db.execute(
+        select(User.full_name).where(User.status == True).order_by(User.full_name)
+    )).scalars().all()
+    return [n.strip() for n in names if n and n.strip()]
+
+
+async def _return_form_response(db: AsyncSession, ctx: dict):
+    """Render the Return New page, always with the Return Received By options,
+    including when a submit is rejected and the form is shown again."""
+    ctx.setdefault("return_received_by_options", await _return_received_by_options(db))
+    return templates.TemplateResponse("sales/return_form.html", ctx)
+
+
+async def _valid_received_by(db: AsyncSession, value: str) -> str:
+    """The submitted Return Received By name if it is an active user's display
+    name (matched case-insensitively, returned in its stored spelling), else ""."""
+    v = (value or "").strip().lower()
+    if not v:
+        return ""
+    for n in await _return_received_by_options(db):
+        if n.lower() == v:
+            return n
+    return ""
+
+
 @router.get("/returns/new", response_class=HTMLResponse)
 async def return_form(request: Request, db: AsyncSession = Depends(get_db),
                       current_user: User = Depends(allowed)):
@@ -2256,7 +2295,7 @@ async def return_form(request: Request, db: AsyncSession = Depends(get_db),
         select(CostConfig).where(CostConfig.key == "default_paid_repair")
     )).scalar_one_or_none()
     default_paid_repair = float(row.value) if row else 1500.0
-    return templates.TemplateResponse("sales/return_form.html", {
+    return await _return_form_response(db, {
         "request": request, "current_user": current_user, "sale": None,
         "error": request.query_params.get("error"),
         "success": request.query_params.get("success"),
@@ -2278,6 +2317,7 @@ async def process_return(
     replace_now: str = Form("no"),
     replace_tag: str = Form(""),
     complaint_text: str = Form(None),
+    return_received_by: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
     _perm: User = Depends(require_module_perm("returns", "add")),
@@ -2292,7 +2332,7 @@ async def process_return(
     )
     device = dev_result.scalars().first()
     if not device:
-        return templates.TemplateResponse("sales/return_form.html", {
+        return await _return_form_response(db, {
             "request": request, "current_user": current_user,
             "error": f"Device {barcode} not found", "sale": None,
         })
@@ -2302,10 +2342,11 @@ async def process_return(
         .order_by(Sale.sold_at.desc()).limit(1)
     )
     sale = sale_result.scalars().first()
+    placeholder_created = False
     if not sale and device.current_stage != DeviceStage.sold:
         # Device was never marked Sold at all — there's genuinely nothing to
         # return against, unlike the sold-with-no-sale-row case handled below.
-        return templates.TemplateResponse("sales/return_form.html", {
+        return await _return_form_response(db, {
             "request": request, "current_user": current_user,
             "error": "No sale found for this device", "sale": None,
         })
@@ -2333,6 +2374,7 @@ async def process_return(
         )
         db.add(sale)
         await db.flush()
+        placeholder_created = True
         await audit(db, user=current_user, action="RETURN_PLACEHOLDER_SALE_CREATED",
                     table_name="sales", record_id=str(device.id),
                     new_value={"sale_number": sale_num, "reason": "sold stage with no sale record"},
@@ -2343,7 +2385,7 @@ async def process_return(
         select(Return).where(Return.sale_id == sale.id)
     )).scalars().first()
     if existing_return:
-        return templates.TemplateResponse("sales/return_form.html", {
+        return await _return_form_response(db, {
             "request": request, "current_user": current_user,
             "error": (f"A return for sale {sale.sale_number} already exists "
                       f"(processed on {existing_return.return_date.strftime('%d %b %Y')}). "
@@ -2353,14 +2395,20 @@ async def process_return(
 
     # Mandatory field validation
     if not reason or not reason.strip():
-        return templates.TemplateResponse("sales/return_form.html", {
+        return await _return_form_response(db, {
             "request": request, "current_user": current_user,
             "error": "Return Reason is required.", "sale": sale,
         })
     if not condition_on_return or not condition_on_return.strip():
-        return templates.TemplateResponse("sales/return_form.html", {
+        return await _return_form_response(db, {
             "request": request, "current_user": current_user,
             "error": "Condition on Return is required.", "sale": sale,
+        })
+    received_by = await _valid_received_by(db, return_received_by)
+    if not received_by:
+        return await _return_form_response(db, {
+            "request": request, "current_user": current_user,
+            "error": "Return Received By is required.", "sale": sale,
         })
 
     # Replace Now — mark a Ready to Sale device sold at ₹0 as a replacement
@@ -2373,13 +2421,13 @@ async def process_return(
     if do_replace:
         rtag = (replace_tag or "").strip()
         if not rtag:
-            return templates.TemplateResponse("sales/return_form.html", {
+            return await _return_form_response(db, {
                 "request": request, "current_user": current_user,
                 "error": "Select a Tag Number to replace with, or set Replace Now to No.",
                 "sale": sale,
             })
         if rtag == barcode:
-            return templates.TemplateResponse("sales/return_form.html", {
+            return await _return_form_response(db, {
                 "request": request, "current_user": current_user,
                 "error": "Replacement Tag Number cannot be the same as the returned Tag Number.",
                 "sale": sale,
@@ -2388,18 +2436,23 @@ async def process_return(
             select(Device).where(func.upper(Device.barcode) == rtag.upper())
         )).scalars().first()
         if not replacement_device:
-            return templates.TemplateResponse("sales/return_form.html", {
+            return await _return_form_response(db, {
                 "request": request, "current_user": current_user,
                 "error": f"Replacement device {rtag} not found.", "sale": sale,
             })
         if replacement_device.current_stage != DeviceStage.ready_to_sale:
-            return templates.TemplateResponse("sales/return_form.html", {
+            return await _return_form_response(db, {
                 "request": request, "current_user": current_user,
                 "error": (f"Replacement device {rtag} is not in Ready to Sale stage "
                           f"(currently {STAGE_LABELS.get(replacement_device.current_stage, replacement_device.current_stage)})."),
                 "sale": sale,
             })
 
+    # Return Received By shows as Sales Person on the /sales rows this return
+    # creates: the placeholder sale above (only when it was just created) and
+    # the Replace Now sale below. A tag's real original sale is never changed.
+    if placeholder_created:
+        sale.sales_person = received_by
     # Determine intended re-entry stage (used once approved)
     if action_taken == "scrap":
         reentered_stage = "scrapped"
@@ -2471,7 +2524,8 @@ async def process_return(
                 new_value={"sale": sale.sale_number, "reason": reason,
                            "action": action_taken, "approval_status": "pending",
                            "return_type": rtype, "warranty_status": warranty_status,
-                           "complaint_text": complaint_text or None},
+                           "complaint_text": complaint_text or None,
+                           "return_received_by": received_by},
                 request=request)
 
     if do_replace and replacement_device is not None:
@@ -2480,7 +2534,7 @@ async def process_return(
             sale_number=sale_num, device_id=replacement_device.id, sale_price=Decimal("0"),
             customer_name=sale.customer_name, customer_phone=sale.customer_phone,
             customer_address=sale.customer_address, sold_by=current_user.username,
-            sold_at=app_now(), warranty_type="none",
+            sold_at=app_now(), warranty_type="none", sales_person=received_by,
             notes=f"Replacement for returned tag {barcode}",
         )
         db.add(replacement_sale)
@@ -2544,6 +2598,7 @@ async def process_external_return(
     quantity: str = Form("1"),
     paid_repair: str = Form("0"),
     notes: str = Form(""),
+    return_received_by: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
     _perm: User = Depends(require_module_perm("returns", "add")),
@@ -2562,14 +2617,20 @@ async def process_external_return(
     """
     tag_number = tag_number.strip()
     if not tag_number:
-        return templates.TemplateResponse("sales/return_form.html", {
+        return await _return_form_response(db, {
             "request": request, "current_user": current_user, "sale": None,
             "active_tab": "external", "error": "Tag Number is required.",
         })
     if not reason.strip() or not condition_on_return.strip():
-        return templates.TemplateResponse("sales/return_form.html", {
+        return await _return_form_response(db, {
             "request": request, "current_user": current_user, "sale": None,
             "active_tab": "external", "error": "Return Reason and Condition on Return are required.",
+        })
+    received_by = await _valid_received_by(db, return_received_by)
+    if not received_by:
+        return await _return_form_response(db, {
+            "request": request, "current_user": current_user, "sale": None,
+            "active_tab": "external", "error": "Return Received By is required.",
         })
 
     device = (await db.execute(select(Device).where(Device.barcode == tag_number))).scalar_one_or_none()
@@ -2598,6 +2659,7 @@ async def process_external_return(
         customer_name=customer_name.strip() or None, customer_phone=customer_phone.strip() or None,
         customer_address=customer_address.strip() or None, payment_mode=None,
         sold_by=current_user.username, sold_at=app_now(), warranty_type="none",
+        sales_person=received_by,
         notes="Placeholder sale — External Tag return, no prior sale in system",
     )
     db.add(placeholder_sale)
@@ -2621,7 +2683,8 @@ async def process_external_return(
     await audit(db, user=current_user, action="EXTERNAL_RETURN_SUBMITTED",
                 table_name="returns", record_id=str(device.id),
                 new_value={"tag_number": tag_number, "reason": reason, "quantity": qty,
-                           "paid_repair": str(paid_repair_amount), "approval_status": "pending"},
+                           "paid_repair": str(paid_repair_amount), "approval_status": "pending",
+                           "return_received_by": received_by},
                 request=request)
     await db.commit()
     return RedirectResponse(url="/returns?success=External+return+submitted+for+manager+approval",
@@ -2673,6 +2736,7 @@ async def process_credit_note(
     sender_name: str = Form(""),
     sender_phone: str = Form(""),
     sender_email: str = Form(""),
+    return_received_by: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
     _perm: User = Depends(require_module_perm("returns", "add")),
@@ -2698,6 +2762,10 @@ async def process_credit_note(
         return RedirectResponse(
             url="/returns/new?active_tab=credit&error=Select+at+least+one+Tag+Number+and+enter+a+Debit+Note+Number",
             status_code=302)
+    received_by = await _valid_received_by(db, return_received_by)
+    if not received_by:
+        return RedirectResponse(
+            url="/returns/new?active_tab=credit&error=Return+Received+By+is+required", status_code=302)
     try:
         amount = Decimal(debit_note_amount) if debit_note_amount.strip() else None
     except Exception:
@@ -2724,6 +2792,7 @@ async def process_credit_note(
             placeholder_sale = Sale(
                 sale_number=sale_num, device_id=device.id, sale_price=Decimal("0"),
                 sold_by=current_user.username, sold_at=app_now(), warranty_type="none",
+                sales_person=received_by,
                 notes="Placeholder sale — Credit Note tag with no prior Internal Tag return on file",
             )
             db.add(placeholder_sale)
@@ -2751,6 +2820,7 @@ async def process_credit_note(
                 new_value={"barcodes": codes, "debit_note_number": dn,
                            "debit_note_amount": str(amount) if amount is not None else None,
                            "sender_name": sender_name.strip() or None,
+                           "return_received_by": received_by,
                            "tags_updated": updated},
                 request=request)
     await db.commit()

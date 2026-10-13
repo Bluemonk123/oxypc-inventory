@@ -3,6 +3,17 @@
 {% block page_title %}Process Return{% endblock %}
 {% block content %}
 {% set active_tab = active_tab|default('internal') %}
+{% macro received_by_field(wrap_class='mb-3') %}
+<div class="{{ wrap_class }}">
+  <label class="form-label fw-semibold">Return Received By <span class="text-danger">*</span></label>
+  <select name="return_received_by" class="form-select" required>
+    <option value="">-- Select user --</option>
+    {% for n in return_received_by_options|default([]) %}
+    <option value="{{ n }}">{{ n }}</option>
+    {% endfor %}
+  </select>
+</div>
+{% endmacro %}
 <div class="row justify-content-center">
   <div class="col-lg-6">
 
@@ -127,6 +138,7 @@
             </div>
             <div class="form-text">Wired to Admin &rarr; Cost Config &rarr; Default Paid Repair Cost. Applies since this device is Out of Warranty.</div>
           </div>
+          {{ received_by_field('mb-3') }}
           <div class="mb-3">
             <label class="form-label">Notes</label>
             <textarea name="notes" class="form-control" rows="2"></textarea>
@@ -224,6 +236,7 @@
                 external tag has no warranty on file here, so this is presumed out-of-warranty. Set to 0 if it
                 shouldn't be charged.</div>
             </div>
+            {{ received_by_field('col-md-6') }}
             <div class="col-12">
               <label class="form-label">Notes</label>
               <textarea name="notes" class="form-control" rows="2"></textarea>
@@ -269,6 +282,7 @@
             <label class="form-label fw-semibold">Debit Note Amount</label>
             <input type="number" step="0.01" min="0" name="debit_note_amount" class="form-control">
           </div>
+          {{ received_by_field('mb-3') }}
           <hr>
           <p class="text-muted small mb-2">Sender Details — shown on the Credit Note page as a contact badge.</p>
           <div class="mb-3">
