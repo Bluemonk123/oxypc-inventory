@@ -10,11 +10,17 @@
   .ready-tabs .nav-link.active { color: #0d6efd; background: #fff; }
   .ready-tab-content { background: #fff; border: 1px solid #dee2e6; border-top: 0;
                        border-radius: 0 0 .5rem .5rem; padding: 1rem; }
+  /* Each tab: Global Table header row — the tab's title on the left, that
+     table's own filters/buttons on the right (global-table.js convention). */
+  .ready-tab-content > .tab-pane > .card { border: 0; }
 </style>
+{# "N device(s) ready" + New Sale row hidden by request (2026-10-13); the
+   tab badges and each table's count badge already show the counts.
 <div class="d-flex justify-content-between align-items-center mb-3">
   <span class="text-muted">{{ devices|length }} device(s) ready</span>
   <a href="/sales/new" class="btn btn-success"><i class="bi bi-cart-plus me-2"></i>New Sale</a>
 </div>
+#}
 
 {% if interested_dealers %}
 <div class="alert alert-warning alert-dismissible fade show mb-3" role="alert">
@@ -135,13 +141,12 @@
 </ul>
 <div class="tab-content ready-tab-content">
   <div class="tab-pane fade show active" id="readyTagsPane" role="tabpanel">
-  <div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
-    <div class="d-flex gap-2 align-items-center flex-wrap">
-      {# Moved into the table's own DataTables toolbar (top right) by JS below.
-         It is the only search box on this table; DataTables' 'f' box is left
-         out of the dom string. #}
-      <input type="text" id="readyScanInput" class="d-none form-control form-control-sm font-monospace"
-             style="max-width:280px" autocomplete="off" placeholder="Scan Tag/Serial, or search…">
+  <div class="card">
+    <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="fw-semibold"><i class="bi bi-upc-scan me-2"></i>Ready for Sale Tags</span>
+      <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+      {# The scan/search box is the Global Table's own search box
+         (#readyScanInput, set up by initGlobalTable's scan option). #}
       {# Entity filter: reloads the table server-side (and Select All follows it). #}
       {{ touch_select('readyTouch') }}
       {{ ms.multiselect_inline('device_type', 'Device Types', device_type_options, '') }}
@@ -169,9 +174,9 @@
       {# Hidden stand-in so the page script's getElementById('bulkSetPriceBtn') still finds an element. #}
       <button type="button" id="bulkSetPriceBtn" class="d-none" disabled><span id="readySelCount3">0</span></button>
       {% endif %}
+      </div>
     </div>
-  </div>
-  <div>
+  <div class="card-body px-0 pb-0">
     <table id="readyTable" class="table table-hover mb-0 small">
       <thead class="table-dark">
         <tr>
@@ -193,9 +198,13 @@
       <tbody></tbody>
     </table>
   </div>
+  </div>{# /card #}
   </div>{# /readyTagsPane #}
   <div class="tab-pane fade" id="readyModelSumPane" role="tabpanel">
-    <div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
+  <div class="card">
+    <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="fw-semibold"><i class="bi bi-collection me-2"></i>Ready for Sale Model Summary</span>
+      <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
       {{ touch_select('msTouch', f.ms_touch) }}
       {{ ms.multiselect_inline('ms_grade', 'Grades', summary_grade_options, f.ms_grade) }}
       {{ ms.multiselect_inline('ms_dtype', 'Device Types', device_type_options, f.ms_dtype) }}
@@ -203,8 +212,12 @@
       <button type="button" id="modelSumRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Request Selected (<span id="modelSumSelCount">0</span>)
       </button>
+      </div>
     </div>
+    <div class="card-body px-0 pb-0">
     {{ model_summary_table('readyModelSummaryTable', model_summary_ready, true, 'No Ready for Sale tags.') }}
+    </div>
+  </div>{# /card #}
   </div>
 </div>{# /tab-content #}
 
@@ -222,15 +235,20 @@
 </ul>
 <div class="tab-content ready-tab-content">
   <div class="tab-pane fade show active" id="asIsLotPane" role="tabpanel">
-    <div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
+  <div class="card">
+    <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>As-Is Lot</span>
+      <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
       {{ touch_select('alTouch', f.al_touch) }}
       {{ ms.multiselect_inline('al_dtype', 'Device Types', device_type_options, f.al_dtype) }}
       {{ ms.multiselect_inline('al_entity', 'Entity', entity_options, f.al_entity) }}
+      </div>
     </div>
+    <div class="card-body px-0 pb-0">
     <table id="asIsLotTable" class="table table-hover mb-0 small">
       <thead class="table-dark">
         <tr>
-          <th>Lot Number</th><th>Sub Lot</th><th>Device Type</th><th>Model Name</th>
+          <th>Sub Lot</th><th>Lot Number</th><th>Device Type</th><th>Model Name</th>
           <th>Total Quantities</th><th>Availability</th>
           {% if can_view_pricing(current_user) %}
           <th title="Sum of the available tags' unit prices (availability × device price)">Lot Price</th>
@@ -244,8 +262,8 @@
       <tbody>
         {% for r in as_is_lots %}
         <tr>
-          <td class="font-monospace">{{ r.lot_number or '—' }}</td>
           <td class="font-monospace">{{ r.sub_lot_number }}</td>
+          <td class="font-monospace">{{ r.lot_number or '—' }}</td>
           <td>
             {% if r.device_type_breakdown %}
             <button type="button" class="btn btn-sm btn-secondary py-0 px-2 as-is-lot-devtype-btn"
@@ -314,15 +332,24 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
+  </div>{# /card #}
   </div>{# /asIsLotPane #}
   <div class="tab-pane fade" id="asIsModelSumPane" role="tabpanel">
-    <div class="d-flex justify-content-end align-items-center flex-wrap gap-2 mb-2">
+  <div class="card">
+    <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="fw-semibold"><i class="bi bi-collection me-2"></i>As-Is Model Summary</span>
+      <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
       {{ touch_select('amTouch', f.am_touch) }}
       {{ ms.multiselect_inline('am_grade', 'Grades', summary_grade_options, f.am_grade) }}
       {{ ms.multiselect_inline('am_dtype', 'Device Types', device_type_options, f.am_dtype) }}
       {{ ms.multiselect_inline('am_entity', 'Entity', entity_options, f.am_entity) }}
+      </div>
     </div>
+    <div class="card-body px-0 pb-0">
     {{ model_summary_table('asIsModelSummaryTable', model_summary_as_is, false, 'No As-Is tags.') }}
+    </div>
+  </div>{# /card #}
   </div>
 </div>{# /tab-content #}
 
@@ -643,19 +670,15 @@ var readyDt;
 var readySelected = new Set();
 
 $(document).ready(function(){
-  readyDt = $('#readyTable').DataTable({
+  // Global Table (static/js/global-table.js): standard toolbar, pager,
+  // frozen first columns. Its own search box is the scan box (opts.scan):
+  // scanning a tag/serial narrows the table server-side and ticks the match;
+  // selections accumulate in readySelected, which survives every redraw.
+  readyDt = initGlobalTable('#readyTable', {
     serverSide: true,
     processing: true,
-    pageLength: 12,
     order: [],
     searchDelay: 400,
-    scrollX: true,
-    // App-wide default is 'lf' — the 'f' is dropped so the table does not render
-    // a second search box, and #readyScanArea gives the scan box a slot on the
-    // right of this toolbar, inside the table wrapper.
-    dom: '<"d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"l<"#readyScanArea">>' +
-         'rt' +
-         '<"d-flex justify-content-end align-items-center flex-wrap gap-3 mt-3"<"small text-muted"i>p>',
     ajax: {
       url: '/sales/ready/data',
       data: function (d) {
@@ -678,10 +701,10 @@ $(document).ready(function(){
       });
       updateReadySel();
     },
+  }, {
+    scan: { inputId: 'readyScanInput', selection: readySelected, checkboxSelector: '.readyChk',
+            onChange: updateReadySel, placeholder: 'Scan Tag/Serial, or search…' },
   });
-
-  // Scan box lives in the table's own toolbar, top right.
-  $('#readyScanArea').append($('#readyScanInput').removeClass('d-none'));
 
   // Entity filter: reload the table (page 1) whenever the multi-select changes.
   document.getElementById('ms_val_entity').addEventListener('ms:change', function () {
@@ -694,15 +717,6 @@ $(document).ready(function(){
     readyDt.ajax.reload(null, true);
   });
 
-  // Scan a tag/serial to select it: the search narrows the table server-side,
-  // the match is ticked, and the input re-highlights so the gun's next value
-  // replaces this one. Selections accumulate in `readySelected`, which
-  // survives the redraw, so ten scans leave ten devices selected.
-  initScanSelect({
-    inputId: 'readyScanInput', dt: readyDt,
-    tableSelector: '#readyTable', checkboxSelector: '.readyChk',
-    selection: readySelected, onChange: updateReadySel,
-  });
 });
 var _dm = document.getElementById('dispatchModal');
 if (_dm) {
@@ -865,7 +879,7 @@ var dtAsIsLot;
 function buildAsIsLotTable(){
   if ($.fn.dataTable.isDataTable('#asIsLotTable')) { dtAsIsLot.destroy(); }
   dtAsIsLot = initGlobalTable('#asIsLotTable', {
-    order: [[0, 'asc']],
+    order: [[1, 'asc']],   // Lot Number (column 1; Sub Lot sits first by request)
     language: { emptyTable: "No As-Is Lot tags currently Ready to Sale." },
     // Lot Price (pricing-gated) shifts every column after it by one — Jinja
     // already knows can_view_pricing at render time, same as the Tag table.
@@ -1061,7 +1075,7 @@ var SUMMARY_OPTS = {
 };
 function buildSummaryTable(id){
   if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();
-  $('#' + id).DataTable(SUMMARY_OPTS[id]);
+  initGlobalTable('#' + id, $.extend(true, {}, SUMMARY_OPTS[id]));
 }
 buildSummaryTable('readyModelSummaryTable');
 buildSummaryTable('asIsModelSummaryTable');
