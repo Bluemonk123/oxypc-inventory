@@ -1115,6 +1115,8 @@ async def iqc_bulk_apply_grade_type(
                 continue
             prev = device.current_stage
             device.current_stage = new_stage
+            from models.device import reset_repair_cycle_on_entry
+            reset_repair_cycle_on_entry(device, prev, new_stage)
             device.updated_at = app_now()
             # A bulk move off L1/L2/L3 bypasses the dedicated Mark-Complete
             # flows, which are otherwise the only places that ever close an

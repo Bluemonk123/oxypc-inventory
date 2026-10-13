@@ -10,7 +10,7 @@ from sqlalchemy import select, func
 
 from database import get_db
 from models.user import User, UserRole
-from models.device import Device, DeviceStage, StageMovement
+from models.device import Device, DeviceStage, StageMovement, reset_repair_cycle_on_entry
 from models.bucket import Bucket, _new_bucket_number
 from models.master import MasterData
 from models.stock_transfer import StockTransfer
@@ -666,6 +666,7 @@ async def _apply_department_move(
         prev_mv.exited_at = app_now()
 
     device.current_stage = new_stage
+    reset_repair_cycle_on_entry(device, prev_stage, new_stage)
     device.updated_at = app_now()
     if bucket:
         move_note = (f"Bucket {bucket.bucket_number} assigned to {engineer.full_name or engineer.username}"
@@ -830,6 +831,7 @@ async def assign_device(
         prev_mv.exited_at = app_now()
 
     device.current_stage = new_stage
+    reset_repair_cycle_on_entry(device, prev_stage, new_stage)
     device.updated_at = app_now()
     db.add(StageMovement(
         device_id=device.id, from_stage=prev_stage, to_stage=new_stage,
@@ -929,6 +931,7 @@ async def bulk_assign_devices_l1l2(
             prev_mv.exited_at = app_now()
 
         device.current_stage = new_stage
+        reset_repair_cycle_on_entry(device, prev_stage, new_stage)
         device.updated_at = app_now()
         db.add(StageMovement(
             device_id=device.id, from_stage=prev_stage, to_stage=new_stage,
@@ -1052,6 +1055,7 @@ async def assign_bucket_to_engineer(
         if prev_mv:
             prev_mv.exited_at = app_now()
         device.current_stage = DeviceStage.l1
+        reset_repair_cycle_on_entry(device, prev_stage, DeviceStage.l1)
         device.updated_at = app_now()
         db.add(StageMovement(
             device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.l1,

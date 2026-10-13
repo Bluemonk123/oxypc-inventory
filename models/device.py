@@ -317,3 +317,19 @@ def _clear_flag_on_stock_in(target, value, oldvalue, initiator):
     """
     if value == DeviceStage.stock_in and oldvalue != DeviceStage.stock_in:
         _clear_flag_fields(target)
+
+
+def reset_repair_cycle_on_entry(device, prev_stage, new_stage) -> bool:
+    """A tag assigned INTO L1/L2 from any other stage (Stock In, TRC
+    Production, Change Engineer, bucket assign, ...) starts a fresh repair
+    cycle: Status back to "New" and L3/L4 Status cleared, so the L1/L2 page
+    shows the normal buttons (Start Repair / Mark Complete / Request to L3/L4)
+    instead of a previous cycle's "Requested to L3/L4" or scrap state with
+    "Back to Inventory" (2026-10-13). Moves within L1/L2, and the L3/L4 board
+    sending a tag back to L1, keep their status. Returns True when reset."""
+    repair = (DeviceStage.l1, DeviceStage.l2)
+    if new_stage in repair and prev_stage not in repair:
+        device.l1l2_status = "New"
+        device.l34_status = None
+        return True
+    return False

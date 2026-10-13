@@ -13,7 +13,7 @@ from utils.timezone import app_now
 from utils.master_data import master_values, entity_values
 from database import get_db
 from models.user import User, UserRole
-from models.device import Device, DeviceStage, DeviceGrade, StageMovement, STAGE_LABELS, DROPDOWN_STAGES, COSMETIC_STAGES
+from models.device import Device, DeviceStage, DeviceGrade, StageMovement, STAGE_LABELS, DROPDOWN_STAGES, COSMETIC_STAGES, reset_repair_cycle_on_entry
 from models.lot import Lot, LotLineItem
 from models.master import EXTERNAL_PARTNER_TEST_ENTITY, EXTERNAL_PARTNER_TEST_LOT_PREFIX
 from models.crm import CRMSourcingDeal
@@ -1643,6 +1643,7 @@ async def _move_device_to_l1l2(db: AsyncSession, device: Device, current_user: U
         .values(status="completed", completed_at=app_now())
     )
     device.current_stage = DeviceStage.l1
+    reset_repair_cycle_on_entry(device, prev_stage, DeviceStage.l1)
     device.updated_at = app_now()
     db.add(StageMovement(
         device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.l1,
@@ -2061,6 +2062,7 @@ async def change_engineer(
         prev_mv.exited_at = app_now()
 
     device.current_stage = new_stage
+    reset_repair_cycle_on_entry(device, prev_stage, new_stage)
     device.updated_at = app_now()
     db.add(StageMovement(
         device_id=device.id, from_stage=prev_stage, to_stage=new_stage,
