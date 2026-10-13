@@ -639,6 +639,7 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
                 "max_override": str(override_max) if override_max is not None else "",
                 "barcodes": g["barcodes"],
                 "assigned_to_name": user_name_map.get(g["assigned_to_user_id"], "—"),
+                "assigned_to_user_id": str(g["assigned_to_user_id"]) if g["assigned_to_user_id"] else "",
             })
         as_is_lots.sort(key=lambda r: (r["lot_number"] or "", r["sub_lot_number"] or ""))
 
@@ -659,6 +660,10 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
         "ready_tag_count": sum(1 for r in devices if not (r[0].sub_lot_number or "").strip()),
         "as_is_tag_count": sum(1 for r in devices if (r[0].sub_lot_number or "").strip()),
         "as_is_lots": as_is_lots,
+        # Assigned To choices for the admin-only As-Is Lot Edit modal.
+        "as_is_assign_users": (await db.execute(
+            select(User).where(User.status == True).order_by(User.full_name)  # noqa: E712
+        )).scalars().all() if current_user.role == UserRole.admin else [],
     })
 
 
@@ -731,6 +736,87 @@ async def set_as_is_lot_price(
                 request=request)
     await db.commit()
     return RedirectResponse(url="/sales/ready?success=Selling+price+updated", status_code=302)
+
+
+@router.post("/sales/ready/as-is-lot/edit")
+async def edit_as_is_lot(
+    request: Request,
+    lot_id: str = Form(...),
+    sub_lot_number: str = Form(...),
+    new_sub_lot_number: str = Form(...),
+    assigned_to_user_id: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.admin)),
+):
+    """Ready to Sale As-Is Lot table's Edit button (admin only): change the
+    Sub-Lot Number and/or Assigned To of every tag in this (Lot, Sub-Lot) —
+    the whole group regardless of stage, same scope as Open Tag, so the lot
+    never ends up split. A saved lot price moves with a renamed sub-lot.
+    Renaming onto a Sub-Lot Number the lot already has is refused (that would
+    merge two lots)."""
+    try:
+        lid = _uuid.UUID(lot_id)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": "Invalid lot"}, status_code=400)
+    old_sub = sub_lot_number.strip()
+    new_sub = re.sub(r"\s+", " ", new_sub_lot_number).strip()
+    if not old_sub or not new_sub:
+        return JSONResponse({"ok": False, "error": "Enter a Sub-Lot Number."}, status_code=400)
+    if len(new_sub) > 50:
+        return JSONResponse({"ok": False, "error": "Sub-Lot Number can be at most 50 characters."}, status_code=400)
+    assign_uid = None
+    if assigned_to_user_id.strip():
+        try:
+            assign_uid = _uuid.UUID(assigned_to_user_id.strip())
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "Invalid user"}, status_code=400)
+        if not (await db.execute(select(User.id).where(User.id == assign_uid))).scalar_one_or_none():
+            return JSONResponse({"ok": False, "error": "User not found"}, status_code=400)
+
+    group = (Device.lot_id == lid, Device.sub_lot_number == old_sub, Device.is_trashed == False)  # noqa: E712
+    before = (await db.execute(
+        select(Device.assigned_to_user_id, func.count(Device.id)).where(*group)
+        .group_by(Device.assigned_to_user_id)
+    )).all()
+    if not before:
+        return JSONResponse({"ok": False, "error": "No tags found for this Sub-Lot"}, status_code=404)
+    renamed = new_sub != old_sub
+    if renamed:
+        clash = (await db.execute(
+            select(func.count(Device.id)).where(Device.lot_id == lid, Device.sub_lot_number == new_sub,
+                                                Device.is_trashed == False)  # noqa: E712
+        )).scalar()
+        if clash:
+            return JSONResponse({"ok": False, "error": f"This lot already has a Sub-Lot {new_sub}. "
+                                 "Choose a different Sub-Lot Number."}, status_code=400)
+
+    result = await db.execute(
+        update(Device).where(*group)
+        .values(sub_lot_number=new_sub, assigned_to_user_id=assign_uid)
+    )
+    if renamed:
+        price = (await db.execute(
+            select(AsIsLotPrice).where(AsIsLotPrice.lot_id == lid, AsIsLotPrice.sub_lot_number == old_sub)
+        )).scalar_one_or_none()
+        if price:
+            stale_target = (await db.execute(
+                select(AsIsLotPrice).where(AsIsLotPrice.lot_id == lid, AsIsLotPrice.sub_lot_number == new_sub)
+            )).scalar_one_or_none()
+            if stale_target:  # left over from a lot opened earlier under that number
+                await db.delete(stale_target)
+                await db.flush()
+            price.sub_lot_number = new_sub
+
+    await audit(db, user=current_user, action="AS_IS_LOT_EDITED",
+                table_name="devices", record_id=f"{lot_id}:{old_sub}",
+                old_value={"sub_lot_number": old_sub,
+                           "assigned_to_user_id": {str(u) if u else None: c for u, c in before}},
+                new_value={"sub_lot_number": new_sub,
+                           "assigned_to_user_id": str(assign_uid) if assign_uid else None,
+                           "tags_updated": result.rowcount},
+                request=request)
+    await db.commit()
+    return JSONResponse({"ok": True, "tags_updated": result.rowcount, "sub_lot_number": new_sub})
 
 
 @router.post("/sales/ready/as-is-lot/open")
