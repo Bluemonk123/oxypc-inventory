@@ -13,7 +13,10 @@ from models.dealers import Dealer
 from models.user import User
 from auth.dependencies import get_current_user, verify_csrf, require_module_perm
 from services.audit_engine import audit
-from routers.dealers import _tc_field_options, _sub_category_filter, _can_manage_dealers
+from routers.dealers import (
+    _tc_field_options, _sub_category_filter, _can_manage_dealers,
+    _assignee_name_map, _split_ids, dealer_export_response,
+)
 from utils.master_data import master_values
 
 router = APIRouter(prefix="/assign-dealer-leads", tags=["assign-dealer-leads"])
@@ -87,6 +90,9 @@ async def list_assign_dealer_leads(
         "request": request,
         "current_user": current_user,
         "dealers": dealers,
+        # Assigned column shows the user's display name (username kept in
+        # data-assigned for the Unassigned / Exclude Unassigned checkboxes).
+        "assignee_names": await _assignee_name_map(db, dealers),
         "all_users": all_users,
         "q": q,
         "loc": loc,
@@ -181,3 +187,23 @@ async def delete_dealer_lead(
     dealer.trashed_by = current_user.username
     await db.commit()
     return RedirectResponse(url="/assign-dealer-leads?success=Dealer+deleted", status_code=302)
+
+
+@router.post("/export")
+async def export_dealer_leads(
+    request: Request,
+    dealer_ids: str = Form(default=""),
+    _csrf: None = Depends(verify_csrf),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_view),
+):
+    """Export button: the page sends the ids of the selected rows, or of every
+    row its filters, checkboxes and search box currently show."""
+    ids = _split_ids(dealer_ids)
+    await audit(
+        db, user=current_user, action="DEALERS_EXPORTED", table_name="dealers",
+        record_id=f"export:{len(ids)}", new_value={"count": len(ids), "page": "assign_dealer_leads"},
+        request=request,
+    )
+    await db.commit()
+    return await dealer_export_response(db, ids, "dealer_leads")

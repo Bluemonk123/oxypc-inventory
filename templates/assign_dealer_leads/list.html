@@ -76,6 +76,10 @@
         <i class="bi bi-trash me-1"></i>Delete Selected (<span id="adlDelCount">0</span>)
       </button>
       {% endif %}
+      <button type="button" id="adlExportBtn" class="btn btn-sm text-nowrap btn-outline-secondary"
+              title="Export the selected rows, or every row the table is showing">
+        <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export
+      </button>
       <button type="button" class="btn btn-sm text-nowrap btn-primary" onclick="openDealerAddModal()">
         <i class="bi bi-plus-circle me-1"></i>Add Dealer
       </button>
@@ -119,7 +123,7 @@
             <td class="small">{{ d.state or '—' }}</td>
             <td class="small" style="max-width:200px; white-space:normal;">{{ d.address or '—' }}</td>
             <td><span class="badge bg-{{ sc.get(d.status,'secondary') }}">{{ d.status | title }}</span></td>
-            <td class="small">{{ d.assigned_to or '—' }}</td>
+            <td class="small">{{ (assignee_names.get(d.assigned_to) or d.assigned_to) if d.assigned_to else '—' }}</td>
             <td class="small" style="max-width:160px; white-space:normal;">{{ d.notes or '—' }}</td>
             <td>
               <div class="btn-group btn-group-sm">
@@ -285,6 +289,26 @@
         .catch(function(e){ alert(e.message + ' — some dealers may already be deleted; the page will reload.'); window.location.reload(); });
     });
   }
+
+  // Export — the selected rows, or (nothing selected) every row the table
+  // shows with its filters, Unassigned checkboxes and search box applied, on
+  // all pages. One comma-joined field, so any number of rows fits one request.
+  document.getElementById('adlExportBtn').addEventListener('click', function(){
+    if (!adlDt) return;
+    var ids = selectedChecks().map(function(c){ return c.value; });
+    if (!ids.length) {
+      ids = $(adlDt.rows({ search: 'applied' }).nodes()).find('.dealerChk').toArray()
+        .map(function(c){ return c.value; });
+    }
+    if (!ids.length) { alert('No dealers to export.'); return; }
+    var f = document.createElement('form');
+    f.method = 'post'; f.action = '/assign-dealer-leads/export'; f.style.display = 'none';
+    [['csrf_token', '{{ request.cookies.get("csrf_token", "") }}'], ['dealer_ids', ids.join(',')]]
+      .forEach(function(kv){
+        var i = document.createElement('input'); i.type = 'hidden'; i.name = kv[0]; i.value = kv[1]; f.appendChild(i);
+      });
+    document.body.appendChild(f); f.submit(); f.remove();
+  });
 
   // Two checkboxes before the table's search box, mutually exclusive:
   //   "Unassigned user"     — only rows with nobody in Assigned To

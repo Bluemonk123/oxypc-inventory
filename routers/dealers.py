@@ -738,6 +738,120 @@ async def dealers_ids(
     return JSONResponse({"ids": [str(i) for i in ids]})
 
 
+_PHONE_LIKE = None
+
+
+def _csv_cell(value) -> str:
+    """Text for one exported cell. A value Excel would read as a formula
+    (=, @, or +/- followed by more than a phone number) gets a leading quote,
+    so an imported business name can never run as a formula on open."""
+    import re
+    global _PHONE_LIKE
+    if _PHONE_LIKE is None:
+        _PHONE_LIKE = re.compile(r"^[+\-]?[\d\s\-()+,/]*$")
+    s = "" if value is None else str(value)
+    if s[:1] in ("=", "@", "\t", "\r") or (s[:1] in ("+", "-") and not _PHONE_LIKE.match(s)):
+        return "'" + s
+    return s
+
+
+DEALER_EXPORT_HEADER = [
+    "Dealer Code", "Business Name", "Type", "Sub Category", "Status",
+    "Contact Person", "Phone", "Email", "Address", "City", "State", "Pincode",
+    "Website", "Google CID", "GSTIN", "Last Call Date", "Qty", "Items Discussed",
+    "Calling Remark", "Notes", "Purchase Qty", "Sale Qty", "Deals In",
+    "Whom to Sell", "Next Follow-up", "Assigned To", "Source", "Added On",
+]
+
+
+async def dealer_export_response(db: AsyncSession, dealer_ids: list, filename_prefix: str = "dealers"):
+    """CSV download of the given dealers (Dealer Management and Assign Dealer
+    Leads share it). Newest added first, like both tables; the Assigned To
+    column carries the user's display name. Ids are looked up in chunks to stay
+    under Postgres' bound-parameter limit."""
+    CHUNK = 5000
+    dealers = []
+    for i in range(0, len(dealer_ids), CHUNK):
+        dealers.extend((await db.execute(
+            select(Dealer).where(Dealer.id.in_(dealer_ids[i:i + CHUNK]), Dealer.trashed_at.is_(None))
+        )).scalars().all())
+    dealers.sort(key=lambda d: d.dealer_code or "", reverse=True)
+    dealers.sort(key=lambda d: (d.created_at is not None, d.created_at or datetime.min), reverse=True)
+
+    recent_call_map = {}
+    for i in range(0, len(dealers), CHUNK):
+        recent_call_map.update(await _recent_call_map(db, [d.id for d in dealers[i:i + CHUNK]]))
+    names = await _assignee_name_map(db, dealers)
+
+    def fmt(dt, f):
+        return dt.strftime(f) if dt else ""
+
+    buf = io.StringIO()
+    buf.write("﻿")  # BOM so Excel opens ₹, Hindi names etc. as UTF-8
+    w = csv.writer(buf)
+    w.writerow(DEALER_EXPORT_HEADER)
+    for d in dealers:
+        rc = recent_call_map.get(str(d.id), {})
+        outcome = rc.get("outcome", "")
+        w.writerow([_csv_cell(v) for v in (
+            d.dealer_code, d.business_name, (d.dealer_type or "").title(), d.dealer_sub_category,
+            OUTCOME_LABELS.get(outcome, (outcome or "").replace("_", " ").title()),
+            d.contact_person, d.phone, d.email, d.address, d.city, d.state, d.pincode,
+            d.website, d.google_cid, d.gstin,
+            fmt(rc.get("call_date"), "%d-%m-%Y %H:%M"), rc.get("qty"), rc.get("items_text", ""),
+            rc.get("calling_remark", ""), rc.get("notes", ""),
+            rc.get("purchase_quantity"), rc.get("sale_quantity"),
+            rc.get("deals_in", ""), rc.get("whom_to_sell", ""),
+            fmt(rc.get("next_followup_date"), "%d-%m-%Y"),
+            (names.get(d.assigned_to) or d.assigned_to) if d.assigned_to else "Unassigned",
+            d.source, fmt(d.created_at, "%d-%m-%Y %H:%M"),
+        )])
+    filename = f"{filename_prefix}_{app_now().strftime('%Y%m%d_%H%M')}.csv"
+    return StreamingResponse(
+        iter([buf.getvalue().encode("utf-8")]), media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+def _split_ids(raw: str) -> list:
+    """Comma-joined dealer ids from an export form (one field, so a large
+    selection never trips Starlette's 1000-form-field limit). Non-UUIDs are
+    dropped."""
+    import uuid
+    out = []
+    for part in (raw or "").split(","):
+        part = part.strip()
+        try:
+            out.append(uuid.UUID(part))
+        except ValueError:
+            continue
+    return out
+
+
+@router.post("/export")
+async def export_dealers(
+    request: Request,
+    dealer_ids: str = Form(default=""),
+    _csrf: None = Depends(verify_csrf),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_sales),
+):
+    """Export button on Dealer Management: the page sends the ids of the
+    selected rows, or of every row matching its filters + search (from
+    /dealers/ids). Re-checked against the viewer's own scope, so a Telecaller
+    can only ever export their own dealers."""
+    ids = _split_ids(dealer_ids)
+    scope = _dealer_base_query(current_user).subquery()
+    allowed = set((await db.execute(select(scope.c.id))).scalars().all())
+    ids = [i for i in ids if i in allowed]
+    await audit(
+        db, user=current_user, action="DEALERS_EXPORTED", table_name="dealers",
+        record_id=f"export:{len(ids)}", new_value={"count": len(ids), "page": "dealer_management"}, request=request,
+    )
+    await db.commit()
+    return await dealer_export_response(db, ids, "dealers")
+
+
 @router.post("/bulk-delete")
 async def bulk_delete_dealers(
     request: Request,

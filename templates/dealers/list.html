@@ -179,6 +179,11 @@
         <i class="bi bi-trash me-1"></i>Delete Selected (<span id="dealerSelCount">0</span>)
       </button>
       {% endif %}
+      <button type="button" id="dealerExportBtn" class="btn btn-sm text-nowrap btn-outline-secondary"
+              title="Export the selected rows, or every dealer matching the filters and search"
+              onclick="exportDealers()">
+        <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export
+      </button>
       <button type="button" class="btn btn-sm text-nowrap btn-primary" onclick="openDealerAddModal()">
         <i class="bi bi-plus-circle me-1"></i>Add Dealer
       </button>
@@ -435,6 +440,37 @@ var dealersDt = initGlobalTable('#dealersTable', {
   // non-orderable, Assigned col 21); without it, Assigned stays at 20.
   columnDefs: [{ orderable: false, targets: {{ '[0, 21]' if _has_chk else '[20]' }} }],
 });
+
+// Export — the selected dealers, or (nothing selected) every dealer matching
+// the page filters + the table's search box, on all pages (ids from
+// /dealers/ids, the same query the table pages through). One comma-joined
+// field, so any number of dealers fits one request.
+function exportDealers() {
+  var btn = document.getElementById('dealerExportBtn');
+  var chosen = (typeof dealerSel !== 'undefined') ? Array.from(dealerSel) : [];
+  var idsPromise;
+  if (chosen.length) {
+    idsPromise = Promise.resolve(chosen);
+  } else {
+    var params = new URLSearchParams(window.location.search);
+    params.set('search[value]', dealersDt.search());
+    idsPromise = fetch('/dealers/ids?' + params.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+      .then(function (r) { if (!r.ok) throw new Error('Could not load the dealers to export (' + r.status + ')'); return r.json(); })
+      .then(function (d) { return d.ids; });
+  }
+  btn.disabled = true;
+  idsPromise.then(function (ids) {
+    if (!ids.length) { alert('No dealers to export.'); return; }
+    var f = document.createElement('form');
+    f.method = 'post'; f.action = '/dealers/export'; f.style.display = 'none';
+    [['csrf_token', '{{ request.cookies.get("csrf_token", "") }}'], ['dealer_ids', ids.join(',')]]
+      .forEach(function (kv) {
+        var i = document.createElement('input'); i.type = 'hidden'; i.name = kv[0]; i.value = kv[1]; f.appendChild(i);
+      });
+    document.body.appendChild(f); f.submit(); f.remove();
+  }).catch(function (e) { alert(e.message); })
+    .finally(function () { btn.disabled = false; });
+}
 
 initGlobalTable('#quotationSharedTable', {
   order: [],
