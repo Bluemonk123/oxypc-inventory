@@ -81,9 +81,16 @@
       <td class="text-nowrap">{{ g.gen }}</td>
       <td class="text-nowrap">{{ g.ram }}</td>
       <td class="text-nowrap">{{ g.storage }}</td>
+      {# Line 1: total tags; line 2: the same tags split by grade. #}
       <td class="text-nowrap" data-order="{{ g.total_count }}">
-        <span class="badge bg-success">Available {{ g.total_count }}</span>
-        <span class="badge bg-secondary">Sold {{ g.total_sold }}</span>
+        <div><span class="badge bg-primary">Total {{ g.total_count }}</span></div>
+        {% if g.grades %}
+        <div class="d-flex flex-wrap gap-1 mt-1">
+          {% for label, count, cls in g.grades %}
+          <span class="badge {{ cls }}" title="{{ 'No grade' if label == 'NG' else 'Grade ' ~ label }}">{{ label }} {{ count }}</span>
+          {% endfor %}
+        </div>
+        {% endif %}
       </td>
       <td class="text-nowrap" data-order="{{ g.total_purchase_price }}">₹{{ "{:,.0f}".format(g.total_purchase_price) }}</td>
       <td class="text-nowrap" data-order="{{ g.min_total }}">

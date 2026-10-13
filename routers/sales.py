@@ -50,6 +50,19 @@ from utils.warranty import (
     parse_warranty_duration, warranty_status_for_sale,
 )
 
+
+# Model Summary "Total Quantity" grade split: (stored grade, label, badge class).
+# Colours follow the Grade column of the Ready for Sale Tags table. Scrap is
+# left out by request (2026-10-13): such tags still count in the Total.
+_SUMMARY_GRADES = (
+    ("A", "A", "bg-success"),
+    ("B", "B", "bg-warning text-dark"),
+    ("C", "C", "bg-danger"),
+    ("D", "D", "bg-danger"),
+    ("E", "E", "bg-info text-dark"),
+    ("", "NG", "bg-light text-dark border"),   # NG = no grade set
+)
+
 router = APIRouter(tags=["sales"], dependencies=[Depends(verify_csrf)])
 allowed = require_roles(UserRole.admin, UserRole.sales, UserRole.sales_manager, UserRole.telecaller)
 # Opened to every role (2026-09-03) — was require_roles(admin, sales,
@@ -400,9 +413,10 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
     # the Ready for Sale tags (no sub-lot) and "As-Is Model Summary" only the
     # As-Is tags (sub-lot set), each shown in the tab next to its own table.
     # One row per configuration (Model + Make + CPU + Gen + RAM + Storage).
-    #   Available         = tags of that configuration Ready for Sale now
-    #   Sold              = tags of that configuration already sold (same
-    #                       Ready-for-Sale / As-Is split, by sub-lot)
+    #   Total Quantity    = tags of that configuration Ready for Sale now,
+    #                       with the split by grade (A 3, B 2, ...) under it.
+    #                       (The Sold count shown here before was removed by
+    #                       request, 2026-10-13.)
     #   Total Purchase    = sum of unit prices (device price, else lot average)
     #   Min Selling Price = sum of the tags' own Min Selling Price (a saved
     #                       "Set price" wins, else the same formula as the
@@ -433,10 +447,12 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
                 "gen": key[6] or "—",
                 "ram": f"{key[3]} GB" if key[3] else "—",
                 "storage": (f"{key[4]} GB" + (f" {key[5]}" if key[5] else "")) if key[4] else "—",
-                "total_count": 0, "total_sold": 0, "total_purchase_price": 0.0,
-                "min_total": 0.0, "min_units": [], "barcodes": [],
+                "total_count": 0, "total_purchase_price": 0.0,
+                "min_total": 0.0, "min_units": [], "barcodes": [], "grade_counts": {},
             })
             g["total_count"] += 1
+            grade = getattr(device.grade, "value", device.grade) if device.grade else ""
+            g["grade_counts"][grade] = g["grade_counts"].get(grade, 0) + 1
             g["total_purchase_price"] += unit_cost
             if tag_min is not None:
                 g["min_total"] += tag_min
@@ -447,6 +463,12 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
             g["min_lo"] = min(g["min_units"]) if g["min_units"] else None
             g["min_hi"] = max(g["min_units"]) if g["min_units"] else None
             g["min_missing"] = g["total_count"] - len(g["min_units"])
+            # Grades in fixed order (A, B, C, D, E, then no grade), only
+            # the ones this configuration has: [(label, count, badge class)].
+            gc = g.pop("grade_counts")
+            g["grades"] = [
+                (label, gc[code], cls) for code, label, cls in _SUMMARY_GRADES if gc.get(code)
+            ]
         return out
 
     model_summary_ready = _build_model_summary(
@@ -456,24 +478,6 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
         [r for r in devices if (r[0].sub_lot_number or "").strip()
          and _row_passes(r[0], am_touch, am_entities, am_dtypes)])
 
-    # Sold count per configuration, split the same way (sub-lot = As-Is).
-    if model_summary_ready or model_summary_as_is:
-        as_is_flag = case((func.coalesce(func.trim(Device.sub_lot_number), "") != "", 1), else_=0)
-        sold_rows = (await db.execute(
-            select(Device.model, Device.brand, Device.cpu, Device.ram_gb, Device.storage_gb,
-                   Device.storage_type, Device.generation, as_is_flag, func.count(Device.id))
-            .where(Device.current_stage == DeviceStage.sold, Device.is_trashed.isnot(True))
-            .group_by(Device.model, Device.brand, Device.cpu, Device.ram_gb, Device.storage_gb,
-                      Device.storage_type, Device.generation, as_is_flag)
-        )).all()
-        sold_map = {}
-        for model, brand, cpu, ram_gb, storage_gb, storage_type, gen, flag, cnt in sold_rows:
-            k = (_cfg_key(model, brand, cpu, ram_gb, storage_gb, storage_type, gen), int(flag))
-            sold_map[k] = sold_map.get(k, 0) + cnt
-        for g in model_summary_ready:
-            g["total_sold"] = sold_map.get((g["key"], 0), 0)
-        for g in model_summary_as_is:
-            g["total_sold"] = sold_map.get((g["key"], 1), 0)
 
     # Dispatch-request state (approved/requested/rejected) and warranty used to
     # be computed here for every ready-to-sale device (~4,500 with no filter),
