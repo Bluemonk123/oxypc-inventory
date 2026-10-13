@@ -600,8 +600,12 @@ async def dealers_data(
         select(func.count()).select_from(base_query.subquery())
     )).scalar() or 0
 
+    # Newest added first (same default as Assign Dealer Leads); dealer_code
+    # breaks ties so rows inserted in the same upload keep a stable order
+    # across pages.
     dealers = (await db.execute(
-        base_query.order_by(Dealer.business_name).offset(start).limit(length)
+        base_query.order_by(Dealer.created_at.desc().nulls_last(), Dealer.dealer_code.desc())
+        .offset(start).limit(length)
     )).scalars().all()
     dealer_ids = [d.id for d in dealers]
 

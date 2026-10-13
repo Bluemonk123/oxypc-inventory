@@ -81,6 +81,10 @@ class RoleAdditionalPermission(Base):
     can_print        = Column(Boolean, default=True)
     can_add_new_data = Column(Boolean, default=True)
     can_view_pricing = Column(Boolean, default=True)  # Pricing Visibility tab (Batch 9)
+    # Pricing Visibility tab's "Set Price" column: may this role use the Set
+    # price / Bulk Set price buttons on Ready to Sale? Default True keeps
+    # existing roles' access until an admin unticks it.
+    can_set_price    = Column(Boolean, default=True)
     can_add_lot      = Column(Boolean, default=True)
     can_add_iqc      = Column(Boolean, default=True)
     can_add_grn      = Column(Boolean, default=True)
@@ -187,6 +191,13 @@ def can_view_pricing(role_name: str) -> bool:
     fields anywhere in the app. Admin always True; unconfigured roles default
     to True (permissive), same convention as has_perm()/has_additional_perm()."""
     return has_additional_perm(role_name, "view_pricing")
+
+
+def can_set_price(role_name: str) -> bool:
+    """Pricing Visibility tab's Set Price column: whether role_name may set
+    Min/Max Selling Price on Ready to Sale (Set price, Bulk Set price, As-Is
+    Lot Set price). Admin always True; unconfigured roles default to True."""
+    return has_additional_perm(role_name, "set_price")
 
 
 def get_cached_perms(role_name: str) -> dict:

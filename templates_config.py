@@ -139,6 +139,16 @@ def _can_view_pricing(current_user):
     return _can_view_pricing_by_role(role_val)
 
 
+def _can_set_price(current_user):
+    """Template helper: {% if can_set_price(current_user) %} — the Pricing
+    Visibility tab's Set Price column (Ready to Sale's Set price buttons)."""
+    if current_user is None:
+        return True
+    from models.role_permissions import can_set_price as _csp
+    role_val = getattr(getattr(current_user, "role", None), "value", None) or str(getattr(current_user, "role", ""))
+    return _csp(role_val)
+
+
 def _any_perm(role, *modules):
     return any(_has_perm(role, m, "enable") for m in modules)
 
@@ -239,6 +249,7 @@ templates.env.globals["has_explicit_perm"] = _has_explicit_perm
 templates.env.globals["any_perm"] = _any_perm
 templates.env.globals["narrowly_scoped_to"] = _narrowly_scoped_to
 templates.env.globals["can_view_pricing"] = _can_view_pricing
+templates.env.globals["can_set_price"] = _can_set_price
 templates.env.globals["breadcrumb_enabled"] = _breadcrumb_enabled
 templates.env.globals["module_hidden"] = _module_hidden
 templates.env.globals["sidebar_label"] = _sidebar_label

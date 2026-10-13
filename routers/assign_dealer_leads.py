@@ -70,7 +70,7 @@ async def list_assign_dealer_leads(
             base_query = base_query.where(Dealer.assigned_to == assigned)
 
     dealers = (await db.execute(
-        base_query.order_by(Dealer.created_at.desc())
+        base_query.order_by(Dealer.created_at.desc().nulls_last(), Dealer.dealer_code.desc())
     )).scalars().all()
 
     # Active users for the Assign User modal + filter dropdown

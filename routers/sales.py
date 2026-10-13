@@ -166,6 +166,8 @@ async def ready_list_data(
 
     role = getattr(current_user.role, "value", current_user.role)
     show_pricing = _cvp(role)
+    from models.role_permissions import can_set_price as _csp
+    show_set_price = _csp(role)
     rates = await load_ready_rates(db)
 
     # As-Is sub-lot devices (non-empty sub_lot_number) are locked to the As-Is
@@ -358,11 +360,12 @@ async def ready_list_data(
                 action += f'<span class="badge bg-danger align-self-center ms-1" title="{esc(rejected_notes)}">Rejected</span>'
             action += (f'<button class="btn btn-sm btn-outline-primary ms-1 d-none" data-bs-toggle="modal" data-bs-target="#dispatchModal" '
                       f'data-barcode="{esc(d.barcode)}" data-model="{esc((d.brand or "") + " " + (d.model or ""))}">Request</button>')
-        action += (f'<button type="button" class="btn btn-sm btn-outline-dark ms-1 tag-set-price-btn" '
-                  f'data-barcode="{esc(d.barcode)}" '
-                  f'data-min="{d.min_selling_price if d.min_selling_price is not None else ""}" '
-                  f'data-auto="{auto_min if auto_min is not None else ""}" '
-                  f'data-max="{d.max_selling_price if d.max_selling_price is not None else ""}">Set price</button>')
+        if show_set_price:  # Master Data → Pricing Visibility → Set Price
+            action += (f'<button type="button" class="btn btn-sm btn-outline-dark ms-1 tag-set-price-btn" '
+                      f'data-barcode="{esc(d.barcode)}" '
+                      f'data-min="{d.min_selling_price if d.min_selling_price is not None else ""}" '
+                      f'data-auto="{auto_min if auto_min is not None else ""}" '
+                      f'data-max="{d.max_selling_price if d.max_selling_price is not None else ""}">Set price</button>')
         cells.append(f'<div class="d-flex gap-1 flex-nowrap text-nowrap">{action}</div>')
         data.append(cells)
 
@@ -634,6 +637,13 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
     })
 
 
+def _role_can_set_price(user) -> bool:
+    """Master Data → Pricing Visibility → Set Price, enforced on the server too
+    so a hidden button can't be bypassed with a direct request."""
+    from models.role_permissions import can_set_price as _csp
+    return _csp(getattr(user.role, "value", user.role))
+
+
 @router.post("/sales/ready/as-is-lot/price")
 async def set_as_is_lot_price(
     request: Request,
@@ -651,6 +661,8 @@ async def set_as_is_lot_price(
     goes back to the formula. Deliberately not written to Device.min_selling_
     price: that column is per-tag, and a lot total there would become every
     tag's price once the lot is opened."""
+    if not _role_can_set_price(current_user):
+        return RedirectResponse(url="/sales/ready?error=Your+role+cannot+set+prices", status_code=302)
     try:
         lid = _uuid.UUID(lot_id)
     except ValueError:
@@ -753,6 +765,8 @@ async def set_ready_tag_price(
 ):
     """Ready to Sale Tag table's Set price modal — writes Min/Max Selling
     Price on a single Tag Number."""
+    if not _role_can_set_price(current_user):
+        return JSONResponse({"ok": False, "error": "Your role cannot set prices"}, status_code=403)
     device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
     if not device:
         return JSONResponse({"ok": False, "error": "Tag Number not found"}, status_code=404)
@@ -791,6 +805,8 @@ async def bulk_set_ready_tag_price(
     Price across every selected Tag Number at once, same one-write-across-many
     shape as the As-Is Lot Edit modal, just keyed by an explicit barcode list
     instead of (Lot, Sub-Lot)."""
+    if not _role_can_set_price(current_user):
+        return JSONResponse({"ok": False, "error": "Your role cannot set prices"}, status_code=403)
     bcs = [b.strip() for b in barcodes.split(",") if b.strip()]
     if not bcs:
         return JSONResponse({"ok": False, "error": "No tags selected"}, status_code=400)

@@ -488,8 +488,12 @@ async def master_list(
     # can_view_pricing()'s permissive-by-default convention.
     all_add_perm_rows = (await db.execute(select(RoleAdditionalPermission))).scalars().all()
     pricing_by_role = {r.role_name: r.can_view_pricing for r in all_add_perm_rows}
+    set_price_by_role = {r.role_name: (True if r.can_set_price is None else r.can_set_price)
+                         for r in all_add_perm_rows}
+    # (role value, label, Pricing Visible, Set Price) — Set Price controls the
+    # Set price buttons on Ready to Sale.
     pricing_rows = [
-        (rval, rlabel, pricing_by_role.get(rval, True))
+        (rval, rlabel, pricing_by_role.get(rval, True), set_price_by_role.get(rval, True))
         for rval, rlabel in all_roles if rval != "admin"
     ]
 
@@ -898,7 +902,7 @@ async def save_additional_permissions(
 
     await db.commit()
 
-    # Preserve can_view_pricing — this form doesn't include a pricing field
+    # Preserve can_view_pricing / can_set_price — this form doesn't include them
     # (that's the separate Pricing Visibility tab), so re-read it from the
     # row rather than defaulting it back to True on every save here.
     refreshed = (await db.execute(
@@ -907,6 +911,8 @@ async def save_additional_permissions(
     set_cached_additional_perms(role_name, {
         **{key.removeprefix("can_"): val for key, val in values.items()},
         "view_pricing": refreshed.can_view_pricing,
+        # Same for Set Price (also on the Pricing Visibility tab).
+        "set_price": True if refreshed.can_set_price is None else bool(refreshed.can_set_price),
     })
 
     return RedirectResponse(
@@ -936,18 +942,22 @@ async def save_pricing_visibility(
         if role_val == "admin":
             continue
         new_val = f"pricing_{role_val}" in form
+        set_price_val = f"setprice_{role_val}" in form
         row = existing_rows.get(role_val)
         if row:
             row.can_view_pricing = new_val
+            row.can_set_price = set_price_val
             row.updated_by = current_user.username
         else:
             db.add(RoleAdditionalPermission(role_name=role_val, can_view_pricing=new_val,
+                                             can_set_price=set_price_val,
                                              updated_by=current_user.username))
 
         cached = dict(_ADDITIONAL_PERM_CACHE.get(role_val) or {
             key.removeprefix("can_"): True for key, _label in ADDITIONAL_PERMS
         })
         cached["view_pricing"] = new_val
+        cached["set_price"] = set_price_val
         set_cached_additional_perms(role_val, cached)
 
     await db.commit()
@@ -1094,6 +1104,7 @@ async def load_all_permissions_to_cache(db: AsyncSession) -> None:
         tmp_add[r.role_name] = {
             **{key.removeprefix("can_"): getattr(r, key) for key, _label in ADDITIONAL_PERMS},
             "view_pricing": r.can_view_pricing,
+            "set_price": True if r.can_set_price is None else bool(r.can_set_price),
         }
     _ADDITIONAL_PERM_CACHE.clear()
     _ADDITIONAL_PERM_CACHE.update(tmp_add)

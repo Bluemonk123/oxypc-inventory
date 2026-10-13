@@ -154,9 +154,14 @@
       <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
         <i class="bi bi-upload me-1"></i>Bulk Upload Tags
       </button>
+      {% if can_set_price(current_user) %}
       <button type="button" id="bulkSetPriceBtn" class="btn btn-sm btn-outline-dark" disabled>
         <i class="bi bi-tag me-1"></i>Bulk Set price (<span id="readySelCount3">0</span>)
       </button>
+      {% else %}
+      {# Hidden stand-in so the page script's getElementById('bulkSetPriceBtn') still finds an element. #}
+      <button type="button" id="bulkSetPriceBtn" class="d-none" disabled><span id="readySelCount3">0</span></button>
+      {% endif %}
     </div>
   </div>
   <div>
@@ -260,6 +265,7 @@
           <td>{% if r.max_price is not none %}₹{{ "{:,.0f}".format(r.max_price) }}{% else %}—{% endif %}</td>
           <td>{{ r.assigned_to_name }}</td>
           <td class="text-nowrap">
+            {% if can_set_price(current_user) %}
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 as-is-lot-edit-btn"
                     data-lot-id="{{ r.lot_id }}" data-sub-lot="{{ r.sub_lot_number }}"
                     data-lot-number="{{ r.lot_number or '' }}"
@@ -268,6 +274,7 @@
                     data-max="{{ r.max_override }}">
               <i class="bi bi-tag"></i> Set price
             </button>
+            {% endif %}
             <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2 as-is-lot-open-btn"
                     data-lot-id="{{ r.lot_id }}" data-sub-lot="{{ r.sub_lot_number }}"
                     data-lot-number="{{ r.lot_number or '' }}"
