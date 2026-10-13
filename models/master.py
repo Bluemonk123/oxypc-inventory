@@ -64,9 +64,14 @@ MASTER_SEED = {
     "storage_type": [
         "HDD", "SSD", "NVMe SSD", "eMMC", "SSHD (Hybrid)",
     ],
+    "storage_size": [
+        "64GB", "128GB", "240GB", "256GB", "320GB", "480GB", "500GB", "512GB",
+        "1TB", "2TB",
+    ],
     "ram_type": [
         "DDR3", "DDR3L", "DDR4", "DDR4L", "DDR5", "LPDDR4", "LPDDR5",
     ],
+    "ram_size": ["2GB", "4GB", "8GB", "12GB", "16GB", "24GB", "32GB", "64GB"],
     "processor_brand": ["Intel", "AMD", "Apple Silicon"],
     "floor": ["Floor 1", "Floor 2", "Floor 3", "Warehouse", "Workshop", "Showroom"],
     "color": [
@@ -334,6 +339,22 @@ MASTER_SEED = {
     # ── Dealers ────────────────────────────────────────────────────────────────
     "dealer_dealer_type": ["retail", "wholesale", "corporate", "service"],
     "dealer_status": ["active", "inactive", "blacklisted"],
+    # Filled from uploads (a Google Maps export adds its "Category" values here)
+    # and by admins on /admin/master.
+    "dealer_sub_category": [],
+    # Dealer State dropdown (Add/Edit Dealer). Seeded into an existing database
+    # on server start while the category is still empty — see
+    # utils.master_data.ensure_master_defaults.
+    "dealer_state": [
+        "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+        "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+        "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya",
+        "Mizoram", "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim",
+        "Tamil Nadu", "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand",
+        "West Bengal", "Andaman and Nicobar Islands", "Chandigarh",
+        "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Jammu and Kashmir",
+        "Ladakh", "Lakshadweep", "Puducherry",
+    ],
     # ── CRM (previously plain Python constants in models/crm.py) ──────────────
     "crm_source_type": ["recycler", "refurb", "endcust", "trader", "indiv", "online"],
     "crm_material_type": [

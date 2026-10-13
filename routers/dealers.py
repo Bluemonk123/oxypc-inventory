@@ -22,7 +22,8 @@ from utils.call_outcomes import (
 from models.dealers import Dealer, DealerCall, DealerAssignment, DealerOrder, DealerCreditNote
 from models.user import User, UserRole
 from models.master import MasterData
-from utils.master_data import master_values
+from utils.master_data import master_values, add_missing_master_values, refresh_master_cache
+from utils.dealer_fields import normalize_state, parse_google_cid, safe_external_url
 from auth.dependencies import (
     get_current_user, require_roles, verify_csrf, require_module_perm,
     _matrix_grants_path,
@@ -169,6 +170,41 @@ async def _recent_quotations(db: AsyncSession) -> list:
     return result.scalars().all()
 
 
+def _dealer_text_search(query, text: str):
+    """Free-text match used by the page's Search filter and by the Dealers
+    table's own search box (both may apply at once)."""
+    text = (text or "").strip()
+    if not text:
+        return query
+    from sqlalchemy import or_
+    like = f"%{text}%"
+    return query.where(or_(
+        Dealer.business_name.ilike(like),
+        Dealer.dealer_code.ilike(like),
+        Dealer.city.ilike(like),
+        Dealer.address.ilike(like),
+        Dealer.phone.ilike(like),
+        Dealer.email.ilike(like),
+        Dealer.contact_person.ilike(like),
+        Dealer.dealer_sub_category.ilike(like),
+        Dealer.state.ilike(like),
+    ))
+
+
+SUB_CATEGORY_NOT_SET = "__none__"
+
+
+def _sub_category_filter(query, sub_category: str):
+    """Dealer Sub Category filter shared by Dealer Management and Assign Dealer
+    Leads; "__none__" picks dealers with no Sub Category."""
+    if sub_category == SUB_CATEGORY_NOT_SET:
+        from sqlalchemy import or_
+        return query.where(or_(Dealer.dealer_sub_category.is_(None), Dealer.dealer_sub_category == ""))
+    if sub_category:
+        return query.where(Dealer.dealer_sub_category == sub_category)
+    return query
+
+
 def _dealer_base_query(
     current_user: User,
     q: str = "", status: str = "", assigned: str = "", city: str = "",
@@ -176,22 +212,13 @@ def _dealer_base_query(
     filter_qty: str = "", filter_purchase_qty: str = "", filter_sale_qty: str = "",
     filter_whom_to_sell: str = "", filter_deals_in: str = "",
     followup_from: str = "", followup_to: str = "",
+    dealer_type: str = "", sub_category: str = "",
 ):
     """Builds the filtered Dealer select — shared by the page (for its count
     cards) and /dealers/data (for the paginated rows), so the two can never
     disagree about which dealers match the current filters."""
-    from sqlalchemy import or_
     base_query = select(Dealer).where(Dealer.trashed_at.is_(None))  # exclude soft-deleted
-    if q:
-        like = f"%{q}%"
-        base_query = base_query.where(or_(
-            Dealer.business_name.ilike(like),
-            Dealer.city.ilike(like),
-            Dealer.address.ilike(like),
-            Dealer.phone.ilike(like),
-            Dealer.email.ilike(like),
-            Dealer.contact_person.ilike(like),
-        ))
+    base_query = _dealer_text_search(base_query, q)
     if status:
         base_query = base_query.where(Dealer.status == status)
     if assigned:
@@ -202,6 +229,9 @@ def _dealer_base_query(
         base_query = base_query.where(Dealer.assigned_to == current_user.username)
     if city:
         base_query = base_query.where(Dealer.city.ilike(f"%{city}%"))
+    if dealer_type:
+        base_query = base_query.where(Dealer.dealer_type == dealer_type)
+    base_query = _sub_category_filter(base_query, sub_category)
 
     # Latest-call-derived filters (calling date range, quantities, whom-to-sell,
     # deals_in) — all scoped to each dealer's MOST RECENT call, same "rn == 1"
@@ -362,13 +392,15 @@ async def list_dealers(
     filter_deals_in: str = Query(default=""),
     followup_from: str = Query(default=""),
     followup_to: str = Query(default=""),
+    dealer_type: str = Query(default=""),
+    sub_category: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_sales),
 ):
     base_query = _dealer_base_query(
         current_user, q, status, assigned, city, calling_date_from, calling_date_to,
         filter_qty, filter_purchase_qty, filter_sale_qty, filter_whom_to_sell,
-        filter_deals_in, followup_from, followup_to,
+        filter_deals_in, followup_from, followup_to, dealer_type, sub_category,
     )
 
     # Total count
@@ -496,6 +528,9 @@ async def list_dealers(
         "filter_deals_in": filter_deals_in,
         "followup_from": followup_from,
         "followup_to": followup_to,
+        "dealer_type": dealer_type,
+        "sub_category": sub_category,
+        "dealer_type_options": await master_values(db, "dealer_dealer_type"),
         "total_count": total_count,
         "active_count": active_count,
         "followup_count": followup_count,
@@ -539,6 +574,8 @@ async def dealers_data(
     filter_sale_qty: str = Query(default=""), filter_whom_to_sell: str = Query(default=""),
     filter_deals_in: str = Query(default=""),
     followup_from: str = Query(default=""), followup_to: str = Query(default=""),
+    dealer_type: str = Query(default=""), sub_category: str = Query(default=""),
+    search_value: str = Query(default="", alias="search[value]"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_sales),
 ):
@@ -548,8 +585,10 @@ async def dealers_data(
     base_query = _dealer_base_query(
         current_user, q, status, assigned, city, calling_date_from, calling_date_to,
         filter_qty, filter_purchase_qty, filter_sale_qty, filter_whom_to_sell,
-        filter_deals_in, followup_from, followup_to,
+        filter_deals_in, followup_from, followup_to, dealer_type, sub_category,
     )
+    # The table's own search box narrows the page's filtered set further.
+    base_query = _dealer_text_search(base_query, search_value)
     # recordsTotal ignores every filter but the mandatory role scope — reuse
     # the same builder with no filter args so the two queries can't drift.
     unfiltered_query = _dealer_base_query(current_user)
@@ -579,8 +618,11 @@ async def dealers_data(
         next_fu = rc.get("next_followup_date")
         row_data = {
             "id": str(d.id), "dealer_code": d.dealer_code, "business_name": d.business_name,
-            "dealer_type": d.dealer_type, "contact_person": d.contact_person or "",
+            "dealer_type": d.dealer_type, "dealer_sub_category": d.dealer_sub_category or "",
+            "contact_person": d.contact_person or "",
             "phone": d.phone or "", "email": d.email or "", "address": d.address or "",
+            "city": d.city or "", "state": d.state or "",
+            "website": d.website or "", "google_cid": d.google_cid or "",
             "gstin": d.gstin or "", "status": d.status, "call_id": rc.get("call_id", ""),
             "call_date": call_date.strftime("%d-%m-%Y %H:%M") if call_date else "",
             "qty": rc.get("qty"), "items_discussed": rc.get("items_text", ""),
@@ -631,15 +673,19 @@ async def dealers_data(
         row = []
         if can_manage_dealers:
             row.append(f'<input type="checkbox" class="form-check-input dealerChk" value="{d.id}">')
+        # Dealer ID column hidden by request (the code still shows in the View
+        # popup); Status sits after Sub Category.
         row.extend([
-            f'<code>{esc(d.dealer_code or "")}</code>',
-            status_cell,
             f'<a href="/dealers/{d.id}" class="fw-semibold text-decoration-none">{esc(d.business_name or "")}</a>',
             f'<span class="badge bg-secondary">{esc((d.dealer_type or "").title())}</span>',
+            f'<span class="small">{esc(d.dealer_sub_category or "—")}</span>',
+            status_cell,
             f'<span class="small">{esc(d.contact_person or "—")}</span>',
             f'<span class="small">{esc(d.phone or "—")}</span>',
             f'<span class="small">{esc(d.email or "—")}</span>',
             f'<span class="small">{esc(_truncate(d.address) or "—")}</span>',
+            f'<span class="small">{esc(d.city or "—")}</span>',
+            f'<span class="small">{esc(d.state or "—")}</span>',
             f'<span class="small">{call_date.strftime("%d-%m-%Y") if call_date else "—"}</span>',
             f'<span class="small">{rc.get("qty") if rc.get("qty") is not None else "—"}</span>',
             f'<span class="small">{esc(_truncate(rc.get("items_text", "")) or "—")}</span>',
@@ -660,24 +706,57 @@ async def dealers_data(
     })
 
 
+@router.get("/ids")
+async def dealers_ids(
+    q: str = Query(default=""), status: str = Query(default=""),
+    assigned: str = Query(default=""), city: str = Query(default=""),
+    calling_date_from: str = Query(default=""), calling_date_to: str = Query(default=""),
+    filter_qty: str = Query(default=""), filter_purchase_qty: str = Query(default=""),
+    filter_sale_qty: str = Query(default=""), filter_whom_to_sell: str = Query(default=""),
+    filter_deals_in: str = Query(default=""),
+    followup_from: str = Query(default=""), followup_to: str = Query(default=""),
+    dealer_type: str = Query(default=""), sub_category: str = Query(default=""),
+    search_value: str = Query(default="", alias="search[value]"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_sales),
+):
+    """Every dealer id matching the Dealers table's current filters + search —
+    exactly the set /dealers/data pages through. Backs the header "select all"
+    checkbox, which selects all matching rows, not just the page on screen."""
+    base_query = _dealer_base_query(
+        current_user, q, status, assigned, city, calling_date_from, calling_date_to,
+        filter_qty, filter_purchase_qty, filter_sale_qty, filter_whom_to_sell,
+        filter_deals_in, followup_from, followup_to, dealer_type, sub_category,
+    )
+    base_query = _dealer_text_search(base_query, search_value)
+    sub = base_query.subquery()
+    ids = (await db.execute(select(sub.c.id))).scalars().all()
+    return JSONResponse({"ids": [str(i) for i in ids]})
+
+
 @router.post("/bulk-delete")
 async def bulk_delete_dealers(
     request: Request,
     dealer_ids: list[str] = Form(default=[]),
+    return_to: str = Form(default="/dealers"),
     _csrf: None = Depends(verify_csrf),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_dealer_manager),
 ):
     """Permanently delete the selected dealers and their call log / telecalling
     history. Dealers holding financial records are archived instead and reported,
-    so the count shown is what actually happened rather than what was clicked."""
+    so the count shown is what actually happened rather than what was clicked.
+    Used by Dealer Management and Assign Dealer Leads (return_to = the page to
+    land back on; only a local path is accepted)."""
+    back = return_to if (return_to or "").startswith("/") and not return_to.startswith("//") else "/dealers"
+    back = back.split("?")[0]
     ids = [i for i in (dealer_ids or []) if i]
     if not ids:
-        return RedirectResponse(url="/dealers?error=No+dealers+selected", status_code=302)
+        return RedirectResponse(url=f"{back}?error=No+dealers+selected", status_code=302)
 
     dealers = (await db.execute(select(Dealer).where(Dealer.id.in_(ids)))).scalars().all()
     if not dealers:
-        return RedirectResponse(url="/dealers?error=No+dealers+found", status_code=302)
+        return RedirectResponse(url=f"{back}?error=No+dealers+found", status_code=302)
     found_ids = [str(d.id) for d in dealers]
 
     deletable, blocked = await _partition_deletable(db, found_ids)
@@ -703,13 +782,19 @@ async def bulk_delete_dealers(
     counts = await _hard_delete_dealers(db, deletable)
     await db.commit()
 
-    import urllib.parse
     calls = counts.get("dealer_calls", 0)
+    # The pages send large selections in batches (the server refuses a request
+    # with 1000+ form fields), so they ask for a JSON reply and total it up.
+    if request.headers.get("x-requested-with") == "XMLHttpRequest":
+        return JSONResponse({"success": True, "deleted": counts.get("dealers", 0),
+                             "calls_removed": calls, "kept": len(blocked)})
+
+    import urllib.parse
     parts = [f"{counts.get('dealers', 0)} dealer(s) deleted permanently"]
     if calls:
         parts.append(f"{calls} call log(s) removed")
     msg = urllib.parse.quote(" — ".join(parts))
-    url = f"/dealers?success={msg}"
+    url = f"{back}?success={msg}"
     if blocked:
         url += "&warning=" + urllib.parse.quote(
             f"{len(blocked)} dealer(s) kept: they hold financial records "
@@ -1043,11 +1128,13 @@ async def dealer_ageing(
 @router.get("/bulk-upload-template")
 async def dealers_bulk_upload_template():
     """Return a sample CSV template for dealer bulk upload."""
-    header = "business_name,contact_person,phone,email,city,dealer_type,gst_number,address,assigned_to\n"
+    header = ("business_name,contact_person,phone,email,city,state,pincode,dealer_type,"
+              "dealer_sub_category,gst_number,address,website,google_cid,assigned_to\n")
     sample = (
-        "Example Traders,Rajesh Kumar,9876543210,rajesh@example.com,Delhi,wholesale,07ABCDE1234F1Z5,"
-        "123 Main Street Karol Bagh,sales_user\n"
-        "ABC Electronics,Priya Sharma,9123456789,priya@abc.com,Mumbai,retail,,456 MG Road Andheri,\n"
+        "Example Traders,Rajesh Kumar,9876543210,rajesh@example.com,Delhi,Delhi,110005,wholesale,"
+        "Computer Store,07ABCDE1234F1Z5,123 Main Street Karol Bagh,https://example.com,,sales_user\n"
+        "ABC Electronics,Priya Sharma,9123456789,priya@abc.com,Mumbai,Maharashtra,400053,retail,"
+        ",,456 MG Road Andheri,,,\n"
     )
     content = header + sample
     return StreamingResponse(
@@ -1107,7 +1194,16 @@ async def dealers_bulk_upload_submit(
         "gst_no":         "gst_number",    "gstno":         "gst_number",
         "gst_in":         "gst_number",
         "type":           "dealer_type",   "dealertype":    "dealer_type",
-        "category":       "dealer_type",
+        # "category" is resolved per row: a valid Dealer Type value sets Type
+        # (older templates used it that way), anything else is a Sub Category
+        # (a Google Maps export's "Category": Optician, Hospital, ...).
+        "sub_category":   "dealer_sub_category", "subcategory": "dealer_sub_category",
+        "dealer_subcategory": "dealer_sub_category",
+        "email_1":        "email",         "email1":        "email",
+        "pin":            "pincode",       "pin_code":      "pincode",
+        "zip":            "pincode",       "postal_code":   "pincode",
+        "web":            "website",       "website_url":   "website",
+        "cid":            "google_cid",    "google_maps_cid": "google_cid",
         "assigned":       "assigned_to",   "assignedto":    "assigned_to",
         "sales_person":   "assigned_to",   "salesperson":   "assigned_to",
     }
@@ -1233,6 +1329,15 @@ async def dealers_bulk_upload_submit(
 
     seq = 0
     valid_types = {"retail", "wholesale", "online", "corporate"}
+    state_options = await master_values(db, "dealer_state")
+
+    # Google CID is a true identity (one place on Google Maps), unlike name or
+    # phone, so it is the one duplicate check kept: uploading the same export
+    # twice must not create every dealer again. Live dealers only, as above.
+    existing_cids = set((await db.execute(
+        select(Dealer.google_cid).where(Dealer.google_cid.isnot(None), Dealer.trashed_at.is_(None))
+    )).scalars().all())
+    sub_categories_seen: list = []
 
     for i, row in enumerate(rows_data, start=2):  # row 1 = header
         business_name = row.get("business_name", "").strip()
@@ -1244,14 +1349,42 @@ async def dealers_bulk_upload_submit(
         # re-canvassing the same shop). Rejecting them silently dropped real rows
         # and the operator could not tell which. Every row is now imported.
 
+        google_cid = parse_google_cid(row.get("google_cid", ""))
+        if google_cid and google_cid in existing_cids:
+            skipped.append({"row": i, "business_name": business_name,
+                            "reason": f"Google CID {google_cid} already uploaded"})
+            continue
+
         # Phone cell may hold multiple numbers (comma/slash/semicolon/pipe-separated,
         # or just a long run of digits) — accepted and stored as-is, no format rejection.
         phone_raw = row.get("phone", "").strip()
         phone = phone_raw or None
 
-        dealer_type = row.get("dealer_type", "retail").strip().lower() or "retail"
+        category_raw = row.get("category", "").strip()
+        dealer_type = (row.get("dealer_type", "").strip().lower()
+                       or (category_raw.lower() if category_raw.lower() in valid_types else "")
+                       or "retail")
         if dealer_type not in valid_types:
             dealer_type = "retail"
+        sub_category = row.get("dealer_sub_category", "").strip()
+        if not sub_category and category_raw and category_raw.lower() not in valid_types:
+            sub_category = category_raw
+        sub_category = sub_category[:150] or None
+        if sub_category:
+            sub_categories_seen.append(sub_category)
+
+        pincode = (row.get("pincode", "").strip() or None)
+        if pincode:
+            pincode = pincode[:10]
+        state = normalize_state(row.get("state", ""), pincode, state_options)
+
+        # Google Maps exports name the search that found the row; keep it as
+        # the dealer's Source so imported leads can be traced back.
+        keyword = row.get("keyword", "").strip()
+        location = row.get("location", "").strip()
+        source = None
+        if keyword or google_cid:
+            source = "Google Maps" + (f": {keyword}" if keyword else "") + (f" ({location})" if location else "")
 
         dealer_code = alloc_code()
         seq += 1
@@ -1259,30 +1392,61 @@ async def dealers_bulk_upload_submit(
         try:
             dealer = Dealer(
                 dealer_code=dealer_code,
-                business_name=business_name,
+                business_name=business_name[:200],
                 contact_person=row.get("contact_person", "").strip() or None,
                 phone=phone,
                 email=row.get("email", "").strip() or None,
-                city=row.get("city", "").strip() or None,
+                city=(row.get("city", "").strip()[:100] or None),
+                state=state,
+                pincode=pincode,
                 dealer_type=dealer_type,
+                dealer_sub_category=sub_category,
                 gstin=row.get("gst_number", "").strip() or None,
                 address=row.get("address", "").strip() or None,
-                assigned_to=row.get("assigned_to", "").strip() or current_user.username,
+                website=(row.get("website", "").strip()[:1000] or None),
+                google_cid=google_cid,
+                source=source,
+                # Blank assigned_to = Unassigned, so uploaded leads land in Assign
+                # Dealer Leads' Unassigned pool. A telecaller's upload still
+                # defaults to themselves: their Dealer Management list only shows
+                # dealers assigned to them, so unassigned rows would vanish.
+                assigned_to=(row.get("assigned_to", "").strip()
+                             or (current_user.username if current_user.role == UserRole.telecaller else None)),
                 status="active",
                 created_by=current_user.username,
+                added_by=current_user.username,
             )
             db.add(dealer)
             if phone:
                 existing_phones.add(phone)
+            if google_cid:
+                existing_cids.add(google_cid)
             existing_names_lower.add(business_name.lower())
             added.append({"row": i, "business_name": business_name, "dealer_code": dealer_code})
         except Exception as exc:
             errors.append({"row": i, "business_name": business_name, "reason": str(exc)})
 
-    if added:
-        await db.commit()
+    # New Sub Category values from the file join the Master Dropdown, so the
+    # Add/Edit Dealer dropdown can show what these dealers were imported with.
+    new_sub_categories = []
+    if added and sub_categories_seen:
+        new_sub_categories = await add_missing_master_values(db, "dealer_sub_category", sub_categories_seen)
 
-    results = {"added": added, "skipped": skipped, "errors": errors}
+    if added:
+        await audit(
+            db, user=current_user, action="DEALER_BULK_UPLOADED",
+            table_name="dealers", record_id=f"bulk:{len(added)}",
+            new_value={"file": getattr(upload, "filename", "") or "", "added": len(added),
+                       "skipped": len(skipped), "errors": len(errors),
+                       "new_sub_categories": new_sub_categories[:200]},
+            request=request,
+        )
+        await db.commit()
+        if new_sub_categories:
+            await refresh_master_cache(db)
+
+    results = {"added": added, "skipped": skipped, "errors": errors,
+               "new_sub_categories": new_sub_categories}
     return templates.TemplateResponse("dealers/bulk_upload.html", {
         "request": request, "current_user": current_user,
         "results": results,
@@ -1603,6 +1767,7 @@ async def create_dealer(
     last_name: str = Form(default=None),
     contact_person: str = Form(default=None),
     dealer_type: str = Form(default="retail"),
+    dealer_sub_category: str = Form(default=None),
     phone: str = Form(default=None),
     whatsapp_number: str = Form(default=None),
     email: str = Form(default=None),
@@ -1611,6 +1776,8 @@ async def create_dealer(
     city: str = Form(default=None),
     state: str = Form(default=None),
     pincode: str = Form(default=None),
+    website: str = Form(default=None),
+    google_cid: str = Form(default=None),
     preferred_categories: str = Form(default=None),
     credit_limit: float = Form(default=0),
     assigned_to: str = Form(default=None),
@@ -1633,6 +1800,7 @@ async def create_dealer(
         last_name=last_name or None,
         contact_person=contact_person,
         dealer_type=dealer_type,
+        dealer_sub_category=(dealer_sub_category or "").strip() or None,
         phone=phone,
         whatsapp_number=whatsapp_number,
         email=email,
@@ -1641,6 +1809,8 @@ async def create_dealer(
         city=city,
         state=state,
         pincode=pincode,
+        website=(website or "").strip() or None,
+        google_cid=parse_google_cid(google_cid),
         preferred_categories=preferred_categories,
         credit_limit=credit_limit,
         assigned_to=assigned_to or current_user.username,
@@ -1827,6 +1997,7 @@ async def dealer_profile(
         "request": request,
         "current_user": current_user,
         "dealer": dealer,
+        "website_url": safe_external_url(dealer.website),
         "calls": calls,
         "orders": orders,
         "today": today,
@@ -1988,6 +2159,7 @@ async def update_dealer(
     last_name: str = Form(default=None),
     contact_person: str = Form(default=None),
     dealer_type: str = Form(default="retail"),
+    dealer_sub_category: str = Form(default=None),
     phone: str = Form(default=None),
     whatsapp_number: str = Form(default=None),
     email: str = Form(default=None),
@@ -1996,6 +2168,8 @@ async def update_dealer(
     city: str = Form(default=None),
     state: str = Form(default=None),
     pincode: str = Form(default=None),
+    website: str = Form(default=None),
+    google_cid: str = Form(default=None),
     preferred_categories: str = Form(default=None),
     credit_limit: float = Form(default=0),
     assigned_to: str = Form(default=None),
@@ -2013,6 +2187,14 @@ async def update_dealer(
     dealer.last_name = last_name or None
     dealer.contact_person = contact_person
     dealer.dealer_type = dealer_type
+    # Only fields this form actually posted are written, so an older cached copy
+    # of the page (without the new inputs) cannot blank them.
+    if dealer_sub_category is not None:
+        dealer.dealer_sub_category = dealer_sub_category.strip() or None
+    if website is not None:
+        dealer.website = website.strip() or None
+    if google_cid is not None:
+        dealer.google_cid = parse_google_cid(google_cid)
     dealer.phone = phone
     dealer.whatsapp_number = whatsapp_number
     dealer.email = email
@@ -2036,9 +2218,12 @@ async def quick_edit_dealer(
     business_name: str = Form(...),
     contact_person: str = Form(default=None),
     dealer_type: str = Form(default="retail"),
+    dealer_sub_category: str = Form(default=None),
     phone: str = Form(default=None),
     email: str = Form(default=None),
     address: str = Form(default=None),
+    city: str = Form(default=None),
+    state: str = Form(default=None),
     status: str = Form(default="active"),
     call_id: str = Form(default=""),
     qty: str = Form(default=""),
@@ -2073,6 +2258,14 @@ async def quick_edit_dealer(
     dealer.phone = phone or None
     dealer.email = email or None
     dealer.address = address or None
+    # Written only when the modal posted them (None = field not on the form),
+    # so a modal without these inputs never blanks them.
+    if dealer_sub_category is not None:
+        dealer.dealer_sub_category = dealer_sub_category.strip() or None
+    if city is not None:
+        dealer.city = city.strip() or None
+    if state is not None:
+        dealer.state = state.strip() or None
     dealer.status = status
 
     call = None
@@ -2109,9 +2302,12 @@ async def quick_new_dealer(
     business_name: str = Form(...),
     contact_person: str = Form(default=None),
     dealer_type: str = Form(default="retail"),
+    dealer_sub_category: str = Form(default=None),
     phone: str = Form(default=None),
     email: str = Form(default=None),
     address: str = Form(default=None),
+    city: str = Form(default=None),
+    state: str = Form(default=None),
     status: str = Form(default="active"),
     qty: str = Form(default=""),
     items_discussed: str = Form(default=""),
@@ -2141,9 +2337,12 @@ async def quick_new_dealer(
         business_name=business_name,
         contact_person=contact_person or None,
         dealer_type=dealer_type,
+        dealer_sub_category=(dealer_sub_category or "").strip() or None,
         phone=phone or None,
         email=email or None,
         address=address or None,
+        city=(city or "").strip() or None,
+        state=(state or "").strip() or None,
         status=status,
         added_by=current_user.username,
         assigned_to=current_user.username,

@@ -51,7 +51,10 @@
               Accepted: <strong>.csv</strong> or <strong>.xlsx</strong> (Excel) &nbsp;|&nbsp;
               Column names are case-insensitive and can use spaces or underscores<br>
               Required: <code>business_name</code> &nbsp;|&nbsp;
-              Optional: <code>contact_person, phone, email, city, dealer_type, gst_number, address, assigned_to</code>
+              Optional: <code>contact_person, phone, email, city, state, pincode, dealer_type, dealer_sub_category,
+              gst_number, address, website, google_cid, assigned_to</code><br>
+              A Google Maps export uploads as-is: <em>Company name</em> &rarr; Business Name,
+              <em>Category</em> &rarr; Sub Category, <em>Cid</em> &rarr; Google CID.
             </div>
           </div>
           <div class="d-flex gap-2">
@@ -75,13 +78,18 @@
           <tbody>
             <tr><td>business_name</td><td><span class="badge bg-danger">Yes</span></td><td>Any text</td></tr>
             <tr><td>contact_person</td><td>No</td><td>Any text</td></tr>
-            <tr><td>phone</td><td>No</td><td>10-digit number (duplicates skipped)</td></tr>
+            <tr><td>phone</td><td>No</td><td>Phone number(s); several may share one cell</td></tr>
             <tr><td>email</td><td>No</td><td>Email address</td></tr>
             <tr><td>city</td><td>No</td><td>Any city name</td></tr>
+            <tr><td>state</td><td>No</td><td>State name (from Master Dropdown). Not a state? Taken from the pincode</td></tr>
+            <tr><td>pincode</td><td>No</td><td>6-digit PIN code</td></tr>
             <tr><td>dealer_type</td><td>No</td><td>retail, wholesale, online, corporate</td></tr>
+            <tr><td>dealer_sub_category <span class="text-muted">(or category)</span></td><td>No</td><td>Any text; new values are added to the Master Dropdown</td></tr>
             <tr><td>gst_number</td><td>No</td><td>15-char GST number</td></tr>
             <tr><td>address</td><td>No</td><td>Full address</td></tr>
-            <tr><td>assigned_to</td><td>No</td><td>Sales exec username</td></tr>
+            <tr><td>website</td><td>No</td><td>Website URL</td></tr>
+            <tr><td>google_cid <span class="text-muted">(or cid)</span></td><td>No</td><td>Google Maps CID or <code>maps.google.com/?cid=</code> link. Already uploaded = row skipped</td></tr>
+            <tr><td>assigned_to</td><td>No</td><td>Sales exec username. Blank = Unassigned (shows in Assign Dealer Leads)</td></tr>
           </tbody>
         </table>
       </div>
@@ -110,6 +118,13 @@
             <div class="small text-muted">Errors</div>
           </div>
         </div>
+
+        {% if results.new_sub_categories %}
+        <div class="alert alert-info py-2 small">
+          <i class="bi bi-plus-circle me-1"></i>{{ results.new_sub_categories|length }} new Sub Category
+          value(s) added to Master Dropdown: {{ results.new_sub_categories[:15]|join(', ') }}{% if results.new_sub_categories|length > 15 %}, …{% endif %}
+        </div>
+        {% endif %}
 
         {% if results.added %}
         <h6 class="fw-semibold text-success mt-3">Added ({{ results.added|length }})</h6>
@@ -168,6 +183,9 @@
         <div class="mt-3 d-flex gap-2">
           <a href="/dealers" class="btn btn-primary btn-sm">
             <i class="bi bi-people me-1"></i>View All Dealers
+          </a>
+          <a href="/assign-dealer-leads" class="btn btn-outline-primary btn-sm">
+            <i class="bi bi-person-check me-1"></i>Assign Dealer Leads
           </a>
           <a href="/dealers/bulk-upload" class="btn btn-outline-secondary btn-sm">Upload Another</a>
         </div>

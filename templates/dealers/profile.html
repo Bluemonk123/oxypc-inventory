@@ -20,8 +20,10 @@
         <div class="mb-2"><i class="bi bi-telephone me-2 text-muted"></i>{{ dealer.phone or '—' }}</div>
         <div class="mb-2"><i class="bi bi-whatsapp me-2 text-success"></i>{{ dealer.whatsapp_number or '—' }}</div>
         <div class="mb-2"><i class="bi bi-envelope me-2 text-muted"></i>{{ dealer.email or '—' }}</div>
-        <div class="mb-2"><i class="bi bi-geo-alt me-2 text-muted"></i>{{ dealer.city or '' }}{% if dealer.state %}, {{ dealer.state }}{% endif %}</div>
-        <div class="mb-2"><i class="bi bi-tag me-2 text-muted"></i>{{ dealer.dealer_type | title }}</div>
+        <div class="mb-2"><i class="bi bi-geo-alt me-2 text-muted"></i>{{ dealer.city or '' }}{% if dealer.state %}{% if dealer.city %}, {% endif %}{{ dealer.state }}{% endif %}{% if dealer.pincode %} {{ dealer.pincode }}{% endif %}{% if not dealer.city and not dealer.state and not dealer.pincode %}—{% endif %}</div>
+        <div class="mb-2"><i class="bi bi-tag me-2 text-muted"></i>{{ dealer.dealer_type | title }}{% if dealer.dealer_sub_category %} <span class="text-muted">·</span> {{ dealer.dealer_sub_category }}{% endif %}</div>
+        <div class="mb-2"><i class="bi bi-globe me-2 text-muted"></i>{% if dealer.website %}<a href="{{ website_url }}" target="_blank" rel="noopener noreferrer" class="text-break">{{ dealer.website }}</a>{% else %}—{% endif %}</div>
+        <div class="mb-2"><i class="bi bi-pin-map me-2 text-muted"></i>Google CID: {% if dealer.google_cid %}<a href="https://maps.google.com/?cid={{ dealer.google_cid }}" target="_blank" rel="noopener noreferrer">{{ dealer.google_cid }}</a>{% else %}—{% endif %}</div>
         {% if dealer.gstin %}<div class="mb-2"><i class="bi bi-file-text me-2 text-muted"></i>GST: {{ dealer.gstin }}</div>{% endif %}
         {% if dealer.preferred_categories %}<div class="mb-2"><i class="bi bi-star me-2 text-muted"></i>Prefers: {{ dealer.preferred_categories }}</div>{% endif %}
         <div class="mb-2"><i class="bi bi-person-badge me-2 text-muted"></i>Assigned: <strong>{{ dealer.assigned_to or 'Unassigned' }}</strong></div>

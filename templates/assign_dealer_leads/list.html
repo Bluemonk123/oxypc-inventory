@@ -2,12 +2,13 @@
 {% block title %}Assign Dealer Leads — OxyPC{% endblock %}
 {% block page_title %}Assign Dealer Leads{% endblock %}
 {% block content %}
+<style>.adl-flt { width: 170px; }</style>
 
 <div class="d-flex flex-wrap gap-2 align-items-start mb-3">
   <form method="get" class="d-flex flex-wrap gap-2 align-items-end flex-grow-1">
     <div>
       <label class="form-label form-label-sm mb-1 text-muted small">Search</label>
-      <input type="text" name="q" value="{{ q }}" placeholder="Name, code, phone, city..."
+      <input type="text" name="q" value="{{ q }}" placeholder="Name, code, phone, city, sub category..."
              class="form-control form-control-sm" style="width:220px">
     </div>
     <div>
@@ -34,25 +35,11 @@
         {% endfor %}
       </select>
     </div>
+    {% set wrapper_class = 'adl-flt' %}
+    {% include "dealers/_type_subcat_filters.html" %}
     <button class="btn btn-sm btn-outline-primary">Filter</button>
     <a href="/assign-dealer-leads" class="btn btn-sm btn-outline-secondary">Clear</a>
   </form>
-
-  <div class="d-flex gap-2 ms-auto flex-wrap">
-    <button type="button" class="btn btn-sm btn-outline-primary" id="btnAssignUser" disabled
-            data-bs-toggle="modal" data-bs-target="#assignUserModal">
-      <i class="bi bi-person-check me-1"></i>Assign User <span class="badge bg-primary" id="selCountBadge">0</span>
-    </button>
-    <a href="/dealers/bulk-upload-template" class="btn btn-sm btn-outline-success">
-      <i class="bi bi-download me-1"></i>Download Sample
-    </a>
-    <a href="/dealers/bulk-upload" class="btn btn-sm btn-outline-success">
-      <i class="bi bi-cloud-upload me-1"></i>Upload Bulk
-    </a>
-    <button type="button" class="btn btn-sm btn-primary" onclick="openDealerAddModal()">
-      <i class="bi bi-plus-circle me-1"></i>Add Dealer
-    </button>
-  </div>
 </div>
 
 <div class="row g-3 mb-3" id="assignDealerSummaryCards">
@@ -71,16 +58,39 @@
 </div>
 
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-person-lines-fill me-2"></i>Dealer Leads</span>
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
+      <button type="button" class="btn btn-sm text-nowrap btn-outline-primary" id="btnAssignUser" disabled
+              data-bs-toggle="modal" data-bs-target="#assignUserModal">
+        <i class="bi bi-person-check me-1"></i>Assign User <span class="badge bg-primary" id="selCountBadge">0</span>
+      </button>
+      <a href="/dealers/bulk-upload-template" class="btn btn-sm text-nowrap btn-outline-success">
+        <i class="bi bi-download me-1"></i>Download Sample
+      </a>
+      <a href="/dealers/bulk-upload" class="btn btn-sm text-nowrap btn-outline-success">
+        <i class="bi bi-cloud-upload me-1"></i>Upload Bulk
+      </a>
+      {% if can_manage_dealers %}
+      <button type="button" id="adlBulkDeleteBtn" class="btn btn-sm text-nowrap btn-outline-danger" disabled>
+        <i class="bi bi-trash me-1"></i>Delete Selected (<span id="adlDelCount">0</span>)
+      </button>
+      {% endif %}
+      <button type="button" class="btn btn-sm text-nowrap btn-primary" onclick="openDealerAddModal()">
+        <i class="bi bi-plus-circle me-1"></i>Add Dealer
+      </button>
+    </div>
+  </div>
   <div class="card-body p-0">
-    <div class="table-responsive" id="assignDealerTableWrap">
+    <div id="assignDealerTableWrap">
       <table class="table table-hover mb-0" id="dealerLeadsTable">
-        <thead class="table-light">
+        <thead class="table-dark">
           <tr>
             <th><input type="checkbox" id="checkAll"></th>
-            <th>Dealer ID</th>
             <th>Dealer Name</th>
             <th>Deals In</th>
             <th>Dealer Type</th>
+            <th>Sub Category</th>
             <th>Person Name</th>
             <th>Phone</th>
             <th>Email</th>
@@ -96,12 +106,12 @@
         <tbody>
           {% set sc = {'active':'success','inactive':'secondary','blacklisted':'danger'} %}
           {% for d in dealers %}
-          <tr>
+          <tr data-assigned="{{ d.assigned_to or '' }}">
             <td><input type="checkbox" class="dealerChk" name="dealer_ids" value="{{ d.id }}"></td>
-            <td><code>{{ d.dealer_code }}</code></td>
             <td class="fw-semibold">{{ d.business_name }}</td>
             <td class="small">{{ d.preferred_categories or '—' }}</td>
             <td><span class="badge bg-secondary">{{ d.dealer_type | title }}</span></td>
+            <td class="small">{{ d.dealer_sub_category or '—' }}</td>
             <td class="small">{{ d.contact_person or '—' }}</td>
             <td class="small">{{ d.phone or '—' }}</td>
             <td class="small">{{ d.email or '—' }}</td>
@@ -127,13 +137,9 @@
               </div>
             </td>
           </tr>
-          {% else %}
-          <tr>
-            <td colspan="15" class="text-center text-muted py-4">
-              No dealers found. <a href="#" onclick="openDealerAddModal(); return false;">Add your first dealer</a>
-            </td>
-          </tr>
           {% endfor %}
+          {# No hand-written "no rows" line: the Global Table draws its own
+             empty state, and a colspan row breaks DataTables' column count. #}
         </tbody>
       </table>
     </div>
@@ -156,6 +162,7 @@
           <label class="form-label small text-muted">Select User</label>
           <select name="assigned_to" class="form-select" required>
             <option value="">Choose a user…</option>
+            <option value="__unassigned__">— Unassigned (remove user) —</option>
             {% for u in all_users %}
             <option value="{{ u.username }}">{{ u.full_name }} ({{ u.role.value }})</option>
             {% endfor %}
@@ -191,13 +198,22 @@
             <label class="form-label small fw-semibold">Business Name <span class="text-danger">*</span></label>
             <input type="text" name="business_name" id="deBusinessName" class="form-control form-control-sm" required>
           </div>
-          <div class="col-md-6">
+          <div class="col-md-3">
             <label class="form-label small">Type</label>
             <select name="dealer_type" id="deType" class="form-select form-select-sm">
               <option value="retail">Retail</option>
               <option value="wholesale">Wholesale</option>
               <option value="corporate">Corporate</option>
               <option value="service">Service</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small">Sub Category</label>
+            <select name="dealer_sub_category" id="deSubCategory" class="form-select form-select-sm">
+              <option value="">Select...</option>
+              {% for val in master_options('dealer_sub_category') %}
+              <option value="{{ val }}">{{ val }}</option>
+              {% endfor %}
             </select>
           </div>
           <div class="col-md-6">
@@ -223,6 +239,19 @@
           <div class="col-md-12">
             <label class="form-label small">Address</label>
             <textarea name="address" id="deAddress" class="form-control form-control-sm" rows="2"></textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">City</label>
+            <input type="text" name="city" id="deCity" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">State</label>
+            <select name="state" id="deState" class="form-select form-select-sm">
+              <option value="">Select...</option>
+              {% for val in master_options('dealer_state') %}
+              <option value="{{ val }}">{{ val }}</option>
+              {% endfor %}
+            </select>
           </div>
           <div class="col-md-6">
             <label class="form-label small">Require Quantity</label>
@@ -304,8 +333,35 @@
   var assignForm = document.getElementById('assignForm');
   var deleteForm = document.getElementById('deleteForm');
 
+  // Selection spans every page: checked rows are read through the DataTables
+  // API (off-page rows are kept out of the DOM, so querySelectorAll only ever
+  // saw page 1). Only rows matching the current search / Unassigned filter
+  // count, so a selection never includes rows you can't see.
+  var adlDt = null;
   function selectedChecks(){
-    return Array.prototype.slice.call(document.querySelectorAll('.dealerChk:checked'));
+    if (!adlDt) return [];
+    return $(adlDt.rows({ search: 'applied' }).nodes()).find('.dealerChk:checked').toArray();
+  }
+
+  // Posts ids in batches of 500 (the server refuses 1000+ form fields in one
+  // request) and resolves with every batch's JSON reply.
+  function postInBatches(url, ids, fields){
+    var replies = [];
+    var chain = Promise.resolve();
+    for (var i = 0; i < ids.length; i += 500) {
+      (function(chunk){
+        chain = chain.then(function(){
+          var fd = new FormData();
+          fd.append('csrf_token', '{{ request.cookies.get("csrf_token", "") }}');
+          Object.keys(fields || {}).forEach(function(k){ fd.append(k, fields[k]); });
+          chunk.forEach(function(id){ fd.append('dealer_ids', id); });
+          return fetch(url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+            .then(function(r){ if (!r.ok) throw new Error('Request failed (' + r.status + ')'); return r.json(); })
+            .then(function(j){ replies.push(j); });
+        });
+      })(ids.slice(i, i + 500));
+    }
+    return chain.then(function(){ return replies; });
   }
 
   function updateSelUI(){
@@ -313,17 +369,87 @@
     btnAssignUser.disabled = n === 0;
     selCountBadge.textContent = n;
     assignCountText.textContent = n;
+    var delBtn = document.getElementById('adlBulkDeleteBtn');
+    if (delBtn) {
+      delBtn.disabled = n === 0;
+      document.getElementById('adlDelCount').textContent = n;
+    }
   }
 
-  if (checkAll) {
-    checkAll.addEventListener('change', function(){
-      document.querySelectorAll('.dealerChk').forEach(function(c){ c.checked = checkAll.checked; });
-      updateSelUI();
+  // Delete Selected — PERMANENT delete through /dealers/bulk-delete (the same
+  // endpoint as Dealer Management). Dealers holding orders, credit notes,
+  // quotations or receipts are archived instead so those records survive.
+  var adlDelBtn = document.getElementById('adlBulkDeleteBtn');
+  if (adlDelBtn) {
+    adlDelBtn.addEventListener('click', function(){
+      var ids = selectedChecks().map(function(c){ return c.value; });
+      if (!ids.length) return;
+      if (!confirm('Permanently delete ' + ids.length + ' selected dealer(s)?\n\n'
+          + 'Each dealer and its call logs will be removed from the database. '
+          + 'This cannot be undone.\n\n'
+          + 'Dealers holding orders, credit notes, quotations or receipts are '
+          + 'archived instead, so those financial records are kept.')) return;
+      adlDelBtn.disabled = true;
+      postInBatches('/dealers/bulk-delete', ids, { return_to: '/assign-dealer-leads' })
+        .then(function(replies){
+          var del = 0, kept = 0;
+          replies.forEach(function(r){ del += r.deleted || 0; kept += r.kept || 0; });
+          var p = new URLSearchParams(window.location.search);
+          ['success', 'warning', 'error'].forEach(function(k){ p.delete(k); });
+          p.set('success', del + ' dealer(s) deleted permanently');
+          if (kept) p.set('warning', kept + ' dealer(s) kept: they hold financial records (orders/credit notes/quotations/receipts) that must be retained.');
+          window.location.href = window.location.pathname + '?' + p.toString();
+        })
+        .catch(function(e){ alert(e.message + ' — some dealers may already be deleted; the page will reload.'); window.location.reload(); });
     });
   }
-  document.addEventListener('change', function(e){
-    if (e.target && e.target.classList.contains('dealerChk')) updateSelUI();
+
+  // Two checkboxes before the table's search box, mutually exclusive:
+  //   "Unassigned user"     — only rows with nobody in Assigned To
+  //   "Exclude Unassigned"  — only rows that DO have a user
+  // Client-side filters, so they combine with the search box, drive what the
+  // header select-all picks (it selects matching rows only), and survive the
+  // table being rebuilt after an Assign.
+  var adlAssignFilter = '';   // '', 'unassigned' or 'assigned'
+  $.fn.dataTable.ext.search.push(function(settings, data, dataIndex){
+    if (settings.nTable.id !== 'dealerLeadsTable' || !adlAssignFilter) return true;
+    var row = settings.aoData[dataIndex].nTr;
+    var hasUser = !!(row && row.getAttribute('data-assigned'));
+    return adlAssignFilter === 'assigned' ? hasUser : !hasUser;
   });
+  function addUnassignedToggle(dt){
+    var $filter = $(dt.table().container()).find('.dataTables_filter');
+    if ($filter.find('#adlUnassignedOnly').length) return;
+    var box = function(id, label){
+      return $('<div class="form-check form-check-inline mb-0 me-2 text-nowrap">' +
+        '<input class="form-check-input" type="checkbox" id="' + id + '">' +
+        '<label class="form-check-label small" for="' + id + '">' + label + '</label></div>');
+    };
+    var $un = box('adlUnassignedOnly', 'Unassigned user');
+    var $ex = box('adlExcludeUnassigned', 'Exclude Unassigned');
+    $un.find('input').prop('checked', adlAssignFilter === 'unassigned');
+    $ex.find('input').prop('checked', adlAssignFilter === 'assigned');
+    var apply = function(){
+      // Rows that leave the view are unticked, so a selection never includes
+      // dealers hidden by the filter.
+      $(dt.rows().nodes()).find('.dealerChk:checked').prop('checked', false);
+      dt.draw();
+    };
+    $un.find('input').on('change', function(){
+      adlAssignFilter = this.checked ? 'unassigned' : '';
+      if (this.checked) $ex.find('input').prop('checked', false);
+      apply();
+    });
+    $ex.find('input').on('change', function(){
+      adlAssignFilter = this.checked ? 'assigned' : '';
+      if (this.checked) $un.find('input').prop('checked', false);
+      apply();
+    });
+    $filter.addClass('d-flex align-items-center').prepend($ex).prepend($un);
+  }
+
+  // Header select-all + row checkboxes: wired by initGlobalTable's selectAll
+  // option below (it follows the header when scrollX relocates it).
 
   // Bulk Assign User button: populate hidden dealer_ids from checked rows
   btnAssignUser.addEventListener('click', function(){
@@ -337,16 +463,33 @@
 
   updateSelUI();
 
+  // Global Table (static/js/global-table.js): one-line headers, horizontal
+  // scroll with checkbox + Dealer Name frozen, standard toolbar and pager.
   function initDealerLeadsTable(){
+    var dt = initGlobalTable('#dealerLeadsTable', {
+      order: [],
+      columnDefs: [{ orderable: false, targets: [0, 14] }],
+      language: { emptyTable: 'No dealers found.' },
+    }, {
+      // scope 'search': ticks every row matching the current search /
+      // Unassigned filter on ALL pages, not just the page on screen.
+      selectAll: { headerSelector: '#checkAll', rowSelector: '.dealerChk', onChange: updateSelUI, scope: 'search' },
+    });
+    adlDt = dt;
+    // Filter/search changes alter which checked rows count, and the header
+    // should only look "all selected" while every visible match is ticked.
+    dt.on('draw.dt', function(){
+      var nodes = $(dt.rows({ search: 'applied' }).nodes());
+      var all = nodes.find('.dealerChk').length, on = nodes.find('.dealerChk:checked').length;
+      $(dt.table().container()).find('#checkAll').prop('checked', all > 0 && on === all);
+      updateSelUI();
+    });
+    addUnassignedToggle(dt);
+    if (adlAssignFilter) dt.draw();
+  }
+  function destroyDealerLeadsTable(){
     if ($.fn.DataTable.isDataTable('#dealerLeadsTable')) {
       $('#dealerLeadsTable').DataTable().destroy();
-    }
-    if ($('#dealerLeadsTable tbody tr').length > 1) {
-      $('#dealerLeadsTable').DataTable({
-        pageLength: 12,
-        order: [],
-        columnDefs: [{ orderable: false, targets: [0, 14] }],
-      });
     }
   }
 
@@ -363,6 +506,9 @@
         var doc = new DOMParser().parseFromString(html, 'text/html');
         var newWrap = doc.getElementById('assignDealerTableWrap');
         var newCards = doc.getElementById('assignDealerSummaryCards');
+        // Tear the live table down before its markup is swapped out, so the
+        // old instance (and its scroll wrappers) is not left behind.
+        if (newWrap) destroyDealerLeadsTable();
         if (newWrap) document.getElementById('assignDealerTableWrap').innerHTML = newWrap.innerHTML;
         if (newCards) document.getElementById('assignDealerSummaryCards').innerHTML = newCards.innerHTML;
         initDealerLeadsTable();
@@ -373,31 +519,27 @@
 
   // Row-level handlers (Assign one / Delete one) need rebinding after the
   // table HTML is replaced by refreshDealerLeadsTable().
-  function rebindRowHandlers(){
-    document.querySelectorAll('.btnAssignOne').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        assignHiddenIds.innerHTML = '';
-        var inp = document.createElement('input');
-        inp.type = 'hidden'; inp.name = 'dealer_ids'; inp.value = btn.dataset.dealerId;
-        assignHiddenIds.appendChild(inp);
-        assignCountText.textContent = '1';
-      });
-    });
-    document.querySelectorAll('.btnDeleteOne').forEach(function(btn){
-      btn.addEventListener('click', function(){
-        if (!confirm('Deactivate dealer "' + btn.dataset.dealerName + '"? This can be reversed by editing the dealer.')) return;
-        deleteForm.action = '/assign-dealer-leads/' + btn.dataset.dealerId + '/delete';
-        deleteForm.submit();
-      });
-    });
-    var newCheckAll = document.getElementById('checkAll');
-    if (newCheckAll) {
-      newCheckAll.addEventListener('change', function(){
-        document.querySelectorAll('.dealerChk').forEach(function(c){ c.checked = newCheckAll.checked; });
-        updateSelUI();
-      });
+  // Row buttons (Assign one / Delete one) use one delegated listener, so rows
+  // on every page of the table respond — DataTables keeps off-page rows out of
+  // the DOM, so per-button listeners bound at load only ever reached page 1.
+  function rebindRowHandlers(){ /* kept for the existing call sites; see below */ }
+  document.addEventListener('click', function(e){
+    var one = e.target.closest && e.target.closest('.btnAssignOne');
+    if (one) {
+      assignHiddenIds.innerHTML = '';
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'dealer_ids'; inp.value = one.dataset.dealerId;
+      assignHiddenIds.appendChild(inp);
+      assignCountText.textContent = '1';
+      return;
     }
-  }
+    var del = e.target.closest && e.target.closest('.btnDeleteOne');
+    if (del) {
+      if (!confirm('Deactivate dealer "' + del.dataset.dealerName + '"? This can be reversed by editing the dealer.')) return;
+      deleteForm.action = '/assign-dealer-leads/' + del.dataset.dealerId + '/delete';
+      deleteForm.submit();
+    }
+  });
 
   // Bulk/one Assign submit — AJAX, no full page reload. Falls back to a normal
   // form submit (full navigation) if the browser has no fetch() support.
@@ -406,15 +548,10 @@
       e.preventDefault();
       var submitBtn = assignForm.querySelector('button[type="submit"]');
       if (submitBtn) submitBtn.disabled = true;
-      fetch(assignForm.action, {
-        method: 'POST',
-        body: new FormData(assignForm),
-        headers: { 'X-Requested-With': 'XMLHttpRequest' },
-      })
-        .then(function(resp){
-          if (!resp.ok) throw new Error('Assign failed (' + resp.status + ')');
-          return resp.json();
-        })
+      var ids = Array.prototype.map.call(assignHiddenIds.querySelectorAll('input[name="dealer_ids"]'), function(i){ return i.value; });
+      var who = assignForm.querySelector('select[name="assigned_to"]').value;
+      if (!ids.length || !who) { if (submitBtn) submitBtn.disabled = false; return; }
+      postInBatches(assignForm.action, ids, { assigned_to: who })
         .then(function(){
           var modalEl = document.getElementById('assignUserModal');
           var modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);

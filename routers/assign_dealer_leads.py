@@ -13,12 +13,14 @@ from models.dealers import Dealer
 from models.user import User
 from auth.dependencies import get_current_user, verify_csrf, require_module_perm
 from services.audit_engine import audit
-from routers.dealers import _tc_field_options
+from routers.dealers import _tc_field_options, _sub_category_filter, _can_manage_dealers
 from utils.master_data import master_values
 
 router = APIRouter(prefix="/assign-dealer-leads", tags=["assign-dealer-leads"])
 
 require_view = require_module_perm("assign_dealer_leads", "enable")
+
+UNASSIGNED = "__unassigned__"
 
 
 @router.get("", response_class=HTMLResponse)
@@ -28,6 +30,9 @@ async def list_assign_dealer_leads(
     loc: str = Query(default=""),
     status: str = Query(default=""),
     assigned: str = Query(default=""),
+    dealer_type: str = Query(default=""),
+    sub_category: str = Query(default=""),
+    source: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_view),
 ):
@@ -40,6 +45,7 @@ async def list_assign_dealer_leads(
             Dealer.phone.ilike(like),
             Dealer.city.ilike(like),
             Dealer.dealer_code.ilike(like),
+            Dealer.dealer_sub_category.ilike(like),
         ))
     if loc:
         loc_like = f"%{loc}%"
@@ -50,6 +56,13 @@ async def list_assign_dealer_leads(
         ))
     if status:
         base_query = base_query.where(Dealer.status == status)
+    if dealer_type:
+        base_query = base_query.where(Dealer.dealer_type == dealer_type)
+    base_query = _sub_category_filter(base_query, sub_category)
+    if source:
+        # Not shown as a control: lets a link (or a one-off clean-up) open just
+        # the dealers from one import, e.g. ?source=Google Maps.
+        base_query = base_query.where(Dealer.source.ilike(f"{source}%"))
     if assigned:
         if assigned == "__unassigned__":
             base_query = base_query.where(Dealer.assigned_to.is_(None))
@@ -79,6 +92,12 @@ async def list_assign_dealer_leads(
         "loc": loc,
         "status": status,
         "assigned": assigned,
+        "dealer_type": dealer_type,
+        "sub_category": sub_category,
+        "dealer_type_options": await master_values(db, "dealer_dealer_type"),
+        # Delete Selected (permanent) uses /dealers/bulk-delete, gated by the
+        # same check — so the button only shows to people that endpoint allows.
+        "can_manage_dealers": await _can_manage_dealers(db, current_user, "/dealers/bulk-delete"),
         "total_count": total_count,
         "unassigned_count": unassigned_count,
         "whom_to_sell_options": tc_options["whom_to_sell"],
@@ -100,13 +119,18 @@ async def bulk_assign_dealers(
 ):
     result = await db.execute(select(Dealer).where(Dealer.id.in_(dealer_ids)))
     dealers = result.scalars().all()
+    # "__unassigned__" (the modal's Unassigned choice) clears the assignment.
+    unassign = assigned_to == UNASSIGNED
+    new_owner = None if unassign else assigned_to
+    old_owners = {str(d.id): d.assigned_to for d in dealers}
     for dealer in dealers:
-        dealer.assigned_to = assigned_to
+        dealer.assigned_to = new_owner
 
     await audit(
         db, user=current_user, action="DEALER_LEADS_BULK_ASSIGNED",
         table_name="dealers", record_id=f"bulk:{len(dealers)}",
-        new_value={"assigned_to": assigned_to, "dealer_ids": [str(d.id) for d in dealers]},
+        old_value={"assigned_to": old_owners} if len(old_owners) <= 2000 else None,
+        new_value={"assigned_to": new_owner, "dealer_ids": [str(d.id) for d in dealers]},
         request=request,
     )
     await db.commit()
@@ -119,8 +143,9 @@ async def bulk_assign_dealers(
             "assigned_to": assigned_to,
         })
 
+    who = "nobody+(Unassigned)" if unassign else assigned_to
     return RedirectResponse(
-        url=f"/assign-dealer-leads?success={len(dealers)}+dealer(s)+assigned+to+{assigned_to}",
+        url=f"/assign-dealer-leads?success={len(dealers)}+dealer(s)+assigned+to+{who}",
         status_code=302,
     )
 

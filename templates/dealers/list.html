@@ -21,7 +21,7 @@
   <form method="get" id="dealerFilterForm" class="d-flex gap-2 align-items-end flex-grow-1">
     <div class="flt" style="flex-grow:2">
       <label class="form-label form-label-sm mb-1 text-muted small">Search</label>
-      <input type="text" name="q" value="{{ q }}" placeholder="Company, city, phone, email…"
+      <input type="text" name="q" value="{{ q }}" placeholder="Company, city, state, phone, email…"
              class="form-control form-control-sm">
     </div>
 
@@ -61,11 +61,9 @@
     </div>
     {% endif %}
 
-    <div class="flt">
-      <label class="form-label form-label-sm mb-1 text-muted small">City</label>
-      <input type="text" name="city" class="form-control form-control-sm"
-             placeholder="City" value="{{ city }}">
-    </div>
+    {# City filter removed: the Search box already matches City. #}
+    {% set wrapper_class = 'flt' %}
+    {% include "dealers/_type_subcat_filters.html" %}
 
     <div class="flt">
       <label class="form-label form-label-sm mb-1 text-muted small">Calling From</label>
@@ -99,32 +97,6 @@
     </div>
   </form>
 
-  <div class="d-flex gap-2 ms-auto">
-    <a href="/dealers/followups-due?today_only=1" class="btn btn-sm btn-info text-dark">
-      <i class="bi bi-calendar-check me-1"></i>Today Follow-ups
-      <span class="badge bg-white text-info">{{ today_followup_count }}</span>
-    </a>
-    <a href="/dealers/followups-due" class="btn btn-sm btn-warning">
-      <i class="bi bi-bell me-1"></i>Follow-ups Due
-      <span class="badge bg-white text-warning">{{ followup_count }}</span>
-    </a>
-    <a href="/dealers/bulk-upload" class="btn btn-sm btn-outline-success">
-      <i class="bi bi-cloud-upload me-1"></i>Bulk Upload
-    </a>
-    <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal"
-            data-bs-target="#callBulkUploadModal">
-      <i class="bi bi-telephone-plus me-1"></i>Bulk Upload Call Records
-    </button>
-    {% if can_manage_dealers %}
-    <button type="button" id="dealerBulkDeleteBtn" class="btn btn-sm btn-outline-danger" disabled
-            onclick="submitDealerBulkDelete()">
-      <i class="bi bi-trash me-1"></i>Delete Selected (<span id="dealerSelCount">0</span>)
-    </button>
-    {% endif %}
-    <button type="button" class="btn btn-sm btn-primary" onclick="openDealerAddModal()">
-      <i class="bi bi-plus-circle me-1"></i>Add Dealer
-    </button>
-  </div>
 </div>
 
 <!-- Summary cards — top 4 -->
@@ -182,25 +154,53 @@
   {% endfor %}
 </div>
 
-{% include "dealers/_quotation_shared_table.html" %}
-
-<div class="card border-0 shadow-sm">
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-people me-2"></i>Dealers</span>
+    <div class="d-flex gap-2 flex-wrap justify-content-end">
+      <a href="/dealers/followups-due?today_only=1" class="btn btn-sm text-nowrap btn-info text-dark">
+        <i class="bi bi-calendar-check me-1"></i>Today Follow-ups
+        <span class="badge bg-white text-info">{{ today_followup_count }}</span>
+      </a>
+      <a href="/dealers/followups-due" class="btn btn-sm text-nowrap btn-warning">
+        <i class="bi bi-bell me-1"></i>Follow-ups Due
+        <span class="badge bg-white text-warning">{{ followup_count }}</span>
+      </a>
+      <a href="/dealers/bulk-upload" class="btn btn-sm text-nowrap btn-outline-success">
+        <i class="bi bi-cloud-upload me-1"></i>Bulk Upload
+      </a>
+      <button type="button" class="btn btn-sm text-nowrap btn-outline-success" data-bs-toggle="modal"
+              data-bs-target="#callBulkUploadModal">
+        <i class="bi bi-telephone-plus me-1"></i>Bulk Upload Call Records
+      </button>
+      {% if can_manage_dealers %}
+      <button type="button" id="dealerBulkDeleteBtn" class="btn btn-sm text-nowrap btn-outline-danger" disabled
+              onclick="submitDealerBulkDelete()">
+        <i class="bi bi-trash me-1"></i>Delete Selected (<span id="dealerSelCount">0</span>)
+      </button>
+      {% endif %}
+      <button type="button" class="btn btn-sm text-nowrap btn-primary" onclick="openDealerAddModal()">
+        <i class="bi bi-plus-circle me-1"></i>Add Dealer
+      </button>
+    </div>
+  </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
       <table class="table table-hover mb-0" id="dealersTable">
-        <thead class="table-light">
+        <thead class="table-dark">
           <tr class="text-nowrap">
             {% if can_manage_dealers %}
             <th style="width:1%"><input type="checkbox" id="dealerCheckAll" class="form-check-input" title="Select all"></th>
             {% endif %}
-            <th>ID</th>
-            <th>Status</th>
             <th>Business Name</th>
             <th>Type</th>
+            <th>Sub Category</th>
+            <th>Status</th>
             <th>Person Name</th>
             <th>Phone</th>
             <th>Email</th>
             <th>Address</th>
+            <th>City</th>
+            <th>State</th>
             <th>Calling Date</th>
             <th>Require Quantity</th>
             <th>Interested In</th>
@@ -218,9 +218,12 @@
         <!-- rows come from /dealers/data via DataTables serverSide -->
         <tbody></tbody>
       </table>
-    </div>
   </div>
 </div>
+
+{# Quotation section sits below the Dealers table. #}
+{% set qs_global_table = true %}
+{% include "dealers/_quotation_shared_table.html" %}
 
 <!-- Dealer View Modal -->
 <div class="modal fade" id="dealerViewModal" tabindex="-1">
@@ -235,12 +238,17 @@
           <div class="col-md-3"><strong>ID:</strong> <span id="dvId"></span></div>
           <div class="col-md-3"><strong>Status:</strong> <span id="dvOutcome"></span></div>
           <div class="col-md-3"><strong>Type:</strong> <span id="dvType"></span></div>
+          <div class="col-md-3"><strong>Sub Category:</strong> <span id="dvSubCategory"></span></div>
           <div class="col-md-3"><strong>Dealer Status:</strong> <span id="dvStatus"></span></div>
           <div class="col-md-6"><strong>Business Name:</strong> <span id="dvBusinessName"></span></div>
           <div class="col-md-6"><strong>Person Name:</strong> <span id="dvPerson"></span></div>
           <div class="col-md-6"><strong>Phone:</strong> <span id="dvPhone"></span></div>
           <div class="col-md-6"><strong>Email:</strong> <span id="dvEmail"></span></div>
           <div class="col-md-12"><strong>Address:</strong> <span id="dvAddress"></span></div>
+          <div class="col-md-6"><strong>City:</strong> <span id="dvCity"></span></div>
+          <div class="col-md-6"><strong>State:</strong> <span id="dvState"></span></div>
+          <div class="col-md-6"><strong>Website:</strong> <span id="dvWebsite"></span></div>
+          <div class="col-md-6"><strong>Google CID:</strong> <span id="dvGoogleCid"></span></div>
           <div class="col-md-6"><strong>Calling Date:</strong> <span id="dvCallDate"></span></div>
           <div class="col-md-6"><strong>Next Followup:</strong> <span id="dvNextFollowup"></span></div>
           <div class="col-md-6"><strong>Require Quantity:</strong> <span id="dvQty"></span></div>
@@ -273,13 +281,22 @@
             <label class="form-label small fw-semibold">Business Name <span class="text-danger">*</span></label>
             <input type="text" name="business_name" id="deBusinessName" class="form-control form-control-sm" required>
           </div>
-          <div class="col-md-6">
+          <div class="col-md-3">
             <label class="form-label small fw-semibold">Type</label>
             <select name="dealer_type" id="deType" class="form-select form-select-sm">
               <option value="retail">Retail</option>
               <option value="wholesale">Wholesale</option>
               <option value="corporate">Corporate</option>
               <option value="service">Service</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold">Sub Category</label>
+            <select name="dealer_sub_category" id="deSubCategory" class="form-select form-select-sm">
+              <option value="">Select...</option>
+              {% for val in master_options('dealer_sub_category') %}
+              <option value="{{ val }}">{{ val }}</option>
+              {% endfor %}
             </select>
           </div>
           <div class="col-md-6">
@@ -305,6 +322,19 @@
           <div class="col-md-12">
             <label class="form-label small">Address</label>
             <textarea name="address" id="deAddress" class="form-control form-control-sm" rows="2"></textarea>
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">City</label>
+            <input type="text" name="city" id="deCity" class="form-control form-control-sm">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label small">State</label>
+            <select name="state" id="deState" class="form-select form-select-sm">
+              <option value="">Select...</option>
+              {% for val in master_options('dealer_state') %}
+              <option value="{{ val }}">{{ val }}</option>
+              {% endfor %}
+            </select>
           </div>
           <div class="col-md-6">
             <label class="form-label small">Require Quantity</label>
@@ -408,10 +438,28 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// Link text is set via textContent and only http(s) URLs become links, so a
+// value imported from a file can never inject markup or a javascript: URL.
+function _setLink(id, text, url){
+  var el = document.getElementById(id);
+  el.textContent = '';
+  if (!text) { el.textContent = '—'; return; }
+  if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url.replace(/^[a-z]+:\/*/i, '');
+  var a = document.createElement('a');
+  a.href = url; a.target = '_blank'; a.rel = 'noopener noreferrer';
+  a.className = 'text-break'; a.textContent = text;
+  el.appendChild(a);
+}
+
 function openDealerViewModal(d){
   document.getElementById('dvId').textContent = d.dealer_code;
   document.getElementById('dvOutcome').textContent = d.outcome ? d.outcome.replace(/_/g,' ') : '—';
   document.getElementById('dvType').textContent = d.dealer_type || '—';
+  document.getElementById('dvSubCategory').textContent = d.dealer_sub_category || '—';
+  document.getElementById('dvCity').textContent = d.city || '—';
+  document.getElementById('dvState').textContent = d.state || '—';
+  _setLink('dvWebsite', d.website, d.website);
+  _setLink('dvGoogleCid', d.google_cid, d.google_cid ? 'https://maps.google.com/?cid=' + encodeURIComponent(d.google_cid) : '');
   document.getElementById('dvStatus').textContent = d.status || '—';
   document.getElementById('dvBusinessName').textContent = d.business_name || '—';
   document.getElementById('dvPerson').textContent = d.contact_person || '—';
@@ -431,10 +479,27 @@ function openDealerViewModal(d){
   new bootstrap.Modal(document.getElementById('dealerViewModal')).show();
 }
 
+// Select a value even if it is no longer (or not yet) a Master Dropdown option,
+// e.g. a Sub Category imported from a file — otherwise saving would blank it.
+function _setSelectValue(id, v){
+  var sel = document.getElementById(id);
+  if (!sel) return;
+  v = v || '';
+  if (v && !Array.prototype.some.call(sel.options, function(o){ return o.value === v; })) {
+    var opt = document.createElement('option');
+    opt.value = v; opt.textContent = v;
+    sel.appendChild(opt);
+  }
+  sel.value = v;
+}
+
 function _fillDealerForm(d){
   document.getElementById('deId').value = d.call_id || '';
   document.getElementById('deBusinessName').value = d.business_name || '';
   document.getElementById('deType').value = d.dealer_type || 'retail';
+  _setSelectValue('deSubCategory', d.dealer_sub_category);
+  document.getElementById('deCity').value = d.city || '';
+  _setSelectValue('deState', d.state);
   document.getElementById('deContactPerson').value = d.contact_person || '';
   document.getElementById('deStatus').value = d.status || 'active';
   document.getElementById('dePhone').value = d.phone || '';
@@ -474,41 +539,96 @@ function openDealerAddModal(){
 // current querystring already has every filter this page was rendered with —
 // forwarding it to /dealers/data keeps the table and the count cards above it
 // looking at the exact same filtered set.
-var dealersDt = $('#dealersTable').DataTable({
+// Global Table (static/js/global-table.js): one-line headers, horizontal
+// scroll with the first column(s) frozen, standard toolbar and pager. The
+// table's own search box is passed to /dealers/data as search[value] and
+// narrows the filtered set further.
+var dealersDt = initGlobalTable('#dealersTable', {
   serverSide: true,
   processing: true,
-  pageLength: 12,
   order: [],
   searchDelay: 400,
   ajax: { url: '/dealers/data' + window.location.search },
   // With the select column present every index shifts +1 (checkbox col 0
-  // non-orderable, Assigned col 19); without it, Assigned stays at 18.
-  columnDefs: [{ orderable: false, targets: {{ '[0, 19]' if _has_chk else '[18]' }} }],
-  drawCallback: function () {
-    {% if _has_chk %}dealerSyncSelCount();{% endif %}
-  },
+  // non-orderable, Assigned col 21); without it, Assigned stays at 20.
+  columnDefs: [{ orderable: false, targets: {{ '[0, 21]' if _has_chk else '[20]' }} }],
+});
+
+initGlobalTable('#quotationSharedTable', {
+  order: [],
+  columnDefs: [{ orderable: false, targets: [5] }],
+  language: { emptyTable: 'No quotations shared yet.' },
 });
 
 {% if _has_chk %}
-// ── Dealer bulk soft-delete (Trash) ────────────────────────────────────────
-// Selection is page-scoped (checked rows currently on screen) rather than a
-// persistent cross-page Set — bulk-delete is a deliberate, rare action here,
-// unlike Ready to Sale's Multi-Sell which needed every matching row reachable.
+// ── Selection: every matching dealer, across all pages ─────────────────────
+// The table is server-side, so only the current page's rows exist in the
+// browser. The selection is therefore kept as a Set of dealer ids: the header
+// checkbox fills it with EVERY id matching the current filters + search (from
+// /dealers/ids, the same query /dealers/data pages through), and row
+// checkboxes add/remove single ids. It survives paging; it is cleared when the
+// table's search text changes, so a selection never hides rows you can't see.
+var dealerSel = new Set();
+var dealerSelSearch = dealersDt.search();
+var dealerSelLoading = false;
+var $dealerContainer = $(dealersDt.table().container());
+
 function dealerSyncSelCount() {
-  var n = document.querySelectorAll('.dealerChk:checked').length;
   var cnt = document.getElementById('dealerSelCount');
   var btn = document.getElementById('dealerBulkDeleteBtn');
-  if (cnt) cnt.textContent = n;
-  if (btn) btn.disabled = (n === 0);
+  if (cnt) cnt.textContent = dealerSel.size.toLocaleString('en-IN');
+  if (btn) btn.disabled = (dealerSel.size === 0 || dealerSelLoading);
 }
-document.addEventListener('change', function(e) {
-  if (e.target && e.target.id === 'dealerCheckAll') {
-    document.querySelectorAll('#dealersTable tbody .dealerChk').forEach(function(c) { c.checked = e.target.checked; });
-    dealerSyncSelCount();
-  } else if (e.target && e.target.classList && e.target.classList.contains('dealerChk')) {
-    dealerSyncSelCount();
-  }
+function dealerSyncChecks() {
+  $dealerContainer.find('.dealerChk').each(function () { this.checked = dealerSel.has(this.value); });
+  var total = dealersDt.page.info().recordsDisplay;
+  $dealerContainer.find('#dealerCheckAll').prop('checked', dealerSel.size > 0 && dealerSel.size >= total);
+  dealerSyncSelCount();
+}
+// Header checkbox (delegated from the table container: scrollX moves the header).
+$dealerContainer.on('change', '#dealerCheckAll', function () {
+  var hdr = this;
+  if (!hdr.checked) { dealerSel.clear(); dealerSyncChecks(); return; }
+  var params = new URLSearchParams(window.location.search);
+  params.set('search[value]', dealersDt.search());
+  dealerSelLoading = true; hdr.disabled = true; dealerSyncSelCount();
+  fetch('/dealers/ids?' + params.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    .then(function (r) { if (!r.ok) throw new Error('Could not load the matching dealers (' + r.status + ')'); return r.json(); })
+    .then(function (d) { dealerSel = new Set(d.ids); dealerSelSearch = dealersDt.search(); })
+    .catch(function (e) { hdr.checked = false; alert(e.message); })
+    .finally(function () { dealerSelLoading = false; hdr.disabled = false; dealerSyncChecks(); });
 });
+document.addEventListener('change', function (e) {
+  if (!e.target.classList || !e.target.classList.contains('dealerChk')) return;
+  if (e.target.checked) dealerSel.add(e.target.value); else dealerSel.delete(e.target.value);
+  dealerSyncChecks();
+});
+dealersDt.on('draw.dt', function () {
+  if (dealersDt.search() !== dealerSelSearch) { dealerSel.clear(); dealerSelSearch = dealersDt.search(); }
+  dealerSyncChecks();
+});
+
+// Posts ids in batches of 500 (the server refuses 1000+ form fields in one
+// request) and resolves with every batch's JSON reply.
+function postDealerBatches(url, ids, fields) {
+  var replies = [];
+  var chain = Promise.resolve();
+  for (var i = 0; i < ids.length; i += 500) {
+    (function (chunk) {
+      chain = chain.then(function () {
+        var fd = new FormData();
+        fd.append('csrf_token', '{{ request.cookies.get("csrf_token", "") }}');
+        Object.keys(fields || {}).forEach(function (k) { fd.append(k, fields[k]); });
+        chunk.forEach(function (id) { fd.append('dealer_ids', id); });
+        return fetch(url, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+          .then(function (r) { if (!r.ok) throw new Error('Request failed (' + r.status + ')'); return r.json(); })
+          .then(function (j) { replies.push(j); });
+      });
+    })(ids.slice(i, i + 500));
+  }
+  return chain.then(function () { return replies; });
+}
+
 // Row-level Delete confirmation. The name is read from the form's data
 // attribute rather than being baked into the inline handler, so apostrophes in
 // dealer names cannot break the handler and silently drop the prompt.
@@ -521,28 +641,26 @@ function confirmDealerDelete(form) {
     + 'archived instead, so those financial records are kept.');
 }
 function submitDealerBulkDelete() {
-  var ids = Array.prototype.map.call(
-    document.querySelectorAll('.dealerChk:checked'), function(c) { return c.value; });
+  var ids = Array.from(dealerSel);
   if (!ids.length) return;
   if (!confirm('Permanently delete ' + ids.length + ' selected dealer(s)?\n\n'
       + 'Each dealer and its call logs will be removed from the database. '
       + 'This cannot be undone.\n\n'
       + 'Dealers holding orders, credit notes, quotations or receipts are '
       + 'archived instead, so those financial records are kept.')) return;
-  var f = document.createElement('form');
-  f.method = 'post';
-  f.action = '/dealers/bulk-delete';
-  var csrf = document.createElement('input');
-  csrf.type = 'hidden'; csrf.name = 'csrf_token';
-  csrf.value = '{{ request.cookies.get("csrf_token", "") }}';
-  f.appendChild(csrf);
-  ids.forEach(function(id) {
-    var i = document.createElement('input');
-    i.type = 'hidden'; i.name = 'dealer_ids'; i.value = id;
-    f.appendChild(i);
-  });
-  document.body.appendChild(f);
-  f.submit();
+  var btn = document.getElementById('dealerBulkDeleteBtn');
+  btn.disabled = true;
+  postDealerBatches('/dealers/bulk-delete', ids, { return_to: '/dealers' })
+    .then(function (replies) {
+      var del = 0, kept = 0;
+      replies.forEach(function (r) { del += r.deleted || 0; kept += r.kept || 0; });
+      var p = new URLSearchParams(window.location.search);
+      ['success', 'warning', 'error'].forEach(function (k) { p.delete(k); });
+      p.set('success', del + ' dealer(s) deleted permanently');
+      if (kept) p.set('warning', kept + ' dealer(s) kept: they hold financial records (orders/credit notes/quotations/receipts) that must be retained.');
+      window.location.href = window.location.pathname + '?' + p.toString();
+    })
+    .catch(function (e) { alert(e.message + ' — some dealers may already be deleted; the page will reload.'); window.location.reload(); });
 }
 {% endif %}
 </script>

@@ -28,7 +28,7 @@ ACCORDION_SECTIONS = [
         "id": "device", "label": "Device & Laptop", "icon": "bi-laptop",
         "cat_keys": [
             "entity", "brand", "sub_category", "device_type", "processor_brand", "processor_series",
-            "generation", "storage_type", "ram_type", "screen_size", "grade",
+            "generation", "storage_type", "storage_size", "ram_type", "ram_size", "screen_size", "grade",
             "battery_health", "os_version", "color", "port_type", "cosmetic_issue", "cosmetic_grade",
         ],
     },
@@ -78,7 +78,7 @@ ACCORDION_SECTIONS = [
     {
         "id": "dealers", "label": "Dealer Management", "icon": "bi-people",
         "cat_keys": [
-            "dealer_dealer_type", "dealer_status",
+            "dealer_dealer_type", "dealer_sub_category", "dealer_state", "dealer_status",
             "call_outcome", "call_mode", "call_type",
         ],
     },
@@ -324,7 +324,9 @@ CATEGORIES = [
     ("processor_series",    "Processor Series",             "laptop"),
     ("generation",          "CPU Generations",              "laptop"),
     ("storage_type",        "Storage Types",                "laptop"),
+    ("storage_size",        "Storage Sizes",                "laptop"),
     ("ram_type",            "RAM Types",                    "laptop"),
+    ("ram_size",            "RAM Sizes",                    "laptop"),
     ("screen_size",         "Screen Sizes",                 "laptop"),
     ("grade",               "Device Grades",                "laptop"),
     ("battery_health",      "Battery Health Levels",        "laptop"),
@@ -375,6 +377,8 @@ CATEGORIES = [
     ("dealer_credit_reason", "Dealers: Credit Note Reason", "sales"),
     # ── Dealer Management ─────────────────────────────────────────
     ("dealer_dealer_type",  "Dealers: Dealer Type",         "dealers"),
+    ("dealer_sub_category", "Dealers: Dealer Sub Category", "dealers"),
+    ("dealer_state",        "Dealers: State",               "dealers"),
     ("dealer_status",       "Dealers: Status",              "dealers"),
     ("call_outcome",        "Dealer Calls: Call Outcome",   "dealers"),
     ("call_mode",           "Dealer Calls: Call Mode",      "dealers"),

@@ -664,9 +664,12 @@ async def startup_event():
 
     # ── Warm Master Data dropdown-options cache from DB ───────────────────────
     try:
-        from utils.master_data import refresh_master_cache
+        from utils.master_data import refresh_master_cache, ensure_master_defaults
         from database import AsyncSessionLocal as _ASL2
         async with _ASL2() as _sess2:
+            _seeded = await ensure_master_defaults(_sess2)
+            if _seeded:
+                print(f"  [MasterData] Seeded {_seeded} default value(s) into empty categories")
             await refresh_master_cache(_sess2)
         print("  [MasterData] Dropdown options cache loaded")
     except Exception as _me:

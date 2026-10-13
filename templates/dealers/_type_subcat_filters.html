@@ -1,0 +1,26 @@
+{# Dealer Type + Dealer Sub Category filters, shared by Dealer Management and
+   Assign Dealer Leads. Expects: dealer_type, sub_category, dealer_type_options,
+   and wrapper_class (the page's filter-cell class). Options come from Master
+   Dropdown; a value the URL carries but the list no longer has stays selectable. #}
+<div class="{{ wrapper_class }}">
+  <label class="form-label form-label-sm mb-1 text-muted small">Dealer Type</label>
+  <select name="dealer_type" class="form-select form-select-sm">
+    <option value="">All Types</option>
+    {% if dealer_type and dealer_type not in dealer_type_options %}<option value="{{ dealer_type }}" selected>{{ dealer_type | title }}</option>{% endif %}
+    {% for t in dealer_type_options %}
+    <option value="{{ t }}" {% if dealer_type == t %}selected{% endif %}>{{ t | title }}</option>
+    {% endfor %}
+  </select>
+</div>
+<div class="{{ wrapper_class }}">
+  <label class="form-label form-label-sm mb-1 text-muted small">Sub Category</label>
+  {% set _subs = master_options('dealer_sub_category') %}
+  <select name="sub_category" class="form-select form-select-sm">
+    <option value="">All Sub Categories</option>
+    <option value="__none__" {% if sub_category == '__none__' %}selected{% endif %}>Not set</option>
+    {% if sub_category and sub_category != '__none__' and sub_category not in _subs %}<option value="{{ sub_category }}" selected>{{ sub_category }}</option>{% endif %}
+    {% for t in _subs %}
+    <option value="{{ t }}" {% if sub_category == t %}selected{% endif %}>{{ t }}</option>
+    {% endfor %}
+  </select>
+</div>

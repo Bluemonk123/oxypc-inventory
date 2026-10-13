@@ -59,6 +59,59 @@ async def report_year_values(db: AsyncSession) -> list:
     return [str(v) for v in range(y - 2, y + 3)]
 
 
+# Categories whose MASTER_SEED values are written into an existing database on
+# server start, but only while the category has no rows at all (active or not).
+# MASTER_SEED otherwise seeds brand-new installs only, so a category added later
+# would ship with an empty dropdown everywhere until an admin typed every value.
+ENSURE_SEEDED_CATEGORIES = ("dealer_state", "storage_size", "ram_size")
+
+
+async def ensure_master_defaults(db: AsyncSession, categories=ENSURE_SEEDED_CATEGORIES) -> int:
+    """Insert MASTER_SEED values for each category that has no rows yet.
+    Returns how many values were inserted. Never touches a category an admin
+    has already populated (or emptied by deactivating values)."""
+    from sqlalchemy import func
+    from models.master import MASTER_SEED
+    added = 0
+    for cat in categories:
+        seed = MASTER_SEED.get(cat) or []
+        if not seed:
+            continue
+        existing = (await db.execute(
+            select(func.count()).select_from(MasterData).where(MasterData.category == cat)
+        )).scalar() or 0
+        if existing:
+            continue
+        for i, value in enumerate(seed):
+            db.add(MasterData(category=cat, value=value, display_order=i))
+            added += 1
+    if added:
+        await db.commit()
+    return added
+
+
+async def add_missing_master_values(db: AsyncSession, category: str, values) -> list:
+    """Add each value not already in the category (compared case-insensitively,
+    active or not) to the end of its display order. Returns the values added.
+    Does not commit; the caller commits with its own changes."""
+    from sqlalchemy import func
+    rows = (await db.execute(
+        select(MasterData.value, MasterData.display_order).where(MasterData.category == category)
+    )).all()
+    have = {(r.value or "").strip().lower() for r in rows}
+    order = max([r.display_order or 0 for r in rows], default=-1)
+    added = []
+    for v in values:
+        v = (v or "").strip()
+        if not v or v.lower() in have:
+            continue
+        order += 1
+        db.add(MasterData(category=category, value=v, display_order=order))
+        have.add(v.lower())
+        added.append(v)
+    return added
+
+
 async def refresh_master_cache(db: AsyncSession) -> None:
     """Reload the full in-memory cache from DB. Call at startup and after any
     admin add/edit/toggle/delete on /admin/master."""

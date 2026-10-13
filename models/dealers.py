@@ -25,6 +25,13 @@ class Dealer(Base):
     pincode = Column(String(10), nullable=True)
     gstin = Column(String(20), nullable=True)
     dealer_type = Column(String(30), default="retail")  # retail, wholesale, corporate, service
+    # Finer grouping under Type (e.g. "Optician", "Hospital", "Chartered accountant").
+    # Options come from Master Dropdown category "dealer_sub_category".
+    dealer_sub_category = Column(String(150), nullable=True)
+    website = Column(String(1000), nullable=True)
+    # Google Maps place CID (digits only); link = https://maps.google.com/?cid=<cid>.
+    # Also the de-duplication key when a Google Maps export is re-uploaded.
+    google_cid = Column(String(30), nullable=True)
     credit_limit = Column(Numeric(14, 2), default=0)
     outstanding_amount = Column(Numeric(14, 2), default=0)
     total_purchases = Column(Numeric(14, 2), default=0)

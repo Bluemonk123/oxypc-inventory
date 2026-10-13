@@ -34,6 +34,18 @@
                 {% endfor %}
               </select>
             </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Dealer Sub Category</label>
+              {% set _sub_opts = master_options('dealer_sub_category') %}
+              {% set _sub_cur = dealer.dealer_sub_category if dealer and dealer.dealer_sub_category else '' %}
+              <select name="dealer_sub_category" class="form-select">
+                <option value="">Select...</option>
+                {% if _sub_cur and _sub_cur not in _sub_opts %}<option value="{{ _sub_cur }}" selected>{{ _sub_cur }}</option>{% endif %}
+                {% for t in _sub_opts %}
+                <option value="{{ t }}" {% if _sub_cur==t %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+              </select>
+            </div>
             <div class="col-md-3">
               <label class="form-label">Phone</label>
               <input type="text" name="phone" class="form-control" value="{{ dealer.phone if dealer else '' }}">
@@ -63,11 +75,27 @@
             </div>
             <div class="col-md-2">
               <label class="form-label">State</label>
-              <input type="text" name="state" class="form-control" value="{{ dealer.state if dealer else '' }}">
+              {% set _st_opts = master_options('dealer_state') %}
+              {% set _st_cur = dealer.state if dealer and dealer.state else '' %}
+              <select name="state" class="form-select">
+                <option value="">Select...</option>
+                {% if _st_cur and _st_cur not in _st_opts %}<option value="{{ _st_cur }}" selected>{{ _st_cur }}</option>{% endif %}
+                {% for t in _st_opts %}
+                <option value="{{ t }}" {% if _st_cur==t %}selected{% endif %}>{{ t }}</option>
+                {% endfor %}
+              </select>
             </div>
             <div class="col-md-2">
               <label class="form-label">Pincode</label>
               <input type="text" name="pincode" class="form-control" value="{{ dealer.pincode if dealer else '' }}" maxlength="6">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Website</label>
+              <input type="text" name="website" class="form-control" placeholder="https://..." value="{{ dealer.website if dealer and dealer.website else '' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Google CID</label>
+              <input type="text" name="google_cid" class="form-control" placeholder="Number or maps.google.com/?cid=... link" value="{{ dealer.google_cid if dealer and dealer.google_cid else '' }}">
             </div>
             <div class="col-md-4">
               <label class="form-label">Preferred Categories</label>

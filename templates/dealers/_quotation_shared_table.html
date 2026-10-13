@@ -1,15 +1,19 @@
 {# Shared "Quotation Shared" table — included on Dealer Management (all
    quotations) and Dealer Detail (this dealer's quotations only). Expects a
-   `quotations` list in the including template's context. #}
+   `quotations` list in the including template's context.
+   Set `qs_global_table = true` before including to render it as a Global
+   Table (id quotationSharedTable, initialised by the including page): the
+   hand-written "no rows" line is then left out, because the Global Table
+   draws its own empty state and a colspan row breaks DataTables. #}
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header bg-transparent py-2 d-flex align-items-center gap-2">
     <i class="bi bi-file-earmark-text text-info"></i>
     <span class="fw-semibold small">Quotation Shared</span>
     <span class="badge bg-secondary ms-1">{{ quotations|length }}</span>
   </div>
-  <div class="table-responsive">
-    <table class="table table-hover mb-0 small">
-      <thead class="table-light">
+  <div class="{{ 'card-body p-0' if qs_global_table else 'table-responsive' }}">
+    <table class="table table-hover mb-0 small"{% if qs_global_table %} id="quotationSharedTable"{% endif %}>
+      <thead class="{{ 'table-dark' if qs_global_table else 'table-light' }}">
         <tr>
           <th class="ps-3">Customer Name</th>
           <th>Customer Type</th>
@@ -50,7 +54,9 @@
           </td>
         </tr>
         {% else %}
+        {% if not qs_global_table %}
         <tr><td colspan="6" class="text-center text-muted py-3">No quotations shared yet.</td></tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
@@ -62,12 +68,13 @@
   <input type="hidden" name="return_to" value="{{ request.url.path }}">
 </form>
 <script>
-document.querySelectorAll('.qtnDeleteBtn').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    if (!confirm('Delete quotation for "' + btn.dataset.customerName + '"? This cannot be undone.')) return;
-    var f = document.getElementById('qtnDeleteForm');
-    f.action = '/dealer-quotations/' + btn.dataset.quotationId + '/delete';
-    f.submit();
-  });
+// Delegated, so rows a paged table re-inserts later still respond.
+document.addEventListener('click', function(e){
+  var btn = e.target.closest && e.target.closest('.qtnDeleteBtn');
+  if (!btn) return;
+  if (!confirm('Delete quotation for "' + btn.dataset.customerName + '"? This cannot be undone.')) return;
+  var f = document.getElementById('qtnDeleteForm');
+  f.action = '/dealer-quotations/' + btn.dataset.quotationId + '/delete';
+  f.submit();
 });
 </script>
