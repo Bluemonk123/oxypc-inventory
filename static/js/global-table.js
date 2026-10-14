@@ -457,8 +457,15 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
     }
   }
 
-  if ($pane.length) {
-    $(dt.table().container()).addClass('gtable-tab-wrap');
+  // Card-body spacing: a table sitting in a .card-body already gets 1rem of
+  // padding (app.css .card-body:has(table)). A table in a tab, or in a card
+  // without a .card-body, gets the same 1rem on its wrapper instead, so every
+  // Global Table has the same breathing room.
+  var $wrap = $(dt.table().container());
+  if ($pane.length || ($wrap.closest('.card').length && !$wrap.closest('.card-body').length)) {
+    $wrap.addClass('gtable-tab-wrap');
+    // Widths were measured before the padding existed — re-measure.
+    dt.columns.adjust();
   }
   return dt;
 }
