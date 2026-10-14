@@ -9,9 +9,16 @@
 <style>
   .prod-tiles-row{flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px}
   .prod-tiles-row > div{min-width:118px}
-  .prod-tile-icon{font-size:1.4rem !important}
-  .prod-tile-label{font-size:.72rem; white-space:nowrap}
-  .prod-tile-count{font-size:1.35rem}
+  /* Summary tiles: solid colour with white text and a large faint white
+     watermark icon — same design as the Product Master count tiles. */
+  .prod-tile{position:relative; overflow:hidden; border-radius:10px; color:#fff; padding:.6rem .7rem;
+             box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
+  .prod-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; position:relative; z-index:1}
+  .prod-tile-label{font-size:.72rem; white-space:nowrap; color:rgba(255,255,255,.9); position:relative; z-index:1}
+  .prod-tile-btn{position:relative; z-index:1}
+  .prod-tile .btn-outline-light:not(:hover){background-color:transparent}
+  .prod-tile-wm{position:absolute; right:-6px; bottom:-12px; font-size:3.6rem; line-height:1;
+                color:rgba(255,255,255,.22); pointer-events:none}
 </style>
 {% endblock %}
 {% block content %}
@@ -39,110 +46,94 @@
 <!-- Summary card tiles -->
 <div class="d-flex prod-tiles-row gap-2 mb-4">
   <div class="flex-fill">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-2">
-        <i class="bi bi-person-workspace prod-tile-icon mb-1 d-block" style="color:#6f42c1"></i>
-        <div class="prod-tile-label text-muted mb-1">Total Tags at You</div>
-        <div class="prod-tile-count fw-bold" style="color:#6f42c1">{{ tags_at_you }}</div>
-        <a href="/trc-production/summary/at-you" class="btn btn-outline-primary btn-sm mt-1 py-0 px-1"
-           style="font-size:.65rem" title="Download summary of these tags (CSV)">
-          <i class="bi bi-file-earmark-arrow-down"></i> Summary
-        </a>
-      </div>
+    <div class="prod-tile h-100" style="background:#6f42c1">
+      <div class="prod-tile-count">{{ tags_at_you }}</div>
+      <div class="prod-tile-label">Total Tags at You</div>
+      <a href="/trc-production/summary/at-you" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+         style="font-size:.65rem" title="Download summary of these tags (CSV)">
+        <i class="bi bi-file-earmark-arrow-down"></i> Summary
+      </a>
+      <i class="bi bi-person-workspace prod-tile-wm"></i>
     </div>
   </div>
   <div class="flex-fill">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-2">
-        <i class="bi bi-tools prod-tile-icon mb-1 d-block" style="color:#0d6efd"></i>
-        <div class="prod-tile-label text-muted mb-1">Total Tags in L1/L2</div>
-        <div class="prod-tile-count fw-bold" style="color:#0d6efd">{{ tags_l1l2 }}</div>
-        <a href="/trc-production/summary/l1-l2" class="btn btn-outline-primary btn-sm mt-1 py-0 px-1"
-           style="font-size:.65rem" title="Download summary of these tags (CSV)">
-          <i class="bi bi-file-earmark-arrow-down"></i> Summary
-        </a>
-      </div>
+    <div class="prod-tile h-100" style="background:#0d6efd">
+      <div class="prod-tile-count">{{ tags_l1l2 }}</div>
+      <div class="prod-tile-label">Total Tags in L1/L2</div>
+      <a href="/trc-production/summary/l1-l2" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+         style="font-size:.65rem" title="Download summary of these tags (CSV)">
+        <i class="bi bi-file-earmark-arrow-down"></i> Summary
+      </a>
+      <i class="bi bi-tools prod-tile-wm"></i>
     </div>
   </div>
   <div class="flex-fill">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-2">
-        <i class="bi bi-wrench-adjustable prod-tile-icon mb-1 d-block" style="color:#fd7e14"></i>
-        <div class="prod-tile-label text-muted mb-1">Total Tags in L3/L4</div>
-        <div class="prod-tile-count fw-bold" style="color:#fd7e14">{{ tags_l3l4 }}</div>
-        <a href="/trc-production/summary/l3-l4" class="btn btn-outline-warning btn-sm mt-1 py-0 px-1"
-           style="font-size:.65rem" title="Download summary of these tags (CSV)">
-          <i class="bi bi-file-earmark-arrow-down"></i> Summary
-        </a>
-      </div>
+    <div class="prod-tile h-100" style="background:#fd7e14">
+      <div class="prod-tile-count">{{ tags_l3l4 }}</div>
+      <div class="prod-tile-label">Total Tags in L3/L4</div>
+      <a href="/trc-production/summary/l3-l4" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+         style="font-size:.65rem" title="Download summary of these tags (CSV)">
+        <i class="bi bi-file-earmark-arrow-down"></i> Summary
+      </a>
+      <i class="bi bi-wrench-adjustable prod-tile-wm"></i>
     </div>
   </div>
   <div class="flex-fill">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-2">
-        <i class="bi bi-exclamation-triangle prod-tile-icon mb-1 d-block" style="color:#dc3545"></i>
-        <div class="prod-tile-label text-muted mb-1">Total Tags in PNA</div>
-        <div class="prod-tile-count fw-bold" style="color:#dc3545">{{ tags_pna }}</div>
+    <div class="prod-tile h-100" style="background:#dc3545">
+      <div class="prod-tile-count">{{ tags_pna }}</div>
+      <div class="prod-tile-label">Total Tags in PNA</div>
         {# PNA parts for L1/L2 + L3/L4 tags — broader than the tile's own
            count above (L1/L2 only), by design; see the router's docstring
            on this export. #}
-        <a href="/trc-production/pna-summary" class="btn btn-outline-danger btn-sm mt-1 py-0 px-1"
-           style="font-size:.65rem" title="Download PNA parts summary (L1/L2 + L3/L4 tags)">
-          <i class="bi bi-file-earmark-arrow-down"></i> Summary
-        </a>
-      </div>
+      <a href="/trc-production/pna-summary" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+         style="font-size:.65rem" title="Download PNA parts summary (L1/L2 + L3/L4 tags)">
+        <i class="bi bi-file-earmark-arrow-down"></i> Summary
+      </a>
+      <i class="bi bi-exclamation-triangle prod-tile-wm"></i>
     </div>
   </div>
   <div class="flex-fill">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-2">
-        <i class="bi bi-activity prod-tile-icon mb-1 d-block" style="color:#20c997"></i>
-        <div class="prod-tile-label text-muted mb-1">Total Tags in Stress</div>
-        <div class="prod-tile-count fw-bold" style="color:#20c997">{{ tags_stress }}</div>
-        <a href="/trc-production/summary/stress" class="btn btn-outline-success btn-sm mt-1 py-0 px-1"
-           style="font-size:.65rem" title="Download summary of these tags (CSV)">
-          <i class="bi bi-file-earmark-arrow-down"></i> Summary
-        </a>
-      </div>
+    <div class="prod-tile h-100" style="background:#20c997">
+      <div class="prod-tile-count">{{ tags_stress }}</div>
+      <div class="prod-tile-label">Total Tags in Stress</div>
+      <a href="/trc-production/summary/stress" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+         style="font-size:.65rem" title="Download summary of these tags (CSV)">
+        <i class="bi bi-file-earmark-arrow-down"></i> Summary
+      </a>
+      <i class="bi bi-activity prod-tile-wm"></i>
     </div>
   </div>
   <div class="flex-fill">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-2">
-        <i class="bi bi-palette prod-tile-icon mb-1 d-block" style="color:#e83e8c"></i>
-        <div class="prod-tile-label text-muted mb-1">Total Tags in Cosmetic</div>
-        <div class="prod-tile-count fw-bold" style="color:#e83e8c">{{ tags_cosmetic }}</div>
-        <a href="/trc-production/summary/cosmetic" class="btn btn-outline-danger btn-sm mt-1 py-0 px-1"
-           style="font-size:.65rem" title="Download summary of these tags (CSV)">
-          <i class="bi bi-file-earmark-arrow-down"></i> Summary
-        </a>
-      </div>
+    <div class="prod-tile h-100" style="background:#e83e8c">
+      <div class="prod-tile-count">{{ tags_cosmetic }}</div>
+      <div class="prod-tile-label">Total Tags in Cosmetic</div>
+      <a href="/trc-production/summary/cosmetic" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+         style="font-size:.65rem" title="Download summary of these tags (CSV)">
+        <i class="bi bi-file-earmark-arrow-down"></i> Summary
+      </a>
+      <i class="bi bi-palette prod-tile-wm"></i>
     </div>
   </div>
   <div class="flex-fill">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-2">
-        <i class="bi bi-patch-check prod-tile-icon mb-1 d-block" style="color:#198754"></i>
-        <div class="prod-tile-label text-muted mb-1">Total Tags in Final QC</div>
-        <div class="prod-tile-count fw-bold" style="color:#198754">{{ tags_final_qc }}</div>
-        <a href="/trc-production/summary/final-qc" class="btn btn-outline-success btn-sm mt-1 py-0 px-1"
-           style="font-size:.65rem" title="Download summary of these tags (CSV)">
-          <i class="bi bi-file-earmark-arrow-down"></i> Summary
-        </a>
-      </div>
+    <div class="prod-tile h-100" style="background:#198754">
+      <div class="prod-tile-count">{{ tags_final_qc }}</div>
+      <div class="prod-tile-label">Total Tags in Final QC</div>
+      <a href="/trc-production/summary/final-qc" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+         style="font-size:.65rem" title="Download summary of these tags (CSV)">
+        <i class="bi bi-file-earmark-arrow-down"></i> Summary
+      </a>
+      <i class="bi bi-patch-check prod-tile-wm"></i>
     </div>
   </div>
   <div class="flex-fill">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-2">
-        <i class="bi bi-arrow-return-left prod-tile-icon mb-1 d-block" style="color:#6c757d"></i>
-        <div class="prod-tile-label text-muted mb-1">Tags Returned</div>
-        <div class="prod-tile-count fw-bold" style="color:#6c757d">{{ tags_returned }}</div>
-        <a href="/trc-production/summary/returned" class="btn btn-outline-secondary btn-sm mt-1 py-0 px-1"
-           style="font-size:.65rem" title="Download summary of these tags (CSV)">
-          <i class="bi bi-file-earmark-arrow-down"></i> Summary
-        </a>
-      </div>
+    <div class="prod-tile h-100" style="background:#6c757d">
+      <div class="prod-tile-count">{{ tags_returned }}</div>
+      <div class="prod-tile-label">Tags Returned</div>
+      <a href="/trc-production/summary/returned" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+         style="font-size:.65rem" title="Download summary of these tags (CSV)">
+        <i class="bi bi-file-earmark-arrow-down"></i> Summary
+      </a>
+      <i class="bi bi-arrow-return-left prod-tile-wm"></i>
     </div>
   </div>
 </div>
