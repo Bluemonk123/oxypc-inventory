@@ -526,3 +526,11 @@ fieldset:disabled .btn {
    natural width so its label never truncates. */
 .filter-bar-row > .filter-bar-search { flex: 2 1 0; min-width: 120px; }
 .filter-bar-row > .filter-bar-check { flex: 0 0 auto; min-width: 0; white-space: nowrap; }
+/* Busy pages: fixed 6 items per row, wrapping onto further rows.
+   Use <form class="filter-bar filter-bar-6">. Every item gets an equal
+   column; the buttons share one column. */
+.filter-bar-6 .filter-bar-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.filter-bar-6 .filter-bar-row > div,
+.filter-bar-6 .filter-bar-row > .filter-bar-search,
+.filter-bar-6 .filter-bar-row > .filter-bar-check { min-width: 0; width: auto; }
+.filter-bar-6 .filter-bar-row > div:last-child .btn { flex: 1 1 0; }
