@@ -150,7 +150,7 @@
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-archive me-2"></i>Inventory Stock</span>
-    <div class="d-flex align-items-center gap-2 flex-wrap">
+    <div id="stkHeaderBtns" class="d-flex align-items-center gap-2 flex-wrap">
       <button type="button" id="flagItemsBtn" class="btn btn-outline-danger btn-sm d-none text-nowrap me-2" disabled
               title="Flag the selected tags as Urgent at inventory">
         <i class="bi bi-flag-fill me-1"></i>Flag Items (<span id="flagItemsCount">0</span>)
@@ -193,8 +193,9 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span class="fw-semibold"><i class="bi bi-arrow-return-left me-2"></i>Return Stock</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      <span class="text-muted small text-nowrap"><span id="rsSelectedCount">0</span> selected</span>
-      <input type="text" id="rsSearchBox" class="form-control form-control-sm" style="max-width:260px;"
+      {# Moved by JS into the table toolbar, just before the pagination. #}
+      <span id="rsSelectedWrap" class="text-muted small text-nowrap"><span id="rsSelectedCount">0</span> selected</span>
+      <input type="text" id="rsSearchBox" class="form-control form-control-sm" style="width:220px;"
              placeholder="Search Tag / Serial / Model">
       <button type="button" id="rsAssignBucketBtn" class="btn btn-sm btn-outline-primary text-nowrap" disabled>
         <i class="bi bi-box me-1"></i>Assign Bucket
@@ -551,7 +552,10 @@ $(document).ready(function(){
        the button and scan-box slots. #}
     {# No 'f' in the dom string: the card-header #stockScanInput is the single
        search box for this table, so DataTables must not render a second one. #}
-    dom: '<"d-flex align-items-center justify-content-between px-3 py-2 border-bottom"l<"#entityBadgeArea"><"#stkBtnArea"><"#stkScanArea">>t<"d-flex justify-content-end align-items-center gap-3 px-3 py-2"ip>',
+    dom: '<"gtable-top d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"' +
+           '<"d-flex align-items-center flex-wrap gap-2"li<"#entityBadgeArea">>' +
+           '<"d-flex align-items-center flex-wrap gap-2"<"#stkScanArea">p>' +
+         '>rt',
     ajax: {
       url: '/stock/data',
       data: function (d) {
@@ -602,9 +606,13 @@ $(document).ready(function(){
   // toolbar is justify-content-between, so the button sits left and the scan
   // box top right, inside the table wrapper.
   $('#entityBadgeArea').append($('#entityBadges').removeClass('d-none'));
-  $('#stkBtnArea').append($('#assignBucketBtn').removeClass('d-none'));
-  $('#stkBtnArea').append($('#flagItemsBtn').removeClass('d-none'));
-  $('#stkBtnArea').append($('#bulkMoveL1L2Btn').removeClass('d-none'));
+  // Table action buttons live in the card header, right side, in this order:
+  // Assign Bucket, Bulk Move to L1/L2, Flag Items.
+  $('#stkHeaderBtns').prepend(
+    $('#assignBucketBtn').removeClass('d-none me-2'),
+    $('#bulkMoveL1L2Btn').removeClass('d-none'),
+    $('#flagItemsBtn').removeClass('d-none me-2')
+  );
   $('#stkScanArea').append($('#stockScanInput').removeClass('d-none'));
 
   $('#bulkMoveL1L2Btn').on('click', function () {
@@ -1055,6 +1063,8 @@ var dtReturnStock = initGlobalTable('#returnStockTable', {
   },
 });
 $('#returnStockTable_filter').addClass('d-none');
+// Selected count + search box sit in the toolbar's right group, before pagination.
+$('#returnStockTable_wrapper .dataTables_paginate').before($('#rsSelectedWrap'), $('#rsSearchBox'));
 function rsSelectedBarcodes(){
   return dtReturnStock.$('.rs-row-check:checked').toArray().map(function(c){ return c.value; });
 }
