@@ -136,6 +136,26 @@ async def raise_ticket(
     db.add(ticket)
     await db.commit()
     await db.refresh(ticket)
+
+    # Tickets are received and resolved by admin, so every active admin gets
+    # a notification (2026-10-14). The raiser is skipped if they are an admin.
+    # A notification failure never fails the ticket itself.
+    try:
+        from services.notifications import create_notification
+        from models.user import UserRole
+        admins = (await db.execute(
+            select(User.id).where(User.role == UserRole.admin, User.status == True,  # noqa: E712
+                                  User.id != current_user.id)
+        )).scalars().all()
+        who = current_user.full_name or current_user.username
+        preview = ticket.feedback if len(ticket.feedback) <= 120 else ticket.feedback[:117] + "..."
+        for admin_id in admins:
+            await create_notification(
+                db, user_id=admin_id, title=f"New Ticket {ticket.ticket_id}",
+                message=f"{who} raised a ticket: {preview}", notification_type="alert",
+            )
+    except Exception:
+        await db.rollback()
     return JSONResponse({"ok": True, "ticket_id": ticket.ticket_id})
 
 
