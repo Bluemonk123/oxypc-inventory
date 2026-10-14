@@ -7,6 +7,13 @@
      dates...). The Discount % dropdown and its amount sit side by side; the Status
      badges stay stacked, as asked for earlier. */
   #pmProductsTable tbody td, #pmProductsTable thead th { white-space: nowrap; }
+  /* Count tiles: solid colour with a large faint white watermark icon */
+  .pm-tile { position: relative; overflow: hidden; border-radius: 10px; color: #fff; min-height: 96px;
+             box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .pm-tile-num { font-size: 1.9rem; font-weight: 700; line-height: 1.1; position: relative; z-index: 1; }
+  .pm-tile-lbl { font-size: .82rem; color: rgba(255,255,255,.88); position: relative; z-index: 1; }
+  .pm-tile-wm { position: absolute; right: -6px; bottom: -14px; font-size: 4.6rem; line-height: 1;
+                color: rgba(255,255,255,.22); pointer-events: none; }
 </style>
 {% endblock %}
 {% block content %}
@@ -31,17 +38,18 @@
   {% set n_parts = products|rejectattr('parts_done')|list|length %}
   {% set n_done = products|selectattr('price_complete')|selectattr('parts_done')|list|length %}
   <div class="row g-3 mb-3">
-    {% for label, n, cls, icon in [('All Records', n_all, 'text-dark', 'bi-collection'),
-        ('Product Price Pending', n_pp, 'text-warning', 'bi-hourglass-split'),
-        ('Parts Price Pending', n_parts, 'text-info', 'bi-tools'),
-        ('Pricing Done', n_done, 'text-success', 'bi-check-circle'),
-        ('Active', n_done, 'text-primary', 'bi-toggle-on'),
-        ('Inactive', n_all - n_done, 'text-secondary', 'bi-toggle-off')] %}
+    {% for label, n, bg, icon in [('All Records', n_all, '#343a40', 'bi-collection'),
+        ('Product Price Pending', n_pp, '#f0ad00', 'bi-hourglass-split'),
+        ('Parts Price Pending', n_parts, '#0aa2c0', 'bi-tools'),
+        ('Pricing Done', n_done, '#198754', 'bi-check-circle'),
+        ('Active', n_done, '#0d6efd', 'bi-toggle-on'),
+        ('Inactive', n_all - n_done, '#6c757d', 'bi-toggle-off')] %}
     <div class="col-6 col-md-4 col-xl-2">
-      <div class="card border-0 shadow-sm h-100"><div class="card-body py-3 text-center">
-        <div class="fs-3 fw-bold {{ cls }}">{{ n }}</div>
-        <div class="small text-muted">{{ label }}</div>
-      </div></div>
+      <div class="pm-tile p-3 h-100" style="background:{{ bg }}">
+        <div class="pm-tile-num">{{ n }}</div>
+        <div class="pm-tile-lbl">{{ label }}</div>
+        <i class="bi {{ icon }} pm-tile-wm"></i>
+      </div>
     </div>
     {% endfor %}
   </div>
