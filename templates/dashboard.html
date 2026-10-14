@@ -8,10 +8,10 @@
 <style>
   .dash-filter-sm{width:130px}
   .dash-filter-md{width:150px}
-  /* Filter bar: light sky blue box, white fields, no labels (each field has a title tooltip) */
-  .dash-filter-box{background:#dcebfb !important}
+  /* Filter bar: no box, navy separator line below, white fields, no labels (each field has a title tooltip) */
+  .dash-filter-box{background:transparent; border-bottom:3px solid #1f3b63; padding-bottom:12px}
   .dash-filter-box .form-select,.dash-filter-box .form-control,
-  .dash-filter-box .ms-filter .btn{background-color:#fff; color:#212529; border-color:#b6cbe6}
+  .dash-filter-box .ms-filter .btn{background-color:#fff; color:#212529; border-color:#ced4da}
   .dash-filter-box .ms-filter .btn:hover,.dash-filter-box .ms-filter .btn.show{background-color:#fff; color:#212529}
   .dash-filter-box .ms-filter .btn{width:100%; min-width:0 !important}
   /* One row always: every field shares the width and shrinks together;
@@ -45,8 +45,8 @@
 
 {% import "_multiselect_filter.html" as ms %}
 <!-- Dashboard Filters -->
-<form method="get" action="/dashboard" class="card border-0 shadow-sm mb-3 dash-filter-box">
-<div class="card-body py-2 d-flex flex-nowrap gap-2 align-items-center dash-filter-row">
+<form method="get" action="/dashboard" class="mb-3 dash-filter-box">
+<div class="d-flex flex-nowrap gap-2 align-items-center dash-filter-row">
   <div class="dash-filter-md">
     <select name="stage_filter" title="Filter by Stage" class="form-select form-select-sm">
       <option value="">All Stages</option>
