@@ -17,8 +17,20 @@
   ('ram', 'RAM Details', 'bi-memory', 'RAM', ram_rows),
   ('storage', 'Storage Details', 'bi-device-hdd', 'Storage', storage_rows),
 ] %}
+{# RAM Details and Storage Details as two tabs (2026-10-15). #}
+<ul class="nav nav-tabs" id="hwTabs" role="tablist">
+  {% for kind, title, icon, label, rows in sections %}
+  <li class="nav-item"><button class="nav-link {{ 'active' if loop.first }}" data-bs-toggle="tab"
+      data-bs-target="#hwTab_{{ kind }}" type="button">
+    <i class="bi {{ icon }} me-1"></i>{{ title }}
+    <span class="badge bg-secondary ms-1">{{ rows | length }}</span>
+  </button></li>
+  {% endfor %}
+</ul>
+<div class="tab-content border border-top-0 rounded-bottom bg-white mb-4">
 {% for kind, title, icon, label, rows in sections %}
-<div class="card border-0 shadow-sm mb-4">
+<div class="tab-pane fade {{ 'show active' if loop.first }} p-0" id="hwTab_{{ kind }}">
+<div class="card border-0">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
     <span class="small text-muted">Every {{ label }} Type × {{ label }} Size from Dropdown Configuration</span>
@@ -53,7 +65,9 @@
     {% if not rows %}<div class="alert alert-warning small mt-3 mb-0">Add {{ label }} Types and {{ label }} Sizes in Product Master → Dropdown Configuration first.</div>{% endif %}
   </div>
 </div>
+</div>
 {% endfor %}
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -62,6 +76,10 @@
 (function () {
   initGlobalTable('#hw_ram_table', { order: [[0, 'asc']] });
   initGlobalTable('#hw_storage_table', { order: [[0, 'asc']] });
+  // The Storage table starts in a hidden tab — re-measure its columns when shown.
+  $(document).on('shown.bs.tab', '#hwTabs button', function () {
+    $($.fn.dataTable.tables(true)).DataTable().columns.adjust();
+  });
   function fmt(v) { return '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
   function editing(tr, on) {
     tr.find('.hw-price-view').toggleClass('d-none', on);
