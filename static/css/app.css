@@ -511,7 +511,7 @@ fieldset:disabled .btn {
    - no overflow clipping, so dropdown menus open fully */
 .filter-bar { margin-bottom: 1rem; padding-bottom: 12px; border-bottom: 1px solid #1f3b63; }
 .filter-bar-row { display: flex; flex-wrap: nowrap; align-items: center; gap: .5rem; }
-.filter-bar-row > div { flex: 1 1 0; min-width: 95px; width: auto; }
+.filter-bar-row > div { flex: 1 1 0; min-width: 70px; width: auto; }
 .filter-bar-row > div:last-child { flex: 0 0 auto; min-width: 0; white-space: nowrap; }
 .filter-bar .form-label { display: none; }
 .filter-bar .form-select, .filter-bar .form-control { background-color: #fff; color: #212529; }
@@ -522,3 +522,7 @@ fieldset:disabled .btn {
 .filter-bar .ms-filter .btn.show { background-color: #fff !important; color: #212529 !important; border-color: #ced4da !important; }
 .filter-bar .ms-filter .btn { width: 100%; min-width: 0 !important; }
 .filter-bar .ms-label { overflow: hidden; text-overflow: ellipsis; }
+/* A free-text search box gets double the share of the row; a checkbox keeps its
+   natural width so its label never truncates. */
+.filter-bar-row > .filter-bar-search { flex: 2 1 0; min-width: 120px; }
+.filter-bar-row > .filter-bar-check { flex: 0 0 auto; min-width: 0; white-space: nowrap; }

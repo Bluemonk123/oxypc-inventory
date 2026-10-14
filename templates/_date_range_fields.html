@@ -10,11 +10,11 @@
    own to host the fields. #}
 <div class="col-md-2">
   <label class="form-label small fw-semibold mb-1">Date From</label>
-  <input type="date" name="date_from" class="form-control form-control-sm"
+  <input type="date" name="date_from" title="Date From" class="form-control form-control-sm"
          value="{{ request.query_params.get('date_from', '') }}">
 </div>
 <div class="col-md-2">
   <label class="form-label small fw-semibold mb-1">Date To</label>
-  <input type="date" name="date_to" class="form-control form-control-sm"
+  <input type="date" name="date_to" title="Date To" class="form-control form-control-sm"
          value="{{ request.query_params.get('date_to', '') }}">
 </div>

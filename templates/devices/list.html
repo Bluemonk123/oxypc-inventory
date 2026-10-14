@@ -15,12 +15,11 @@
 
 <!-- Filter Bar -->
 {% import "_multiselect_filter.html" as ms %}
-<form method="get" action="/devices" class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-md-4">
-        <label class="form-label small fw-semibold mb-1">Search</label>
-        <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm barcode-field font-monospace"
+<form method="get" action="/devices" class="filter-bar">
+  <div>
+    <div class="filter-bar-row">
+      <div class="filter-bar-search">
+        <input type="text" name="q" title="Search" value="{{ q }}" class="form-control form-control-sm barcode-field font-monospace"
                placeholder="Tag, make, model, CPU, RAM, storage — e.g. Dell i5 8GB">
       </div>
       {{ ms.multiselect('entity', 'Entity', entity_options, entity) }}
@@ -31,8 +30,8 @@
       {{ ms.multiselect('stage', 'Stage', stage_choices, stage) }}
       {# Date From/To filter on the date the tag reached its current stage. #}
       {% include "_date_range_fields.html" %}
-      <div class="col-md-2 d-flex align-items-end">
-        <div class="form-check mb-1">
+      <div class="filter-bar-check">
+        <div class="form-check mb-0">
           <input class="form-check-input" type="checkbox" name="exclude_sold" value="1"
                  id="excludeSoldChk" {% if exclude_sold %}checked{% endif %}>
           <label class="form-check-label small fw-semibold" for="excludeSoldChk">
@@ -42,14 +41,14 @@
           </label>
         </div>
       </div>
-      <div class="col-md-2 d-flex gap-2">
+      <div class="d-flex gap-2">
         {# Marks the form as submitted so the server can tell "first load"
            (default the checkbox ON) from "user unticked it". #}
         <input type="hidden" name="fs" value="1">
-        <button type="submit" class="btn btn-primary btn-sm flex-grow-1">
+        <button type="submit" class="btn btn-primary btn-sm">
           <i class="bi bi-search me-1"></i>Search
         </button>
-        <a href="/devices" class="btn btn-outline-secondary btn-sm">Reset</a>
+        <a href="/devices" class="btn btn-outline-secondary bg-white btn-sm">Reset</a>
       </div>
     </div>
   </div>
