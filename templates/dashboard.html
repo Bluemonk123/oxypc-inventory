@@ -15,8 +15,8 @@
   .dash-filter-box .ms-filter .btn:hover,.dash-filter-box .ms-filter .btn.show{background-color:#fff; color:#212529}
   .dash-filter-box .ms-filter .btn{width:100%; min-width:0 !important}
   /* One row always: every field shares the width and shrinks together;
-     only Apply/Clear keep their natural size. Scrolls only if truly too narrow. */
-  .dash-filter-row{overflow-x:auto}
+     only Apply/Clear keep their natural size. No overflow clipping here —
+     it would cut off the Entity / Device Type dropdown menus. */
   .dash-filter-row > div{flex:1 1 0; min-width:95px; width:auto}
   .dash-filter-row > div:last-child{flex:0 0 auto; min-width:0; white-space:nowrap}
   .dash-filter-row .ms-label{overflow:hidden; text-overflow:ellipsis}
