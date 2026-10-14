@@ -4,80 +4,57 @@
 {% block content %}
 
 <!-- Filter Bar -->
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    {# Single row, no wrap, no horizontal scroll — every filter field shrinks
-       to fit the viewport instead (min-width:0 lets a flex item shrink past
-       its own content's natural width, which Bootstrap's fixed-width
-       col-md-* normally blocks via flex-shrink:0). Buttons stay flex-shrink-0
-       so their labels never get squished — the input/select fields absorb
-       all the compression. #}
-    <style>
-      #transfersFilterForm.row { flex-wrap: nowrap; }
-      #transfersFilterForm > [class*="col-"] {
-        flex: 1 1 0; min-width: 0; max-width: none; width: auto;
-      }
-      #transfersFilterForm .btn-group-col { flex: 0 0 auto; }
-    </style>
-    <form method="get" action="/transfers" id="transfersFilterForm" class="row g-2 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label small text-muted mb-1">Search Tag</label>
-        <input type="text" name="q" class="form-control form-control-sm" placeholder="Tag Number..." value="{{ q }}">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small text-muted mb-1">Transfer Type</label>
-        {% set transfer_type_arrow_labels = {
-          'trc_to_showroom': 'TRC → Showroom',
-          'showroom_to_trc': 'Showroom → TRC',
-          'showroom_lot': 'Showroom Lot',
-          'internal': 'Internal',
-          'as_is_lot': 'As-Is Lot',
-          'ready_for_sale': 'Finish Good',
-          'scrap_for_sale': 'Scrap for Sale',
-        } %}
-        <select name="transfer_type" class="form-select form-select-sm">
-          <option value="">All Types</option>
-          {% for t in master_options('transfer_type') %}
-          <option value="{{ t }}" {% if transfer_type == t %}selected{% endif %}>{{ transfer_type_arrow_labels.get(t, t) }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small text-muted mb-1">Transfer by</label>
-        <select name="transferred_by" class="form-select form-select-sm">
-          <option value="">All</option>
-          {% for raw, label in transferred_by_options %}
-          <option value="{{ raw }}" {% if transferred_by == raw %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small text-muted mb-1">Location ID</label>
-        <select name="location_id" class="form-select form-select-sm">
-          <option value="">All Locations</option>
-          {% for loc in storage_locations %}
-          <option value="{{ loc.id }}" {% if location_id == loc.id | string %}selected{% endif %}>{{ loc.unit_id }} — {{ zone_labels[loc.zone] }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% include "_date_range_fields.html" %}
-      <div class="col-auto btn-group-col d-flex gap-2">
-        <button type="submit" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
-        <a href="/transfers" class="btn btn-sm btn-outline-secondary text-nowrap">Clear</a>
-        <a href="/transfers/new" class="btn btn-sm btn-success text-nowrap"><i class="bi bi-plus-circle me-1"></i>New Transfer</a>
-        <a id="exportCsvLink" class="btn btn-sm btn-outline-success text-nowrap"
-           href="/transfers/export?q={{ q | urlencode }}&transfer_type={{ transfer_type | urlencode }}&transferred_by={{ transferred_by | urlencode }}&location_id={{ location_id | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
-          <i class="bi bi-download me-1"></i>Export
-        </a>
-      </div>
-    </form>
+{% set transfer_type_arrow_labels = {
+  'trc_to_showroom': 'TRC → Showroom',
+  'showroom_to_trc': 'Showroom → TRC',
+  'showroom_lot': 'Showroom Lot',
+  'internal': 'Internal',
+  'as_is_lot': 'As-Is Lot',
+  'ready_for_sale': 'Finish Good',
+  'scrap_for_sale': 'Scrap for Sale',
+} %}
+<form method="get" action="/transfers" id="transfersFilterForm" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" class="form-control form-control-sm" title="Search Tag" placeholder="Search Tag Number..." value="{{ q }}">
+    </div>
+    <div>
+      <select name="transfer_type" class="form-select form-select-sm" title="Transfer Type">
+        <option value="">All Types</option>
+        {% for t in master_options('transfer_type') %}
+        <option value="{{ t }}" {% if transfer_type == t %}selected{% endif %}>{{ transfer_type_arrow_labels.get(t, t) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="transferred_by" class="form-select form-select-sm" title="Transfer by">
+        <option value="">All Transferred By</option>
+        {% for raw, label in transferred_by_options %}
+        <option value="{{ raw }}" {% if transferred_by == raw %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="location_id" class="form-select form-select-sm" title="Location ID">
+        <option value="">All Locations</option>
+        {% for loc in storage_locations %}
+        <option value="{{ loc.id }}" {% if location_id == loc.id | string %}selected{% endif %}>{{ loc.unit_id }} — {{ zone_labels[loc.zone] }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "_date_range_fields.html" %}
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+      <a href="/transfers" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Clear</a>
+    </div>
   </div>
-</div>
+</form>
 
 <!-- Table -->
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span class="fw-semibold"><i class="bi bi-arrow-left-right me-2"></i>Floor Movements done so far</span>
+    <div class="d-flex gap-2 align-items-center">
     {% if has_perm(current_user.role.value, 'transfers', 'edit') %}
     <form method="post" action="/transfers/bulk-delete" id="transfersBulkDeleteForm" class="mb-0">
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
@@ -86,8 +63,14 @@
       </button>
     </form>
     {% endif %}
+    <a href="/transfers/new" class="btn btn-sm btn-success text-nowrap"><i class="bi bi-plus-circle me-1"></i>New Transfer</a>
+    <a id="exportCsvLink" class="btn btn-sm btn-outline-success text-nowrap"
+       href="/transfers/export?q={{ q | urlencode }}&transfer_type={{ transfer_type | urlencode }}&transferred_by={{ transferred_by | urlencode }}&location_id={{ location_id | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
+      <i class="bi bi-download me-1"></i>Export
+    </a>
+    </div>
   </div>
-  <div class="card-body p-0">
+  <div>
       <table id="transfersTable" class="table table-hover mb-0 small">
         <thead class="table-dark">
           <tr>
@@ -156,48 +139,45 @@
 {% block scripts %}
 <script>
 $(document).ready(function(){
-  // Global Table module (static/js/global-table.js) — skipped when the table
-  // is empty, same guard used on /workid-status.
-  if ($('#transfersTable tbody tr td').length > 1) {
-    var hasCheckboxCol = !!document.getElementById('transfersSelectAll');
-    var off = hasCheckboxCol ? 1 : 0;
-    initGlobalTable('#transfersTable', {
-      pageLength: 12,
-      order: [[0 + off, 'desc']],
-      columnDefs: hasCheckboxCol ? [{ orderable: false, targets: [0] }] : [],
-    });
-  }
+  var selectAll = document.getElementById('transfersSelectAll');
+  var deleteBtn = document.getElementById('transfersBulkDeleteBtn');
+  var hasCheckboxCol = !!selectAll;
+  var off = hasCheckboxCol ? 1 : 0;
+  var canBulk = !!(selectAll && deleteBtn);
 
   // Row selection + Bulk Delete — button stays hidden until at least one row
   // is checked (rather than merely disabled), per explicit request.
-  var selectAll = document.getElementById('transfersSelectAll');
-  var deleteBtn = document.getElementById('transfersBulkDeleteBtn');
-  if (selectAll && deleteBtn) {
-    var deleteCount = document.getElementById('transfersDeleteSelCount');
-    var deleteForm = document.getElementById('transfersBulkDeleteForm');
+  var deleteCount = document.getElementById('transfersDeleteSelCount');
+  var deleteForm = document.getElementById('transfersBulkDeleteForm');
+  function rowChks() { return document.querySelectorAll('#transfersTable .transfers-row-chk'); }
+  function selectedIds() {
+    return Array.from(document.querySelectorAll('#transfersTable .transfers-row-chk:checked')).map(function (c) { return c.value; });
+  }
+  function updateSel() {
+    if (!canBulk) return;
+    var n = selectedIds().length;
+    deleteCount.textContent = n;
+    deleteBtn.classList.toggle('d-none', n === 0);
+    $('#transfersSelectAll').prop('checked', rowChks().length > 0 && n === rowChks().length);
+  }
 
-    function rowChks() { return document.querySelectorAll('.transfers-row-chk'); }
-    function selectedIds() {
-      return Array.from(document.querySelectorAll('.transfers-row-chk:checked')).map(function (c) { return c.value; });
-    }
-    function updateSel() {
-      var n = selectedIds().length;
-      deleteCount.textContent = n;
-      deleteBtn.classList.toggle('d-none', n === 0);
-      selectAll.checked = rowChks().length > 0 && n === rowChks().length;
-    }
+  // Global Table module (static/js/global-table.js). Empty tables are handled
+  // by language.emptyTable (no colspan placeholder row in the markup).
+  initGlobalTable('#transfersTable', {
+    pageLength: 12,
+    order: [[0 + off, 'desc']],
+    columnDefs: hasCheckboxCol ? [{ orderable: false, targets: [0] }] : [],
+    language: { emptyTable: 'No transfers found.' },
+  }, canBulk ? {
+    selectAll: {
+      headerSelector: '#transfersSelectAll',
+      rowSelector: '.transfers-row-chk',
+      onChange: updateSel,
+      resetOnDraw: true,
+    },
+  } : {});
 
-    selectAll.addEventListener('change', function () {
-      rowChks().forEach(function (c) { c.checked = selectAll.checked; });
-      updateSel();
-    });
-    // DataTables paginates by hiding rows, not removing them, but a fresh
-    // page draw can still introduce rows whose checkbox has no listener yet
-    // if this ran once at load — delegate on the table body instead.
-    document.querySelector('#transfersTable tbody').addEventListener('change', function (e) {
-      if (e.target.classList.contains('transfers-row-chk')) updateSel();
-    });
-
+  if (canBulk) {
     deleteBtn.addEventListener('click', function () {
       var ids = selectedIds();
       if (!ids.length) return;

@@ -29,52 +29,46 @@
 </div>
 
 <!-- Filters -->
-<form method="get" action="/credit-note" class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold mb-1">Search</label>
-        <input type="text" name="q" class="form-control form-control-sm" value="{{ q }}"
-               placeholder="Tag Number / Sale ID / Payment Invoice">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold mb-1">Lot Number</label>
-        <select name="lot_number" class="form-select form-select-sm">
-          <option value="">All Lots</option>
-          {% for ln in lot_number_options %}
-          <option value="{{ ln }}" {% if f_lot_number == ln %}selected{% endif %}>{{ ln }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Sub-Lot Number</label>
-        <select name="sub_lot_number" class="form-select form-select-sm">
-          <option value="">All Sub-Lots</option>
-          {% for sl in sub_lot_number_options %}
-          <option value="{{ sl }}" {% if f_sub_lot_number == sl %}selected{% endif %}>{{ sl }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Tag Return Status</label>
-        <select name="tag_return_status" class="form-select form-select-sm">
-          <option value="">All Statuses</option>
-          {% for s in tag_return_status_options %}
-          <option value="{{ s }}" {% if f_tag_return_status == s %}selected{% endif %}>{{ s }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2 d-flex gap-2">
-        <button type="submit" class="btn btn-primary btn-sm flex-grow-1"><i class="bi bi-search me-1"></i>Filter</button>
-        <a href="/credit-note" class="btn btn-outline-secondary btn-sm">Reset</a>
-      </div>
+<form method="get" action="/credit-note" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" class="form-control form-control-sm" value="{{ q }}"
+             title="Search" placeholder="Tag Number / Sale ID / Payment Invoice">
+    </div>
+    <div>
+      <select name="lot_number" class="form-select form-select-sm" title="Lot Number">
+        <option value="">All Lots</option>
+        {% for ln in lot_number_options %}
+        <option value="{{ ln }}" {% if f_lot_number == ln %}selected{% endif %}>{{ ln }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="sub_lot_number" class="form-select form-select-sm" title="Sub-Lot Number">
+        <option value="">All Sub-Lots</option>
+        {% for sl in sub_lot_number_options %}
+        <option value="{{ sl }}" {% if f_sub_lot_number == sl %}selected{% endif %}>{{ sl }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="tag_return_status" class="form-select form-select-sm" title="Tag Return Status">
+        <option value="">All Statuses</option>
+        {% for s in tag_return_status_options %}
+        <option value="{{ s }}" {% if f_tag_return_status == s %}selected{% endif %}>{{ s }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search me-1"></i>Filter</button>
+      <a href="/credit-note" class="btn btn-outline-secondary btn-sm bg-white">Reset</a>
     </div>
   </div>
 </form>
 
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span><i class="bi bi-receipt-cutoff me-2"></i>Credit Note</span>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
+    <span class="fw-semibold"><i class="bi bi-receipt-cutoff me-2"></i>Credit Note</span>
     <div class="d-flex gap-2 align-items-center flex-wrap">
       <button type="button" id="cnBulkVerifyBtn" class="btn btn-sm btn-outline-primary" disabled>
         <i class="bi bi-check2-circle me-1"></i>Verify (<span id="cnVerifySelCount">0</span>)
@@ -87,9 +81,9 @@
       </button>
     </div>
   </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0 small align-middle">
+  <div>
+    <div>
+      <table id="cnTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
             <th class="ps-3"><input type="checkbox" id="cnSelectAll" class="form-check-input"></th>
@@ -151,8 +145,6 @@
               </div>
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="14" class="text-center text-muted py-4">No Credit Note records yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -196,13 +188,14 @@
 {% endblock %}
 {% block scripts %}
 <script>
-document.querySelectorAll('.sender-badge-btn').forEach(function(btn){
-  btn.addEventListener('click', function(){
+// Delegated so the Contact button works on every DataTables page.
+$(document).on('click', '.sender-badge-btn', function(){
+  (function(){
     document.getElementById('sd_name').textContent = this.getAttribute('data-name') || '—';
     document.getElementById('sd_phone').textContent = this.getAttribute('data-phone') || '—';
     document.getElementById('sd_email').textContent = this.getAttribute('data-email') || '—';
     new bootstrap.Modal(document.getElementById('senderDetailsModal')).show();
-  });
+  }).call(this);
 });
 
 // ── Row selection + Bulk Verify / Bulk Delete / Export ──
@@ -211,6 +204,18 @@ document.querySelectorAll('.sender-badge-btn').forEach(function(btn){
 // excluded from Bulk Delete and Export, so every selector below scopes to
 // ':not(:disabled)' rather than assuming "all checkboxes are selectable".
 (function(){
+  var cnTable = initGlobalTable('#cnTable', {
+    order: [],
+    columnDefs: [{ orderable: false, targets: [0, -1] }],
+    language: { emptyTable: 'No Credit Note records yet.' },
+  }, {
+    selectAll: {
+      headerSelector: '#cnSelectAll',
+      rowSelector: '.cn-row-chk:not(:disabled)',
+      onChange: function(){ updateSel(); },
+      resetOnDraw: true,
+    },
+  });
   var selectAll = document.getElementById('cnSelectAll');
   var verifyBtn = document.getElementById('cnBulkVerifyBtn');
   var deleteBtn = document.getElementById('cnBulkDeleteBtn');
@@ -233,7 +238,7 @@ document.querySelectorAll('.sender-badge-btn').forEach(function(btn){
     deleteBtn.disabled = n === 0;
     exportBtn.disabled = n === 0;
     var all = selectableChks();
-    selectAll.checked = all.length > 0 && n === all.length;
+    $('#cnSelectAll').prop('checked', all.length > 0 && n === all.length);
   }
   function fillHiddenIds(form, ids){
     form.querySelectorAll('input[name="return_id"]').forEach(function(i){ i.remove(); });
@@ -244,13 +249,8 @@ document.querySelectorAll('.sender-badge-btn').forEach(function(btn){
     });
   }
 
-  selectAll.addEventListener('change', function(){
-    selectableChks().forEach(function(c){ c.checked = selectAll.checked; });
-    updateSel();
-  });
-  document.querySelectorAll('.cn-row-chk').forEach(function(c){
-    c.addEventListener('change', updateSel);
-  });
+  // Header select-all + row checkbox changes are wired by initGlobalTable's
+  // opts.selectAll above (delegated, survives scrollX header relocation).
 
   verifyBtn.addEventListener('click', function(){
     var ids = selectedIds();
@@ -275,10 +275,8 @@ document.querySelectorAll('.sender-badge-btn').forEach(function(btn){
     document.getElementById('cnExportForm').submit();
   });
 
-  document.querySelectorAll('.cn-delete-form').forEach(function(form){
-    form.addEventListener('submit', function(e){
-      if (!confirm('Permanently delete this return record? This cannot be undone.')) e.preventDefault();
-    });
+  $(document).on('submit', '.cn-delete-form', function(e){
+    if (!confirm('Permanently delete this return record? This cannot be undone.')) e.preventDefault();
   });
 
   updateSel();

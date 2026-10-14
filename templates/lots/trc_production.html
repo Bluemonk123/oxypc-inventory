@@ -17,14 +17,19 @@
 {% block content %}
 {# This page has no other server-side filters, so the date range gets its own
    filter row card — same shape as every other page's filter bar. #}
-<form method="get" action="/trc-production" class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      {% include "_date_range_fields.html" %}
-      <div class="col-md-3 d-flex gap-2">
-        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filter</button>
-        <a href="/trc-production" class="btn btn-outline-secondary btn-sm">Reset</a>
-      </div>
+<form method="get" action="/trc-production" class="filter-bar">
+  <div class="filter-bar-row">
+    <div>
+      <input type="date" name="date_from" title="Date From" class="form-control form-control-sm"
+             value="{{ request.query_params.get('date_from', '') }}">
+    </div>
+    <div>
+      <input type="date" name="date_to" title="Date To" class="form-control form-control-sm"
+             value="{{ request.query_params.get('date_to', '') }}">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filter</button>
+      <a href="/trc-production" class="btn btn-outline-secondary btn-sm">Reset</a>
     </div>
   </div>
 </form>
@@ -160,19 +165,20 @@
 </ul>
 <div class="tab-content border border-top-0 rounded-bottom bg-white mb-3">
   <div class="tab-pane fade show active p-0" id="bucketAllocTab">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0 small">
-        <thead class="table-secondary">
+<div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold"><i class="bi bi-box me-2"></i>Bucket Allocation</span></div>
+      <div>
+      <table id="trcBucketTable" class="table table-hover mb-0 small">
+        <thead class="table-dark">
           <tr><th>Bucket Name</th><th>Bucket Number</th><th>Location</th><th>Category</th><th>Bucket Qty</th><th>Received Qty</th><th>Actions</th></tr>
         </thead>
-        <tbody id="trcBucketTbody">
-          <tr><td colspan="7" class="text-center text-muted py-3">Loading…</td></tr>
-        </tbody>
+        <tbody id="trcBucketTbody"></tbody>
       </table>
+      </div>
     </div>
   </div>
   <div class="tab-pane fade p-0" id="tagAllocTab">
-    <div class="table-responsive">
+    <div>
       <table id="trcTable" class="table table-hover mb-0 small">
         <thead class="table-dark"><tr>
           <th><input type="checkbox" id="trcSelectAll" title="Select all"></th>
@@ -205,9 +211,9 @@
               </button>
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="11" class="text-center text-muted py-4">No devices in TRC Production.</td></tr>
           {% endfor %}
+          {# No colspan empty row — DataTables can't initialise over it; the
+             Global Table empty state shows the message instead. #}
         </tbody>
       </table>
     </div>
@@ -233,8 +239,10 @@
 
   <!-- Final QC Fail (Bucket) — buckets whose devices came here via Final QC's "Move to Production" -->
   <div class="tab-pane fade show active p-0" id="rlFqcFailTab">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0 small">
+<div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold"><i class="bi bi-x-octagon me-2"></i>Final QC Fail (Bucket)</span></div>
+      <div>
+      <table id="rlFqcFailTable" class="table table-hover mb-0 small">
         <thead class="table-dark"><tr>
           <th>Bucket Name</th><th>Bucket ID</th><th>Count of Tag Numbers</th><th>Stage</th><th>Failure Reason</th><th>Action</th>
         </tr></thead>
@@ -248,18 +256,19 @@
             <td class="small">{{ row.failure_reason or '—' }}</td>
             <td><button class="btn btn-sm btn-primary py-0 px-2 rl-fqc-assign-btn" data-id="{{ row.bucket_id }}" data-number="{{ row.bucket_number }}" data-count="{{ row.count }}">Assign</button></td>
           </tr>
-          {% else %}
-          <tr><td colspan="6" class="text-center text-muted py-4">No failed buckets awaiting assignment.</td></tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
   </div>
 
   <!-- Tag Numbers in Repair Line (Batch 8 item 25) -->
   <div class="tab-pane fade p-0" id="rlTagNumTab">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0 small">
+<div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold"><i class="bi bi-upc-scan me-2"></i>Tag Number in Repair Line</span></div>
+      <div>
+      <table id="rlTagNumTable" class="table table-hover mb-0 small">
         <thead class="table-dark"><tr>
           <th>Tag Number</th><th>Lot</th><th>Brand</th><th>Model</th><th>Stage</th><th>Grade</th><th>Assigned User</th><th>Assigned User Name</th>
         </tr></thead>
@@ -275,32 +284,34 @@
             <td>{% set dept = assigned_dept_map.get(device.id|string) if assigned_dept_map is defined else None %}{% if dept %}<span class="badge bg-secondary">{{ dept }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td>{{ (assigned_name_map.get(device.id|string) if assigned_name_map is defined else None) or '—' }}</td>
           </tr>
-          {% else %}
-          <tr><td colspan="8" class="text-center text-muted py-4">No devices currently in the repair line.</td></tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
   </div>
 
   <!-- Allocation table: buckets already allocated to L1/L2 Engineer -->
   <div class="tab-pane fade p-0" id="rlBucketsTab">
-    <div class="table-responsive">
+<div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Buckets in Repair Line</span></div>
+      <div>
       <table id="prodAllocationTable" class="table table-hover mb-0 small">
-        <thead class="table-secondary">
+        <thead class="table-dark">
           <tr><th>Bucket Name</th><th>Bucket ID</th><th>Location ID</th><th>Total Pass</th><th>Total Fail</th><th>Count of Tag Numbers</th><th>Assigned To</th><th>Action</th></tr>
         </thead>
-        <tbody id="prodAllocationTbody">
-          <tr><td colspan="8" class="text-center text-muted py-3">Loading…</td></tr>
-        </tbody>
+        <tbody id="prodAllocationTbody"></tbody>
       </table>
+      </div>
     </div>
   </div>
 
   <!-- Scrap Products from Repair Line (moved here from All Inventory) -->
   <div class="tab-pane fade p-0" id="rlScrapTab">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0 small">
+<div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold"><i class="bi bi-trash me-2"></i>Scrap from Repair Line</span></div>
+      <div>
+      <table id="rlScrapTable" class="table table-hover mb-0 small">
         <thead class="table-dark"><tr>
           <th>Tag Number</th><th>Lot</th><th>Brand</th><th>Model</th><th>Grade</th><th>Notes</th><th>Action</th>
         </tr></thead>
@@ -322,11 +333,10 @@
                       data-barcode="{{ device.barcode }}"><i class="bi bi-arrow-repeat"></i> Replace With Another</button>
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="7" class="text-center text-muted py-4">No scrapped devices from the repair line.</td></tr>
           {% endfor %}
         </tbody>
       </table>
+      </div>
     </div>
   </div>
 
@@ -587,7 +597,8 @@ $(document).ready(function(){
   // would measure a 0-width table if initialised immediately — the classic
   // "columns collapse until you resize the window" bug. Initialise once,
   // then re-measure whenever the tab is actually shown.
-  trcDt = ($('#trcTable tbody tr td').length > 1) ? initGlobalTable('#trcTable', {
+  trcDt = initGlobalTable('#trcTable', {
+    language: { emptyTable: 'No devices in TRC Production.' },
     initComplete: function() {
       var failedFqcFilter = $('<div class="form-check form-check-inline me-2">' +
         '<input class="form-check-input" type="checkbox" id="trcFailedFqcFilter">' +
@@ -617,7 +628,7 @@ $(document).ready(function(){
     // comma-separated list, every matching row on the current page) — the
     // "search button will work search+autoselect" requirement.
     scan: { inputId: 'trcScanInput', selection: trcSelected, checkboxSelector: '.trcRowCheck', onChange: updateTrcBulkAssignButtonState, placeholder: 'Scan or search Tag Number…' },
-  }) : null;
+  });
   document.querySelector('[data-bs-target="#tagAllocTab"]').addEventListener('shown.bs.tab', function(){
     if (trcDt) trcDt.columns.adjust();
   });
@@ -640,12 +651,7 @@ function loadTrcBuckets(){
   // linked to the bucket across an earlier, unrelated intake).
   fetch('/api/buckets?status=trc_pending,validated&with_stage=trc_production').then(function(r){return r.json();}).then(function(allBuckets){
     var buckets = allBuckets.filter(function(b){ return b.assigned_to_production && !b.dept_assigned; });
-    var tbody = document.getElementById('trcBucketTbody');
-    if(!buckets.length){
-      tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-3">No buckets with tags in TRC Production.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = buckets.map(function(b){
+    var html = buckets.map(function(b){
       var receivedQty = b.received_qty !== null && b.received_qty !== undefined ? b.received_qty : '—';
       return '<tr>'+
         '<td>'+(b.name || '—')+'</td>'+
@@ -659,20 +665,29 @@ function loadTrcBuckets(){
         '</td>'+
       '</tr>';
     }).join('');
-
-    // Assign bucket
-    tbody.querySelectorAll('.trc-assign-bkt').forEach(function(el){
-      el.addEventListener('click', function(){
-        document.getElementById('asgBktId').value = this.dataset.id;
-        document.getElementById('asgBktNum').value = this.dataset.number;
-        document.getElementById('asgBktCount').value = this.dataset.count;
-        document.getElementById('asgBktContext').value = '';
-        resetAsgLevel();
-        new bootstrap.Modal(document.getElementById('bktAssignModal')).show();
-      });
-    });
+    // Rows go through the DataTables API (not tbody.innerHTML) so paging/
+    // search/sort see them; empty state comes from language.emptyTable.
+    trcBucketDt.clear();
+    if (html) trcBucketDt.rows.add($(html));
+    trcBucketDt.draw();
   });
 }
+
+// Assign bucket — delegated, since DataTables only keeps the current page's
+// rows in the DOM (per-render binding would miss rows on other pages).
+$(document).on('click', '.trc-assign-bkt', function(){
+  document.getElementById('asgBktId').value = this.dataset.id;
+  document.getElementById('asgBktNum').value = this.dataset.number;
+  document.getElementById('asgBktCount').value = this.dataset.count;
+  document.getElementById('asgBktContext').value = '';
+  resetAsgLevel();
+  new bootstrap.Modal(document.getElementById('bktAssignModal')).show();
+});
+
+var trcBucketDt = initGlobalTable('#trcBucketTable', {
+  order: [],
+  language: { emptyTable: 'No buckets with tags in TRC Production.' },
+});
 loadTrcBuckets();
 
 // Repair type radio → role key used to filter the Select Engineer dropdown
@@ -976,15 +991,10 @@ document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el){ ne
 // ── Allocation table: buckets assigned to Production, i.e. handed to L1/L2 ──
 function loadProdAllocationTable(){
   fetch('/api/buckets?status=stock_in,trc_pending,validated').then(function(r){return r.json();}).then(function(buckets){
-    var tbody = document.getElementById('prodAllocationTbody');
     // A bucket with 0 tag numbers left (every device unmapped/moved on) has
     // nothing to show or act on here — drop it rather than list an empty row.
     var relevant = buckets.filter(function(b){ return b.assigned_to_production && b.device_count > 0; });
-    if(!relevant.length){
-      tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-3">No buckets allocated to L1/L2 Engineer yet.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = relevant.map(function(b){
+    var html = relevant.map(function(b){
       return '<tr>'+
         '<td>'+(b.name || '—')+'</td>'+
         '<td><a href="#" class="font-monospace fw-bold text-decoration-none trc-view-tags" data-id="'+b.id+'" data-number="'+b.bucket_number+'">'+b.bucket_number+'</a></td>'+
@@ -996,9 +1006,37 @@ function loadProdAllocationTable(){
         '<td><button class="btn btn-xs btn-outline-danger btn-sm py-0 px-2 release-bkt-btn" data-id="'+b.id+'" data-number="'+b.bucket_number+'"><i class="bi bi-box-arrow-up"></i> Release Bucket</button></td>'+
       '</tr>';
     }).join('');
+    prodAllocationDt.clear();
+    if (html) prodAllocationDt.rows.add($(html));
+    prodAllocationDt.draw();
   });
 }
+var prodAllocationDt = initGlobalTable('#prodAllocationTable', {
+  order: [],
+  language: { emptyTable: 'No buckets allocated to L1/L2 Engineer yet.' },
+});
 loadProdAllocationTable();
+
+// Server-rendered Repair Line tables
+var rlFqcFailDt = initGlobalTable('#rlFqcFailTable', {
+  order: [],
+  language: { emptyTable: 'No failed buckets awaiting assignment.' },
+});
+var rlTagNumDt = initGlobalTable('#rlTagNumTable', {
+  order: [],
+  language: { emptyTable: 'No devices currently in the repair line.' },
+});
+var rlScrapDt = initGlobalTable('#rlScrapTable', {
+  order: [],
+  language: { emptyTable: 'No scrapped devices from the repair line.' },
+});
+
+// Most tables here start inside a hidden tab-pane / collapsed accordion, so
+// DataTables measures 0-width columns at init — re-measure every visible
+// table whenever a tab or the Repair Line accordion is shown.
+$(document).on('shown.bs.tab shown.bs.collapse', function(){
+  $($.fn.dataTable.tables(true)).DataTable().columns.adjust();
+});
 
 // View Tags — one delegated handler covers every "Bucket ID" link on this
 // page (Bucket Allocation's own table built by loadTrcBuckets, the

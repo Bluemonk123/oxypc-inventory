@@ -46,62 +46,50 @@
 </div>
 {% endif %}
 <!-- Filter Bar -->
-<form method="get" action="/stock" class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      {# One box covering GRN / Invoice / Tag Number / Model, sitting ahead of
-         Device Type. Filters client-side against the Inventory Stock table
-         (including its two hidden columns) so it needs no page reload. #}
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Search</label>
-        <input type="text" id="stockQuickSearch" class="form-control form-control-sm"
-               placeholder="GRN / Invoice / Tag Number / Model" autocomplete="off">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Device Type</label>
-        <select name="device_type" class="form-select form-select-sm">
-          <option value="">All Device Types</option>
-          {% for dt in device_type_options %}
-          <option value="{{ dt }}" {% if device_type == dt %}selected{% endif %}>{{ dt }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Lot Number</label>
-        <select name="lot_number" class="form-select form-select-sm">
-          <option value="">All Lot Numbers</option>
-          {% for ln in lot_number_options %}
-          <option value="{{ ln }}" {% if lot_number == ln %}selected{% endif %}>{{ ln }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Entity</label>
-        <select name="entity" class="form-select form-select-sm">
-          <option value="">All Entities</option>
-          {% for e in entity_options %}
-          <option value="{{ e }}" {% if entity == e %}selected{% endif %}>{{ e }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {# Narrower than the shared _date_range_fields.html partial (col-md-2
-         each) so all seven filters fit on one row at the md breakpoint —
-         this page has one more filter than the pages that partial was sized
-         for, so its fields are laid out inline here instead of reused. #}
-      <div class="col-md-1">
-        <label class="form-label small fw-semibold mb-1">From</label>
-        <input type="date" name="date_from" class="form-control form-control-sm"
-               value="{{ request.query_params.get('date_from', '') }}">
-      </div>
-      <div class="col-md-1">
-        <label class="form-label small fw-semibold mb-1">To</label>
-        <input type="date" name="date_to" class="form-control form-control-sm"
-               value="{{ request.query_params.get('date_to', '') }}">
-      </div>
-      <div class="col-md-2 d-flex gap-2">
-        <button type="submit" class="btn btn-primary btn-sm flex-grow-1"><i class="bi bi-search me-1"></i>Filter</button>
-        <a href="/stock" class="btn btn-outline-secondary btn-sm">Reset</a>
-      </div>
+<form method="get" action="/stock" class="filter-bar">
+  <div class="filter-bar-row">
+    {# One box covering GRN / Invoice / Tag Number / Model, sitting ahead of
+       Device Type. Drives the Inventory Stock table's server-side search
+       (including its two hidden columns) so it needs no page reload. #}
+    <div class="filter-bar-search">
+      <input type="text" id="stockQuickSearch" class="form-control form-control-sm" title="Search"
+             placeholder="GRN / Invoice / Tag Number / Model" autocomplete="off">
+    </div>
+    <div>
+      <select name="device_type" class="form-select form-select-sm" title="Device Type">
+        <option value="">All Device Types</option>
+        {% for dt in device_type_options %}
+        <option value="{{ dt }}" {% if device_type == dt %}selected{% endif %}>{{ dt }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="lot_number" class="form-select form-select-sm" title="Lot Number">
+        <option value="">All Lot Numbers</option>
+        {% for ln in lot_number_options %}
+        <option value="{{ ln }}" {% if lot_number == ln %}selected{% endif %}>{{ ln }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="entity" class="form-select form-select-sm" title="Entity">
+        <option value="">All Entities</option>
+        {% for e in entity_options %}
+        <option value="{{ e }}" {% if entity == e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <input type="date" name="date_from" class="form-control form-control-sm" title="From"
+             value="{{ request.query_params.get('date_from', '') }}">
+    </div>
+    <div>
+      <input type="date" name="date_to" class="form-control form-control-sm" title="To"
+             value="{{ request.query_params.get('date_to', '') }}">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search me-1"></i>Filter</button>
+      <a href="/stock" class="btn btn-outline-secondary btn-sm bg-white">Reset</a>
     </div>
   </div>
 </form>
@@ -182,7 +170,7 @@
     </div>
   </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
+    <div>
       <table id="stockTable" class="table table-hover mb-0 small">
         <thead class="table-dark"><tr><th style="width:32px"><input type="checkbox" id="selectAllStock" class="form-check-input"></th><th>Tag Number</th><th>Lot</th><th>Location ID</th><th>Brand</th><th>Model</th><th>Device Type</th><th>Grade</th><th>Inside Bucket</th><th>Returned</th><th>Action</th><th>GRN</th><th>Invoice</th></tr></thead>
         {# Rows are supplied by /stock/data (DataTables server-side). GRN and
@@ -201,24 +189,24 @@
 {% include "_customise_modal.html" %}
 
 <!-- Return Stock: customer-return tags back in the pipeline for repair/re-sale -->
-<div class="d-flex justify-content-between align-items-center mt-4 mb-2">
-  <h6 class="fw-bold mb-0"><i class="bi bi-arrow-return-left me-2"></i>Return Stock</h6>
-</div>
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-header bg-white d-flex flex-wrap align-items-center gap-2">
-    <input type="text" id="rsSearchBox" class="form-control form-control-sm" style="max-width:260px;"
-           placeholder="Search Tag / Serial / Model">
-    <button type="button" id="rsAssignBucketBtn" class="btn btn-sm btn-outline-primary" disabled>
-      <i class="bi bi-box me-1"></i>Assign Bucket
-    </button>
-    <span class="text-muted small ms-auto"><span id="rsSelectedCount">0</span> selected</span>
+<div class="card border-0 shadow-sm mt-4 mb-3">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
+    <span class="fw-semibold"><i class="bi bi-arrow-return-left me-2"></i>Return Stock</span>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <span class="text-muted small text-nowrap"><span id="rsSelectedCount">0</span> selected</span>
+      <input type="text" id="rsSearchBox" class="form-control form-control-sm" style="max-width:260px;"
+             placeholder="Search Tag / Serial / Model">
+      <button type="button" id="rsAssignBucketBtn" class="btn btn-sm btn-outline-primary text-nowrap" disabled>
+        <i class="bi bi-box me-1"></i>Assign Bucket
+      </button>
+    </div>
   </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
+    <div>
       <table id="returnStockTable" class="table table-hover mb-0 small">
-        <thead class="table-secondary">
+        <thead class="table-dark">
           <tr>
-            <th><input type="checkbox" id="rsSelectAll"></th>
+            <th><input type="checkbox" id="rsSelectAll" class="form-check-input"></th>
             <th>Tag Number</th><th>Serial Number</th><th>Model</th><th>CPU</th><th>RAM</th><th>Storage</th>
             <th>Current Stage</th><th>Reason</th><th>Condition</th><th>Complaint</th>
             <th>Repair Cost</th><th>Labour Cost</th><th>Part Cost</th><th>Action</th>
@@ -256,8 +244,6 @@
                       data-barcode="{{ d.barcode }}">Complete</button>
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="15" class="text-center text-muted py-3">No return stock pending.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -266,18 +252,17 @@
 </div>
 
 <!-- Bucket / Carton table -->
-<div class="d-flex justify-content-between align-items-center mt-4 mb-2">
-  <h6 class="fw-bold mb-0"><i class="bi bi-box me-2"></i>Buckets / Cartons</h6>
-</div>
-<div class="card border-0 shadow-sm mb-3">
+<div class="card border-0 shadow-sm mt-4 mb-3">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
+    <span class="fw-semibold"><i class="bi bi-box me-2"></i>Buckets / Cartons</span>
+  </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
+    <div>
       <table id="bucketTable" class="table table-hover mb-0 small">
-        <thead class="table-secondary">
+        <thead class="table-dark">
           <tr><th>Bucket Number</th><th>Name</th><th>Location</th><th>Category</th><th>Qty</th><th>Actions</th></tr>
         </thead>
         <tbody id="bucketTbody">
-          <tr><td colspan="6" class="text-center text-muted py-3">Loading…</td></tr>
         </tbody>
       </table>
     </div>
@@ -285,14 +270,14 @@
 </div>
 
 <!-- Final QC Pass (Buckets): buckets released from Final QC's Devices Passed table -->
-<div class="d-flex justify-content-between align-items-center mt-4 mb-2">
-  <h6 class="fw-bold mb-0"><i class="bi bi-patch-check me-2"></i>Final QC Pass (Buckets)</h6>
-</div>
-<div class="card border-0 shadow-sm mb-3">
+<div class="card border-0 shadow-sm mt-4 mb-3">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
+    <span class="fw-semibold"><i class="bi bi-patch-check me-2"></i>Final QC Pass (Buckets)</span>
+  </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0 small">
-        <thead class="table-secondary">
+    <div>
+      <table id="fqcPassTable" class="table table-hover mb-0 small">
+        <thead class="table-dark">
           <tr><th>Bucket Name</th><th>Bucket ID</th><th>Stage</th><th>Action</th></tr>
         </thead>
         <tbody>
@@ -303,8 +288,6 @@
             <td><span class="badge bg-success">Ready to Sale</span></td>
             <td><button class="btn btn-sm btn-outline-danger release-bucket-btn" data-bucket-id="{{ row.bucket_id }}">Release Bucket</button></td>
           </tr>
-          {% else %}
-          <tr><td colspan="4" class="text-center text-muted py-3">No buckets pending release.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -556,7 +539,7 @@ $(document).ready(function(){
   // a "quick search" matching Tag/Model/GRN/Invoice). Both are folded into the
   // same server-side search now, since /stock/data already matches barcode,
   // serial, brand, model, lot, GRN and invoice in one query. ──
-  var dtStock = $('#stockTable').DataTable({
+  var dtStock = initGlobalTable('#stockTable', {
     serverSide: true,
     processing: true,
     pageLength: 12,
@@ -598,6 +581,21 @@ $(document).ready(function(){
       document.getElementById('selectAllStock').checked = false;
       updateStockSel();
       loadBucketMap();
+    },
+  }, {
+    // Header select-all, delegated from the DataTables container (scrollX
+    // relocates <thead> out of #stockTable). onChange folds the page's
+    // checkbox states back into the persistent stockSelected Set.
+    selectAll: {
+      headerSelector: '#selectAllStock',
+      rowSelector: '.stockChk',
+      resetOnDraw: true,
+      onChange: function () {
+        document.querySelectorAll('#stockTable tbody .stockChk').forEach(function (c) {
+          if (c.checked) stockSelected.add(c.value); else stockSelected.delete(c.value);
+        });
+        updateStockSel();
+      },
     },
   });
   // Move hidden Assign button + scan box into the DT toolbar slots — the
@@ -766,14 +764,7 @@ function updateStockSel(){
 // search's result set) — same page-scoped convention used elsewhere for
 // bulk actions that are deliberate, occasional operations rather than
 // routine multi-select across the whole table.
-$('#stockTable').on('change', '#selectAllStock', function(){
-  var ck = this.checked;
-  document.querySelectorAll('#stockTable tbody .stockChk').forEach(function(c){
-    c.checked = ck;
-    if (ck) stockSelected.add(c.value); else stockSelected.delete(c.value);
-  });
-  updateStockSel();
-});
+// Header select-all is wired by initGlobalTable's opts.selectAll above.
 $('#stockTable').on('change', '.stockChk', function(){
   if (this.checked) stockSelected.add(this.value); else stockSelected.delete(this.value);
   updateStockSel();
@@ -880,10 +871,6 @@ function loadBucketTable(){
   fetch('/api/buckets?status=stock_in&with_stage=stock_in&exempt_customer_return=1').then(function(r){return r.json();}).then(function(buckets){
     if($.fn.DataTable.isDataTable('#bucketTable')){ $('#bucketTable').DataTable().destroy(); }
     var tbody = document.getElementById('bucketTbody');
-    if(!buckets.length){
-      tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-3">No buckets created yet.</td></tr>';
-      return;
-    }
     tbody.innerHTML = buckets.map(function(b){
       return '<tr>'+
         '<td><a href="#" class="font-monospace fw-bold text-decoration-none view-bkt-tags" data-id="'+b.id+'" data-number="'+b.bucket_number+'">'+b.bucket_number+'</a></td>'+
@@ -901,15 +888,20 @@ function loadBucketTable(){
         '</td>'+
       '</tr>';
     }).join('');
-    $('#bucketTable').DataTable({
+    initGlobalTable('#bucketTable', {
       pageLength: 12,
       ordering: false,
-      dom: '<"d-flex align-items-center justify-content-between px-3 py-2 border-bottom"lf>t<"d-flex justify-content-end align-items-center gap-3 px-3 py-2"ip>',
-      language: { search: '', searchPlaceholder: 'Search buckets…' }
+      language: { search: '', searchPlaceholder: 'Search buckets…', emptyTable: 'No buckets created yet.' }
     });
   });
 }
 loadBucketTable();
+
+initGlobalTable('#fqcPassTable', {
+  order: [],
+  columnDefs: [{ orderable: false, targets: [3] }],
+  language: { emptyTable: 'No buckets pending release.' },
+});
 
 // Add to Bucket modal — populate on open
 document.getElementById('addToBucketModal').addEventListener('show.bs.modal', function(){
@@ -1045,29 +1037,35 @@ document.getElementById('editBktSubmit').addEventListener('click', function(){
 });
 
 // ── Return Stock ─────────────────────────────────────────────────────────
+// Client-side Global Table over the server-rendered rows. The card-header
+// #rsSearchBox drives the table's own search; select-all reaches every row
+// matching that search (scope 'search'), so selection is read through the
+// DataTables API (off-page rows are detached from the DOM).
+var dtReturnStock = initGlobalTable('#returnStockTable', {
+  order: [],
+  columnDefs: [{ orderable: false, targets: [0, 14] }],
+  language: { emptyTable: 'No return stock pending.' },
+}, {
+  selectAll: {
+    headerSelector: '#rsSelectAll',
+    rowSelector: '.rs-row-check',
+    scope: 'search',
+    resetOnDraw: true,
+    onChange: function(){ rsUpdateSelectionUi(); },
+  },
+});
+$('#returnStockTable_filter').addClass('d-none');
 function rsSelectedBarcodes(){
-  return Array.from(document.querySelectorAll('.rs-row-check:checked')).map(function(c){ return c.value; });
+  return dtReturnStock.$('.rs-row-check:checked').toArray().map(function(c){ return c.value; });
 }
 function rsUpdateSelectionUi(){
   var n = rsSelectedBarcodes().length;
   document.getElementById('rsSelectedCount').textContent = n;
   document.getElementById('rsAssignBucketBtn').disabled = n === 0;
 }
-document.getElementById('rsSelectAll').addEventListener('change', function(){
-  var checked = this.checked;
-  document.querySelectorAll('#returnStockTable tbody .rs-row-check').forEach(function(c){
-    if(c.closest('tr').style.display !== 'none'){ c.checked = checked; }
-  });
-  rsUpdateSelectionUi();
-});
-document.getElementById('returnStockTable').addEventListener('change', function(e){
-  if(e.target.classList.contains('rs-row-check')){ rsUpdateSelectionUi(); }
-});
+// Header + row checkbox changes are wired by opts.selectAll above.
 document.getElementById('rsSearchBox').addEventListener('keyup', function(){
-  var q = this.value.trim().toLowerCase();
-  document.querySelectorAll('#returnStockTable tbody tr[data-rs-search]').forEach(function(tr){
-    tr.style.display = tr.dataset.rsSearch.toLowerCase().indexOf(q) !== -1 ? '' : 'none';
-  });
+  dtReturnStock.search(this.value.trim()).draw();
 });
 
 document.getElementById('rsAssignBucketBtn').addEventListener('click', function(){
@@ -1089,7 +1087,8 @@ document.getElementById('rsAssignBucketSubmit').addEventListener('click', functi
     if(d.ok){
       bootstrap.Modal.getInstance(document.getElementById('rsAssignBucketModal')).hide();
       loadBucketTable();
-      document.querySelectorAll('.rs-row-check:checked').forEach(function(c){ c.checked = false; });
+      dtReturnStock.$('.rs-row-check:checked').prop('checked', false);
+      $('#rsSelectAll').prop('checked', false);
       rsUpdateSelectionUi();
     } else {
       alert(d.detail || 'Failed to assign bucket.');
@@ -1113,7 +1112,8 @@ document.getElementById('returnStockTable').addEventListener('click', function(e
     fetch('/stock/return-stock/'+cBtn.dataset.barcode+'/complete', {method:'POST', body:fd}).then(function(r){return r.json();}).then(function(d){
       if(d.ok){
         alert('Sold as '+d.sale_number+'.');
-        cBtn.closest('tr').remove();
+        dtReturnStock.row(cBtn.closest('tr')).remove().draw(false);
+        rsUpdateSelectionUi();
       } else {
         alert(d.detail || 'Failed to complete sale.');
       }

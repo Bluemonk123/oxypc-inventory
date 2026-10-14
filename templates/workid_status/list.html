@@ -2,69 +2,46 @@
 {% import "_multiselect_filter.html" as ms %}
 {% block title %}WorkID Status — OxyPC{% endblock %}
 {% block page_title %}WorkID Status{% endblock %}
-{% block head %}
-<style>.wid-stage-ms{width:180px}</style>
-{% endblock %}
 {% block content %}
 
 <!-- Filter bar -->
-<form method="get" action="/workid-status" class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    {# Every filter and both buttons stay on one row, no matter how many
-       are visible (Engineer only shows up with >1 engineer) — a flex row
-       with flex-wrap:nowrap and a compact fixed width per field, instead
-       of Bootstrap's 12-column grid (which wrapped once the fields alone
-       already added up to more than 12 columns at col-md-2 each). Scrolls
-       horizontally on a narrow screen rather than wrapping, same
-       one-row-only convention as Global Table's own frozen-column tables. #}
-    <div class="d-flex align-items-end flex-nowrap gap-2 overflow-auto pb-1">
-      <div class="flex-shrink-0" style="width:130px">
-        <label class="form-label small fw-semibold mb-1">Search WorkID</label>
-        <input type="text" name="workid" value="{{ f_workid }}" class="form-control form-control-sm font-monospace" placeholder="WorkID…">
+<form method="get" action="/workid-status" class="filter-bar">
+  <div class="filter-bar-row">
+    <div>
+      <input type="text" name="workid" value="{{ f_workid }}" class="form-control form-control-sm font-monospace" title="Search WorkID" placeholder="Search WorkID…">
+    </div>
+    <div>
+      <input type="text" name="tag" value="{{ f_tag }}" class="form-control form-control-sm font-monospace" title="Search Tag Number" placeholder="Search Tag Number…">
+    </div>
+    {# Shown whenever there is more than one engineer in view — an
+       attendance-group manager needs it as much as an admin does. #}
+    {% if engineers and engineers|length > 1 %}
+    <div>
+      <select name="engineer" class="form-select form-select-sm" title="Engineer">
+        <option value="">All Engineers</option>
+        {% for uname, name in engineers %}
+        <option value="{{ uname }}" {% if f_engineer == uname %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    {{ ms.multiselect('cosmetic_stage', 'Stage', cosmetic_stage_choices, f_cosmetic_stage, '') }}
+    <div>
+      <input type="date" name="completed_from" value="{{ f_completed_from }}" class="form-control form-control-sm" title="Completed From">
+    </div>
+    <div>
+      <input type="date" name="completed_to" value="{{ f_completed_to }}" class="form-control form-control-sm" title="Completed To">
+    </div>
+    <div class="filter-bar-check">
+      <div class="form-check text-nowrap mb-0">
+        <input type="checkbox" class="form-check-input" id="excludeAdminChk" name="exclude_admin"
+               value="1" {% if f_exclude_admin %}checked{% endif %} title="Exclude Admin">
+        <label class="form-check-label small fw-semibold" for="excludeAdminChk">Exclude Admin</label>
       </div>
-      <div class="flex-shrink-0" style="width:140px">
-        <label class="form-label small fw-semibold mb-1">Search Tag Number</label>
-        <input type="text" name="tag" value="{{ f_tag }}" class="form-control form-control-sm font-monospace" placeholder="Tag number…">
-      </div>
-      {# Shown whenever there is more than one engineer in view — an
-         attendance-group manager needs it as much as an admin does. #}
-      {% if engineers and engineers|length > 1 %}
-      <div class="flex-shrink-0" style="width:150px">
-        <label class="form-label small fw-semibold mb-1">Engineer</label>
-        <select name="engineer" class="form-select form-select-sm">
-          <option value="">All Engineers</option>
-          {% for uname, name in engineers %}
-          <option value="{{ uname }}" {% if f_engineer == uname %}selected{% endif %}>{{ name }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% endif %}
-      {{ ms.multiselect('cosmetic_stage', 'Stage', cosmetic_stage_choices, f_cosmetic_stage, 'flex-shrink-0 wid-stage-ms') }}
-      <div class="flex-shrink-0" style="width:150px">
-        <label class="form-label small fw-semibold mb-1">Completed From</label>
-        <input type="date" name="completed_from" value="{{ f_completed_from }}" class="form-control form-control-sm">
-      </div>
-      <div class="flex-shrink-0" style="width:150px">
-        <label class="form-label small fw-semibold mb-1">Completed To</label>
-        <input type="date" name="completed_to" value="{{ f_completed_to }}" class="form-control form-control-sm">
-      </div>
-      <div class="flex-shrink-0 d-flex align-items-center pb-2">
-        <div class="form-check text-nowrap">
-          <input type="checkbox" class="form-check-input" id="excludeAdminChk" name="exclude_admin"
-                 value="1" {% if f_exclude_admin %}checked{% endif %}>
-          <label class="form-check-label small fw-semibold" for="excludeAdminChk">Exclude Admin</label>
-        </div>
-      </div>
-      <div class="flex-shrink-0 d-flex gap-1">
-        <button type="submit" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
-        <a href="/workid-status" class="btn btn-outline-secondary btn-sm text-nowrap">Reset</a>
-        {# Carries the current filters, so Export always matches the table —
-           with a filter applied or without one. #}
-        <a class="btn btn-outline-success btn-sm text-nowrap"
-           href="/workid-status/export?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}">
-          <i class="bi bi-download me-1"></i>Export
-        </a>
-      </div>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+      <a href="/workid-status" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</a>
     </div>
   </div>
 </form>
@@ -128,10 +105,16 @@
      badge here — the table-top toolbar's own row-count badge already
      covers that; no .table-responsive wrapper either, since
      initGlobalTable's own scrollX owns horizontal scrolling. #}
-  <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-clipboard-check me-2"></i>Work ID Details</span>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
+    <span class="fw-semibold"><i class="bi bi-clipboard-check me-2"></i>Work ID Details</span>
+    {# Carries the current filters, so Export always matches the table —
+       with a filter applied or without one. #}
+    <a class="btn btn-outline-success btn-sm text-nowrap"
+       href="/workid-status/export?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}">
+      <i class="bi bi-download me-1"></i>Export
+    </a>
   </div>
-  <div class="card-body p-0">
+  <div>
       <table id="workidTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
@@ -198,8 +181,6 @@
               {% else %}<span class="text-muted">—</span>{% endfor %}
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="11" class="text-center text-muted py-4">No WorkIDs found.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -210,11 +191,9 @@
 <script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
 <script>
 $(document).ready(function(){
-  // Global Table module (static/js/global-table.js) — skipped when the table
-  // is just the "No WorkIDs found." colspan row (same guard as before).
-  if ($('#workidTable tbody tr td').length > 1) {
-    initGlobalTable('#workidTable', { order: [] });
-  }
+  // Global Table module (static/js/global-table.js). Empty state comes from
+  // language.emptyTable — no colspan placeholder row in the markup.
+  initGlobalTable('#workidTable', { order: [], language: { emptyTable: 'No WorkIDs found.' } });
   {% if highlight %}
   // Scroll the highlighted WorkID row into view
   var hl = document.getElementById('wo-{{ highlight }}');

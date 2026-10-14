@@ -54,7 +54,10 @@
 </div>
 
 <div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
+    <span class="fw-semibold"><i class="bi bi-shield-check me-2"></i>Warranty Register</span>
+  </div>
+  <div>
     <table id="warrantyTable" class="table table-hover mb-0 small">
       <thead class="table-dark">
         <tr>
@@ -130,7 +133,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-$(document).ready(function(){ $('#warrantyTable').DataTable({pageLength: 15}); });
+$(document).ready(function(){ initGlobalTable('#warrantyTable', {pageLength: 15, language: {emptyTable: 'No sold devices with warranty found.'}}); });
 
 var EW_CSRF = "{{ request.cookies.get('csrf_token','') }}";
 
@@ -248,8 +251,10 @@ function parseWarrantyDays(label){
   typeEl.addEventListener('change', recomputeStops);
 })();
 
-document.querySelectorAll('.ew-update-btn').forEach(function(btn){
-  btn.addEventListener('click', function(){
+// Delegated so Update works on every DataTables page, not just the first.
+$(document).on('click', '.ew-update-btn', function(){
+  var btn = this;
+  (function(){
     document.getElementById('ewuSaleId').value = btn.dataset.saleId;
     document.getElementById('ewu_barcode').textContent = btn.dataset.barcode;
     document.getElementById('ewu_starts').textContent = btn.dataset.starts;
@@ -263,7 +268,7 @@ document.querySelectorAll('.ew-update-btn').forEach(function(btn){
     document.getElementById('ewuNotes').value = '';
     document.getElementById('ewuMsg').innerHTML = '';
     new bootstrap.Modal(document.getElementById('ewUpdateModal')).show();
-  });
+  })();
 });
 
 document.getElementById('ewuSubmit').addEventListener('click', function(){
