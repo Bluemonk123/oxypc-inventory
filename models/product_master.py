@@ -281,3 +281,88 @@ async def recompute_sell_prices(db, product_ids=None) -> None:
         by_product.setdefault(pid, []).append(price)
     for p in products:
         p.product_price = apply_method(method, by_product.get(p.id, []))
+
+
+PM_SYNC_MARKER = "pm_sync_staging_20261014"
+
+
+async def sync_pm_from_staging_once(db) -> str:
+    """One-time sync (2026-10-14) of Dropdown Configuration + Competitive
+    Pricings from staging (data/pm_sync_staging_20261014.json). Runs once,
+    guarded by an app_settings marker row.
+
+    Dropdowns are made to match staging: missing values added, a value whose
+    staging spelling differs only by the old "<CPU>/" prefix is renamed, and
+    values staging does not have are removed (audit-logged; products keep their
+    saved text). Competitive lists missing on production are added (none are
+    removed, so no entered prices are lost) and the Formula Method is set."""
+    import json, os
+    from sqlalchemy import select, delete as sa_delete
+    from models.settings import AppSetting
+    from services.audit_engine import audit
+    if (await db.execute(select(AppSetting).where(AppSetting.key == PM_SYNC_MARKER))).scalar_one_or_none():
+        return ""
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data",
+                        "pm_sync_staging_20261014.json")
+    if not os.path.exists(path):
+        return ""
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+
+    rows = (await db.execute(select(PMDropdownValue))).scalars().all()
+    by_id = {r.id: r for r in rows}
+    keep, added, renamed = set(), 0, 0
+    staged_ids = {}            # (category, value) -> id, for linking children
+    order = {}
+    for it in data["dropdowns"]:                       # parents come before children
+        cat, val, par = it["category"], it["value"], it.get("parent")
+        parent_id = staged_ids.get((DROPDOWN_PARENT.get(cat), par)) if par else None
+        if par and parent_id is None:
+            continue
+        def same_parent(r):
+            return (r.parent_id == parent_id) if par else True
+        match = next((r for r in rows if r.category == cat and r.id not in keep and same_parent(r)
+                      and r.value.lower() in (val.lower(), f"{par}/{val}".lower() if par else val.lower())), None)
+        if match is None:
+            match = PMDropdownValue(id=uuid.uuid4(), category=cat, value=val, parent_id=parent_id,
+                                    created_by="staging-sync")
+            db.add(match)
+            added += 1
+        elif match.value != val:
+            match.value = val
+            renamed += 1
+        match.display_order = order.get(cat, 0)
+        order[cat] = order.get(cat, 0) + 1
+        keep.add(match.id)
+        staged_ids[(cat, val)] = match.id
+    await db.flush()
+
+    # remove values staging does not have — children before parents
+    gone = [r for r in rows if r.id not in keep]
+    gone.sort(key=lambda r: 0 if r.parent_id else 1)
+    for r in gone:
+        await audit(db, action="PM_DROPDOWN_DELETED", user=None, table_name="pm_dropdown_values",
+                    record_id=str(r.id), old_value={"category": r.category, "value": r.value},
+                    notes="Removed by one-time staging sync 2026-10-14")
+        await db.execute(sa_delete(PMDropdownValue).where(PMDropdownValue.id == r.id))
+
+    have = {n.lower() for n in (await db.execute(select(PMCompetitiveList.name))).scalars().all()}
+    lists_added = 0
+    for i, name in enumerate(data.get("competitive_lists", [])):
+        if name.lower() not in have:
+            db.add(PMCompetitiveList(name=name, display_order=i, created_by="staging-sync"))
+            lists_added += 1
+    method = data.get("method")
+    if method in dict(COMPETITIVE_METHODS):
+        row = (await db.execute(select(AppSetting).where(AppSetting.key == COMPETITIVE_METHOD_KEY))).scalar_one_or_none()
+        if row:
+            row.value = method
+        else:
+            db.add(AppSetting(key=COMPETITIVE_METHOD_KEY, value=method,
+                              description="Product Master: Competitive Pricings formula method"))
+    db.add(AppSetting(key=PM_SYNC_MARKER, value="done", description="One-time Product Master staging sync"))
+    await db.flush()
+    await recompute_sell_prices(db)
+    await db.commit()
+    return (f"{added} added, {renamed} renamed, {len(gone)} removed dropdown value(s); "
+            f"{lists_added} competitive list(s) added; method={method}")

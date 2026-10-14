@@ -667,10 +667,13 @@ async def startup_event():
 
     # ── Product Master: one-time Dropdown Configuration backfill ─────────────
     try:
-        from models.product_master import seed_pm_dropdowns_if_empty, migrate_pm_products_v2
+        from models.product_master import seed_pm_dropdowns_if_empty, migrate_pm_products_v2, sync_pm_from_staging_once
         from database import AsyncSessionLocal as _ASLpm
         async with _ASLpm() as _sesspm:
             await migrate_pm_products_v2(_sesspm)
+            _sync = await sync_pm_from_staging_once(_sesspm)
+            if _sync:
+                print(f"  [ProductMaster] Staging sync: {_sync}")
             _n = await seed_pm_dropdowns_if_empty(_sesspm)
             if _n:
                 print(f"  [ProductMaster] Seeded {_n} Dropdown Configuration value(s)")
