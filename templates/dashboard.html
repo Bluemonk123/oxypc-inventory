@@ -499,12 +499,12 @@
         <div class="dash-tile-lbl fw-semibold">{{ label }}</div>
         {# Big number = all active devices of this category (leaves out GRN
            Receipt, Sold, Returned, Scrapped, Scrap for Sale, trashed), split
-           below into Under Pipeline (still being worked on) + Ready to Sale.
+           below into In TRC (still being worked on) + In Ready (Ready to Sale).
            `n` is the Ready to Sale count. #}
         {% set _total = category_counts.get(cat, {}).get('total', 0) %}
         <div class="dash-tile-num">{{ _total }}</div>
-        <div class="dash-tile-sub">Under Pipeline: <strong>{{ [_total - n, 0] | max }}</strong></div>
-        <div class="dash-tile-sub">Ready to Sale: <strong>{{ n }}</strong></div>
+        <div class="dash-tile-sub">In TRC: <strong>{{ [_total - n, 0] | max }}</strong></div>
+        <div class="dash-tile-sub">In Ready: <strong>{{ n }}</strong></div>
         <i class="bi {{ icon }} dash-tile-wm"></i>
       </div>
     </a>
