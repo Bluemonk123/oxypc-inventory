@@ -549,8 +549,13 @@ fieldset:disabled .btn {
    was 0 .125rem .25rem rgba(0,0,0,.075). */
 .shadow-sm { box-shadow: 0 .25rem .5rem rgba(0, 0, 0, .5) !important; }
 
-/* App-wide: every outline button (primary, secondary, success, danger,
-   warning, info, dark) sits on a white background. Hover/active keep
-   Bootstrap's coloured fill; outline-light is left alone because it is
-   meant for dark backgrounds. */
-[class*="btn-outline-"]:not(.btn-outline-light):not(:hover):not(:active):not(.active):not(.show) { background-color: #fff; }
+/* App-wide: every outline button sits on a very light tint of its own
+   colour (Bootstrap's --bs-*-bg-subtle). Hover/active keep Bootstrap's solid
+   fill; outline-light is left alone because it is meant for dark backgrounds. */
+.btn-outline-primary:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-primary-bg-subtle); }
+.btn-outline-secondary:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-secondary-bg-subtle); }
+.btn-outline-success:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-success-bg-subtle); }
+.btn-outline-danger:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-danger-bg-subtle); }
+.btn-outline-warning:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-warning-bg-subtle); }
+.btn-outline-info:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-info-bg-subtle); }
+.btn-outline-dark:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-dark-bg-subtle); }
