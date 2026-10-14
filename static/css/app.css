@@ -548,3 +548,7 @@ fieldset:disabled .btn {
 /* App-wide small shadow (Bootstrap .shadow-sm, used on cards everywhere):
    was 0 .125rem .25rem rgba(0,0,0,.075). */
 .shadow-sm { box-shadow: 0 .25rem .5rem rgba(0, 0, 0, .5) !important; }
+
+/* App-wide: outline-secondary buttons sit on a white background (hover and
+   active states keep Bootstrap's grey fill). */
+.btn-outline-secondary:not(:hover):not(:active):not(.active):not(.show) { background-color: #fff; }
