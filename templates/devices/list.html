@@ -8,6 +8,11 @@
      the first column frozen instead of wrapping Model / CPU / Lot. */
   #devicesTable tbody td { white-space: nowrap; vertical-align: middle; }
   #devicesTable tbody td .gtable-clamp2 { white-space: nowrap; }
+  /* Model Based Summary header: filters shrink to fit beside the title. */
+  #msFilters { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
+  #msFilters > div { flex: 1 1 0; min-width: 0; max-width: 160px; }
+  #msFilters .ms-filter .btn { min-width: 0 !important; width: 100%; background-color: #fff; color: #212529; }
+  #msFilters .ms-label { overflow: hidden; text-overflow: ellipsis; }
 </style>
 {% endblock %}
 {% block page_title %}Inventory Search{% endblock %}
@@ -194,16 +199,18 @@
    that search leaves visible. #}
 <div class="card border-0 shadow-sm mt-3">
   <div class="card-header bg-white py-2">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <strong class="small"><i class="bi bi-collection me-1"></i>Model Based Summary</strong>
-      <div id="msFilters" class="d-flex flex-wrap gap-2 align-items-center">
+    {# Title, the 6 filters and Reset stay on ONE line: the filters share the
+       space left after the title and shrink together (text ends in "…"). #}
+    <div class="d-flex justify-content-between align-items-center flex-nowrap gap-2">
+      <strong class="small text-nowrap flex-shrink-0"><i class="bi bi-collection me-1"></i>Model Based Summary</strong>
+      <div id="msFilters" class="d-flex flex-nowrap gap-2 align-items-center">
         {{ ms.multiselect_inline('s_entity', 'Entity', entity_options + ['Unassigned'], '') }}
         {{ ms.multiselect_inline('s_make', 'Make', ms_make_options, '') }}
         {{ ms.multiselect_inline('s_device_type', 'Device Type', ms_dtype_options, '') }}
         {{ ms.multiselect_inline('s_touch', 'Touch Type', [('touch', 'Touch (T)'), ('non_touch', 'Non-Touch (NT)')], '') }}
         {{ ms.multiselect_inline('s_stock', 'Stock Type', [('finish_good', 'Finish Good'), ('as_is', 'As-Is')], '') }}
         {{ ms.multiselect_inline('s_grade', 'Grade', grade_options() + [('NA', 'No Grade')], '') }}
-        <button type="button" id="msResetBtn" class="btn btn-sm btn-outline-secondary" title="Clear these filters">Reset</button>
+        <button type="button" id="msResetBtn" class="btn btn-sm btn-outline-secondary bg-white flex-shrink-0" title="Clear these filters">Reset</button>
       </div>
     </div>
   </div>
