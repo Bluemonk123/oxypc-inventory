@@ -322,9 +322,10 @@
             </td>
           </tr>
           {% endfor %}
-          {% if not lot_summary %}
-          <tr><td colspan="14" class="text-center text-muted small py-3">No lots found.</td></tr>
-          {% endif %}
+          {# No "No lots found" colspan row: DataTables can't initialise over a
+             row with fewer cells than columns (it threw _DT_CellIndex and the
+             table never became a Global Table). initGlobalTable shows its own
+             empty-state image instead. #}
         </tbody>
       </table>
   </div>
@@ -731,6 +732,7 @@ $(document).ready(function() {
   // selected" when it's showing lots the user never actually ticked.
   var dtLot = initGlobalTable('#lotSummaryTable', {
     order: [],
+    language: { emptyTable: 'No lots found.' },
     columnDefs: [{ orderable: false, targets: [0, -1] }],
   }, {
     selectAll: { headerSelector: '#lotSelectAllChk', rowSelector: '.lotRowChk', onChange: updateLotSel, resetOnDraw: true },
