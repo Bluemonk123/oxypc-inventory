@@ -550,12 +550,12 @@ fieldset:disabled .btn {
 .shadow-sm { box-shadow: 0 .25rem .5rem rgba(0, 0, 0, .5) !important; }
 
 /* App-wide: every outline button sits on a very light tint of its own
-   colour (Bootstrap's --bs-*-bg-subtle). Hover/active keep Bootstrap's solid
+   colour (5% of the colour over the background). Hover/active keep Bootstrap's solid
    fill; outline-light is left alone because it is meant for dark backgrounds. */
-.btn-outline-primary:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-primary-bg-subtle); }
-.btn-outline-secondary:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-secondary-bg-subtle); }
-.btn-outline-success:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-success-bg-subtle); }
-.btn-outline-danger:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-danger-bg-subtle); }
-.btn-outline-warning:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-warning-bg-subtle); }
-.btn-outline-info:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-info-bg-subtle); }
-.btn-outline-dark:not(:hover):not(:active):not(.active):not(.show) { background-color: var(--bs-dark-bg-subtle); }
+.btn-outline-primary:not(:hover):not(:active):not(.active):not(.show) { background-color: rgba(var(--bs-primary-rgb), .05); }
+.btn-outline-secondary:not(:hover):not(:active):not(.active):not(.show) { background-color: rgba(var(--bs-secondary-rgb), .05); }
+.btn-outline-success:not(:hover):not(:active):not(.active):not(.show) { background-color: rgba(var(--bs-success-rgb), .05); }
+.btn-outline-danger:not(:hover):not(:active):not(.active):not(.show) { background-color: rgba(var(--bs-danger-rgb), .05); }
+.btn-outline-warning:not(:hover):not(:active):not(.active):not(.show) { background-color: rgba(var(--bs-warning-rgb), .05); }
+.btn-outline-info:not(:hover):not(:active):not(.active):not(.show) { background-color: rgba(var(--bs-info-rgb), .05); }
+.btn-outline-dark:not(:hover):not(:active):not(.active):not(.show) { background-color: rgba(var(--bs-dark-rgb), .05); }
