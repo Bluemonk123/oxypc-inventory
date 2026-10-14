@@ -5,24 +5,8 @@
 {# Flash messages are rendered once by base.html — rendering them here too
    showed every success/error twice. #}
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <div>
-    <h5 class="fw-bold mb-0"><i class="bi bi-receipt me-2"></i>Create GRN</h5>
-    <span class="text-muted small">Upload an invoice PDF — a 12-digit GRN is generated. Then map it onto IQC'd tag numbers below.</span>
-  </div>
-  <form action="/grn/upload" method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center">
-    <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-    <input type="hidden" name="source" value="post_iqc">
-    <input type="file" name="invoice" accept="application/pdf,.pdf" class="form-control form-control-sm" style="min-width:260px" required>
-    <button type="submit" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-cloud-upload me-1"></i>Upload Invoice</button>
-    {# Entering a GRN by hand covers the case the upload path cannot: goods that
-       arrive without a PDF invoice, or one that will follow later. #}
-    <button type="button" class="btn btn-outline-primary btn-sm text-nowrap"
-            data-bs-toggle="modal" data-bs-target="#addGrnModal">
-      <i class="bi bi-plus-circle me-1"></i>Add GRN
-    </button>
-  </form>
-</div>
+{# Page heading and the Upload Invoice form were removed on request; Add GRN
+   now sits in the table card's header. #}
 
 <!-- Filter bar (shared .filter-bar design; filters apply as you type) -->
 <div class="filter-bar">
@@ -62,7 +46,15 @@
 </div>
 
 <div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-transparent fw-semibold"><i class="bi bi-receipt me-2"></i>Uploaded GRNs (post IQC)</div>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
+    <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Create GRNs</span>
+    {# Entering a GRN by hand covers goods that arrive without a PDF invoice,
+       or one that will follow later. #}
+    <button type="button" class="btn btn-outline-primary btn-sm text-nowrap"
+            data-bs-toggle="modal" data-bs-target="#addGrnModal">
+      <i class="bi bi-plus-circle me-1"></i>Add GRN
+    </button>
+  </div>
   <div class="card-body p-0">
     {# No .table-responsive: initGlobalTable's scrollX owns horizontal scroll. #}
     <div>
