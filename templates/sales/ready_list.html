@@ -75,7 +75,7 @@
   </thead>
   <tbody>
     {% for g in rows %}
-    <tr>
+    <tr data-qty="{{ g.total_count }}" data-min="{{ g.min_total or 0 }}">
       {% if selectable %}
       <td><input type="checkbox" class="modelSumChk" value="{{ loop.index0 }}"
                  data-model="{{ g.model }}" data-make="{{ g.make }}"
@@ -95,7 +95,7 @@
       <td>
         <div class="d-flex flex-wrap gap-1">
           {% for label, count, cls in g.grades %}
-          <span class="badge {{ cls }}" title="{{ 'No grade' if label == 'NG' else 'Grade ' ~ label }}">{{ label }} {{ count }}</span>
+          <span class="badge {{ cls }} ms-grade" data-grade="{{ label }}" data-count="{{ count }}" title="{{ 'No grade' if label == 'NG' else 'Grade ' ~ label }}">{{ label }} {{ count }}</span>
           {% endfor %}
         </div>
       </td>
@@ -124,6 +124,16 @@
     </tr>
     {% endfor %}
   </tbody>
+  {# Totals of the rows the table currently shows (page filters + search),
+     filled in by SUMMARY_OPTS' footerCallback. #}
+  <tfoot class="table-light fw-semibold">
+    <tr>
+      {% if selectable %}<td></td>{% endif %}
+      <td>Total</td><td></td><td></td><td></td><td></td><td></td><td></td>
+      <td class="ms-total-qty text-nowrap"></td><td class="ms-total-grades"></td>
+      <td class="ms-total-min text-nowrap"></td><td></td>
+    </tr>
+  </tfoot>
 </table>
 {% endmacro %}
 
@@ -1073,9 +1083,32 @@ var SUMMARY_OPTS = {
   readyModelSummaryTable: {pageLength:12, order:[[8,'desc']], language:{emptyTable:'No Ready for Sale tags.'}, columnDefs:[{orderable:false, targets:[0,9,11]}, {visible:false, targets:[0]}]},
   asIsModelSummaryTable:  {pageLength:12, order:[[7,'desc']], language:{emptyTable:'No As-Is tags.'}, columnDefs:[{orderable:false, targets:[8,10]}]},
 };
+// Total row: sums Total Quantity, each Grade and Min Selling Price over every
+// row that passes the current filters and search (all pages, not just the
+// visible one).
+var SUMMARY_GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'NG'];
+function summaryFooter() {
+  var api = this.api(), qty = 0, min = 0, grades = {}, cls = {};
+  api.rows({ search: 'applied' }).nodes().each(function (tr) {
+    qty += Number(tr.getAttribute('data-qty')) || 0;
+    min += Number(tr.getAttribute('data-min')) || 0;
+    tr.querySelectorAll('.ms-grade').forEach(function (b) {
+      var g = b.getAttribute('data-grade');
+      grades[g] = (grades[g] || 0) + (Number(b.getAttribute('data-count')) || 0);
+      cls[g] = b.className.replace('ms-grade', '');
+    });
+  });
+  var foot = $(api.table().footer());
+  foot.find('.ms-total-qty').html('<span class="badge bg-primary">' + qty + '</span>');
+  foot.find('.ms-total-grades').html('<div class="d-flex flex-wrap gap-1">' +
+    SUMMARY_GRADE_ORDER.filter(function (g) { return grades[g]; }).map(function (g) {
+      return '<span class="' + cls[g] + '">' + g + ' ' + grades[g] + '</span>';
+    }).join('') + '</div>');
+  foot.find('.ms-total-min').text('₹' + Math.round(min).toLocaleString('en-US'));
+}
 function buildSummaryTable(id){
   if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();
-  initGlobalTable('#' + id, $.extend(true, {}, SUMMARY_OPTS[id]));
+  initGlobalTable('#' + id, $.extend(true, { footerCallback: summaryFooter }, SUMMARY_OPTS[id]));
 }
 buildSummaryTable('readyModelSummaryTable');
 buildSummaryTable('asIsModelSummaryTable');

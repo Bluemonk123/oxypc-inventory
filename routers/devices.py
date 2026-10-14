@@ -408,7 +408,12 @@ def _device_search_filters(q, stage, lot, grade, category, device_type, date_fro
         w.append(or_(*[Lot.lot_number.ilike(f"%{v}%") for v in lot_vals]))
     grade_vals = _multi(grade)
     if grade_vals:
-        w.append(Device.grade.in_(grade_vals))
+        # "none" = the built-in No Grade option: tags with no grade at all.
+        real = [v for v in grade_vals if v != "none"]
+        clauses = [Device.grade.in_(real)] if real else []
+        if "none" in grade_vals:
+            clauses.append(Device.grade.is_(None))
+        w.append(or_(*clauses))
     category_vals = _multi(category)
     if category_vals:
         w.append(Device.sub_category.in_(category_vals))
