@@ -257,7 +257,7 @@
       ] %}
       <a href="{{ link }}{% if f_entity %}{{ '&' if '?' in link else '?' }}entity={{ f_entity | urlencode }}{% endif %}"
          class="text-decoration-none">
-        <div class="pipeline-tile border rounded-3 py-2 text-center">
+        <div class="pipeline-tile border border-{{ color }}-subtle bg-{{ color }}-subtle rounded-3 py-2 text-center">
           <div class="pipeline-label text-muted">{{ label }}</div>
           <div class="pipeline-count fw-bold text-{{ color }}">{{ pipeline_counts.get(key, 0) }}</div>
           {% set by_ent = pipeline_by_entity.get(key, {}) %}
@@ -485,105 +485,54 @@
 {% endmacro %}
 
 {% macro category_quick_view_cards() %}
+{# Solid colour tiles with a large faint white watermark icon — same design
+   as the Product Master count tiles. #}
 <div class="row g-3 mb-4">
+  {% for label, link, n, cat, bg, icon in [
+      ('Laptops',     '/devices?category=Laptop',      laptops_available, 'Laptop',      '#0d6efd', 'bi-laptop'),
+      ('Desktops',    '/devices?category=Desktop',     desktops_available, 'Desktop',    '#198754', 'bi-pc-display'),
+      ('TFT Monitor', '/devices?category=TFT%20Monitor', tft_available,   'TFT Monitor', '#fd7e14', 'bi-display'),
+      ('Tablet',      '/devices?category=Tablet',      tablets_available, 'Tablet',      '#20c997', 'bi-tablet'),
+      ('Mini PC',     '/devices?category=Mini%20PC',   minipc_available,  'Mini PC',     '#6f42c1', 'bi-cpu'),
+      ('Server',      '/devices?category=Server',      server_available,  'Server',      '#0aa2c0', 'bi-hdd-network'),
+  ] %}
   <div class="col-6 col-xl-2">
-    <a href="/devices?category=Laptop" class="text-decoration-none">
-      <div class="card border-0 shadow-sm h-100 cat-card cat-laptop">
-        <div class="card-body text-center py-4">
-          <i class="bi bi-laptop fs-1 mb-2 d-block text-primary"></i>
-          <div class="fw-bold mb-1">Laptops</div>
-          <div class="display-6 fw-bold text-primary">{{ laptops_available }}</div>
-          <div class="small text-muted mt-1">Total: <strong>{{ category_counts.get('Laptop', {}).get('total', 0) }}</strong></div>
-        </div>
+    <a href="{{ link }}" class="text-decoration-none">
+      <div class="dash-tile cat-card p-3 h-100" style="background:{{ bg }}">
+        <div class="dash-tile-lbl fw-semibold">{{ label }}</div>
+        <div class="dash-tile-num">{{ n }}</div>
+        <div class="dash-tile-sub">Total: <strong>{{ category_counts.get(cat, {}).get('total', 0) }}</strong></div>
+        <i class="bi {{ icon }} dash-tile-wm"></i>
       </div>
     </a>
   </div>
-  <div class="col-6 col-xl-2">
-    <a href="/devices?category=Desktop" class="text-decoration-none">
-      <div class="card border-0 shadow-sm h-100 cat-card cat-desktop">
-        <div class="card-body text-center py-4">
-          <i class="bi bi-pc-display fs-1 mb-2 d-block text-success"></i>
-          <div class="fw-bold mb-1">Desktops</div>
-          <div class="display-6 fw-bold text-success">{{ desktops_available }}</div>
-          <div class="small text-muted mt-1">Total: <strong>{{ category_counts.get('Desktop', {}).get('total', 0) }}</strong></div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-xl-2">
-    <a href="/devices?category={{ 'TFT Monitor' | urlencode }}" class="text-decoration-none">
-      <div class="card border-0 shadow-sm h-100 cat-card cat-tft">
-        <div class="card-body text-center py-4">
-          <i class="bi bi-display fs-1 mb-2 d-block" style="color:#fd7e14"></i>
-          <div class="fw-bold mb-1">TFT Monitor</div>
-          <div class="display-6 fw-bold" style="color:#fd7e14">{{ tft_available }}</div>
-          <div class="small text-muted mt-1">Total: <strong>{{ category_counts.get('TFT Monitor', {}).get('total', 0) }}</strong></div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-xl-2">
-    <a href="/devices?category=Tablet" class="text-decoration-none">
-      <div class="card border-0 shadow-sm h-100 cat-card cat-tablet">
-        <div class="card-body text-center py-4">
-          <i class="bi bi-tablet fs-1 mb-2 d-block" style="color:#20c997"></i>
-          <div class="fw-bold mb-1">Tablet</div>
-          <div class="display-6 fw-bold" style="color:#20c997">{{ tablets_available }}</div>
-          <div class="small text-muted mt-1">Total: <strong>{{ category_counts.get('Tablet', {}).get('total', 0) }}</strong></div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-xl-2">
-    <a href="/devices?category={{ 'Mini PC' | urlencode }}" class="text-decoration-none">
-      <div class="card border-0 shadow-sm h-100 cat-card cat-minipc">
-        <div class="card-body text-center py-4">
-          <i class="bi bi-cpu fs-1 mb-2 d-block" style="color:#6f42c1"></i>
-          <div class="fw-bold mb-1">Mini PC</div>
-          <div class="display-6 fw-bold" style="color:#6f42c1">{{ minipc_available }}</div>
-          <div class="small text-muted mt-1">Total: <strong>{{ category_counts.get('Mini PC', {}).get('total', 0) }}</strong></div>
-        </div>
-      </div>
-    </a>
-  </div>
-  <div class="col-6 col-xl-2">
-    <a href="/devices?category=Server" class="text-decoration-none">
-      <div class="card border-0 shadow-sm h-100 cat-card cat-server">
-        <div class="card-body text-center py-4">
-          <i class="bi bi-hdd-network fs-1 mb-2 d-block" style="color:#0dcaf0"></i>
-          <div class="fw-bold mb-1">Server</div>
-          <div class="display-6 fw-bold" style="color:#0dcaf0">{{ server_available }}</div>
-          <div class="small text-muted mt-1">Total: <strong>{{ category_counts.get('Server', {}).get('total', 0) }}</strong></div>
-        </div>
-      </div>
-    </a>
-  </div>
+  {% endfor %}
 </div>
 {% endmacro %}
 
 {% macro summary_stat_cards() %}
 <div class="row g-3 mb-4">
   <div class="col-sm-6 col-xl-3">
-    <div class="card border-0 shadow-sm"><div class="card-body d-flex align-items-center gap-3">
-      <div class="rounded-3 p-3 bg-primary-subtle text-primary"><i class="bi bi-box-seam fs-3"></i></div>
+    <div class="card border-0 shadow-sm stat-card stat-primary"><div class="card-body d-flex align-items-center gap-3">
+      <div class="rounded-3 p-3 bg-white text-primary"><i class="bi bi-box-seam fs-3"></i></div>
       <div><div class="text-muted small">Total Inventory</div><div class="fs-3 fw-bold">{{ total_devices }}</div></div>
     </div></div>
   </div>
   <div class="col-sm-6 col-xl-3">
-    <div class="card border-0 shadow-sm"><div class="card-body d-flex align-items-center gap-3">
-      <div class="rounded-3 p-3 bg-warning-subtle text-warning"><i class="bi bi-tools fs-3"></i></div>
+    <div class="card border-0 shadow-sm stat-card stat-warning"><div class="card-body d-flex align-items-center gap-3">
+      <div class="rounded-3 p-3 bg-white text-warning"><i class="bi bi-tools fs-3"></i></div>
       <div><div class="text-muted small">In Repair</div><div class="fs-3 fw-bold">{{ in_repair_count }}</div></div>
     </div></div>
   </div>
   <div class="col-sm-6 col-xl-3">
-    <div class="card border-0 shadow-sm"><div class="card-body d-flex align-items-center gap-3">
-      <div class="rounded-3 p-3 bg-success-subtle text-success"><i class="bi bi-currency-rupee fs-3"></i></div>
+    <div class="card border-0 shadow-sm stat-card stat-success"><div class="card-body d-flex align-items-center gap-3">
+      <div class="rounded-3 p-3 bg-white text-success"><i class="bi bi-currency-rupee fs-3"></i></div>
       <div><div class="text-muted small">Revenue This Month</div><div class="fs-3 fw-bold">₹{{ month_revenue | inr }}</div></div>
     </div></div>
   </div>
   <div class="col-sm-6 col-xl-3">
-    <div class="card border-0 shadow-sm"><div class="card-body d-flex align-items-center gap-3">
-      <div class="rounded-3 p-3 {% if overall_profit >= 0 %}bg-success-subtle text-success{% else %}bg-danger-subtle text-danger{% endif %}"><i class="bi bi-graph-up-arrow fs-3"></i></div>
+    <div class="card border-0 shadow-sm stat-card {% if overall_profit >= 0 %}stat-success{% else %}stat-danger{% endif %}"><div class="card-body d-flex align-items-center gap-3">
+      <div class="rounded-3 p-3 bg-white {% if overall_profit >= 0 %}text-success{% else %}text-danger{% endif %}"><i class="bi bi-graph-up-arrow fs-3"></i></div>
       <div><div class="text-muted small">Overall Profit</div><div class="fs-3 fw-bold {% if overall_profit >= 0 %}text-success{% else %}text-danger{% endif %}">₹{{ overall_profit | inr }}</div></div>
     </div></div>
   </div>
@@ -653,6 +602,21 @@
 <style>
 .cat-card { transition: transform .15s ease, box-shadow .15s ease; cursor: pointer; }
 .cat-card:hover { transform: translateY(-4px); box-shadow: 0 .5rem 1.5rem rgba(0,0,0,.15) !important; }
+/* Category tiles: solid colour + faint white watermark (Product Master style) */
+.dash-tile { position: relative; overflow: hidden; border-radius: 10px; color: #fff; min-height: 120px;
+             box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+.dash-tile-lbl, .dash-tile-num, .dash-tile-sub { position: relative; z-index: 1; }
+.dash-tile-lbl { font-size: .9rem; color: rgba(255,255,255,.92); }
+.dash-tile-num { font-size: 2.2rem; font-weight: 700; line-height: 1.15; }
+.dash-tile-sub { font-size: .8rem; color: rgba(255,255,255,.85); }
+.dash-tile-wm { position: absolute; right: -6px; bottom: -14px; font-size: 5rem; line-height: 1;
+                color: rgba(255,255,255,.22); pointer-events: none; }
+/* Summary stat cards: light colour background with a coloured left edge */
+.stat-card { border-left: 4px solid transparent !important; }
+.stat-primary { background: #e7f0ff; border-left-color: #0d6efd !important; }
+.stat-warning { background: #fff6dd; border-left-color: #f0ad00 !important; }
+.stat-success { background: #e6f4ec; border-left-color: #198754 !important; }
+.stat-danger  { background: #fdeaea; border-left-color: #dc3545 !important; }
 .cat-laptop { border-top: 4px solid #0d6efd !important; }
 .cat-desktop{ border-top: 4px solid #198754 !important; }
 .cat-tft    { border-top: 4px solid #fd7e14 !important; }
