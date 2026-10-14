@@ -192,12 +192,12 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span class="fw-semibold"><i class="bi bi-arrow-return-left me-2"></i>Return Stock</span>
     <div class="d-flex align-items-center gap-2 flex-wrap">
-      {# Moved by JS into the table toolbar, just before the pagination. #}
-      <span id="rsSelectedWrap" class="text-muted small text-nowrap"><span id="rsSelectedCount">0</span> selected</span>
+      {# Search box is moved by JS into the table toolbar, before the pagination.
+         The selected count now shows inside the Assign Bucket button. #}
       <input type="text" id="rsSearchBox" class="form-control form-control-sm" style="width:220px;"
              placeholder="Search Tag / Serial / Model">
       <button type="button" id="rsAssignBucketBtn" class="btn btn-sm btn-primary text-nowrap" disabled>
-        <i class="bi bi-box me-1"></i>Assign Bucket
+        <i class="bi bi-box me-1"></i>Assign Bucket (<span id="rsSelectedCount">0</span>)
       </button>
     </div>
   </div>
@@ -1061,8 +1061,8 @@ var dtReturnStock = initGlobalTable('#returnStockTable', {
   },
 });
 $('#returnStockTable_filter').addClass('d-none');
-// Selected count + search box sit in the toolbar's right group, before pagination.
-$('#returnStockTable_wrapper .dataTables_paginate').before($('#rsSelectedWrap'), $('#rsSearchBox'));
+// Search box sits in the toolbar's right group, before pagination.
+$('#returnStockTable_wrapper .dataTables_paginate').before($('#rsSearchBox'));
 function rsSelectedBarcodes(){
   return dtReturnStock.$('.rs-row-check:checked').toArray().map(function(c){ return c.value; });
 }
