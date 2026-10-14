@@ -274,6 +274,21 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
   // Tag the table's card so its header gets the shared Global Table header
   // colour (.gtable-card > .card-header in app.css).
   $table.closest('.card').addClass('gtable-card');
+  // Global Table inside a tab (.tab-pane): the tab already names the table,
+  // so its card header is hidden (unless it carries buttons/inputs the table
+  // needs), and the table wrapper gets the same padding as a card body
+  // (.gtable-in-tab in app.css).
+  var $pane = $table.closest('.tab-pane');
+  if ($pane.length) {
+    var $tabCard = $table.closest('.card');
+    if ($tabCard.length && $pane.has($tabCard).length) {
+      $tabCard.addClass('gtable-in-tab');
+      var $hdr = $tabCard.children('.card-header');
+      if ($hdr.length && !$hdr.find('button, a.btn, input, select').length) {
+        $hdr.addClass('gtable-tab-hidden-header');
+      }
+    }
+  }
 
   // Caller may still pass language.emptyTable (plain text, e.g. "No L3/L4
   // work orders assigned.") — captured before the deep-merge below so it
@@ -442,5 +457,8 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
     }
   }
 
+  if ($pane.length) {
+    $(dt.table().container()).addClass('gtable-tab-wrap');
+  }
   return dt;
 }

@@ -153,31 +153,18 @@
   <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
     <i class="bi bi-clock-history me-1"></i>Search Tags</button>
 </div>
-<!-- Bucket Allocation / Tag Number Allocation tabs -->
+<!-- Tag Number Allocation / Bucket Allocation tabs -->
 <ul class="nav nav-tabs" id="prodTabs" role="tablist">
-  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#bucketAllocTab" type="button">
-    <i class="bi bi-box me-1"></i>Bucket Allocation
-  </button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tagAllocTab" type="button">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tagAllocTab" type="button">
     <i class="bi bi-upc-scan me-1"></i>Tag Number Allocation
     <span class="badge bg-secondary ms-1">{{ total }}</span>
   </button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#bucketAllocTab" type="button">
+    <i class="bi bi-box me-1"></i>Bucket Allocation
+  </button></li>
 </ul>
 <div class="tab-content border border-top-0 rounded-bottom bg-white mb-3">
-  <div class="tab-pane fade show active p-0" id="bucketAllocTab">
-<div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold"><i class="bi bi-box me-2"></i>Bucket Allocation</span></div>
-      <div>
-      <table id="trcBucketTable" class="table table-hover mb-0 small">
-        <thead class="table-dark">
-          <tr><th>Bucket Name</th><th>Bucket Number</th><th>Location</th><th>Category</th><th>Bucket Qty</th><th>Received Qty</th><th>Actions</th></tr>
-        </thead>
-        <tbody id="trcBucketTbody"></tbody>
-      </table>
-      </div>
-    </div>
-  </div>
-  <div class="tab-pane fade p-0" id="tagAllocTab">
+  <div class="tab-pane fade show active p-0" id="tagAllocTab">
     <div>
       <table id="trcTable" class="table table-hover mb-0 small">
         <thead class="table-dark"><tr>
@@ -216,6 +203,19 @@
              Global Table empty state shows the message instead. #}
         </tbody>
       </table>
+    </div>
+  </div>
+  <div class="tab-pane fade p-0" id="bucketAllocTab">
+<div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold"><i class="bi bi-box me-2"></i>Bucket Allocation</span></div>
+      <div>
+      <table id="trcBucketTable" class="table table-hover mb-0 small">
+        <thead class="table-dark">
+          <tr><th>Bucket Name</th><th>Bucket Number</th><th>Location</th><th>Category</th><th>Bucket Qty</th><th>Received Qty</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="trcBucketTbody"></tbody>
+      </table>
+      </div>
     </div>
   </div>
 </div>

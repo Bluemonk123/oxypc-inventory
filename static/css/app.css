@@ -559,3 +559,9 @@ fieldset:disabled .btn {
 .btn-outline-warning:not(:hover):not(:active):not(.active):not(.show) { background-color: rgba(var(--bs-warning-rgb), .05); }
 .btn-outline-info:not(:hover):not(:active):not(.active):not(.show) { background-color: rgba(var(--bs-info-rgb), .05); }
 .btn-outline-dark:not(:hover):not(:active):not(.active):not(.show) { background-color: rgba(var(--bs-dark-rgb), .05); }
+
+/* Global Table inside a tab (tagged by initGlobalTable): the tab already
+   names the table, so a button-less card header is hidden, and the table
+   wrapper gets the same padding as a .card-body (1rem). */
+.gtable-tab-hidden-header { display: none !important; }
+.dataTables_wrapper.gtable-tab-wrap { padding: 1rem; }
