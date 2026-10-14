@@ -59,18 +59,12 @@
   </div>
 </form>
 
-<!-- Results Header -->
-<div class="d-flex justify-content-between align-items-center mb-2">
-  <span class="text-muted small">
-    {% if q or stage or lot or grade %}
-      <strong>{{ total }}</strong> result(s) found
-      {% if total == 500 %}<span class="text-warning ms-1">(showing first 500)</span>{% endif %}
-    {% else %}
-      <strong>{{ total }}</strong> device(s) total
-      {% if total == 500 %}<span class="text-warning ms-1">(showing first 500 — use filters to narrow)</span>{% endif %}
-    {% endif %}
-  </span>
-</div>
+{# Results Header: the "N device(s) total" count line was removed on request
+   (the table toolbar already shows the row count). Only the 500-row cap
+   warning remains, and only when the cap is actually hit. #}
+{% if total == 500 %}
+<div class="mb-2 small text-warning">Showing the first 500 devices — use filters to narrow.</div>
+{% endif %}
 
 {# Entity badges — rendered here, hidden, then moved by JS into the
    DataTables toolbar, right after the row-count badge that sits next to the
