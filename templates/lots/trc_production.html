@@ -7,13 +7,14 @@
    Dashboard's Stage Pipeline row, scaled down for card content instead of
    pipeline tiles. #}
 <style>
-  .prod-tiles-row{flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px}
+  .prod-tiles-row{flex-wrap:nowrap; overflow-x:auto; padding:4px 6px 10px}
   .prod-tiles-row > div{min-width:118px}
   /* Summary tiles (option B): very light tint of the tile colour, number in
      that colour, faint matching watermark icon. --tc is set per tile. */
   .prod-tile{position:relative; overflow:hidden; border-radius:10px; padding:.6rem .7rem;
              background:color-mix(in srgb, var(--tc) 8%, #fff) !important;
-             border:1px solid color-mix(in srgb, var(--tc) 25%, #fff)}
+             border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
+             box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
   .prod-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1}
   .prod-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1}
   .prod-tile-btn{position:relative; z-index:1; color:var(--tc) !important; border-color:var(--tc) !important; background:#fff !important}
@@ -45,7 +46,7 @@
 <div class="alert alert-success alert-dismissible fade show"><i class="bi bi-check-circle me-2"></i>{{ request.query_params.get('success')|replace('+',' ') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% endif %}
 <!-- Summary card tiles -->
-<div class="d-flex prod-tiles-row gap-2 mb-4">
+<div class="d-flex prod-tiles-row gap-3 mb-4">
   <div class="flex-fill">
     <div class="prod-tile h-100" style="--tc:#6f42c1">
       <div class="prod-tile-count">{{ tags_at_you }}</div>
