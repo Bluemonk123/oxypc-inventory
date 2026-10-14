@@ -13,10 +13,12 @@
      tile compress evenly rather than the row wrapping once total width
      exceeds the card, with overflow-x:auto as a fallback on genuinely
      narrow viewports so it degrades to scroll instead of visually breaking. */
-  .pipeline-row{flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px}
-  .pipeline-tile{min-width:64px; flex:1 1 0; padding-left:.4rem; padding-right:.4rem}
+  .pipeline-row{flex-wrap:nowrap; overflow-x:auto; padding:2px 4px 6px}
+  .pipeline-tile{min-width:58px; flex:1 1 0; overflow:hidden; box-shadow:0 .125rem .35rem rgba(0,0,0,.15); padding-bottom:.25rem}
+  .pipeline-strip{font-weight:600; padding:.2rem .25rem; font-size:.62rem !important}
+  .pipeline-tile .split-entity-detail,.pipeline-tile .split-location-detail{padding:0 .4rem}
   .pipeline-tile .pipeline-label{font-size:.68rem; white-space:nowrap}
-  .pipeline-tile .pipeline-count{font-size:1rem}
+  .pipeline-tile .pipeline-count{font-size:1.25rem}
   .pipeline-chevron{flex-shrink:0; font-size:.7rem}
   /* Split Entity: each entity line must fit on one line at a small size
      (12px) rather than wrapping inside the tile — widen the tile itself
@@ -254,9 +256,10 @@
       ] %}
       <a href="{{ link }}{% if f_entity %}{{ '&' if '?' in link else '?' }}entity={{ f_entity | urlencode }}{% endif %}"
          class="text-decoration-none">
-        <div class="pipeline-tile border border-{{ color }}-subtle bg-{{ color }}-subtle rounded-3 py-2 text-center">
-          <div class="pipeline-label text-muted">{{ label }}</div>
-          <div class="pipeline-count fw-bold text-{{ color }}">{{ pipeline_counts.get(key, 0) }}</div>
+        {# Coloured title strip on top, big number below (option C). #}
+        <div class="pipeline-tile rounded-3 text-center bg-white">
+          <div class="pipeline-label pipeline-strip bg-{{ color }} {% if color in ('warning','info') %}text-dark{% else %}text-white{% endif %}">{{ label }}</div>
+          <div class="pipeline-count fw-bold text-body py-1">{{ pipeline_counts.get(key, 0) }}</div>
           {% set by_ent = pipeline_by_entity.get(key, {}) %}
           {% if by_ent %}
           <div class="split-entity-detail d-none small text-muted mt-1 text-start">

@@ -9,16 +9,17 @@
 <style>
   .prod-tiles-row{flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px}
   .prod-tiles-row > div{min-width:118px}
-  /* Summary tiles: solid colour with white text and a large faint white
-     watermark icon — same design as the Product Master count tiles. */
-  .prod-tile{position:relative; overflow:hidden; border-radius:10px; color:#fff; padding:.6rem .7rem;
-             box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
-  .prod-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; position:relative; z-index:1}
-  .prod-tile-label{font-size:.72rem; white-space:nowrap; color:rgba(255,255,255,.9); position:relative; z-index:1}
-  .prod-tile-btn{position:relative; z-index:1}
-  .prod-tile .btn-outline-light:not(:hover){background-color:transparent}
-  .prod-tile-wm{position:absolute; right:-6px; bottom:-12px; font-size:3.6rem; line-height:1;
-                color:rgba(255,255,255,.22); pointer-events:none}
+  /* Summary tiles (option B): very light tint of the tile colour, number in
+     that colour, faint matching watermark icon. --tc is set per tile. */
+  .prod-tile{position:relative; overflow:hidden; border-radius:10px; padding:.6rem .7rem;
+             background:color-mix(in srgb, var(--tc) 8%, #fff) !important;
+             border:1px solid color-mix(in srgb, var(--tc) 25%, #fff)}
+  .prod-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1}
+  .prod-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1}
+  .prod-tile-btn{position:relative; z-index:1; color:var(--tc) !important; border-color:var(--tc) !important; background:#fff !important}
+  .prod-tile-btn:hover{background:var(--tc) !important; color:#fff !important}
+  .prod-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
+                color:color-mix(in srgb, var(--tc) 18%, transparent); pointer-events:none}
 </style>
 {% endblock %}
 {% block content %}
@@ -46,7 +47,7 @@
 <!-- Summary card tiles -->
 <div class="d-flex prod-tiles-row gap-2 mb-4">
   <div class="flex-fill">
-    <div class="prod-tile h-100" style="background:#6f42c1">
+    <div class="prod-tile h-100" style="--tc:#6f42c1">
       <div class="prod-tile-count">{{ tags_at_you }}</div>
       <div class="prod-tile-label">Total Tags at You</div>
       <a href="/trc-production/summary/at-you" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
@@ -57,7 +58,7 @@
     </div>
   </div>
   <div class="flex-fill">
-    <div class="prod-tile h-100" style="background:#0d6efd">
+    <div class="prod-tile h-100" style="--tc:#0d6efd">
       <div class="prod-tile-count">{{ tags_l1l2 }}</div>
       <div class="prod-tile-label">Total Tags in L1/L2</div>
       <a href="/trc-production/summary/l1-l2" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
@@ -68,7 +69,7 @@
     </div>
   </div>
   <div class="flex-fill">
-    <div class="prod-tile h-100" style="background:#fd7e14">
+    <div class="prod-tile h-100" style="--tc:#fd7e14">
       <div class="prod-tile-count">{{ tags_l3l4 }}</div>
       <div class="prod-tile-label">Total Tags in L3/L4</div>
       <a href="/trc-production/summary/l3-l4" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
@@ -79,7 +80,7 @@
     </div>
   </div>
   <div class="flex-fill">
-    <div class="prod-tile h-100" style="background:#dc3545">
+    <div class="prod-tile h-100" style="--tc:#dc3545">
       <div class="prod-tile-count">{{ tags_pna }}</div>
       <div class="prod-tile-label">Total Tags in PNA</div>
         {# PNA parts for L1/L2 + L3/L4 tags — broader than the tile's own
@@ -93,7 +94,7 @@
     </div>
   </div>
   <div class="flex-fill">
-    <div class="prod-tile h-100" style="background:#20c997">
+    <div class="prod-tile h-100" style="--tc:#20c997">
       <div class="prod-tile-count">{{ tags_stress }}</div>
       <div class="prod-tile-label">Total Tags in Stress</div>
       <a href="/trc-production/summary/stress" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
@@ -104,7 +105,7 @@
     </div>
   </div>
   <div class="flex-fill">
-    <div class="prod-tile h-100" style="background:#e83e8c">
+    <div class="prod-tile h-100" style="--tc:#e83e8c">
       <div class="prod-tile-count">{{ tags_cosmetic }}</div>
       <div class="prod-tile-label">Total Tags in Cosmetic</div>
       <a href="/trc-production/summary/cosmetic" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
@@ -115,7 +116,7 @@
     </div>
   </div>
   <div class="flex-fill">
-    <div class="prod-tile h-100" style="background:#198754">
+    <div class="prod-tile h-100" style="--tc:#198754">
       <div class="prod-tile-count">{{ tags_final_qc }}</div>
       <div class="prod-tile-label">Total Tags in Final QC</div>
       <a href="/trc-production/summary/final-qc" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
@@ -126,7 +127,7 @@
     </div>
   </div>
   <div class="flex-fill">
-    <div class="prod-tile h-100" style="background:#6c757d">
+    <div class="prod-tile h-100" style="--tc:#6c757d">
       <div class="prod-tile-count">{{ tags_returned }}</div>
       <div class="prod-tile-label">Tags Returned</div>
       <a href="/trc-production/summary/returned" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
