@@ -493,3 +493,32 @@ fieldset:disabled .btn {
 .gtable-top .dataTables_info {
   padding-top: 0 !important;
 }
+
+
+/* ── Global filter bar ───────────────────────────────────────────────────
+   Full-width filter section used at the top of list/dashboard pages.
+   Markup:
+     <form method="get" class="filter-bar">
+       <div class="filter-bar-row">
+         <div><select class="form-select form-select-sm" title="Stage">…</select></div>
+         …one <div> per filter, no <label> (use title= for the tooltip)…
+         <div><button class="btn btn-sm btn-primary">Apply</button> <a class="btn btn-sm btn-outline-secondary bg-white">Clear</a></div>
+       </div>
+     </form>
+   - no box: sits on the page, with a 1px navy separator line below
+   - all filters + buttons on ONE row; fields share the width and shrink together
+   - white fields with black text (multi-select buttons included)
+   - no overflow clipping, so dropdown menus open fully */
+.filter-bar { margin-bottom: 1rem; padding-bottom: 12px; border-bottom: 1px solid #1f3b63; }
+.filter-bar-row { display: flex; flex-wrap: nowrap; align-items: center; gap: .5rem; }
+.filter-bar-row > div { flex: 1 1 0; min-width: 95px; width: auto; }
+.filter-bar-row > div:last-child { flex: 0 0 auto; min-width: 0; white-space: nowrap; }
+.filter-bar .form-label { display: none; }
+.filter-bar .form-select, .filter-bar .form-control { background-color: #fff; color: #212529; }
+/* !important: the multi-select is a btn-outline-secondary, whose grey text and
+   grey hover fill would otherwise win over this sheet. */
+.filter-bar .ms-filter .btn,
+.filter-bar .ms-filter .btn:hover, .filter-bar .ms-filter .btn:focus,
+.filter-bar .ms-filter .btn.show { background-color: #fff !important; color: #212529 !important; border-color: #ced4da !important; }
+.filter-bar .ms-filter .btn { width: 100%; min-width: 0 !important; }
+.filter-bar .ms-label { overflow: hidden; text-overflow: ellipsis; }
