@@ -14,6 +14,12 @@
   .dash-filter-box .ms-filter .btn{background-color:#fff; color:#212529; border-color:#fff}
   .dash-filter-box .ms-filter .btn:hover,.dash-filter-box .ms-filter .btn.show{background-color:#fff; color:#212529}
   .dash-filter-box .ms-filter .btn{width:100%; min-width:0 !important}
+  /* One row always: every field shares the width and shrinks together;
+     only Apply/Clear keep their natural size. Scrolls only if truly too narrow. */
+  .dash-filter-row{overflow-x:auto}
+  .dash-filter-row > div{flex:1 1 0; min-width:95px; width:auto}
+  .dash-filter-row > div:last-child{flex:0 0 auto; min-width:0; white-space:nowrap}
+  .dash-filter-row .ms-label{overflow:hidden; text-overflow:ellipsis}
   /* Stage Pipeline: 10 tiles scaled down to stay on one row on a normal
      desktop viewport instead of wrapping to two — flex-shrink lets each
      tile compress evenly rather than the row wrapping once total width
@@ -40,8 +46,8 @@
 {% import "_multiselect_filter.html" as ms %}
 <!-- Dashboard Filters -->
 <form method="get" action="/dashboard" class="card border-0 shadow-sm mb-3 dash-filter-box">
-<div class="card-body py-2 d-flex flex-wrap gap-2 align-items-center">
-  <div class="flex-shrink-0 dash-filter-md">
+<div class="card-body py-2 d-flex flex-nowrap gap-2 align-items-center dash-filter-row">
+  <div class="dash-filter-md">
     <select name="stage_filter" title="Filter by Stage" class="form-select form-select-sm">
       <option value="">All Stages</option>
       {% for stage in all_stages %}
@@ -53,17 +59,17 @@
   </div>
   {# Entity is a checkbox multi-select like All Inventory's, and it narrows the
      stage counts below as well as the links under them. #}
-  <div class="flex-shrink-0 dash-filter-md" title="Entity">{{ ms.multiselect_inline('entity', 'Entity', entity_choices, f_entity) }}</div>
+  <div class="dash-filter-md" title="Entity">{{ ms.multiselect_inline('entity', 'Entity', entity_choices, f_entity) }}</div>
   {# Device Type — wired to Master Data's "device_type" category (labelled
      "Device Form Factors" there; same source /devices' own Device Type
      filter uses). Narrows the stage breakdown section below, same scope
      Entity already narrows. #}
-  <div class="flex-shrink-0 dash-filter-md" title="Device Type">{{ ms.multiselect_inline('device_type', 'Device Type', device_type_choices, f_device_type) }}</div>
+  <div class="dash-filter-md" title="Device Type">{{ ms.multiselect_inline('device_type', 'Device Type', device_type_choices, f_device_type) }}</div>
   {# Zone — narrows to any device whose resolved current location (same
      DeviceLocationLog-first / Device.location_id-fallback resolution as
      the Change Floor tabs and /transfers list) sits in a StorageLocation
      belonging to this zone (models/location.py ZoneType/ZONE_LABELS). #}
-  <div class="flex-shrink-0 dash-filter-md">
+  <div class="dash-filter-md">
     <select name="zone" title="Zone" class="form-select form-select-sm">
       <option value="">All Zones</option>
       {% for z in zone_choices %}
@@ -71,24 +77,24 @@
       {% endfor %}
     </select>
   </div>
-  <div class="flex-shrink-0 dash-filter-sm">
+  <div class="dash-filter-sm">
     <input type="date" name="pl_from" title="P&amp;L From" class="form-control form-control-sm" value="{{ pl_from }}">
   </div>
-  <div class="flex-shrink-0 dash-filter-sm">
+  <div class="dash-filter-sm">
     <input type="date" name="pl_to" title="P&amp;L To" class="form-control form-control-sm" value="{{ pl_to }}">
   </div>
   {# Scopes the Financial Summary card's Parts Spent / Labour Spent (see
      services/business_pl.compute_year_parts_labour_cogs). Options come from
      Master Data (category "report_year") — the same list Business P&L's
      year tabs use, so the two pages always offer the same years. #}
-  <div class="flex-shrink-0 dash-filter-sm">
+  <div class="dash-filter-sm">
     <select name="year" title="Year" class="form-select form-select-sm">
       {% for y in year_choices %}
       <option value="{{ y }}" {% if year|string == y|string %}selected{% endif %}>{{ y }}</option>
       {% endfor %}
     </select>
   </div>
-  <div class="flex-shrink-0">
+  <div>
     <button type="submit" class="btn btn-sm btn-primary">
       <i class="bi bi-funnel me-1"></i>Apply
     </button>
