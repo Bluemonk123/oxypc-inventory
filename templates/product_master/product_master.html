@@ -1,25 +1,35 @@
 {% extends "base.html" %}
 {% block title %}Product Master — OxyPC{% endblock %}
 {% block page_title %}Product Master{% endblock %}
+{% block head %}
+<style>
+  /* Product Master Details: every value on one line (Model, CPU Gen, prices,
+     dates...). The Discount % dropdown and its amount sit side by side; the Status
+     badges stay stacked, as asked for earlier. */
+  #pmProductsTable tbody td, #pmProductsTable thead th { white-space: nowrap; }
+</style>
+{% endblock %}
 {% block content %}
 {% macro money(v) %}{% if v is none %}<span class="badge bg-warning text-dark">Pending</span>{% else %}₹{{ '{:,.2f}'.format(v).rstrip('0').rstrip('.') }}{% endif %}{% endmacro %}
 
 <ul class="nav nav-tabs mb-3" role="tablist">
-  <li class="nav-item"><button class="nav-link {{ 'active' if active_tab != 'dropdowns' }}" data-bs-toggle="tab" data-bs-target="#pmProductsPane" type="button">
+  <li class="nav-item"><button class="nav-link {{ 'active' if active_tab not in ('dropdowns', 'competitive') }}" data-bs-toggle="tab" data-bs-target="#pmProductsPane" type="button">
     <i class="bi bi-box-seam me-1"></i>Product Master Table</button></li>
   <li class="nav-item"><button class="nav-link {{ 'active' if active_tab == 'dropdowns' }}" data-bs-toggle="tab" data-bs-target="#pmDropdownPane" type="button">
     <i class="bi bi-list-ul me-1"></i>Dropdown Configuration</button></li>
+  <li class="nav-item"><button class="nav-link {{ 'active' if active_tab == 'competitive' }}" data-bs-toggle="tab" data-bs-target="#pmCompetitivePane" type="button">
+    <i class="bi bi-graph-up-arrow me-1"></i>Competitive Pricings</button></li>
 </ul>
 
 <div class="tab-content">
   {# ── Product Master Details ── #}
-  <div class="tab-pane fade {{ 'show active' if active_tab != 'dropdowns' }}" id="pmProductsPane">
+  <div class="tab-pane fade {{ 'show active' if active_tab not in ('dropdowns', 'competitive') }}" id="pmProductsPane">
   {# Tiles: counts of the Status badges in the table below. Active = a row
      showing Pricing Done; Inactive = every other row. #}
   {% set n_all = products|length %}
-  {% set n_pp = products|selectattr('product_price', 'none')|list|length %}
+  {% set n_pp = products|rejectattr('price_complete')|list|length %}
   {% set n_parts = products|rejectattr('parts_done')|list|length %}
-  {% set n_done = products|rejectattr('product_price', 'none')|selectattr('parts_done')|list|length %}
+  {% set n_done = products|selectattr('price_complete')|selectattr('parts_done')|list|length %}
   <div class="row g-3 mb-3">
     {% for label, n, cls, icon in [('All Records', n_all, 'text-dark', 'bi-collection'),
         ('Product Price Pending', n_pp, 'text-warning', 'bi-hourglass-split'),
@@ -43,41 +53,42 @@
       <div class="card-body">
         <table id="pmProductsTable" class="table table-hover mb-0" style="width:100%">
           <thead class="table-dark"><tr>
-            <th>Product Name</th><th>Make</th><th>Model</th><th>CPU Gen</th><th>RAM</th><th>Storage</th>
-            <th>Product Price</th><th>RAM Price</th><th>Storage Price</th>
+            <th>Product Name</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th>RAM</th><th>Storage</th>
+            <th>RAM Price</th><th>Storage Price</th><th>Product Price</th>
             {% for col, label in part_fields %}<th>{{ label }}</th>{% endfor %}
             <th>Base Price</th><th>Discount %</th><th>Selling Price</th><th>Status</th><th>Date</th><th>Action</th>
           </tr></thead>
           <tbody>
           {% for p in products %}
             <tr data-id="{{ p.id }}">
-              <td><div class="fw-semibold text-nowrap">{{ p.make }}/{{ p.model }}/{{ p.cpu_gen }}</div><div class="mt-1 text-nowrap"><span class="badge bg-light text-dark border me-1">{{ p.ram }}</span><span class="badge bg-light text-dark border">{{ p.storage }}</span></div></td>
-              <td>{{ p.make }}</td><td>{{ p.model }}</td><td>{{ p.cpu_gen }}</td>
-              <td>{{ p.ram }}</td><td>{{ p.storage }}</td>
-              <td>{{ money(p.product_price) }}</td>
+              <td class="fw-semibold text-nowrap">{{ p.make }}/{{ p.model }}/{{ p.cpu }}/{{ p.cpu_gen }}</td>
+              <td>{{ p.make }}</td><td>{{ p.model }}</td><td>{{ p.cpu }}</td><td>{{ p.cpu_gen }}</td>
+              <td class="text-nowrap">{% if p.ram %}{{ p.ram }}{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td><td class="text-nowrap">{% if p.storage %}{{ p.storage }}{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
               <td>{{ money(p.ram_price) }}</td><td>{{ money(p.storage_price) }}</td>
+              <td>{{ money(p.product_price) }}</td>
               {% for col, label in part_fields %}<td>{{ money(p.parts[col]) }}</td>{% endfor %}
               <td class="pm-base">{{ money(p.base_price) }}</td>
-              <td>
-                <select class="form-select form-select-sm pm-discount" style="min-width:90px" data-id="{{ p.id }}">
+              <td><div class="d-flex align-items-center gap-2">
+                <select class="form-select form-select-sm pm-discount" style="width:72px;padding-right:1.6rem;background-position:right .4rem center" data-id="{{ p.id }}">
                   <option value="">—</option>
                   {% for d in dropdowns['discount_pct'] %}
                   <option value="{{ d.value }}" {% if p.discount_pct is not none and p.discount_pct == d.value|float %}selected{% endif %}>{{ d.value }}%</option>
                   {% endfor %}
                 </select>
-                <div class="small text-muted mt-1 pm-disc-amt">₹{{ '{:,.2f}'.format(p.discount_amount).rstrip('0').rstrip('.') }}</div>
+                <span class="small text-muted pm-disc-amt" style="min-width:64px">₹{{ '{:,.2f}'.format(p.discount_amount).rstrip('0').rstrip('.') }}</span>
+              </div>
               </td>
               <td class="pm-sell fw-semibold">{{ money(p.selling_price) }}</td>
               <td>
-                {% if p.product_price is none %}<span class="badge bg-warning text-dark d-block mb-1">Product Price Pending</span>{% endif %}
+                {% if not p.price_complete %}<span class="badge bg-warning text-dark d-block mb-1">Product Price Pending</span>{% endif %}
                 {% if not p.parts_done %}<span class="badge bg-info text-dark d-block">Parts Price Pending</span>{% endif %}
-                {% if p.product_price is not none and p.parts_done %}<span class="badge bg-success d-block mb-1">Pricing Done</span><span class="badge bg-primary d-block">Active</span>{% endif %}
+                {% if p.price_complete and p.parts_done %}<span class="badge bg-success d-block mb-1">Pricing Done</span><span class="badge bg-primary d-block">Active</span>{% endif %}
               </td>
               <td class="pm-date text-nowrap" data-order="{{ p.updated_at[6:] ~ p.updated_at[3:5] ~ p.updated_at[:2] }}">{{ p.updated_at }}</td>
               <td>
                 <div class="d-flex gap-1 justify-content-center">
                   <button type="button" class="btn btn-sm btn-outline-warning py-0 px-1 pm-edit-product" title="Edit"
-                          data-product='{{ {"id": p.id, "make": p.make, "model": p.model, "cpu": p.cpu, "cpu_gen": p.cpu_gen, "ram_id": p.ram_id, "storage_id": p.storage_id}|tojson|forceescape }}'><i class="bi bi-pencil"></i></button>
+                          data-product='{{ {"id": p.id, "make": p.make, "model": p.model, "cpu": p.cpu, "cpu_gen": p.cpu_gen}|tojson|forceescape }}'><i class="bi bi-pencil"></i></button>
                   <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 pm-del-product" title="Delete"
                           data-id="{{ p.id }}" data-name="{{ p.product_name }}"><i class="bi bi-trash3"></i></button>
                 </div>
@@ -109,7 +120,7 @@
                 <span class="text-nowrap">
                   <button type="button" class="btn btn-sm btn-link text-warning p-0 me-2 pm-dd-edit" title="Edit"
                           data-cat="{{ cat }}" data-id="{{ d.id }}" data-parent="{{ d.parent_id or '' }}"
-                          data-value="{{ d.value.split('/', 1)[1] if cat == 'cpu_gen' and '/' in d.value else d.value }}"><i class="bi bi-pencil"></i></button>
+                          data-value="{{ d.value }}"><i class="bi bi-pencil"></i></button>
                   <button type="button" class="btn btn-sm btn-link text-danger p-0 pm-dd-del" title="Delete"
                           data-id="{{ d.id }}" data-value="{{ d.value }}"><i class="bi bi-trash3"></i></button>
                 </span>
@@ -124,7 +135,67 @@
       {% endfor %}
     </div>
   </div>
+
+  {# ── Competitive Pricings ── each list becomes a price column on Product
+     Pricing; the Formula Method turns those prices into the Sell Price. #}
+  <div class="tab-pane fade {{ 'show active' if active_tab == 'competitive' }}" id="pmCompetitivePane">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="fw-semibold"><i class="bi bi-graph-up-arrow me-2"></i>Competitive Pricings</span>
+        <button type="button" class="btn btn-sm btn-primary" id="pmCompAddBtn"><i class="bi bi-plus-circle me-1"></i>Add Competitive List</button>
+      </div>
+      <div class="card-body">
+        <div class="row g-4">
+          <div class="col-lg-8">
+            <table class="table table-hover mb-0" id="pmCompTable" style="width:100%">
+              <thead class="table-dark"><tr><th>Competitive List Name</th><th style="width:110px">Action</th></tr></thead>
+              <tbody>
+                {% for cl in comp_lists %}
+                <tr>
+                  <td class="fw-semibold">{{ cl.name }}</td>
+                  <td><div class="d-flex gap-1 justify-content-center">
+                    <button type="button" class="btn btn-sm btn-outline-warning py-0 px-1 pm-comp-edit" title="Edit" data-id="{{ cl.id }}" data-name="{{ cl.name }}"><i class="bi bi-pencil"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 pm-comp-del" title="Delete" data-id="{{ cl.id }}" data-name="{{ cl.name }}"><i class="bi bi-trash3"></i></button>
+                  </div></td>
+                </tr>
+                {% else %}
+                <tr><td colspan="2" class="text-muted text-center py-4">No Competitive Lists yet. Add one, e.g. Amazon, Flipkart.</td></tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {# Formula Method — one for all lists, beside the table #}
+          <div class="col-lg-4">
+            <div class="border rounded p-3 h-100 bg-light">
+              <div class="fw-semibold mb-1"><i class="bi bi-calculator me-1"></i>Apply Formula Method</div>
+              <div class="small text-muted mb-3">Sell Price on Product Pricing = this method over the prices entered for every list.</div>
+              {% for key, label in comp_methods %}
+              <div class="form-check mb-2">
+                <input class="form-check-input pm-comp-method" type="radio" name="pm_comp_method" id="pmMethod_{{ key }}"
+                       value="{{ key }}" {% if comp_method == key %}checked{% endif %}>
+                <label class="form-check-label" for="pmMethod_{{ key }}">{{ label }}</label>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
+
+{# Competitive List modal #}
+<div class="modal fade" id="pmCompModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title" id="pmCompTitle">Add Competitive List</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <input type="hidden" id="pmCompId">
+    <label class="form-label fw-semibold">Competitive List Name</label>
+    <input type="text" class="form-control" id="pmCompName" maxlength="100" placeholder="e.g. Amazon">
+    <div class="text-danger small mt-2" id="pmCompErr"></div>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button type="button" class="btn btn-primary" id="pmCompSave">Save</button></div>
+</div></div></div>
 
 {# Dropdown value modal #}
 <div class="modal fade" id="pmDdModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
@@ -154,15 +225,9 @@
       <div class="col-md-6"><label class="form-label fw-semibold">Model</label><select class="form-select" id="pmProdModel"></select></div>
       <div class="col-md-6"><label class="form-label fw-semibold">CPU</label><select class="form-select" id="pmProdCpu"></select></div>
       <div class="col-md-6"><label class="form-label fw-semibold">CPU Gen</label><select class="form-select" id="pmProdGen"></select></div>
-      <div class="col-md-6"><label class="form-label fw-semibold">RAM</label>
-        <select class="form-select" id="pmProdRam"><option value="">-- Select --</option>
-          {% for r in rams %}<option value="{{ r.id }}">{{ r.ram_name }}</option>{% endfor %}</select></div>
-      <div class="col-md-6"><label class="form-label fw-semibold">Storage</label>
-        <select class="form-select" id="pmProdSto"><option value="">-- Select --</option>
-          {% for s in storages %}<option value="{{ s.id }}">{{ s.storage_name }}</option>{% endfor %}</select></div>
     </div>
     <div class="mt-3 small"><span class="text-muted">Product Name:</span> <span class="fw-semibold" id="pmProdNamePreview">—</span></div>
-    {% if not rams or not storages %}<div class="alert alert-warning small mt-3 mb-0">Add RAM and Storage on the Hardware page first.</div>{% endif %}
+    <div class="form-text">RAM and Storage are picked on the Product Pricing page.</div>
     <div class="text-danger small mt-2" id="pmProdErr"></div>
   </div>
   <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -176,7 +241,7 @@
 (function () {
   var DD = {{ dropdown_json|tojson }};
   var LABELS = { {% for c, l in categories %}'{{ c }}': '{{ l }}',{% endfor %} };
-  var PARENT = { model: 'make', cpu_gen: 'cpu' };
+  var PARENT = { model: 'make' };  // CPU Gen is a plain value, no CPU picked (2026-10-14)
   function opts(list, sel, placeholder) {
     return '<option value="">' + (placeholder || '-- Select --') + '</option>' + list.map(function (d) {
       return '<option value="' + d.id + '"' + (d.id === sel ? ' selected' : '') + '>' + pmEsc(d.value) + '</option>';
@@ -185,7 +250,12 @@
   function children(cat, parentId) { return DD[cat].filter(function (d) { return d.parent_id === parentId; }); }
   function reloadTab(tab) { location.href = '/product-master' + (tab ? '?tab=' + tab : ''); }
 
-  initGlobalTable('#pmProductsTable', { order: [[{{ 9 + part_fields|length + 4 }}, 'desc']] });
+  // Header columns are sized when the table is drawn; a table drawn while its
+  // tab is hidden (or whose cells later change) is re-synced here.
+  $(document).on('shown.bs.tab', 'button[data-bs-target="#pmProductsPane"]', function () {
+    $('#pmProductsTable').DataTable().columns.adjust();
+  });
+  initGlobalTable('#pmProductsTable', { order: [[{{ 10 + part_fields|length + 4 }}, 'desc']] });
 
   // ── Dropdown Configuration ──
   var ddModal = new bootstrap.Modal(document.getElementById('pmDdModal'));
@@ -194,9 +264,9 @@
     $('#pmDdTitle').text((id ? 'Edit ' : 'Add ') + LABELS[cat]);
     var p = PARENT[cat];
     $('#pmDdParentWrap').toggleClass('d-none', !p);
-    if (p) { $('#pmDdParentLabel').text(LABELS[p]); $('#pmDdParent').html(opts(DD[p], parentId)); }
+    if (p) { $('#pmDdParentLabel').text(LABELS[p] + (cat === 'cpu_gen' ? ' (optional)' : '')); $('#pmDdParent').html(opts(DD[p], parentId, cat === 'cpu_gen' ? '-- No CPU (plain value) --' : null)); }
     $('#pmDdValueLabel').text(cat === 'cpu_gen' ? 'Generation' : (cat === 'discount_pct' ? 'Discount %' : LABELS[cat]));
-    var hint = cat === 'cpu_gen' ? 'Saved as <CPU>/<Generation>, e.g. i5/8th Gen.' : (cat === 'discount_pct' ? 'A number from 0 to 100.' : '');
+    var hint = cat === 'cpu_gen' ? 'Saved as typed, e.g. 8th Gen.' : (cat === 'discount_pct' ? 'A number from 0 to 100.' : '');
     $('#pmDdHint').text(hint).toggleClass('d-none', !hint);
     $('#pmDdValue').val(value || '');
     ddModal.show(); setTimeout(function () { $('#pmDdValue').trigger('focus'); }, 300);
@@ -218,15 +288,48 @@
     });
   });
 
+  // ── Competitive Pricings ──
+  var compModal = new bootstrap.Modal(document.getElementById('pmCompModal'));
+  function openComp(id, name) {
+    $('#pmCompId').val(id || ''); $('#pmCompName').val(name || ''); $('#pmCompErr').text('');
+    $('#pmCompTitle').text(id ? 'Edit Competitive List' : 'Add Competitive List');
+    compModal.show(); setTimeout(function () { $('#pmCompName').trigger('focus'); }, 300);
+  }
+  $('#pmCompAddBtn').on('click', function () { openComp(); });
+  $(document).on('click', '.pm-comp-edit', function () { openComp($(this).data('id'), String($(this).data('name'))); });
+  $('#pmCompSave').on('click', function () {
+    var btn = this; btn.disabled = true;
+    pmPost('/product-master/competitive/save', { item_id: $('#pmCompId').val(), name: $('#pmCompName').val() })
+      .then(function (j) { btn.disabled = false; if (j.ok) reloadTab('competitive'); else $('#pmCompErr').text(j.error); });
+  });
+  $('#pmCompName').on('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('#pmCompSave').click(); } });
+  $(document).on('click', '.pm-comp-del', function () {
+    var b = $(this);
+    if (!confirm('Delete "' + b.data('name') + '"? Its column and the prices entered under it are removed, and Sell Prices are recalculated.')) return;
+    pmPost('/product-master/competitive/' + b.data('id') + '/delete', {}).then(function (j) {
+      if (j.ok) reloadTab('competitive'); else showFlash('danger', j.error);
+    });
+  });
+  $(document).on('change', '.pm-comp-method', function () {
+    var v = this.value;
+    pmPost('/product-master/competitive/method', { method: v }).then(function (j) {
+      if (j.ok) showFlash('success', 'Formula Method set to ' + v.charAt(0).toUpperCase() + v.slice(1) + '. Sell Prices recalculated.');
+      else showFlash('danger', j.error);
+    });
+  });
+
   // ── Products ──
   var prodModal = new bootstrap.Modal(document.getElementById('pmProductModal'));
   function preview() {
     var t = function (id) { var o = $(id + ' option:selected'); return o.val() ? o.text() : ''; };
-    var parts = [t('#pmProdMake'), t('#pmProdModel'), t('#pmProdGen'), t('#pmProdRam'), t('#pmProdSto')];
+    var parts = [t('#pmProdMake'), t('#pmProdModel'), t('#pmProdCpu'), t('#pmProdGen')];
     $('#pmProdNamePreview').text(parts.every(Boolean) ? parts.join('/') : '—');
   }
   function fillModels(sel) { $('#pmProdModel').html(opts(children('model', $('#pmProdMake').val() || null), sel)); }
-  function fillGens(sel) { $('#pmProdGen').html(opts(children('cpu_gen', $('#pmProdCpu').val() || null), sel)); }
+  function fillGens(sel) {
+    // CPU Gen is independent of CPU: always the full Dropdown Configuration list.
+    $('#pmProdGen').prop('disabled', false).html(opts(DD.cpu_gen, sel));
+  }
   function idByValue(cat, value, parentId) {
     var m = DD[cat].filter(function (d) { return d.value === value && (parentId === undefined || d.parent_id === parentId); })[0];
     return m ? m.id : '';
@@ -236,20 +339,19 @@
     $('#pmProductTitle').text(p ? 'Edit Product' : 'Add Product');
     var makeId = p ? idByValue('make', p.make) : '', cpuId = p ? idByValue('cpu', p.cpu) : '';
     $('#pmProdMake').html(opts(DD.make, makeId)); fillModels(p ? idByValue('model', p.model, makeId) : '');
-    $('#pmProdCpu').html(opts(DD.cpu, cpuId)); fillGens(p ? idByValue('cpu_gen', p.cpu_gen, cpuId) : '');
-    $('#pmProdRam').val(p ? p.ram_id : ''); $('#pmProdSto').val(p ? p.storage_id : '');
+    $('#pmProdCpu').html(opts(DD.cpu, cpuId)); fillGens(p ? idByValue('cpu_gen', p.cpu_gen) : '');
     preview(); prodModal.show();
   }
   $('#pmAddProductBtn').on('click', function () { openProduct(null); });
   $(document).on('click', '.pm-edit-product', function () { openProduct($(this).data('product')); });
   $('#pmProdMake').on('change', function () { fillModels(''); preview(); });
-  $('#pmProdCpu').on('change', function () { fillGens(''); preview(); });
-  $('#pmProdModel, #pmProdGen, #pmProdRam, #pmProdSto').on('change', preview);
+  $('#pmProdCpu').on('change', preview);
+  $('#pmProdModel, #pmProdGen').on('change', preview);
   $('#pmProdSave').on('click', function () {
     var btn = this; btn.disabled = true;
     pmPost('/product-master/products/save', { product_id: $('#pmProdId').val(),
       make_id: $('#pmProdMake').val(), model_id: $('#pmProdModel').val(), cpu_id: $('#pmProdCpu').val(),
-      cpu_gen_id: $('#pmProdGen').val(), ram_id: $('#pmProdRam').val(), storage_id: $('#pmProdSto').val() })
+      cpu_gen_id: $('#pmProdGen').val() })
       .then(function (j) { btn.disabled = false; if (j.ok) reloadTab(); else $('#pmProdErr').text(j.error); });
   });
   $(document).on('click', '.pm-del-product', function () {
@@ -272,6 +374,8 @@
       tr.find('.pm-base').html(pmCell(p.base_price));
       tr.find('.pm-sell').html(pmCell(p.selling_price));
       tr.find('.pm-date').text(p.updated_at);
+      // the cells just changed width — re-sync the scrolling header to them
+      $('#pmProductsTable').DataTable().columns.adjust();
     });
   });
 })();

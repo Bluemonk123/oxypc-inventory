@@ -28,10 +28,10 @@ DROPDOWN_CATEGORIES = [
     ("model", "Model"),
     ("cpu", "CPU"),
     ("cpu_gen", "CPU Gen"),
-    ("ram_category", "RAM Category"),
-    ("ram_capacity", "RAM Capacity"),
-    ("storage_category", "Storage Category"),
-    ("storage_capacity", "Storage Capacity"),
+    ("ram_category", "RAM Types"),
+    ("ram_capacity", "RAM Sizes"),
+    ("storage_category", "Storage Types"),
+    ("storage_capacity", "Storage Sizes"),
     ("discount_pct", "Discount %"),
 ]
 DROPDOWN_LABELS = dict(DROPDOWN_CATEGORIES)
@@ -103,8 +103,9 @@ class PMProduct(Base):
     model = Column(String(100), nullable=False)
     cpu = Column(String(100), nullable=False)
     cpu_gen = Column(String(210), nullable=False)
-    ram_id = Column(UUID(as_uuid=True), ForeignKey("hw_ram.id"), nullable=False)
-    storage_id = Column(UUID(as_uuid=True), ForeignKey("hw_storage.id"), nullable=False)
+    # Optional since v2 (2026-10-14): picked on the Product Pricing page; null = Pending
+    ram_id = Column(UUID(as_uuid=True), ForeignKey("hw_ram.id"), nullable=True)
+    storage_id = Column(UUID(as_uuid=True), ForeignKey("hw_storage.id"), nullable=True)
     product_price = Column(Numeric(12, 2), nullable=True)
     bezel_price = Column(Numeric(12, 2), nullable=True)
     screen_price = Column(Numeric(12, 2), nullable=True)
@@ -120,8 +121,10 @@ class PMProduct(Base):
     updated_at = Column(DateTime, default=app_now, onupdate=app_now)
 
 
-def build_product_name(make, model, cpu_gen, ram_name, storage_name) -> str:
-    return "/".join([make, model, cpu_gen, ram_name, storage_name])
+def build_product_name(make, model, cpu, cpu_gen) -> str:
+    """Stored, unique product key (v2): Make/Model/CPU/CPU Gen. The tables
+    display Make/Model/CPU Gen."""
+    return "/".join([make, model, cpu, cpu_gen])
 
 
 def parts_done(p: PMProduct) -> bool:
@@ -137,12 +140,15 @@ def product_figures(p: PMProduct, ram_price, storage_price) -> dict:
     Base Price    = Product Price - RAM Price - Storage Price
     Discount Amt  = Product Price x Discount% / 100 (0 while Product Price is pending)
     Selling Price = (Base Price - Discount Amt) + (RAM Price + Storage Price)
-    Base / Selling are None while Product Price is pending."""
+    Base / Selling are None while Product Price, RAM or Storage is pending."""
     ram = Decimal(ram_price or 0)
     sto = Decimal(storage_price or 0)
     pct = Decimal(p.discount_pct or 0)
     if p.product_price is None:
         return {"base_price": None, "discount_amount": Decimal("0.00"), "selling_price": None}
+    if ram_price is None or storage_price is None:
+        disc = _q(Decimal(p.product_price) * pct / Decimal(100))
+        return {"base_price": None, "discount_amount": disc, "selling_price": None}
     price = Decimal(p.product_price)
     base = price - ram - sto
     disc = _q(price * pct / Decimal(100))
@@ -181,3 +187,97 @@ async def seed_pm_dropdowns_if_empty(db) -> int:
         added += 1
     await db.commit()
     return added
+
+
+async def migrate_pm_products_v2(db) -> None:
+    """Schema v2 (dbdiagram approved 2026-10-14): ram_id / storage_id become
+    nullable and product_name is rebuilt as Make/Model/CPU/CPU Gen. Idempotent;
+    a rename that would collide with another product is skipped."""
+    from sqlalchemy import text, select
+    await db.execute(text("ALTER TABLE pm_products ALTER COLUMN ram_id DROP NOT NULL"))
+    await db.execute(text("ALTER TABLE pm_products ALTER COLUMN storage_id DROP NOT NULL"))
+    rows = (await db.execute(select(PMProduct))).scalars().all()
+    taken = {p.product_name.lower() for p in rows}
+    for p in rows:
+        new = build_product_name(p.make, p.model, p.cpu, p.cpu_gen)
+        if new != p.product_name and new.lower() not in taken:
+            taken.discard(p.product_name.lower())
+            p.product_name = new
+            taken.add(new.lower())
+    await db.commit()
+
+
+# ── Competitive Pricings (schema v3, dbdiagram approved 2026-10-14) ───────────
+
+COMPETITIVE_METHOD_KEY = "pm_competitive_method"
+COMPETITIVE_METHODS = [("average", "Average"), ("maximum", "Maximum"), ("minimum", "Minimum")]
+
+
+class PMCompetitiveList(Base):
+    __tablename__ = "pm_competitive_lists"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String(100), nullable=False, unique=True)
+    display_order = Column(Integer, default=0)
+    created_by = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=app_now)
+    updated_at = Column(DateTime, default=app_now, onupdate=app_now)
+
+
+class PMCompetitorPrice(Base):
+    __tablename__ = "pm_competitor_prices"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    product_id = Column(UUID(as_uuid=True), ForeignKey("pm_products.id"), nullable=False, index=True)
+    list_id = Column(UUID(as_uuid=True), ForeignKey("pm_competitive_lists.id"), nullable=False, index=True)
+    price = Column(Numeric(12, 2), nullable=False)
+    updated_by = Column(String(50), nullable=True)
+    updated_at = Column(DateTime, default=app_now, onupdate=app_now)
+
+    __table_args__ = (
+        UniqueConstraint("product_id", "list_id", name="uq_pm_competitor_product_list"),
+    )
+
+
+async def competitive_method(db) -> str:
+    from sqlalchemy import select
+    from models.settings import AppSetting
+    v = (await db.execute(select(AppSetting.value).where(AppSetting.key == COMPETITIVE_METHOD_KEY))).scalar()
+    return v if v in dict(COMPETITIVE_METHODS) else "average"
+
+
+def apply_method(method: str, prices) -> "Decimal | None":
+    vals = [Decimal(p) for p in prices if p is not None]
+    if not vals:
+        return None
+    if method == "maximum":
+        return _q(max(vals))
+    if method == "minimum":
+        return _q(min(vals))
+    return _q(sum(vals) / len(vals))
+
+
+async def recompute_sell_prices(db, product_ids=None) -> None:
+    """Sell Price (pm_products.product_price) = the Formula Method over each
+    product's filled competitor prices; none filled -> empty. Does not commit."""
+    from sqlalchemy import select
+    method = await competitive_method(db)
+    q = select(PMProduct)
+    if product_ids is not None:
+        if not product_ids:
+            return
+        q = q.where(PMProduct.id.in_(list(product_ids)))
+    else:
+        # all products that have competitor prices — a Sell Price saved before
+        # Competitive Pricings existed is left alone
+        q = q.where(PMProduct.id.in_(select(PMCompetitorPrice.product_id)))
+    products = (await db.execute(q)).scalars().all()
+    if not products:
+        return
+    rows = (await db.execute(select(PMCompetitorPrice.product_id, PMCompetitorPrice.price)
+                             .where(PMCompetitorPrice.product_id.in_([p.id for p in products])))).all()
+    by_product = {}
+    for pid, price in rows:
+        by_product.setdefault(pid, []).append(price)
+    for p in products:
+        p.product_price = apply_method(method, by_product.get(p.id, []))

@@ -28,8 +28,11 @@ from models.product_master import (
     PMDropdownValue, HWRam, HWStorage, PMProduct,
     DROPDOWN_CATEGORIES, DROPDOWN_LABELS, DROPDOWN_PARENT, PART_FIELDS,
     build_product_name, parts_done, product_figures,
+    PMCompetitiveList, PMCompetitorPrice, COMPETITIVE_METHODS, COMPETITIVE_METHOD_KEY,
+    competitive_method, recompute_sell_prices,
 )
 from services.audit_engine import audit
+from utils.timezone import app_now
 
 router = APIRouter(prefix="/product-master", tags=["product-master"], dependencies=[Depends(verify_csrf)])
 
@@ -100,21 +103,31 @@ def _dropdown_json(dd: dict) -> dict:
 async def _product_rows(db: AsyncSession) -> list:
     rows = (await db.execute(
         select(PMProduct, HWRam, HWStorage)
-        .join(HWRam, PMProduct.ram_id == HWRam.id)
-        .join(HWStorage, PMProduct.storage_id == HWStorage.id)
+        .outerjoin(HWRam, PMProduct.ram_id == HWRam.id)
+        .outerjoin(HWStorage, PMProduct.storage_id == HWStorage.id)
         .order_by(PMProduct.updated_at.desc())
     )).all()
     return [_product_dict(p, r, s) for p, r, s in rows]
 
 
-def _product_dict(p: PMProduct, ram: HWRam, sto: HWStorage) -> dict:
-    fig = product_figures(p, ram.ram_price, sto.storage_price)
+def _product_dict(p: PMProduct, ram, sto) -> dict:
+    fig = product_figures(p, ram.ram_price if ram else None, sto.storage_price if sto else None)
     return {
         "id": str(p.id), "product_name": p.product_name,
         "make": p.make, "model": p.model, "cpu": p.cpu, "cpu_gen": p.cpu_gen,
-        "ram_id": str(ram.id), "ram": ram.ram_name, "ram_price": _num(ram.ram_price),
-        "storage_id": str(sto.id), "storage": sto.storage_name, "storage_price": _num(sto.storage_price),
+        "ram_id": str(ram.id) if ram else "", "ram": ram.ram_name if ram else None,
+        "ram_category": ram.ram_category if ram else "", "ram_capacity": ram.ram_capacity if ram else "",
+        "ram_price": _num(ram.ram_price) if ram else None,
+        "storage_id": str(sto.id) if sto else "", "storage": sto.storage_name if sto else None,
+        "storage_category": sto.storage_category if sto else "",
+        "storage_capacity": sto.storage_capacity if sto else "",
+        "storage_price": _num(sto.storage_price) if sto else None,
         "product_price": _num(p.product_price),
+        "pricing_done": p.product_price is not None and ram is not None and sto is not None,
+        # Product Price Pending on Product Master: any of RAM, Storage, RAM
+        # Price, Storage Price or Product Price still missing (2026-10-14)
+        "price_complete": (p.product_price is not None and ram is not None and sto is not None
+                           and ram.ram_price is not None and sto.storage_price is not None),
         "parts": {col: _num(getattr(p, col)) for col, _ in PART_FIELDS},
         "parts_done": parts_done(p),
         "parts_any": any(getattr(p, col) is not None for col, _ in PART_FIELDS),
@@ -129,8 +142,8 @@ def _product_dict(p: PMProduct, ram: HWRam, sto: HWStorage) -> dict:
 async def _product_payload(db, product_id) -> dict:
     p, r, s = (await db.execute(
         select(PMProduct, HWRam, HWStorage)
-        .join(HWRam, PMProduct.ram_id == HWRam.id)
-        .join(HWStorage, PMProduct.storage_id == HWStorage.id)
+        .outerjoin(HWRam, PMProduct.ram_id == HWRam.id)
+        .outerjoin(HWStorage, PMProduct.storage_id == HWStorage.id)
         .where(PMProduct.id == product_id)
     )).one()
     return _product_dict(p, r, s)
@@ -151,6 +164,8 @@ async def product_master_page(request: Request, db: AsyncSession = Depends(get_d
         "dropdowns": dd, "dropdown_json": _dropdown_json(dd), "dropdown_by_id": by_id,
         "categories": DROPDOWN_CATEGORIES, "dropdown_parent": DROPDOWN_PARENT,
         "part_fields": PART_FIELDS, "rams": rams, "storages": stos,
+        "comp_lists": await _comp_lists(db), "comp_method": await competitive_method(db),
+        "comp_methods": COMPETITIVE_METHODS,
         "active_tab": request.query_params.get("tab", "products"),
     })
 
@@ -172,10 +187,10 @@ async def dropdown_save(request: Request,
         parent = (await db.execute(select(PMDropdownValue).where(
             PMDropdownValue.id == _uuid_or_none(parent_id),
             PMDropdownValue.category == DROPDOWN_PARENT[category]))).scalar_one_or_none()
-        if not parent:
+        if not parent and category != "cpu_gen":
             return _err(f"Select a {DROPDOWN_LABELS[DROPDOWN_PARENT[category]]}.")
-    if category == "cpu_gen":
-        value = f"{parent.value}/{value}"
+    # CPU Gen is saved as typed with no CPU (2026-10-14). An existing mapped
+    # value keeps its link when edited (parent_id not sent from the modal).
     if category == "discount_pct":
         try:
             pct = Decimal(value.rstrip("%").strip())
@@ -203,7 +218,8 @@ async def dropdown_save(request: Request,
             return _err(f'"{value}" already exists.')
         old = {"value": row.value, "parent_id": str(row.parent_id) if row.parent_id else None}
         row.value = value
-        row.parent_id = parent.id if parent else None
+        if category != "cpu_gen":
+            row.parent_id = parent.id if parent else None
         if category == "cpu":
             # keep each linked CPU Gen's "<CPU>/<Gen>" prefix in step
             for child in (await db.execute(select(PMDropdownValue).where(
@@ -251,7 +267,7 @@ async def dropdown_delete(item_id: str, request: Request, db: AsyncSession = Dep
 @router.post("/products/save")
 async def product_save(request: Request,
                        make_id: str = Form(""), model_id: str = Form(""), cpu_id: str = Form(""),
-                       cpu_gen_id: str = Form(""), ram_id: str = Form(""), storage_id: str = Form(""),
+                       cpu_gen_id: str = Form(""),
                        product_id: str = Form(""),
                        db: AsyncSession = Depends(get_db),
                        current_user: User = Depends(require_module_perm(PERM_PRODUCT))):
@@ -267,19 +283,20 @@ async def product_save(request: Request,
     make = await pick("make", make_id)
     model = await pick("model", model_id, make) if make else None
     cpu = await pick("cpu", cpu_id)
-    gen = await pick("cpu_gen", cpu_gen_id, cpu) if cpu else None
-    ram = (await db.execute(select(HWRam).where(HWRam.id == _uuid_or_none(ram_id)))).scalar_one_or_none()
-    sto = (await db.execute(select(HWStorage).where(HWStorage.id == _uuid_or_none(storage_id)))).scalar_one_or_none()
-    missing = [n for n, v in (("Make", make), ("Model", model), ("CPU", cpu), ("CPU Gen", gen),
-                              ("RAM", ram), ("Storage", sto)) if v is None]
+    gen = None
+    if cpu:
+        # a CPU Gen mapped to this CPU, or a plain one mapped to no CPU
+        gen = await pick("cpu_gen", cpu_gen_id)   # independent of CPU
+    missing = [n for n, v in (("Make", make), ("Model", model), ("CPU", cpu), ("CPU Gen", gen)) if v is None]
     if missing:
         return _err("Select " + ", ".join(missing) + ".")
 
-    name = build_product_name(make.value, model.value, gen.value, ram.ram_name, sto.storage_name)
+    # RAM / Storage are set on the Product Pricing page (v2)
+    name = build_product_name(make.value, model.value, cpu.value, gen.value)
     dup = (await db.execute(select(PMProduct).where(func.lower(PMProduct.product_name) == name.lower())
                             )).scalars().first()
     values = {"make": make.value, "model": model.value, "cpu": cpu.value, "cpu_gen": gen.value,
-              "ram_id": ram.id, "storage_id": sto.id, "product_name": name}
+              "product_name": name}
     if product_id:
         p = (await db.execute(select(PMProduct).where(PMProduct.id == _uuid_or_none(product_id)))).scalar_one_or_none()
         if not p:
@@ -341,17 +358,126 @@ async def product_discount(product_id: str, request: Request, discount_pct: str 
     return JSONResponse({"ok": True, "product": await _product_payload(db, p.id)})
 
 
+# ── Competitive Pricings tab ──────────────────────────────────────────────────
+
+async def _comp_lists(db):
+    return (await db.execute(select(PMCompetitiveList).order_by(
+        PMCompetitiveList.display_order, PMCompetitiveList.name))).scalars().all()
+
+
+@router.post("/competitive/save")
+async def competitive_save(request: Request, name: str = Form(""), item_id: str = Form(""),
+                           db: AsyncSession = Depends(get_db),
+                           current_user: User = Depends(require_module_perm(PERM_PRODUCT))):
+    name = (name or "").strip()
+    if not name:
+        return _err("Enter a Competitive List Name.")
+    if len(name) > 100:
+        return _err("Name is too long (100 characters max).")
+    dup = (await db.execute(select(PMCompetitiveList).where(
+        func.lower(PMCompetitiveList.name) == name.lower()))).scalars().first()
+    if item_id:
+        row = (await db.execute(select(PMCompetitiveList).where(
+            PMCompetitiveList.id == _uuid_or_none(item_id)))).scalar_one_or_none()
+        if not row:
+            return _err("List not found.", 404)
+        if dup and dup.id != row.id:
+            return _err(f'"{name}" already exists.')
+        old = row.name
+        row.name = name
+        await audit(db, action="PM_COMPETITIVE_LIST_EDITED", user=current_user, table_name="pm_competitive_lists",
+                    record_id=str(row.id), old_value={"name": old}, new_value={"name": name}, request=request)
+    else:
+        if dup:
+            return _err(f'"{name}" already exists.')
+        order = (await db.execute(select(func.coalesce(func.max(PMCompetitiveList.display_order), -1)))).scalar() + 1
+        row = PMCompetitiveList(name=name, display_order=order, created_by=current_user.username)
+        db.add(row)
+        await db.flush()
+        await audit(db, action="PM_COMPETITIVE_LIST_ADDED", user=current_user, table_name="pm_competitive_lists",
+                    record_id=str(row.id), new_value={"name": name}, request=request)
+    await db.commit()
+    return JSONResponse({"ok": True})
+
+
+@router.post("/competitive/{item_id}/delete")
+async def competitive_delete(item_id: str, request: Request, db: AsyncSession = Depends(get_db),
+                             current_user: User = Depends(require_module_perm(PERM_PRODUCT))):
+    from sqlalchemy import delete as sa_delete
+    row = (await db.execute(select(PMCompetitiveList).where(
+        PMCompetitiveList.id == _uuid_or_none(item_id)))).scalar_one_or_none()
+    if not row:
+        return _err("List not found.", 404)
+    affected = set((await db.execute(select(PMCompetitorPrice.product_id).where(
+        PMCompetitorPrice.list_id == row.id))).scalars().all())
+    await audit(db, action="PM_COMPETITIVE_LIST_DELETED", user=current_user, table_name="pm_competitive_lists",
+                record_id=str(row.id), old_value={"name": row.name, "prices_removed": len(affected)}, request=request)
+    await db.execute(sa_delete(PMCompetitorPrice).where(PMCompetitorPrice.list_id == row.id))
+    await db.delete(row)
+    await db.flush()
+    await recompute_sell_prices(db, affected)
+    await db.commit()
+    return JSONResponse({"ok": True})
+
+
+@router.post("/competitive/method")
+async def competitive_set_method(request: Request, method: str = Form(""), db: AsyncSession = Depends(get_db),
+                                 current_user: User = Depends(require_module_perm(PERM_PRODUCT))):
+    from models.settings import AppSetting
+    if method not in dict(COMPETITIVE_METHODS):
+        return _err("Pick Average, Maximum or Minimum.")
+    row = (await db.execute(select(AppSetting).where(AppSetting.key == COMPETITIVE_METHOD_KEY))).scalar_one_or_none()
+    old = row.value if row else None
+    if row:
+        row.value, row.updated_by = method, current_user.username
+    else:
+        db.add(AppSetting(key=COMPETITIVE_METHOD_KEY, value=method, updated_by=current_user.username,
+                          description="Product Master: Competitive Pricings formula method"))
+    await db.flush()
+    await recompute_sell_prices(db)      # every product with competitor prices
+    await audit(db, action="PM_COMPETITIVE_METHOD_SET", user=current_user, table_name="app_settings",
+                record_id=COMPETITIVE_METHOD_KEY, old_value={"method": old}, new_value={"method": method},
+                request=request)
+    await db.commit()
+    return JSONResponse({"ok": True})
+
+
 # ── Hardware page ─────────────────────────────────────────────────────────────
 
 @router.get("/hardware", response_class=HTMLResponse)
 async def hardware_page(request: Request, db: AsyncSession = Depends(get_db),
                         current_user: User = Depends(require_module_perm(PERM_HARDWARE))):
+    """Every Type x Size combination from Dropdown Configuration is listed
+    (2026-10-14). A combination only becomes an hw_ram / hw_storage row once
+    its price is saved, so unpriced rows need no schema change; a saved row
+    whose Type or Size was later removed from the dropdowns is still listed."""
     dd = await _dropdowns(db)
-    rams = (await db.execute(select(HWRam).order_by(HWRam.ram_name))).scalars().all()
-    stos = (await db.execute(select(HWStorage).order_by(HWStorage.storage_name))).scalars().all()
+    rams = (await db.execute(select(HWRam))).scalars().all()
+    stos = (await db.execute(select(HWStorage))).scalars().all()
+
+    def grid(types, sizes, saved, name_of, cat_of, cap_of, price_of):
+        by_name = {name_of(r).lower(): r for r in saved}
+        rows, seen = [], set()
+        for t in types:
+            for z in sizes:
+                name = f"{t.value}/{z.value}"
+                r = by_name.get(name.lower())
+                seen.add(name.lower())
+                rows.append({"id": str(r.id) if r else "", "name": name, "category": t.value,
+                             "capacity": z.value, "price": price_of(r) if r else None})
+        for r in saved:
+            if name_of(r).lower() not in seen:
+                rows.append({"id": str(r.id), "name": name_of(r), "category": cat_of(r),
+                             "capacity": cap_of(r), "price": price_of(r)})
+        return rows
+
+    ram_rows = grid(dd["ram_category"], dd["ram_capacity"], rams, lambda r: r.ram_name,
+                    lambda r: r.ram_category, lambda r: r.ram_capacity, lambda r: r.ram_price)
+    sto_rows = grid(dd["storage_category"], dd["storage_capacity"], stos, lambda r: r.storage_name,
+                    lambda r: r.storage_category, lambda r: r.storage_capacity, lambda r: r.storage_price)
     return templates.TemplateResponse("product_master/hardware.html", {
         "request": request, "current_user": current_user,
-        "rams": rams, "storages": stos, "dropdowns": dd,
+        "ram_rows": ram_rows, "storage_rows": sto_rows,
     })
 
 
@@ -389,15 +515,6 @@ async def _hw_save(request, db, current_user, kind, item_id, category, capacity,
         old_name = row.ram_name if kind == "ram" else row.storage_name
         for k, v in fields.items():
             setattr(row, k, v)
-        if old_name != name:
-            # products carry the RAM / Storage name inside their Product Name
-            fk = PMProduct.ram_id if kind == "ram" else PMProduct.storage_id
-            for p, r, s in (await db.execute(
-                    select(PMProduct, HWRam, HWStorage)
-                    .join(HWRam, PMProduct.ram_id == HWRam.id)
-                    .join(HWStorage, PMProduct.storage_id == HWStorage.id)
-                    .where(fk == row.id))).all():
-                p.product_name = build_product_name(p.make, p.model, p.cpu_gen, r.ram_name, s.storage_name)
         await audit(db, action=f"HW_{kind.upper()}_EDITED", user=current_user, table_name=Model.__tablename__,
                     record_id=str(row.id), new_value={"name": name, "price": str(amount)}, request=request)
     else:
@@ -413,7 +530,7 @@ async def _hw_save(request, db, current_user, kind, item_id, category, capacity,
     except IntegrityError:
         await db.rollback()
         return _err("Could not save — a product with the same name already exists.")
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "id": str(row.id)})
 
 
 async def _hw_delete(request, db, current_user, kind, item_id):
@@ -459,27 +576,94 @@ async def pricing_page(request: Request, db: AsyncSession = Depends(get_db),
                        current_user: User = Depends(require_module_perm(PERM_PRICING))):
     return templates.TemplateResponse("product_master/pricing.html", {
         "request": request, "current_user": current_user, "products": await _product_rows(db),
+        "dropdowns": await _dropdowns(db), "comp_lists": await _comp_lists(db),
+        "comp_prices": await _comp_price_map(db), "comp_method": await competitive_method(db),
     })
 
 
+async def _comp_price_map(db, product_id=None) -> dict:
+    """{product_id: {list_id: price}}"""
+    q = select(PMCompetitorPrice.product_id, PMCompetitorPrice.list_id, PMCompetitorPrice.price)
+    if product_id is not None:
+        q = q.where(PMCompetitorPrice.product_id == product_id)
+    out = {}
+    for pid, lid, price in (await db.execute(q)).all():
+        out.setdefault(str(pid), {})[str(lid)] = float(price)
+    return out
+
+
 @router.post("/pricing/{product_id}/save")
-async def pricing_save(product_id: str, request: Request, product_price: str = Form(""),
+async def pricing_save(product_id: str, request: Request,
+                       ram_type: str = Form(""), ram_size: str = Form(""),
+                       storage_type: str = Form(""), storage_size: str = Form(""),
                        db: AsyncSession = Depends(get_db),
                        current_user: User = Depends(require_module_perm(PERM_PRICING))):
+    """RAM / Storage plus the competitor prices (form fields comp_<list id>).
+    Sell Price is never posted: it is the Formula Method over the filled
+    competitor prices (recompute_sell_prices). RAM is the Hardware RAM row
+    named "<Type>/<Size>", so its price comes from the Hardware page."""
     p = (await db.execute(select(PMProduct).where(PMProduct.id == _uuid_or_none(product_id)))).scalar_one_or_none()
     if not p:
         return _err("Product not found.", 404)
+    form = await request.form()
+
+    async def hw(kind, typ, size):
+        typ, size = (typ or "").strip(), (size or "").strip()
+        label = "RAM" if kind == "ram" else "Storage"
+        if not typ and not size:
+            return None, None
+        if not typ or not size:
+            return None, f"Pick both {label} Type and {label} Size."
+        name = f"{typ}/{size}"
+        Model = HWRam if kind == "ram" else HWStorage
+        col = Model.ram_name if kind == "ram" else Model.storage_name
+        row = (await db.execute(select(Model).where(func.lower(col) == name.lower()))).scalars().first()
+        if not row:
+            return None, f"{label} {name} has no price yet. Save its price on the Hardware page first."
+        return row, None
+
+    ram, err = await hw("ram", ram_type, ram_size)
+    if err:
+        return _err(err)
+    sto, err = await hw("storage", storage_type, storage_size)
+    if err:
+        return _err(err)
+
+    lists = await _comp_lists(db)
+    new_prices = {}
     try:
-        amount = _money(product_price, "Product Price")
+        for cl in lists:
+            new_prices[cl.id] = _money(form.get(f"comp_{cl.id}", ""), cl.name)
     except ValueError as e:
         return _err(str(e))
-    if amount is None:
-        return _err("Enter the Product Price.")
-    old = str(p.product_price) if p.product_price is not None else None
-    p.product_price = amount
+    existing = {r.list_id: r for r in (await db.execute(select(PMCompetitorPrice).where(
+        PMCompetitorPrice.product_id == p.id))).scalars().all()}
+    old = {"ram_id": str(p.ram_id) if p.ram_id else None, "storage_id": str(p.storage_id) if p.storage_id else None,
+           "sell_price": str(p.product_price) if p.product_price is not None else None,
+           "competitor": {str(k): str(v.price) for k, v in existing.items()}}
+    for lid, price in new_prices.items():
+        cur = existing.get(lid)
+        if price is None:
+            if cur is not None:
+                await db.delete(cur)
+        elif cur is None:
+            db.add(PMCompetitorPrice(product_id=p.id, list_id=lid, price=price, updated_by=current_user.username))
+        else:
+            cur.price, cur.updated_by = price, current_user.username
+    if ram is not None:
+        p.ram_id = ram.id
+    if sto is not None:
+        p.storage_id = sto.id
+    await db.flush()
+    if lists:
+        await recompute_sell_prices(db, [p.id])
+    p.updated_at = app_now()
     await audit(db, action="PM_PRODUCT_PRICE_SET", user=current_user, table_name="pm_products",
-                record_id=str(p.id), old_value={"product_price": old},
-                new_value={"product_price": str(amount)}, request=request)
+                record_id=str(p.id), old_value=old,
+                new_value={"ram": ram.ram_name if ram else None, "storage": sto.storage_name if sto else None,
+                           "sell_price": str(p.product_price) if p.product_price is not None else None,
+                           "competitor": {str(k): (str(v) if v is not None else None) for k, v in new_prices.items()}},
+                request=request)
     await db.commit()
     return JSONResponse({"ok": True, "product": await _product_payload(db, p.id)})
 
