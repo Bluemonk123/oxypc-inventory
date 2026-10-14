@@ -639,11 +639,16 @@ async def dealers_data(
         select(func.count()).select_from(base_query.subquery())
     )).scalar() or 0
 
-    # Newest added first (same default as Assign Dealer Leads); dealer_code
-    # breaks ties so rows inserted in the same upload keep a stable order
-    # across pages.
+    # Dealers not yet called come first (newest added first); a dealer moves
+    # to the end once a call is logged against it, so the most recently
+    # called dealer is last (2026-10-14). dealer_code breaks ties so rows
+    # inserted in the same upload keep a stable order across pages.
+    last_call = (select(func.max(DealerCall.call_date))
+                 .where(DealerCall.dealer_id == Dealer.id)
+                 .correlate(Dealer).scalar_subquery())
     dealers = (await db.execute(
-        base_query.order_by(Dealer.created_at.desc().nulls_last(), Dealer.dealer_code.desc())
+        base_query.order_by(last_call.asc().nulls_first(), Dealer.created_at.desc().nulls_last(),
+                            Dealer.dealer_code.desc())
         .offset(start).limit(length)
     )).scalars().all()
     dealer_ids = [d.id for d in dealers]
