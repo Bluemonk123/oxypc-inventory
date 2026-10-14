@@ -155,7 +155,7 @@
               title="Flag the selected tags as Urgent at inventory">
         <i class="bi bi-flag-fill me-1"></i>Flag Items (<span id="flagItemsCount">0</span>)
       </button>
-      <button type="button" id="bulkMoveL1L2Btn" class="btn btn-outline-warning btn-sm d-none text-nowrap" disabled>
+      <button type="button" id="bulkMoveL1L2Btn" class="btn btn-primary btn-sm d-none text-nowrap" disabled>
         <i class="bi bi-tools me-1"></i>Bulk Move to L1/L2 (<span id="bulkMoveL1L2Count">0</span>)
       </button>
       <button type="button" id="customiseBtn" class="btn btn-outline-primary btn-sm d-none text-nowrap"
@@ -196,7 +196,7 @@
       <span id="rsSelectedWrap" class="text-muted small text-nowrap"><span id="rsSelectedCount">0</span> selected</span>
       <input type="text" id="rsSearchBox" class="form-control form-control-sm" style="width:220px;"
              placeholder="Search Tag / Serial / Model">
-      <button type="button" id="rsAssignBucketBtn" class="btn btn-sm btn-outline-primary text-nowrap" disabled>
+      <button type="button" id="rsAssignBucketBtn" class="btn btn-sm btn-primary text-nowrap" disabled>
         <i class="bi bi-box me-1"></i>Assign Bucket
       </button>
     </div>
@@ -760,7 +760,6 @@ function updateStockSel(){
   $('#bulkMoveL1L2Btn').prop('disabled', n === 0);
   // Primary (filled) once something's selected and it's actually clickable;
   // outline while disabled, so the enabled state reads as the prominent one.
-  $('#bulkMoveL1L2Btn').toggleClass('btn-primary', n > 0).toggleClass('btn-outline-warning', n === 0);
   $('#customiseCount').text(n);
   $('#customiseBtn').toggleClass('d-none', n === 0);
   $('#flagItemsCount').text(n);
