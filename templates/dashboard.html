@@ -497,13 +497,13 @@
     <a href="{{ link }}" class="text-decoration-none">
       <div class="dash-tile cat-card p-3 h-100" style="background:{{ bg }}">
         <div class="dash-tile-lbl fw-semibold">{{ label }}</div>
-        {# Big number = Under Pipeline: active devices of this category still
-           being worked on — the category total (which already leaves out GRN
-           Receipt, Sold, Returned, Scrapped, Scrap for Sale) minus Ready to
-           Sale. `n` is the Ready to Sale count. #}
+        {# Big number = all active devices of this category (leaves out GRN
+           Receipt, Sold, Returned, Scrapped, Scrap for Sale, trashed), split
+           below into Under Pipeline (still being worked on) + Ready to Sale.
+           `n` is the Ready to Sale count. #}
         {% set _total = category_counts.get(cat, {}).get('total', 0) %}
-        <div class="dash-tile-num">{{ [_total - n, 0] | max }}</div>
-        <div class="dash-tile-sub">Under Pipeline</div>
+        <div class="dash-tile-num">{{ _total }}</div>
+        <div class="dash-tile-sub">Under Pipeline: <strong>{{ [_total - n, 0] | max }}</strong></div>
         <div class="dash-tile-sub">Ready to Sale: <strong>{{ n }}</strong></div>
         <i class="bi {{ icon }} dash-tile-wm"></i>
       </div>
