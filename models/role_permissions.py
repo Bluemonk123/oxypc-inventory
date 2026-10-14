@@ -209,6 +209,14 @@ def set_cached_perms(role_name: str, perms: dict) -> None:
     _PERM_CACHE[role_name] = perms
 
 
+# Modules that start OFF for every role until an admin enables them in Master
+# Data -> Permission Matrix (has_perm's normal default is permissive). Used
+# for the Product Master pages (2026-10-14). Admin still always has access.
+DEFAULT_DISABLED_MODULES = frozenset({
+    "pm_product_master", "pm_hardware", "pm_spare_parts", "pm_product_pricing",
+})
+
+
 def has_perm(role_name: str, module: str, action: str = "enable") -> bool:
     """Check if role_name has the given action on module.
     Admin always returns True. Unknown roles/modules default to True (permissive).
@@ -222,11 +230,12 @@ def has_perm(role_name: str, module: str, action: str = "enable") -> bool:
     if role_name == "admin":
         return True
     role_perms = _PERM_CACHE.get(role_name)
+    default = module not in DEFAULT_DISABLED_MODULES
     if not role_perms:
-        return True   # no matrix configured → allow everything
+        return default   # no matrix configured → allow (except default-off modules)
     mod_perms = role_perms.get(module)
     if not mod_perms:
-        return True   # module not in matrix → allow
+        return default   # module not in matrix → allow (except default-off modules)
     return bool(mod_perms.get("enable", True))
 
 

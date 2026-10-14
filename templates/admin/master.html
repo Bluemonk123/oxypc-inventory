@@ -347,7 +347,8 @@
                     {% elif action_key == 'can_edit' %}{% set checked = row.can_edit %}
                     {% else %}{% set checked = row.can_upload %}{% endif %}
                   {% else %}
-                    {% set checked = (action_key == 'can_enable') %}
+                    {# Unsaved row: Enable ticked, except modules that start OFF #}
+                    {% set checked = (action_key == 'can_enable') and mod_key not in (default_disabled_modules|default([])) %}
                   {% endif %}
                   <td class="text-center">
                     <div class="form-check d-flex justify-content-center">

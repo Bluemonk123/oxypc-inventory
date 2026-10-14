@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+{% block title %}Hardware — OxyPC{% endblock %}
+{% block page_title %}Hardware{% endblock %}
+{% block content %}
+{% macro money(v) %}₹{{ '{:,.2f}'.format(v).rstrip('0').rstrip('.') }}{% endmacro %}
+{% set sections = [
+  ('ram', 'RAM Details', 'bi-memory', 'RAM', rams, dropdowns['ram_category'], dropdowns['ram_capacity']),
+  ('storage', 'Storage Details', 'bi-device-hdd', 'Storage', storages, dropdowns['storage_category'], dropdowns['storage_capacity']),
+] %}
+{% for kind, title, icon, label, rows, cats, caps in sections %}
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
+    <button type="button" class="btn btn-sm btn-primary hw-add" data-kind="{{ kind }}"><i class="bi bi-plus-circle me-1"></i>Add New {{ label }}</button>
+  </div>
+  <div class="card-body">
+    <table id="hw_{{ kind }}_table" class="table table-hover mb-0" style="width:100%">
+      <thead class="table-dark"><tr>
+        <th>{{ label }} Name</th><th>{{ label }} Category</th><th>{{ label }} Capacity</th><th>{{ label }} Price</th><th>Action</th>
+      </tr></thead>
+      <tbody>
+      {% for r in rows %}
+        {% set name = r.ram_name if kind == 'ram' else r.storage_name %}
+        {% set cat = r.ram_category if kind == 'ram' else r.storage_category %}
+        {% set cap = r.ram_capacity if kind == 'ram' else r.storage_capacity %}
+        {% set price = r.ram_price if kind == 'ram' else r.storage_price %}
+        <tr>
+          <td class="fw-semibold">{{ name }}</td><td>{{ cat }}</td><td>{{ cap }}</td>
+          <td data-order="{{ price }}">{{ money(price) }}</td>
+          <td><div class="d-flex gap-1 justify-content-center">
+            <button type="button" class="btn btn-sm btn-outline-warning py-0 px-1 hw-edit" title="Edit"
+                    data-kind="{{ kind }}" data-id="{{ r.id }}" data-cat="{{ cat }}" data-cap="{{ cap }}" data-price="{{ price }}"><i class="bi bi-pencil"></i></button>
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 hw-del" title="Delete"
+                    data-kind="{{ kind }}" data-id="{{ r.id }}" data-name="{{ name }}"><i class="bi bi-trash3"></i></button>
+          </div></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal fade" id="hw_{{ kind }}_modal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title">Add New {{ label }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <input type="hidden" class="hw-id">
+    <div class="mb-3"><label class="form-label fw-semibold">{{ label }} Category</label>
+      <select class="form-select hw-cat"><option value="">-- Select --</option>
+        {% for d in cats %}<option value="{{ d.value }}">{{ d.value }}</option>{% endfor %}</select></div>
+    <div class="mb-3"><label class="form-label fw-semibold">{{ label }} Capacity</label>
+      <select class="form-select hw-cap"><option value="">-- Select --</option>
+        {% for d in caps %}<option value="{{ d.value }}">{{ d.value }}</option>{% endfor %}</select></div>
+    <div class="mb-1"><label class="form-label fw-semibold">{{ label }} Price</label>
+      <div class="input-group"><span class="input-group-text">₹</span>
+        <input type="number" class="form-control hw-price" min="0" step="0.01"></div></div>
+    {% if not cats or not caps %}<div class="alert alert-warning small mt-3 mb-0">Add {{ label }} Category and Capacity values in Product Master → Dropdown Configuration first.</div>{% endif %}
+    <div class="text-danger small mt-2 hw-err"></div>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button type="button" class="btn btn-primary hw-save" data-kind="{{ kind }}">Save</button></div>
+</div></div></div>
+{% endfor %}
+{% endblock %}
+
+{% block scripts %}
+{% include "product_master/_common.html" %}
+<script>
+(function () {
+  initGlobalTable('#hw_ram_table', { order: [[0, 'asc']] });
+  initGlobalTable('#hw_storage_table', { order: [[0, 'asc']] });
+  var LABEL = { ram: 'RAM', storage: 'Storage' };
+  function open(kind, d) {
+    var m = $('#hw_' + kind + '_modal');
+    m.find('.modal-title').text((d ? 'Edit ' : 'Add New ') + LABEL[kind]);
+    m.find('.hw-id').val(d ? d.id : ''); m.find('.hw-cat').val(d ? d.cat : '');
+    m.find('.hw-cap').val(d ? d.cap : ''); m.find('.hw-price').val(d ? d.price : ''); m.find('.hw-err').text('');
+    bootstrap.Modal.getOrCreateInstance(m[0]).show();
+  }
+  $(document).on('click', '.hw-add', function () { open($(this).data('kind')); });
+  $(document).on('click', '.hw-edit', function () { var b = $(this);
+    open(b.data('kind'), { id: b.data('id'), cat: String(b.data('cat')), cap: String(b.data('cap')), price: b.data('price') }); });
+  $(document).on('click', '.hw-save', function () {
+    var btn = this, kind = $(btn).data('kind'), m = $('#hw_' + kind + '_modal');
+    btn.disabled = true;
+    pmPost('/product-master/hardware/' + kind + '/save', { item_id: m.find('.hw-id').val(),
+      category: m.find('.hw-cat').val(), capacity: m.find('.hw-cap').val(), price: m.find('.hw-price').val() })
+      .then(function (j) { btn.disabled = false; if (j.ok) location.reload(); else m.find('.hw-err').text(j.error); });
+  });
+  $(document).on('click', '.hw-del', function () {
+    var b = $(this);
+    if (!confirm('Delete "' + b.data('name') + '"?')) return;
+    pmPost('/product-master/hardware/' + b.data('kind') + '/' + b.data('id') + '/delete', {}).then(function (j) {
+      if (j.ok) location.reload(); else alert(j.error);
+    });
+  });
+})();
+</script>
+{% endblock %}

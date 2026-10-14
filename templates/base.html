@@ -561,6 +561,33 @@
       {% endif %}
 
 
+      {# ── PRODUCT MASTER (2026-10-14) — each page OFF by default for every role
+         until enabled in Master Data -> Permission Matrix; admin always sees them. #}
+      {% if has_perm(role,'pm_product_master','enable') and not module_hidden('pm_product_master') or has_perm(role,'pm_hardware','enable') and not module_hidden('pm_hardware') or has_perm(role,'pm_spare_parts','enable') and not module_hidden('pm_spare_parts') or has_perm(role,'pm_product_pricing','enable') and not module_hidden('pm_product_pricing') %}
+      <li class="nav-section">PRODUCT MASTER</li>
+      {% endif %}
+      {% if has_perm(role,'pm_product_master','enable') and not module_hidden('pm_product_master') %}
+      <li><a href="/product-master" class="nav-link {% if request.url.path == '/product-master' %}active{% endif %}">
+        <i class="bi bi-box-seam me-2"></i> {{ sidebar_label('pm_product_master', 'Product Master') }}
+      </a></li>
+      {% endif %}
+      {% if has_perm(role,'pm_hardware','enable') and not module_hidden('pm_hardware') %}
+      <li><a href="/product-master/hardware" class="nav-link {% if '/product-master/hardware' in request.url.path %}active{% endif %}">
+        <i class="bi bi-memory me-2"></i> {{ sidebar_label('pm_hardware', 'Hardware') }}
+      </a></li>
+      {% endif %}
+      {% if has_perm(role,'pm_spare_parts','enable') and not module_hidden('pm_spare_parts') %}
+      <li><a href="/product-master/spare-parts" class="nav-link {% if '/product-master/spare-parts' in request.url.path %}active{% endif %}">
+        <i class="bi bi-tools me-2"></i> {{ sidebar_label('pm_spare_parts', 'Spare Parts') }}
+      </a></li>
+      {% endif %}
+      {% if has_perm(role,'pm_product_pricing','enable') and not module_hidden('pm_product_pricing') %}
+      <li><a href="/product-master/pricing" class="nav-link {% if '/product-master/pricing' in request.url.path %}active{% endif %}">
+        <i class="bi bi-tags me-2"></i> {{ sidebar_label('pm_product_pricing', 'Product Pricing') }}
+      </a></li>
+      {% endif %}
+
+
       {# ── REPORTS ─────────────────────────────────────────────────────── #}
       {# Stock Aging / Overdue Devices / Receivables / Market Intel were moved
          out of this section into the Application Settings accordion below. #}

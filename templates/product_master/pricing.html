@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block title %}Product Pricing — OxyPC{% endblock %}
+{% block page_title %}Product Pricing{% endblock %}
+{% block content %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+    <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Product Pricing</span>
+  </div>
+  <div class="card-body">
+    <table id="ppTable" class="table table-hover mb-0" style="width:100%">
+      <thead class="table-dark"><tr>
+        <th>Product Name</th><th>Make</th><th>Model</th><th>CPU Gen</th><th>RAM</th><th>Storage</th>
+        <th>Product Price</th><th>Status</th><th>Action</th>
+      </tr></thead>
+      <tbody>
+      {% for p in products %}
+        <tr data-id="{{ p.id }}">
+          <td><div class="fw-semibold text-nowrap">{{ p.make }}/{{ p.model }}/{{ p.cpu_gen }}</div><div class="mt-1 text-nowrap"><span class="badge bg-light text-dark border me-1">{{ p.ram }}</span><span class="badge bg-light text-dark border">{{ p.storage }}</span></div></td>
+          <td>{{ p.make }}</td><td>{{ p.model }}</td><td>{{ p.cpu_gen }}</td>
+          <td>{{ p.ram }}</td><td>{{ p.storage }}</td>
+          <td data-order="{{ p.product_price if p.product_price is not none else -1 }}">
+            <div class="input-group input-group-sm" style="min-width:140px">
+              <span class="input-group-text">₹</span>
+              <input type="number" class="form-control pp-price" min="0" step="0.01"
+                     value="{{ '%g'|format(p.product_price) if p.product_price is not none else '' }}">
+            </div>
+          </td>
+          <td class="pp-status">{% if p.product_price is not none %}<span class="badge bg-success">Pricing Done</span>{% else %}<span class="badge bg-warning text-dark">Pricing Pending</span>{% endif %}</td>
+          <td><button type="button" class="btn btn-sm btn-primary pp-save" disabled><i class="bi bi-save me-1"></i>Save</button></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% include "product_master/_common.html" %}
+<script>
+(function () {
+  initGlobalTable('#ppTable', { order: [[0, 'asc']] });
+  // Save enables once a price is typed (and differs from what is saved)
+  $(document).on('input', '.pp-price', function () {
+    var v = this.value.trim();
+    $(this).closest('tr').find('.pp-save').prop('disabled', v === '' || v === (this.dataset.saved || this.defaultValue));
+  });
+  $(document).on('click', '.pp-save', function () {
+    var btn = this, tr = $(btn).closest('tr'), inp = tr.find('.pp-price')[0];
+    btn.disabled = true;
+    pmPost('/product-master/pricing/' + tr.data('id') + '/save', { product_price: inp.value }).then(function (j) {
+      if (!j.ok) { btn.disabled = false; showFlash('danger', j.error); return; }
+      inp.dataset.saved = String(j.product.product_price);
+      inp.value = j.product.product_price;
+      tr.find('.pp-status').html('<span class="badge bg-success">Pricing Done</span>');
+      showFlash('success', 'Price saved for ' + j.product.product_name + '.');
+    });
+  });
+})();
+</script>
+{% endblock %}

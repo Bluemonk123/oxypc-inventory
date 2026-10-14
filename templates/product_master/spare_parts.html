@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Spare Parts — OxyPC{% endblock %}
+{% block page_title %}Spare Parts{% endblock %}
+{% block content %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+    <span class="fw-semibold"><i class="bi bi-tools me-2"></i>Spare Parts Pricing</span>
+  </div>
+  <div class="card-body">
+    <table id="spTable" class="table table-hover mb-0" style="width:100%">
+      <thead class="table-dark"><tr>
+        <th>Product Name</th><th>Make</th><th>Model</th><th>CPU Gen</th>
+        {% for col, label in part_fields %}<th>{{ label }}</th>{% endfor %}
+        <th>Status</th><th>Action</th>
+      </tr></thead>
+      <tbody>
+      {% for p in products %}
+        <tr data-id="{{ p.id }}">
+          <td><div class="fw-semibold text-nowrap">{{ p.make }}/{{ p.model }}/{{ p.cpu_gen }}</div><div class="mt-1 text-nowrap"><span class="badge bg-light text-dark border me-1">{{ p.ram }}</span><span class="badge bg-light text-dark border">{{ p.storage }}</span></div></td>
+          <td>{{ p.make }}</td><td>{{ p.model }}</td><td>{{ p.cpu_gen }}</td>
+          {% for col, label in part_fields %}
+          <td><input type="number" class="form-control form-control-sm sp-part" style="min-width:90px" min="0" step="0.01"
+                     name="{{ col }}" placeholder="₹" value="{{ '%g'|format(p.parts[col]) if p.parts[col] is not none else '' }}"></td>
+          {% endfor %}
+          <td class="sp-status">{% if p.parts_done %}<span class="badge bg-success">Pricing Done</span>{% else %}<span class="badge bg-warning text-dark">Pricing Pending</span>{% endif %}</td>
+          <td><button type="button" class="btn btn-sm btn-primary sp-save" disabled><i class="bi bi-save me-1"></i>Save</button></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% include "product_master/_common.html" %}
+<script>
+(function () {
+  initGlobalTable('#spTable', { order: [[0, 'asc']], columnDefs: [{ orderable: false, targets: '_all' }, { orderable: true, targets: [0, 1, 2, 3] }] });
+  function snapshot(tr) { return tr.find('.sp-part').map(function () { return this.value.trim(); }).get().join('|'); }
+  $('#spTable tbody tr').each(function () { $(this).data('saved', snapshot($(this))); });
+  // Save enables once any part price is entered and something changed
+  $(document).on('input', '.sp-part', function () {
+    var tr = $(this).closest('tr');
+    var any = tr.find('.sp-part').filter(function () { return this.value.trim() !== ''; }).length > 0;
+    tr.find('.sp-save').prop('disabled', !any || snapshot(tr) === tr.data('saved'));
+  });
+  $(document).on('click', '.sp-save', function () {
+    var btn = this, tr = $(btn).closest('tr'), data = {};
+    tr.find('.sp-part').each(function () { data[this.name] = this.value; });
+    btn.disabled = true;
+    pmPost('/product-master/spare-parts/' + tr.data('id') + '/save', data).then(function (j) {
+      if (!j.ok) { btn.disabled = false; showFlash('danger', j.error); return; }
+      tr.data('saved', snapshot(tr));
+      tr.find('.sp-status').html(j.product.parts_done
+        ? '<span class="badge bg-success">Pricing Done</span>'
+        : '<span class="badge bg-warning text-dark">Pricing Pending</span>');
+      showFlash('success', 'Part prices saved for ' + j.product.product_name + '.');
+    });
+  });
+})();
+</script>
+{% endblock %}

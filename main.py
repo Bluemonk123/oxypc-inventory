@@ -186,6 +186,8 @@ from routers.market import router as market_router
 from routers.inventory_location import router as inventory_location_router
 from routers.physical_audits import router as physical_audits_router
 from routers.block_tags import router as block_tags_router
+from routers.product_master import router as product_master_router
+import models.product_master  # ensure Product Master tables are in Base.metadata
 from routers.stress_api import router as stress_api_router
 from routers.iqc_api import router as iqc_api_router
 from routers.qa_uat import router as qa_uat_router
@@ -272,6 +274,7 @@ app.include_router(market_router)
 app.include_router(inventory_location_router)
 app.include_router(physical_audits_router)
 app.include_router(block_tags_router)
+app.include_router(product_master_router)
 app.include_router(iqc_api_router)
 app.include_router(qa_uat_router)
 app.include_router(crm_dashboard_router)

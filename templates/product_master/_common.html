@@ -1,0 +1,24 @@
+{# Shared bits for the Product Master pages: CSRF token + a small POST helper
+   and money/badge formatters. Included inside {% block scripts %}. #}
+<input type="hidden" id="pmCsrf" value="{{ request.cookies.get('csrf_token','') }}">
+<script>
+window.pmPost = function (url, data) {
+  var fd = new FormData();
+  fd.append('csrf_token', document.getElementById('pmCsrf').value);
+  Object.keys(data || {}).forEach(function (k) { fd.append(k, data[k] == null ? '' : data[k]); });
+  return fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' })
+    .then(function (r) {
+      return r.json().catch(function () { return { ok: false, error: 'Server error (' + r.status + ')' }; })
+        .then(function (j) { if (!r.ok && j.ok !== false) j = { ok: false, error: j.detail || ('Error ' + r.status) }; return j; });
+    })
+    .catch(function () { return { ok: false, error: 'Could not reach the server.' }; });
+};
+window.pmMoney = function (v) {
+  if (v === null || v === undefined || v === '') return null;
+  return '₹' + Number(v).toLocaleString('en-IN', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+};
+window.pmPending = '<span class="badge bg-warning text-dark">Pending</span>';
+window.pmCell = function (v) { var m = pmMoney(v); return m === null ? pmPending : m; };
+window.pmEsc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+  return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+</script>

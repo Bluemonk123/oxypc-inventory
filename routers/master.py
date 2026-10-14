@@ -13,6 +13,7 @@ from models.role_permissions import (
     get_cached_perms, set_cached_perms, _PERM_CACHE,
     set_cached_additional_perms, _ADDITIONAL_PERM_CACHE,
     get_cached_module_hidden, set_cached_module_hidden, _MODULE_HIDDEN_CACHE,
+    DEFAULT_DISABLED_MODULES,
 )
 from models.settings import AppSetting
 from auth.dependencies import get_current_user, require_roles, verify_csrf
@@ -246,6 +247,12 @@ PERM_MODULES = [
     ("cost_config",          "Cost Config"),
     ("attendance_config",    "Attendance Config"),
     ("terms_conditions",     "Terms & Conditions"),
+    # ── PRODUCT MASTER (2026-10-14) — OFF by default for every role
+    #    (models.role_permissions.DEFAULT_DISABLED_MODULES) ─────────────
+    ("pm_product_master",    "Product Master"),
+    ("pm_hardware",          "Hardware"),
+    ("pm_spare_parts",       "Spare Parts"),
+    ("pm_product_pricing",   "Product Pricing"),
 ]
 
 # ── Sub Admin Role tab (item 7) ───────────────────────────────────────────────
@@ -523,6 +530,7 @@ async def master_list(
         "all_roles": all_roles,
         "selected_role": selected_role,
         "perm_rows": perm_rows,
+        "default_disabled_modules": DEFAULT_DISABLED_MODULES,
         "perm_modules": PERM_MODULES,
         "perm_actions": PERM_ACTIONS,
         "custom_roles_list": custom_roles_list,
@@ -788,6 +796,7 @@ async def permissions_matrix(
         "all_roles": all_roles,
         "selected_role": selected_role,
         "perm_rows": perm_rows,
+        "default_disabled_modules": DEFAULT_DISABLED_MODULES,
         "perm_modules": PERM_MODULES,
         "perm_actions": PERM_ACTIONS,
         "custom_roles_list": custom_roles_list,
