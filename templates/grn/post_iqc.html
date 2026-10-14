@@ -24,32 +24,15 @@
   </form>
 </div>
 
-<!-- Filter bar -->
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold mb-1">Search GRN</label>
-        <input type="text" id="fGrn" class="form-control form-control-sm font-monospace" placeholder="GRN…">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold mb-1">Search Invoice</label>
-        <input type="text" id="fInvoice" class="form-control form-control-sm" placeholder="Invoice number…">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Search Vendor Name</label>
-        <input type="text" id="fVendor" class="form-control form-control-sm" placeholder="Vendor…">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">From</label>
-        <input type="date" id="fFrom" class="form-control form-control-sm">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">To</label>
-        <input type="date" id="fTo" class="form-control form-control-sm">
-      </div>
-    </div>
-    <div class="mt-2"><button type="button" id="fReset" class="btn btn-outline-secondary btn-sm">Reset Filters</button></div>
+<!-- Filter bar (shared .filter-bar design; filters apply as you type) -->
+<div class="filter-bar">
+  <div class="filter-bar-row">
+    <div><input type="text" id="fGrn" title="Search GRN" class="form-control form-control-sm font-monospace" placeholder="Search GRN…"></div>
+    <div><input type="text" id="fInvoice" title="Search Invoice" class="form-control form-control-sm" placeholder="Search invoice number…"></div>
+    <div><input type="text" id="fVendor" title="Search Vendor Name" class="form-control form-control-sm" placeholder="Search vendor…"></div>
+    <div><input type="date" id="fFrom" title="Date of Invoice — From" class="form-control form-control-sm"></div>
+    <div><input type="date" id="fTo" title="Date of Invoice — To" class="form-control form-control-sm"></div>
+    <div><button type="button" id="fReset" class="btn btn-outline-secondary btn-sm">Reset Filters</button></div>
   </div>
 </div>
 
@@ -81,7 +64,8 @@
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-transparent fw-semibold"><i class="bi bi-receipt me-2"></i>Uploaded GRNs (post IQC)</div>
   <div class="card-body p-0">
-    <div class="table-responsive">
+    {# No .table-responsive: initGlobalTable's scrollX owns horizontal scroll. #}
+    <div>
       <table id="grnTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
@@ -167,9 +151,9 @@
               </form>
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="11" class="text-center text-muted py-4">No GRN imports yet. Upload an invoice to begin.</td></tr>
           {% endfor %}
+          {# No colspan "empty" row: DataTables can't initialise over it.
+             initGlobalTable shows the empty-state caption instead. #}
         </tbody>
       </table>
     </div>
@@ -192,33 +176,24 @@
       </div>
     </div>
     <div class="card-body pb-0 pt-2 px-3">
-      <div class="row g-2 align-items-end">
-        <div class="col-md-3">
-          <label class="form-label small fw-semibold mb-1">Search Invoice</label>
-          <input type="text" id="fPendInvoice" class="form-control form-control-sm" placeholder="Invoice number…">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small fw-semibold mb-1">Search PO</label>
-          <input type="text" id="fPendPo" class="form-control form-control-sm" placeholder="PO number…">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label small fw-semibold mb-1">Device Type</label>
-          <select id="fPendDeviceType" class="form-select form-select-sm">
+      <div class="filter-bar mb-2">
+        <div class="filter-bar-row">
+          <div><input type="text" id="fPendInvoice" title="Search Invoice" class="form-control form-control-sm" placeholder="Search invoice number…"></div>
+          <div><input type="text" id="fPendPo" title="Search PO" class="form-control form-control-sm" placeholder="Search PO number…"></div>
+          <div><select id="fPendDeviceType" title="Device Type" class="form-select form-select-sm">
             <option value="">All Device Types</option>
             {% for dt in device_type_options %}
             <option value="{{ dt }}">{{ dt }}</option>
             {% endfor %}
-          </select>
-        </div>
-        <div class="col-md-2">
-          <button type="button" id="fPendReset" class="btn btn-outline-secondary btn-sm">Reset Filters</button>
+          </select></div>
+          <div><button type="button" id="fPendReset" class="btn btn-outline-secondary btn-sm">Reset Filters</button></div>
         </div>
       </div>
     </div>
     <div class="card-body p-0">
-      <div class="table-responsive">
+      <div>
         <table id="pendingTable" class="table table-hover mb-0 small align-middle">
-          <thead class="table-light"><tr>
+          <thead class="table-dark"><tr>
             <th class="ps-3" style="width:40px"><input type="checkbox" id="checkAll"></th>
             <th>Tag Number</th><th>Brand</th><th>Model</th><th>Device Type</th><th>RAM</th><th>Storage</th><th>Stage</th>
             <th class="d-none">Invoice</th><th class="d-none">PO</th>
@@ -441,8 +416,11 @@ $(document).ready(function(){
     document.getElementById('cardDevicesPending').textContent = Math.max(0, qty - added);
   }
 
-  if ($('#grnTable tbody tr td').length > 1) {
-    var dt = window.dtGrn = $('#grnTable').DataTable({pageLength: 12, order: []});
+  {
+    var dt = window.dtGrn = initGlobalTable('#grnTable', {
+      order: [],
+      language: { emptyTable: 'No GRN imports yet. Upload an invoice to begin.' },
+    });
     dt.on('draw.dt', function () {
       refreshCards(dt.rows({search: 'applied'}).nodes().toArray());
     });
@@ -467,14 +445,12 @@ $(document).ready(function(){
       ['fGrn','fInvoice','fVendor','fFrom','fTo'].forEach(function(id){ document.getElementById(id).value=''; });
       dt.column(0).search('').column(2).search('').column(4).search('').draw();
     });
-  } else {
-    refreshCards([]);
   }
   // Server-side: the Invoice/PO/Device Type filters used to run as a
   // client-side ext.search predicate over rows already in the DOM. They now
   // travel to /grn/post-iqc/data as query params instead, since the row set
   // itself is fetched a page at a time rather than filtered after the fact.
-  var dtPend = window.dtPend = $('#pendingTable').DataTable({
+  var dtPend = window.dtPend = initGlobalTable('#pendingTable', {
     serverSide: true,
     processing: true,
     pageLength: 12,
@@ -494,6 +470,8 @@ $(document).ready(function(){
       document.getElementById('checkAll').checked = false;
       updatePendCount();
     },
+  }, {
+    selectAll: { headerSelector: '#checkAll', rowSelector: '.pendChk', onChange: function(){ updatePendCount(); }, resetOnDraw: true },
   });
   ['fPendInvoice','fPendPo'].forEach(function(id){
     document.getElementById(id).addEventListener('input', function(){ dtPend.draw(); });
