@@ -544,3 +544,7 @@ fieldset:disabled .btn {
 .gtable-card > .card-header { background: #dcebfb !important; color: #1f3b63; border-bottom: 1px solid #c3d8f2; }
 .gtable-card > .card-header > .fw-semibold, .gtable-card > .card-header > span,
 .gtable-card > .card-header > h5, .gtable-card > .card-header > h6 { color: #1f3b63; }
+
+/* App-wide small shadow (Bootstrap .shadow-sm, used on cards everywhere):
+   was 0 .125rem .25rem rgba(0,0,0,.075). */
+.shadow-sm { box-shadow: 0 .25rem .5rem rgba(0, 0, 0, .5) !important; }
