@@ -534,3 +534,6 @@ fieldset:disabled .btn {
 .filter-bar-6 .filter-bar-row > .filter-bar-search,
 .filter-bar-6 .filter-bar-row > .filter-bar-check { min-width: 0; width: auto; }
 .filter-bar-6 .filter-bar-row > div:last-child .btn { flex: 1 1 0; }
+/* Buttons (always the last item) sit at the right edge of the filter section. */
+.filter-bar-row > div:last-child { display: flex; justify-content: flex-end; gap: .5rem; margin-left: auto; }
+.filter-bar-6 .filter-bar-row > div:last-child { grid-column: -2 / -1; }
