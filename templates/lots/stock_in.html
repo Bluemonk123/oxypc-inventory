@@ -183,7 +183,6 @@
   </div>
 </div>
 
-<p class="text-center text-muted small mt-2">{{ total }} device(s) in stage</p>
 
 {% set customise_return_to = '/stock' %}
 {% include "_customise_modal.html" %}
@@ -607,11 +606,11 @@ $(document).ready(function(){
   // box top right, inside the table wrapper.
   $('#entityBadgeArea').append($('#entityBadges').removeClass('d-none'));
   // Table action buttons live in the card header, right side, in this order:
-  // Assign Bucket, Bulk Move to L1/L2, Flag Items.
+  // Flag Items, Assign Bucket, Bulk Move to L1/L2.
   $('#stkHeaderBtns').prepend(
+    $('#flagItemsBtn').removeClass('d-none me-2'),
     $('#assignBucketBtn').removeClass('d-none me-2'),
-    $('#bulkMoveL1L2Btn').removeClass('d-none'),
-    $('#flagItemsBtn').removeClass('d-none me-2')
+    $('#bulkMoveL1L2Btn').removeClass('d-none')
   );
   $('#stkScanArea').append($('#stockScanInput').removeClass('d-none'));
 
