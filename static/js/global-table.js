@@ -271,6 +271,9 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
   dtOptions = dtOptions || {};
   var $table = $(tableSelector);
   $table.addClass('gtable');
+  // Tag the table's card so its header gets the shared Global Table header
+  // colour (.gtable-card > .card-header in app.css).
+  $table.closest('.card').addClass('gtable-card');
 
   // Caller may still pass language.emptyTable (plain text, e.g. "No L3/L4
   // work orders assigned.") — captured before the deep-merge below so it

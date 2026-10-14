@@ -537,3 +537,10 @@ fieldset:disabled .btn {
 /* Buttons (always the last item) sit at the right edge of the filter section. */
 .filter-bar-row > div:last-child { display: flex; justify-content: flex-end; gap: .5rem; margin-left: auto; }
 .filter-bar-6 .filter-bar-row > div:last-child { grid-column: -2 / -1; }
+
+/* Global Table card header: light sky blue with navy title. The card is tagged
+   .gtable-card by initGlobalTable() (static/js/global-table.js). !important
+   because these headers carry bg-transparent / bg-white utility classes. */
+.gtable-card > .card-header { background: #dcebfb !important; color: #1f3b63; border-bottom: 1px solid #c3d8f2; }
+.gtable-card > .card-header > .fw-semibold, .gtable-card > .card-header > span,
+.gtable-card > .card-header > h5, .gtable-card > .card-header > h6 { color: #1f3b63; }
