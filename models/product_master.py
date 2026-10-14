@@ -148,3 +148,36 @@ def product_figures(p: PMProduct, ram_price, storage_price) -> dict:
     disc = _q(price * pct / Decimal(100))
     return {"base_price": _q(base), "discount_amount": disc,
             "selling_price": _q((base - disc) + (ram + sto))}
+
+
+async def seed_pm_dropdowns_if_empty(db) -> int:
+    """One-time backfill of the Dropdown Configuration values entered on
+    staging (data/pm_dropdown_seed.json, 2026-10-14). Runs only while
+    pm_dropdown_values is completely empty, so it never re-adds a value an
+    admin later deletes and never touches existing data. Model / CPU Gen rows
+    are linked to their Make / CPU by value. Returns rows inserted."""
+    import json, os
+    from sqlalchemy import select, func
+    if (await db.execute(select(func.count()).select_from(PMDropdownValue))).scalar():
+        return 0
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "pm_dropdown_seed.json")
+    if not os.path.exists(path):
+        return 0
+    with open(path, encoding="utf-8") as f:
+        items = json.load(f)
+    ids, order, added = {}, {}, 0
+    for it in items:                       # parents (make, cpu) come before children in the file
+        cat, val = it["category"], it["value"]
+        parent_id = None
+        if it.get("parent"):
+            parent_id = ids.get((DROPDOWN_PARENT.get(cat), it["parent"]))
+            if parent_id is None:
+                continue
+        row = PMDropdownValue(id=uuid.uuid4(), category=cat, value=val, parent_id=parent_id,
+                              display_order=order.get(cat, 0), created_by="seed")
+        order[cat] = order.get(cat, 0) + 1
+        db.add(row)
+        ids[(cat, val)] = row.id
+        added += 1
+    await db.commit()
+    return added

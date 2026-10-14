@@ -1,0 +1,282 @@
+[
+ {
+  "category": "make",
+  "value": "Apple"
+ },
+ {
+  "category": "make",
+  "value": "Asus"
+ },
+ {
+  "category": "make",
+  "value": "Dell"
+ },
+ {
+  "category": "make",
+  "value": "HP"
+ },
+ {
+  "category": "make",
+  "value": "Microsoft"
+ },
+ {
+  "category": "make",
+  "value": "Lenovo"
+ },
+ {
+  "category": "make",
+  "value": "Samsung"
+ },
+ {
+  "category": "model",
+  "parent": "HP",
+  "value": "Elitebook G6"
+ },
+ {
+  "category": "model",
+  "parent": "HP",
+  "value": "Elitebook G7"
+ },
+ {
+  "category": "model",
+  "parent": "HP",
+  "value": "Elitebook G8"
+ },
+ {
+  "category": "model",
+  "parent": "Lenovo",
+  "value": "Thinkpad T14"
+ },
+ {
+  "category": "model",
+  "parent": "Lenovo",
+  "value": "Thinkpad T440"
+ },
+ {
+  "category": "model",
+  "parent": "Lenovo",
+  "value": "Thinkpad T450"
+ },
+ {
+  "category": "cpu",
+  "value": "C2D"
+ },
+ {
+  "category": "cpu",
+  "value": "i3"
+ },
+ {
+  "category": "cpu",
+  "value": "i5"
+ },
+ {
+  "category": "cpu",
+  "value": "i7"
+ },
+ {
+  "category": "cpu",
+  "value": "i9"
+ },
+ {
+  "category": "cpu",
+  "value": "M1"
+ },
+ {
+  "category": "cpu",
+  "value": "M2"
+ },
+ {
+  "category": "cpu",
+  "value": "M3"
+ },
+ {
+  "category": "cpu",
+  "value": "M4"
+ },
+ {
+  "category": "cpu_gen",
+  "parent": "i3",
+  "value": "i3/1st"
+ },
+ {
+  "category": "cpu_gen",
+  "parent": "i3",
+  "value": "i3/2nd"
+ },
+ {
+  "category": "cpu_gen",
+  "parent": "i3",
+  "value": "i3/3rd"
+ },
+ {
+  "category": "cpu_gen",
+  "parent": "i3",
+  "value": "i3/4th"
+ },
+ {
+  "category": "cpu_gen",
+  "parent": "i3",
+  "value": "i3/5th"
+ },
+ {
+  "category": "cpu_gen",
+  "parent": "i3",
+  "value": "i3/6th"
+ },
+ {
+  "category": "cpu_gen",
+  "parent": "i3",
+  "value": "i3/7th"
+ },
+ {
+  "category": "cpu_gen",
+  "parent": "i3",
+  "value": "i3/8th"
+ },
+ {
+  "category": "cpu_gen",
+  "parent": "i3",
+  "value": "i3/9th"
+ },
+ {
+  "category": "cpu_gen",
+  "parent": "i3",
+  "value": "i3/10th"
+ },
+ {
+  "category": "ram_category",
+  "value": "DDR2"
+ },
+ {
+  "category": "ram_category",
+  "value": "DDR3"
+ },
+ {
+  "category": "ram_category",
+  "value": "DDR4"
+ },
+ {
+  "category": "ram_category",
+  "value": "DDR5"
+ },
+ {
+  "category": "ram_capacity",
+  "value": "1GB"
+ },
+ {
+  "category": "ram_capacity",
+  "value": "2GB"
+ },
+ {
+  "category": "ram_capacity",
+  "value": "4GB"
+ },
+ {
+  "category": "ram_capacity",
+  "value": "8GB"
+ },
+ {
+  "category": "ram_capacity",
+  "value": "12GB"
+ },
+ {
+  "category": "ram_capacity",
+  "value": "16GB"
+ },
+ {
+  "category": "ram_capacity",
+  "value": "32GB"
+ },
+ {
+  "category": "ram_capacity",
+  "value": "64GB"
+ },
+ {
+  "category": "storage_category",
+  "value": "HDD"
+ },
+ {
+  "category": "storage_category",
+  "value": "SSD"
+ },
+ {
+  "category": "storage_category",
+  "value": "NVME"
+ },
+ {
+  "category": "storage_capacity",
+  "value": "64GB"
+ },
+ {
+  "category": "storage_capacity",
+  "value": "128GB"
+ },
+ {
+  "category": "storage_capacity",
+  "value": "256GB"
+ },
+ {
+  "category": "storage_capacity",
+  "value": "512GB"
+ },
+ {
+  "category": "storage_capacity",
+  "value": "120GB"
+ },
+ {
+  "category": "storage_capacity",
+  "value": "240GB"
+ },
+ {
+  "category": "storage_capacity",
+  "value": "500GB"
+ },
+ {
+  "category": "storage_capacity",
+  "value": "1TB"
+ },
+ {
+  "category": "storage_capacity",
+  "value": "2TB"
+ },
+ {
+  "category": "discount_pct",
+  "value": "0"
+ },
+ {
+  "category": "discount_pct",
+  "value": "5"
+ },
+ {
+  "category": "discount_pct",
+  "value": "10"
+ },
+ {
+  "category": "discount_pct",
+  "value": "20"
+ },
+ {
+  "category": "discount_pct",
+  "value": "25"
+ },
+ {
+  "category": "discount_pct",
+  "value": "30"
+ },
+ {
+  "category": "discount_pct",
+  "value": "35"
+ },
+ {
+  "category": "discount_pct",
+  "value": "40"
+ },
+ {
+  "category": "discount_pct",
+  "value": "45"
+ },
+ {
+  "category": "discount_pct",
+  "value": "50"
+ }
+]

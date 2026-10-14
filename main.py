@@ -665,6 +665,17 @@ async def startup_event():
     except Exception as _bce:
         print(f"  [LandingPages] Could not load breadcrumb cache: {_bce}")
 
+    # ── Product Master: one-time Dropdown Configuration backfill ─────────────
+    try:
+        from models.product_master import seed_pm_dropdowns_if_empty
+        from database import AsyncSessionLocal as _ASLpm
+        async with _ASLpm() as _sesspm:
+            _n = await seed_pm_dropdowns_if_empty(_sesspm)
+            if _n:
+                print(f"  [ProductMaster] Seeded {_n} Dropdown Configuration value(s)")
+    except Exception as _pme:
+        print(f"  [ProductMaster] Could not seed dropdowns: {_pme}")
+
     # ── Warm Master Data dropdown-options cache from DB ───────────────────────
     try:
         from utils.master_data import refresh_master_cache, ensure_master_defaults
