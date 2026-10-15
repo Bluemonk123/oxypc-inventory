@@ -965,7 +965,7 @@ async def grn_add_lot(grn_id: str, lot_number: list[str] = Form(...),
     same per-lot create-or-merge logic the single-lot flow always used: if a
     typed Lot Number already exists, its row's confirm_merge checkbox must be
     ticked (checked with a first pass below, before anything is written) and
-    the existing Lot's header fields win onto this GRN; otherwise a brand-new
+    the existing Lot's header fields (all but Quantity) win onto this GRN; otherwise a brand-new
     Lot is created, seeded from this GRN's current fields — just repeated
     once per row so a GRN can now carry several Lots instead of only one."""
     try:
@@ -1002,7 +1002,9 @@ async def grn_add_lot(grn_id: str, lot_number: list[str] = Form(...),
             g.sender_name = existing.vendor_name or existing.supplier_name or g.sender_name
             g.invoice_number = existing.invoice_no or g.invoice_number
             g.amount = existing.invoice_value if existing.invoice_value is not None else g.amount
-            g.quantity = existing.qty or g.quantity
+            # Quantity is NOT taken from the Lot (2026-10-15): it is this GRN's
+            # own invoice quantity, and a GRN can map several Lots — overwriting
+            # it with one Lot's qty made the GRN table's Quantity wrong.
             g.purchase_date = existing.purchase_date.date() if existing.purchase_date else g.purchase_date
             g.grn_date = existing.grn_date.date() if existing.grn_date else g.grn_date
             g.po_number = existing.po_number or g.po_number
