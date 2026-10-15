@@ -99,7 +99,12 @@
     <span><i class="bi bi-graph-up me-2"></i>Monthly Revenue vs Cost (Device + Parts + Labour) vs Gross Profit</span>
   </div>
   <div class="card-body">
-    <canvas id="plChart" height="80"></canvas>
+    {# Fixed-height box: a responsive chart that sizes itself from its own
+       aspect ratio can fight the page scrollbar and keep resizing ("zooming")
+       on load. The box sets the height; the chart just fills it. #}
+    <div style="position:relative; height:320px; width:100%">
+      <canvas id="plChart"></canvas>
+    </div>
   </div>
 </div>
 
@@ -242,6 +247,7 @@ new Chart(ctx, {
   },
   options: {
     responsive: true,
+    maintainAspectRatio: false,
     plugins: { legend: { position: 'top' } },
     scales: { y: { beginAtZero: true, ticks: { callback: v => '₹' + v.toLocaleString('en-IN') } } }
   }
