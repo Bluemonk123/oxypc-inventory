@@ -43,32 +43,7 @@
     </form>
     {# Hidden forms — single-row exit reuses the existing /exit route; bulk
        posts a comma-separated list of selected sale ids to /bulk-exit. #}
-    {# Confirm Exit popup: one form for both single-row and bulk exit. The
-       transport fields are optional and come from Master Data. #}
-    <div class="modal fade" id="exitModal" tabindex="-1">
-      <div class="modal-dialog modal-lg">
-        <form id="exitForm" action="" method="post" class="modal-content">
-          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
-          <input type="hidden" name="sale_ids" id="exitSaleIds">
-          <div class="modal-header py-2">
-            <h6 class="modal-title fw-semibold"><i class="bi bi-box-arrow-right me-2"></i><span id="exitTitle">Confirm Exit</span></h6>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <p class="small mb-3" id="exitText"></p>
-            <div class="row g-3">
-              {% set tf_mode = '' %}{% set tf_via = '' %}{% set tf_tracking = '' %}
-              {% include "_transport_fields.html" %}
-            </div>
-            <div class="small text-muted mt-2">Transport details are optional — leave blank to confirm the exit only.</div>
-          </div>
-          <div class="modal-footer py-2">
-            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-box-arrow-right me-1"></i>Confirm Exit</button>
-          </div>
-        </form>
-      </div>
-    </div>
+
   </div>
 </div>
 
@@ -90,6 +65,32 @@
         <tbody></tbody>
       </table>
     </div>
+  </div>
+</div>
+{# Confirm Exit popup: one form for both single-row and bulk exit. The
+   transport fields are optional and come from Master Data. #}
+<div class="modal fade" id="exitModal" tabindex="-1">
+  <div class="modal-dialog modal-lg">
+    <form id="exitForm" action="" method="post" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+      <input type="hidden" name="sale_ids" id="exitSaleIds">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-semibold"><i class="bi bi-box-arrow-right me-2"></i><span id="exitTitle">Confirm Exit</span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small mb-3" id="exitText"></p>
+        <div class="row g-3">
+          {% set tf_mode = '' %}{% set tf_via = '' %}{% set tf_tracking = '' %}
+          {% include "_transport_fields.html" %}
+        </div>
+        <div class="small text-muted mt-2">Transport details are optional — leave blank to confirm the exit only.</div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-box-arrow-right me-1"></i>Confirm Exit</button>
+      </div>
+    </form>
   </div>
 </div>
 {% endblock %}
