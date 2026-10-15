@@ -155,6 +155,13 @@ MASTER_SEED = {
         "Grade D — Poor Condition",
         "Scrap / Parts Only",
     ],
+    # Transport (Sale Detail "Update Transport" + Gate Pass Confirm Exit)
+    "transport_mode": [
+        "Courier", "Hand Delivery", "Self Pickup", "Own Vehicle", "Transporter",
+    ],
+    "delivery_courier": [
+        "Blue Dart", "DTDC", "Delhivery", "Professional Couriers", "India Post", "Ekart",
+    ],
     "payment_mode": [
         "Cash", "UPI / GPay / PhonePe", "Bank Transfer (NEFT/RTGS/IMPS)",
         "Cheque", "Credit Card", "Debit Card", "Online Portal", "COD",

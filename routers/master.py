@@ -60,7 +60,7 @@ ACCORDION_SECTIONS = [
     {
         "id": "sales", "label": "Sales & Returns", "icon": "bi-receipt",
         "cat_keys": [
-            "payment_mode", "return_reason", "condition_on_return",
+            "payment_mode", "transport_mode", "delivery_courier", "return_reason", "condition_on_return",
             "customer_state", "sale_warranty_type", "return_type",
             "product_return_reason", "dealer_credit_reason",
         ],
@@ -375,6 +375,8 @@ CATEGORIES = [
     ("report_year",         "Reports: Year Options (Dashboard/Business P&L)", "inventory"),
     # ── Sales / Returns ──────────────────────────────────────────
     ("payment_mode",        "Payment Modes",                "sales"),
+    ("transport_mode",      "Sales: Transport Mode",        "sales"),
+    ("delivery_courier",    "Sales: Delivery Courier",      "sales"),
     ("return_reason",       "Return Reasons",               "sales"),
     ("condition_on_return", "Condition on Return",          "sales"),
     ("customer_state",      "Sales: Customer State (GST)",  "sales"),

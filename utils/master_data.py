@@ -63,7 +63,7 @@ async def report_year_values(db: AsyncSession) -> list:
 # server start, but only while the category has no rows at all (active or not).
 # MASTER_SEED otherwise seeds brand-new installs only, so a category added later
 # would ship with an empty dropdown everywhere until an admin typed every value.
-ENSURE_SEEDED_CATEGORIES = ("dealer_state", "storage_size", "ram_size")
+ENSURE_SEEDED_CATEGORIES = ("dealer_state", "storage_size", "ram_size", "transport_mode", "delivery_courier")
 
 
 async def ensure_master_defaults(db: AsyncSession, categories=ENSURE_SEEDED_CATEGORIES) -> int:

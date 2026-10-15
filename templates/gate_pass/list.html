@@ -43,13 +43,32 @@
     </form>
     {# Hidden forms — single-row exit reuses the existing /exit route; bulk
        posts a comma-separated list of selected sale ids to /bulk-exit. #}
-    <form id="oneExitForm" action="" method="post" style="display:none">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
-    </form>
-    <form id="bulkExitForm" action="/gate-pass/bulk-exit" method="post" style="display:none">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
-      <input type="hidden" name="sale_ids" id="bulkExitIds">
-    </form>
+    {# Confirm Exit popup: one form for both single-row and bulk exit. The
+       transport fields are optional and come from Master Data. #}
+    <div class="modal fade" id="exitModal" tabindex="-1">
+      <div class="modal-dialog modal-lg">
+        <form id="exitForm" action="" method="post" class="modal-content">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+          <input type="hidden" name="sale_ids" id="exitSaleIds">
+          <div class="modal-header py-2">
+            <h6 class="modal-title fw-semibold"><i class="bi bi-box-arrow-right me-2"></i><span id="exitTitle">Confirm Exit</span></h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <p class="small mb-3" id="exitText"></p>
+            <div class="row g-3">
+              {% set tf_mode = '' %}{% set tf_via = '' %}{% set tf_tracking = '' %}
+              {% include "_transport_fields.html" %}
+            </div>
+            <div class="small text-muted mt-2">Transport details are optional — leave blank to confirm the exit only.</div>
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-box-arrow-right me-1"></i>Confirm Exit</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -104,12 +123,23 @@ function gpUpdateBulkBtn() {
     : '<i class="bi bi-box-arrow-right me-1"></i>Confirm Exit';
 }
 
+// Opens the Confirm Exit popup (optional transport details) for one sale
+// or a bulk selection; the form posts to /exit or /bulk-exit accordingly.
+function gpOpenExit(action, saleIds, title, text) {
+  var form = document.getElementById('exitForm');
+  form.reset();
+  form.action = action;
+  document.getElementById('exitSaleIds').value = saleIds;
+  document.getElementById('exitTitle').textContent = title;
+  document.getElementById('exitText').textContent = text;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('exitModal')).show();
+}
+
 function bulkConfirmExit() {
   var ids = Array.from(document.querySelectorAll('#gpTable .row-check:checked')).map(function (cb) { return cb.value; });
   if (!ids.length) return;
-  if (!confirm('Confirm ' + ids.length + ' tag(s) have exited the gate?')) return;
-  document.getElementById('bulkExitIds').value = ids.join(',');
-  document.getElementById('bulkExitForm').submit();
+  gpOpenExit('/gate-pass/bulk-exit', ids.join(','), 'Confirm Exit (' + ids.length + ')',
+             'Confirm ' + ids.length + ' tag(s) have exited the gate. The transport details below apply to all of them.');
 }
 
 // Single-row Confirm Exit button (delegated — rows are server-rendered by
@@ -117,10 +147,8 @@ function bulkConfirmExit() {
 document.addEventListener('click', function (e) {
   var btn = e.target.closest('.gp-exit-one');
   if (!btn) return;
-  if (!confirm('Confirm goods for ' + btn.dataset.barcode + ' have exited the gate?')) return;
-  var form = document.getElementById('oneExitForm');
-  form.action = '/gate-pass/' + btn.dataset.id + '/exit';
-  form.submit();
+  gpOpenExit('/gate-pass/' + btn.dataset.id + '/exit', '', 'Confirm Exit — ' + btn.dataset.barcode,
+             'Confirm the goods for ' + btn.dataset.barcode + ' have exited the gate.');
 });
 
 // ── DataTable (server-side) ─────────────────────────────────────────────────

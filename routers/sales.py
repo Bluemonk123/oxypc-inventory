@@ -2223,6 +2223,59 @@ async def sale_detail(
     })
 
 
+DELIVERY_STATUSES = ("pending", "dispatched", "delivered")
+
+
+@router.post("/sales/{sale_id}/transport")
+async def sale_update_transport(
+    sale_id: str,
+    request: Request,
+    transport_mode: str = Form(""),
+    transport_via: str = Form(""),
+    tracking_number: str = Form(""),
+    dispatch_date: str = Form(""),
+    delivery_status: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Sale Detail -> Update Transport. Transport Mode and Delivery Courier
+    come from Master Data (transport_mode / delivery_courier); Tracking Number
+    is free text. Blank fields clear the stored value."""
+    try:
+        sale_uuid = _uuid.UUID(sale_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(status_code=404, detail="Sale not found")
+    sale = (await db.execute(select(Sale).where(Sale.id == sale_uuid))).scalar_one_or_none()
+    if not sale:
+        raise HTTPException(status_code=404, detail="Sale not found")
+    back = f"/sales/{sale_id}"
+    status = (delivery_status or "").strip().lower()
+    if status and status not in DELIVERY_STATUSES:
+        return RedirectResponse(url=f"{back}?error=Invalid+delivery+status", status_code=302)
+    when = None
+    if dispatch_date.strip():
+        try:
+            when = datetime.strptime(dispatch_date.strip(), "%Y-%m-%d")
+        except ValueError:
+            return RedirectResponse(url=f"{back}?error=Invalid+dispatch+date", status_code=302)
+    old = {"transport_mode": sale.transport_mode, "transport_via": sale.transport_via,
+           "tracking_number": sale.tracking_number, "delivery_status": sale.delivery_status,
+           "dispatch_date": sale.dispatch_date.isoformat() if sale.dispatch_date else None}
+    sale.transport_mode = transport_mode.strip()[:30] or None
+    sale.transport_via = transport_via.strip()[:100] or None
+    sale.tracking_number = tracking_number.strip()[:100] or None
+    sale.delivery_status = status or None
+    sale.dispatch_date = when
+    await audit(db, user=current_user, action="SALE_TRANSPORT_UPDATED", table_name="sales",
+                record_id=str(sale.id), old_value=old,
+                new_value={"transport_mode": sale.transport_mode, "transport_via": sale.transport_via,
+                           "tracking_number": sale.tracking_number, "delivery_status": sale.delivery_status,
+                           "dispatch_date": dispatch_date.strip() or None},
+                request=request)
+    await db.commit()
+    return RedirectResponse(url=f"{back}?success=Transport+details+updated", status_code=302)
+
+
 @router.get("/sales", response_class=HTMLResponse)
 async def sales_list(
     request: Request,

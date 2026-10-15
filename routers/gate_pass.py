@@ -189,8 +189,23 @@ async def gate_pass_data(
     })
 
 
+def _apply_transport(sale, transport_mode, transport_via, tracking_number):
+    """Optional transport details captured in the Confirm Exit popup. Only
+    non-blank values are written, so confirming without them keeps whatever
+    the sale already had."""
+    if transport_mode.strip():
+        sale.transport_mode = transport_mode.strip()[:30]
+    if transport_via.strip():
+        sale.transport_via = transport_via.strip()[:100]
+    if tracking_number.strip():
+        sale.tracking_number = tracking_number.strip()[:100]
+
+
 @router.post("/{sale_id}/exit")
 async def confirm_exit(sale_id: str, request: Request,
+                       transport_mode: str = Form(""),
+                       transport_via: str = Form(""),
+                       tracking_number: str = Form(""),
                        db: AsyncSession = Depends(get_db),
                        current_user: User = Depends(allowed)):
     """Guard confirms the goods physically left the gate."""
@@ -205,9 +220,12 @@ async def confirm_exit(sale_id: str, request: Request,
     sale.delivery_status = "dispatched"
     if not sale.dispatch_date:
         sale.dispatch_date = app_now()
+    _apply_transport(sale, transport_mode, transport_via, tracking_number)
     await audit(db, user=current_user, action="GATE_EXIT_CONFIRMED",
                 table_name="sales", record_id=str(sale.id),
-                new_value={"sale_number": sale.sale_number}, request=request)
+                new_value={"sale_number": sale.sale_number, "transport_mode": sale.transport_mode,
+                           "transport_via": sale.transport_via, "tracking_number": sale.tracking_number},
+                request=request)
     await db.commit()
     return RedirectResponse(url="/gate-pass?success=Exit+confirmed", status_code=302)
 
@@ -215,6 +233,9 @@ async def confirm_exit(sale_id: str, request: Request,
 @router.post("/bulk-exit")
 async def bulk_confirm_exit(request: Request,
                             sale_ids: str = Form(""),
+                            transport_mode: str = Form(""),
+                            transport_via: str = Form(""),
+                            tracking_number: str = Form(""),
                             db: AsyncSession = Depends(get_db),
                             current_user: User = Depends(allowed)):
     """Confirm exit for every checked row in one call. Sales already
@@ -243,12 +264,16 @@ async def bulk_confirm_exit(request: Request,
         sale.delivery_status = "dispatched"
         if not sale.dispatch_date:
             sale.dispatch_date = stamp
+        _apply_transport(sale, transport_mode, transport_via, tracking_number)
         confirmed += 1
 
     if confirmed:
         await audit(db, user=current_user, action="GATE_EXIT_BULK_CONFIRMED",
                     table_name="sales", record_id=None,
-                    new_value={"confirmed": confirmed, "skipped": skipped},
+                    new_value={"confirmed": confirmed, "skipped": skipped,
+                               "transport_mode": transport_mode.strip() or None,
+                               "transport_via": transport_via.strip() or None,
+                               "tracking_number": tracking_number.strip() or None},
                     request=request)
         await db.commit()
 

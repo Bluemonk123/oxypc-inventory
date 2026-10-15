@@ -1,0 +1,28 @@
+{# Shared transport inputs — Sale Detail "Update Transport" and Gate Pass
+   "Confirm Exit". Transport Mode and Delivery Courier come from Master Data
+   (categories transport_mode / delivery_courier); Tracking Number is free text.
+   Optional context: tf_mode, tf_via, tf_tracking (current values). A stored
+   value no longer in Master Data is still offered so it isn't silently lost. #}
+{% set _modes = master_options('transport_mode') %}
+{% set _couriers = master_options('delivery_courier') %}
+<div class="col-md-4">
+  <label class="form-label small fw-semibold">Transport Mode</label>
+  <select name="transport_mode" class="form-select form-select-sm">
+    <option value="">— Select —</option>
+    {% for m in _modes %}<option value="{{ m }}" {% if tf_mode == m %}selected{% endif %}>{{ m }}</option>{% endfor %}
+    {% if tf_mode and tf_mode not in _modes %}<option value="{{ tf_mode }}" selected>{{ tf_mode }}</option>{% endif %}
+  </select>
+</div>
+<div class="col-md-4">
+  <label class="form-label small fw-semibold">Delivery Courier</label>
+  <select name="transport_via" class="form-select form-select-sm">
+    <option value="">— Select —</option>
+    {% for c in _couriers %}<option value="{{ c }}" {% if tf_via == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    {% if tf_via and tf_via not in _couriers %}<option value="{{ tf_via }}" selected>{{ tf_via }}</option>{% endif %}
+  </select>
+</div>
+<div class="col-md-4">
+  <label class="form-label small fw-semibold">Tracking Number</label>
+  <input type="text" name="tracking_number" maxlength="100" class="form-control form-control-sm font-monospace"
+         placeholder="AWB / tracking no." value="{{ tf_tracking or '' }}">
+</div>
