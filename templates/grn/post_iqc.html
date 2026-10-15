@@ -35,9 +35,10 @@
            border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
            box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
   .lt-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1}
-  .lt-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1}
+  /* Light tile rule (Design System 05): label .35rem under the count, button .6rem under the label, watermark 8%. */
+  .lt-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1; margin-top:.35rem}
   .lt-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
-              color:color-mix(in srgb, var(--tc) 18%, transparent); pointer-events:none}
+              color:color-mix(in srgb, var(--tc) 8%, transparent); pointer-events:none}
 </style>
 <div class="row g-3 mb-4 lt-tiles-row">
   <div class="col-6 col-lg-4">
