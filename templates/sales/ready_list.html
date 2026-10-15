@@ -9,10 +9,16 @@
   .ready-tabs .nav-link { font-weight: 600; color: #495057; display: inline-flex; align-items: center; gap: .15rem; }
   .ready-tabs .nav-link.active { color: #0d6efd; background: #fff; }
   .ready-tab-content { background: #fff; border: 1px solid #dee2e6; border-top: 0;
-                       border-radius: 0 0 .5rem .5rem; padding: 1rem; }
+                       border-radius: 0 0 .5rem .5rem; padding: 0; }
   /* Each tab: Global Table header row — the tab's title on the left, that
-     table's own filters/buttons on the right (global-table.js convention). */
-  .ready-tab-content > .tab-pane > .card { border: 0; }
+     table's own filters/buttons on the right (global-table.js convention).
+     Spacing: the panel itself has no padding; the blue header spans the full
+     panel width with normal header padding, and the table gets exactly one
+     1rem gutter (the Global Table's .gtable-tab-wrap) — previously the panel,
+     the card body and the wrapper each added 1rem while the header had none. */
+  .ready-tab-content > .tab-pane > .card { border: 0; border-radius: 0 0 .5rem .5rem; }
+  .ready-tab-content > .tab-pane > .card > .card-header { padding: .5rem 1rem !important; border-radius: 0; }
+  .ready-tab-content > .tab-pane > .card > .card-body { padding: 0 !important; }
 </style>
 {# "N device(s) ready" + New Sale row hidden by request (2026-10-13); the
    tab badges and each table's count badge already show the counts.
@@ -266,7 +272,7 @@
           <th>Min Selling Price</th><th>Max Selling Price</th><th>Assigned To</th><th>Action</th>
           {# Hidden — searchable only, so the toolbar search box can match these too #}
           <th class="d-none">CPU</th><th class="d-none">RAM</th><th class="d-none">Storage</th>
-          <th class="d-none">Device Types</th><th class="d-none">Models</th>
+          <th class="d-none">Device Types</th><th class="d-none">Models</th><th class="d-none">Tags</th>
         </tr>
       </thead>
       <tbody>
@@ -338,6 +344,8 @@
           <td class="d-none">{{ r.storage }}</td>
           <td class="d-none">{{ r.device_type_breakdown | map(attribute='name') | join(', ') }}</td>
           <td class="d-none">{{ r.model_breakdown | map(attribute='name') | join(', ') }}</td>
+          {# Every tag number in this Lot + Sub-Lot, so the search box finds the row by tag #}
+          <td class="d-none">{{ r.barcodes | join(' ') }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -895,11 +903,11 @@ function buildAsIsLotTable(){
     // already knows can_view_pricing at render time, same as the Tag table.
     columnDefs: [
       { orderable: false, targets: [{{ 10 if can_view_pricing(current_user) else 9 }}] },
-      { visible: false, targets: [{% if can_view_pricing(current_user) %}11, 12, 13, 14, 15{% else %}10, 11, 12, 13, 14{% endif %}] },
+      { visible: false, targets: [{% if can_view_pricing(current_user) %}11, 12, 13, 14, 15, 16{% else %}10, 11, 12, 13, 14, 15{% endif %}] },
     ],
   });
   $(dtAsIsLot.table().container()).find('input[type="search"]')
-    .attr('placeholder', 'Search Lot / Sub-Lot / Model / CPU / RAM / Storage…');
+    .attr('placeholder', 'Search Lot / Sub-Lot / Tag / Model / CPU / RAM / Storage…');
 }
 function wireAsIsLotButtons(){
   document.querySelectorAll('.as-is-lot-edit-btn').forEach(function(btn){

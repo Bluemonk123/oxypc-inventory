@@ -2021,9 +2021,9 @@ async def sales_list_data(
                             if s.invoice_no else repl_badge)
         cells = [
             f'<input type="checkbox" class="row-check" value="{s.id}">',
-            (f'<a href="/sales/{s.id}" class="text-decoration-none fw-semibold">{esc(s.sale_number)}</a>'
+            (f'<a href="/sales/{s.id}" class="text-decoration-none fw-semibold text-nowrap">{esc(s.sale_number)}</a>'
              + (f'<div class="small text-muted text-nowrap" title="Sold from Block Tags">'
-                f'<i class="bi bi-lock me-1"></i>{esc(block_by_sale[s.sale_number])}</div>'
+                f'(Box - {esc(block_by_sale[s.sale_number])})</div>'
                 if s.sale_number in block_by_sale else '')),
             invoice_cell,
             s.sold_at.strftime("%d-%m-%Y") if s.sold_at else "—",
