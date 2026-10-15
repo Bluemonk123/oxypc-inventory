@@ -7,7 +7,8 @@
   <i class="bi bi-lock me-2"></i>Pricing visibility is disabled for your role. Contact an admin if you need access to this report.
 </div>
 {% else %}
-<div class="d-flex justify-content-end mb-3">
+<div class="d-flex justify-content-between align-items-center mb-3 gap-2">
+  <span class="small text-muted"><i class="bi bi-info-circle me-1"></i>Trashed lots/devices are excluded. Net Revenue = Gross Sales − Returns. <b>Profit</b> is for the whole lot; <b>Profit on Sold Units</b> compares Net Revenue with the cost of only the devices sold so far.</span>
   <a href="/reports/export/lot-pl" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</a>
 </div>
 <div class="card border-0 shadow-sm">
@@ -15,16 +16,20 @@
     <div class="table-responsive">
       <table id="plTable" class="table table-hover mb-0 small">
         <thead class="table-dark">
-          <tr><th>Lot#</th><th>Supplier</th><th>Date</th><th>Qty</th><th>Devices</th><th>Sold</th><th>Buying Price</th><th>Parts Cost</th><th>Labour Cost</th><th>Total Cost</th><th>Revenue</th><th>Profit</th><th>Margin</th></tr>
+          <tr><th>Lot#</th><th>Supplier</th><th>Date</th><th>Qty</th><th>Devices</th><th>Sold</th><th>Buying Price</th><th>Parts Cost</th><th>Labour Cost</th><th>Total Cost</th><th title="Sale value of sold devices">Gross Sales</th><th title="Refunds on customer returns">Returns</th><th title="Gross Sales − Returns">Net Revenue</th><th title="Net Revenue − Total Cost (whole lot)">Profit</th><th>Margin</th><th title="Buying + parts + labour of the sold devices only">Cost of Sold Units</th><th title="Net Revenue − Cost of Sold Units">Profit on Sold Units</th></tr>
         </thead>
         <tbody>
-          {% set ns = namespace(total_buying=0, total_parts=0, total_labour=0, total_revenue=0, total_profit=0) %}
+          {% set ns = namespace(total_buying=0, total_parts=0, total_labour=0, total_revenue=0, total_profit=0, total_gross=0, total_returns=0, total_cost_sold=0, total_profit_sold=0) %}
           {% for lp in lot_pl %}
           {% set ns.total_buying = ns.total_buying + lp.buying_price %}
           {% set ns.total_parts = ns.total_parts + lp.parts_cost %}
           {% set ns.total_labour = ns.total_labour + lp.labour_cost %}
           {% set ns.total_revenue = ns.total_revenue + lp.revenue %}
           {% set ns.total_profit = ns.total_profit + lp.profit %}
+          {% set ns.total_gross = ns.total_gross + lp.gross_revenue %}
+          {% set ns.total_returns = ns.total_returns + lp.returns %}
+          {% set ns.total_cost_sold = ns.total_cost_sold + lp.cost_sold %}
+          {% set ns.total_profit_sold = ns.total_profit_sold + lp.profit_sold %}
           <tr class="{{ 'table-success' if lp.profit > 0 else 'table-danger' if lp.profit < 0 else '' }}">
             <td><a href="/lots/{{ lp.lot_id }}" class="fw-semibold text-decoration-none">{{ lp.lot_number }}</a></td>
             <td>{{ lp.supplier }}</td>
@@ -36,6 +41,8 @@
             <td>₹{{ "{:,.0f}".format(lp.parts_cost) }}</td>
             <td class="text-warning">₹{{ "{:,.0f}".format(lp.labour_cost) }}</td>
             <td>₹{{ "{:,.0f}".format(lp.total_cost) }}</td>
+            <td>₹{{ "{:,.0f}".format(lp.gross_revenue) }}</td>
+            <td class="text-danger">{% if lp.returns %}−₹{{ "{:,.0f}".format(lp.returns) }}{% else %}₹0{% endif %}</td>
             <td class="text-success fw-semibold">₹{{ "{:,.0f}".format(lp.revenue) }}</td>
             <td class="{{ 'text-success' if lp.profit > 0 else 'text-danger' }} fw-bold">₹{{ "{:,.0f}".format(lp.profit) }}</td>
             <td>
@@ -43,6 +50,8 @@
                 {{ lp.margin }}%
               </span>
             </td>
+            <td>₹{{ "{:,.0f}".format(lp.cost_sold) }}</td>
+            <td class="{{ 'text-success' if lp.profit_sold > 0 else 'text-danger' if lp.profit_sold < 0 else '' }} fw-bold">₹{{ "{:,.0f}".format(lp.profit_sold) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -54,9 +63,13 @@
             <td>₹{{ "{:,.0f}".format(ns.total_parts) }}</td>
             <td class="text-warning">₹{{ "{:,.0f}".format(ns.total_labour) }}</td>
             <td>₹{{ "{:,.0f}".format(ns.total_buying + ns.total_parts + ns.total_labour) }}</td>
+            <td>₹{{ "{:,.0f}".format(ns.total_gross) }}</td>
+            <td>−₹{{ "{:,.0f}".format(ns.total_returns) }}</td>
             <td>₹{{ "{:,.0f}".format(ns.total_revenue) }}</td>
             <td class="{{ 'text-success' if ns.total_profit > 0 else 'text-danger' }}">₹{{ "{:,.0f}".format(ns.total_profit) }}</td>
             <td>{{ "%.1f" | format(ns.total_profit / ns.total_revenue * 100 if ns.total_revenue else 0) }}%</td>
+            <td>₹{{ "{:,.0f}".format(ns.total_cost_sold) }}</td>
+            <td class="{{ 'text-success' if ns.total_profit_sold > 0 else 'text-danger' }}">₹{{ "{:,.0f}".format(ns.total_profit_sold) }}</td>
           </tr>
         </tfoot>
         {% endif %}

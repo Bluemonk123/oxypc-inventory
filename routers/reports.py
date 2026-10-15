@@ -60,74 +60,106 @@ router = APIRouter(
 
 @router.get("/lot-pl", response_class=HTMLResponse)
 async def lot_pl_report(request: Request, db: AsyncSession = Depends(get_db), current_user: User = Depends(_require_financials)):
-    lots_result = await db.execute(select(Lot).order_by(Lot.created_at.desc()))
-    lots = lots_result.scalars().all()
+    """Per-lot P&L (2026-10-16 rework):
+    - trashed lots and trashed devices are left out everywhere;
+    - Revenue is NET of customer returns (refund amount, or the sale price
+      when no refund amount was recorded; rejected returns don't count);
+    - Cost of Sold Units = buying cost of the sold devices (device_price, else
+      the lot's buying price split evenly over its devices) + parts + labour
+      booked on those sold devices, so a part-sold lot shows a fair
+      Profit on Sold Units next to the whole-lot Profit."""
+    from models.sales import Return
+    live_dev = Device.is_trashed.isnot(True)
+    lots = (await db.execute(
+        select(Lot).where(Lot.is_trashed.isnot(True)).order_by(Lot.created_at.desc())
+    )).scalars().all()
 
-    # ── Batch aggregation queries (replaces N×4 sequential queries) ──────────
-
-    # Revenue per lot: SUM(sale_price) via devices JOIN sales
-    rev_rows = await db.execute(
+    # Gross revenue per lot
+    rev_by_lot = {str(r.lot_id): float(r.revenue) for r in await db.execute(
         select(Device.lot_id, func.coalesce(func.sum(Sale.sale_price), 0).label("revenue"))
-        .join(Sale, Sale.device_id == Device.id)
-        .group_by(Device.lot_id)
-    )
-    rev_by_lot = {str(r.lot_id): float(r.revenue) for r in rev_rows}
+        .join(Sale, Sale.device_id == Device.id).where(live_dev)
+        .group_by(Device.lot_id))}
 
-    # Parts cost per lot: SUM(spare_parts_consumption.total_cost) WHERE lot_id IS NOT NULL
-    parts_rows = await db.execute(
+    # Returns per lot: refund amount, falling back to the sale price
+    ret_by_lot = {str(r.lot_id): float(r.returned) for r in await db.execute(
+        select(Device.lot_id,
+               func.coalesce(func.sum(func.coalesce(Return.refund_amount, Sale.sale_price)), 0).label("returned"))
+        .join(Return, Return.device_id == Device.id)
+        .join(Sale, Sale.id == Return.sale_id)
+        .where(live_dev, func.coalesce(Return.approval_status, "pending") != "rejected")
+        .group_by(Device.lot_id))}
+
+    # Parts cost per lot (booked to the lot), and per sold device
+    parts_by_lot = {str(r.lot_id): float(r.parts) for r in await db.execute(
         select(SparePartConsumption.lot_id, func.coalesce(func.sum(SparePartConsumption.total_cost), 0).label("parts"))
         .where(SparePartConsumption.lot_id.isnot(None))
-        .group_by(SparePartConsumption.lot_id)
-    )
-    parts_by_lot = {str(r.lot_id): float(r.parts) for r in parts_rows}
+        .group_by(SparePartConsumption.lot_id))}
+    sold_parts_by_lot = {str(r.lot_id): float(r.parts) for r in await db.execute(
+        select(Device.lot_id, func.coalesce(func.sum(SparePartConsumption.total_cost), 0).label("parts"))
+        .join(SparePartConsumption, SparePartConsumption.device_id == Device.id)
+        .where(live_dev, Device.current_stage == DeviceStage.sold)
+        .group_by(Device.lot_id))}
 
-    # Labour cost per lot: SUM(repair_attempts.cost) joined via devices
-    labour_rows = await db.execute(
+    # Labour per lot, and per sold device
+    labour_by_lot = {str(r.lot_id): float(r.labour) for r in await db.execute(
+        select(Device.lot_id, func.coalesce(func.sum(RepairAttempt.cost), 0).label("labour"))
+        .join(RepairAttempt, RepairAttempt.device_id == Device.id).where(live_dev)
+        .group_by(Device.lot_id))}
+    sold_labour_by_lot = {str(r.lot_id): float(r.labour) for r in await db.execute(
         select(Device.lot_id, func.coalesce(func.sum(RepairAttempt.cost), 0).label("labour"))
         .join(RepairAttempt, RepairAttempt.device_id == Device.id)
-        .group_by(Device.lot_id)
-    )
-    labour_by_lot = {str(r.lot_id): float(r.labour) for r in labour_rows}
+        .where(live_dev, Device.current_stage == DeviceStage.sold)
+        .group_by(Device.lot_id))}
 
-    # Sold count per lot
-    sold_rows = await db.execute(
-        select(Device.lot_id, func.count(Device.id).label("sold"))
-        .where(Device.current_stage == DeviceStage.sold)
-        .group_by(Device.lot_id)
-    )
-    sold_by_lot = {str(r.lot_id): r.sold for r in sold_rows}
-
-    # Total device count per lot
-    count_rows = await db.execute(
-        select(Device.lot_id, func.count(Device.id).label("cnt"))
-        .group_by(Device.lot_id)
-    )
-    count_by_lot = {str(r.lot_id): r.cnt for r in count_rows}
+    # Device counts, sold counts, and buying cost of sold devices
+    count_by_lot, sold_by_lot, sold_priced, sold_unpriced = {}, {}, {}, {}
+    for r in await db.execute(
+        select(Device.lot_id,
+               func.count(Device.id).label("cnt"),
+               func.count(Device.id).filter(Device.current_stage == DeviceStage.sold).label("sold"),
+               func.coalesce(func.sum(Device.device_price).filter(Device.current_stage == DeviceStage.sold), 0).label("sold_price"),
+               func.count(Device.id).filter(Device.current_stage == DeviceStage.sold,
+                                            Device.device_price.is_(None)).label("sold_unpriced"))
+        .where(live_dev).group_by(Device.lot_id)):
+        lid = str(r.lot_id)
+        count_by_lot[lid], sold_by_lot[lid] = r.cnt, r.sold
+        sold_priced[lid], sold_unpriced[lid] = float(r.sold_price), r.sold_unpriced
 
     lot_pl = []
     for lot in lots:
         lid     = str(lot.id)
-        revenue = rev_by_lot.get(lid, 0.0)
+        gross   = rev_by_lot.get(lid, 0.0)
+        returns = ret_by_lot.get(lid, 0.0)
+        revenue = gross - returns
         parts   = parts_by_lot.get(lid, 0.0)
         labour  = labour_by_lot.get(lid, 0.0)
         buying  = float(lot.buying_price or 0)
+        devices = count_by_lot.get(lid, 0)
         total_cost = buying + parts + labour
         profit  = revenue - total_cost
         margin  = round(profit / revenue * 100, 1) if revenue > 0 else 0
+        per_unit = buying / devices if devices else 0.0
+        sold_buy = sold_priced.get(lid, 0.0) + sold_unpriced.get(lid, 0) * per_unit
+        cost_sold = sold_buy + sold_parts_by_lot.get(lid, 0.0) + sold_labour_by_lot.get(lid, 0.0)
+        profit_sold = revenue - cost_sold
         lot_pl.append({
             "lot_number":   lot.lot_number,
             "supplier":     lot.supplier_name,
             "purchase_date":lot.purchase_date,
             "qty":          lot.qty,
-            "devices":      count_by_lot.get(lid, 0),
+            "devices":      devices,
             "sold":         sold_by_lot.get(lid, 0),
             "buying_price": buying,
             "parts_cost":   parts,
             "labour_cost":  labour,
             "total_cost":   total_cost,
+            "gross_revenue":gross,
+            "returns":      returns,
             "revenue":      revenue,
             "profit":       profit,
             "margin":       margin,
+            "cost_sold":    cost_sold,
+            "profit_sold":  profit_sold,
             "lot_id":       lid,
         })
     return templates.TemplateResponse("reports/lot_pl.html", {
