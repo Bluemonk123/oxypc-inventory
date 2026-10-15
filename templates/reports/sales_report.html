@@ -28,23 +28,7 @@
     <div>
     <table id="srTable" class="table table-hover mb-0 small">
       <thead class="table-dark"><tr><th style="width:32px"><input type="checkbox" id="srSelectAll" class="form-check-input" title="Select all"></th><th>Sale#</th><th>Date</th><th>Tag Number</th><th>Brand/Model</th><th>Lot</th><th>Grade</th><th>Price</th><th>Customer</th><th>Payment</th><th>By</th></tr></thead>
-      <tbody>
-        {% for row in sales %}
-        <tr{% if not row.has_sale %} class="table-warning" title="Moved to Sold via bulk stage-change — no Sale record exists for this tag"{% endif %}>
-          <td><input type="checkbox" class="form-check-input srRowChk" value="{{ row.barcode }}"></td>
-          <td class="fw-semibold">{% if row.has_sale %}{{ row.sale_number }}{% else %}<span class="badge bg-warning text-dark">No Sale Record</span>{% endif %}</td>
-          <td data-order="{{ row.sold_at.strftime('%Y%m%d%H%M%S') if row.sold_at else '' }}">{{ row.sold_at.strftime('%d-%m-%Y') if row.sold_at else '—' }}</td>
-          <td><code>{{ row.barcode }}</code></td>
-          <td>{{ ((row.brand or '') ~ ' ' ~ (row.model or '')).strip() or '—' }}</td>
-          <td>{% if row.lot_number %}<span class="badge bg-info text-dark">{{ row.lot_number }}</span>{% else %}—{% endif %}</td>
-          <td>{{ row.grade or '—' }}</td>
-          <td class="fw-semibold text-success" data-order="{{ row.sale_price or 0 }}">{% if row.sale_price is not none %}₹{{ "{:,.0f}".format(row.sale_price) }}{% else %}—{% endif %}</td>
-          <td>{{ row.customer_name or '—' }}</td>
-          <td>{% if row.payment_mode %}<span class="badge bg-secondary">{{ row.payment_mode }}</span>{% else %}—{% endif %}</td>
-          <td>{{ row.sold_by or '—' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
+      <tbody></tbody>
     </table>
     </div>
   </div>
@@ -53,15 +37,38 @@
 {% endblock %}
 {% block scripts %}
 <script>
+{% if can_view_pricing(current_user) %}
+var SR_DATA = {{ sales_data | tojson }};
 $(document).ready(function(){
+  function esc(v){ return $('<div>').text(v == null ? '' : v).html(); }
   function srUpdate(){ $('#srSelCount').text(dtSr.$('.srRowChk:checked').length + ' selected'); }
   var dtSr = initGlobalTable('#srTable', {
+    data: SR_DATA,
+    deferRender: true,
     order: [],
-    columnDefs: [{ orderable: false, targets: 0 }],
     language: { emptyTable: 'No sales in this date range.' },
+    createdRow: function (row, r) {
+      if (!r.has) { $(row).addClass('table-warning').attr('title', 'Moved to Sold via bulk stage-change — no Sale record exists for this tag'); }
+    },
+    columns: [
+      { data: 'tag', orderable: false, render: function (v) { return '<input type="checkbox" class="form-check-input srRowChk" value="' + esc(v) + '">'; } },
+      { data: 'sn', className: 'fw-semibold', render: function (v, t, r) { return r.has ? esc(v) : '<span class="badge bg-warning text-dark">No Sale Record</span>'; } },
+      { data: 'd', render: function (v, t, r) { return t === 'sort' ? r.ds : (esc(v) || '—'); } },
+      { data: 'tag', render: function (v) { return '<code>' + esc(v) + '</code>'; } },
+      { data: 'dev', render: function (v) { return esc(v) || '—'; } },
+      { data: 'lot', render: function (v) { return v ? '<span class="badge bg-info text-dark">' + esc(v) + '</span>' : '—'; } },
+      { data: 'g', render: function (v) { return esc(v) || '—'; } },
+      { data: 'p', className: 'fw-semibold text-success', render: function (v, t) {
+          if (t === 'sort' || t === 'type') return v == null ? -1 : v;
+          return v == null ? '—' : '₹' + Number(v).toLocaleString('en-IN', { maximumFractionDigits: 0 }); } },
+      { data: 'c', render: function (v) { return esc(v) || '—'; } },
+      { data: 'pm', render: function (v) { return v ? '<span class="badge bg-secondary">' + esc(v) + '</span>' : '—'; } },
+      { data: 'by', render: function (v) { return esc(v) || '—'; } },
+    ],
   }, {
     selectAll: { headerSelector: '#srSelectAll', rowSelector: '.srRowChk', onChange: srUpdate, resetOnDraw: true },
   });
 });
+{% endif %}
 </script>
 {% endblock %}

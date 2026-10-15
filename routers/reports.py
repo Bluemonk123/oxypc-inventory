@@ -605,23 +605,32 @@ async def stage_movement_report(request: Request, db: AsyncSession = Depends(get
 # missing. Shaped like the Sale-joined dict rows below so both callers can
 # treat every row the same way from here on.
 async def _sold_orphan_rows(db: AsyncSession, from_dt: datetime | None = None, to_dt: datetime | None = None) -> list[dict]:
-    sold_moved_at = {
-        r.device_id: r.moved_at
-        for r in (await db.execute(
-            select(StageMovement.device_id, func.max(StageMovement.moved_at).label("moved_at"))
-            .where(StageMovement.to_stage == DeviceStage.sold)
-            .group_by(StageMovement.device_id)
-        )).all()
-    }
+    # Orphans first (usually a handful), using NOT EXISTS rather than NOT IN
+    # over every sale; then the "moved to Sold" time is looked up for those
+    # devices only — it used to aggregate every Sold stage movement in the
+    # whole history on each page load, which made the Sales Report slow.
     orphan_result = await db.execute(
         select(Device.id, Device.barcode, Device.brand, Device.model, Device.grade,
                Device.sub_category, Lot.lot_number)
         .outerjoin(Lot, Device.lot_id == Lot.id)
         .where(Device.current_stage == DeviceStage.sold,
-               ~Device.id.in_(select(Sale.device_id)))
+               ~select(Sale.id).where(Sale.device_id == Device.id).exists())
     )
+    orphans = orphan_result.all()
+    orphan_ids = [o[0] for o in orphans]
+    sold_moved_at = {}
+    if orphan_ids:
+        sold_moved_at = {
+            r.device_id: r.moved_at
+            for r in (await db.execute(
+                select(StageMovement.device_id, func.max(StageMovement.moved_at).label("moved_at"))
+                .where(StageMovement.to_stage == DeviceStage.sold,
+                       StageMovement.device_id.in_(orphan_ids))
+                .group_by(StageMovement.device_id)
+            )).all()
+        }
     rows = []
-    for device_id, barcode, brand, model, grade, sub_category, lot_number in orphan_result.all():
+    for device_id, barcode, brand, model, grade, sub_category, lot_number in orphans:
         moved_at = sold_moved_at.get(device_id)
         if moved_at is not None and from_dt is not None and not (from_dt <= moved_at <= to_dt):
             continue
@@ -692,8 +701,20 @@ async def sales_report(request: Request, db: AsyncSession = Depends(get_db), cur
     rows.extend(await _sold_orphan_rows(db, from_dt, to_dt))
     rows.sort(key=lambda r: r["sold_at"] or datetime.min, reverse=True)
 
+    # Rows go to the page as compact JSON and DataTables builds only the rows
+    # on screen (deferRender) — rendering thousands of <tr>s made it slow.
+    sales_data = [{
+        "sn": r["sale_number"] or "", "has": bool(r["has_sale"]),
+        "d": r["sold_at"].strftime("%d-%m-%Y") if r["sold_at"] else "",
+        "ds": r["sold_at"].strftime("%Y%m%d%H%M%S") if r["sold_at"] else "",
+        "tag": r["barcode"] or "",
+        "dev": f"{r['brand'] or ''} {r['model'] or ''}".strip(),
+        "lot": r["lot_number"] or "", "g": r["grade"] or "",
+        "p": float(r["sale_price"]) if r["sale_price"] is not None else None,
+        "c": r["customer_name"] or "", "pm": r["payment_mode"] or "", "by": r["sold_by"] or "",
+    } for r in rows]
     return templates.TemplateResponse("reports/sales_report.html", {
-        "request": request, "sales": rows, "total": total, "current_user": current_user,
+        "request": request, "sales": rows, "sales_data": sales_data, "total": total, "current_user": current_user,
         "from_date": from_date_str, "to_date": to_date_str,
     })
 
