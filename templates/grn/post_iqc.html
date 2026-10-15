@@ -194,6 +194,12 @@
         </select>
         {{ ms.multiselect_inline('pend_entity', 'Entity', entity_options + ['Unassigned'], '') }}
         <button type="button" id="fPendReset" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset Filters</button>
+        {# Export: the ticked rows when any are ticked, else every row matching
+           the filters + search. Count follows the same rule (pendExportUpdate). #}
+        <button type="button" id="pendExportBtn" class="btn btn-outline-success btn-sm text-nowrap"
+                title="Export ticked rows, or all rows matching the filters when none are ticked">
+          <i class="bi bi-download me-1"></i>Export (<span id="pendExportCount">0</span>)
+        </button>
       </div>
     </div>
     <div class="card-body p-0">
@@ -505,6 +511,7 @@ $(document).ready(function(){
   // ahead of the server request), so clearing a search reliably goes back
   // to 12 per page.
   dtPend.on('search.dt', function () { pendSetLen(pendSearching(dtPend)); });
+  dtPend.on('draw.dt', pendExportUpdate);
   var entHidden = document.getElementById('ms_val_pend_entity');
   if (entHidden) entHidden.addEventListener('ms:change', function () { dtPend.draw(); });
   // Selected count sits in the table toolbar, just before its search box.
@@ -543,7 +550,35 @@ function updatePendCount(){
   var n = document.querySelectorAll('.pendChk:checked').length;
   var el = document.getElementById('pendSelCount');
   if(el) el.textContent = n + ' selected';
+  pendExportUpdate();
 }
+// Export count: ticked rows if any, else every row matching filters + search.
+function pendExportUpdate(){
+  var el = document.getElementById('pendExportCount');
+  if (!el) return;
+  var n = document.querySelectorAll('.pendChk:checked').length;
+  if (!n && window.dtPend) n = window.dtPend.page.info().recordsDisplay;
+  el.textContent = n;
+}
+document.getElementById('pendExportBtn').addEventListener('click', function(){
+  var ids = Array.from(document.querySelectorAll('.pendChk:checked')).map(function(c){ return c.value; });
+  var f = {
+    csrf_token: (document.cookie.match(/csrf_token=([^;]+)/) || [,''])[1],
+    device_ids: ids.join(','),
+    device_type: document.getElementById('fPendDeviceType').value,
+    pend_invoice: document.getElementById('fPendInvoice').value,
+    pend_po: document.getElementById('fPendPo').value,
+    pend_entity: (document.getElementById('ms_val_pend_entity') || {}).value || '',
+    search: window.dtPend ? (window.dtPend.search() || '') : '',
+  };
+  // A separate form (not #mapForm — forms can't nest), POST so any number of ids fits.
+  var form = document.createElement('form');
+  form.method = 'POST'; form.action = '/grn/post-iqc/export';
+  Object.keys(f).forEach(function(k){
+    var i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = f[k]; form.appendChild(i);
+  });
+  document.body.appendChild(form); form.submit(); form.remove();
+});
 if (checkAll) checkAll.addEventListener('change', function(){
   document.querySelectorAll('.pendChk').forEach(function(c){ c.checked = checkAll.checked; });
   updatePendCount();

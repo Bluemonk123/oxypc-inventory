@@ -123,25 +123,9 @@ async def grn_import_list(request: Request, db: AsyncSession = Depends(get_db),
 
 # ── GRN post IQC (item 14): same import/validate/edit, plus Map-to-Tag ─────────
 
-@router.get("/post-iqc/data")
-async def grn_post_iqc_data(
-    request: Request,
-    draw: int = 1, start: int = 0, length: int = 25,
-    device_type: str = "", pend_invoice: str = "", pend_po: str = "", pend_entity: str = "",
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allowed),
-):
-    """DataTables server-side feed for the GRN in TRC pending-devices table.
-
-    'pending' is every IQC-stage device with no GRN number yet — effectively
-    the whole IQC backlog (~3,900 devices with no filter). Rendering all of
-    them into the HTML on every load froze the page; rows now come a page at
-    a time. Invoice/PO are still hidden via DataTables' own columnDefs
-    (visible:false), not a d-none class, so header and cell hide together.
-    """
-    from sqlalchemy import desc as _desc, asc as _asc
-    from html import escape
-
+def _pending_base_filters(device_type: str, pend_entity: str, pend_invoice: str, pend_po: str) -> list:
+    """GRN Pending table's filter clauses (Device Type / Entity / Invoice / PO)
+    — shared by /grn/post-iqc/data and its Export, so the two never disagree."""
     base_filters = [Device.current_stage == DeviceStage.iqc,
                     or_(Device.grn_number.is_(None), Device.grn_number == ""),
                     Device.is_active == True, Device.is_trashed == False]
@@ -166,10 +150,12 @@ async def grn_post_iqc_data(
             ors.append(Device.po_number.ilike(f"%{pend_po}%"))
         base_filters.append(or_(*ors))
 
-    count_q = select(func.count()).select_from(Device).where(*base_filters)
-    total = (await db.execute(count_q)).scalar() or 0
+    return base_filters
 
-    search = (request.query_params.get("search[value]") or "").strip()
+
+def _pending_search_filters(search: str) -> list:
+    """The table's own search box: comma-separated tags = exact tag match,
+    otherwise a contains-match on tag / brand / model / device type."""
     search_filters = []
     if search and "," in search:
         # Comma-separated Tag Numbers (scanned or pasted) — exact tag match,
@@ -183,6 +169,34 @@ async def grn_post_iqc_data(
             Device.barcode.ilike(like), Device.brand.ilike(like),
             Device.model.ilike(like), Device.device_type.ilike(like),
         ))
+    return search_filters
+
+
+@router.get("/post-iqc/data")
+async def grn_post_iqc_data(
+    request: Request,
+    draw: int = 1, start: int = 0, length: int = 25,
+    device_type: str = "", pend_invoice: str = "", pend_po: str = "", pend_entity: str = "",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """DataTables server-side feed for the GRN in TRC pending-devices table.
+
+    'pending' is every IQC-stage device with no GRN number yet — effectively
+    the whole IQC backlog (~3,900 devices with no filter). Rendering all of
+    them into the HTML on every load froze the page; rows now come a page at
+    a time. Invoice/PO are still hidden via DataTables' own columnDefs
+    (visible:false), not a d-none class, so header and cell hide together.
+    """
+    from sqlalchemy import desc as _desc, asc as _asc
+    from html import escape
+
+    base_filters = _pending_base_filters(device_type, pend_entity, pend_invoice, pend_po)
+    count_q = select(func.count()).select_from(Device).where(*base_filters)
+    total = (await db.execute(count_q)).scalar() or 0
+
+    search = (request.query_params.get("search[value]") or "").strip()
+    search_filters = _pending_search_filters(search)
     # Identical to `total` when no search term is present, and DataTables asks
     # on every draw — skip the duplicate round-trip.
     filtered = total if not search_filters else (
@@ -227,6 +241,46 @@ async def grn_post_iqc_data(
         ])
 
     return {"draw": draw, "recordsTotal": total, "recordsFiltered": filtered, "data": data}
+
+
+@router.post("/post-iqc/export")
+async def grn_post_iqc_export(
+    device_ids: str = Form(""),
+    device_type: str = Form(""), pend_invoice: str = Form(""), pend_po: str = Form(""),
+    pend_entity: str = Form(""), search: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """GRN Pending table's Export button (2026-10-15): the ticked rows when
+    any are ticked (device_ids), otherwise every row matching the table's
+    current filters + search — no page or row cap."""
+    import csv, io, uuid as _u
+    from fastapi.responses import StreamingResponse
+    ids = []
+    for x in (device_ids or "").split(","):
+        try:
+            ids.append(_u.UUID(x.strip()))
+        except ValueError:
+            pass
+    q = select(Device)
+    if ids:
+        q = q.where(Device.id.in_(ids))
+    else:
+        q = q.where(*_pending_base_filters(device_type, pend_entity, pend_invoice, pend_po),
+                    *_pending_search_filters((search or "").strip()))
+    rows = (await db.execute(q.order_by(Device.barcode))).scalars().all()
+
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["Tag Number", "Entity", "Brand", "Model", "Device Type", "RAM", "Storage",
+                "Invoice Number", "PO Number", "Stage"])
+    for d in rows:
+        w.writerow([d.barcode, d.entity or "", d.brand or "", d.model or "", d.device_type or "",
+                    f"{d.ram_gb} GB" if d.ram_gb else "", f"{d.storage_gb} GB" if d.storage_gb else "",
+                    d.invoice_number or "", d.po_number or "", d.stage_label])
+    fname = f"grn_pending_{app_now().strftime('%Y%m%d_%H%M')}.csv"
+    return StreamingResponse(io.BytesIO(out.getvalue().encode("utf-8-sig")), media_type="text/csv",
+                             headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
 @router.get("/post-iqc", response_class=HTMLResponse)

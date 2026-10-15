@@ -587,3 +587,17 @@ fieldset:disabled .btn {
   color: #212529 !important;
   border-color: #ced4da !important;
 }
+
+/* Autosave "Restore / Close" banner (static/js/form-autosave.js): fixed just
+   under the top header, centred, as wide as its content — not a full-width
+   strip pushing the form down (2026-10-15). */
+.autosave-restore-banner {
+  position: fixed;
+  top: calc(var(--topbar-height) + .5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 2rem);
+  z-index: 1035;
+  box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .2);
+}

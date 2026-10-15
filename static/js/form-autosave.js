@@ -10,8 +10,8 @@
  *   - Auto-discovers eligible full-page POST forms — no per-form wiring needed.
  *   - As the user types (debounced), snapshots the whole form into localStorage,
  *     namespaced per user + per page + per form.
- *   - On the next load, if a fresh draft exists, shows a "Restore / Discard"
- *     banner at the top of the form (never silently overwrites).
+ *   - On the next load, if a fresh draft exists, shows a "Restore / Close"
+ *     banner fixed just under the top header (never silently overwrites).
  *   - Clears the draft when the form is submitted.
  *   - Drafts older than DRAFT_TTL_MS are treated as stale and pruned.
  *
@@ -222,15 +222,20 @@
   function showBanner(form, key, draft) {
     if (form.querySelector('.autosave-restore-banner')) return;
     var bar = document.createElement('div');
-    bar.className = 'alert alert-warning d-flex align-items-center flex-wrap gap-2 py-2 mb-3 autosave-restore-banner';
+    // Fixed just under the top header, sized to its content (app.css
+    // .autosave-restore-banner). A second form's banner on the same page
+    // stacks below the first instead of covering it.
+    bar.className = 'alert alert-warning d-flex align-items-center flex-wrap gap-2 py-2 mb-0 autosave-restore-banner';
+    var stacked = document.querySelectorAll('.autosave-restore-banner').length;
+    if (stacked) bar.style.marginTop = (stacked * 56) + 'px';
     bar.setAttribute('role', 'alert');
     bar.innerHTML =
       '<i class="bi bi-clock-history"></i>' +
       '<span class="me-auto small">You have unsaved data from <strong>' +
         relativeTime(draft.t) + '</strong>. Restore it?</span>' +
       '<button type="button" class="btn btn-sm btn-success autosave-restore-btn">' +
-        '<i class="bi bi-arrow-counterclockwise me-1"></i>Restore</button>' +
-      '<button type="button" class="btn btn-sm btn-outline-secondary autosave-discard-btn">Discard</button>';
+        '<i class="bi bi-arrow-counterclockwise me-1"></i>Restore Last Values</button>' +
+      '<button type="button" class="btn btn-sm btn-outline-secondary autosave-discard-btn">Close</button>';
     form.insertBefore(bar, form.firstChild);
 
     bar.querySelector('.autosave-restore-btn').addEventListener('click', function () {
