@@ -1,4 +1,4 @@
-{# Admin Dashboard analytics — 12 stat cards + 5 chart groups. Included from
+{# Admin Dashboard analytics — chart groups (stat cards removed 2026-10-16). Included from
    templates/dashboard.html inside the {% if role == 'admin' %} gate. Chart
    rendering JS lives in dashboard.html's scripts block (after the Chart.js
    CDN include loads) — this partial only carries the markup + canvases. #}
@@ -6,76 +6,10 @@
 
 <h6 class="fw-semibold text-muted mb-2 mt-4"><i class="bi bi-graph-up me-1"></i>Analytics</h6>
 
-{# 'Total GRN' stat card removed on request (2026-09-30) — backing data
-   (aa.grn_in_plan / aa.grn_in_trc, computed in routers/dashboard.py
-   ~lines 875-897) is left in place, just no longer rendered below. #}
-<div class="row g-3 mb-4">
-  {% for title, icon, color, override_total, parts in [
-    ('Total Products', 'bi-laptop', 'primary', aa.get('products_inventory',0), [('Inventory', aa.get('products_inventory',0)), ('To be Sold', aa.get('products_to_be_sold',0)), ('Mark Sold', aa.get('products_sold',0))]),
-    ('Stage Products', 'bi-diagram-3', 'secondary', None, [('IQC', aa.get('stage_iqc',0)), ('Inventory', aa.get('stage_inventory',0)), ('Production', aa.get('stage_production',0)), ('Final IQC', aa.get('stage_final_iqc',0))]),
-    ('Total Parts', 'bi-gear', 'dark', None, [('In Stock', aa.get('parts_in_stock',0)), ('Out of Stock', aa.get('parts_out_of_stock',0)), ('Consumed', aa.get('parts_consumed',0)), ('New/Harvest', aa.get('parts_as_new',0) + aa.get('parts_as_harvest',0))]),
-    ('Total Dealers', 'bi-building', 'success', aa.get('dealers_total',0), [('Interested', aa.get('dealers_interested',0)), ('Not Interested', aa.get('dealers_not_interested',0)), ('Followup', aa.get('dealers_followup',0))]),
-    ('Total Accounts', 'bi-person-badge', 'primary', None, [('Buyer', aa.get('accounts_buyer',0)), ('Seller', aa.get('accounts_seller',0)), ('Both', aa.get('accounts_both',0))]),
-    ('Total PO', 'bi-file-earmark-text', 'info', None, [('Generated', aa.get('po_generated',0)), ('Closed', aa.get('po_closed',0))]),
-    ('Total Source Request', 'bi-search', 'secondary', None, [('Part', aa.get('source_request_parts',0)), ('Products', aa.get('source_request_products',0))]),
-    ('Total In/Out', 'bi-arrow-left-right', 'info', None, [('Total Sold', aa.get('stock_sold',0)), ('Total Return', aa.get('stock_returned',0))]),
-    ('Total Sales', 'bi-cart-check', 'success', None, [('Procurement', aa.get('sales_procurement',0)), ('Telecaller', aa.get('sales_telecaller',0)), ('Showroom', aa.get('sales_showroom',0))]),
-  ] %}
-  {% set card_total = override_total if override_total is not none else (parts | sum(attribute=1)) %}
-  <div class="col-sm-6 col-xl-4 col-xxl-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <i class="bi {{ icon }} text-{{ color }}"></i>
-          <span class="fw-semibold small">{{ title }}</span>
-          <span class="badge bg-{{ color }} ms-auto">{{ card_total }}</span>
-        </div>
-        <div class="d-flex flex-wrap gap-3">
-          {% for label, value in parts %}
-          <div>
-            <div class="fs-5 fw-bold">{{ value }}</div>
-            <div class="text-muted" style="font-size:.7rem">{{ label }}</div>
-          </div>
-          {% endfor %}
-        </div>
-      </div>
-    </div>
-  </div>
-  {% endfor %}
-
-  {% if can_view_pricing(current_user) %}
-  <div class="col-sm-6 col-xl-4 col-xxl-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <i class="bi bi-graph-up-arrow text-success"></i>
-          <span class="fw-semibold small">Total Product Profits</span>
-        </div>
-        <div class="d-flex flex-wrap gap-3">
-          <div><div class="fs-6 fw-bold">₹{{ aa.get('product_buying',0) | inr }}</div><div class="text-muted" style="font-size:.7rem">Buying Price</div></div>
-          <div><div class="fs-6 fw-bold">₹{{ aa.get('product_sale',0) | inr }}</div><div class="text-muted" style="font-size:.7rem">Sale Price</div></div>
-          <div><div class="fs-6 fw-bold {% if aa.get('product_profit_pct',0) >= 0 %}text-success{% else %}text-danger{% endif %}">{{ aa.get('product_profit_pct',0) }}%</div><div class="text-muted" style="font-size:.7rem">Profit %</div></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  <div class="col-sm-6 col-xl-4 col-xxl-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-2">
-          <i class="bi bi-graph-up-arrow text-info"></i>
-          <span class="fw-semibold small">Total Parts Profits</span>
-        </div>
-        <div class="d-flex flex-wrap gap-3">
-          <div><div class="fs-6 fw-bold">₹{{ aa.get('parts_buying',0) | inr }}</div><div class="text-muted" style="font-size:.7rem">Buying Price</div></div>
-          <div><div class="fs-6 fw-bold">₹{{ aa.get('parts_used',0) | inr }}</div><div class="text-muted" style="font-size:.7rem">Used Price</div></div>
-          <div><div class="fs-6 fw-bold {% if aa.get('parts_profit_pct',0) >= 0 %}text-success{% else %}text-danger{% endif %}">{{ aa.get('parts_profit_pct',0) }}%</div><div class="text-muted" style="font-size:.7rem">Profit %</div></div>
-        </div>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-</div>
+{# The Analytics count/stat cards (Total Products, Stage Products, Parts,
+   Dealers, Accounts, PO, Source Request, In/Out, Sales, Product/Parts
+   Profits) were removed on request (2026-10-16); only the charts remain.
+   The backing data in routers/dashboard.py is left in place. #}
 
 <div class="row g-3 mb-4">
   <div class="col-xl-4">
