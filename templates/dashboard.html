@@ -620,7 +620,11 @@
    ResizeObserver, driven by responsive:true + maintainAspectRatio:false. */
 .chart-card { display: flex; flex-direction: column; }
 .chart-card .card-body { flex: 1 1 auto; display: flex; }
-.chart-box { position: relative; flex: 1 1 auto; min-height: 220px; width: 100%; }
+/* Fixed height (2026-10-16): with flex:1 1 auto + only a min-height, the
+   box took its height from the chart and the chart from the box, so charts
+   kept growing ("zooming") on load. The box now sets a fixed height and
+   Chart.js fills it. */
+.chart-box { position: relative; flex: 0 0 auto; height: 280px; width: 100%; }
 </style>
 
 <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
