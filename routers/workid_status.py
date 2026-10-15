@@ -506,13 +506,18 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
     # values) rather than the page's separate Final-QC-movement-based
     # "ongoing" concept or completed_at, since those are three genuinely
     # different signals on this page. ──────────────────────────────────────
-    tag_count = len({it["barcode"] for it in items if it.get("barcode") and it["barcode"] != "—"})
+    # 2026-10-15: tiles by WorkOrder.status (pending = assigned, not started;
+    # in_progress = engineer has started; completed). WorkID tiles count
+    # rows; Tag tiles count distinct Tag Numbers with a WorkID in that status.
+    def _tags(status):
+        return len({it["barcode"] for it in items
+                    if it["wo_status"] == status and it.get("barcode") and it["barcode"] != "—"})
     tile_counts = {
-        "total_workids": len(items),
-        "total_tags": tag_count,
-        "total_ongoing": sum(1 for it in items if it["ongoing"]),
-        "total_assigned": sum(1 for it in items if it["wo_status"] == "pending"),
-        "total_completed": sum(1 for it in items if it["wo_status"] == "completed"),
+        "open_workids": sum(1 for it in items if it["wo_status"] != "completed"),
+        "closed_workids": sum(1 for it in items if it["wo_status"] == "completed"),
+        "open_tags": _tags("pending"),
+        "ongoing_tags": _tags("in_progress"),
+        "completed_tags": _tags("completed"),
         # Rows whose PNA column shows the PNA badge (active PNA part), after
         # the same filters as the table.
         "total_pna": sum(1 for it in items if it.get("pna")),

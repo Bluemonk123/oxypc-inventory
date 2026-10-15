@@ -67,11 +67,11 @@
                 color: rgba(255,255,255,.22); pointer-events: none; }
 </style>
 <div class="row g-3 mb-3">
-  {% for label, n, bg, icon in [('Total WorkIDs', tile_counts.total_workids, '#343a40', 'bi-collection'),
-      ('Total Tags', tile_counts.total_tags, '#0d6efd', 'bi-upc-scan'),
-      ('Total Ongoing', tile_counts.total_ongoing, '#f0ad00', 'bi-hourglass-split'),
-      ('Total Assigned', tile_counts.total_assigned, '#0aa2c0', 'bi-person-check'),
-      ('Total Completed', tile_counts.total_completed, '#198754', 'bi-check-circle'),
+  {% for label, n, bg, icon in [('Open WorkIDs', tile_counts.open_workids, '#343a40', 'bi-folder2-open'),
+      ('Closed WorkIDs', tile_counts.closed_workids, '#6c757d', 'bi-folder-check'),
+      ('Assigned Tags', tile_counts.open_tags, '#0d6efd', 'bi-tag'),
+      ('Ongoing Tags', tile_counts.ongoing_tags, '#f0ad00', 'bi-hourglass-split'),
+      ('Completed Tags', tile_counts.completed_tags, '#198754', 'bi-check-circle'),
       ('Total PNA', tile_counts.total_pna, '#dc3545', 'bi-exclamation-triangle')] %}
   <div class="col-6 col-md-4 col-xl-2">
     <div class="pm-tile p-3 h-100" style="background:{{ bg }}">
