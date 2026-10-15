@@ -31,84 +31,102 @@
   </div>
 </div>
 
-{# ── Filter Bar ── #}
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <form class="d-flex flex-wrap gap-2 align-items-center" method="get" action="/sales" id="filterForm">
-      <input type="text" name="q" value="{{ q }}" placeholder="Device barcode/brand/model"
-             class="form-control form-control-sm" style="width:190px">
-      <input type="text" name="sale_no" value="{{ sale_no }}" placeholder="Sale#"
-             class="form-control form-control-sm" style="width:110px">
-      <input type="text" name="customer" value="{{ customer }}" placeholder="Customer name"
-             class="form-control form-control-sm" style="width:160px">
-      <select name="sold_by_filter" class="form-select form-select-sm" style="width:145px">
+{# ── Global filter bar (app.css .filter-bar) — one row, labels as title=
+   tooltips, Search/Reset at the right edge. #}
+<form method="get" action="/sales" id="filterForm" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" value="{{ q }}" title="Tag Number / Brand / Model" placeholder="Tag Number / Brand / Model…"
+             class="form-control form-control-sm">
+    </div>
+    <div>
+      <input type="text" name="sale_no" value="{{ sale_no }}" title="Sale#" placeholder="Sale#"
+             class="form-control form-control-sm font-monospace">
+    </div>
+    <div>
+      <input type="text" name="customer" value="{{ customer }}" title="Customer" placeholder="Customer name"
+             class="form-control form-control-sm">
+    </div>
+    <div>
+      <select name="sold_by_filter" class="form-select form-select-sm" title="Sold By">
         <option value="">All Users</option>
         {% for seller in sellers %}
         <option value="{{ seller }}" {% if sold_by_filter == seller %}selected{% endif %}>{{ seller }}</option>
         {% endfor %}
       </select>
-      <select name="grade" class="form-select form-select-sm" style="width:110px">
+    </div>
+    <div>
+      <select name="grade" class="form-select form-select-sm" title="Grade">
         <option value="">All Grades</option>
         {% for g in ['A','B','C','D','scrap'] %}
         <option value="{{ g }}" {% if grade == g %}selected{% endif %}>Grade {{ g }}</option>
         {% endfor %}
       </select>
-      <select name="lot_id" class="form-select form-select-sm" style="width:130px">
+    </div>
+    <div>
+      <select name="lot_id" class="form-select form-select-sm" title="Lot">
         <option value="">All Lots</option>
         {% for lot in lots %}
         <option value="{{ lot.id }}" {% if selected_lot == lot.id|string %}selected{% endif %}>{{ lot.lot_number }}</option>
         {% endfor %}
       </select>
-      <label class="small text-muted mb-0 ms-1">From</label>
-      <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" style="width:145px">
-      <label class="small text-muted mb-0">To</label>
-      <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" style="width:145px">
-      <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-      <a href="/sales" class="btn btn-sm btn-outline-secondary">Clear</a>
-      <div class="ms-auto d-flex gap-2">
-        <button type="button" id="exportSelectedBtn" class="btn btn-sm btn-outline-warning" onclick="exportSelected()" disabled>
-          <i class="bi bi-download me-1"></i>Export Selected
-        </button>
-        {% if can_delete_sales %}
-        <button type="button" id="deleteSelectedBtn" class="btn btn-sm btn-outline-danger" onclick="deleteSelected()" disabled>
-          <i class="bi bi-trash me-1"></i>Delete Selected
-        </button>
-        {% endif %}
-        <a id="exportFilteredBtn" class="btn btn-sm btn-outline-success"
-           href="/sales/export?q={{ q | urlencode }}&sale_no={{ sale_no | urlencode }}&sold_by_filter={{ sold_by_filter | urlencode }}&customer={{ customer | urlencode }}&grade={{ grade | urlencode }}&lot_id={{ selected_lot | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
-          <i class="bi bi-download me-1"></i>Export
-        </a>
-        <a href="/reports/export/sales" class="btn btn-sm btn-outline-secondary">
-          <i class="bi bi-download me-1"></i>Export All CSV
-        </a>
-      </div>
-    </form>
-    {# Hidden form for POST export-selected #}
-    <form id="exportForm" action="/sales/export-selected" method="post" style="display:none">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
-      <input type="hidden" name="sale_ids" id="selectedIds">
-    </form>
-    {% if can_delete_sales %}
-    {# Hidden form for POST bulk-delete (permanent, admin only) #}
-    <form id="deleteForm" action="/sales/bulk-delete" method="post" style="display:none">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
-      <input type="hidden" name="sale_ids" id="deleteIds">
-    </form>
-    {% endif %}
+    </div>
+    <div>
+      <input type="date" name="date_from" value="{{ date_from }}" title="Date From" class="form-control form-control-sm">
+    </div>
+    <div>
+      <input type="date" name="date_to" value="{{ date_to }}" title="Date To" class="form-control form-control-sm">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+      <a href="/sales" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
+</form>
+{# Hidden form for POST export-selected #}
+<form id="exportForm" action="/sales/export-selected" method="post" style="display:none">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+  <input type="hidden" name="sale_ids" id="selectedIds">
+</form>
+{% if can_delete_sales %}
+{# Hidden form for POST bulk-delete (permanent, admin only) #}
+<form id="deleteForm" action="/sales/bulk-delete" method="post" style="display:none">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+  <input type="hidden" name="sale_ids" id="deleteIds">
+</form>
+{% endif %}
 
-{# ── Table ── #}
+{# ── Table (Global Table: static/js/global-table.js) ── #}
 <div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Sold Tags</span>
+    <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+      <button type="button" id="exportSelectedBtn" class="btn btn-sm btn-outline-warning text-nowrap" onclick="exportSelected()" disabled>
+        <i class="bi bi-download me-1"></i>Export Selected
+      </button>
+      {% if can_delete_sales %}
+      <button type="button" id="deleteSelectedBtn" class="btn btn-sm btn-outline-danger text-nowrap" onclick="deleteSelected()" disabled>
+        <i class="bi bi-trash me-1"></i>Delete Selected
+      </button>
+      {% endif %}
+      <a id="exportFilteredBtn" class="btn btn-sm btn-outline-success text-nowrap"
+         href="/sales/export?q={{ q | urlencode }}&sale_no={{ sale_no | urlencode }}&sold_by_filter={{ sold_by_filter | urlencode }}&customer={{ customer | urlencode }}&grade={{ grade | urlencode }}&lot_id={{ selected_lot | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
+        <i class="bi bi-download me-1"></i>Export
+      </a>
+      <a href="/reports/export/sales" class="btn btn-sm btn-outline-secondary text-nowrap">
+        <i class="bi bi-download me-1"></i>Export All CSV
+      </a>
+    </div>
+  </div>
+  <div>
     <table id="salesTable" class="table table-hover mb-0 small">
       <thead class="table-dark">
         <tr>
           <th style="width:36px">
-            <input type="checkbox" id="selectAll" title="Select all visible rows">
+            <input type="checkbox" id="selectAll" class="form-check-input" title="Select all matching sales">
           </th>
           {# Brand/Model, Lot and Customer are hidden via DataTables' own column
-             visibility (see `columns` in the init), NOT via a d-none class.
+             visibility (see `columnDefs` in the init), NOT via a d-none class.
              With server-side rows the class would sit on the <th> but not on the
              generated <td>, so the body would render columns the header hides
              and every column after Tag Number would line up against the wrong
@@ -118,7 +136,7 @@
           <th>Lot</th>
           <th>Grade</th><th>Stock Type</th>{% if can_view_pricing(current_user) %}<th>Cost/Unit</th><th>Price</th><th>Margin</th>{% endif %}
           <th>Customer</th>
-          <th>Payment</th><th>By</th><th>Sales Person</th><th>Download</th><th></th>
+          <th>Payment</th><th>By</th><th>Sales Person</th><th>Download</th><th>Action</th>
         </tr>
       </thead>
       {# Rows are supplied by /sales/data (DataTables server-side). Rendering
@@ -245,10 +263,11 @@ $(document).ready(function() {
   // Brand/Model, Lot and Customer: present and searchable, not displayed.
   var hiddenCols = showPricing ? [5, 6, 12] : [5, 6, 9];
 
-  var dt = $('#salesTable').DataTable({
+  // Global Table module (static/js/global-table.js): frozen first columns,
+  // scrollX, shared toolbar, page length 12, empty-state image.
+  var dt = initGlobalTable('#salesTable', {
     serverSide: true,
     processing: true,
-    pageLength: 12,
     order: [[3, 'desc']],          // sale date, newest first
     searchDelay: 400,              // don't fire a query per keystroke
     ajax: {
@@ -281,6 +300,7 @@ $(document).ready(function() {
       });
       if (typeof updateExportBtn === 'function') updateExportBtn();
     },
+    language: { emptyTable: 'No sales match these filters.' },
   });
 });
 </script>

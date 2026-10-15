@@ -284,8 +284,23 @@ async def grn_post_iqc(request: Request, db: AsyncSession = Depends(get_db),
         select(User).where(User.status == True).order_by(User.full_name)  # noqa: E712
     )).scalars().all()
 
+    # Added By column: GRNImport.created_by is a username — show the user's
+    # display name (inactive users included, so old GRNs still resolve).
+    # Matched case-insensitively (older GRNs saved the username in another case).
+    creators = {g.created_by for g in grns if g.created_by}
+    user_names = {}
+    if creators:
+        by_lower = {}
+        for uname, fname in (await db.execute(
+            select(User.username, User.full_name)
+            .where(func.lower(User.username).in_([c.lower() for c in creators]))
+        )).all():
+            by_lower[uname.lower()] = fname or uname
+        user_names = {c: by_lower[c.lower()] for c in creators if c.lower() in by_lower}
+
     return templates.TemplateResponse("grn/post_iqc.html", {
         "request": request, "grns": grns, "pending_count": pending_count,
+        "user_names": user_names,
         "stocked": await _stocked_map(db, grns),
         "as_is_lot": await _as_is_lot_map(db, grns),
         "all_users": all_users,

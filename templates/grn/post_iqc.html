@@ -79,7 +79,7 @@
       <table id="grnTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
-            <th class="ps-3">GRN</th><th>LOT</th><th>Invoice Number</th><th>Date of Invoice</th>
+            <th class="ps-3">GRN</th><th>Added By</th><th>LOT</th><th>Invoice Number</th><th>Date of Invoice</th>
             <th>Vendor Name</th><th>Quantity</th><th>Stocked</th><th>Amount</th><th>As-Is Lot</th><th>Download</th><th>Action</th>
           </tr>
         </thead>
@@ -88,6 +88,8 @@
           {% set _lots = lots_by_grn.get(g.grn_number, []) if lots_by_grn is defined else [] %}
           <tr id="grn-{{ g.grn_number }}">
             <td class="ps-3"><span class="font-monospace fw-bold">{{ g.grn_number }}</span></td>
+            {# Added By: display name of the user who created this GRN (created_by holds the username). #}
+            <td class="text-nowrap">{{ (user_names.get(g.created_by) if user_names is defined else None) or g.created_by or '—' }}</td>
             <td>
               {% if _lots %}
               <button type="button" class="btn btn-sm btn-link p-0 fw-semibold text-decoration-none lot-count-btn"
@@ -435,20 +437,20 @@ $(document).ready(function(){
       var from = document.getElementById('fFrom').value;
       var to   = document.getElementById('fTo').value;
       if (!from && !to) return true;
-      var d = (data[3] || '').trim();  // Date of Invoice — column 3 now that Lot Number is column 1
+      var d = (data[4] || '').trim();  // Date of Invoice — column 4 (GRN, Added By, Lot, Invoice before it)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
       if (from && d < from) return false;
       if (to && d > to) return false;
       return true;
     });
     document.getElementById('fGrn').addEventListener('input', function(){ dt.column(0).search(this.value).draw(); });
-    document.getElementById('fInvoice').addEventListener('input', function(){ dt.column(2).search(this.value).draw(); });
-    document.getElementById('fVendor').addEventListener('input', function(){ dt.column(4).search(this.value).draw(); });
+    document.getElementById('fInvoice').addEventListener('input', function(){ dt.column(3).search(this.value).draw(); });
+    document.getElementById('fVendor').addEventListener('input', function(){ dt.column(5).search(this.value).draw(); });
     document.getElementById('fFrom').addEventListener('change', function(){ dt.draw(); });
     document.getElementById('fTo').addEventListener('change', function(){ dt.draw(); });
     document.getElementById('fReset').addEventListener('click', function(){
       ['fGrn','fInvoice','fVendor','fFrom','fTo'].forEach(function(id){ document.getElementById(id).value=''; });
-      dt.column(0).search('').column(2).search('').column(4).search('').draw();
+      dt.column(0).search('').column(3).search('').column(5).search('').draw();
     });
   }
   // Server-side: the Invoice/PO/Device Type filters used to run as a

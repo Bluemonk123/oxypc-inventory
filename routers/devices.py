@@ -585,6 +585,19 @@ async def device_search_data(
 
     parts_badges, parts_data = await parts_display_map(db, device_ids)
 
+    # Stage column: a Sold tag links to its sale (the latest sale, should a tag
+    # have been returned and sold again) — one query for the page's sold rows.
+    sale_map = {}
+    sold_ids = [d.id for d, _ in rows if d.current_stage == DeviceStage.sold]
+    if sold_ids:
+        from models.sales import Sale
+        for sid, snum, did in (await db.execute(
+            select(Sale.id, Sale.sale_number, Sale.device_id)
+            .where(Sale.device_id.in_(sold_ids))
+            .order_by(Sale.sold_at.desc())
+        )).all():
+            sale_map.setdefault(did, (sid, snum))
+
     def esc(v):
         return escape(str(v)) if v is not None else ""
 
@@ -620,7 +633,9 @@ async def device_search_data(
                 stock_type_key(d.current_stage, d.sub_lot_number)),
         ]
         cells += [
-            f'<span class="badge bg-{_STAGE_BADGE.get(stage_val, "light text-dark")}">{esc(stage_lbl)}</span>',
+            (f'<span class="badge bg-{_STAGE_BADGE.get(stage_val, "light text-dark")}">{esc(stage_lbl)}</span>'
+             + (f'<div><a href="/sales/{sale_map[d.id][0]}" class="small font-monospace text-decoration-none text-nowrap" '
+                f'title="Open sale">{esc(sale_map[d.id][1])}</a></div>' if d.id in sale_map else '')),
             d.updated_at.strftime("%d-%m-%Y") if d.updated_at else "—",
             (f'<div class="d-flex gap-1 justify-content-center">'
              f'<a href="/devices/{esc(d.barcode)}" class="btn btn-sm btn-outline-primary py-0 px-1" title="View"><i class="bi bi-eye"></i></a>'

@@ -19,6 +19,10 @@
   .ready-tab-content > .tab-pane > .card { border: 0; border-radius: 0 0 .5rem .5rem; }
   .ready-tab-content > .tab-pane > .card > .card-header { padding: .5rem 1rem !important; border-radius: 0; }
   .ready-tab-content > .tab-pane > .card > .card-body { padding: 0 !important; }
+  /* Ready for Sale Tags: global filter bar at the top of the tab panel. */
+  .ready-filter-wrap { padding: 1rem 1rem .75rem; }
+  .ready-filter-wrap .filter-bar { margin-bottom: 0; }
+  .ready-filter-wrap .ready-touch-filter { width: 100% !important; min-width: 0 !important; }
 </style>
 {# "N device(s) ready" + New Sale row hidden by request (2026-10-13); the
    tab badges and each table's count badge already show the counts.
@@ -157,16 +161,27 @@
 </ul>
 <div class="tab-content ready-tab-content">
   <div class="tab-pane fade show active" id="readyTagsPane" role="tabpanel">
+  {# Global filter bar (app.css .filter-bar). Each filter still reloads the
+     table as soon as it changes (and Select All follows it); Search re-runs
+     the table, Reset clears all three. The scan/search box stays the Global
+     Table's own search box (#readyScanInput, initGlobalTable's scan option). #}
+  <div class="ready-filter-wrap">
+  <form class="filter-bar" id="readyFilterBar" onsubmit="return false">
+    <div class="filter-bar-row">
+      <div>{{ touch_select('readyTouch') }}</div>
+      {{ ms.multiselect_inline('device_type', 'Device Types', device_type_options, '') }}
+      {{ ms.multiselect_inline('entity', 'Entity', entity_options, '') }}
+      <div>
+        <button type="button" id="readyFilterSearch" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+        <button type="button" id="readyFilterReset" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</button>
+      </div>
+    </div>
+  </form>
+  </div>
   <div class="card">
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold"><i class="bi bi-upc-scan me-2"></i>Ready for Sale Tags</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
-      {# The scan/search box is the Global Table's own search box
-         (#readyScanInput, set up by initGlobalTable's scan option). #}
-      {# Entity filter: reloads the table server-side (and Select All follows it). #}
-      {{ touch_select('readyTouch') }}
-      {{ ms.multiselect_inline('device_type', 'Device Types', device_type_options, '') }}
-      {{ ms.multiselect_inline('entity', 'Entity', entity_options, '') }}
       <button type="button" id="multiRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Multi-Request with selected (<span id="readySelCount">0</span>)
       </button>
@@ -732,6 +747,22 @@ $(document).ready(function(){
     readyDt.ajax.reload(null, true);
   });
   document.getElementById('ms_val_device_type').addEventListener('ms:change', function () {
+    readyDt.ajax.reload(null, true);
+  });
+  // Global filter bar: Search re-runs the table; Reset clears Touch, Device
+  // Types and Entity together and reloads once.
+  document.getElementById('readyFilterSearch').addEventListener('click', function () {
+    readyDt.ajax.reload(null, true);
+  });
+  document.getElementById('readyFilterReset').addEventListener('click', function () {
+    document.getElementById('readyTouch').value = '';
+    [['device_type', 'Device Types'], ['entity', 'Entity']].forEach(function (f) {
+      var hid = document.getElementById('ms_val_' + f[0]);
+      if (hid) hid.value = '';
+      document.querySelectorAll('.ms-filter[data-ms="' + f[0] + '"] .ms-opt').forEach(function (c) { c.checked = false; });
+      var lbl = document.querySelector('#ms_btn_' + f[0] + ' .ms-label');
+      if (lbl) lbl.textContent = 'All ' + f[1];
+    });
     readyDt.ajax.reload(null, true);
   });
 

@@ -3,58 +3,51 @@
 {% block page_title %}Ready to Sale Parts{% endblock %}
 {% block content %}
 
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold mb-1">Search Code</label>
-        <input type="text" id="fCode" class="form-control form-control-sm font-monospace" placeholder="PART-0001">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold mb-1">Search Name</label>
-        <input type="text" id="fName" class="form-control form-control-sm" placeholder="Part name">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Make</label>
-        <select id="fMake" class="form-select form-select-sm">
-          <option value="">All</option>
-          {% for m in makes %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Model</label>
-        <select id="fModel" class="form-select form-select-sm">
-          <option value="">All</option>
-          {% for m in models %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <button type="button" id="fReset" class="btn btn-outline-secondary btn-sm w-100">
-          <i class="bi bi-x-circle me-1"></i>Reset
-        </button>
-      </div>
+{# Global filter bar (app.css .filter-bar) — filters apply as you type /
+   pick; Search re-runs the table, Reset clears every filter. #}
+<form class="filter-bar" id="rtsFilterBar" onsubmit="return false">
+  <div class="filter-bar-row">
+    <div>
+      <input type="text" id="fCode" class="form-control form-control-sm font-monospace" title="Search Code" placeholder="Search Code (PART-0001)…">
+    </div>
+    <div class="filter-bar-search">
+      <input type="text" id="fName" class="form-control form-control-sm" title="Search Name" placeholder="Search Part Name…">
+    </div>
+    <div>
+      <select id="fMake" class="form-select form-select-sm" title="Make">
+        <option value="">All Makes</option>
+        {% for m in makes %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <select id="fModel" class="form-select form-select-sm" title="Model">
+        <option value="">All Models</option>
+        {% for m in models %}<option value="{{ m }}">{{ m }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="button" id="fSearch" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+      <button type="button" id="fReset" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</button>
     </div>
   </div>
-</div>
+</form>
 
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent fw-semibold small">
-    <i class="bi bi-box-seam me-2"></i>Available Spare Parts
-    <span class="text-muted fw-normal">— parts added as New</span>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+    <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Available Spare Parts
+      <span class="fw-normal small">— parts added as New</span></span>
   </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table id="rtsTable" class="table table-hover mb-0 small align-middle">
-        <thead class="table-dark">
-          <tr>
-            <th class="ps-3">Code</th><th>Name</th><th>Make</th><th>Model</th>
-            <th>In Stock</th><th>Requested Quantity</th><th>Action</th>
-          </tr>
-        </thead>
-        <!-- rows come from /ready-to-sale-parts/data via DataTables serverSide -->
-        <tbody></tbody>
-      </table>
-    </div>
+  <div>
+    <table id="rtsTable" class="table table-hover mb-0 small align-middle">
+      <thead class="table-dark">
+        <tr>
+          <th>Code</th><th>Name</th><th>Make</th><th>Model</th>
+          <th>In Stock</th><th>Requested Quantity</th><th>Action</th>
+        </tr>
+      </thead>
+      <!-- rows come from /ready-to-sale-parts/data via DataTables serverSide -->
+      <tbody></tbody>
+    </table>
   </div>
 </div>
 {# Quantity modal for Request. One form, re-pointed at whichever part was
@@ -91,10 +84,10 @@
 {% block scripts %}
 <script>
 $(document).ready(function(){
-  var dt = $('#rtsTable').DataTable({
+  // Global Table module (static/js/global-table.js).
+  var dt = initGlobalTable('#rtsTable', {
     serverSide: true,
     processing: true,
-    pageLength: 12,
     order: [],
     searchDelay: 400,
     ajax: {
@@ -107,7 +100,9 @@ $(document).ready(function(){
       },
     },
     columnDefs: [{ orderable: false, targets: -1 }],
+    language: { emptyTable: 'No spare parts available to sell.' },
   });
+  document.getElementById('fSearch').addEventListener('click', function(){ dt.draw(); });
   document.getElementById('fCode').addEventListener('input', function(){ dt.draw(); });
   document.getElementById('fName').addEventListener('input', function(){ dt.draw(); });
   document.getElementById('fMake').addEventListener('change', function(){ dt.draw(); });

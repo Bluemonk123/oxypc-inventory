@@ -3,38 +3,40 @@
 {% block page_title %}Spare Part Sales{% endblock %}
 {% block content %}
 
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <form class="d-flex flex-wrap gap-2 align-items-center" method="get" action="/part-sales" id="psFilterForm">
-      <label class="small text-muted mb-0">Date From</label>
-      <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" style="width:145px">
-      <label class="small text-muted mb-0">Date To</label>
-      <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" style="width:145px">
-      <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-      <a href="/part-sales" class="btn btn-sm btn-outline-secondary">Clear</a>
-      <div class="ms-auto d-flex gap-2">
-        <a class="btn btn-sm btn-outline-success"
-           href="/part-sales/export?date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
-          <i class="bi bi-download me-1"></i>Export
-        </a>
-        <a href="/part-sales/new" class="btn btn-success btn-sm">
-          <i class="bi bi-plus-circle me-1"></i>New Parts Sale
-        </a>
-      </div>
-    </form>
+{# Global filter bar (app.css .filter-bar). #}
+<form method="get" action="/part-sales" id="psFilterForm" class="filter-bar filter-bar-6">
+  <div class="filter-bar-row">
+    <div>
+      <input type="date" name="date_from" value="{{ date_from }}" title="Date From" class="form-control form-control-sm">
+    </div>
+    <div>
+      <input type="date" name="date_to" value="{{ date_to }}" title="Date To" class="form-control form-control-sm">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+      <a href="/part-sales" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
+</form>
 
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent fw-semibold small">
-    <i class="bi bi-cart-check me-2"></i>Sold Spare Parts
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-cart-check me-2"></i>Sold Spare Parts</span>
+    <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+      <a class="btn btn-sm btn-outline-success text-nowrap"
+         href="/part-sales/export?date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
+        <i class="bi bi-download me-1"></i>Export
+      </a>
+      <a href="/part-sales/new" class="btn btn-success btn-sm text-nowrap">
+        <i class="bi bi-plus-circle me-1"></i>New Parts Sale
+      </a>
+    </div>
   </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
+  <div>
       <table id="psTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
-            <th class="ps-3">Sale ID</th><th>Invoice</th><th>Date</th><th>Part Name</th>
+            <th>Sale ID</th><th>Invoice</th><th>Date</th><th>Part Name</th>
             <th>Part Make</th><th>Part Model</th><th>Qty</th>
             {% if can_view_pricing(current_user) %}
             <th>Stock Unit Price</th><th>Sale Unit Price</th><th>Margin</th>
@@ -45,7 +47,7 @@
         <tbody>
           {% for s in sales %}
           <tr>
-            <td class="ps-3 font-monospace fw-bold">{{ s.sale_number }}</td>
+            <td class="font-monospace fw-bold">{{ s.sale_number }}</td>
             <td class="font-monospace">{{ s.invoice_no or '—' }}</td>
             <td>{{ s.sold_at.strftime('%d-%b-%Y %H:%M') if s.sold_at else '—' }}</td>
             <td>{{ s.part_name or '—' }}</td>
@@ -66,21 +68,18 @@
             <td>{{ (s.payment_mode or '—') | title }}</td>
             <td>{{ s.sold_by or '—' }}</td>
           </tr>
-          {% else %}
-          <tr><td colspan="12" class="text-center text-muted py-4">No spare parts sold yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
-    </div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
 $(document).ready(function(){
-  if ($('#psTable tbody tr td').length > 1) {
-    $('#psTable').DataTable({pageLength: 12, order: []});
-  }
+  // Global Table module (static/js/global-table.js); its built-in empty
+  // state replaces the old hand-authored "no rows" placeholder row.
+  initGlobalTable('#psTable', { order: [], language: { emptyTable: 'No spare parts sold yet.' } });
 });
 </script>
 {% endblock %}
