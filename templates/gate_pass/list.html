@@ -36,6 +36,10 @@
         <a href="/gate-pass" class="btn btn-sm btn-outline-secondary">Reset</a>
       </div>
       <div class="ms-auto align-self-end">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#gpTagModal">
+          <i class="bi bi-upload me-1"></i>Upload Tags
+        </button>
+        <button type="button" id="gpClearSel" class="btn btn-sm btn-outline-secondary d-none" onclick="gpClearSelection()">Clear</button>
         <button type="button" id="bulkExitBtn" class="btn btn-sm btn-success" onclick="bulkConfirmExit()" disabled>
           <i class="bi bi-box-arrow-right me-1"></i>Confirm Exit
         </button>
@@ -93,6 +97,30 @@
     </form>
   </div>
 </div>
+<!-- Upload Tags modal: CSV/XLSX or pasted tag numbers → selects the matching
+     sales on every page (resolved server-side by /gate-pass/resolve-tags) -->
+<div class="modal fade" id="gpTagModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Upload Tags</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label fw-semibold">Tag Numbers CSV / XLSX</label>
+        <input type="file" id="gpTagFile" class="form-control" accept=".csv,.txt,.xlsx">
+        <div class="form-text small">One tag per row — header <code>tag_number</code>, <code>barcode</code>, <code>Tag No</code> or <code>Tag Number</code> (or no header, first column).</div>
+        <label class="form-label fw-semibold mt-3">…or paste tag numbers</label>
+        <textarea id="gpTagText" class="form-control font-monospace" rows="4" placeholder="One per line"></textarea>
+        <div id="gpTagStatus" class="small mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="gpTagBtn" class="btn btn-primary"><i class="bi bi-check2-square me-1"></i>Select Tags</button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -102,22 +130,38 @@ function gpCsrfToken() {
 }
 
 // ── Select all / bulk Confirm Exit ──────────────────────────────────────────
+// Selection is a Set of sale ids that survives paging/search redraws
+// (server-side DataTables only has the current page in the DOM), so a Tag
+// Upload can select sales sitting on other pages.
+var gpSelected = new Set();
 var gpSelectAll = document.getElementById('gpSelectAll');
 var gpBulkBtn = document.getElementById('bulkExitBtn');
 
 gpSelectAll.addEventListener('change', function () {
   document.querySelectorAll('#gpTable .row-check:not(:disabled)').forEach(function (cb) {
     cb.checked = gpSelectAll.checked;
+    if (cb.checked) gpSelected.add(cb.value); else gpSelected.delete(cb.value);
   });
   gpUpdateBulkBtn();
 });
 
 document.addEventListener('change', function (e) {
-  if (e.target.classList.contains('row-check')) gpUpdateBulkBtn();
+  if (e.target.classList.contains('row-check') && e.target.value) {
+    if (e.target.checked) gpSelected.add(e.target.value); else gpSelected.delete(e.target.value);
+    gpUpdateBulkBtn();
+  }
 });
 
+function gpClearSelection() {
+  gpSelected.clear();
+  document.querySelectorAll('#gpTable .row-check').forEach(function (cb) { cb.checked = false; });
+  gpSelectAll.checked = false;
+  gpUpdateBulkBtn();
+}
+
 function gpUpdateBulkBtn() {
-  var checked = document.querySelectorAll('#gpTable .row-check:checked').length;
+  var checked = gpSelected.size;
+  document.getElementById('gpClearSel').classList.toggle('d-none', checked === 0);
   gpBulkBtn.disabled = checked === 0;
   gpBulkBtn.innerHTML = checked > 0
     ? '<i class="bi bi-box-arrow-right me-1"></i>Confirm Exit (' + checked + ')'
@@ -137,7 +181,7 @@ function gpOpenExit(action, saleIds, title, text) {
 }
 
 function bulkConfirmExit() {
-  var ids = Array.from(document.querySelectorAll('#gpTable .row-check:checked')).map(function (cb) { return cb.value; });
+  var ids = Array.from(gpSelected);
   if (!ids.length) return;
   gpOpenExit('/gate-pass/bulk-exit', ids.join(','), 'Confirm Exit (' + ids.length + ')',
              'Confirm ' + ids.length + ' tag(s) have exited the gate. The transport details below apply to all of them.');
@@ -172,13 +216,68 @@ $(document).ready(function () {
       { orderable: false, targets: [0, 4, 5, 6, 8, 9, 10] },
     ],
     drawCallback: function () {
-      gpSelectAll.checked = false;
+      var boxes = document.querySelectorAll('#gpTable .row-check:not(:disabled)');
+      boxes.forEach(function (cb) { cb.checked = gpSelected.has(cb.value); });
+      gpSelectAll.checked = boxes.length > 0 &&
+        Array.from(boxes).every(function (cb) { return cb.checked; });
       gpUpdateBulkBtn();
     },
   });
   document.getElementById('gpSearch').addEventListener('input', function () {
     dt.search(this.value).draw();
   });
+});
+
+// ── Upload Tags: CSV/XLSX/pasted tags → select matching sales on any page ──
+function gpEsc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+document.getElementById('gpTagBtn').addEventListener('click', async function () {
+  var fileInput = document.getElementById('gpTagFile');
+  var text = document.getElementById('gpTagText').value.trim();
+  var status = document.getElementById('gpTagStatus');
+  if (!fileInput.files.length && !text) {
+    status.innerHTML = '<span class="text-danger">Choose a file or paste tag numbers first.</span>'; return;
+  }
+  var btn = this;
+  btn.disabled = true;
+  status.innerHTML = '<span class="text-muted">Uploading…</span>';
+  var fd = new FormData();
+  if (fileInput.files.length) fd.append('file', fileInput.files[0]);
+  fd.append('tags', text);
+  fd.append('csrf_token', gpCsrfToken());
+  try {
+    var r = await fetch('/gate-pass/resolve-tags', { method: 'POST', body: fd });
+    var d = await r.json();
+    if (d.error) { status.innerHTML = '<span class="text-danger">' + gpEsc(d.error) + '</span>'; return; }
+    (d.matched || []).forEach(function (m) { gpSelected.add(m.sale_id); });
+    document.querySelectorAll('#gpTable .row-check:not(:disabled)').forEach(function (cb) {
+      if (gpSelected.has(cb.value)) cb.checked = true;
+    });
+    gpUpdateBulkBtn();
+    var parts = [(d.matched || []).length + ' selected'];
+    if ((d.already_exited || []).length) parts.push(d.already_exited.length + ' already exited');
+    if ((d.not_found || []).length) parts.push(d.not_found.length + ' not found');
+    function list(label, tags) {
+      if (!tags || !tags.length) return '';
+      return '<div class="mt-1"><span class="fw-semibold">' + label + ':</span> <span class="font-monospace">' +
+        tags.map(gpEsc).join(', ') + '</span></div>';
+    }
+    bootstrap.Modal.getInstance(document.getElementById('gpTagModal')).hide();
+    fileInput.value = ''; document.getElementById('gpTagText').value = ''; status.innerHTML = '';
+    var old = document.getElementById('gpTagResult');
+    if (old) old.remove();
+    var box = document.createElement('div');
+    box.id = 'gpTagResult';
+    box.className = 'alert alert-info alert-dismissible fade show small mb-3';
+    box.innerHTML = '<strong>' + parts.join(', ') + '</strong>' +
+      list('Not found', d.not_found) + list('Already exited', d.already_exited) +
+      '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+    document.querySelector('main').prepend(box);
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    status.innerHTML = '<span class="text-danger">Upload failed.</span>';
+  } finally {
+    btn.disabled = false;
+  }
 });
 </script>
 {% endblock %}

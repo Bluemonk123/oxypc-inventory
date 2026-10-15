@@ -16,7 +16,10 @@ from html import escape
 from templates_config import templates
 from utils.timezone import app_now
 from utils.date_filter import apply_date_range
-from fastapi import APIRouter, Depends, Request, HTTPException, Query, Form
+import csv
+import io
+
+from fastapi import APIRouter, Depends, Request, HTTPException, Query, Form, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, asc, func, or_
@@ -27,6 +30,7 @@ from models.device import Device
 from models.lot import Lot
 from models.sales import Sale, Return
 from services.audit_engine import audit
+from utils.csv_decode import decode_csv_bytes
 from auth.dependencies import require_roles, verify_csrf
 
 router = APIRouter(prefix="/gate-pass", tags=["gate-pass"],
@@ -199,6 +203,88 @@ def _apply_transport(sale, transport_mode, transport_via, tracking_number):
         sale.transport_via = transport_via.strip()[:100]
     if tracking_number.strip():
         sale.tracking_number = tracking_number.strip()[:100]
+
+
+# Header cells accepted (and skipped) in an uploaded/pasted tag list — same
+# aliases as Ready to Sale's Bulk Upload Tags (routers/sales.py).
+_TAG_HEADERS = {"tag_number", "barcode", "tag number", "tag no", "tag"}
+
+
+def _parse_tag_upload(filename: str, content: bytes, pasted: str) -> list:
+    """Tag numbers from an uploaded CSV/XLSX and/or pasted text. Uses the
+    tag-header column when one is present, else the first column; blank cells,
+    header cells and duplicates (case-insensitive) are dropped."""
+    rows = []
+    if content:
+        if (filename or "").lower().endswith((".xlsx", ".xlsm")):
+            import openpyxl
+            wb = openpyxl.load_workbook(io.BytesIO(content), read_only=True, data_only=True)
+            for r in wb.worksheets[0].iter_rows(values_only=True):
+                rows.append(["" if v is None else str(v) for v in r])
+        else:
+            rows.extend(csv.reader(io.StringIO(decode_csv_bytes(content))))
+    col = 0
+    if rows:
+        head = [(c or "").strip().lower() for c in rows[0]]
+        for i, h in enumerate(head):
+            if h in _TAG_HEADERS:
+                col = i
+                break
+    cells = [r[col] for r in rows if len(r) > col]
+    for line in (pasted or "").splitlines():
+        cells.extend(line.replace(",", " ").split())
+    tags, seen = [], set()
+    for c in cells:
+        t = (c or "").strip()
+        if t.endswith(".0") and t[:-2].isdigit():   # numeric XLSX cell
+            t = t[:-2]
+        if not t or t.lower() in _TAG_HEADERS or t.upper() in seen:
+            continue
+        seen.add(t.upper())
+        tags.append(t)
+    return tags
+
+
+@router.post("/resolve-tags")
+async def resolve_tags(file: UploadFile | None = File(None),
+                       tags: str = Form(""),
+                       db: AsyncSession = Depends(get_db),
+                       current_user: User = Depends(allowed)):
+    """Tag Upload — resolve a list of tag numbers to the Gate Pass sale ids
+    still awaiting exit, so the page can select them across every DataTables
+    page. Read-only: changes nothing."""
+    content = await file.read() if file is not None else b""
+    try:
+        tag_list = _parse_tag_upload(file.filename if file is not None else "", content, tags)
+    except Exception:
+        return JSONResponse({"error": "Could not read the file — upload a CSV or XLSX"}, status_code=400)
+    if not tag_list:
+        return JSONResponse({"error": "No tag numbers found"}, status_code=400)
+
+    # Case-insensitive, like Ready to Sale's upload — hand-typed tags often
+    # come back in a different case than the stored barcode.
+    rows = (await db.execute(
+        select(Sale.id, Sale.delivery_status, Device.barcode)
+        .join(Device, Sale.device_id == Device.id)
+        .where(func.upper(Device.barcode).in_([t.upper() for t in tag_list]))
+    )).all()
+    by_upper = {}
+    for sid, status, barcode in rows:
+        by_upper.setdefault((barcode or "").upper(), []).append((sid, status, barcode))
+
+    matched, already_exited, not_found = [], [], []
+    for t in tag_list:
+        hits = by_upper.get(t.upper())
+        if not hits:
+            not_found.append(t)
+            continue
+        pending = [h for h in hits if h[1] not in ("dispatched", "delivered")]
+        if pending:
+            matched.extend({"sale_id": str(sid), "barcode": bc} for sid, _st, bc in pending)
+        else:
+            already_exited.append(hits[0][2])
+    return JSONResponse({"matched": matched, "already_exited": already_exited,
+                         "not_found": not_found})
 
 
 @router.post("/{sale_id}/exit")

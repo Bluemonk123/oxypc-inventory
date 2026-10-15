@@ -4,25 +4,21 @@
 {% block head %}
 <style>
   /* No up/down spinner arrows on the price boxes */
-  #spTable input.sp-part::-webkit-outer-spin-button,
-  #spTable input.sp-part::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-  #spTable input.sp-part { -moz-appearance: textfield; appearance: textfield; }
+  .sp-table input.sp-part::-webkit-outer-spin-button,
+  .sp-table input.sp-part::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .sp-table input.sp-part { -moz-appearance: textfield; appearance: textfield; }
 </style>
 {% endblock %}
 {% block content %}
-<div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-    <span class="fw-semibold"><i class="bi bi-tools me-2"></i>Spare Parts Pricing</span>
-  </div>
-  <div class="card-body">
-    <table id="spTable" class="table table-hover mb-0" style="width:100%">
+{% macro sp_table(tid, rows) %}
+    <table id="{{ tid }}" class="table table-hover mb-0 sp-table" style="width:100%">
       <thead class="table-dark"><tr>
         <th>Product Name</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th>
         {% for col, label in part_fields %}<th>{{ label }}</th>{% endfor %}
         <th>Status</th><th>Action</th>
       </tr></thead>
       <tbody>
-      {% for p in products %}
+      {% for p in rows %}
         <tr data-id="{{ p.id }}">
           <td class="fw-semibold text-nowrap">{{ p.make }}/{{ p.model }}/{{ p.cpu }}/{{ p.cpu_gen }}</td>
           <td>{{ p.make }}</td><td>{{ p.model }}</td><td>{{ p.cpu }}</td><td>{{ p.cpu_gen }}</td>
@@ -36,7 +32,28 @@
       {% endfor %}
       </tbody>
     </table>
+{% endmacro %}
+{% set pending = products | rejectattr('parts_done') | list %}
+{% set done = products | selectattr('parts_done') | list %}
+<ul class="nav nav-tabs" id="spTabs" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#spTab_pending" type="button">
+    <i class="bi bi-hourglass-split me-1"></i>Pending <span class="badge bg-secondary ms-1" id="spCountPending">{{ pending|length }}</span></button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#spTab_done" type="button">
+    <i class="bi bi-check2-circle me-1"></i>Completed <span class="badge bg-secondary ms-1" id="spCountDone">{{ done|length }}</span></button></li>
+</ul>
+<div class="tab-content border border-top-0 rounded-bottom bg-white mb-4">
+<div class="tab-pane fade show active p-0" id="spTab_pending"><div class="card border-0">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+    <span class="fw-semibold"><i class="bi bi-tools me-2"></i>Spare Parts Pricing</span>
   </div>
+  <div class="card-body">{{ sp_table('spTable', pending) }}</div>
+</div></div>
+<div class="tab-pane fade p-0" id="spTab_done"><div class="card border-0">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+    <span class="fw-semibold"><i class="bi bi-tools me-2"></i>Spare Parts Pricing</span>
+  </div>
+  <div class="card-body">{{ sp_table('spTableDone', done) }}</div>
+</div></div>
 </div>
 {% endblock %}
 
@@ -44,9 +61,22 @@
 {% include "product_master/_common.html" %}
 <script>
 (function () {
-  initGlobalTable('#spTable', { order: [[0, 'asc']], columnDefs: [{ orderable: false, targets: '_all' }, { orderable: true, targets: [0, 1, 2, 3] }] });
+  var cols = [{ orderable: false, targets: '_all' }, { orderable: true, targets: [0, 1, 2, 3] }];
+  var dtPending = initGlobalTable('#spTable', { order: [[0, 'asc']], columnDefs: cols, language: { emptyTable: 'No pending items.' } });
+  var dtDone = initGlobalTable('#spTableDone', { order: [[0, 'asc']], columnDefs: cols, language: { emptyTable: 'No completed items.' } });
+  $(document).on('shown.bs.tab', '#spTabs button', function () { $($.fn.dataTable.tables(true)).DataTable().columns.adjust(); });
+  // Move a row to the table matching its new status and refresh tab counts
+  function moveRow(tr, done) {
+    var from = done ? dtPending : dtDone, to = done ? dtDone : dtPending;
+    if ($(to.table().node()).has(tr[0]).length) return;
+    var node = tr[0];
+    from.row(node).remove().draw(false);
+    to.row.add(node).draw(false);
+    $('#spCountPending').text(dtPending.rows().count());
+    $('#spCountDone').text(dtDone.rows().count());
+  }
   function snapshot(tr) { return tr.find('.sp-part').map(function () { return this.value.trim(); }).get().join('|'); }
-  $('#spTable tbody tr').each(function () { $(this).data('saved', snapshot($(this))); });
+  $('.sp-table tbody tr').each(function () { $(this).data('saved', snapshot($(this))); });
   // Save enables once any part price is entered and something changed
   $(document).on('input', '.sp-part', function () {
     var tr = $(this).closest('tr');
@@ -63,6 +93,7 @@
       tr.find('.sp-status').html(j.product.parts_done
         ? '<span class="badge bg-success">Pricing Done</span>'
         : '<span class="badge bg-warning text-dark">Pricing Pending</span>');
+      moveRow(tr, !!j.product.parts_done);
       showFlash('success', 'Part prices saved for ' + j.product.product_name + '.');
     });
   });

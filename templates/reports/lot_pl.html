@@ -12,11 +12,15 @@
   <a href="/reports/export/lot-pl" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</a>
 </div>
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
+    <span class="fw-semibold"><i class="bi bi-graph-up me-2"></i>Lot P&amp;L</span>
+    <span class="badge bg-primary" id="plSelCount">0 selected</span>
+  </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
+    <div>
       <table id="plTable" class="table table-hover mb-0 small">
         <thead class="table-dark">
-          <tr><th>Lot#</th><th>Supplier</th><th>Date</th><th>Qty</th><th>Devices</th><th>Sold</th><th>Buying Price</th><th>Parts Cost</th><th>Labour Cost</th><th>Total Cost</th><th title="Sale value of sold devices">Gross Sales</th><th title="Refunds on customer returns">Returns</th><th title="Gross Sales − Returns">Net Revenue</th><th title="Net Revenue − Total Cost (whole lot)">Profit</th><th>Margin</th><th title="Buying + parts + labour of the sold devices only">Cost of Sold Units</th><th title="Net Revenue − Cost of Sold Units">Profit on Sold Units</th></tr>
+          <tr><th style="width:32px"><input type="checkbox" id="plSelectAll" class="form-check-input" title="Select all"></th><th>Lot#</th><th>Supplier</th><th>Date</th><th>Qty</th><th>Devices</th><th>Sold</th><th>Buying Price</th><th>Parts Cost</th><th>Labour Cost</th><th>Total Cost</th><th title="Sale value of sold devices">Gross Sales</th><th title="Refunds on customer returns">Returns</th><th title="Gross Sales − Returns">Net Revenue</th><th title="Net Revenue − Total Cost (whole lot)">Profit</th><th>Margin</th><th title="Buying + parts + labour of the sold devices only">Cost of Sold Units</th><th title="Net Revenue − Cost of Sold Units">Profit on Sold Units</th></tr>
         </thead>
         <tbody>
           {% set ns = namespace(total_buying=0, total_parts=0, total_labour=0, total_revenue=0, total_profit=0, total_gross=0, total_returns=0, total_cost_sold=0, total_profit_sold=0) %}
@@ -31,6 +35,7 @@
           {% set ns.total_cost_sold = ns.total_cost_sold + lp.cost_sold %}
           {% set ns.total_profit_sold = ns.total_profit_sold + lp.profit_sold %}
           <tr class="{{ 'table-success' if lp.profit > 0 else 'table-danger' if lp.profit < 0 else '' }}">
+            <td><input type="checkbox" class="form-check-input plRowChk" value="{{ lp.lot_id }}"></td>
             <td><a href="/lots/{{ lp.lot_id }}" class="fw-semibold text-decoration-none">{{ lp.lot_number }}</a></td>
             <td>{{ lp.supplier }}</td>
             <td>{{ lp.purchase_date.strftime('%d-%m-%Y') }}</td>
@@ -58,6 +63,7 @@
         {% if lot_pl %}
         <tfoot class="table-dark">
           <tr class="fw-bold">
+            <td></td>
             <td colspan="6">TOTAL</td>
             <td>₹{{ "{:,.0f}".format(ns.total_buying) }}</td>
             <td>₹{{ "{:,.0f}".format(ns.total_parts) }}</td>
@@ -80,5 +86,18 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
-<script>$(document).ready(function(){ $('#plTable').DataTable({pageLength: 12, order:[[0,'desc']]}); });</script>
+<script>
+$(document).ready(function(){
+  if (!$('#plTable').length) return;
+  function updateCount(){ $('#plSelCount').text($('.plRowChk:checked').length + ' selected'); }
+  initGlobalTable('#plTable', {
+    order: [[1, 'desc']],
+    columnDefs: [{ orderable: false, targets: 0 }],
+    language: { emptyTable: 'No lots found' }
+  }, {
+    selectAll: { headerSelector: '#plSelectAll', rowSelector: '.plRowChk', onChange: updateCount, resetOnDraw: true }
+  });
+  $('#plTable').on('draw.dt', updateCount);
+});
+</script>
 {% endblock %}

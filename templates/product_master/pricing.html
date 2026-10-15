@@ -4,23 +4,15 @@
 {% block head %}
 <style>
   /* No up/down spinner arrows on any price box */
-  #ppTable input[type=number]::-webkit-outer-spin-button,
-  #ppTable input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-  #ppTable input[type=number] { -moz-appearance: textfield; appearance: textfield; }
+  .pp-table input[type=number]::-webkit-outer-spin-button,
+  .pp-table input[type=number]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .pp-table input[type=number] { -moz-appearance: textfield; appearance: textfield; }
 </style>
 {% endblock %}
 {% block content %}
 {% set method_label = {'average': 'Average', 'maximum': 'Maximum', 'minimum': 'Minimum'}[comp_method] %}
-<div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Product Pricing</span>
-    <span class="small text-muted">
-      {% if comp_lists %}Sell Price = <strong>{{ method_label }}</strong> of the competitor prices entered (set in Product Master → Competitive Pricings)
-      {% else %}Add Competitive Lists in Product Master → Competitive Pricings to calculate Sell Price{% endif %}
-    </span>
-  </div>
-  <div class="card-body">
-    <table id="ppTable" class="table table-hover mb-0" style="width:100%">
+{% macro pp_table(tid, rows) %}
+    <table id="{{ tid }}" class="table table-hover mb-0 pp-table" style="width:100%">
       <thead class="table-dark"><tr>
         <th>Product Name</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th>
         <th>RAM Types</th><th>RAM Sizes</th><th>Storage Types</th><th>Storage Sizes</th>
@@ -28,7 +20,7 @@
         <th>Sell Price</th><th>Status</th><th>Action</th>
       </tr></thead>
       <tbody>
-      {% for p in products %}
+      {% for p in rows %}
         {% set cp = comp_prices.get(p.id, {}) %}
         <tr data-id="{{ p.id }}">
           <td class="fw-semibold text-nowrap">{{ p.make }}/{{ p.model }}/{{ p.cpu }}/{{ p.cpu_gen }}</td>
@@ -61,7 +53,36 @@
       {% endfor %}
       </tbody>
     </table>
+{% endmacro %}
+{% set pending = products | rejectattr('pricing_done') | list %}
+{% set done = products | selectattr('pricing_done') | list %}
+<ul class="nav nav-tabs" id="ppTabs" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#ppTab_pending" type="button">
+    <i class="bi bi-hourglass-split me-1"></i>Pending <span class="badge bg-secondary ms-1" id="ppCountPending">{{ pending|length }}</span></button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#ppTab_done" type="button">
+    <i class="bi bi-check2-circle me-1"></i>Completed <span class="badge bg-secondary ms-1" id="ppCountDone">{{ done|length }}</span></button></li>
+</ul>
+<div class="tab-content border border-top-0 rounded-bottom bg-white mb-4">
+<div class="tab-pane fade show active p-0" id="ppTab_pending"><div class="card border-0">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Product Pricing</span>
+    <span class="small text-muted">
+      {% if comp_lists %}Sell Price = <strong>{{ method_label }}</strong> of the competitor prices entered (set in Product Master → Competitive Pricings)
+      {% else %}Add Competitive Lists in Product Master → Competitive Pricings to calculate Sell Price{% endif %}
+    </span>
   </div>
+  <div class="card-body">{{ pp_table('ppTable', pending) }}</div>
+</div></div>
+<div class="tab-pane fade p-0" id="ppTab_done"><div class="card border-0">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Product Pricing</span>
+    <span class="small text-muted">
+      {% if comp_lists %}Sell Price = <strong>{{ method_label }}</strong> of the competitor prices entered (set in Product Master → Competitive Pricings)
+      {% else %}Add Competitive Lists in Product Master → Competitive Pricings to calculate Sell Price{% endif %}
+    </span>
+  </div>
+  <div class="card-body">{{ pp_table('ppTableDone', done) }}</div>
+</div></div>
 </div>
 {% endblock %}
 
@@ -69,7 +90,19 @@
 {% include "product_master/_common.html" %}
 <script>
 (function () {
-  initGlobalTable('#ppTable', { order: [[0, 'asc']] });
+  var dtPending = initGlobalTable('#ppTable', { order: [[0, 'asc']], language: { emptyTable: 'No pending items.' } });
+  var dtDone = initGlobalTable('#ppTableDone', { order: [[0, 'asc']], language: { emptyTable: 'No completed items.' } });
+  $(document).on('shown.bs.tab', '#ppTabs button', function () { $($.fn.dataTable.tables(true)).DataTable().columns.adjust(); });
+  // Move a row to the table matching its new status and refresh tab counts
+  function moveRow(tr, done) {
+    var from = done ? dtPending : dtDone, to = done ? dtDone : dtPending;
+    if ($(to.table().node()).has(tr[0]).length) return;
+    var node = tr[0];
+    from.row(node).remove().draw(false);
+    to.row.add(node).draw(false);
+    $('#ppCountPending').text(dtPending.rows().count());
+    $('#ppCountDone').text(dtDone.rows().count());
+  }
   var METHOD = {{ comp_method|tojson }};
   function snapshot(tr) { return tr.find('.pp-field').map(function () { return this.value.trim(); }).get().join('|'); }
   // Live preview of Sell Price while typing (the server recalculates on Save)
@@ -81,7 +114,7 @@
           : vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
     tr.find('.pp-sell').val(Math.round(r * 100) / 100);
   }
-  $('#ppTable tbody tr').each(function () { $(this).data('saved', snapshot($(this))); });
+  $('.pp-table tbody tr').each(function () { $(this).data('saved', snapshot($(this))); });
   // Save enables once RAM, Storage or any competitor price differs from what is saved
   $(document).on('input change', '.pp-field', function () {
     var tr = $(this).closest('tr');
@@ -100,6 +133,7 @@
         ? '<span class="badge bg-success">Pricing Done</span>'
         : '<span class="badge bg-warning text-dark">Pricing Pending</span>');
       tr.data('saved', snapshot(tr));
+      moveRow(tr, !!p.pricing_done);
       showFlash('success', 'Saved ' + p.product_name + '.');
     });
   });
