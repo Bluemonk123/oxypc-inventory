@@ -7,35 +7,38 @@
   <i class="bi bi-lock me-2"></i>Pricing visibility is disabled for your role. Contact an admin if you need access to this report.
 </div>
 {% else %}
-<form method="get" class="row g-2 align-items-end mb-3">
-  <div class="col-auto">
-    <label class="form-label small mb-1">From</label>
-    <input type="date" name="from_date" value="{{ from_date }}" class="form-control form-control-sm">
-  </div>
-  <div class="col-auto">
-    <label class="form-label small mb-1">To</label>
-    <input type="date" name="to_date" value="{{ to_date }}" class="form-control form-control-sm">
-  </div>
-  <div class="col-auto"><button type="submit" class="btn btn-primary btn-sm">Filter</button></div>
-  <div class="col-auto ms-auto d-flex align-items-center gap-2">
-    <span class="fw-bold text-success">Total: ₹{{ "{:,.0f}".format(total) }}</span>
-    <a href="/reports/export/sales" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</a>
+<form method="get" class="filter-bar">
+  <div class="filter-bar-row">
+    <div><input type="date" name="from_date" value="{{ from_date }}" title="Sale Date From" class="form-control form-control-sm"></div>
+    <div><input type="date" name="to_date" value="{{ to_date }}" title="Sale Date To" class="form-control form-control-sm"></div>
+    <div><button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filter</button>
+         <a href="/reports/sales" class="btn btn-outline-secondary btn-sm">Reset</a></div>
   </div>
 </form>
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
+    <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Sales Report</span>
+    <div class="d-flex align-items-center gap-2">
+      <span class="badge bg-primary" id="srSelCount">0 selected</span>
+      <span class="fw-bold text-success small">Total: ₹{{ "{:,.0f}".format(total) }}</span>
+      <a href="/reports/export/sales" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</a>
+    </div>
+  </div>
   <div class="card-body p-0">
+    <div>
     <table id="srTable" class="table table-hover mb-0 small">
-      <thead class="table-dark"><tr><th>Sale#</th><th>Date</th><th>Tag Number</th><th>Brand/Model</th><th>Lot</th><th>Grade</th><th>Price</th><th>Customer</th><th>Payment</th><th>By</th></tr></thead>
+      <thead class="table-dark"><tr><th style="width:32px"><input type="checkbox" id="srSelectAll" class="form-check-input" title="Select all"></th><th>Sale#</th><th>Date</th><th>Tag Number</th><th>Brand/Model</th><th>Lot</th><th>Grade</th><th>Price</th><th>Customer</th><th>Payment</th><th>By</th></tr></thead>
       <tbody>
         {% for row in sales %}
         <tr{% if not row.has_sale %} class="table-warning" title="Moved to Sold via bulk stage-change — no Sale record exists for this tag"{% endif %}>
+          <td><input type="checkbox" class="form-check-input srRowChk" value="{{ row.barcode }}"></td>
           <td class="fw-semibold">{% if row.has_sale %}{{ row.sale_number }}{% else %}<span class="badge bg-warning text-dark">No Sale Record</span>{% endif %}</td>
-          <td>{{ row.sold_at.strftime('%d-%m-%Y') if row.sold_at else '—' }}</td>
+          <td data-order="{{ row.sold_at.strftime('%Y%m%d%H%M%S') if row.sold_at else '' }}">{{ row.sold_at.strftime('%d-%m-%Y') if row.sold_at else '—' }}</td>
           <td><code>{{ row.barcode }}</code></td>
-          <td>{{ row.brand }} {{ row.model }}</td>
+          <td>{{ ((row.brand or '') ~ ' ' ~ (row.model or '')).strip() or '—' }}</td>
           <td>{% if row.lot_number %}<span class="badge bg-info text-dark">{{ row.lot_number }}</span>{% else %}—{% endif %}</td>
           <td>{{ row.grade or '—' }}</td>
-          <td class="fw-semibold text-success">{% if row.sale_price is not none %}₹{{ "{:,.0f}".format(row.sale_price) }}{% else %}—{% endif %}</td>
+          <td class="fw-semibold text-success" data-order="{{ row.sale_price or 0 }}">{% if row.sale_price is not none %}₹{{ "{:,.0f}".format(row.sale_price) }}{% else %}—{% endif %}</td>
           <td>{{ row.customer_name or '—' }}</td>
           <td>{% if row.payment_mode %}<span class="badge bg-secondary">{{ row.payment_mode }}</span>{% else %}—{% endif %}</td>
           <td>{{ row.sold_by or '—' }}</td>
@@ -43,10 +46,22 @@
         {% endfor %}
       </tbody>
     </table>
+    </div>
   </div>
 </div>
 {% endif %}
 {% endblock %}
 {% block scripts %}
-<script>$(document).ready(function(){ $('#srTable').DataTable({pageLength: 12, order:[[0,'desc']]}); });</script>
+<script>
+$(document).ready(function(){
+  function srUpdate(){ $('#srSelCount').text(dtSr.$('.srRowChk:checked').length + ' selected'); }
+  var dtSr = initGlobalTable('#srTable', {
+    order: [],
+    columnDefs: [{ orderable: false, targets: 0 }],
+    language: { emptyTable: 'No sales in this date range.' },
+  }, {
+    selectAll: { headerSelector: '#srSelectAll', rowSelector: '.srRowChk', onChange: srUpdate, resetOnDraw: true },
+  });
+});
+</script>
 {% endblock %}
