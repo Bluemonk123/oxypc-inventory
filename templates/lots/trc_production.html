@@ -245,7 +245,8 @@
             <td>{{ device.hdd_summary or ((device.storage_gb|string ~ 'GB') if device.storage_gb else '—') }}</td>
             <td>{{ (device.grade.value if device.grade else '') or '—' }}</td>
             <td><span class="badge bg-{{ device.stage_color }}">{{ device.stage_label }}</span></td>
-            <td>{{ as_is_assigned_map.get(device.id|string) or '—' }}</td>
+            {# No engineer on an open WorkID yet (e.g. L1/L2 tags still on "Pick This") and no department. #}
+            <td>{% set _au = as_is_assigned_map.get(device.id|string) %}{% if _au %}{{ _au }}{% else %}<span class="text-muted fst-italic">Not Assigned Yet</span>{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
