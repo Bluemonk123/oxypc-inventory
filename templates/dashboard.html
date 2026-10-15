@@ -632,15 +632,15 @@
 <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
 <script>
 (function(){
-  const labels = ['IQC','L1 Repair','L2 Repair','L3 Repair','QC Check','Ready to Sale','Sold'];
+  const labels = {{ chart_labels | tojson }};
   new Chart(document.getElementById('categoryChart'), {
     type: 'bar',
     data: {
       labels: labels,
       datasets: [
-        { label: 'Laptops',     data: {{ chart_data.get('Laptop',      [0,0,0,0,0,0,0]) | tojson }}, backgroundColor: 'rgba(13,110,253,.75)',  borderColor: '#0d6efd', borderWidth:1, borderRadius:4 },
-        { label: 'Desktops',    data: {{ chart_data.get('Desktop',     [0,0,0,0,0,0,0]) | tojson }}, backgroundColor: 'rgba(25,135,84,.75)',   borderColor: '#198754', borderWidth:1, borderRadius:4 },
-        { label: 'TFT Monitor', data: {{ chart_data.get('TFT Monitor', [0,0,0,0,0,0,0]) | tojson }}, backgroundColor: 'rgba(253,126,20,.75)',  borderColor: '#fd7e14', borderWidth:1, borderRadius:4 },
+        { label: 'Laptops',     data: {{ chart_data.get('Laptop',      []) | tojson }}, backgroundColor: 'rgba(13,110,253,.75)',  borderColor: '#0d6efd', borderWidth:1, borderRadius:4 },
+        { label: 'Desktops',    data: {{ chart_data.get('Desktop',     []) | tojson }}, backgroundColor: 'rgba(25,135,84,.75)',   borderColor: '#198754', borderWidth:1, borderRadius:4 },
+        { label: 'TFT Monitor', data: {{ chart_data.get('TFT Monitor', []) | tojson }}, backgroundColor: 'rgba(253,126,20,.75)',  borderColor: '#fd7e14', borderWidth:1, borderRadius:4 },
       ]
     },
     options: {

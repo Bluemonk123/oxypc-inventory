@@ -605,10 +605,27 @@ async def dashboard(
         # user_queue keeps whatever populated before the exception
 
     # ── Chart data: category × stage breakdown ────────────────────────────────
-    chart_stages = ["iqc", "l1", "l2", "l3", "qc_check", "ready_to_sale", "sold"]
+    # X-axis = the Stage Pipeline's own steps (2026-10-16), same order and
+    # grouping as the pipeline strip; each bar sums its raw stages.
+    def _sv(st):
+        return st.value if hasattr(st, "value") else st
+    chart_groups = [
+        ("IQC",           [DeviceStage.iqc]),
+        ("Stock In",      [DeviceStage.stock_in]),
+        ("Production",    [DeviceStage.trc_production]),
+        ("L1/L2",         [DeviceStage.l1, DeviceStage.l2]),
+        ("L3/L4",         [DeviceStage.l3]),
+        ("Stress/QC",     [DeviceStage.qc_check]),
+        ("Cosmetic",      list(COSMETIC_STAGES)),
+        ("Final QC",      list(FINAL_QC_STAGES)),
+        ("Ready to Sale", [DeviceStage.ready_to_sale]),
+        ("Sold",          [DeviceStage.sold]),
+    ]
+    chart_labels = [lbl for lbl, _ in chart_groups]
     chart_data: dict = {}
     for cat in CATEGORIES:
-        chart_data[cat] = [category_counts[cat].get(s, 0) for s in chart_stages]
+        chart_data[cat] = [sum(category_counts[cat].get(_sv(st), 0) for st in sts)
+                           for _, sts in chart_groups]
 
     # ── Lot P&L (10 queries; cached 30 s when no P&L From/To filter is
     # active — the common case, and identical for every viewer) ───────────────
@@ -1099,8 +1116,8 @@ async def dashboard(
         "minipc_available": minipc_available,
         "server_available": server_available,
         "user_queue": user_queue,
-        "chart_stages": chart_stages,
         "chart_data": chart_data,
+        "chart_labels": chart_labels,
         "lot_pl": lot_pl,
         "pl_active": _pl_active,
         "month_revenue": month_revenue,
