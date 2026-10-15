@@ -258,6 +258,13 @@ async def validate_receiving(req_id: str, request: Request,
     pr.actioned_by = current_user.username
     await audit(db, user=current_user, action="PART_RECEIVED", table_name="part_requests",
                 record_id=str(pr.id), request=request)
+    # Verified on a tag already past Final QC (Pass Hold / Ready to Sale):
+    # no Final QC pass is coming, so RAM/Hard Drive is written now (2026-10-15).
+    if pr.device_id:
+        from services.parts_changed import apply_spec_changes_if_verified_late
+        dev = (await db.execute(select(Device).where(Device.id == pr.device_id))).scalar_one_or_none()
+        if dev:
+            await apply_spec_changes_if_verified_late(db, dev, current_user, request)
     await db.commit()
     return JSONResponse({"ok": True})
 

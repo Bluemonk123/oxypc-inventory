@@ -1114,6 +1114,10 @@ async def iqc_bulk_apply_grade_type(
                 skipped_moves.append(device.barcode)
                 continue
             prev = device.current_stage
+            # Into Pass Hold / Ready to Sale without the Final QC Pass button:
+            # write verified RAM/Hard Drive changes onto the spec (2026-10-15).
+            from services.parts_changed import apply_spec_changes_if_past_final_qc
+            await apply_spec_changes_if_past_final_qc(db, device, prev, new_stage, current_user, request)
             device.current_stage = new_stage
             from models.device import reset_repair_cycle_on_entry
             reset_repair_cycle_on_entry(device, prev, new_stage)

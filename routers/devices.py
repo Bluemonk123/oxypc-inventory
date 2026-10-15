@@ -458,12 +458,10 @@ def _device_search_filters(q, stage, lot, grade, category, device_type, date_fro
         ]
         if _active_stock_excluded:
             w.append(Device.current_stage.notin_(_active_stock_excluded))
-    # Stock Type: "As-Is" = the tag has a sub-lot, "Finish Good" = it doesn't
-    # (same rule as the table's Stock Type column).
-    stock_vals = set(_multi(stock_type)) & {"finish_good", "as_is"}
-    if stock_vals and stock_vals != {"finish_good", "as_is"}:
-        as_is = func.coalesce(func.trim(Device.sub_lot_number), "") != ""
-        w.append(as_is if "as_is" in stock_vals else ~as_is)
+    # Stock Type: As-Is / Finish Good / In Progress — see stock_type_key().
+    stock_vals = set(_multi(stock_type)) & set(STOCK_TYPE_LABELS)
+    if stock_vals and stock_vals != set(STOCK_TYPE_LABELS):
+        w.append(stock_type_sql().in_(sorted(stock_vals)))
     date_filter = _current_stage_date_filter(date_from, date_to)
     if date_filter is not None:
         w.append(date_filter)
@@ -543,7 +541,7 @@ async def device_search_data(
     # is always column 13 — which also removes the old per-role index shift that
     # once left the table stuck on "Processing…" for roles without pricing.
     updated_col = 13
-    stock_type_expr = case((func.coalesce(Device.sub_lot_number, "") != "", 1), else_=0)
+    stock_type_expr = stock_type_sql()
     col_map = {1: Device.barcode, 2: Lot.lot_number, 4: Device.brand, 5: Device.model,
                6: Device.device_type, 7: Device.cpu, 10: Device.grade, 11: stock_type_expr,
                updated_col: Device.updated_at}
@@ -617,9 +615,9 @@ async def device_search_data(
             spec_cell(parts_data, d.id, "RAM", esc(ram)),
             spec_cell(parts_data, d.id, "Hard Drive", esc(storage)),
             (f'<span class="badge bg-{gcls}">{esc(g)}</span>' if g else "—"),
-            # Stock Type: "As-Is" when the tag has a sub-lot, else "Finish Good"
-            ('<span class="badge bg-warning text-dark">As-Is</span>' if (d.sub_lot_number or "").strip()
-             else '<span class="badge bg-success">Finish Good</span>'),
+            # Stock Type: As-Is / Finish Good / In Progress (stock_type_key)
+            (lambda k: f'<span class="badge bg-{STOCK_TYPE_BADGE[k]}">{STOCK_TYPE_LABELS[k]}</span>')(
+                stock_type_key(d.current_stage, d.sub_lot_number)),
         ]
         cells += [
             f'<span class="badge bg-{_STAGE_BADGE.get(stage_val, "light text-dark")}">{esc(stage_lbl)}</span>',
@@ -830,7 +828,8 @@ async def device_search(
         "lot_choices": [l.lot_number for l in lots if l.lot_number],
         "q": q, "stage": stage, "lot": lot, "grade": grade, "category": category,
         "device_type": device_type, "entity": entity, "stock_type": stock_type,
-        "stock_type_options": [("finish_good", "Finish Good"), ("as_is", "As-Is")],
+        "stock_type_options": [("finish_good", "Finish Good"), ("as_is", "As-Is"),
+                               ("in_progress", "In Progress")],
         "exclude_sold": _exclude_sold(exclude_sold, fs),
         "device_type_options": await master_values(db, "device_type"),
         "entity_options": entity_options,
@@ -1023,7 +1022,7 @@ async def _build_model_summary(db: AsyncSession, filters: list) -> list:
 
 MS_UNKNOWN_MODEL, MS_UNKNOWN_MAKE, MS_NONE = "Unknown Model", "Unknown Make", "—"
 MS_GRADE_ORDER = ["A", "B", "C", "D", "E", "scrap", "NA"]
-MS_STOCK_LABELS = {"finish_good": "Finish Good", "as_is": "As-Is"}
+MS_STOCK_LABELS = {"finish_good": "Finish Good", "as_is": "As-Is", "in_progress": "In Progress"}
 MS_TOUCH_LABELS = {"touch": "T", "non_touch": "NT"}
 
 
@@ -1059,6 +1058,32 @@ def _ms_null_or(col, values, null_label):
     return or_(*clauses)
 
 
+# ── Stock Type (2026-10-15) — one rule for the table, its filter and sort,
+# the Model Summary and the export:
+#   As-Is        the tag has a Sub-Lot Number (any stage)
+#   Finish Good  no Sub-Lot Number and the tag is Ready to Sale or Sold
+#   In Progress  every other tag (still in the pipeline, returned, scrapped)
+STOCK_TYPE_LABELS = {"as_is": "As-Is", "finish_good": "Finish Good", "in_progress": "In Progress"}
+STOCK_TYPE_BADGE = {"as_is": "warning text-dark", "finish_good": "success", "in_progress": "secondary"}
+_FINISH_GOOD_STAGES = (DeviceStage.ready_to_sale, DeviceStage.sold)
+
+
+def stock_type_key(stage, sub_lot_number) -> str:
+    if (sub_lot_number or "").strip():
+        return "as_is"
+    if stage in _FINISH_GOOD_STAGES or getattr(stage, "value", stage) in {s.value for s in _FINISH_GOOD_STAGES}:
+        return "finish_good"
+    return "in_progress"
+
+
+def stock_type_sql():
+    """SQL CASE giving the same key as stock_type_key()."""
+    return case(
+        (func.coalesce(func.trim(Device.sub_lot_number), "") != "", "as_is"),
+        (Device.current_stage.in_(_FINISH_GOOD_STAGES), "finish_good"),
+        else_="in_progress")
+
+
 def _ms_own_filters(s_entity="", s_make="", s_device_type="", s_touch="", s_stock="", s_grade="") -> list:
     w = []
     if _multi(s_entity):
@@ -1071,10 +1096,9 @@ def _ms_own_filters(s_entity="", s_make="", s_device_type="", s_touch="", s_stoc
     if touch and touch != {"touch", "non_touch"}:
         is_touch = func.lower(func.trim(func.coalesce(Device.touch_type, ""))) == "touch"
         w.append(is_touch if "touch" in touch else ~is_touch)
-    stock = set(_multi(s_stock))
-    if stock and stock != {"finish_good", "as_is"}:
-        as_is = func.coalesce(Device.sub_lot_number, "") != ""
-        w.append(as_is if "as_is" in stock else ~as_is)
+    stock = set(_multi(s_stock)) & set(STOCK_TYPE_LABELS)
+    if stock and stock != set(STOCK_TYPE_LABELS):
+        w.append(stock_type_sql().in_(sorted(stock)))
     grades = _multi(s_grade)
     if grades:
         real = []
@@ -1142,7 +1166,8 @@ async def model_summary_data(
     # carries its own bind parameters (see _build_model_summary).
     cols = (Device.model, Device.brand, Device.device_type, Device.cpu, Device.ram_summary,
             Device.ram_gb, Device.hdd_summary, Device.storage_gb, Device.storage_type,
-            Device.entity, Device.touch_type, Device.grade, Device.sub_lot_number)
+            Device.entity, Device.touch_type, Device.grade, Device.sub_lot_number,
+            Device.current_stage)
     rows = (await db.execute(
         select(*cols, func.count(Device.id).label("n"),
                func.sum(_device_price_expr(costing)).label("price"))
@@ -1168,7 +1193,7 @@ async def model_summary_data(
         g["entity"][ent] = g["entity"].get(ent, 0) + n
         t = "T" if _ms_is_touch(r.touch_type) else "NT"
         g["touch"][t] = g["touch"].get(t, 0) + n
-        st = "As-Is" if (r.sub_lot_number or "").strip() else "Finish Good"
+        st = STOCK_TYPE_LABELS[stock_type_key(r.current_stage, r.sub_lot_number)]
         g["stock"][st] = g["stock"].get(st, 0) + n
         gr = getattr(r.grade, "value", r.grade) or "NA"
         g["grade"][gr] = g["grade"].get(gr, 0) + n
@@ -1291,13 +1316,8 @@ def _pna_label(device, pna_device_ids) -> str:
 
 
 def _stock_label(device) -> str:
-    """Stock classification for the export: a Ready to Sale tag is "As-Is" when it
-    has a sub-lot, else "Finish Good"; every other live stage is "In Progress".
-    A SOLD tag gets the same Finish Good / As-Is label (so sold items filter by
-    what they were), never "In Progress"."""
-    if device.current_stage in (DeviceStage.ready_to_sale, DeviceStage.sold):
-        return "As-Is" if (device.sub_lot_number or "").strip() else "Finish Good"
-    return "In Progress"
+    """Stock Type for the export — same rule as the table (stock_type_key)."""
+    return STOCK_TYPE_LABELS[stock_type_key(device.current_stage, device.sub_lot_number)]
 
 
 async def _export_rows(db: AsyncSession, rows) -> StreamingResponse:

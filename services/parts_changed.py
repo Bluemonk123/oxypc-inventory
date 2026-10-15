@@ -271,6 +271,10 @@ async def changed_parts_by_device(db: AsyncSession, device_ids) -> dict[str, dic
         rtype_label = (f"Downgrade ({r.downgrade_type.title()})"
                        if rtype == "downgrade" and r.downgrade_type else rtype.title())
         ap = applied.get(str(r.id))
+        if ap and state == "pending":
+            # Already written onto the spec without a Final QC pass (verified
+            # on a tag past Final QC, or the tag was moved past it) — done.
+            state = "passed"
         item = {
             "id": str(r.id),
             "part_name": label,
@@ -290,7 +294,8 @@ async def changed_parts_by_device(db: AsyncSession, device_ids) -> dict[str, dic
             "old_value": ap["old"] if ap else None,
         }
         status = {"pending": "Pending Final QC",
-                  "passed": f"Final QC passed {item['pass_date']}",
+                  "passed": (f"Final QC passed {item['pass_date']}" if pass_at
+                             else "Applied to spec"),
                   "sold": f"Sold {item['sold_date']}"}[state]
         item["status_label"] = status
         item["tooltip"] = (
@@ -463,7 +468,8 @@ def apply_part_to_device(device, r: PartRequest, sp=None):
     return old, _hdd_text(device)
 
 
-async def apply_spec_changes_on_pass(db: AsyncSession, device, user=None, request=None) -> list[dict]:
+async def apply_spec_changes_on_pass(db: AsyncSession, device, user=None, request=None,
+                                     notes: str = "Final QC pass — RAM/Hard Drive updated from verified part changes") -> list[dict]:
     """Write pending RAM / Hard Drive changes onto the device at Final QC pass.
 
     "Pending" = verified after the device's previous Final QC pass (or ever,
@@ -485,8 +491,14 @@ async def apply_spec_changes_on_pass(db: AsyncSession, device, user=None, reques
         q.order_by(PartRequest.actioned_at.asc().nulls_last(), PartRequest.created_at.asc())
     )).scalars().all()
     sps = await spare_parts_for(db, rows)
+    # Never write the same change twice (a "New" RAM/Hard Drive adds
+    # capacity): changes already applied — at an earlier pass, on a move
+    # past Final QC, or when verified on a tag already past it — are skipped.
+    already = await _applied(db, [device.id])
     applied = []
     for r in rows:
+        if str(r.id) in already:
+            continue
         when = r.actioned_at or r.created_at
         if last_pass is not None and when is not None and when <= last_pass:
             continue
@@ -503,6 +515,42 @@ async def apply_spec_changes_on_pass(db: AsyncSession, device, user=None, reques
                     old_value={"barcode": device.barcode,
                                "values": {a["part"]: a["old"] for a in applied}},
                     new_value={"barcode": device.barcode, "applied": applied},
-                    notes="Final QC pass — RAM/Hard Drive updated from verified part changes",
+                    notes=notes,
                     request=request)
     return applied
+
+
+# Stages a tag only reaches after Final QC has passed.
+PAST_FINAL_QC = ("final_qc_pass_hold", "ready_to_sale")
+
+
+def _stage_val(stage) -> str:
+    return getattr(stage, "value", stage) or ""
+
+
+async def apply_spec_changes_if_past_final_qc(db: AsyncSession, device, prev_stage, new_stage,
+                                              user=None, request=None) -> list[dict]:
+    """For generic stage moves (Bulk Customise "Move to Stage", manual Move,
+    API move) that can take a tag into Final QC Pass Hold / Ready to Sale
+    WITHOUT the Final QC Pass button — the only other place verified RAM /
+    Hard Drive changes get written onto the device. Call BEFORE adding the
+    move's StageMovement. No-op for any other move. (2026-10-15)"""
+    if _stage_val(new_stage) not in PAST_FINAL_QC:
+        return []
+    if _stage_val(prev_stage) in PAST_FINAL_QC + ("sold",):
+        return []          # already past Final QC — nothing was skipped
+    return await apply_spec_changes_on_pass(
+        db, device, user, request,
+        notes=f"Moved to {_stage_val(new_stage)} without Final QC pass — RAM/Hard Drive updated from verified part changes")
+
+
+async def apply_spec_changes_if_verified_late(db: AsyncSession, device, user=None,
+                                              request=None) -> list[dict]:
+    """A change verified while the tag is already past Final QC would never
+    reach a Final QC pass, so it is written onto the spec right away.
+    Call after the PartRequest is set to "received". (2026-10-15)"""
+    if _stage_val(device.current_stage) not in PAST_FINAL_QC:
+        return []
+    return await apply_spec_changes_on_pass(
+        db, device, user, request,
+        notes="Part verified after Final QC — RAM/Hard Drive updated from verified part changes")

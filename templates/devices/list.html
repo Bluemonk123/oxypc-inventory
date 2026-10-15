@@ -202,7 +202,7 @@
         {{ ms.multiselect_inline('s_make', 'Make', ms_make_options, '') }}
         {{ ms.multiselect_inline('s_device_type', 'Device Type', ms_dtype_options, '') }}
         {{ ms.multiselect_inline('s_touch', 'Touch Type', [('touch', 'Touch (T)'), ('non_touch', 'Non-Touch (NT)')], '') }}
-        {{ ms.multiselect_inline('s_stock', 'Stock Type', [('finish_good', 'Finish Good'), ('as_is', 'As-Is')], '') }}
+        {{ ms.multiselect_inline('s_stock', 'Stock Type', [('finish_good', 'Finish Good'), ('as_is', 'As-Is'), ('in_progress', 'In Progress')], '') }}
         {{ ms.multiselect_inline('s_grade', 'Grade', grade_options() + [('NA', 'No Grade')], '') }}
         <button type="button" id="msResetBtn" class="btn btn-sm btn-outline-secondary bg-white flex-shrink-0" title="Clear these filters">Reset</button>
       </div>
@@ -599,8 +599,8 @@ $(document).ready(function() {
     }).join('') + '</span>';
   }
   function msStockHtml(m) {
-    return '<span class="text-nowrap">' + msOrdered(m, ['Finish Good', 'As-Is']).map(function (k) {
-      return msBadge(k + '-' + m[k], k === 'As-Is' ? 'warning text-dark' : 'success');
+    return '<span class="text-nowrap">' + msOrdered(m, ['Finish Good', 'As-Is', 'In Progress']).map(function (k) {
+      return msBadge(k + '-' + m[k], k === 'As-Is' ? 'warning text-dark' : (k === 'In Progress' ? 'secondary' : 'success'));
     }).join('') + '</span>';
   }
   function msTotalHtml(total, m) {

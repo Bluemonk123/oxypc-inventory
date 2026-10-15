@@ -1727,6 +1727,10 @@ async def move_device(
     )).scalars().first()
     if prev_mv:
         prev_mv.exited_at = app_now()
+    # Moving into Pass Hold / Ready to Sale without the Final QC Pass button
+    # still writes verified RAM/Hard Drive changes onto the spec (2026-10-15).
+    from services.parts_changed import apply_spec_changes_if_past_final_qc
+    await apply_spec_changes_if_past_final_qc(db, device, prev, new_stage, current_user, request)
     device.current_stage = new_stage; device.updated_at = app_now()
     # A manual move off L3 bypasses l3l4_complete/l3l4_scrap, which are the
     # only two places that ever close an open "L3L4-" WorkOrder — without
