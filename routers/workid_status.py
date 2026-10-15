@@ -177,6 +177,42 @@ def _is_l3l4_request_movement(mv) -> bool:
 MAIN_ROW_CAP = 3000
 
 
+def _fmt(dt, f="%d-%m-%Y %H:%M"):
+    return dt.strftime(f) if dt else ""
+
+
+def _rows_json(items) -> str:
+    """The table's rows as compact JSON for the page's DataTable (2026-10-15).
+
+    The table used to be rendered as up to MAIN_ROW_CAP <tr>s of HTML (each
+    with its PNA history), which the browser then had to parse and DataTables
+    had to read cell by cell before showing page 1. Shipping the rows as data
+    with deferRender means only the visible page's rows are ever built.
+    Keys are short on purpose: this is up to 3000 rows. Sort keys (as/cs)
+    make the date columns sort by real date, not dd-mm-yyyy text."""
+    import json
+    rows = []
+    for it in items:
+        a, c = it.get("assigned_date"), it.get("completed_at")
+        pna_tip = ""
+        if it.get("pna"):
+            pna_tip = "Parts: " + ", ".join(it.get("pna_parts") or [])
+            if it.get("pna_marked_by"):
+                pna_tip += f", Marked by: {it['pna_marked_by']}"
+            if it.get("pna_marked_at"):
+                pna_tip += f", at: {it['pna_marked_at']}"
+        rows.append({
+            "k": it["row_key"], "w": it["work_id"], "b": it.get("barcode") or "—",
+            "m": it.get("model") or "—", "s": it.get("stage_label") or "—",
+            "a": _fmt(a), "ad": _fmt(a, "%d-%m-%Y"), "as": _fmt(a, "%Y%m%d%H%M"),
+            "c": _fmt(c), "cd": _fmt(c, "%d-%m-%Y"), "cs": _fmt(c, "%Y%m%d%H%M"),
+            "d": it.get("days"), "n": it.get("notes") or "", "e": it.get("engineer") or "",
+            "p": bool(it.get("pna")), "pt": pna_tip, "h": it.get("pna_history") or [],
+        })
+    # "</" escaped so a value can never close the <script> block it sits in.
+    return json.dumps(rows, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
 @router.get("/workid-status", response_class=HTMLResponse)
 async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
                         current_user: User = Depends(get_current_user),
@@ -273,11 +309,18 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
         for did, moved in fq_rows:
             finalqc_date_map[str(did)] = moved
 
+        # Only the five columns this page reads (2026-10-15 — "page taking too
+        # much time to load"): every movement of up to MAIN_ROW_CAP devices
+        # used to be built as a full StageMovement ORM object, by far the
+        # heaviest step of the request. Plain rows keep the same attribute
+        # names (mv.from_stage, mv.moved_at, mv.moved_by, mv.notes), so the
+        # matching logic below is unchanged.
         move_rows = (await db.execute(
-            select(StageMovement)
+            select(StageMovement.device_id, StageMovement.from_stage,
+                   StageMovement.moved_at, StageMovement.moved_by, StageMovement.notes)
             .where(StageMovement.device_id.in_(device_ids))
             .order_by(StageMovement.moved_at.asc())
-        )).scalars().all()
+        )).all()
         for mv in move_rows:
             if _is_l3l4_request_movement(mv):
                 continue
@@ -470,6 +513,9 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
         "total_ongoing": sum(1 for it in items if it["ongoing"]),
         "total_assigned": sum(1 for it in items if it["wo_status"] == "pending"),
         "total_completed": sum(1 for it in items if it["wo_status"] == "completed"),
+        # Rows whose PNA column shows the PNA badge (active PNA part), after
+        # the same filters as the table.
+        "total_pna": sum(1 for it in items if it.get("pna")),
     }
 
     # Distinct engineers for the filter dropdown.
@@ -504,7 +550,8 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
 
     return templates.TemplateResponse("workid_status/list.html", {
         "request": request, "current_user": current_user,
-        "items": items, "engineers": engineers, "is_admin": is_admin,
+        "items": items, "rows_json": _rows_json(items),
+        "engineers": engineers, "is_admin": is_admin,
         "tile_counts": tile_counts, "cosmetic_stage_choices": cosmetic_stage_choices,
         "f_workid": workid, "f_tag": tag, "f_engineer": engineer,
         "f_completed_from": completed_from, "f_completed_to": completed_to,

@@ -26,9 +26,9 @@ from models.part_request import PartSourcingRequest
 from models.cost_config import CostConfig
 from auth.dependencies import get_current_user
 from routers.auth import NON_ADMIN_LANDING
-from routers.inventory_location import _gap_devices
 
 _log = logging.getLogger("oxypc.dashboard")
+
 
 router = APIRouter(tags=["dashboard"])
 
@@ -95,6 +95,10 @@ async def dashboard(
     zone: str = Query(default=""),
     year: int = Query(default=None),
 ):
+    _t0 = _time.perf_counter()
+    _marks = []                      # (section, seconds) — logged when slow
+    def _mark(name):
+        _marks.append((name, _time.perf_counter()))
     today = app_now().date()
     if not year:
         year = today.year
@@ -231,6 +235,7 @@ async def dashboard(
     # totals above are unaffected.
     CATEGORY_EXCLUDED_STAGES = EXCLUDED_STAGES | {DeviceStage.grn.value, DeviceStage.sold.value}
 
+    _mark("filters+P&L range")
     # ── Stage + category counts ───────────────────────────────────────────────
     # Cached 30 s, but only when no Entity/Device Type/Location filter is
     # active — that cache is keyed on nothing, so serving it under an active
@@ -277,6 +282,7 @@ async def dashboard(
         if not _dash_filters_active:
             _AGG_CACHE.update({"stage": stage_counts, "cat": category_counts, "ts": _now})
 
+    _mark("stage counts")
     # ── Stage Pipeline ───────────────────────────────────────────────────────
     # Built here rather than read off stage_counts, because two of the ten
     # steps are not a single "devices whose current_stage is X":
@@ -472,6 +478,7 @@ async def dashboard(
     minipc_available = category_counts.get("Mini PC", {}).get("ready_to_sale", 0)
     server_available = category_counts.get("Server", {}).get("ready_to_sale", 0)
 
+    _mark("pipeline")
     # ── Role-based user queue ─────────────────────────────────────────────────
     role = current_user.role
     user_queue: dict = {}
@@ -744,6 +751,7 @@ async def dashboard(
             _log.exception("lot_pl failed")
         return lot_pl
 
+    _mark("user queue")
     _lot_pl_now = _time.monotonic()
     if (not _pl_active and _AGG_CACHE["lot_pl"] is not None
             and (_lot_pl_now - _AGG_CACHE["lot_pl_ts"]) < _AGG_TTL):
@@ -764,12 +772,15 @@ async def dashboard(
     overall_profit = 0.0
     yearly_parts_cost = 0.0
     yearly_labour_cost = 0.0
-    try:
-        month_revenue_result = await db.execute(
+    _mark("lot P&L")
+
+    async def _compute_financials():
+        """(month_revenue, total_revenue, total_investment, total_parts_cost,
+        total_labour_cost, yearly_parts_cost, yearly_labour_cost)."""
+        month_revenue = float((await db.execute(
             select(func.coalesce(func.sum(Sale.sale_price), 0))
             .where(func.date(Sale.sold_at) >= date(today.year, today.month, 1))
-        )
-        month_revenue = float(month_revenue_result.scalar() or 0)
+        )).scalar() or 0)
 
         if _pl_active:
             # Scoped to devices whose own stage-completed date falls in the
@@ -777,57 +788,61 @@ async def dashboard(
             # Total Investment/Revenue/Net Profit stop being all-time the
             # moment either bound is set, matching what lot_pl now does.
             _cd = list(completed_device_ids)
-            total_revenue_result = await db.execute(
+            total_revenue = float((await db.execute(
                 select(func.coalesce(func.sum(Sale.sale_price), 0))
                 .where(Sale.device_id.in_(_cd))
-            )
-            total_revenue = float(total_revenue_result.scalar() or 0)
-
+            )).scalar() or 0)
             # Investment: each lot's buying_price attributed per-unit
             # (buying_price / qty) to only the devices that completed
             # in-range — same logic as the Lot P&L table's per-lot buying.
             total_investment = sum(r["buying_price"] for r in lot_pl)
-
-            total_parts_cost_result = await db.execute(
+            total_parts_cost = float((await db.execute(
                 select(func.coalesce(func.sum(SparePartConsumption.total_cost), 0))
                 .where(SparePartConsumption.device_id.in_(_cd))
-            )
-            total_parts_cost = float(total_parts_cost_result.scalar() or 0)
-
-            total_labour_cost_result = await db.execute(
+            )).scalar() or 0)
+            total_labour_cost = float((await db.execute(
                 select(func.coalesce(func.sum(RepairAttempt.cost), 0))
                 .where(RepairAttempt.device_id.in_(_cd))
-            )
-            total_labour_cost = float(total_labour_cost_result.scalar() or 0)
+            )).scalar() or 0)
         else:
-            total_revenue_result = await db.execute(select(func.coalesce(func.sum(Sale.sale_price), 0)))
-            total_revenue = float(total_revenue_result.scalar() or 0)
+            total_revenue = float((await db.execute(
+                select(func.coalesce(func.sum(Sale.sale_price), 0)))).scalar() or 0)
+            total_investment = float((await db.execute(
+                select(func.coalesce(func.sum(Lot.buying_price), 0)))).scalar() or 0)
+            total_parts_cost = float((await db.execute(
+                select(func.coalesce(func.sum(SparePartConsumption.total_cost), 0)))).scalar() or 0)
+            total_labour_cost = float((await db.execute(
+                select(func.coalesce(func.sum(RepairAttempt.cost), 0)))).scalar() or 0)
 
-            total_investment_result = await db.execute(select(func.coalesce(func.sum(Lot.buying_price), 0)))
-            total_investment = float(total_investment_result.scalar() or 0)
-
-            total_parts_cost_result = await db.execute(
-                select(func.coalesce(func.sum(SparePartConsumption.total_cost), 0))
-            )
-            total_parts_cost = float(total_parts_cost_result.scalar() or 0)
-
-            total_labour_cost_result = await db.execute(
-                select(func.coalesce(func.sum(RepairAttempt.cost), 0))
-            )
-            total_labour_cost = float(total_labour_cost_result.scalar() or 0)
-
-        total_cosmetic_cost = sum(r["cosmetic_cost"] for r in lot_pl)
         # Parts Spent / Labour Spent (Financial Summary card) stay scoped to
         # the selected Year dropdown, not P&L From/To — deliberately kept in
         # sync with Business P&L's Monthly Breakdown table (Parts Cost /
         # Labour Cost columns) via the exact same computation, so the two
         # pages never disagree on the selected year's numbers.
         yearly_monthly_parts, yearly_monthly_labour = await compute_year_parts_labour_cogs(db, year)
-        yearly_parts_cost = sum(yearly_monthly_parts)
-        yearly_labour_cost = sum(yearly_monthly_labour)
+        return (month_revenue, total_revenue, total_investment, total_parts_cost,
+                total_labour_cost, sum(yearly_monthly_parts), sum(yearly_monthly_labour))
+
+    try:
+        # Cached on the same 30 s cycle as the sections above (2026-10-15 —
+        # these 7 sums ran on every load); keyed by Year, and never cached
+        # while a P&L From/To range is set.
+        _fin_key = ("fin", year)
+        _fin = _AGG_CACHE.get("fin")
+        if (not _pl_active and _fin and _fin[0] == _fin_key
+                and (_time.monotonic() - _fin[1]) < _AGG_TTL):
+            fin_vals = _fin[2]
+        else:
+            fin_vals = await _compute_financials()
+            if not _pl_active:
+                _AGG_CACHE["fin"] = (_fin_key, _time.monotonic(), fin_vals)
+        (month_revenue, total_revenue, total_investment, total_parts_cost,
+         total_labour_cost, yearly_parts_cost, yearly_labour_cost) = fin_vals
+        total_cosmetic_cost = sum(r["cosmetic_cost"] for r in lot_pl)
         overall_profit = total_revenue - total_investment - total_parts_cost - total_labour_cost - total_cosmetic_cost
     except Exception:
         _log.exception("financials failed")
+    _mark("financials")
 
     # ── Admin analytics: 12 stat cards + 5 weekly/pie charts ──────────────────
     # Only computed for admin (the section is admin-gated in the template) —
@@ -1116,6 +1131,7 @@ async def dashboard(
         if not _dash_filters_active:
             _AGG_CACHE["admin_analytics"] = (admin_analytics, admin_charts)
 
+    _mark("analytics")
     # ── Apply stage filter to stage_counts display ───────────────────────────
     if stage_filter:
         filtered_stage_counts = {stage_filter: stage_counts.get(stage_filter, 0)}
@@ -1125,17 +1141,9 @@ async def dashboard(
     # (lot_pl is already scoped to P&L From/To above, by each device's own
     # stage-completed date — see completed_device_ids near the top.)
 
-    # ── Location gap count for dashboard badge ────────────────────────────────
-    try:
-        gap_ids, gap_in_hand, gap_never = await _gap_devices(db)
-        location_gap_count = len(gap_ids)
-        location_in_hand_count = len(gap_in_hand)
-        location_never_count = len(gap_never)
-    except Exception:
-        location_gap_count = 0
-        location_in_hand_count = 0
-        location_never_count = 0
-
+    # (The Location Gaps widget was removed from the dashboard on 2026-10-15
+    # — its device-id scan of every location log ran on every load. The full
+    # list stays on /locations/gaps.)
     # ── My Work Queue — actual devices in the user's active stages ───────────
     ROLE_STAGE_MAP = {
         "l1_engineer":       [DeviceStage.l1],
@@ -1189,7 +1197,9 @@ async def dashboard(
     # grouped query with it — this dashboard already issues a lot of queries,
     # so there is no reason to keep computing a breakdown nothing renders.
 
-    return templates.TemplateResponse("dashboard.html", {
+    _year_choices = await report_year_values(db)
+    _mark("work queue+follow-ups")
+    _resp = templates.TemplateResponse("dashboard.html", {
         "request": request,
         "current_user": current_user,
         "now": app_now(),
@@ -1233,14 +1243,23 @@ async def dashboard(
         "total_cosmetic_cost": total_cosmetic_cost,
         "overall_profit": overall_profit,
         "year": year,
-        "year_choices": await report_year_values(db),
+        "year_choices": _year_choices,
         "yearly_parts_cost": yearly_parts_cost,
         "yearly_labour_cost": yearly_labour_cost,
         "admin_analytics": admin_analytics,
         "admin_charts": admin_charts,
         "today": today,
-        "location_gap_count": location_gap_count,
-        "location_in_hand_count": location_in_hand_count,
-        "location_never_count": location_never_count,
         "today_followups": today_followups,
     })
+    # Slow-load breakdown (2026-10-15): one console line per dashboard load
+    # that takes over 1 s, so the slow section can be found from real data.
+    _mark("render")
+    _total = _time.perf_counter() - _t0
+    if _total > 1.0:
+        _prev, _parts = _t0, []
+        for _name, _t in _marks:
+            _parts.append(f"{_name} {(_t - _prev) * 1000:.0f}ms")
+            _prev = _t
+        _log.warning("Dashboard slow load %.1fs (%s): %s", _total,
+                     "filtered" if _dash_filters_active else "default", " | ".join(_parts))
+    return _resp

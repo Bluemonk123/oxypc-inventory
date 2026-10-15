@@ -57,47 +57,30 @@
 <!-- Card Count tiles — reflect the SAME filters as the table below (see
      tile_counts in routers/workid_status.py, computed from the filtered
      `items` list). -->
+{# Tiles: same solid-colour design as /product-master (pm-tile). #}
+<style>
+  .pm-tile { position: relative; overflow: hidden; border-radius: 10px; color: #fff; min-height: 96px;
+             box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .pm-tile-num { font-size: 1.9rem; font-weight: 700; line-height: 1.1; position: relative; z-index: 1; }
+  .pm-tile-lbl { font-size: .82rem; color: rgba(255,255,255,.88); position: relative; z-index: 1; }
+  .pm-tile-wm { position: absolute; right: -6px; bottom: -14px; font-size: 4.6rem; line-height: 1;
+                color: rgba(255,255,255,.22); pointer-events: none; }
+</style>
 <div class="row g-3 mb-3">
-  <div class="col-6 col-md-2">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-3">
-        <div class="small text-muted">Total WorkIDs</div>
-        <div class="fs-4 fw-bold">{{ tile_counts.total_workids }}</div>
-      </div>
+  {% for label, n, bg, icon in [('Total WorkIDs', tile_counts.total_workids, '#343a40', 'bi-collection'),
+      ('Total Tags', tile_counts.total_tags, '#0d6efd', 'bi-upc-scan'),
+      ('Total Ongoing', tile_counts.total_ongoing, '#f0ad00', 'bi-hourglass-split'),
+      ('Total Assigned', tile_counts.total_assigned, '#0aa2c0', 'bi-person-check'),
+      ('Total Completed', tile_counts.total_completed, '#198754', 'bi-check-circle'),
+      ('Total PNA', tile_counts.total_pna, '#dc3545', 'bi-exclamation-triangle')] %}
+  <div class="col-6 col-md-4 col-xl-2">
+    <div class="pm-tile p-3 h-100" style="background:{{ bg }}">
+      <div class="pm-tile-num">{{ n }}</div>
+      <div class="pm-tile-lbl">{{ label }}</div>
+      <i class="bi {{ icon }} pm-tile-wm"></i>
     </div>
   </div>
-  <div class="col-6 col-md-2">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-3">
-        <div class="small text-muted">Total Tags</div>
-        <div class="fs-4 fw-bold">{{ tile_counts.total_tags }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-2">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-3">
-        <div class="small text-muted">Total Ongoing</div>
-        <div class="fs-4 fw-bold text-warning">{{ tile_counts.total_ongoing }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-2">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-3">
-        <div class="small text-muted">Total Assigned</div>
-        <div class="fs-4 fw-bold text-primary">{{ tile_counts.total_assigned }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-2">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-3">
-        <div class="small text-muted">Total Completed</div>
-        <div class="fs-4 fw-bold text-success">{{ tile_counts.total_completed }}</div>
-      </div>
-    </div>
-  </div>
+  {% endfor %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -122,86 +105,98 @@
             <th>Aging</th><th>Assigned Date</th><th>Completed Date</th><th>Notes</th><th>Assigned Engineer</th><th>PNA</th><th>PNA History</th>
           </tr>
         </thead>
-        <tbody>
-          {% for it in items %}
-          <tr id="{{ it.row_key }}" class="{{ 'table-warning' if highlight and highlight == it.work_id else '' }}">
-            <td><a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a></td>
-            <td class="font-monospace fw-bold">{{ it.work_id }}</td>
-            <td>{{ it.model or '—' }}</td>
-            <td><span class="badge bg-secondary">{{ it.stage_label }}</span></td>
-            <td class="text-nowrap">
-              {# Per-WorkID Aging: a running day-count from Assigned Date,
-                 counting up every day the WorkID stays open with THIS
-                 engineer, then freezing at whatever it reached once the
-                 WorkID is genuinely completed (moved to another stage +
-                 handed to the next assignee) — see the 2026-09-19 note in
-                 routers/workid_status.py's module docstring. Never blank. #}
-              {% if it.assigned_date %}
-              <span class="text-muted">{{ it.assigned_date.strftime('%d-%m-%Y') }}</span>
-              <i class="bi bi-arrow-right mx-1 text-muted"></i>
-              {% if it.completed_at %}<span class="text-muted">{{ it.completed_at.strftime('%d-%m-%Y') }}</span>
-              {% else %}<span class="text-muted fst-italic">ongoing</span>{% endif %}
-              <span class="badge rounded-pill bg-{{ 'success' if it.completed_at else ('danger' if it.days >= 7 else 'warning text-dark') }} ms-1"
-                    title="{{ 'Days from Assigned to Completed' if it.completed_at else 'Days since Assigned (still ongoing)' }}">
-                {{ it.days }} day{{ 's' if it.days != 1 else '' }}
-              </span>
-              {% else %}<span class="text-muted">—</span>
-              {% endif %}
-            </td>
-            <td class="text-nowrap text-muted">
-              {# When the tag arrived at the Stage it's shown completing —
-                 wo.assigned_at. #}
-              {{ it.assigned_date.strftime('%d-%m-%Y %H:%M') if it.assigned_date else '—' }}
-            </td>
-            <td class="text-nowrap text-muted">
-              {# Sourced from the tag's Asset History (Device Detail) — the
-                 "When" of its most recent movement, same value as Stage
-                 (From) and Assigned Engineer (By) below. #}
-              {{ it.completed_at.strftime('%d-%m-%Y %H:%M') if it.completed_at else '—' }}
-            </td>
-            <td class="text-muted">{{ it.notes or '' }}</td>
-            <td>{{ it.engineer }}</td>
-            <td class="text-nowrap">
-              {# PNA (Part Not Available): tag has >=1 active device_pna_parts
-                 row. Tooltip captures the marking action (parts / who / when). #}
-              {% if it.pna %}
-              <span class="badge bg-danger"
-                    title="Parts: {{ it.pna_parts | join(', ') }}{% if it.pna_marked_by %}, Marked by: {{ it.pna_marked_by }}{% endif %}{% if it.pna_marked_at %}, at: {{ it.pna_marked_at }}{% endif %}">PNA</span>
-              {% else %}<span class="text-muted">—</span>{% endif %}
-            </td>
-            <td class="small">
-              {# PNA history: every part that was PNA while THIS WorkID was open
-                 (active or since cleared) -- who marked it, from which screen,
-                 and who cleared it. Data: device_pna_parts. #}
-              {% for h in it.pna_history %}
-              <div class="text-nowrap">
-                <span class="badge bg-{{ 'danger' if h.active else 'secondary' }}">{{ h.part }}</span>
-                <span class="text-muted">{{ h.source }} · marked by {{ h.marked_by or '—' }} {{ h.marked_at }}{% if not h.active %} · cleared by {{ h.cleared_by or '—' }} {{ h.cleared_at }}{% endif %}</span>
-              </div>
-              {% else %}<span class="text-muted">—</span>{% endfor %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
+        {# Rows come from #workidRows below and are drawn by DataTables a page
+           at a time (deferRender) — see _rows_json in routers/workid_status.py. #}
+        <tbody></tbody>
       </table>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
+<script type="application/json" id="workidRows">{{ rows_json | safe }}</script>
 <script>
 $(document).ready(function(){
-  // Global Table module (static/js/global-table.js). Empty state comes from
-  // language.emptyTable — no colspan placeholder row in the markup.
-  initGlobalTable('#workidTable', { order: [], language: { emptyTable: 'No WorkIDs found.' } });
-  {% if highlight %}
-  // Scroll the highlighted WorkID row into view
-  var hl = document.getElementById('wo-{{ highlight }}');
-  if (hl) {
-    if (hl.scrollIntoView) hl.scrollIntoView({behavior:'smooth', block:'center'});
-    hl.classList.add('table-warning');
+  var rows = JSON.parse(document.getElementById('workidRows').textContent || '[]');
+  var HL = {{ highlight | tojson }};
+  function esc(v) {
+    return v == null ? '' : String(v).replace(/[&<>"']/g, function (c) {
+      return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+    });
   }
-  {% endif %}
+  // Same 2-line clamp + tooltip the Global Table gives long plain-text cells.
+  function clamp(v) {
+    v = v || '';
+    return v.length < 32 ? esc(v) : '<span class="gtable-clamp2" title="' + esc(v) + '">' + esc(v) + '</span>';
+  }
+  function text(fn) {               // display -> HTML; sort/search -> plain value
+    return function (d, type, r) { return type === 'display' ? fn(d, r) : (d == null ? '' : d); };
+  }
+  // Classes go on the body cells only: a column's className would also land
+  // on its dark header cell, where text-muted made the header unreadable.
+  function cls(c) { return function (td) { td.className = c; }; }
+  function historyText(h) {
+    return (h || []).map(function (x) { return x.part + ' ' + x.source + ' ' + (x.marked_by || '') + ' ' + (x.cleared_by || ''); }).join(' ');
+  }
+
+  var columns = [
+    { data: 'b', render: text(function (d) {
+        return '<a href="/devices/' + encodeURIComponent(d) + '" class="font-monospace text-decoration-none">' + esc(d) + '</a>'; }) },
+    { data: 'w', createdCell: cls('font-monospace fw-bold'), render: text(esc) },
+    { data: 'm', render: text(clamp) },
+    { data: 's', render: text(function (d) { return '<span class="badge bg-secondary">' + esc(d) + '</span>'; }) },
+    // Aging: Assigned -> Completed (or "ongoing") + day count badge.
+    { data: 'd', createdCell: cls('text-nowrap'), render: function (d, type, r) {
+        if (type !== 'display') return d == null ? -1 : d;
+        if (!r.ad) return '<span class="text-muted">\u2014</span>';
+        var done = !!r.cd;
+        var cls = done ? 'success' : (d >= 7 ? 'danger' : 'warning text-dark');
+        var tip = done ? 'Days from Assigned to Completed' : 'Days since Assigned (still ongoing)';
+        return '<span class="text-muted">' + r.ad + '</span><i class="bi bi-arrow-right mx-1 text-muted"></i>' +
+               (done ? '<span class="text-muted">' + r.cd + '</span>' : '<span class="text-muted fst-italic">ongoing</span>') +
+               ' <span class="badge rounded-pill bg-' + cls + ' ms-1" title="' + tip + '">' + d + ' day' + (d !== 1 ? 's' : '') + '</span>';
+      } },
+    { data: 'a', createdCell: cls('text-nowrap text-muted'), render: function (d, type, r) {
+        return type === 'sort' ? r.as : (type === 'display' ? (d || '\u2014') : d); } },
+    { data: 'c', createdCell: cls('text-nowrap text-muted'), render: function (d, type, r) {
+        return type === 'sort' ? r.cs : (type === 'display' ? (d || '\u2014') : d); } },
+    { data: 'n', createdCell: cls('text-muted'), render: text(clamp) },
+    { data: 'e', render: text(esc) },
+    { data: 'p', createdCell: cls('text-nowrap'), render: function (d, type, r) {
+        if (type !== 'display') return d ? 'PNA' : '';
+        return d ? '<span class="badge bg-danger" title="' + esc(r.pt) + '">PNA</span>' : '<span class="text-muted">\u2014</span>';
+      } },
+    { data: 'h', createdCell: cls('small'), render: function (d, type) {
+        if (type !== 'display') return historyText(d);
+        if (!d || !d.length) return '<span class="text-muted">\u2014</span>';
+        return d.map(function (h) {
+          return '<div class="text-nowrap"><span class="badge bg-' + (h.active ? 'danger' : 'secondary') + '">' + esc(h.part) + '</span> ' +
+                 '<span class="text-muted">' + esc(h.source) + ' \u00b7 marked by ' + esc(h.marked_by || '\u2014') + ' ' + esc(h.marked_at) +
+                 (h.active ? '' : ' \u00b7 cleared by ' + esc(h.cleared_by || '\u2014') + ' ' + esc(h.cleared_at)) + '</span></div>';
+        }).join('');
+      } },
+  ];
+
+  // Global Table module (static/js/global-table.js). Empty state comes from
+  // language.emptyTable. deferRender: only the rows on screen are built.
+  var dt = initGlobalTable('#workidTable', {
+    data: rows, columns: columns, deferRender: true, order: [],
+    createdRow: function (tr, r) {
+      tr.id = r.k;
+      if (HL && r.w === HL) tr.classList.add('table-warning');
+    },
+    language: { emptyTable: 'No WorkIDs found.' }
+  });
+
+  if (HL) {
+    // Open the page that holds the highlighted WorkID, then scroll to it.
+    var idx = rows.findIndex(function (r) { return r.w === HL; });
+    if (idx >= 0 && dt) {
+      dt.page(Math.floor(idx / dt.page.len())).draw('page');
+      var hl = document.getElementById('wo-' + HL);
+      if (hl && hl.scrollIntoView) hl.scrollIntoView({behavior: 'smooth', block: 'center'});
+    }
+  }
 });
 </script>
 {% endblock %}
