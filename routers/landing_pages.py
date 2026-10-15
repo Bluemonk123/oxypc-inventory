@@ -38,10 +38,32 @@ async def load_page_titles_to_cache(db: AsyncSession) -> None:
 BREADCRUMB_PREFIX = "breadcrumb_"
 
 
+BREADCRUMB_OFF_MARKER = "bc_default_off_20261015"   # must NOT start with BREADCRUMB_PREFIX
+
+
+async def breadcrumbs_off_once(db: AsyncSession) -> int:
+    """One-time reset (2026-10-15): breadcrumbs became off by default, so every
+    page's saved switch is set to Off once. Guarded by an app_settings marker
+    row, so a page an admin switches back on afterwards stays on.
+    Returns the number of switches turned off (0 if already done)."""
+    from sqlalchemy import update
+    if (await db.execute(select(AppSetting).where(AppSetting.key == BREADCRUMB_OFF_MARKER))).scalar_one_or_none():
+        return 0
+    res = await db.execute(
+        update(AppSetting)
+        .where(AppSetting.key.like(f"{BREADCRUMB_PREFIX}%"), AppSetting.value != "0")
+        .values(value="0", updated_by="system")
+    )
+    db.add(AppSetting(key=BREADCRUMB_OFF_MARKER, value="1", updated_by="system",
+                      description="One-time: all breadcrumbs switched off (default off)"))
+    await db.commit()
+    return res.rowcount or 0
+
+
 async def load_breadcrumb_settings_to_cache(db: AsyncSession) -> None:
     """Populate the in-memory breadcrumb-toggle cache from AppSetting rows.
     Called at app startup and after every toggle. Missing rows default to
-    enabled (True) via get_cached_breadcrumb_enabled()."""
+    disabled (False) via get_cached_breadcrumb_enabled()."""
     rows = (await db.execute(
         select(AppSetting).where(AppSetting.key.like(f"{BREADCRUMB_PREFIX}%"))
     )).scalars().all()
@@ -182,7 +204,7 @@ async def landing_pages_list(
             "current_title": custom_titles.get(mod_key, default_title),
             "is_custom": mod_key in custom_titles,
             "url": url,
-            "breadcrumb_enabled": breadcrumb_overrides.get(mod_key, True),
+            "breadcrumb_enabled": breadcrumb_overrides.get(mod_key, False),
         }
         for mod_key, nav_label, default_title, url in NAV_PAGE_TITLES
     ]

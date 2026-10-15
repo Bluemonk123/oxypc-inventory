@@ -135,13 +135,13 @@ def set_cached_page_title(module_key: str, title: str) -> None:
 
 
 # ── Landing Pages: per-page breadcrumb toggle (AppSetting key=f"breadcrumb_{module_key}").
-#    Structure: {module_key: bool}. Missing key => breadcrumb shown (default on,
-#    matches pre-existing behavior before this toggle existed).
+#    Structure: {module_key: bool}. Missing key => breadcrumb hidden (default
+#    off since 2026-10-15; an admin switches a page on in Page Title Config).
 _BREADCRUMB_CACHE: dict = {}
 
 
 def get_cached_breadcrumb_enabled(module_key: str) -> bool:
-    return _BREADCRUMB_CACHE.get(module_key, True)
+    return _BREADCRUMB_CACHE.get(module_key, False)
 
 
 def set_cached_breadcrumb_enabled(module_key: str, enabled: bool) -> None:

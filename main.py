@@ -657,9 +657,12 @@ async def startup_event():
 
     # ── Warm Landing Pages breadcrumb-toggle cache from DB ────────────────────
     try:
-        from routers.landing_pages import load_breadcrumb_settings_to_cache
+        from routers.landing_pages import load_breadcrumb_settings_to_cache, breadcrumbs_off_once
         from database import AsyncSessionLocal as _ASL6
         async with _ASL6() as _sess6:
+            _bc_off = await breadcrumbs_off_once(_sess6)
+            if _bc_off:
+                print(f"  [LandingPages] Breadcrumbs switched off (one-time): {_bc_off}")
             await load_breadcrumb_settings_to_cache(_sess6)
         print("  [LandingPages] Breadcrumb toggle cache loaded")
     except Exception as _bce:

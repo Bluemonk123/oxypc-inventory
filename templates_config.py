@@ -235,12 +235,12 @@ def _module_hidden(module_key: str) -> bool:
 
 def _breadcrumb_enabled(path: str) -> bool:
     """Whether the breadcrumb trail should render for this request path.
-    Defaults to True (shown) for any path not in NAV_PAGE_TITLES, matching
-    the auto-generated-breadcrumb behavior that existed before this toggle."""
+    Default off (2026-10-15): hidden for any path not in NAV_PAGE_TITLES and
+    for any page without an explicit "on" in Page Title Config."""
     from models.role_permissions import get_cached_breadcrumb_enabled
     module_key = _resolve_module_key(path)
     if module_key is None:
-        return True
+        return False
     return get_cached_breadcrumb_enabled(module_key)
 
 
