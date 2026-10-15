@@ -184,4 +184,26 @@ async def close_ticket(
         ticket.notes = (ticket.notes + "\n" + notes.strip()) if ticket.notes else notes.strip()
     ticket.updated_at = app_now()
     await db.commit()
+
+    # Tell the person who raised the ticket (and only them) when someone else —
+    # an admin — closes it (2026-10-15). Personal alert: user_id is the raiser,
+    # so nobody else's Alerts list shows it. Never fails the close itself.
+    if ticket.raised_by and ticket.raised_by != current_user.username:
+        try:
+            raiser_id = (await db.execute(
+                select(User.id).where(User.username == ticket.raised_by)
+            )).scalar_one_or_none()
+            if raiser_id:
+                from services.notifications import create_notification
+                who = current_user.full_name or current_user.username
+                msg = f"{who} closed your ticket."
+                if notes.strip():
+                    note = notes.strip()
+                    msg += " Notes: " + (note if len(note) <= 160 else note[:157] + "...")
+                await create_notification(
+                    db, user_id=raiser_id, title=f"Ticket {ticket.ticket_id} Closed",
+                    message=msg, notification_type="success",
+                )
+        except Exception:
+            await db.rollback()
     return JSONResponse({"ok": True})
