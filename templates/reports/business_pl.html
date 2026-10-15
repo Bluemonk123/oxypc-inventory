@@ -21,70 +21,74 @@
   {% endfor %}
 </div>
 
-<!-- KPI Cards -->
-<div class="row g-3 mb-4">
+<!-- KPI Cards — Light tile design (Design System "A · Light-tint tile"),
+     same as Inventory Manager / Production Manager / GRN Post-IQC. -->
+<style>
+  .lt-tiles-row{padding:4px 6px 10px}
+  .lt-tile{position:relative; overflow:hidden; border-radius:10px; padding:.6rem .7rem;
+           background:color-mix(in srgb, var(--tc) 8%, #fff) !important;
+           border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
+           box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
+  .lt-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1; white-space:nowrap}
+  .lt-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1; margin-top:.35rem}
+  .lt-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
+              color:color-mix(in srgb, var(--tc) 8%, transparent); pointer-events:none}
+</style>
+<div class="row g-3 mb-4 lt-tiles-row">
   <div class="col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body text-center">
-        <div class="fs-6 text-muted">Total Revenue</div>
-        <div class="fs-2 fw-bold text-primary">₹{{ (total_revenue) | inr }}</div>
-      </div>
+    <div class="lt-tile h-100" style="--tc:#0d6efd">
+      <div class="lt-tile-count">₹{{ (total_revenue) | inr }}</div>
+      <div class="lt-tile-label">Total Revenue</div>
+      <i class="bi bi-currency-rupee lt-tile-wm"></i>
     </div>
   </div>
   <div class="col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body text-center">
-        <div class="fs-6 text-muted">Gross Profit</div>
-        <div class="fs-2 fw-bold {% if gross_profit >= 0 %}text-success{% else %}text-danger{% endif %}">₹{{ (gross_profit) | inr }}</div>
-      </div>
+    <div class="lt-tile h-100" style="--tc:{% if gross_profit >= 0 %}#198754{% else %}#dc3545{% endif %}">
+      <div class="lt-tile-count">₹{{ (gross_profit) | inr }}</div>
+      <div class="lt-tile-label">Gross Profit</div>
+      <i class="bi bi-graph-up-arrow lt-tile-wm"></i>
     </div>
   </div>
   <div class="col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body text-center">
-        <div class="fs-6 text-muted">Gross Margin</div>
-        <div class="fs-2 fw-bold {% if gross_margin >= 15 %}text-success{% elif gross_margin >= 5 %}text-warning{% else %}text-danger{% endif %}">{{ gross_margin }}%</div>
-      </div>
+    <div class="lt-tile h-100" style="--tc:{% if gross_margin >= 15 %}#198754{% elif gross_margin >= 5 %}#fd7e14{% else %}#dc3545{% endif %}">
+      <div class="lt-tile-count">{{ gross_margin }}%</div>
+      <div class="lt-tile-label">Gross Margin</div>
+      <i class="bi bi-percent lt-tile-wm"></i>
     </div>
   </div>
   <div class="col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body text-center">
-        <div class="fs-6 text-muted">Devices Sold</div>
-        <div class="fs-2 fw-bold text-info">{{ total_sales_ct }}</div>
-      </div>
+    <div class="lt-tile h-100" style="--tc:#0dcaf0">
+      <div class="lt-tile-count">{{ total_sales_ct }}</div>
+      <div class="lt-tile-label">Devices Sold</div>
+      <i class="bi bi-laptop lt-tile-wm"></i>
     </div>
   </div>
   <div class="col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body text-center">
-        <div class="fs-6 text-muted">Avg Sale Price</div>
-        <div class="fs-4 fw-bold">₹{{ (avg_sale_price) | inr }}</div>
-      </div>
+    <div class="lt-tile h-100" style="--tc:#6f42c1">
+      <div class="lt-tile-count">₹{{ (avg_sale_price) | inr }}</div>
+      <div class="lt-tile-label">Avg Sale Price</div>
+      <i class="bi bi-tag lt-tile-wm"></i>
     </div>
   </div>
   <div class="col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body text-center">
-        <div class="fs-6 text-muted">Inventory @ Cost</div>
-        <div class="fs-4 fw-bold text-secondary">₹{{ (inv_value) | inr }}</div>
-      </div>
+    <div class="lt-tile h-100" style="--tc:#6c757d">
+      <div class="lt-tile-count">₹{{ (inv_value) | inr }}</div>
+      <div class="lt-tile-label">Inventory @ Cost</div>
+      <i class="bi bi-box-seam lt-tile-wm"></i>
     </div>
   </div>
   <div class="col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body text-center">
-        <div class="fs-6 text-muted">Parts Consumed</div>
-        <div class="fs-4 fw-bold text-warning">₹{{ (total_parts_cogs) | inr }}</div>
-      </div>
+    <div class="lt-tile h-100" style="--tc:#fd7e14">
+      <div class="lt-tile-count">₹{{ (total_parts_cogs) | inr }}</div>
+      <div class="lt-tile-label">Parts Consumed</div>
+      <i class="bi bi-cpu lt-tile-wm"></i>
     </div>
   </div>
   <div class="col-md-3">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body text-center">
-        <div class="fs-6 text-muted">Lots Sold</div>
-        <div class="fs-4 fw-bold text-success">{{ lots_sold_count }}</div>
-      </div>
+    <div class="lt-tile h-100" style="--tc:#198754">
+      <div class="lt-tile-count">{{ lots_sold_count }}</div>
+      <div class="lt-tile-label">Lots Sold</div>
+      <i class="bi bi-boxes lt-tile-wm"></i>
     </div>
   </div>
 </div>

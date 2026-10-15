@@ -1260,6 +1260,23 @@ async def srs_functional_spec_download(current_user: User = Depends(_view)):
     })
 
 
+# Design System document (2026-10-15) — a fixed PDF kept in qa_docs/ (shipped
+# with the app; docs/ is excluded from the Docker image), served behind the
+# same QA view permission as the other SRS documents.
+_DESIGN_SYSTEM_PDF = "OxyPC_Inventory_Lifecycle_Design_System_2.0.pdf"
+
+
+@router.get("/srs/design-system/download")
+async def srs_design_system_download(current_user: User = Depends(_view)):
+    import os
+    from fastapi.responses import FileResponse
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                        "qa_docs", _DESIGN_SYSTEM_PDF)
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="Design System document not found")
+    return FileResponse(path, media_type="application/pdf", filename=_DESIGN_SYSTEM_PDF)
+
+
 @router.get("/srs/module-map/download")
 async def srs_module_map_pdf(current_user: User = Depends(_view)):
     from fastapi.responses import Response
