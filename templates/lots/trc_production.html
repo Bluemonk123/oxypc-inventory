@@ -16,11 +16,12 @@
              border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
              box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
   .prod-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1}
-  .prod-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1}
-  .prod-tile-btn{position:relative; z-index:1; color:var(--tc) !important; border-color:var(--tc) !important; background:#fff !important}
+  /* More room between count, label and button (2026-10-15). */
+  .prod-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1; margin-top:.35rem}
+  .prod-tile-btn{position:relative; z-index:1; margin-top:.6rem !important; color:var(--tc) !important; border-color:var(--tc) !important; background:#fff !important}
   .prod-tile-btn:hover{background:var(--tc) !important; color:#fff !important}
   .prod-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
-                color:color-mix(in srgb, var(--tc) 18%, transparent); pointer-events:none}
+                color:color-mix(in srgb, var(--tc) 8%, transparent); pointer-events:none}
 </style>
 {% endblock %}
 {% block content %}
