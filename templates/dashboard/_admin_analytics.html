@@ -11,27 +11,22 @@
    Profits) were removed on request (2026-10-16); only the charts remain.
    The backing data in routers/dashboard.py is left in place. #}
 
+{# Row order (2026-10-16): Stage Distribution + Inventory by Category & Stage.
+   Weekly Parts Price chart removed; Weekly Sales Price moved next to
+   Weekly Sourcing Price in dashboard.html. #}
 <div class="row g-3 mb-4">
-  <div class="col-xl-4">
+  <div class="col-xl-6">
     <div class="card gtable-card border-0 shadow-sm h-100 chart-card">
       <div class="card-header bg-transparent fw-semibold small">Stage Distribution</div>
       <div class="card-body"><div class="chart-box"><canvas id="chartStagePie"></canvas></div></div>
     </div>
   </div>
-  {% if can_view_pricing(current_user) %}
-  <div class="col-xl-4">
+  <div class="col-xl-6">
     <div class="card gtable-card border-0 shadow-sm h-100 chart-card">
-      <div class="card-header bg-transparent fw-semibold small">Weekly Sales Price — Ready to Sale / Sold</div>
-      <div class="card-body"><div class="chart-box"><canvas id="chartSalesPriceWeekly"></canvas></div></div>
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-bar-chart-line me-2"></i>Inventory by Category &amp; Stage</div>
+      <div class="card-body"><div class="chart-box"><canvas id="categoryChart"></canvas></div></div>
     </div>
   </div>
-  <div class="col-xl-4">
-    <div class="card gtable-card border-0 shadow-sm h-100 chart-card">
-      <div class="card-header bg-transparent fw-semibold small">Weekly Parts Price — As New / As Harvest</div>
-      <div class="card-body"><div class="chart-box"><canvas id="chartPartsPriceWeekly"></canvas></div></div>
-    </div>
-  </div>
-  {% endif %}
 </div>
 {# Weekly Sourcing Price card moved to dashboard.html's final row, paired with
    Inventory by Category & Stage — chartSourcingPriceWeekly canvas now lives

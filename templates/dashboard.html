@@ -547,7 +547,7 @@
 
 {% include "dashboard/_admin_analytics.html" %}
 
-<!-- LAST ROW: Weekly Sourcing Price + Inventory by Category & Stage, equally distributed -->
+<!-- Weekly Sourcing Price + Weekly Sales Price (Sales Price is pricing-gated) -->
 <div class="row g-3 mb-4">
   <div class="col-xl-6">
     <div class="card gtable-card border-0 shadow-sm h-100 chart-card">
@@ -555,12 +555,14 @@
       <div class="card-body"><div class="chart-box"><canvas id="chartSourcingPriceWeekly"></canvas></div></div>
     </div>
   </div>
+  {% if can_view_pricing(current_user) %}
   <div class="col-xl-6">
     <div class="card gtable-card border-0 shadow-sm h-100 chart-card">
-      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-bar-chart-line me-2"></i>Inventory by Category &amp; Stage</div>
-      <div class="card-body"><div class="chart-box"><canvas id="categoryChart"></canvas></div></div>
+      <div class="card-header bg-transparent fw-semibold small">Weekly Sales Price — Ready to Sale / Sold</div>
+      <div class="card-body"><div class="chart-box"><canvas id="chartSalesPriceWeekly"></canvas></div></div>
     </div>
   </div>
+  {% endif %}
 </div>
 
 <div class="row g-3 mb-4">
@@ -692,7 +694,7 @@
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
   });
 
-  new Chart(document.getElementById('chartSalesPriceWeekly'), {
+  if (document.getElementById('chartSalesPriceWeekly')) new Chart(document.getElementById('chartSalesPriceWeekly'), {
     type: 'bar',
     data: {
       labels: weekLabels,
@@ -703,18 +705,6 @@
     },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } },
       scales: { y: { beginAtZero: true, position: 'left' }, y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } } } }
-  });
-
-  new Chart(document.getElementById('chartPartsPriceWeekly'), {
-    type: 'bar',
-    data: {
-      labels: weekLabels,
-      datasets: [
-        { label: 'As New (₹)',     data: {{ ac.get('parts_new_price_weekly', []) | tojson }},     backgroundColor: 'rgba(13,110,253,.75)' },
-        { label: 'As Harvest (₹)', data: {{ ac.get('parts_harvest_price_weekly', []) | tojson }}, backgroundColor: 'rgba(25,135,84,.75)' },
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
   });
 
   new Chart(document.getElementById('chartSourcingPriceWeekly'), {

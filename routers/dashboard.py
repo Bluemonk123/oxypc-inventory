@@ -982,16 +982,6 @@ async def dashboard(
             )).all()
             admin_charts["product_sold_price_weekly"] = _weekly_series(sold_rows, lambda r: r[0], lambda r: float(r[1] or 0))
 
-            # d. Weekly: Parts Price — As New vs As Harvest
-            grn_li_price_rows = (await db.execute(
-                select(PartsGRNLineItem.is_harvest, PartsGRNLineItem.created_at, PartsGRNLineItem.price)
-                .where(PartsGRNLineItem.created_at >= _weekly_cutoff)
-            )).all()
-            admin_charts["parts_new_price_weekly"] = _weekly_series(
-                [r for r in grn_li_price_rows if not r[0]], lambda r: r[1], lambda r: float(r[2] or 0))
-            admin_charts["parts_harvest_price_weekly"] = _weekly_series(
-                [r for r in grn_li_price_rows if r[0]], lambda r: r[1], lambda r: float(r[2] or 0))
-
             # e. Weekly: Sourcing Price — Buyer PO (DealerOrder, dealers buying from
             # OxyPC) vs Seller PO (CRMPurchaseOrder, OxyPC buying from suppliers)
             buyer_po_rows = (await db.execute(
