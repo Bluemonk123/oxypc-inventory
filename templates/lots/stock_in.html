@@ -18,29 +18,47 @@
 {% endif %}
 <!-- Analytics count cards (#17) -->
 {% if analytics is defined %}
-<div class="row g-3 mb-3">
+{# Same tile style as the Production Manager summary tiles (option B): very
+   light tint of the tile colour, number in that colour, faint matching
+   watermark icon, box shadow. --tc is set per tile. #}
+<style>
+  .inv-tiles-row{padding:4px 6px 10px}
+  .inv-tile{position:relative; overflow:hidden; border-radius:10px; padding:.6rem .7rem;
+            background:color-mix(in srgb, var(--tc) 8%, #fff) !important;
+            border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
+            box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
+  .inv-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1}
+  .inv-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1}
+  .inv-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
+               color:color-mix(in srgb, var(--tc) 18%, transparent); pointer-events:none}
+</style>
+<div class="row g-3 mb-4 inv-tiles-row">
   <div class="col-6 col-lg-3">
-    <div class="card border-0 shadow-sm text-center p-3">
-      <div class="fs-3 fw-bold text-primary">{{ analytics.iqc }}</div>
-      <div class="small text-muted">Devices in IQC</div>
+    <div class="inv-tile h-100" style="--tc:#0d6efd">
+      <div class="inv-tile-count">{{ analytics.iqc }}</div>
+      <div class="inv-tile-label">Devices in IQC</div>
+      <i class="bi bi-clipboard-check inv-tile-wm"></i>
     </div>
   </div>
   <div class="col-6 col-lg-3">
-    <div class="card border-0 shadow-sm text-center p-3">
-      <div class="fs-3 fw-bold text-success">{{ analytics.in_stock }}</div>
-      <div class="small text-muted">Devices in Stock</div>
+    <div class="inv-tile h-100" style="--tc:#198754">
+      <div class="inv-tile-count">{{ analytics.in_stock }}</div>
+      <div class="inv-tile-label">Devices in Stock</div>
+      <i class="bi bi-box-seam inv-tile-wm"></i>
     </div>
   </div>
   <div class="col-6 col-lg-3">
-    <div class="card border-0 shadow-sm text-center p-3">
-      <div class="fs-3 fw-bold text-warning">{{ analytics.trc }}</div>
-      <div class="small text-muted">Devices in TRC</div>
+    <div class="inv-tile h-100" style="--tc:#fd7e14">
+      <div class="inv-tile-count">{{ analytics.trc }}</div>
+      <div class="inv-tile-label">Devices in TRC</div>
+      <i class="bi bi-tools inv-tile-wm"></i>
     </div>
   </div>
   <div class="col-6 col-lg-3">
-    <div class="card border-0 shadow-sm text-center p-3">
-      <div class="fs-3 fw-bold text-info">{{ analytics.ready }}</div>
-      <div class="small text-muted">Devices in Ready to Sell</div>
+    <div class="inv-tile h-100" style="--tc:#0aa2c0">
+      <div class="inv-tile-count">{{ analytics.ready }}</div>
+      <div class="inv-tile-label">Devices in Ready to Sell</div>
+      <i class="bi bi-bag-check inv-tile-wm"></i>
     </div>
   </div>
 </div>
