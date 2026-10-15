@@ -387,7 +387,8 @@ def _device_search_filters(q, stage, lot, grade, category, device_type, date_fro
     """
     w = []
     if q:
-        _spec = _spec_search_clause(q, extra_cols=(Device.grn_number,))
+        # Search box also matches GRN Number and Invoice Number (2026-10-15).
+        _spec = _spec_search_clause(q, extra_cols=(Device.grn_number, Device.invoice_number))
         if _spec is not None:
             w.append(_spec)
 

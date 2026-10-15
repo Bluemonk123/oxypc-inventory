@@ -991,6 +991,10 @@ async def iqc_bulk_apply_grade_type(
             new_stage = DeviceStage(to_stage)
         except ValueError:
             return RedirectResponse(url=f"{return_to}?error=Invalid+stage+{to_stage}", status_code=302)
+        # Sold is never a Customise target (not in the dropdown either): a sale
+        # must go through New Sale so a Sale record exists for the tag.
+        if new_stage == DeviceStage.sold:
+            return RedirectResponse(url=f"{return_to}?error=Use+New+Sale+to+mark+tags+Sold", status_code=302)
 
     # Grade is a Postgres enum, so an unrecognised string would only fail at
     # commit — after the loop below has already mutated every selected device.
@@ -1060,7 +1064,13 @@ async def iqc_bulk_apply_grade_type(
     if new_touch_type and new_touch_type not in ("touch", "non_touch"):
         return RedirectResponse(url=f"{return_to}?error=Invalid+touch+type", status_code=302)
 
+    # Stage moves skip the allowed-transitions table for admin — and, from the
+    # Customise modal on All Inventory (/devices) and Inventory Manager
+    # (/stock), for every user who can open it (2026-10-15: any stage to any
+    # stage, no admin gate). The modal itself still needs Devices Edit / IQC
+    # Edit (_perm2 above).
     is_admin = current_user.role.value == "admin"
+    override_transitions = is_admin or return_to in ("/devices", "/stock")
     for device in devices:
         if new_touch_type:
             device.touch_type = new_touch_type
@@ -1109,7 +1119,7 @@ async def iqc_bulk_apply_grade_type(
             device.hdd_summary = hdd_summary.strip()
         if new_stage is not None:
             try:
-                await validate_transition(device, new_stage, db, override_admin=is_admin)
+                await validate_transition(device, new_stage, db, override_admin=override_transitions)
             except HTTPException:
                 skipped_moves.append(device.barcode)
                 continue

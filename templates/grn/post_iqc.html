@@ -566,9 +566,11 @@ function mapGrnHandler(){
     document.getElementById('mapForm').submit();
   }
 }
-document.querySelectorAll('.map-grn-btn').forEach(function(btn){
-  btn.addEventListener('click', mapGrnHandler);
-});
+// Delegated (all four GRN-row buttons below): initGlobalTable re-renders the
+// GRN table's cells when it starts, which replaces every button after a
+// per-button listener was attached — and rows past page 1 are never in the
+// DOM at load at all. One document-level listener survives both.
+$(document).on('click', '.map-grn-btn', mapGrnHandler);
 
 // Edit modal wiring
 var em = document.getElementById('editGrnModal');
@@ -595,23 +597,21 @@ if (em) { em.addEventListener('show.bs.modal', function(e){
 // since tojson's escaping targets <script> contexts, not HTML attributes,
 // and a lot number could contain a double quote.
 var lotsByGrn = {{ (lots_json if lots_json is defined else {}) | tojson }};
-document.querySelectorAll('.lot-count-btn').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    var lots = lotsByGrn[this.getAttribute('data-grn')] || [];
-    var list = document.getElementById('lotListItems');
-    list.innerHTML = '';
-    lots.forEach(function(l){
-      var li = document.createElement('li');
-      li.className = 'list-group-item';
-      var a = document.createElement('a');
-      a.href = '/lots/' + l.id;
-      a.className = 'text-decoration-none fw-semibold';
-      a.textContent = l.lot_number;
-      li.appendChild(a);
-      list.appendChild(li);
-    });
-    new bootstrap.Modal(document.getElementById('lotListModal')).show();
+$(document).on('click', '.lot-count-btn', function(){
+  var lots = lotsByGrn[this.getAttribute('data-grn')] || [];
+  var list = document.getElementById('lotListItems');
+  list.innerHTML = '';
+  lots.forEach(function(l){
+    var li = document.createElement('li');
+    li.className = 'list-group-item';
+    var a = document.createElement('a');
+    a.href = '/lots/' + l.id;
+    a.className = 'text-decoration-none fw-semibold';
+    a.textContent = l.lot_number;
+    li.appendChild(a);
+    list.appendChild(li);
   });
+  new bootstrap.Modal(document.getElementById('lotListModal')).show();
 });
 
 // Add/Edit Lot modal wiring — one row per Lot Number, so a GRN can map to
@@ -666,20 +666,18 @@ function alMakeRow(lotNumber, isPrefilled) {
 document.getElementById('al_add_row').addEventListener('click', function(){
   document.getElementById('al_rows').appendChild(alMakeRow('', false));
 });
-document.querySelectorAll('.add-lot-btn').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    document.getElementById('al_grn_id').value = this.getAttribute('data-grn-id');
-    var rowsBox = document.getElementById('al_rows');
-    rowsBox.innerHTML = '';
-    var existingNumbers = (this.getAttribute('data-lot-numbers') || '')
-      .split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-    if (existingNumbers.length) {
-      existingNumbers.forEach(function(n){ rowsBox.appendChild(alMakeRow(n, true)); });
-    } else {
-      rowsBox.appendChild(alMakeRow('', false));
-    }
-    new bootstrap.Modal(document.getElementById('addLotModal')).show();
-  });
+$(document).on('click', '.add-lot-btn', function(){
+  document.getElementById('al_grn_id').value = this.getAttribute('data-grn-id');
+  var rowsBox = document.getElementById('al_rows');
+  rowsBox.innerHTML = '';
+  var existingNumbers = (this.getAttribute('data-lot-numbers') || '')
+    .split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  if (existingNumbers.length) {
+    existingNumbers.forEach(function(n){ rowsBox.appendChild(alMakeRow(n, true)); });
+  } else {
+    rowsBox.appendChild(alMakeRow('', false));
+  }
+  new bootstrap.Modal(document.getElementById('addLotModal')).show();
 });
 document.getElementById('addLotForm').addEventListener('submit', function(e){
   e.preventDefault();
@@ -725,14 +723,12 @@ document.getElementById('addLotForm').addEventListener('submit', function(e){
 });
 
 // ── Yes As-Is — bulk Sub-Lot Number modal ──────────────────────────────────
-document.querySelectorAll('.as-is-lot-btn').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    document.getElementById('ail_grn_id').value = this.getAttribute('data-grn-id');
-    document.getElementById('ail_grn_label').textContent = this.getAttribute('data-grn') || '';
-    document.getElementById('ail_sub_lot_number').value = '';
-    document.getElementById('ail_assigned_to').value = '';
-    new bootstrap.Modal(document.getElementById('asIsLotModal')).show();
-  });
+$(document).on('click', '.as-is-lot-btn', function(){
+  document.getElementById('ail_grn_id').value = this.getAttribute('data-grn-id');
+  document.getElementById('ail_grn_label').textContent = this.getAttribute('data-grn') || '';
+  document.getElementById('ail_sub_lot_number').value = '';
+  document.getElementById('ail_assigned_to').value = '';
+  new bootstrap.Modal(document.getElementById('asIsLotModal')).show();
 });
 document.getElementById('asIsLotForm').addEventListener('submit', function(e){
   e.preventDefault();

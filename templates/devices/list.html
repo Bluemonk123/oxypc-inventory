@@ -25,7 +25,7 @@
     <div class="filter-bar-row">
       <div class="filter-bar-search">
         <input type="text" name="q" title="Search" value="{{ q }}" class="form-control form-control-sm barcode-field font-monospace"
-               placeholder="Tag, make, model, CPU, RAM, storage — e.g. Dell i5 8GB">
+               placeholder="Tag, make, model, CPU, RAM, storage, invoice no. — e.g. Dell i5 8GB">
       </div>
       {{ ms.multiselect('entity', 'Entity', entity_options, entity) }}
       {{ ms.multiselect('device_type', 'Device Type', device_type_options, device_type) }}
