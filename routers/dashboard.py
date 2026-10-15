@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_
 from database import get_db
 from utils.master_data import entity_values, report_year_values, master_values
-from services.business_pl import compute_fy_totals, fy_label
+from services.business_pl import compute_fy_totals, compute_fy_revenue, compute_month_profit, fy_label
 from models.user import User, UserRole
 from models.device import Device, DeviceStage, StageMovement, STAGE_LABELS, DROPDOWN_STAGES, COSMETIC_STAGES
 from models.master import EXTERNAL_PARTNER_TEST_ENTITY
@@ -775,6 +775,8 @@ async def dashboard(
     yearly_parts_cost = 0.0
     yearly_labour_cost = 0.0
     yearly_device_cost = 0.0
+    fy_revenue = 0.0
+    month_profit = 0.0
     _mark("lot P&L")
 
     async def _compute_financials():
@@ -826,8 +828,13 @@ async def dashboard(
         # Device / Parts / Labour Cost columns summed over the selected
         # Financial Year Apr–Mar (2026-10-15), same shared computation.
         fy_device, fy_parts, fy_labour = await compute_fy_totals(db, fy)
+        # Total Revenue (card) = Business P&L's FY Revenue total (2026-10-15).
+        fy_revenue = await compute_fy_revenue(db, fy)
+        # Profit This Month (stat card) = Business P&L's Gross Profit for the
+        # current month (2026-10-15; replaces the old all-time Overall Profit).
+        month_profit = await compute_month_profit(db, today.year, today.month)
         return (month_revenue, total_revenue, total_investment, total_parts_cost,
-                total_labour_cost, fy_parts, fy_labour, fy_device)
+                total_labour_cost, fy_parts, fy_labour, fy_device, fy_revenue, month_profit)
 
     try:
         # Cached on the same 30 s cycle as the sections above (2026-10-15 —
@@ -844,7 +851,7 @@ async def dashboard(
                 _AGG_CACHE["fin"] = (_fin_key, _time.monotonic(), fin_vals)
         (month_revenue, total_revenue, total_investment, total_parts_cost,
          total_labour_cost, yearly_parts_cost, yearly_labour_cost,
-         yearly_device_cost) = fin_vals
+         yearly_device_cost, fy_revenue, month_profit) = fin_vals
         total_cosmetic_cost = sum(r["cosmetic_cost"] for r in lot_pl)
         overall_profit = total_revenue - total_investment - total_parts_cost - total_labour_cost - total_cosmetic_cost
     except Exception:
@@ -1246,6 +1253,11 @@ async def dashboard(
         "total_revenue": total_revenue,
         "total_investment": total_investment,
         "yearly_device_cost": yearly_device_cost,
+        # Financial Summary card: FY Revenue and Net Profit = Revenue − Device
+        # − Parts − Labour, i.e. Business P&L's Gross Profit for the same FY.
+        "fy_revenue": fy_revenue,
+        "month_profit": month_profit,
+        "fy_net_profit": fy_revenue - yearly_device_cost - yearly_parts_cost - yearly_labour_cost,
         "total_parts_cost": total_parts_cost,
         "total_labour_cost": total_labour_cost,
         "total_cosmetic_cost": total_cosmetic_cost,

@@ -113,6 +113,32 @@ async def compute_year_device_cogs(db: AsyncSession, year: int) -> list:
     return monthly
 
 
+async def compute_year_revenue(db: AsyncSession, year: int) -> list:
+    """Business P&L's Revenue column for calendar `year` — 12 monthly sums of
+    sale price, with any admin Revenue override applied."""
+    rows = await db.execute(
+        select(extract("month", Sale.sold_at).label("month"),
+               func.coalesce(func.sum(Sale.sale_price), 0).label("revenue"))
+        .where(extract("year", Sale.sold_at) == year)
+        .group_by(extract("month", Sale.sold_at))
+    )
+    by_month = {int(r.month): float(r.revenue) for r in rows}
+    monthly = [by_month.get(m, 0.0) for m in range(1, 13)]
+    for o in (await db.execute(
+        select(BusinessPLOverride).where(BusinessPLOverride.year == year)
+    )).scalars().all():
+        if o.revenue_override is not None and 1 <= o.month <= 12:
+            monthly[o.month - 1] = float(o.revenue_override)
+    return monthly
+
+
+async def compute_fy_revenue(db: AsyncSession, fy_start: int) -> float:
+    """Business P&L's Revenue total for financial year Apr fy_start .. Mar fy_start+1."""
+    r1 = await compute_year_revenue(db, fy_start)
+    r2 = await compute_year_revenue(db, fy_start + 1)
+    return sum(r1[3:]) + sum(r2[:3])
+
+
 async def compute_fy_totals(db: AsyncSession, fy_start: int) -> tuple[float, float, float]:
     """(device_cost, parts_cost, labour_cost) for the Indian financial year
     Apr fy_start .. Mar fy_start+1 (e.g. 2025 -> "2025-26") — Business P&L's
@@ -129,3 +155,14 @@ async def compute_fy_totals(db: AsyncSession, fy_start: int) -> tuple[float, flo
 def fy_label(fy_start: int) -> str:
     """2025 -> "2025-26"."""
     return f"{fy_start}-{str(fy_start + 1)[-2:]}"
+
+
+async def compute_month_profit(db: AsyncSession, year: int, month: int) -> float:
+    """Business P&L's Gross Profit for one calendar month: Revenue − Device
+    Cost − Parts Cost − Labour Cost (admin overrides applied). Used by the
+    Dashboard's "Profit This Month" card (2026-10-15)."""
+    i = month - 1
+    rev = (await compute_year_revenue(db, year))[i]
+    dev = (await compute_year_device_cogs(db, year))[i]
+    parts, labour = await compute_year_parts_labour_cogs(db, year)
+    return rev - dev - parts[i] - labour[i]

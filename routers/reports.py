@@ -20,7 +20,7 @@ from models.stock_transfer import StockTransfer
 from models.spare_parts import SparePartConsumption
 from models.business_pl_override import BusinessPLOverride
 from services.audit_engine import audit
-from services.business_pl import compute_year_parts_labour_cogs, compute_year_device_cogs
+from services.business_pl import compute_year_parts_labour_cogs, compute_year_device_cogs, compute_year_revenue
 from utils.master_data import report_year_values, master_options
 from auth.dependencies import get_current_user, require_roles, verify_csrf
 
@@ -783,14 +783,9 @@ async def _pl_calendar_year(db: AsyncSession, year: int) -> dict:
     """One calendar year of Business P&L figures, Jan..Dec (12-element
     lists), admin overrides applied — the building block the Financial Year
     view stitches Apr–Mar together from."""
-    rev_result = await db.execute(
-        select(extract("month", Sale.sold_at).label("month"),
-               func.coalesce(func.sum(Sale.sale_price), 0).label("revenue"))
-        .where(extract("year", Sale.sold_at) == year)
-        .group_by(extract("month", Sale.sold_at))
-    )
-    rev_by_month = {int(r.month): float(r.revenue) for r in rev_result}
-    rev = [rev_by_month.get(m, 0.0) for m in range(1, 13)]
+    # Revenue — same shared computation as the Dashboard's Total Revenue
+    # (admin Revenue override already applied).
+    rev = await compute_year_revenue(db, year)
 
     # Device Cost — same shared computation as the Dashboard's Total Investment.
     device = await compute_year_device_cogs(db, year)
@@ -804,8 +799,6 @@ async def _pl_calendar_year(db: AsyncSession, year: int) -> dict:
         i = o.month - 1
         if not 0 <= i < 12:
             continue
-        if o.revenue_override is not None:
-            rev[i] = float(o.revenue_override)
         if any(v is not None for v in (o.revenue_override, o.device_cogs_override,
                                         o.parts_cogs_override, o.labour_cogs_override)):
             overridden[i] = True

@@ -8,18 +8,29 @@
 <style>
   .dash-filter-sm{width:130px}
   .dash-filter-md{width:150px}
+  /* Stage Pipeline card watermark (2026-10-15): faint icon bottom-right,
+     behind the card body. */
+  .dash-wm-card { position: relative; overflow: hidden; }
+  /* Split Entity / Split Zone: white like every outline button on a tinted
+     header (design system); hover and the "on" state keep Bootstrap's fill. */
+  #splitEntityToggle:not(.active):not(:hover), #splitLocationToggle:not(.active):not(:hover) { background-color: #fff !important; }
+  .dash-wm-card > .card-header, .dash-wm-card > .card-body { position: relative; z-index: 1; }
+  .dash-wm { position: absolute; right: -8px; bottom: -18px; font-size: 7rem; line-height: 1;
+             color: rgba(14, 58, 122, .06); pointer-events: none; z-index: 0; }
   /* Stage Pipeline: 10 tiles scaled down to stay on one row on a normal
      desktop viewport instead of wrapping to two — flex-shrink lets each
      tile compress evenly rather than the row wrapping once total width
      exceeds the card, with overflow-x:auto as a fallback on genuinely
      narrow viewports so it degrades to scroll instead of visually breaking. */
   .pipeline-row{flex-wrap:nowrap; overflow-x:auto; padding:2px 4px 6px}
-  .pipeline-tile{min-width:58px; flex:1 1 0; overflow:hidden; box-shadow:0 .125rem .35rem rgba(0,0,0,.15); padding-bottom:.25rem}
-  .pipeline-strip{font-weight:600; padding:.2rem .25rem; font-size:.62rem !important}
+  .pipeline-tile{min-width:80px; flex:1 1 0; overflow:hidden; box-shadow:0 .125rem .35rem rgba(0,0,0,.15); padding-bottom:.25rem}
+  /* Stage names: .75rem with a little more padding (2026-10-15). */
+  .pipeline-strip{font-weight:600; padding:.35rem .4rem; font-size:.75rem !important}
   .pipeline-tile .split-entity-detail,.pipeline-tile .split-location-detail{padding:0 .4rem}
-  .pipeline-tile .pipeline-label{font-size:.68rem; white-space:nowrap}
+  .pipeline-tile .pipeline-label{font-size:.75rem; white-space:nowrap}
   .pipeline-tile .pipeline-count{font-size:1.25rem}
-  .pipeline-chevron{flex-shrink:0; font-size:.7rem}
+  /* Filled success-green arrow between stages (2026-10-15; was a light chevron). */
+  .pipeline-chevron{flex-shrink:0; font-size:.85rem}
   /* Split Entity: each entity line must fit on one line at a small size
      (12px) rather than wrapping inside the tile — widen the tile itself
      while split is on so "OxyPC Computers" has room, instead of shrinking
@@ -29,6 +40,12 @@
   .split-location-detail{font-size:12px; line-height:1.35}
   .split-location-detail div{white-space:nowrap}
   .pipeline-row.split-active .pipeline-tile{min-width:118px}
+  /* Each tile sits inside a link, and the LINK is the row's flex item — so
+     the minimum width has to be on the link, or the row squeezes it below
+     the tile's own min-width (2026-10-15: 80px tiles rendered at 72px). */
+  .pipeline-row > a{flex:1 1 0; min-width:80px}
+  .pipeline-row > a > .pipeline-tile{width:100%}
+  .pipeline-row.split-active > a{min-width:118px}
 </style>
 {% endblock %}
 {% block content %}
@@ -216,7 +233,9 @@
 <div class="tab-pane fade show active" id="tab-operations" role="tabpanel">
 
 {% macro device_stage_pipeline_card() %}
-<div class="card border-0 shadow-sm h-100">
+{# .gtable-card: same light-blue header as every Global Table card (app.css).
+   .dash-wm-card + .dash-wm: faint watermark icon, bottom-right (2026-10-15). #}
+<div class="card border-0 shadow-sm h-100 gtable-card dash-wm-card">
   <div class="card-header bg-transparent d-flex align-items-center gap-2">
     <i class="bi bi-diagram-3 text-primary"></i>
     <span class="fw-semibold">Device Stage Pipeline</span>
@@ -272,7 +291,7 @@
         </div>
       </a>
       {% if not loop.last %}
-      <i class="bi bi-chevron-right pipeline-chevron text-muted mt-2"></i>
+      <i class="bi bi-caret-right-fill pipeline-chevron text-success mt-2"></i>
       {% endif %}
       {% endfor %}
     </div>
@@ -287,6 +306,7 @@
       Scrap for Sale: <strong>{{ stage_counts.get('scrap_for_sale', 0) }}</strong>
     </div>
   </div>
+  <i class="bi bi-diagram-3 dash-wm" aria-hidden="true"></i>
 </div>
 <script>
 (function () {
@@ -333,7 +353,7 @@
 
 
 {% macro financial_summary_card() %}
-<div class="card border-0 shadow-sm h-100">
+<div class="card border-0 shadow-sm h-100 gtable-card">
   <div class="card-header bg-transparent fw-semibold">
     <i class="bi bi-wallet2 me-2"></i>Financial Summary
     {# Financial Year (Apr–Mar) for Total Investment / Parts Spent / Labour
@@ -349,29 +369,21 @@
         {% endfor %}
       </select>
     </form>
-    {% if pl_active %}
-    <span class="badge bg-info-subtle text-info-emphasis border ms-1" title="Total Investment / Total Revenue / Net Profit below are scoped to devices whose own stage-completed date falls in the selected P&amp;L From/To range">
-      <i class="bi bi-funnel me-1"></i>Completed-date filtered
-    </span>
-    {% endif %}
   </div>
   <div class="card-body">
-    <div class="d-flex justify-content-between mb-2"><span class="text-muted small" title="Device Cost of the tags sold in the selected Financial Year (Apr–Mar) — same as Business P&amp;L's Device Cost column">Total Investment</span><span class="fw-semibold">₹{{ yearly_device_cost | inr }}</span></div>
-    {# Parts Spent / Labour Spent are scoped to the selected Year (dashboard
-       filter) and pulled from the exact same computation as Business P&L's
-       Monthly Breakdown table (Parts Cost / Labour Cost columns) — see
-       services/business_pl.compute_year_parts_labour_cogs — so the two pages
-       never disagree, and are NOT affected by P&L From/To. Total Investment/
-       Revenue/Net Profit stay all-time UNLESS P&L From/To is set, in which
-       case they're scoped to each device's own stage-completed date (see
-       routers/dashboard.py's completed_device_ids). #}
-    <div class="d-flex justify-content-between mb-2"><span class="text-muted small">Parts Spent</span><span class="fw-semibold">₹{{ yearly_parts_cost | inr }}</span></div>
-    <div class="d-flex justify-content-between mb-2"><span class="text-muted small">Labour Spent</span><span class="fw-semibold">₹{{ yearly_labour_cost | inr }}</span></div>
-    <div class="d-flex justify-content-between mb-2"><span class="text-muted small">Total Revenue</span><span class="fw-semibold text-success">₹{{ total_revenue | inr }}</span></div>
-    <hr>
+    <div class="d-flex justify-content-between"><span class="text-muted small" title="Device Cost of the tags sold in the selected Financial Year (Apr–Mar) — same as Business P&amp;L's Device Cost column">Total Investment</span><span class="fw-semibold">₹{{ yearly_device_cost | inr }}</span></div>
+    {# Every figure on this card is for the selected Financial Year (Apr–Mar)
+       and comes from the same shared computation as Business P&L
+       (services/business_pl.py), so the card always equals that page's FY
+       totals: Investment = Device Cost, Parts, Labour, Revenue, and Net
+       Profit = Gross Profit. Not affected by P&L From/To. #}
+    <div class="d-flex justify-content-between"><span class="text-muted small">Parts Spent</span><span class="fw-semibold">₹{{ yearly_parts_cost | inr }}</span></div>
+    <div class="d-flex justify-content-between"><span class="text-muted small">Labour Spent</span><span class="fw-semibold">₹{{ yearly_labour_cost | inr }}</span></div>
+    <div class="d-flex justify-content-between"><span class="text-muted small" title="Sales in the selected Financial Year — same as Business P&amp;L's Revenue total">Total Revenue</span><span class="fw-semibold text-success">₹{{ fy_revenue | inr }}</span></div>
+    <hr class="my-2">{# half the default separator margin #}
     <div class="d-flex justify-content-between">
-      <span class="fw-semibold">Net Profit</span>
-      <span class="fw-bold fs-5 {% if overall_profit >= 0 %}text-success{% else %}text-danger{% endif %}">₹{{ overall_profit | inr }}</span>
+      <span class="fw-semibold" title="Revenue − Investment − Parts − Labour for the selected Financial Year — same as Business P&amp;L's Gross Profit">Net Profit</span>
+      <span class="fw-bold fs-5 {% if fy_net_profit >= 0 %}text-success{% else %}text-danger{% endif %}">₹{{ fy_net_profit | inr }}</span>
     </div>
   </div>
 </div>
@@ -500,9 +512,12 @@
     </div></div>
   </div>
   <div class="col-sm-6 col-xl-3">
-    <div class="card border-0 shadow-sm stat-card {% if overall_profit >= 0 %}stat-success{% else %}stat-danger{% endif %}"><div class="card-body d-flex align-items-center gap-3">
-      <div class="rounded-3 p-3 bg-white {% if overall_profit >= 0 %}text-success{% else %}text-danger{% endif %}"><i class="bi bi-graph-up-arrow fs-3"></i></div>
-      <div><div class="text-muted small">Overall Profit</div><div class="fs-3 fw-bold {% if overall_profit >= 0 %}text-success{% else %}text-danger{% endif %}">₹{{ overall_profit | inr }}</div></div>
+    {# Profit This Month = Business P&L's Gross Profit for the current month
+       (Revenue − Device − Parts − Labour). Replaced the all-time "Overall
+       Profit", which subtracted the cost of unsold stock (2026-10-15). #}
+    <div class="card border-0 shadow-sm stat-card {% if month_profit >= 0 %}stat-success{% else %}stat-danger{% endif %}"><div class="card-body d-flex align-items-center gap-3">
+      <div class="rounded-3 p-3 bg-white {% if month_profit >= 0 %}text-success{% else %}text-danger{% endif %}"><i class="bi bi-graph-up-arrow fs-3"></i></div>
+      <div><div class="text-muted small" title="Revenue − Device Cost − Parts − Labour for this month — same as Business P&amp;L's Gross Profit">Profit This Month</div><div class="fs-3 fw-bold {% if month_profit >= 0 %}text-success{% else %}text-danger{% endif %}">₹{{ month_profit | inr }}</div></div>
     </div></div>
   </div>
 </div>
