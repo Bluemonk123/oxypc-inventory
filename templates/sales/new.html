@@ -27,8 +27,15 @@
       <div class="card-header bg-transparent fw-semibold"><i class="bi bi-cart-plus me-2"></i>Record Sale</div>
       <div class="card-body">
         {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+        {% if block is defined and block %}
+        <div class="alert alert-info py-2 small mb-3">
+          <i class="bi bi-lock me-1"></i>Selling Block <strong class="font-monospace">{{ block.block_id }}</strong>
+          — {{ block.count }} blocked tag{{ 's' if block.count != 1 }}. Tags sold here are released from the block.
+        </div>
+        {% endif %}
         <form action="/sales/new" method="post">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+          {% if block is defined and block %}<input type="hidden" name="block_record_id" value="{{ block.id }}">{% endif %}
           <div class="mb-3">
             <label class="form-label fw-semibold">Device Tag Number <span class="text-danger">*</span>{% if multi_count is defined and multi_count and multi_count > 1 %} <span class="badge bg-primary">{{ multi_count }} tags selected</span>{% endif %}</label>
             <input type="text" name="barcode" id="barcode" class="form-control barcode-field font-monospace"
@@ -144,7 +151,7 @@
           <input type="hidden" name="invoice_file_path" id="invoiceFilePath" value="">
           <div class="mt-4 d-flex gap-2">
             <button type="submit" class="btn btn-success px-4"><i class="bi bi-check-circle me-2"></i>Record Sale</button>
-            <a href="/sales/ready" class="btn btn-outline-secondary">Cancel</a>
+            <a href="{{ '/block-tags' if block is defined and block else '/sales/ready' }}" class="btn btn-outline-secondary">Cancel</a>
           </div>
         </form>
       </div>

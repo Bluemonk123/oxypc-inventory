@@ -10,6 +10,9 @@
     <span class="badge bg-success ms-2">₹{{ "{:,.0f}".format(sale.sale_price) }}</span>
     {% endif %}
     <small class="text-muted ms-2">{{ sale.sold_at.strftime('%d %b %Y, %I:%M %p') }}</small>
+    {% if block_id %}
+    <div class="small text-muted mt-1" title="Sold from Block Tags"><i class="bi bi-lock me-1"></i>Block ID: <span class="font-monospace fw-semibold">{{ block_id }}</span></div>
+    {% endif %}
   </div>
   <div class="d-flex gap-2">
     <a href="/invoices/print/{{ sale.id }}" target="_blank" class="btn btn-sm btn-outline-secondary">
@@ -36,7 +39,12 @@
         <table class="table table-sm table-borderless mb-0">
           <tbody>
             <tr><th class="text-muted w-40">Tag Number</th>
-                <td><a href="/devices/{{ device.barcode }}" class="font-monospace fw-bold text-decoration-none">{{ device.barcode }}</a></td></tr>
+                <td><a href="/devices/{{ device.barcode }}" class="font-monospace fw-bold text-decoration-none">{{ device.barcode }}</a>
+                  {% if device.entity %}<div class="small text-muted">{{ device.entity }}</div>{% endif %}</td></tr>
+            {% if block_id %}
+            <tr><th class="text-muted">Block ID</th>
+                <td><span class="font-monospace fw-semibold">{{ block_id }}</span></td></tr>
+            {% endif %}
             <tr><th class="text-muted">Lot</th>
                 <td><a href="/lots/{{ lot.id }}" class="badge bg-info text-dark text-decoration-none">{{ lot.lot_number }}</a></td></tr>
             <tr><th class="text-muted">Brand / Model</th>

@@ -13,6 +13,13 @@ class BlockItemStatus(str, enum.Enum):
     released = "released"
 
 
+# A tag sold through a block's Sell button (/sales/new/block) is closed with
+# status=released and notes = SOLD_NOTE_PREFIX + sale number. That note is the
+# link back from a Sale to its Block ID (block_id_by_sale_number in
+# routers/sales.py) — no extra column needed.
+SOLD_NOTE_PREFIX = "Sold — "
+
+
 BLOCK_ITEM_STATUS_LABELS = {
     BlockItemStatus.blocked:  "Blocked",
     BlockItemStatus.released: "Released",

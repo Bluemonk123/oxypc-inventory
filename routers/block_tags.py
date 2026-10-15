@@ -33,7 +33,7 @@ from models.user import User
 from models.device import Device, DeviceStage
 from models.lot import Lot
 from models.location import UnitType, ZoneType, UNIT_TYPE_LABELS, ZONE_LABELS
-from models.block_tags import BlockRecord, BlockRecordItem, BlockItemStatus, BLOCK_ITEM_STATUS_LABELS
+from models.block_tags import BlockRecord, BlockRecordItem, BlockItemStatus, BLOCK_ITEM_STATUS_LABELS, SOLD_NOTE_PREFIX
 from routers.inventory_location import _zone_dropdown_options
 
 router = APIRouter(prefix="/block-tags", tags=["block-tags"], dependencies=[Depends(verify_csrf)])
@@ -215,6 +215,12 @@ async def block_tags_data(
         users = (await db.execute(select(User).where(User.id.in_(block_for_ids)))).scalars().all()
         user_map = {u.id: (u.full_name or u.username) for u in users}
 
+    # Sell: only for a role that can record a sale (the New Sale page and its
+    # POST enforce the same check server-side).
+    from models.role_permissions import has_perm as _has_perm
+    role_val = getattr(current_user.role, "value", None) or str(current_user.role)
+    can_sell = _has_perm(role_val, "sales", "add")
+
     data = []
     for rec in records:
         n_tags, n_models, item_ids = stats.get(rec.id, (0, 0, []))
@@ -243,6 +249,13 @@ async def block_tags_data(
             f' <a href="#" class="btn btn-outline-primary btn-sm py-0 px-1 block-release-btn" data-items="{ids_attr}" '
             f'data-blockid="{esc(rec.block_id)}" data-count="{n_tags}" title="Release all tags in this block"><i class="bi bi-unlock"></i></a>'
         )
+        if can_sell and n_tags:
+            # Opens New Sale with every still-blocked tag of this block (no cap);
+            # the sale releases the hold on exactly the tags it sells.
+            actions += (
+                f' <a href="#" class="btn btn-outline-success btn-sm py-0 px-2 block-sell-btn" data-id="{rec.id}" '
+                f'data-blockid="{esc(rec.block_id)}" title="Sell all {n_tags} tag(s) in this block">Sell</a>'
+            )
         data.append([
             f'<input type="checkbox" class="row-check" value="{rec.id}" data-items="{ids_attr}">',
             block_cell,
@@ -696,7 +709,11 @@ def _export_row(item: BlockRecordItem, rec: BlockRecord, user_map: dict):
         ZONE_LABELS.get(rec.location_zone, rec.location_zone) if rec.location_zone else "",
         rec.customer_name or "",
         item.barcode, item.lot_number or "", item.model or "", item.cpu or "",
-        item.ram_gb or "", item.storage_gb or "", BLOCK_ITEM_STATUS_LABELS.get(item.status, item.status),
+        item.ram_gb or "", item.storage_gb or "",
+        # A tag sold through the block's Sell button is closed as released with
+        # the sale number in its notes — export it as "Sold", not "Released".
+        ("Sold" if (item.notes or "").startswith(SOLD_NOTE_PREFIX)
+         else BLOCK_ITEM_STATUS_LABELS.get(item.status, item.status)),
     ]
 
 

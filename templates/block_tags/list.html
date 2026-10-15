@@ -496,6 +496,19 @@ document.getElementById('blockUploadFile').addEventListener('change', async func
 
 // ── Per-row Release / Edit ───────────────────────────────────────────────────
 function wireRowActions() {
+  // Sell: same as As-Is Lot "Sell" on Ready for Sale — opens New Sale with
+  // every tag of this block (POST, so any number of tags fits; the server
+  // looks the tags up from the block itself).
+  document.querySelectorAll('.block-sell-btn').forEach(function (btn) {
+    btn.onclick = function (e) {
+      e.preventDefault();
+      var form = document.createElement('form');
+      form.method = 'POST'; form.action = '/sales/new/block';
+      form.innerHTML = '<input type="hidden" name="csrf_token" value="' + blockCsrf() + '">' +
+        '<input type="hidden" name="block_record_id" value="' + btn.dataset.id + '">';
+      document.body.appendChild(form); form.submit();
+    };
+  });
   document.querySelectorAll('.block-release-btn').forEach(function (btn) {
     btn.onclick = async function (e) {
       e.preventDefault();

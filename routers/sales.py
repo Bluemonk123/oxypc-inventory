@@ -31,6 +31,7 @@ from models.sales import Sale, Return, CN_STAGES, CN_STAGE_ACTION_LABELS
 from models.company import Company
 from models.crm import CRMSalesOpportunity, CRMContact
 from models.dispatch_request import TelecallerDispatchRequest
+from models.block_tags import BlockRecord, BlockRecordItem, BlockItemStatus, SOLD_NOTE_PREFIX
 from auth.dependencies import get_current_user, require_roles, verify_csrf, require_module_perm
 from services.control_engine import validate_sale_allowed
 from services.cost_engine import (
@@ -1058,6 +1059,39 @@ def _unit_stock_price(device, lot) -> float:
     return 0.0
 
 
+async def block_id_by_sale_number(db: AsyncSession, sale_numbers) -> dict:
+    """{sale_number: Block ID} for sales recorded through a block's Sell
+    button. Selling closes each sold BlockRecordItem with notes =
+    SOLD_NOTE_PREFIX + sale number (see create_sale), which is the link."""
+    notes = [SOLD_NOTE_PREFIX + n for n in sale_numbers if n]
+    if not notes:
+        return {}
+    rows = (await db.execute(
+        select(BlockRecordItem.notes, BlockRecord.block_id)
+        .join(BlockRecord, BlockRecordItem.block_record_id == BlockRecord.id)
+        .where(BlockRecordItem.notes.in_(notes))
+    )).all()
+    return {n[len(SOLD_NOTE_PREFIX):]: b for n, b in rows}
+
+
+async def _block_sale_context(db: AsyncSession, block_record_id: str):
+    """(BlockRecord, {device_id: still-blocked BlockRecordItem}) for a block
+    being sold from Block Tags, or (None, {}) when the id is blank/unknown."""
+    try:
+        rid = _uuid.UUID((block_record_id or "").strip())
+    except ValueError:
+        return None, {}
+    rec = (await db.execute(select(BlockRecord).where(BlockRecord.id == rid))).scalar_one_or_none()
+    if not rec:
+        return None, {}
+    items = (await db.execute(
+        select(BlockRecordItem)
+        .where(BlockRecordItem.block_record_id == rid, BlockRecordItem.status == BlockItemStatus.blocked)
+        .order_by(BlockRecordItem.barcode)
+    )).scalars().all()
+    return rec, {it.device_id: it for it in items}
+
+
 def _parse_price_groups(raw: str):
     """Validate the New Sale form's `price_groups` JSON.
 
@@ -1093,7 +1127,8 @@ def _parse_price_groups(raw: str):
 
 async def _sale_new_response(request: Request, barcode: str, barcodes: str, qty: int,
                              embed: int, db: AsyncSession, current_user: User,
-                             template: str = "sales/new.html"):
+                             template: str = "sales/new.html", block: dict | None = None,
+                             error: str | None = None):
     """Shared by GET /sales/new (a single Sell link, or a small ?barcodes=
     list — still fine in a query string) and POST /sales/new (Multi-Sell
     with a large selection, which a GET would otherwise cram into the URL
@@ -1150,7 +1185,8 @@ async def _sale_new_response(request: Request, barcode: str, barcodes: str, qty:
         "stock_price": stock_price, "prefill_barcode": prefill_barcode,
         "prefill_qty": prefill_qty, "multi_count": multi_count,
         "embed": bool(embed), "today": app_today().isoformat(),
-    })
+        "block": block,
+    } | ({"error": error} if error else {}))
 
 
 @router.get("/sales/new", response_class=HTMLResponse)
@@ -1236,6 +1272,28 @@ async def sale_new_form_prefill(request: Request, barcode: str = Form(default=No
     return await _sale_new_response(request, barcode, barcodes, qty, embed, db, current_user)
 
 
+@router.post("/sales/new/block", response_class=HTMLResponse)
+async def sale_new_from_block(request: Request, block_record_id: str = Form(""),
+                              db: AsyncSession = Depends(get_db),
+                              current_user: User = Depends(allowed),
+                              _perm: User = Depends(require_module_perm("sales", "add"))):
+    """Block Tags "Sell": the New Sale page prefilled with every still-blocked
+    tag of one block — no cap — same page and same submit as As-Is Lot "Sell"
+    on Ready for Sale. The block id travels with the form, so create_sale lets
+    these tags through the Block Tags hold and closes it on each one sold."""
+    rec, items = await _block_sale_context(db, block_record_id)
+    if not rec:
+        return await _sale_new_response(request, None, None, None, 0, db, current_user,
+                                        error="Block not found — reload Block Tags and try again.")
+    codes = [it.barcode for it in sorted(items.values(), key=lambda i: i.barcode)]
+    block = {"id": str(rec.id), "block_id": rec.block_id, "count": len(codes)}
+    if not codes:
+        return await _sale_new_response(request, None, None, None, 0, db, current_user, block=block,
+                                        error=f"Block {rec.block_id} has no blocked tags left to sell.")
+    return await _sale_new_response(request, None, ",".join(codes), len(codes), 0, db,
+                                    current_user, block=block)
+
+
 @router.post("/sales/new")
 async def create_sale(
     request: Request,
@@ -1256,6 +1314,7 @@ async def create_sale(
     invoice_file_path: str = Form(""),
     warranty_type: str = Form("none"),
     sale_date: str = Form(""),
+    block_record_id: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
     _perm: User = Depends(require_module_perm("sales", "add")),
@@ -1266,9 +1325,20 @@ async def create_sale(
     # Ordinary form posts are unaffected and still redirect/render as before.
     xhr = request.headers.get("x-requested-with", "").lower() == "xmlhttprequest"
 
+    # Sold from Block Tags "Sell": tags still blocked under THIS block may be
+    # sold despite the hold (selling them is the point of the block); every
+    # other blocked tag is still refused as before.
+    block_rec, block_items = await _block_sale_context(db, block_record_id)
+    block_ctx = ({"id": str(block_rec.id), "block_id": block_rec.block_id, "count": len(block_items)}
+                 if block_rec else None)
+
     async def _fail(message: str, device=None, lot=None, status: int = 400):
         if xhr:
             return JSONResponse({"ok": False, "error": message}, status_code=status)
+        if block_ctx:
+            # Keep the block's tags on the form after an error.
+            return await _sale_new_response(request, None, barcode, None, 0, db, current_user,
+                                            block=block_ctx, error=message)
         return templates.TemplateResponse(
             "sales/new_tag_sale.html" if sale_page == "tag" else "sales/new.html", {
             "request": request, "device": device, "lot": lot,
@@ -1393,10 +1463,21 @@ async def create_sale(
     # submitted tag would burn a number for every skipped tag and leave holes in
     # the SALE- sequence. validate_sale_allowed is pure in-memory, so this
     # pre-pass costs no queries and keeps eligibility defined in one place.
+    async def _check_sellable(d):
+        if d.id in block_items:
+            # Block hold waived for this block's own tags; stage still enforced.
+            stage = getattr(d.current_stage, "value", d.current_stage)
+            if stage != DeviceStage.ready_to_sale.value:
+                raise HTTPException(status_code=403, detail=(
+                    f"CONTROL ENGINE: Sale blocked — device is in stage '{stage}'. "
+                    f"Device must be in 'ready_to_sale' before a sale can be created."))
+            return
+        await validate_sale_allowed(d)
+
     eligible = 0
     for d in found:
         try:
-            await validate_sale_allowed(d)
+            await _check_sellable(d)
             eligible += 1
         except HTTPException:
             pass
@@ -1419,7 +1500,7 @@ async def create_sale(
 
         # ── Control Engine: sale block ────────────────────────────────────
         try:
-            await validate_sale_allowed(device)
+            await _check_sellable(device)
         except HTTPException as e:
             if not is_multi:
                 return await _fail(e.detail, device=device)
@@ -1463,13 +1544,22 @@ async def create_sale(
 
         device.current_stage = DeviceStage.sold
         device.updated_at    = app_now()
+        block_item = block_items.get(device.id)
+        if block_item is not None:
+            # Close the hold on this tag; the note links the sale to its block.
+            device.is_blocked = False
+            block_item.status = BlockItemStatus.released
+            block_item.status_changed_by_user_id = current_user.id
+            block_item.status_changed_at = datetime.utcnow()
+            block_item.notes = SOLD_NOTE_PREFIX + sale_num
         db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=DeviceStage.sold,
                              moved_by=current_user.username, notes=f"Sold — {sale_num}"))
 
         await audit(db, user=current_user, action="SALE_CREATED",
                     table_name="sales", record_id=str(device.id),
                     new_value={"sale_number": sale_num, "price": str(price),
-                               "below_cost": bool(w)},
+                               "below_cost": bool(w),
+                               **({"block_id": block_rec.block_id} if block_item is not None else {})},
                     notes=w, request=request)
 
         sold.append(sale_num)
@@ -1801,6 +1891,12 @@ def _sales_search_filter(search: str):
         Sale.customer_name.ilike(like), Sale.sales_person.ilike(like),
         Sale.sold_by.ilike(like), Lot.lot_number.ilike(like),
         Sale.invoice_no.ilike(like),
+        # Block ID of a sale made from Block Tags "Sell".
+        Sale.sale_number.in_(
+            select(func.substr(BlockRecordItem.notes, len(SOLD_NOTE_PREFIX) + 1))
+            .join(BlockRecord, BlockRecordItem.block_record_id == BlockRecord.id)
+            .where(BlockRecord.block_id.ilike(like),
+                   BlockRecordItem.notes.like(SOLD_NOTE_PREFIX + "%"))),
     )]
 
 
@@ -1842,7 +1938,8 @@ async def sales_list_data(
     base_join = (
         select(Sale, Device.barcode, Device.brand, Device.model, Device.grade,
                Lot.lot_number, Lot.buying_price, Lot.qty, Device.sub_lot_number,
-               Device.device_price, Device.id.label("device_id"), Device.replaced)
+               Device.device_price, Device.id.label("device_id"), Device.replaced,
+               Device.entity)
         .join(Device, Sale.device_id == Device.id)
         .join(Lot, Device.lot_id == Lot.id)
     )
@@ -1901,6 +1998,7 @@ async def sales_list_data(
     )).all()
 
     parts_badges = await parts_badge_map(db, [r.device_id for r in rows])
+    block_by_sale = await block_id_by_sale_number(db, [r.Sale.sale_number for r in rows])
 
     def esc(v):
         from html import escape
@@ -1923,11 +2021,15 @@ async def sales_list_data(
                             if s.invoice_no else repl_badge)
         cells = [
             f'<input type="checkbox" class="row-check" value="{s.id}">',
-            f'<a href="/sales/{s.id}" class="text-decoration-none fw-semibold">{esc(s.sale_number)}</a>',
+            (f'<a href="/sales/{s.id}" class="text-decoration-none fw-semibold">{esc(s.sale_number)}</a>'
+             + (f'<div class="small text-muted text-nowrap" title="Sold from Block Tags">'
+                f'<i class="bi bi-lock me-1"></i>{esc(block_by_sale[s.sale_number])}</div>'
+                if s.sale_number in block_by_sale else '')),
             invoice_cell,
             s.sold_at.strftime("%d-%m-%Y") if s.sold_at else "—",
             (f'<span class="text-nowrap"><a href="/devices/{esc(r.barcode)}" class="text-decoration-none"><code>{esc(r.barcode)}</code></a>'
-             + parts_badges.get(str(r.device_id), '') + '</span>'),
+             + parts_badges.get(str(r.device_id), '') + '</span>'
+             + (f'<div class="small text-muted">{esc(r.entity)}</div>' if r.entity else '')),
             esc(f"{r.brand or ''} {r.model or ''}".strip()),
             f'<a href="/devices?lot={esc(r.lot_number)}" class="text-decoration-none">'
             f'<span class="badge bg-info text-dark">{esc(r.lot_number)}</span></a>',
@@ -2110,12 +2212,14 @@ async def sale_detail(
     if not row:
         raise HTTPException(status_code=404, detail="Sale not found")
     sale, device, lot = row.Sale, row.Device, row.Lot
+    block_id = (await block_id_by_sale_number(db, [sale.sale_number])).get(sale.sale_number)
     return templates.TemplateResponse("sales/detail.html", {
         "request": request,
         "current_user": current_user,
         "sale": sale,
         "device": device,
         "lot": lot,
+        "block_id": block_id,
     })
 
 
