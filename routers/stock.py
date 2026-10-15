@@ -1851,11 +1851,13 @@ async def trc_production_list(
     fqc_fail_buckets = list(fqc_fail_grouped.values())
 
     # ── As-Is Lots in TRC (2026-10-15): tags carrying a Sub-Lot Number (As-Is
-    #    Lot) that are anywhere from TRC Production through Final QC Pass/Fail
-    #    Hold, in pipeline order (DeviceStage declaration order). ─────────────
-    _stage_order = list(DeviceStage)
-    _asis_stages = _stage_order[_stage_order.index(DeviceStage.trc_production):
-                                _stage_order.index(DeviceStage.final_qc_fail_hold) + 1]
+    #    Lot) anywhere from TRC Production through Final QC Pass/Fail Hold in
+    #    the REAL flow — TRC Production hands tags to L1/L2 then L3 repair, so
+    #    those are included (DeviceStage declares l1-l3 before trc_production,
+    #    so a slice of the enum wrongly dropped every tag in repair). ─────────
+    _asis_stages = [DeviceStage.trc_production, DeviceStage.l1, DeviceStage.l2, DeviceStage.l3,
+                    DeviceStage.qc_check, *COSMETIC_STAGES, DeviceStage.final_qc,
+                    DeviceStage.final_qc_pass_hold, DeviceStage.final_qc_fail_hold]
     as_is_trc = (await db.execute(
         select(Device, Lot.lot_number)
         .outerjoin(Lot, Device.lot_id == Lot.id)
