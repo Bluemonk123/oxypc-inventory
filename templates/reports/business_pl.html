@@ -1,6 +1,6 @@
 {% extends "base.html" %}
-{% block title %}Business P&L {{ year }} — OxyPC{% endblock %}
-{% block page_title %}Business P&L Dashboard — {{ year }}{% endblock %}
+{% block title %}Business P&L FY {{ fy_text }} — OxyPC{% endblock %}
+{% block page_title %}Business P&L Dashboard — FY {{ fy_text }}{% endblock %}
 {% block content %}
 {% if not can_view_pricing(current_user) %}
 <div class="alert alert-warning">
@@ -13,12 +13,11 @@
 {% if request.query_params.get('error') %}
 <div class="alert alert-danger alert-dismissible fade show">{{ request.query_params.get('error') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% endif %}
-<!-- Year selector — options come from Master Data (category "report_year"),
-     the same list the Dashboard's Year filter uses, so the two pages always
-     offer the same years. -->
-<div class="d-flex gap-2 mb-3">
-  {% for y in year_choices %}
-  <a href="?year={{ y }}" class="btn btn-sm {% if y|string == year|string %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ y }}</a>
+<!-- Financial Year tabs (Apr–Mar), e.g. 2025-26 — built from Master Data
+     "report_year" (2025 -> 2025-26), the same list the Dashboard's FY picker uses. -->
+<div class="d-flex gap-2 mb-3 flex-wrap">
+  {% for v, label in fy_choices %}
+  <a href="?fy={{ v }}" class="btn btn-sm {% if v == fy %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ label }}</a>
   {% endfor %}
 </div>
 
@@ -28,7 +27,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body text-center">
         <div class="fs-6 text-muted">Total Revenue</div>
-        <div class="fs-2 fw-bold text-primary">₹{{ "{:,.0f}".format(total_revenue) }}</div>
+        <div class="fs-2 fw-bold text-primary">₹{{ (total_revenue) | inr }}</div>
       </div>
     </div>
   </div>
@@ -36,7 +35,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body text-center">
         <div class="fs-6 text-muted">Gross Profit</div>
-        <div class="fs-2 fw-bold {% if gross_profit >= 0 %}text-success{% else %}text-danger{% endif %}">₹{{ "{:,.0f}".format(gross_profit) }}</div>
+        <div class="fs-2 fw-bold {% if gross_profit >= 0 %}text-success{% else %}text-danger{% endif %}">₹{{ (gross_profit) | inr }}</div>
       </div>
     </div>
   </div>
@@ -60,7 +59,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body text-center">
         <div class="fs-6 text-muted">Avg Sale Price</div>
-        <div class="fs-4 fw-bold">₹{{ "{:,.0f}".format(avg_sale_price) }}</div>
+        <div class="fs-4 fw-bold">₹{{ (avg_sale_price) | inr }}</div>
       </div>
     </div>
   </div>
@@ -68,7 +67,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body text-center">
         <div class="fs-6 text-muted">Inventory @ Cost</div>
-        <div class="fs-4 fw-bold text-secondary">₹{{ "{:,.0f}".format(inv_value) }}</div>
+        <div class="fs-4 fw-bold text-secondary">₹{{ (inv_value) | inr }}</div>
       </div>
     </div>
   </div>
@@ -76,7 +75,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body text-center">
         <div class="fs-6 text-muted">Parts Consumed</div>
-        <div class="fs-4 fw-bold text-warning">₹{{ "{:,.0f}".format(total_parts_cogs) }}</div>
+        <div class="fs-4 fw-bold text-warning">₹{{ (total_parts_cogs) | inr }}</div>
       </div>
     </div>
   </div>
@@ -93,7 +92,7 @@
 <!-- Chart -->
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center">
-    <span><i class="bi bi-graph-up me-2"></i>Monthly Revenue vs COGS (Device + Parts) vs Gross Profit</span>
+    <span><i class="bi bi-graph-up me-2"></i>Monthly Revenue vs Cost (Device + Parts + Labour) vs Gross Profit</span>
   </div>
   <div class="card-body">
     <canvas id="plChart" height="80"></canvas>
@@ -108,14 +107,15 @@
       <thead class="table-dark">
         <tr>
           <th>Month</th><th>Revenue</th>
-          <th>Device COGS</th><th>Parts Cost</th><th>Labour Cost</th><th>Total COGS</th>
+          <th>Device Cost</th><th title="Parts verified as changed on the tags sold that month (Parts Manager → Parts Consumption), qty × unit price">Parts Cost</th><th title="Labour Rate per Repair Attempt (Cost Config) × tags sold that month that went through L1/L2, L3/L4, Stress Test, Cosmetic or Final QC">Labour Cost</th><th>Total Cost</th>
           <th>Gross Profit</th><th>Margin %</th>
           {% if current_user.role.value == 'admin' %}<th>Action</th>{% endif %}
         </tr>
       </thead>
       <tbody>
-        {% set months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] %}
+        {# Rows run April -> March of the Financial Year (month_rows from the route). #}
         {% for i in range(12) %}
+        {% set mrow = month_rows[i] %}
         {% set rev    = monthly_rev[i] %}
         {% set dcogs  = monthly_device_cogs[i] %}
         {% set pcogs  = monthly_parts_cogs[i] %}
@@ -124,23 +124,23 @@
         {% set profit = monthly_profit[i] %}
         {% set margin = (profit / rev * 100) | round(1) if rev > 0 else 0 %}
         <tr>
-          <td class="fw-semibold">{{ months[i] }} {{ year }}
+          <td class="fw-semibold">{{ mrow.label }}
             {% if monthly_overridden[i] %}<span class="badge bg-info-subtle text-info-emphasis border ms-1" title="One or more figures on this row were manually overridden">edited</span>{% endif %}
           </td>
-          <td>₹{{ "{:,.0f}".format(rev) }}</td>
-          <td>₹{{ "{:,.0f}".format(dcogs) }}</td>
-          <td class="text-warning">₹{{ "{:,.0f}".format(pcogs) }}</td>
-          {# Repair labour. Without it the breakdown does not sum to Total COGS. #}
-          <td class="text-warning">₹{{ "{:,.0f}".format(lcogs) }}</td>
-          <td>₹{{ "{:,.0f}".format(cogs) }}</td>
+          <td>₹{{ (rev) | inr }}</td>
+          <td>₹{{ (dcogs) | inr }}</td>
+          <td class="text-warning">₹{{ (pcogs) | inr }}</td>
+          {# Repair labour. Without it the breakdown does not sum to Total Cost. #}
+          <td class="text-warning">₹{{ (lcogs) | inr }}</td>
+          <td>₹{{ (cogs) | inr }}</td>
           <td class="{% if profit >= 0 %}text-success{% else %}text-danger{% endif %} fw-semibold">
-            ₹{{ "{:,.0f}".format(profit) }}
+            ₹{{ (profit) | inr }}
           </td>
           <td>{% if rev > 0 %}{{ margin }}%{% else %}—{% endif %}</td>
           {% if current_user.role.value == 'admin' %}
           <td>
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 pl-edit-btn"
-                    data-month="{{ i + 1 }}" data-month-label="{{ months[i] }} {{ year }}"
+                    data-year="{{ mrow.year }}" data-month="{{ mrow.month }}" data-month-label="{{ mrow.label }}"
                     data-revenue="{{ rev }}" data-device-cogs="{{ dcogs }}"
                     data-parts-cogs="{{ pcogs }}" data-labour-cogs="{{ lcogs }}">
               <i class="bi bi-pencil"></i> Edit
@@ -152,14 +152,14 @@
       </tbody>
       <tfoot class="table-light fw-bold">
         <tr>
-          <td>Total {{ year }}</td>
-          <td>₹{{ "{:,.0f}".format(total_revenue) }}</td>
-          <td>₹{{ "{:,.0f}".format(total_device_cogs) }}</td>
-          <td class="text-warning">₹{{ "{:,.0f}".format(total_parts_cogs) }}</td>
-          <td class="text-warning">₹{{ "{:,.0f}".format(total_labour_cogs) }}</td>
-          <td>₹{{ "{:,.0f}".format(total_cogs) }}</td>
+          <td>Total FY {{ fy_text }}</td>
+          <td>₹{{ (total_revenue) | inr }}</td>
+          <td>₹{{ (total_device_cogs) | inr }}</td>
+          <td class="text-warning">₹{{ (total_parts_cogs) | inr }}</td>
+          <td class="text-warning">₹{{ (total_labour_cogs) | inr }}</td>
+          <td>₹{{ (total_cogs) | inr }}</td>
           <td class="{% if gross_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
-            ₹{{ "{:,.0f}".format(gross_profit) }}
+            ₹{{ (gross_profit) | inr }}
           </td>
           <td>{{ gross_margin }}%</td>
           {% if current_user.role.value == 'admin' %}<td></td>{% endif %}
@@ -175,20 +175,20 @@
   <div class="modal-dialog">
     <form method="post" action="/reports/business-pl/override" class="modal-content">
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
-      <input type="hidden" name="year" value="{{ year }}">
+      <input type="hidden" name="year" id="plEditYear" value="">
       <input type="hidden" name="month" id="plEditMonth">
       <div class="modal-header py-2">
         <h6 class="modal-title fw-semibold"><i class="bi bi-pencil me-2"></i>Edit <span id="plEditMonthLabel"></span></h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <p class="small text-muted mb-3">Overrides the computed figure for this month and rolls up into Total COGS, Gross Profit and the KPI cards above. Clear a field back to blank to remove the override and go back to the computed value.</p>
+        <p class="small text-muted mb-3">Overrides the computed figure for this month and rolls up into Total Cost, Gross Profit and the KPI cards above. Clear a field back to blank to remove the override and go back to the computed value.</p>
         <div class="mb-2">
           <label class="form-label small fw-semibold">Revenue</label>
           <input type="number" step="0.01" name="revenue" id="plEditRevenue" class="form-control form-control-sm">
         </div>
         <div class="mb-2">
-          <label class="form-label small fw-semibold">Device COGS</label>
+          <label class="form-label small fw-semibold">Device Cost</label>
           <input type="number" step="0.01" name="device_cogs" id="plEditDeviceCogs" class="form-control form-control-sm">
         </div>
         <div class="mb-2">
@@ -210,6 +210,7 @@
 <script>
 document.querySelectorAll('.pl-edit-btn').forEach(function(btn){
   btn.addEventListener('click', function(){
+    document.getElementById('plEditYear').value = this.dataset.year;
     document.getElementById('plEditMonth').value = this.dataset.month;
     document.getElementById('plEditMonthLabel').textContent = this.dataset.monthLabel;
     document.getElementById('plEditRevenue').value = this.dataset.revenue;
@@ -228,10 +229,10 @@ const ctx = document.getElementById('plChart').getContext('2d');
 new Chart(ctx, {
   type: 'line',
   data: {
-    labels: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+    labels: {{ month_rows | map(attribute='label') | list | tojson }},
     datasets: [
       { label: 'Revenue', data: {{ monthly_rev | tojson }}, borderColor: '#1565C0', backgroundColor: 'rgba(21,101,192,0.05)', tension: 0.3, fill: false },
-      { label: 'COGS', data: {{ monthly_cogs | tojson }}, borderColor: '#C62828', backgroundColor: 'rgba(198,40,40,0.05)', tension: 0.3, fill: false },
+      { label: 'Total Cost', data: {{ monthly_cogs | tojson }}, borderColor: '#C62828', backgroundColor: 'rgba(198,40,40,0.05)', tension: 0.3, fill: false },
       { label: 'Gross Profit', data: {{ monthly_profit | tojson }}, borderColor: '#2E7D32', backgroundColor: 'rgba(46,125,50,0.1)', tension: 0.3, fill: true },
     ]
   },

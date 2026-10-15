@@ -20,7 +20,7 @@ from models.stock_transfer import StockTransfer
 from models.spare_parts import SparePartConsumption
 from models.business_pl_override import BusinessPLOverride
 from services.audit_engine import audit
-from services.business_pl import compute_year_parts_labour_cogs
+from services.business_pl import compute_year_parts_labour_cogs, compute_year_device_cogs
 from utils.master_data import report_year_values, master_options
 from auth.dependencies import get_current_user, require_roles, verify_csrf
 
@@ -779,95 +779,82 @@ async def export_sales(db: AsyncSession = Depends(get_db), current_user: User = 
     )
 
 
-@router.get("/business-pl", response_class=HTMLResponse)
-async def business_pl(
-    request: Request,
-    year: int = Query(default=None),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(_require_financials),
-):
-    if not year:
-        year = app_now().year
-
-    # ── Revenue per month (single GROUP BY query) ────────────────────────────
+async def _pl_calendar_year(db: AsyncSession, year: int) -> dict:
+    """One calendar year of Business P&L figures, Jan..Dec (12-element
+    lists), admin overrides applied — the building block the Financial Year
+    view stitches Apr–Mar together from."""
     rev_result = await db.execute(
-        select(
-            extract("month", Sale.sold_at).label("month"),
-            func.coalesce(func.sum(Sale.sale_price), 0).label("revenue"),
-        )
+        select(extract("month", Sale.sold_at).label("month"),
+               func.coalesce(func.sum(Sale.sale_price), 0).label("revenue"))
         .where(extract("year", Sale.sold_at) == year)
         .group_by(extract("month", Sale.sold_at))
     )
     rev_by_month = {int(r.month): float(r.revenue) for r in rev_result}
-    monthly_rev = [rev_by_month.get(m, 0.0) for m in range(1, 13)]
+    rev = [rev_by_month.get(m, 0.0) for m in range(1, 13)]
 
-    # ── Device buying-price COGS per month (single GROUP BY query) ──────────
-    cogs_result = await db.execute(
-        select(
-            extract("month", Sale.sold_at).label("month"),
-            func.coalesce(func.sum(Device.device_price), 0).label("device_cogs"),
-        )
-        .join(Device, Sale.device_id == Device.id)
-        .where(extract("year", Sale.sold_at) == year)
-        .group_by(extract("month", Sale.sold_at))
-    )
-    cogs_by_month = {int(r.month): float(r.device_cogs) for r in cogs_result}
-    monthly_device_cogs = [cogs_by_month.get(m, 0.0) for m in range(1, 13)]
+    # Device Cost — same shared computation as the Dashboard's Total Investment.
+    device = await compute_year_device_cogs(db, year)
+    # Parts / Labour — shared with the Dashboard's Parts Spent / Labour Spent.
+    parts, labour = await compute_year_parts_labour_cogs(db, year)
 
-    # ── Repair parts + labour COGS per month ────────────────────────────────
-    # Shared with the Dashboard's Financial Summary card (services/business_pl.py)
-    # so the two never disagree on the same year's Parts/Labour Cost figures.
-    # Labour was previously missing from this report while Lot P&L above did
-    # include it, so the two disagreed on the same devices and Business P&L
-    # overstated gross margin by the whole repair-labour bill.
-    monthly_parts_cogs, monthly_labour_cogs = await compute_year_parts_labour_cogs(db, year)
-
-    monthly_cogs = [d + p + l for d, p, l in
-                    zip(monthly_device_cogs, monthly_parts_cogs, monthly_labour_cogs)]
-
-    # ── Admin manual overrides — applied on top of the computed figures ──────
-    # A null field on the override row means "no correction, keep the
-    # computed value"; only the specific component an admin edited replaces
-    # it. Applied here, before totals, so the KPI cards at the top of the
-    # page (Total Revenue / Gross Profit / Gross Margin) always agree with
-    # whatever the Monthly Breakdown table is actually showing. (Parts/Labour
-    # overrides are already merged in by compute_year_parts_labour_cogs above —
-    # only Revenue/Device COGS still need applying here.)
-    overrides = {
-        o.month: o for o in (await db.execute(
-            select(BusinessPLOverride).where(BusinessPLOverride.year == year)
-        )).scalars().all()
-    }
-    monthly_overridden = [False] * 12
-    for idx in range(12):
-        month_num = idx + 1
-        o = overrides.get(month_num)
-        if not o:
+    overridden = [False] * 12
+    for o in (await db.execute(
+        select(BusinessPLOverride).where(BusinessPLOverride.year == year)
+    )).scalars().all():
+        i = o.month - 1
+        if not 0 <= i < 12:
             continue
         if o.revenue_override is not None:
-            monthly_rev[idx] = float(o.revenue_override)
-            monthly_overridden[idx] = True
-        if o.device_cogs_override is not None:
-            monthly_device_cogs[idx] = float(o.device_cogs_override)
-            monthly_overridden[idx] = True
-        if o.parts_cogs_override is not None:
-            monthly_overridden[idx] = True
-        if o.labour_cogs_override is not None:
-            monthly_overridden[idx] = True
-    # Re-derive monthly_cogs from the (possibly overridden) components so a
-    # single-field edit (e.g. just Labour Cost) still rolls up correctly.
+            rev[i] = float(o.revenue_override)
+        if any(v is not None for v in (o.revenue_override, o.device_cogs_override,
+                                        o.parts_cogs_override, o.labour_cogs_override)):
+            overridden[i] = True
+    return {"rev": rev, "device": device, "parts": parts, "labour": labour, "overridden": overridden}
+
+
+def _current_fy() -> int:
+    t = app_now()
+    return t.year if t.month >= 4 else t.year - 1
+
+
+@router.get("/business-pl", response_class=HTMLResponse)
+async def business_pl(
+    request: Request,
+    # Financial Year (Apr–Mar) by its starting year: 2025 = "2025-26"
+    # (2026-10-15; was a calendar year Jan–Dec).
+    fy: int = Query(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_require_financials),
+):
+    if not fy:
+        fy = _current_fy()
+
+    # Apr..Dec of fy, then Jan..Mar of fy+1.
+    y1 = await _pl_calendar_year(db, fy)
+    y2 = await _pl_calendar_year(db, fy + 1)
+    def _fy(key):
+        return y1[key][3:] + y2[key][:3]
+    monthly_rev          = _fy("rev")
+    monthly_device_cogs  = _fy("device")
+    monthly_parts_cogs   = _fy("parts")
+    monthly_labour_cogs  = _fy("labour")
+    monthly_overridden   = _fy("overridden")
+    _names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    # Each row's real calendar year + month — what the Edit (override) form saves against.
+    month_rows = ([{"label": f"{_names[m - 1]} {fy}", "year": fy, "month": m} for m in range(4, 13)]
+                  + [{"label": f"{_names[m - 1]} {fy + 1}", "year": fy + 1, "month": m} for m in range(1, 4)])
+
     monthly_cogs = [d + p + l for d, p, l in
                     zip(monthly_device_cogs, monthly_parts_cogs, monthly_labour_cogs)]
 
-    # ── Year totals ──────────────────────────────────────────────────────────
-    # Revenue/COGS totals are SUMS of the (possibly overridden) monthly
-    # arrays, not independent DB aggregate queries — otherwise an override
-    # would show correctly in the Monthly Breakdown table but the KPI cards
-    # above it would silently disagree.
+    # ── FY totals — SUMS of the (possibly overridden) monthly rows, so the KPI
+    # cards always agree with the Monthly Breakdown table. ────────────────────
+    fy_from = datetime(fy, 4, 1)
+    fy_to = datetime(fy + 1, 4, 1)
     total_revenue = sum(monthly_rev)
     total_sales_ct = (await db.execute(
         select(func.count(Sale.id))
-        .where(extract("year", Sale.sold_at) == year)
+        .where(Sale.sold_at >= fy_from, Sale.sold_at < fy_to)
     )).scalar() or 0
     inv_value = float((await db.execute(
         select(func.coalesce(func.sum(Device.device_price), 0))
@@ -904,10 +891,16 @@ async def business_pl(
     gross_profit      = total_revenue - total_cogs
     gross_margin      = round(gross_profit / total_revenue * 100, 1) if total_revenue > 0 else 0
 
+    # Financial Year tabs: one per configured report year (2025 -> "2025-26"),
+    # plus the current FY and the one being viewed, oldest first.
+    from services.business_pl import fy_label
+    _years = {int(v) for v in await report_year_values(db) if str(v).isdigit()}
+    fy_choices = [(y, fy_label(y)) for y in sorted(_years | {_current_fy(), fy})]
+
     return templates.TemplateResponse("reports/business_pl.html", {
         "request": request, "current_user": current_user,
-        "year": year,
-        "year_choices": await report_year_values(db),
+        "fy": fy, "fy_text": fy_label(fy), "fy_choices": fy_choices,
+        "month_rows":           month_rows,
         "monthly_rev":          monthly_rev,
         "monthly_device_cogs":  monthly_device_cogs,
         "monthly_parts_cogs":   monthly_parts_cogs,
@@ -947,7 +940,7 @@ async def save_business_pl_override(
     the computed value); fill it in to pin that field to a specific number."""
     if current_user.role.value != "admin":
         return RedirectResponse(
-            url=f"/reports/business-pl?year={year}&error=Admin+access+required",
+            url=f"/reports/business-pl?fy={year if month >= 4 else year - 1}&error=Admin+access+required",
             status_code=302)
 
     def _parse(v: str):
@@ -989,7 +982,7 @@ async def save_business_pl_override(
                 request=request)
     await db.commit()
     return RedirectResponse(
-        url=f"/reports/business-pl?year={year}&success=Row+updated",
+        url=f"/reports/business-pl?fy={year if month >= 4 else year - 1}&success=Row+updated",
         status_code=302)
 
 

@@ -73,17 +73,10 @@
   <div class="dash-filter-sm">
     <input type="date" name="pl_to" title="P&amp;L To" class="form-control form-control-sm" value="{{ pl_to }}">
   </div>
-  {# Scopes the Financial Summary card's Parts Spent / Labour Spent (see
-     services/business_pl.compute_year_parts_labour_cogs). Options come from
-     Master Data (category "report_year") — the same list Business P&L's
-     year tabs use, so the two pages always offer the same years. #}
-  <div class="dash-filter-sm">
-    <select name="year" title="Year" class="form-select form-select-sm">
-      {% for y in year_choices %}
-      <option value="{{ y }}" {% if year|string == y|string %}selected{% endif %}>{{ y }}</option>
-      {% endfor %}
-    </select>
-  </div>
+  {# The Financial Year picker lives on the Financial Summary card itself
+     (2026-10-15) — it only ever scoped that card. Kept here as a hidden
+     field so Apply / the other filters don't reset the chosen year. #}
+  <input type="hidden" name="fy" value="{{ fy }}">
   <div>
     <button type="submit" class="btn btn-sm btn-primary">
       <i class="bi bi-funnel me-1"></i>Apply
@@ -343,7 +336,19 @@
 <div class="card border-0 shadow-sm h-100">
   <div class="card-header bg-transparent fw-semibold">
     <i class="bi bi-wallet2 me-2"></i>Financial Summary
-    <span class="badge bg-secondary-subtle text-secondary-emphasis border ms-1">Yearly</span>
+    {# Financial Year (Apr–Mar) for Total Investment / Parts Spent / Labour
+       Spent. Re-submits the dashboard with every other filter kept. #}
+    <form method="get" action="/dashboard" class="d-inline-block ms-1 align-middle">
+      {% for k, v in request.query_params.multi_items() if k != 'fy' %}
+      <input type="hidden" name="{{ k }}" value="{{ v }}">
+      {% endfor %}
+      <select name="fy" title="Financial Year (Apr–Mar)" class="form-select form-select-sm d-inline-block w-auto py-0"
+              onchange="this.form.submit()">
+        {% for v, label in fy_choices %}
+        <option value="{{ v }}" {% if fy == v %}selected{% endif %}>FY {{ label }}</option>
+        {% endfor %}
+      </select>
+    </form>
     {% if pl_active %}
     <span class="badge bg-info-subtle text-info-emphasis border ms-1" title="Total Investment / Total Revenue / Net Profit below are scoped to devices whose own stage-completed date falls in the selected P&amp;L From/To range">
       <i class="bi bi-funnel me-1"></i>Completed-date filtered
@@ -351,7 +356,7 @@
     {% endif %}
   </div>
   <div class="card-body">
-    <div class="d-flex justify-content-between mb-2"><span class="text-muted small">Total Investment</span><span class="fw-semibold">₹{{ total_investment | inr }}</span></div>
+    <div class="d-flex justify-content-between mb-2"><span class="text-muted small" title="Device Cost of the tags sold in the selected Financial Year (Apr–Mar) — same as Business P&amp;L's Device Cost column">Total Investment</span><span class="fw-semibold">₹{{ yearly_device_cost | inr }}</span></div>
     {# Parts Spent / Labour Spent are scoped to the selected Year (dashboard
        filter) and pulled from the exact same computation as Business P&L's
        Monthly Breakdown table (Parts Cost / Labour Cost columns) — see

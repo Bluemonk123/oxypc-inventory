@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_
 from database import get_db
 from utils.master_data import entity_values, report_year_values, master_values
-from services.business_pl import compute_year_parts_labour_cogs
+from services.business_pl import compute_fy_totals, fy_label
 from models.user import User, UserRole
 from models.device import Device, DeviceStage, StageMovement, STAGE_LABELS, DROPDOWN_STAGES, COSMETIC_STAGES
 from models.master import EXTERNAL_PARTNER_TEST_ENTITY
@@ -93,15 +93,17 @@ async def dashboard(
     # (models.location.ZoneType). Replaces the old single-location "Location
     # ID" filter, which was too granular for a dashboard-level view.
     zone: str = Query(default=""),
-    year: int = Query(default=None),
+    # Financial Summary card's Financial Year (Apr–Mar), by its starting
+    # year: 2025 = "2025-26" (2026-10-15; was a calendar Year in the top bar).
+    fy: int = Query(default=None),
 ):
     _t0 = _time.perf_counter()
     _marks = []                      # (section, seconds) — logged when slow
     def _mark(name):
         _marks.append((name, _time.perf_counter()))
     today = app_now().date()
-    if not year:
-        year = today.year
+    if not fy:
+        fy = today.year if today.month >= 4 else today.year - 1
 
     # ── Filter parsing (Entity / Device Type / Location) ─────────────────────
     # Moved ahead of the stage/category aggregate so that block can decide
@@ -772,6 +774,7 @@ async def dashboard(
     overall_profit = 0.0
     yearly_parts_cost = 0.0
     yearly_labour_cost = 0.0
+    yearly_device_cost = 0.0
     _mark("lot P&L")
 
     async def _compute_financials():
@@ -819,15 +822,18 @@ async def dashboard(
         # sync with Business P&L's Monthly Breakdown table (Parts Cost /
         # Labour Cost columns) via the exact same computation, so the two
         # pages never disagree on the selected year's numbers.
-        yearly_monthly_parts, yearly_monthly_labour = await compute_year_parts_labour_cogs(db, year)
+        # Total Investment / Parts Spent / Labour Spent (card): Business P&L's
+        # Device / Parts / Labour Cost columns summed over the selected
+        # Financial Year Apr–Mar (2026-10-15), same shared computation.
+        fy_device, fy_parts, fy_labour = await compute_fy_totals(db, fy)
         return (month_revenue, total_revenue, total_investment, total_parts_cost,
-                total_labour_cost, sum(yearly_monthly_parts), sum(yearly_monthly_labour))
+                total_labour_cost, fy_parts, fy_labour, fy_device)
 
     try:
         # Cached on the same 30 s cycle as the sections above (2026-10-15 —
         # these 7 sums ran on every load); keyed by Year, and never cached
         # while a P&L From/To range is set.
-        _fin_key = ("fin", year)
+        _fin_key = ("fin", fy)
         _fin = _AGG_CACHE.get("fin")
         if (not _pl_active and _fin and _fin[0] == _fin_key
                 and (_time.monotonic() - _fin[1]) < _AGG_TTL):
@@ -837,7 +843,8 @@ async def dashboard(
             if not _pl_active:
                 _AGG_CACHE["fin"] = (_fin_key, _time.monotonic(), fin_vals)
         (month_revenue, total_revenue, total_investment, total_parts_cost,
-         total_labour_cost, yearly_parts_cost, yearly_labour_cost) = fin_vals
+         total_labour_cost, yearly_parts_cost, yearly_labour_cost,
+         yearly_device_cost) = fin_vals
         total_cosmetic_cost = sum(r["cosmetic_cost"] for r in lot_pl)
         overall_profit = total_revenue - total_investment - total_parts_cost - total_labour_cost - total_cosmetic_cost
     except Exception:
@@ -1238,12 +1245,17 @@ async def dashboard(
         "month_revenue": month_revenue,
         "total_revenue": total_revenue,
         "total_investment": total_investment,
+        "yearly_device_cost": yearly_device_cost,
         "total_parts_cost": total_parts_cost,
         "total_labour_cost": total_labour_cost,
         "total_cosmetic_cost": total_cosmetic_cost,
         "overall_profit": overall_profit,
-        "year": year,
-        "year_choices": _year_choices,
+        "fy": fy,
+        # Financial Years offered: one per configured report year (2025 ->
+        # "2025-26"), plus the current FY, newest first.
+        "fy_choices": [(y, fy_label(y)) for y in sorted(
+            {int(v) for v in _year_choices if str(v).isdigit()}
+            | {today.year if today.month >= 4 else today.year - 1, fy}, reverse=True)],
         "yearly_parts_cost": yearly_parts_cost,
         "yearly_labour_cost": yearly_labour_cost,
         "admin_analytics": admin_analytics,
