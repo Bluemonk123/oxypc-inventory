@@ -900,6 +900,8 @@ async def iqc_bulk_apply_grade_type(
     total_hdd_size: str = Form(""),
     hdd_summary: str = Form(""),
     touch_type: str = Form(""),
+    stock_type: str = Form(""),
+    sub_lot_number: str = Form(""),
     to_stage: str = Form(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
@@ -978,7 +980,8 @@ async def iqc_bulk_apply_grade_type(
             and not generation.strip() and not ram_gb.strip() and not storage_gb.strip()
             and not total_ram_count.strip() and not total_ram_size.strip()
             and not total_hdd_count.strip() and not total_hdd_size.strip()
-            and not hdd_summary.strip() and not touch_type.strip() and not to_stage):
+            and not hdd_summary.strip() and not touch_type.strip() and not to_stage
+            and not stock_type.strip()):
         return RedirectResponse(url=f"{return_to}?error=Select+a+field+to+apply", status_code=302)
 
     result = await db.execute(select(Device).where(Device.barcode.in_(barcodes)))
@@ -1058,6 +1061,18 @@ async def iqc_bulk_apply_grade_type(
             url=f"{return_to}?error=Select+a+Location+ID+to+choose+a+Bin", status_code=302
         )
 
+    # Stock Type (2026-10-15): As-Is Lot sets the typed Sub-Lot Number;
+    # Finish Good / In Progress clear it, after which the tag's type follows
+    # its stage (routers/devices.stock_type_key). Validated before any write.
+    stock_type = (stock_type or "").strip()
+    new_sub_lot = (sub_lot_number or "").strip()
+    if stock_type and stock_type not in ("as_is", "finish_good", "in_progress"):
+        return RedirectResponse(url=f"{return_to}?error=Invalid+stock+type", status_code=302)
+    if stock_type == "as_is" and not new_sub_lot:
+        return RedirectResponse(url=f"{return_to}?error=Enter+a+Sub-Lot+Number+for+As-Is+Lot", status_code=302)
+    if len(new_sub_lot) > 50:
+        return RedirectResponse(url=f"{return_to}?error=Sub-Lot+Number+is+too+long+(max+50)", status_code=302)
+
     # Touch Type: "touch" / "non_touch" (blank = leave unchanged). Anything
     # else is rejected before any device is touched.
     new_touch_type = touch_type.strip().lower() or None
@@ -1072,6 +1087,10 @@ async def iqc_bulk_apply_grade_type(
     is_admin = current_user.role.value == "admin"
     override_transitions = is_admin or return_to in ("/devices", "/stock")
     for device in devices:
+        if stock_type == "as_is":
+            device.sub_lot_number = new_sub_lot
+        elif stock_type in ("finish_good", "in_progress"):
+            device.sub_lot_number = None
         if new_touch_type:
             device.touch_type = new_touch_type
         if device_type.strip():
@@ -1163,6 +1182,8 @@ async def iqc_bulk_apply_grade_type(
                            "device_price": device_price or None,
                            "min_selling_price": min_selling_price or None,
                            "touch_type": new_touch_type,
+                           "stock_type": stock_type or None,
+                           "sub_lot_number": new_sub_lot if stock_type == "as_is" else None,
                            "bin_location": bin_location or None,
                            "cpu": cpu or None, "cpu_make": cpu_make or None,
                            "generation": generation or None,

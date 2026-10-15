@@ -1850,6 +1850,71 @@ async def trc_production_list(
         g["failure_reason"] = g["failure_reason"] or d.fqc_failure_reason
     fqc_fail_buckets = list(fqc_fail_grouped.values())
 
+    # ── As-Is Lots in TRC (2026-10-15): tags carrying a Sub-Lot Number (As-Is
+    #    Lot) that are anywhere from TRC Production through Final QC Pass/Fail
+    #    Hold, in pipeline order (DeviceStage declaration order). ─────────────
+    _stage_order = list(DeviceStage)
+    _asis_stages = _stage_order[_stage_order.index(DeviceStage.trc_production):
+                                _stage_order.index(DeviceStage.final_qc_fail_hold) + 1]
+    as_is_trc = (await db.execute(
+        select(Device, Lot.lot_number)
+        .outerjoin(Lot, Device.lot_id == Lot.id)
+        .where(Device.current_stage.in_(_asis_stages),
+               func.coalesce(func.trim(Device.sub_lot_number), "") != "",
+               Device.is_active == True, Device.is_trashed == False)
+        .order_by(Device.sub_lot_number, Device.barcode)
+    )).all()
+    as_is_ids = [d.id for d, _ in as_is_trc]
+    as_is_bucket_map, as_is_assigned_map = {}, {}
+    if as_is_ids:
+        _bids = {d.bucket_id for d, _ in as_is_trc if d.bucket_id}
+        if _bids:
+            _bn = {bid: (name or bnum) for bid, name, bnum in (await db.execute(
+                select(Bucket.id, Bucket.name, Bucket.bucket_number).where(Bucket.id.in_(_bids))
+            )).all()}
+            as_is_bucket_map = {str(d.id): _bn[d.bucket_id] for d, _ in as_is_trc if d.bucket_id in _bn}
+        # Assigned User: the engineer on the open WorkOrder, else the latest
+        # Stock Transfer department (what Tag Number Allocation shows).
+        for did, name in (await db.execute(
+            select(WorkOrder.device_id, WorkOrder.assigned_name)
+            .where(WorkOrder.device_id.in_(as_is_ids), WorkOrder.status != "completed")
+            .order_by(WorkOrder.device_id, WorkOrder.assigned_at.desc())
+        )).all():
+            if name and str(did) not in as_is_assigned_map:
+                as_is_assigned_map[str(did)] = name
+        for did, dept in (await db.execute(
+            select(StockTransfer.device_id, StockTransfer.department)
+            .where(StockTransfer.device_id.in_(as_is_ids), StockTransfer.department != None)
+            .order_by(StockTransfer.transfer_date.desc())
+        )).all():
+            if dept and str(did) not in as_is_assigned_map:
+                as_is_assigned_map[str(did)] = dept
+
+    # Brand column: a tag saved with no Make shows the Make that Product Master
+    # pairs with its Model (dropdown model -> parent make, else a Product row),
+    # only when that model maps to exactly one make. Display only — nothing saved.
+    as_is_make_map = {}
+    _blank_models = {(d.model or "").strip().lower() for d, _ in as_is_trc
+                     if not (d.brand or "").strip() and (d.model or "").strip()}
+    if _blank_models:
+        from sqlalchemy.orm import aliased
+        from models.product_master import PMDropdownValue, PMProduct
+        _parent = aliased(PMDropdownValue)
+        _makes = {}
+        for mdl, mk in (await db.execute(
+            select(PMDropdownValue.value, _parent.value)
+            .join(_parent, PMDropdownValue.parent_id == _parent.id)
+            .where(PMDropdownValue.category == "model",
+                   func.lower(PMDropdownValue.value).in_(_blank_models))
+        )).all():
+            _makes.setdefault(mdl.strip().lower(), set()).add(mk)
+        for mdl, mk in (await db.execute(
+            select(PMProduct.model, PMProduct.make)
+            .where(func.lower(PMProduct.model).in_(_blank_models))
+        )).all():
+            _makes.setdefault(mdl.strip().lower(), set()).add(mk)
+        as_is_make_map = {m: next(iter(v)) for m, v in _makes.items() if len(v) == 1}
+
     # ── Summary card tiles ("Total Tags at You / L1/L2 / L3/L4 / PNA / Stress
     #    / Final QC") — simple stage-scoped counts, each is_active-filtered
     #    to match every other count on this page. ─────────────────────────
@@ -1882,6 +1947,8 @@ async def trc_production_list(
         "repair_line_devices": repair_line_devices, "assigned_name_map": assigned_name_map,
         "total": total, "scrap_devices": scrap_devices,
         "fqc_fail_buckets": fqc_fail_buckets,
+        "as_is_trc": as_is_trc, "as_is_bucket_map": as_is_bucket_map,
+        "as_is_assigned_map": as_is_assigned_map, "as_is_make_map": as_is_make_map,
         "tags_at_you": tags_at_you, "tags_l1l2": tags_l1l2, "tags_l3l4": tags_l3l4,
         "tags_pna": tags_pna, "tags_stress": tags_stress, "tags_final_qc": tags_final_qc,
         "tags_cosmetic": tags_cosmetic, "tags_returned": tags_returned,

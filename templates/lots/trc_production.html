@@ -155,6 +155,10 @@
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#bucketAllocTab" type="button">
     <i class="bi bi-box me-1"></i>Bucket Allocation
   </button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#asIsTrcTab" type="button">
+    <i class="bi bi-box-seam me-1"></i>As-Is Lots in TRC
+    <span class="badge bg-warning text-dark ms-1">{{ as_is_trc | length }}</span>
+  </button></li>
 </ul>
 <div class="tab-content border border-top-0 rounded-bottom bg-white mb-3">
   <div class="tab-pane fade show active p-0" id="tagAllocTab">
@@ -207,6 +211,44 @@
           <tr><th>Bucket Name</th><th>Bucket Number</th><th>Location</th><th>Category</th><th>Bucket Qty</th><th>Received Qty</th><th>Actions</th></tr>
         </thead>
         <tbody id="trcBucketTbody"></tbody>
+      </table>
+      </div>
+    </div>
+  </div>
+  {# As-Is Lots in TRC (2026-10-15): tags with a Sub-Lot Number (As-Is Lot)
+     from TRC Production through Final QC Pass/Fail Hold — see as_is_trc in
+     routers/stock.py trc_production_list. #}
+  <div class="tab-pane fade p-0" id="asIsTrcTab">
+<div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>As-Is Lots in TRC</span>
+        <button type="button" id="asIsExportBtn" class="btn btn-sm btn-outline-success text-nowrap" disabled
+                title="Export the selected tags to CSV"><i class="bi bi-download me-1"></i>Export (<span id="asIsSelCount">0</span>)</button></div>
+      <div>
+      <table id="asIsTrcTable" class="table table-hover mb-0 small">
+        <thead class="table-dark"><tr>
+          <th><input type="checkbox" class="form-check-input" id="asIsSelectAll" title="Select all (matching the search)"></th>
+          <th>As-Is Lot</th><th>Tag Number</th><th>Lot</th><th>Bucket Name</th><th>Brand</th><th>Model</th><th>CPU</th><th>RAM</th><th>Storage</th><th>Grade</th><th>Current Stage</th><th>Assigned User</th>
+        </tr></thead>
+        <tbody>
+          {% for device, lot_number in as_is_trc %}
+          <tr data-tag="{{ device.barcode }}">
+            <td><input type="checkbox" class="form-check-input asIsChk" value="{{ device.barcode }}"></td>
+            <td class="font-monospace fw-semibold">{{ device.sub_lot_number }}</td>
+            <td><a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none">{{ device.barcode }}</a></td>
+            <td>{% if lot_number %}<span class="badge bg-info text-dark">{{ lot_number }}</span>{% else %}—{% endif %}</td>
+            <td>{{ as_is_bucket_map.get(device.id|string) or '—' }}</td>
+            {# Make: the tag's own; else the Make Product Master pairs with its Model. #}
+            <td>{{ device.brand or as_is_make_map.get((device.model or '').strip().lower()) or '—' }}</td>
+            <td>{{ device.model or '—' }}</td>
+            <td>{{ device.cpu or '—' }}</td>
+            <td>{{ device.ram_summary or ((device.ram_gb|string ~ 'GB') if device.ram_gb else '—') }}</td>
+            <td>{{ device.hdd_summary or ((device.storage_gb|string ~ 'GB') if device.storage_gb else '—') }}</td>
+            <td>{{ (device.grade.value if device.grade else '') or '—' }}</td>
+            <td><span class="badge bg-{{ device.stage_color }}">{{ device.stage_label }}</span></td>
+            <td>{{ as_is_assigned_map.get(device.id|string) or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
       </table>
       </div>
     </div>
@@ -1009,6 +1051,73 @@ var prodAllocationDt = initGlobalTable('#prodAllocationTable', {
   language: { emptyTable: 'No buckets allocated to L1/L2 Engineer yet.' },
 });
 loadProdAllocationTable();
+
+// As-Is Lots in TRC tab (server-rendered)
+var asIsTrcDt = initGlobalTable('#asIsTrcTable', {
+  order: [],
+  columnDefs: [{ orderable: false, targets: 0 }],
+  language: { emptyTable: 'No As-Is Lot tags between TRC Production and Final QC Hold.' },
+}, {
+  // Header box selects every row matching the current search, on every page.
+  selectAll: { headerSelector: '#asIsSelectAll', rowSelector: '.asIsChk', scope: 'search',
+               onChange: function () { asIsUpdateSel(); } },
+});
+// Selection lives on the row checkboxes themselves (client-side table: every
+// row node is kept, even off-page), so count/export read all rows.
+function asIsCheckedRows() {
+  return $(asIsTrcDt.rows().nodes()).find('.asIsChk:checked').closest('tr').toArray();
+}
+function asIsUpdateSel() {
+  var n = asIsCheckedRows().length;
+  document.getElementById('asIsSelCount').textContent = n;
+  document.getElementById('asIsExportBtn').disabled = n === 0;
+}
+$(asIsTrcDt.table().container()).on('change', '.asIsChk', asIsUpdateSel);
+// Search box: plain text searches as usual; comma-separated tag numbers
+// (scanned or pasted) match those exact tags. Either way the rows the search
+// finds are auto-selected (across all pages); clearing the box clears it.
+(function () {
+  var box = $(asIsTrcDt.table().container()).find('input[type="search"]').first();
+  box.attr('placeholder', 'Search or scan tags (comma separated)…').off();
+  var timer = null;
+  box.on('input', function () {
+    clearTimeout(timer);
+    var val = this.value;
+    timer = setTimeout(function () {
+      var term = val.trim();
+      if (term.indexOf(',') !== -1) {
+        var tags = term.split(',').map(function (t) { return t.trim(); }).filter(Boolean)
+          .map(function (t) { return t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); });
+        asIsTrcDt.search(tags.join('|'), true, false).draw();
+      } else {
+        asIsTrcDt.search(term, false, true).draw();
+      }
+      var all = $(asIsTrcDt.rows().nodes()).find('.asIsChk');
+      all.prop('checked', false);
+      if (term) $(asIsTrcDt.rows({ search: 'applied' }).nodes()).find('.asIsChk').prop('checked', true);
+      document.getElementById('asIsSelectAll').checked = !!term && asIsCheckedRows().length > 0;
+      asIsUpdateSel();
+    }, 250);
+  });
+})();
+// Export: the selected tags as CSV, built from the table itself.
+document.getElementById('asIsExportBtn').addEventListener('click', function () {
+  var rows = asIsCheckedRows();
+  if (!rows.length) return;
+  var head = $(asIsTrcDt.table().header()).find('th').toArray().slice(1)
+    .map(function (th) { return th.textContent.trim(); });
+  function csvCell(v) { v = (v || '').replace(/\s+/g, ' ').trim(); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  var lines = [head.map(csvCell).join(',')];
+  rows.forEach(function (tr) {
+    lines.push(Array.from(tr.cells).slice(1).map(function (td) { return csvCell(td.textContent); }).join(','));
+  });
+  var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'as_is_lots_in_trc.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+});
 
 // Server-rendered Repair Line tables
 var rlFqcFailDt = initGlobalTable('#rlFqcFailTable', {

@@ -64,9 +64,16 @@
               <label class="form-label small">Invoice Number</label>
               <input type="text" name="invoice_number" class="form-control form-control-sm" placeholder="Leave blank to leave unchanged">
             </div>
+            {# Bin Location sits right after Invoice Number; the GRN Number field
+               is hidden from this modal (2026-10-15) — GRNs are mapped on Create GRN. #}
             <div class="col-md-4">
-              <label class="form-label small">GRN Number</label>
-              <input type="text" name="grn_number" class="form-control form-control-sm" placeholder="Leave blank to leave unchanged">
+              <label class="form-label small">Bin Location</label>
+              <select name="bin_location" class="form-select form-select-sm">
+                <option value="">— Leave unchanged —</option>
+                {% for slot in storage_locations | map(attribute='slot') | select | unique | sort %}
+                <option value="{{ slot }}">{{ slot }}</option>
+                {% endfor %}
+              </select>
             </div>
           </div>
           <div class="row g-2 mb-2">
@@ -111,16 +118,27 @@
                 {% endfor %}
               </select>
             </div>
+            {# Stock Type (2026-10-15): As-Is Lot sets the Sub-Lot Number typed
+               below; Finish Good / In Progress clear it, and the tag then shows
+               Finish Good or In Progress from its stage (Ready to Sale / Sold =
+               Finish Good). Same rule as stock_type_key in routers/devices.py. #}
             <div class="col-md-4">
-              <label class="form-label small">Bin Location</label>
-              <select name="bin_location" class="form-select form-select-sm">
+              <label class="form-label small">Stock Type</label>
+              <select name="stock_type" id="customiseStockType" class="form-select form-select-sm"
+                      onchange="var w=document.getElementById('customiseSubLotWrap');var on=this.value==='as_is';w.classList.toggle('d-none',!on);document.getElementById('customiseSubLot').required=on;">
                 <option value="">— Leave unchanged —</option>
-                {% for slot in storage_locations | map(attribute='slot') | select | unique | sort %}
-                <option value="{{ slot }}">{{ slot }}</option>
-                {% endfor %}
+                <option value="as_is">As-Is Lot</option>
+                <option value="finish_good">Finish Good</option>
+                <option value="in_progress">In Progress</option>
               </select>
             </div>
+            <div class="col-md-4 d-none" id="customiseSubLotWrap">
+              <label class="form-label small">Sub-Lot Number <span class="text-danger">*</span></label>
+              <input type="text" name="sub_lot_number" id="customiseSubLot" maxlength="50"
+                     class="form-control form-control-sm" placeholder="Enter Sub-Lot Number">
+            </div>
           </div>
+          <div class="form-text">Stock Type: Finish Good / In Progress remove the Sub-Lot Number — the tag then shows Finish Good (Ready to Sale or Sold) or In Progress from its stage.</div>
           <div class="form-text">Move to Stage moves all selected items to that stage (subject to allowed transitions).</div>
         </div>
         <div class="modal-footer py-2">
