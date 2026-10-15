@@ -125,6 +125,12 @@ async def lot_pl_report(request: Request, db: AsyncSession = Depends(get_db), cu
         count_by_lot[lid], sold_by_lot[lid] = r.cnt, r.sold
         sold_priced[lid], sold_unpriced[lid] = float(r.sold_price), r.sold_unpriced
 
+    # Last activity per lot (2026-10-16): newest device change (stage moves,
+    # sales, edits all bump Device.updated_at); the table sorts on this.
+    dev_upd_by_lot = {str(r.lot_id): r.upd for r in await db.execute(
+        select(Device.lot_id, func.max(Device.updated_at).label("upd"))
+        .where(live_dev).group_by(Device.lot_id))}
+
     lot_pl = []
     for lot in lots:
         lid     = str(lot.id)
@@ -161,6 +167,7 @@ async def lot_pl_report(request: Request, db: AsyncSession = Depends(get_db), cu
             "cost_sold":    cost_sold,
             "profit_sold":  profit_sold,
             "lot_id":       lid,
+            "last_updated": max([d for d in (lot.created_at, dev_upd_by_lot.get(lid)) if d] or [None]),
         })
     return templates.TemplateResponse("reports/lot_pl.html", {
         "request": request, "lot_pl": lot_pl, "current_user": current_user

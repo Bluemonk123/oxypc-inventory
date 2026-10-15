@@ -20,7 +20,7 @@
     <div>
       <table id="plTable" class="table table-hover mb-0 small">
         <thead class="table-dark">
-          <tr><th style="width:32px"><input type="checkbox" id="plSelectAll" class="form-check-input" title="Select all"></th><th>Lot#</th><th>Supplier</th><th>Date</th><th>Qty</th><th>Devices</th><th>Sold</th><th>Buying Price</th><th>Parts Cost</th><th>Labour Cost</th><th>Total Cost</th><th title="Sale value of sold devices">Gross Sales</th><th title="Refunds on customer returns">Returns</th><th title="Gross Sales − Returns">Net Revenue</th><th title="Net Revenue − Total Cost (whole lot)">Profit</th><th>Margin</th><th title="Buying + parts + labour of the sold devices only">Cost of Sold Units</th><th title="Net Revenue − Cost of Sold Units">Profit on Sold Units</th></tr>
+          <tr><th style="width:32px"><input type="checkbox" id="plSelectAll" class="form-check-input" title="Select all"></th><th>Lot#</th><th>Supplier</th><th>Date</th><th title="Newest of: lot added, or any of its devices changed">Last Updated</th><th>Qty</th><th>Devices</th><th>Sold</th><th>Buying Price</th><th>Parts Cost</th><th>Labour Cost</th><th>Total Cost</th><th title="Sale value of sold devices">Gross Sales</th><th title="Refunds on customer returns">Returns</th><th title="Gross Sales − Returns">Net Revenue</th><th title="Net Revenue − Total Cost (whole lot)">Profit</th><th>Margin</th><th title="Buying + parts + labour of the sold devices only">Cost of Sold Units</th><th title="Net Revenue − Cost of Sold Units">Profit on Sold Units</th></tr>
         </thead>
         <tbody>
           {% set ns = namespace(total_buying=0, total_parts=0, total_labour=0, total_revenue=0, total_profit=0, total_gross=0, total_returns=0, total_cost_sold=0, total_profit_sold=0) %}
@@ -39,6 +39,7 @@
             <td><a href="/lots/{{ lp.lot_id }}" class="fw-semibold text-decoration-none">{{ lp.lot_number }}</a></td>
             <td>{{ lp.supplier }}</td>
             <td>{{ lp.purchase_date.strftime('%d-%m-%Y') }}</td>
+            <td data-order="{{ lp.last_updated.strftime('%Y%m%d%H%M%S') if lp.last_updated else '0' }}">{{ lp.last_updated.strftime('%d-%m-%Y %H:%M') if lp.last_updated else '—' }}</td>
             <td>{{ lp.qty }}</td>
             <td>{{ lp.devices }}</td>
             <td>{{ lp.sold }}</td>
@@ -64,7 +65,7 @@
         <tfoot class="table-dark">
           <tr class="fw-bold">
             <td></td>
-            <td colspan="6">TOTAL</td>
+            <td colspan="7">TOTAL</td>
             <td>₹{{ "{:,.0f}".format(ns.total_buying) }}</td>
             <td>₹{{ "{:,.0f}".format(ns.total_parts) }}</td>
             <td class="text-warning">₹{{ "{:,.0f}".format(ns.total_labour) }}</td>
@@ -91,7 +92,7 @@ $(document).ready(function(){
   if (!$('#plTable').length) return;
   function updateCount(){ $('#plSelCount').text($('.plRowChk:checked').length + ' selected'); }
   initGlobalTable('#plTable', {
-    order: [[1, 'desc']],
+    order: [[4, 'desc']],
     columnDefs: [{ orderable: false, targets: 0 }],
     language: { emptyTable: 'No lots found' }
   }, {
