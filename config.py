@@ -30,7 +30,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("OXYPC_TOKEN_EXPIRE_MINUTES") o
 REFRESH_TOKEN_EXPIRE_DAYS = int(os.environ.get("OXYPC_REFRESH_DAYS") or _get("security", "refresh_token_expire_days", "7"))
 APP_PORT = int(os.environ.get("OXYPC_PORT") or _get("app", "port", "8000"))
 APP_HOST = os.environ.get("OXYPC_HOST") or _get("app", "host", "0.0.0.0")
-APP_NAME = "OxyPC Inventory"
+APP_NAME = "OxyPC Inventory Lifecycle"
 
 # Cookie Secure flag — set OXYPC_COOKIE_SECURE=1 in production (HTTPS) so auth
 # cookies are never sent over plain HTTP. Defaults off for local LAN/HTTP testing.

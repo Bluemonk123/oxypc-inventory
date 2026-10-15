@@ -748,7 +748,7 @@ def _pdf_fpdf(manual: dict) -> bytes:
     # ── Footer ───────────────────────────────────────────────────────────────
     pdf.set_font("Helvetica", "I", 8)
     pdf.set_text_color(150, 150, 150)
-    pdf.cell(0, 5, "OxyPC Inventory System -- Confidential Training Document", align="C")
+    pdf.cell(0, 5, "OxyPC Inventory Lifecycle -- Confidential Training Document", align="C")
 
     return bytes(pdf.output())
 

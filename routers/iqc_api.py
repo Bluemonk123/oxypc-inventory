@@ -45,7 +45,7 @@ async def _require_api_key(x_oxyqc_key: str = Header(..., alias="X-OxyQC-Key")):
 
 @router.get("/health")
 async def health(_: None = Depends(_require_api_key)):
-    return {"status": "ok", "service": "OxyPC Inventory IQC API", "time": app_now().isoformat()}
+    return {"status": "ok", "service": "OxyPC Inventory Lifecycle IQC API", "time": app_now().isoformat()}
 
 
 # ── Lot lookup ────────────────────────────────────────────────────────────────

@@ -1172,7 +1172,7 @@ Generated from the QA Dashboard — reflects the current build.
 
 1. PURPOSE
 ----------
-OxyPC Inventory is the operational ERP for OxyPC Computers' IT asset
+OxyPC Inventory Lifecycle is the operational ERP for OxyPC Computers' IT asset
 refurbishment lifecycle — from sourcing/GRN through IQC, repair, cosmetic
 and final QC, into inventory, and out through sales/dispatch or the dealer
 trade partner portal.
@@ -1234,7 +1234,7 @@ async def srs_technical_spec_download(current_user: User = Depends(_view)):
     from utils.srs_pdf import build_spec_pdf
     pdf_bytes = build_spec_pdf(
         doc_code="TSD-1.0",
-        title="OxyPC Inventory — Technical Specification Document",
+        title="OxyPC Inventory Lifecycle — Technical Specification Document",
         subtitle="Architecture, data model, security, and integrations",
         raw_content=_TSD_CONTENT,
         generated_on=app_now().strftime("%d %b %Y"),
@@ -1250,7 +1250,7 @@ async def srs_functional_spec_download(current_user: User = Depends(_view)):
     from utils.srs_pdf import build_spec_pdf
     pdf_bytes = build_spec_pdf(
         doc_code="FSD-1.0",
-        title="OxyPC Inventory — Functional Specification Document",
+        title="OxyPC Inventory Lifecycle — Functional Specification Document",
         subtitle="Roles, workflows, and acceptance criteria",
         raw_content=_FSD_CONTENT,
         generated_on=app_now().strftime("%d %b %Y"),

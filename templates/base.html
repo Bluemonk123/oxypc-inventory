@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}OxyPC Inventory{% endblock %}</title>
+  <title>{% block title %}OxyPC Inventory Lifecycle{% endblock %}</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/css/bootstrap.min.css">
   <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.css">
   <link rel="stylesheet" href="/static/vendor/datatables/css/dataTables.bootstrap5.min.css">
@@ -19,7 +19,7 @@
 <div class="d-flex" id="wrapper">
   <!-- Sidebar -->
   <nav id="sidebar" class="sidebar-nav d-flex flex-column flex-shrink-0 p-0">
-    <div class="sidebar-brand d-flex align-items-center px-3 py-3" style="background:#006930;color:#fff;">
+    <div class="sidebar-brand d-flex align-items-center px-3 py-3" style="background:#198754;color:#fff;">
       <i class="bi bi-laptop me-2 fs-4"></i>
       <span class="fs-6 fw-bold text-nowrap">Inventory Lifecycle</span>
     </div>
@@ -901,7 +901,7 @@
     <style>
       #topProgressBar { display:none; height:4px; width:100%; overflow:hidden; position:relative; background:transparent; }
       #topProgressBar.active { display:block; }
-      #topProgressBar .bar { position:absolute; top:0; left:-60%; height:100%; width:60%; background:#006930; animation: topProgressSlide 1.1s linear infinite; }
+      #topProgressBar .bar { position:absolute; top:0; left:-60%; height:100%; width:60%; background:#198754; animation: topProgressSlide 1.1s linear infinite; }
       @keyframes topProgressSlide {
         0%   { left:-60%; }
         100% { left:100%; }

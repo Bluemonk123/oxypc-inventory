@@ -3,9 +3,9 @@
 :root {
   --sidebar-width: 240px;
   --sidebar-bg: #1e2a3a;
-  --sidebar-text: #b8c5d6;
-  --sidebar-active: #1a56db;
-  --brand-blue: #1a56db;
+  --sidebar-text: #f0f4f8;   /* same as the page background (2026-10-15) */
+  --sidebar-active: #0377c2;
+  --brand-blue: #0377c2;
   --topbar-height: 56px;
   /* Global UI scale. Anything sized in vh must divide by this, since zoom shrinks
      the CSS pixel but not the viewport unit — 100vh would render 10% short. */
@@ -78,7 +78,7 @@ body {
 
 .sidebar-footer {
   border-top: 1px solid rgba(255,255,255,0.15);
-  background: #1f3864; /* dark navy blue */
+  background: #0e3a7a; /* navy — same as the filter-bar rule and table card titles */
   color: #fff;
 }
 .sidebar-footer small { color: rgba(255,255,255,0.85) !important; }
@@ -114,7 +114,7 @@ body {
   transition: background 0.15s, color 0.15s;
 }
 .nav-history-btn:not(:disabled) { background: var(--brand-blue); color: #fff; }
-.nav-history-btn:not(:disabled):hover { background: #163f9e; }
+.nav-history-btn:not(:disabled):hover { background: #025f9b; }
 .nav-history-btn:disabled { cursor: default; }
 .nav-history-divider { width: 1px; background: #dfe4ea; }
 
@@ -144,7 +144,7 @@ body {
 }
 .barcode-field:focus {
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 0.25rem rgba(26, 86, 219, 0.15);
+  box-shadow: 0 0 0 0.25rem rgba(3, 119, 194, 0.15);
 }
 
 /* Clickable KPI cards */
@@ -509,7 +509,7 @@ fieldset:disabled .btn {
    - all filters + buttons on ONE row; fields share the width and shrink together
    - white fields with black text (multi-select buttons included)
    - no overflow clipping, so dropdown menus open fully */
-.filter-bar { margin-bottom: 1rem; padding-bottom: 12px; border-bottom: 1px solid #1f3b63; }
+.filter-bar { margin-bottom: 1rem; padding-bottom: 12px; border-bottom: 1px solid #0e3a7a; }
 .filter-bar-row { display: flex; flex-wrap: nowrap; align-items: center; gap: .5rem; }
 .filter-bar-row > div { flex: 1 1 0; min-width: 70px; width: auto; }
 .filter-bar-row > div:last-child { flex: 0 0 auto; min-width: 0; white-space: nowrap; }
@@ -541,9 +541,9 @@ fieldset:disabled .btn {
 /* Global Table card header: light sky blue with navy title. The card is tagged
    .gtable-card by initGlobalTable() (static/js/global-table.js). !important
    because these headers carry bg-transparent / bg-white utility classes. */
-.gtable-card > .card-header { background: #dcebfb !important; color: #1f3b63; border-bottom: 1px solid #c3d8f2; }
+.gtable-card > .card-header { background: #d9ebf6 !important; color: #0e3a7a; border-bottom: 1px solid #c0ddf0; }
 .gtable-card > .card-header > .fw-semibold, .gtable-card > .card-header > span,
-.gtable-card > .card-header > h5, .gtable-card > .card-header > h6 { color: #1f3b63; }
+.gtable-card > .card-header > h5, .gtable-card > .card-header > h6 { color: #0e3a7a; }
 
 /* App-wide small shadow (Bootstrap .shadow-sm, used on cards everywhere):
    was 0 .125rem .25rem rgba(0,0,0,.075). */
