@@ -2,6 +2,7 @@
 {% block title %}Create GRN — OxyPC{% endblock %}
 {% block page_title %}Create GRN{% endblock %}
 {% block content %}
+{% import "_multiselect_filter.html" as ms %}
 {# Flash messages are rendered once by base.html — rendering them here too
    showed every success/error twice. #}
 
@@ -24,23 +25,40 @@
    leaves visible, so they always describe the same slice of data as the table
    below rather than the whole dataset — same pattern as GRN with Invoice's
    (templates/grn/import.html) cards. #}
-<div class="row g-3 mb-3">
+{# Light tile design (Design System "A · Light-tint tile"), same as
+   Inventory Manager / Production Manager. IDs kept — the filter script fills
+   the numbers. #}
+<style>
+  .lt-tiles-row{padding:4px 6px 10px}
+  .lt-tile{position:relative; overflow:hidden; border-radius:10px; padding:.6rem .7rem;
+           background:color-mix(in srgb, var(--tc) 8%, #fff) !important;
+           border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
+           box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
+  .lt-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1}
+  .lt-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1}
+  .lt-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
+              color:color-mix(in srgb, var(--tc) 18%, transparent); pointer-events:none}
+</style>
+<div class="row g-3 mb-4 lt-tiles-row">
   <div class="col-6 col-lg-4">
-    <div class="card border-0 shadow-sm text-center p-3">
-      <div class="fs-3 fw-bold text-primary" id="cardTotalQty">0</div>
-      <div class="small text-muted">Total GRN Quantities</div>
+    <div class="lt-tile h-100" style="--tc:#0d6efd">
+      <div class="lt-tile-count" id="cardTotalQty">0</div>
+      <div class="lt-tile-label">Total GRN Quantities</div>
+      <i class="bi bi-receipt lt-tile-wm"></i>
     </div>
   </div>
   <div class="col-6 col-lg-4">
-    <div class="card border-0 shadow-sm text-center p-3">
-      <div class="fs-3 fw-bold text-success" id="cardDevicesAdded">0</div>
-      <div class="small text-muted">Total Devices Added</div>
+    <div class="lt-tile h-100" style="--tc:#198754">
+      <div class="lt-tile-count" id="cardDevicesAdded">0</div>
+      <div class="lt-tile-label">Total Devices Added</div>
+      <i class="bi bi-check2-square lt-tile-wm"></i>
     </div>
   </div>
   <div class="col-6 col-lg-4">
-    <div class="card border-0 shadow-sm text-center p-3">
-      <div class="fs-3 fw-bold text-warning" id="cardDevicesPending">0</div>
-      <div class="small text-muted">Total Devices Pending</div>
+    <div class="lt-tile h-100" style="--tc:#fd7e14">
+      <div class="lt-tile-count" id="cardDevicesPending">0</div>
+      <div class="lt-tile-label">Total Devices Pending</div>
+      <i class="bi bi-hourglass-split lt-tile-wm"></i>
     </div>
   </div>
 </div>
@@ -161,25 +179,19 @@
     <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold"><i class="bi bi-upc me-2"></i>GRN Pending for these Tag Numbers
         <span class="badge bg-secondary ms-1">{{ pending_count }}</span></span>
-      <div class="d-flex align-items-center gap-2">
-        <span class="badge bg-success" id="pendSelCount">0 selected</span>
-        <input type="text" id="pendScan" class="form-control form-control-sm font-monospace"
-               placeholder="Scan / type tag numbers, comma separated…" style="width:260px" autocomplete="off">
-      </div>
-    </div>
-    <div class="card-body pb-0 pt-2 px-3">
-      <div class="filter-bar mb-2">
-        <div class="filter-bar-row">
-          <div><input type="text" id="fPendInvoice" title="Search Invoice" class="form-control form-control-sm" placeholder="Search invoice number…"></div>
-          <div><input type="text" id="fPendPo" title="Search PO" class="form-control form-control-sm" placeholder="Search PO number…"></div>
-          <div><select id="fPendDeviceType" title="Device Type" class="form-select form-select-sm">
-            <option value="">All Device Types</option>
-            {% for dt in device_type_options %}
-            <option value="{{ dt }}">{{ dt }}</option>
-            {% endfor %}
-          </select></div>
-          <div><button type="button" id="fPendReset" class="btn btn-outline-secondary btn-sm">Reset Filters</button></div>
-        </div>
+      {# Filters on the right of the header (2026-10-15); they feed the
+         server-side query (see /grn/post-iqc/data). #}
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <input type="text" id="fPendInvoice" title="Search Invoice" class="form-control form-control-sm" placeholder="Search invoice number…" style="width:170px">
+        <input type="text" id="fPendPo" title="Search PO" class="form-control form-control-sm" placeholder="Search PO number…" style="width:160px">
+        <select id="fPendDeviceType" title="Device Type" class="form-select form-select-sm" style="width:160px">
+          <option value="">All Device Types</option>
+          {% for dt in device_type_options %}
+          <option value="{{ dt }}">{{ dt }}</option>
+          {% endfor %}
+        </select>
+        {{ ms.multiselect_inline('pend_entity', 'Entity', entity_options + ['Unassigned'], '') }}
+        <button type="button" id="fPendReset" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset Filters</button>
       </div>
     </div>
     <div class="card-body p-0">
@@ -187,8 +199,8 @@
         <table id="pendingTable" class="table table-hover mb-0 small align-middle">
           <thead class="table-dark"><tr>
             <th class="ps-3" style="width:40px"><input type="checkbox" id="checkAll"></th>
-            <th>Tag Number</th><th>Brand</th><th>Model</th><th>Device Type</th><th>RAM</th><th>Storage</th><th>Stage</th>
-            <th class="d-none">Invoice</th><th class="d-none">PO</th>
+            <th>Tag Number</th><th>Brand</th><th>Model</th><th>Device Type</th><th>RAM</th><th>Storage</th>
+            <th>Invoice Number</th><th>Stage</th><th class="d-none">PO</th>
           </tr></thead>
         {# Rows are supplied by /grn/post-iqc/data (DataTables server-side) —
            'pending' is effectively the whole IQC backlog (~3,900 devices with
@@ -389,6 +401,7 @@
 
 {% endblock %}
 {% block scripts %}
+<script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
 <script src="/static/js/tag-scan-autocheck.js?v={{ ASSET_VERSION }}"></script>
 <script>
 $(document).ready(function(){
@@ -442,6 +455,12 @@ $(document).ready(function(){
   // client-side ext.search predicate over rows already in the DOM. They now
   // travel to /grn/post-iqc/data as query params instead, since the row set
   // itself is fetched a page at a time rather than filtered after the fact.
+  // True while the Search Invoice box or the table's own search has text.
+  function pendSearching(api) {
+    var inv = (document.getElementById('fPendInvoice').value || '').trim();
+    var q = api && api.search ? (api.search() || '').trim() : '';
+    return !!(inv || q);
+  }
   var dtPend = window.dtPend = initGlobalTable('#pendingTable', {
     serverSide: true,
     processing: true,
@@ -454,25 +473,56 @@ $(document).ready(function(){
         d.device_type = document.getElementById('fPendDeviceType').value || '';
         d.pend_invoice = document.getElementById('fPendInvoice').value || '';
         d.pend_po = document.getElementById('fPendPo').value || '';
+        d.pend_entity = (document.getElementById('ms_val_pend_entity') || {}).value || '';
       },
       dataSrc: function (json) { return json.data; },
     },
-    columnDefs:[{orderable:false, targets:0}, {visible:false, targets:[8,9]}],
+    columnDefs:[{orderable:false, targets:[0,8]}, {visible:false, targets:[9]}],
     drawCallback: function () {
-      document.getElementById('checkAll').checked = false;
+      // Search Invoice or the table search box active -> every matching row
+      // is ticked automatically, ready for "Map this GRN" (2026-10-15).
+      var api = this.api();
+      var auto = pendSearching(api);
+      document.querySelectorAll('#pendingTable .pendChk').forEach(function (c) { c.checked = auto; });
+      document.getElementById('checkAll').checked = auto && document.querySelectorAll('#pendingTable .pendChk').length > 0;
       updatePendCount();
     },
   }, {
-    selectAll: { headerSelector: '#checkAll', rowSelector: '.pendChk', onChange: function(){ updatePendCount(); }, resetOnDraw: true },
+    selectAll: { headerSelector: '#checkAll', rowSelector: '.pendChk', onChange: function(){ updatePendCount(); }, resetOnDraw: false },  // drawCallback sets the header box (auto-select on search)
   });
+  // While searching, show every match on one page so all of them can be
+  // ticked and mapped together; back to 12 per page when cleared.
+  var PEND_SEARCH_LEN = -1, PEND_PAGE_LEN = 12;   // -1 = every match, no cap
+  function pendSetLen(searching) {
+    var want = searching ? PEND_SEARCH_LEN : PEND_PAGE_LEN;
+    if (dtPend.page.len() !== want) dtPend.page.len(want);
+  }
+  $(dtPend.table().container()).find('input[type="search"]').first()
+    .attr('placeholder', 'Search or scan tags (comma separated)…');
+  // Page size is settled right before every filtered redraw ('search' fires
+  // ahead of the server request), so clearing a search reliably goes back
+  // to 12 per page.
+  dtPend.on('search.dt', function () { pendSetLen(pendSearching(dtPend)); });
+  var entHidden = document.getElementById('ms_val_pend_entity');
+  if (entHidden) entHidden.addEventListener('ms:change', function () { dtPend.draw(); });
+  // Selected count sits in the table toolbar, just before its search box.
+  $(dtPend.table().container()).find('.dataTables_filter').first()
+    .prepend('<span class="badge bg-success me-2" id="pendSelCount">0 selected</span>');
+  updatePendCount();
   ['fPendInvoice','fPendPo'].forEach(function(id){
-    document.getElementById(id).addEventListener('input', function(){ dtPend.draw(); });
+    document.getElementById(id).addEventListener('input', function(){
+      pendSetLen(pendSearching(dtPend));
+      dtPend.draw();
+    });
   });
   document.getElementById('fPendDeviceType').addEventListener('change', function(){ dtPend.draw(); });
   document.getElementById('fPendReset').addEventListener('click', function(){
     document.getElementById('fPendInvoice').value = '';
     document.getElementById('fPendPo').value = '';
     document.getElementById('fPendDeviceType').value = '';
+    var entClear = document.querySelector('[data-ms="pend_entity"] .ms-none');
+    if (entClear) entClear.click();          // clears Entity (and redraws)
+    pendSetLen(pendSearching(dtPend));
     dtPend.draw();
   });
 });
@@ -503,7 +553,7 @@ updatePendCount();
 
 // Scan-to-select: comma-separated tag numbers auto-check matching rows
 // (shared component — also used on IQC List and Inventory Manager).
-initTagScanAutocheck({ inputId: 'pendScan', tableSelector: '#pendingTable', rowCheckboxSelector: '.pendChk' });
+// (The header scan box was removed on 2026-10-15; the table's own search box finds tags.)
 
 // Map this GRN — handler (used for both initial buttons and dynamically added ones)
 function mapGrnHandler(){

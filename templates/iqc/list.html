@@ -2,55 +2,50 @@
 {% block title %}IQC List — OxyPC{% endblock %}
 {% block page_title %}IQC Inspection{% endblock %}
 {% block content %}
-<form method="get" action="/iqc" class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold mb-1">Search</label>
-        <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm font-monospace"
-               placeholder="Tag Number, model, brand, serial number…">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Stage</label>
-        <select name="stage" class="form-select form-select-sm">
-          <option value="">IQC (default)</option>
-          {% for value, label in stage_options %}
-          <option value="{{ value }}" {% if stage == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Grade</label>
-        <select name="grade" class="form-select form-select-sm">
-          <option value="">All Grades</option>
-          {% for value, label in grade_options() %}
-          <option value="{{ value }}" {% if grade == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Lot</label>
-        <select name="lot" class="form-select form-select-sm">
-          <option value="">All Lots</option>
-          {% for l in lots %}
-          <option value="{{ l.lot_number }}" {% if lot == l.lot_number %}selected{% endif %}>{{ l.lot_number }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold mb-1">Device Type</label>
-        <select name="device_type" class="form-select form-select-sm">
-          <option value="">All Device Types</option>
-          {% for dt in device_type_options %}
-          <option value="{{ dt }}" {% if device_type == dt %}selected{% endif %}>{{ dt }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% include "_date_range_fields.html" %}
-      <div class="col-md-2 d-flex gap-2">
-        <button type="submit" class="btn btn-primary btn-sm flex-grow-1"><i class="bi bi-search me-1"></i></button>
-        <a href="/iqc" class="btn btn-outline-secondary btn-sm">Reset</a>
-      </div>
+{# Global filter bar (static/css/app.css .filter-bar) — one row, labels as
+   title= tooltips, Search/Reset at the right edge (2026-10-15). #}
+<form method="get" action="/iqc" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" value="{{ q }}" title="Search" class="form-control form-control-sm font-monospace"
+             placeholder="Tag Number, model, brand, serial number…">
+    </div>
+    <div>
+      <select name="stage" class="form-select form-select-sm" title="Stage">
+        <option value="">IQC (default)</option>
+        {% for value, label in stage_options %}
+        <option value="{{ value }}" {% if stage == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="grade" class="form-select form-select-sm" title="Grade">
+        <option value="">All Grades</option>
+        {% for value, label in grade_options() %}
+        <option value="{{ value }}" {% if grade == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="lot" class="form-select form-select-sm" title="Lot">
+        <option value="">All Lots</option>
+        {% for l in lots %}
+        <option value="{{ l.lot_number }}" {% if lot == l.lot_number %}selected{% endif %}>{{ l.lot_number }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="device_type" class="form-select form-select-sm" title="Device Type">
+        <option value="">All Device Types</option>
+        {% for dt in device_type_options %}
+        <option value="{{ dt }}" {% if device_type == dt %}selected{% endif %}>{{ dt }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% include "_date_range_fields.html" %}
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search me-1"></i>Search</button>
+      <a href="/iqc" class="btn btn-outline-secondary bg-white btn-sm">Reset</a>
     </div>
   </div>
 </form>

@@ -566,3 +566,24 @@ fieldset:disabled .btn {
    padding a .card-body gives. */
 .gtable-tab-hidden-header { display: none !important; }
 .dataTables_wrapper.gtable-tab-wrap { padding: 1rem; }
+
+/* ── Global: every field has a white background (2026-10-15) ─────────────
+   Inputs, selects and textareas anywhere in the app (filter bars, card
+   headers, table toolbars, modals) are white with dark text, so a field never
+   picks up the tint of whatever it sits on. Disabled fields keep Bootstrap's
+   grey so they still read as unavailable. The multi-select dropdown button
+   (templates/_multiselect_filter.html) is an outline button, which app-wide
+   gets a 5% colour tint (see above) — it is a field, so it is white too, in
+   every state (hover / focus / open). */
+.form-control:not(:disabled),
+.form-select:not(:disabled) {
+  background-color: #fff;
+  color: #212529;
+}
+.ms-filter .btn,
+.ms-filter .btn:hover, .ms-filter .btn:focus,
+.ms-filter .btn:active, .ms-filter .btn.show {
+  background-color: #fff !important;
+  color: #212529 !important;
+  border-color: #ced4da !important;
+}

@@ -22,6 +22,7 @@ from models.engines import AuditLog
 from models.grn_import import GRNImport
 from services.invoice_parser import extract_invoice_fields
 from services.audit_engine import audit
+from utils.master_data import entity_values
 from services.location_defaults import ensure_stage_location
 from config import UPLOADS_DIR
 from auth.dependencies import get_current_user, require_roles, verify_csrf, require_additional_perm
@@ -126,7 +127,7 @@ async def grn_import_list(request: Request, db: AsyncSession = Depends(get_db),
 async def grn_post_iqc_data(
     request: Request,
     draw: int = 1, start: int = 0, length: int = 25,
-    device_type: str = "", pend_invoice: str = "", pend_po: str = "",
+    device_type: str = "", pend_invoice: str = "", pend_po: str = "", pend_entity: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
@@ -146,6 +147,14 @@ async def grn_post_iqc_data(
                     Device.is_active == True, Device.is_trashed == False]
     if device_type:
         base_filters.append(Device.device_type == device_type)
+    # Entity multi-select (comma-separated; "Unassigned" = no entity) — 2026-10-15.
+    ents = [e.strip() for e in (pend_entity or "").split(",") if e.strip()]
+    if ents:
+        named = [e for e in ents if e != "Unassigned"]
+        ent_or = [Device.entity.in_(named)] if named else []
+        if "Unassigned" in ents:
+            ent_or.append(or_(Device.entity.is_(None), Device.entity == ""))
+        base_filters.append(or_(*ent_or))
     # Matches the old client-side rule: with either term present, a row must
     # hit invoice OR po (not both) to survive — replicated exactly rather than
     # simplified to an AND, which would change what the filter selects.
@@ -162,7 +171,13 @@ async def grn_post_iqc_data(
 
     search = (request.query_params.get("search[value]") or "").strip()
     search_filters = []
-    if search:
+    if search and "," in search:
+        # Comma-separated Tag Numbers (scanned or pasted) — exact tag match,
+        # so every listed tag shows and gets auto-selected (2026-10-15).
+        tags = [t.strip().upper() for t in search.split(",") if t.strip()]
+        if tags:
+            search_filters.append(func.upper(Device.barcode).in_(tags))
+    elif search:
         like = f"%{search}%"
         search_filters.append(or_(
             Device.barcode.ilike(like), Device.brand.ilike(like),
@@ -173,9 +188,10 @@ async def grn_post_iqc_data(
     filtered = total if not search_filters else (
         (await db.execute(count_q.where(*search_filters))).scalar() or 0)
 
+    # 7 = Invoice Number (shown, before Stage — 2026-10-15); 8 = Stage; 9 = PO (hidden).
     col_map = {1: Device.barcode, 2: Device.brand, 3: Device.model,
                4: Device.device_type, 5: Device.ram_gb, 6: Device.storage_gb,
-               8: Device.invoice_number, 9: Device.po_number}
+               7: Device.invoice_number, 9: Device.po_number}
     try:
         order_col = int(request.query_params.get("order[0][column]", 0))
     except ValueError:
@@ -187,7 +203,9 @@ async def grn_post_iqc_data(
     rows = (await db.execute(
         select(Device).where(*base_filters, *search_filters)
         .order_by(order_by, Device.barcode)
-        .offset(max(0, start)).limit(min(max(1, length), 5000))
+        # length -1 = "all rows" (sent while a search is active, so every match
+        # can be auto-selected and mapped at once — no cap, 2026-10-15).
+        .offset(max(0, start) if length != -1 else 0).limit(None if length == -1 else min(max(1, length), 5000))
     )).scalars().all()
 
     def esc(v):
@@ -197,12 +215,15 @@ async def grn_post_iqc_data(
     for d in rows:
         data.append([
             f'<input type="checkbox" class="pendChk" name="device_ids" value="{d.id}" data-barcode="{esc(d.barcode)}">',
-            f'<a href="/devices/{esc(d.barcode)}" class="font-monospace text-decoration-none">{esc(d.barcode)}</a>',
+            # Entity under the Tag Number — same style as All Inventory.
+            (f'<a href="/devices/{esc(d.barcode)}" class="font-monospace text-decoration-none">{esc(d.barcode)}</a>'
+             f'<div style="color:#999999;font-size:12px;">{esc(d.entity) if d.entity else "—"}</div>'),
             esc(d.brand or "—"), esc(d.model or "—"), esc(d.device_type or "—"),
             f"{d.ram_gb} GB" if d.ram_gb else "—",
             f"{d.storage_gb} GB" if d.storage_gb else "—",
+            esc(d.invoice_number or "—"),
             f'<span class="badge bg-{d.stage_color}">{esc(d.stage_label)}</span>',
-            esc(d.invoice_number or ""), esc(d.po_number or ""),
+            esc(d.po_number or ""),
         ])
 
     return {"draw": draw, "recordsTotal": total, "recordsFiltered": filtered, "data": data}
@@ -271,6 +292,7 @@ async def grn_post_iqc(request: Request, db: AsyncSession = Depends(get_db),
         "current_user": current_user, "error": error, "success": success,
         "highlight_tag": highlight_tag,
         "device_type_options": ["Laptop", "Desktop", "AIO", "Workstation", "Mini PC", "Server", "Tablet"],
+        "entity_options": await entity_values(db),
         "lots_by_grn": lots_by_grn,
         "lots_json": lots_json,
     })
