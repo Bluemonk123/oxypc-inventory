@@ -144,18 +144,12 @@ async def dashboard(
     _loc = []
     if zone_val:
         _zone_location_ids = select(StorageLocation.id).where(StorageLocation.zone == zone_val)
-        _latest_log_ts = (
-            select(DeviceLocationLog.device_id,
-                   func.max(DeviceLocationLog.logged_at).label("latest"))
-            .group_by(DeviceLocationLog.device_id)
-            .subquery()
-        )
+        # DISTINCT ON (2026-10-16): one pass over the log instead of
+        # max()-per-device then a join back — ~6x faster on a large log.
         _latest_log = (
             select(DeviceLocationLog.device_id, DeviceLocationLog.location_id)
-            .join(_latest_log_ts, and_(
-                DeviceLocationLog.device_id == _latest_log_ts.c.device_id,
-                DeviceLocationLog.logged_at == _latest_log_ts.c.latest,
-            ))
+            .distinct(DeviceLocationLog.device_id)
+            .order_by(DeviceLocationLog.device_id, DeviceLocationLog.logged_at.desc())
             .subquery()
         )
         _loc = [or_(
@@ -325,18 +319,13 @@ async def dashboard(
     # above, but unconditional/unfiltered by any specific zone — a separate
     # subquery so this doesn't disturb that already-working filter.
     # Used only for the Split Zone per-stage breakdown below.
-    _loc_latest_ts = (
-        select(DeviceLocationLog.device_id,
-               func.max(DeviceLocationLog.logged_at).label("latest"))
-        .group_by(DeviceLocationLog.device_id)
-        .subquery()
-    )
+    # 2026-10-16: DISTINCT ON instead of max()-then-join — one pass over the
+    # log table, and a device can't be counted twice when two of its log rows
+    # share the same logged_at.
     _loc_latest = (
         select(DeviceLocationLog.device_id, DeviceLocationLog.location_id)
-        .join(_loc_latest_ts, and_(
-            DeviceLocationLog.device_id == _loc_latest_ts.c.device_id,
-            DeviceLocationLog.logged_at == _loc_latest_ts.c.latest,
-        ))
+        .distinct(DeviceLocationLog.device_id)
+        .order_by(DeviceLocationLog.device_id, DeviceLocationLog.logged_at.desc())
         .subquery()
     )
     _resolved_location_id = func.coalesce(_loc_latest.c.location_id, Device.location_id)
@@ -403,6 +392,17 @@ async def dashboard(
     #     single dashboard-wide count to replicate exactly (it depends on who
     #     is looking, not just device state). Left unchanged and flagged
     #     here rather than guessed at.
+    GRN_WHERE = [Device.grn_number.isnot(None), Device.grn_number != "",
+                 Device.is_active == True]  # noqa: E712
+    # Stage-based steps as stage lists (used by the grouped query below; must
+    # stay in sync with PIPELINE_STEPS).
+    STEP_STAGES = {
+        "iqc": [DeviceStage.iqc], "stock_in": [DeviceStage.stock_in],
+        "l1l2": [DeviceStage.l1, DeviceStage.l2], "l3l4": [DeviceStage.l3],
+        "production": [DeviceStage.trc_production], "qc_check": [DeviceStage.qc_check],
+        "cosmetic": list(COSMETIC_STAGES), "final_qc": list(FINAL_QC_STAGES),
+        "ready_to_sale": [DeviceStage.ready_to_sale], "sold": [DeviceStage.sold],
+    }
     PIPELINE_STEPS = [
         ("grn", [Device.grn_number.isnot(None), Device.grn_number != "",
                  Device.is_active == True]),
@@ -424,8 +424,11 @@ async def dashboard(
     # under the same 30 s window/gate as stage_counts/category_counts above
     # (reuses _now from that check) — this was previously recomputed on
     # every single dashboard load regardless of the cache.
-    if (not _dash_filters_active and _AGG_CACHE["ts"]
-            and (_now - _AGG_CACHE["ts"]) < _AGG_TTL and _AGG_CACHE.get("pipeline")):
+    # Own timestamp (2026-10-16): this used to check the shared "ts", which
+    # the stage-count block above refreshes first — so once filled, the
+    # pipeline was never recomputed until a server restart (stale numbers).
+    if (not _dash_filters_active and _AGG_CACHE.get("pipeline")
+            and (_now - _AGG_CACHE.get("pipeline_ts", 0.0)) < _AGG_TTL):
         pipeline_counts, pipeline_by_entity, pipeline_by_location = _AGG_CACHE["pipeline"]
     else:
         try:
@@ -435,13 +438,58 @@ async def dashboard(
                 str(loc.id): loc.zone
                 for loc in (await db.execute(select(StorageLocation))).scalars().all()
             }
-            pipeline_counts = {}
-            pipeline_by_entity = {}
-            pipeline_by_location = {}
-            for key, where in PIPELINE_STEPS:
-                pipeline_counts[key] = await _pipe_count(*where)
-                pipeline_by_entity[key] = await _pipe_count_by_entity(*where)
-                pipeline_by_location[key] = await _pipe_count_by_location(*where)
+            # 2026-10-16 speed-up: was 3 queries x 11 steps = 33 round-trips,
+            # each by-zone one re-scanning the whole location log (~2 s on a
+            # production-sized DB). Now ONE grouped query (stage x entity x
+            # resolved location) for the 10 stage-based steps plus one for
+            # GRN, rolled up in Python. Same filters, same numbers.
+            _step_of_stage = {}
+            for _k, _sts in STEP_STAGES.items():
+                for _st in _sts:
+                    _step_of_stage[_st] = _k
+            _base = [Device.is_trashed == False, *_ent, *_dtype, *_loc]  # noqa: E712
+
+            def _zone_label(loc_id):
+                z = _zone_by_location_id.get(str(loc_id)) if loc_id else None
+                return ZONE_LABELS.get(z, getattr(z, "value", z)) if z else "Unassigned"
+
+            _cnt = {k: 0 for k, _ in PIPELINE_STEPS}
+            _ent_c = {k: {} for k, _ in PIPELINE_STEPS}
+            _zone_c = {k: {} for k, _ in PIPELINE_STEPS}
+
+            def _add(key, ent, loc_id, n):
+                _cnt[key] += n
+                e = ent or "Unassigned"
+                _ent_c[key][e] = _ent_c[key].get(e, 0) + n
+                zl = _zone_label(loc_id)
+                _zone_c[key][zl] = _zone_c[key].get(zl, 0) + n
+
+            for st, ent, loc_id, n in (await db.execute(
+                select(Device.current_stage, Device.entity, _resolved_location_id, func.count(Device.id))
+                .select_from(Device)
+                .outerjoin(_loc_latest, _loc_latest.c.device_id == Device.id)
+                .where(*_base, Device.current_stage.in_(list(_step_of_stage)))
+                .group_by(Device.current_stage, Device.entity, _resolved_location_id)
+            )).all():
+                _add(_step_of_stage[st], ent, loc_id, n)
+            for ent, loc_id, n in (await db.execute(
+                select(Device.entity, _resolved_location_id, func.count(Device.id))
+                .select_from(Device)
+                .outerjoin(_loc_latest, _loc_latest.c.device_id == Device.id)
+                .where(*_base, *GRN_WHERE)
+                .group_by(Device.entity, _resolved_location_id)
+            )).all():
+                _add("grn", ent, loc_id, n)
+
+            def _order_entities(counts):
+                counts = {k: v for k, v in counts.items() if v}
+                ordered = {n: counts.pop(n) for n in ENTITY_DISPLAY_ORDER if n in counts}
+                ordered.update({n: counts[n] for n in sorted(counts)})
+                return ordered
+
+            pipeline_counts = _cnt
+            pipeline_by_entity = {k: _order_entities(v) for k, v in _ent_c.items()}
+            pipeline_by_location = {k: dict(sorted(v.items())) for k, v in _zone_c.items()}
         except Exception:
             _log.exception("pipeline_counts failed")
             pipeline_counts = {k: 0 for k, _ in PIPELINE_STEPS}
@@ -450,6 +498,7 @@ async def dashboard(
 
         if not _dash_filters_active:
             _AGG_CACHE["pipeline"] = (pipeline_counts, pipeline_by_entity, pipeline_by_location)
+            _AGG_CACHE["pipeline_ts"] = _now
 
     entity_choices = await entity_values(db)
     device_type_choices = await master_values(db, "device_type")
@@ -891,8 +940,9 @@ async def dashboard(
     # note above), dominating page-load time. Cached on the same 30s/_now
     # cycle as stage/category/pipeline above, since it's gated by the same
     # Entity/Device Type/Location filters (_dash_filters_active).
-    if (not _dash_filters_active and _AGG_CACHE["ts"]
-            and (_now - _AGG_CACHE["ts"]) < _AGG_TTL and _AGG_CACHE.get("admin_analytics") is not None):
+    # Own timestamp — same stale-forever issue as the pipeline cache above.
+    if (not _dash_filters_active and _AGG_CACHE.get("admin_analytics") is not None
+            and (_now - _AGG_CACHE.get("analytics_ts", 0.0)) < _AGG_TTL):
         admin_analytics, admin_charts = _AGG_CACHE["admin_analytics"]
     else:
         try:
@@ -1016,6 +1066,7 @@ async def dashboard(
             _log.exception("admin_analytics failed")
         if not _dash_filters_active:
             _AGG_CACHE["admin_analytics"] = (admin_analytics, admin_charts)
+            _AGG_CACHE["analytics_ts"] = _now
 
     _mark("analytics")
     # ── Apply stage filter to stage_counts display ───────────────────────────
@@ -1159,3 +1210,14 @@ async def dashboard(
         _log.warning("Dashboard slow load %.1fs (%s): %s", _total,
                      "filtered" if _dash_filters_active else "default", " | ".join(_parts))
     return _resp
+
+
+# Pre-compile the dashboard template (and the base layout it extends) when
+# the server starts (2026-10-16). Jinja compiles a template on its first use,
+# which cost ~250 ms on the first dashboard visit after every restart — and
+# the dashboard is the landing page, so that first visitor was usually a
+# manager. A failure here is harmless: the template just compiles on first use.
+try:
+    templates.env.get_template("dashboard.html")
+except Exception:  # pragma: no cover
+    pass
