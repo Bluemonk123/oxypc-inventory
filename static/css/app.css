@@ -97,7 +97,7 @@ body {
 .nav-history-group {
   display: inline-flex;
   align-items: center;
-  gap: 0;
+  gap: 8px;
   height: 36px;
 }
 .nav-history-btn {
