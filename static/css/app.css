@@ -615,7 +615,7 @@ fieldset:disabled .btn {
    Inventory) so it can be reviewed before it becomes the default. */
 .gtable-cards .gtable-scroll-wrap,
 .gtable-cards .gtable-plain-wrap {
-  border: .5px solid #dee2e6;
+  border: 0;
   border-radius: 12px;
   background: #f2f8fd;
   padding: 6px 10px 4px;
