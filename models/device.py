@@ -200,6 +200,11 @@ class Device(Base):
     # Post-IQC's "Yes As-Is" modal — both bulk-write this across every Tag
     # Number they apply to, distinct from the device's actual Lot Number.
     sub_lot_number = Column(String(50), nullable=True)
+    # Tag's own Bin Location (2026-10-16): free text typed in the Customise
+    # modal, shown under Location ID. Independent of the StorageLocation —
+    # each StorageLocation (unit_id is unique) carries only one slot, so a
+    # per-tag bin can't be expressed by picking a location row.
+    bin_location = Column(String(50), nullable=True)
     # Ready to Sale "As-Is Lot" table's Edit modal (2026-09-22) — bulk-set
     # together across every Tag Number sharing the same (lot_id, sub_lot_number)
     # pair, same write pattern as sub_lot_number above. Blank until first set;

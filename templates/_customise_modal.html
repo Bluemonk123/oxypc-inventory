@@ -61,19 +61,22 @@
               </select>
             </div>
             <div class="col-md-4">
-              <label class="form-label small">Invoice Number</label>
-              <input type="text" name="invoice_number" class="form-control form-control-sm" placeholder="Leave blank to leave unchanged">
-            </div>
-            {# Bin Location sits right after Invoice Number; the GRN Number field
-               is hidden from this modal (2026-10-15) — GRNs are mapped on Create GRN. #}
-            <div class="col-md-4">
-              <label class="form-label small">Bin Location</label>
-              <select name="bin_location" class="form-select form-select-sm">
+              <label class="form-label small">Location ID</label>
+              <select name="location_id" class="form-select form-select-sm">
                 <option value="">— Leave unchanged —</option>
-                {% for slot in storage_locations | map(attribute='slot') | select | unique | sort %}
-                <option value="{{ slot }}">{{ slot }}</option>
+                {% for loc in storage_locations %}
+                <option value="{{ loc.id }}">{{ loc.unit_id }}</option>
                 {% endfor %}
               </select>
+            </div>
+            {# Layout (2026-10-16): Grade, Location ID, Bin Location on this row;
+               Invoice Number, Stock Type, Sub-Lot Number on the last row. The GRN
+               Number field is hidden from this modal. Bin Location is free text
+               saved on each tag. #}
+            <div class="col-md-4">
+              <label class="form-label small">Bin Location</label>
+              <input type="text" name="bin_location" class="form-control form-control-sm" maxlength="50"
+                     placeholder="Leave blank to leave unchanged">
             </div>
           </div>
           <div class="row g-2 mb-2">
@@ -110,16 +113,11 @@
           </div>
           <div class="row g-2 mb-2">
             <div class="col-md-4">
-              <label class="form-label small">Location ID</label>
-              <select name="location_id" class="form-select form-select-sm">
-                <option value="">— Leave unchanged —</option>
-                {% for loc in storage_locations %}
-                <option value="{{ loc.id }}">{{ loc.unit_id }}</option>
-                {% endfor %}
-              </select>
+              <label class="form-label small">Invoice Number</label>
+              <input type="text" name="invoice_number" class="form-control form-control-sm" placeholder="Leave blank to leave unchanged">
             </div>
             {# Stock Type (2026-10-15): As-Is Lot sets the Sub-Lot Number typed
-               below; Finish Good / In Progress clear it, and the tag then shows
+               beside it; Finish Good / In Progress clear it, and the tag then shows
                Finish Good or In Progress from its stage (Ready to Sale / Sold =
                Finish Good). Same rule as stock_type_key in routers/devices.py. #}
             <div class="col-md-4">

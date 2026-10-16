@@ -927,12 +927,9 @@ async def iqc_bulk_apply_grade_type(
     barcode whose current stage has no allowed transition to the requested
     stage is skipped and reported, not silently dropped or force-moved.
 
-    `bin_location` refines `location_id`: Location ID picks a rack/unit and
-    Bin Location picks the specific slot within it — together they resolve to
-    one exact StorageLocation row (matched on unit_id + slot), which is what
-    every selected device is reassigned to. Bin Location alone (no Location
-    ID chosen) is rejected rather than guessed at, since a bin/slot value can
-    repeat across different units."""
+    `bin_location` (2026-10-16) is free text saved as each selected tag's own
+    Bin Location (Device.bin_location), shown under Location ID. It does not
+    need or change the Location ID."""
     return_to = return_to if return_to in _CUSTOMISE_RETURN_PATHS else "/iqc"
 
     barcode_set = {b.strip() for b in barcodes if b and b.strip()}
@@ -967,11 +964,9 @@ async def iqc_bulk_apply_grade_type(
     grn_number = grn_number.strip()
     location_id = location_id.strip()
     device_price = device_price.strip()
-    # bin_location is intentionally excluded from this "is anything selected"
-    # check — it only ever does anything paired with location_id, which is
-    # already covered below, so a submission with bin_location as the only
-    # field set correctly falls through to "select a field to apply".
     bin_location = bin_location.strip()
+    if len(bin_location) > 50:
+        return RedirectResponse(url=f"{return_to}?error=Bin+Location+is+too+long+(max+50)", status_code=302)
     min_selling_price = min_selling_price.strip()
     if (not device_type.strip() and not entity.strip() and not grade.strip() and not invoice_number.strip()
             and not po_number.strip() and not grn_number and not location_id and not device_price
@@ -981,7 +976,7 @@ async def iqc_bulk_apply_grade_type(
             and not total_ram_count.strip() and not total_ram_size.strip()
             and not total_hdd_count.strip() and not total_hdd_size.strip()
             and not hdd_summary.strip() and not touch_type.strip() and not to_stage
-            and not stock_type.strip()):
+            and not stock_type.strip() and not bin_location):
         return RedirectResponse(url=f"{return_to}?error=Select+a+field+to+apply", status_code=302)
 
     result = await db.execute(select(Device).where(Device.barcode.in_(barcodes)))
@@ -1039,27 +1034,6 @@ async def iqc_bulk_apply_grade_type(
         if new_location is None:
             return RedirectResponse(url=f"{return_to}?error=Invalid+location", status_code=302)
 
-        if bin_location:
-            # Refine down to the exact bin (StorageLocation row) sharing the
-            # chosen unit_id — Location ID picks the rack, Bin Location picks
-            # the slot within it.
-            bin_result = await db.execute(
-                select(StorageLocation).where(
-                    StorageLocation.unit_id == new_location.unit_id,
-                    StorageLocation.slot == bin_location,
-                )
-            )
-            bin_match = bin_result.scalar_one_or_none()
-            if bin_match is None:
-                return RedirectResponse(
-                    url=f"{return_to}?error=No+bin+{bin_location}+found+under+{new_location.unit_id}",
-                    status_code=302,
-                )
-            new_location = bin_match
-    elif bin_location:
-        return RedirectResponse(
-            url=f"{return_to}?error=Select+a+Location+ID+to+choose+a+Bin", status_code=302
-        )
 
     # Stock Type (2026-10-15): As-Is Lot sets the typed Sub-Lot Number;
     # Finish Good / In Progress clear it, after which the tag's type follows
@@ -1109,6 +1083,8 @@ async def iqc_bulk_apply_grade_type(
             device.device_price = new_device_price
         if new_min_selling_price is not None:
             device.min_selling_price = new_min_selling_price
+        if bin_location:
+            device.bin_location = bin_location
         if new_location is not None:
             db.add(DeviceLocationLog(
                 device_id=device.id, location_id=new_location.id,

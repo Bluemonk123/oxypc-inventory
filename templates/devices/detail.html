@@ -34,10 +34,11 @@
     <small class="text-muted d-block">
       Entity: {{ device.entity or '—' }} | Make: {{ device.brand or '' }} | Model: {{ device.model or '' }}{% if device.serial_no %} | S/N: {{ device.serial_no }}{% endif %} | Location:
       {% if assigned_location %}
-      <span class="font-monospace">{{ assigned_location.unit_id }}</span> | Bin: {{ assigned_location.slot or '—' }}
+      <span class="font-monospace">{{ assigned_location.unit_id }}</span> | Bin: {{ device.bin_location or assigned_location.slot or '—' }}
       {% else %}
       <a href="/locations/device/{{ device.id }}" class="btn btn-xs btn-outline-primary py-0 px-2 ms-1"
          style="font-size:.75rem;" name="assign location">Assign Location</a>
+      {% if device.bin_location %} | Bin: {{ device.bin_location }}{% endif %}
       {% endif %}
     </small>
   </div>
@@ -140,6 +141,7 @@
             <tr><th class="ps-3 text-muted small">Invoice No.</th><td class="font-monospace small">{{ device.invoice_number or (lot.invoice_no if lot and lot.invoice_no else '—') }}</td></tr>
             <tr><th class="ps-3 text-muted small">Serial No.</th><td class="font-monospace small">{{ device.serial_no or '—' }}</td></tr>
             <tr><th class="ps-3 text-muted small">Location ID</th><td class="font-monospace small">{{ assigned_location.unit_id if assigned_location else '—' }}</td></tr>
+            <tr><th class="ps-3 text-muted small">Bin Location</th><td class="font-monospace small">{{ device.bin_location or (assigned_location.slot if assigned_location and assigned_location.slot else '—') }}</td></tr>
             <tr><th class="ps-3 text-muted small">Location Type</th><td>{{ assigned_location.unit_type_label if assigned_location else '—' }}</td></tr>
             <tr><th class="ps-3 text-muted small">Zone</th><td>{{ assigned_location.zone_label if assigned_location else '—' }}</td></tr>
             <tr><th class="ps-3 text-muted small">Warehouse</th><td>{{ device.warehouse or '—' }}</td></tr>

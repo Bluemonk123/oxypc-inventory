@@ -619,12 +619,14 @@ async def device_search_data(
              f'<div style="color:#999999;font-size:12px;">{esc(d.entity) if d.entity else "—"}</div>'),
             (f'<a href="/devices?lot={esc(lot_number)}" class="btn btn-sm py-0 px-2 small text-decoration-none" '
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),
-            (f'<div><span class="badge bg-light text-dark border font-monospace">{esc(location_map[str(d.id)][0])}</span>'
-             + (f'<div><span class="badge bg-secondary-subtle text-secondary border small">Bin: {esc(location_map[str(d.id)][1])}</span></div>'
-                if location_map[str(d.id)][1] else '')
-             + '</div>'
-             if str(d.id) in location_map else
-             f'<a href="/locations/device/{d.id}" class="btn btn-sm btn-outline-primary py-0 px-2">Assign</a>'),
+            # Bin under Location ID: the tag's own Bin Location (Customise
+            # modal, 2026-10-16), else the StorageLocation's slot.
+            ((f'<div><span class="badge bg-light text-dark border font-monospace">{esc(location_map[str(d.id)][0])}</span>'
+              if str(d.id) in location_map else
+              f'<div><a href="/locations/device/{d.id}" class="btn btn-sm btn-outline-primary py-0 px-2">Assign</a>')
+             + ((lambda _bin: f'<div><span class="badge bg-secondary-subtle text-secondary border small">Bin: {esc(_bin)}</span></div>'
+                 if _bin else '')(d.bin_location or (location_map[str(d.id)][1] if str(d.id) in location_map else None)))
+             + '</div>'),
             esc(d.brand or "—"), esc(d.model or "—"), esc(d.device_type or "—"), esc(d.cpu or "—"),
             spec_cell(parts_data, d.id, "RAM", esc(ram)),
             spec_cell(parts_data, d.id, "Hard Drive", esc(storage)),
