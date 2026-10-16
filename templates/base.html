@@ -482,6 +482,11 @@
         <i class="bi bi-recycle me-2"></i> {{ sidebar_label('scrap_for_sale', 'Scrap for Sale') }}
       </a></li>
       {% endif %}
+      {% if has_perm(role,'scrap_sale_report','enable') and not module_hidden('scrap_sale_report') %}
+      <li><a href="/scrap-sale-report" class="nav-link {% if '/scrap-sale-report' in request.url.path %}active{% endif %}">
+        <i class="bi bi-receipt-cutoff me-2"></i> {{ sidebar_label('scrap_sale_report', 'Scrap Sale Report') }}
+      </a></li>
+      {% endif %}
       {% if has_perm(role,'sales_list','enable') and not module_hidden('sales_list') %}
       <li><a href="/sales" class="nav-link {% if request.url.path == '/sales' %}active{% endif %}">
         <i class="bi bi-receipt me-2"></i> {{ sidebar_label('sales_list', 'Sales List') }}

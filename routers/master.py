@@ -196,6 +196,7 @@ PERM_MODULES = [
     ("sales_list",           "Sales List"),
     ("ready_to_sale_parts",  "Ready to Sale Parts"),
     ("scrap_for_sale",       "Scrap for Sale"),
+    ("scrap_sale_report",    "Scrap Sale Report"),   # OFF by default (DEFAULT_DISABLED_MODULES)
     ("part_sales",           "Spare Part Sales"),
     ("gate_pass",            "Gate Pass"),
     ("partner_payments",     "Partner Payments"),

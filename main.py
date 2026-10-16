@@ -158,6 +158,7 @@ from routers.workid_status import router as workid_status_router
 from routers.scrap import router as scrap_router
 from routers.scrap_for_sale import router as scrap_for_sale_router
 import models.scrap_for_sale  # ensure scrap_for_sale table is in Base.metadata
+import models.scrap_sale  # ensure scrap_sales / scrap_sale_items tables are in Base.metadata
 from routers.devices import router as devices_router
 from routers.transfers import router as transfers_router
 from routers.part_requests import router as part_requests_router

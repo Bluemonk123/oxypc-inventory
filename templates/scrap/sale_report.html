@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block title %}Scrap Sale Report — OxyPC{% endblock %}
+{% block page_title %}Scrap Sale Report{% endblock %}
+{% block content %}
+{# Custom scrap sales saved from the Scrap for Sale page's "Custom Sale" modal
+   (routers/scrap_for_sale.py). Stand-alone records — not part of Business P&L. #}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span><i class="bi bi-receipt-cutoff me-2"></i>Scrap Sale Report</span>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+      <span class="small text-muted">Total Sale Price:</span>
+      <span class="fw-semibold">₹{{ "{:,.2f}".format(grand_total) }}</span>
+      <a href="/scrap-for-sale" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">
+        <i class="bi bi-arrow-left me-1"></i>Scrap for Sale
+      </a>
+    </div>
+  </div>
+  <div class="card-body p-0">
+    <table id="scrapSaleReportTable" class="table table-hover mb-0 small">
+      <thead class="table-dark">
+        <tr>
+          <th>Sale No.</th><th>Sale Date</th><th>Entity</th><th>Invoice Number</th><th>Sales Person</th>
+          <th>Customer</th><th>Phone</th><th>City / State</th><th>Items</th><th>Total Sale Price</th>
+          <th>Created By</th><th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in rows %}
+        <tr>
+          <td class="font-monospace">{{ r.sale_number }}</td>
+          <td data-order="{{ r.sale_date }}">{{ r.sale_date_label }}</td>
+          <td>{{ r.entity }}</td>
+          <td>{{ r.invoice_number }}</td>
+          <td>{{ r.sales_person }}</td>
+          <td>{{ r.customer_company }}</td>
+          <td>{{ r.customer_phone or '—' }}</td>
+          <td>{{ r.customer_place or '—' }}</td>
+          <td>{{ r.item_count }}</td>
+          <td class="text-nowrap" data-order="{{ r.total }}">₹{{ "{:,.2f}".format(r.total) }}</td>
+          <td>{{ r.created_by }}</td>
+          <td>
+            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 ssr-view"
+                    data-sale='{{ r | tojson }}'>
+              <i class="bi bi-eye"></i> View
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal fade" id="ssrModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-receipt-cutoff me-2"></i><span id="ssrTitle"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3 mb-3 small" id="ssrHead"></div>
+        <table class="table table-sm table-bordered mb-0 small">
+          <thead class="table-light">
+            <tr>
+              <th>#</th><th>Item Name</th><th>Item Category</th><th>Total Weight (kg)</th><th>Unit Price (Weight)</th>
+              <th>Quantity</th><th>Unit Price</th><th class="text-end">Total Price</th>
+            </tr>
+          </thead>
+          <tbody id="ssrItems"></tbody>
+          <tfoot>
+            <tr class="table-light fw-semibold">
+              <td colspan="7" class="text-end">Total Sale Price</td>
+              <td class="text-end text-nowrap" id="ssrTotal"></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+initGlobalTable('#scrapSaleReportTable', {
+  order: [[1, 'desc'], [0, 'desc']],
+  language: { emptyTable: 'No custom scrap sales yet — add one from Scrap for Sale → Custom Sale.' },
+  columnDefs: [{ orderable: false, targets: [-1] }],
+});
+
+(function () {
+  function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; }
+  function inr(n) { return n == null ? '—' : '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function fmtDate(iso) { var p = String(iso).split('-'); return p.length === 3 ? p[2] + '-' + p[1] + '-' + p[0] : iso; }
+  function block(label, html) { return '<div class="col-md-4"><div class="text-muted">' + label + '</div><div>' + html + '</div></div>'; }
+  var modal = new bootstrap.Modal(document.getElementById('ssrModal'));
+  // Delegated: rows on later DataTables pages are not in the DOM at load time.
+  document.getElementById('scrapSaleReportTable').addEventListener('click', function (e) {
+    var btn = e.target.closest('.ssr-view');
+    if (!btn) return;
+    var s = JSON.parse(btn.getAttribute('data-sale'));
+    document.getElementById('ssrTitle').textContent = s.sale_number + ' — ' + s.customer_company;
+    document.getElementById('ssrHead').innerHTML =
+      block('Entity', esc(s.entity) + (s.entity_name ? '<br><span class="text-muted">' + esc(s.entity_name) + '</span>' : '')) +
+      block('Sale Date / Invoice', esc(fmtDate(s.sale_date)) + ' &middot; ' + esc(s.invoice_number)) +
+      block('Sales Person', esc(s.sales_person)) +
+      block('Customer', esc(s.customer_company) + (s.customer_phone ? '<br>' + esc(s.customer_phone) : '') + (s.customer_email ? '<br>' + esc(s.customer_email) : '')) +
+      block('Address', esc([s.customer_address, s.customer_place].filter(Boolean).join(', ') || '—')) +
+      block('Created By', esc(s.created_by));
+    document.getElementById('ssrItems').innerHTML = s.items.map(function (it, i) {
+      var w = it.basis === 'weight';
+      return '<tr><td>' + (i + 1) + '</td><td>' + esc(it.name) + '</td><td>' + esc(it.category) + '</td>' +
+        '<td>' + (w ? esc(it.weight) : '—') + '</td><td>' + (w ? inr(it.price_weight) : '—') + '</td>' +
+        '<td>' + (!w ? esc(it.qty) : '—') + '</td><td>' + (!w ? inr(it.unit_price) : '—') + '</td>' +
+        '<td class="text-end text-nowrap">' + inr(it.total) + '</td></tr>';
+    }).join('');
+    document.getElementById('ssrTotal').textContent = inr(s.total);
+    modal.show();
+  });
+})();
+</script>
+{% endblock %}

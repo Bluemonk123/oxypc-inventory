@@ -214,6 +214,7 @@ def set_cached_perms(role_name: str, perms: dict) -> None:
 # for the Product Master pages (2026-10-14). Admin still always has access.
 DEFAULT_DISABLED_MODULES = frozenset({
     "pm_product_master", "pm_hardware", "pm_spare_parts", "pm_product_pricing",
+    "scrap_sale_report",   # Scrap Sale Report page (2026-10-16)
 })
 
 
