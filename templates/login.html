@@ -111,10 +111,91 @@
         <i class="bi bi-box-arrow-in-right me-2"></i>Sign In
       </button>
     </form>
-    <p class="text-center text-muted small mt-3 mb-0">Contact admin for account access</p>
+    <p class="text-center small mt-3 mb-0">
+      <a href="#" class="text-decoration-none" data-bs-toggle="modal" data-bs-target="#loginTicketModal">
+        <i class="bi bi-headset me-1"></i>Contact admin for access/issues</a></p>
     <p class="text-center text-muted mt-1 mb-0" style="font-size:.7rem;opacity:.6">Deploy check - 10 Oct 2026</p>
   </div>
 </div>
 </div>
+
+{# Ticket form for people who cannot sign in (2026-10-16). Posts to
+   /tickets/raise-public; the ticket lands on /tickets for admins like any
+   other, with Raised By = the name typed here. #}
+<div class="modal fade" id="loginTicketModal" tabindex="-1" aria-labelledby="loginTicketModalLabel">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-warning bg-opacity-25">
+        <h6 class="modal-title fw-semibold" id="loginTicketModalLabel">
+          <i class="bi bi-ticket-detailed me-2 text-warning"></i>Contact Admin — Raise a Ticket
+        </h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-semibold">Raised By (your name) <span class="text-danger">*</span></label>
+          <input type="text" id="ltName" class="form-control form-control-sm" maxlength="50" placeholder="Enter your full name">
+        </div>
+        <div class="mb-2">
+          <label class="form-label small fw-semibold">Issue / Request <span class="text-danger">*</span></label>
+          <textarea id="ltFeedback" class="form-control" rows="5" maxlength="5000"
+                    placeholder="e.g. I need an account, I forgot my password, I'm locked out…"></textarea>
+        </div>
+        <div class="mb-2">
+          <label class="form-label small">Screenshots <span class="text-muted">(optional, up to 2)</span></label>
+          <input type="file" id="ltPhotos" class="form-control form-control-sm" accept="image/png,image/jpeg,image/gif,image/webp" multiple>
+          <div class="form-text small">PNG, JPG, GIF or WEBP — 5 MB each.</div>
+        </div>
+        <div id="ltError" class="text-danger small"></div>
+        <div id="ltDone" class="alert alert-success py-2 small mb-0 d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button id="ltSubmit" class="btn btn-sm btn-warning fw-semibold"><i class="bi bi-send me-1"></i>Submit Ticket</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="/static/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+<script>
+(function () {
+  var m = document.getElementById('loginTicketModal');
+  function csrf() { var c = document.cookie.split('; ').find(function (x) { return x.indexOf('csrf_token=') === 0; }); return c ? c.split('=')[1] : ''; }
+  m.addEventListener('show.bs.modal', function () {
+    ['ltName', 'ltFeedback', 'ltPhotos'].forEach(function (id) { document.getElementById(id).value = ''; });
+    document.getElementById('ltError').textContent = '';
+    document.getElementById('ltDone').classList.add('d-none');
+    document.getElementById('ltSubmit').disabled = false;
+  });
+  m.addEventListener('shown.bs.modal', function () { document.getElementById('ltName').focus(); });
+  document.getElementById('ltSubmit').addEventListener('click', async function () {
+    var btn = this, err = document.getElementById('ltError');
+    var name = document.getElementById('ltName').value.trim();
+    var fb = document.getElementById('ltFeedback').value.trim();
+    var files = document.getElementById('ltPhotos').files;
+    err.textContent = '';
+    if (!name) { err.textContent = 'Please enter your name.'; return; }
+    if (!fb) { err.textContent = 'Please describe your issue.'; return; }
+    if (files.length > 2) { err.textContent = 'Please attach at most 2 photos.'; return; }
+    var fd = new FormData();
+    fd.append('raised_by', name); fd.append('feedback', fb); fd.append('csrf_token', csrf());
+    for (var i = 0; i < files.length; i++) fd.append('photos', files[i]);
+    btn.disabled = true;
+    try {
+      var r = await fetch('/tickets/raise-public', { method: 'POST', headers: { 'X-CSRF-Token': csrf() }, body: fd });
+      var d = {}; try { d = await r.json(); } catch (e) {}
+      if (r.ok && d.ok) {
+        var done = document.getElementById('ltDone');
+        done.innerHTML = '<i class="bi bi-check-circle me-1"></i>Ticket <strong>' + d.ticket_id + '</strong> sent to admin. They will get back to you.';
+        done.classList.remove('d-none');
+      } else {
+        err.textContent = r.status === 429 ? 'Too many tickets from this computer. Please try again later.'
+                                           : (d.error || 'Could not send the ticket. Please refresh the page and try again.');
+        btn.disabled = false;
+      }
+    } catch (e) { err.textContent = 'Network error. Please try again.'; btn.disabled = false; }
+  });
+})();
+</script>
 </body>
 </html>

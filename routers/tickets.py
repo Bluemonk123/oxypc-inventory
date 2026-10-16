@@ -4,6 +4,7 @@ import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
+from limiter import limiter, ip_key_func
 from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -165,6 +166,63 @@ async def raise_ticket(
     except Exception:
         await db.rollback()
     return JSONResponse({"ok": True, "ticket_id": ticket.ticket_id})
+
+
+# ── RAISE FROM LOGIN PAGE (no sign-in) ───────────────────────────────────────
+# 2026-10-16: "Contact admin for access/issues" on the login page opens a
+# ticket form for people who cannot sign in. No session, so:
+#   - Raised By is the name the person types (max 50 = column size);
+#   - CSRF is the login page's own double-submit cookie (verify_csrf);
+#   - rate-limited per IP so the open form can't be used to flood admins.
+# The ticket is a normal Ticket row — it appears on /tickets for admins and
+# every active admin is notified, exactly like a signed-in ticket.
+@router.post("/raise-public")
+@limiter.limit("5/hour", key_func=ip_key_func)
+async def raise_ticket_public(
+    request: Request,
+    raised_by: str = Form(...),
+    feedback: str = Form(...),
+    photos: list[UploadFile] = File(default=[]),
+    _csrf=Depends(verify_csrf),
+    db: AsyncSession = Depends(get_db),
+):
+    name = " ".join((raised_by or "").split())[:50]
+    if not name:
+        return JSONResponse({"error": "Please enter your name."}, status_code=400)
+    if not (feedback or "").strip():
+        return JSONResponse({"error": "Please describe your issue."}, status_code=400)
+    tid = await _next_ticket_id(db)
+    saved = []
+    for i, photo in enumerate((photos or [])[:MAX_PHOTOS], start=1):
+        path = await _save_photo(photo, tid, i)
+        if path:
+            saved.append(path)
+    ticket = Ticket(
+        ticket_id=tid,
+        raised_by=name,
+        feedback="[From login page] " + feedback.strip()[:5000],
+        photo1_path=saved[0] if len(saved) > 0 else None,
+        photo2_path=saved[1] if len(saved) > 1 else None,
+    )
+    db.add(ticket)
+    await db.commit()
+    try:
+        from services.notifications import create_notification
+        from models.user import UserRole
+        admins = (await db.execute(
+            select(User.id).where(User.role == UserRole.admin, User.status == True)  # noqa: E712
+        )).scalars().all()
+        body = feedback.strip()
+        preview = body if len(body) <= 120 else body[:117] + "..."
+        for admin_id in admins:
+            await create_notification(
+                db, user_id=admin_id, title=f"New Ticket {tid} (login page)",
+                message=f"{name} raised a ticket from the login page: {preview}",
+                notification_type="alert",
+            )
+    except Exception:
+        await db.rollback()
+    return JSONResponse({"ok": True, "ticket_id": tid})
 
 
 # ── CLOSE ────────────────────────────────────────────────────────────────────
