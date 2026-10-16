@@ -387,6 +387,14 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
   dt.on('draw.dt', markCheckboxFirstColumn);
   markCheckboxFirstColumn();
 
+  // App-wide table look (2026-10-17): navy rounded header, plain white rows,
+  // ticked-row highlight, soft shadow — see ".gtable-cards" in app.css.
+  // Added on DataTables' own wrapper so every Global Table gets it; a page
+  // can opt out with opts.plainStyle = true.
+  if (!(opts && opts.plainStyle)) {
+    $table.closest('.dataTables_wrapper').addClass('gtable-cards');
+  }
+
   if (freeze) {
     var $scrollWrap = $table.closest('.dataTables_scroll').addClass('gtable-scroll-wrap');
     // Freeze 2 columns when the first is a checkbox (a lone frozen checkbox
