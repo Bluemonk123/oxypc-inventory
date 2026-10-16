@@ -13,9 +13,49 @@
     .login-header { background: linear-gradient(135deg, #0377c2 0%, #0e3a7a 100%); padding: 2rem; text-align: center; }
     .login-body { background: #fff; padding: 2rem; }
     .brand-icon { font-size: 3rem; color: #fff; }
+    /* Background animation (2026-10-16): faint refurbishment-themed icons
+       drifting upward over a slowly moving circuit grid. CSS only (works
+       offline); disabled under prefers-reduced-motion. */
+    body { overflow: hidden; position: relative; }
+    .login-bg { position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+      background:
+        radial-gradient(circle at 20% 30%, rgba(3,119,194,.18), transparent 45%),
+        radial-gradient(circle at 80% 75%, rgba(14,58,122,.25), transparent 50%); }
+    .login-bg::before { content: ""; position: absolute; inset: -60px;
+      background-image:
+        linear-gradient(rgba(3,119,194,.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(3,119,194,.07) 1px, transparent 1px);
+      background-size: 60px 60px; animation: gridMove 40s linear infinite; }
+    .login-bg i { position: absolute; bottom: -80px; color: rgba(120,190,255,.10);
+      animation: floatUp linear infinite; }
+    @keyframes floatUp {
+      0%   { transform: translateY(0) rotate(0deg); opacity: 0; }
+      10%  { opacity: 1; }
+      90%  { opacity: 1; }
+      100% { transform: translateY(calc(-1 * var(--full-vh, 100vh) - 160px)) rotate(var(--rot, 25deg)); opacity: 0; }
+    }
+    @keyframes gridMove { from { transform: translate(0,0); } to { transform: translate(60px,60px); } }
+    .login-card { position: relative; z-index: 1; }
+    @media (prefers-reduced-motion: reduce) { .login-bg i, .login-bg::before { animation: none; } .login-bg i { display: none; } }
   </style>
 </head>
 <body>
+<div class="login-bg" aria-hidden="true">
+  <i class="bi bi-laptop" style="left:6%;font-size:58px;animation-duration:26s;animation-delay:0s;--rot:20deg"></i>
+  <i class="bi bi-pc-display" style="left:18%;font-size:44px;animation-duration:32s;animation-delay:-8s;--rot:-15deg"></i>
+  <i class="bi bi-display" style="left:31%;font-size:38px;animation-duration:28s;animation-delay:-3s;--rot:30deg"></i>
+  <i class="bi bi-cpu" style="left:44%;font-size:30px;animation-duration:22s;animation-delay:-14s;--rot:-25deg"></i>
+  <i class="bi bi-motherboard" style="left:56%;font-size:50px;animation-duration:34s;animation-delay:-6s;--rot:15deg"></i>
+  <i class="bi bi-tools" style="left:68%;font-size:34px;animation-duration:24s;animation-delay:-18s;--rot:-30deg"></i>
+  <i class="bi bi-gear" style="left:79%;font-size:40px;animation-duration:30s;animation-delay:-10s;--rot:40deg"></i>
+  <i class="bi bi-laptop" style="left:90%;font-size:46px;animation-duration:36s;animation-delay:-22s;--rot:-20deg"></i>
+  <i class="bi bi-battery-charging" style="left:12%;font-size:28px;animation-duration:20s;animation-delay:-26s;--rot:25deg"></i>
+  <i class="bi bi-memory" style="left:38%;font-size:36px;animation-duration:27s;animation-delay:-20s;--rot:-15deg"></i>
+  <i class="bi bi-hdd" style="left:62%;font-size:30px;animation-duration:25s;animation-delay:-2s;--rot:20deg"></i>
+  <i class="bi bi-keyboard" style="left:84%;font-size:42px;animation-duration:31s;animation-delay:-30s;--rot:-25deg"></i>
+  <i class="bi bi-wrench-adjustable" style="left:25%;font-size:26px;animation-duration:23s;animation-delay:-12s;--rot:35deg"></i>
+  <i class="bi bi-laptop" style="left:50%;font-size:64px;animation-duration:40s;animation-delay:-28s;--rot:10deg"></i>
+</div>
 <div class="login-card">
   <div class="login-header">
     <div class="brand-icon"><i class="bi bi-laptop"></i></div>
