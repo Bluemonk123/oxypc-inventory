@@ -42,14 +42,14 @@
     .login-wrap { position: relative; z-index: 1; padding-top: 39px; }
     .login-logo { position: absolute; top: 0; left: 50%; transform: translateX(-50%);
       width: 78px; height: 78px; border-radius: 50%; background: #0f1923;
-      border: 3px solid #fff; box-shadow: 0 10px 30px rgba(0,0,0,.45);
+      border: none; box-shadow: 0 10px 30px rgba(0,0,0,.45);
       display: flex; align-items: center; justify-content: center; z-index: 2; }
     .login-logo img { width: 70px; height: 70px; }
     .login-header { padding-top: 3.2rem !important; }
     /* "welcome" handwriting (2026-10-16): one continuous stroke drawn on
        load via stroke-dashoffset, blue gradient. Shown fully drawn under
        prefers-reduced-motion. */
-    .welcome-script { display: block; width: 150px; height: auto; margin: .6rem auto .9rem; overflow: visible; }
+    .welcome-script { display: block; width: 150px; height: auto; margin: .6rem auto 1.6rem; overflow: visible; }
     .welcome-script path { stroke-dasharray: var(--len, 2000); stroke-dashoffset: var(--len, 2000);
       animation: writeOn 2.8s cubic-bezier(.45,.05,.35,1) .35s forwards; }
     @keyframes writeOn { to { stroke-dashoffset: 0; } }
