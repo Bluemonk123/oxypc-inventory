@@ -2,6 +2,17 @@
 {% block title %}Learning Manuals — OxyPC{% endblock %}
 {% block page_title %}Learning Manuals{% endblock %}
 {% block content %}
+<style>
+  .man-section-title { font-size: .8rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #0e3a7a; }
+  .man-card .man-icon { width: 2.4rem; height: 2.4rem; border-radius: .5rem; background: #d9ebf6; color: #0e3a7a;
+                        display: flex; align-items: center; justify-content: center; font-size: 1.15rem; flex-shrink: 0; }
+  .man-card .man-desc { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .man-card .btn { white-space: nowrap; }
+  #manualViewModal .man-step-title { background: #d9ebf6; color: #0e3a7a; font-weight: 600; padding: .35rem .6rem; border-radius: .35rem; }
+  #manualViewModal ol { padding-left: 1.4rem; margin: .5rem 0 1rem; }
+  #manualViewModal ol li { margin-bottom: .25rem; }
+  #manualViewModal .man-tips { background: #fff3cd; border-radius: .35rem; padding: .6rem .9rem; }
+</style>
 
 {% if shared %}
 <div class="alert alert-success alert-dismissible fade show">
@@ -10,57 +21,93 @@
 </div>
 {% endif %}
 
-<p class="text-muted small mb-4">
-  Step-by-step operational guides for each module. Download as PDF or share directly with a team member.
-</p>
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-journal-bookmark me-2"></i>Learning Manuals
+      <span class="badge bg-secondary ms-1" id="manCount">{{ manuals|length }}</span></span>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+      <select id="manSection" class="form-select form-select-sm" style="width:auto">
+        <option value="">All Sections</option>
+        {% for s in sections %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+      </select>
+      <input type="search" id="manSearch" class="form-control form-control-sm" style="width:240px"
+             placeholder="Search manuals…" autocomplete="off">
+      <a href="/manuals/all/download" class="btn btn-sm btn-primary text-nowrap" title="Every manual in one PDF">
+        <i class="bi bi-file-earmark-pdf me-1"></i>Download All (PDF)
+      </a>
+    </div>
+  </div>
+  <div class="card-body py-2 small text-muted">
+    One step-by-step guide for every page in the left menu, grouped the same way as the menu.
+    Click <strong>View</strong> to read it here, <strong>Download</strong> for a PDF, or <strong>Share</strong> to send it to a team member.
+  </div>
+</div>
 
-<!-- Manual cards grid -->
-<div class="row g-3">
-  {% for m in manuals %}
-  <div class="col-sm-6 col-lg-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body d-flex flex-column">
-        <div class="d-flex align-items-start gap-3 mb-3">
-          <div class="rounded-3 p-2 bg-{{ m.color }} bg-opacity-10 flex-shrink-0">
-            <i class="bi {{ m.icon }} fs-4 text-{{ m.color }}"></i>
+{% for s in sections %}
+{% set sec_manuals = manuals | selectattr('section', 'equalto', s) | list %}
+{% if sec_manuals %}
+<div class="man-section mb-4" data-section="{{ s }}">
+  <div class="man-section-title mb-2">{{ s }} <span class="text-muted fw-normal">({{ sec_manuals|length }})</span></div>
+  <div class="row g-3">
+    {% for m in sec_manuals %}
+    <div class="col-md-6 col-xl-4 man-item"
+         data-search="{{ (m.module ~ ' ' ~ m.section ~ ' ' ~ m.description) | lower }}">
+      <div class="card border-0 shadow-sm h-100 man-card">
+        <div class="card-body d-flex flex-column">
+          <div class="d-flex align-items-start gap-3 mb-2">
+            <div class="man-icon"><i class="bi {{ m.icon }}"></i></div>
+            <div class="min-w-0">
+              <h6 class="mb-1 fw-semibold">{{ m.module }}</h6>
+              <p class="text-muted small mb-0 man-desc" title="{{ m.description }}">{{ m.description }}</p>
+            </div>
           </div>
-          <div>
-            <h6 class="mb-1 fw-semibold">{{ m.module }}</h6>
-            <p class="text-muted small mb-0">{{ m.description }}</p>
+          <div class="small text-muted mb-3">
+            <i class="bi bi-list-check me-1"></i>{{ m.steps|length }} step{{ 's' if m.steps|length != 1 else '' }}
+            {% if m.tips %}&nbsp;&bull;&nbsp;<i class="bi bi-lightbulb me-1"></i>{{ m.tips|length }} tip{{ 's' if m.tips|length != 1 else '' }}{% endif %}
           </div>
-        </div>
-        <div class="small text-muted mb-3">
-          <i class="bi bi-list-check me-1"></i>{{ m.steps|length }} step group{{ 's' if m.steps|length != 1 else '' }}
-          {% if m.tips %}
-          &nbsp;&bull;&nbsp;<i class="bi bi-lightbulb me-1"></i>{{ m.tips|length }} tip{{ 's' if m.tips|length != 1 else '' }}
-          {% endif %}
-        </div>
-        <div class="mt-auto d-flex gap-2">
-          <a href="/manuals/{{ m.id }}/download"
-             class="btn btn-sm btn-primary flex-fill"
-             title="Download PDF manual">
-            <i class="bi bi-download me-1"></i>Download
-          </a>
-          <button type="button"
-                  class="btn btn-sm btn-outline-secondary flex-fill share-btn"
-                  data-mid="{{ m.id }}"
-                  data-mname="{{ m.module }}"
-                  data-bs-toggle="modal"
-                  data-bs-target="#shareModal"
-                  title="Share with a team member">
-            <i class="bi bi-share me-1"></i>Share with
-          </button>
+          <div class="mt-auto d-flex flex-wrap gap-2">
+            <button type="button" class="btn btn-sm btn-outline-primary flex-fill man-view-btn" data-mid="{{ m.id }}">
+              <i class="bi bi-eye me-1"></i>View
+            </button>
+            <a href="/manuals/{{ m.id }}/download" class="btn btn-sm btn-primary flex-fill" title="Download PDF manual">
+              <i class="bi bi-download me-1"></i>Download
+            </a>
+            <button type="button" class="btn btn-sm btn-outline-secondary flex-fill share-btn"
+                    data-mid="{{ m.id }}" data-mname="{{ m.module }}"
+                    data-bs-toggle="modal" data-bs-target="#shareModal" title="Share with a team member">
+              <i class="bi bi-share me-1"></i>Share
+            </button>
+          </div>
         </div>
       </div>
     </div>
+    {% endfor %}
   </div>
-  {% else %}
-  <div class="col-12">
-    <div class="card border-0 shadow-sm">
-      <div class="card-body text-center text-muted py-5">No manuals available.</div>
+</div>
+{% endif %}
+{% endfor %}
+<div id="manEmpty" class="card border-0 shadow-sm d-none">
+  <div class="card-body text-center text-muted py-5">No manuals match your search.</div>
+</div>
+
+<!-- View Manual modal -->
+<div class="modal fade" id="manualViewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div>
+          <h5 class="modal-title mb-0" id="mvTitle"></h5>
+          <div class="small text-muted" id="mvPath"></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="mvBody"></div>
+      <div class="modal-footer">
+        <a href="#" id="mvOpen" class="btn btn-outline-secondary btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i>Open page</a>
+        <a href="#" id="mvDownload" class="btn btn-primary btn-sm"><i class="bi bi-download me-1"></i>Download PDF</a>
+      </div>
     </div>
   </div>
-  {% endfor %}
 </div>
 
 <!-- Share Modal (reused for all manuals) -->
@@ -84,7 +131,7 @@
             <option value="">— Choose user —</option>
             {% for u in users %}
             {% if u.id != current_user.id %}
-            <option value="{{ u.id }}">{{ u.full_name or u.username }} ({{ u.role.value.replace('_',' ')|title }})</option>
+            <option value="{{ u.id }}">{{ u.full_name or u.username }} ({{ (u.role.value if u.role.value is defined else u.role)|replace('_',' ')|title }})</option>
             {% endif %}
             {% endfor %}
           </select>
@@ -106,13 +153,64 @@
 {% endblock %}
 {% block scripts %}
 <script>
-document.querySelectorAll('.share-btn').forEach(function(btn) {
-  btn.addEventListener('click', function() {
-    var mid  = this.getAttribute('data-mid');
-    var name = this.getAttribute('data-mname');
-    document.getElementById('shareManualName').textContent = name;
-    document.getElementById('shareForm').action = '/manuals/' + mid + '/share';
+var MANUALS = {{ manuals | tojson }};
+(function () {
+  var byId = {};
+  MANUALS.forEach(function (m) { byId[m.id] = m; });
+  function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; }
+
+  // ── Search + section filter ──
+  var search = document.getElementById('manSearch'), section = document.getElementById('manSection');
+  function applyFilter() {
+    var q = search.value.trim().toLowerCase(), sec = section.value, shown = 0;
+    document.querySelectorAll('.man-section').forEach(function (block) {
+      var secOk = !sec || block.getAttribute('data-section') === sec, any = 0;
+      block.querySelectorAll('.man-item').forEach(function (it) {
+        var ok = secOk && (!q || it.getAttribute('data-search').indexOf(q) !== -1);
+        it.classList.toggle('d-none', !ok);
+        if (ok) any++;
+      });
+      block.classList.toggle('d-none', !any);
+      shown += any;
+    });
+    document.getElementById('manCount').textContent = shown;
+    document.getElementById('manEmpty').classList.toggle('d-none', shown > 0);
+  }
+  search.addEventListener('input', applyFilter);
+  section.addEventListener('change', applyFilter);
+
+  // ── View modal ──
+  var viewModal = new bootstrap.Modal(document.getElementById('manualViewModal'));
+  document.querySelectorAll('.man-view-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var m = byId[this.getAttribute('data-mid')];
+      if (!m) return;
+      document.getElementById('mvTitle').innerHTML = '<i class="bi ' + esc(m.icon) + ' me-2"></i>' + esc(m.module);
+      document.getElementById('mvPath').textContent = m.section + ' -> ' + m.module;
+      var html = '<p class="text-muted">' + esc(m.description) + '</p>';
+      m.steps.forEach(function (st, i) {
+        html += '<div class="man-step-title">Step ' + (i + 1) + ': ' + esc(st[0]) + '</div><ol>' +
+          st[1].map(function (x) { return '<li>' + esc(x) + '</li>'; }).join('') + '</ol>';
+      });
+      if (m.tips && m.tips.length) {
+        html += '<div class="man-tips"><div class="fw-semibold mb-1"><i class="bi bi-lightbulb me-1"></i>Tips &amp; Rules</div><ul class="mb-0">' +
+          m.tips.map(function (t) { return '<li>' + esc(t) + '</li>'; }).join('') + '</ul></div>';
+      }
+      document.getElementById('mvBody').innerHTML = html;
+      var open = document.getElementById('mvOpen');
+      open.href = m.url; open.classList.toggle('d-none', !m.url || m.url.charAt(0) !== '/');
+      document.getElementById('mvDownload').href = '/manuals/' + m.id + '/download';
+      viewModal.show();
+    });
   });
-});
+
+  // ── Share modal ──
+  document.querySelectorAll('.share-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      document.getElementById('shareManualName').textContent = this.getAttribute('data-mname');
+      document.getElementById('shareForm').action = '/manuals/' + this.getAttribute('data-mid') + '/share';
+    });
+  });
+})();
 </script>
 {% endblock %}
