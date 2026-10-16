@@ -36,7 +36,7 @@
           {% set ns.total_profit_sold = ns.total_profit_sold + lp.profit_sold %}
           <tr class="{{ 'table-success' if lp.profit > 0 else 'table-danger' if lp.profit < 0 else '' }}">
             <td><input type="checkbox" class="form-check-input plRowChk" value="{{ lp.lot_id }}"></td>
-            <td><a href="/lots/{{ lp.lot_id }}" class="fw-semibold text-decoration-none">{{ lp.lot_number }}</a></td>
+            <td class="text-nowrap"><a href="/reports/lot-pl/{{ lp.lot_id }}/export" class="text-success me-1" title="Export all tags of {{ lp.lot_number }}"><i class="bi bi-download"></i></a><a href="/lots/{{ lp.lot_id }}" class="fw-semibold text-decoration-none">{{ lp.lot_number }}</a></td>
             <td>{{ lp.supplier }}</td>
             <td>{{ lp.purchase_date.strftime('%d-%m-%Y') }}</td>
             <td data-order="{{ lp.last_updated.strftime('%Y%m%d%H%M%S') if lp.last_updated else '0' }}">{{ lp.last_updated.strftime('%d-%m-%Y %H:%M') if lp.last_updated else '—' }}</td>

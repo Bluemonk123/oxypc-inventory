@@ -133,7 +133,7 @@
         {% set profit = monthly_profit[i] %}
         {% set margin = (profit / rev * 100) | round(1) if rev > 0 else 0 %}
         <tr>
-          <td class="fw-semibold">{{ mrow.label }}
+          <td class="fw-semibold text-nowrap"><a href="/reports/business-pl/export-month?year={{ mrow.year }}&month={{ mrow.month }}" class="text-success me-1" title="Export all tags sold in {{ mrow.label }}"><i class="bi bi-download"></i></a>{{ mrow.label }}
             {% if monthly_overridden[i] %}<span class="badge bg-info-subtle text-info-emphasis border ms-1" title="One or more figures on this row were manually overridden">edited</span>{% endif %}
           </td>
           <td>₹{{ (rev) | inr }}</td>

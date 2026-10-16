@@ -772,6 +772,126 @@ async def export_lot_pl(db: AsyncSession = Depends(get_db), current_user: User =
                              headers={"Content-Disposition": "attachment; filename=lot_pl.csv"})
 
 
+# ── Tag-level exports (2026-10-16) ─────────────────────────────────────────
+# Business P&L month row / Lot P&L lot row -> every tag behind that figure.
+_TAG_EXPORT_HEADER = [
+    "Entity", "Tag Number", "Lot Number", "Make Model", "CPU", "Gen", "RAM",
+    "Storage", "Grade", "Location ID", "Zone", "Stage", "Device Price", "Sale Price",
+]
+
+
+def _zone_label(zone) -> str:
+    if not zone:
+        return ""
+    if zone in ZONE_LABELS:
+        return ZONE_LABELS[zone]
+    try:
+        return ZONE_LABELS.get(ZoneType(zone), str(zone))
+    except ValueError:
+        return str(zone)
+
+
+async def _tag_export_csv(db: AsyncSession, rows, filename: str) -> StreamingResponse:
+    """rows: (Device, lot_number, sale_price) tuples. Location ID / Zone use the
+    same source as All Inventory: latest DeviceLocationLog entry, falling back
+    to the device's own location_id, then its legacy warehouse / floor text."""
+    from routers.devices import _build_location_map
+    from models.location import StorageLocation
+    ids = [d.id for d, _l, _p in rows]
+    loc = {}
+    for i in range(0, len(ids), 20000):
+        loc.update(await _build_location_map(db, ids[i:i + 20000]))
+    missing = [d.location_id for d, _l, _p in rows if str(d.id) not in loc and d.location_id]
+    fallback = {}
+    for i in range(0, len(missing), 20000):
+        for sid, unit_id, zone in (await db.execute(
+            select(StorageLocation.id, StorageLocation.unit_id, StorageLocation.zone)
+            .where(StorageLocation.id.in_(missing[i:i + 20000]))
+        )).all():
+            fallback[sid] = {"unit_id": unit_id, "zone": zone}
+
+    def _fmt_money(v):
+        return "" if v is None else float(v)
+
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(_TAG_EXPORT_HEADER)
+    for d, lot_number, sale_price in rows:
+        li = loc.get(str(d.id)) or fallback.get(d.location_id) or {}
+        if d.ram_gb:
+            ram = f"{d.ram_gb}GB" + (f" {d.ram_type}" if d.ram_type else "")
+        else:
+            ram = d.total_ram_size or ""
+        storage = (f"{d.storage_gb}GB" + (f" {d.storage_type}" if d.storage_type else "")) if d.storage_gb else (d.total_hdd_size or "")
+        w.writerow([
+            d.entity or "", d.barcode, lot_number or "",
+            " ".join(x for x in (d.brand, d.model) if x),
+            d.cpu or "", d.generation or "", ram, storage,
+            getattr(d.grade, "value", d.grade) or "",
+            li.get("unit_id") or d.warehouse or "",
+            _zone_label(li.get("zone") or d.floor),
+            STAGE_LABELS.get(d.current_stage, getattr(d.current_stage, "value", d.current_stage)),
+            _fmt_money(d.device_price), _fmt_money(sale_price),
+        ])
+    return StreamingResponse(
+        io.BytesIO(out.getvalue().encode("utf-8-sig")), media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/business-pl/export-month")
+async def business_pl_export_month(
+    year: int = Query(...), month: int = Query(..., ge=1, le=12),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_require_financials),
+):
+    """Every tag sold in this month — the same sales the Business P&L row's
+    Revenue (sale price) and Device Cost (device price) columns add up."""
+    rows = (await db.execute(
+        select(Device, Lot.lot_number, Sale.sale_price)
+        .join(Sale, Sale.device_id == Device.id)
+        .outerjoin(Lot, Lot.id == Device.lot_id)
+        .where(extract("year", Sale.sold_at) == year, extract("month", Sale.sold_at) == month)
+        .order_by(Sale.sold_at, Device.barcode)
+    )).all()
+    names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    return await _tag_export_csv(db, rows, f"business_pl_{names[month - 1]}_{year}_tags.csv")
+
+
+@router.get("/lot-pl/{lot_id}/export")
+async def lot_pl_export_lot(
+    lot_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_require_financials),
+):
+    """Every live (non-trashed) tag of this lot, with its latest sale price
+    when sold — the devices the Lot P&L row counts."""
+    import uuid as _uuid
+    try:
+        lid = _uuid.UUID(lot_id)
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    lot = (await db.execute(select(Lot).where(Lot.id == lid))).scalar_one_or_none()
+    if lot is None:
+        raise HTTPException(status_code=404, detail="Lot not found")
+    devices = (await db.execute(
+        select(Device).where(Device.lot_id == lid, Device.is_trashed.isnot(True))
+        .order_by(Device.barcode)
+    )).scalars().all()
+    latest_sale = {}
+    ids = [d.id for d in devices]
+    for i in range(0, len(ids), 20000):
+        for did, price in (await db.execute(
+            select(Sale.device_id, Sale.sale_price)
+            .where(Sale.device_id.in_(ids[i:i + 20000]))
+            .order_by(Sale.sold_at.desc())
+        )).all():
+            latest_sale.setdefault(did, price)
+    rows = [(d, lot.lot_number, latest_sale.get(d.id)) for d in devices]
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in (lot.lot_number or "lot"))
+    return await _tag_export_csv(db, rows, f"lot_pl_{safe}_tags.csv")
+
+
 @router.get("/export/sales")
 async def export_sales(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     # Capped at the SQL level, same as before — the orphan set added below is
