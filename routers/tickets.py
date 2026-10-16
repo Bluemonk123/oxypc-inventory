@@ -72,13 +72,16 @@ def _age_pill(raised_on) -> tuple[str, str]:
     return f"{days}d", "danger"
 
 
-def _ticket_ctx(t: Ticket) -> dict:
+def _ticket_ctx(t: Ticket, names: dict | None = None) -> dict:
     age_label, age_cls = _age_pill(t.raised_on)
     return {
         "ticket_id":  t.ticket_id,
         "status":     t.status,
         "raised_on":  t.raised_on.strftime("%d-%m-%Y %H:%M") if t.raised_on else "—",
         "raised_by":  t.raised_by,
+        # Full display name (2026-10-16); falls back to the stored username
+        # when the user no longer exists.
+        "raised_by_name": (names or {}).get(t.raised_by) or t.raised_by,
         "feedback":   t.feedback or "",
         "notes":      t.notes or "",
         "photos":     [p for p in (t.photo1_path, t.photo2_path) if p],
@@ -98,8 +101,13 @@ async def list_tickets(
     query = select(Ticket).order_by(Ticket.raised_on.desc())
     if current_user.role.value != "admin":
         query = query.where(Ticket.raised_by == current_user.username)
-    result = await db.execute(query)
-    tickets = [_ticket_ctx(t) for t in result.scalars().all()]
+    rows = (await db.execute(query)).scalars().all()
+    usernames = {t.raised_by for t in rows if t.raised_by}
+    names = {}
+    if usernames:
+        names = {u: n for u, n in (await db.execute(
+            select(User.username, User.full_name).where(User.username.in_(usernames)))).all()}
+    tickets = [_ticket_ctx(t, names) for t in rows]
     return templates.TemplateResponse("tickets/list.html", {
         "request": request,
         "current_user": current_user,
