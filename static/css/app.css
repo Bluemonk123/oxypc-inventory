@@ -92,31 +92,42 @@ body {
 }
 
 /* Back/forward history pill (topbar) — mirrors a native browser nav control */
+/* Back/forward history: chevrons only (2026-10-17) — no pill background,
+   border or filled buttons. Enabled = brand blue, disabled = light grey. */
 .nav-history-group {
   display: inline-flex;
-  align-items: stretch;
-  background: #f0f4f8;
-  border: 1px solid #dfe4ea;
-  border-radius: 999px;
-  overflow: hidden;
+  align-items: center;
+  gap: 2px;
   height: 32px;
 }
 .nav-history-btn {
   border: 0;
   background: transparent;
-  color: #b3bbc6;
-  width: 34px;
+  color: #c3cad3;
+  width: 26px;
+  height: 32px;
+  padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.95rem;
+  font-size: 1.15rem;
   cursor: pointer;
-  transition: background 0.15s, color 0.15s;
+  transition: color 0.15s;
 }
-.nav-history-btn:not(:disabled) { background: var(--brand-blue); color: #fff; }
-.nav-history-btn:not(:disabled):hover { background: #025f9b; }
+.nav-history-btn i { -webkit-text-stroke: .6px currentColor; }
+.nav-history-btn:not(:disabled) { color: var(--brand-blue); }
+.nav-history-btn:not(:disabled):hover { color: #0e3a7a; }
 .nav-history-btn:disabled { cursor: default; }
-.nav-history-divider { width: 1px; background: #dfe4ea; }
+/* Beat the app-wide grey disabled-button rule further down (it uses
+   !important) — a disabled chevron is just a pale chevron, no grey box. */
+#navHistoryBack:disabled, #navHistoryForward:disabled {
+  background-color: transparent !important;
+  border-color: transparent !important;
+  color: #c3cad3 !important;
+}
+.nav-history-btn:focus { outline: none; box-shadow: none; background: transparent; }
+.nav-history-btn:focus-visible { outline: 2px solid rgba(3,119,194,.35); outline-offset: 1px; border-radius: 4px; }
+.nav-history-divider { display: none; }
 
 /* Cards */
 .stat-card { border-radius: 10px; }
