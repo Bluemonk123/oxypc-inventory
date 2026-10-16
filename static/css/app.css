@@ -642,3 +642,12 @@ fieldset:disabled .btn {
   background-position: bottom;
   background-repeat: no-repeat;
 }
+
+/* More breathing room on the left of every Global Table's first column
+   (2026-10-17) — a checkbox or the first value no longer sits on the edge.
+   global-table.js measures column 1's real width for the frozen 2nd column,
+   so the extra padding is picked up automatically. */
+table.gtable thead th:first-child,
+table.gtable tbody td:first-child {
+  padding-left: 16px !important;
+}
