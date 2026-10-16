@@ -616,6 +616,13 @@ fieldset:disabled .btn {
    Inventory) so it can be reviewed before it becomes the default. */
 .gtable-cards .gtable-scroll-wrap .dataTables_scrollHead,
 .gtable-cards .gtable-scroll-wrap .dataTables_scrollBody { clip-path: none; }
+/* Soft shadow behind the whole table (header + rows) */
+.gtable-cards .gtable-scroll-wrap {
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 2px 10px rgba(14, 58, 122, .14);
+  margin-bottom: 10px;
+}
 /* Header bar */
 .gtable-cards table.gtable thead { --bs-table-bg: #0e3a7a; --bs-table-color: #fff; }
 .gtable-cards table.gtable thead th {
