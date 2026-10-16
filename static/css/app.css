@@ -606,3 +606,42 @@ fieldset:disabled .btn {
   z-index: 1035;
   box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .2);
 }
+
+/* ── Global Table "Sky Cards" style (2026-10-17, opt-in) ─────────────────────
+   Put .gtable-cards on the table's card (or any ancestor) to get:
+   light-blue rounded header bar with navy labels, hairline grey outline
+   around the table, very light blue tray, and each row as a white card with
+   a blue left accent when its checkbox is ticked. Opt-in first (All
+   Inventory) so it can be reviewed before it becomes the default. */
+.gtable-cards .gtable-scroll-wrap,
+.gtable-cards .gtable-plain-wrap {
+  border: .5px solid #dee2e6;
+  border-radius: 12px;
+  background: #f2f8fd;
+  padding: 6px 10px 4px;
+}
+.gtable-cards .gtable-scroll-wrap .dataTables_scrollHead,
+.gtable-cards .gtable-scroll-wrap .dataTables_scrollBody { clip-path: none; background: transparent; }
+.gtable-cards table.gtable { border-collapse: separate !important; border-spacing: 0 6px; background: transparent; }
+.gtable-cards .dataTables_scrollHead table.gtable { border-spacing: 0; margin-bottom: 0 !important; }
+/* Header bar */
+.gtable-cards table.gtable thead { --bs-table-bg: #d9ebf6; --bs-table-color: #0e3a7a; }
+.gtable-cards table.gtable thead th {
+  background-color: #d9ebf6 !important; color: #0e3a7a !important;
+  font-weight: 700; border: 0 !important; box-shadow: none !important;
+}
+.gtable-cards table.gtable thead th:first-child { border-radius: 8px 0 0 8px; }
+.gtable-cards table.gtable thead th:last-child  { border-radius: 0 8px 8px 0; }
+/* Row cards */
+.gtable-cards table.gtable tbody td {
+  background-color: #fff;
+  border-top: 1px solid #e3eef7 !important; border-bottom: 1px solid #e3eef7 !important;
+  box-shadow: none !important;
+}
+.gtable-cards table.gtable tbody td:first-child { border-left: 1px solid #e3eef7 !important; border-radius: 8px 0 0 8px; }
+.gtable-cards table.gtable tbody td:last-child  { border-right: 1px solid #e3eef7 !important; border-radius: 0 8px 8px 0; }
+.gtable-cards table.gtable tbody tr:hover td { background-color: #f7fbfe !important; }
+.gtable-cards table.gtable tbody tr:has(input[type=checkbox]:checked) td { background-color: #eef6fc !important; }
+.gtable-cards table.gtable tbody tr:has(input[type=checkbox]:checked) td:first-child { box-shadow: inset 3px 0 0 #0377c2 !important; }
+/* Empty-table message row stays a plain line, not a card */
+.gtable-cards table.gtable tbody td.dataTables_empty { border-radius: 8px; border: 1px solid #e3eef7 !important; }
