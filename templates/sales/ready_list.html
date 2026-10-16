@@ -19,10 +19,6 @@
   .ready-tab-content > .tab-pane > .card { border: 0; border-radius: 0 0 .5rem .5rem; }
   .ready-tab-content > .tab-pane > .card > .card-header { padding: .5rem 1rem !important; border-radius: 0; }
   .ready-tab-content > .tab-pane > .card > .card-body { padding: 0 !important; }
-  /* Ready for Sale Tags: global filter bar at the top of the tab panel. */
-  .ready-filter-wrap { padding: 1rem 1rem .75rem; }
-  .ready-filter-wrap .filter-bar { margin-bottom: 0; }
-  .ready-filter-wrap .ready-touch-filter { width: 100% !important; min-width: 0 !important; }
 </style>
 {# "N device(s) ready" + New Sale row hidden by request (2026-10-13); the
    tab badges and each table's count badge already show the counts.
@@ -161,27 +157,24 @@
 </ul>
 <div class="tab-content ready-tab-content">
   <div class="tab-pane fade show active" id="readyTagsPane" role="tabpanel">
-  {# Global filter bar (app.css .filter-bar). Each filter still reloads the
-     table as soon as it changes (and Select All follows it); Search re-runs
-     the table, Reset clears all three. The scan/search box stays the Global
-     Table's own search box (#readyScanInput, initGlobalTable's scan option). #}
-  <div class="ready-filter-wrap">
-  <form class="filter-bar" id="readyFilterBar" onsubmit="return false">
-    <div class="filter-bar-row">
-      <div>{{ touch_select('readyTouch') }}</div>
-      {{ ms.multiselect_inline('device_type', 'Device Types', device_type_options, '') }}
-      {{ ms.multiselect_inline('entity', 'Entity', entity_options, '') }}
-      <div>
-        <button type="button" id="readyFilterSearch" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
-        <button type="button" id="readyFilterReset" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</button>
-      </div>
-    </div>
-  </form>
-  </div>
   <div class="card">
+    {# Filters sit on the right of the card header (2026-10-16). Each filter
+       still reloads the table as soon as it changes (and Select All follows
+       it); Search re-runs the table, Reset clears all three. The scan/search
+       box stays the Global Table's own search box (#readyScanInput). #}
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold"><i class="bi bi-upc-scan me-2"></i>Ready for Sale Tags</span>
-      <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+      <div class="d-flex justify-content-end align-items-center flex-wrap gap-2" id="readyFilterBar">
+      {{ touch_select('readyTouch') }}
+      {{ ms.multiselect_inline('device_type', 'Device Types', device_type_options, '') }}
+      {{ ms.multiselect_inline('entity', 'Entity', entity_options, '') }}
+      <button type="button" id="readyFilterSearch" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+      <button type="button" id="readyFilterReset" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</button>
+      </div>
+    </div>
+    {# Bulk buttons: moved into the table toolbar, just before the search box,
+       by the table's initComplete below (hidden until then). #}
+    <div id="readyBulkBtns" class="d-none align-items-center flex-wrap gap-2">
       <button type="button" id="multiRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Multi-Request with selected (<span id="readySelCount">0</span>)
       </button>
@@ -205,7 +198,6 @@
       {# Hidden stand-in so the page script's getElementById('bulkSetPriceBtn') still finds an element. #}
       <button type="button" id="bulkSetPriceBtn" class="d-none" disabled><span id="readySelCount3">0</span></button>
       {% endif %}
-      </div>
     </div>
   <div class="card-body px-0 pb-0">
     <table id="readyTable" class="table table-hover mb-0 small">
@@ -728,6 +720,11 @@ $(document).ready(function(){
       { orderable: false, targets: [0, -1] },
       { visible: false, targets: [{{ 10 if can_view_pricing(current_user) else 9 }}] },
     ],
+    initComplete: function () {
+      // Bulk buttons sit just before the table's search/scan box.
+      $('#readyBulkBtns').removeClass('d-none').addClass('d-flex')
+        .insertBefore($(this.api().table().container()).find('.dataTables_filter'));
+    },
     drawCallback: function () {
       document.querySelectorAll('#readyTable tbody .readyChk').forEach(function (c) {
         c.checked = readySelected.has(c.value);
