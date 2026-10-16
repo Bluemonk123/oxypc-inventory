@@ -701,6 +701,9 @@ async def create_transfer(
         if loc:
             device.location_id = loc.id
             device.warehouse = loc.display_name
+            # A new Location ID resets the tag's own Bin Location (2026-10-16)
+            # - the old bin belongs to the old location.
+            device.bin_location = None
             device.updated_at = app_now()
             db.add(DeviceLocationLog(
                 device_id=device.id, location_id=loc.id, action=LocationAction.moved,
@@ -903,6 +906,9 @@ async def _move_devices_bulk(
         if loc:
             device.location_id = loc.id
             device.warehouse = loc.display_name
+            # A new Location ID resets the tag's own Bin Location (2026-10-16)
+            # - the old bin belongs to the old location.
+            device.bin_location = None
             device.updated_at = app_now()
             db.add(DeviceLocationLog(
                 device_id=device.id, location_id=loc.id, action=LocationAction.moved,

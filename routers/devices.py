@@ -541,11 +541,13 @@ async def device_search_data(
     # (2026-10-07), so the column layout is the same for everyone and "Updated"
     # is always column 13 — which also removes the old per-role index shift that
     # once left the table stuck on "Processing…" for roles without pricing.
-    updated_col = 13
+    # Column 4 is Bin Location (2026-10-16, right after Location ID) — every
+    # index from Brand onward shifted by one again, so "Updated" is now 14.
+    updated_col = 14
     stock_type_expr = stock_type_sql()
-    col_map = {1: Device.barcode, 2: Lot.lot_number, 4: Device.brand, 5: Device.model,
-               6: Device.device_type, 7: Device.cpu, 10: Device.grade, 11: stock_type_expr,
-               updated_col: Device.updated_at}
+    col_map = {1: Device.barcode, 2: Lot.lot_number, 4: Device.bin_location, 5: Device.brand,
+               6: Device.model, 7: Device.device_type, 8: Device.cpu, 11: Device.grade,
+               12: stock_type_expr, updated_col: Device.updated_at}
     try:
         order_col = int(request.query_params.get("order[0][column]", updated_col))
     except ValueError:
@@ -619,14 +621,15 @@ async def device_search_data(
              f'<div style="color:#999999;font-size:12px;">{esc(d.entity) if d.entity else "—"}</div>'),
             (f'<a href="/devices?lot={esc(lot_number)}" class="btn btn-sm py-0 px-2 small text-decoration-none" '
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),
-            # Bin under Location ID: the tag's own Bin Location (Customise
-            # modal, 2026-10-16), else the StorageLocation's slot.
-            ((f'<div><span class="badge bg-light text-dark border font-monospace">{esc(location_map[str(d.id)][0])}</span>'
-              if str(d.id) in location_map else
-              f'<div><a href="/locations/device/{d.id}" class="btn btn-sm btn-outline-primary py-0 px-2">Assign</a>')
-             + ((lambda _bin: f'<div><span class="badge bg-secondary-subtle text-secondary border small">Bin: {esc(_bin)}</span></div>'
-                 if _bin else '')(d.bin_location or (location_map[str(d.id)][1] if str(d.id) in location_map else None)))
-             + '</div>'),
+            (f'<span class="badge bg-light text-dark border font-monospace">{esc(location_map[str(d.id)][0])}</span>'
+             if str(d.id) in location_map else
+             f'<a href="/locations/device/{d.id}" class="btn btn-sm btn-outline-primary py-0 px-2">Assign</a>'),
+            # Bin Location column (2026-10-16): the tag's own Bin Location
+            # (Customise modal), else the StorageLocation's slot. Navy on
+            # light blue so it reads clearly next to the grey Location ID.
+            (lambda _bin: (f'<span class="badge font-monospace" style="background:#d9ebf6;color:#0e3a7a;'
+                           f'border:1px solid #9ec5e8;font-size:.8rem;">{esc(_bin)}</span>') if _bin else '—')(
+                d.bin_location or (location_map[str(d.id)][1] if str(d.id) in location_map else None)),
             esc(d.brand or "—"), esc(d.model or "—"), esc(d.device_type or "—"), esc(d.cpu or "—"),
             spec_cell(parts_data, d.id, "RAM", esc(ram)),
             spec_cell(parts_data, d.id, "Hard Drive", esc(storage)),
@@ -1314,7 +1317,7 @@ _EXPORT_HEADER = [
     "Display Panel Cosmetic", "Bezel Frame Cosmetic", "Screen Cosmetic", "Hinge Cosmetic",
     "Touchpad Cosmetic", "Bottom Base Cosmetic", "Palmrest Cosmetic",
     "Device Price", "Grade", "Stage", "Final QC Status", "Stage History",
-    "Location ID", "Zone", "Warehouse", "Notes", "Created", "Updated",
+    "Location ID", "Bin Location", "Zone", "Warehouse", "Notes", "Created", "Updated",
     "PNA", "Stock",
 ]
 
@@ -1448,7 +1451,9 @@ async def _export_rows(db: AsyncSession, rows) -> StreamingResponse:
             STAGE_LABELS.get(device.current_stage, device.current_stage),
             device.final_qc_status or "",
             _stage_history(device),
-            location_display, zone_display, device.warehouse, device.notes,
+            location_display,
+            device.bin_location or loc_info.get("slot") or "",
+            zone_display, device.warehouse, device.notes,
             device.created_at.strftime("%d-%m-%Y %H:%M") if device.created_at else "",
             device.updated_at.strftime("%d-%m-%Y %H:%M") if device.updated_at else "",
             _pna_label(device, pna_device_ids),

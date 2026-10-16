@@ -122,6 +122,7 @@
             <th>Tag Number</th>
             <th>Lot</th>
             <th>Location ID</th>
+            <th>Bin Location</th>
             <th>Brand</th>
             <th>Model</th>
             <th>Device Type</th>
@@ -445,7 +446,7 @@ $(document).ready(function() {
   // sits after Grade, so every role sees the same layout and "Updated" is
   // always column 13. (A role-dependent index used to leave the table stuck on
   // "Processing…" for roles without pricing — see the git history.)
-  var UPDATED_COL = 13;
+  var UPDATED_COL = 14;  // Bin Location column (2026-10-16) sits after Location ID
   // Global Table behavior (static/js/global-table.js): scrollX + frozen first
   // column, 32-character clamp+tooltip on every free-text column, the
   // Page-view-dropdown-and-count-badge / search-and-pagination toolbar split,
