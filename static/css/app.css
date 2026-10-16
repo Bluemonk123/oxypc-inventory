@@ -683,3 +683,18 @@ table.gtable tbody td:first-child {
   box-shadow: 0 3px 12px rgba(14, 58, 122, .30);
   z-index: 5;
 }
+
+/* Global Table cell wrapping (2026-10-17). Body cells stay on one line, so
+   a table wider than its card scrolls sideways (scrollX) instead of every
+   column being squashed until short values like a 30-char brand wrap onto
+   3 lines and buttons split ("LOT-" / "T1"). Long plain-text values are
+   already wrapped in .gtable-clamp2 by global-table.js — those (only) may
+   wrap, to 2 lines, inside a sensible width band so they show enough text
+   before the "…" (full value in the hover tooltip). <br> line breaks in a
+   cell still break as before. */
+table.gtable tbody td { white-space: nowrap; }
+table.gtable tbody td .gtable-clamp2 {
+  white-space: normal;
+  min-width: 160px;
+  max-width: 260px;
+}
