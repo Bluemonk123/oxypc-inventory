@@ -606,7 +606,7 @@ async def dashboard(
 
     # ── Chart data: category × stage breakdown ────────────────────────────────
     # X-axis = the Stage Pipeline's own steps (2026-10-16), same order and
-    # grouping as the pipeline strip; each bar sums its raw stages.
+    # grouping as the pipeline strip (minus Sold); each bar sums its raw stages.
     def _sv(st):
         return st.value if hasattr(st, "value") else st
     chart_groups = [
@@ -619,7 +619,8 @@ async def dashboard(
         ("Cosmetic",      list(COSMETIC_STAGES)),
         ("Final QC",      list(FINAL_QC_STAGES)),
         ("Ready to Sale", [DeviceStage.ready_to_sale]),
-        ("Sold",          [DeviceStage.sold]),
+        # "Sold" bar removed by request (2026-10-16) - the chart shows stock
+        # still in the building; sold tags dwarfed every other stage.
     ]
     chart_labels = [lbl for lbl, _ in chart_groups]
     chart_data: dict = {}
