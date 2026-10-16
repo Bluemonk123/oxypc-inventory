@@ -607,23 +607,15 @@ fieldset:disabled .btn {
   box-shadow: 0 .25rem .75rem rgba(0, 0, 0, .2);
 }
 
-/* ── Global Table "Sky Cards" style (2026-10-17, opt-in) ─────────────────────
-   Put .gtable-cards on the table's card (or any ancestor) to get:
-   light-blue rounded header bar with navy labels, hairline grey outline
-   around the table, very light blue tray, and each row as a white card with
-   a blue left accent when its checkbox is ticked. Opt-in first (All
+/* ── Global Table "Sky" style (2026-10-17, opt-in) ──────────────────────────
+   Put .gtable-cards on the table's card (or any ancestor) to get a
+   light-blue rounded header bar with navy labels, plain white rows with a
+   thin divider, and a blue left accent + pale-blue fill on a ticked row.
+   (Started as "soft cards"; the tray colour and row gaps were removed on
+   request — plain rows read better for long lists.) Opt-in first (All
    Inventory) so it can be reviewed before it becomes the default. */
-.gtable-cards .gtable-scroll-wrap,
-.gtable-cards .gtable-plain-wrap {
-  border: 0;
-  border-radius: 12px;
-  background: #f2f8fd;
-  padding: 6px 10px 4px;
-}
 .gtable-cards .gtable-scroll-wrap .dataTables_scrollHead,
-.gtable-cards .gtable-scroll-wrap .dataTables_scrollBody { clip-path: none; background: transparent; }
-.gtable-cards table.gtable { border-collapse: separate !important; border-spacing: 0 6px; background: transparent; }
-.gtable-cards .dataTables_scrollHead table.gtable { border-spacing: 0; margin-bottom: 0 !important; }
+.gtable-cards .gtable-scroll-wrap .dataTables_scrollBody { clip-path: none; }
 /* Header bar */
 .gtable-cards table.gtable thead { --bs-table-bg: #d9ebf6; --bs-table-color: #0e3a7a; }
 .gtable-cards table.gtable thead th {
@@ -632,16 +624,21 @@ fieldset:disabled .btn {
 }
 .gtable-cards table.gtable thead th:first-child { border-radius: 8px 0 0 8px; }
 .gtable-cards table.gtable thead th:last-child  { border-radius: 0 8px 8px 0; }
-/* Row cards */
+/* Rows */
 .gtable-cards table.gtable tbody td {
   background-color: #fff;
-  border-top: 1px solid #e3eef7 !important; border-bottom: 1px solid #e3eef7 !important;
+  border-top: 0 !important; border-bottom: 1px solid #e3eef7 !important;
   box-shadow: none !important;
 }
-.gtable-cards table.gtable tbody td:first-child { border-left: 1px solid #e3eef7 !important; border-radius: 8px 0 0 8px; }
-.gtable-cards table.gtable tbody td:last-child  { border-right: 1px solid #e3eef7 !important; border-radius: 0 8px 8px 0; }
 .gtable-cards table.gtable tbody tr:hover td { background-color: #f7fbfe !important; }
 .gtable-cards table.gtable tbody tr:has(input[type=checkbox]:checked) td { background-color: #eef6fc !important; }
 .gtable-cards table.gtable tbody tr:has(input[type=checkbox]:checked) td:first-child { box-shadow: inset 3px 0 0 #0377c2 !important; }
-/* Empty-table message row stays a plain line, not a card */
-.gtable-cards table.gtable tbody td.dataTables_empty { border-radius: 8px; border: 1px solid #e3eef7 !important; }
+/* The checkbox column's bottom border isn't painted by Chrome (sticky cell
+   in a separate-border table), so its row divider is drawn as a 1px
+   background line instead — visually identical to the other cells. */
+.gtable-cards .gtable-scroll-wrap table.gtable tbody td:first-child {
+  background-image: linear-gradient(#e3eef7, #e3eef7);
+  background-size: 100% 1px;
+  background-position: bottom;
+  background-repeat: no-repeat;
+}
