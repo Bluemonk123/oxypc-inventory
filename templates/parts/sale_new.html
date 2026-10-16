@@ -129,6 +129,10 @@
 </div>
 {% endblock %}
 {% block scripts %}
+{# Only when the form is rendered (2026-10-17): with no sellable parts the page
+   shows a warning instead, and this script then hit missing fields
+   ("Cannot set properties of null"). #}
+{% if options %}
 <script>
 /* Part dropdowns are driven from Part Master (only parts with an approved,
    unconsumed sale request and stock on hand reach this list). Name -> Make ->
@@ -222,4 +226,5 @@ if (PREFILL){
   if (p){ elName.value = p.name; refresh(); elMake.value = p.make || ''; elModel.value = p.model || ''; refresh(); }
 } else { refresh(); }
 </script>
+{% endif %}
 {% endblock %}

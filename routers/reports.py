@@ -1190,7 +1190,9 @@ async def stock_aging_report(
     aged_list      = []
 
     for dev in devices:
-        age   = (now - dev.created_at).days
+        # A device with no created_at (seen on older/imported rows) counts as
+        # added today instead of crashing the whole report (2026-10-17).
+        age   = (now - (dev.created_at or now)).days
         cost  = float(dev.device_price or 0)
         blabel = BRACKETS[-1][0]
         for label, lo, hi in BRACKETS:

@@ -1455,6 +1455,8 @@ async def return_stock_complete(
 
 
 async def _gen_sale_number(db: AsyncSession) -> str:
+    from routers.sales import ensure_sale_number_seq
+    await ensure_sale_number_seq(db)
     seq = (await db.execute(text("SELECT nextval('sale_number_seq')"))).scalar()
     return f"SALE-{seq:04d}"
 

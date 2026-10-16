@@ -70,6 +70,12 @@
   </div>
 </div>
 
+{% endblock %}
+
+{# In the scripts block (2026-10-17): inside the content block this ran before
+   base.html loads jQuery, so "$ is not defined" and the table never got
+   sorting/paging. #}
+{% block scripts %}
 <script>
 $(document).ready(function () {
   if ($('#grnTable tbody tr').length > 1) {

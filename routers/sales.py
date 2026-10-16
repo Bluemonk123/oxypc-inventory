@@ -74,7 +74,27 @@ allowed = require_roles(UserRole.admin, UserRole.sales, UserRole.sales_manager, 
 ready_allowed = get_current_user
 
 
+async def ensure_sale_number_seq(db: AsyncSession) -> None:
+    """Create sale_number_seq if this database never got it (2026-10-17).
+
+    It is made by a one-off script (migrate_fix_prod_sale_seq.py), not by the
+    schema auto-provisioner, so a database that missed that script 500'd on
+    /sales/new. Checked with to_regclass (no failing statement, so no rollback
+    of the caller's transaction), and seeded past the highest existing
+    SALE-#### so a recreated sequence can't re-issue a number in use.
+    Same idea as routers/part_sales.py's part_sale_number_seq self-heal."""
+    exists = (await db.execute(text("SELECT to_regclass('sale_number_seq')"))).scalar()
+    if exists:
+        return
+    highest = (await db.execute(text(
+        "SELECT COALESCE(MAX(NULLIF(regexp_replace(sale_number, '\\D', '', 'g'), '')::bigint), 0) FROM sales"
+    ))).scalar() or 0
+    await db.execute(text(
+        "CREATE SEQUENCE IF NOT EXISTS sale_number_seq START WITH %d" % (int(highest) + 1)))
+
+
 async def _next_sale_number(db: AsyncSession) -> str:
+    await ensure_sale_number_seq(db)
     result = await db.execute(text("SELECT nextval('sale_number_seq')"))
     seq = result.scalar()
     return f"SALE-{seq:04d}"
@@ -1481,6 +1501,8 @@ async def create_sale(
             eligible += 1
         except HTTPException:
             pass
+    if eligible:
+        await ensure_sale_number_seq(db)
     sale_numbers = [
         f"SALE-{n:04d}" for n in (await db.execute(
             text("SELECT nextval('sale_number_seq') FROM generate_series(1, :n)"),
