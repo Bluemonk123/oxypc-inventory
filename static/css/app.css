@@ -104,17 +104,17 @@ body {
   border: 0;
   background: transparent;
   color: #c3cad3;
-  width: 34px;
+  width: 30px;
   height: 36px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.6rem;
+  font-size: 1.75rem;
   cursor: pointer;
   transition: color 0.15s;
 }
-.nav-history-btn i { -webkit-text-stroke: .8px currentColor; line-height: 1; }
+.nav-history-btn i { line-height: 1; }
 .nav-history-btn:not(:disabled) { color: var(--brand-blue); }
 .nav-history-btn:not(:disabled):hover { color: #0e3a7a; }
 .nav-history-btn:disabled { cursor: default; }
