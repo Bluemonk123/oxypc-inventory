@@ -46,6 +46,14 @@
       display: flex; align-items: center; justify-content: center; z-index: 2; }
     .login-logo img { width: 70px; height: 70px; }
     .login-header { padding-top: 3.2rem !important; }
+    /* "welcome" handwriting (2026-10-16): one continuous stroke drawn on
+       load via stroke-dashoffset, blue gradient. Shown fully drawn under
+       prefers-reduced-motion. */
+    .welcome-script { display: block; width: 230px; height: auto; margin: -.4rem auto 1rem; overflow: visible; }
+    .welcome-script path { stroke-dasharray: var(--len, 2000); stroke-dashoffset: var(--len, 2000);
+      animation: writeOn 2.8s cubic-bezier(.45,.05,.35,1) .35s forwards; }
+    @keyframes writeOn { to { stroke-dashoffset: 0; } }
+    @media (prefers-reduced-motion: reduce) { .welcome-script path { animation: none; stroke-dashoffset: 0; } }
     @media (prefers-reduced-motion: reduce) { .login-bg i, .login-bg::before { animation: none; } .login-bg i { display: none; } }
   </style>
 </head>
@@ -74,6 +82,12 @@
     <small class="text-white-50">Refurbishment Management System</small>
   </div>
   <div class="login-body">
+    <svg class="welcome-script" viewBox="0 0 330 82" role="img" aria-label="Welcome">
+      <defs><linearGradient id="wg" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="330" y2="0">
+        <stop offset="0" stop-color="#0057ff"/><stop offset=".35" stop-color="#0a8cff"/><stop offset=".6" stop-color="#38c8ff"/><stop offset=".8" stop-color="#0a6cff"/><stop offset="1" stop-color="#38c8ff"/></linearGradient></defs>
+      <path fill="none" stroke="url(#wg)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" d="M4 70 H30 C38 70 40 40 46 40 C50 40 48 70 56 70 C64 70 66 42 70 42 C74 42 72 70 80 70 C88 70 92 46 92 38 C92 34 88 34 88 38 C88 50 98 56 106 52 C116 48 120 38 112 38 C102 38 98 70 112 70 C120 70 126 62 130 54 C138 38 144 16 138 8 C132 2 126 16 128 40 C130 62 134 70 142 70 C148 70 152 64 156 58 C162 46 170 38 176 42 C170 38 160 48 160 60 C160 70 170 72 178 66 C182 63 184 60 186 56 C190 46 196 40 204 42 C212 44 212 68 202 70 C192 72 190 56 196 48 C200 44 206 46 210 54 C214 62 218 70 222 70 C226 70 228 50 230 42 C232 56 230 68 232 70 C236 52 242 42 248 42 C254 42 252 70 256 70 C260 54 266 42 272 42 C278 42 276 70 282 70 C290 70 296 62 300 56 C306 46 304 38 298 38 C288 38 284 70 300 70 C310 70 318 64 324 58"/>
+    </svg>
+    <script>(function(){var p=document.querySelector('.welcome-script path');if(p&&p.getTotalLength)p.style.setProperty('--len',Math.ceil(p.getTotalLength())+1);})();</script>
     {% if error %}
     <div class="alert alert-danger py-2 mb-3"><i class="bi bi-exclamation-circle me-2"></i>{{ error }}</div>
     {% endif %}
