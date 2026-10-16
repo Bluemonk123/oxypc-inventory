@@ -609,7 +609,7 @@ fieldset:disabled .btn {
 
 /* ── Global Table "Sky" style (2026-10-17, opt-in) ──────────────────────────
    Put .gtable-cards on the table's card (or any ancestor) to get a
-   light-blue rounded header bar with navy labels, plain white rows with a
+   brand-navy rounded header bar with white labels, plain white rows with a
    thin divider, and a blue left accent + pale-blue fill on a ticked row.
    (Started as "soft cards"; the tray colour and row gaps were removed on
    request — plain rows read better for long lists.) Opt-in first (All
@@ -617,10 +617,10 @@ fieldset:disabled .btn {
 .gtable-cards .gtable-scroll-wrap .dataTables_scrollHead,
 .gtable-cards .gtable-scroll-wrap .dataTables_scrollBody { clip-path: none; }
 /* Header bar */
-.gtable-cards table.gtable thead { --bs-table-bg: #d9ebf6; --bs-table-color: #0e3a7a; }
+.gtable-cards table.gtable thead { --bs-table-bg: #0e3a7a; --bs-table-color: #fff; }
 .gtable-cards table.gtable thead th {
-  background-color: #d9ebf6 !important; color: #0e3a7a !important;
-  font-weight: 700; border: 0 !important; box-shadow: none !important;
+  background-color: #0e3a7a !important; color: #fff !important;
+  font-weight: 600; border: 0 !important; box-shadow: none !important;
 }
 .gtable-cards table.gtable thead th:first-child { border-radius: 8px 0 0 8px; }
 .gtable-cards table.gtable thead th:last-child  { border-radius: 0 8px 8px 0; }
