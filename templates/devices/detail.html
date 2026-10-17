@@ -207,6 +207,13 @@
                 style="text-transform:none" onclick="openMultiRequestModal()">
           <i class="bi bi-bag-plus me-1"></i>Multi Request
         </button>
+        {# Clears every PNA tick on this tag at once (2026-10-17); enabled
+           only while at least one PNA box is ticked. #}
+        <button type="button" id="pcRemoveAllPnaBtn" class="btn btn-sm btn-outline-danger bg-white py-0 px-2 ms-2"
+                style="text-transform:none" {{ '' if pna_parts else 'disabled' }}
+                title="Unselect every PNA part on this tag">
+          <i class="bi bi-x-circle me-1"></i>Remove All PNA
+        </button>
       </div>
       <div class="card-body p-0">
         <table class="table table-sm mb-0 align-middle">
@@ -1030,6 +1037,32 @@
       // Saved per checkbox rather than behind a Save button: an engineer ticks
       // one part and walks away, and a pending unsaved tick would silently lose
       // the mark the L1/L2 and L3/L4 queues depend on.
+      var removeAllPnaBtn = document.getElementById('pcRemoveAllPnaBtn');
+      function syncRemoveAllPna() {
+        if (removeAllPnaBtn) removeAllPnaBtn.disabled = !document.querySelector('.pna-cb:checked');
+      }
+      if (removeAllPnaBtn) removeAllPnaBtn.addEventListener('click', function() {
+        var ticked = Array.from(document.querySelectorAll('.pna-cb:checked'));
+        if (!ticked.length) return;
+        if (!confirm('Remove PNA from all ' + ticked.length + ' part(s) on this tag?')) return;
+        var body = new URLSearchParams();
+        body.append('csrf_token', "{{ request.cookies.get('csrf_token','') }}");
+        removeAllPnaBtn.disabled = true;
+        fetch('/devices/{{ device.barcode | urlencode }}/pna/clear-all', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+          body: body
+        })
+        .then(function(r) { return r.json(); })
+        .then(function(d) {
+          if (!d || !d.ok) throw new Error((d && d.error) || 'save failed');
+          document.querySelectorAll('.pna-cb').forEach(function(c) { c.checked = false; });
+          if (window.showTopToast) window.showTopToast('success', 'PNA removed from ' + d.cleared + ' part(s).');
+        })
+        .catch(function(e) { alert('Could not remove PNA: ' + e.message); })
+        .finally(syncRemoveAllPna);
+      });
+
       document.querySelectorAll('.pna-cb').forEach(function(cb) {
         cb.addEventListener('change', function() {
           var body = new URLSearchParams();
@@ -1053,7 +1086,7 @@
             cb.checked = !cb.checked;          // put the tick back where it was
             alert('Could not save the PNA mark: ' + e.message);
           })
-          .finally(function() { cb.disabled = false; });
+          .finally(function() { cb.disabled = false; syncRemoveAllPna(); });
         });
       });
 

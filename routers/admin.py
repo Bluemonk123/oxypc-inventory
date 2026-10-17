@@ -113,6 +113,18 @@ async def _role_data(db: AsyncSession):
     return choices, {v: l for v, l in choices}
 
 
+async def _entity_options(db: AsyncSession, current: str | None = None) -> list[str]:
+    """Entity dropdown for Add/Edit User: Master Data entities (same list as
+    Entity Movement, minus the External Partner test entity). A user's
+    current value is kept selectable even if it was later removed."""
+    from utils.master_data import entity_values
+    from models.master import EXTERNAL_PARTNER_TEST_ENTITY
+    opts = [e for e in await entity_values(db) if e != EXTERNAL_PARTNER_TEST_ENTITY]
+    if current and current not in opts:
+        opts.append(current)
+    return opts
+
+
 @router.get("/users", response_class=HTMLResponse)
 async def list_users(
     request: Request,
@@ -169,6 +181,7 @@ async def new_user_form(request: Request, db: AsyncSession = Depends(get_db), cu
     )).scalars().all()
     return templates.TemplateResponse("admin/user_form.html", {
         "request": request, "current_user": current_user,
+        "entity_options": await _entity_options(db, None),
         "role_choices": role_choices, "role_label_map": role_label_map, "edit_user": None,
         "users": users_list,
     })
@@ -177,6 +190,7 @@ async def new_user_form(request: Request, db: AsyncSession = Depends(get_db), cu
 @router.post("/users/new")
 async def create_user(
     request: Request,
+    entity: str = Form(""),
     username: str = Form(...),
     full_name: str = Form(...),
     role: str = Form(...),
@@ -188,20 +202,23 @@ async def create_user(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_admin),
 ):
+    entity = entity.strip()
+    entity_error = None if entity and entity in await _entity_options(db) else "Select the user's Entity"
     existing = await db.execute(select(User).where(User.username == username))
-    if existing.scalar_one_or_none():
+    if entity_error or existing.scalar_one_or_none():
         role_choices, role_label_map = await _role_data(db)
         users_list = (await db.execute(
             select(User).where(User.status == True).order_by(User.full_name)
         )).scalars().all()
         return templates.TemplateResponse("admin/user_form.html", {
             "request": request, "current_user": current_user,
+            "entity_options": await _entity_options(db, None),
             "role_choices": role_choices, "role_label_map": role_label_map,
-            "edit_user": None, "error": "Username already exists",
+            "edit_user": None, "error": entity_error or "Username already exists",
             "users": users_list,
         })
     user = User(
-        username=username, full_name=full_name,
+        username=username, full_name=full_name, entity=entity,
         role=role, password_hash=await hash_password_async(password),
         whatsapp_number=(whatsapp_number.strip() or None),
         email=(email.strip() or None),
@@ -213,7 +230,7 @@ async def create_user(
     await db.flush()   # get user.id before audit
     await audit(db, action="USER_CREATED", user=current_user,
                 table_name="users", record_id=str(user.id),
-                new_value={"username": username, "role": role, "full_name": full_name},
+                new_value={"username": username, "role": role, "full_name": full_name, "entity": entity},
                 request=request)
     await db.commit()
     return RedirectResponse(url="/admin/users?success=User+created", status_code=302)
@@ -231,6 +248,7 @@ async def edit_user_form(user_id: str, request: Request, db: AsyncSession = Depe
     )).scalars().all()
     return templates.TemplateResponse("admin/user_form.html", {
         "request": request, "current_user": current_user,
+        "entity_options": await _entity_options(db, edit_user.entity),
         "role_choices": role_choices, "role_label_map": role_label_map, "edit_user": edit_user,
         "users": users_list,
     })
@@ -243,6 +261,7 @@ async def update_user(
     full_name: str = Form(...),
     role: str = Form(...),
     username: str = Form(...),
+    entity: str = Form(""),
     status: str = Form(None),
     whatsapp_number: str = Form(""),
     email: str = Form(""),
@@ -255,6 +274,20 @@ async def update_user(
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(404)
+
+    entity = entity.strip()
+    if not entity or entity not in await _entity_options(db, user.entity):
+        role_choices, role_label_map = await _role_data(db)
+        users_list = (await db.execute(
+            select(User).where(User.status == True, User.id != user.id).order_by(User.full_name)
+        )).scalars().all()
+        return templates.TemplateResponse("admin/user_form.html", {
+            "request": request, "current_user": current_user,
+            "entity_options": await _entity_options(db, user.entity),
+            "role_choices": role_choices, "role_label_map": role_label_map,
+            "edit_user": user, "error": "Select the user's Entity",
+            "users": users_list,
+        }, status_code=400)
 
     new_username = username.strip()
     if new_username and new_username != user.username:
@@ -269,6 +302,7 @@ async def update_user(
             )).scalars().all()
             return templates.TemplateResponse("admin/user_form.html", {
                 "request": request, "current_user": current_user,
+                "entity_options": await _entity_options(db, user.entity),
                 "role_choices": role_choices, "role_label_map": role_label_map,
                 "edit_user": user,
                 "error": f"Username '{new_username}' is already taken.",
@@ -276,7 +310,9 @@ async def update_user(
             }, status_code=400)
         user.username = new_username
 
-    old_vals = {"full_name": user.full_name, "role": user.role.value, "status": user.status}
+    old_vals = {"full_name": user.full_name, "role": user.role.value, "status": user.status,
+                "entity": user.entity}
+    user.entity = entity
     user.full_name = full_name
     user.role = role
     user.whatsapp_number = whatsapp_number.strip() or None
@@ -289,7 +325,7 @@ async def update_user(
     await audit(db, action=action, user=current_user,
                 table_name="users", record_id=str(user.id),
                 old_value=old_vals,
-                new_value={"full_name": full_name, "role": role, "status": new_status})
+                new_value={"full_name": full_name, "role": role, "status": new_status, "entity": entity})
     await db.commit()
     return RedirectResponse(url="/admin/users?success=User+updated", status_code=302)
 

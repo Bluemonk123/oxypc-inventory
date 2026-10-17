@@ -39,7 +39,7 @@
     <div class="mb-2">
       <label class="form-label">Tag Numbers</label>
       <textarea id="tagsInput" class="form-control" rows="6"
-                placeholder="Paste or type Tag Numbers — comma or newline separated"></textarea>
+                placeholder="Paste or type Tag Numbers — separated by new line, comma or space"></textarea>
       <div class="form-text small text-muted">
         Upload a CSV (one Tag Number per line, or a single "barcode" column) to append instead of typing:
         <input type="file" id="tagsCsvFile" accept=".csv,.txt" class="form-control form-control-sm d-inline-block mt-1" style="max-width:280px">
@@ -141,8 +141,17 @@
 var tagsInput = document.getElementById('tagsInput');
 var tagsCount = document.getElementById('tagsCount');
 
+// Same rules as the server (routers/entity_movement.py _parse_tags): any
+// space / tab / new line / comma / semicolon separates tags, CSV quotes and
+// invisible characters are dropped, and a tag repeated in another letter
+// case counts once.
 function parseTags(raw) {
-  return (raw || '').split(/[\n\r,]+/).map(function (t) { return t.trim(); }).filter(Boolean);
+  var seen = {}, out = [];
+  (raw || '').replace(/[\ufeff\u200b\u200c\u200d\u00a0]/g, ' ').split(/[\s,;]+/).forEach(function (t) {
+    t = t.trim().replace(/^["']+|["']+$/g, '');
+    if (t && !seen[t.toUpperCase()]) { seen[t.toUpperCase()] = 1; out.push(t); }
+  });
+  return out;
 }
 function refreshCount() {
   tagsCount.textContent = parseTags(tagsInput.value).length + ' tag(s) entered';

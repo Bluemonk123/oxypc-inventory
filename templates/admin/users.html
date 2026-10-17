@@ -1,27 +1,30 @@
 {% extends "base.html" %}
 {% block title %}Users — OxyPC Admin{% endblock %}
 {% block page_title %}User Management{% endblock %}
+{% block page_title_extra %}
+<span class="badge bg-success-subtle text-success-emphasis border border-success-subtle px-3 py-2 ms-2"
+      title="Users who logged in today">
+  <i class="bi bi-box-arrow-in-right me-1"></i>Today Login <span class="fw-bold">{{ today_login_count }}</span>
+</span>
+{% endblock %}
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
-  <div class="d-flex flex-wrap align-items-end gap-2">
-    <span class="badge bg-success-subtle text-success-emphasis border border-success-subtle px-3 py-2">
-      <i class="bi bi-box-arrow-in-right me-1"></i>Today Login <span class="fw-bold">{{ today_login_count }}</span>
-    </span>
-    <form method="get" class="d-flex flex-wrap align-items-end gap-2">
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Role</label>
-        <select name="role" class="form-select form-select-sm" style="width:170px">
-          <option value="">All Roles</option>
-          {% for value, label in role_choices %}
-          <option value="{{ value }}" {% if role_filter == value %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Last Login</label>
-        <input type="date" name="last_login_date" value="{{ last_login_date_filter }}" class="form-control form-control-sm">
-      </div>
-      <div class="form-check mb-1">
+{# Today Login sits next to the page title in the top bar (base.html
+   page_title_extra block); filters + Login Log / Add User live in the
+   card header, right side (2026-10-17). #}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent py-2 d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <strong class="small text-nowrap"><i class="bi bi-people me-1"></i>Users
+      <span class="badge bg-secondary ms-1">{{ users|length }}</span></strong>
+    <form method="get" class="d-flex flex-wrap align-items-center gap-2">
+      <select name="role" class="form-select form-select-sm" style="width:170px" title="Role">
+        <option value="">All Roles</option>
+        {% for value, label in role_choices %}
+        <option value="{{ value }}" {% if role_filter == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <input type="date" name="last_login_date" value="{{ last_login_date_filter }}"
+             class="form-control form-control-sm" style="width:150px" title="Last Login date">
+      <div class="form-check mb-0 text-nowrap">
         {# Deleted users (status=False) are excluded by default — same
            soft-delete-hides-by-default convention as is_trashed/is_active
            everywhere else in this app. Check this to find and re-enable one. #}
@@ -32,22 +35,21 @@
       </div>
       <button class="btn btn-sm btn-outline-primary">Filter</button>
       <a href="/admin/users" class="btn btn-sm btn-outline-secondary">Clear</a>
+      <a href="/admin/login-log" class="btn btn-sm btn-outline-secondary text-nowrap">
+        <i class="bi bi-clock-history me-1"></i>Login Log
+      </a>
+      <button type="button" id="usersExportBtn" class="btn btn-sm btn-outline-success text-nowrap"
+              title="Download the users shown in the table as CSV">
+        <i class="bi bi-download me-1"></i>Export
+      </button>
+      <a href="/admin/users/new" class="btn btn-sm btn-primary text-nowrap">
+        <i class="bi bi-person-plus me-1"></i>Add User
+      </a>
     </form>
   </div>
-  <div class="d-flex gap-2">
-    <span class="text-muted align-self-center">{{ users|length }} user(s)</span>
-    <a href="/admin/login-log" class="btn btn-outline-secondary">
-      <i class="bi bi-clock-history me-1"></i>Login Log
-    </a>
-    <a href="/admin/users/new" class="btn btn-primary">
-      <i class="bi bi-person-plus me-2"></i>Add User
-    </a>
-  </div>
-</div>
-<div class="card border-0 shadow-sm">
   <div class="card-body p-0">
     <table id="usersTable" class="table table-hover mb-0">
-      <thead class="table-dark"><tr><th>Full Name</th><th>Role</th><th>Designation</th><th>Reports To</th><th>Last Login</th><th>Username</th><th>Created By</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead class="table-dark"><tr><th>Full Name</th><th>Role</th><th>Designation</th><th>Reports To</th><th>Last Login</th><th>Username</th><th>Created By</th><th>Entity</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
         {% for user in users %}
         <tr>
@@ -62,6 +64,7 @@
           <td class="text-muted small">{{ user.last_login.strftime('%d-%m-%Y %H:%M') if user.last_login else 'Never' }}</td>
           <td class="fw-semibold font-monospace">{{ user.username }}</td>
           <td class="text-muted small">{{ user.created_by or '—' }}</td>
+          <td>{{ user.entity or '—' }}</td>
           <td>
             <span class="badge {{ 'bg-success' if user.status else 'bg-secondary' }}">
               {{ 'Active' if user.status else 'Inactive' }}
@@ -202,7 +205,27 @@
 {% endblock %}
 {% block scripts %}
 <script>
-$(document).ready(function(){ $('#usersTable').DataTable({pageLength: 12}); });
+$(document).ready(function(){
+  var dtUsers = initGlobalTable('#usersTable', { order: [], columnDefs: [{ orderable: false, targets: -1 }] });
+  // Export: every user the table is showing (all pages, honouring its search
+  // and the page filters) as CSV — the Actions column is left out.
+  $('#usersExportBtn').on('click', function () {
+    function q(v) { return '"' + String(v).trim().replace(/\s+/g, ' ').replace(/"/g, '""') + '"'; }
+    var head = [];
+    $('#usersTable thead th').each(function (i, th) { if (i < $('#usersTable thead th').length - 1) head.push(q($(th).text())); });
+    var lines = [head.join(',')];
+    dtUsers.rows({ search: 'applied' }).nodes().each(function (tr) {
+      var cells = [];
+      $(tr).find('td').each(function (i, td) { if (i < head.length) cells.push(q($(td).text())); });
+      lines.push(cells.join(','));
+    });
+    if (lines.length < 2) { alert('No users to export.'); return; }
+    var a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('\ufeff' + lines.join('\r\n'));
+    a.download = 'users.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  });
+});
 // Delegated (not bound at page load) so it still fires after DataTables
 // repaginates/redraws the table — same reasoning as the reset-password
 // modal's data-* handoff just below, and the confirm() text is built from

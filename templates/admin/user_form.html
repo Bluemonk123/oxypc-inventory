@@ -12,6 +12,16 @@
         {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
         <form action="/admin/users/{{ edit_user.id ~ '/edit' if edit_user else 'new' }}" method="post">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+          {% set cur_entity = edit_user.entity if edit_user else '' %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Entity <span class="text-danger">*</span></label>
+            <select name="entity" class="form-select" required>
+              <option value="">— Select Entity —</option>
+              {% for e in entity_options %}
+              <option value="{{ e }}" {% if cur_entity == e %}selected{% endif %}>{{ e }}</option>
+              {% endfor %}
+            </select>
+          </div>
           {% if not edit_user %}
           <div class="mb-3">
             <label class="form-label fw-semibold">Username <span class="text-danger">*</span></label>

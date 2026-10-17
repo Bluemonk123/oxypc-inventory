@@ -631,8 +631,8 @@ fieldset:disabled .btn {
 .gtable-cards .gtable-scroll-wrap {
   border-radius: 10px;
   background: #fff;
-  box-shadow: 0 2px 10px rgba(14, 58, 122, .14);
-  margin-bottom: 10px;
+  box-shadow: 0 4px 18px rgba(14, 58, 122, .26);  /* stronger (2026-10-17, was 0 2px 10px .14) */
+  margin-bottom: 14px;
 }
 /* Header bar */
 .gtable-cards table.gtable thead { --bs-table-bg: #0e3a7a; --bs-table-color: #fff; }
@@ -649,8 +649,48 @@ fieldset:disabled .btn {
   box-shadow: none !important;
 }
 .gtable-cards table.gtable tbody tr:hover td { background-color: #f7fbfe !important; }
-.gtable-cards table.gtable tbody tr:has(input[type=checkbox]:checked) td { background-color: #eef6fc !important; }
-.gtable-cards table.gtable tbody tr:has(input[type=checkbox]:checked) td:first-child { box-shadow: inset 3px 0 0 #0377c2 !important; }
+/* Hovered row lifts with its own shadow (2026-10-17). Drawn per CELL as a
+   soft gradient strip just below (and a fainter one just above) each cell —
+   not as a row box-shadow, because the frozen sticky columns paint on their
+   own layer and hid a row-level shadow. Gradients are flat across the cell
+   width, so adjacent cells join with no seams. The hovered row's cells are
+   raised above the neighbouring rows (frozen ones above everything) so the
+   strips aren't painted over. */
+/* z-index 1: above normal (static) cells, but BELOW the neighbouring rows'
+   frozen cells (z 2), so a scrolled cell's strip sliding under the frozen
+   columns doesn't double up with the frozen cell's own strip. */
+.gtable-cards table.gtable tbody tr:hover td { position: relative; z-index: 1; }
+.gtable-cards .gtable-scroll-wrap table.gtable tbody tr:hover td:first-child,
+.gtable-cards .gtable-scroll-wrap[data-freeze-cols="2"] table.gtable tbody tr:hover td:nth-child(2) {
+  position: sticky !important; z-index: 4;
+}
+.gtable-cards table.gtable tbody tr:hover td::before,
+.gtable-cards table.gtable tbody tr:hover td::after {
+  content: ""; position: absolute; left: 0; right: 0; pointer-events: none;
+}
+.gtable-cards table.gtable tbody tr:hover td::after {
+  top: 100%; height: 9px;
+  background: linear-gradient(rgba(14, 58, 122, .26), rgba(14, 58, 122, 0));
+}
+.gtable-cards table.gtable tbody tr:hover td::before {
+  bottom: 100%; height: 5px;
+  background: linear-gradient(rgba(14, 58, 122, 0), rgba(14, 58, 122, .14));
+}
+
+/* Footer total row (any <tfoot> in a Global Table): the standard "disabled"
+   grey (#e9ecef, Bootstrap's disabled-field colour) so it reads as a computed,
+   non-clickable summary rather than a data row (2026-10-17). Overrides each
+   page's own tfoot class (table-light / table-dark) and the frozen first
+   column's white background, so every Global Table total looks the same. */
+.gtable-cards table.gtable tfoot { --bs-table-bg: #e9ecef; --bs-table-color: #212529; }
+.gtable-cards table.gtable tfoot td,
+.gtable-cards table.gtable tfoot th {
+  background-color: #e9ecef !important; color: #212529 !important;
+  font-weight: 600;
+  border-top: 1px solid #cfd6dd !important; border-bottom: 0 !important;
+  box-shadow: none !important; background-image: none !important;
+}
+
 /* The checkbox column's bottom border isn't painted by Chrome (sticky cell
    in a separate-border table), so its row divider is drawn as a 1px
    background line instead — visually identical to the other cells. */

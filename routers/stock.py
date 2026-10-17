@@ -37,7 +37,7 @@ from models.bucket import Bucket, _new_bucket_number
 from models.pna_part import DevicePNAPart
 from routers.transfers import _gen_work_id
 from services.notifications import create_notification
-from services.work_order_close import close_open_work_orders
+from services.work_order_close import close_open_work_orders, reuse_open_stress_work_order
 from services.location_defaults import ensure_stage_location
 from utils.flag import flag_badge_html, is_flagged
 
@@ -2141,16 +2141,23 @@ async def change_engineer(
         notes=f"Changed engineer to {user.full_name or user.username} via Production Manager",
     ))
 
-    await close_open_work_orders(db, device.id)   # previous engineer's WorkID completes now
-    work_id = await _gen_work_id(db)
-    db.add(WorkOrder(
-        work_id=work_id, device_id=device.id, barcode=device.barcode,
-        stage=CHANGE_ENGINEER_STAGE_CODE[new_stage],
-        assigned_role=user.role.value if hasattr(user.role, "value") else str(user.role),
-        assigned_user_id=user.id, assigned_username=user.username,
-        assigned_name=user.full_name, status="pending",
-        created_by=current_user.username,
-    ))
+    # Same one-Stress-ID rule as bucket assignment (2026-10-17): reuse the
+    # open, unassigned STRS- WorkID from L1/L2 Mark Complete if there is one.
+    reused_wo = await reuse_open_stress_work_order(
+        db, device.id, new_stage, user, created_by=current_user.username)
+    await close_open_work_orders(db, device.id, keep_id=reused_wo.id if reused_wo else None)   # previous engineer's WorkID completes now
+    if reused_wo:
+        work_id = reused_wo.work_id
+    else:
+        work_id = await _gen_work_id(db)
+        db.add(WorkOrder(
+            work_id=work_id, device_id=device.id, barcode=device.barcode,
+            stage=CHANGE_ENGINEER_STAGE_CODE[new_stage],
+            assigned_role=user.role.value if hasattr(user.role, "value") else str(user.role),
+            assigned_user_id=user.id, assigned_username=user.username,
+            assigned_name=user.full_name, status="pending",
+            created_by=current_user.username,
+        ))
 
     _label = f"{device.brand or ''} {device.model or ''}".strip()
     await create_notification(

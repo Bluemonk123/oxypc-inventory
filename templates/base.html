@@ -866,6 +866,9 @@
       </div>
       {% endif %}
       <span class="navbar-brand mb-0 h1 fw-bold text-primary">{% set _default_page_title %}{% block page_title %}{% endblock %}{% endset %}{{ resolve_page_title(request.url.path) or _default_page_title }}</span>
+      {# Optional page-specific badge right after the title (e.g. User
+         Management's "Today Login"). Empty on every other page. #}
+      {% block page_title_extra %}{% endblock %}
       <div class="ms-auto d-flex align-items-center gap-3">
         <!-- Server connection status — real /health polling, see watchdog
              script near the closing </body>. Not a decorative indicator. -->
@@ -1308,6 +1311,43 @@ $.extend(true, $.fn.dataTable.defaults, {
 <!-- Live notification toast popup — top-right, auto-appears on new
      notifications, closable, app-wide (this block lives in base.html). -->
 <div id="notifToastContainer" class="position-fixed top-0 end-0 p-3" style="z-index:2080; max-width:360px;"></div>
+<script>
+/* window.showTopToast(type, message, title): a toast in the same top-right
+   stack and style as the live notifications. type = success | danger |
+   warning | primary. Text only (no HTML). Auto-closes after 6s.
+   window.flashAsToast(): moves this page's ?success= banner into that stack
+   instead of the full-width alert under the topbar — opt-in per page
+   (L1/L2 and L3/L4 call it, 2026-10-17). Errors/warnings stay as banners. */
+window.showTopToast = function (type, message, title) {
+  var box = document.getElementById('notifToastContainer');
+  if (!box || !message) return;
+  var el = document.createElement('div');
+  el.className = 'toast align-items-center text-bg-' + (type || 'primary') + ' border-0 show shadow mb-2';
+  el.setAttribute('role', 'alert');
+  var wrap = document.createElement('div'); wrap.className = 'd-flex';
+  var body = document.createElement('div'); body.className = 'toast-body';
+  if (title) { var t = document.createElement('div'); t.className = 'fw-semibold small'; t.textContent = title; body.appendChild(t); }
+  var m = document.createElement('div'); m.className = 'small';
+  var ic = document.createElement('i');
+  ic.className = 'bi ' + ({ success: 'bi-check-circle', danger: 'bi-exclamation-circle', warning: 'bi-exclamation-triangle' }[type] || 'bi-info-circle') + ' me-2';
+  m.appendChild(ic); m.appendChild(document.createTextNode(message)); body.appendChild(m);
+  var btn = document.createElement('button');
+  btn.type = 'button'; btn.className = 'btn-close btn-close-white me-2 m-auto'; btn.setAttribute('aria-label', 'Close');
+  btn.addEventListener('click', function () { el.remove(); });
+  wrap.appendChild(body); wrap.appendChild(btn); el.appendChild(wrap);
+  box.appendChild(el);
+  setTimeout(function () { if (el.parentNode) el.remove(); }, 6000);
+};
+window.flashAsToast = function () {
+  var flash = document.getElementById('flashMessages');
+  if (!flash) return;
+  flash.querySelectorAll('.alert-success').forEach(function (a) {
+    var text = (a.textContent || '').replace(/\s+/g, ' ').trim();
+    a.remove();
+    window.showTopToast('success', text);
+  });
+};
+</script>
 <script>
 (function pollNotificationToasts() {
   var lastSeenId = null;   // null = baseline not established yet

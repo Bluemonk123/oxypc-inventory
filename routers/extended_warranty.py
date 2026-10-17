@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Form, Request, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from templates_config import templates
 from database import get_db
@@ -89,7 +89,15 @@ async def extended_warranty_set(
     current_user: User = Depends(allowed),
 ):
     bc = barcode.strip()
-    device = (await db.execute(select(Device).where(Device.barcode == bc))).scalar_one_or_none()
+    # Case-insensitive (2026-10-17): legacy tags are stored in mixed case
+    # (e.g. "4488260526l0731"), and the page's own tag lookup (/devices/api/
+    # brief) already matches case-insensitively — an exact match here made a
+    # tag the lookup had just found fail with "not found" on Set. .first()
+    # rather than scalar_one_or_none() because duplicate-case rows exist.
+    device = (await db.execute(
+        select(Device).where(func.upper(Device.barcode) == bc.upper())
+        .order_by(Device.is_trashed.asc(), Device.updated_at.desc())
+    )).scalars().first()
     if not device:
         return RedirectResponse(url=f"/extended-warranty?error=Device+{bc}+not+found", status_code=302)
 
