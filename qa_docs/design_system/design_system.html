@@ -154,7 +154,7 @@
   <h2>Brand and neutrals <span class="tag chg">UPDATED</span></h2>
   <div class="sw-grid">
     <div class="sw"><div class="chip" style="background:#0e3a7a"></div><div><div class="n">Bluemonk Navy</div><div class="v"><code>#0e3a7a</code> <span class="tok">--brand-blue</span></div><div class="u">History buttons, table headers, focus rings, sidebar footer, card titles.</div></div></div>
-    <div class="sw"><div class="chip" style="background:#0377c2"></div><div><div class="n">Bluemonk Blue</div><div class="v"><code>#0377c2</code> <span class="tok">--sidebar-active</span></div><div class="u">Active sidebar link only (sidebar kept as before)</div></div></div>
+    <div class="sw"><div class="chip" style="background:#0377c2"></div><div><div class="n">Bluemonk Blue</div><div class="v"><code>#0377c2</code> <span class="tok">--sidebar-active</span></div><div class="u">Active sidebar link only</div></div></div>
     <div class="sw"><div class="chip" style="background:#d9ebf6"></div><div><div class="n">Sky Blue</div><div class="v"><code>#d9ebf6</code> —</div><div class="u">Global Table card header</div></div></div>
     <div class="sw"><div class="chip" style="background:#54BA48"></div><div><div class="n">OxyPC Leaf</div><div class="v"><code>#54BA48</code> <span class="tok">--oxy-leaf</span></div><div class="u">Accents only (logo, icon top) — too light for text</div></div></div>
     <div class="sw"><div class="chip" style="background:#129042"></div><div><div class="n">OxyPC Forest</div><div class="v"><code>#129042</code> <span class="tok">--oxy-forest</span></div><div class="u">Profit figures (<code>.profit-positive</code>), icon front</div></div></div>
@@ -318,7 +318,7 @@
   </table>
   <h2>Sidebar and top bar <span class="tag chg">UPDATED</span></h2>
   <ul class="doc">
-    <li><b>Sidebar colours:</b> brand band OxyPC Leaf <code>#54BA48</code> reading "Inventory Lifecycle"; link text <code>#f0f4f8</code> (the page background); footer in Bluemonk Navy; active link <code>#0377c2</code> (<code>--sidebar-active</code>). The OxyPC colour changes deliberately do not reach the sidebar.</li>
+    <li><b>Sidebar colours:</b> brand band OxyPC Leaf <code>#54BA48</code> reading "Inventory Lifecycle"; link text <code>#f0f4f8</code> (the page background); footer in Bluemonk Navy; active link <code>#0377c2</code> (<code>--sidebar-active</code>). Green icons and badges in the sidebar use the same success green <code>#0F7A37</code> as the rest of the app.</li>
     <li><b>Back / forward:</b> filled triangles (<code>bi-caret-left-fill</code> / <code>-right-fill</code>) in Bluemonk Navy <code>#0e3a7a</code>, pale grey <code>#c3cad3</code> when there is nowhere to go; no pill or background.</li>
     <li><b>Sections:</b> Attendance, Intake, Inventory, Repair, Store Manager, CRM, External Partner, Customer Care, Sales &amp; CRM, Finance, Product Master, Reports, Admin, Notifications, Support.</li>
     <li><b>Each link</b> is wrapped in <code>has_perm(role,'&lt;module&gt;','enable') and not module_hidden('&lt;module&gt;')</code>. Its text comes from <code>sidebar_label()</code>, so admins can rename it in Sidebar Config.</li>

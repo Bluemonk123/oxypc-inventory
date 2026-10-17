@@ -772,6 +772,4 @@ table.gtable tbody td .gtable-clamp2 {
 .badge.bg-success, .badge.text-bg-success {
   background-color: #0F7A37 !important; color: #fff !important;
 }
-/* Sidebar keeps its original colours (2026-10-17, on request): the OxyPC
-   green overrides above must not reach it. */
-#sidebar .text-success { color: #198754 !important; }
+/* Sidebar now uses the same success green (2026-10-18). */
