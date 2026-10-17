@@ -710,18 +710,19 @@ table.gtable tbody td:first-child {
   padding-left: 16px !important;
 }
 
-/* Row shadows (2026-10-17): a ticked row gets a light shadow; the row under
-   the mouse gets a deeper one, so hover always reads above selection. The
-   row is lifted (position/z-index) so its shadow isn't painted over by the
-   rows around it. */
-.gtable-cards table.gtable tbody tr { position: relative; transition: box-shadow .12s; }
-.gtable-cards table.gtable tbody tr:has(input[type=checkbox]:checked) {
-  box-shadow: 0 1px 5px rgba(14, 58, 122, .14);
-  z-index: 4;
+/* Ticked-row shadow (2026-10-17): same per-cell gradient-strip technique as
+   the hovered-row shadow above (works with the frozen columns), but lighter,
+   so the row under the mouse always reads above a selected one. Skipped
+   while that row is hovered — the hover strips take over. */
+.gtable-cards table.gtable tbody tr:has(input[type=checkbox]:checked):not(:hover) td { position: relative; z-index: 1; }
+.gtable-cards .gtable-scroll-wrap table.gtable tbody tr:has(input[type=checkbox]:checked):not(:hover) td:first-child,
+.gtable-cards .gtable-scroll-wrap[data-freeze-cols="2"] table.gtable tbody tr:has(input[type=checkbox]:checked):not(:hover) td:nth-child(2) {
+  position: sticky !important; z-index: 3;
 }
-.gtable-cards table.gtable tbody tr:hover {
-  box-shadow: 0 3px 12px rgba(14, 58, 122, .30);
-  z-index: 5;
+.gtable-cards table.gtable tbody tr:has(input[type=checkbox]:checked):not(:hover) td::after {
+  content: ""; position: absolute; left: 0; right: 0; pointer-events: none;
+  top: 100%; height: 5px;
+  background: linear-gradient(rgba(14, 58, 122, .12), rgba(14, 58, 122, 0));
 }
 
 /* Global Table cell wrapping (2026-10-17). Body cells stay on one line, so
