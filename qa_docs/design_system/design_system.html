@@ -63,7 +63,7 @@
   /* mock app frame (page layout chapter) */
   .mock { display: flex; border: 1px solid #dee2e6; border-radius: 10px; overflow: hidden; height: 92mm; font-size: 8pt; }
   .mock .sb { width: 34mm; background: var(--sidebar-bg); color: #f0f4f8; display: flex; flex-direction: column; }
-  .mock .sb .brand { background: #54BA48; color: #fff; font-weight: 700; padding: 2.5mm 2.5mm; white-space: nowrap; }
+  .mock .sb .brand { background: #129042; color: #fff; font-weight: 700; padding: 2.5mm 2.5mm; white-space: nowrap; }
   .mock .sb .sec { color: #6b7f99; font-size: 6.5pt; letter-spacing: .12em; font-weight: 700; padding: 2mm 3mm 1mm; }
   .mock .sb .it { padding: 1.2mm 3mm; margin: 0 1.5mm; border-radius: 4px; }
   .mock .sb .act { background: #0377c2; }
@@ -318,7 +318,7 @@
   </table>
   <h2>Sidebar and top bar <span class="tag chg">UPDATED</span></h2>
   <ul class="doc">
-    <li><b>Sidebar colours:</b> brand band OxyPC Leaf <code>#54BA48</code> reading "Inventory Lifecycle"; link text <code>#f0f4f8</code> (the page background); footer in Bluemonk Navy; active link <code>#0377c2</code> (<code>--sidebar-active</code>). Green icons and badges in the sidebar use the same success green <code>#0F7A37</code> as the rest of the app.</li>
+    <li><b>Sidebar colours:</b> brand band OxyPC Forest <code>#129042</code> reading "Inventory Lifecycle"; link text <code>#f0f4f8</code> (the page background); footer in Bluemonk Navy; active link <code>#0377c2</code> (<code>--sidebar-active</code>). Green icons and badges in the sidebar use the same success green <code>#0F7A37</code> as the rest of the app.</li>
     <li><b>Back / forward:</b> filled triangles (<code>bi-caret-left-fill</code> / <code>-right-fill</code>) in Bluemonk Navy <code>#0e3a7a</code>, pale grey <code>#c3cad3</code> when there is nowhere to go; no pill or background.</li>
     <li><b>Sections:</b> Attendance, Intake, Inventory, Repair, Store Manager, CRM, External Partner, Customer Care, Sales &amp; CRM, Finance, Product Master, Reports, Admin, Notifications, Support.</li>
     <li><b>Each link</b> is wrapped in <code>has_perm(role,'&lt;module&gt;','enable') and not module_hidden('&lt;module&gt;')</code>. Its text comes from <code>sidebar_label()</code>, so admins can rename it in Sidebar Config.</li>
