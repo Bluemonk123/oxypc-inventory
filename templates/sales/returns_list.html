@@ -46,10 +46,13 @@
         </tr>
       </thead>
       <tbody>
+        {# returned tag -> its Replace Now replacement tag, for the export's "Replaced Tag" column #}
+        {% set repl_map = {} %}
+        {% for r in replacements %}{% set _ = repl_map.update({ (r[4] or '')[14:].strip(): r[0] }) %}{% endfor %}
         {% for ret, barcode, brand, model, entity, serial_no, sale_price, sale_number, customer_name, customer_phone, customer_address in returns %}
         <tr data-replacement="no" data-return-date="{{ ret.return_date.strftime('%Y-%m-%d') if ret.return_date else '' }}">
           <td>{{ ret.return_date.strftime('%d-%b-%Y') if ret.return_date else '—' }}</td>
-          <td><code>{{ barcode }}</code></td>
+          <td data-export="{{ barcode }}" data-replaced-tag="{{ repl_map.get(barcode, '') }}"><code>{{ barcode }}</code></td>
           <td>{{ serial_no or '—' }}</td>
           <td>{{ brand }} {{ model }}</td>
           <td><code>{{ sale_number }}</code></td>
@@ -98,7 +101,7 @@
         {% for barcode, brand, model, entity, replaced, serial_no, sale_price, sale_number, sold_at, sold_by, customer_name, customer_phone, customer_address in replacements %}
         <tr data-replacement="yes" data-return-date="{{ sold_at.strftime('%Y-%m-%d') if sold_at else '' }}">
           <td>{{ sold_at.strftime('%d-%b-%Y') if sold_at else '—' }}</td>
-          <td><code>{{ barcode }}</code><br><span class="badge bg-info text-dark">{{ replaced }}</span></td>
+          <td data-export="{{ barcode }}" data-replaced-tag="{{ (replaced or '')[14:].strip() }}"><code>{{ barcode }}</code><br><span class="badge bg-info text-dark">{{ replaced }}</span></td>
           <td>{{ serial_no or '—' }}</td>
           <td>{{ brand }} {{ model }}</td>
           <td><code>{{ sale_number }}</code></td>
@@ -192,15 +195,24 @@ $(document).ready(function(){
   // so it honours the filter bar above.
   $('#retExportBtn').on('click', function(){
     var headers = [];
-    $('#returnsTable thead th').each(function(){
-      headers.push('"' + $(this).text().trim().replace(/"/g, '""') + '"');
+    function q(v) { return '"' + String(v).trim().replace(/\s+/g, ' ').replace(/"/g, '""') + '"'; }
+    // Export only: the Tag Number column is headed "Customer Tag" and holds
+    // the bare tag; the replacement link goes in a "Replaced Tag" column at
+    // the very end (returned tag -> replacement tag, replacement tag -> the
+    // returned tag it replaced; blank otherwise).
+    $('#returnsTable thead th').each(function(i){
+      headers.push(q(i === 1 ? 'Customer Tag' : $(this).text()));
     });
+    headers.push(q('Replaced Tag'));
     var rows = [];
     dt.rows({ search: 'applied' }).nodes().each(function(tr){
-      var cells = [];
-      $(tr).find('td').each(function(){
-        cells.push('"' + $(this).text().trim().replace(/\s+/g, ' ').replace(/"/g, '""') + '"');
+      var cells = [], replacedTag = '';
+      $(tr).find('td').each(function(i){
+        var exp = this.getAttribute('data-export');
+        cells.push(q(exp !== null ? exp : $(this).text()));
+        if (i === 1) replacedTag = this.getAttribute('data-replaced-tag') || '';
       });
+      cells.push(q(replacedTag));
       rows.push(cells.join(','));
     });
     if (!rows.length) { alert('No rows to export.'); return; }
