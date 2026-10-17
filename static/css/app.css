@@ -171,7 +171,7 @@ body {
 .card-body table { border-radius: 0.5em; overflow: hidden; }
 
 /* P&L colors */
-.profit-positive { color: #0f9e4e; font-weight: 600; }
+.profit-positive { color: #129042; font-weight: 600; }
 .profit-negative { color: #d63031; font-weight: 600; }
 .profit-zero { color: #888; }
 
@@ -750,26 +750,27 @@ table.gtable tbody td .gtable-clamp2 {
      Mint   #E8F5E6  green label backgrounds */
 :root {
   --oxy-leaf: #54BA48; --oxy-forest: #129042; --oxy-text: #0F7A37; --oxy-mint: #E8F5E6;
-  --bs-success: #129042; --bs-success-rgb: 18, 144, 66;
+  /* App "success" colour = #0F7A37 (2026-10-18) */
+  --bs-success: #0F7A37; --bs-success-rgb: 15, 122, 55;
   --bs-success-text-emphasis: #0F7A37; --bs-success-bg-subtle: #E8F5E6; --bs-success-border-subtle: #b9e2b4;
 }
 .btn-success {
-  --bs-btn-bg: #129042; --bs-btn-border-color: #129042;
-  --bs-btn-hover-bg: #0F7A37; --bs-btn-hover-border-color: #0F7A37;
-  --bs-btn-active-bg: #0B6B30; --bs-btn-active-border-color: #0B6B30;
-  --bs-btn-disabled-bg: #129042; --bs-btn-disabled-border-color: #129042;
-  --bs-btn-focus-shadow-rgb: 18, 144, 66;
+  --bs-btn-bg: #0F7A37; --bs-btn-border-color: #0F7A37;
+  --bs-btn-hover-bg: #0B6B30; --bs-btn-hover-border-color: #0B6B30;
+  --bs-btn-active-bg: #095A28; --bs-btn-active-border-color: #095A28;
+  --bs-btn-disabled-bg: #0F7A37; --bs-btn-disabled-border-color: #0F7A37;
+  --bs-btn-focus-shadow-rgb: 15, 122, 55;
 }
 .btn-outline-success {
-  --bs-btn-color: #0F7A37; --bs-btn-border-color: #129042;
-  --bs-btn-hover-bg: #129042; --bs-btn-hover-border-color: #129042;
-  --bs-btn-active-bg: #0F7A37; --bs-btn-active-border-color: #0F7A37;
-  --bs-btn-focus-shadow-rgb: 18, 144, 66;
+  --bs-btn-color: #0F7A37; --bs-btn-border-color: #0F7A37;
+  --bs-btn-hover-bg: #0F7A37; --bs-btn-hover-border-color: #0F7A37;
+  --bs-btn-active-bg: #0B6B30; --bs-btn-active-border-color: #0B6B30;
+  --bs-btn-focus-shadow-rgb: 15, 122, 55;
 }
 .text-success { color: #0F7A37 !important; }
-/* Green labels: mint background + dark green text (OxyPC style) */
+/* Success badge: solid #0F7A37 with white text (2026-10-18) */
 .badge.bg-success, .badge.text-bg-success {
-  background-color: #E8F5E6 !important; color: #0F7A37 !important;
+  background-color: #0F7A37 !important; color: #fff !important;
 }
 /* Sidebar keeps its original colours (2026-10-17, on request): the OxyPC
    green overrides above must not reach it. */

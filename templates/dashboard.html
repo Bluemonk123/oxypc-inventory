@@ -465,7 +465,7 @@
 <div class="row g-3 mb-4">
   {% for label, link, n, cat, bg, icon in [
       ('Laptops',     '/devices?category=Laptop',      laptops_available, 'Laptop',      '#0d6efd', 'bi-laptop'),
-      ('Desktops',    '/devices?category=Desktop',     desktops_available, 'Desktop',    '#129042', 'bi-pc-display'),
+      ('Desktops',    '/devices?category=Desktop',     desktops_available, 'Desktop',    '#0F7A37', 'bi-pc-display'),
       ('TFT Monitor', '/devices?category=TFT%20Monitor', tft_available,   'TFT Monitor', '#fd7e14', 'bi-display'),
       ('Tablet',      '/devices?category=Tablet',      tablets_available, 'Tablet',      '#20c997', 'bi-tablet'),
       ('Mini PC',     '/devices?category=Mini%20PC',   minipc_available,  'Mini PC',     '#6f42c1', 'bi-cpu'),
@@ -602,10 +602,10 @@
 .stat-card { border-left: 4px solid transparent !important; }
 .stat-primary { background: #e7f0ff; border-left-color: #0d6efd !important; }
 .stat-warning { background: #fff6dd; border-left-color: #f0ad00 !important; }
-.stat-success { background: #e6f4ec; border-left-color: #129042 !important; }
+.stat-success { background: #E8F5E6; border-left-color: #0F7A37 !important; }
 .stat-danger  { background: #fdeaea; border-left-color: #dc3545 !important; }
 .cat-laptop { border-top: 4px solid #0d6efd !important; }
-.cat-desktop{ border-top: 4px solid #129042 !important; }
+.cat-desktop{ border-top: 4px solid #0F7A37 !important; }
 .cat-tft    { border-top: 4px solid #fd7e14 !important; }
 .cat-tablet { border-top: 4px solid #20c997 !important; }
 .cat-minipc { border-top: 4px solid #6f42c1 !important; }
@@ -640,7 +640,7 @@
       labels: labels,
       datasets: [
         { label: 'Laptops',     data: {{ chart_data.get('Laptop',      []) | tojson }}, backgroundColor: 'rgba(13,110,253,.75)',  borderColor: '#0d6efd', borderWidth:1, borderRadius:4 },
-        { label: 'Desktops',    data: {{ chart_data.get('Desktop',     []) | tojson }}, backgroundColor: 'rgba(18,144,66,.75)',   borderColor: '#129042', borderWidth:1, borderRadius:4 },
+        { label: 'Desktops',    data: {{ chart_data.get('Desktop',     []) | tojson }}, backgroundColor: 'rgba(15,122,55,.75)',   borderColor: '#0F7A37', borderWidth:1, borderRadius:4 },
         { label: 'TFT Monitor', data: {{ chart_data.get('TFT Monitor', []) | tojson }}, backgroundColor: 'rgba(253,126,20,.75)',  borderColor: '#fd7e14', borderWidth:1, borderRadius:4 },
       ]
     },
@@ -679,7 +679,7 @@
       datasets: [
         { label: 'Sourcing Request', data: {{ ac.get('parts_sourcing_weekly', []) | tojson }}, backgroundColor: 'rgba(13,110,253,.75)' },
         { label: 'GRN',              data: {{ ac.get('parts_grn_weekly', []) | tojson }},      backgroundColor: 'rgba(255,193,7,.75)' },
-        { label: 'Harvest',          data: {{ ac.get('parts_harvest_weekly', []) | tojson }},  backgroundColor: 'rgba(18,144,66,.75)' },
+        { label: 'Harvest',          data: {{ ac.get('parts_harvest_weekly', []) | tojson }},  backgroundColor: 'rgba(15,122,55,.75)' },
       ]
     },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
@@ -690,7 +690,7 @@
     data: {
       labels: {{ ac.get('stage_pie_labels', []) | tojson }},
       datasets: [{ data: {{ ac.get('stage_pie_values', []) | tojson }},
-        backgroundColor: ['#6c757d','#0dcaf0','#ffc107','#fd7e14','#dc3545','#6f42c1','#0d6efd','#129042'] }]
+        backgroundColor: ['#6c757d','#0dcaf0','#ffc107','#fd7e14','#dc3545','#6f42c1','#0d6efd','#0F7A37'] }]
     },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
   });
@@ -700,7 +700,7 @@
     data: {
       labels: weekLabels,
       datasets: [
-        { label: 'Ready to Sale (count)', data: {{ ac.get('ready_to_sale_weekly', []) | tojson }}, backgroundColor: 'rgba(18,144,66,.55)', yAxisID: 'y1' },
+        { label: 'Ready to Sale (count)', data: {{ ac.get('ready_to_sale_weekly', []) | tojson }}, backgroundColor: 'rgba(15,122,55,.55)', yAxisID: 'y1' },
         { label: 'Product Sold (₹)',      data: {{ ac.get('product_sold_price_weekly', []) | tojson }}, backgroundColor: 'rgba(13,110,253,.75)', yAxisID: 'y' },
       ]
     },
@@ -713,7 +713,7 @@
     data: {
       labels: weekLabels,
       datasets: [
-        { label: 'Buyer PO (₹)',  data: {{ ac.get('buyer_po_weekly', []) | tojson }},  backgroundColor: 'rgba(18,144,66,.75)' },
+        { label: 'Buyer PO (₹)',  data: {{ ac.get('buyer_po_weekly', []) | tojson }},  backgroundColor: 'rgba(15,122,55,.75)' },
         { label: 'Seller PO (₹)', data: {{ ac.get('seller_po_weekly', []) | tojson }}, backgroundColor: 'rgba(253,126,20,.75)' },
       ]
     },
