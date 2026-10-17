@@ -96,7 +96,7 @@
     <tr><td>Based on</td><td>Code on branch <code>staging</code>, <code>static/css/app.css</code>, <code>static/js/global-table.js</code></td></tr>
     <tr><td>Environments</td><td>Production <code>http://10.199.206.109</code> · Staging <code>http://localhost:8001</code></td></tr>
     <tr><td>Audience</td><td>Developers, reviewers and Claude sessions building or changing pages</td></tr>
-    <tr><td>What's new</td><td>v1.2: OxyPC × Bluemonk brand colours (success <code>#0F7A37</code>, brand blue <code>#0e3a7a</code>), sidebar background <code>#212529</code>, new Global Table style, OxyPC green app icon</td></tr>
+    <tr><td>What's new</td><td>v1.2: OxyPC × Bluemonk brand colours (success <code>#0F7A37</code>, brand blue <code>#0e3a7a</code>), new Global Table style, OxyPC green app icon</td></tr>
   </table>
 </div>
 
@@ -152,17 +152,17 @@
 
   <h2>Brand and neutrals <span class="tag chg">UPDATED</span></h2>
   <div class="sw-grid">
-    <div class="sw"><div class="chip" style="background:#0e3a7a"></div><div><div class="n">Brand blue</div><div class="v"><code>#0e3a7a</code> <span class="tok">--brand-blue</span></div><div class="u">History buttons, focus rings, barcode focus. Was #0377c2 until v1.1.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#0e3a7a"></div><div><div class="n">Brand blue</div><div class="v"><code>#0e3a7a</code> <span class="tok">--brand-blue</span></div><div class="u">History buttons, table headers, focus rings, sidebar footer, card titles. Was #0377c2 until v1.1.</div></div></div>
     <div class="sw"><div class="chip" style="background:#0377c2"></div><div><div class="n">Sidebar active</div><div class="v"><code>#0377c2</code> <span class="tok">--sidebar-active</span></div><div class="u">Active sidebar link only (sidebar kept as before)</div></div></div>
     <div class="sw"><div class="chip" style="background:#d9ebf6"></div><div><div class="n">Card header</div><div class="v"><code>#d9ebf6</code> —</div><div class="u">Global Table card header</div></div></div>
-    <div class="sw"><div class="chip" style="background:#212529"></div><div><div class="n">Dark text</div><div class="v"><code>#212529</code> <span class="tok">body text</span></div><div class="u">Body text, table cells, form fields — and the sidebar background</div></div></div>
+    <div class="sw"><div class="chip" style="background:#212529"></div><div><div class="n">Dark text</div><div class="v"><code>#212529</code> <span class="tok">body text</span></div><div class="u">Body text, table cells, form fields</div></div></div>
     <div class="sw"><div class="chip" style="background:#f0f4f8"></div><div><div class="n">Light text</div><div class="v"><code>#f0f4f8</code> <span class="tok">--sidebar-text</span></div><div class="u">Text on dark backgrounds (sidebar links)</div></div></div>
     <div class="sw"><div class="chip" style="background:#f0f4f8"></div><div><div class="n">Light background</div><div class="v"><code>#f0f4f8</code> <span class="tok">page</span></div><div class="u">Behind all page content; cards sit on white</div></div></div>
     <div class="sw"><div class="chip" style="background:#D8D8D8"></div><div><div class="n">Disabled</div><div class="v"><code>#D8D8D8</code> —</div><div class="u">Every disabled button</div></div></div>
   </div>
 
   <h2>OxyPC × Bluemonk brand colours <span class="tag">NEW</span></h2>
-  <p>The app carries both companies. Bluemonk's navy and blue are the main frame; OxyPC's leaf greens mark success, stock and profit. Tokens in <code>app.css :root</code>.</p>
+  <p>The app carries both companies. Bluemonk's blues are the main frame; OxyPC's leaf greens mark success, stock and profit. Tokens in <code>app.css :root</code>.</p>
   <div class="sw-grid">
     <div class="sw"><div class="chip" style="background:#54BA48"></div><div><div class="n">OxyPC Leaf</div><div class="v"><code>#54BA48</code> <span class="tok">--oxy-leaf</span></div><div class="u">Accents only (logo, icon top) — too light for text</div></div></div>
     <div class="sw"><div class="chip" style="background:#129042"></div><div><div class="n">OxyPC Forest</div><div class="v"><code>#129042</code> <span class="tok">--oxy-forest</span></div><div class="u">Profit figures (<code>.profit-positive</code>), icon front</div></div></div>
@@ -317,14 +317,14 @@
   <table class="doc">
     <tr><th style="width:6%">#</th><th style="width:22%">Zone</th><th>Rule</th></tr>
     <tr><td>1</td><td>Summary tiles</td><td>Optional. When present, always first, above any tabs. One row.</td></tr>
-    <tr><td>2</td><td>Filter bar</td><td>One line of filters, Filter/Reset on the right, navy line underneath.</td></tr>
+    <tr><td>2</td><td>Filter bar</td><td>One line of filters, Filter/Reset on the right, brand-blue line underneath.</td></tr>
     <tr><td>3</td><td>Alert</td><td>Only after a redirect with <code>?success=</code> or <code>?error=</code>.</td></tr>
     <tr><td>4</td><td>Tabs</td><td><code>nav nav-tabs mb-3</code> when the page has several tables. A table inside a tab hides its own card header.</td></tr>
     <tr><td>5</td><td>Table card</td><td>Sky-blue card header with icon + title and this table's own actions, then the Global Table.</td></tr>
   </table>
   <h2>Sidebar and top bar <span class="tag chg">UPDATED</span></h2>
   <ul class="doc">
-    <li><b>Sidebar colours:</b> brand band green <code>#198754</code> reading "Inventory Lifecycle"; background <code>#212529</code> (the Dark text colour, <code>--sidebar-bg</code>; was #1e2a3a); link text <code>#f0f4f8</code> (the page background); footer navy <code>#0e3a7a</code>; active link <code>#0377c2</code> (<code>--sidebar-active</code>). The OxyPC colour changes deliberately do not reach the sidebar.</li>
+    <li><b>Sidebar colours:</b> brand band green <code>#198754</code> reading "Inventory Lifecycle"; link text <code>#f0f4f8</code> (the page background); footer in brand blue; active link <code>#0377c2</code> (<code>--sidebar-active</code>). The OxyPC colour changes deliberately do not reach the sidebar.</li>
     <li><b>Back / forward:</b> filled triangles (<code>bi-caret-left-fill</code> / <code>-right-fill</code>) in brand blue <code>#0e3a7a</code>, pale grey <code>#c3cad3</code> when there is nowhere to go; no pill or background.</li>
     <li><b>Sections:</b> Attendance, Intake, Inventory, Repair, Store Manager, CRM, External Partner, Customer Care, Sales &amp; CRM, Finance, Product Master, Reports, Admin, Notifications, Support.</li>
     <li><b>Each link</b> is wrapped in <code>has_perm(role,'&lt;module&gt;','enable') and not module_hidden('&lt;module&gt;')</code>. Its text comes from <code>sidebar_label()</code>, so admins can rename it in Sidebar Config.</li>
@@ -407,7 +407,7 @@
   <table class="doc">
     <tr><th style="width:22%">Part</th><th>Spec</th></tr>
     <tr><td>Tile</td><td>White, <code>rounded-3</code>, min-width 80px, shadow <code>0 .125rem .35rem rgba(0,0,0,.15)</code>. Coloured title strip on top (<code>bg-{stage colour}</code>, .75rem, weight 600); count below: 1.25rem bold.</td></tr>
-    <tr><td>Row and card</td><td>All ten stages on one row (<code>flex-wrap:nowrap</code>) with a filled green arrow between them (<code>bi-caret-right-fill text-success</code>, now #0F7A37). Split Entity / Split Zone as white outline buttons; navy watermark 7rem at 6%.</td></tr>
+    <tr><td>Row and card</td><td>All ten stages on one row (<code>flex-wrap:nowrap</code>) with a filled green arrow between them (<code>bi-caret-right-fill text-success</code>, now #0F7A37). Split Entity / Split Zone as white outline buttons; brand-blue watermark 7rem at 6%.</td></tr>
   </table>
   <h2>D · Stat card (Dashboard only)</h2>
   <div class="sample d-flex gap-2">
@@ -427,7 +427,7 @@
 <div class="page">
   <div class="chap-no">06</div>
   <h1 class="chap">Filter bar</h1>
-  <p class="lead">One row of small controls sitting on the page, with no box, and a navy rule underneath. Every list page uses it.</p>
+  <p class="lead">One row of small controls sitting on the page, with no box, and a brand-blue rule underneath. Every list page uses it.</p>
   <div class="sample">
     <form class="filter-bar mb-0" onsubmit="return false"><div class="filter-bar-row">
       <div class="filter-bar-search"><input class="form-control form-control-sm" placeholder="GRN / Invoice / Tag Number / Model"></div>
@@ -483,7 +483,7 @@
   <h2>Built-in behaviour</h2>
   <table class="doc">
     <tr><th style="width:26%">Behaviour</th><th>Default</th></tr>
-    <tr><td>Look <span class="tag">NEW</span></td><td>Navy <code>#0e3a7a</code> header with white labels and rounded ends; plain white rows with a thin <code>#e3eef7</code> divider; soft navy shadow behind the table. Added automatically (<code>.gtable-cards</code> on the DataTables wrapper); <code>opts.plainStyle:true</code> opts out.</td></tr>
+    <tr><td>Look <span class="tag">NEW</span></td><td>Brand-blue <code>#0e3a7a</code> header with white labels and rounded ends; plain white rows with a thin <code>#e3eef7</code> divider; soft brand-blue shadow behind the table. Added automatically (<code>.gtable-cards</code> on the DataTables wrapper); <code>opts.plainStyle:true</code> opts out.</td></tr>
     <tr><td>Selection and hover <span class="tag">NEW</span></td><td>Ticked row: pale blue <code>#eef6fc</code>, blue left edge, light shadow. Row under the mouse: deeper shadow, always above a ticked row.</td></tr>
     <tr><td>Rows per page</td><td>12</td></tr>
     <tr><td>Text</td><td>14px; headers one line, uppercase; columns size around their header</td></tr>
@@ -497,9 +497,9 @@
   </table>
   <h2>Card rules</h2>
   <ul class="doc">
-    <li><b>Header:</b> <code>card-header bg-transparent d-flex justify-content-between align-items-center</code>. It turns sky blue <code>#d9ebf6</code> with a navy title automatically.</li>
+    <li><b>Header:</b> <code>card-header bg-transparent d-flex justify-content-between align-items-center</code>. It turns sky blue <code>#d9ebf6</code> with a brand-blue title automatically.</li>
     <li><b>Left:</b> icon + title. <b>Right:</b> only this table's own actions or filters. Never a count badge, because the toolbar already shows the count.</li>
-    <li><b>Header row:</b> styled by <code>initGlobalTable</code> (navy, rounded); <code>table-light</code> for small static tables in forms and detail pages.</li>
+    <li><b>Header row:</b> styled by <code>initGlobalTable</code> (brand blue, rounded); <code>table-light</code> for small static tables in forms and detail pages.</li>
     <li>A last column that holds text rather than buttons: add <code>gtable-last-col-text</code>.</li>
     <li>After editing <code>global-table.js</code>, keep it in <code>_VERSIONED_ASSETS</code> (<code>templates_config.py</code>) so browsers fetch the new copy.</li>
   </ul>
@@ -570,7 +570,7 @@
   <ul class="doc">
     <li><code>form-label</code> (0.875rem) above each field; required fields marked <code>&lt;span class="text-danger"&gt;*&lt;/span&gt;</code>.</li>
     <li>Fields in a Bootstrap grid (<code>row g-3</code>, <code>col-md-4</code>), grouped in cards by topic. <code>-sm</code> sizes inside filter bars, tables and modals.</li>
-    <li>Barcode and tag inputs use <code>barcode-field</code> (navy focus ring) and get focus on page load for scanners. The login page is the exception: no field auto-focuses.</li>
+    <li>Barcode and tag inputs use <code>barcode-field</code> (brand-blue focus ring) and get focus on page load for scanners. The login page is the exception: no field auto-focuses.</li>
     <li>Money shows as ₹ with Indian grouping. Totals are calculated on the server, never in the browser (skill <code>server-side-financial-snapshot</code>).</li>
   </ul>
   <h2>Modals</h2>
@@ -693,7 +693,6 @@
   <table class="doc">
     <tr><th style="width:36%">Variable</th><th style="width:28%">Value</th><th>Purpose</th></tr>
     <tr><td><code>--sidebar-width</code></td><td>240px</td><td>Sidebar width</td></tr>
-    <tr><td><code>--sidebar-bg</code></td><td>#212529</td><td>Sidebar background (Dark text colour; was #1e2a3a)</td></tr>
     <tr><td><code>--sidebar-text</code></td><td>#f0f4f8</td><td>Sidebar link text (same as page background)</td></tr>
     <tr><td><code>--sidebar-active</code></td><td>#0377c2</td><td>Active sidebar link</td></tr>
     <tr><td><code>--brand-blue</code></td><td>#0e3a7a</td><td>History buttons, focus, brand (was #0377c2)</td></tr>
@@ -708,11 +707,11 @@
   <table class="doc">
     <tr><th style="width:50%">Class</th><th>What it does</th></tr>
     <tr><td><code>filter-bar</code>, <code>filter-bar-row</code>, <code>filter-bar-search</code>, <code>filter-bar-check</code>, <code>filter-bar-6</code></td><td>Filter bar layout</td></tr>
-    <tr><td><code>gtable</code>, <code>gtable-card</code>, <code>gtable-top</code>, <code>gtable-cards</code></td><td>Global Table (added by <code>initGlobalTable</code>); <code>gtable-cards</code> = navy header, row shadows</td></tr>
+    <tr><td><code>gtable</code>, <code>gtable-card</code>, <code>gtable-top</code>, <code>gtable-cards</code></td><td>Global Table (added by <code>initGlobalTable</code>); <code>gtable-cards</code> = brand-blue header, row shadows</td></tr>
     <tr><td><code>gtable-last-col-text</code></td><td>Last column is text: left-aligned and wraps</td></tr>
     <tr><td><code>gtable-clamp2</code></td><td>Two-line clamp with tooltip, 160–260px wide</td></tr>
     <tr><td><code>bg-teal</code>, <code>bg-purple</code>, <code>bg-pink</code></td><td>Custom badge colours</td></tr>
-    <tr><td><code>barcode-field</code></td><td>Monospace scan input with navy focus ring</td></tr>
+    <tr><td><code>barcode-field</code></td><td>Monospace scan input with brand-blue focus ring</td></tr>
     <tr><td><code>card-hover</code></td><td>Lift-on-hover for clickable KPI cards</td></tr>
     <tr><td><code>profit-positive</code> / <code>-negative</code> / <code>-zero</code></td><td>P&amp;L colours (#129042 / #d63031 / #888)</td></tr>
     <tr><td><code>prod-tile*</code>, <code>inv-tile*</code>, <code>pm-tile*</code></td><td>Page-level tile classes (light-tint, light-tint, solid)</td></tr>
