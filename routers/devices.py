@@ -1574,11 +1574,12 @@ async def device_detail(
     lot_result = await db.execute(select(Lot).where(Lot.id == device.lot_id))
     lot = lot_result.scalar_one_or_none()
 
-    # Stage movements (chronological)
+    # Stage movements — newest first (2026-10-17), same order as the Search
+    # to View Asset History modal (/devices/api/asset-history above).
     movements_result = await db.execute(
         select(StageMovement)
         .where(StageMovement.device_id == device.id)
-        .order_by(StageMovement.moved_at.asc())
+        .order_by(StageMovement.moved_at.desc().nullslast())
     )
     movements = movements_result.scalars().all()
 

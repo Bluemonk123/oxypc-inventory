@@ -575,6 +575,41 @@ async def bulk_request_action(
     })
 
 
+@router.post("/devices/{barcode}/pna/clear-all")
+async def clear_all_pna(
+    barcode: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Device Detail "Remove All PNA" (2026-10-17): clears every active PNA
+    mark on one tag in one go. Same clear-not-delete rule as unticking one
+    (is_active=False + cleared_by/at), so the history stays."""
+    device = (await db.execute(
+        select(Device).where(Device.barcode == barcode)
+    )).scalar_one_or_none()
+    if not device:
+        return JSONResponse({"ok": False, "error": "Tag not found"}, status_code=404)
+    rows = (await db.execute(
+        select(DevicePNAPart).where(
+            DevicePNAPart.device_id == device.id, DevicePNAPart.is_active.is_(True))
+    )).scalars().all()
+    if not rows:
+        return JSONResponse({"ok": True, "cleared": 0, "parts": []})
+    now = app_now()
+    for r in rows:
+        r.is_active = False
+        r.cleared_by = current_user.username
+        r.cleared_at = now
+    parts = sorted(r.part_name for r in rows)
+    await audit(db, user=current_user, action="PART_PNA_CLEARED_ALL",
+                table_name="device_pna_parts", record_id=str(device.id),
+                new_value={"barcode": device.barcode, "parts": parts},
+                request=request)
+    await db.commit()
+    return JSONResponse({"ok": True, "cleared": len(rows), "parts": parts})
+
+
 @router.post("/devices/{barcode}/pna")
 async def mark_part_pna(
     barcode: str,

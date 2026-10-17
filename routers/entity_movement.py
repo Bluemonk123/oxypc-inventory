@@ -26,13 +26,21 @@ allowed = require_module_perm("entity_movement")
 UPLOAD_DIR = "uploads/entity_movement_invoices"
 
 
+# Tag Numbers never contain spaces, so any whitespace (incl. the TAB an Excel
+# row paste puts between cells), comma or semicolon separates them. Quotes
+# from a CSV cell and invisible BOM / zero-width characters are stripped —
+# each of these used to make a real tag come back "not found" (2026-10-17).
+_TAG_SPLIT = re.compile(r"[\s,;]+")
+_INVISIBLE = dict.fromkeys(map(ord, "\ufeff\u200b\u200c\u200d\u00a0"), " ")
+
+
 def _parse_tags(raw: str) -> list[str]:
-    tags = [t.strip() for t in re.split(r"[,\n\r]+", raw or "") if t.strip()]
     seen = set()
     out = []
-    for t in tags:
-        if t not in seen:
-            seen.add(t)
+    for t in _TAG_SPLIT.split((raw or "").translate(_INVISIBLE)):
+        t = t.strip().strip("\"'")
+        if t and t.upper() not in seen:  # same tag typed twice in different case = one tag
+            seen.add(t.upper())
             out.append(t)
     return out
 
@@ -94,9 +102,30 @@ async def change_entities(
     except (ValueError, KeyError):
         return RedirectResponse(url="/entity-movement?error=Invalid+SOLD+TO+/+SEND+TO+selection", status_code=302)
 
-    devices = (await db.execute(select(Device).where(Device.barcode.in_(barcodes)))).scalars().all()
-    found_barcodes = {d.barcode for d in devices}
-    missing = [b for b in barcodes if b not in found_barcodes]
+    # Case-insensitive (2026-10-17): an exact-case IN() reported tags typed
+    # with a different letter case (e.g. "...l1840" for "...L1840") as "not
+    # found" although All Inventory shows them. Where duplicate-case rows
+    # exist, pick one per typed tag the same way the tag lookups do: live
+    # (not trashed, active) first, then exact case, then most recently updated.
+    candidates = (await db.execute(
+        select(Device).where(func.upper(Device.barcode).in_([b.upper() for b in barcodes]))
+    )).scalars().all()
+    by_upper: dict[str, list[Device]] = {}
+    for d in candidates:
+        by_upper.setdefault((d.barcode or "").upper(), []).append(d)
+    devices, missing, in_trash = [], [], []
+    for b in barcodes:
+        rows = by_upper.get(b.upper())
+        if not rows:
+            missing.append(b)
+            continue
+        rows.sort(key=lambda d: (bool(d.is_trashed), not d.is_active, d.barcode != b,
+                                 -(d.updated_at.timestamp() if d.updated_at else 0)))
+        best = rows[0]
+        if best.is_trashed:  # only a Trashed copy exists — restore it first, don't move it silently
+            in_trash.append(b)
+            continue
+        devices.append(best)
 
     from_entities = {d.entity for d in devices if d.entity}
     from_entity = next(iter(from_entities), None)
@@ -142,7 +171,7 @@ async def change_entities(
     await audit(db, user=current_user, action="ENTITY_MOVEMENT_BULK_CHANGE",
                 table_name="devices", record_id=None,
                 new_value={"entity": to_entity, "direction": direction.value,
-                           "tags": len(devices), "missing": len(missing),
+                           "tags": len(devices), "missing": len(missing), "in_trash": len(in_trash),
                            "invoice_number": invoice_number or None},
                 request=request)
     await db.commit()
@@ -151,5 +180,9 @@ async def change_entities(
     if missing:
         msg += f" — {len(missing)} tag(s) not found: {', '.join(missing[:10])}"
         if len(missing) > 10:
+            msg += "…"
+    if in_trash:
+        msg += f" — {len(in_trash)} tag(s) skipped, in Trash (restore first): {', '.join(in_trash[:10])}"
+        if len(in_trash) > 10:
             msg += "…"
     return RedirectResponse(url=f"/entity-movement?success={msg}", status_code=302)

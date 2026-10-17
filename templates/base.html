@@ -866,6 +866,9 @@
       </div>
       {% endif %}
       <span class="navbar-brand mb-0 h1 fw-bold text-primary">{% set _default_page_title %}{% block page_title %}{% endblock %}{% endset %}{{ resolve_page_title(request.url.path) or _default_page_title }}</span>
+      {# Optional page-specific badge right after the title (e.g. User
+         Management's "Today Login"). Empty on every other page. #}
+      {% block page_title_extra %}{% endblock %}
       <div class="ms-auto d-flex align-items-center gap-3">
         <!-- Server connection status — real /health polling, see watchdog
              script near the closing </body>. Not a decorative indicator. -->

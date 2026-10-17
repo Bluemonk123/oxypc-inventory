@@ -11,12 +11,14 @@ from utils.timezone import app_now
 from fastapi import APIRouter, Depends, Request, HTTPException, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, exists, or_, delete as sa_delete
+from sqlalchemy.orm import aliased
 
 from database import get_db
 from models.user import User, UserRole
 from models.lot import Lot
 from models.device import Device, DeviceStage
+from models.sales import Sale, Return
 from auth.dependencies import require_roles, verify_csrf
 from services.audit_engine import audit
 from utils.fk_purge import purge_references
@@ -33,6 +35,25 @@ def _confirmed(typed: str, expected: str) -> bool:
     number back. Case- and space-insensitive, because the point is deliberate
     intent, not transcription accuracy."""
     return (typed or "").strip().casefold() == (expected or "").strip().casefold()
+
+
+def _has_live_twin():
+    """A trashed device whose Tag Number differs from a LIVE device's only in
+    letter case (e.g. trashed "...l0647" vs live "...L0647") — the duplicate
+    rows an IQC upload made with lowercase tags (2026-10-17)."""
+    live = aliased(Device)
+    return exists().where(
+        func.upper(live.barcode) == func.upper(Device.barcode),
+        live.id != Device.id,
+        live.is_trashed.isnot(True),
+    )
+
+
+def _has_sale_or_return():
+    """sales.device_id / returns.device_id are NOT NULL, so a permanent delete
+    would take these records with the device — such duplicates are kept."""
+    return or_(exists().where(Sale.device_id == Device.id),
+               exists().where(Return.device_id == Device.id))
 
 
 @router.get("", response_class=HTMLResponse)
@@ -53,12 +74,88 @@ async def trash_index(
         .order_by(Device.trashed_at.desc())
     )).all()
 
+    dup_rows = (await db.execute(
+        select(Device.id, _has_sale_or_return().label("has_sale"))
+        .where(Device.is_trashed == True, _has_live_twin())  # noqa: E712
+    )).all()
+    dup_ids = {str(r.id) for r in dup_rows}
+    dup_kept = sum(1 for r in dup_rows if r.has_sale)
+
     return templates.TemplateResponse("trash/index.html", {
         "request": request,
         "current_user": current_user,
         "trashed_lots": trashed_lots,
         "trashed_devices": trashed_devices,
+        "dup_ids": dup_ids,
+        "dup_deletable": len(dup_rows) - dup_kept,
+        "dup_kept": dup_kept,
     })
+
+
+@router.post("/duplicates/delete", response_class=HTMLResponse)
+async def delete_duplicate_devices(
+    request: Request,
+    confirm: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Permanently delete every trashed device that is a different-letter-case
+    duplicate of a live device (see _has_live_twin), in one go.
+
+    Same safeguards as the single delete: trashed rows only, typed
+    confirmation, FK-catalog cascade, audit before the rows go. Duplicates with
+    their own sale or return are skipped (deleting them would delete that
+    sale/return). Committed in batches so one huge transaction can't hit the
+    statement timeout; a batch that a foreign key blocks is rolled back and
+    reported, and earlier batches stay deleted."""
+    from urllib.parse import quote
+    from sqlalchemy.exc import IntegrityError
+
+    if confirm.strip().upper() != "DELETE DUPLICATES":
+        return RedirectResponse(
+            url="/trash?tab=tags&error=" + quote("Type DELETE DUPLICATES exactly to confirm"),
+            status_code=302)
+
+    rows = (await db.execute(
+        select(Device.id, Device.barcode)
+        .where(Device.is_trashed == True, _has_live_twin(), ~_has_sale_or_return())  # noqa: E712
+        .order_by(Device.barcode)
+    )).all()
+    if not rows:
+        return RedirectResponse(
+            url="/trash?tab=tags&error=" + quote("No duplicate Tag Numbers to delete"), status_code=302)
+
+    deleted = 0
+    BATCH = 200
+    for i in range(0, len(rows), BATCH):
+        chunk = rows[i:i + BATCH]
+        ids = [r.id for r in chunk]
+        tags = [r.barcode for r in chunk]
+        try:
+            purged = await purge_references(db, "devices", ids)
+            await audit(
+                db, action="DEVICE_DUPLICATES_DELETED", user=current_user,
+                table_name="devices", record_id=None,
+                new_value={"count": len(ids), "barcodes": tags, "from": "trash",
+                           "reason": "letter-case duplicate of a live Tag Number",
+                           "deleted_by": current_user.username, "cascade": purged},
+                request=request,
+            )
+            await db.execute(sa_delete(Device).where(Device.id.in_(ids), Device.is_trashed == True))  # noqa: E712
+            await db.commit()
+        except IntegrityError as e:
+            await db.rollback()
+            _log.exception("bulk duplicate delete blocked by a foreign key (batch from %s)", tags[0])
+            detail = getattr(getattr(e, "orig", None), "constraint_name", None) or "a related record"
+            return RedirectResponse(
+                url="/trash?tab=tags&error=" + quote(
+                    f"{deleted} duplicate(s) deleted, then stopped — a batch is still referenced by {detail}"),
+                status_code=302)
+        deleted += len(ids)
+
+    return RedirectResponse(
+        url="/trash?tab=tags&success=" + quote(f"{deleted} duplicate Tag Number(s) deleted permanently"),
+        status_code=302)
 
 
 # ── Lots ─────────────────────────────────────────────────────────────────────
@@ -106,7 +203,7 @@ async def restore_lot(
     lot.is_trashed = False
     lot.trashed_at = None
     await db.commit()
-    return RedirectResponse(url="/trash?success=Lot+restored", status_code=302)
+    return RedirectResponse(url="/trash?tab=lots&success=Lot+restored", status_code=302)
 
 
 @router.post("/lots/{lot_id}/delete", response_class=HTMLResponse)
@@ -141,11 +238,11 @@ async def delete_lot_forever(
         raise HTTPException(status_code=404, detail="Lot not found")
     if not lot.is_trashed:
         return RedirectResponse(
-            url="/trash?error=" + quote("Only a lot already in Trash can be deleted permanently"),
+            url="/trash?tab=lots&error=" + quote("Only a lot already in Trash can be deleted permanently"),
             status_code=302)
     if not _confirmed(confirm, lot.lot_number):
         return RedirectResponse(
-            url="/trash?error=" + quote(f"Type {lot.lot_number} exactly to confirm deletion"),
+            url="/trash?tab=lots&error=" + quote(f"Type {lot.lot_number} exactly to confirm deletion"),
             status_code=302)
 
     lot_number = lot.lot_number
@@ -180,12 +277,12 @@ async def delete_lot_forever(
         _log.exception("permanent lot delete blocked by a foreign key: %s", lot_number)
         detail = getattr(getattr(e, "orig", None), "constraint_name", None) or "a related record"
         return RedirectResponse(
-            url="/trash?error=" + quote(
+            url="/trash?tab=lots&error=" + quote(
                 f"{lot_number} could not be deleted — still referenced by {detail}"),
             status_code=302)
 
     return RedirectResponse(
-        url="/trash?success=" + quote(
+        url="/trash?tab=lots&success=" + quote(
             f"{lot_number} and its {len(device_ids)} device(s) deleted permanently"),
         status_code=302)
 

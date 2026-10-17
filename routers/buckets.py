@@ -20,7 +20,7 @@ from auth.dependencies import get_current_user, require_roles, verify_csrf
 from services.notifications import create_notification
 from services.location_defaults import ensure_stage_location
 from services.audit_engine import audit
-from services.work_order_close import close_open_work_orders
+from services.work_order_close import close_open_work_orders, reuse_open_stress_work_order
 
 router = APIRouter(tags=["buckets"], dependencies=[Depends(verify_csrf)])
 allowed = require_roles(UserRole.admin, UserRole.inventory_manager)
@@ -679,16 +679,25 @@ async def _apply_department_move(
         moved_by=current_user.username, notes=move_note,
     ))
     if engineer:
-        await close_open_work_orders(db, device.id)   # previous assignee's WorkID completes now
-        work_id = await _gen_work_id(db)
-        db.add(WorkOrder(
-            work_id=work_id, device_id=device.id, barcode=device.barcode,
-            stage=DEPT_TO_WO_STAGE_CODE.get(department, target_stage[:5]),
-            assigned_role=DEPT_TO_ROLE.get(department),
-            assigned_user_id=engineer.id, assigned_username=engineer.username,
-            assigned_name=engineer.full_name, status="pending",
-            source_transfer_id=transfer.id, created_by=current_user.username,
-        ))
+        # Going to Stress Test with an open, unassigned STRS- WorkID from
+        # L1/L2 Mark Complete: give that one to the engineer instead of
+        # raising a second Stress ID (2026-10-17).
+        reused_wo = await reuse_open_stress_work_order(
+            db, device.id, new_stage, engineer, created_by=current_user.username,
+            source_transfer_id=transfer.id)
+        await close_open_work_orders(db, device.id, keep_id=reused_wo.id if reused_wo else None)   # previous assignee's WorkID completes now
+        if reused_wo:
+            work_id = reused_wo.work_id
+        else:
+            work_id = await _gen_work_id(db)
+            db.add(WorkOrder(
+                work_id=work_id, device_id=device.id, barcode=device.barcode,
+                stage=DEPT_TO_WO_STAGE_CODE.get(department, target_stage[:5]),
+                assigned_role=DEPT_TO_ROLE.get(department),
+                assigned_user_id=engineer.id, assigned_username=engineer.username,
+                assigned_name=engineer.full_name, status="pending",
+                source_transfer_id=transfer.id, created_by=current_user.username,
+            ))
         _label = f"{device.brand or ''} {device.model or ''}".strip()
         if bucket:
             notify_msg = (f"{device.barcode}" + (f" ({_label})" if _label else "")
@@ -838,15 +847,24 @@ async def assign_device(
         moved_by=current_user.username,
         notes=f"Assigned to {engineer.full_name or engineer.username}",
     ))
-    await close_open_work_orders(db, device.id)   # previous assignee's WorkID completes now
-    work_id = await _gen_work_id(db)
-    db.add(WorkOrder(
-        work_id=work_id, device_id=device.id, barcode=device.barcode,
-        stage=target_stage, assigned_role=DEPT_TO_ROLE.get(department),
-        assigned_user_id=engineer.id, assigned_username=engineer.username,
-        assigned_name=engineer.full_name, status="pending",
-        source_transfer_id=transfer.id, created_by=current_user.username,
-    ))
+    # Going to Stress Test with an open, unassigned STRS- WorkID from
+    # L1/L2 Mark Complete: give that one to the engineer instead of
+    # raising a second Stress ID (2026-10-17).
+    reused_wo = await reuse_open_stress_work_order(
+        db, device.id, new_stage, engineer, created_by=current_user.username,
+        source_transfer_id=transfer.id)
+    await close_open_work_orders(db, device.id, keep_id=reused_wo.id if reused_wo else None)   # previous assignee's WorkID completes now
+    if reused_wo:
+        work_id = reused_wo.work_id
+    else:
+        work_id = await _gen_work_id(db)
+        db.add(WorkOrder(
+            work_id=work_id, device_id=device.id, barcode=device.barcode,
+            stage=target_stage, assigned_role=DEPT_TO_ROLE.get(department),
+            assigned_user_id=engineer.id, assigned_username=engineer.username,
+            assigned_name=engineer.full_name, status="pending",
+            source_transfer_id=transfer.id, created_by=current_user.username,
+        ))
     _label = f"{device.brand or ''} {device.model or ''}".strip()
     await create_notification(
         db, user_id=engineer.id,
@@ -938,15 +956,24 @@ async def bulk_assign_devices_l1l2(
             moved_by=current_user.username,
             notes=f"Bulk assigned to {engineer.full_name or engineer.username}",
         ))
-        await close_open_work_orders(db, device.id)   # previous assignee's WorkID completes now
-        work_id = await _gen_work_id(db)
-        db.add(WorkOrder(
-            work_id=work_id, device_id=device.id, barcode=device.barcode,
-            stage=target_stage, assigned_role=DEPT_TO_ROLE.get(department),
-            assigned_user_id=engineer.id, assigned_username=engineer.username,
-            assigned_name=engineer.full_name, status="pending",
-            source_transfer_id=transfer.id, created_by=current_user.username,
-        ))
+        # Going to Stress Test with an open, unassigned STRS- WorkID from
+        # L1/L2 Mark Complete: give that one to the engineer instead of
+        # raising a second Stress ID (2026-10-17).
+        reused_wo = await reuse_open_stress_work_order(
+            db, device.id, new_stage, engineer, created_by=current_user.username,
+            source_transfer_id=transfer.id)
+        await close_open_work_orders(db, device.id, keep_id=reused_wo.id if reused_wo else None)   # previous assignee's WorkID completes now
+        if reused_wo:
+            work_id = reused_wo.work_id
+        else:
+            work_id = await _gen_work_id(db)
+            db.add(WorkOrder(
+                work_id=work_id, device_id=device.id, barcode=device.barcode,
+                stage=target_stage, assigned_role=DEPT_TO_ROLE.get(department),
+                assigned_user_id=engineer.id, assigned_username=engineer.username,
+                assigned_name=engineer.full_name, status="pending",
+                source_transfer_id=transfer.id, created_by=current_user.username,
+            ))
         _label = f"{device.brand or ''} {device.model or ''}".strip()
         await create_notification(
             db, user_id=engineer.id,

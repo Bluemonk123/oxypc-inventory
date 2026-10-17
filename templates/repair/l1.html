@@ -140,11 +140,20 @@
                       <button type="submit" class="btn btn-sm btn-dark"><i class="bi bi-arrow-return-left"></i> Back to Inventory</button>
                     </form>
                   {% elif device.l1l2_status == 'Repair Started' %}
+                    {% if pna %}
+                    {# Open PNA parts: shown disabled, but still clickable so it can
+                       explain why (a real disabled button gets no click). #}
+                    <button type="button" class="btn btn-sm btn-success mark-complete-pna-btn opacity-50"
+                            aria-disabled="true" style="cursor:not-allowed"
+                            data-barcode="{{ device.barcode }}" data-pna="{{ pna | join(', ') }}"
+                            title="Open PNA parts — unselect them first">Mark Complete</button>
+                    {% else %}
                     <form method="post" action="/repair/l1l2-complete-to-stress" class="d-inline mark-complete-form">
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ device.id }}">
                       <button type="submit" class="btn btn-sm btn-success mark-complete-btn">Mark Complete</button>
                     </form>
+                    {% endif %}
                     <button type="button" class="btn btn-sm btn-outline-primary request-l3l4-btn"
                             data-device="{{ device.id }}" data-barcode="{{ device.barcode }}">
                       <i class="bi bi-arrow-up-right-circle"></i> Request to L3/L4</button>
@@ -347,6 +356,25 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Go Back</button>
         <button type="button" id="mcWarnConfirmBtn" class="btn btn-success">Resolve &amp; Complete</button>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- Mark Complete blocked by open PNA parts (2026-10-17) -->
+<div class="modal fade" id="pnaBlockModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-exclamation-triangle text-warning me-2"></i>Open PNAs</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">You have Open PNAs checked in this tag, please unselect them before moving ahead.</p>
+        <div class="small text-muted">Tag <code id="pnaBlockTag"></code> — PNA: <span id="pnaBlockParts"></span></div>
+      </div>
+      <div class="modal-footer">
+        <a href="#" id="pnaBlockDetailBtn" class="btn btn-primary"><i class="bi bi-box-arrow-up-right me-1"></i>Tag Detail</a>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
   </div>
@@ -661,6 +689,16 @@ function _openBulkPartRequest(requestType, partLabel, category, qty, requested) 
         if (warnModal) warnModal.show();
       })
       .catch(function(){ form.submit(); }); // fail open — never block a real completion on a precheck error
+  });
+
+  // Disabled-looking Mark Complete on a tag with open PNA parts: explain
+  // instead of submitting. Delegated for DataTables-redrawn rows.
+  $(document).on('click', '.mark-complete-pna-btn', function(){
+    var bc = this.getAttribute('data-barcode');
+    document.getElementById('pnaBlockTag').textContent = bc;
+    document.getElementById('pnaBlockParts').textContent = this.getAttribute('data-pna') || '';
+    document.getElementById('pnaBlockDetailBtn').href = '/devices/' + encodeURIComponent(bc) + '#parts';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('pnaBlockModal')).show();
   });
 
   $('#mcWarnConfirmBtn').on('click', function(){

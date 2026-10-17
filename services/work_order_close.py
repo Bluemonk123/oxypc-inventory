@@ -12,24 +12,65 @@ moment, so the hand-over reads as a clean timeline.
 """
 import uuid
 
-from sqlalchemy import update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.work_order import WorkOrder
 from utils.timezone import app_now
 
 
-async def close_open_work_orders(db: AsyncSession, device_id: uuid.UUID, at=None) -> int:
+async def close_open_work_orders(db: AsyncSession, device_id: uuid.UUID, at=None,
+                                 keep_id: uuid.UUID | None = None) -> int:
     """Mark every open (non-"asgn") WorkOrder of the device completed at `at`
-    (default now). Returns how many were closed.
+    (default now). Returns how many were closed. `keep_id` leaves that one
+    WorkOrder open (the reused STRS- row, see reuse_open_stress_work_order).
 
     "asgn" rows are /transfers' plain assignment bookkeeping, not pipeline work,
     and are left alone (the WorkID Status page hides them)."""
+    conds = [WorkOrder.device_id == device_id,
+             WorkOrder.status != "completed",
+             WorkOrder.stage != "asgn"]
+    if keep_id is not None:
+        conds.append(WorkOrder.id != keep_id)
     result = await db.execute(
-        update(WorkOrder)
-        .where(WorkOrder.device_id == device_id,
-               WorkOrder.status != "completed",
-               WorkOrder.stage != "asgn")
+        update(WorkOrder).where(*conds)
         .values(status="completed", completed_at=at or app_now())
     )
     return result.rowcount or 0
+
+
+async def reuse_open_stress_work_order(db: AsyncSession, device_id: uuid.UUID, new_stage,
+                                       user, created_by: str | None = None,
+                                       source_transfer_id=None):
+    """One Stress Test step = one WorkID (2026-10-17).
+
+    L1/L2 Mark Complete already raises an "STRS-" WorkOrder for the Stress
+    Test hand-off, usually with no engineer yet. Assigning a Stress Test
+    engineer afterwards (bucket assign, single/bulk assign, Change Engineer)
+    used to close that and raise a second, numeric WorkID for the same step —
+    two Stress IDs on one tag. When the tag is going to Stress Test and such
+    an open, still-UNASSIGNED STRS- row exists, this assigns it to `user` and
+    returns it so the caller skips creating a new one. An STRS- row already
+    held by an engineer is a real hand-over between two people, so it is not
+    reused (returns None and the caller proceeds as before)."""
+    from models.device import DeviceStage
+    if new_stage != DeviceStage.qc_check or user is None:
+        return None
+    wo = (await db.execute(
+        select(WorkOrder).where(
+            WorkOrder.device_id == device_id,
+            WorkOrder.work_id.like("STRS-%"),
+            WorkOrder.status != "completed",
+            WorkOrder.assigned_user_id.is_(None),
+        ).order_by(WorkOrder.created_at.desc())
+    )).scalars().first()
+    if wo is None:
+        return None
+    # assigned_role stays as raised by Mark Complete ("qc_inspector").
+    wo.assigned_user_id = user.id
+    wo.assigned_username = user.username
+    wo.assigned_name = user.full_name
+    wo.assigned_at = app_now()
+    if source_transfer_id is not None:
+        wo.source_transfer_id = source_transfer_id
+    return wo

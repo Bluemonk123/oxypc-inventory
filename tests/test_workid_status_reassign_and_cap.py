@@ -53,11 +53,12 @@ def test_every_reassignment_path_closes_the_previous_work_order_first():
     from routers import buckets, stock
     for fn in (buckets.assign_device, buckets.bulk_assign_devices_l1l2, stock.change_engineer):
         src = inspect.getsource(fn)
-        assert "close_open_work_orders(db, device.id)" in src, fn.__name__
+        # (2026-10-17: may pass keep_id= for a reused STRS- WorkID)
+        assert "close_open_work_orders(db, device.id" in src, fn.__name__
         assert src.index("close_open_work_orders") < src.index("WorkOrder("), fn.__name__
     # bucket / Final-QC-fail assignment (shared helper)
     src = inspect.getsource(buckets)
-    assert src.count("close_open_work_orders(db, device.id)") >= 3
+    assert src.count("close_open_work_orders(db, device.id") >= 3
 
 
 # ── DB-backed: engineer shown is the assignee; date filter beats the cap ─────

@@ -100,6 +100,12 @@ class User(Base):
     designation = Column(String(100), nullable=True)
     reports_to = Column(String(50), ForeignKey("users.username"), nullable=True, index=True)
 
+    # Entity the user belongs to (Master Data entity name, same values as
+    # devices.entity). Approved 2026-10-17. Nullable in the DB so existing
+    # users load; the Add/Edit User form makes it required. Added by
+    # db_validator (ADD COLUMN IF NOT EXISTS) at startup.
+    entity = Column(String(50), nullable=True, index=True)
+
     login_logs = relationship("LoginLog", back_populates="user", lazy="select")
 
     @property

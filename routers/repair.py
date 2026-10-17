@@ -544,6 +544,20 @@ async def l1l2_complete_to_stress(
     device = (await db.execute(select(Device).where(Device.id == device_id))).scalar_one_or_none()
     if not device:
         raise HTTPException(404, "Device not found")
+    # Open PNA parts block Mark Complete (2026-10-17): the L1/L2 button is
+    # shown disabled for such tags; this is the same rule server-side so a
+    # stale page or a direct POST can't move a tag that still waits on a part.
+    open_pna = (await db.execute(
+        select(DevicePNAPart.part_name).where(
+            DevicePNAPart.device_id == device.id, DevicePNAPart.is_active.is_(True))
+    )).scalars().all()
+    if open_pna:
+        from urllib.parse import quote
+        return RedirectResponse(
+            url="/repair/l1?error=" + quote(
+                f"{device.barcode} has open PNA parts ({', '.join(sorted(open_pna))}) — "
+                "remove them on the tag's detail page before Mark Complete"),
+            status_code=302)
     eng = None
     if stress_engineer_username:
         eng = (await db.execute(
