@@ -17,7 +17,7 @@ from database import get_db
 from models.user import User, UserRole
 from models.lot import Lot
 from models.master import EXTERNAL_PARTNER_TEST_LOT_PREFIX, EXTERNAL_PARTNER_TEST_GRN_SOURCE
-from models.device import Device, DeviceStage, StageMovement
+from models.device import Device, DeviceStage, StageMovement, stage_sort_expr
 from models.engines import AuditLog
 from models.grn_import import GRNImport
 from services.invoice_parser import extract_invoice_fields
@@ -205,7 +205,8 @@ async def grn_post_iqc_data(
     # 7 = Invoice Number (shown, before Stage — 2026-10-15); 8 = Stage; 9 = PO (hidden).
     col_map = {1: Device.barcode, 2: Device.brand, 3: Device.model,
                4: Device.device_type, 5: Device.ram_gb, 6: Device.storage_gb,
-               7: Device.invoice_number, 9: Device.po_number}
+               7: Device.invoice_number, 8: stage_sort_expr(Device.current_stage),
+               9: Device.po_number}
     try:
         order_col = int(request.query_params.get("order[0][column]", 0))
     except ValueError:

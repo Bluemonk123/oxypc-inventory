@@ -486,7 +486,7 @@ $(document).ready(function(){
       },
       dataSrc: function (json) { return json.data; },
     },
-    columnDefs:[{orderable:false, targets:[0,8]}, {visible:false, targets:[9]}],
+    columnDefs:[{orderable:false, targets:[0]}, {visible:false, targets:[9]}],
     drawCallback: function () {
       // Search Invoice or the table search box active -> every matching row
       // is ticked automatically, ready for "Map this GRN" (2026-10-15).

@@ -915,7 +915,7 @@ function loadBucketTable(){
     }).join('');
     initGlobalTable('#bucketTable', {
       pageLength: 12,
-      ordering: false,
+      order: [],   // keep the server's order until a header is clicked
       language: { search: '', searchPlaceholder: 'Search buckets…', emptyTable: 'No buckets created yet.' }
     });
   });

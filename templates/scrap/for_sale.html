@@ -40,7 +40,7 @@
         {% for r in rows %}
         <tr>
           <td class="font-monospace">{{ r.scrap_id }}</td>
-          <td>
+          <td data-order="{{ (r.tag_count or 0) + (r.part_count or 0) }}">
             {% if r.tag_breakdown %}
             <button type="button" class="btn btn-sm btn-secondary py-0 px-2 scrap-tags-btn"
                     data-label="Scrap {{ r.scrap_id }}" data-items='{{ r.tag_breakdown | tojson }}'>
@@ -318,7 +318,7 @@
 initGlobalTable('#scrapForSaleTable', {
   order: [[0, 'desc']],
   language: { emptyTable: 'No Scrap for Sale batches yet — created from /transfers when Transfer Type is Scrap for Sale.' },
-  columnDefs: [{ orderable: false, targets: [1, 6] }],
+  columnDefs: [{ orderable: false, targets: [6] }],
 });
 initGlobalTable('#scrapForSaleUnbatchedTable', {
   order: [[4, 'desc']],

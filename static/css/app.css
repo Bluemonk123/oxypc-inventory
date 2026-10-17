@@ -642,6 +642,28 @@ fieldset:disabled .btn {
 }
 .gtable-cards table.gtable thead th:first-child { border-radius: 8px 0 0 8px; }
 .gtable-cards table.gtable thead th:last-child  { border-radius: 0 8px 8px 0; }
+
+/* Header column separators, cell spacing and sort arrows (2026-10-18):
+   thin white line between header labels (option B), 12px left/right padding
+   in header and body cells (first column keeps its 16px left), and the
+   sort arrows sit 12px after the label instead of at the cell's edge. */
+.gtable-cards table.gtable thead th + th { box-shadow: inset 1px 0 0 rgba(255,255,255,.25); }
+.gtable-cards table.gtable thead th:not(:first-child),
+.gtable-cards table.gtable tbody td:not(:first-child) { padding-left: 12px !important; padding-right: 12px !important; }
+.gtable-cards table.gtable thead th.sorting, .gtable-cards table.gtable thead th.sorting_asc, .gtable-cards table.gtable thead th.sorting_desc { padding-right: 12px !important; }
+.gtable-cards table.gtable thead th.sorting::before, .gtable-cards table.gtable thead th.sorting_asc::before, .gtable-cards table.gtable thead th.sorting_desc::before { display: none !important; }
+.gtable-cards table.gtable thead th.sorting::after, .gtable-cards table.gtable thead th.sorting_asc::after, .gtable-cards table.gtable thead th.sorting_desc::after {
+  content: '' !important; position: static !important; display: inline-block !important;
+  width: 7px !important; height: 12px !important; margin-left: 12px !important;
+  vertical-align: -1px !important; opacity: 1 !important;
+  background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%277%27%20height%3D%2712%27%3E%3Cpath%20d%3D%27M3.5%200L7%204.5H0z%27%20fill%3D%27rgba%28255%2C255%2C255%2C.45%29%27/%3E%3Cpath%20d%3D%27M3.5%2012L0%207.5H7z%27%20fill%3D%27rgba%28255%2C255%2C255%2C.45%29%27/%3E%3C/svg%3E") no-repeat !important;
+}
+.gtable-cards table.gtable thead th.sorting_asc::after  { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%277%27%20height%3D%2712%27%3E%3Cpath%20d%3D%27M3.5%200L7%204.5H0z%27%20fill%3D%27rgba%28255%2C255%2C255%2C1%29%27/%3E%3Cpath%20d%3D%27M3.5%2012L0%207.5H7z%27%20fill%3D%27rgba%28255%2C255%2C255%2C.3%29%27/%3E%3C/svg%3E") !important; }
+.gtable-cards table.gtable thead th.sorting_desc::after { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%277%27%20height%3D%2712%27%3E%3Cpath%20d%3D%27M3.5%200L7%204.5H0z%27%20fill%3D%27rgba%28255%2C255%2C255%2C.3%29%27/%3E%3Cpath%20d%3D%27M3.5%2012L0%207.5H7z%27%20fill%3D%27rgba%28255%2C255%2C255%2C1%29%27/%3E%3C/svg%3E") !important; }
+/* DataTables' hidden sizing header inside the scroll body: keep the arrow's
+   width (so columns line up with the visible header) but no height. */
+.gtable-cards .dataTables_scrollBody table.gtable thead th:is(.sorting, .sorting_asc, .sorting_desc)::after { height: 0 !important; background: none !important; vertical-align: top !important; }
+.gtable-cards .dataTables_scrollBody thead th { padding-top: 0 !important; padding-bottom: 0 !important; line-height: 0 !important; }
 /* Rows */
 .gtable-cards table.gtable tbody td {
   background-color: #fff;

@@ -98,6 +98,14 @@ COSMETIC_STAGES = [
     DeviceStage.cosmetic_completed,
 ]
 
+def stage_sort_expr(column):
+    """SQL sort key that orders a stage column by workflow (GRN -> IQC -> ... ->
+    Sold), not alphabetically. Uses the enum's declaration order explicitly so
+    it doesn't depend on the order values were added to the Postgres type."""
+    from sqlalchemy import case
+    return case({st: i for i, st in enumerate(DeviceStage)}, value=column, else_=len(DeviceStage))
+
+
 STAGE_COLORS = {
     DeviceStage.grn: "warning",
     DeviceStage.iqc: "secondary",

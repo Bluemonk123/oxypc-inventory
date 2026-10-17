@@ -188,9 +188,35 @@ async def block_tags_data(
     matching = _matching_blocks(q, block_date, container, block_for, location_zone)
     filtered = (await db.execute(select(func.count()).select_from(matching.subquery()))).scalar() or 0
 
+    # Column sorting (2026-10-18): 1 Block ID, 2 Box/Bundle, 3 Customer,
+    # 4 Tags (still-blocked count), 5 Models (distinct count), 6 Block Date,
+    # 7 Block For (user name). No order -> newest block first, as before.
+    _blocked = (BlockRecordItem.block_record_id == BlockRecord.id) & (BlockRecordItem.status == BlockItemStatus.blocked)
+    sort_map = {
+        1: BlockRecord.block_id,
+        2: BlockRecord.box_number,
+        3: func.lower(BlockRecord.customer_name),
+        4: select(func.count(BlockRecordItem.id)).where(_blocked).correlate(BlockRecord).scalar_subquery(),
+        5: select(func.count(func.distinct(func.nullif(func.trim(BlockRecordItem.model), ""))))
+             .where(_blocked).correlate(BlockRecord).scalar_subquery(),
+        6: BlockRecord.block_date,
+        7: select(func.lower(func.coalesce(User.full_name, User.username)))
+             .where(User.id == BlockRecord.block_for_user_id).correlate(BlockRecord).scalar_subquery(),
+    }
+    try:
+        order_col = int(request.query_params.get("order[0][column]", -1))
+    except ValueError:
+        order_col = -1
+    sort_expr = sort_map.get(order_col)
+    if sort_expr is not None:
+        asc = request.query_params.get("order[0][dir]", "asc") == "asc"
+        order_by = [(sort_expr.asc() if asc else sort_expr.desc()).nulls_last(), BlockRecord.created_at.desc()]
+    else:
+        order_by = [BlockRecord.created_at.desc()]
+
     records = (await db.execute(
         select(BlockRecord).where(BlockRecord.id.in_(matching))
-        .order_by(BlockRecord.created_at.desc())
+        .order_by(*order_by)
         .offset(max(0, start)).limit(min(max(1, length), 500))
     )).scalars().all()
 

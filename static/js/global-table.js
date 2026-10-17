@@ -315,6 +315,14 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
 
   var clampLength = opts.clampLength || 32;
   var columnDefs = (dtOptions.columnDefs || []).slice();
+  // Action column never sorts (2026-10-18): when the last header reads
+  // "Action"/"Actions" (or is blank, i.e. a buttons-only column), it is made
+  // non-orderable. Pushed after the caller's own columnDefs, so a page that
+  // explicitly sets orderable on that column still wins.
+  var lastHead = $(tableSelector).find('thead tr').first().children('th').last();
+  if (lastHead.length && /^(actions?)?$/i.test($.trim(lastHead.text()))) {
+    columnDefs.push({ targets: -1, orderable: false });
+  }
   columnDefs.push({
     // No clampColumns given → every column. HTML-bearing cells (badges,
     // links, buttons — the norm for id/status/action columns) are always

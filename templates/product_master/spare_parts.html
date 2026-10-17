@@ -61,7 +61,8 @@
 {% include "product_master/_common.html" %}
 <script>
 (function () {
-  var cols = [{ orderable: false, targets: '_all' }, { orderable: true, targets: [0, 1, 2, 3] }];
+  // Every column sorts (2026-10-18); DataTables detects text/number per column.
+  var cols = [];
   var dtPending = initGlobalTable('#spTable', { order: [[0, 'asc']], columnDefs: cols, language: { emptyTable: 'No pending items.' } });
   var dtDone = initGlobalTable('#spTableDone', { order: [[0, 'asc']], columnDefs: cols, language: { emptyTable: 'No completed items.' } });
   $(document).on('shown.bs.tab', '#spTabs button', function () { $($.fn.dataTable.tables(true)).DataTable().columns.adjust(); });
