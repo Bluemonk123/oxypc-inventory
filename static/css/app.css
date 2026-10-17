@@ -5,7 +5,7 @@
   --sidebar-bg: #1e2a3a;
   --sidebar-text: #f0f4f8;   /* same as the page background (2026-10-15) */
   --sidebar-active: #0377c2;
-  --brand-blue: #0377c2;
+  --brand-blue: #0e3a7a;  /* was #0377c2 (changed 2026-10-18) */
   --topbar-height: 56px;
   /* Global UI scale. Anything sized in vh must divide by this, since zoom shrinks
      the CSS pixel but not the viewport unit — 100vh would render 10% short. */
@@ -64,7 +64,7 @@ body {
 }
 
 #sidebar .nav-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
-#sidebar .nav-link.active { background: var(--brand-blue); color: #fff; }
+#sidebar .nav-link.active { background: #0377c2; color: #fff; }  /* sidebar kept as before (not --brand-blue) */
 
 .nav-section {
   color: #576d87;
@@ -155,7 +155,7 @@ body {
 }
 .barcode-field:focus {
   border-color: var(--brand-blue);
-  box-shadow: 0 0 0 0.25rem rgba(3, 119, 194, 0.15);
+  box-shadow: 0 0 0 0.25rem rgba(14, 58, 122, 0.15);
 }
 
 /* Clickable KPI cards */
