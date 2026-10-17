@@ -43,14 +43,14 @@
     </div>
   </div>
   <div class="col-md-3">
-    <div class="lt-tile h-100" style="--tc:{% if gross_profit >= 0 %}#198754{% else %}#dc3545{% endif %}">
+    <div class="lt-tile h-100" style="--tc:{% if gross_profit >= 0 %}#129042{% else %}#dc3545{% endif %}">
       <div class="lt-tile-count">₹{{ (gross_profit) | inr }}</div>
       <div class="lt-tile-label">Gross Profit</div>
       <i class="bi bi-graph-up-arrow lt-tile-wm"></i>
     </div>
   </div>
   <div class="col-md-3">
-    <div class="lt-tile h-100" style="--tc:{% if gross_margin >= 15 %}#198754{% elif gross_margin >= 5 %}#fd7e14{% else %}#dc3545{% endif %}">
+    <div class="lt-tile h-100" style="--tc:{% if gross_margin >= 15 %}#129042{% elif gross_margin >= 5 %}#fd7e14{% else %}#dc3545{% endif %}">
       <div class="lt-tile-count">{{ gross_margin }}%</div>
       <div class="lt-tile-label">Gross Margin</div>
       <i class="bi bi-percent lt-tile-wm"></i>
@@ -85,7 +85,7 @@
     </div>
   </div>
   <div class="col-md-3">
-    <div class="lt-tile h-100" style="--tc:#198754">
+    <div class="lt-tile h-100" style="--tc:#129042">
       <div class="lt-tile-count">{{ lots_sold_count }}</div>
       <div class="lt-tile-label">Lots Sold</div>
       <i class="bi bi-boxes lt-tile-wm"></i>

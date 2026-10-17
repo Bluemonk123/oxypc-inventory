@@ -739,3 +739,38 @@ table.gtable tbody td .gtable-clamp2 {
   min-width: 160px;
   max-width: 260px;
 }
+
+
+/* ── OxyPC brand greens (2026-10-17) ────────────────────────────────────────
+   Bluemonk navy/blue stay the main colours; OxyPC's logo greens replace
+   Bootstrap's default green everywhere "success" is used:
+     Leaf   #54BA48  accents only (too light for text)
+     Forest #129042  buttons, solid fills, chart bars
+     Text   #0F7A37  green words on white (readable)
+     Mint   #E8F5E6  green label backgrounds */
+:root {
+  --oxy-leaf: #54BA48; --oxy-forest: #129042; --oxy-text: #0F7A37; --oxy-mint: #E8F5E6;
+  --bs-success: #129042; --bs-success-rgb: 18, 144, 66;
+  --bs-success-text-emphasis: #0F7A37; --bs-success-bg-subtle: #E8F5E6; --bs-success-border-subtle: #b9e2b4;
+}
+.btn-success {
+  --bs-btn-bg: #129042; --bs-btn-border-color: #129042;
+  --bs-btn-hover-bg: #0F7A37; --bs-btn-hover-border-color: #0F7A37;
+  --bs-btn-active-bg: #0B6B30; --bs-btn-active-border-color: #0B6B30;
+  --bs-btn-disabled-bg: #129042; --bs-btn-disabled-border-color: #129042;
+  --bs-btn-focus-shadow-rgb: 18, 144, 66;
+}
+.btn-outline-success {
+  --bs-btn-color: #0F7A37; --bs-btn-border-color: #129042;
+  --bs-btn-hover-bg: #129042; --bs-btn-hover-border-color: #129042;
+  --bs-btn-active-bg: #0F7A37; --bs-btn-active-border-color: #0F7A37;
+  --bs-btn-focus-shadow-rgb: 18, 144, 66;
+}
+.text-success { color: #0F7A37 !important; }
+/* Green labels: mint background + dark green text (OxyPC style) */
+.badge.bg-success, .badge.text-bg-success {
+  background-color: #E8F5E6 !important; color: #0F7A37 !important;
+}
+/* Sidebar keeps its original colours (2026-10-17, on request): the OxyPC
+   green overrides above must not reach it. */
+#sidebar .text-success { color: #198754 !important; }
