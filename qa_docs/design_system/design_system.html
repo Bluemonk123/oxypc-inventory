@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>OxyPC Inventory Lifecycle — Design System v1.2</title>
+<!-- Source of OxyPC_Inventory_Lifecycle_Design_System PDF (2026-10-18).
+     Rebuild the PDF with:  python qa_docs/design_system/build_pdf.py
+     Samples are rendered with the app's real Bootstrap + app.css, so they
+     always show the current colours. -->
+<link rel="stylesheet" href="../../static/vendor/bootstrap/css/bootstrap.min.css">
+<link rel="stylesheet" href="../../static/vendor/bootstrap-icons/bootstrap-icons.css">
+<link rel="stylesheet" href="../../static/css/app.css">
+<style>
+  @page { size: A4; margin: 18mm 16mm 16mm 16mm; }
+  /* app.css scales the whole app to 90% and tints the page; the document
+     itself renders at 100% on white */
+  html, body { zoom: 1 !important; background: #fff !important; }
+  body { font-family: 'Inter', 'Segoe UI', Arial, sans-serif; color: #212529; font-size: 9.5pt; line-height: 1.4; margin: 0; }
+  code, .mono { font-family: 'Liberation Mono', 'Courier New', monospace; font-size: .86em; color: #b02a37; background: #f6f2f4; padding: 1px 4px; border-radius: 3px; }
+  .page { page-break-before: always; }
+  .chap-no { color: #0377c2; font-weight: 700; letter-spacing: .18em; font-size: 9pt; margin-top: 4mm; }
+  h1.chap { color: #0e3a7a; font-weight: 800; font-size: 24pt; letter-spacing: -.02em; margin: 0 0 3mm; padding-bottom: 2mm; border-bottom: 2.5px solid #0377c2; }
+  h2 { color: #0e3a7a; font-weight: 800; font-size: 13pt; margin: 4mm 0 1.5mm; }
+  h3 { color: #0e3a7a; font-weight: 700; font-size: 11pt; margin: 4mm 0 1.5mm; }
+  p.lead { font-size: 12pt; color: #343a40; margin-bottom: 3mm; }
+  table.doc { width: 100%; border-collapse: collapse; font-size: 8.3pt; margin: 2mm 0 3mm; }
+  table.doc th { background: #0e3a7a; color: #fff; text-align: left; padding: 6px 7px; font-weight: 600; }
+  table.doc td { padding: 4px 6px; border-bottom: 1px solid #dee2e6; vertical-align: top; }
+  .tag { display: inline-block; font-size: 7pt; font-weight: 700; letter-spacing: .06em; color: #0377c2; background: #e7f1fb; border-radius: 3px; padding: 1px 5px; margin-left: 4px; vertical-align: middle; }
+  .tag.chg { color: #0F7A37; background: #E8F5E6; }
+  .note { border-left: 4px solid #0377c2; background: #f2f7fc; padding: 3mm 4mm; margin: 3mm 0; border-radius: 0 6px 6px 0; }
+  .note .t { font-size: 8pt; font-weight: 700; letter-spacing: .12em; color: #0377c2; text-transform: uppercase; }
+  .note.dont { border-left-color: #dc3545; background: #fdf2f3; }
+  .note.dont .t { color: #dc3545; }
+  .note.warn { border-left-color: #f0ad00; background: #fff8e1; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .sample { border: 1px solid #dee2e6; border-radius: 10px; padding: 4mm; margin: 2mm 0 1mm; }
+  .cap { font-size: 8.5pt; color: #6c757d; margin-bottom: 3mm; }
+  pre.codeblk { background: #111c2d; color: #e6edf6; border-radius: 8px; padding: 4mm; font-family: 'Liberation Mono', monospace; font-size: 8pt; white-space: pre-wrap; margin: 3mm 0; }
+  ul.doc { padding-left: 5mm; margin: 1mm 0 3mm; } ul.doc li { margin-bottom: 1mm; }
+  /* colour swatches */
+  .sw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm 8mm; margin: 2mm 0 4mm; }
+  .sw { display: flex; gap: 3mm; align-items: flex-start; }
+  .sw .chip { width: 13mm; height: 13mm; border-radius: 6px; flex: 0 0 auto; border: 1px solid rgba(0,0,0,.08); }
+  .sw .n { font-weight: 700; font-size: 9.5pt; } .sw .v { font-size: 8.5pt; } .sw .v code { font-size: 8.5pt; }
+  .sw .tok { color: #6c757d; } .sw .u { font-size: 8.5pt; color: #343a40; }
+  .tint-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 2.5mm; margin: 2mm 0 4mm; }
+  .tint { border-radius: 8px; padding: 2.5mm 3mm; font-size: 8pt; background: color-mix(in srgb, var(--c) 8%, #fff); border: 1px solid color-mix(in srgb, var(--c) 25%, #fff); }
+  .tint b { color: var(--c); font-size: 9.5pt; }
+  /* cover */
+  .cover { background: #1e2a3a; color: #fff; border-radius: 12px; padding: 12mm 12mm 10mm; position: relative; overflow: hidden; }
+  .cover .k { color: #8fb5ef; font-size: 9pt; font-weight: 700; letter-spacing: .25em; }
+  .cover h1 { font-size: 36pt; font-weight: 800; line-height: 1.05; letter-spacing: -.02em; margin: 4mm 0 4mm; }
+  .cover p { color: #d6dde8; font-size: 12pt; max-width: 120mm; }
+  .cover .bar { display: flex; height: 3.5mm; border-radius: 3mm; overflow: hidden; margin-top: 7mm; max-width: 170mm; }
+  .cover .bar span { flex: 1; }
+  .cover .logo { position: absolute; right: 10mm; top: 10mm; width: 34mm; height: 34mm; }
+  .meta { position: absolute; bottom: 8mm; left: 0; right: 0; font-size: 10pt; }
+  .meta td { padding: 1.2mm 0; } .meta td:first-child { color: #6c757d; width: 30mm; }
+  .toc a { display: flex; gap: 6mm; padding: 2.4mm 0; border-bottom: 1px dotted #ced4da; color: #212529; text-decoration: none; font-size: 11.5pt; }
+  .toc .no { color: #0377c2; font-weight: 700; width: 8mm; } .toc .d { margin-left: auto; color: #6c757d; font-size: 9pt; }
+  /* mock app frame (page layout chapter) */
+  .mock { display: flex; border: 1px solid #dee2e6; border-radius: 10px; overflow: hidden; height: 92mm; font-size: 8pt; }
+  .mock .sb { width: 34mm; background: var(--sidebar-bg); color: #f0f4f8; display: flex; flex-direction: column; }
+  .mock .sb .brand { background: #198754; color: #fff; font-weight: 700; padding: 2.5mm 2.5mm; white-space: nowrap; }
+  .mock .sb .sec { color: #6b7f99; font-size: 6.5pt; letter-spacing: .12em; font-weight: 700; padding: 2mm 3mm 1mm; }
+  .mock .sb .it { padding: 1.2mm 3mm; margin: 0 1.5mm; border-radius: 4px; }
+  .mock .sb .act { background: #0377c2; }
+  .mock .sb .foot { margin-top: auto; background: #0e3a7a; padding: 1.5mm 3mm; font-size: 6.5pt; }
+  .mock .mn { flex: 1; background: #f0f4f8; display: flex; flex-direction: column; }
+  .mock .tb { background: #fff; height: 9mm; display: flex; align-items: center; gap: 2mm; padding: 0 3mm; border-bottom: 1px solid #e3e8ef; }
+  .mock .tb .ttl { color: #0d6efd; font-weight: 700; font-size: 9pt; }
+  .mock .zone { border: 1.5px dashed #0377c2; border-radius: 6px; margin: 2.5mm 3mm 0; padding: 1.5mm; position: relative; }
+  .mock .zone .zl { position: absolute; top: -2.2mm; left: 2mm; background: #0377c2; color: #fff; font-size: 5.5pt; font-weight: 700; padding: 0 1.5mm; border-radius: 2px; }
+  .page-foot-note { font-size: 8pt; color: #6c757d; }
+</style>
+</head>
+<body>
+
+<!-- ============================== COVER ============================== -->
+<div class="cover">
+  <img class="logo" src="../../static/img/logo.svg" alt="">
+  <div class="k">OXYPC COMPUTERS · INVENTORY ERP</div>
+  <h1>OxyPC Inventory<br>Lifecycle<br>Design System</h1>
+  <p>Colours, type, layout and components that every page of the app is built from, with the rules for using them.</p>
+  <div class="bar">
+    <span style="background:#0e3a7a"></span><span style="background:#0F7A37"></span><span style="background:#54BA48"></span>
+    <span style="background:#fd7e14"></span><span style="background:#0aa2c0"></span><span style="background:#dc3545"></span>
+    <span style="background:#0d9488"></span><span style="background:#6f42c1"></span><span style="background:#6c757d"></span>
+  </div>
+</div>
+<div style="position:relative;height:150mm">
+  <table class="meta">
+    <tr><td>Version</td><td>1.2 — 18 October 2026</td></tr>
+    <tr><td>Applies to</td><td>OxyPC Inventory Lifecycle web app (FastAPI + Jinja2 + Bootstrap 5)</td></tr>
+    <tr><td>Based on</td><td>Code on branch <code>staging</code>, <code>static/css/app.css</code>, <code>static/js/global-table.js</code></td></tr>
+    <tr><td>Environments</td><td>Production <code>http://10.199.206.109</code> · Staging <code>http://localhost:8001</code></td></tr>
+    <tr><td>Audience</td><td>Developers, reviewers and Claude sessions building or changing pages</td></tr>
+    <tr><td>What's new</td><td>v1.2: OxyPC × Bluemonk brand colours (success <code>#0F7A37</code>, brand blue <code>#0e3a7a</code>), sidebar background <code>#212529</code>, new Global Table style, OxyPC green app icon</td></tr>
+  </table>
+</div>
+
+<!-- ============================== CONTENTS ============================== -->
+<div class="page">
+  <div class="chap-no">CONTENTS</div>
+  <h1 class="chap">What's inside</h1>
+  <div class="toc">
+    <a><span class="no">01</span>Introduction and principles<span class="d">Why the system exists, five rules</span></a>
+    <a><span class="no">02</span>Colour<span class="d">Brand, semantic, tile and stage colours</span></a>
+    <a><span class="no">03</span>Typography, spacing and icons<span class="d">Type scale, radius, shadow, icon set</span></a>
+    <a><span class="no">04</span>Page layout<span class="d">Sidebar, top bar, page anatomy</span></a>
+    <a><span class="no">05</span>Summary tiles<span class="d">Light-tint, solid, pipeline, stat cards</span></a>
+    <a><span class="no">06</span>Filter bar<span class="d">One-row filters, busy-page grid</span></a>
+    <a><span class="no">07</span>Global Table<span class="d">Table card, toolbar, behaviours</span></a>
+    <a><span class="no">08</span>Buttons and badges<span class="d">Hierarchy, states, stage badges</span></a>
+    <a><span class="no">09</span>Forms, modals and feedback<span class="d">Inputs, dialogs, alerts</span></a>
+    <a><span class="no">10</span>Patterns<span class="d">Permissions, partial refresh, breadcrumbs</span></a>
+    <a><span class="no">11</span>Checklist and change process<span class="d">From idea to production</span></a>
+    <a><span class="no">A</span>Token and file reference<span class="d">CSS variables, class names, locations</span></a>
+  </div>
+</div>
+
+<!-- ============================== 01 ============================== -->
+<div class="page">
+  <div class="chap-no">01</div>
+  <h1 class="chap">Introduction and principles</h1>
+  <p class="lead">Every OxyPC Inventory Lifecycle page is assembled from the same few parts: summary tiles, a filter bar and a Global Table inside a card. This document records how each part looks and how it is built, so that new pages match the 238 templates already live.</p>
+  <p>The system sits on Bootstrap 5 with a thin shared layer in <code>static/css/app.css</code>. Table behaviour lives in <code>static/js/global-table.js</code>. All libraries are served locally from <code>static/vendor/</code>, with no CDN, so the app works on the office LAN without internet.</p>
+  <h2>Five principles</h2>
+  <table class="doc">
+    <tr><th style="width:30%">Principle</th><th>What it means in practice</th></tr>
+    <tr><td><b>Reuse, don't restyle</b></td><td>Use the shared classes (<code>filter-bar</code>, <code>initGlobalTable</code>, the tile pattern). A fix in <code>app.css</code> then reaches every page at once.</td></tr>
+    <tr><td><b>Dense but readable</b></td><td>Tables use 14px text, one-line headers and two-line cell clamps, so 12+ rows fit on a 1366px office screen without wrapping.</td></tr>
+    <tr><td><b>Colour carries meaning</b></td><td>Each colour stands for a stage or state and is used the same way on tiles, badges and buttons. Colour is never decoration.</td></tr>
+    <tr><td><b>One row of controls</b></td><td>Filters and their buttons sit on one line above the table. Row actions sit in the last column, centred.</td></tr>
+    <tr><td><b>Permissions decide what shows</b></td><td>A control appears only for roles that may use it, checked with <code>has_perm()</code> or <code>role_allowed()</code>. Never a hard-coded role list.</td></tr>
+  </table>
+  <h2>How to use this document</h2>
+  <ul class="doc">
+    <li><b>Building a new page:</b> read chapters 04–09, then work through the checklist in chapter 11.</li>
+    <li><b>Changing an existing page:</b> find the component's chapter. The samples are rendered with the app's real CSS.</li>
+    <li><b>Reviewing on staging:</b> compare the page against the specs and the "Do / Don't" boxes.</li>
+  </ul>
+  <div class="note"><div class="t">Source of truth</div>When this document and the code disagree, the code in production wins. Update this document in the same change — its source is <code>qa_docs/design_system/design_system.html</code>; rebuild the PDF with <code>build_pdf.py</code> next to it.</div>
+</div>
+
+<!-- ============================== 02 COLOUR ============================== -->
+<div class="page">
+  <div class="chap-no">02</div>
+  <h1 class="chap">Colour</h1>
+  <p class="lead">Five groups of colour: the brand frame around every page, the OxyPC × Bluemonk brand colours, Bootstrap's semantic colours for actions and states, tile colours for summary counts, and fixed stage colours for device badges.</p>
+
+  <h2>Brand and neutrals <span class="tag chg">UPDATED</span></h2>
+  <div class="sw-grid">
+    <div class="sw"><div class="chip" style="background:#0e3a7a"></div><div><div class="n">Brand blue</div><div class="v"><code>#0e3a7a</code> <span class="tok">--brand-blue</span></div><div class="u">History buttons, focus rings, barcode focus. Was #0377c2 until v1.1.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#0e3a7a"></div><div><div class="n">Navy</div><div class="v"><code>#0e3a7a</code> —</div><div class="u">Table headers, sidebar footer, filter-bar rule, card titles</div></div></div>
+    <div class="sw"><div class="chip" style="background:#0377c2"></div><div><div class="n">Sidebar active</div><div class="v"><code>#0377c2</code> <span class="tok">--sidebar-active</span></div><div class="u">Active sidebar link only (sidebar kept as before)</div></div></div>
+    <div class="sw"><div class="chip" style="background:#d9ebf6"></div><div><div class="n">Card header</div><div class="v"><code>#d9ebf6</code> —</div><div class="u">Global Table card header</div></div></div>
+    <div class="sw"><div class="chip" style="background:#212529"></div><div><div class="n">Dark text</div><div class="v"><code>#212529</code> <span class="tok">body text</span></div><div class="u">Body text, table cells, form fields — and the sidebar background</div></div></div>
+    <div class="sw"><div class="chip" style="background:#f0f4f8"></div><div><div class="n">Light text</div><div class="v"><code>#f0f4f8</code> <span class="tok">--sidebar-text</span></div><div class="u">Text on dark backgrounds (sidebar links)</div></div></div>
+    <div class="sw"><div class="chip" style="background:#f0f4f8"></div><div><div class="n">Light background</div><div class="v"><code>#f0f4f8</code> <span class="tok">page</span></div><div class="u">Behind all page content; cards sit on white</div></div></div>
+    <div class="sw"><div class="chip" style="background:#212529"></div><div><div class="n">Sidebar background</div><div class="v"><code>#212529</code> <span class="tok">--sidebar-bg</span></div><div class="u">Same as Dark text (v1.2; was "Dark background" #1e2a3a)</div></div></div>
+    <div class="sw"><div class="chip" style="background:#D8D8D8"></div><div><div class="n">Disabled</div><div class="v"><code>#D8D8D8</code> —</div><div class="u">Every disabled button</div></div></div>
+  </div>
+
+  <h2>OxyPC × Bluemonk brand colours <span class="tag">NEW</span></h2>
+  <p>The app carries both companies. Bluemonk's navy and blue are the main frame; OxyPC's leaf greens mark success, stock and profit. Tokens in <code>app.css :root</code>.</p>
+  <div class="sw-grid">
+    <div class="sw"><div class="chip" style="background:#54BA48"></div><div><div class="n">OxyPC Leaf</div><div class="v"><code>#54BA48</code> <span class="tok">--oxy-leaf</span></div><div class="u">Accents only (logo, icon top) — too light for text</div></div></div>
+    <div class="sw"><div class="chip" style="background:#129042"></div><div><div class="n">OxyPC Forest</div><div class="v"><code>#129042</code> <span class="tok">--oxy-forest</span></div><div class="u">Profit figures (<code>.profit-positive</code>), icon front</div></div></div>
+    <div class="sw"><div class="chip" style="background:#0F7A37"></div><div><div class="n">Success</div><div class="v"><code>#0F7A37</code> <span class="tok">--oxy-text / success</span></div><div class="u">Success buttons, badges, green text, tiles, charts</div></div></div>
+    <div class="sw"><div class="chip" style="background:#E8F5E6"></div><div><div class="n">Mint</div><div class="v"><code>#E8F5E6</code> <span class="tok">--oxy-mint</span></div><div class="u">Green tile and stat-card background</div></div></div>
+  </div>
+
+  <h2>Semantic colours</h2>
+  <p>Bootstrap 5 defaults, except Success (OxyPC green), plus three custom badge colours defined in <code>app.css</code> (teal, purple, pink).</p>
+  <div class="sw-grid">
+    <div class="sw"><div class="chip bg-primary"></div><div><div class="n">Primary</div><div class="v"><code>#0d6efd</code> <span class="tok">primary</span></div><div class="u">Main actions, QC Check, Active</div></div></div>
+    <div class="sw"><div class="chip" style="background:#0F7A37"></div><div><div class="n">Success <span class="tag chg">UPDATED</span></div><div class="v"><code>#0F7A37</code> <span class="tok">success</span></div><div class="u">Save, Ready to Sell, done. Sidebar header band keeps #198754.</div></div></div>
+    <div class="sw"><div class="chip bg-warning"></div><div><div class="n">Warning</div><div class="v"><code>#ffc107</code> <span class="tok">warning</span></div><div class="u">GRN, L1/L2, Returned, pending</div></div></div>
+    <div class="sw"><div class="chip bg-danger"></div><div><div class="n">Danger</div><div class="v"><code>#dc3545</code> <span class="tok">danger</span></div><div class="u">L3, Scrapped, PNA, delete</div></div></div>
+    <div class="sw"><div class="chip bg-info"></div><div><div class="n">Info</div><div class="v"><code>#0dcaf0</code> <span class="tok">info</span></div><div class="u">Stock In, TRC Production</div></div></div>
+    <div class="sw"><div class="chip bg-secondary"></div><div><div class="n">Secondary</div><div class="v"><code>#6c757d</code> <span class="tok">secondary</span></div><div class="u">IQC, Inactive, neutral</div></div></div>
+    <div class="sw"><div class="chip bg-dark"></div><div><div class="n">Dark</div><div class="v"><code>#212529</code> <span class="tok">dark</span></div><div class="u">Sold, Scrap for Sale</div></div></div>
+    <div class="sw"><div class="chip bg-teal"></div><div><div class="n">Teal</div><div class="v"><code>#0d9488</code> <span class="tok">bg-teal</span></div><div class="u">All cosmetic stages</div></div></div>
+    <div class="sw"><div class="chip bg-purple"></div><div><div class="n">Purple</div><div class="v"><code>#6f42c1</code> <span class="tok">bg-purple</span></div><div class="u">Final QC, "at you" counts</div></div></div>
+    <div class="sw"><div class="chip" style="background:#d63384"></div><div><div class="n">Pink</div><div class="v"><code>#d63384</code> <span class="tok">bg-pink</span></div><div class="u">Cosmetic summaries</div></div></div>
+  </div>
+</div>
+
+<div class="page">
+  <h2>Tile colours <span class="tag chg">UPDATED</span></h2>
+  <p>Summary tiles set one variable, <code>--tc</code>, and derive their tint, border, number and watermark from it. These are the shades in use. They are darker than Bootstrap's warning and info, which are too pale for coloured text on a light tint. Green tiles sit on mint <code>#E8F5E6</code>.</p>
+  <div class="tint-grid">
+    <div class="tint" style="--c:#0d6efd"><b>Blue</b><br><code>#0d6efd</code><br>IQC, L1/L2, Active</div>
+    <div class="tint" style="--c:#0F7A37;background:#E8F5E6"><b>Green</b><br><code>#0F7A37</code><br>Stock, Final QC, Done</div>
+    <div class="tint" style="--c:#fd7e14"><b>Orange</b><br><code>#fd7e14</code><br>TRC, L3/L4</div>
+    <div class="tint" style="--c:#f0ad00"><b>Amber</b><br><code>#f0ad00</code><br>Price pending (solid tiles)</div>
+    <div class="tint" style="--c:#0aa2c0"><b>Teal</b><br><code>#0aa2c0</code><br>Ready to Sell, parts</div>
+    <div class="tint" style="--c:#20c997"><b>Mint</b><br><code>#20c997</code><br>Stress</div>
+    <div class="tint" style="--c:#dc3545"><b>Red</b><br><code>#dc3545</code><br>PNA, failures</div>
+    <div class="tint" style="--c:#e83e8c"><b>Pink</b><br><code>#e83e8c</code><br>Cosmetic</div>
+    <div class="tint" style="--c:#6f42c1"><b>Purple</b><br><code>#6f42c1</code><br>At you</div>
+    <div class="tint" style="--c:#6c757d"><b>Grey</b><br><code>#6c757d</code><br>Returned, Inactive</div>
+  </div>
+
+  <h2>Device stage colours</h2>
+  <p>Fixed in <code>STAGE_COLORS</code> (<code>models/device.py</code>) and read through <code>device.stage_color</code>. Never choose a stage colour by hand.</p>
+  <div class="sample" style="line-height:2">
+    <span class="badge bg-warning">GRN</span> <span class="badge bg-secondary">IQC</span> <span class="badge bg-info">Stock In</span> <span class="badge bg-warning">L1</span> <span class="badge bg-warning">L2</span> <span class="badge bg-danger">L3</span> <span class="badge bg-info">TRC Production</span> <span class="badge bg-primary">QC Check</span> <span class="badge bg-teal">Cosmetic Received</span> <span class="badge bg-teal">Cleaning</span> <span class="badge bg-teal">Painting</span>
+    <span class="badge bg-teal">Cosmetic Completed</span> <span class="badge bg-purple">Final QC</span> <span class="badge bg-success">Final QC Pass Hold</span> <span class="badge bg-warning">Final QC Fail Hold</span> <span class="badge bg-success">Ready to Sale</span> <span class="badge bg-dark">Sold</span> <span class="badge bg-warning">Returned</span> <span class="badge bg-danger">Scrapped</span> <span class="badge bg-dark">Scrap for Sale</span>
+  </div>
+  <div class="cap">Rendered with the app's badge classes. All cosmetic sub-stages (Putty, Dry Sanding, Masking, Water Sanding) are teal. Success-green stages show the v1.2 solid <code>#0F7A37</code> badge.</div>
+
+  <h2>Money and profit <span class="tag chg">UPDATED</span></h2>
+  <table class="doc">
+    <tr><th>Class</th><th>Colour</th><th>Use</th></tr>
+    <tr><td><code>.profit-positive</code></td><td><span class="profit-positive">#129042 ₹12,450</span></td><td>Profit, positive P&amp;L (was #0f9e4e)</td></tr>
+    <tr><td><code>.profit-negative</code></td><td><span class="profit-negative">#d63031 −₹3,200</span></td><td>Loss</td></tr>
+    <tr><td><code>.profit-zero</code></td><td><span style="color:#888">#888 ₹0</span></td><td>Break-even</td></tr>
+  </table>
+  <div class="two">
+    <div class="note"><div class="t">Do</div>Pick a tile or badge colour from what it counts: green for stock and done, orange for repair, red for failures.</div>
+    <div class="note dont"><div class="t">Don't</div>Use a <code>bg-*</code> class that isn't in Bootstrap or <code>app.css</code>. The badge renders white text on no background.</div>
+  </div>
+</div>
+
+<!-- ============================== 03 ============================== -->
+<div class="page">
+  <div class="chap-no">03</div>
+  <h1 class="chap">Typography, spacing and icons</h1>
+  <p class="lead">The app uses Segoe UI (Windows), falling back to Arial. The whole interface renders at 90% zoom, so the sizes below are what the CSS says, before that zoom.</p>
+  <h2>Type scale</h2>
+  <table class="doc">
+    <tr><th>Role</th><th>Spec</th><th>Sample</th></tr>
+    <tr><td>Page title (top bar)</td><td>1.25rem · bold · primary blue</td><td><span style="font-size:15pt;font-weight:700;color:#0d6efd">Inventory Manager</span></td></tr>
+    <tr><td>Tile number</td><td>1.6rem · 700 · tile colour</td><td><span style="font-size:19pt;font-weight:700;color:#0F7A37">3,518</span></td></tr>
+    <tr><td>Card title</td><td>1rem · semibold · navy</td><td><span style="color:#0e3a7a;font-weight:600"><i class="bi bi-archive me-1"></i>Inventory Stock</span></td></tr>
+    <tr><td>Body / table text</td><td>14px · 400</td><td>LOT-042 · Dell Latitude 5490 · i5 8th Gen</td></tr>
+    <tr><td>Table header</td><td>0.8rem · 600 · uppercase · 0.5px tracking</td><td><span style="font-weight:600;text-transform:uppercase;letter-spacing:.5px">Tag Number</span></td></tr>
+    <tr><td>Form label / sidebar link</td><td>0.875rem</td><td>Device Type</td></tr>
+    <tr><td>Tile label</td><td>0.72rem · #343a40</td><td><span style="font-size:8pt;color:#343a40">Devices in Stock</span></td></tr>
+    <tr><td>Sidebar section</td><td>0.7rem · 700 · uppercase · 1px tracking</td><td><span style="font-size:7.5pt;font-weight:700;letter-spacing:1px;color:#576d87">INVENTORY</span></td></tr>
+    <tr><td>Barcode field</td><td>Courier New · 1rem</td><td><span style="font-family:'Courier New',monospace">OXY-2026-004512</span></td></tr>
+  </table>
+  <h2>Spacing, corners and shadow</h2>
+  <table class="doc">
+    <tr><th>Token</th><th>Value</th><th>Where</th></tr>
+    <tr><td>Card and tile radius</td><td>10px</td><td>Cards, summary tiles, <code>.stat-card</code></td></tr>
+    <tr><td>Table radius</td><td>0.5em</td><td>Tables inside cards (clip-path on scroll tables)</td></tr>
+    <tr><td>Control radius</td><td>6px</td><td>Inputs, DataTables search and length controls, sidebar links</td></tr>
+    <tr><td>Grid gap</td><td><code>g-3</code> = 1rem</td><td>Between tiles and cards</td></tr>
+    <tr><td>Below tile row</td><td><code>mb-4</code> = 1.5rem</td><td>Tiles → filter bar</td></tr>
+    <tr><td>Shadow</td><td><code>0 .25rem .5rem rgba(0,0,0,.5)</code></td><td><code>.shadow-sm</code> is overridden app-wide to this. Use the class, don't write your own</td></tr>
+    <tr><td>Cell padding</td><td>8px (<code>.5rem</code>); first column 16px left <span class="tag">NEW</span></td><td>Every Global Table, even when <code>table-sm</code> is set</td></tr>
+    <tr><td>Sidebar / top bar</td><td>240px / 56px</td><td><code>--sidebar-width</code>, <code>--topbar-height</code></td></tr>
+    <tr><td>App zoom</td><td>0.9</td><td><code>--app-zoom</code>. Use <code>var(--full-vh)</code> instead of <code>100vh</code></td></tr>
+  </table>
+</div>
+
+<div class="page">
+  <h2>Icons</h2>
+  <p>Bootstrap Icons only, as <code>&lt;i class="bi bi-…"&gt;</code>. Use <code>me-1</code> before button text and <code>me-2</code> before sidebar and card titles. Reuse the icon a module already has in the sidebar.</p>
+  <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:2.5mm">
+    <div class="sample text-center p-2"><i class="bi bi-archive fs-4 text-primary"></i><div>Stock Inwards</div><code>bi-archive</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-cpu fs-4 text-primary"></i><div>Production</div><code>bi-cpu</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-clipboard-check fs-4 text-primary"></i><div>IQC</div><code>bi-clipboard-check</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-box-seam fs-4 text-primary"></i><div>In stock</div><code>bi-box-seam</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-tools fs-4 text-primary"></i><div>Repair / TRC</div><code>bi-tools</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-bag-check fs-4 text-primary"></i><div>Ready to sell</div><code>bi-bag-check</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-funnel fs-4 text-primary"></i><div>Filter</div><code>bi-funnel</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-file-earmark-arrow-down fs-4 text-primary"></i><div>Download</div><code>bi-file-earmark-arrow-down</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-upload fs-4 text-primary"></i><div>Upload</div><code>bi-upload</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-pencil fs-4 text-primary"></i><div>Edit</div><code>bi-pencil</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-trash3 fs-4 text-primary"></i><div>Delete / scrap</div><code>bi-trash3</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-check-circle fs-4 text-primary"></i><div>Done</div><code>bi-check-circle</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-exclamation-triangle fs-4 text-primary"></i><div>Warning / PNA</div><code>bi-exclamation-triangle</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-upc-scan fs-4 text-primary"></i><div>Scan</div><code>bi-upc-scan</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-person-workspace fs-4 text-primary"></i><div>Assigned to you</div><code>bi-person-workspace</code></div>
+    <div class="sample text-center p-2"><i class="bi bi-arrow-left-right fs-4 text-primary"></i><div>Transfer</div><code>bi-arrow-left-right</code></div>
+  </div>
+  <h2>App icon <span class="tag">NEW</span></h2>
+  <div class="d-flex align-items-center gap-4">
+    <img src="../../static/img/logo.svg" style="width:22mm">
+    <div style="background:#0f1923;border-radius:50%;width:18mm;height:18mm;display:flex;align-items:center;justify-content:center"><img src="../../static/img/logo-mark.svg" style="width:15mm"></div>
+    <div>A 3D stock box in the OxyPC greens (top <code>#54BA48</code>, front <code>#129042</code>, side <code>#0B6B30</code>) with a delivery van on the lid, a laptop on the front and a white tick. <code>static/img/logo.svg</code> (dark rounded tile, browser-tab icon) and <code>logo-mark.svg</code> (no tile, login badge). The sidebar header is unchanged.</div>
+  </div>
+</div>
+
+<!-- ============================== 04 ============================== -->
+<div class="page">
+  <div class="chap-no">04</div>
+  <h1 class="chap">Page layout</h1>
+  <p class="lead">Every page extends <code>base.html</code>, which provides the dark sidebar and white top bar. A page fills only its <code>content</code> block, plus <code>head</code> for page-specific CSS.</p>
+  <div class="mock">
+    <div class="sb">
+      <div class="brand"><i class="bi bi-laptop me-1"></i>Inventory Lifecycle</div>
+      <div class="sec">INTAKE</div><div class="it">GRN Records</div><div class="it">IQC Line Items</div>
+      <div class="sec">INVENTORY</div><div class="it act">Inventory Manager</div><div class="it">Scrap Products</div><div class="it">Inventory Request</div>
+      <div class="sec">REPAIR</div><div class="it">Production Manager</div><div class="it">L1/L2 Repair</div>
+      <div class="foot">v1.0 • BlueMonk</div>
+    </div>
+    <div class="mn">
+      <div class="tb"><i class="bi bi-list"></i><i class="bi bi-caret-left-fill" style="color:#c3cad3;font-size:11pt"></i><i class="bi bi-caret-right-fill" style="color:#0e3a7a;font-size:11pt"></i><span class="ttl">Inventory Manager</span><span class="ms-auto badge bg-success">Server Connected</span><i class="bi bi-bell"></i></div>
+      <div class="zone"><span class="zl">1 · TILES</span>
+        <div class="d-flex gap-1">
+          <div class="tint flex-fill" style="--c:#0d6efd"><b style="font-size:11pt">142</b><br>Devices in IQC</div>
+          <div class="tint flex-fill" style="--c:#0F7A37;background:#E8F5E6"><b style="font-size:11pt">3,518</b><br>Devices in Stock</div>
+          <div class="tint flex-fill" style="--c:#fd7e14"><b style="font-size:11pt">611</b><br>Devices in TRC</div>
+          <div class="tint flex-fill" style="--c:#0aa2c0"><b style="font-size:11pt">874</b><br>Ready to Sell</div>
+        </div></div>
+      <div class="zone"><span class="zl">2 · FILTER BAR</span><div class="d-flex gap-1" style="border-bottom:1px solid #0e3a7a;padding-bottom:1mm"><span class="form-control form-control-sm py-0" style="font-size:7pt">GRN / Invoice / Tag / Model</span><span class="form-control form-control-sm py-0" style="font-size:7pt;width:30mm">All Device Types</span><span class="btn btn-primary btn-sm py-0" style="font-size:7pt">Filter</span><span class="btn btn-outline-secondary btn-sm py-0" style="font-size:7pt">Reset</span></div></div>
+      <div class="zone"><span class="zl">3 · TABS (optional)</span><span style="color:#0d6efd;border-bottom:2px solid #0d6efd">Inventory Stock</span> &nbsp; Return Stock</div>
+      <div class="zone" style="flex:1"><span class="zl">4 · GLOBAL TABLE CARD</span><div style="background:#d9ebf6;color:#0e3a7a;font-weight:700;padding:1mm 2mm;border-radius:4px 4px 0 0">Inventory Stock</div><div style="background:#0e3a7a;height:4mm;border-radius:3mm;margin-top:1mm"></div><div style="height:4mm;border-bottom:1px solid #e3eef7"></div><div style="height:4mm;border-bottom:1px solid #e3eef7"></div></div>
+    </div>
+  </div>
+  <div class="cap">Page anatomy: the standard order of a list page, top to bottom.</div>
+  <h2>Standard order of a list page</h2>
+  <table class="doc">
+    <tr><th style="width:6%">#</th><th style="width:22%">Zone</th><th>Rule</th></tr>
+    <tr><td>1</td><td>Summary tiles</td><td>Optional. When present, always first, above any tabs. One row.</td></tr>
+    <tr><td>2</td><td>Filter bar</td><td>One line of filters, Filter/Reset on the right, navy line underneath.</td></tr>
+    <tr><td>3</td><td>Alert</td><td>Only after a redirect with <code>?success=</code> or <code>?error=</code>.</td></tr>
+    <tr><td>4</td><td>Tabs</td><td><code>nav nav-tabs mb-3</code> when the page has several tables. A table inside a tab hides its own card header.</td></tr>
+    <tr><td>5</td><td>Table card</td><td>Sky-blue card header with icon + title and this table's own actions, then the Global Table.</td></tr>
+  </table>
+  <h2>Sidebar and top bar <span class="tag chg">UPDATED</span></h2>
+  <ul class="doc">
+    <li><b>Sidebar colours:</b> brand band green <code>#198754</code> reading "Inventory Lifecycle"; background <code>#212529</code> (the Dark text colour, <code>--sidebar-bg</code>; was #1e2a3a); link text <code>#f0f4f8</code> (the page background); footer navy <code>#0e3a7a</code>; active link <code>#0377c2</code> (<code>--sidebar-active</code>). The OxyPC colour changes deliberately do not reach the sidebar.</li>
+    <li><b>Back / forward:</b> filled triangles (<code>bi-caret-left-fill</code> / <code>-right-fill</code>) in brand blue <code>#0e3a7a</code>, pale grey <code>#c3cad3</code> when there is nowhere to go; no pill or background.</li>
+    <li><b>Sections:</b> Attendance, Intake, Inventory, Repair, Store Manager, CRM, External Partner, Customer Care, Sales &amp; CRM, Finance, Product Master, Reports, Admin, Notifications, Support.</li>
+    <li><b>Each link</b> is wrapped in <code>has_perm(role,'&lt;module&gt;','enable') and not module_hidden('&lt;module&gt;')</code>. Its text comes from <code>sidebar_label()</code>, so admins can rename it in Sidebar Config.</li>
+    <li><b>Page title</b> comes from the <code>page_title</code> block and can be overridden in Page Title Config. Breadcrumbs are off by default and switched on per page there.</li>
+    <li><b>Widths:</b> layouts must hold at 1366px. Below 768px, the sidebar becomes a slide-in drawer.</li>
+  </ul>
+</div>
+
+<!-- ============================== 05 ============================== -->
+<div class="page">
+  <div class="chap-no">05</div>
+  <h1 class="chap">Summary tiles</h1>
+  <p class="lead">Four tile styles. Light-tint is the standard for count tiles on working pages. Solid tiles are for status and category overviews. The pipeline and stat cards belong to the Dashboard.</p>
+  <h2>A · Light-tint tile (standard)</h2>
+  <div class="sample d-flex gap-3">
+    <div class="tint flex-fill" style="--c:#6f42c1"><b style="font-size:16pt">48</b><br>Total Tags at You</div>
+    <div class="tint flex-fill" style="--c:#0d6efd"><b style="font-size:16pt">611</b><br>Total Tags in L1/L2</div>
+    <div class="tint flex-fill" style="--c:#fd7e14"><b style="font-size:16pt">37</b><br>Total Tags in L3/L4</div>
+    <div class="tint flex-fill" style="--c:#dc3545"><b style="font-size:16pt">22</b><br>Total Tags in PNA</div>
+    <div class="tint flex-fill" style="--c:#0F7A37;background:#E8F5E6"><b style="font-size:16pt">3,518</b><br>Devices in Stock</div>
+  </div>
+  <div class="cap">Production Manager (<code>/trc-production</code>). The same tile is used on Inventory Manager (<code>/stock</code>) and Create GRN (<code>/grn/post-iqc</code>).</div>
+  <table class="doc">
+    <tr><th style="width:22%">Part</th><th>Spec</th></tr>
+    <tr><td>Background</td><td>8% of the tile colour over white: <code>color-mix(in srgb, var(--tc) 8%, #fff)</code>; green tiles use mint <code>#E8F5E6</code>. One variable, <code>--tc</code>, set per tile.</td></tr>
+    <tr><td>Box</td><td>1px border at 25% of the tile colour · radius 10px · padding <code>.6rem .7rem</code> · shadow <code>0 .25rem .5rem rgba(0,0,0,.5)</code></td></tr>
+    <tr><td>Text</td><td>Number 1.6rem, weight 700, tile colour · label .72rem, <code>#343a40</code>, one line, <b>.35rem below the number</b></td></tr>
+    <tr><td>Watermark</td><td>Bootstrap icon, 3.4rem, bottom-right (<code>right:-4px; bottom:-10px</code>), <b>8% of the tile colour</b>, partly cut off</td></tr>
+    <tr><td>Optional button</td><td><code>btn-sm py-0 px-1</code>, .65rem, <b>.6rem below the label</b>; white with tile-colour border and text; fills with the tile colour on hover</td></tr>
+    <tr><td>Row</td><td><code>row g-3 mb-4</code>, padding <code>4px 6px 10px</code> so the shadow isn't clipped. <code>col-6 col-lg-3</code> for 4 tiles; 5–8 tiles use a no-wrap flex row (<code>d-flex gap-3</code>, min-width 118px)</td></tr>
+  </table>
+  <pre class="codeblk">&lt;div class="prod-tile h-100" style="--tc:#0F7A37"&gt;
+  &lt;div class="prod-tile-count"&gt;{{ devices_in_stock }}&lt;/div&gt;
+  &lt;div class="prod-tile-label"&gt;Devices in Stock&lt;/div&gt;
+  &lt;i class="bi bi-box-seam prod-tile-wm"&gt;&lt;/i&gt;
+&lt;/div&gt;</pre>
+  <div class="two">
+    <div class="note"><div class="t">Do</div>One tile, one count, with a label that names it ("Total Tags in L1/L2"). Tiles go above the filter bar. A count tile that leads somewhere gets a small Summary button.</div>
+    <div class="note dont"><div class="t">Don't</div>Make a count tile itself a link, or put tiles below the filter bar. Whole-tile links are only for the Dashboard's category cards and pipeline (B and C).</div>
+  </div>
+</div>
+
+<div class="page">
+  <h2>B · Solid tile (status and category overviews)</h2>
+  <div class="sample">
+    <div class="d-flex gap-2 mb-2 text-white" style="font-size:8pt">
+      <div class="flex-fill rounded-3 p-2 bg-dark"><b style="font-size:14pt">128</b><br>Open WorkIDs</div>
+      <div class="flex-fill rounded-3 p-2 bg-secondary"><b style="font-size:14pt">964</b><br>Closed WorkIDs</div>
+      <div class="flex-fill rounded-3 p-2 bg-primary"><b style="font-size:14pt">402</b><br>Assigned Tags</div>
+      <div class="flex-fill rounded-3 p-2" style="background:#f0ad00"><b style="font-size:14pt">156</b><br>Ongoing Tags</div>
+      <div class="flex-fill rounded-3 p-2" style="background:#0F7A37"><b style="font-size:14pt">2,215</b><br>Completed Tags</div>
+      <div class="flex-fill rounded-3 p-2 bg-danger"><b style="font-size:14pt">22</b><br>Total PNA</div>
+    </div>
+    <div class="d-flex gap-2 text-white" style="font-size:8pt">
+      <div class="flex-fill rounded-3 p-2 bg-primary">Laptops<br><b style="font-size:16pt">2,846</b><br>In TRC: 2,104<br>In Ready: 742</div>
+      <div class="flex-fill rounded-3 p-2" style="background:#0F7A37">Desktops<br><b style="font-size:16pt">512</b><br>In TRC: 418<br>In Ready: 94</div>
+      <div class="flex-fill rounded-3 p-2" style="background:#fd7e14">TFT Monitor<br><b style="font-size:16pt">203</b><br>In TRC: 165<br>In Ready: 38</div>
+      <div class="flex-fill rounded-3 p-2" style="background:#20c997">Tablet<br><b style="font-size:16pt">61</b><br>In TRC: 52<br>In Ready: 9</div>
+      <div class="flex-fill rounded-3 p-2 bg-purple">Mini PC<br><b style="font-size:16pt">88</b><br>In TRC: 70<br>In Ready: 18</div>
+      <div class="flex-fill rounded-3 p-2" style="background:#0aa2c0">Server<br><b style="font-size:16pt">14</b><br>In TRC: 11<br>In Ready: 3</div>
+    </div>
+  </div>
+  <div class="cap">Top: Product Master and WorkID Status (<code>.pm-tile</code>, <code>col-xl-2</code>). Bottom: Dashboard category cards (<code>.dash-tile</code>), each linking to All Inventory for that category. Green is the v1.2 success green <code>#0F7A37</code>.</div>
+  <table class="doc">
+    <tr><th style="width:22%">Part</th><th>Spec</th></tr>
+    <tr><td>Count tile</td><td>Solid fill, <code>p-3</code>, radius 10px, min-height 96px, shadow <code>0 1px 3px rgba(0,0,0,.08)</code>. White number 1.9rem bold; label .82rem at 88% white; watermark 4.6rem at 22% white.</td></tr>
+    <tr><td>Category card</td><td>Same, but min-height 120px: label first (.9rem, semibold), number 2.2rem, then two .8rem sub-lines (In TRC / In Ready); watermark 5rem. Lifts 4px with a larger shadow on hover.</td></tr>
+  </table>
+  <h2>C · Pipeline tile (Dashboard only)</h2>
+  <div class="sample d-flex align-items-center gap-1" style="font-size:7pt">
+    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-secondary text-white px-2 rounded-top">IQC</span><b class="fs-6">142</b></span><i class="bi bi-caret-right-fill text-success"></i>
+    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-info px-2 rounded-top">Stock In</span><b class="fs-6">318</b></span><i class="bi bi-caret-right-fill text-success"></i>
+    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-warning px-2 rounded-top">L1/L2</span><b class="fs-6">611</b></span><i class="bi bi-caret-right-fill text-success"></i>
+    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-danger text-white px-2 rounded-top">L3/L4</span><b class="fs-6">37</b></span><i class="bi bi-caret-right-fill text-success"></i>
+    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-teal text-white px-2 rounded-top">Cosmetic</span><b class="fs-6">129</b></span><i class="bi bi-caret-right-fill text-success"></i>
+    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-purple text-white px-2 rounded-top">Final QC</span><b class="fs-6">58</b></span><i class="bi bi-caret-right-fill text-success"></i>
+    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-success text-white px-2 rounded-top">Ready to Sale</span><b class="fs-6">874</b></span><i class="bi bi-caret-right-fill text-success"></i>
+    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-dark text-white px-2 rounded-top">Sold</span><b class="fs-6">12,406</b></span>
+  </div>
+  <table class="doc">
+    <tr><th style="width:22%">Part</th><th>Spec</th></tr>
+    <tr><td>Tile</td><td>White, <code>rounded-3</code>, min-width 80px, shadow <code>0 .125rem .35rem rgba(0,0,0,.15)</code>. Coloured title strip on top (<code>bg-{stage colour}</code>, .75rem, weight 600); count below: 1.25rem bold.</td></tr>
+    <tr><td>Row and card</td><td>All ten stages on one row (<code>flex-wrap:nowrap</code>) with a filled green arrow between them (<code>bi-caret-right-fill text-success</code>, now #0F7A37). Split Entity / Split Zone as white outline buttons; navy watermark 7rem at 6%.</td></tr>
+  </table>
+  <h2>D · Stat card (Dashboard only)</h2>
+  <div class="sample d-flex gap-2">
+    <div class="flex-fill rounded-3 p-2" style="background:#e7f0ff;border-left:4px solid #0d6efd">Total Inventory<br><b class="fs-5">3,724</b></div>
+    <div class="flex-fill rounded-3 p-2" style="background:#fff6dd;border-left:4px solid #ffc107">In Repair<br><b class="fs-5">648</b></div>
+    <div class="flex-fill rounded-3 p-2" style="background:#E8F5E6;border-left:4px solid #0F7A37">Revenue This Month<br><b class="fs-5">₹8,62,300</b></div>
+    <div class="flex-fill rounded-3 p-2" style="background:#E8F5E6;border-left:4px solid #0F7A37">Profit This Month<br><b class="fs-5 profit-positive">₹1,14,850</b></div>
+  </div>
+  <table class="doc">
+    <tr><th style="width:22%">Part</th><th>Spec</th></tr>
+    <tr><td>Card</td><td>Light tint with a 4px coloured left edge: <code>stat-primary</code> #e7f0ff, <code>stat-warning</code> #fff6dd, <code>stat-success</code> <b>#E8F5E6</b> with edge #0F7A37, <code>stat-danger</code> #fdeaea.</td></tr>
+    <tr><td>Money</td><td>₹ with Indian grouping. Profit This Month switches to <code>stat-danger</code> and red text when negative.</td></tr>
+  </table>
+</div>
+
+<!-- ============================== 06 ============================== -->
+<div class="page">
+  <div class="chap-no">06</div>
+  <h1 class="chap">Filter bar</h1>
+  <p class="lead">One row of small controls sitting on the page, with no box, and a navy rule underneath. Every list page uses it.</p>
+  <div class="sample">
+    <form class="filter-bar mb-0" onsubmit="return false"><div class="filter-bar-row">
+      <div class="filter-bar-search"><input class="form-control form-control-sm" placeholder="GRN / Invoice / Tag Number / Model"></div>
+      <div><select class="form-select form-select-sm"><option>All Device Types</option></select></div>
+      <div><input class="form-control form-control-sm" value="01-10-2026"></div>
+      <div><button class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filter</button> <a class="btn btn-outline-secondary btn-sm">Reset</a></div>
+    </div></form>
+  </div>
+  <div class="cap">Rendered with the app's <code>.filter-bar</code> CSS.</div>
+  <pre class="codeblk">&lt;form method="get" action="/stock" class="filter-bar"&gt;
+  &lt;div class="filter-bar-row"&gt;
+    &lt;div class="filter-bar-search"&gt;&lt;input class="form-control form-control-sm" title="Search" placeholder="GRN / Invoice / Tag / Model"&gt;&lt;/div&gt;
+    &lt;div&gt;&lt;select name="device_type" class="form-select form-select-sm" title="Device Type"&gt;…&lt;/select&gt;&lt;/div&gt;
+    &lt;div&gt;&lt;input type="date" name="date_from" class="form-control form-control-sm" title="Date From"&gt;&lt;/div&gt;
+    &lt;div&gt;
+      &lt;button class="btn btn-primary btn-sm"&gt;&lt;i class="bi bi-funnel me-1"&gt;&lt;/i&gt;Filter&lt;/button&gt;
+      &lt;a href="/stock" class="btn btn-outline-secondary btn-sm"&gt;Reset&lt;/a&gt;
+    &lt;/div&gt;
+  &lt;/div&gt;
+&lt;/form&gt;</pre>
+  <table class="doc">
+    <tr><th style="width:26%">Rule</th><th>Detail</th></tr>
+    <tr><td>One row</td><td>Fields share the width and shrink together (min 70px). The last item, the buttons, sits at the right edge.</td></tr>
+    <tr><td>Search box</td><td><code>filter-bar-search</code> takes a double share (min 120px).</td></tr>
+    <tr><td>Checkbox</td><td><code>filter-bar-check</code> keeps its natural width so its label never truncates.</td></tr>
+    <tr><td>No labels</td><td>Each field has a <code>title=</code> tooltip and a placeholder or "All …" first option.</td></tr>
+    <tr><td>Fields</td><td><code>-sm</code> sizes; white background, black text, including multi-select (<code>ms-filter</code>).</td></tr>
+    <tr><td>Busy pages</td><td>More than ~6 filters: <code>filter-bar filter-bar-6</code>, a 6-column grid that wraps; buttons share the last column.</td></tr>
+  </table>
+</div>
+
+<!-- ============================== 07 ============================== -->
+<div class="page">
+  <div class="chap-no">07</div>
+  <h1 class="chap">Global Table <span class="tag chg">UPDATED</span></h1>
+  <p class="lead"><code>initGlobalTable('#id', dtOptions, opts)</code> wraps a server-side DataTable with the app's shared behaviour and look. It's used on 40+ pages. Never hand-build a list table.</p>
+  <div class="card gtable-card border-0 shadow-sm">
+    <div class="card-header d-flex justify-content-between align-items-center"><span class="fw-semibold"><i class="bi bi-archive me-2"></i>Inventory Stock</span><span><a class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export CSV</a> <a class="btn btn-sm btn-primary"><i class="bi bi-arrow-right-circle me-1"></i>Bulk Move to L1/L2</a></span></div>
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2 gtable-top"><span>Page view <select class="form-select form-select-sm d-inline-block w-auto"><option>12</option></select> <span class="badge bg-warning text-dark">3,518</span></span><span><input class="form-control form-control-sm d-inline-block" style="width:45mm" placeholder="Scan or Search"></span></div>
+      <div class="dataTables_wrapper gtable-cards"><div class="dataTables_scroll gtable-scroll-wrap" style="box-shadow:0 4px 18px rgba(14,58,122,.26)">
+      <table class="table gtable gtable-checkbox-first mb-0">
+        <thead><tr><th><input type="checkbox" class="form-check-input"></th><th>TAG NUMBER</th><th>MODEL</th><th>CPU</th><th>STAGE</th><th>LOT</th><th>ACTION</th></tr></thead>
+        <tbody>
+          <tr><td><input type="checkbox" class="form-check-input"></td><td>OXY-2026-004512</td><td>Dell Latitude 5490</td><td>i5 8th Gen</td><td><span class="badge bg-info">Stock In</span></td><td>LOT-042</td><td><a class="btn btn-sm btn-outline-primary">View</a></td></tr>
+          <tr><td><input type="checkbox" class="form-check-input" checked></td><td>OXY-2026-004513</td><td>HP EliteBook 840 G5</td><td>i7 8th Gen</td><td><span class="badge bg-warning">L1</span></td><td>LOT-042</td><td><a class="btn btn-sm btn-outline-primary">View</a></td></tr>
+          <tr><td><input type="checkbox" class="form-check-input"></td><td>OXY-2026-004517</td><td>Lenovo ThinkPad T480</td><td>i5 8th Gen</td><td><span class="badge bg-success">Ready to Sale</span></td><td>LOT-043</td><td><a class="btn btn-sm btn-outline-primary">View</a></td></tr>
+        </tbody>
+      </table></div></div>
+    </div>
+  </div>
+  <div class="cap">A static rendering of a Global Table card with sample rows, using the app's CSS. The second row is ticked.</div>
+  <h2>Built-in behaviour</h2>
+  <table class="doc">
+    <tr><th style="width:26%">Behaviour</th><th>Default</th></tr>
+    <tr><td>Look <span class="tag">NEW</span></td><td>Navy <code>#0e3a7a</code> header with white labels and rounded ends; plain white rows with a thin <code>#e3eef7</code> divider; soft navy shadow behind the table. Added automatically (<code>.gtable-cards</code> on the DataTables wrapper); <code>opts.plainStyle:true</code> opts out.</td></tr>
+    <tr><td>Selection and hover <span class="tag">NEW</span></td><td>Ticked row: pale blue <code>#eef6fc</code>, blue left edge, light shadow. Row under the mouse: deeper shadow, always above a ticked row.</td></tr>
+    <tr><td>Rows per page</td><td>12</td></tr>
+    <tr><td>Text</td><td>14px; headers one line, uppercase; columns size around their header</td></tr>
+    <tr><td>Long cells <span class="tag chg">UPDATED</span></td><td>Cells stay on one line (the table scrolls sideways instead of squashing). 32+ characters clamp to 2 lines within 160–260px; full value in a hover tooltip (<code>title=</code>)</td></tr>
+    <tr><td>Wide tables</td><td>Scroll sideways inside the card; first column frozen (first two when column 1 is a checkbox)</td></tr>
+    <tr><td>Toolbar</td><td>Left: "Page view" dropdown + yellow row-count badge. Right: search / scan box + pagination</td></tr>
+    <tr><td>First / last column</td><td>First has 16px left padding, left-aligned (centred only when a checkbox); last is Actions, centred, never wraps</td></tr>
+    <tr><td>Footer total row</td><td>Grey <code>#e9ecef</code> (disabled colour), so it reads as a computed summary</td></tr>
+    <tr><td>Empty state</td><td>Built-in image and caption. Never hand-write a placeholder <code>&lt;tr&gt;</code>, which crashes DataTables</td></tr>
+    <tr><td>Options</td><td><code>opts.selectAll</code> header checkbox; <code>opts.scan</code> barcode scan-to-select; <code>opts.freeze:false</code> to opt out of scrolling</td></tr>
+  </table>
+  <h2>Card rules</h2>
+  <ul class="doc">
+    <li><b>Header:</b> <code>card-header bg-transparent d-flex justify-content-between align-items-center</code>. It turns sky blue <code>#d9ebf6</code> with a navy title automatically.</li>
+    <li><b>Left:</b> icon + title. <b>Right:</b> only this table's own actions or filters. Never a count badge, because the toolbar already shows the count.</li>
+    <li><b>Header row:</b> styled by <code>initGlobalTable</code> (navy, rounded); <code>table-light</code> for small static tables in forms and detail pages.</li>
+    <li>A last column that holds text rather than buttons: add <code>gtable-last-col-text</code>.</li>
+    <li>After editing <code>global-table.js</code>, keep it in <code>_VERSIONED_ASSETS</code> (<code>templates_config.py</code>) so browsers fetch the new copy.</li>
+  </ul>
+</div>
+
+<!-- ============================== 08 ============================== -->
+<div class="page">
+  <div class="chap-no">08</div>
+  <h1 class="chap">Buttons and badges</h1>
+  <h2>Button hierarchy</h2>
+  <div class="sample d-flex flex-wrap gap-2">
+    <button class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save</button>
+    <button class="btn btn-success"><i class="bi bi-check-circle me-1"></i>Pass</button>
+    <button class="btn btn-outline-secondary">Cancel</button>
+    <button class="btn btn-outline-primary"><i class="bi bi-sliders me-1"></i>Customise</button>
+    <button class="btn btn-outline-success"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export CSV</button>
+    <button class="btn btn-outline-info"><i class="bi bi-upload me-1"></i>Upload Tags</button>
+    <button class="btn btn-warning"><i class="bi bi-pause-circle me-1"></i>Hold</button>
+    <button class="btn btn-danger"><i class="bi bi-trash3 me-1"></i>Delete</button>
+    <button class="btn btn-outline-danger">Fail</button>
+    <button class="btn btn-link">View details</button>
+    <button class="btn btn-secondary" disabled>Disabled</button>
+  </div>
+  <div class="cap">Rendered with the app's CSS, including its outline-button tint, grey disabled style and the v1.2 success green <code>#0F7A37</code>.</div>
+  <table class="doc">
+    <tr><th style="width:28%">Use</th><th style="width:32%">Class</th><th>Examples</th></tr>
+    <tr><td>Main action</td><td><code>btn btn-primary</code></td><td>Save, Filter, Create Lot</td></tr>
+    <tr><td>Positive step</td><td><code>btn btn-success</code> (#0F7A37, hover #0B6B30)</td><td>Pass, Move to Ready, Approve, Sell</td></tr>
+    <tr><td>Secondary / cancel</td><td><code>btn btn-outline-secondary</code></td><td>Reset, Cancel, Back</td></tr>
+    <tr><td>Supporting actions</td><td><code>btn-outline-primary / -success / -info</code></td><td>Export, Upload, Customise</td></tr>
+    <tr><td>Needs attention</td><td><code>btn btn-warning</code></td><td>Hold, Return</td></tr>
+    <tr><td>Destructive</td><td><code>btn-danger</code> / <code>btn-outline-danger</code></td><td>Delete, Fail, Scrap. Always confirm first</td></tr>
+    <tr><td>Inline link</td><td><code>btn btn-link</code></td><td>View details</td></tr>
+  </table>
+  <ul class="doc">
+    <li><b>Size:</b> <code>btn-sm</code> everywhere except the submit button at the bottom of a full form.</li>
+    <li><b>Labels</b> are a verb + object ("Move to Final QC"), never wrap, and have an icon with <code>me-1</code>. Icon-only buttons need <code>title=</code>.</li>
+    <li><b>Outline buttons</b> sit on a 5% tint of their colour and fill solid on hover (app-wide).</li>
+    <li><b>Disabled</b> is always grey <code>#D8D8D8</code> with dark text. Don't restyle it.</li>
+    <li><b>Destructive</b> actions confirm with the count: <code>return confirm('Delete 3 lots?')</code>.</li>
+  </ul>
+  <h2>Badges <span class="tag chg">UPDATED</span></h2>
+  <div class="sample"><span class="badge bg-success">Active</span> <span class="badge bg-warning text-dark">Pending</span> <span class="badge bg-danger">Failed</span> <span class="badge bg-secondary">Inactive</span> <span class="badge bg-teal">Cosmetic Completed</span> <span class="badge bg-purple">Final QC</span> <span class="badge rounded-pill bg-danger">5</span> <span class="badge bg-warning text-dark">3,518</span> <span class="badge bg-success">Ready to Sale</span> <span class="badge rounded-pill bg-success">3775</span></div>
+  <table class="doc">
+    <tr><th style="width:28%">Badge</th><th>Rule</th></tr>
+    <tr><td>Stage</td><td><code>badge bg-{{ device.stage_color }}</code> + <code>stage_label</code>; never chosen by hand</td></tr>
+    <tr><td>Success</td><td><code>badge bg-success</code>: solid <b>#0F7A37</b> with white text (v1.2)</td></tr>
+    <tr><td>Status</td><td>Done/active green · pending yellow with <code>text-dark</code> · failed red · inactive grey</td></tr>
+    <tr><td>Notification count</td><td><code>badge rounded-pill bg-danger</code></td></tr>
+    <tr><td>Row count</td><td>Yellow toolbar badge from the Global Table; not repeated in the card header</td></tr>
+  </table>
+</div>
+
+<!-- ============================== 09 ============================== -->
+<div class="page">
+  <div class="chap-no">09</div>
+  <h1 class="chap">Forms, modals and feedback</h1>
+  <h2>Forms</h2>
+  <div class="sample">
+    <div class="row g-3">
+      <div class="col-4"><label class="form-label">Lot Number <span class="text-danger">*</span></label><input class="form-control" value="LOT-044"></div>
+      <div class="col-4"><label class="form-label">Supplier <span class="text-danger">*</span></label><select class="form-select"><option>Select supplier</option></select></div>
+      <div class="col-4"><label class="form-label">Purchase Date</label><input class="form-control" value="15-10-2026"></div>
+      <div class="col-6"><label class="form-label">Scan Tag</label><input class="form-control barcode-field" placeholder="Scan barcode…"></div>
+      <div class="col-6 d-flex align-items-end justify-content-end gap-2"><button class="btn btn-outline-secondary">Cancel</button><button class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Create Lot</button></div>
+    </div>
+  </div>
+  <ul class="doc">
+    <li><code>form-label</code> (0.875rem) above each field; required fields marked <code>&lt;span class="text-danger"&gt;*&lt;/span&gt;</code>.</li>
+    <li>Fields in a Bootstrap grid (<code>row g-3</code>, <code>col-md-4</code>), grouped in cards by topic. <code>-sm</code> sizes inside filter bars, tables and modals.</li>
+    <li>Barcode and tag inputs use <code>barcode-field</code> (navy focus ring) and get focus on page load for scanners. The login page is the exception: no field auto-focuses.</li>
+    <li>Money shows as ₹ with Indian grouping. Totals are calculated on the server, never in the browser (skill <code>server-side-financial-snapshot</code>).</li>
+  </ul>
+  <h2>Modals</h2>
+  <p>All modals use the same frame: a white <code>modal-header</code> with an <code>h5.modal-title</code> (icon + title) and a close button, a <code>modal-body</code>, and a <code>modal-footer</code> with Cancel on the left of the main button.</p>
+  <table class="doc">
+    <tr><th style="width:22%">Part</th><th>Rule</th></tr>
+    <tr><td>Size</td><td>Default (500px) for most forms · <code>modal-sm</code> for one field or a short confirmation · <code>modal-lg</code> for tables and long forms · add <code>modal-dialog-scrollable</code> when content can grow, <code>modal-dialog-centered</code> for confirmations</td></tr>
+    <tr><td>Header</td><td>White. <code>&lt;h5 class="modal-title"&gt;</code> with a Bootstrap icon and <code>me-2</code>, then <code>btn-close</code>. The title names the action ("Assign Bucket"), not the page</td></tr>
+    <tr><td>Tinted header</td><td>Only to signal the type: <code>bg-primary bg-opacity-10</code> informational · <code>bg-warning bg-opacity-10</code> caution · <code>bg-danger bg-opacity-10</code> + <code>modal-title text-danger</code> destructive or defect</td></tr>
+    <tr><td>Body — fields</td><td>Context line first (<code>small text-muted</code>, e.g. "3 tag(s) selected"). Labels <code>form-label small fw-semibold</code>, required <code>*</code> in <code>text-danger</code>. Controls <code>-sm</code>; two short fields side by side in <code>row g-2</code></td></tr>
+    <tr><td>Body — no fields</td><td>Summary rows: label <code>text-muted small</code> + value in <code>&lt;strong&gt;</code>, so the user sees exactly what will happen before confirming</td></tr>
+    <tr><td>Errors</td><td>An <code>alert alert-danger small</code> at the top of the body, hidden (<code>d-none</code>) until the server returns an error. The modal stays open, the fields keep their values, the button is re-enabled. Mark the bad field <code>is-invalid</code> with <code>invalid-feedback</code></td></tr>
+    <tr><td>Footer</td><td>Cancel <code>btn btn-outline-secondary</code> (<code>data-bs-dismiss="modal"</code>) left of the main <code>btn btn-primary</code> with icon. A secondary destructive action sits far left with <code>me-auto</code>. Informational modals have one OK/Close button</td></tr>
+    <tr><td>Behaviour</td><td>Disable the main button while saving. On success, close the modal and refresh the table (<code>ajax-partial-refresh</code>) or redirect with <code>?success=</code></td></tr>
+  </table>
+</div>
+
+<div class="page">
+  <h2>Alerts and feedback</h2>
+  <div class="sample">
+    <div class="alert alert-success alert-dismissible py-2 mb-2"><i class="bi bi-check-circle me-2"></i>12 devices moved to L1/L2.<button class="btn-close"></button></div>
+    <div class="alert alert-danger alert-dismissible py-2 mb-2"><i class="bi bi-x-circle me-2"></i>Tag OXY-2026-004512 is already sold.<button class="btn-close"></button></div>
+    <div class="alert alert-warning py-2 mb-0"><i class="bi bi-exclamation-triangle me-2"></i>3 devices have no price set and will be skipped.</div>
+  </div>
+  <ul class="doc">
+    <li>After a form submit, redirect with <code>?success=</code> or <code>?error=</code>; the page shows a dismissible alert above its content.</li>
+    <li><code>alert-warning</code> for what the user must know before acting; <code>alert-info</code> for neutral guidance. One sentence, with the number.</li>
+    <li>No alert for "no data": the Global Table's empty state covers it.</li>
+    <li><b>Close button.</b> Page alerts use <code>py-2</code>; add <code>.alert-dismissible.py-2 .btn-close { padding: .75rem 1rem; }</code> to <code>app.css</code> to centre the ×.</li>
+  </ul>
+  <h3>Upload result banner</h3>
+  <div class="sample"><div class="alert alert-info alert-dismissible small mb-0"><b>45 selected, 3 not found, 2 not ready to sale</b><br><b>Not found:</b> <span class="font-monospace">LOT-044-031, LOT-044-077, OXY-2026-004890</span><br><b>Not ready to sale:</b> <span class="font-monospace">LOT-041-012, LOT-041-019</span><br><b>Row errors:</b> <span class="font-monospace">Row 7: tag_number is empty</span><button class="btn-close"></button></div></div>
+  <ul class="doc">
+    <li>Shown after <b>Bulk Upload Tags</b> on Ready to Sale (and other pages that tick rows from a CSV). The modal closes, the banner is added at the top of <code>&lt;main&gt;</code> and the page scrolls to it.</li>
+    <li><code>alert alert-info alert-dismissible small mb-3</code>. Bold summary line with every count, then one line per problem group with the tags in <code>font-monospace</code>.</li>
+    <li>The one place an alert runs past one sentence: the user needs the exact tags to fix the file. It never auto-hides.</li>
+  </ul>
+  <h2>Upload results and errors</h2>
+  <p>Bulk Lot, Device (IQC) and Spare Parts uploads save valid rows, skip and list bad ones, and review duplicates.</p>
+  <table class="doc">
+    <tr><th style="width:22%">Part</th><th>Rule</th></tr>
+    <tr><td>Count alerts</td><td>Two side by side (<code>col-md-6</code>), not dismissible: rows inserted in <code>alert-success</code>; rows with errors in <code>alert-warning</code> if any, else <code>alert-success</code>.</td></tr>
+    <tr><td>Error table</td><td><code>table table-sm table-bordered small</code>, <code>table-warning</code> header, columns # and Error. Each message starts <code>Row N:</code> and names the field and bad value.</td></tr>
+    <tr><td>Actions</td><td>Back to List (<code>btn-primary</code>), Upload Another File (<code>btn-outline-secondary</code>).</td></tr>
+    <tr><td>Duplicate review</td><td>Opens by itself for repeated Tag Numbers or unknown lots. <code>modal-xl</code>, static backdrop; Update All and Skip and Submit left of the close button. Row actions are small outline buttons: Approve Move (primary), Update (warning), Add Lot (success).</td></tr>
+  </table>
+</div>
+
+<!-- ============================== 10 ============================== -->
+<div class="page">
+  <div class="chap-no">10</div>
+  <h1 class="chap">Patterns</h1>
+  <h2>Showing and hiding by permission</h2>
+  <p>A control the user can't use is hidden, not disabled. A control they can use must always render, including for custom roles that admins create (for example <code>trc_manager</code>).</p>
+  <table class="doc">
+    <tr><th style="width:30%">Need</th><th>Use</th></tr>
+    <tr><td>Module, sidebar link, section</td><td><code>has_perm(role,'&lt;module&gt;','enable')</code> + <code>not module_hidden('&lt;module&gt;')</code>; <code>any_perm()</code> for a section header</td></tr>
+    <tr><td>Role-specific button</td><td><code>role_allowed(current_user.role, 'admin', 'sales_manager')</code>. It mirrors the server's <code>require_roles()</code> and lets custom roles through</td></tr>
+    <tr><td>Server side</td><td>Always re-checked with <code>require_roles</code> and <code>verify_csrf</code>. Hiding is for clarity, not security</td></tr>
+  </table>
+  <div class="two">
+    <pre class="codeblk" style="margin:0">{% if role_allowed(current_user.role,
+      'admin', 'sales_manager') %}
+  &lt;button class="btn btn-success btn-sm"&gt;
+    Approve&lt;/button&gt;
+{% endif %}</pre>
+    <div class="note dont" style="margin:0"><div class="t">Don't</div><code>current_user.role.value in ['admin','sales_manager']</code>. Custom roles silently lose the button while the server would allow them.</div>
+  </div>
+  <h2>Updating part of a page</h2>
+  <p>When an action should refresh only a table or the tiles (for example a bulk assign in a modal):</p>
+  <ol class="doc">
+    <li>The POST endpoint returns JSON when the request has <code>X-Requested-With: XMLHttpRequest</code>, and still redirects otherwise.</li>
+    <li>The page submits with <code>fetch()</code> + <code>FormData</code>, closes the modal, then calls <code>dt.ajax.reload(null, false)</code> (keeps the current page) or swaps the region by ID with <code>DOMParser</code>.</li>
+    <li>Re-attach event handlers in swapped HTML and refresh tile counts.</li>
+    <li>Without <code>fetch</code>, the normal form submit still works.</li>
+  </ol>
+  <h2>Page titles and breadcrumbs</h2>
+  <ul class="doc">
+    <li>Admins rename any page in <b>Admin → Page Title Config</b>; the top bar shows the custom title, otherwise the template's <code>page_title</code>.</li>
+    <li>Breadcrumbs are <b>off by default</b> (since 15 Oct 2026) and switched on per page in the same screen.</li>
+  </ul>
+</div>
+
+<!-- ============================== 11 ============================== -->
+<div class="page">
+  <div class="chap-no">11</div>
+  <h1 class="chap">Checklist and change process</h1>
+  <h2>Design checklist for a new or changed page</h2>
+  <table class="doc">
+    <tr><th style="width:6%">✓</th><th>Check</th></tr>
+    <tr><td>☐</td><td>Extends <code>base.html</code>; sets <code>title</code> and <code>page_title</code>; sidebar link gated by <code>has_perm</code> with a <code>sidebar_label</code></td></tr>
+    <tr><td>☐</td><td>Order: tiles → filter bar → alert → tabs → table card</td></tr>
+    <tr><td>☐</td><td>Tiles use the light-tint spec, with colours from the tile palette</td></tr>
+    <tr><td>☐</td><td>Filters use <code>filter-bar</code>: one row, <code>-sm</code> controls, <code>title=</code> instead of labels, Filter/Reset on the right</td></tr>
+    <tr><td>☐</td><td>Table uses <code>initGlobalTable</code> in a card with icon + title; actions in the last column</td></tr>
+    <tr><td>☐</td><td>Buttons follow the hierarchy; destructive ones confirm with a count</td></tr>
+    <tr><td>☐</td><td>Stage badges use <code>stage_color</code>; no unknown <code>bg-*</code> classes</td></tr>
+    <tr><td>☐</td><td>Greens use the OxyPC tokens (success <code>#0F7A37</code>), never Bootstrap's old #198754 outside the sidebar</td></tr>
+    <tr><td>☐</td><td>Role checks use <code>role_allowed()</code> / <code>has_perm()</code>, never a hard-coded list</td></tr>
+    <tr><td>☐</td><td>Works at 1366px; wide tables scroll inside the card</td></tr>
+    <tr><td>☐</td><td>No CDN links; any new library goes in <code>static/vendor/</code></td></tr>
+  </table>
+  <h2>From change to production</h2>
+  <table class="doc">
+    <tr><th style="width:6%">#</th><th style="width:22%">Step</th><th>What happens</th></tr>
+    <tr><td>1</td><td>Database approval</td><td>A new table or column is drafted as <code>.dbml</code> and approved in dbdiagram.io before it is built.</td></tr>
+    <tr><td>2</td><td>Build and verify</td><td>Templates must parse. Run skill <code>verify-feature</code>; run <code>regression-sweep</code> if <code>base.html</code>, <code>app.css</code>, a macro or a Jinja global changed.</td></tr>
+    <tr><td>3</td><td>Staging</td><td>Changes go to the <code>staging</code> branch. Staging machines (Windows <code>RUN_STAGING.bat</code>, Mac <code>START_STAGING.command</code>) load it at <code>http://localhost:8001</code>; check with Ctrl+F5.</td></tr>
+    <tr><td>4</td><td>Approval</td><td>Pushed only after an explicit "push" for that batch. An earlier yes never carries over (<code>commit-deploy-gate</code>).</td></tr>
+    <tr><td>5</td><td>Production</td><td>Merge to GitHub <code>main</code> (<code>Bluemonk123/oxypc-inventory</code>). Production at <code>http://10.199.206.109</code> updates within 2–5 minutes.</td></tr>
+    <tr><td>6</td><td>Keep this document current</td><td>Edit <code>qa_docs/design_system/design_system.html</code> in the same change and rebuild the PDF.</td></tr>
+  </table>
+</div>
+
+<!-- ============================== APPENDIX ============================== -->
+<div class="page">
+  <div class="chap-no">APPENDIX A</div>
+  <h1 class="chap">Token and file reference</h1>
+  <h2>CSS variables (<code>app.css :root</code>) <span class="tag chg">UPDATED</span></h2>
+  <table class="doc">
+    <tr><th style="width:36%">Variable</th><th style="width:28%">Value</th><th>Purpose</th></tr>
+    <tr><td><code>--sidebar-width</code></td><td>240px</td><td>Sidebar width</td></tr>
+    <tr><td><code>--sidebar-bg</code></td><td>#212529</td><td>Sidebar background (Dark text colour; was #1e2a3a)</td></tr>
+    <tr><td><code>--sidebar-text</code></td><td>#f0f4f8</td><td>Sidebar link text (same as page background)</td></tr>
+    <tr><td><code>--sidebar-active</code></td><td>#0377c2</td><td>Active sidebar link</td></tr>
+    <tr><td><code>--brand-blue</code></td><td>#0e3a7a</td><td>History buttons, focus, brand (was #0377c2)</td></tr>
+    <tr><td><code>--oxy-leaf</code> / <code>--oxy-forest</code></td><td>#54BA48 / #129042</td><td>OxyPC greens: accents / profit</td></tr>
+    <tr><td><code>--oxy-text</code> / <code>--bs-success</code></td><td>#0F7A37</td><td>Success: buttons, badges, green text, tiles</td></tr>
+    <tr><td><code>--oxy-mint</code></td><td>#E8F5E6</td><td>Green tile / stat-card background</td></tr>
+    <tr><td><code>--topbar-height</code></td><td>56px</td><td>Top bar height</td></tr>
+    <tr><td><code>--app-zoom</code></td><td>0.9</td><td>Global UI scale</td></tr>
+    <tr><td><code>--full-vh</code></td><td>calc(100vh / var(--app-zoom))</td><td>Use instead of 100vh</td></tr>
+  </table>
+  <h2>Shared classes</h2>
+  <table class="doc">
+    <tr><th style="width:50%">Class</th><th>What it does</th></tr>
+    <tr><td><code>filter-bar</code>, <code>filter-bar-row</code>, <code>filter-bar-search</code>, <code>filter-bar-check</code>, <code>filter-bar-6</code></td><td>Filter bar layout</td></tr>
+    <tr><td><code>gtable</code>, <code>gtable-card</code>, <code>gtable-top</code>, <code>gtable-cards</code></td><td>Global Table (added by <code>initGlobalTable</code>); <code>gtable-cards</code> = navy header, row shadows</td></tr>
+    <tr><td><code>gtable-last-col-text</code></td><td>Last column is text: left-aligned and wraps</td></tr>
+    <tr><td><code>gtable-clamp2</code></td><td>Two-line clamp with tooltip, 160–260px wide</td></tr>
+    <tr><td><code>bg-teal</code>, <code>bg-purple</code>, <code>bg-pink</code></td><td>Custom badge colours</td></tr>
+    <tr><td><code>barcode-field</code></td><td>Monospace scan input with navy focus ring</td></tr>
+    <tr><td><code>card-hover</code></td><td>Lift-on-hover for clickable KPI cards</td></tr>
+    <tr><td><code>profit-positive</code> / <code>-negative</code> / <code>-zero</code></td><td>P&amp;L colours (#129042 / #d63031 / #888)</td></tr>
+    <tr><td><code>prod-tile*</code>, <code>inv-tile*</code>, <code>pm-tile*</code></td><td>Page-level tile classes (light-tint, light-tint, solid)</td></tr>
+  </table>
+  <h2>Jinja globals for UI</h2>
+  <table class="doc">
+    <tr><th style="width:50%">Global</th><th>Use</th></tr>
+    <tr><td><code>has_perm(role, module, action)</code></td><td>Module permission check</td></tr>
+    <tr><td><code>any_perm(role, *modules)</code></td><td>Show a section if any module is allowed</td></tr>
+    <tr><td><code>role_allowed(role, *roles)</code></td><td>Role check that is safe for custom roles</td></tr>
+    <tr><td><code>module_hidden(key)</code></td><td>Master Data global visibility</td></tr>
+    <tr><td><code>sidebar_label(key, default)</code></td><td>Admin-renamable sidebar text</td></tr>
+    <tr><td><code>resolve_page_title(path)</code>, <code>breadcrumb_enabled(path)</code></td><td>Page Title Config</td></tr>
+    <tr><td><code>app_version()</code></td><td>Version shown on the login page and sidebar footer</td></tr>
+  </table>
+  <h2>Where things live</h2>
+  <table class="doc">
+    <tr><th style="width:42%">Path</th><th>Contents</th></tr>
+    <tr><td><code>templates/base.html</code></td><td>Sidebar, top bar, alerts, breadcrumbs, script includes</td></tr>
+    <tr><td><code>static/css/app.css</code></td><td>All shared overrides, colour tokens</td></tr>
+    <tr><td><code>static/js/global-table.js</code></td><td><code>initGlobalTable</code></td></tr>
+    <tr><td><code>static/img/logo.svg</code>, <code>logo-mark.svg</code></td><td>App icon (browser tab, login badge)</td></tr>
+    <tr><td><code>static/vendor/</code></td><td>Bootstrap 5, Bootstrap Icons, DataTables, Chart.js (local copies)</td></tr>
+    <tr><td><code>templates_config.py</code></td><td>Jinja globals, asset versioning</td></tr>
+    <tr><td><code>models/device.py</code></td><td><code>STAGE_COLORS</code></td></tr>
+    <tr><td><code>qa_docs/design_system/</code></td><td>This document's source (<code>design_system.html</code>) and PDF builder</td></tr>
+    <tr><td><code>.claude/skills/</code></td><td>Project workflows: verify-feature, regression-sweep, commit-deploy-gate, custom-role-permissions, ajax-partial-refresh</td></tr>
+  </table>
+</div>
+</body>
+</html>
