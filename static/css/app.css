@@ -2,7 +2,7 @@
 
 :root {
   --sidebar-width: 240px;
-  --sidebar-bg: #1e2a3a;
+  --sidebar-bg: #212529;    /* "Dark text" colour (2026-10-18; was #1e2a3a "Dark background") */
   --sidebar-text: #f0f4f8;   /* same as the page background (2026-10-15) */
   --sidebar-active: #0377c2;
   --brand-blue: #0e3a7a;  /* was #0377c2 (changed 2026-10-18) */
