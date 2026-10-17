@@ -569,12 +569,17 @@
 
       {# ── PRODUCT MASTER (2026-10-14) — each page OFF by default for every role
          until enabled in Master Data -> Permission Matrix; admin always sees them. #}
-      {% if has_perm(role,'pm_product_master','enable') and not module_hidden('pm_product_master') or has_perm(role,'pm_hardware','enable') and not module_hidden('pm_hardware') or has_perm(role,'pm_spare_parts','enable') and not module_hidden('pm_spare_parts') or has_perm(role,'pm_product_pricing','enable') and not module_hidden('pm_product_pricing') %}
+      {% if has_perm(role,'pm_product_master','enable') and not module_hidden('pm_product_master') or has_perm(role,'pm_pricing_calculator','enable') and not module_hidden('pm_pricing_calculator') or has_perm(role,'pm_hardware','enable') and not module_hidden('pm_hardware') or has_perm(role,'pm_spare_parts','enable') and not module_hidden('pm_spare_parts') or has_perm(role,'pm_product_pricing','enable') and not module_hidden('pm_product_pricing') %}
       <li class="nav-section">PRODUCT MASTER</li>
       {% endif %}
       {% if has_perm(role,'pm_product_master','enable') and not module_hidden('pm_product_master') %}
       <li><a href="/product-master" class="nav-link {% if request.url.path == '/product-master' %}active{% endif %}">
         <i class="bi bi-box-seam me-2"></i> {{ sidebar_label('pm_product_master', 'Product Master') }}
+      </a></li>
+      {% endif %}
+      {% if has_perm(role,'pm_pricing_calculator','enable') and not module_hidden('pm_pricing_calculator') %}
+      <li><a href="/product-master/pricing-calculator" class="nav-link {% if '/product-master/pricing-calculator' in request.url.path %}active{% endif %}">
+        <i class="bi bi-calculator me-2"></i> {{ sidebar_label('pm_pricing_calculator', 'Pricing Calculator') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'pm_hardware','enable') and not module_hidden('pm_hardware') %}

@@ -40,6 +40,7 @@ PERM_PRODUCT = "pm_product_master"
 PERM_HARDWARE = "pm_hardware"
 PERM_SPARE = "pm_spare_parts"
 PERM_PRICING = "pm_product_pricing"
+PERM_CALCULATOR = "pm_pricing_calculator"
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
@@ -455,20 +456,53 @@ async def hardware_page(request: Request, db: AsyncSession = Depends(get_db),
     rams = (await db.execute(select(HWRam))).scalars().all()
     stos = (await db.execute(select(HWStorage))).scalars().all()
 
+    # Updated By (2026-10-18): the user on the latest audit entry for each
+    # saved row (no extra column needed), falling back to created_by.
+    from models.engines import AuditLog
+    ids = [str(r.id) for r in [*rams, *stos]]
+    last_by = {}
+    if ids:
+        for rid, uname in (await db.execute(
+            select(AuditLog.record_id, AuditLog.username)
+            .where(AuditLog.table_name.in_([HWRam.__tablename__, HWStorage.__tablename__]),
+                   AuditLog.record_id.in_(ids))
+            .order_by(AuditLog.record_id, AuditLog.timestamp.desc())
+            .distinct(AuditLog.record_id)
+        )).all():
+            last_by[rid] = uname
+    unames = {u for u in [*last_by.values(), *[r.created_by for r in [*rams, *stos]]] if u}
+    full = {}
+    if unames:
+        full = {u.username: (u.full_name or u.username) for u in
+                (await db.execute(select(User).where(User.username.in_(unames)))).scalars()}
+
+    def who(r):
+        u = last_by.get(str(r.id)) or r.created_by
+        return full.get(u, u or "")
+
+    def stamp(r):
+        d = r.updated_at or r.created_at
+        return d.strftime("%d-%m-%Y %H:%M") if d else ""
+
     def grid(types, sizes, saved, name_of, cat_of, cap_of, price_of):
         by_name = {name_of(r).lower(): r for r in saved}
         rows, seen = [], set()
+
+        def extra(r):
+            return {"updated_on": stamp(r) if r else "", "updated_by": who(r) if r else "",
+                    "updated_sort": (r.updated_at or r.created_at).strftime("%Y%m%d%H%M%S")
+                    if r and (r.updated_at or r.created_at) else ""}
         for t in types:
             for z in sizes:
                 name = f"{t.value}/{z.value}"
                 r = by_name.get(name.lower())
                 seen.add(name.lower())
                 rows.append({"id": str(r.id) if r else "", "name": name, "category": t.value,
-                             "capacity": z.value, "price": price_of(r) if r else None})
+                             "capacity": z.value, "price": price_of(r) if r else None, **extra(r)})
         for r in saved:
             if name_of(r).lower() not in seen:
                 rows.append({"id": str(r.id), "name": name_of(r), "category": cat_of(r),
-                             "capacity": cap_of(r), "price": price_of(r)})
+                             "capacity": cap_of(r), "price": price_of(r), **extra(r)})
         return rows
 
     ram_rows = grid(dd["ram_category"], dd["ram_capacity"], rams, lambda r: r.ram_name,
@@ -530,7 +564,11 @@ async def _hw_save(request, db, current_user, kind, item_id, category, capacity,
     except IntegrityError:
         await db.rollback()
         return _err("Could not save — a product with the same name already exists.")
-    return JSONResponse({"ok": True, "id": str(row.id)})
+    stamp = row.updated_at or row.created_at
+    return JSONResponse({"ok": True, "id": str(row.id),
+                         "updated_on": stamp.strftime("%d-%m-%Y %H:%M") if stamp else "",
+                         "updated_sort": stamp.strftime("%Y%m%d%H%M%S") if stamp else "",
+                         "updated_by": current_user.full_name or current_user.username})
 
 
 async def _hw_delete(request, db, current_user, kind, item_id):
@@ -567,6 +605,17 @@ async def hardware_delete(kind: str, item_id: str, request: Request, db: AsyncSe
     if kind not in ("ram", "storage"):
         return _err("Unknown hardware type.", 404)
     return await _hw_delete(request, db, current_user, kind, item_id)
+
+
+# ── Pricing Calculator page (2026-10-18) ──────────────────────────────────────
+# OFF by default for every role (DEFAULT_DISABLED_MODULES); admin always sees it.
+
+@router.get("/pricing-calculator", response_class=HTMLResponse)
+async def pricing_calculator_page(request: Request,
+                                  current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
+    return templates.TemplateResponse("product_master/pricing_calculator.html", {
+        "request": request, "current_user": current_user,
+    })
 
 
 # ── Product Pricing page ──────────────────────────────────────────────────────

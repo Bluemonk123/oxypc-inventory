@@ -22,8 +22,8 @@
       <tbody>
       {% for p in rows %}
         {% set cp = comp_prices.get(p.id, {}) %}
-        <tr data-id="{{ p.id }}">
-          <td class="fw-semibold text-nowrap">{{ p.make }}/{{ p.model }}/{{ p.cpu }}/{{ p.cpu_gen }}</td>
+        <tr data-id="{{ p.id }}" data-cpu="{{ p.cpu }}" data-gen="{{ p.cpu_gen }}">
+          <td class="fw-semibold text-nowrap">{{ p.make }} / {{ p.model }} / {{ p.cpu }} / {{ p.cpu_gen }}</td>
           <td>{{ p.make }}</td><td>{{ p.model }}</td><td>{{ p.cpu }}</td><td>{{ p.cpu_gen }}</td>
           {% for field, cat, cur in [('ram_type', 'ram_category', p.ram_category), ('ram_size', 'ram_capacity', p.ram_capacity),
                                      ('storage_type', 'storage_category', p.storage_category), ('storage_size', 'storage_capacity', p.storage_capacity)] %}
@@ -65,21 +65,38 @@
 <div class="tab-content border border-top-0 rounded-bottom bg-white mb-4">
 <div class="tab-pane fade show active p-0" id="ppTab_pending"><div class="card border-0">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Product Pricing</span>
-    <span class="small text-muted">
-      {% if comp_lists %}Sell Price = <strong>{{ method_label }}</strong> of the competitor prices entered (set in Product Master → Competitive Pricings)
-      {% else %}Add Competitive Lists in Product Master → Competitive Pricings to calculate Sell Price{% endif %}
-    </span>
+    <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Product Pricing Pending</span>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+      <select class="form-select form-select-sm w-auto" id="ppTable_cpu" title="CPU"><option value="">All CPUs</option></select>
+      <select class="form-select form-select-sm w-auto" id="ppTable_gen" title="CPU Gen"><option value="">All CPU Gens</option></select>
+      <select class="form-select form-select-sm w-auto" id="ppTable_ram" title="RAM Name"><option value="">All RAM Names</option></select>
+      <select class="form-select form-select-sm w-auto" id="ppTable_sto" title="Storage Name"><option value="">All Storage Names</option></select>
+      <select class="form-select form-select-sm w-auto" id="ppTable_price" title="Price">
+        <option value="">Price: All</option><option value="empty">Fully Empty</option><option value="filled">Fully Filled</option><option value="partial">Partially Filled</option>
+      </select>
+      <button type="button" class="btn btn-sm btn-outline-success" id="ppTable_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+    </div>
+  </div>
+  <div class="px-3 pt-2 small text-muted">
+      {% if comp_lists %}Sell Price = <strong>{{ method_label }}</strong> of the competitor prices entered (set in Product Master → Competitive Brands)
+      {% else %}Add Competitive Brands in Product Master → Competitive Brands to calculate Sell Price{% endif %}
   </div>
   <div class="card-body">{{ pp_table('ppTable', pending) }}</div>
 </div></div>
 <div class="tab-pane fade p-0" id="ppTab_done"><div class="card border-0">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Product Pricing</span>
-    <span class="small text-muted">
-      {% if comp_lists %}Sell Price = <strong>{{ method_label }}</strong> of the competitor prices entered (set in Product Master → Competitive Pricings)
-      {% else %}Add Competitive Lists in Product Master → Competitive Pricings to calculate Sell Price{% endif %}
-    </span>
+    <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Product Pricing Completed</span>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+      <select class="form-select form-select-sm w-auto" id="ppTableDone_cpu" title="CPU"><option value="">All CPUs</option></select>
+      <select class="form-select form-select-sm w-auto" id="ppTableDone_gen" title="CPU Gen"><option value="">All CPU Gens</option></select>
+      <select class="form-select form-select-sm w-auto" id="ppTableDone_ram" title="RAM Name"><option value="">All RAM Names</option></select>
+      <select class="form-select form-select-sm w-auto" id="ppTableDone_sto" title="Storage Name"><option value="">All Storage Names</option></select>
+      <button type="button" class="btn btn-sm btn-outline-success" id="ppTableDone_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+    </div>
+  </div>
+  <div class="px-3 pt-2 small text-muted">
+      {% if comp_lists %}Sell Price = <strong>{{ method_label }}</strong> of the competitor prices entered (set in Product Master → Competitive Brands)
+      {% else %}Add Competitive Brands in Product Master → Competitive Brands to calculate Sell Price{% endif %}
   </div>
   <div class="card-body">{{ pp_table('ppTableDone', done) }}</div>
 </div></div>
@@ -92,6 +109,25 @@
 (function () {
   var dtPending = initGlobalTable('#ppTable', { order: [[0, 'asc']], language: { emptyTable: 'No pending items.' } });
   var dtDone = initGlobalTable('#ppTableDone', { order: [[0, 'asc']], language: { emptyTable: 'No completed items.' } });
+  // Card-header filters and Export (2026-10-18). RAM / Storage Name follow
+  // the row's current Type and Size picks.
+  function selVal(tr, n) { return $.trim(tr.find('select[name=' + n + ']').val() || ''); }
+  function ramName(tr) { var t = selVal(tr, 'ram_type'), z = selVal(tr, 'ram_size'); return t && z ? t + ' / ' + z : ''; }
+  function stoName(tr) { var t = selVal(tr, 'storage_type'), z = selVal(tr, 'storage_size'); return t && z ? t + ' / ' + z : ''; }
+  [[dtPending, 'ppTable', 'product_pricing_pending'], [dtDone, 'ppTableDone', 'product_pricing_completed']].forEach(function (c) {
+    var dt = c[0], id = c[1], $rows = $(dtPending.rows().nodes()).add(dtDone.rows().nodes());
+    pmFillSelect('#' + id + '_cpu', $rows.map(function () { return $(this).attr('data-cpu'); }).get(), 'All CPUs');
+    pmFillSelect('#' + id + '_gen', $rows.map(function () { return $(this).attr('data-gen'); }).get(), 'All CPU Gens');
+    pmFillSelect('#' + id + '_ram', $rows.map(function () { return ramName($(this)); }).get(), 'All RAM Names');
+    pmFillSelect('#' + id + '_sto', $rows.map(function () { return stoName($(this)); }).get(), 'All Storage Names');
+    pmTableTools(dt, { exportBtn: '#' + id + '_export', filename: c[2], filters: [
+      { el: '#' + id + '_cpu', test: function (tr, v) { return tr.attr('data-cpu') === v; } },
+      { el: '#' + id + '_gen', test: function (tr, v) { return tr.attr('data-gen') === v; } },
+      { el: '#' + id + '_ram', test: function (tr, v) { return ramName(tr) === v; } },
+      { el: '#' + id + '_sto', test: function (tr, v) { return stoName(tr) === v; } },
+      { el: '#' + id + '_price', test: function (tr, v) { return pmPriceState(tr.find('.pp-comp')) === v; } },
+    ]});
+  });
   $(document).on('shown.bs.tab', '#ppTabs button', function () { $($.fn.dataTable.tables(true)).DataTable().columns.adjust(); });
   // Move a row to the table matching its new status and refresh tab counts
   function moveRow(tr, done) {

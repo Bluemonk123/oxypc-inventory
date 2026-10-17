@@ -251,6 +251,7 @@ PERM_MODULES = [
     # ── PRODUCT MASTER (2026-10-14) — OFF by default for every role
     #    (models.role_permissions.DEFAULT_DISABLED_MODULES) ─────────────
     ("pm_product_master",    "Product Master"),
+    ("pm_pricing_calculator", "Pricing Calculator"),
     ("pm_hardware",          "Hardware"),
     ("pm_spare_parts",       "Spare Parts"),
     ("pm_product_pricing",   "Product Pricing"),

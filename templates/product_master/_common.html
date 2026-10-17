@@ -21,4 +21,59 @@ window.pmPending = '<span class="badge bg-warning text-dark">Pending</span>';
 window.pmCell = function (v) { var m = pmMoney(v); return m === null ? pmPending : m; };
 window.pmEsc = function (s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
   return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); };
+
+/* Card-header dropdown filters + Export for the Product Master pages
+   (2026-10-18). Tables here are client-side, so filters narrow the rows
+   already on the page and Export writes exactly the rows that match.
+   pmTableTools(dt, {
+     filters: [{ el: '#selectId', test: function (tr, value) { return bool; } }],
+     exportBtn: '#btnId', filename: 'name',
+   }) */
+window.pmFillSelect = function (sel, values, allLabel) {
+  var $s = $(sel), seen = {}, list = [];
+  values.forEach(function (v) { v = $.trim(v || ''); if (v && !seen[v]) { seen[v] = 1; list.push(v); } });
+  list.sort(function (a, b) { return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }); });
+  $s.html('<option value="">' + allLabel + '</option>' + list.map(function (v) {
+    return '<option value="' + pmEsc(v) + '">' + pmEsc(v) + '</option>'; }).join(''));
+};
+window.pmPriceState = function (inputs) {
+  // 'empty' (no price), 'filled' (every price), 'partial' (some)
+  var n = inputs.length, f = inputs.filter(function () { return $.trim(this.value) !== ''; }).length;
+  return f === 0 ? 'empty' : (f === n ? 'filled' : 'partial');
+};
+window.pmTableTools = function (dt, cfg) {
+  var tableNode = dt.table().node();
+  (cfg.filters || []).forEach(function (f) { $(f.el).on('change', function () { dt.draw(); }); });
+  $.fn.dataTable.ext.search.push(function (settings, data, idx) {
+    if (settings.nTable !== tableNode) return true;
+    var tr = dt.row(idx).node();
+    return (cfg.filters || []).every(function (f) {
+      var v = $(f.el).val();
+      return !v || f.test($(tr), v);
+    });
+  });
+  if (cfg.exportBtn) $(cfg.exportBtn).on('click', function () { pmExportCsv(dt, cfg.filename || 'export'); });
+};
+window.pmExportCsv = function (dt, filename) {
+  var heads = $(dt.table().header()).find('th').map(function () { return $.trim($(this).text()); }).get();
+  var skip = heads.map(function (h) { return /^actions?$/i.test(h); });
+  function cell(td) {
+    var $td = $(td), ctl = $td.find('input:not([type=checkbox]), select');
+    if (ctl.length) return ctl.map(function () {
+      return this.tagName === 'SELECT' ? ($(this).val() ? $(this).find('option:selected').text() : '') : this.value;
+    }).get().join(' ');
+    return $.trim($td.text().replace(/\s+/g, ' '));
+  }
+  var rows = [heads.filter(function (_, i) { return !skip[i]; })];
+  dt.rows({ search: 'applied', order: 'applied' }).nodes().each(function (tr) {
+    rows.push($(tr).children('td').map(function (i) { return skip[i] ? null : cell(this); }).get());
+  });
+  var csv = rows.map(function (r) { return r.map(function (v) {
+    v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(','); }).join('\r\n');
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
+  var d = new Date(), pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  a.download = filename + '_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.csv';
+  document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+};
 </script>

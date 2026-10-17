@@ -19,8 +19,8 @@
       </tr></thead>
       <tbody>
       {% for p in rows %}
-        <tr data-id="{{ p.id }}">
-          <td class="fw-semibold text-nowrap">{{ p.make }}/{{ p.model }}/{{ p.cpu }}/{{ p.cpu_gen }}</td>
+        <tr data-id="{{ p.id }}" data-cpu="{{ p.cpu }}" data-gen="{{ p.cpu_gen }}">
+          <td class="fw-semibold text-nowrap">{{ p.make }} / {{ p.model }} / {{ p.cpu }} / {{ p.cpu_gen }}</td>
           <td>{{ p.make }}</td><td>{{ p.model }}</td><td>{{ p.cpu }}</td><td>{{ p.cpu_gen }}</td>
           {% for col, label in part_fields %}
           <td><input type="number" class="form-control form-control-sm sp-part" style="min-width:90px" min="0" step="0.01"
@@ -43,14 +43,27 @@
 </ul>
 <div class="tab-content border border-top-0 rounded-bottom bg-white mb-4">
 <div class="tab-pane fade show active p-0" id="spTab_pending"><div class="card border-0">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-    <span class="fw-semibold"><i class="bi bi-tools me-2"></i>Spare Parts Pricing</span>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-tools me-2"></i>Spare Part Pending</span>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+      <select class="form-select form-select-sm w-auto" id="spTable_cpu" title="CPU"><option value="">All CPUs</option></select>
+      <select class="form-select form-select-sm w-auto" id="spTable_gen" title="CPU Gen"><option value="">All CPU Gens</option></select>
+      <select class="form-select form-select-sm w-auto" id="spTable_price" title="Price">
+        <option value="">Price: All</option><option value="empty">Fully Empty</option><option value="filled">Fully Filled</option><option value="partial">Partially Filled</option>
+      </select>
+      <button type="button" class="btn btn-sm btn-outline-success" id="spTable_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+    </div>
   </div>
   <div class="card-body">{{ sp_table('spTable', pending) }}</div>
 </div></div>
 <div class="tab-pane fade p-0" id="spTab_done"><div class="card border-0">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-    <span class="fw-semibold"><i class="bi bi-tools me-2"></i>Spare Parts Pricing</span>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-tools me-2"></i>Spare Part Completed</span>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+      <select class="form-select form-select-sm w-auto" id="spTableDone_cpu" title="CPU"><option value="">All CPUs</option></select>
+      <select class="form-select form-select-sm w-auto" id="spTableDone_gen" title="CPU Gen"><option value="">All CPU Gens</option></select>
+      <button type="button" class="btn btn-sm btn-outline-success" id="spTableDone_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+    </div>
   </div>
   <div class="card-body">{{ sp_table('spTableDone', done) }}</div>
 </div></div>
@@ -65,6 +78,17 @@
   var cols = [];
   var dtPending = initGlobalTable('#spTable', { order: [[0, 'asc']], columnDefs: cols, language: { emptyTable: 'No pending items.' } });
   var dtDone = initGlobalTable('#spTableDone', { order: [[0, 'asc']], columnDefs: cols, language: { emptyTable: 'No completed items.' } });
+  // Card-header filters and Export (2026-10-18)
+  [[dtPending, 'spTable', 'spare_part_pending'], [dtDone, 'spTableDone', 'spare_part_completed']].forEach(function (c) {
+    var dt = c[0], id = c[1], $rows = $(dtPending.rows().nodes()).add(dtDone.rows().nodes());
+    pmFillSelect('#' + id + '_cpu', $rows.map(function () { return $(this).attr('data-cpu'); }).get(), 'All CPUs');
+    pmFillSelect('#' + id + '_gen', $rows.map(function () { return $(this).attr('data-gen'); }).get(), 'All CPU Gens');
+    pmTableTools(dt, { exportBtn: '#' + id + '_export', filename: c[2], filters: [
+      { el: '#' + id + '_cpu', test: function (tr, v) { return tr.attr('data-cpu') === v; } },
+      { el: '#' + id + '_gen', test: function (tr, v) { return tr.attr('data-gen') === v; } },
+      { el: '#' + id + '_price', test: function (tr, v) { return pmPriceState(tr.find('.sp-part')) === v; } },
+    ]});
+  });
   $(document).on('shown.bs.tab', '#spTabs button', function () { $($.fn.dataTable.tables(true)).DataTable().columns.adjust(); });
   // Move a row to the table matching its new status and refresh tab counts
   function moveRow(tr, done) {

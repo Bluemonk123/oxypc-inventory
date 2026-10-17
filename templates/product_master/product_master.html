@@ -42,13 +42,13 @@
     </div>
     {% endfor %}
   </div>
-<ul class="nav nav-tabs mb-3" role="tablist">
+<ul class="nav nav-tabs mb-0" role="tablist">
   <li class="nav-item"><button class="nav-link {{ 'active' if active_tab not in ('dropdowns', 'competitive') }}" data-bs-toggle="tab" data-bs-target="#pmProductsPane" type="button">
     <i class="bi bi-box-seam me-1"></i>Product Master Table</button></li>
   <li class="nav-item"><button class="nav-link {{ 'active' if active_tab == 'dropdowns' }}" data-bs-toggle="tab" data-bs-target="#pmDropdownPane" type="button">
     <i class="bi bi-list-ul me-1"></i>Dropdown Configuration</button></li>
   <li class="nav-item"><button class="nav-link {{ 'active' if active_tab == 'competitive' }}" data-bs-toggle="tab" data-bs-target="#pmCompetitivePane" type="button">
-    <i class="bi bi-graph-up-arrow me-1"></i>Competitive Pricings</button></li>
+    <i class="bi bi-graph-up-arrow me-1"></i>Competitive Brands</button></li>
 </ul>
 
 <div class="tab-content">
@@ -57,7 +57,13 @@
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Product Master Details</span>
-        <button type="button" class="btn btn-sm btn-primary" id="pmAddProductBtn"><i class="bi bi-plus-circle me-1"></i>Add Product</button>
+        <div class="d-flex align-items-center flex-wrap gap-2">
+          <select class="form-select form-select-sm w-auto" id="pmFCpu" title="CPU"><option value="">All CPUs</option></select>
+          <select class="form-select form-select-sm w-auto" id="pmFRam" title="RAM Name"><option value="">All RAM Names</option></select>
+          <select class="form-select form-select-sm w-auto" id="pmFSto" title="Storage Name"><option value="">All Storage Names</option></select>
+          <button type="button" class="btn btn-sm btn-outline-success" id="pmExport"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+          <button type="button" class="btn btn-sm btn-primary" id="pmAddProductBtn"><i class="bi bi-plus-circle me-1"></i>Add Product</button>
+        </div>
       </div>
       <div class="card-body">
         <table id="pmProductsTable" class="table table-hover mb-0" style="width:100%">
@@ -69,10 +75,10 @@
           </tr></thead>
           <tbody>
           {% for p in products %}
-            <tr data-id="{{ p.id }}">
-              <td class="fw-semibold text-nowrap">{{ p.make }}/{{ p.model }}/{{ p.cpu }}/{{ p.cpu_gen }}</td>
+            <tr data-id="{{ p.id }}" data-cpu="{{ p.cpu }}" data-ram="{{ (p.ram or '')|replace('/', ' / ') }}" data-sto="{{ (p.storage or '')|replace('/', ' / ') }}">
+              <td class="fw-semibold text-nowrap">{{ p.make }} / {{ p.model }} / {{ p.cpu }} / {{ p.cpu_gen }}</td>
               <td>{{ p.make }}</td><td>{{ p.model }}</td><td>{{ p.cpu }}</td><td>{{ p.cpu_gen }}</td>
-              <td class="text-nowrap">{% if p.ram %}{{ p.ram }}{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td><td class="text-nowrap">{% if p.storage %}{{ p.storage }}{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
+              <td class="text-nowrap">{% if p.ram %}{{ p.ram|replace('/', ' / ') }}{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td><td class="text-nowrap">{% if p.storage %}{{ p.storage|replace('/', ' / ') }}{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
               <td>{{ money(p.ram_price) }}</td><td>{{ money(p.storage_price) }}</td>
               <td>{{ money(p.product_price) }}</td>
               {% for col, label in part_fields %}<td>{{ money(p.parts[col]) }}</td>{% endfor %}
@@ -150,14 +156,14 @@
   <div class="tab-pane fade {{ 'show active' if active_tab == 'competitive' }}" id="pmCompetitivePane">
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span class="fw-semibold"><i class="bi bi-graph-up-arrow me-2"></i>Competitive Pricings</span>
-        <button type="button" class="btn btn-sm btn-primary" id="pmCompAddBtn"><i class="bi bi-plus-circle me-1"></i>Add Competitive List</button>
+        <span class="fw-semibold"><i class="bi bi-graph-up-arrow me-2"></i>Competitive Brands</span>
+        <button type="button" class="btn btn-sm btn-primary" id="pmCompAddBtn"><i class="bi bi-plus-circle me-1"></i>Add Competitive Brand</button>
       </div>
       <div class="card-body">
         <div class="row g-4">
           <div class="col-lg-8">
             <table class="table table-hover mb-0" id="pmCompTable" style="width:100%">
-              <thead class="table-dark"><tr><th>Competitive List Name</th><th style="width:110px">Action</th></tr></thead>
+              <thead class="table-dark"><tr><th>Competitive Brand Name</th><th style="width:110px">Action</th></tr></thead>
               <tbody>
                 {% for cl in comp_lists %}
                 <tr>
@@ -167,8 +173,6 @@
                     <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 pm-comp-del" title="Delete" data-id="{{ cl.id }}" data-name="{{ cl.name }}"><i class="bi bi-trash3"></i></button>
                   </div></td>
                 </tr>
-                {% else %}
-                <tr><td colspan="2" class="text-muted text-center py-4">No Competitive Lists yet. Add one, e.g. Amazon, Flipkart.</td></tr>
                 {% endfor %}
               </tbody>
             </table>
@@ -195,10 +199,10 @@
 
 {# Competitive List modal #}
 <div class="modal fade" id="pmCompModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
-  <div class="modal-header"><h5 class="modal-title" id="pmCompTitle">Add Competitive List</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-header"><h5 class="modal-title" id="pmCompTitle">Add Competitive Brand</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
   <div class="modal-body">
     <input type="hidden" id="pmCompId">
-    <label class="form-label fw-semibold">Competitive List Name</label>
+    <label class="form-label fw-semibold">Competitive Brand Name</label>
     <input type="text" class="form-control" id="pmCompName" maxlength="100" placeholder="e.g. Amazon">
     <div class="text-danger small mt-2" id="pmCompErr"></div>
   </div>
@@ -264,7 +268,23 @@
   $(document).on('shown.bs.tab', 'button[data-bs-target="#pmProductsPane"]', function () {
     $('#pmProductsTable').DataTable().columns.adjust();
   });
-  initGlobalTable('#pmProductsTable', { order: [[{{ 10 + part_fields|length + 4 }}, 'desc']] });
+  var pmDt = initGlobalTable('#pmProductsTable', { order: [[{{ 10 + part_fields|length + 4 }}, 'desc']] });
+  // Card-header filters (CPU / RAM Name / Storage Name) and Export (2026-10-18)
+  var $pmRows = $(pmDt.rows().nodes());
+  pmFillSelect('#pmFCpu', $pmRows.map(function () { return $(this).data('cpu'); }).get(), 'All CPUs');
+  pmFillSelect('#pmFRam', $pmRows.map(function () { return $(this).attr('data-ram'); }).get(), 'All RAM Names');
+  pmFillSelect('#pmFSto', $pmRows.map(function () { return $(this).attr('data-sto'); }).get(), 'All Storage Names');
+  pmTableTools(pmDt, { exportBtn: '#pmExport', filename: 'product_master', filters: [
+    { el: '#pmFCpu', test: function (tr, v) { return String(tr.data('cpu')) === v; } },
+    { el: '#pmFRam', test: function (tr, v) { return tr.attr('data-ram') === v; } },
+    { el: '#pmFSto', test: function (tr, v) { return tr.attr('data-sto') === v; } },
+  ]});
+  // Competitive Brands list as a Global Table (2026-10-18)
+  initGlobalTable('#pmCompTable', { order: [[0, 'asc']],
+    language: { emptyTable: 'No Competitive Brands yet. Add one, e.g. Amazon, Flipkart.' } });
+  $(document).on('shown.bs.tab', 'button[data-bs-target="#pmCompetitivePane"]', function () {
+    $('#pmCompTable').DataTable().columns.adjust();
+  });
 
   // ── Dropdown Configuration ──
   var ddModal = new bootstrap.Modal(document.getElementById('pmDdModal'));
@@ -301,7 +321,7 @@
   var compModal = new bootstrap.Modal(document.getElementById('pmCompModal'));
   function openComp(id, name) {
     $('#pmCompId').val(id || ''); $('#pmCompName').val(name || ''); $('#pmCompErr').text('');
-    $('#pmCompTitle').text(id ? 'Edit Competitive List' : 'Add Competitive List');
+    $('#pmCompTitle').text(id ? 'Edit Competitive Brand' : 'Add Competitive Brand');
     compModal.show(); setTimeout(function () { $('#pmCompName').trigger('focus'); }, 300);
   }
   $('#pmCompAddBtn').on('click', function () { openComp(); });
@@ -332,7 +352,7 @@
   function preview() {
     var t = function (id) { var o = $(id + ' option:selected'); return o.val() ? o.text() : ''; };
     var parts = [t('#pmProdMake'), t('#pmProdModel'), t('#pmProdCpu'), t('#pmProdGen')];
-    $('#pmProdNamePreview').text(parts.every(Boolean) ? parts.join('/') : '—');
+    $('#pmProdNamePreview').text(parts.every(Boolean) ? parts.join(' / ') : '—');
   }
   function fillModels(sel) { $('#pmProdModel').html(opts(children('model', $('#pmProdMake').val() || null), sel)); }
   function fillGens(sel) {

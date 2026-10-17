@@ -33,18 +33,25 @@
 <div class="card border-0">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
-    <span class="small text-muted">Every {{ label }} Type × {{ label }} Size from Dropdown Configuration</span>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+      <select class="form-select form-select-sm w-auto hw-f-type" id="hwF_{{ kind }}_type" title="{{ label }} Type"><option value="">All {{ label }} Types</option></select>
+      <select class="form-select form-select-sm w-auto hw-f-size" id="hwF_{{ kind }}_size" title="{{ label }} Size"><option value="">All {{ label }} Sizes</option></select>
+      <select class="form-select form-select-sm w-auto" id="hwF_{{ kind }}_price" title="Price">
+        <option value="">Price: All</option><option value="empty">Price: Empty</option><option value="filled">Price: Filled</option>
+      </select>
+      <button type="button" class="btn btn-sm btn-outline-success" id="hwExport_{{ kind }}"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+    </div>
   </div>
   <div class="card-body">
     <table id="hw_{{ kind }}_table" class="table table-hover mb-0" style="width:100%">
       <thead class="table-dark"><tr>
-        <th>{{ label }} Name</th><th>{{ label }} Type</th><th>{{ label }} Size</th><th>{{ label }} Price</th><th>Action</th>
+        <th>{{ label }} Name</th><th>{{ label }} Type</th><th>{{ label }} Size</th><th>{{ label }} Price</th><th>Updated On</th><th>Updated By</th><th>Action</th>
       </tr></thead>
       <tbody>
       {% for r in rows %}
         <tr data-kind="{{ kind }}" data-id="{{ r.id }}" data-cat="{{ r.category }}" data-cap="{{ r.capacity }}"
             data-price="{{ '%g'|format(r.price) if r.price is not none else '' }}">
-          <td class="fw-semibold text-nowrap">{{ r.name }}</td><td>{{ r.category }}</td><td>{{ r.capacity }}</td>
+          <td class="fw-semibold text-nowrap">{{ r.name|replace('/', ' / ') }}</td><td>{{ r.category }}</td><td>{{ r.capacity }}</td>
           <td data-order="{{ r.price if r.price is not none else -1 }}">
             <span class="hw-price-view {{ 'd-none' if r.price is none }}">{% if r.price is not none %}{{ money(r.price) }}{% endif %}</span>
             <div class="input-group input-group-sm hw-price-edit {{ 'd-none' if r.price is not none }}" style="max-width:170px">
@@ -53,6 +60,8 @@
                      value="{{ '%g'|format(r.price) if r.price is not none else '' }}">
             </div>
           </td>
+          <td class="text-nowrap hw-upd-on" data-order="{{ r.updated_sort }}">{{ r.updated_on or '—' }}</td>
+          <td class="text-nowrap hw-upd-by">{{ r.updated_by or '—' }}</td>
           <td><div class="d-flex gap-1 justify-content-center">
             <button type="button" class="btn btn-sm btn-primary py-0 hw-save {{ 'd-none' if r.price is not none }}" disabled><i class="bi bi-save me-1"></i>Save</button>
             <button type="button" class="btn btn-sm btn-outline-warning py-0 px-1 hw-edit {{ 'd-none' if r.price is none }}" title="Edit"><i class="bi bi-pencil"></i></button>
@@ -74,8 +83,18 @@
 {% include "product_master/_common.html" %}
 <script>
 (function () {
-  initGlobalTable('#hw_ram_table', { order: [[0, 'asc']] });
-  initGlobalTable('#hw_storage_table', { order: [[0, 'asc']] });
+  // All rows on one page — no paging or page-size control (2026-10-18)
+  ['ram', 'storage'].forEach(function (kind) {
+    var dt = initGlobalTable('#hw_' + kind + '_table', { order: [[0, 'asc']], paging: false });
+    var $rows = $(dt.rows().nodes());
+    pmFillSelect('#hwF_' + kind + '_type', $rows.map(function () { return $(this).attr('data-cat'); }).get(), 'All ' + (kind === 'ram' ? 'RAM' : 'Storage') + ' Types');
+    pmFillSelect('#hwF_' + kind + '_size', $rows.map(function () { return $(this).attr('data-cap'); }).get(), 'All ' + (kind === 'ram' ? 'RAM' : 'Storage') + ' Sizes');
+    pmTableTools(dt, { exportBtn: '#hwExport_' + kind, filename: kind === 'ram' ? 'ram_details' : 'storage_details', filters: [
+      { el: '#hwF_' + kind + '_type', test: function (tr, v) { return tr.attr('data-cat') === v; } },
+      { el: '#hwF_' + kind + '_size', test: function (tr, v) { return tr.attr('data-cap') === v; } },
+      { el: '#hwF_' + kind + '_price', test: function (tr, v) { return (tr.attr('data-price') !== '' ? 'filled' : 'empty') === v; } },
+    ]});
+  });
   // The Storage table starts in a hidden tab — re-measure its columns when shown.
   $(document).on('shown.bs.tab', '#hwTabs button', function () {
     $($.fn.dataTable.tables(true)).DataTable().columns.adjust();
@@ -106,6 +125,8 @@
       if (j.id) tr.attr('data-id', j.id);
       tr.attr('data-price', Number(price));
       tr.find('.hw-price-view').text(fmt(price));
+      tr.find('.hw-upd-on').text(j.updated_on || '—').attr('data-order', j.updated_sort || '');
+      tr.find('.hw-upd-by').text(j.updated_by || '—');
       editing(tr, false);
       showFlash('success', 'Price saved for ' + tr.find('td:first').text() + '.');
     });
