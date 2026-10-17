@@ -49,33 +49,9 @@
     </div>
   </div>
 </form>
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <span class="text-muted">{{ devices|length }} device(s) in IQC</span>
-  <div class="d-flex gap-2 flex-wrap">
-    <button type="button" id="createLotBtn" class="btn btn-success btn-sm d-none" onclick="openCreateLotModal()">
-      <i class="bi bi-box-seam me-1"></i>Create/Add Lot (<span id="createLotCount">0</span>)
-    </button>
-    <button type="button" id="exportSelectedBtn" class="btn btn-outline-info btn-sm d-none"
-            onclick="exportSelectedIqc()">
-      <i class="bi bi-file-earmark-arrow-down me-1"></i>Export Selected (<span id="exportSelectedCount">0</span>)
-    </button>
-    {# Carries the page's current filters so the file matches the table on
-       screen rather than always dumping every IQC device. #}
-    <a href="/iqc/export-csv?q={{ q | urlencode }}&stage={{ stage | urlencode }}&grade={{ grade | urlencode }}&lot={{ lot | urlencode }}&device_type={{ device_type | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}"
-       class="btn btn-outline-info btn-sm">
-      <i class="bi bi-file-earmark-arrow-down me-1"></i>Export All
-    </a>
-    <a href="/bulk-upload?type=devices" class="btn btn-outline-success btn-sm">
-      <i class="bi bi-cloud-upload me-1"></i>Bulk Upload IQC
-    </a>
-    <a href="/iqc/new" class="btn btn-primary btn-sm">
-      <i class="bi bi-plus-circle me-1"></i>Add New Asset
-    </a>
-  </div>
-</div>
 <!-- Tag Number / Model Summary / Lot Numbers tabs. Each table keeps its own
      card and toolbar — only the container changed. -->
-<ul class="nav nav-tabs mb-3" id="iqcTabs" role="tablist">
+<ul class="nav nav-tabs mb-0" id="iqcTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" id="iqc-tab-tags-btn" data-bs-toggle="tab"
             data-bs-target="#iqc-tab-tags" type="button" role="tab" aria-selected="true">
@@ -105,6 +81,26 @@
 <div class="tab-content" id="iqcTabContent">
 <div class="tab-pane fade show active" id="iqc-tab-tags" role="tabpanel">
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+    <strong class="small text-nowrap"><i class="bi bi-upc-scan me-1"></i>Tag Number
+      <span class="badge bg-secondary ms-1" title="Devices matching the filters">{{ devices|length }}</span></strong>
+    <div class="d-flex gap-2 flex-wrap">
+      <button type="button" id="createLotBtn" class="btn btn-success btn-sm text-nowrap d-none" onclick="openCreateLotModal()">
+        <i class="bi bi-box-seam me-1"></i>Create/Add Lot (<span id="createLotCount">0</span>)
+      </button>
+      {# Exports the ticked Tag Numbers only (selection persists across pages). #}
+      <button type="button" id="exportSelectedBtn" class="btn btn-outline-info btn-sm text-nowrap" disabled
+              onclick="exportSelectedIqc()" title="Tick Tag Numbers to export them">
+        <i class="bi bi-file-earmark-arrow-down me-1"></i>Export (<span id="exportSelectedCount">0</span>)
+      </button>
+      <a href="/bulk-upload?type=devices" class="btn btn-outline-success btn-sm text-nowrap">
+        <i class="bi bi-cloud-upload me-1"></i>Bulk Upload IQC
+      </a>
+      <a href="/iqc/new" class="btn btn-primary btn-sm text-nowrap">
+        <i class="bi bi-plus-circle me-1"></i>Add New Asset
+      </a>
+    </div>
+  </div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table id="iqcTable" class="table table-hover mb-0">
@@ -126,10 +122,13 @@
 </div><!-- /iqc-tab-tags -->
 
 <div class="tab-pane fade" id="iqc-tab-models" role="tabpanel">
-<!-- Model Based Summary — scoped to the currently-filtered IQC device set. -->
-<div class="card border-0 shadow-sm mt-3">
+<!-- Model Summary — scoped to the currently-filtered IQC device set. -->
+<div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2">
-    <strong class="small text-nowrap"><i class="bi bi-collection me-1"></i>Model Based Summary</strong>
+    <strong class="small text-nowrap"><i class="bi bi-collection me-1"></i>Model Summary</strong>
+    <button type="button" id="iqcModelExportBtn" class="btn btn-outline-info btn-sm text-nowrap">
+      <i class="bi bi-file-earmark-arrow-down me-1"></i>Export
+    </button>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -166,7 +165,7 @@
 <div class="tab-pane fade" id="iqc-tab-lots" role="tabpanel">
 <!-- Product Lots — the Lot Management table, surfaced here so a lot can be
      created or imported without leaving IQC. Same rows, same counts. -->
-<div class="card border-0 shadow-sm mt-3">
+<div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
     <strong class="small text-nowrap"><i class="bi bi-box-seam me-1"></i>Product Lots</strong>
     <div class="d-flex gap-2 flex-wrap">
@@ -317,7 +316,7 @@ $(document).ready(function(){
     $('#createLotCount').text(n);
     $('#createLotBtn').toggleClass('d-none', n === 0);
     $('#exportSelectedCount').text(n);
-    $('#exportSelectedBtn').toggleClass('d-none', n === 0);
+    $('#exportSelectedBtn').prop('disabled', n === 0);
   }
   window._iqcUpdateSel = updateSel;
 
@@ -385,6 +384,27 @@ $(document).ready(function(){
     language: { emptyTable: 'No models found.' },
   });
   window._dtIqcModel = dtModel;
+
+  // Model Summary Export: every row the table is currently showing (all
+  // pages, honouring its search box) as a CSV — plain client-side, the rows
+  // are already on the page.
+  $('#iqcModelExportBtn').on('click', function () {
+    function q(v) { return '"' + String(v).trim().replace(/\s+/g, ' ').replace(/"/g, '""') + '"'; }
+    var lines = [];
+    var head = [];
+    $('#iqcModelSummaryTable thead th').each(function () { head.push(q($(this).text())); });
+    lines.push(head.join(','));
+    dtModel.rows({ search: 'applied' }).nodes().each(function (tr) {
+      var cells = [];
+      $(tr).find('td').each(function () { cells.push(q($(this).text())); });
+      lines.push(cells.join(','));
+    });
+    if (lines.length < 2) { alert('No rows to export.'); return; }
+    var a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('\ufeff' + lines.join('\r\n'));
+    a.download = 'iqc_model_summary.csv';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  });
 
   // Product Lots
   var dtLots = initGlobalTable('#iqcProductLotsTable', {

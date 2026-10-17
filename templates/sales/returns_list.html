@@ -2,19 +2,6 @@
 {% block title %}Returns — OxyPC{% endblock %}
 {% block page_title %}Returns{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <span class="text-muted">{{ returns|length }} return(s)</span>
-  <div class="d-flex gap-2">
-    {% if current_user.role in ('admin', 'sales_manager') %}
-    <a href="/returns/pending" class="btn btn-outline-warning">
-      <i class="bi bi-hourglass-split me-2"></i>Pending Approvals
-    </a>
-    {% endif %}
-    <a href="/returns/new" class="btn btn-warning">
-      <i class="bi bi-arrow-return-left me-2"></i>Process Return
-    </a>
-  </div>
-</div>
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex flex-wrap align-items-center justify-content-between gap-2">
     <span class="fw-semibold text-nowrap"><i class="bi bi-arrow-return-left me-2"></i>Returns</span>
@@ -34,6 +21,9 @@
       <button type="button" id="retExportBtn" class="btn btn-sm btn-outline-success text-nowrap">
         <i class="bi bi-download me-1"></i>Export
       </button>
+      <a href="/returns/new" class="btn btn-sm btn-warning text-nowrap">
+        <i class="bi bi-arrow-return-left me-1"></i>Add New Return
+      </a>
     </div>
   </div>
   <div class="card-body p-0">
