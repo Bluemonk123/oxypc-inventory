@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>OxyPC Inventory Lifecycle — Design System v1.2</title>
+<title>OxyPC Inventory Lifecycle — Design System v2.2</title>
 <!-- Source of OxyPC_Inventory_Lifecycle_Design_System PDF (2026-10-18).
      Rebuild the PDF with:  python qa_docs/design_system/build_pdf.py
      Samples are rendered with the app's real Bootstrap + app.css, so they
@@ -91,12 +91,12 @@
 </div>
 <div style="position:relative;height:150mm">
   <table class="meta">
-    <tr><td>Version</td><td>1.2 — 18 October 2026</td></tr>
+    <tr><td>Version</td><td>2.2 — 18 October 2026</td></tr>
     <tr><td>Applies to</td><td>OxyPC Inventory Lifecycle web app (FastAPI + Jinja2 + Bootstrap 5)</td></tr>
     <tr><td>Based on</td><td>Code on branch <code>staging</code>, <code>static/css/app.css</code>, <code>static/js/global-table.js</code></td></tr>
     <tr><td>Environments</td><td>Production <code>http://10.199.206.109</code> · Staging <code>http://localhost:8001</code></td></tr>
     <tr><td>Audience</td><td>Developers, reviewers and Claude sessions building or changing pages</td></tr>
-    <tr><td>What's new</td><td>v1.2: OxyPC × Bluemonk brand colours (success <code>#0F7A37</code>, Bluemonk Navy <code>#0e3a7a</code>), new Global Table style, OxyPC green app icon</td></tr>
+    <tr><td>What's new</td><td>v2.2: OxyPC × Bluemonk brand colours (success <code>#0F7A37</code>, Bluemonk Navy <code>#0e3a7a</code>), new Global Table style, OxyPC green app icon</td></tr>
   </table>
 </div>
 
@@ -152,7 +152,7 @@
 
   <h2>Brand and neutrals <span class="tag chg">UPDATED</span></h2>
   <div class="sw-grid">
-    <div class="sw"><div class="chip" style="background:#0e3a7a"></div><div><div class="n">Bluemonk Navy</div><div class="v"><code>#0e3a7a</code> <span class="tok">--brand-blue</span></div><div class="u">History buttons, table headers, focus rings, sidebar footer, card titles. Was #0377c2 until v1.1.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#0e3a7a"></div><div><div class="n">Bluemonk Navy</div><div class="v"><code>#0e3a7a</code> <span class="tok">--brand-blue</span></div><div class="u">History buttons, table headers, focus rings, sidebar footer, card titles. Was #0377c2 before v2.2.</div></div></div>
     <div class="sw"><div class="chip" style="background:#0377c2"></div><div><div class="n">Bluemonk Blue</div><div class="v"><code>#0377c2</code> <span class="tok">--sidebar-active</span></div><div class="u">Active sidebar link only (sidebar kept as before)</div></div></div>
     <div class="sw"><div class="chip" style="background:#d9ebf6"></div><div><div class="n">Sky Blue</div><div class="v"><code>#d9ebf6</code> —</div><div class="u">Global Table card header</div></div></div>
     <div class="sw"><div class="chip" style="background:#54BA48"></div><div><div class="n">OxyPC Leaf</div><div class="v"><code>#54BA48</code> <span class="tok">--oxy-leaf</span></div><div class="u">Accents only (logo, icon top) — too light for text</div></div></div>
@@ -201,7 +201,7 @@
     <span class="badge bg-warning">GRN</span> <span class="badge bg-secondary">IQC</span> <span class="badge bg-info">Stock In</span> <span class="badge bg-warning">L1</span> <span class="badge bg-warning">L2</span> <span class="badge bg-danger">L3</span> <span class="badge bg-info">TRC Production</span> <span class="badge bg-primary">QC Check</span> <span class="badge bg-teal">Cosmetic Received</span> <span class="badge bg-teal">Cleaning</span> <span class="badge bg-teal">Painting</span>
     <span class="badge bg-teal">Cosmetic Completed</span> <span class="badge bg-purple">Final QC</span> <span class="badge bg-success">Final QC Pass Hold</span> <span class="badge bg-warning">Final QC Fail Hold</span> <span class="badge bg-success">Ready to Sale</span> <span class="badge bg-dark">Sold</span> <span class="badge bg-warning">Returned</span> <span class="badge bg-danger">Scrapped</span> <span class="badge bg-dark">Scrap for Sale</span>
   </div>
-  <div class="cap">Rendered with the app's badge classes. All cosmetic sub-stages (Putty, Dry Sanding, Masking, Water Sanding) are teal. Success-green stages show the v1.2 solid <code>#0F7A37</code> badge.</div>
+  <div class="cap">Rendered with the app's badge classes. All cosmetic sub-stages (Putty, Dry Sanding, Masking, Water Sanding) are teal. Success-green stages show the v2.2 solid <code>#0F7A37</code> badge.</div>
 
   <h2>Money and profit <span class="tag chg">UPDATED</span></h2>
   <table class="doc">
@@ -380,7 +380,7 @@
       <div class="flex-fill rounded-3 p-2" style="background:#0aa2c0">Server<br><b style="font-size:16pt">14</b><br>In TRC: 11<br>In Ready: 3</div>
     </div>
   </div>
-  <div class="cap">Top: Product Master and WorkID Status (<code>.pm-tile</code>, <code>col-xl-2</code>). Bottom: Dashboard category cards (<code>.dash-tile</code>), each linking to All Inventory for that category. Green is the v1.2 success green <code>#0F7A37</code>.</div>
+  <div class="cap">Top: Product Master and WorkID Status (<code>.pm-tile</code>, <code>col-xl-2</code>). Bottom: Dashboard category cards (<code>.dash-tile</code>), each linking to All Inventory for that category. Green is the v2.2 success green <code>#0F7A37</code>.</div>
   <table class="doc">
     <tr><th style="width:22%">Part</th><th>Spec</th></tr>
     <tr><td>Count tile</td><td>Solid fill, <code>p-3</code>, radius 10px, min-height 96px, shadow <code>0 1px 3px rgba(0,0,0,.08)</code>. White number 1.9rem bold; label .82rem at 88% white; watermark 4.6rem at 22% white.</td></tr>
@@ -516,7 +516,7 @@
     <button class="btn btn-link">View details</button>
     <button class="btn btn-secondary" disabled>Disabled</button>
   </div>
-  <div class="cap">Rendered with the app's CSS, including its outline-button tint, grey disabled style and the v1.2 success green <code>#0F7A37</code>.</div>
+  <div class="cap">Rendered with the app's CSS, including its outline-button tint, grey disabled style and the v2.2 success green <code>#0F7A37</code>.</div>
   <table class="doc">
     <tr><th style="width:28%">Use</th><th style="width:32%">Class</th><th>Examples</th></tr>
     <tr><td>Main action</td><td><code>btn btn-primary</code></td><td>Save, Filter, Create Lot</td></tr>
@@ -539,7 +539,7 @@
   <table class="doc">
     <tr><th style="width:28%">Badge</th><th>Rule</th></tr>
     <tr><td>Stage</td><td><code>badge bg-{{ device.stage_color }}</code> + <code>stage_label</code>; never chosen by hand</td></tr>
-    <tr><td>Success</td><td><code>badge bg-success</code>: solid <b>#0F7A37</b> with white text (v1.2)</td></tr>
+    <tr><td>Success</td><td><code>badge bg-success</code>: solid <b>#0F7A37</b> with white text (v2.2)</td></tr>
     <tr><td>Status</td><td>Done/active green · pending yellow with <code>text-dark</code> · failed red · inactive grey</td></tr>
     <tr><td>Notification count</td><td><code>badge rounded-pill bg-danger</code></td></tr>
     <tr><td>Row count</td><td>Yellow toolbar badge from the Global Table; not repeated in the card header</td></tr>
