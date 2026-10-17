@@ -2506,8 +2506,13 @@ async def process_return(
     # case, while the stored barcode may differ, so an exact `==` here
     # reported "not found" for tags the searchbox (which uses .ilike()) had
     # just confirmed exist and are sitting in the right stage.
+    # Duplicate-case rows exist (e.g. a sold "...L1840" and a trashed
+    # "...l1840"): prefer the live row, then the exact spelling (2026-10-17).
+    _bc = barcode.strip()
     dev_result = await db.execute(
-        select(Device).where(func.upper(Device.barcode) == barcode.strip().upper())
+        select(Device).where(func.upper(Device.barcode) == _bc.upper())
+        .order_by(Device.is_trashed.asc(), Device.is_active.desc(),
+                  (Device.barcode == _bc).desc(), Device.updated_at.desc().nullslast())
     )
     device = dev_result.scalars().first()
     if not device:
@@ -2613,6 +2618,8 @@ async def process_return(
             })
         replacement_device = (await db.execute(
             select(Device).where(func.upper(Device.barcode) == rtag.upper())
+            .order_by(Device.is_trashed.asc(), Device.is_active.desc(),
+                      (Device.barcode == rtag).desc(), Device.updated_at.desc().nullslast())
         )).scalars().first()
         if not replacement_device:
             return await _return_form_response(db, {

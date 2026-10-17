@@ -60,8 +60,21 @@ async def device_brief(barcode: str, require_stage: str = "", db: AsyncSession =
     # scalar_one_or_none() raises MultipleResultsFound — an unhandled 500
     # that the caller's fetch().then(r => r.ok ? ... : {found:false}) turns
     # into a false "not found" for a tag that plainly exists.
+    # Ordering (2026-10-17): with duplicate-case rows (e.g. "...L1840" sold
+    # and a trashed "...l1840" in L1/L2), .first() used to return whichever
+    # row Postgres happened to read first — Process Return showed the
+    # trashed copy's stage. Prefer a live (not trashed, active) row, then an
+    # exact-case Tag Number, then a Tag Number match over a Serial No match,
+    # then the most recently updated.
     device = (await db.execute(
         select(Device).where(or_(Device.barcode.ilike(bc), Device.serial_no.ilike(bc)))
+        .order_by(
+            Device.is_trashed.asc(),
+            Device.is_active.desc(),
+            (Device.barcode == bc).desc(),
+            Device.barcode.ilike(bc).desc(),
+            Device.updated_at.desc().nullslast(),
+        )
     )).scalars().first()
     if not device:
         return JSONResponse({"found": False})
