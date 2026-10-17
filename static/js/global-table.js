@@ -483,5 +483,11 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
     // Widths were measured before the padding existed — re-measure.
     dt.columns.adjust();
   }
+  // Header and body columns must line up (2026-10-18): the header's inline
+  // sort arrows and 12px padding make header widths depend on CSS that may
+  // not be measured yet at init, and server-side rows arrive after init.
+  // Re-measure once now and once after the first draw with data.
+  dt.columns.adjust();
+  dt.one('draw.gtableAlign', function () { setTimeout(function () { dt.columns.adjust(); }, 0); });
   return dt;
 }

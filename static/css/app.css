@@ -664,6 +664,10 @@ fieldset:disabled .btn {
    width (so columns line up with the visible header) but no height. */
 .gtable-cards .dataTables_scrollBody table.gtable thead th:is(.sorting, .sorting_asc, .sorting_desc)::after { height: 0 !important; background: none !important; vertical-align: top !important; }
 .gtable-cards .dataTables_scrollBody thead th { padding-top: 0 !important; padding-bottom: 0 !important; line-height: 0 !important; }
+/* The label in that sizing row sits in a block div, which would push the
+   arrow onto its own line and leave it out of the column width. Keep both on
+   one line so body columns are exactly as wide as the visible header. */
+.gtable-cards .dataTables_scrollBody thead th .dataTables_sizing { display: inline-block !important; vertical-align: top; }
 /* Rows */
 .gtable-cards table.gtable tbody td {
   background-color: #fff;
