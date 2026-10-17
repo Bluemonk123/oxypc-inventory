@@ -87,7 +87,8 @@
                   data-hdd="{{ hdd_text }}"
                   data-lot="{{ lot_number or '' }}">
                 <td>
-                  <a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none">{{ device.barcode }}</a>{{ parts_badge(parts_badges, device.id) }}
+                  {# Tag Number + parts-changed icon kept on one line (2026-10-17). #}
+                  <span class="text-nowrap"><a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none">{{ device.barcode }}</a>{{ parts_badge(parts_badges, device.id) }}</span>
                   {% if failed_fqc %}<br><span class="text-nowrap"><span class="badge bg-danger">Failed from Final QC</span>
                   <i class="bi bi-info-circle text-danger ms-1" style="cursor:help"
                      data-bs-toggle="tooltip" data-bs-placement="top"
@@ -176,10 +177,14 @@
   <div class="row mt-3">
     <div class="col-12">
       <div class="card shadow-sm">
-        <div class="card-header bg-white d-flex align-items-center justify-content-between">
-          <h6 class="mb-0"><i class="bi bi-basket me-2"></i>Bulk Part Request</h6>
+        {# Accordion, collapsed by default (2026-10-17) — click the header to open. #}
+        <div class="card-header bg-white d-flex align-items-center justify-content-between collapsed"
+             role="button" data-bs-toggle="collapse" data-bs-target="#bulkPartsCollapse"
+             aria-expanded="false" aria-controls="bulkPartsCollapse" style="cursor:pointer">
+          <h6 class="mb-0"><i class="bi bi-chevron-right me-2 bulk-parts-chevron"></i><i class="bi bi-basket me-2"></i>Bulk Part Request</h6>
           <small class="text-muted" id="bulkPartsScopeNote">Parts required across the {{ devices|length }} tag{{ 's' if devices|length != 1 else '' }} listed above</small>
         </div>
+        <div class="collapse" id="bulkPartsCollapse">
         <div class="table-responsive">
           <table id="bulkPartsTable" class="table table-sm table-hover align-middle mb-0">
             <thead class="table-light">
@@ -220,6 +225,7 @@
             </tbody>
           </table>
         </div>
+        </div>{# /bulkPartsCollapse #}
       </div>
     </div>
   </div>
@@ -348,6 +354,10 @@
 {% include "_search_tags_modal.html" %}
 {% endblock %}
 {% block scripts %}
+<style>
+  .bulk-parts-chevron { display:inline-block; transition: transform .2s; }
+  [aria-expanded="true"] .bulk-parts-chevron { transform: rotate(90deg); }
+</style>
 <script>
 // Success messages show as a top-right toast, like live notifications (2026-10-17).
 document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });
