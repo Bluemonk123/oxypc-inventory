@@ -63,7 +63,7 @@
   /* mock app frame (page layout chapter) */
   .mock { display: flex; border: 1px solid #dee2e6; border-radius: 10px; overflow: hidden; height: 92mm; font-size: 8pt; }
   .mock .sb { width: 34mm; background: var(--sidebar-bg); color: #f0f4f8; display: flex; flex-direction: column; }
-  .mock .sb .brand { background: #198754; color: #fff; font-weight: 700; padding: 2.5mm 2.5mm; white-space: nowrap; }
+  .mock .sb .brand { background: #54BA48; color: #fff; font-weight: 700; padding: 2.5mm 2.5mm; white-space: nowrap; }
   .mock .sb .sec { color: #6b7f99; font-size: 6.5pt; letter-spacing: .12em; font-weight: 700; padding: 2mm 3mm 1mm; }
   .mock .sb .it { padding: 1.2mm 3mm; margin: 0 1.5mm; border-radius: 4px; }
   .mock .sb .act { background: #0377c2; }
@@ -153,7 +153,7 @@
 
   <h2>Brand and neutrals <span class="tag chg">UPDATED</span></h2>
   <div class="sw-grid">
-    <div class="sw"><div class="chip" style="background:#0e3a7a"></div><div><div class="n">Bluemonk Navy</div><div class="v"><code>#0e3a7a</code> <span class="tok">--brand-blue</span></div><div class="u">History buttons, table headers, focus rings, sidebar footer, card titles. Was #0377c2 before v2.2.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#0e3a7a"></div><div><div class="n">Bluemonk Navy</div><div class="v"><code>#0e3a7a</code> <span class="tok">--brand-blue</span></div><div class="u">History buttons, table headers, focus rings, sidebar footer, card titles.</div></div></div>
     <div class="sw"><div class="chip" style="background:#0377c2"></div><div><div class="n">Bluemonk Blue</div><div class="v"><code>#0377c2</code> <span class="tok">--sidebar-active</span></div><div class="u">Active sidebar link only (sidebar kept as before)</div></div></div>
     <div class="sw"><div class="chip" style="background:#d9ebf6"></div><div><div class="n">Sky Blue</div><div class="v"><code>#d9ebf6</code> —</div><div class="u">Global Table card header</div></div></div>
     <div class="sw"><div class="chip" style="background:#54BA48"></div><div><div class="n">OxyPC Leaf</div><div class="v"><code>#54BA48</code> <span class="tok">--oxy-leaf</span></div><div class="u">Accents only (logo, icon top) — too light for text</div></div></div>
@@ -168,7 +168,7 @@
   <p>Bootstrap 5 defaults, except Success (OxyPC green), plus three custom badge colours defined in <code>app.css</code> (teal, purple, pink).</p>
   <div class="sw-grid">
     <div class="sw"><div class="chip bg-primary"></div><div><div class="n">Primary</div><div class="v"><code>#0d6efd</code> <span class="tok">primary</span></div><div class="u">Main actions, QC Check, Active</div></div></div>
-    <div class="sw"><div class="chip" style="background:#0F7A37"></div><div><div class="n">Success <span class="tag chg">UPDATED</span></div><div class="v"><code>#0F7A37</code> <span class="tok">success</span></div><div class="u">Save, Ready to Sell, done. Sidebar header band keeps #198754.</div></div></div>
+    <div class="sw"><div class="chip" style="background:#0F7A37"></div><div><div class="n">Success <span class="tag chg">UPDATED</span></div><div class="v"><code>#0F7A37</code> <span class="tok">success</span></div><div class="u">Save, Ready to Sell, done.</div></div></div>
     <div class="sw"><div class="chip bg-warning"></div><div><div class="n">Warning</div><div class="v"><code>#ffc107</code> <span class="tok">warning</span></div><div class="u">GRN, L1/L2, Returned, pending</div></div></div>
     <div class="sw"><div class="chip bg-danger"></div><div><div class="n">Danger</div><div class="v"><code>#dc3545</code> <span class="tok">danger</span></div><div class="u">L3, Scrapped, PNA, delete</div></div></div>
     <div class="sw"><div class="chip bg-info"></div><div><div class="n">Info</div><div class="v"><code>#0dcaf0</code> <span class="tok">info</span></div><div class="u">Stock In, TRC Production</div></div></div>
@@ -318,7 +318,7 @@
   </table>
   <h2>Sidebar and top bar <span class="tag chg">UPDATED</span></h2>
   <ul class="doc">
-    <li><b>Sidebar colours:</b> brand band green <code>#198754</code> reading "Inventory Lifecycle"; link text <code>#f0f4f8</code> (the page background); footer in Bluemonk Navy; active link <code>#0377c2</code> (<code>--sidebar-active</code>). The OxyPC colour changes deliberately do not reach the sidebar.</li>
+    <li><b>Sidebar colours:</b> brand band OxyPC Leaf <code>#54BA48</code> reading "Inventory Lifecycle"; link text <code>#f0f4f8</code> (the page background); footer in Bluemonk Navy; active link <code>#0377c2</code> (<code>--sidebar-active</code>). The OxyPC colour changes deliberately do not reach the sidebar.</li>
     <li><b>Back / forward:</b> filled triangles (<code>bi-caret-left-fill</code> / <code>-right-fill</code>) in Bluemonk Navy <code>#0e3a7a</code>, pale grey <code>#c3cad3</code> when there is nowhere to go; no pill or background.</li>
     <li><b>Sections:</b> Attendance, Intake, Inventory, Repair, Store Manager, CRM, External Partner, Customer Care, Sales &amp; CRM, Finance, Product Master, Reports, Admin, Notifications, Support.</li>
     <li><b>Each link</b> is wrapped in <code>has_perm(role,'&lt;module&gt;','enable') and not module_hidden('&lt;module&gt;')</code>. Its text comes from <code>sidebar_label()</code>, so admins can rename it in Sidebar Config.</li>
@@ -662,7 +662,7 @@
     <tr><td>☐</td><td>Table uses <code>initGlobalTable</code> in a card with icon + title; actions in the last column</td></tr>
     <tr><td>☐</td><td>Buttons follow the hierarchy; destructive ones confirm with a count</td></tr>
     <tr><td>☐</td><td>Stage badges use <code>stage_color</code>; no unknown <code>bg-*</code> classes</td></tr>
-    <tr><td>☐</td><td>Greens use the OxyPC tokens (success <code>#0F7A37</code>), never Bootstrap's old #198754 outside the sidebar</td></tr>
+    <tr><td>☐</td><td>Greens use the OxyPC tokens (success <code>#0F7A37</code>), never Bootstrap's old #198754</td></tr>
     <tr><td>☐</td><td>Role checks use <code>role_allowed()</code> / <code>has_perm()</code>, never a hard-coded list</td></tr>
     <tr><td>☐</td><td>Works at 1366px; wide tables scroll inside the card</td></tr>
     <tr><td>☐</td><td>No CDN links; any new library goes in <code>static/vendor/</code></td></tr>
