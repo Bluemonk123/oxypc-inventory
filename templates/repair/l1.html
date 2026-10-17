@@ -349,6 +349,10 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// Success messages show as a top-right toast, like live notifications (2026-10-17).
+document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });
+</script>
+<script>
 // Per-device required-parts breakdown (compute_required() output, plus each
 // part's requested/changed status) — lets the filter bar below recompute the
 // Bulk Part Request table client-side from just the currently-visible tags,

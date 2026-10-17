@@ -154,6 +154,10 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// Success messages show as a top-right toast, like live notifications (2026-10-17).
+document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });
+</script>
+<script>
 $(document).ready(function(){
   // Global Table module (static/js/global-table.js): frozen Tag Number
   // column (moved before WorkID in this same batch), 32-char clamp+
