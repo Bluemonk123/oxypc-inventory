@@ -35,7 +35,7 @@
                 <tr data-tag="{{ t.tag_number }}" data-row="{{ t.row | tojson }}">
                   <td class="small font-monospace">{{ t.tag_number }}</td>
                   <td class="small">{{ t.grade }}</td>
-                  <td class="small dup-tag-current-stage">{{ t.current_stage_label }}</td>
+                  <td class="small dup-tag-current-stage">{{ t.current_stage_label }}{% if t.in_trash %} <span class="badge bg-danger ms-1" title="This tag is in Trash - restore it from the Trash page">In Trash</span>{% endif %}</td>
                   <td class="small">{{ t.file_stage_label }}</td>
                   <td class="d-flex gap-1">
                     <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 dup-approve-move-btn"

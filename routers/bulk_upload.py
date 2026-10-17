@@ -499,6 +499,10 @@ async def upload_devices(
                     "grade": _s(row, "grade") or "—",
                     "current_stage": ed.current_stage.value if ed else None,
                     "current_stage_label": STAGE_LABELS.get(ed.current_stage, ed.current_stage) if ed else "—",
+                    # In Trash (2026-10-17): a trashed tag still blocks the
+                    # upload as a duplicate but is hidden from Inventory
+                    # Search, so the result page warns and points to Trash.
+                    "in_trash": bool(ed and ed.is_trashed),
                     "file_stage": DeviceStage.iqc.value,
                     "file_stage_label": STAGE_LABELS.get(DeviceStage.iqc, "IQC"),
                     # Full CSV row, round-tripped through the modal so "Update"/

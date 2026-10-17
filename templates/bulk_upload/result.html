@@ -24,6 +24,19 @@
           </div>
         </div>
 
+        {# Tag Numbers in the file that already exist but sit in Trash
+           (2026-10-17) — not added, and hidden from Inventory Search. #}
+        {% set _trashed = (tag_duplicates | default([])) | selectattr('in_trash') | map(attribute='tag_number') | list %}
+        {% if _trashed %}
+        <div class="alert alert-danger">
+          <i class="bi bi-trash3 me-2"></i><strong>{{ _trashed|length }}</strong> Tag Number{{ 's are' if _trashed|length != 1 else ' is' }}
+          in <strong>Trash</strong>, so {{ 'they were' if _trashed|length != 1 else 'it was' }} not added and
+          {{ "don't" if _trashed|length != 1 else "doesn't" }} show in Inventory Search.
+          Restore {{ 'them' if _trashed|length != 1 else 'it' }} from the <a href="/trash" class="alert-link">Trash</a> page first, then re-upload if needed.
+          <div class="small font-monospace mt-2">{{ _trashed | join(', ') }}</div>
+        </div>
+        {% endif %}
+
         {% if errors %}
         <h6 class="fw-semibold mb-2">Error Details:</h6>
         <div class="table-responsive">
