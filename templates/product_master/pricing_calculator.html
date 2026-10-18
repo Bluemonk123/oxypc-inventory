@@ -10,7 +10,8 @@
 
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
-    <span class="fw-semibold"><i class="bi bi-calculator me-2"></i>Pricing Calculator</span>
+    <span><span class="fw-semibold"><i class="bi bi-calculator me-2"></i>Pricing Calculator</span>
+      <span class="small text-muted ms-2">Selling Price = (Base Price + RAM Price + Storage Price) − Prices of the Spare Parts marked Damage / Not Working.</span></span>
     <div class="d-flex align-items-center flex-wrap gap-2">
       <button type="button" class="btn btn-sm btn-outline-success" id="pcExport"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
       <a href="/product-master/pricing-calculator/template" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download me-1"></i>Template</a>
@@ -18,12 +19,6 @@
     </div>
   </div>
   <div class="card-body">
-    {% if view.devices %}
-    <div class="small text-muted mb-2">
-      {{ view.devices }} device(s) in {{ view.rows|length }} group(s).
-      Selling Price = (Base Price + RAM Price + Storage Price) − prices of the parts marked Damage / Not Working.
-    </div>
-    {% endif %}
     <table id="pcTable" class="table table-hover mb-0" style="width:100%">
       <thead class="table-dark"><tr>
         <th>SKU</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th>RAM</th><th>SSD</th>
