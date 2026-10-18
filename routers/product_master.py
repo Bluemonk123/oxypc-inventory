@@ -739,10 +739,11 @@ async def _calc_view(db, upload_id) -> dict:
         model = p.model if p else (r.model or "")
         cpu = p.cpu if p else (r.cpu or "")
         gen = p.cpu_gen if p else (r.cpu_gen or "")
-        key = (make.lower(), model.lower(), cpu.lower(), gen.lower(), ram_name.lower(), sto_name.lower())
+        # grouped per SKU + RAM + SSD (SKU column added 2026-10-18)
+        key = ((r.sku or '').lower(), make.lower(), model.lower(), cpu.lower(), gen.lower(), ram_name.lower(), sto_name.lower())
         g = groups.get(key)
         if g is None:
-            g = groups[key] = {"make": make, "model": model, "cpu": cpu, "cpu_gen": gen,
+            g = groups[key] = {"sku": r.sku or "", "make": make, "model": model, "cpu": cpu, "cpu_gen": gen,
                                "ram": ram_name.replace("/", " / "), "ssd": sto_name.replace("/", " / "),
                                "qty": 0, "total": D("0"), "pending": [], "sku_missing": False,
                                "skus": [], "damaged": {}}
@@ -797,29 +798,70 @@ async def pricing_calculator_template(current_user: User = Depends(require_modul
                     headers={"Content-Disposition": 'attachment; filename="pricing_calculator_template.csv"'})
 
 
+def _calc_sku(v: str):
+    """Normalise a SKU cell: ="123…" (Product Master Export), "123….0" (Excel number)."""
+    v = (v or "").strip()
+    if v.startswith("="):
+        v = v[1:]
+    v = v.strip().strip('"').strip()
+    if v.endswith(".0") and v[:-2].isdigit():
+        v = v[:-2]
+    return v[:40] or None
+
+
+def _calc_missing_file(name: str, header: list, rows: list) -> tuple[str, str]:
+    """The uploaded file again, with only the rows whose SKU was not found —
+    same format (CSV or Excel). Returns (download file name, base64 content)."""
+    import base64, csv, io, os
+    stem, ext = os.path.splitext(name)
+    out_name = f"{stem}_SKU_not_found{ext if ext.lower() in ('.csv', '.xlsx') else '.csv'}"
+    if out_name.lower().endswith(".xlsx"):
+        import openpyxl
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.append(header)
+        for r in rows:
+            ws.append(r)
+        for c in ws[1]:
+            c.font = openpyxl.styles.Font(bold=True)
+        # keep long SKUs as text so Excel shows all digits
+        for col in ws.iter_cols(min_row=1):
+            for c in col:
+                c.number_format = "@"
+        buf = io.BytesIO()
+        wb.save(buf)
+        data = buf.getvalue()
+    else:
+        sio = io.StringIO()
+        w = csv.writer(sio, lineterminator="\r\n")
+        w.writerow(header)
+        w.writerows(rows)
+        data = ("﻿" + sio.getvalue()).encode("utf-8")
+    return out_name, base64.b64encode(data).decode("ascii")
+
+
 @router.post("/pricing-calculator/upload")
 async def pricing_calculator_upload(request: Request, file: UploadFile = File(...),
                                     db: AsyncSession = Depends(get_db),
                                     current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
-    from urllib.parse import quote
-    def back(**kw):
-        from fastapi.responses import RedirectResponse
-        q = "&".join(f"{k}={quote(str(v))}" for k, v in kw.items())
-        return RedirectResponse(f"/product-master/pricing-calculator?{q}", status_code=303)
+    """Only rows whose SKU is in Product Master are added (2026-10-18). Rows
+    with an unknown or blank SKU are left out and handed back as a file in the
+    same format, so they can be corrected and uploaded again."""
     name = (file.filename or "upload").strip()[:255]
     if not name.lower().endswith((".csv", ".xlsx", ".xlsm")):
-        return back(error="Upload a .csv or .xlsx file.")
+        return _err("Upload a .csv or .xlsx file.")
     raw = await file.read()
     if len(raw) > 10 * 1024 * 1024:
-        return back(error="The file is larger than 10 MB.")
+        return _err("The file is larger than 10 MB.")
     try:
         table = _read_calc_file(name, raw)
     except Exception as e:  # noqa: BLE001 — bad workbook / encoding
-        return back(error=f"Could not read the file: {e}")
+        return _err(f"Could not read the file: {e}")
     table = [r for r in table if any(c for c in r)]
     if not table:
-        return back(error="The file is empty.")
-    heads = [_norm_head(h) for h in table[0]]
+        return _err("The file is empty.")
+    header = table[0]
+    heads = [_norm_head(h) for h in header]
     fmap, pmap = {}, {}
     for i, h in enumerate(heads):
         if h in _CALC_HEAD and _CALC_HEAD[h] not in fmap:
@@ -827,60 +869,71 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
         elif h in _CALC_PART_HEAD and _CALC_PART_HEAD[h] not in pmap:
             pmap[_CALC_PART_HEAD[h]] = i
     if "sku" not in fmap:
-        return back(error="The file needs a SKU column. Download the template for the expected columns.")
+        return _err("The file needs a SKU column. Download the template for the expected columns.")
     body = table[1:]
     if len(body) > 20000:
-        return back(error="The file has more than 20,000 rows.")
-    up = PMCalcUpload(file_name=name, uploaded_by=current_user.username, row_count=0)
-    db.add(up)
-    await db.flush()
-    n = 0
-    no_sku = 0
+        return _err("The file has more than 20,000 rows.")
+
+    si = fmap["sku"]
+    file_skus = {_calc_sku(r[si]) for r in body if si < len(r)} - {None}
+    known = set()
+    if file_skus:
+        known = set((await db.execute(select(PMProduct.sku).where(PMProduct.sku.in_(file_skus)))).scalars().all())
+
+    good, missing_rows, missing_skus, blank = [], [], set(), 0
     for idx, r in enumerate(body, start=2):
-        def g(f):
-            i = fmap.get(f)
-            return (r[i].strip()[:100] or None) if i is not None and i < len(r) else None
-        sku = g("sku")
-        if sku and sku.startswith("=") :                       # ="123..." from the Export
-            sku = sku[1:]
-        if sku:
-            sku = sku.strip().strip('"').strip()
-        if sku and sku.endswith(".0") and sku[:-2].isdigit():   # Excel number cell
-            sku = sku[:-2]
-        if not sku:
-            no_sku += 1
-            continue
-        # A combined "RAM" / "Storage" column (e.g. "DDR4 / 8GB", as in the
-        # Product Master Export) is split into Type and Size.
-        def split(f):
-            i = fmap.get(f)
-            v = r[i].strip() if i is not None and i < len(r) else ""
-            if "/" in v:
-                a, b = v.split("/", 1)
-                return a.strip()[:100] or None, b.strip()[:100] or None
-            return None, None
-        rt, rs = g("ram_type"), g("ram_size")
-        if not rt and not rs:
-            rt, rs = split("ram")
-        st, ss = g("storage_type"), g("storage_size")
-        if not st and not ss:
-            st, ss = split("storage")
-        damaged = [col for col, i in pmap.items() if i < len(r) and _is_damaged(r[i])]
-        db.add(PMCalcRow(upload_id=up.id, row_no=idx, sku=sku, make=g("make"), model=g("model"),
-                         cpu=g("cpu"), cpu_gen=g("cpu_gen"), ram_type=rt, ram_size=rs,
-                         storage_type=st, storage_size=ss,
-                         damaged_parts=",".join(damaged) or None))
-        n += 1
-    if n == 0:
-        await db.rollback()
-        return back(error="No rows with a SKU were found in the file.")
-    up.row_count = n
-    await audit(db, action="PM_CALC_UPLOADED", user=current_user, table_name="pm_calc_uploads",
-                record_id=str(up.id), new_value={"file": name, "rows": n, "skipped_no_sku": no_sku},
-                request=request)
-    await db.commit()
-    msg = f"{n} row(s) uploaded from {name}." + (f" {no_sku} row(s) without a SKU were skipped." if no_sku else "")
-    return back(upload=up.id, success=msg)
+        sku = _calc_sku(r[si]) if si < len(r) else None
+        if sku in known:
+            good.append((idx, sku, r))
+        else:
+            missing_rows.append(r)
+            if sku:
+                missing_skus.add(sku)
+            else:
+                blank += 1
+
+    up = None
+    if good:
+        up = PMCalcUpload(file_name=name, uploaded_by=current_user.username, row_count=len(good))
+        db.add(up)
+        await db.flush()
+        for idx, sku, r in good:
+            def g(f):
+                i = fmap.get(f)
+                return (r[i].strip()[:100] or None) if i is not None and i < len(r) else None
+
+            # A combined "RAM" / "Storage" column (e.g. "DDR4 / 8GB", as in the
+            # Product Master Export) is split into Type and Size.
+            def split(f):
+                i = fmap.get(f)
+                v = r[i].strip() if i is not None and i < len(r) else ""
+                if "/" in v:
+                    a, b = v.split("/", 1)
+                    return a.strip()[:100] or None, b.strip()[:100] or None
+                return None, None
+            rt, rs = g("ram_type"), g("ram_size")
+            if not rt and not rs:
+                rt, rs = split("ram")
+            st, ss = g("storage_type"), g("storage_size")
+            if not st and not ss:
+                st, ss = split("storage")
+            damaged = [col for col, i in pmap.items() if i < len(r) and _is_damaged(r[i])]
+            db.add(PMCalcRow(upload_id=up.id, row_no=idx, sku=sku, make=g("make"), model=g("model"),
+                             cpu=g("cpu"), cpu_gen=g("cpu_gen"), ram_type=rt, ram_size=rs,
+                             storage_type=st, storage_size=ss, damaged_parts=",".join(damaged) or None))
+        await audit(db, action="PM_CALC_UPLOADED", user=current_user, table_name="pm_calc_uploads",
+                    record_id=str(up.id), new_value={"file": name, "rows": len(good),
+                                                     "rows_sku_not_found": len(missing_rows)},
+                    request=request)
+        await db.commit()
+
+    out = {"ok": True, "added": len(good), "upload_id": str(up.id) if up else None,
+           "missing_rows": len(missing_rows), "missing_skus": len(missing_skus), "blank_skus": blank}
+    if missing_rows:
+        width = len(header)
+        rows = [list(r) + [""] * (width - len(r)) for r in missing_rows]
+        out["missing_file_name"], out["missing_file_b64"] = _calc_missing_file(name, header, rows)
+    return JSONResponse(out)
 
 
 # ── Product Pricing page ──────────────────────────────────────────────────────

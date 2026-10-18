@@ -66,6 +66,8 @@ window.pmExportCsv = function (dt, filename, opts) {
     if (ctl.length) return ctl.map(function () {
       return this.tagName === 'SELECT' ? ($(this).val() ? $(this).find('option:selected').text() : '') : this.value;
     }).get().join(' ');
+    // cells marked pm-text (e.g. SKU) export as ="…" so Excel keeps every digit
+    if ($td.hasClass('pm-text')) { var t = $.trim($td.text()); return t && t !== '—' ? { raw: '="' + t + '"' } : ''; }
     $td = $td.clone();
     if (opts.skip) $td.find(opts.skip).remove();
     $td.find('.badge, div, br').after(' ');   // "Pricing Done Active", not "Pricing DoneActive"

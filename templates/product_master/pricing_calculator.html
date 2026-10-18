@@ -37,12 +37,13 @@
     {% endif %}
     <table id="pcTable" class="table table-hover mb-0" style="width:100%">
       <thead class="table-dark"><tr>
-        <th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th>RAM</th><th>SSD</th>
+        <th>SKU</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th>RAM</th><th>SSD</th>
         <th>Quantity</th><th>Selling Price</th><th>Avg Price/Quantity</th>
       </tr></thead>
       <tbody>
       {% for g in view.rows %}
         <tr>
+          <td class="text-nowrap font-monospace pm-text">{{ g.sku or '—' }}</td>
           <td class="text-nowrap">{{ g.make or '—' }}{% if g.sku_missing %}<div><span class="badge bg-danger" title="SKU {{ g.skus|join(', ') }} is not in Product Master">SKU not found</span></div>{% endif %}</td>
           <td class="text-nowrap">{{ g.model or '—' }}</td>
           <td>{{ g.cpu or '—' }}</td>
@@ -83,17 +84,61 @@
     </div>
   </form>
 </div></div></div>
+
+{# SKUs in the file that are not in Product Master (2026-10-18) #}
+<div class="modal fade" id="pcMissingModal" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <div class="modal-header bg-warning bg-opacity-10"><h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>SKU not available</h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <p class="mb-2" id="pcMissingMsg"></p>
+    <div class="small text-muted mb-3" id="pcMissingInfo"></div>
+    <a href="#" class="btn btn-sm btn-outline-primary" id="pcMissingLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcMissingName">Download file</span></a>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button></div>
+</div></div></div>
 {% endblock %}
 
 {% block scripts %}
 {% include "product_master/_common.html" %}
 <script>
 (function () {
-  var dt = initGlobalTable('#pcTable', { order: [[0, 'asc']],
+  var dt = initGlobalTable('#pcTable', { order: [[1, 'asc']],
     language: { emptyTable: {{ ('No rows in this upload.' if current else 'No file uploaded yet. Use Upload File to add one.')|tojson }} } });
   $('#pcExport').on('click', function () { pmExportCsv(dt, 'pricing_calculator'); });
   $('#pcUpload').on('change', function () { location.href = '/product-master/pricing-calculator?upload=' + this.value; });
-  $('#pcUploadForm').on('submit', function () { $('#pcUploadBtn').prop('disabled', true); });
+  // Upload by fetch so SKUs that are not in Product Master can be reported in a
+  // popup with a download of just those rows (2026-10-18).
+  var reloadTo = null;
+  $('#pcUploadForm').on('submit', function (e) {
+    e.preventDefault();
+    var form = this, btn = $('#pcUploadBtn').prop('disabled', true);
+    fetch(form.action, { method: 'POST', body: new FormData(form), credentials: 'same-origin' })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Server error (' + r.status + ')' }; }); })
+      .then(function (j) {
+        btn.prop('disabled', false);
+        if (!j.ok) { showFlash('danger', j.error || 'Upload failed.'); return; }
+        bootstrap.Modal.getInstance(document.getElementById('pcUploadModal')).hide();
+        form.reset();
+        var url = '/product-master/pricing-calculator' + (j.upload_id ? '?upload=' + j.upload_id + '&success=' +
+          encodeURIComponent(j.added + ' row(s) added.') : '');
+        if (!j.missing_rows) { location.href = url; return; }
+        reloadTo = j.upload_id ? url : null;
+        $('#pcMissingMsg').text('These SKU ' + j.missing_skus + ' from file are not available so please check and reupload the file.');
+        $('#pcMissingInfo').text((j.added ? j.added + ' row(s) with available SKUs were added. ' : 'No rows were added. ') +
+          j.missing_rows + ' row(s) were left out' + (j.blank_skus ? ', including ' + j.blank_skus + ' with no SKU' : '') + '.');
+        var bin = atob(j.missing_file_b64), bytes = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        var type = /\.xlsx$/i.test(j.missing_file_name) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv';
+        var link = document.getElementById('pcMissingLink');
+        link.href = URL.createObjectURL(new Blob([bytes], { type: type }));
+        link.download = j.missing_file_name;
+        $('#pcMissingName').text('Download ' + j.missing_file_name);
+        new bootstrap.Modal(document.getElementById('pcMissingModal')).show();
+      })
+      .catch(function () { btn.prop('disabled', false); showFlash('danger', 'Could not reach the server.'); });
+  });
+  // After the popup, show the newly added rows (if any were added)
+  $('#pcMissingModal').on('hidden.bs.modal', function () { if (reloadTo) location.href = reloadTo; });
 })();
 </script>
 {% endblock %}
