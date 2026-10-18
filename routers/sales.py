@@ -1022,11 +1022,14 @@ async def upload_ready_tags(
 
     tags, errors = [], []
     seen = set()
+    header = list(reader.fieldnames or [])
+    raw_by_tag = {}          # upper(tag) -> the file's rows for it (all columns)
     for i, row in enumerate(reader, start=2):
         tag = (row.get(key) or "").strip()
         if not tag:
             errors.append(f"Row {i}: tag_number is empty")
             continue
+        raw_by_tag.setdefault(tag.upper(), []).append([(row.get(f) or "") for f in header])
         if tag in seen:
             continue
         seen.add(tag)
@@ -1042,31 +1045,51 @@ async def upload_ready_tags(
     # exact IN() reported every one of those as "not found" against a tag
     # that plainly exists and is sitting in Ready to Sale.
     rows = (await db.execute(
-        select(Device.barcode, Device.current_stage).where(
+        select(Device.barcode, Device.current_stage, Device.is_trashed).where(
             func.upper(Device.barcode).in_([t.upper() for t in tags])
         )
     )).all()
     by_upper = {}
-    for stored_barcode, stage in rows:
-        by_upper.setdefault((stored_barcode or "").upper(), []).append((stored_barcode, stage))
+    for stored_barcode, stage, trashed in rows:
+        by_upper.setdefault((stored_barcode or "").upper(), []).append((stored_barcode, stage, trashed))
 
+    # Each tag that is not selectable lands in exactly one group (2026-10-18):
+    # Trash first, then Sold / Scrapped / Scrap for Sale, else Not ready to sale.
     found, not_found, not_ready = [], [], []
+    in_trash, sold, scrapped, scrap_for_sale = [], [], [], []
+    file_rows = {k: [] for k in ("not_found", "not_ready", "trash", "sold", "scrapped", "scrap_for_sale")}
     for tag in tags:
         matches = by_upper.get(tag.upper())
+        raw = raw_by_tag.get(tag.upper(), [])
         if not matches:
             not_found.append(tag)
+            file_rows["not_found"].extend(raw)
             continue
         # Echo the barcode as STORED, not as typed — the page ticks rows by
         # exact barcode string, so echoing the user's casing back would
         # select nothing.
-        for stored_barcode, stage in matches:
-            if stage != DeviceStage.ready_to_sale:
-                not_ready.append(stored_barcode)
+        for stored_barcode, stage, trashed in matches:
+            if trashed:
+                grp, lst = "trash", in_trash
+            elif stage == DeviceStage.sold:
+                grp, lst = "sold", sold
+            elif stage == DeviceStage.scrapped:
+                grp, lst = "scrapped", scrapped
+            elif stage == DeviceStage.scrap_for_sale:
+                grp, lst = "scrap_for_sale", scrap_for_sale
+            elif stage != DeviceStage.ready_to_sale:
+                grp, lst = "not_ready", not_ready
             else:
                 found.append(stored_barcode)
+                continue
+            lst.append(stored_barcode)
+            file_rows[grp].extend(raw)
 
-    return JSONResponse({"found": found, "not_found": not_found,
-                         "not_ready": not_ready, "errors": errors})
+    # The uploaded file's own rows for each group, so each can be downloaded
+    return JSONResponse({"found": found, "not_found": not_found, "not_ready": not_ready,
+                         "trash": in_trash, "sold": sold, "scrapped": scrapped,
+                         "scrap_for_sale": scrap_for_sale, "errors": errors,
+                         "header": header, "file_rows": {k: v for k, v in file_rows.items() if v}})
 
 
 def _unit_stock_price(device, lot) -> float:

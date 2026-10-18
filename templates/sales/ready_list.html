@@ -1271,20 +1271,34 @@ document.getElementById('bulkTagBtn').addEventListener('click', async function()
       if (readySelected.has(c.value)) c.checked = true;
     });
     updateReadySel();
+    // Groups of tags that were not selected; each gets a download of the
+    // uploaded file's own rows for those tags (2026-10-18).
+    var GROUPS = [['not_found', 'Not found'], ['not_ready', 'Not ready to sale'], ['trash', 'In trash'],
+                  ['sold', 'Sold'], ['scrapped', 'Scrapped'], ['scrap_for_sale', 'Scrap for Sale']];
     var parts = [selected.length + ' selected'];
-    if ((d.not_found || []).length) parts.push(d.not_found.length + ' not found');
-    if ((d.not_ready || []).length) parts.push(d.not_ready.length + ' not ready to sale');
-    var detail = '';
-    function list(label, tags){
-      if (!tags || !tags.length) return '';
-      return '<div class="mt-1"><span class="fw-semibold">' + label + ':</span> <span class="font-monospace">' + tags.join(', ') + '</span></div>';
+    GROUPS.forEach(function (g) { if ((d[g[0]] || []).length) parts.push(d[g[0]].length + ' ' + g[1].toLowerCase()); });
+    var baseName = (fileInput.files[0].name || 'tags.csv').replace(/\.csv$/i, '');
+    function csvLink(key, label) {
+      var rows = (d.file_rows || {})[key];
+      if (!rows || !rows.length) return '';
+      var esc = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+      var csv = [d.header].concat(rows).map(function (r) { return r.map(esc).join(','); }).join('\r\n');
+      var url = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
+      var fname = baseName + '_' + label.toLowerCase().replace(/[^a-z0-9]+/g, '_') + '.csv';
+      return ' <a href="' + url + '" download="' + fname + '" class="btn btn-sm btn-outline-primary py-0 px-2 ms-1 align-baseline">' +
+             '<i class="bi bi-file-earmark-arrow-down me-1"></i>Download</a>';
     }
-    detail += list('Not found', d.not_found);
-    detail += list('Not ready to sale', d.not_ready);
-    detail += list('Row errors', d.errors);
+    var detail = '';
+    function list(key, label, tags){
+      if (!tags || !tags.length) return '';
+      return '<div class="mt-1"><span class="fw-semibold">' + label + ' (' + tags.length + '):</span> <span class="font-monospace">' +
+             tags.join(', ') + '</span>' + (key ? csvLink(key, label) : '') + '</div>';
+    }
+    GROUPS.forEach(function (g) { detail += list(g[0], g[1], d[g[0]]); });
+    detail += list(null, 'Row errors', d.errors);
     bootstrap.Modal.getInstance(document.getElementById('bulkTagModal')).hide();
     var alertBox = document.createElement('div');
-    alertBox.className = 'alert alert-info alert-dismissible fade show small mb-3';
+    alertBox.className = 'alert alert-info alert-dismissible fade show small mb-3 no-autohide';
     alertBox.innerHTML = '<strong>' + parts.join(', ') + '</strong>' + detail +
       '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
     // Top of page (2026-09-03, was directly below the table) — the first
