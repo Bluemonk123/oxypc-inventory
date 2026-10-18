@@ -97,6 +97,8 @@
 {% block scripts %}
 {% include "product_master/_common.html" %}
 <script>
+// Success message as a top-right toast, like L1/L2 (2026-10-18)
+document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });
 (function () {
   // SKU column kept for Export but hidden on screen (2026-10-18)
   var dt = initGlobalTable('#pcTable', { order: [[1, 'asc']], columnDefs: [{ targets: 0, visible: false }],
