@@ -42,7 +42,7 @@
       </tr></thead>
       <tbody>
       {% for g in view.rows %}
-        <tr>
+        <tr data-sku="{{ g.skus|join(', ') }}">
           <td class="text-nowrap font-monospace pm-text">{{ g.sku or '—' }}</td>
           <td class="text-nowrap">{{ g.make or '—' }}{% if g.sku_missing %}<div><span class="badge bg-danger" title="SKU {{ g.skus|join(', ') }} is not in Product Master">SKU not found</span></div>{% endif %}</td>
           <td class="text-nowrap">{{ g.model or '—' }}</td>
@@ -92,12 +92,18 @@
 
 {# SKUs in the file that are not in Product Master (2026-10-18) #}
 <div class="modal fade" id="pcMissingModal" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-  <div class="modal-header bg-warning bg-opacity-10"><h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>SKU not available</h5>
+  <div class="modal-header bg-warning bg-opacity-10"><h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>Upload result</h5>
     <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
   <div class="modal-body">
-    <p class="mb-2" id="pcMissingMsg"></p>
     <div class="small text-muted mb-3" id="pcMissingInfo"></div>
-    <a href="#" class="btn btn-sm btn-outline-primary" id="pcMissingLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcMissingName">Download file</span></a>
+    <div id="pcMissBlock" class="mb-3">
+      <p class="mb-2" id="pcMissingMsg"></p>
+      <a href="#" class="btn btn-sm btn-outline-primary" id="pcMissingLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcMissingName">Download file</span></a>
+    </div>
+    <div id="pcDupBlock">
+      <p class="mb-2" id="pcDupMsg"></p>
+      <a href="#" class="btn btn-sm btn-outline-secondary" id="pcDupLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcDupName">Download file</span></a>
+    </div>
   </div>
   <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button></div>
 </div></div></div>
@@ -107,9 +113,10 @@
 {% include "product_master/_common.html" %}
 <script>
 (function () {
-  var dt = initGlobalTable('#pcTable', { order: [[1, 'asc']],
+  // SKU column kept for Export but hidden on screen (2026-10-18)
+  var dt = initGlobalTable('#pcTable', { order: [[1, 'asc']], columnDefs: [{ targets: 0, visible: false }],
     language: { emptyTable: {{ ('No rows in this upload.' if current else 'No file uploaded yet. Use Upload File to add one.')|tojson }} } });
-  $('#pcExport').on('click', function () { pmExportCsv(dt, 'pricing_calculator'); });
+  $('#pcExport').on('click', function () { pmExportCsv(dt, 'pricing_calculator', { prepend: [{ head: 'SKU', text: true, get: function (tr) { return tr.attr('data-sku'); } }] }); });
   // Delete a line (all its devices) from this upload (2026-10-18)
   $(document).on('click', '.pc-del', function () {
     var b = $(this), qty = b.data('qty');
@@ -139,18 +146,32 @@
         form.reset();
         var url = '/product-master/pricing-calculator' + (j.upload_id ? '?upload=' + j.upload_id + '&success=' +
           encodeURIComponent(j.added + ' row(s) added.') : '');
-        if (!j.missing_rows) { location.href = url; return; }
+        if (!j.missing_rows && !j.dup_rows) { location.href = url; return; }
         reloadTo = j.upload_id ? url : null;
-        $('#pcMissingMsg').text('These SKU ' + j.missing_skus + ' from file are not available so please check and reupload the file.');
-        $('#pcMissingInfo').text((j.added ? j.added + ' row(s) with available SKUs were added. ' : 'No rows were added. ') +
-          j.missing_rows + ' row(s) were left out' + (j.blank_skus ? ', including ' + j.blank_skus + ' with no SKU' : '') + '.');
-        var bin = atob(j.missing_file_b64), bytes = new Uint8Array(bin.length);
-        for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-        var type = /\.xlsx$/i.test(j.missing_file_name) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv';
-        var link = document.getElementById('pcMissingLink');
-        link.href = URL.createObjectURL(new Blob([bytes], { type: type }));
-        link.download = j.missing_file_name;
-        $('#pcMissingName').text('Download ' + j.missing_file_name);
+        var left = j.missing_rows + j.dup_rows;
+        $('#pcMissingInfo').text((j.added ? j.added + ' row(s) were added. ' : 'No rows were added. ') +
+          left + ' row(s) were left out.');
+        function fileLink(id, nameId, b64, fname) {
+          var bin = atob(b64), bytes = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+          var type = /\.xlsx$/i.test(fname) ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv';
+          var a = document.getElementById(id);
+          if (a.href && a.href.indexOf('blob:') === 0) URL.revokeObjectURL(a.href);
+          a.href = URL.createObjectURL(new Blob([bytes], { type: type })); a.download = fname;
+          $('#' + nameId).text('Download ' + fname);
+        }
+        $('#pcMissBlock').toggle(!!j.missing_rows);
+        if (j.missing_rows) {
+          $('#pcMissingMsg').text('These SKU ' + j.missing_skus + ' from file are not available so please check and reupload the file.' +
+            (j.blank_skus ? ' (' + j.blank_skus + ' row(s) had no SKU.)' : ''));
+          fileLink('pcMissingLink', 'pcMissingName', j.missing_file_b64, j.missing_file_name);
+        }
+        $('#pcDupBlock').toggle(!!j.dup_rows);
+        if (j.dup_rows) {
+          $('#pcDupMsg').text('These SKU ' + j.dup_skus + ' are already added (same Make, Model, CPU, CPU Gen, RAM and SSD), so ' +
+            j.dup_rows + ' row(s) were not added again.');
+          fileLink('pcDupLink', 'pcDupName', j.dup_file_b64, j.dup_file_name);
+        }
         new bootstrap.Modal(document.getElementById('pcMissingModal')).show();
       })
       .catch(function () { btn.prop('disabled', false); showFlash('danger', 'Could not reach the server.'); });

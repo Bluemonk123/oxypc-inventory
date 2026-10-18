@@ -739,8 +739,8 @@ async def _calc_view(db, upload_id) -> dict:
         model = p.model if p else (r.model or "")
         cpu = p.cpu if p else (r.cpu or "")
         gen = p.cpu_gen if p else (r.cpu_gen or "")
-        # grouped per SKU + RAM + SSD (SKU column added 2026-10-18)
-        key = ((r.sku or '').lower(), make.lower(), model.lower(), cpu.lower(), gen.lower(), ram_name.lower(), sto_name.lower())
+        # one line per Make + Model + CPU + CPU Gen + RAM + SSD
+        key = (make.lower(), model.lower(), cpu.lower(), gen.lower(), ram_name.lower(), sto_name.lower())
         g = groups.get(key)
         if g is None:
             g = groups[key] = {"sku": r.sku or "", "make": make, "model": model, "cpu": cpu, "cpu_gen": gen,
@@ -840,12 +840,12 @@ def _calc_sku(v: str):
     return v[:40] or None
 
 
-def _calc_missing_file(name: str, header: list, rows: list) -> tuple[str, str]:
+def _calc_missing_file(name: str, header: list, rows: list, suffix: str = "SKU_not_found") -> tuple[str, str]:
     """The uploaded file again, with only the rows whose SKU was not found —
     same format (CSV or Excel). Returns (download file name, base64 content)."""
     import base64, csv, io, os
     stem, ext = os.path.splitext(name)
-    out_name = f"{stem}_SKU_not_found{ext if ext.lower() in ('.csv', '.xlsx') else '.csv'}"
+    out_name = f"{stem}_{suffix}{ext if ext.lower() in ('.csv', '.xlsx') else '.csv'}"
     if out_name.lower().endswith(".xlsx"):
         import openpyxl
         wb = openpyxl.Workbook()
@@ -911,11 +911,51 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
     if file_skus:
         known = set((await db.execute(select(PMProduct.sku).where(PMProduct.sku.in_(file_skus)))).scalars().all())
 
+    # A row is "already added" when its Make + Model + CPU + CPU Gen (from
+    # Product Master, by SKU) + RAM + SSD match a row already in the
+    # calculator, or an earlier row of this file (2026-10-18).
+    prod_of = {p.sku: p for p in (await db.execute(select(PMProduct).where(PMProduct.sku.in_(known)))).scalars()} if known else {}
+
+    def cell(r, f):
+        i = fmap.get(f)
+        return (r[i].strip()[:100] or None) if i is not None and i < len(r) else None
+
+    def split(r, f):
+        v = cell(r, f) or ""
+        if "/" in v:
+            a, b = v.split("/", 1)
+            return a.strip()[:100] or None, b.strip()[:100] or None
+        return None, None
+
+    def picks(r):
+        rt, rs = cell(r, "ram_type"), cell(r, "ram_size")
+        if not rt and not rs:
+            rt, rs = split(r, "ram")
+        st, ss = cell(r, "storage_type"), cell(r, "storage_size")
+        if not st and not ss:
+            st, ss = split(r, "storage")
+        return rt, rs, st, ss
+
+    def combo(p, rt, rs, st, ss):
+        return tuple((x or "").strip().lower() for x in (p.make, p.model, p.cpu, p.cpu_gen, rt, rs, st, ss))
+
+    existing = set()
+    for er, ep in (await db.execute(select(PMCalcRow, PMProduct).join(PMProduct, PMProduct.sku == PMCalcRow.sku))).all():
+        existing.add(combo(ep, er.ram_type, er.ram_size, er.storage_type, er.storage_size))
+
     good, missing_rows, missing_skus, blank = [], [], set(), 0
+    dup_rows, dup_skus = [], set()
     for idx, r in enumerate(body, start=2):
         sku = _calc_sku(r[si]) if si < len(r) else None
         if sku in known:
-            good.append((idx, sku, r))
+            pk = picks(r)
+            key = combo(prod_of[sku], *pk)
+            if key in existing:
+                dup_rows.append(r)
+                dup_skus.add(sku)
+                continue
+            existing.add(key)
+            good.append((idx, sku, r, pk))
         else:
             missing_rows.append(r)
             if sku:
@@ -928,42 +968,30 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
         up = PMCalcUpload(file_name=name, uploaded_by=current_user.username, row_count=len(good))
         db.add(up)
         await db.flush()
-        for idx, sku, r in good:
+        for idx, sku, r, (rt, rs, st, ss) in good:
             def g(f):
-                i = fmap.get(f)
-                return (r[i].strip()[:100] or None) if i is not None and i < len(r) else None
-
-            # A combined "RAM" / "Storage" column (e.g. "DDR4 / 8GB", as in the
-            # Product Master Export) is split into Type and Size.
-            def split(f):
-                i = fmap.get(f)
-                v = r[i].strip() if i is not None and i < len(r) else ""
-                if "/" in v:
-                    a, b = v.split("/", 1)
-                    return a.strip()[:100] or None, b.strip()[:100] or None
-                return None, None
-            rt, rs = g("ram_type"), g("ram_size")
-            if not rt and not rs:
-                rt, rs = split("ram")
-            st, ss = g("storage_type"), g("storage_size")
-            if not st and not ss:
-                st, ss = split("storage")
+                return cell(r, f)
             damaged = [col for col, i in pmap.items() if i < len(r) and _is_damaged(r[i])]
             db.add(PMCalcRow(upload_id=up.id, row_no=idx, sku=sku, make=g("make"), model=g("model"),
                              cpu=g("cpu"), cpu_gen=g("cpu_gen"), ram_type=rt, ram_size=rs,
                              storage_type=st, storage_size=ss, damaged_parts=",".join(damaged) or None))
         await audit(db, action="PM_CALC_UPLOADED", user=current_user, table_name="pm_calc_uploads",
                     record_id=str(up.id), new_value={"file": name, "rows": len(good),
-                                                     "rows_sku_not_found": len(missing_rows)},
+                                                     "rows_sku_not_found": len(missing_rows),
+                                                     "rows_already_added": len(dup_rows)},
                     request=request)
         await db.commit()
 
     out = {"ok": True, "added": len(good), "upload_id": str(up.id) if up else None,
-           "missing_rows": len(missing_rows), "missing_skus": len(missing_skus), "blank_skus": blank}
+           "missing_rows": len(missing_rows), "missing_skus": len(missing_skus), "blank_skus": blank,
+           "dup_rows": len(dup_rows), "dup_skus": len(dup_skus)}
+    width = len(header)
     if missing_rows:
-        width = len(header)
         rows = [list(r) + [""] * (width - len(r)) for r in missing_rows]
-        out["missing_file_name"], out["missing_file_b64"] = _calc_missing_file(name, header, rows)
+        out["missing_file_name"], out["missing_file_b64"] = _calc_missing_file(name, header, rows, "SKU_not_found")
+    if dup_rows:
+        rows = [list(r) + [""] * (width - len(r)) for r in dup_rows]
+        out["dup_file_name"], out["dup_file_b64"] = _calc_missing_file(name, header, rows, "already_added")
     return JSONResponse(out)
 
 
