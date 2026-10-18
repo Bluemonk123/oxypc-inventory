@@ -653,7 +653,8 @@ _CALC_HEAD = {"sku": "sku", "make": "make", "model": "model", "cpu": "cpu", "cpu
               "cpugeneration": "cpu_gen", "generation": "cpu_gen",
               "ramtype": "ram_type", "ramsize": "ram_size", "ramcapacity": "ram_size",
               "storagetype": "storage_type", "storagesize": "storage_size", "storagecapacity": "storage_size",
-              "ssdtype": "storage_type", "ssdsize": "storage_size"}
+              "ssdtype": "storage_type", "ssdsize": "storage_size",
+              "ram": "ram", "storage": "storage", "ssd": "storage"}
 _CALC_PART_HEAD = {"bazel": "bezel_price", "bezel": "bezel_price", "screen": "screen_price",
                    "hinge": "hinge_price", "hingecover": "hinge_cover_price", "touchpad": "touchpad_price",
                    "base": "base_part_price", "keyboard": "keyboard_price", "battery": "battery_price"}
@@ -840,15 +841,34 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
             i = fmap.get(f)
             return (r[i].strip()[:100] or None) if i is not None and i < len(r) else None
         sku = g("sku")
+        if sku and sku.startswith("=") :                       # ="123..." from the Export
+            sku = sku[1:]
+        if sku:
+            sku = sku.strip().strip('"').strip()
         if sku and sku.endswith(".0") and sku[:-2].isdigit():   # Excel number cell
             sku = sku[:-2]
         if not sku:
             no_sku += 1
             continue
+        # A combined "RAM" / "Storage" column (e.g. "DDR4 / 8GB", as in the
+        # Product Master Export) is split into Type and Size.
+        def split(f):
+            i = fmap.get(f)
+            v = r[i].strip() if i is not None and i < len(r) else ""
+            if "/" in v:
+                a, b = v.split("/", 1)
+                return a.strip()[:100] or None, b.strip()[:100] or None
+            return None, None
+        rt, rs = g("ram_type"), g("ram_size")
+        if not rt and not rs:
+            rt, rs = split("ram")
+        st, ss = g("storage_type"), g("storage_size")
+        if not st and not ss:
+            st, ss = split("storage")
         damaged = [col for col, i in pmap.items() if i < len(r) and _is_damaged(r[i])]
         db.add(PMCalcRow(upload_id=up.id, row_no=idx, sku=sku, make=g("make"), model=g("model"),
-                         cpu=g("cpu"), cpu_gen=g("cpu_gen"), ram_type=g("ram_type"), ram_size=g("ram_size"),
-                         storage_type=g("storage_type"), storage_size=g("storage_size"),
+                         cpu=g("cpu"), cpu_gen=g("cpu_gen"), ram_type=rt, ram_size=rs,
+                         storage_type=st, storage_size=ss,
                          damaged_parts=",".join(damaged) or None))
         n += 1
     if n == 0:

@@ -75,9 +75,9 @@
           </tr></thead>
           <tbody>
           {% for p in products %}
-            <tr data-id="{{ p.id }}" data-cpu="{{ p.cpu }}" data-ram="{{ (p.ram or '')|replace('/', ' / ') }}" data-sto="{{ (p.storage or '')|replace('/', ' / ') }}">
+            <tr data-id="{{ p.id }}" data-sku="{{ p.sku }}" data-cpu="{{ p.cpu }}" data-ram="{{ (p.ram or '')|replace('/', ' / ') }}" data-sto="{{ (p.storage or '')|replace('/', ' / ') }}">
               <td class="fw-semibold text-nowrap">{{ p.make }} / {{ p.model }} / {{ p.cpu }} / {{ p.cpu_gen }}
-                {% if p.sku %}<div class="small text-muted fw-normal font-monospace" title="SKU — use this in the Pricing Calculator upload">SKU: {{ p.sku }}</div>{% endif %}</td>
+                {% if p.sku %}<div class="small text-muted fw-normal font-monospace pm-sku" title="SKU — use this in the Pricing Calculator upload">SKU: {{ p.sku }}</div>{% endif %}</td>
               <td>{{ p.make }}</td><td>{{ p.model }}</td><td>{{ p.cpu }}</td><td>{{ p.cpu_gen }}</td>
               <td class="text-nowrap">{% if p.ram %}{{ p.ram|replace('/', ' / ') }}{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td><td class="text-nowrap">{% if p.storage %}{{ p.storage|replace('/', ' / ') }}{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
               <td>{{ money(p.ram_price) }}</td><td>{{ money(p.storage_price) }}</td>
@@ -275,7 +275,12 @@
   pmFillSelect('#pmFCpu', $pmRows.map(function () { return $(this).data('cpu'); }).get(), 'All CPUs');
   pmFillSelect('#pmFRam', $pmRows.map(function () { return $(this).attr('data-ram'); }).get(), 'All RAM Names');
   pmFillSelect('#pmFSto', $pmRows.map(function () { return $(this).attr('data-sto'); }).get(), 'All Storage Names');
-  pmTableTools(pmDt, { exportBtn: '#pmExport', filename: 'product_master', filters: [
+  // Export: SKU first (for the Pricing Calculator upload), then the table (2026-10-18)
+  $('#pmExport').on('click', function () {
+    pmExportCsv(pmDt, 'product_master', { skip: '.pm-sku',
+      prepend: [{ head: 'SKU', text: true, get: function (tr) { return tr.attr('data-sku'); } }] });
+  });
+  pmTableTools(pmDt, { filename: 'product_master', filters: [
     { el: '#pmFCpu', test: function (tr, v) { return String(tr.data('cpu')) === v; } },
     { el: '#pmFRam', test: function (tr, v) { return tr.attr('data-ram') === v; } },
     { el: '#pmFSto', test: function (tr, v) { return tr.attr('data-sto') === v; } },

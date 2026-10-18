@@ -54,7 +54,11 @@ window.pmTableTools = function (dt, cfg) {
   });
   if (cfg.exportBtn) $(cfg.exportBtn).on('click', function () { pmExportCsv(dt, cfg.filename || 'export'); });
 };
-window.pmExportCsv = function (dt, filename) {
+window.pmExportCsv = function (dt, filename, opts) {
+  // opts.prepend: [{ head: 'SKU', get: function (tr) { return '...'; }, text: true }]
+  //   extra first columns; text:true writes ="value" so Excel keeps long numbers.
+  // opts.skip: selector of elements inside cells to leave out of the cell text.
+  opts = opts || {};
   var heads = $(dt.table().header()).find('th').map(function () { return $.trim($(this).text()); }).get();
   var skip = heads.map(function (h) { return /^actions?$/i.test(h); });
   function cell(td) {
@@ -62,13 +66,19 @@ window.pmExportCsv = function (dt, filename) {
     if (ctl.length) return ctl.map(function () {
       return this.tagName === 'SELECT' ? ($(this).val() ? $(this).find('option:selected').text() : '') : this.value;
     }).get().join(' ');
+    $td = $td.clone();
+    if (opts.skip) $td.find(opts.skip).remove();
+    $td.find('.badge, div, br').after(' ');   // "Pricing Done Active", not "Pricing DoneActive"
     return $.trim($td.text().replace(/\s+/g, ' '));
   }
-  var rows = [heads.filter(function (_, i) { return !skip[i]; })];
+  var pre = opts.prepend || [];
+  var rows = [pre.map(function (c) { return c.head; }).concat(heads.filter(function (_, i) { return !skip[i]; }))];
   dt.rows({ search: 'applied', order: 'applied' }).nodes().each(function (tr) {
-    rows.push($(tr).children('td').map(function (i) { return skip[i] ? null : cell(this); }).get());
+    var first = pre.map(function (c) { var v = c.get($(tr)) || ''; return c.text && v ? { raw: '="' + v + '"' } : v; });
+    rows.push(first.concat($(tr).children('td').map(function (i) { return skip[i] ? null : cell(this); }).get()));
   });
   var csv = rows.map(function (r) { return r.map(function (v) {
+    if (v && v.raw) return v.raw;
     v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }).join(','); }).join('\r\n');
   var a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }));
