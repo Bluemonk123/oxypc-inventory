@@ -695,11 +695,11 @@ def _read_calc_file(name: str, raw: bytes) -> list[list]:
     return [[c.strip() for c in r] for r in csv.reader(io.StringIO(text))]
 
 
-async def _calc_view(db, upload_id) -> dict:
-    """Live-priced, grouped table for one upload."""
+async def _calc_view(db) -> dict:
+    """Live-priced, grouped table over every upload (2026-10-18)."""
     from decimal import Decimal as D
-    rows = (await db.execute(select(PMCalcRow).where(PMCalcRow.upload_id == upload_id)
-                             .order_by(PMCalcRow.row_no))).scalars().all()
+    rows = (await db.execute(select(PMCalcRow).join(PMCalcUpload, PMCalcUpload.id == PMCalcRow.upload_id)
+                             .order_by(PMCalcUpload.uploaded_at, PMCalcRow.row_no))).scalars().all()
     skus = {r.sku for r in rows if r.sku}
     prods = {p.sku: p for p in (await db.execute(select(PMProduct).where(PMProduct.sku.in_(skus)))).scalars()} if skus else {}
     rams, stos = await _hw_maps(db)
@@ -739,8 +739,8 @@ async def _calc_view(db, upload_id) -> dict:
         model = p.model if p else (r.model or "")
         cpu = p.cpu if p else (r.cpu or "")
         gen = p.cpu_gen if p else (r.cpu_gen or "")
-        # one line per Make + Model + CPU + CPU Gen + RAM + SSD
-        key = (make.lower(), model.lower(), cpu.lower(), gen.lower(), ram_name.lower(), sto_name.lower())
+        # one line per SKU + Make + Model + CPU + CPU Gen + RAM + SSD; a match adds to its Quantity
+        key = ((r.sku or '').lower(), make.lower(), model.lower(), cpu.lower(), gen.lower(), ram_name.lower(), sto_name.lower())
         g = groups.get(key)
         if g is None:
             g = groups[key] = {"sku": r.sku or "", "make": make, "model": model, "cpu": cpu, "cpu_gen": gen,
@@ -774,18 +774,9 @@ async def _calc_view(db, upload_id) -> dict:
 @router.get("/pricing-calculator", response_class=HTMLResponse)
 async def pricing_calculator_page(request: Request, db: AsyncSession = Depends(get_db),
                                   current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
-    uploads = (await db.execute(select(PMCalcUpload).order_by(PMCalcUpload.uploaded_at.desc()))).scalars().all()
-    sel = _uuid_or_none(request.query_params.get("upload")) or (uploads[0].id if uploads else None)
-    current = next((u for u in uploads if u.id == sel), None)
-    view = await _calc_view(db, current.id) if current else {"rows": [], "devices": 0}
-    names = {}
-    who = {u.uploaded_by for u in uploads if u.uploaded_by}
-    if who:
-        names = {u.username: (u.full_name or u.username) for u in
-                 (await db.execute(select(User).where(User.username.in_(who)))).scalars()}
     return templates.TemplateResponse("product_master/pricing_calculator.html", {
-        "request": request, "current_user": current_user, "uploads": uploads, "current": current,
-        "view": view, "user_names": names, "columns": CALC_COLUMNS,
+        "request": request, "current_user": current_user,
+        "view": await _calc_view(db), "columns": CALC_COLUMNS,
         "msg": request.query_params.get("success", ""), "err": request.query_params.get("error", ""),
     })
 
@@ -800,33 +791,31 @@ async def pricing_calculator_template(current_user: User = Depends(require_modul
 
 
 @router.post("/pricing-calculator/rows/delete")
-async def pricing_calculator_rows_delete(request: Request, upload_id: str = Form(""), row_ids: str = Form(""),
+async def pricing_calculator_rows_delete(request: Request, row_ids: str = Form(""),
                                          db: AsyncSession = Depends(get_db),
                                          current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
-    """Delete one table line of an upload (all its device rows). An upload left
-    with no rows is removed too (2026-10-18)."""
-    up = (await db.execute(select(PMCalcUpload).where(PMCalcUpload.id == _uuid_or_none(upload_id)))).scalar_one_or_none()
-    if not up:
-        return _err("Upload not found.", 404)
+    """Delete one table line (all its device rows, from any upload). An upload
+    left with no rows is removed too."""
     ids = [x for x in (_uuid_or_none(v) for v in row_ids.split(",")) if x]
-    rows = (await db.execute(select(PMCalcRow).where(PMCalcRow.upload_id == up.id,
-                                                     PMCalcRow.id.in_(ids)))).scalars().all() if ids else []
+    rows = (await db.execute(select(PMCalcRow).where(PMCalcRow.id.in_(ids)))).scalars().all() if ids else []
     if not rows:
         return _err("Nothing to delete.")
     # audit first — the rows are gone after commit
     await audit(db, action="PM_CALC_ROWS_DELETED", user=current_user, table_name="pm_calc_rows",
-                record_id=str(up.id), old_value={"file": up.file_name, "count": len(rows),
-                                                 "rows": [{"row": r.row_no, "sku": r.sku, "ram": f"{r.ram_type}/{r.ram_size}",
-                                                           "storage": f"{r.storage_type}/{r.storage_size}"} for r in rows]},
-                request=request)
+                record_id=str(rows[0].sku or ""), old_value={"count": len(rows),
+                    "rows": [{"upload": str(r.upload_id), "row": r.row_no, "sku": r.sku,
+                              "ram": f"{r.ram_type}/{r.ram_size}", "storage": f"{r.storage_type}/{r.storage_size}"}
+                             for r in rows]}, request=request)
+    per_upload = {}
     for r in rows:
+        per_upload[r.upload_id] = per_upload.get(r.upload_id, 0) + 1
         await db.delete(r)
-    up.row_count = max(0, (up.row_count or 0) - len(rows))
-    gone = up.row_count == 0
-    if gone:
-        await db.delete(up)
+    for up in (await db.execute(select(PMCalcUpload).where(PMCalcUpload.id.in_(list(per_upload))))).scalars():
+        up.row_count = max(0, (up.row_count or 0) - per_upload[up.id])
+        if up.row_count == 0:
+            await db.delete(up)
     await db.commit()
-    return JSONResponse({"ok": True, "deleted": len(rows), "upload_removed": gone})
+    return JSONResponse({"ok": True, "deleted": len(rows)})
 
 
 def _calc_sku(v: str):
@@ -911,11 +900,6 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
     if file_skus:
         known = set((await db.execute(select(PMProduct.sku).where(PMProduct.sku.in_(file_skus)))).scalars().all())
 
-    # A row is "already added" when its Make + Model + CPU + CPU Gen (from
-    # Product Master, by SKU) + RAM + SSD match a row already in the
-    # calculator, or an earlier row of this file (2026-10-18).
-    prod_of = {p.sku: p for p in (await db.execute(select(PMProduct).where(PMProduct.sku.in_(known)))).scalars()} if known else {}
-
     def cell(r, f):
         i = fmap.get(f)
         return (r[i].strip()[:100] or None) if i is not None and i < len(r) else None
@@ -936,26 +920,13 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
             st, ss = split(r, "storage")
         return rt, rs, st, ss
 
-    def combo(p, rt, rs, st, ss):
-        return tuple((x or "").strip().lower() for x in (p.make, p.model, p.cpu, p.cpu_gen, rt, rs, st, ss))
-
-    existing = set()
-    for er, ep in (await db.execute(select(PMCalcRow, PMProduct).join(PMProduct, PMProduct.sku == PMCalcRow.sku))).all():
-        existing.add(combo(ep, er.ram_type, er.ram_size, er.storage_type, er.storage_size))
-
+    # Every row with an available SKU is added; a row matching an existing
+    # SKU + Make/Model/CPU/Gen + RAM + SSD just adds to that line's Quantity.
     good, missing_rows, missing_skus, blank = [], [], set(), 0
-    dup_rows, dup_skus = [], set()
     for idx, r in enumerate(body, start=2):
         sku = _calc_sku(r[si]) if si < len(r) else None
         if sku in known:
-            pk = picks(r)
-            key = combo(prod_of[sku], *pk)
-            if key in existing:
-                dup_rows.append(r)
-                dup_skus.add(sku)
-                continue
-            existing.add(key)
-            good.append((idx, sku, r, pk))
+            good.append((idx, sku, r, picks(r)))
         else:
             missing_rows.append(r)
             if sku:
@@ -977,21 +948,16 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
                              storage_type=st, storage_size=ss, damaged_parts=",".join(damaged) or None))
         await audit(db, action="PM_CALC_UPLOADED", user=current_user, table_name="pm_calc_uploads",
                     record_id=str(up.id), new_value={"file": name, "rows": len(good),
-                                                     "rows_sku_not_found": len(missing_rows),
-                                                     "rows_already_added": len(dup_rows)},
+                                                     "rows_sku_not_found": len(missing_rows)},
                     request=request)
         await db.commit()
 
     out = {"ok": True, "added": len(good), "upload_id": str(up.id) if up else None,
-           "missing_rows": len(missing_rows), "missing_skus": len(missing_skus), "blank_skus": blank,
-           "dup_rows": len(dup_rows), "dup_skus": len(dup_skus)}
+           "missing_rows": len(missing_rows), "missing_skus": len(missing_skus), "blank_skus": blank}
     width = len(header)
     if missing_rows:
         rows = [list(r) + [""] * (width - len(r)) for r in missing_rows]
         out["missing_file_name"], out["missing_file_b64"] = _calc_missing_file(name, header, rows, "SKU_not_found")
-    if dup_rows:
-        rows = [list(r) + [""] * (width - len(r)) for r in dup_rows]
-        out["dup_file_name"], out["dup_file_b64"] = _calc_missing_file(name, header, rows, "already_added")
     return JSONResponse(out)
 
 

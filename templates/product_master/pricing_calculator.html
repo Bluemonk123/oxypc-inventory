@@ -14,22 +14,13 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-calculator me-2"></i>Pricing Calculator</span>
     <div class="d-flex align-items-center flex-wrap gap-2">
-      {% if uploads %}
-      <select class="form-select form-select-sm w-auto" id="pcUpload" title="Uploaded file">
-        {% for u in uploads %}
-        <option value="{{ u.id }}" {% if current and u.id == current.id %}selected{% endif %}>
-          {{ u.file_name }} · {{ u.uploaded_at.strftime('%d-%m-%Y %H:%M') }} · {{ user_names.get(u.uploaded_by, u.uploaded_by or '') }} · {{ u.row_count }} rows
-        </option>
-        {% endfor %}
-      </select>
       <button type="button" class="btn btn-sm btn-outline-success" id="pcExport"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
-      {% endif %}
       <a href="/product-master/pricing-calculator/template" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download me-1"></i>Template</a>
       <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#pcUploadModal"><i class="bi bi-upload me-1"></i>Upload File</button>
     </div>
   </div>
   <div class="card-body">
-    {% if current %}
+    {% if view.devices %}
     <div class="small text-muted mb-2">
       {{ view.devices }} device(s) in {{ view.rows|length }} group(s).
       Selling Price = (Base Price + RAM Price + Storage Price) − prices of the parts marked Damage / Not Working.
@@ -92,17 +83,13 @@
 
 {# SKUs in the file that are not in Product Master (2026-10-18) #}
 <div class="modal fade" id="pcMissingModal" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-  <div class="modal-header bg-warning bg-opacity-10"><h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>Upload result</h5>
+  <div class="modal-header bg-warning bg-opacity-10"><h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>SKU Alerts</h5>
     <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
   <div class="modal-body">
     <div class="small text-muted mb-3" id="pcMissingInfo"></div>
     <div id="pcMissBlock" class="mb-3">
       <p class="mb-2" id="pcMissingMsg"></p>
       <a href="#" class="btn btn-sm btn-outline-primary" id="pcMissingLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcMissingName">Download file</span></a>
-    </div>
-    <div id="pcDupBlock">
-      <p class="mb-2" id="pcDupMsg"></p>
-      <a href="#" class="btn btn-sm btn-outline-secondary" id="pcDupLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcDupName">Download file</span></a>
     </div>
   </div>
   <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button></div>
@@ -115,22 +102,20 @@
 (function () {
   // SKU column kept for Export but hidden on screen (2026-10-18)
   var dt = initGlobalTable('#pcTable', { order: [[1, 'asc']], columnDefs: [{ targets: 0, visible: false }],
-    language: { emptyTable: {{ ('No rows in this upload.' if current else 'No file uploaded yet. Use Upload File to add one.')|tojson }} } });
+    language: { emptyTable: 'No file uploaded yet. Use Upload File to add one.' } });
   $('#pcExport').on('click', function () { pmExportCsv(dt, 'pricing_calculator', { prepend: [{ head: 'SKU', text: true, get: function (tr) { return tr.attr('data-sku'); } }] }); });
   // Delete a line (all its devices) from this upload (2026-10-18)
   $(document).on('click', '.pc-del', function () {
     var b = $(this), qty = b.data('qty');
     if (!confirm('Delete ' + b.data('name') + ' (' + qty + ' device' + (qty == 1 ? '' : 's') + ') from this upload?')) return;
     b.prop('disabled', true);
-    pmPost('/product-master/pricing-calculator/rows/delete', { upload_id: {{ (current.id|string if current else '')|tojson }}, row_ids: b.data('ids') })
+    pmPost('/product-master/pricing-calculator/rows/delete', { row_ids: b.data('ids') })
       .then(function (j) {
         if (!j.ok) { b.prop('disabled', false); showFlash('danger', j.error); return; }
-        if (j.upload_removed) { location.href = '/product-master/pricing-calculator'; return; }
         dt.row(b.closest('tr')).remove().draw(false);
         showFlash('success', j.deleted + ' device row(s) deleted.');
       });
   });
-  $('#pcUpload').on('change', function () { location.href = '/product-master/pricing-calculator?upload=' + this.value; });
   // Upload by fetch so SKUs that are not in Product Master can be reported in a
   // popup with a download of just those rows (2026-10-18).
   var reloadTo = null;
@@ -144,11 +129,11 @@
         if (!j.ok) { showFlash('danger', j.error || 'Upload failed.'); return; }
         bootstrap.Modal.getInstance(document.getElementById('pcUploadModal')).hide();
         form.reset();
-        var url = '/product-master/pricing-calculator' + (j.upload_id ? '?upload=' + j.upload_id + '&success=' +
+        var url = '/product-master/pricing-calculator' + (j.added ? '?success=' +
           encodeURIComponent(j.added + ' row(s) added.') : '');
-        if (!j.missing_rows && !j.dup_rows) { location.href = url; return; }
-        reloadTo = j.upload_id ? url : null;
-        var left = j.missing_rows + j.dup_rows;
+        if (!j.missing_rows) { location.href = url; return; }
+        reloadTo = j.added ? url : null;
+        var left = j.missing_rows;
         $('#pcMissingInfo').text((j.added ? j.added + ' row(s) were added. ' : 'No rows were added. ') +
           left + ' row(s) were left out.');
         function fileLink(id, nameId, b64, fname) {
@@ -165,12 +150,6 @@
           $('#pcMissingMsg').text('These SKU ' + j.missing_skus + ' from file are not available so please check and reupload the file.' +
             (j.blank_skus ? ' (' + j.blank_skus + ' row(s) had no SKU.)' : ''));
           fileLink('pcMissingLink', 'pcMissingName', j.missing_file_b64, j.missing_file_name);
-        }
-        $('#pcDupBlock').toggle(!!j.dup_rows);
-        if (j.dup_rows) {
-          $('#pcDupMsg').text('These SKU ' + j.dup_skus + ' are already added (same Make, Model, CPU, CPU Gen, RAM and SSD), so ' +
-            j.dup_rows + ' row(s) were not added again.');
-          fileLink('pcDupLink', 'pcDupName', j.dup_file_b64, j.dup_file_name);
         }
         new bootstrap.Modal(document.getElementById('pcMissingModal')).show();
       })
