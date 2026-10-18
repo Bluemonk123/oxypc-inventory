@@ -38,7 +38,7 @@
     <table id="pcTable" class="table table-hover mb-0" style="width:100%">
       <thead class="table-dark"><tr>
         <th>SKU</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th>RAM</th><th>SSD</th>
-        <th>Quantity</th><th>Selling Price</th><th>Avg Price/Quantity</th>
+        <th>Quantity</th><th>Selling Price</th><th>Avg Price/Quantity</th><th>Action</th>
       </tr></thead>
       <tbody>
       {% for g in view.rows %}
@@ -58,6 +58,11 @@
             {% elif g.damaged %}<div class="small text-muted text-wrap" style="max-width:220px">Less {{ g.damaged }}</div>{% endif %}
           </td>
           <td data-order="{{ g.avg if g.avg is not none else -1 }}">{{ money(g.avg) }}</td>
+          <td><div class="d-flex justify-content-center">
+            <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 pc-del" title="Delete"
+                    data-ids="{{ g.row_ids|join(',') }}" data-qty="{{ g.qty }}"
+                    data-name="{{ g.sku }} · {{ g.make }} {{ g.model }} · {{ g.ram }} · {{ g.ssd }}"><i class="bi bi-trash3"></i></button>
+          </div></td>
         </tr>
       {% endfor %}
       </tbody>
@@ -105,6 +110,19 @@
   var dt = initGlobalTable('#pcTable', { order: [[1, 'asc']],
     language: { emptyTable: {{ ('No rows in this upload.' if current else 'No file uploaded yet. Use Upload File to add one.')|tojson }} } });
   $('#pcExport').on('click', function () { pmExportCsv(dt, 'pricing_calculator'); });
+  // Delete a line (all its devices) from this upload (2026-10-18)
+  $(document).on('click', '.pc-del', function () {
+    var b = $(this), qty = b.data('qty');
+    if (!confirm('Delete ' + b.data('name') + ' (' + qty + ' device' + (qty == 1 ? '' : 's') + ') from this upload?')) return;
+    b.prop('disabled', true);
+    pmPost('/product-master/pricing-calculator/rows/delete', { upload_id: {{ (current.id|string if current else '')|tojson }}, row_ids: b.data('ids') })
+      .then(function (j) {
+        if (!j.ok) { b.prop('disabled', false); showFlash('danger', j.error); return; }
+        if (j.upload_removed) { location.href = '/product-master/pricing-calculator'; return; }
+        dt.row(b.closest('tr')).remove().draw(false);
+        showFlash('success', j.deleted + ' device row(s) deleted.');
+      });
+  });
   $('#pcUpload').on('change', function () { location.href = '/product-master/pricing-calculator?upload=' + this.value; });
   // Upload by fetch so SKUs that are not in Product Master can be reported in a
   // popup with a download of just those rows (2026-10-18).

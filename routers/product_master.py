@@ -746,9 +746,10 @@ async def _calc_view(db, upload_id) -> dict:
             g = groups[key] = {"sku": r.sku or "", "make": make, "model": model, "cpu": cpu, "cpu_gen": gen,
                                "ram": ram_name.replace("/", " / "), "ssd": sto_name.replace("/", " / "),
                                "qty": 0, "total": D("0"), "pending": [], "sku_missing": False,
-                               "skus": [], "damaged": {}}
+                               "skus": [], "damaged": {}, "row_ids": []}
             order.append(key)
         g["qty"] += 1
+        g["row_ids"].append(str(r.id))
         if r.sku and r.sku not in g["skus"]:
             g["skus"].append(r.sku)
         if p is None:
@@ -796,6 +797,36 @@ async def pricing_calculator_template(current_user: User = Depends(require_modul
                       + ["Damaged" if lbl == "Screen" else "" for _, lbl in PART_FIELDS])
     return Response("﻿" + head + "\r\n" + sample + "\r\n", media_type="text/csv",
                     headers={"Content-Disposition": 'attachment; filename="pricing_calculator_template.csv"'})
+
+
+@router.post("/pricing-calculator/rows/delete")
+async def pricing_calculator_rows_delete(request: Request, upload_id: str = Form(""), row_ids: str = Form(""),
+                                         db: AsyncSession = Depends(get_db),
+                                         current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
+    """Delete one table line of an upload (all its device rows). An upload left
+    with no rows is removed too (2026-10-18)."""
+    up = (await db.execute(select(PMCalcUpload).where(PMCalcUpload.id == _uuid_or_none(upload_id)))).scalar_one_or_none()
+    if not up:
+        return _err("Upload not found.", 404)
+    ids = [x for x in (_uuid_or_none(v) for v in row_ids.split(",")) if x]
+    rows = (await db.execute(select(PMCalcRow).where(PMCalcRow.upload_id == up.id,
+                                                     PMCalcRow.id.in_(ids)))).scalars().all() if ids else []
+    if not rows:
+        return _err("Nothing to delete.")
+    # audit first — the rows are gone after commit
+    await audit(db, action="PM_CALC_ROWS_DELETED", user=current_user, table_name="pm_calc_rows",
+                record_id=str(up.id), old_value={"file": up.file_name, "count": len(rows),
+                                                 "rows": [{"row": r.row_no, "sku": r.sku, "ram": f"{r.ram_type}/{r.ram_size}",
+                                                           "storage": f"{r.storage_type}/{r.storage_size}"} for r in rows]},
+                request=request)
+    for r in rows:
+        await db.delete(r)
+    up.row_count = max(0, (up.row_count or 0) - len(rows))
+    gone = up.row_count == 0
+    if gone:
+        await db.delete(up)
+    await db.commit()
+    return JSONResponse({"ok": True, "deleted": len(rows), "upload_removed": gone})
 
 
 def _calc_sku(v: str):
