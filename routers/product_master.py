@@ -14,8 +14,8 @@ displays what the server returns.
 import uuid as _uuid
 from decimal import Decimal, InvalidOperation
 
-from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import APIRouter, Depends, Form, Request, UploadFile, File
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy import select, func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -27,7 +27,7 @@ from models.user import User
 from models.product_master import (
     PMDropdownValue, HWRam, HWStorage, PMProduct,
     DROPDOWN_CATEGORIES, DROPDOWN_LABELS, DROPDOWN_PARENT, PART_FIELDS,
-    build_product_name, parts_done, product_figures,
+    build_product_name, parts_done, product_figures, new_sku, PMCalcUpload, PMCalcRow,
     PMCompetitiveList, PMCompetitorPrice, COMPETITIVE_METHODS, COMPETITIVE_METHOD_KEY,
     competitive_method, recompute_sell_prices,
 )
@@ -132,7 +132,7 @@ def _product_dict(p: PMProduct, ram, sto) -> dict:
     ram_pick = _pick_name(p.ram_type, p.ram_size)
     sto_pick = _pick_name(p.storage_type, p.storage_size)
     return {
-        "id": str(p.id), "product_name": p.product_name,
+        "id": str(p.id), "product_name": p.product_name, "sku": p.sku or "",
         "make": p.make, "model": p.model, "cpu": p.cpu, "cpu_gen": p.cpu_gen,
         # RAM / Storage: the saved pick, priced or not (2026-10-18)
         "ram_id": str(ram.id) if ram else "", "ram": ram_pick,
@@ -326,7 +326,8 @@ async def product_save(request: Request,
     else:
         if dup:
             return _err(f'Product "{name}" already exists.')
-        p = PMProduct(created_by=current_user.username, **values)
+        taken = set((await db.execute(select(PMProduct.sku).where(PMProduct.sku.isnot(None)))).scalars().all())
+        p = PMProduct(created_by=current_user.username, sku=new_sku(taken), **values)
         db.add(p)
         await db.flush()
         await audit(db, action="PM_PRODUCT_ADDED", user=current_user, table_name="pm_products",
@@ -635,13 +636,231 @@ async def hardware_delete(kind: str, item_id: str, request: Request, db: AsyncSe
 
 # ── Pricing Calculator page (2026-10-18) ──────────────────────────────────────
 # OFF by default for every role (DEFAULT_DISABLED_MODULES); admin always sees it.
+#
+# Upload a file of devices (SKU, Make, Model, CPU, CPU Gen, RAM Type/Size,
+# Storage Type/Size, plus optional part columns). Only the file's values are
+# stored (pm_calc_uploads / pm_calc_rows); every price is worked out live:
+#   Selling Price = (Base Price + RAM Price + Storage Price)
+#                   - (price of every part the file marks Damage / Not Working)
+#   Base Price    = Product Master Base Price of the SKU
+#   RAM / Storage = Hardware price of "<Type>/<Size>" from the file
+#   Part prices   = Spare Parts prices of the SKU
+# Anything missing shows Pending and fills in once it is priced.
+
+CALC_COLUMNS = ["SKU", "Make", "Model", "CPU", "CPU Gen", "Ram Type", "Ram Size",
+                "Storage Type", "Storage Size"] + [label for _, label in PART_FIELDS]
+_CALC_HEAD = {"sku": "sku", "make": "make", "model": "model", "cpu": "cpu", "cpugen": "cpu_gen",
+              "cpugeneration": "cpu_gen", "generation": "cpu_gen",
+              "ramtype": "ram_type", "ramsize": "ram_size", "ramcapacity": "ram_size",
+              "storagetype": "storage_type", "storagesize": "storage_size", "storagecapacity": "storage_size",
+              "ssdtype": "storage_type", "ssdsize": "storage_size"}
+_CALC_PART_HEAD = {"bazel": "bezel_price", "bezel": "bezel_price", "screen": "screen_price",
+                   "hinge": "hinge_price", "hingecover": "hinge_cover_price", "touchpad": "touchpad_price",
+                   "base": "base_part_price", "keyboard": "keyboard_price", "battery": "battery_price"}
+_PART_LABEL = dict(PART_FIELDS)
+
+
+def _norm_head(h) -> str:
+    import re
+    k = re.sub(r"[^a-z0-9]", "", str(h or "").lower())
+    for suf in ("price", "status", "condition"):
+        if k.endswith(suf) and k[:-len(suf)] in _CALC_PART_HEAD:
+            k = k[:-len(suf)]
+    return k
+
+
+def _is_damaged(v) -> bool:
+    import re
+    return re.sub(r"[\s_\-]", "", str(v or "").lower()) in ("damage", "damaged", "notworking")
+
+
+def _read_calc_file(name: str, raw: bytes) -> list[list]:
+    """File -> list of rows (first row = headers). CSV (UTF-8, falling back to
+    Windows-1252) or Excel .xlsx."""
+    import csv, io
+    if name.lower().endswith((".xlsx", ".xlsm")):
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        ws = wb.worksheets[0]
+        return [[("" if c is None else str(c).strip()) for c in r] for r in ws.iter_rows(values_only=True)]
+    for enc in ("utf-8-sig", "cp1252"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        raise ValueError("Could not read the file's text encoding. Save it as CSV (UTF-8) or Excel.")
+    return [[c.strip() for c in r] for r in csv.reader(io.StringIO(text))]
+
+
+async def _calc_view(db, upload_id) -> dict:
+    """Live-priced, grouped table for one upload."""
+    from decimal import Decimal as D
+    rows = (await db.execute(select(PMCalcRow).where(PMCalcRow.upload_id == upload_id)
+                             .order_by(PMCalcRow.row_no))).scalars().all()
+    skus = {r.sku for r in rows if r.sku}
+    prods = {p.sku: p for p in (await db.execute(select(PMProduct).where(PMProduct.sku.in_(skus)))).scalars()} if skus else {}
+    rams, stos = await _hw_maps(db)
+    groups, order = {}, []
+    for r in rows:
+        p = prods.get(r.sku)
+        pending, parts_used = [], []
+        if p is None:
+            pending.append("SKU not found in Product Master")
+            base = None
+        else:
+            pram, psto = _resolve(p, rams, stos)
+            base = product_figures(p, pram.ram_price if pram else None, psto.storage_price if psto else None)["base_price"]
+            if base is None:
+                pending.append("Base Price")
+        ram_name = f"{r.ram_type}/{r.ram_size}" if r.ram_type and r.ram_size else (r.ram_type or r.ram_size or "")
+        sto_name = f"{r.storage_type}/{r.storage_size}" if r.storage_type and r.storage_size else (r.storage_type or r.storage_size or "")
+        hr = rams.get(ram_name.lower()) if r.ram_type and r.ram_size else None
+        hs = stos.get(sto_name.lower()) if r.storage_type and r.storage_size else None
+        if hr is None:
+            pending.append("RAM Price")
+        if hs is None:
+            pending.append("Storage Price")
+        deduct = D("0")
+        for col in [c for c in (r.damaged_parts or "").split(",") if c]:
+            v = getattr(p, col, None) if p is not None else None
+            parts_used.append(_PART_LABEL.get(col, col))
+            if v is None:
+                if p is not None:
+                    pending.append(f"{_PART_LABEL.get(col, col)} Price")
+            else:
+                deduct += D(v)
+        unit = None
+        if not pending:
+            unit = (D(base) + D(hr.ram_price) + D(hs.storage_price) - deduct).quantize(D("0.01"))
+        make = p.make if p else (r.make or "")
+        model = p.model if p else (r.model or "")
+        cpu = p.cpu if p else (r.cpu or "")
+        gen = p.cpu_gen if p else (r.cpu_gen or "")
+        key = (make.lower(), model.lower(), cpu.lower(), gen.lower(), ram_name.lower(), sto_name.lower())
+        g = groups.get(key)
+        if g is None:
+            g = groups[key] = {"make": make, "model": model, "cpu": cpu, "cpu_gen": gen,
+                               "ram": ram_name.replace("/", " / "), "ssd": sto_name.replace("/", " / "),
+                               "qty": 0, "total": D("0"), "pending": [], "sku_missing": False,
+                               "skus": [], "damaged": {}}
+            order.append(key)
+        g["qty"] += 1
+        if r.sku and r.sku not in g["skus"]:
+            g["skus"].append(r.sku)
+        if p is None:
+            g["sku_missing"] = True
+        for x in pending:
+            if x not in g["pending"]:
+                g["pending"].append(x)
+        for x in parts_used:
+            g["damaged"][x] = g["damaged"].get(x, 0) + 1
+        if unit is not None:
+            g["total"] += unit
+    out = []
+    for k in order:
+        g = groups[k]
+        done = not g["pending"]
+        out.append({**g, "selling": float(g["total"]) if done else None,
+                    "avg": float((g["total"] / g["qty"]).quantize(D("0.01"))) if done and g["qty"] else None,
+                    "damaged": ", ".join(f"{n} ×{c}" for n, c in g["damaged"].items())})
+    return {"rows": out, "devices": len(rows)}
+
 
 @router.get("/pricing-calculator", response_class=HTMLResponse)
-async def pricing_calculator_page(request: Request,
+async def pricing_calculator_page(request: Request, db: AsyncSession = Depends(get_db),
                                   current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
+    uploads = (await db.execute(select(PMCalcUpload).order_by(PMCalcUpload.uploaded_at.desc()))).scalars().all()
+    sel = _uuid_or_none(request.query_params.get("upload")) or (uploads[0].id if uploads else None)
+    current = next((u for u in uploads if u.id == sel), None)
+    view = await _calc_view(db, current.id) if current else {"rows": [], "devices": 0}
+    names = {}
+    who = {u.uploaded_by for u in uploads if u.uploaded_by}
+    if who:
+        names = {u.username: (u.full_name or u.username) for u in
+                 (await db.execute(select(User).where(User.username.in_(who)))).scalars()}
     return templates.TemplateResponse("product_master/pricing_calculator.html", {
-        "request": request, "current_user": current_user,
+        "request": request, "current_user": current_user, "uploads": uploads, "current": current,
+        "view": view, "user_names": names, "columns": CALC_COLUMNS,
+        "msg": request.query_params.get("success", ""), "err": request.query_params.get("error", ""),
     })
+
+
+@router.get("/pricing-calculator/template")
+async def pricing_calculator_template(current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
+    head = ",".join(CALC_COLUMNS)
+    sample = ",".join(["123456789012", "HP", "EliteBook 840 G5", "i5", "8th", "DDR4", "8GB", "SSD", "256GB"]
+                      + ["Damaged" if lbl == "Screen" else "" for _, lbl in PART_FIELDS])
+    return Response("﻿" + head + "\r\n" + sample + "\r\n", media_type="text/csv",
+                    headers={"Content-Disposition": 'attachment; filename="pricing_calculator_template.csv"'})
+
+
+@router.post("/pricing-calculator/upload")
+async def pricing_calculator_upload(request: Request, file: UploadFile = File(...),
+                                    db: AsyncSession = Depends(get_db),
+                                    current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
+    from urllib.parse import quote
+    def back(**kw):
+        from fastapi.responses import RedirectResponse
+        q = "&".join(f"{k}={quote(str(v))}" for k, v in kw.items())
+        return RedirectResponse(f"/product-master/pricing-calculator?{q}", status_code=303)
+    name = (file.filename or "upload").strip()[:255]
+    if not name.lower().endswith((".csv", ".xlsx", ".xlsm")):
+        return back(error="Upload a .csv or .xlsx file.")
+    raw = await file.read()
+    if len(raw) > 10 * 1024 * 1024:
+        return back(error="The file is larger than 10 MB.")
+    try:
+        table = _read_calc_file(name, raw)
+    except Exception as e:  # noqa: BLE001 — bad workbook / encoding
+        return back(error=f"Could not read the file: {e}")
+    table = [r for r in table if any(c for c in r)]
+    if not table:
+        return back(error="The file is empty.")
+    heads = [_norm_head(h) for h in table[0]]
+    fmap, pmap = {}, {}
+    for i, h in enumerate(heads):
+        if h in _CALC_HEAD and _CALC_HEAD[h] not in fmap:
+            fmap[_CALC_HEAD[h]] = i
+        elif h in _CALC_PART_HEAD and _CALC_PART_HEAD[h] not in pmap:
+            pmap[_CALC_PART_HEAD[h]] = i
+    if "sku" not in fmap:
+        return back(error="The file needs a SKU column. Download the template for the expected columns.")
+    body = table[1:]
+    if len(body) > 20000:
+        return back(error="The file has more than 20,000 rows.")
+    up = PMCalcUpload(file_name=name, uploaded_by=current_user.username, row_count=0)
+    db.add(up)
+    await db.flush()
+    n = 0
+    no_sku = 0
+    for idx, r in enumerate(body, start=2):
+        def g(f):
+            i = fmap.get(f)
+            return (r[i].strip()[:100] or None) if i is not None and i < len(r) else None
+        sku = g("sku")
+        if sku and sku.endswith(".0") and sku[:-2].isdigit():   # Excel number cell
+            sku = sku[:-2]
+        if not sku:
+            no_sku += 1
+            continue
+        damaged = [col for col, i in pmap.items() if i < len(r) and _is_damaged(r[i])]
+        db.add(PMCalcRow(upload_id=up.id, row_no=idx, sku=sku, make=g("make"), model=g("model"),
+                         cpu=g("cpu"), cpu_gen=g("cpu_gen"), ram_type=g("ram_type"), ram_size=g("ram_size"),
+                         storage_type=g("storage_type"), storage_size=g("storage_size"),
+                         damaged_parts=",".join(damaged) or None))
+        n += 1
+    if n == 0:
+        await db.rollback()
+        return back(error="No rows with a SKU were found in the file.")
+    up.row_count = n
+    await audit(db, action="PM_CALC_UPLOADED", user=current_user, table_name="pm_calc_uploads",
+                record_id=str(up.id), new_value={"file": name, "rows": n, "skipped_no_sku": no_sku},
+                request=request)
+    await db.commit()
+    msg = f"{n} row(s) uploaded from {name}." + (f" {no_sku} row(s) without a SKU were skipped." if no_sku else "")
+    return back(upload=up.id, success=msg)
 
 
 # ── Product Pricing page ──────────────────────────────────────────────────────

@@ -76,7 +76,8 @@
           <tbody>
           {% for p in products %}
             <tr data-id="{{ p.id }}" data-cpu="{{ p.cpu }}" data-ram="{{ (p.ram or '')|replace('/', ' / ') }}" data-sto="{{ (p.storage or '')|replace('/', ' / ') }}">
-              <td class="fw-semibold text-nowrap">{{ p.make }} / {{ p.model }} / {{ p.cpu }} / {{ p.cpu_gen }}</td>
+              <td class="fw-semibold text-nowrap">{{ p.make }} / {{ p.model }} / {{ p.cpu }} / {{ p.cpu_gen }}
+                {% if p.sku %}<div class="small text-muted fw-normal font-monospace" title="SKU — use this in the Pricing Calculator upload">SKU: {{ p.sku }}</div>{% endif %}</td>
               <td>{{ p.make }}</td><td>{{ p.model }}</td><td>{{ p.cpu }}</td><td>{{ p.cpu_gen }}</td>
               <td class="text-nowrap">{% if p.ram %}{{ p.ram|replace('/', ' / ') }}{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td><td class="text-nowrap">{% if p.storage %}{{ p.storage|replace('/', ' / ') }}{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
               <td>{{ money(p.ram_price) }}</td><td>{{ money(p.storage_price) }}</td>

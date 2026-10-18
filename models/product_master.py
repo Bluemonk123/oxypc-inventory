@@ -114,6 +114,9 @@ class PMProduct(Base):
     ram_size = Column(String(100), nullable=True)
     storage_type = Column(String(100), nullable=True)
     storage_size = Column(String(100), nullable=True)
+    # Schema v5 (approved 2026-10-18): short unique 12-digit SKU, used by the
+    # Pricing Calculator upload to find the product.
+    sku = Column(String(12), nullable=True, unique=True, index=True)
     product_price = Column(Numeric(12, 2), nullable=True)
     bezel_price = Column(Numeric(12, 2), nullable=True)
     screen_price = Column(Numeric(12, 2), nullable=True)
@@ -127,6 +130,16 @@ class PMProduct(Base):
     created_by = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=app_now)
     updated_at = Column(DateTime, default=app_now, onupdate=app_now)
+
+
+def new_sku(taken: set) -> str:
+    """A random 12-digit SKU (no leading zero) not in `taken`; adds it there."""
+    import secrets
+    while True:
+        v = str(secrets.randbelow(9 * 10**11) + 10**11)
+        if v not in taken:
+            taken.add(v)
+            return v
 
 
 def build_product_name(make, model, cpu, cpu_gen) -> str:
@@ -204,6 +217,9 @@ async def migrate_pm_products_v2(db) -> None:
     from sqlalchemy import text, select
     await db.execute(text("ALTER TABLE pm_products ALTER COLUMN ram_id DROP NOT NULL"))
     await db.execute(text("ALTER TABLE pm_products ALTER COLUMN storage_id DROP NOT NULL"))
+    # v5 (2026-10-18): 12-digit SKU — column, unique index, backfill
+    await db.execute(text("ALTER TABLE pm_products ADD COLUMN IF NOT EXISTS sku VARCHAR(12)"))
+    await db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_pm_products_sku ON pm_products (sku)"))
     # v4 (2026-10-18): saved RAM / Storage picks; backfilled from linked rows
     for col in ("ram_type", "ram_size", "storage_type", "storage_size"):
         await db.execute(text(f"ALTER TABLE pm_products ADD COLUMN IF NOT EXISTS {col} VARCHAR(100)"))
@@ -214,6 +230,10 @@ async def migrate_pm_products_v2(db) -> None:
         "UPDATE pm_products p SET storage_type = s.storage_category, storage_size = s.storage_capacity "
         "FROM hw_storage s WHERE p.storage_id = s.id AND p.storage_type IS NULL AND p.storage_size IS NULL"))
     rows = (await db.execute(select(PMProduct))).scalars().all()
+    used_skus = {p.sku for p in rows if p.sku}
+    for p in rows:
+        if not p.sku:
+            p.sku = new_sku(used_skus)
     taken = {p.product_name.lower() for p in rows}
     for p in rows:
         new = build_product_name(p.make, p.model, p.cpu, p.cpu_gen)
@@ -383,3 +403,38 @@ async def sync_pm_from_staging_once(db) -> str:
     await db.commit()
     return (f"{added} added, {renamed} renamed, {len(gone)} removed dropdown value(s); "
             f"{lists_added} competitive list(s) added; method={method}")
+
+
+# ── Pricing Calculator uploads (schema v5, approved 2026-10-18) ───────────────
+# Only what the file said is stored. Every price is worked out live from
+# Product Master / Spare Parts / Hardware, so a Pending value fills in as soon
+# as it is priced there.
+
+class PMCalcUpload(Base):
+    __tablename__ = "pm_calc_uploads"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    file_name = Column(String(255), nullable=False)
+    row_count = Column(Integer, nullable=False, default=0)
+    uploaded_by = Column(String(50), nullable=True)
+    uploaded_at = Column(DateTime, default=app_now, nullable=False)
+
+
+class PMCalcRow(Base):
+    __tablename__ = "pm_calc_rows"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    upload_id = Column(UUID(as_uuid=True), ForeignKey("pm_calc_uploads.id", ondelete="CASCADE"),
+                       nullable=False, index=True)
+    row_no = Column(Integer, nullable=False)
+    sku = Column(String(40), nullable=True)
+    make = Column(String(100), nullable=True)
+    model = Column(String(100), nullable=True)
+    cpu = Column(String(100), nullable=True)
+    cpu_gen = Column(String(210), nullable=True)
+    ram_type = Column(String(100), nullable=True)
+    ram_size = Column(String(100), nullable=True)
+    storage_type = Column(String(100), nullable=True)
+    storage_size = Column(String(100), nullable=True)
+    # comma-separated PART_FIELDS keys the file marked Damage / Not Working
+    damaged_parts = Column(String(300), nullable=True)

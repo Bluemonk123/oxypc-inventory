@@ -2,16 +2,98 @@
 {% block title %}Pricing Calculator — OxyPC{% endblock %}
 {% block page_title %}Pricing Calculator{% endblock %}
 {% block content %}
-{# Pricing Calculator (2026-10-18). Page and permission are in place — OFF by
-   default for every role in Master Data -> Permission Matrix. The calculator
-   itself is still to be specified. #}
+{# Pricing Calculator (2026-10-18). OFF by default for every role in Master
+   Data -> Permission Matrix. Prices are worked out live on the server
+   (routers/product_master.py _calc_view); Pending fills in once priced. #}
+{% macro money(v) %}{% if v is none %}<span class="badge bg-warning text-dark">Pending</span>{% else %}₹{{ '{:,.2f}'.format(v).rstrip('0').rstrip('.') }}{% endif %}{% endmacro %}
+
+{% if msg %}<div class="alert alert-success alert-dismissible py-2"><i class="bi bi-check-circle me-2"></i>{{ msg }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+{% if err %}<div class="alert alert-danger alert-dismissible py-2"><i class="bi bi-x-circle me-2"></i>{{ err }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>{% endif %}
+
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-calculator me-2"></i>Pricing Calculator</span>
+    <div class="d-flex align-items-center flex-wrap gap-2">
+      {% if uploads %}
+      <select class="form-select form-select-sm w-auto" id="pcUpload" title="Uploaded file">
+        {% for u in uploads %}
+        <option value="{{ u.id }}" {% if current and u.id == current.id %}selected{% endif %}>
+          {{ u.file_name }} · {{ u.uploaded_at.strftime('%d-%m-%Y %H:%M') }} · {{ user_names.get(u.uploaded_by, u.uploaded_by or '') }} · {{ u.row_count }} rows
+        </option>
+        {% endfor %}
+      </select>
+      <button type="button" class="btn btn-sm btn-outline-success" id="pcExport"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+      {% endif %}
+      <a href="/product-master/pricing-calculator/template" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download me-1"></i>Template</a>
+      <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#pcUploadModal"><i class="bi bi-upload me-1"></i>Upload File</button>
+    </div>
   </div>
-  <div class="card-body text-center py-5 text-muted">
-    <i class="bi bi-calculator" style="font-size:3rem;opacity:.35"></i>
-    <div class="mt-2">The Pricing Calculator is being set up.</div>
+  <div class="card-body">
+    {% if current %}
+    <div class="small text-muted mb-2">
+      {{ view.devices }} device(s) in {{ view.rows|length }} group(s).
+      Selling Price = (Base Price + RAM Price + Storage Price) − prices of the parts marked Damage / Not Working.
+    </div>
+    {% endif %}
+    <table id="pcTable" class="table table-hover mb-0" style="width:100%">
+      <thead class="table-dark"><tr>
+        <th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th>RAM</th><th>SSD</th>
+        <th>Quantity</th><th>Selling Price</th><th>Avg Price/Quantity</th>
+      </tr></thead>
+      <tbody>
+      {% for g in view.rows %}
+        <tr>
+          <td class="text-nowrap">{{ g.make or '—' }}{% if g.sku_missing %}<div><span class="badge bg-danger" title="SKU {{ g.skus|join(', ') }} is not in Product Master">SKU not found</span></div>{% endif %}</td>
+          <td class="text-nowrap">{{ g.model or '—' }}</td>
+          <td>{{ g.cpu or '—' }}</td>
+          <td>{{ g.cpu_gen or '—' }}</td>
+          <td class="text-nowrap">{{ g.ram or '—' }}</td>
+          <td class="text-nowrap">{{ g.ssd or '—' }}</td>
+          <td data-order="{{ g.qty }}">{{ g.qty }}</td>
+          <td data-order="{{ g.selling if g.selling is not none else -1 }}"
+              title="{% if g.pending %}Waiting for: {{ g.pending|join(', ') }}{% elif g.damaged %}Damaged parts deducted: {{ g.damaged }}{% endif %}">
+            {{ money(g.selling) }}
+            {% if g.pending %}<div class="small text-muted text-wrap" style="max-width:220px">Waiting for {{ g.pending|join(', ') }}</div>
+            {% elif g.damaged %}<div class="small text-muted text-wrap" style="max-width:220px">Less {{ g.damaged }}</div>{% endif %}
+          </td>
+          <td data-order="{{ g.avg if g.avg is not none else -1 }}">{{ money(g.avg) }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
+
+<div class="modal fade" id="pcUploadModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <form method="post" action="/product-master/pricing-calculator/upload" enctype="multipart/form-data" id="pcUploadForm">
+    <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+    <div class="modal-header"><h5 class="modal-title"><i class="bi bi-upload me-2"></i>Upload File</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+    <div class="modal-body">
+      <label class="form-label small fw-semibold">CSV or Excel file <span class="text-danger">*</span></label>
+      <input type="file" class="form-control form-control-sm" name="file" accept=".csv,.xlsx,.xlsm" required>
+      <div class="form-text">
+        Columns: {{ columns|join(', ') }}. The SKU is shown under each Product Name on Product Master.
+        Part columns are optional — a part marked <b>Damage</b>, <b>Damaged</b>, <b>Not Working</b> or <b>NotWorking</b>
+        (any case) has its Spare Parts price deducted.
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      <button type="submit" class="btn btn-primary" id="pcUploadBtn"><i class="bi bi-upload me-1"></i>Upload</button>
+    </div>
+  </form>
+</div></div></div>
+{% endblock %}
+
+{% block scripts %}
+{% include "product_master/_common.html" %}
+<script>
+(function () {
+  var dt = initGlobalTable('#pcTable', { order: [[0, 'asc']],
+    language: { emptyTable: {{ ('No rows in this upload.' if current else 'No file uploaded yet. Use Upload File to add one.')|tojson }} } });
+  $('#pcExport').on('click', function () { pmExportCsv(dt, 'pricing_calculator'); });
+  $('#pcUpload').on('change', function () { location.href = '/product-master/pricing-calculator?upload=' + this.value; });
+  $('#pcUploadForm').on('submit', function () { $('#pcUploadBtn').prop('disabled', true); });
+})();
+</script>
 {% endblock %}
