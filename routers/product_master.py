@@ -101,27 +101,45 @@ def _dropdown_json(dd: dict) -> dict:
             for cat, rows in dd.items()}
 
 
+async def _hw_maps(db: AsyncSession):
+    """Hardware rows by lower-case name, for resolving a product's saved picks."""
+    rams = {r.ram_name.lower(): r for r in (await db.execute(select(HWRam))).scalars()}
+    stos = {r.storage_name.lower(): r for r in (await db.execute(select(HWStorage))).scalars()}
+    return rams, stos
+
+
+def _resolve(p: PMProduct, rams: dict, stos: dict):
+    """The Hardware rows matching a product's saved Type/Size picks (2026-10-18).
+    A pick with no Hardware row yet -> None (price shows Pending); once Hardware
+    saves that combination, its price is used automatically."""
+    ram = rams.get(f"{p.ram_type}/{p.ram_size}".lower()) if p.ram_type and p.ram_size else None
+    sto = stos.get(f"{p.storage_type}/{p.storage_size}".lower()) if p.storage_type and p.storage_size else None
+    return ram, sto
+
+
 async def _product_rows(db: AsyncSession) -> list:
-    rows = (await db.execute(
-        select(PMProduct, HWRam, HWStorage)
-        .outerjoin(HWRam, PMProduct.ram_id == HWRam.id)
-        .outerjoin(HWStorage, PMProduct.storage_id == HWStorage.id)
-        .order_by(PMProduct.updated_at.desc())
-    )).all()
-    return [_product_dict(p, r, s) for p, r, s in rows]
+    rams, stos = await _hw_maps(db)
+    rows = (await db.execute(select(PMProduct).order_by(PMProduct.updated_at.desc()))).scalars().all()
+    return [_product_dict(p, *_resolve(p, rams, stos)) for p in rows]
+
+
+def _pick_name(t, z):
+    return f"{t}/{z}" if t and z else (t or z or None)
 
 
 def _product_dict(p: PMProduct, ram, sto) -> dict:
     fig = product_figures(p, ram.ram_price if ram else None, sto.storage_price if sto else None)
+    ram_pick = _pick_name(p.ram_type, p.ram_size)
+    sto_pick = _pick_name(p.storage_type, p.storage_size)
     return {
         "id": str(p.id), "product_name": p.product_name,
         "make": p.make, "model": p.model, "cpu": p.cpu, "cpu_gen": p.cpu_gen,
-        "ram_id": str(ram.id) if ram else "", "ram": ram.ram_name if ram else None,
-        "ram_category": ram.ram_category if ram else "", "ram_capacity": ram.ram_capacity if ram else "",
+        # RAM / Storage: the saved pick, priced or not (2026-10-18)
+        "ram_id": str(ram.id) if ram else "", "ram": ram_pick,
+        "ram_category": p.ram_type or "", "ram_capacity": p.ram_size or "",
         "ram_price": _num(ram.ram_price) if ram else None,
-        "storage_id": str(sto.id) if sto else "", "storage": sto.storage_name if sto else None,
-        "storage_category": sto.storage_category if sto else "",
-        "storage_capacity": sto.storage_capacity if sto else "",
+        "storage_id": str(sto.id) if sto else "", "storage": sto_pick,
+        "storage_category": p.storage_type or "", "storage_capacity": p.storage_size or "",
         "storage_price": _num(sto.storage_price) if sto else None,
         "product_price": _num(p.product_price),
         "pricing_done": p.product_price is not None and ram is not None and sto is not None,
@@ -141,13 +159,9 @@ def _product_dict(p: PMProduct, ram, sto) -> dict:
 
 
 async def _product_payload(db, product_id) -> dict:
-    p, r, s = (await db.execute(
-        select(PMProduct, HWRam, HWStorage)
-        .outerjoin(HWRam, PMProduct.ram_id == HWRam.id)
-        .outerjoin(HWStorage, PMProduct.storage_id == HWStorage.id)
-        .where(PMProduct.id == product_id)
-    )).one()
-    return _product_dict(p, r, s)
+    p = (await db.execute(select(PMProduct).where(PMProduct.id == product_id))).scalar_one()
+    rams, stos = await _hw_maps(db)
+    return _product_dict(p, *_resolve(p, rams, stos))
 
 
 # ── Product Master page ───────────────────────────────────────────────────────
@@ -559,6 +573,17 @@ async def _hw_save(request, db, current_user, kind, item_id, category, capacity,
         await db.flush()
         await audit(db, action=f"HW_{kind.upper()}_ADDED", user=current_user, table_name=Model.__tablename__,
                     record_id=str(row.id), new_value={"name": name, "price": str(amount)}, request=request)
+    # Products already holding this Type/Size pick get linked to it, so their
+    # Pending RAM/Storage price fills in on Product Master (2026-10-18).
+    from sqlalchemy import update as _update
+    if kind == "ram":
+        await db.execute(_update(PMProduct).where(
+            func.lower(PMProduct.ram_type) == category.lower(),
+            func.lower(PMProduct.ram_size) == capacity.lower()).values(ram_id=row.id))
+    else:
+        await db.execute(_update(PMProduct).where(
+            func.lower(PMProduct.storage_type) == category.lower(),
+            func.lower(PMProduct.storage_size) == capacity.lower()).values(storage_id=row.id))
     try:
         await db.commit()
     except IntegrityError:
@@ -577,10 +602,11 @@ async def _hw_delete(request, db, current_user, kind, item_id):
     row = (await db.execute(select(Model).where(Model.id == _uuid_or_none(item_id)))).scalar_one_or_none()
     if not row:
         return _err(f"{label} not found.", 404)
+    # Products using it keep their Type/Size pick; their price goes back to
+    # Pending until Hardware prices it again (2026-10-18).
+    from sqlalchemy import update as _update
     fk = PMProduct.ram_id if kind == "ram" else PMProduct.storage_id
-    used = (await db.execute(select(func.count()).select_from(PMProduct).where(fk == row.id))).scalar() or 0
-    if used:
-        return _err(f"{used} product(s) use this {label}. Change or delete them first.")
+    await db.execute(_update(PMProduct).where(fk == row.id).values({fk.key: None}))
     name = row.ram_name if kind == "ram" else row.storage_name
     await audit(db, action=f"HW_{kind.upper()}_DELETED", user=current_user, table_name=Model.__tablename__,
                 record_id=str(row.id), old_value={"name": name}, request=request)
@@ -656,27 +682,15 @@ async def pricing_save(product_id: str, request: Request,
         return _err("Product not found.", 404)
     form = await request.form()
 
-    async def hw(kind, typ, size):
-        typ, size = (typ or "").strip(), (size or "").strip()
-        label = "RAM" if kind == "ram" else "Storage"
-        if not typ and not size:
-            return None, None
-        if not typ or not size:
-            return None, f"Pick both {label} Type and {label} Size."
-        name = f"{typ}/{size}"
-        Model = HWRam if kind == "ram" else HWStorage
-        col = Model.ram_name if kind == "ram" else Model.storage_name
-        row = (await db.execute(select(Model).where(func.lower(col) == name.lower()))).scalars().first()
-        if not row:
-            return None, f"{label} {name} has no price yet. Save its price on the Hardware page first."
-        return row, None
-
-    ram, err = await hw("ram", ram_type, ram_size)
-    if err:
-        return _err(err)
-    sto, err = await hw("storage", storage_type, storage_size)
-    if err:
-        return _err(err)
+    # RAM / Storage picks are saved as chosen — no validation (2026-10-18).
+    # A pick whose Hardware price isn't set yet shows Pending on Product
+    # Master and is priced automatically once Hardware saves it.
+    def clean(v):
+        return (v or "").strip()[:100] or None
+    p.ram_type, p.ram_size = clean(ram_type), clean(ram_size)
+    p.storage_type, p.storage_size = clean(storage_type), clean(storage_size)
+    rams, stos = await _hw_maps(db)
+    ram, sto = _resolve(p, rams, stos)
 
     lists = await _comp_lists(db)
     new_prices = {}
@@ -699,17 +713,15 @@ async def pricing_save(product_id: str, request: Request,
             db.add(PMCompetitorPrice(product_id=p.id, list_id=lid, price=price, updated_by=current_user.username))
         else:
             cur.price, cur.updated_by = price, current_user.username
-    if ram is not None:
-        p.ram_id = ram.id
-    if sto is not None:
-        p.storage_id = sto.id
+    p.ram_id = ram.id if ram is not None else None
+    p.storage_id = sto.id if sto is not None else None
     await db.flush()
     if lists:
         await recompute_sell_prices(db, [p.id])
     p.updated_at = app_now()
     await audit(db, action="PM_PRODUCT_PRICE_SET", user=current_user, table_name="pm_products",
                 record_id=str(p.id), old_value=old,
-                new_value={"ram": ram.ram_name if ram else None, "storage": sto.storage_name if sto else None,
+                new_value={"ram": _pick_name(p.ram_type, p.ram_size), "storage": _pick_name(p.storage_type, p.storage_size),
                            "sell_price": str(p.product_price) if p.product_price is not None else None,
                            "competitor": {str(k): (str(v) if v is not None else None) for k, v in new_prices.items()}},
                 request=request)

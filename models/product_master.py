@@ -106,6 +106,14 @@ class PMProduct(Base):
     # Optional since v2 (2026-10-14): picked on the Product Pricing page; null = Pending
     ram_id = Column(UUID(as_uuid=True), ForeignKey("hw_ram.id"), nullable=True)
     storage_id = Column(UUID(as_uuid=True), ForeignKey("hw_storage.id"), nullable=True)
+    # Schema v4 (approved 2026-10-18): the RAM / Storage Type and Size picked on
+    # Product Pricing, saved even before Hardware has a price for them. The
+    # price is looked up from Hardware by "<Type>/<Size>" (ram_id / storage_id
+    # are linked once that Hardware row exists).
+    ram_type = Column(String(100), nullable=True)
+    ram_size = Column(String(100), nullable=True)
+    storage_type = Column(String(100), nullable=True)
+    storage_size = Column(String(100), nullable=True)
     product_price = Column(Numeric(12, 2), nullable=True)
     bezel_price = Column(Numeric(12, 2), nullable=True)
     screen_price = Column(Numeric(12, 2), nullable=True)
@@ -196,6 +204,15 @@ async def migrate_pm_products_v2(db) -> None:
     from sqlalchemy import text, select
     await db.execute(text("ALTER TABLE pm_products ALTER COLUMN ram_id DROP NOT NULL"))
     await db.execute(text("ALTER TABLE pm_products ALTER COLUMN storage_id DROP NOT NULL"))
+    # v4 (2026-10-18): saved RAM / Storage picks; backfilled from linked rows
+    for col in ("ram_type", "ram_size", "storage_type", "storage_size"):
+        await db.execute(text(f"ALTER TABLE pm_products ADD COLUMN IF NOT EXISTS {col} VARCHAR(100)"))
+    await db.execute(text(
+        "UPDATE pm_products p SET ram_type = r.ram_category, ram_size = r.ram_capacity "
+        "FROM hw_ram r WHERE p.ram_id = r.id AND p.ram_type IS NULL AND p.ram_size IS NULL"))
+    await db.execute(text(
+        "UPDATE pm_products p SET storage_type = s.storage_category, storage_size = s.storage_capacity "
+        "FROM hw_storage s WHERE p.storage_id = s.id AND p.storage_type IS NULL AND p.storage_size IS NULL"))
     rows = (await db.execute(select(PMProduct))).scalars().all()
     taken = {p.product_name.lower() for p in rows}
     for p in rows:
