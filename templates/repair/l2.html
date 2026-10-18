@@ -204,6 +204,8 @@
 
 {% endblock %}
 {% block scripts %}
+<script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
+
 <script>
 $(document).ready(function(){
   // Global Table module (static/js/global-table.js): frozen Tag Number

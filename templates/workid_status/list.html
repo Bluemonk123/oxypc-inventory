@@ -113,6 +113,8 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
+
 <script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
 <script type="application/json" id="workidRows">{{ rows_json | safe }}</script>
 <script>

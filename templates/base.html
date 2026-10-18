@@ -593,7 +593,7 @@
       </a></li>
       {% endif %}
       {% if has_perm(role,'pm_product_pricing','enable') and not module_hidden('pm_product_pricing') %}
-      <li><a href="/product-master/pricing" class="nav-link {% if '/product-master/pricing' in request.url.path %}active{% endif %}">
+      <li><a href="/product-master/pricing" class="nav-link {% if request.url.path == '/product-master/pricing' or request.url.path.startswith('/product-master/pricing/') %}active{% endif %}">
         <i class="bi bi-tags me-2"></i> {{ sidebar_label('pm_product_pricing', 'Product Pricing') }}
       </a></li>
       {% endif %}

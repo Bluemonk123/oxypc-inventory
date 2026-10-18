@@ -190,6 +190,8 @@
 {% include "_search_tags_modal.html" %}
 {% endblock %}
 {% block scripts %}
+<script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
+
 <style>
 /* Sticky positioning only makes sense once the panel sits beside the table
    (lg+ / >=992px) - below that breakpoint the columns stack and a sticky

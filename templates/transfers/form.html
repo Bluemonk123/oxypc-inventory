@@ -256,6 +256,8 @@
 {% endblock %}
 
 {% block scripts %}
+<script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
+
 <script src="/static/vendor/tom-select/js/tom-select.complete.min.js"></script>
 <script>
 (function(){

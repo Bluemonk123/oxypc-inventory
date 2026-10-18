@@ -158,6 +158,8 @@
 {% include "_search_tags_modal.html" %}
 {% endblock %}
 {% block scripts %}
+<script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
+
 <script>
 $(document).ready(function(){
   // Column 8 is Assigned Date — default sort, most recent first. Global

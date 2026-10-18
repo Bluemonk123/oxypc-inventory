@@ -461,6 +461,8 @@
 {% include "_search_tags_modal.html" %}
 {% endblock %}
 {% block scripts %}
+<script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
+
 <script>
 // Must live in block scripts (renders after base.html's jQuery/global-table.js
 // <script src> tags) — block content renders before those load, so putting
