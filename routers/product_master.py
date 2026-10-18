@@ -920,13 +920,36 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
             st, ss = split(r, "storage")
         return rt, rs, st, ss
 
-    # Every row with an available SKU is added; a row matching an existing
-    # SKU + Make/Model/CPU/Gen + RAM + SSD just adds to that line's Quantity.
+    # A row is added only when its Make, Model, CPU, CPU Gen, RAM and SSD are
+    # exactly the SKU's configuration in Product Master (ignoring case and
+    # spaces, 2026-10-19); otherwise it is reported as "not yet added in
+    # Product Master". Matching rows add to that line's Quantity.
+    prod_of = {p.sku: p for p in (await db.execute(select(PMProduct).where(PMProduct.sku.in_(known)))).scalars()} if known else {}
+
+    def norm(v):
+        return "".join((v or "").split()).lower()
+
+    def same_config(p, r, pk):
+        rt, rs, st, ss = pk
+        pairs = [(p.make, cell(r, "make")), (p.model, cell(r, "model")), (p.cpu, cell(r, "cpu")),
+                 (p.cpu_gen, cell(r, "cpu_gen")), (p.ram_type, rt), (p.ram_size, rs),
+                 (p.storage_type, st), (p.storage_size, ss)]
+        return all(norm(a) == norm(b) for a, b in pairs)
+
     good, missing_rows, missing_skus, blank = [], [], set(), 0
+    mismatch_rows, mismatch_skus = [], set()
     for idx, r in enumerate(body, start=2):
         sku = _calc_sku(r[si]) if si < len(r) else None
         if sku in known:
-            good.append((idx, sku, r, picks(r)))
+            pk = picks(r)
+            pp = prod_of[sku]
+            if same_config(pp, r, pk):
+                # store Product Master's own spelling, so "ddr4 / 8 GB" and
+                # "DDR4 / 8GB" price and group as the same configuration
+                good.append((idx, sku, r, (pp.ram_type, pp.ram_size, pp.storage_type, pp.storage_size)))
+            else:
+                mismatch_rows.append(r)
+                mismatch_skus.add(sku)
         else:
             missing_rows.append(r)
             if sku:
@@ -943,21 +966,27 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
             def g(f):
                 return cell(r, f)
             damaged = [col for col, i in pmap.items() if i < len(r) and _is_damaged(r[i])]
-            db.add(PMCalcRow(upload_id=up.id, row_no=idx, sku=sku, make=g("make"), model=g("model"),
-                             cpu=g("cpu"), cpu_gen=g("cpu_gen"), ram_type=rt, ram_size=rs,
+            pp = prod_of[sku]
+            db.add(PMCalcRow(upload_id=up.id, row_no=idx, sku=sku, make=pp.make, model=pp.model,
+                             cpu=pp.cpu, cpu_gen=pp.cpu_gen, ram_type=rt, ram_size=rs,
                              storage_type=st, storage_size=ss, damaged_parts=",".join(damaged) or None))
         await audit(db, action="PM_CALC_UPLOADED", user=current_user, table_name="pm_calc_uploads",
                     record_id=str(up.id), new_value={"file": name, "rows": len(good),
-                                                     "rows_sku_not_found": len(missing_rows)},
+                                                     "rows_sku_not_found": len(missing_rows),
+                                                     "rows_config_not_in_product_master": len(mismatch_rows)},
                     request=request)
         await db.commit()
 
     out = {"ok": True, "added": len(good), "upload_id": str(up.id) if up else None,
-           "missing_rows": len(missing_rows), "missing_skus": len(missing_skus), "blank_skus": blank}
+           "missing_rows": len(missing_rows), "missing_skus": len(missing_skus), "blank_skus": blank,
+           "mismatch_rows": len(mismatch_rows), "mismatch_skus": len(mismatch_skus)}
     width = len(header)
     if missing_rows:
         rows = [list(r) + [""] * (width - len(r)) for r in missing_rows]
         out["missing_file_name"], out["missing_file_b64"] = _calc_missing_file(name, header, rows, "SKU_not_found")
+    if mismatch_rows:
+        rows = [list(r) + [""] * (width - len(r)) for r in mismatch_rows]
+        out["mismatch_file_name"], out["mismatch_file_b64"] = _calc_missing_file(name, header, rows, "config_not_in_product_master")
     return JSONResponse(out)
 
 

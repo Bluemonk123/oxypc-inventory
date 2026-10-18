@@ -89,6 +89,10 @@
       <p class="mb-2" id="pcMissingMsg"></p>
       <a href="#" class="btn btn-sm btn-outline-primary" id="pcMissingLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcMissingName">Download file</span></a>
     </div>
+    <div id="pcMisBlock" class="mb-3">
+      <p class="mb-2" id="pcMisMsg"></p>
+      <a href="#" class="btn btn-sm btn-outline-primary" id="pcMisLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcMisName">Download file</span></a>
+    </div>
   </div>
   <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button></div>
 </div></div></div>
@@ -131,9 +135,9 @@ document.addEventListener('DOMContentLoaded', function () { if (window.flashAsTo
         form.reset();
         var url = '/product-master/pricing-calculator' + (j.added ? '?success=' +
           encodeURIComponent(j.added + ' row(s) added.') : '');
-        if (!j.missing_rows) { location.href = url; return; }
+        if (!j.missing_rows && !j.mismatch_rows) { location.href = url; return; }
         reloadTo = j.added ? url : null;
-        var left = j.missing_rows;
+        var left = j.missing_rows + j.mismatch_rows;
         $('#pcMissingInfo').text((j.added ? j.added + ' row(s) were added. ' : 'No rows were added. ') +
           left + ' row(s) were left out.');
         function fileLink(id, nameId, b64, fname) {
@@ -150,6 +154,12 @@ document.addEventListener('DOMContentLoaded', function () { if (window.flashAsTo
           $('#pcMissingMsg').text('These SKU ' + j.missing_skus + ' from file are not available so please check and reupload the file.' +
             (j.blank_skus ? ' (' + j.blank_skus + ' row(s) had no SKU.)' : ''));
           fileLink('pcMissingLink', 'pcMissingName', j.missing_file_b64, j.missing_file_name);
+        }
+        $('#pcMisBlock').toggle(!!j.mismatch_rows);
+        if (j.mismatch_rows) {
+          $('#pcMisMsg').text('These SKU ' + j.mismatch_skus + ' configuration (Make, Model, CPU, CPU Gen, RAM, SSD) is not yet added in Product Master, so ' +
+            j.mismatch_rows + ' row(s) were not added.');
+          fileLink('pcMisLink', 'pcMisName', j.mismatch_file_b64, j.mismatch_file_name);
         }
         new bootstrap.Modal(document.getElementById('pcMissingModal')).show();
       })
