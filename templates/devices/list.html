@@ -855,23 +855,55 @@ function showLotDetail(l){
 // a full-page selection can run into the hundreds of barcodes); with nothing
 // selected the link's own GET href runs instead, unchanged.
 function submitExport(ev){
-  if (devicesSelecting) { ev.preventDefault(); return false; }   // select-all still loading
+  ev.preventDefault();
+  if (devicesSelecting || exportRunning) return false;   // select-all still loading / export in flight
   // Nothing ticked, or an untouched "select all" (= every tag matching the
   // filters): export by filter — the same rows, without posting every Tag
   // Number (much faster for thousands of tags).
   if (devicesSelected.size === 0 || devicesSelected.size === selectAllSize) {
-    ev.preventDefault();
-    window.location.href = '/devices/export?' + filterParams().toString();
+    runExport('/devices/export?' + filterParams().toString(), { credentials: 'same-origin' });
     return false;
   }
-  ev.preventDefault();
-  var form = document.getElementById('exportSelectedForm');
-  $(form).find('input[name="barcodes"]').remove();
-  Array.from(devicesSelected).forEach(function(bc){
-    $('<input>').attr({ type:'hidden', name:'barcodes', value:bc }).appendTo(form);
-  });
-  form.submit();
+  var fd = new FormData(document.getElementById('exportSelectedForm'));
+  fd.delete('barcodes');
+  Array.from(devicesSelected).forEach(function(bc){ fd.append('barcodes', bc); });
+  runExport('/devices/export', { method: 'POST', body: fd, credentials: 'same-origin' });
   return false;
+}
+
+// Export via fetch() + Blob download (2026-10-19) instead of a page
+// navigation / form.submit(): base.html's green processing bar tracks
+// fetch() calls, so it now runs for the whole time the server builds the
+// CSV and stops the moment the file is handed to the browser. A plain
+// navigation that ends in a download never triggered (or never cleared) it.
+var exportRunning = false;
+function runExport(url, init){
+  var btn = document.getElementById('exportCsvLink');
+  var label = document.getElementById('exportCsvLabel');
+  var oldLabel = label.innerHTML;
+  exportRunning = true;
+  btn.classList.add('disabled');
+  label.textContent = 'Exporting…';
+  fetch(url, init).then(function(r){
+    if (!r.ok) throw new Error('Export failed (HTTP ' + r.status + ')');
+    var cd = r.headers.get('Content-Disposition') || '';
+    var m = /filename="?([^";]+)"?/i.exec(cd);
+    var name = m ? m[1] : 'devices_export.csv';
+    return r.blob().then(function(b){ return { blob: b, name: name }; });
+  }).then(function(res){
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(res.blob);
+    a.download = res.name;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+  }).catch(function(err){
+    alert(err.message || 'Export failed');
+  }).finally(function(){
+    exportRunning = false;
+    btn.classList.remove('disabled');
+    label.innerHTML = oldLabel;
+  });
 }
 
 function submitBulkTrash(){

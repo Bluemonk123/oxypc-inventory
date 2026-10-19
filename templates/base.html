@@ -884,8 +884,13 @@
         <!-- Notification Bell -->
         <div class="position-relative d-inline-block">
           <button type="button" class="btn btn-link text-dark p-1 text-decoration-none" title="Alerts" onclick="openNotifPanel()">
-            <i class="bi bi-bell fs-5"></i>
-            <span id="notifBadge" class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger d-none" style="font-size:0.65rem;min-width:1.2rem">0</span>
+            {# Count anchored to the bell glyph itself (2026-10-19), not the
+               padded button's corner, so it sits on the bell's shoulder. #}
+            <span class="position-relative d-inline-block lh-1">
+              <i class="bi bi-bell fs-5"></i>
+              <span id="notifBadge" class="position-absolute badge rounded-pill bg-danger d-none"
+                    style="top:-5px;left:11px;font-size:0.6rem;min-width:1.1rem;padding:.25em .4em">0</span>
+            </span>
           </button>
         </div>
         <button type="button" class="btn btn-warning btn-sm fw-semibold"
@@ -915,6 +920,10 @@
     <style>
       #topProgressBar { display:none; height:4px; width:100%; overflow:hidden; position:relative; background:transparent; }
       #topProgressBar.active { display:block; }
+      /* While a modal is open its backdrop (z-index 1050) covers the bar, so
+         a modal form's Apply/Save looked like it did nothing (2026-10-19):
+         lift the bar to the very top of the window, above the backdrop. */
+      body.modal-open #topProgressBar.active { position:fixed; top:0; left:0; right:0; z-index:1080; }
       #topProgressBar .bar { position:absolute; top:0; left:-60%; height:100%; width:60%; background:#0F7A37; animation: topProgressSlide 1.1s linear infinite; }
       @keyframes topProgressSlide {
         0%   { left:-60%; }
