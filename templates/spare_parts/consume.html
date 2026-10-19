@@ -59,8 +59,8 @@
           <td>{{ con.used_at.strftime('%d-%m-%Y') }}</td>
           <td>{{ part_name }}</td>
           <td>{{ con.qty_used }}</td>
-          <td>₹{{ "{:,.2f}".format(con.unit_cost) }}</td>
-          <td class="fw-semibold text-danger">₹{{ "{:,.0f}".format(con.total_cost) }}</td>
+          <td>₹{{ ((con.unit_cost) | inr(2)) }}</td>
+          <td class="fw-semibold text-danger">₹{{ ((con.total_cost) | inr) }}</td>
           <td><code>{{ barcode or '—' }}</code></td>
           <td>{{ con.stage or '—' }}</td>
           <td class="text-muted">{{ con.used_by }}</td>

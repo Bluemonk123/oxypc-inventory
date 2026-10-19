@@ -93,20 +93,20 @@
         <div class="row g-2 text-center">
           <div class="col-6">
             <div class="small text-muted">Asking Total</div>
-            <div class="fw-semibold small">{% if deal_po_items_total %}₹{{ "{:,.0f}".format(deal_po_items_total) }}{% else %}—{% endif %}</div>
+            <div class="fw-semibold small">{% if deal_po_items_total %}₹{{ ((deal_po_items_total) | inr) }}{% else %}—{% endif %}</div>
           </div>
           <div class="col-6">
             <div class="small text-muted">Offer Price</div>
-            <div class="fw-semibold small text-primary">{% if deal_po_items_offer_total %}₹{{ "{:,.0f}".format(deal_po_items_offer_total) }}{% else %}—{% endif %}</div>
+            <div class="fw-semibold small text-primary">{% if deal_po_items_offer_total %}₹{{ ((deal_po_items_offer_total) | inr) }}{% else %}—{% endif %}</div>
           </div>
           {% if deal.final_price_unit %}
           <div class="col-6">
             <div class="small text-muted">Final / Unit</div>
-            <div class="fw-semibold small text-success">₹{{ "{:,.0f}".format(deal.final_price_unit) }}</div>
+            <div class="fw-semibold small text-success">₹{{ ((deal.final_price_unit) | inr) }}</div>
           </div>
           <div class="col-6">
             <div class="small text-muted">Final Total</div>
-            <div class="fw-semibold small text-success">{% if deal.final_price_total %}₹{{ "{:,.0f}".format(deal.final_price_total) }}{% else %}—{% endif %}</div>
+            <div class="fw-semibold small text-success">{% if deal.final_price_total %}₹{{ ((deal.final_price_total) | inr) }}{% else %}—{% endif %}</div>
           </div>
           {% endif %}
         </div>
@@ -292,11 +292,11 @@
                 <td class="small">{{ li.item_name }}{% if li.description %}<div class="text-muted" style="font-size:.7rem">{{ li.description }}</div>{% endif %}</td>
                 <td class="small">{{ li.po_category or '—' }}</td>
                 <td class="small text-end">{{ li.quantity }}</td>
-                <td class="small text-end">₹{{ "{:,.2f}".format(li.unit_price or 0) }}</td>
-                <td class="small text-end">₹{{ "{:,.2f}".format(li.total_price or 0) }}</td>
+                <td class="small text-end">₹{{ ((li.unit_price or 0) | inr(2)) }}</td>
+                <td class="small text-end">₹{{ ((li.total_price or 0) | inr(2)) }}</td>
                 <td class="small text-end">
                   {% if li.offer_price %}
-                  <span class="text-primary fw-semibold">₹{{ "{:,.2f}".format(li.offer_price) }}</span>
+                  <span class="text-primary fw-semibold">₹{{ ((li.offer_price) | inr(2)) }}</span>
                   <button type="button" class="btn btn-sm btn-link py-0 px-1 offer-price-btn"
                           data-item-id="{{ li.id }}" data-total-price="{{ li.total_price or 0 }}"
                           data-offer-price="{{ li.offer_price }}">Edit</button>
@@ -319,8 +319,8 @@
             </tbody>
             {% if deal_po_items %}
             <tfoot>
-              <tr class="table-light"><td colspan="4" class="text-end fw-semibold small">Gross Price</td><td class="text-end fw-semibold small">₹{{ "{:,.2f}".format(deal_po_items_total) }}</td><td></td><td></td></tr>
-              <tr class="table-light"><td colspan="4" class="text-end fw-semibold small text-primary">Offer Price</td><td></td><td class="text-end fw-semibold small text-primary">₹{{ "{:,.2f}".format(deal_po_items_offer_total) }}</td><td></td></tr>
+              <tr class="table-light"><td colspan="4" class="text-end fw-semibold small">Gross Price</td><td class="text-end fw-semibold small">₹{{ ((deal_po_items_total) | inr(2)) }}</td><td></td><td></td></tr>
+              <tr class="table-light"><td colspan="4" class="text-end fw-semibold small text-primary">Offer Price</td><td></td><td class="text-end fw-semibold small text-primary">₹{{ ((deal_po_items_offer_total) | inr(2)) }}</td><td></td></tr>
             </tfoot>
             {% endif %}
           </table>

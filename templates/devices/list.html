@@ -107,10 +107,10 @@
         <i class="bi bi-upload me-1"></i>Upload Tags
       </button>
       <a id="exportCsvLink"
-         href="/devices/export?q={{ q | urlencode }}&stage={{ stage | urlencode }}&lot={{ lot | urlencode }}&grade={{ grade | urlencode }}&category={{ category | urlencode }}&device_type={{ device_type | urlencode }}&entity={{ entity | urlencode }}&stock_type={{ stock_type | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}"
+         href="/devices/export?q={{ q | urlencode }}&stage={{ stage | urlencode }}&lot={{ lot | urlencode }}&grade={{ grade | urlencode }}&category={{ category | urlencode }}&device_type={{ device_type | urlencode }}&entity={{ entity | urlencode }}&stock_type={{ stock_type | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}&exclude_sold={{ '1' if exclude_sold else '' }}&fs=1"
          class="btn btn-sm btn-outline-success" onclick="return submitExport(event)"
          title="Exports the selected Tag Numbers, or every filtered result if none are ticked">
-        <i class="bi bi-download me-1"></i>Export CSV
+        <i class="bi bi-download me-1"></i><span id="exportCsvLabel">Export CSV</span>
       </a>
     </div>
   </div>
@@ -298,9 +298,9 @@
             <td class="small">{{ l.qty }}</td>
             <td class="small">{{ l.condition }}</td>
             {% if can_view_pricing(current_user) %}
-            <td class="small">₹{{ "{:,.0f}".format(l.buying_price) }}</td>
-            <td class="small">{% if l.selling_price is not none %}₹{{ "{:,.0f}".format(l.selling_price) }}{% else %}—{% endif %}</td>
-            <td class="small">₹{{ "{:,.0f}".format(l.actual_selling) }}</td>
+            <td class="small">₹{{ ((l.buying_price) | inr) }}</td>
+            <td class="small">{% if l.selling_price is not none %}₹{{ ((l.selling_price) | inr) }}{% else %}—{% endif %}</td>
+            <td class="small">₹{{ ((l.actual_selling) | inr) }}</td>
             {% endif %}
             {# Full text, untruncated — initGlobalTable's own clamp+tooltip
                (static/js/global-table.js) now handles long Remarks with a
@@ -440,6 +440,27 @@ var CAN_VIEW_PRICING = {{ 'true' if can_view_pricing(current_user) else 'false' 
 // exist in the DOM at all, so a bulk tag upload or "select all" would
 // otherwise only ever reach whatever page happened to be on screen.
 var devicesSelected = new Set();
+// Header "select all" state (2026-10-19): while the full list loads, Export
+// and Delete are disabled; once loaded, selectAllSize remembers how many it
+// picked, so an untouched select-all can export by filter instead of
+// posting thousands of Tag Numbers.
+var devicesSelecting = false;
+var selectAllSize = -1;
+var DEVICE_FILTER_KEYS = ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs'];
+function filterParams() {
+  var p = new URLSearchParams(window.location.search), out = new URLSearchParams();
+  DEVICE_FILTER_KEYS.forEach(function (k) { out.set(k, p.get(k) || ''); });
+  return out;
+}
+function setSelecting(on) {
+  devicesSelecting = on;
+  var a = document.getElementById('exportCsvLink');
+  a.classList.toggle('disabled', on);
+  a.setAttribute('aria-disabled', on ? 'true' : 'false');
+  $('#bulkDeleteBtn').prop('disabled', on || devicesSelected.size === 0);
+  if (on) $('#exportCsvLabel').html('<span class="spinner-border spinner-border-sm me-1"></span>Selecting…');
+  if (window._devicesUpdateSel && !on) window._devicesUpdateSel();
+}
 
 $(document).ready(function() {
   // Stock Price / Sale Price columns were removed (2026-10-07) and Stock Type
@@ -512,6 +533,9 @@ $(document).ready(function() {
   function updateSel(){
     var n = devicesSelected.size;
     $('#selCount').text(n);
+    if (!devicesSelecting) {
+      $('#exportCsvLabel').text(n ? 'Export CSV (' + n.toLocaleString('en-IN') + ')' : 'Export CSV');
+    }
     $('#bulkDeleteBtn').prop('disabled', n === 0);
     $('#customiseCount').text(n);
     $('#customiseBtn').toggleClass('d-none', n === 0);
@@ -539,15 +563,25 @@ $(document).ready(function() {
   $(dt.table().container()).on('change', '#selectAllChk', async function(){
     var checked = this.checked;
     if (checked) {
-      var p = new URLSearchParams(window.location.search);
-      var params = new URLSearchParams();
-      ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
-        .forEach(function (k) { params.set(k, p.get(k) || ''); });
-      var r = await fetch('/devices/barcodes?' + params.toString());
-      var d = await r.json();
-      (d.barcodes || []).forEach(function(bc){ devicesSelected.add(bc); });
+      // Loading every matching Tag Number takes a few seconds on a big
+      // inventory; Export / Delete wait until the whole list is in
+      // (2026-10-19) — an export clicked mid-load used to contain only the
+      // tags fetched so far.
+      setSelecting(true);
+      try {
+        var r = await fetch('/devices/barcodes?' + filterParams().toString());
+        var d = await r.json();
+        (d.barcodes || []).forEach(function(bc){ devicesSelected.add(bc); });
+        selectAllSize = devicesSelected.size;
+      } catch (e) {
+        alert('Could not select all Tag Numbers — please try again.');
+        devicesSelected.clear(); selectAllSize = -1; checked = false;
+        $('#selectAllChk').prop('checked', false);
+      }
+      setSelecting(false);
     } else {
       devicesSelected.clear();
+      selectAllSize = -1;
     }
     document.querySelectorAll('#devicesTable tbody .rowChk').forEach(function(c){ c.checked = checked; });
     updateSel();
@@ -821,7 +855,15 @@ function showLotDetail(l){
 // a full-page selection can run into the hundreds of barcodes); with nothing
 // selected the link's own GET href runs instead, unchanged.
 function submitExport(ev){
-  if (devicesSelected.size === 0) return true;   // let the <a href> GET fire
+  if (devicesSelecting) { ev.preventDefault(); return false; }   // select-all still loading
+  // Nothing ticked, or an untouched "select all" (= every tag matching the
+  // filters): export by filter — the same rows, without posting every Tag
+  // Number (much faster for thousands of tags).
+  if (devicesSelected.size === 0 || devicesSelected.size === selectAllSize) {
+    ev.preventDefault();
+    window.location.href = '/devices/export?' + filterParams().toString();
+    return false;
+  }
   ev.preventDefault();
   var form = document.getElementById('exportSelectedForm');
   $(form).find('input[name="barcodes"]').remove();

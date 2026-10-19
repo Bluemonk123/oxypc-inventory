@@ -50,7 +50,7 @@
             </td>
             <td>{{ rec.product_interest or '—' }}</td>
             <td>{{ rec.quantity_required or '—' }}</td>
-            <td>{% if rec.budget %}₹{{ "{:,.0f}".format(rec.budget) }}{% else %}—{% endif %}</td>
+            <td>{% if rec.budget %}₹{{ ((rec.budget) | inr) }}{% else %}—{% endif %}</td>
             <td>{% if rec.next_followup %}<span class="{% if rec.next_followup.date() <= today %}text-danger fw-semibold{% endif %}">{{ rec.next_followup.strftime('%d-%m-%Y') }}</span>{% else %}—{% endif %}</td>
             <td>{% if rec.whatsapp_sent %}<i class="bi bi-check-circle-fill text-success"></i>{% else %}—{% endif %}</td>
           </tr>

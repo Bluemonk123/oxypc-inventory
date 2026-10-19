@@ -52,7 +52,7 @@
               </span>
               {% else %}—{% endif %}
             </td>
-            <td class="small fw-semibold">{% if qt.total_amount %}₹{{ "{:,.0f}".format(qt.total_amount) }}{% else %}—{% endif %}</td>
+            <td class="small fw-semibold">{% if qt.total_amount %}₹{{ ((qt.total_amount) | inr) }}{% else %}—{% endif %}</td>
             <td>
               <span class="badge bg-{{ status_colors.get(qt.status,'secondary') }}">{{ qt.status | title }}</span>
             </td>

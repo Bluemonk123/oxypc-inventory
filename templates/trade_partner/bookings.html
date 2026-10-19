@@ -106,8 +106,8 @@
             <td class="small">{{ l.title[:35] if l else '—' }}{% if l and l.title|length > 35 %}…{% endif %}
               <div class="text-muted">{{ l.listing_code if l }}</div></td>
             <td class="small">{{ b.qty }}</td>
-            <td class="small fw-semibold">₹{{ "{:,.0f}".format(b.token_total) }}</td>
-            <td class="small">₹{{ "{:,.0f}".format(b.unit_price_snapshot * b.qty - b.token_total) }}</td>
+            <td class="small fw-semibold">₹{{ ((b.token_total) | inr) }}</td>
+            <td class="small">₹{{ ((b.unit_price_snapshot * b.qty - b.token_total) | inr) }}</td>
             <td>
               {% for p in b.proofs %}
               <div class="small">

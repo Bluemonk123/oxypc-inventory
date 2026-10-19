@@ -28,7 +28,7 @@
           <td>{{ po.deal.title[:40] if po.deal else '—' }}</td>
           <td>{{ po.po_date.strftime('%d-%m-%Y') if po.po_date else '—' }}</td>
           <td>{{ po.expected_delivery_date.strftime('%d-%m-%Y') if po.expected_delivery_date else '—' }}</td>
-          <td class="fw-semibold">₹{{ "{:,.0f}".format(po.total_amount or 0) }}</td>
+          <td class="fw-semibold">₹{{ ((po.total_amount or 0) | inr) }}</td>
           <td>
             {% set sc = {'draft':'secondary','issued':'primary','acknowledged':'info','received':'success','cancelled':'danger'} %}
             <span class="badge bg-{{ sc.get(po.status,'secondary') }}">{{ po.status|capitalize }}</span>

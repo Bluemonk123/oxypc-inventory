@@ -55,12 +55,12 @@
             <td>{{ s.model or '—' }}</td>
             <td>{{ s.qty }}</td>
             {% if can_view_pricing(current_user) %}
-            <td>{% if s.stock_unit_price is not none %}₹{{ "{:,.2f}".format(s.stock_unit_price) }}{% else %}—{% endif %}</td>
-            <td>₹{{ "{:,.2f}".format(s.sale_unit_price or 0) }}</td>
+            <td>{% if s.stock_unit_price is not none %}₹{{ ((s.stock_unit_price) | inr(2)) }}{% else %}—{% endif %}</td>
+            <td>₹{{ ((s.sale_unit_price or 0) | inr(2)) }}</td>
             <td>
               {% if s.margin is not none %}
               <span class="fw-semibold {{ 'text-success' if s.margin >= 0 else 'text-danger' }}">
-                ₹{{ "{:,.2f}".format(s.margin) }}
+                ₹{{ ((s.margin) | inr(2)) }}
               </span>
               {% else %}—{% endif %}
             </td>

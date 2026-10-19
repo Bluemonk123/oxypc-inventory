@@ -13,7 +13,7 @@ from pathlib import Path
 from utils.timezone import app_now, app_today
 from decimal import Decimal
 from fastapi import APIRouter, Depends, Form, File, Request, HTTPException, Query, BackgroundTasks, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 import csv
 import io
@@ -1832,8 +1832,8 @@ async def export_selected_sales(
             (transfer_type or "").replace("_", " ").title(), s.notes or "",
         ])
     output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode()),
+    return Response(
+        content=output.getvalue().encode(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=sales_selected.csv"},
     )
@@ -2189,8 +2189,8 @@ async def export_sales_filtered(
         writer.writerow(["# TRUNCATED", f"Export capped at {MAX_EXPORT_ROWS} rows",
                          "", "", "", "", "", "", "", "", "", "", "", "", "", ""])
     output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode()),
+    return Response(
+        content=output.getvalue().encode(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=sales_filtered.csv"},
     )
@@ -3337,7 +3337,7 @@ async def credit_note_export_selected(
             ret.cn_stage,
         ])
     buf.seek(0)
-    return StreamingResponse(io.BytesIO(buf.getvalue().encode()), media_type="text/csv",
+    return Response(content=buf.getvalue().encode(), media_type="text/csv",
                              headers={"Content-Disposition": "attachment; filename=credit_note_selected.csv"})
 
 

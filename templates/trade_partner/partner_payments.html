@@ -24,7 +24,7 @@
         <tbody>
           {% for r in rows %}
           <tr>
-            <td class="ps-2 fw-bold text-success">₹{{ "{:,.0f}".format(r.bid.bid_amount) }}</td>
+            <td class="ps-2 fw-bold text-success">₹{{ ((r.bid.bid_amount) | inr) }}</td>
             <td class="font-monospace small">{{ r.bid.bid_number }}</td>
             <td class="font-monospace small">
               {% if r.lot_id %}<a href="/lots/{{ r.lot_id }}" class="text-decoration-none">{{ r.lot_number }}</a>

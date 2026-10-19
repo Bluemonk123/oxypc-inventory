@@ -24,7 +24,7 @@ import uuid as uuid_module
 from datetime import datetime, date
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, Response
 from sqlalchemy import select, func, and_, case as sa_case
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -139,8 +139,8 @@ def _csv_response(header: list, rows: list, filename: str) -> StreamingResponse:
     for row in rows:
         writer.writerow(row)
     output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+    return Response(
+        content=output.getvalue().encode("utf-8-sig"),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )

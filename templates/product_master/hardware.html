@@ -9,7 +9,7 @@
 </style>
 {% endblock %}
 {% block content %}
-{% macro money(v) %}₹{{ '{:,.2f}'.format(v).rstrip('0').rstrip('.') }}{% endmacro %}
+{% macro money(v) %}₹{{ ((v) | inr(2)).rstrip('0').rstrip('.') }}{% endmacro %}
 {# Every Type x Size combination from Product Master -> Dropdown Configuration
    is listed. A row without a price has an open price box + Save; a saved row
    shows its price and an Edit button that reopens the box. #}

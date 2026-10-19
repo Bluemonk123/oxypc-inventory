@@ -150,7 +150,7 @@
             <td class="small">{{ g.make }}</td>
             <td class="small">{{ g.device_type }}</td>
             <td class="small">{{ g.total_count }}</td>
-            <td class="small">₹{{ "{:,.0f}".format(g.total_price) }}</td>
+            <td class="small">₹{{ ((g.total_price) | inr) }}</td>
             <td class="small">{{ g.repaired_count }}</td>
           </tr>
           {% endfor %}
@@ -215,13 +215,13 @@
             <td class="small">{{ lot.grn_date.strftime('%d-%m-%Y') if lot.grn_date else '—' }}</td>
             <td class="font-monospace small">{{ lot.invoice_no or '—' }}</td>
             {% if can_view_pricing(current_user) %}
-            <td class="small">{% if lot.invoice_value %}₹{{ "{:,.0f}".format(lot.invoice_value) }}{% else %}—{% endif %}</td>
+            <td class="small">{% if lot.invoice_value %}₹{{ ((lot.invoice_value) | inr) }}{% else %}—{% endif %}</td>
             {% endif %}
             <td class="text-center small">{{ lot.qty }}</td>
             <td class="text-center"><span class="badge bg-primary">{{ stat.devices }}</span></td>
             <td class="text-center"><span class="badge bg-success">{{ stat.sold }}</span></td>
             {% if can_view_pricing(current_user) %}
-            <td class="fw-semibold text-danger small">₹{{ "{:,.0f}".format(lot.buying_price or 0) }}</td>
+            <td class="fw-semibold text-danger small">₹{{ ((lot.buying_price or 0) | inr) }}</td>
             {% endif %}
             <td class="text-nowrap">
               <a href="/lots/{{ lot.id }}/edit" class="btn btn-sm btn-outline-secondary py-0">Edit</a>

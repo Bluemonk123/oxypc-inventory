@@ -26,37 +26,37 @@
     <div class="col-6 col-md-2">
       <div class="card border-0 shadow-sm text-center py-3">
         <div class="small text-muted mb-1">Current</div>
-        <div class="fw-bold text-success fs-6">&#8377;{{ "{:,.0f}".format(totals.current) }}</div>
+        <div class="fw-bold text-success fs-6">&#8377;{{ ((totals.current) | inr) }}</div>
       </div>
     </div>
     <div class="col-6 col-md-2">
       <div class="card border-0 shadow-sm text-center py-3">
         <div class="small text-muted mb-1">1–30 Days</div>
-        <div class="fw-bold text-warning fs-6">&#8377;{{ "{:,.0f}".format(totals.d30) }}</div>
+        <div class="fw-bold text-warning fs-6">&#8377;{{ ((totals.d30) | inr) }}</div>
       </div>
     </div>
     <div class="col-6 col-md-2">
       <div class="card border-0 shadow-sm text-center py-3">
         <div class="small text-muted mb-1">31–60 Days</div>
-        <div class="fw-bold fs-6" style="color:#fd7e14">&#8377;{{ "{:,.0f}".format(totals.d60) }}</div>
+        <div class="fw-bold fs-6" style="color:#fd7e14">&#8377;{{ ((totals.d60) | inr) }}</div>
       </div>
     </div>
     <div class="col-6 col-md-2">
       <div class="card border-0 shadow-sm text-center py-3">
         <div class="small text-muted mb-1">61–90 Days</div>
-        <div class="fw-bold text-danger fs-6">&#8377;{{ "{:,.0f}".format(totals.d90) }}</div>
+        <div class="fw-bold text-danger fs-6">&#8377;{{ ((totals.d90) | inr) }}</div>
       </div>
     </div>
     <div class="col-6 col-md-2">
       <div class="card border-0 shadow-sm text-center py-3">
         <div class="small text-muted mb-1">90+ Days</div>
-        <div class="fw-bold text-danger fs-6">&#8377;{{ "{:,.0f}".format(totals.d90plus) }}</div>
+        <div class="fw-bold text-danger fs-6">&#8377;{{ ((totals.d90plus) | inr) }}</div>
       </div>
     </div>
     <div class="col-6 col-md-2">
       <div class="card border-0 shadow-sm text-center py-3 border-primary">
         <div class="small text-muted mb-1">Total Outstanding</div>
-        <div class="fw-bold text-primary fs-6">&#8377;{{ "{:,.0f}".format(totals.total) }}</div>
+        <div class="fw-bold text-primary fs-6">&#8377;{{ ((totals.total) | inr) }}</div>
       </div>
     </div>
   </div>
@@ -88,41 +88,41 @@
                 {% endif %}
               </td>
               <td class="text-end">
-                {% if row.current > 0 %}<span class="text-success">&#8377;{{ "{:,.0f}".format(row.current) }}</span>
+                {% if row.current > 0 %}<span class="text-success">&#8377;{{ ((row.current) | inr) }}</span>
                 {% else %}<span class="text-muted">—</span>{% endif %}
               </td>
               <td class="text-end">
-                {% if row.d30 > 0 %}<span class="text-warning fw-semibold">&#8377;{{ "{:,.0f}".format(row.d30) }}</span>
+                {% if row.d30 > 0 %}<span class="text-warning fw-semibold">&#8377;{{ ((row.d30) | inr) }}</span>
                 {% else %}<span class="text-muted">—</span>{% endif %}
               </td>
               <td class="text-end">
-                {% if row.d60 > 0 %}<span style="color:#fd7e14" class="fw-semibold">&#8377;{{ "{:,.0f}".format(row.d60) }}</span>
+                {% if row.d60 > 0 %}<span style="color:#fd7e14" class="fw-semibold">&#8377;{{ ((row.d60) | inr) }}</span>
                 {% else %}<span class="text-muted">—</span>{% endif %}
               </td>
               <td class="text-end">
-                {% if row.d90 > 0 %}<span class="text-danger fw-semibold">&#8377;{{ "{:,.0f}".format(row.d90) }}</span>
+                {% if row.d90 > 0 %}<span class="text-danger fw-semibold">&#8377;{{ ((row.d90) | inr) }}</span>
                 {% else %}<span class="text-muted">—</span>{% endif %}
               </td>
               <td class="text-end">
-                {% if row.d90plus > 0 %}<span class="badge bg-danger fs-6 px-2 py-1">&#8377;{{ "{:,.0f}".format(row.d90plus) }}</span>
+                {% if row.d90plus > 0 %}<span class="badge bg-danger fs-6 px-2 py-1">&#8377;{{ ((row.d90plus) | inr) }}</span>
                 {% else %}<span class="text-muted">—</span>{% endif %}
               </td>
-              <td class="text-end pe-3 fw-bold">&#8377;{{ "{:,.0f}".format(row.total) }}</td>
+              <td class="text-end pe-3 fw-bold">&#8377;{{ ((row.total) | inr) }}</td>
             </tr>
             {% endfor %}
           </tbody>
           <tfoot class="table-dark">
             <tr>
               <th class="ps-3">TOTAL</th>
-              <th class="text-end">&#8377;{{ "{:,.0f}".format(totals.current) }}</th>
-              <th class="text-end">&#8377;{{ "{:,.0f}".format(totals.d30) }}</th>
-              <th class="text-end">&#8377;{{ "{:,.0f}".format(totals.d60) }}</th>
-              <th class="text-end">&#8377;{{ "{:,.0f}".format(totals.d90) }}</th>
+              <th class="text-end">&#8377;{{ ((totals.current) | inr) }}</th>
+              <th class="text-end">&#8377;{{ ((totals.d30) | inr) }}</th>
+              <th class="text-end">&#8377;{{ ((totals.d60) | inr) }}</th>
+              <th class="text-end">&#8377;{{ ((totals.d90) | inr) }}</th>
               <th class="text-end">
-                {% if totals.d90plus > 0 %}<span class="text-danger fw-bold">&#8377;{{ "{:,.0f}".format(totals.d90plus) }}</span>
+                {% if totals.d90plus > 0 %}<span class="text-danger fw-bold">&#8377;{{ ((totals.d90plus) | inr) }}</span>
                 {% else %}&#8377;0{% endif %}
               </th>
-              <th class="text-end pe-3">&#8377;{{ "{:,.0f}".format(totals.total) }}</th>
+              <th class="text-end pe-3">&#8377;{{ ((totals.total) | inr) }}</th>
             </tr>
           </tfoot>
         </table>

@@ -50,7 +50,7 @@ across every device appearing in `items`.
 """
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Request, Query
-from fastapi.responses import HTMLResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -614,6 +614,6 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     # utf-8-sig so Excel opens it without mangling non-ASCII names.
     data = buf.getvalue().encode("utf-8-sig")
     fname = f"workid_status_{_date.today().isoformat()}.csv"
-    return StreamingResponse(
-        _io.BytesIO(data), media_type="text/csv",
+    return Response(
+        content=data, media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'})

@@ -131,7 +131,7 @@
             </td>
             <td class="text-center fw-semibold">{{ e.qty or '—' }}</td>
             <td class="text-end fw-semibold">
-              {% if e.price_per_unit %}₹{{ "{:,.0f}".format(e.price_per_unit) }}{% if e.is_negotiable %}<span class="text-muted small"> neg.</span>{% endif %}
+              {% if e.price_per_unit %}₹{{ ((e.price_per_unit) | inr) }}{% if e.is_negotiable %}<span class="text-muted small"> neg.</span>{% endif %}
               {% else %}—{% endif %}
             </td>
             <td class="text-center text-muted">{{ e.warranty_months ~ 'm' if e.warranty_months else '—' }}</td>

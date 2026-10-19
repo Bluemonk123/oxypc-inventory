@@ -30,10 +30,10 @@
         <hr>
         <div class="row g-2 text-center">
           <div class="col-6"><div class="small text-muted">Last Sale</div><div class="fw-semibold small">{% if dealer.last_sale_date %}{{ dealer.last_sale_date.strftime('%d-%m-%Y') }}{% else %}Never{% endif %}</div></div>
-          <div class="col-6"><div class="small text-muted">Last Amt</div><div class="fw-semibold small">{% if dealer.last_sale_amount %}₹{{ "{:,.0f}".format(dealer.last_sale_amount) }}{% else %}—{% endif %}</div></div>
-          <div class="col-6"><div class="small text-muted">Total Purchases</div><div class="fw-semibold small">₹{{ "{:,.0f}".format(dealer.total_purchases or 0) }}</div></div>
-          <div class="col-6"><div class="small text-muted">Outstanding</div><div class="fw-semibold small {% if outstanding_live > 0 %}text-danger{% endif %}">₹{{ "{:,.0f}".format(outstanding_live) }}</div></div>
-          <div class="col-6"><div class="small text-muted">Credit Limit</div><div class="fw-semibold small">₹{{ "{:,.0f}".format(dealer.credit_limit or 0) }}</div></div>
+          <div class="col-6"><div class="small text-muted">Last Amt</div><div class="fw-semibold small">{% if dealer.last_sale_amount %}₹{{ ((dealer.last_sale_amount) | inr) }}{% else %}—{% endif %}</div></div>
+          <div class="col-6"><div class="small text-muted">Total Purchases</div><div class="fw-semibold small">₹{{ ((dealer.total_purchases or 0) | inr) }}</div></div>
+          <div class="col-6"><div class="small text-muted">Outstanding</div><div class="fw-semibold small {% if outstanding_live > 0 %}text-danger{% endif %}">₹{{ ((outstanding_live) | inr) }}</div></div>
+          <div class="col-6"><div class="small text-muted">Credit Limit</div><div class="fw-semibold small">₹{{ ((dealer.credit_limit or 0) | inr) }}</div></div>
         </div>
         <div class="mt-3 d-flex gap-2 flex-wrap">
           <a href="/dealers/{{ dealer.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>
@@ -132,9 +132,9 @@
               <tr>
                 <td><code>{{ order.order_number }}</code></td>
                 <td>{{ order.order_date.strftime('%d-%m-%Y') }}</td>
-                <td>₹{{ "{:,.0f}".format(order.total_amount or 0) }}</td>
-                <td class="text-success">₹{{ "{:,.0f}".format(order.paid_amount or 0) }}</td>
-                <td class="{% if order.due_amount > 0 %}text-danger fw-semibold{% endif %}">₹{{ "{:,.0f}".format(order.due_amount or 0) }}</td>
+                <td>₹{{ ((order.total_amount or 0) | inr) }}</td>
+                <td class="text-success">₹{{ ((order.paid_amount or 0) | inr) }}</td>
+                <td class="{% if order.due_amount > 0 %}text-danger fw-semibold{% endif %}">₹{{ ((order.due_amount or 0) | inr) }}</td>
                 <td><span class="badge bg-{% if order.status=='paid' %}success{% elif order.status=='pending' %}warning{% else %}secondary{% endif %}">{{ order.status | title }}</span></td>
                 <td>
                   {% if order.due_amount > 0 %}
@@ -152,7 +152,7 @@
                         <form method="post" action="/dealers/{{ dealer.id }}/orders/{{ order.id }}/pay">
                           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                           <div class="modal-body">
-                            <label class="form-label small fw-semibold">Amount (₹) — Due: ₹{{ "{:,.0f}".format(order.due_amount) }}</label>
+                            <label class="form-label small fw-semibold">Amount (₹) — Due: ₹{{ ((order.due_amount) | inr) }}</label>
                             <input type="number" name="amount" class="form-control form-control-sm mb-2"
                                    value="{{ order.due_amount }}" min="0.01" step="0.01" required>
                             <select name="payment_mode" class="form-select form-select-sm">
@@ -189,7 +189,7 @@
                           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                           <div class="modal-body">
                             <label class="form-label small fw-semibold">
-                              Credit Amount (₹) — Order Total: ₹{{ "{:,.0f}".format(order.total_amount) }}
+                              Credit Amount (₹) — Order Total: ₹{{ ((order.total_amount) | inr) }}
                             </label>
                             <input type="number" name="amount" class="form-control form-control-sm mb-2"
                                    value="{{ order.due_amount }}" min="0.01"
@@ -268,7 +268,7 @@
                 <td><code>{{ cn.credit_number }}</code></td>
                 <td>{{ cn.credit_date.strftime('%d-%m-%Y') }}</td>
                 <td>{% if cn.order %}<code>{{ cn.order.order_number }}</code>{% else %}—{% endif %}</td>
-                <td class="text-warning fw-semibold">₹{{ "{:,.0f}".format(cn.amount) }}</td>
+                <td class="text-warning fw-semibold">₹{{ ((cn.amount) | inr) }}</td>
                 <td>{{ (cn.reason or '—') | replace('_', ' ') | title }}</td>
                 <td class="text-muted">{{ cn.created_by or '—' }}</td>
                 <td>
@@ -289,11 +289,11 @@
                     <select name="order_id" class="form-select form-select-sm" style="min-width:130px" required>
                       <option value="">— Select Order —</option>
                       {% for ord in open_orders %}
-                      <option value="{{ ord.id }}">{{ ord.order_number }} (₹{{ "{:,.0f}".format(ord.due_amount) }})</option>
+                      <option value="{{ ord.id }}">{{ ord.order_number }} (₹{{ ((ord.due_amount) | inr) }})</option>
                       {% endfor %}
                     </select>
                     <button type="submit" class="btn btn-sm btn-outline-success"
-                            onclick="return confirm('Apply ₹{{ "{:,.0f}".format(cn.amount) }} from {{ cn.credit_number }} to selected order?')">
+                            onclick="return confirm('Apply ₹{{ ((cn.amount) | inr) }} from {{ cn.credit_number }} to selected order?')">
                       Apply
                     </button>
                   </form>

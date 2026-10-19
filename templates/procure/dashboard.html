@@ -12,7 +12,7 @@
       <div class="card-body text-center py-3">
         <div class="fs-3 fw-bold text-primary">{{ open_sourcing_count }}</div>
         <div class="small text-muted">Sourcing Deals Open</div>
-        <div class="small fw-semibold text-success mt-1">₹{{ "{:,.0f}".format(sourcing_pipeline_value) }}</div>
+        <div class="small fw-semibold text-success mt-1">₹{{ ((sourcing_pipeline_value) | inr) }}</div>
         <a href="/crm/sourcing" class="btn btn-sm btn-outline-primary mt-2 w-100">View All →</a>
       </div>
     </div>
@@ -22,7 +22,7 @@
       <div class="card-body text-center py-3">
         <div class="fs-3 fw-bold text-info">{{ open_sales_count }}</div>
         <div class="small text-muted">Sales Opportunities Open</div>
-        <div class="small fw-semibold text-success mt-1">₹{{ "{:,.0f}".format(sales_pipeline_value) }}</div>
+        <div class="small fw-semibold text-success mt-1">₹{{ ((sales_pipeline_value) | inr) }}</div>
         <a href="/crm/sales" class="btn btn-sm btn-outline-info mt-2 w-100">View All →</a>
       </div>
     </div>

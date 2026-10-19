@@ -38,7 +38,7 @@
   {% if can_view_pricing(current_user) %}
   <div class="col-6 col-md-4 col-xl-2">
     <div class="card border-0 shadow-sm text-center py-2 h-100">
-      <div class="fs-4 fw-bold text-dark">₹{{ "{:,.0f}".format(cards.stock_value) }}</div>
+      <div class="fs-4 fw-bold text-dark">₹{{ ((cards.stock_value) | inr) }}</div>
       <div class="small text-muted"><i class="bi bi-currency-rupee me-1"></i>Total Stock Value</div>
     </div>
   </div>

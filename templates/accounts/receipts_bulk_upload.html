@@ -81,7 +81,7 @@
             {% for r in results %}
             <tr class="{{ 'table-success' if r.status == 'added' else 'table-danger' }}">
               <td class="text-muted">{{ r.row }}</td>
-              <td class="fw-semibold">{% if r.status == 'added' %}&#8377;{{ "{:,.0f}".format(r.amount|float) }}{% else %}{{ r.amount }}{% endif %}</td>
+              <td class="fw-semibold">{% if r.status == 'added' %}&#8377;{{ ((r.amount|float) | inr) }}{% else %}{{ r.amount }}{% endif %}</td>
               <td>{{ r.date }}</td>
               <td><span class="badge bg-secondary">{{ r.mode }}</span></td>
               <td class="font-monospace">{{ r.ref }}</td>

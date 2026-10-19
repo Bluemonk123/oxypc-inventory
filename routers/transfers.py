@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from utils.timezone import app_now
 from fastapi import APIRouter, Depends, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, desc, func
 from sqlalchemy.exc import IntegrityError
@@ -406,8 +406,8 @@ async def export_transfers(
         ])
     data = buf.getvalue().encode("utf-8-sig")
     fname = f"transfers_{_date.today().isoformat()}.csv"
-    return StreamingResponse(
-        _io.BytesIO(data), media_type="text/csv",
+    return Response(
+        content=data, media_type="text/csv",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 

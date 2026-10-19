@@ -182,7 +182,7 @@
         <table class="table table-sm mb-0">
           <tr><td class="text-muted">Invoice No</td><td class="fw-semibold">{{ lot.invoice_no or '—' }}</td></tr>
           <tr><td class="text-muted">Invoice Date</td><td>{{ lot.invoice_date.strftime('%d-%m-%Y') if lot.invoice_date else '—' }}</td></tr>
-          <tr><td class="text-muted">Invoice Value</td><td>₹{{ "{:,.2f}".format(lot.invoice_value) if lot.invoice_value else '—' }}</td></tr>
+          <tr><td class="text-muted">Invoice Value</td><td>₹{{ ((lot.invoice_value) | inr(2)) if lot.invoice_value else '—' }}</td></tr>
           <tr><td class="text-muted">PO Number</td><td>{{ lot.po_number or '—' }}</td></tr>
           <tr><td class="text-muted">Vendor</td><td>{{ lot.vendor_name or lot.supplier_name }}</td></tr>
           <tr><td class="text-muted">GRN Date</td><td>{{ lot.grn_date.strftime('%d-%m-%Y') if lot.grn_date else '—' }}</td></tr>
@@ -240,7 +240,7 @@
               <td><span class="badge bg-info text-dark">{{ d.sub_category or '—' }}</span></td>
               <td>{{ d.brand or '' }} {{ d.model or '' }}</td>
               <td class="text-muted">{{ d.serial_no or '—' }}</td>
-              <td>{% if d.device_price %}₹{{ "{:,.0f}".format(d.device_price) }}{% else %}—{% endif %}</td>
+              <td>{% if d.device_price %}₹{{ ((d.device_price) | inr) }}{% else %}—{% endif %}</td>
               <td>
                 <span class="badge bg-{% if d.current_stage.value == 'grn' %}warning text-dark{% else %}success{% endif %}">
                   {{ d.current_stage.value | upper }}

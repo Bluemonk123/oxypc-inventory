@@ -8,7 +8,7 @@
     <div class="card border-0 shadow-sm text-center">
       <div class="card-body">
         <div class="text-muted small">Total Orders</div>
-        <div class="fs-4 fw-bold text-primary">₹{{ "{:,.0f}".format(total_orders) }}</div>
+        <div class="fs-4 fw-bold text-primary">₹{{ ((total_orders) | inr) }}</div>
       </div>
     </div>
   </div>
@@ -16,7 +16,7 @@
     <div class="card border-0 shadow-sm text-center">
       <div class="card-body">
         <div class="text-muted small">Total Received</div>
-        <div class="fs-4 fw-bold text-success">₹{{ "{:,.0f}".format(total_receipts) }}</div>
+        <div class="fs-4 fw-bold text-success">₹{{ ((total_receipts) | inr) }}</div>
       </div>
     </div>
   </div>
@@ -25,7 +25,7 @@
       <div class="card-body">
         <div class="text-muted small">Outstanding</div>
         <div class="fs-4 fw-bold {% if outstanding > 0 %}text-danger{% else %}text-success{% endif %}">
-          ₹{{ "{:,.0f}".format(outstanding) }}
+          ₹{{ ((outstanding) | inr) }}
         </div>
       </div>
     </div>
@@ -55,13 +55,13 @@
           <td><code>{{ e.ref }}</code></td>
           <td>{{ e.description }}</td>
           <td class="text-end {% if e.debit > 0 %}text-danger{% else %}text-muted{% endif %}">
-            {% if e.debit > 0 %}₹{{ "{:,.0f}".format(e.debit) }}{% else %}—{% endif %}
+            {% if e.debit > 0 %}₹{{ ((e.debit) | inr) }}{% else %}—{% endif %}
           </td>
           <td class="text-end {% if e.credit > 0 %}text-success{% else %}text-muted{% endif %}">
-            {% if e.credit > 0 %}₹{{ "{:,.0f}".format(e.credit) }}{% else %}—{% endif %}
+            {% if e.credit > 0 %}₹{{ ((e.credit) | inr) }}{% else %}—{% endif %}
           </td>
           <td class="text-end fw-semibold {% if e.balance > 0 %}text-danger{% else %}text-success{% endif %}">
-            ₹{{ "{:,.0f}".format(e.balance) }}
+            ₹{{ ((e.balance) | inr) }}
           </td>
         </tr>
         {% else %}
@@ -72,10 +72,10 @@
       <tfoot class="table-light fw-bold">
         <tr>
           <td colspan="3" class="text-end">Total</td>
-          <td class="text-end text-danger">₹{{ "{:,.0f}".format(total_orders) }}</td>
-          <td class="text-end text-success">₹{{ "{:,.0f}".format(total_receipts) }}</td>
+          <td class="text-end text-danger">₹{{ ((total_orders) | inr) }}</td>
+          <td class="text-end text-success">₹{{ ((total_receipts) | inr) }}</td>
           <td class="text-end {% if outstanding > 0 %}text-danger{% else %}text-success{% endif %}">
-            ₹{{ "{:,.0f}".format(outstanding) }}
+            ₹{{ ((outstanding) | inr) }}
           </td>
         </tr>
       </tfoot>

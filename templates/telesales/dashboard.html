@@ -49,7 +49,7 @@
           <i class="bi bi-receipt fs-4 text-success opacity-50"></i>
         </div>
         {% if can_view_pricing(current_user) %}
-        <div class="text-muted" style="font-size:0.7rem">₹{{ "{:,.0f}".format(sales_stats.today_revenue) }} today · ₹{{ "{:,.0f}".format(sales_stats.month_revenue) }} MTD</div>
+        <div class="text-muted" style="font-size:0.7rem">₹{{ ((sales_stats.today_revenue) | inr) }} today · ₹{{ ((sales_stats.month_revenue) | inr) }} MTD</div>
         {% endif %}
       </div>
     </a>
@@ -111,7 +111,7 @@
             {% for s in recent_sales %}
             <tr>
               <td>{{ s.customer_name or '—' }}</td>
-              {% if can_view_pricing(current_user) %}<td class="fw-semibold">₹{{ "{:,.0f}".format(s.sale_price) }}</td>{% endif %}
+              {% if can_view_pricing(current_user) %}<td class="fw-semibold">₹{{ ((s.sale_price) | inr) }}</td>{% endif %}
               <td class="text-muted">{{ s.sold_at.strftime('%d-%m-%Y') if s.sold_at else '—' }}</td>
             </tr>
             {% else %}
@@ -169,7 +169,7 @@
           <td class="ps-3">{{ q.customer_name }}</td>
           <td><span class="badge bg-secondary">{{ (q.customer_type or '—') | title }}</span></td>
           <td>{{ q.total_quantity }}</td>
-          {% if can_view_pricing(current_user) %}<td>₹{{ "{:,.0f}".format(q.total_price or 0) }}</td>{% endif %}
+          {% if can_view_pricing(current_user) %}<td>₹{{ ((q.total_price or 0) | inr) }}</td>{% endif %}
           <td>
             {% if q.status == 'confirmed' %}
             <span class="badge bg-success">Confirmed</span>

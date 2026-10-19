@@ -15,7 +15,7 @@
     <div class="mb-2">
       <div class="d-flex justify-content-between small mb-1">
         <span class="fw-semibold">{{ f.label }}</span>
-        <span>{{ f.count }} deals{% if f.value > 0 %} · ₹{{ "{:,.0f}".format(f.value) }}{% endif %}</span>
+        <span>{{ f.count }} deals{% if f.value > 0 %} · ₹{{ ((f.value) | inr) }}{% endif %}</span>
       </div>
       <div class="progress" style="height:20px">
         <div class="progress-bar {% if pipeline == 'sourcing' %}bg-primary{% else %}bg-info{% endif %}"
@@ -36,7 +36,7 @@
         <tr>
           <td>{{ f.label }}</td>
           <td class="fw-semibold">{{ f.count }}</td>
-          <td>{% if f.value > 0 %}₹{{ "{:,.0f}".format(f.value) }}{% else %}—{% endif %}</td>
+          <td>{% if f.value > 0 %}₹{{ ((f.value) | inr) }}{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

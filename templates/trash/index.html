@@ -128,7 +128,7 @@
               <td>{{ lot.supplier_name }}</td>
               <td data-order="{{ lot.purchase_date.strftime('%Y%m%d') if lot.purchase_date else '' }}">{{ lot.purchase_date.strftime('%d-%m-%Y') if lot.purchase_date else '—' }}</td>
               <td class="text-center">{{ lot.qty }}</td>
-              {% if can_view_pricing(current_user) %}<td class="text-danger fw-semibold" data-order="{{ lot.buying_price or 0 }}">₹{{ "{:,.0f}".format(lot.buying_price or 0) }}</td>{% endif %}
+              {% if can_view_pricing(current_user) %}<td class="text-danger fw-semibold" data-order="{{ lot.buying_price or 0 }}">₹{{ ((lot.buying_price or 0) | inr) }}</td>{% endif %}
               <td class="text-muted" data-order="{{ lot.trashed_at.strftime('%Y%m%d%H%M%S') if lot.trashed_at else '' }}">{{ lot.trashed_at.strftime('%d-%m-%Y %H:%M') if lot.trashed_at else '—' }}</td>
               <td class="text-nowrap">
                 <form method="post" action="/trash/lots/{{ lot.id }}/restore" style="display:inline">

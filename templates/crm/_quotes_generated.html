@@ -45,7 +45,7 @@
             {% endif %}
             <td class="small text-end">{{ r.total_models }}</td>
             <td class="small text-end">{{ r.total_qty }}</td>
-            <td class="small text-end">₹{{ "{:,.0f}".format(r.total_price) }}</td>
+            <td class="small text-end">₹{{ ((r.total_price) | inr) }}</td>
             <td class="text-center">
               {# Only a document actually produced by Generate is downloadable —
                  an empty cell here means nobody has generated one yet. #}
@@ -137,8 +137,8 @@
                 </td>
                 <td><label for="wl{{ loop.index }}" class="font-monospace mb-0">{{ l.lot_number }}</label></td>
                 <td class="text-end">{{ l.total_qty }}</td>
-                <td class="text-end">₹{{ "{:,.0f}".format(l.base_price) }}</td>
-                <td class="text-end fw-semibold text-success">₹{{ "{:,.0f}".format(l.won_bid_price) }}</td>
+                <td class="text-end">₹{{ ((l.base_price) | inr) }}</td>
+                <td class="text-end fw-semibold text-success">₹{{ ((l.won_bid_price) | inr) }}</td>
               </tr>
               {% endfor %}
             </tbody>

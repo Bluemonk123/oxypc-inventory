@@ -29,7 +29,7 @@
           <td class="ps-3">{{ q.customer_name }} <span class="text-muted small">({{ q.quote_number }})</span></td>
           <td><span class="badge bg-secondary">{{ (q.customer_type or '—') | title }}</span></td>
           <td>{{ q.total_quantity }}</td>
-          <td>₹{{ "{:,.0f}".format(q.total_price or 0) }}</td>
+          <td>₹{{ ((q.total_price or 0) | inr) }}</td>
           <td>
             {% if q.status == 'confirmed' %}
             <span class="badge bg-success">Confirmed</span>

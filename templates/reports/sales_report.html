@@ -20,7 +20,7 @@
     <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Sales Report</span>
     <div class="d-flex align-items-center gap-2">
       <span class="badge bg-primary" id="srSelCount">0 selected</span>
-      <span class="fw-bold text-success small">Total: ₹{{ "{:,.0f}".format(total) }}</span>
+      <span class="fw-bold text-success small">Total: ₹{{ ((total) | inr) }}</span>
       <a href="/reports/export/sales" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</a>
     </div>
   </div>

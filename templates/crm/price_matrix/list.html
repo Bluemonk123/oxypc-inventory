@@ -65,9 +65,9 @@
             <td><span class="badge bg-warning text-dark">{{ row.grade }}</span></td>
             <td class="small">{{ material_map.get(row.material_type, row.material_type or '—') }}</td>
             <td class="small text-muted">{{ row.brand or '—' }}</td>
-            <td class="small">{% if row.min_buy_price %}₹{{ "{:,.0f}".format(row.min_buy_price) }}{% else %}—{% endif %}</td>
-            <td class="small">{% if row.max_buy_price %}<span class="text-danger fw-semibold">₹{{ "{:,.0f}".format(row.max_buy_price) }}</span>{% else %}—{% endif %}</td>
-            <td class="small">{% if row.target_sell %}<span class="text-success fw-semibold">₹{{ "{:,.0f}".format(row.target_sell) }}</span>{% else %}—{% endif %}</td>
+            <td class="small">{% if row.min_buy_price %}₹{{ ((row.min_buy_price) | inr) }}{% else %}—{% endif %}</td>
+            <td class="small">{% if row.max_buy_price %}<span class="text-danger fw-semibold">₹{{ ((row.max_buy_price) | inr) }}</span>{% else %}—{% endif %}</td>
+            <td class="small">{% if row.target_sell %}<span class="text-success fw-semibold">₹{{ ((row.target_sell) | inr) }}</span>{% else %}—{% endif %}</td>
             <td class="small text-center">
               <span class="badge bg-{{ 'success' if (row.min_margin_pct or 0) >= 20 else 'warning text-dark' if (row.min_margin_pct or 0) >= 10 else 'danger' }}">
                 {{ row.min_margin_pct or 15 }}%

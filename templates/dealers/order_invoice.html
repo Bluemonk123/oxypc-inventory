@@ -59,21 +59,21 @@
         <tr>
           <td>1</td>
           <td>{{ order.items_description or 'Goods / Services as per order' }}</td>
-          <td class="text-end fw-semibold">&#8377;{{ "{:,.2f}".format(order.total_amount or 0) }}</td>
+          <td class="text-end fw-semibold">&#8377;{{ ((order.total_amount or 0) | inr(2)) }}</td>
         </tr>
       </tbody>
       <tfoot>
         <tr>
           <td colspan="2" class="text-end fw-bold">Total</td>
-          <td class="text-end fw-bold">&#8377;{{ "{:,.2f}".format(order.total_amount or 0) }}</td>
+          <td class="text-end fw-bold">&#8377;{{ ((order.total_amount or 0) | inr(2)) }}</td>
         </tr>
         <tr>
           <td colspan="2" class="text-end text-success">Amount Paid</td>
-          <td class="text-end text-success">&#8377;{{ "{:,.2f}".format(order.paid_amount or 0) }}</td>
+          <td class="text-end text-success">&#8377;{{ ((order.paid_amount or 0) | inr(2)) }}</td>
         </tr>
         <tr class="{% if (order.due_amount or 0) > 0 %}table-danger{% else %}table-success{% endif %}">
           <td colspan="2" class="text-end fw-bold">Balance Due</td>
-          <td class="text-end fw-bold">&#8377;{{ "{:,.2f}".format(order.due_amount or 0) }}</td>
+          <td class="text-end fw-bold">&#8377;{{ ((order.due_amount or 0) | inr(2)) }}</td>
         </tr>
       </tfoot>
     </table>

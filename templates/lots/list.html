@@ -106,15 +106,15 @@
             <td>{{ lot.grn_date.strftime('%d-%m-%Y') if lot.grn_date else '—' }}</td>
             <td class="font-monospace small">{{ lot.invoice_no or '—' }}</td>
             {% if can_view_pricing(current_user) %}
-            <td>{% if lot.invoice_value %}₹{{ "{:,.0f}".format(lot.invoice_value) }}{% else %}—{% endif %}</td>
-            <td>{% if lot.sgst %}₹{{ "{:,.0f}".format(lot.sgst) }}{% else %}—{% endif %}</td>
-            <td>{% if lot.cgst %}₹{{ "{:,.0f}".format(lot.cgst) }}{% else %}—{% endif %}</td>
-            <td>{% if lot.igst %}₹{{ "{:,.0f}".format(lot.igst) }}{% else %}—{% endif %}</td>
+            <td>{% if lot.invoice_value %}₹{{ ((lot.invoice_value) | inr) }}{% else %}—{% endif %}</td>
+            <td>{% if lot.sgst %}₹{{ ((lot.sgst) | inr) }}{% else %}—{% endif %}</td>
+            <td>{% if lot.cgst %}₹{{ ((lot.cgst) | inr) }}{% else %}—{% endif %}</td>
+            <td>{% if lot.igst %}₹{{ ((lot.igst) | inr) }}{% else %}—{% endif %}</td>
             {% endif %}
             <td class="text-center">{{ lot.qty }}</td>
             <td class="text-center"><span class="badge bg-primary">{{ stat.devices }}</span></td>
             <td class="text-center"><span class="badge bg-success">{{ stat.sold }}</span></td>
-            {% if can_view_pricing(current_user) %}<td class="fw-semibold text-danger">₹{{ "{:,.0f}".format(lot.buying_price) }}</td>{% endif %}
+            {% if can_view_pricing(current_user) %}<td class="fw-semibold text-danger">₹{{ ((lot.buying_price) | inr) }}</td>{% endif %}
             <td class="text-nowrap">
               <a href="/lots/{{ lot.id }}/edit" class="btn btn-sm btn-outline-secondary py-0">Edit</a>
               <button type="button" class="btn btn-sm btn-outline-success py-0"

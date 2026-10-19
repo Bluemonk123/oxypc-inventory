@@ -20,7 +20,7 @@ from typing import Optional
 import uuid as uuid_module
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Body
-from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -423,8 +423,8 @@ async def download_report(
         media_type = "text/plain"
         cd_name    = filename.replace(".pdf", ".txt")
 
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes),
+    return Response(
+        content=pdf_bytes,
         media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{cd_name}"'},
     )

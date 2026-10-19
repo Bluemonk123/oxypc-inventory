@@ -16,7 +16,7 @@
     <div class="card border-0 shadow-sm text-center py-2">
       <div class="fs-5 fw-bold text-{{ color }}">{{ s.count if s else 0 }}</div>
       <div class="small text-muted">{{ label }}</div>
-      <div class="small fw-semibold">₹{{ "{:,.0f}".format(s.value) if s else "0" }}</div>
+      <div class="small fw-semibold">₹{{ ((s.value) | inr) if s else "0" }}</div>
     </div>
   </div>
   {% endfor %}
@@ -73,8 +73,8 @@
             </td>
             <td><span class="badge bg-light text-dark border">{{ l.listing_type | replace('_',' ') | title }}</span></td>
             <td class="small">{{ l.qty_available }}/{{ l.qty_total }}</td>
-            <td class="small fw-semibold">₹{{ "{:,.0f}".format(l.dealer_price) }}</td>
-            <td class="small">₹{{ "{:,.0f}".format(l.token_amount) }}</td>
+            <td class="small fw-semibold">₹{{ ((l.dealer_price) | inr) }}</td>
+            <td class="small">₹{{ ((l.token_amount) | inr) }}</td>
             <td>
               {% if a and a.days is not none %}
               <span class="badge bg-{{ a.color }}">{{ a.label }} · {{ a.days }}d</span>
@@ -110,7 +110,7 @@
                         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                       </div>
                       <div class="modal-body">
-                        <p class="small mb-2">Price ₹{{ "{:,.0f}".format(l.dealer_price) }}/unit · {{ l.qty_available }} units · token ₹{{ "{:,.0f}".format(l.token_amount) }}/unit.</p>
+                        <p class="small mb-2">Price ₹{{ ((l.dealer_price) | inr) }}/unit · {{ l.qty_available }} units · token ₹{{ ((l.token_amount) | inr) }}/unit.</p>
                         <p class="small text-muted mb-2">Publishing runs the margin-floor check. If the price is below the configured floor,
                           {% if is_floor_approver %}you must give an override reason (audited).{% else %}only admin/finance can approve it.{% endif %}</p>
                         {% if is_floor_approver %}

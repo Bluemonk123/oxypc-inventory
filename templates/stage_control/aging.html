@@ -88,8 +88,8 @@
         <tr>
           <td><a href="/devices/{{ barcode }}">{{ barcode }}</a></td>
           <td>{{ brand }} {{ model }}</td>
-          <td>₹{{ "{:,.0f}".format(costing.total_cost or 0) }}</td>
-          <td>₹{{ "{:,.0f}".format(costing.expected_sale_value or 0) }}</td>
+          <td>₹{{ ((costing.total_cost or 0) | inr) }}</td>
+          <td>₹{{ ((costing.expected_sale_value or 0) | inr) }}</td>
           <td>
             {% if costing.expected_sale_value and costing.expected_sale_value > 0 %}
               {% set pct = (costing.total_cost / costing.expected_sale_value * 100)|int %}

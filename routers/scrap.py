@@ -27,7 +27,11 @@ async def scrap_products(request: Request, db: AsyncSession = Depends(get_db),
     rows = (await db.execute(
         select(Device, Lot.lot_number)
         .join(Lot, Device.lot_id == Lot.id, isouter=True)
-        .where(Device.grade == DeviceGrade.scrap, Device.current_stage == DeviceStage.scrap_for_sale,
+        # Every tag in the Scrap for Sale stage, whatever its grade (2026-10-19)
+        # — same set as the Scrap for Sale page. It used to require
+        # grade == Scrap too, so tags moved there by a bulk stage move with
+        # grade A/B/C (or none) were missing here (185 shown vs 469).
+        .where(Device.current_stage == DeviceStage.scrap_for_sale,
                Device.is_trashed == False)
         .order_by(Device.updated_at.desc())
     )).all()

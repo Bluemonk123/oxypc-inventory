@@ -98,7 +98,7 @@
       <!-- rows come from /accounts/customer-receipts/data via DataTables serverSide -->
       <tbody></tbody>
       <tfoot class="table-light">
-        <tr><td colspan="5" class="text-end fw-bold">Total:</td><td class="fw-bold text-success">&#8377;{{ "{:,.0f}".format(total) }}</td><td colspan="2"></td></tr>
+        <tr><td colspan="5" class="text-end fw-bold">Total:</td><td class="fw-bold text-success">&#8377;{{ ((total) | inr) }}</td><td colspan="2"></td></tr>
       </tfoot>
     </table>
   </div>
@@ -116,7 +116,7 @@
           <td class="font-monospace">{{ q.quote_number }}</td>
           <td>{{ q.contact.company_name if q.contact else '&mdash;' }}</td>
           <td>{{ q.quote_date.strftime('%d-%m-%Y') if q.quote_date else '&mdash;' }}</td>
-          <td class="fw-semibold">&#8377;{{ "{:,.0f}".format(q.total_amount or 0) }}</td>
+          <td class="fw-semibold">&#8377;{{ ((q.total_amount or 0) | inr) }}</td>
           <td>{% if q.payment_status == 'paid' %}<span class="badge bg-success">Paid</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
           <td class="text-nowrap">
             {% if q.invoice_path %}<a href="/uploads/accounts/{{ q.invoice_path }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Invoice"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}

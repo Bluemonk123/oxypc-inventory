@@ -101,7 +101,7 @@
               <td>{{ g.quantity if g.quantity is not none else '—' }}</td>
               {% set _st = stocked.get(g.grn_number, 0) %}
               <td><span class="badge bg-{{ 'success' if g.quantity and _st >= g.quantity else ('warning text-dark' if _st else 'secondary') }}">{{ _st }}</span></td>
-              <td>{% if g.amount is not none %}&#8377;{{ "{:,.2f}".format(g.amount) }}{% else %}—{% endif %}</td>
+              <td>{% if g.amount is not none %}&#8377;{{ ((g.amount) | inr(2)) }}{% else %}—{% endif %}</td>
               <td class="text-nowrap">
                 <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
                         data-bs-toggle="modal" data-bs-target="#editGrnModal"

@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from utils.timezone import app_now
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import extract, select, func, text as sa_text
 from database import get_db
@@ -524,8 +524,8 @@ async def build_location_csv(db: AsyncSession, day, exclude_admin: bool = False,
 
 
 def _csv_response(text: str, filename: str) -> StreamingResponse:
-    return StreamingResponse(
-        io.BytesIO(text.encode()), media_type="text/csv",
+    return Response(
+        content=text.encode(), media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
@@ -768,7 +768,7 @@ async def export_lot_pl(db: AsyncSession = Depends(get_db), current_user: User =
     if len(lots) == MAX_EXPORT_ROWS:
         writer.writerow(["# TRUNCATED", f"Export capped at {MAX_EXPORT_ROWS} rows", "", "", "", "", "", "", "", "", ""])
     output.seek(0)
-    return StreamingResponse(io.BytesIO(output.getvalue().encode()), media_type="text/csv",
+    return Response(content=output.getvalue().encode(), media_type="text/csv",
                              headers={"Content-Disposition": "attachment; filename=lot_pl.csv"})
 
 
@@ -833,8 +833,8 @@ async def _tag_export_csv(db: AsyncSession, rows, filename: str) -> StreamingRes
             STAGE_LABELS.get(d.current_stage, getattr(d.current_stage, "value", d.current_stage)),
             _fmt_money(d.device_price), _fmt_money(sale_price),
         ])
-    return StreamingResponse(
-        io.BytesIO(out.getvalue().encode("utf-8-sig")), media_type="text/csv",
+    return Response(
+        content=out.getvalue().encode("utf-8-sig"), media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
     )
 
@@ -946,8 +946,8 @@ async def export_sales(db: AsyncSession = Depends(get_db), current_user: User = 
     if truncated:
         writer.writerow(["# TRUNCATED", f"Export capped at {MAX_EXPORT_ROWS} rows", "", "", "", "", "", "", "", "", "", "", "", "", "", ""])
     output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode()), media_type="text/csv",
+    return Response(
+        content=output.getvalue().encode(), media_type="text/csv",
         headers={
             "Content-Disposition": "attachment; filename=sales.csv",
             # No explicit cache headers previously — a browser could serve a

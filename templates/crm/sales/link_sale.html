@@ -52,7 +52,7 @@
                 <td class="small">{{ brand or '—' }} {{ model or '' }}</td>
                 <td>{% if grade %}<span class="badge bg-warning text-dark">{{ grade }}</span>{% else %}—{% endif %}</td>
                 <td class="small text-muted">{{ lot_number }}</td>
-                {% if can_view_pricing(current_user) %}<td class="small fw-semibold">₹{{ "{:,.0f}".format(s.sale_price) }}</td>{% endif %}
+                {% if can_view_pricing(current_user) %}<td class="small fw-semibold">₹{{ ((s.sale_price) | inr) }}</td>{% endif %}
                 <td class="small text-muted">{{ s.sold_at.strftime('%d %b %Y') if s.sold_at else '—' }}</td>
               </tr>
               {% else %}

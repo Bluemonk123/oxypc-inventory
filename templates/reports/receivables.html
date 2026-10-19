@@ -24,7 +24,7 @@
     <div class="col-6 col-md-4 col-xl-2">
       <div class="border rounded-3 p-3 text-center h-100">
         <div class="small text-muted mb-1">{{ label }}</div>
-        <div class="fs-6 fw-bold text-{{ color }}">&#8377;{{ "{:,.0f}".format(totals[key]) }}</div>
+        <div class="fs-6 fw-bold text-{{ color }}">&#8377;{{ ((totals[key]) | inr) }}</div>
       </div>
     </div>
     {% endfor %}
@@ -66,24 +66,24 @@
               </td>
               <td>{{ r.order.order_date.strftime('%d-%m-%Y') }}</td>
               <td>{% if r.order.payment_due_date %}{{ r.order.payment_due_date.strftime('%d-%m-%Y') }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
-              <td>{% if r.bucket == 'd30' %}<span class="text-info fw-semibold">&#8377;{{ "{:,.0f}".format(r.due) }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
-              <td>{% if r.bucket == 'd60' %}<span class="text-warning fw-semibold">&#8377;{{ "{:,.0f}".format(r.due) }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
-              <td>{% if r.bucket == 'd90' %}<span class="text-danger fw-semibold">&#8377;{{ "{:,.0f}".format(r.due) }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
-              <td>{% if r.bucket == 'd90plus' %}<span class="text-danger fw-bold">&#8377;{{ "{:,.0f}".format(r.due) }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
-              <td>{% if r.bucket == 'current' %}<span class="text-success fw-semibold">&#8377;{{ "{:,.0f}".format(r.due) }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
-              <td class="text-end fw-semibold">&#8377;{{ "{:,.0f}".format(r.due) }}</td>
+              <td>{% if r.bucket == 'd30' %}<span class="text-info fw-semibold">&#8377;{{ ((r.due) | inr) }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
+              <td>{% if r.bucket == 'd60' %}<span class="text-warning fw-semibold">&#8377;{{ ((r.due) | inr) }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
+              <td>{% if r.bucket == 'd90' %}<span class="text-danger fw-semibold">&#8377;{{ ((r.due) | inr) }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
+              <td>{% if r.bucket == 'd90plus' %}<span class="text-danger fw-bold">&#8377;{{ ((r.due) | inr) }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
+              <td>{% if r.bucket == 'current' %}<span class="text-success fw-semibold">&#8377;{{ ((r.due) | inr) }}</span>{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>
+              <td class="text-end fw-semibold">&#8377;{{ ((r.due) | inr) }}</td>
             </tr>
             {% endfor %}
           </tbody>
           <tfoot class="table-dark fw-bold">
             <tr>
               <td colspan="4" class="text-end">Totals</td>
-              <td>&#8377;{{ "{:,.0f}".format(totals.d30) }}</td>
-              <td>&#8377;{{ "{:,.0f}".format(totals.d60) }}</td>
-              <td>&#8377;{{ "{:,.0f}".format(totals.d90) }}</td>
-              <td>&#8377;{{ "{:,.0f}".format(totals.d90plus) }}</td>
-              <td>&#8377;{{ "{:,.0f}".format(totals.current) }}</td>
-              <td class="text-end">&#8377;{{ "{:,.0f}".format(totals.grand) }}</td>
+              <td>&#8377;{{ ((totals.d30) | inr) }}</td>
+              <td>&#8377;{{ ((totals.d60) | inr) }}</td>
+              <td>&#8377;{{ ((totals.d90) | inr) }}</td>
+              <td>&#8377;{{ ((totals.d90plus) | inr) }}</td>
+              <td>&#8377;{{ ((totals.current) | inr) }}</td>
+              <td class="text-end">&#8377;{{ ((totals.grand) | inr) }}</td>
             </tr>
           </tfoot>
         </table>

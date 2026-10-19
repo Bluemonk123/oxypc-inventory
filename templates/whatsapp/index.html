@@ -515,7 +515,7 @@
                   <tr>
                     <td class="fw-semibold">{{ order.dealer_name }}</td>
                     <td><code>{{ order.invoice_number or order.order_number }}</code></td>
-                    <td class="text-danger fw-semibold">₹{{ "{:,.0f}".format(order.due_amount) }}</td>
+                    <td class="text-danger fw-semibold">₹{{ ((order.due_amount) | inr) }}</td>
                     <td class="{% if order.payment_due_date and order.payment_due_date.date() < today %}text-danger fw-semibold{% endif %}">
                       {{ order.payment_due_date.strftime('%d-%m-%Y') if order.payment_due_date else '—' }}
                     </td>

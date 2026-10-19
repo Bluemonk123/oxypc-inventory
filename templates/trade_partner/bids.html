@@ -34,8 +34,8 @@
                  data-lot-number="{{ s.lot_number }}">{{ s.lot_number }}</a>
             </td>
             <td><span class="badge bg-secondary">{{ s.total_bids }}</span></td>
-            <td class="text-muted">₹{{ "{:,.0f}".format(s.lowest) }}</td>
-            <td class="fw-bold text-success">₹{{ "{:,.0f}".format(s.highest) }}</td>
+            <td class="text-muted">₹{{ ((s.lowest) | inr) }}</td>
+            <td class="fw-bold text-success">₹{{ ((s.highest) | inr) }}</td>
             <td>{{ s.account_name }}</td>
             <td>{{ s.manager_name }}</td>
             <td class="text-nowrap">
@@ -49,7 +49,7 @@
             </td>
             <td class="text-nowrap">
               <form method="post" action="/trade-partner/bids/{{ s.top_bid.id }}/mark-won"
-                    onsubmit="return confirm('Mark the highest bid (₹{{ '{:,.0f}'.format(s.highest) }} by {{ s.account_name }}) as won for lot {{ s.lot_number }}?\n\nAll other live bids on this lot become lost.');">
+                    onsubmit="return confirm('Mark the highest bid (₹{{ ((s.highest) | inr) }} by {{ s.account_name }}) as won for lot {{ s.lot_number }}?\n\nAll other live bids on this lot become lost.');">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
                 <button class="btn btn-sm btn-success py-0 px-2"><i class="bi bi-trophy me-1"></i>Mark Won</button>
               </form>
@@ -86,16 +86,16 @@
       {% for r in rows %}
       <tr>
         <td class="text-nowrap">
-          <span class="fw-bold text-success">₹{{ "{:,.0f}".format(r.bid.bid_amount) }}</span>
+          <span class="fw-bold text-success">₹{{ ((r.bid.bid_amount) | inr) }}</span>
           {% if r.bid.bid_type == 'custom' %}
           <span class="badge bg-info-subtle text-info-emphasis border ms-1">custom</span>
           {% endif %}
           {% if r.base_amount %}
           <div class="small text-muted" style="font-size:.72rem">
-            Base ₹{{ "{:,.0f}".format(r.base_amount) }}
+            Base ₹{{ ((r.base_amount) | inr) }}
             {% if r.profit is not none %}
             <span class="{{ 'text-success' if r.profit >= 0 else 'text-danger' }} fw-semibold">
-              {{ '+' if r.profit >= 0 else '−' }}₹{{ "{:,.0f}".format(r.profit | abs) }}
+              {{ '+' if r.profit >= 0 else '−' }}₹{{ ((r.profit | abs) | inr) }}
               ({{ '+' if r.profit >= 0 else '−' }}{{ "{:.1f}".format(r.profit_pct | abs) }}%)
             </span>
             {% endif %}

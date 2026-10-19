@@ -35,7 +35,9 @@
 
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex align-items-center justify-content-between flex-wrap gap-2">
-    <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Stock on {{ selected_date }}</span>
+    <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Stock on {{ selected_date }}
+      <span class="text-muted fw-normal small ms-2"
+            title="Returned, Scrapped and Scrap for Sale are counted as stock">Excludes: GRN Receipt, Sold</span></span>
     <div class="d-flex align-items-center gap-2">
       {% if not is_today %}
       <span class="badge bg-warning text-dark">Historical — reconstructed from the Stage Movement log</span>

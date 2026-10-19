@@ -45,7 +45,7 @@
           <td>{{ d.device_type or '—' }}</td>
           <td><span class="badge bg-secondary">{{ d.grade }}</span></td>
           <td>{{ d.qty or '—' }}</td>
-          <td>{% if d.budget %}₹{{ '{:,.0f}'.format(d.budget) }}{% else %}—{% endif %}</td>
+          <td>{% if d.budget %}₹{{ ((d.budget) | inr) }}{% else %}—{% endif %}</td>
           <td><span class="badge bg-{{ 'danger' if d.priority == 'urgent' else 'warning text-dark' if d.priority == 'high' else 'secondary' }}">{{ d.priority }}</span></td>
           <td>{{ d.stage | replace('_', ' ') | title }}</td>
         </tr>
@@ -107,9 +107,9 @@
       </td>
       <td class="text-nowrap" data-order="{{ g.min_total }}">
         {% if g.min_lo is not none %}
-          <span class="fw-semibold">₹{{ "{:,.0f}".format(g.min_total) }}</span>
+          <span class="fw-semibold">₹{{ ((g.min_total) | inr) }}</span>
           <div class="text-muted" style="font-size:.7rem">
-            {% if g.min_lo == g.min_hi %}₹{{ "{:,.0f}".format(g.min_lo) }} / tag{% else %}₹{{ "{:,.0f}".format(g.min_lo) }} – ₹{{ "{:,.0f}".format(g.min_hi) }} / tag{% endif %}
+            {% if g.min_lo == g.min_hi %}₹{{ ((g.min_lo) | inr) }} / tag{% else %}₹{{ ((g.min_lo) | inr) }} – ₹{{ ((g.min_hi) | inr) }} / tag{% endif %}
             {% if g.min_missing %}· {{ g.min_missing }} without price{% endif %}
           </div>
         {% else %}<span class="text-muted">—</span>{% endif %}
@@ -308,10 +308,10 @@
           <td>{{ r.total_qty }}</td>
           <td>{{ r.availability }}</td>
           {% if can_view_pricing(current_user) %}
-          <td>{% if r.lot_price is not none %}₹{{ "{:,.0f}".format(r.lot_price) }}{% else %}—{% endif %}</td>
+          <td>{% if r.lot_price is not none %}₹{{ ((r.lot_price) | inr) }}{% else %}—{% endif %}</td>
           {% endif %}
-          <td>{% if r.min_price is not none %}₹{{ "{:,.0f}".format(r.min_price) }}{% if r.min_is_auto %}<span class="text-muted ms-1" style="font-size:.7rem" title="Calculated: Lot Price + As-Is margin. Use Set price to override.">auto</span>{% endif %}{% else %}—{% endif %}</td>
-          <td>{% if r.max_price is not none %}₹{{ "{:,.0f}".format(r.max_price) }}{% else %}—{% endif %}</td>
+          <td>{% if r.min_price is not none %}₹{{ ((r.min_price) | inr) }}{% if r.min_is_auto %}<span class="text-muted ms-1" style="font-size:.7rem" title="Calculated: Lot Price + As-Is margin. Use Set price to override.">auto</span>{% endif %}{% else %}—{% endif %}</td>
+          <td>{% if r.max_price is not none %}₹{{ ((r.max_price) | inr) }}{% else %}—{% endif %}</td>
           <td>{{ r.assigned_to_name }}</td>
           <td class="text-nowrap">
             {% if role_allowed(current_user.role, 'admin') %}
@@ -1140,7 +1140,7 @@ function summaryFooter() {
     SUMMARY_GRADE_ORDER.filter(function (g) { return grades[g]; }).map(function (g) {
       return '<span class="' + cls[g] + '">' + g + ' ' + grades[g] + '</span>';
     }).join('') + '</div>');
-  foot.find('.ms-total-min').text('₹' + Math.round(min).toLocaleString('en-US'));
+  foot.find('.ms-total-min').text('₹' + Math.round(min).toLocaleString('en-IN'));
 }
 function buildSummaryTable(id){
   if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();

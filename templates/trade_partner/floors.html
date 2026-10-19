@@ -63,7 +63,7 @@
           <td><span class="badge bg-light text-dark border">{{ r.listing_type | replace('_',' ') | title }}</span></td>
           <td class="small">{{ r.floor_rule_type | replace('_',' ') | title }}</td>
           <td class="small">{{ r.floor_pct if r.floor_pct is not none else '—' }}</td>
-          <td class="small">{{ "₹{:,.0f}".format(r.floor_value) if r.floor_value is not none else '—' }}</td>
+          <td class="small">{{ ('₹' ~ ((r.floor_value) | inr)) if r.floor_value is not none else '—' }}</td>
           <td class="small">{{ r.effective_from | ist_datetime }}</td>
           <td class="small">{{ r.created_by or '—' }}</td>
           <td>

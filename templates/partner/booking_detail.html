@@ -32,10 +32,10 @@
 
     <div class="row g-2 small">
       <div class="col-4"><span class="text-muted d-block">Qty</span>{{ booking.qty }} units</div>
-      <div class="col-4"><span class="text-muted d-block">Price/unit</span>₹{{ "{:,.0f}".format(booking.unit_price_snapshot) }}</div>
-      <div class="col-4"><span class="text-muted d-block">Order value</span>₹{{ "{:,.0f}".format(booking.unit_price_snapshot * booking.qty) }}</div>
-      <div class="col-4"><span class="text-muted d-block">Token due</span><span class="fw-bold text-success">₹{{ "{:,.0f}".format(booking.token_total) }}</span></div>
-      <div class="col-4"><span class="text-muted d-block">Balance</span>₹{{ "{:,.0f}".format(booking.balance_due) }}</div>
+      <div class="col-4"><span class="text-muted d-block">Price/unit</span>₹{{ ((booking.unit_price_snapshot) | inr) }}</div>
+      <div class="col-4"><span class="text-muted d-block">Order value</span>₹{{ ((booking.unit_price_snapshot * booking.qty) | inr) }}</div>
+      <div class="col-4"><span class="text-muted d-block">Token due</span><span class="fw-bold text-success">₹{{ ((booking.token_total) | inr) }}</span></div>
+      <div class="col-4"><span class="text-muted d-block">Balance</span>₹{{ ((booking.balance_due) | inr) }}</div>
       <div class="col-4"><span class="text-muted d-block">Booked</span>{{ booking.created_at | ist_datetime }}</div>
     </div>
 
@@ -107,7 +107,7 @@
       <div>
         <span class="badge bg-light text-dark border">{{ p.proof_type | title }}</span>
         UTR: <code>{{ p.utr_reference or '—' }}</code>
-        {% if p.amount_claimed %}· ₹{{ "{:,.0f}".format(p.amount_claimed) }}{% endif %}
+        {% if p.amount_claimed %}· ₹{{ ((p.amount_claimed) | inr) }}{% endif %}
       </div>
       <div>
         {% if p.screenshot_path %}

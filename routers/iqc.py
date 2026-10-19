@@ -5,7 +5,7 @@ from datetime import datetime as _dtnow
 from decimal import Decimal, InvalidOperation
 from utils.timezone import app_now
 from fastapi import APIRouter, Depends, Form, Request, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_
 from database import get_db
@@ -569,8 +569,8 @@ async def agent_installer_mac(current_user: User = Depends(allowed)):
     if os.path.exists(prebuilt):
         with open(prebuilt, "rb") as fh:
             payload = _zip_with_exec_bit("Diagnose_Device_Agent.command", fh.read())
-        return StreamingResponse(
-            io.BytesIO(payload), media_type="application/zip",
+        return Response(
+            content=payload, media_type="application/zip",
             headers={"Content-Disposition": "attachment; filename=Diagnose_Device_Agent_mac.zip"},
         )
 
@@ -607,8 +607,8 @@ OXYQC_AGENT_PY_EOF
 """
 
     payload = _zip_with_exec_bit("Diagnose_Device_Agent.command", command_file.encode("utf-8"))
-    return StreamingResponse(
-        io.BytesIO(payload), media_type="application/zip",
+    return Response(
+        content=payload, media_type="application/zip",
         headers={"Content-Disposition": "attachment; filename=Diagnose_Device_Agent_mac.zip"},
     )
 

@@ -5,7 +5,7 @@ import json as _json
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, Response
 from sqlalchemy import select, func, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -382,8 +382,8 @@ async def download_sample():
     ]
     buf = io.StringIO()
     csv.writer(buf).writerows(rows)
-    return StreamingResponse(
-        io.BytesIO(buf.getvalue().encode("utf-8")),
+    return Response(
+        content=buf.getvalue().encode("utf-8"),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=assign_leads_sample.csv"},
     )

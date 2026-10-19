@@ -70,7 +70,7 @@
           </div>
           <div class="col-6">
             <div class="small text-muted">Est. Value</div>
-            <div class="fw-semibold text-success">{% if opp.estimated_value %}₹{{ "{:,.0f}".format(opp.estimated_value) }}{% else %}—{% endif %}</div>
+            <div class="fw-semibold text-success">{% if opp.estimated_value %}₹{{ ((opp.estimated_value) | inr) }}{% else %}—{% endif %}</div>
           </div>
           {% if opp.expected_close_date %}
           <div class="col-12">
@@ -109,7 +109,7 @@
         {% set qstatus_colors = {'draft':'secondary','sent':'info','negotiating':'warning','accepted':'success','rejected':'danger','expired':'secondary'} %}
         <span class="badge bg-{{ qstatus_colors.get(quote.status,'secondary') }}">{{ quote.status | title }}</span>
         {% if quote.total_amount %}
-        <div class="small text-muted mt-2">Total: <strong class="text-success">₹{{ "{:,.0f}".format(quote.total_amount) }}</strong></div>
+        <div class="small text-muted mt-2">Total: <strong class="text-success">₹{{ ((quote.total_amount) | inr) }}</strong></div>
         {% endif %}
       </div>
     </div>

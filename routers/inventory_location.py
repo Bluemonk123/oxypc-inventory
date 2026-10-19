@@ -15,7 +15,7 @@ from typing import Optional
 import uuid
 
 from fastapi import APIRouter, Depends, Request, Form, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_, desc
 
@@ -233,8 +233,8 @@ async def location_bulk_template(
     writer.writerow(["zone", "unit_type", "unit_id", "slot", "description", "capacity"])
     writer.writerow(["workshop", "rack", "RACK-A1", "1", "Example rack", "50"])
     output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+    return Response(
+        content=output.getvalue().encode("utf-8-sig"),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=location_template.csv"},
     )

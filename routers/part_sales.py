@@ -18,7 +18,7 @@ from datetime import timedelta, datetime
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request, HTTPException, Query
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse, Response
 from sqlalchemy import select, func, text
 from sqlalchemy.exc import ProgrammingError, DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -536,8 +536,8 @@ async def export_part_sales_filtered(
         writer.writerow(["# TRUNCATED", f"Export capped at {MAX_EXPORT_ROWS} rows",
                          "", "", "", "", "", "", "", "", ""])
     output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode()),
+    return Response(
+        content=output.getvalue().encode(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=part_sales_filtered.csv"},
     )

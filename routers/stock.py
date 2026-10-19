@@ -5,7 +5,7 @@ from services.parts_changed import parts_badge_map
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timezone, timedelta
 from fastapi import APIRouter, Depends, Form, Query, Request, HTTPException, BackgroundTasks
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_, update, text
 from datetime import datetime as _dt
@@ -1996,8 +1996,8 @@ async def trc_production_tile_summary(
             row.append(return_status or "")
         writer.writerow(row)
     output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode()), media_type="text/csv",
+    return Response(
+        content=output.getvalue().encode(), media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=trc_{tile.replace('-', '_')}_summary.csv"},
     )
 
@@ -2038,8 +2038,8 @@ async def trc_production_pna_summary(
             pna.marked_by or "", pna.marked_at.strftime("%d-%m-%Y %H:%M") if pna.marked_at else "",
         ])
     output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode()), media_type="text/csv",
+    return Response(
+        content=output.getvalue().encode(), media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=pna_tag_summary.csv"},
     )
 

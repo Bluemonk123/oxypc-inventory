@@ -10,7 +10,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body text-center">
         <div class="fs-6 text-muted mb-1">Total Paid to Suppliers</div>
-        <div class="fs-2 fw-bold text-danger">&#8377;{{ "{:,.0f}".format(sp_total) }}</div>
+        <div class="fs-2 fw-bold text-danger">&#8377;{{ ((sp_total) | inr) }}</div>
         <a href="/accounts/supplier-payments" class="btn btn-sm btn-outline-danger mt-2">View All</a>
       </div>
     </div>
@@ -19,7 +19,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-body text-center">
         <div class="fs-6 text-muted mb-1">Total Received from Customers</div>
-        <div class="fs-2 fw-bold text-success">&#8377;{{ "{:,.0f}".format(cr_total) }}</div>
+        <div class="fs-2 fw-bold text-success">&#8377;{{ ((cr_total) | inr) }}</div>
         <a href="/accounts/customer-receipts" class="btn btn-sm btn-outline-success mt-2">View All</a>
       </div>
     </div>
@@ -38,7 +38,7 @@
               <td>{{ p.payment_date.strftime('%d-%m-%Y') if p.payment_date else '&mdash;' }}</td>
               <td>{{ p.contact.company_name if p.contact else '&mdash;' }}</td>
               <td><span class="badge bg-secondary">{{ p.payment_mode or '&mdash;' }}</span></td>
-              <td class="fw-semibold text-danger">&#8377;{{ "{:,.0f}".format(p.amount) }}</td>
+              <td class="fw-semibold text-danger">&#8377;{{ ((p.amount) | inr) }}</td>
             </tr>
             {% else %}
             <tr><td colspan="4" class="text-center text-muted py-3">No payments yet.</td></tr>
@@ -60,7 +60,7 @@
               <td>{{ r.receipt_date.strftime('%d-%m-%Y') if r.receipt_date else '&mdash;' }}</td>
               <td>{{ r.contact.company_name if r.contact else '&mdash;' }}</td>
               <td><span class="badge bg-secondary">{{ r.payment_mode or '&mdash;' }}</span></td>
-              <td class="fw-semibold text-success">&#8377;{{ "{:,.0f}".format(r.amount) }}</td>
+              <td class="fw-semibold text-success">&#8377;{{ ((r.amount) | inr) }}</td>
             </tr>
             {% else %}
             <tr><td colspan="4" class="text-center text-muted py-3">No receipts yet.</td></tr>

@@ -9,7 +9,7 @@ from datetime import datetime
 from utils.timezone import app_now
 from utils.csv_decode import decode_csv_bytes
 from fastapi import APIRouter, Depends, Form, Request, HTTPException, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, func, and_, update, case, cast, String
 from utils.touch_type import touch_badge_html
@@ -241,6 +241,9 @@ async def _build_location_map(db: AsyncSession, device_ids: list) -> dict:
             DeviceLocationLog.device_id,
             func.max(DeviceLocationLog.logged_at).label("latest"),
         )
+        # Only the asked-for devices (2026-10-19) — the latest-log subquery
+        # used to group the whole location log on every call.
+        .where(DeviceLocationLog.device_id.in_(uuid_ids))
         .group_by(DeviceLocationLog.device_id)
         .subquery()
     )
@@ -259,7 +262,8 @@ async def _build_location_map(db: AsyncSession, device_ids: list) -> dict:
             DeviceLocationLog.logged_at == sub.c.latest,
         ))
         .outerjoin(StorageLocation, DeviceLocationLog.location_id == StorageLocation.id)
-        .where(DeviceLocationLog.device_id.in_(uuid_ids))
+        # (device filter lives in the subquery above, so the IN() list is
+        # bound once — keeps a 20,000-id chunk under Postgres' 32767 cap)
     )
     loc_map = {}
     for device_id, location_id, unit_id, zone, slot, action, actor_name in rows.all():
@@ -1354,7 +1358,7 @@ def _stock_label(device) -> str:
     return STOCK_TYPE_LABELS[stock_type_key(device.current_stage, device.sub_lot_number)]
 
 
-async def _export_rows(db: AsyncSession, rows) -> StreamingResponse:
+async def _export_rows(db: AsyncSession, rows) -> Response:
     """Shared CSV builder for both the filtered export and the selected-tags
     export — same header, same columns, same cosmetic/hardware lookups,
     so a selection export can never show fewer fields than a full one.
@@ -1364,7 +1368,15 @@ async def _export_rows(db: AsyncSession, rows) -> StreamingResponse:
     parameter limit (see CHUNK below) can fetch it in batches itself before
     handing the merged rows in here."""
     from services.part_estimate_matrix import PART_GROUPS
-    from services.pna_lookup import active_pna_parts
+
+    import time as _time
+    _t = [_time.perf_counter()]
+    _phase = {}
+
+    def _mark(name):
+        now = _time.perf_counter()
+        _phase[name] = _phase.get(name, 0) + (now - _t[0])
+        _t[0] = now
 
     device_ids = [device.id for device, _ in rows]
 
@@ -1382,27 +1394,38 @@ async def _export_rows(db: AsyncSession, rows) -> StreamingResponse:
     for chunk in id_chunks:
         # Chunked like the lookups below (active_pna_parts also chunks
         # internally, but this keeps each call well under the param cap).
-        pna_device_ids.update((await active_pna_parts(db, chunk)).keys())
+        # Speed (2026-10-19): only the columns each lookup needs, as plain
+        # rows — loading every StageMovement / PNA part as a full ORM object
+        # made an ~11,700-tag export take 20+ seconds.
+        pna_device_ids.update((await db.execute(
+            select(DevicePNAPart.device_id).where(
+                DevicePNAPart.device_id.in_(chunk), DevicePNAPart.is_active == True)  # noqa: E712
+            .distinct()
+        )).scalars().all())
+        _mark("pna")
 
         mv_result = await db.execute(
-            select(StageMovement)
+            select(StageMovement.device_id, StageMovement.to_stage, StageMovement.moved_at)
             .where(StageMovement.device_id.in_(chunk))
             .order_by(StageMovement.moved_at.asc())
         )
-        for mv in mv_result.scalars().all():
-            movements_by_device.setdefault(mv.device_id, []).append(mv)
+        for did, to_stage, moved_at in mv_result.all():
+            movements_by_device.setdefault(did, []).append((to_stage, moved_at))
+        _mark("moves")
 
         iqc_result = await db.execute(
             select(IQCInspection).where(IQCInspection.device_id.in_(chunk))
         )
         for iqc in iqc_result.scalars().all():
             iqc_by_device[iqc.device_id] = iqc
+        _mark("iqc")
 
         # _build_location_map issues its own un-chunked .in_() query, so it
         # must be called per-chunk here too — otherwise a full "All
         # Inventory" export would reintroduce the exact 32767-bound-parameter
         # crash the movements/IQC chunking above already exists to avoid.
         location_map.update(await _build_location_map(db, [str(did) for did in chunk]))
+        _mark("loc")
 
     cosmetic_parts = next(p for g, _h, _f, _s, p in PART_GROUPS if g == "cosmetic")
 
@@ -1411,9 +1434,9 @@ async def _export_rows(db: AsyncSession, rows) -> StreamingResponse:
         if not moves:
             return STAGE_LABELS.get(device.current_stage, device.current_stage)
         parts = []
-        for mv in moves:
-            label = STAGE_LABELS.get(mv.to_stage, mv.to_stage)
-            when = mv.moved_at.strftime("%d-%b-%Y") if mv.moved_at else ""
+        for to_stage, moved_at in moves:
+            label = STAGE_LABELS.get(to_stage, to_stage)
+            when = moved_at.strftime("%d-%b-%Y") if moved_at else ""
             parts.append(f"{label} ({when})" if when else label)
         return " -> ".join(parts)
 
@@ -1482,11 +1505,20 @@ async def _export_rows(db: AsyncSession, rows) -> StreamingResponse:
             f"expected {len(_EXPORT_HEADER)} — column mapping is out of sync with _EXPORT_HEADER."
         )
         writer.writerow(row)
-    output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+    _mark("csv")
+    body = output.getvalue().encode("utf-8-sig")
+    _mark("encode")
+    # Server-Timing (2026-10-19): per-step milliseconds, visible in the
+    # browser's network panel — how slow exports were tracked down.
+    timing = ", ".join(f"{k};dur={v * 1000:.0f}" for k, v in _phase.items())
+    # A plain Response, not StreamingResponse(BytesIO): iterating a BytesIO
+    # yields one CSV line per chunk, so an 11,700-row file went out as
+    # ~11,700 separate writes — about 10 of the 17 seconds the export took.
+    return Response(
+        content=body,
         media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=devices_export.csv"},
+        headers={"Content-Disposition": "attachment; filename=devices_export.csv",
+                 "Server-Timing": timing},
     )
 
 
@@ -1502,6 +1534,8 @@ async def export_devices(
     date_to: str = "",
     entity: str = "",
     stock_type: str = "",
+    exclude_sold: str = "",
+    fs: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(view_allowed),
 ):
@@ -1524,11 +1558,17 @@ async def export_devices(
         .outerjoin(Lot, Device.lot_id == Lot.id)
         .where(Device.is_trashed == False,
               *_device_search_filters(q, stage, lot, grade, category, device_type,
-                                      date_from, date_to, entity=entity, stock_type=stock_type))
+                                      date_from, date_to, entity=entity, stock_type=stock_type,
+                                      exclude_sold=_exclude_sold(exclude_sold, fs)))
         .order_by(Device.updated_at.desc())
     )
+    import time as _time
+    t0 = _time.perf_counter()
     rows = (await db.execute(query)).all()
-    return await _export_rows(db, rows)
+    resp = await _export_rows(db, rows)
+    resp.headers["Server-Timing"] = (f"total;dur={(_time.perf_counter() - t0) * 1000:.0f}, "
+                                     + resp.headers.get("Server-Timing", ""))
+    return resp
 
 
 @router.post("/export")

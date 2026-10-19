@@ -27,7 +27,7 @@
             <td>{{ it.model }}</td>
             <td><span class="badge bg-secondary">{{ it.grade }}</span></td>
             <td>{{ it.received_user }}</td>
-            <td>{% if it.amount is not none %}₹{{ "{:,.2f}".format(it.amount) }}{% else %}—{% endif %}</td>
+            <td>{% if it.amount is not none %}₹{{ ((it.amount) | inr(2)) }}{% else %}—{% endif %}</td>
             <td class="text-muted small">{{ it.updated_at.strftime('%d-%m-%Y %H:%M') if it.updated_at else '—' }}</td>
             <td class="text-muted">{{ it.notes }}</td>
             <td>

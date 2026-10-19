@@ -45,7 +45,7 @@
           <div class="alert alert-success py-2 mb-3 small">
             <strong>{{ device.brand }} {{ device.model }}</strong> &bull; Grade: {{ device.grade }} &bull;
             RAM: {{ device.ram_gb }}GB &bull; Storage: {{ device.storage_gb }}GB {{ device.storage_type }}
-            {% if lot %} &bull; Lot: {{ lot.lot_number }} (₹{{ "{:,.0f}".format(lot.buying_price/lot.qty if lot.qty else 0) }}/unit cost){% endif %}
+            {% if lot %} &bull; Lot: {{ lot.lot_number }} (₹{{ ((lot.buying_price/lot.qty if lot.qty else 0) | inr) }}/unit cost){% endif %}
           </div>
           {% endif %}
           <div class="row g-3">

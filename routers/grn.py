@@ -9,7 +9,7 @@ from templates_config import templates
 from datetime import datetime
 from utils.timezone import app_now
 from fastapi import APIRouter, Depends, Form, Request, HTTPException, Query, UploadFile, File
-from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, update
 
@@ -280,7 +280,7 @@ async def grn_post_iqc_export(
                     f"{d.ram_gb} GB" if d.ram_gb else "", f"{d.storage_gb} GB" if d.storage_gb else "",
                     d.invoice_number or "", d.po_number or "", d.stage_label])
     fname = f"grn_pending_{app_now().strftime('%Y%m%d_%H%M')}.csv"
-    return StreamingResponse(io.BytesIO(out.getvalue().encode("utf-8-sig")), media_type="text/csv",
+    return Response(content=out.getvalue().encode("utf-8-sig"), media_type="text/csv",
                              headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 

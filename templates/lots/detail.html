@@ -22,7 +22,7 @@
   <div class="col-md-2">
     <div class="card border-0 shadow-sm text-center p-3">
       <div class="text-muted small mb-1">Buying Price</div>
-      <div class="fw-bold text-danger">₹{{ "{:,.0f}".format(lot.buying_price) }}</div>
+      <div class="fw-bold text-danger">₹{{ ((lot.buying_price) | inr) }}</div>
     </div>
   </div>
   {% endif %}
@@ -36,14 +36,14 @@
   <div class="col-md-2">
     <div class="card border-0 shadow-sm text-center p-3">
       <div class="text-muted small mb-1">Invoice Value</div>
-      <div class="fw-semibold">{% if lot.invoice_value %}₹{{ "{:,.0f}".format(lot.invoice_value) }}{% else %}—{% endif %}</div>
+      <div class="fw-semibold">{% if lot.invoice_value %}₹{{ ((lot.invoice_value) | inr) }}{% else %}—{% endif %}</div>
     </div>
   </div>
   <div class="col-md-2">
     <div class="card border-0 shadow-sm text-center p-3">
       <div class="text-muted small mb-1">Total GST</div>
       {% set total_gst = (lot.sgst or 0) + (lot.cgst or 0) + (lot.igst or 0) %}
-      <div class="fw-semibold text-info">₹{{ "{:,.0f}".format(total_gst) }}</div>
+      <div class="fw-semibold text-info">₹{{ ((total_gst) | inr) }}</div>
     </div>
   </div>
   {% endif %}
@@ -140,21 +140,21 @@
         <table class="table table-sm table-borderless mb-0">
           <tbody>
             <tr><th class="text-muted w-40">Invoice Value</th>
-                <td class="fw-semibold">{% if lot.invoice_value %}₹{{ "{:,.2f}".format(lot.invoice_value) }}{% else %}—{% endif %}</td></tr>
+                <td class="fw-semibold">{% if lot.invoice_value %}₹{{ ((lot.invoice_value) | inr(2)) }}{% else %}—{% endif %}</td></tr>
             <tr><th class="text-muted">Taxable Amount</th>
-                <td>{% if lot.taxable_amount %}₹{{ "{:,.2f}".format(lot.taxable_amount) }}{% else %}—{% endif %}</td></tr>
+                <td>{% if lot.taxable_amount %}₹{{ ((lot.taxable_amount) | inr(2)) }}{% else %}—{% endif %}</td></tr>
             <tr><td colspan="2"><hr class="my-1"></td></tr>
             <tr><th class="text-muted">SGST</th>
-                <td>{% if lot.sgst %}₹{{ "{:,.2f}".format(lot.sgst) }}{% else %}—{% endif %}</td></tr>
+                <td>{% if lot.sgst %}₹{{ ((lot.sgst) | inr(2)) }}{% else %}—{% endif %}</td></tr>
             <tr><th class="text-muted">CGST</th>
-                <td>{% if lot.cgst %}₹{{ "{:,.2f}".format(lot.cgst) }}{% else %}—{% endif %}</td></tr>
+                <td>{% if lot.cgst %}₹{{ ((lot.cgst) | inr(2)) }}{% else %}—{% endif %}</td></tr>
             <tr><th class="text-muted">IGST</th>
-                <td>{% if lot.igst %}₹{{ "{:,.2f}".format(lot.igst) }}{% else %}—{% endif %}</td></tr>
+                <td>{% if lot.igst %}₹{{ ((lot.igst) | inr(2)) }}{% else %}—{% endif %}</td></tr>
             <tr class="table-warning"><th>Total GST</th>
-                <td class="fw-bold">₹{{ "{:,.2f}".format((lot.sgst or 0) + (lot.cgst or 0) + (lot.igst or 0)) }}</td></tr>
+                <td class="fw-bold">₹{{ (((lot.sgst or 0) + (lot.cgst or 0) + (lot.igst or 0)) | inr(2)) }}</td></tr>
             <tr><td colspan="2"><hr class="my-1"></td></tr>
             <tr class="table-primary"><th>Lot Buying Price</th>
-                <td class="fw-bold text-danger">₹{{ "{:,.2f}".format(lot.buying_price) }}</td></tr>
+                <td class="fw-bold text-danger">₹{{ ((lot.buying_price) | inr(2)) }}</td></tr>
           </tbody>
         </table>
         {% if lot.notes %}
@@ -176,28 +176,28 @@
     <div class="row g-3 text-center">
       <div class="col-6 col-md-2">
         <div class="small text-muted">Revenue</div>
-        <div class="fw-bold">₹{{ "{:,.0f}".format(lot_revenue) }}</div>
+        <div class="fw-bold">₹{{ ((lot_revenue) | inr) }}</div>
       </div>
       <div class="col-6 col-md-2">
         <div class="small text-muted">Buying Cost</div>
-        <div class="fw-bold text-danger">₹{{ "{:,.0f}".format(lot_buying) }}</div>
+        <div class="fw-bold text-danger">₹{{ ((lot_buying) | inr) }}</div>
       </div>
       <div class="col-6 col-md-2">
         <div class="small text-muted">Parts Cost</div>
-        <div class="fw-bold text-danger">₹{{ "{:,.0f}".format(lot_parts_cost) }}</div>
+        <div class="fw-bold text-danger">₹{{ ((lot_parts_cost) | inr) }}</div>
       </div>
       <div class="col-6 col-md-2">
         <div class="small text-muted">Labour Cost</div>
-        <div class="fw-bold text-danger">₹{{ "{:,.0f}".format(lot_labour_cost) }}</div>
+        <div class="fw-bold text-danger">₹{{ ((lot_labour_cost) | inr) }}</div>
       </div>
       <div class="col-6 col-md-2">
         <div class="small text-muted">Cosmetic Cost</div>
-        <div class="fw-bold text-danger">₹{{ "{:,.0f}".format(lot_cosmetic_cost) }}</div>
+        <div class="fw-bold text-danger">₹{{ ((lot_cosmetic_cost) | inr) }}</div>
       </div>
       <div class="col-6 col-md-2">
         <div class="small text-muted">Net Profit</div>
         <div class="fw-bold {% if lot_profit >= 0 %}text-success{% else %}text-danger{% endif %}">
-          ₹{{ "{:,.0f}".format(lot_profit) }}
+          ₹{{ ((lot_profit) | inr) }}
           <span class="badge {% if lot_profit >= 0 %}bg-success{% else %}bg-danger{% endif %} ms-1">
             {{ lot_margin }}%
           </span>
@@ -282,9 +282,9 @@
                 {% if item.screen_size %}<span class="badge bg-light text-dark border me-1">{{ item.screen_size }}"</span>{% endif %}
               </td>
               <td>{% if item.grade %}<span class="badge bg-dark bg-opacity-10 text-dark border">{{ item.grade }}</span>{% else %}—{% endif %}</td>
-              <td class="text-end fw-semibold">₹{{ "{:,.0f}".format(item.unit_price) }}</td>
+              <td class="text-end fw-semibold">₹{{ ((item.unit_price) | inr) }}</td>
               <td class="text-center">{{ item.qty }}</td>
-              <td class="text-end fw-bold text-success">₹{{ "{:,.0f}".format(item.unit_price * item.qty) }}</td>
+              <td class="text-end fw-bold text-success">₹{{ ((item.unit_price * item.qty) | inr) }}</td>
               <td class="text-muted small">{{ item.notes or '' }}</td>
               <td class="text-nowrap">
                 <button class="btn btn-xs btn-outline-secondary py-0 px-1 me-1"
@@ -303,7 +303,7 @@
             <tr>
               <td colspan="6" class="text-end fw-bold">Grand Total</td>
               <td class="text-center fw-bold" id="footerQty">{{ ns.grand_qty }}</td>
-              <td class="text-end fw-bold text-warning" id="footerTotal">₹{{ "{:,.0f}".format(ns.grand_total) }}</td>
+              <td class="text-end fw-bold text-warning" id="footerTotal">₹{{ ((ns.grand_total) | inr) }}</td>
               <td colspan="2"></td>
             </tr>
           </tfoot>

@@ -17,7 +17,7 @@
 </style>
 {% endblock %}
 {% block content %}
-{% macro money(v) %}{% if v is none %}<span class="badge bg-warning text-dark">Pending</span>{% else %}₹{{ '{:,.2f}'.format(v).rstrip('0').rstrip('.') }}{% endif %}{% endmacro %}
+{% macro money(v) %}{% if v is none %}<span class="badge bg-warning text-dark">Pending</span>{% else %}₹{{ ((v) | inr(2)).rstrip('0').rstrip('.') }}{% endif %}{% endmacro %}
 
 {# Tiles (above the tabs, always visible): counts of the Status badges in the
    Product Master table. Active = a row
@@ -91,7 +91,7 @@
                   <option value="{{ d.value }}" {% if p.discount_pct is not none and p.discount_pct == d.value|float %}selected{% endif %}>{{ d.value }}%</option>
                   {% endfor %}
                 </select>
-                <span class="small text-muted pm-disc-amt" style="min-width:64px">₹{{ '{:,.2f}'.format(p.discount_amount).rstrip('0').rstrip('.') }}</span>
+                <span class="small text-muted pm-disc-amt" style="min-width:64px">₹{{ ((p.discount_amount) | inr(2)).rstrip('0').rstrip('.') }}</span>
               </div>
               </td>
               <td class="pm-sell fw-semibold">{{ money(p.selling_price) }}</td>

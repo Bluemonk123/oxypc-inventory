@@ -7,7 +7,7 @@
   <div>
     <span class="fw-bold fs-5">{{ sale.sale_number }}</span>
     {% if can_view_pricing(current_user) %}
-    <span class="badge bg-success ms-2">₹{{ "{:,.0f}".format(sale.sale_price) }}</span>
+    <span class="badge bg-success ms-2">₹{{ ((sale.sale_price) | inr) }}</span>
     {% endif %}
     <small class="text-muted ms-2">{{ sale.sold_at.strftime('%d %b %Y, %I:%M %p') }}</small>
     {% if block_id %}
@@ -115,7 +115,7 @@
           <tbody>
             {% if can_view_pricing(current_user) %}
             <tr><th class="text-muted w-40">Sale Price</th>
-                <td class="fw-bold text-success fs-5">₹{{ "{:,.2f}".format(sale.sale_price) }}</td></tr>
+                <td class="fw-bold text-success fs-5">₹{{ ((sale.sale_price) | inr(2)) }}</td></tr>
             {% endif %}
             <tr><th class="text-muted">Payment Mode</th>
                 <td>

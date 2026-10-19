@@ -42,7 +42,7 @@
   </div>
   <div class="col-6 col-md-4">
     <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold text-success">₹{{ "{:,.0f}".format(pipeline_value) }}</div>
+      <div class="fs-4 fw-bold text-success">₹{{ ((pipeline_value) | inr) }}</div>
       <div class="small text-muted">Pipeline Value</div>
     </div>
   </div>
@@ -109,7 +109,7 @@
               </span>
             </td>
             <td class="small">{{ o.required_qty or '—' }}</td>
-            <td class="small">{% if o.estimated_value %}₹{{ "{:,.0f}".format(o.estimated_value) }}{% else %}—{% endif %}</td>
+            <td class="small">{% if o.estimated_value %}₹{{ ((o.estimated_value) | inr) }}{% else %}—{% endif %}</td>
             <td class="small">{% if o.grade_required %}<span class="badge bg-light text-dark border">{{ o.grade_required }}</span>{% else %}—{% endif %}</td>
             <td>
               <span class="badge bg-{{ priority_colors.get(o.priority,'secondary') }}">{{ o.priority | title }}</span>

@@ -9,7 +9,7 @@
     <span><i class="bi bi-receipt-cutoff me-2"></i>Scrap Sale Report</span>
     <div class="d-flex align-items-center flex-wrap gap-2">
       <span class="small text-muted">Total Sale Price:</span>
-      <span class="fw-semibold">₹{{ "{:,.2f}".format(grand_total) }}</span>
+      <span class="fw-semibold">₹{{ ((grand_total) | inr(2)) }}</span>
       <a href="/scrap-for-sale" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">
         <i class="bi bi-arrow-left me-1"></i>Scrap for Sale
       </a>
@@ -36,7 +36,7 @@
           <td>{{ r.customer_phone or '—' }}</td>
           <td>{{ r.customer_place or '—' }}</td>
           <td>{{ r.item_count }}</td>
-          <td class="text-nowrap" data-order="{{ r.total }}">₹{{ "{:,.2f}".format(r.total) }}</td>
+          <td class="text-nowrap" data-order="{{ r.total }}">₹{{ ((r.total) | inr(2)) }}</td>
           <td>{{ r.created_by }}</td>
           <td>
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 ssr-view"

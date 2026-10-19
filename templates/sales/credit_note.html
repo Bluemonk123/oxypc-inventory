@@ -107,7 +107,7 @@
             <td>{{ d.sub_lot_number or '—' }}</td>
             <td>{{ '%.2f'|format(d.device_price) if d.device_price is not none else '—' }}</td>
             <td>{{ row.sale_date.strftime('%d-%m-%Y') if row.sale_date else '—' }}</td>
-            <td>{% if ret.debit_note_amount is not none %}₹{{ "{:,.0f}".format(ret.debit_note_amount) }}{% else %}—{% endif %}</td>
+            <td>{% if ret.debit_note_amount is not none %}₹{{ ((ret.debit_note_amount) | inr) }}{% else %}—{% endif %}</td>
             <td>{{ ret.debit_note_number or '—' }}</td>
             <td>{% if row.sale_id %}<a href="/sales/{{ row.sale_id }}" class="text-decoration-none">{{ row.sale_number }}</a>{% else %}—{% endif %}</td>
             <td>{{ ret.payment_invoice or '—' }}</td>

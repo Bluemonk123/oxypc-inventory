@@ -78,8 +78,8 @@
             <td>{{ item.po_category or '—' }}</td>
             <td class="text-center">{{ item.quantity }}</td>
             {% if can_view_pricing(current_user) %}
-            <td class="text-end">₹{{ "{:,.0f}".format(item.unit_price) }}</td>
-            <td class="text-end fw-semibold">₹{{ "{:,.0f}".format(item.total_price) }}</td>
+            <td class="text-end">₹{{ ((item.unit_price) | inr) }}</td>
+            <td class="text-end fw-semibold">₹{{ ((item.total_price) | inr) }}</td>
             {% endif %}
             {% if items | selectattr('specs_note') | list %}
             <td class="small text-muted">{{ item.specs_note or '' }}</td>
@@ -94,7 +94,7 @@
           <tr class="table-light">
             <td colspan="6" class="text-end fw-bold">Grand Total</td>
             <td></td>
-            <td class="text-end fw-bold fs-5 text-success">₹{{ "{:,.0f}".format(quote.total_amount) }}</td>
+            <td class="text-end fw-bold fs-5 text-success">₹{{ ((quote.total_amount) | inr) }}</td>
             {% if items | selectattr('specs_note') | list %}<td></td>{% endif %}
           </tr>
         </tfoot>
@@ -187,9 +187,9 @@ Date: {{ quote.quote_date.strftime('%d %b %Y') if quote.quote_date else '' }}
 Valid Until: {{ quote.valid_until.strftime('%d %b %Y') if quote.valid_until else 'On Request' }}
 
 Items:
-{% for item in items %}{{ loop.index }}. {{ item.device_type }}{% if item.grade %} (Grade {{ item.grade }}){% endif %} — Qty: {{ item.quantity }} x Rs.{{ "{:,.0f}".format(item.unit_price) }} = Rs.{{ "{:,.0f}".format(item.total_price) }}
+{% for item in items %}{{ loop.index }}. {{ item.device_type }}{% if item.grade %} (Grade {{ item.grade }}){% endif %} — Qty: {{ item.quantity }} x Rs.{{ ((item.unit_price) | inr) }} = Rs.{{ ((item.total_price) | inr) }}
 {% endfor %}
-Total: Rs.{{ "{:,.0f}".format(quote.total_amount) }}
+Total: Rs.{{ ((quote.total_amount) | inr) }}
 {% if quote.payment_terms %}
 Payment Terms: {{ quote.payment_terms }}{% endif %}
 

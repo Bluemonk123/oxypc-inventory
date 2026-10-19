@@ -43,21 +43,21 @@
             <td>{{ lp.qty }}</td>
             <td>{{ lp.devices }}</td>
             <td>{{ lp.sold }}</td>
-            <td>₹{{ "{:,.0f}".format(lp.buying_price) }}</td>
-            <td>₹{{ "{:,.0f}".format(lp.parts_cost) }}</td>
-            <td class="text-warning">₹{{ "{:,.0f}".format(lp.labour_cost) }}</td>
-            <td>₹{{ "{:,.0f}".format(lp.total_cost) }}</td>
-            <td>₹{{ "{:,.0f}".format(lp.gross_revenue) }}</td>
-            <td class="text-danger">{% if lp.returns %}−₹{{ "{:,.0f}".format(lp.returns) }}{% else %}₹0{% endif %}</td>
-            <td class="text-success fw-semibold">₹{{ "{:,.0f}".format(lp.revenue) }}</td>
-            <td class="{{ 'text-success' if lp.profit > 0 else 'text-danger' }} fw-bold">₹{{ "{:,.0f}".format(lp.profit) }}</td>
+            <td>₹{{ ((lp.buying_price) | inr) }}</td>
+            <td>₹{{ ((lp.parts_cost) | inr) }}</td>
+            <td class="text-warning">₹{{ ((lp.labour_cost) | inr) }}</td>
+            <td>₹{{ ((lp.total_cost) | inr) }}</td>
+            <td>₹{{ ((lp.gross_revenue) | inr) }}</td>
+            <td class="text-danger">{% if lp.returns %}−₹{{ ((lp.returns) | inr) }}{% else %}₹0{% endif %}</td>
+            <td class="text-success fw-semibold">₹{{ ((lp.revenue) | inr) }}</td>
+            <td class="{{ 'text-success' if lp.profit > 0 else 'text-danger' }} fw-bold">₹{{ ((lp.profit) | inr) }}</td>
             <td>
               <span class="badge {{ 'bg-success' if lp.margin > 0 else 'bg-danger' if lp.margin < 0 else 'bg-secondary' }}">
                 {{ lp.margin }}%
               </span>
             </td>
-            <td>₹{{ "{:,.0f}".format(lp.cost_sold) }}</td>
-            <td class="{{ 'text-success' if lp.profit_sold > 0 else 'text-danger' if lp.profit_sold < 0 else '' }} fw-bold">₹{{ "{:,.0f}".format(lp.profit_sold) }}</td>
+            <td>₹{{ ((lp.cost_sold) | inr) }}</td>
+            <td class="{{ 'text-success' if lp.profit_sold > 0 else 'text-danger' if lp.profit_sold < 0 else '' }} fw-bold">₹{{ ((lp.profit_sold) | inr) }}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -66,17 +66,17 @@
           <tr class="fw-bold">
             <td></td>
             <td colspan="7">TOTAL</td>
-            <td>₹{{ "{:,.0f}".format(ns.total_buying) }}</td>
-            <td>₹{{ "{:,.0f}".format(ns.total_parts) }}</td>
-            <td class="text-warning">₹{{ "{:,.0f}".format(ns.total_labour) }}</td>
-            <td>₹{{ "{:,.0f}".format(ns.total_buying + ns.total_parts + ns.total_labour) }}</td>
-            <td>₹{{ "{:,.0f}".format(ns.total_gross) }}</td>
-            <td>−₹{{ "{:,.0f}".format(ns.total_returns) }}</td>
-            <td>₹{{ "{:,.0f}".format(ns.total_revenue) }}</td>
-            <td class="{{ 'text-success' if ns.total_profit > 0 else 'text-danger' }}">₹{{ "{:,.0f}".format(ns.total_profit) }}</td>
+            <td>₹{{ ((ns.total_buying) | inr) }}</td>
+            <td>₹{{ ((ns.total_parts) | inr) }}</td>
+            <td class="text-warning">₹{{ ((ns.total_labour) | inr) }}</td>
+            <td>₹{{ ((ns.total_buying + ns.total_parts + ns.total_labour) | inr) }}</td>
+            <td>₹{{ ((ns.total_gross) | inr) }}</td>
+            <td>−₹{{ ((ns.total_returns) | inr) }}</td>
+            <td>₹{{ ((ns.total_revenue) | inr) }}</td>
+            <td class="{{ 'text-success' if ns.total_profit > 0 else 'text-danger' }}">₹{{ ((ns.total_profit) | inr) }}</td>
             <td>{{ "%.1f" | format(ns.total_profit / ns.total_revenue * 100 if ns.total_revenue else 0) }}%</td>
-            <td>₹{{ "{:,.0f}".format(ns.total_cost_sold) }}</td>
-            <td class="{{ 'text-success' if ns.total_profit_sold > 0 else 'text-danger' }}">₹{{ "{:,.0f}".format(ns.total_profit_sold) }}</td>
+            <td>₹{{ ((ns.total_cost_sold) | inr) }}</td>
+            <td class="{{ 'text-success' if ns.total_profit_sold > 0 else 'text-danger' }}">₹{{ ((ns.total_profit_sold) | inr) }}</td>
           </tr>
         </tfoot>
         {% endif %}

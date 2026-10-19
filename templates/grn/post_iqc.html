@@ -111,7 +111,7 @@
             <td class="grn-stocked" data-stocked="{{ _st }}" data-qty="{{ g.quantity if g.quantity is not none else 0 }}">
               <span class="badge bg-{{ 'success' if g.quantity and _st >= g.quantity else ('warning text-dark' if _st else 'secondary') }}">{{ _st }}</span>
             </td>
-            <td>{% if g.amount is not none %}₹{{ "{:,.2f}".format(g.amount) }}{% else %}—{% endif %}</td>
+            <td>{% if g.amount is not none %}₹{{ ((g.amount) | inr(2)) }}{% else %}—{% endif %}</td>
             <td>
               {% set _asIs = as_is_lot.get(g.grn_number) if as_is_lot is defined else None %}
               {% if _asIs %}

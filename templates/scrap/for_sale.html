@@ -55,8 +55,8 @@
             {% else %}<span class="text-muted small">Parts 0</span>{% endif %}
           </td>
           <td>{{ r.total_qty }}</td>
-          <td>{% if r.min_price is not none %}₹{{ "{:,.0f}".format(r.min_price) }}{% else %}—{% endif %}</td>
-          <td>{% if r.max_price is not none %}₹{{ "{:,.0f}".format(r.max_price) }}{% else %}—{% endif %}</td>
+          <td>{% if r.min_price is not none %}₹{{ ((r.min_price) | inr) }}{% else %}—{% endif %}</td>
+          <td>{% if r.max_price is not none %}₹{{ ((r.max_price) | inr) }}{% else %}—{% endif %}</td>
           <td>{{ r.assigned_to_name }}</td>
           <td class="text-nowrap">
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 scrap-edit-btn"

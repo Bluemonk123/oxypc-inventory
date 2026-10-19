@@ -4,7 +4,7 @@ from datetime import datetime, date, timedelta
 from utils.timezone import app_now
 from fastapi import APIRouter, Depends, Form, Query, Request
 from fastapi.responses import (
-    FileResponse, HTMLResponse, RedirectResponse, StreamingResponse,
+    FileResponse, HTMLResponse, RedirectResponse, StreamingResponse, Response,
 )
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -560,8 +560,8 @@ async def _quote_pdf(db: AsyncSession, quote, *, sections, term_ids=None, compan
     except OSError:
         pass
 
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes), media_type="application/pdf",
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{quote.quote_number}.pdf"'},
     )
 

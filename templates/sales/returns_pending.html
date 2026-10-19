@@ -59,7 +59,7 @@
           </td>
           <td>{{ brand }} {{ model }}</td>
           <td><code>{{ sale_number }}</code></td>
-          <td>&#8377;{{ "{:,.0f}".format(sale_price) }}</td>
+          <td>&#8377;{{ ((sale_price) | inr) }}</td>
           <td>{{ ret.reason or '—' }}</td>
           <td>
             {% if ret.condition_on_return %}
@@ -73,7 +73,7 @@
               {{ ret.action_taken or '—' }}
             </span>
             {% if ret.refund_amount %}
-            <div class="text-muted small">Refund: &#8377;{{ "{:,.0f}".format(ret.refund_amount) }}</div>
+            <div class="text-muted small">Refund: &#8377;{{ ((ret.refund_amount) | inr) }}</div>
             {% endif %}
           </td>
           <td class="text-muted">{{ ret.processed_by or '—' }}</td>

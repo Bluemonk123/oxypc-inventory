@@ -40,9 +40,9 @@
 
     <div class="row g-2 mb-2">
       <div class="col-6"><span class="text-muted small d-block">Price / unit</span>
-        <span class="fw-bold text-primary fs-5">₹{{ "{:,.0f}".format(listing.dealer_price) }}</span></div>
+        <span class="fw-bold text-primary fs-5">₹{{ ((listing.dealer_price) | inr) }}</span></div>
       <div class="col-6"><span class="text-muted small d-block">Token / unit</span>
-        <span class="fw-bold text-success fs-5">₹{{ "{:,.0f}".format(listing.token_amount) }}</span></div>
+        <span class="fw-bold text-success fs-5">₹{{ ((listing.token_amount) | inr) }}</span></div>
       <div class="col-4"><span class="text-muted small d-block">Available</span>{{ listing.qty_available }} units</div>
       <div class="col-4"><span class="text-muted small d-block">MOQ</span>{{ listing.moq }}</div>
       <div class="col-4"><span class="text-muted small d-block">Hold window</span>{{ listing.hold_hours }} hrs</div>
@@ -75,17 +75,17 @@
     <h6 class="fw-bold mb-2"><i class="bi bi-hammer me-1"></i>Bidding</h6>
     <div class="d-flex justify-content-between small mb-2">
       <span class="text-muted">Base price</span>
-      <span class="fw-semibold">₹{{ "{:,.0f}".format(listing.dealer_price) }}</span>
+      <span class="fw-semibold">₹{{ ((listing.dealer_price) | inr) }}</span>
     </div>
     <div class="d-flex justify-content-between small mb-2">
       <span class="text-muted">Highest bid</span>
       <span class="fw-semibold">
-        {% if bid and bid.highest %}₹{{ "{:,.0f}".format(bid.highest) }}{% else %}—{% endif %}
+        {% if bid and bid.highest %}₹{{ ((bid.highest) | inr) }}{% else %}—{% endif %}
       </span>
     </div>
     {% if bid and bid.mine %}
     <div class="alert {{ 'alert-success' if bid.leading else 'alert-secondary' }} py-2 small mb-2">
-      Your bid: <strong>₹{{ "{:,.0f}".format(bid.mine.bid_amount) }}</strong>
+      Your bid: <strong>₹{{ ((bid.mine.bid_amount) | inr) }}</strong>
       {% if bid.mine.bid_type == 'custom' %}<span class="badge bg-info-subtle text-info-emphasis border ms-1">custom price</span>
       {% elif bid.leading %}— you are leading{% else %}— you have been outbid{% endif %}
     </div>
@@ -102,7 +102,7 @@
       </div>
       <div class="col-12">
         <small class="text-muted">
-          Minimum next bid is ₹{{ "{:,.0f}".format(bid.min_next) }} — 10% above
+          Minimum next bid is ₹{{ ((bid.min_next) | inr) }} — 10% above
           {% if bid.highest %}the current highest bid{% else %}the base price{% endif %}.
         </small>
       </div>
@@ -135,7 +135,7 @@
   <div class="card-body">
     <h6 class="fw-bold mb-2"><i class="bi bi-bookmark-check me-1"></i>Book with Token</h6>
     <p class="small text-muted mb-2">
-      Pay a token of <strong>₹{{ "{:,.0f}".format(listing.token_amount) }}/unit</strong> to block this stock
+      Pay a token of <strong>₹{{ ((listing.token_amount) | inr) }}/unit</strong> to block this stock
       for <strong>{{ listing.hold_hours }} hours</strong> while you complete payment.
     </p>
     <form method="post" action="/partner/listings/{{ listing.id }}/book" class="row g-2">
@@ -146,7 +146,7 @@
       </div>
       <div class="col-7">
         <button class="btn btn-primary w-100">
-          <i class="bi bi-lock me-1"></i>Book · Token <span id="bk_total">₹{{ "{:,.0f}".format(listing.token_amount * listing.moq) }}</span>
+          <i class="bi bi-lock me-1"></i>Book · Token <span id="bk_total">₹{{ ((listing.token_amount * listing.moq) | inr) }}</span>
         </button>
       </div>
     </form>

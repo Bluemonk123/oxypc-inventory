@@ -2,7 +2,7 @@ import csv
 import io
 from templates_config import templates
 from fastapi import APIRouter, Depends, Form, Request, HTTPException, File, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, update
 from database import get_db
@@ -687,8 +687,8 @@ async def export_category_csv(category: str, db: AsyncSession = Depends(get_db),
     for item in items:
         writer.writerow([item.value, item.description or "", "yes" if item.is_active else "no", item.display_order])
     output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+    return Response(
+        content=output.getvalue().encode("utf-8-sig"),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=master_{category}.csv"}
     )
@@ -701,8 +701,8 @@ async def download_category_template(category: str, current_user: User = Depends
     writer.writerow(["value", "description"])
     writer.writerow(["Example Value", "Optional description"])
     output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode("utf-8-sig")),
+    return Response(
+        content=output.getvalue().encode("utf-8-sig"),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=template_{category}.csv"}
     )

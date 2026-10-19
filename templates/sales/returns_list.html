@@ -46,8 +46,8 @@
           <td>{{ serial_no or '—' }}</td>
           <td>{{ brand }} {{ model }}</td>
           <td><code>{{ sale_number }}</code></td>
-          <td>&#8377;{{ "{:,.0f}".format(sale_price) }}</td>
-          <td>{{ '₹{:,.0f}'.format(ret.refund_amount) if ret.refund_amount else '—' }}</td>
+          <td>&#8377;{{ ((sale_price) | inr) }}</td>
+          <td>{{ ('₹' ~ ((ret.refund_amount) | inr)) if ret.refund_amount else '—' }}</td>
           <td>{{ ret.reason or '—' }}</td>
           <td>
             {% if ret.condition_on_return %}
@@ -95,7 +95,7 @@
           <td>{{ serial_no or '—' }}</td>
           <td>{{ brand }} {{ model }}</td>
           <td><code>{{ sale_number }}</code></td>
-          <td>&#8377;{{ "{:,.0f}".format(sale_price) }}</td>
+          <td>&#8377;{{ ((sale_price) | inr) }}</td>
           <td>—</td>
           <td>—</td>
           <td>—</td>

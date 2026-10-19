@@ -70,22 +70,22 @@
           <br><small style="color:#666">Tag Number: {{ device.barcode }}{% if device.serial_no %} | SN: {{ device.serial_no }}{% endif %}</small>
         </td>
         <td>8471</td><td>1</td>
-        <td style="text-align:right">{{ "{:,.2f}".format(gst.taxable) }}</td>
-        <td style="text-align:right">{{ "{:,.2f}".format(gst.taxable) }}</td>
+        <td style="text-align:right">{{ ((gst.taxable) | inr(2)) }}</td>
+        <td style="text-align:right">{{ ((gst.taxable) | inr(2)) }}</td>
       </tr>
     </tbody>
   </table>
 
   <table style="margin-top:12px">
     <tbody>
-      <tr><td style="width:60%">Taxable Amount</td><td style="text-align:right">&#8377; {{ "{:,.2f}".format(gst.taxable) }}</td></tr>
+      <tr><td style="width:60%">Taxable Amount</td><td style="text-align:right">&#8377; {{ ((gst.taxable) | inr(2)) }}</td></tr>
       {% if gst.intra_state %}
-      <tr><td>CGST @ {{ gst.cgst_rate }}%</td><td style="text-align:right">&#8377; {{ "{:,.2f}".format(gst.cgst) }}</td></tr>
-      <tr><td>SGST @ {{ gst.sgst_rate }}%</td><td style="text-align:right">&#8377; {{ "{:,.2f}".format(gst.sgst) }}</td></tr>
+      <tr><td>CGST @ {{ gst.cgst_rate }}%</td><td style="text-align:right">&#8377; {{ ((gst.cgst) | inr(2)) }}</td></tr>
+      <tr><td>SGST @ {{ gst.sgst_rate }}%</td><td style="text-align:right">&#8377; {{ ((gst.sgst) | inr(2)) }}</td></tr>
       {% else %}
-      <tr><td>IGST @ {{ gst.igst_rate }}%</td><td style="text-align:right">&#8377; {{ "{:,.2f}".format(gst.igst) }}</td></tr>
+      <tr><td>IGST @ {{ gst.igst_rate }}%</td><td style="text-align:right">&#8377; {{ ((gst.igst) | inr(2)) }}</td></tr>
       {% endif %}
-      <tr class="grand-total"><td>Grand Total</td><td style="text-align:right">&#8377; {{ "{:,.2f}".format(gst.grand_total) }}</td></tr>
+      <tr class="grand-total"><td>Grand Total</td><td style="text-align:right">&#8377; {{ ((gst.grand_total) | inr(2)) }}</td></tr>
     </tbody>
   </table>
 

@@ -14,7 +14,7 @@ import json
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -216,7 +216,7 @@ def _file_response(pdf_bytes: bytes, slug: str) -> StreamingResponse:
         media_type, filename = "application/pdf", f"OxyPC_Manual_{slug}.pdf"
     else:
         media_type, filename = "text/plain; charset=utf-8", f"OxyPC_Manual_{slug}.txt"
-    return StreamingResponse(io.BytesIO(pdf_bytes), media_type=media_type,
+    return Response(content=pdf_bytes, media_type=media_type,
                              headers={"Content-Disposition": f'attachment; filename="{filename}"'})
 
 

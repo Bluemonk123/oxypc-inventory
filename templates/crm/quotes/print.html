@@ -228,8 +228,8 @@
       <td class="center">{{ item.grade or '—' }}</td>
       <td class="center">{{ item.po_category or '—' }}</td>
       <td class="center">{{ item.quantity }}</td>
-      <td class="right">₹{{ "{:,.0f}".format(item.unit_price) }}</td>
-      <td class="right">₹{{ "{:,.0f}".format(item.total_price) }}</td>
+      <td class="right">₹{{ ((item.unit_price) | inr) }}</td>
+      <td class="right">₹{{ ((item.total_price) | inr) }}</td>
     </tr>
     {% else %}
     <tr><td colspan="8" style="text-align:center;color:#888;padding:20px">No items</td></tr>
@@ -240,7 +240,7 @@
     <tr class="total-row">
       <td colspan="6" class="right">Grand Total</td>
       <td></td>
-      <td class="right grand">₹{{ "{:,.0f}".format(quote.grand_total) }}</td>
+      <td class="right grand">₹{{ ((quote.grand_total) | inr) }}</td>
     </tr>
   </tfoot>
   {% endif %}

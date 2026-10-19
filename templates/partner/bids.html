@@ -31,7 +31,7 @@
   <div class="col-4">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body py-2 text-center">
-        <div class="fw-bold text-primary fs-6">₹{{ "{:,.0f}".format(stats.won_value) }}</div>
+        <div class="fw-bold text-primary fs-6">₹{{ ((stats.won_value) | inr) }}</div>
         <div class="small text-muted">Won value</div>
       </div>
     </div>
@@ -74,14 +74,14 @@
         </td>
         <td>{{ r.target }}</td>
         <td class="text-end fw-semibold text-{{ tone }}">
-          ₹{{ "{:,.0f}".format(r.bid.bid_amount) }}
+          ₹{{ ((r.bid.bid_amount) | inr) }}
           {% if r.bid.bid_type == 'custom' %}
           <span class="badge bg-info-subtle text-info-emphasis border ms-1">custom</span>
           {% endif %}
         </td>
         <td class="text-end text-muted">
           {% if r.base_amount %}
-            ₹{{ "{:,.0f}".format(r.base_amount) }}
+            ₹{{ ((r.base_amount) | inr) }}
             {% if r.diff is not none %}
             <div style="font-size:.72rem">
               {{ '+' if r.diff >= 0 else '−' }}{{ "{:.1f}".format(r.diff_pct | abs) }}% over base

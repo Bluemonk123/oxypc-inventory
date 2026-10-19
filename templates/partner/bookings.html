@@ -36,11 +36,11 @@
             <div>
               <code class="small">{{ b.booking_number }}</code>
               <div class="fw-semibold">{{ l.title if l else 'Listing' }}</div>
-              <div class="small text-muted">{{ b.qty }} units · ₹{{ "{:,.0f}".format(b.unit_price_snapshot) }}/unit</div>
+              <div class="small text-muted">{{ b.qty }} units · ₹{{ ((b.unit_price_snapshot) | inr) }}/unit</div>
             </div>
             <div class="text-end">
               <span class="badge bg-{{ meta[0] }}">{{ meta[1] }}</span>
-              <div class="small text-muted mt-1">Token ₹{{ "{:,.0f}".format(b.token_total) }}</div>
+              <div class="small text-muted mt-1">Token ₹{{ ((b.token_total) | inr) }}</div>
             </div>
           </div>
         </div>

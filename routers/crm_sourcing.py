@@ -6,7 +6,7 @@ from utils.timezone import app_now
 from config import UPLOADS_DIR
 import io
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, Response
 from sqlalchemy import select, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -760,8 +760,8 @@ async def generate_po_from_deal(
         sections=sections, total_amount=total, offer_total=None,
     )
     filename = f"{po.po_number}.pdf"
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes), media_type="application/pdf",
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
@@ -801,7 +801,7 @@ async def download_deal_po(
         total_amount=float(po.total_amount or 0), offer_total=(float(po.offer_total) if po.offer_total else None),
     )
     filename = f"{po.po_number}.pdf"
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes), media_type="application/pdf",
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

@@ -86,7 +86,7 @@
 {# Light tile design (Design System "A · Light-tint tile", 2026-10-19), same as
    Stock In / GRN post-IQC / Business P&L: very light tint of the tile colour,
    number in that colour, faint matching watermark icon, box shadow. --tc is
-   set per tile; the two stock-alert tiles turn red when above zero. All 8
+   set per tile; the two stock-alert tiles turn red when above zero. All 7
    stay on one row (scrolls sideways on a narrow screen). #}
 <style>
   .lt-tiles-row{display:flex; flex-wrap:nowrap; gap:.75rem; overflow-x:auto; padding:4px 6px 10px; margin-bottom:1rem}
@@ -113,7 +113,7 @@
   <div>
     <div class="lt-tile h-100" style="--tc:#0F7A37">
       <div class="lt-tile-count">{{ total_new }} <span class="lt-tile-sep">/</span> {{ total_harvest }}</div>
-      <div class="lt-tile-label">Total New / Harvest</div>
+      <div class="lt-tile-label">Types (New/Harvest)</div>
       <i class="bi bi-recycle lt-tile-wm"></i>
     </div>
   </div>
@@ -139,13 +139,6 @@
     </div>
   </div>
   <div>
-    <div class="lt-tile h-100" style="--tc:#fd7e14">
-      <div class="lt-tile-count">{{ part_requested_count }} <span class="lt-tile-sep">/</span> {{ part_sourced_count }}</div>
-      <div class="lt-tile-label">Requested / Sourced</div>
-      <i class="bi bi-bag-plus lt-tile-wm"></i>
-    </div>
-  </div>
-  <div>
     <div class="lt-tile h-100" style="--tc:#0aa2c0">
       <div class="lt-tile-count">{{ total_consumed }}</div>
       <div class="lt-tile-label">Consumed</div>
@@ -154,7 +147,7 @@
   </div>
   <div>
     <div class="lt-tile h-100" style="--tc:#0F7A37">
-      <div class="lt-tile-count">&#8377;{{ "{:,.0f}".format(total_stock_value) }}</div>
+      <div class="lt-tile-count">&#8377;{{ total_stock_value | inr }}</div>
       <div class="lt-tile-label">Total Stock Value</div>
       <i class="bi bi-currency-rupee lt-tile-wm"></i>
     </div>
@@ -304,8 +297,8 @@
                here is what drops it from the CSV too — no separate export
                formatting to touch. #}
             {% if can_view_pricing(current_user) %}
-            <td>{{ "{:,.2f}".format(part.unit_price) }}</td>
-            <td>{{ "{:,.0f}".format(part.unit_price * live_stock) }}</td>
+            <td>{{ part.unit_price | inr(2) }}</td>
+            <td>{{ (part.unit_price * live_stock) | inr }}</td>
             {% endif %}
             <td class="text-nowrap">{{ part.created_at | ist_date if part.created_at else '—' }}</td>
             <td>
@@ -367,8 +360,8 @@
             <td class="fw-semibold">{{ part_name }}</td>
             <td><code>{{ part_code }}</code></td>
             <td><span class="badge bg-warning text-dark">{{ consumption.qty_used }}</span></td>
-            <td>&#8377;{{ "{:,.2f}".format(consumption.unit_cost) }}</td>
-            <td class="fw-semibold">&#8377;{{ "{:,.0f}".format(consumption.total_cost) }}</td>
+            <td>&#8377;{{ consumption.unit_cost | inr(2) }}</td>
+            <td class="fw-semibold">&#8377;{{ consumption.total_cost | inr }}</td>
             <td>
               {% if device_barcode %}
               <a href="/devices/{{ device_barcode }}" class="font-monospace small text-decoration-none">
@@ -508,8 +501,8 @@
           <td class="text-nowrap">{{ row.date_added.strftime('%d-%m-%Y') if row.date_added else '—' }}</td>
           <td class="fw-semibold">{{ row.part_name }}</td>
           <td><span class="badge bg-info text-dark">{{ row.total_qty }}</span></td>
-          <td>&#8377;{{ "{:,.2f}".format(row.unit_price) }}</td>
-          <td class="fw-semibold">&#8377;{{ "{:,.2f}".format(row.total_price) }}</td>
+          <td>&#8377;{{ row.unit_price | inr(2) }}</td>
+          <td class="fw-semibold">&#8377;{{ row.total_price | inr(2) }}</td>
         </tr>
         {# Empty case is DataTables' own emptyTable message (see initGlobalTable
            below) — a colspan placeholder row crashes DataTables

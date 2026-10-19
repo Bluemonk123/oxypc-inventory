@@ -97,7 +97,7 @@
           </td>
           <td>
             {% if b and b.highest %}
-              <span class="fw-semibold">&#8377;{{ "{:,.0f}".format(b.highest) }}</span>
+              <span class="fw-semibold">&#8377;{{ ((b.highest) | inr) }}</span>
               {% if b.leading %}<span class="badge bg-success ms-1">You</span>{% endif %}
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
@@ -124,7 +124,7 @@
             {% endif %}
             {% if b and b.mine %}
             <div class="small {{ 'text-success' if b.leading else 'text-muted' }} mt-1">
-              Your bid &#8377;{{ "{:,.0f}".format(b.mine.bid_amount) }}{{ ' — leading' if b.leading else ' — outbid' }}
+              Your bid &#8377;{{ ((b.mine.bid_amount) | inr) }}{{ ' — leading' if b.leading else ' — outbid' }}
             </div>
             {% endif %}
           </td>

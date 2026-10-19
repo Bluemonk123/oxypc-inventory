@@ -47,7 +47,7 @@
             <td>{{ g.invoice_number or '—' }}</td>
             <td>{{ g.date_received.strftime('%d-%m-%Y') if g.date_received else '—' }}</td>
             <td>{{ g.total_physical_qty or '—' }}</td>
-            <td>{% if g.invoice_value %}₹{{ "{:,.2f}".format(g.invoice_value) }}{% else %}—{% endif %}</td>
+            <td>{% if g.invoice_value %}₹{{ ((g.invoice_value) | inr(2)) }}{% else %}—{% endif %}</td>
             <td class="text-muted">{{ g.created_by or '—' }}</td>
             <td class="text-nowrap">
               <a href="/parts-grn/{{ g.id }}" class="btn btn-xs btn-outline-primary btn-sm py-0 px-2">View</a>

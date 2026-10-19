@@ -27,8 +27,8 @@
           <div class="col-6"><strong>Expected Delivery:</strong> {{ po.expected_delivery_date.strftime('%d %B %Y') if po.expected_delivery_date else '—' }}</div>
           <div class="col-6"><strong>Payment Terms:</strong> {{ po.payment_terms or '—' }}</div>
           {% if can_view_pricing(current_user) %}
-          <div class="col-6"><strong>Advance:</strong> {% if po.advance_amount %}₹{{ "{:,.0f}".format(po.advance_amount) }}{% else %}—{% endif %}</div>
-          <div class="col-6"><strong>Total Amount:</strong> <span class="fw-bold text-success fs-5">₹{{ "{:,.0f}".format(po.total_amount or 0) }}</span></div>
+          <div class="col-6"><strong>Advance:</strong> {% if po.advance_amount %}₹{{ ((po.advance_amount) | inr) }}{% else %}—{% endif %}</div>
+          <div class="col-6"><strong>Total Amount:</strong> <span class="fw-bold text-success fs-5">₹{{ ((po.total_amount or 0) | inr) }}</span></div>
           {% endif %}
           {% if po.delivery_address %}
           <div class="col-12"><strong>Delivery Address:</strong> {{ po.delivery_address }}{% if po.delivery_city or po.delivery_state or po.delivery_pincode %}, {{ [po.delivery_city, po.delivery_state, po.delivery_pincode] | select | join(' - ') }}{% endif %}</div>
@@ -75,8 +75,8 @@
           <td>{{ item.lot_number or '—' }}</td>
           <td>{{ item.quantity }}</td>
           {% if can_view_pricing(current_user) %}
-          <td>₹{{ "{:,.2f}".format(item.unit_price) }}</td>
-          <td class="fw-semibold">₹{{ "{:,.2f}".format(item.total_price) }}</td>
+          <td>₹{{ ((item.unit_price) | inr(2)) }}</td>
+          <td class="fw-semibold">₹{{ ((item.total_price) | inr(2)) }}</td>
           {% endif %}
         </tr>
         {% else %}
@@ -85,7 +85,7 @@
       </tbody>
       {% if po.line_items and can_view_pricing(current_user) %}
       <tfoot class="table-light">
-        <tr><td colspan="7" class="text-end fw-bold">Grand Total:</td><td class="fw-bold text-success">₹{{ "{:,.2f}".format(po.total_amount or 0) }}</td></tr>
+        <tr><td colspan="7" class="text-end fw-bold">Grand Total:</td><td class="fw-bold text-success">₹{{ ((po.total_amount or 0) | inr(2)) }}</td></tr>
       </tfoot>
       {% endif %}
     </table>

@@ -5,7 +5,7 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
-    <span class="text-muted small">{{ overdue|length }} overdue order(s) — Total outstanding: <strong class="text-danger">₹{{ "{:,.0f}".format(total_due) }}</strong></span>
+    <span class="text-muted small">{{ overdue|length }} overdue order(s) — Total outstanding: <strong class="text-danger">₹{{ ((total_due) | inr) }}</strong></span>
   </div>
   <a href="/dealers" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to Dealers</a>
 </div>
@@ -48,7 +48,7 @@
                 {{ days }}d overdue
               </span>
             </td>
-            <td class="fw-semibold text-danger">₹{{ "{:,.0f}".format(order.due_amount) }}</td>
+            <td class="fw-semibold text-danger">₹{{ ((order.due_amount) | inr) }}</td>
             <td>
               <div class="d-flex gap-1">
                 <a href="/dealers/{{ dealer.id }}" class="btn btn-sm btn-outline-primary" title="View dealer"><i class="bi bi-eye"></i></a>

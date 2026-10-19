@@ -5,7 +5,7 @@
 {# Pricing Calculator (2026-10-18). OFF by default for every role in Master
    Data -> Permission Matrix. Prices are worked out live on the server
    (routers/product_master.py _calc_view); Pending fills in once priced. #}
-{% macro money(v) %}{% if v is none %}<span class="badge bg-warning text-dark">Pending</span>{% else %}₹{{ '{:,.2f}'.format(v).rstrip('0').rstrip('.') }}{% endif %}{% endmacro %}
+{% macro money(v) %}{% if v is none %}<span class="badge bg-warning text-dark">Pending</span>{% else %}₹{{ ((v) | inr(2)).rstrip('0').rstrip('.') }}{% endif %}{% endmacro %}
 
 
 <div class="card border-0 shadow-sm">

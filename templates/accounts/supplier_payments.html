@@ -99,7 +99,7 @@
       <!-- rows come from /accounts/supplier-payments/data via DataTables serverSide -->
       <tbody></tbody>
       <tfoot class="table-light">
-        <tr><td colspan="6" class="text-end fw-bold">Total:</td><td class="fw-bold text-danger">&#8377;{{ "{:,.0f}".format(total) }}</td><td colspan="2"></td></tr>
+        <tr><td colspan="6" class="text-end fw-bold">Total:</td><td class="fw-bold text-danger">&#8377;{{ ((total) | inr) }}</td><td colspan="2"></td></tr>
       </tfoot>
     </table>
   </div>
@@ -117,7 +117,7 @@
           <td class="font-monospace">{{ po.po_number }}</td>
           <td>{{ po.contact.company_name if po.contact else '&mdash;' }}</td>
           <td>{{ po.po_date.strftime('%d-%m-%Y') if po.po_date else '&mdash;' }}</td>
-          <td class="fw-semibold">&#8377;{{ "{:,.0f}".format(po.total_amount or 0) }}</td>
+          <td class="fw-semibold">&#8377;{{ ((po.total_amount or 0) | inr) }}</td>
           <td>{% if po.payment_status == 'paid' %}<span class="badge bg-success">Paid</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
           <td class="text-nowrap">
             {% if po.invoice_path %}<a href="/uploads/accounts/{{ po.invoice_path }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Invoice"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}

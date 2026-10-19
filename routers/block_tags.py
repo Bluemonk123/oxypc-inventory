@@ -22,7 +22,7 @@ from datetime import datetime, date as _date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Form, Request, Query, UploadFile, File
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, or_, and_
 
@@ -714,8 +714,8 @@ async def download_barcode(record_id: str, inline: bool = Query(default=False),
         box_number=record.box_number,
     )
     disposition = "inline" if inline else "attachment"
-    return StreamingResponse(
-        io.BytesIO(pdf_bytes), media_type="application/pdf",
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'{disposition}; filename="block_{record.block_id}.pdf"'},
     )
 
@@ -763,8 +763,8 @@ async def export_all(db: AsyncSession = Depends(get_db),
     for item, rec in rows:
         writer.writerow(_export_row(item, rec, user_map))
     output.seek(0)
-    return StreamingResponse(
-        io.BytesIO(output.getvalue().encode()), media_type="text/csv",
+    return Response(
+        content=output.getvalue().encode(), media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=block_tags_all.csv"},
     )
 
@@ -870,7 +870,7 @@ async def export_selected(item_ids: str = Form(""), db: AsyncSession = Depends(g
     out.seek(0)
     from utils.timezone import app_now
     stamp = app_now().strftime("%Y%m%d_%H%M")   # IST, matches the rest of the app
-    return StreamingResponse(
-        out, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    return Response(
+        content=out.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="block_tags_{stamp}.xlsx"'},
     )

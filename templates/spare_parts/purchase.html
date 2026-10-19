@@ -56,8 +56,8 @@
           <td><code>{{ code }}</code></td>
           <td>{{ name }}</td>
           <td>{{ pur.qty }}</td>
-          <td>₹{{ "{:,.2f}".format(pur.unit_price) }}</td>
-          <td class="fw-semibold">₹{{ "{:,.0f}".format(pur.total_price) }}</td>
+          <td>₹{{ ((pur.unit_price) | inr(2)) }}</td>
+          <td class="fw-semibold">₹{{ ((pur.total_price) | inr) }}</td>
           <td class="text-muted">{{ pur.supplier or '—' }}</td>
           <td class="text-muted">{{ pur.invoice_no or '—' }}</td>
           <td class="text-muted">{{ pur.purchased_by }}</td>

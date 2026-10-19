@@ -49,7 +49,7 @@
       <div><strong>Deliver To:</strong> {{ po.delivery_address or company.address }}{% if po.delivery_city or po.delivery_state or po.delivery_pincode %}, {{ [po.delivery_city, po.delivery_state, po.delivery_pincode] | select | join(' - ') }}{% endif %}</div>
       <div><strong>Expected By:</strong> {{ po.expected_delivery_date.strftime('%d %B %Y') if po.expected_delivery_date else '—' }}</div>
       <div><strong>Payment Terms:</strong> {{ po.payment_terms or '—' }}</div>
-      {% if po.advance_amount %}<div><strong>Advance:</strong> ₹{{ "{:,.0f}".format(po.advance_amount) }}</div>{% endif %}
+      {% if po.advance_amount %}<div><strong>Advance:</strong> ₹{{ ((po.advance_amount) | inr) }}</div>{% endif %}
     </div>
   </div>
 
@@ -65,13 +65,13 @@
         <td>{{ item.po_category or '—' }}</td>
         <td>{{ item.lot_number or '—' }}</td>
         <td>{{ item.quantity }}</td>
-        <td style="text-align:right">{{ "{:,.2f}".format(item.unit_price) }}</td>
-        <td style="text-align:right">{{ "{:,.2f}".format(item.total_price) }}</td>
+        <td style="text-align:right">{{ ((item.unit_price) | inr(2)) }}</td>
+        <td style="text-align:right">{{ ((item.total_price) | inr(2)) }}</td>
       </tr>
       {% endfor %}
     </tbody>
     <tfoot>
-      <tr class="grand-total"><td colspan="7">Grand Total</td><td style="text-align:right">&#8377; {{ "{:,.2f}".format(po.total_amount or 0) }}</td></tr>
+      <tr class="grand-total"><td colspan="7">Grand Total</td><td style="text-align:right">&#8377; {{ ((po.total_amount or 0) | inr(2)) }}</td></tr>
     </tfoot>
   </table>
 

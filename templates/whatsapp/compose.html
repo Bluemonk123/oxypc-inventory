@@ -40,7 +40,7 @@
             </div>
             <div class="col-sm-6">
               <span class="text-muted small">Amount Due</span>
-              <div class="fw-bold text-danger">&#8377;{{ "{:,.0f}".format(order.due_amount) }}</div>
+              <div class="fw-bold text-danger">&#8377;{{ ((order.due_amount) | inr) }}</div>
             </div>
           </div>
         </div>
