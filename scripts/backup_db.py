@@ -129,10 +129,14 @@ def main():
     parser = argparse.ArgumentParser(description="OxyPC database backup")
     parser.add_argument("--prune-only", action="store_true",
                         help="Only prune old backups, skip creating a new one")
+    parser.add_argument("--no-prune", action="store_true",
+                        help="Create a backup but delete nothing (used by the admin "
+                             "'Run Backup Now' button, same policy as the nightly job)")
     args = parser.parse_args()
     if not args.prune_only:
         run_backup()
-    prune_old_backups()
+    if not args.no_prune:
+        prune_old_backups()
     print("Done.")
 
 

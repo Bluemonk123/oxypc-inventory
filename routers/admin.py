@@ -716,8 +716,11 @@ async def backup_now(
 ):
     """Trigger an immediate database backup synchronously."""
     python = sys.executable
+    # --no-prune (2026-10-19): the script's default also deletes every backup
+    # older than 30 days; a button press must only ADD a backup — same policy
+    # as the nightly job (deploy/oxypc-backup.sh), which never prunes.
     result = subprocess.run(
-        [python, str(_BACKUP_SCRIPT)],
+        [python, str(_BACKUP_SCRIPT), "--no-prune"],
         capture_output=True,
         text=True,
         timeout=300,
