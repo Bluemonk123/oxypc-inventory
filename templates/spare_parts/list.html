@@ -4,10 +4,8 @@
 {% block content %}
 <style>
 /* Actions/Action column on the 4 request-style tables never wraps its
-   buttons onto a second line — the column widens instead, and the table's
-   own .table-responsive wrapper scrolls sideways if the page is too narrow
-   to fit it, matching how every other wide column on these tables already
-   behaves. */
+   buttons onto a second line — the column widens instead, and the Global
+   Table scrolls sideways if the page is too narrow to fit it. */
 #partsTable td:last-child, #partsTable th:last-child,
 #partReqTable td:last-child, #partReqTable th:last-child,
 #faultyReqTable td:last-child, #faultyReqTable th:last-child,
@@ -17,80 +15,64 @@
 </style>
 
 {# Per-table "Added As" filter — the one field that genuinely differs per
-   tab (each has its own set of sources). Date range / Category / Part Name
-   used to be repeated on every tab; they now live once in the global filter
-   bar above the summary tiles instead. Checkboxes (not a dropdown) so more
-   than one source can be shown at a time; the JS in `scripts` reads the
-   checked values and matches them against each row's data-addedas. #}
+   tab (each has its own set of sources). It sits in the tab's card header,
+   left of the buttons (2026-10-19). Checkboxes (not a dropdown) so more than
+   one source can be shown at a time; the JS in `scripts` reads the checked
+   values and matches them against each row's data-addedas. #}
 {% macro filter_bar(table_id, added_as) -%}
-<div class="d-flex flex-wrap align-items-center gap-3 px-3 py-2 border-bottom bg-light"
-     data-filterbar="{{ table_id }}">
+<div class="d-flex flex-wrap align-items-center gap-2" data-filterbar="{{ table_id }}">
   <span class="small text-muted fw-semibold">Added As</span>
   {% for a in added_as %}
-  <div class="form-check form-check-inline mb-0">
+  <div class="form-check form-check-inline mb-0 me-1">
     <input class="form-check-input sp-f" type="checkbox" value="{{ a }}" id="{{ table_id }}_as_{{ loop.index }}">
     <label class="form-check-label small" for="{{ table_id }}_as_{{ loop.index }}">{{ a }}</label>
   </div>
   {% endfor %}
-  <button type="button" class="btn btn-outline-secondary btn-sm" onclick="spClearFilters('{{ table_id }}')">
-    <i class="bi bi-x-circle me-1"></i>Clear
-  </button>
-  <span class="text-muted small ms-auto" data-filtercount="{{ table_id }}"></span>
+  <span class="text-muted small" data-filtercount="{{ table_id }}"></span>
 </div>
 {%- endmacro %}
 
-{# Global filter bar — Added From/To, Category, Part Name. A real server-side
-   filter (Filter button reloads the page) rather than an instant client-side
-   one, so the tiles below can actually be recomputed from the filtered scope
-   instead of staying fixed global totals — matching every other filtered
-   page in this app (Inventory Search, Stock In, GRN). Applies to Part
-   Master, Part Requests and Faulty Request (the three tables whose rows
-   carry a single category/part-name/added-date); NOT Sourcing Requests.
-   Added From/To ALSO applies to Parts Consumption (2026-09-18) against its
-   own "Date Added" column (PartRequest.actioned_at, the Verify timestamp)
-   — Category/Part Name don't, since a rolled-up row can span several parts. #}
-<form method="get" action="/spare-parts"
-      class="d-flex flex-wrap align-items-end gap-2 px-3 py-2 border rounded bg-light mb-3" id="globalFilterBar">
-  <div>
-    <label class="form-label small text-muted mb-0">Added From</label>
-    <input type="date" name="added_from" value="{{ added_from }}" class="form-control form-control-sm" style="min-width:140px">
+{# Global filter bar (app.css .filter-bar, 2026-10-19) — one row, no labels
+   (title= tooltips), Search / Reset. A real server-side filter, so the tiles
+   below are recomputed from the filtered scope. Applies to every tab:
+   - Added From/To: Part Master, Part Requests, Faulty Request, Sourcing
+     Requests (date added) and Parts Consumption (its "Date Added", the
+     Verify date).
+   - Category / Part Name: every tab.
+   - Engineer: Part Requests, Faulty Request and Parts Consumption (Part
+     Master and Sourcing Requests have no engineer). #}
+<form method="get" action="/spare-parts" class="filter-bar" id="globalFilterBar">
+  <div class="filter-bar-row">
+    <div>
+      <input type="date" name="added_from" value="{{ added_from }}" title="Added From" class="form-control form-control-sm">
+    </div>
+    <div>
+      <input type="date" name="added_to" value="{{ added_to }}" title="Added To" class="form-control form-control-sm">
+    </div>
+    <div>
+      <select name="category" class="form-select form-select-sm" style="min-width:0" title="Category">
+        <option value="">All Categories</option>
+        {% for c in harvest_categories %}<option value="{{ c }}" {% if filter_category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      {# Wired to the Spare Part Names master dropdown, same source as Add Harvest Part. #}
+      <select name="part_name" class="form-select form-select-sm" style="min-width:0" title="Part Name">
+        <option value="">All Part Names</option>
+        {% for n in part_names %}<option value="{{ n }}" {% if filter_part_name == n %}selected{% endif %}>{{ n }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="engineer" class="form-select form-select-sm" style="min-width:0" title="Engineer">
+        <option value="">All Engineers</option>
+        {% for e in engineer_options %}<option value="{{ e }}" {% if filter_engineer == e %}selected{% endif %}>{{ e }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+      <a href="/spare-parts" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-  <div>
-    <label class="form-label small text-muted mb-0">Added To</label>
-    <input type="date" name="added_to" value="{{ added_to }}" class="form-control form-control-sm" style="min-width:140px">
-  </div>
-  <div>
-    <label class="form-label small text-muted mb-0">Category</label>
-    <select name="category" class="form-select form-select-sm" style="min-width:170px">
-      <option value="">All</option>
-      {% for c in harvest_categories %}<option value="{{ c }}" {% if filter_category == c %}selected{% endif %}>{{ c }}</option>{% endfor %}
-    </select>
-  </div>
-  <div>
-    <label class="form-label small text-muted mb-0">Part Name</label>
-    {# Wired to the Spare Part Names master dropdown, same source as Add Harvest Part. #}
-    <select name="part_name" class="form-select form-select-sm" style="min-width:190px">
-      <option value="">All</option>
-      {% for n in part_names %}<option value="{{ n }}" {% if filter_part_name == n %}selected{% endif %}>{{ n }}</option>{% endfor %}
-    </select>
-  </div>
-  <div>
-    <label class="form-label small text-muted mb-0">Engineer</label>
-    {# Part Requests / Faulty Request only — Part Master and tiles have no
-       engineer to filter by, so unlike Category/Part Name/Added Date this
-       doesn't touch them. #}
-    <select name="engineer" class="form-select form-select-sm" style="min-width:170px">
-      <option value="">All</option>
-      {% for e in engineer_options %}<option value="{{ e }}" {% if filter_engineer == e %}selected{% endif %}>{{ e }}</option>{% endfor %}
-    </select>
-  </div>
-  <button type="submit" class="btn btn-primary btn-sm">
-    <i class="bi bi-funnel me-1"></i>Filter
-  </button>
-  <a href="/spare-parts" class="btn btn-outline-secondary btn-sm">
-    <i class="bi bi-x-circle me-1"></i>Clear
-  </a>
-  <span class="text-muted small">Category/Part Name/Added Date filter Part Master, Part Requests and Faulty Request (tiles included). Added Date also filters Parts Consumption. Engineer filters Part Requests and Faulty Request only.</span>
 </form>
 
 {% if request.query_params.get('success') %}
@@ -101,53 +83,80 @@
 {% endif %}
 
 <!-- ── Summary Cards (counts reflect all tables across all tabs) ── -->
-<div class="d-flex flex-nowrap gap-2 mb-4 overflow-auto" id="partsCards">
-  <div style="flex:1 1 0; min-width:130px;">
-    <div class="card border-0 shadow-sm text-center p-2 h-100">
-      <div class="fs-3 fw-bold text-primary">{{ total_qty }}</div>
-      <div class="text-muted small"><i class="bi bi-boxes me-1"></i>Total Quantities</div>
+{# Light tile design (Design System "A · Light-tint tile", 2026-10-19), same as
+   Stock In / GRN post-IQC / Business P&L: very light tint of the tile colour,
+   number in that colour, faint matching watermark icon, box shadow. --tc is
+   set per tile; the two stock-alert tiles turn red when above zero. All 8
+   stay on one row (scrolls sideways on a narrow screen). #}
+<style>
+  .lt-tiles-row{display:flex; flex-wrap:nowrap; gap:.75rem; overflow-x:auto; padding:4px 6px 10px; margin-bottom:1rem}
+  .lt-tiles-row > div{flex:1 1 0; min-width:130px}
+  .lt-tile{position:relative; overflow:hidden; border-radius:10px; padding:1.1rem 1rem; min-height:96px;
+           background:color-mix(in srgb, var(--tc) 8%, #fff) !important;
+           border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
+           box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
+  .lt-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1; white-space:nowrap}
+  .lt-tile-sep{font-size:1rem; font-weight:400; color:#6c757d}
+  /* Light tile rule (Design System 05): label .35rem under the count, watermark 8%. */
+  .lt-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1; margin-top:.35rem}
+  .lt-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
+              color:color-mix(in srgb, var(--tc) 8%, transparent); pointer-events:none}
+</style>
+<div class="lt-tiles-row" id="partsCards">
+  <div>
+    <div class="lt-tile h-100" style="--tc:#0d6efd">
+      <div class="lt-tile-count">{{ total_qty }}</div>
+      <div class="lt-tile-label">Total Quantities</div>
+      <i class="bi bi-boxes lt-tile-wm"></i>
     </div>
   </div>
-  <div style="flex:1 1 0; min-width:130px;">
-    <div class="card border-0 shadow-sm text-center p-2 h-100">
-      <div class="fs-3 fw-bold text-success">{{ total_new }} <span class="fs-6 text-muted">/</span> {{ total_harvest }}</div>
-      <div class="text-muted small"><i class="bi bi-recycle me-1"></i>Total New / Harvest</div>
+  <div>
+    <div class="lt-tile h-100" style="--tc:#0F7A37">
+      <div class="lt-tile-count">{{ total_new }} <span class="lt-tile-sep">/</span> {{ total_harvest }}</div>
+      <div class="lt-tile-label">Total New / Harvest</div>
+      <i class="bi bi-recycle lt-tile-wm"></i>
     </div>
   </div>
-  <div style="flex:1 1 0; min-width:130px;">
-    <div class="card border-0 shadow-sm text-center p-2 h-100">
-      <div class="fs-3 fw-bold text-primary">{{ total_part_types }}</div>
-      <div class="text-muted small">Part Types</div>
+  <div>
+    <div class="lt-tile h-100" style="--tc:#6f42c1">
+      <div class="lt-tile-count">{{ total_part_types }}</div>
+      <div class="lt-tile-label">Part Types</div>
+      <i class="bi bi-grid-3x3-gap lt-tile-wm"></i>
     </div>
   </div>
-  <div style="flex:1 1 0; min-width:130px;">
-    <div class="card border-0 shadow-sm text-center p-2 h-100 {{ 'border-danger' if below_min_count > 0 else '' }}">
-      <div class="fs-3 fw-bold {{ 'text-danger' if below_min_count > 0 else 'text-success' }}">{{ below_min_count }}</div>
-      <div class="text-muted small">Below Min Stock</div>
+  <div>
+    <div class="lt-tile h-100" style="--tc:{{ '#dc3545' if below_min_count > 0 else '#0F7A37' }}">
+      <div class="lt-tile-count">{{ below_min_count }}</div>
+      <div class="lt-tile-label">Below Min Stock</div>
+      <i class="bi bi-exclamation-triangle lt-tile-wm"></i>
     </div>
   </div>
-  <div style="flex:1 1 0; min-width:130px;">
-    <div class="card border-0 shadow-sm text-center p-2 h-100 {{ 'border-danger' if out_of_stock_count > 0 else '' }}">
-      <div class="fs-3 fw-bold {{ 'text-danger' if out_of_stock_count > 0 else 'text-success' }}">{{ out_of_stock_count }}</div>
-      <div class="text-muted small">Out of Stock</div>
+  <div>
+    <div class="lt-tile h-100" style="--tc:{{ '#dc3545' if out_of_stock_count > 0 else '#0F7A37' }}">
+      <div class="lt-tile-count">{{ out_of_stock_count }}</div>
+      <div class="lt-tile-label">Out of Stock</div>
+      <i class="bi bi-x-octagon lt-tile-wm"></i>
     </div>
   </div>
-  <div style="flex:1 1 0; min-width:130px;">
-    <div class="card border-0 shadow-sm text-center p-2 h-100">
-      <div class="fs-3 fw-bold text-warning">{{ part_requested_count }} <span class="fs-6 text-muted">/</span> {{ part_sourced_count }}</div>
-      <div class="text-muted small">Requested / Sourced</div>
+  <div>
+    <div class="lt-tile h-100" style="--tc:#fd7e14">
+      <div class="lt-tile-count">{{ part_requested_count }} <span class="lt-tile-sep">/</span> {{ part_sourced_count }}</div>
+      <div class="lt-tile-label">Requested / Sourced</div>
+      <i class="bi bi-bag-plus lt-tile-wm"></i>
     </div>
   </div>
-  <div style="flex:1 1 0; min-width:130px;">
-    <div class="card border-0 shadow-sm text-center p-2 h-100">
-      <div class="fs-3 fw-bold text-info">{{ total_consumed }}</div>
-      <div class="text-muted small">Consumed</div>
+  <div>
+    <div class="lt-tile h-100" style="--tc:#0aa2c0">
+      <div class="lt-tile-count">{{ total_consumed }}</div>
+      <div class="lt-tile-label">Consumed</div>
+      <i class="bi bi-tools lt-tile-wm"></i>
     </div>
   </div>
-  <div style="flex:1 1 0; min-width:130px;">
-    <div class="card border-0 shadow-sm text-center p-2 h-100">
-      <div class="fs-3 fw-bold text-success">&#8377;{{ "{:,.0f}".format(total_stock_value) }}</div>
-      <div class="text-muted small">Total Stock Value</div>
+  <div>
+    <div class="lt-tile h-100" style="--tc:#0F7A37">
+      <div class="lt-tile-count">&#8377;{{ "{:,.0f}".format(total_stock_value) }}</div>
+      <div class="lt-tile-label">Total Stock Value</div>
+      <i class="bi bi-currency-rupee lt-tile-wm"></i>
     </div>
   </div>
 </div>
@@ -198,37 +207,37 @@
   </li>
 </ul>
 
-<div class="tab-content border border-top-0 rounded-bottom shadow-sm bg-white">
+{# Each tab is a card whose header carries the tab name plus its own
+   filters and buttons, with a Global Table below (2026-10-19). #}
+<div class="tab-content" id="sparePartsTabContent">
 
   <!-- ── TAB 1: Part Master ── -->
-  <div class="tab-pane fade show active p-0" id="masterTab" role="tabpanel">
-    <div class="d-flex justify-content-between align-items-center p-3 border-bottom flex-wrap gap-2">
-      <span class="text-muted small">{{ total_part_types }} part type(s) &nbsp;|&nbsp;
-        {% if below_min_count > 0 %}<span class="text-danger fw-semibold">{{ below_min_count }} below min stock</span>{% else %}<span class="text-success">All stocked OK</span>{% endif %}
-      </span>
-      <div class="d-flex gap-2 flex-wrap">
-        <button class="btn btn-outline-secondary btn-sm" onclick="spExport('partsTable',false)">
+  <div class="tab-pane fade show active" id="masterTab" role="tabpanel">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <strong class="small text-nowrap"><i class="bi bi-box-seam me-1"></i>Part Master</strong>
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        {{ filter_bar('partsTable', ['New', 'Harvest']) }}
+        <button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('partsTable',false)">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export All
         </button>
-        <button id="expSel_partsTable" class="btn btn-outline-info btn-sm d-none" onclick="spExport('partsTable',true)" disabled>
+        <button id="expSel_partsTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('partsTable',true)" disabled>
           <i class="bi bi-download me-1"></i>Export Selected
         </button>
-        <button id="delSel_partsTable" class="btn btn-outline-danger btn-sm d-none" onclick="spBulkDelete()" disabled>
+        <button id="delSel_partsTable" class="btn btn-outline-danger btn-sm d-none text-nowrap" onclick="spBulkDelete()" disabled>
           <i class="bi bi-trash3 me-1"></i>Delete Selected
         </button>
-        <button type="button" class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addPartModal">
+        <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#addPartModal">
           <i class="bi bi-plus-circle me-1"></i>Add Part
         </button>
-        <button type="button" class="btn btn-outline-success btn-sm" data-bs-toggle="modal" data-bs-target="#uploadNewModal">
+        <button type="button" class="btn btn-outline-success btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#uploadNewModal">
           <i class="bi bi-cloud-upload me-1"></i>Upload New
         </button>
-        <button type="button" class="btn btn-outline-warning btn-sm" data-bs-toggle="modal" data-bs-target="#uploadHarvestModal">
+        <button type="button" class="btn btn-outline-warning btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#uploadHarvestModal">
           <i class="bi bi-cloud-upload me-1"></i>Upload Harvest
         </button>
       </div>
     </div>
-    {{ filter_bar('partsTable', ['New', 'Harvest']) }}
-    <div class="table-responsive">
       <table id="partsTable" class="table table-hover mb-0 small">
         <thead class="table-dark">
           <tr>
@@ -321,26 +330,26 @@
           {% endfor %}
         </tbody>
       </table>
-    </div>
+  </div>
   </div>
 
   <!-- ── TAB 3: Consumption ── -->
-  <div class="tab-pane fade p-0" id="consumptionTab" role="tabpanel">
-    <div class="d-flex justify-content-between align-items-center p-3 border-bottom flex-wrap gap-2">
-      <span class="text-muted small">Last {{ consumptions|length }} consumption records</span>
-      <div class="d-flex gap-2 flex-wrap">
-        <button class="btn btn-outline-secondary btn-sm" onclick="spExport('consumptionTable',false)">
+  <div class="tab-pane fade" id="consumptionTab" role="tabpanel">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <strong class="small text-nowrap"><i class="bi bi-tools me-1"></i>Consumption</strong>
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        <button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('consumptionTable',false)">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export All
         </button>
-        <button id="expSel_consumptionTable" class="btn btn-outline-info btn-sm d-none" onclick="spExport('consumptionTable',true)" disabled>
+        <button id="expSel_consumptionTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('consumptionTable',true)" disabled>
           <i class="bi bi-download me-1"></i>Export Selected
         </button>
-        <a href="/spare-parts/consume" class="btn btn-warning btn-sm">
+        <a href="/spare-parts/consume" class="btn btn-warning btn-sm text-nowrap">
           <i class="bi bi-plus-circle me-1"></i>Record Consumption
         </a>
       </div>
     </div>
-    <div class="table-responsive">
       <table id="consumptionTable" class="table table-hover mb-0 small">
         <thead class="table-dark">
           <tr>
@@ -378,32 +387,32 @@
           {% endfor %}
         </tbody>
       </table>
-    </div>
+  </div>
   </div>
 
   <!-- ── TAB 4: Part Requests (#11/#14) ── -->
-  <div class="tab-pane fade p-0" id="requestsTab" role="tabpanel">
-    <div class="d-flex justify-content-between align-items-center p-3 border-bottom flex-wrap gap-2">
-      <span class="text-muted small">{{ part_reqs|length }} part request(s) — Handover enabled whenever Part Master stock is available</span>
-      <div class="d-flex gap-2 flex-wrap">
-        <button class="btn btn-outline-secondary btn-sm" onclick="spExport('partReqTable',false)">
+  <div class="tab-pane fade" id="requestsTab" role="tabpanel">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <strong class="small text-nowrap" title="Handover is enabled whenever Part Master stock is available"><i class="bi bi-bag-plus me-1"></i>Part Requests</strong>
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        {{ filter_bar('partReqTable', ['New', 'Replace', 'Downgrade']) }}
+        <button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('partReqTable',false)">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export All
         </button>
-        <button id="expSel_partReqTable" class="btn btn-outline-info btn-sm d-none" onclick="spExport('partReqTable',true)" disabled>
+        <button id="expSel_partReqTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('partReqTable',true)" disabled>
           <i class="bi bi-download me-1"></i>Export Selected
         </button>
-        <button id="bulkHandover_partReqTable" class="btn btn-outline-success btn-sm"
+        <button id="bulkHandover_partReqTable" class="btn btn-outline-success btn-sm text-nowrap"
                 onclick="spBulkRequestAction('partReqTable','handover')" disabled>
           <i class="bi bi-box-arrow-right me-1"></i>Handover Selected
         </button>
-        <button id="bulkDelete_partReqTable" class="btn btn-outline-danger btn-sm"
+        <button id="bulkDelete_partReqTable" class="btn btn-outline-danger btn-sm text-nowrap"
                 onclick="spBulkRequestAction('partReqTable','delete')" disabled>
           <i class="bi bi-trash3 me-1"></i>Delete Selected
         </button>
       </div>
     </div>
-    {{ filter_bar('partReqTable', ['New', 'Replace', 'Downgrade']) }}
-    <div class="table-responsive">
       <table id="partReqTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark"><tr>
           <th><input type="checkbox" class="form-check-input sp-sa" data-tbl="partReqTable"></th>
@@ -411,99 +420,39 @@
           <th>Crate Number</th><th>Make</th><th>Model</th>
           <th>Qty Requested</th><th>Qty Handover</th><th>QTY Available</th><th>Status</th><th>Action</th>
         </tr></thead>
-        <tbody>
-          {% for r in part_reqs %}
-          {# Qty Available comes from Part Master by NAME (New + Harvest summed).
-             Most requests carry a stale part_id pointing at a trashed row, so
-             keying on the id alone showed 0. #}
-          {% set stock = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}
-          {% set available = r.part_id and stock > 0 %}
-          <tr data-added="{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '' }}"
-              data-category="{{ r.part_category or '' }}"
-              data-addedas="{{ (r.request_type or 'new') | capitalize }}"
-              data-partname="{{ r.part_name or '' }}">
-            <td><input type="checkbox" class="form-check-input sp-cb" data-tbl="partReqTable" value="{{ r.id }}"></td>
-            <td class="font-monospace">
-              {% if r.work_id %}<a href="/workid-status?highlight={{ r.work_id }}" class="text-decoration-none" title="View in WorkID Status">{{ r.work_id }}</a>{% else %}—{% endif %}
-              {% if r.request_type == 'new' %}<div><span class="badge bg-success">New</span></div>
-              {% elif r.request_type == 'replace' %}<div><span class="badge bg-warning text-dark">Replace</span></div>
-              {% elif r.request_type == 'downgrade' and r.downgrade_type == 'replace' %}<div><span class="badge bg-dark">Replace Downgrade</span></div>
-              {% elif r.request_type == 'downgrade' %}<div><span class="badge bg-secondary">General Downgrade</span></div>
-              {% endif %}
-            </td>
-            <td><a href="/devices/{{ r.barcode }}" class="font-monospace text-decoration-none">{{ r.barcode }}</a></td>
-            <td>{{ r.engineer_name or r.requested_by or '—' }}</td>
-            <td class="text-nowrap">{{ r.created_at | ist_date if r.created_at else '—' }}</td>
-            <td class="fw-semibold">{{ r.part_name }}</td>
-            <td>{{ r.part_category or '—' }}</td>
-            <td>{{ part_meta.get(r.part_id|string, {}).get('crate') or '—' }}</td>
-            <td>{{ part_meta.get(r.part_id|string, {}).get('make') or '—' }}</td>
-            <td>{{ part_meta.get(r.part_id|string, {}).get('model') or '—' }}</td>
-            <td>{{ r.qty_requested }}</td>
-            <td>{{ r.qty_handed_over or '—' }}</td>
-            <td><span class="badge {{ 'bg-success' if available else 'bg-danger' }}">{{ stock }}</span></td>
-            <td>
-              {% if r.status in ('handed_over', 'received') %}
-              <span class="badge bg-primary">Handedover</span>
-              {% elif r.status == 'procure' %}
-              <span class="badge bg-info text-dark">Sent for Sourcing</span>
-              {% elif stock == 0 %}
-              <span class="badge bg-danger">Not in Stock</span>
-              {% else %}
-              <span class="badge bg-success">Available</span>
-              {% endif %}
-            </td>
-            <td>
-              <div class="d-flex gap-1 align-items-center">
-                {% if r.status == 'requested' %}
-                <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#handoverModal"
-                        data-req="{{ r.id }}" data-part="{{ r.part_name }}" data-eng="{{ r.engineer_name or r.requested_by }}"
-                        data-qty="{{ r.qty_requested }}"
-                        {{ 'disabled' if not available }}>Handover</button>
-                {% elif r.status == 'handed_over' %}<span class="badge bg-success">Handed Over &times;{{ r.qty_handed_over }}</span>
-                {% elif r.status == 'not_in_stock' %}<span class="badge bg-danger">Not In Stock</span>
-                {% elif r.status == 'procure' %}<span class="badge bg-info text-dark">Sent for Sourcing</span>
-                {% else %}<span class="badge bg-secondary">{{ r.status }}</span>{% endif %}
-                {# Procure — always visible and enabled regardless of status #}
-                <form method="post" action="/part-requests/{{ r.id }}/procure" class="d-inline">
-                  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                  <button class="btn btn-sm btn-outline-info py-0 px-2">Procure</button>
-                </form>
-              </div>
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="15" class="text-center text-muted py-4">No part requests.</td></tr>
-          {% endfor %}
-        </tbody>
+        <tbody></tbody>{# rows come from #partReqTableData below #}
       </table>
-    </div>
+      {# Rows as plain values, not <tr>s (2026-10-19): with ~10,000 requests
+         the HTML rows took the browser close to a minute to build. The cells
+         are drawn in JS (spReqColumns) for the page being viewed only. #}
+      <script type="application/json" id="partReqTableData">[{% for r in part_reqs %}{% set _m = part_meta.get(r.part_id|string, {}) %}{% set _s = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}{{ {"id": r.id|string, "a": (r.request_type or 'new')|capitalize, "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _m.get("crate") or "", "mk": _m.get("make") or "", "md": _m.get("model") or "", "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if (r.part_id and _s > 0) else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
+  </div>
   </div>
 
   <!-- ── TAB: Faulty Request — same shape as Part Requests, filtered to
        request_type='faulty' (raised by the "Faulty" button on Device Detail) ── -->
-  <div class="tab-pane fade p-0" id="faultyTab" role="tabpanel">
-    <div class="d-flex justify-content-between align-items-center p-3 border-bottom flex-wrap gap-2">
-      <span class="text-muted small">{{ faulty_reqs|length }} faulty part request(s) — Handover enabled whenever Part Master stock is available</span>
-      <div class="d-flex gap-2 flex-wrap">
-        <button class="btn btn-outline-secondary btn-sm" onclick="spExport('faultyReqTable',false)">
+  <div class="tab-pane fade" id="faultyTab" role="tabpanel">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <strong class="small text-nowrap" title="Handover is enabled whenever Part Master stock is available"><i class="bi bi-exclamation-triangle me-1"></i>Faulty Request</strong>
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        {{ filter_bar('faultyReqTable', ['Faulty']) }}
+        <button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('faultyReqTable',false)">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export All
         </button>
-        <button id="expSel_faultyReqTable" class="btn btn-outline-info btn-sm d-none" onclick="spExport('faultyReqTable',true)" disabled>
+        <button id="expSel_faultyReqTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('faultyReqTable',true)" disabled>
           <i class="bi bi-download me-1"></i>Export Selected
         </button>
-        <button id="bulkHandover_faultyReqTable" class="btn btn-outline-success btn-sm"
+        <button id="bulkHandover_faultyReqTable" class="btn btn-outline-success btn-sm text-nowrap"
                 onclick="spBulkRequestAction('faultyReqTable','handover')" disabled>
           <i class="bi bi-box-arrow-right me-1"></i>Handover Selected
         </button>
-        <button id="bulkDelete_faultyReqTable" class="btn btn-outline-danger btn-sm"
+        <button id="bulkDelete_faultyReqTable" class="btn btn-outline-danger btn-sm text-nowrap"
                 onclick="spBulkRequestAction('faultyReqTable','delete')" disabled>
           <i class="bi bi-trash3 me-1"></i>Delete Selected
         </button>
       </div>
     </div>
-    {{ filter_bar('faultyReqTable', ['Faulty']) }}
-    <div class="table-responsive">
       <table id="faultyReqTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark"><tr>
           <th><input type="checkbox" class="form-check-input sp-sa" data-tbl="faultyReqTable"></th>
@@ -511,86 +460,13 @@
           <th>Crate Number</th><th>Make</th><th>Model</th>
           <th>Qty Requested</th><th>Qty Handover</th><th>QTY Available</th><th>Status</th><th>Action</th>
         </tr></thead>
-        <tbody>
-          {% for r in faulty_reqs %}
-          {# Qty Available comes from Part Master by NAME (New + Harvest summed).
-             Most requests carry a stale part_id pointing at a trashed row, so
-             keying on the id alone showed 0. #}
-          {% set stock = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}
-          {% set available = r.part_id and stock > 0 %}
-          <tr data-added="{{ r.created_at.strftime('%Y-%m-%d') if r.created_at else '' }}"
-              data-category="{{ r.part_category or '' }}"
-              data-addedas="Faulty"
-              data-partname="{{ r.part_name or '' }}">
-            <td><input type="checkbox" class="form-check-input sp-cb" data-tbl="faultyReqTable" value="{{ r.id }}"></td>
-            <td class="font-monospace">{% if r.work_id %}<a href="/workid-status?highlight={{ r.work_id }}" class="text-decoration-none" title="View in WorkID Status">{{ r.work_id }}</a>{% else %}—{% endif %}</td>
-            <td><a href="/devices/{{ r.barcode }}" class="font-monospace text-decoration-none">{{ r.barcode }}</a></td>
-            <td>{{ r.engineer_name or r.requested_by or '—' }}</td>
-            <td class="text-nowrap">{{ r.created_at | ist_date if r.created_at else '—' }}</td>
-            <td class="fw-semibold">{{ r.part_name }}</td>
-            <td>{{ r.part_category or '—' }}</td>
-            <td>{{ part_meta.get(r.part_id|string, {}).get('crate') or '—' }}</td>
-            <td>{{ part_meta.get(r.part_id|string, {}).get('make') or '—' }}</td>
-            <td>{{ part_meta.get(r.part_id|string, {}).get('model') or '—' }}</td>
-            <td>{{ r.qty_requested }}</td>
-            <td>{{ r.qty_handed_over or '—' }}</td>
-            <td><span class="badge {{ 'bg-success' if available else 'bg-danger' }}">{{ stock }}</span></td>
-            <td>
-              {% if r.status in ('handed_over', 'received') %}
-              <span class="badge bg-primary">Handedover</span>
-              {% elif r.status == 'procure' %}
-              <span class="badge bg-info text-dark">Sent for Sourcing</span>
-              {% elif stock == 0 %}
-              <span class="badge bg-danger">Not in Stock</span>
-              {% else %}
-              <span class="badge bg-success">Available</span>
-              {% endif %}
-            </td>
-            <td>
-              <div class="d-flex gap-1 align-items-center">
-                {% if r.status == 'requested' %}
-                <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#handoverModal"
-                        data-req="{{ r.id }}" data-part="{{ r.part_name }}" data-eng="{{ r.engineer_name or r.requested_by }}"
-                        data-qty="{{ r.qty_requested }}"
-                        {{ 'disabled' if not available }}>Handover</button>
-                {% elif r.status == 'handed_over' %}<span class="badge bg-success">Handed Over &times;{{ r.qty_handed_over }}</span>
-                {% elif r.status == 'not_in_stock' %}<span class="badge bg-danger">Not In Stock</span>
-                {% elif r.status == 'procure' %}<span class="badge bg-info text-dark">Sent for Sourcing</span>
-                {% elif r.status == 'scrapped' %}<span class="badge bg-dark">Scrapped</span>
-                {% elif r.status == 'warranty_sent' %}<span class="badge bg-warning text-dark">Sent for Warranty Replacement</span>
-                {% elif r.status == 'warranty_replaced' %}<span class="badge bg-success">Warranty Replaced</span>
-                {% else %}<span class="badge bg-secondary">{{ r.status }}</span>{% endif %}
-                {% if r.status == 'warranty_sent' %}
-                <form method="post" action="/part-requests/{{ r.id }}/warranty-received" class="d-inline"
-                      onsubmit="return confirm('Replacement received from supplier? The part will be added back to stock.')">
-                  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                  <button class="btn btn-sm btn-outline-success py-0 px-2">Replacement Received</button>
-                </form>
-                {% endif %}
-                {% if r.status not in ('handed_over', 'scrapped', 'warranty_sent', 'warranty_replaced') %}
-                <form method="post" action="/part-requests/{{ r.id }}/procure" class="d-inline">
-                  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                  <button class="btn btn-sm btn-outline-info py-0 px-2">Procure</button>
-                </form>
-                <form method="post" action="/part-requests/{{ r.id }}/warranty-replace" class="d-inline"
-                      onsubmit="return confirm('Send this faulty part back to the supplier under warranty?')">
-                  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                  <button class="btn btn-sm btn-outline-warning py-0 px-2">Warranty Replace</button>
-                </form>
-                <form method="post" action="/part-requests/{{ r.id }}/scrap" class="d-inline" onsubmit="return confirm('Mark this faulty part as scrapped?')">
-                  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                  <button class="btn btn-sm btn-outline-dark py-0 px-2">Scrap</button>
-                </form>
-                {% endif %}
-              </div>
-            </td>
-          </tr>
-          {% else %}
-          <tr><td colspan="15" class="text-center text-muted py-4">No faulty part requests.</td></tr>
-          {% endfor %}
-        </tbody>
+        <tbody></tbody>{# rows come from #faultyReqTableData below #}
       </table>
-    </div>
+      {# Rows as plain values, not <tr>s (2026-10-19): with ~10,000 requests
+         the HTML rows took the browser close to a minute to build. The cells
+         are drawn in JS (spReqColumns) for the page being viewed only. #}
+      <script type="application/json" id="faultyReqTableData">[{% for r in faulty_reqs %}{% set _m = part_meta.get(r.part_id|string, {}) %}{% set _s = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}{{ {"id": r.id|string, "a": 'Faulty', "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _m.get("crate") or "", "mk": _m.get("make") or "", "md": _m.get("model") or "", "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if (r.part_id and _s > 0) else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
+  </div>
   </div>
 
   <!-- ── TAB: Parts Consumption — parts consumed per tag number, one row per
@@ -599,22 +475,20 @@
        Detail page's own Parts Consumed table uses, rolled up by
        (device, part) instead of by device alone — a tag with Keyboard
        changed once and RAM changed twice shows as two rows here. ── -->
-  <div class="tab-pane fade p-0" id="partsConsumptionTab" role="tabpanel">
-    {# Card-header bar removed (2026-09-18) — its tag/part-row count and
-       Export button are relocated into the Global Table's own toolbar by JS
-       below (next to the yellow row-count badge, and beside pagination,
-       respectively). The old #pcSearch box is gone too — it duplicated the
-       search box initGlobalTable already provides. #}
-    <span id="pcCounts" class="d-none text-muted small">{{ tag_consumption_tag_count }} tag(s), {{ tag_consumption_rows|length }} part row(s)</span>
-    <button id="pcExportBtn" type="button" class="d-none btn btn-outline-secondary btn-sm" onclick="spExport('partsConsumptionTable',false)">
-      <i class="bi bi-file-earmark-arrow-down me-1"></i>Tags Summary
-    </button>
-    <button id="pcExportPartsSummaryBtn" type="button" class="d-none btn btn-outline-secondary btn-sm" onclick="spExportPartsSummary()">
-      <i class="bi bi-file-earmark-arrow-down me-1"></i>Parts Summary
-    </button>
-    {# No .table-responsive wrapper — initGlobalTable's own scrollX owns
-       horizontal scrolling (Global Table convention, see templates/devices/
-       list.html). #}
+  <div class="tab-pane fade" id="partsConsumptionTab" role="tabpanel">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <strong class="small text-nowrap"><i class="bi bi-clipboard-data me-1"></i>Parts Consumption
+        <span id="pcCounts" class="text-muted fw-normal ms-1">{{ tag_consumption_tag_count }} tag(s), {{ tag_consumption_rows|length }} part row(s)</span></strong>
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        <button id="pcExportBtn" type="button" class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('partsConsumptionTable',false)">
+          <i class="bi bi-file-earmark-arrow-down me-1"></i>Tags Summary
+        </button>
+        <button id="pcExportPartsSummaryBtn" type="button" class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExportPartsSummary()">
+          <i class="bi bi-file-earmark-arrow-down me-1"></i>Parts Summary
+        </button>
+      </div>
+    </div>
     <table id="partsConsumptionTable" class="table table-hover mb-0 small">
       <thead class="table-dark">
         <tr>
@@ -644,21 +518,22 @@
       </tbody>
     </table>
   </div>
+  </div>
 
   <!-- ── TAB 5: Pending Requests For Part Sourcing (#15, synced read-only from CRM) ── -->
-  <div class="tab-pane fade p-0" id="sourcingTab" role="tabpanel">
-    <div class="d-flex justify-content-between align-items-center p-3 border-bottom flex-wrap gap-2">
-      <span class="text-muted small">Pending Requests For Part Sourcing — synced with CRM Dashboard (read-only here)</span>
-      <div class="d-flex gap-2 flex-wrap">
-        <button class="btn btn-outline-secondary btn-sm" onclick="spExport('sourcingTable',false)">
+  <div class="tab-pane fade" id="sourcingTab" role="tabpanel">
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+      <strong class="small text-nowrap" title="Pending Requests For Part Sourcing — synced with CRM Dashboard (read-only here)"><i class="bi bi-box-arrow-in-down me-1"></i>Sourcing Requests</strong>
+      <div class="d-flex gap-2 flex-wrap align-items-center">
+        <button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('sourcingTable',false)">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export All
         </button>
-        <button id="expSel_sourcingTable" class="btn btn-outline-info btn-sm d-none" onclick="spExport('sourcingTable',true)" disabled>
+        <button id="expSel_sourcingTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('sourcingTable',true)" disabled>
           <i class="bi bi-download me-1"></i>Export Selected
         </button>
       </div>
     </div>
-    <div class="table-responsive">
       <table id="sourcingTable" class="table table-hover mb-0 small">
         <thead class="table-dark"><tr>
           <th><input type="checkbox" class="form-check-input sp-sa" data-tbl="sourcingTable"></th>
@@ -765,12 +640,10 @@
               {% endif %}
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="10" class="text-center text-muted py-4">No sourcing requests.</td></tr>
           {% endfor %}
         </tbody>
       </table>
-    </div>
+  </div>
   </div>
 
 </div>
@@ -978,22 +851,131 @@
 
 {% block scripts %}
 <script>
-$(document).ready(function() {
-  var cdNone = {orderable: false, targets: 0};
-  if (!$.fn.dataTable.isDataTable('#partsTable'))
-    {# Name moved from column 4 to column 6 (after Category, Crate Number) —
-       still the default sort. #}
-    $('#partsTable').DataTable({ pageLength: 12, order: [[6, 'asc']], columnDefs: [cdNone], language: { emptyTable: 'No parts registered.' } });
-  if (!$.fn.dataTable.isDataTable('#purchasesTable'))
-    $('#purchasesTable').DataTable({ pageLength: 12, order: [[8, 'desc']], columnDefs: [cdNone], language: { emptyTable: 'No purchases recorded.' } });
-  if (!$.fn.dataTable.isDataTable('#consumptionTable'))
-    $('#consumptionTable').DataTable({ pageLength: 12, order: [[9, 'desc']], columnDefs: [cdNone], language: { emptyTable: 'No consumptions recorded.' } });
-  if (!$.fn.dataTable.isDataTable('#partReqTable') && $('#partReqTable tbody tr td').length > 1)
-    $('#partReqTable').DataTable({ pageLength: 12, order: [], columnDefs: [cdNone] });
-  if (!$.fn.dataTable.isDataTable('#faultyReqTable') && $('#faultyReqTable tbody tr td').length > 1)
-    $('#faultyReqTable').DataTable({ pageLength: 12, order: [], columnDefs: [cdNone] });
-  if (!$.fn.dataTable.isDataTable('#sourcingTable') && $('#sourcingTable tbody tr td').length > 1)
-    $('#sourcingTable').DataTable({ pageLength: 12, order: [], columnDefs: [cdNone] });
+// ── Global Tables (2026-10-19) — one per tab. A tab's table is built the
+// first time that tab is shown, not all at page load. Part Requests and
+// Faulty Request (≈10,000 rows) are fed from their JSON rows and only draw
+// the page being viewed (deferRender); the others read their HTML rows.
+// No clamp renderer on the big tables: any column renderer makes DataTables
+// rewrite every cell at init.
+var cdNone = {orderable: false, targets: 0};
+// Cells of Part Requests / Faulty Request, drawn from each row's values —
+// the same markup these rows had as server-rendered HTML. Non-display
+// requests (search, sort) get plain text.
+var SP_CSRF = "{{ request.cookies.get('csrf_token','') }}";
+function spEsc(v) {
+  return String(v == null ? '' : v).replace(/[&<>"']/g, function (ch) {
+    return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[ch];
+  });
+}
+function spPost(action, label, cls, confirmText) {
+  return '<form method="post" action="' + action + '" class="d-inline"' +
+    (confirmText ? ' onsubmit="return confirm(\'' + confirmText + '\')"' : '') + '>' +
+    '<input type="hidden" name="csrf_token" value="' + spEsc(SP_CSRF) + '">' +
+    '<button class="btn btn-sm ' + cls + ' py-0 px-2">' + label + '</button></form>';
+}
+var SP_TYPE_BADGE = {
+  'new': '<span class="badge bg-success">New</span>',
+  'replace': '<span class="badge bg-warning text-dark">Replace</span>',
+};
+function spTypeBadge(r) {
+  if (r.t === 'downgrade') return r.dg === 'replace' ? '<span class="badge bg-dark">Replace Downgrade</span>'
+                                                     : '<span class="badge bg-secondary">General Downgrade</span>';
+  return SP_TYPE_BADGE[r.t] || '';
+}
+function spStatusCell(r) {
+  if (r.st === 'handed_over' || r.st === 'received') return '<span class="badge bg-primary">Handedover</span>';
+  if (r.st === 'procure') return '<span class="badge bg-info text-dark">Sent for Sourcing</span>';
+  if (r.s === 0) return '<span class="badge bg-danger">Not in Stock</span>';
+  return '<span class="badge bg-success">Available</span>';
+}
+function spActionCell(r, faulty) {
+  var h = '';
+  if (r.st === 'requested') {
+    h += '<button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#handoverModal"' +
+         ' data-req="' + spEsc(r.id) + '" data-part="' + spEsc(r.n) + '" data-eng="' + spEsc(r.e) + '"' +
+         ' data-qty="' + spEsc(r.q) + '"' + (r.av ? '' : ' disabled') + '>Handover</button>';
+  } else if (r.st === 'handed_over') h += '<span class="badge bg-success">Handed Over &times;' + spEsc(r.h) + '</span>';
+  else if (r.st === 'not_in_stock') h += '<span class="badge bg-danger">Not In Stock</span>';
+  else if (r.st === 'procure') h += '<span class="badge bg-info text-dark">Sent for Sourcing</span>';
+  else if (faulty && r.st === 'scrapped') h += '<span class="badge bg-dark">Scrapped</span>';
+  else if (faulty && r.st === 'warranty_sent') h += '<span class="badge bg-warning text-dark">Sent for Warranty Replacement</span>';
+  else if (faulty && r.st === 'warranty_replaced') h += '<span class="badge bg-success">Warranty Replaced</span>';
+  else h += '<span class="badge bg-secondary">' + spEsc(r.st) + '</span>';
+  var base = '/part-requests/' + encodeURIComponent(r.id);
+  if (!faulty) {
+    h += spPost(base + '/procure', 'Procure', 'btn-outline-info');   // always visible
+  } else {
+    if (r.st === 'warranty_sent')
+      h += spPost(base + '/warranty-received', 'Replacement Received', 'btn-outline-success',
+                  'Replacement received from supplier? The part will be added back to stock.');
+    if (['handed_over', 'scrapped', 'warranty_sent', 'warranty_replaced'].indexOf(r.st) === -1) {
+      h += spPost(base + '/procure', 'Procure', 'btn-outline-info');
+      h += spPost(base + '/warranty-replace', 'Warranty Replace', 'btn-outline-warning',
+                  'Send this faulty part back to the supplier under warranty?');
+      h += spPost(base + '/scrap', 'Scrap', 'btn-outline-dark', 'Mark this faulty part as scrapped?');
+    }
+  }
+  return '<div class="d-flex gap-1 align-items-center">' + h + '</div>';
+}
+function spReqColumns(tbl, faulty) {
+  function col(text, html, extra) {   // text: plain value for search/sort; html: display markup
+    return $.extend({ data: null, render: function (d, type, r) {
+      return type === 'display' ? html(r) : text(r);
+    } }, extra || {});
+  }
+  var dash = function (v) { return (v === '' || v == null || v === 0) ? '—' : v; };
+  return [
+    col(function () { return ''; }, function (r) {
+      return '<input type="checkbox" class="form-check-input sp-cb" data-tbl="' + tbl + '" value="' + spEsc(r.id) + '">'; }, { orderable: false }),
+    col(function (r) { return r.w + ' ' + (faulty ? '' : r.a); }, function (r) {
+      var link = r.w ? '<a href="/workid-status?highlight=' + encodeURIComponent(r.w) + '" class="text-decoration-none" title="View in WorkID Status">' + spEsc(r.w) + '</a>' : '—';
+      var badge = faulty ? '' : spTypeBadge(r);
+      return link + (badge ? ' <div>' + badge + '</div>' : ''); }, { className: 'font-monospace' }),
+    col(function (r) { return r.b; }, function (r) {
+      return '<a href="/devices/' + encodeURIComponent(r.b) + '" class="font-monospace text-decoration-none">' + spEsc(r.b) + '</a>'; }),
+    col(function (r) { return r.e; }, function (r) { return spEsc(dash(r.e)); }),
+    { data: null, className: 'text-nowrap', render: function (d, type, r) {
+        return type === 'sort' || type === 'type' ? r.ds : (type === 'display' ? spEsc(dash(r.d)) : r.d); } },
+    col(function (r) { return r.n; }, function (r) { return spEsc(r.n); }, { className: 'fw-semibold' }),
+    col(function (r) { return r.c; }, function (r) { return spEsc(dash(r.c)); }),
+    col(function (r) { return r.cr; }, function (r) { return spEsc(dash(r.cr)); }),
+    col(function (r) { return r.mk; }, function (r) { return spEsc(dash(r.mk)); }),
+    col(function (r) { return r.md; }, function (r) { return spEsc(dash(r.md)); }),
+    { data: 'q', render: function (d, type) { return type === 'display' ? spEsc(d) : d; } },
+    { data: 'h', render: function (d, type) { return type === 'display' ? spEsc(dash(d)) : d; } },
+    { data: 's', render: function (d, type, r) {
+        return type === 'display' ? '<span class="badge ' + (r.av ? 'bg-success' : 'bg-danger') + '">' + spEsc(d) + '</span>' : d; } },
+    col(function (r) { return _cellText(spStatusCell(r)); }, spStatusCell),
+    col(function () { return ''; }, function (r) { return spActionCell(r, faulty); }, { orderable: false }),
+  ];
+}
+function spReqTableOptions(tbl, emptyText) {
+  var el = document.getElementById(tbl + 'Data');
+  var rows = el ? JSON.parse(el.textContent) : [];
+  return { data: rows, columns: spReqColumns(tbl, tbl === 'faultyReqTable'), deferRender: true, order: [],
+           language: { emptyTable: emptyText },
+           createdRow: function (tr, r) { tr.setAttribute('data-addedas', r.a); } };
+}
+var spTables = {
+  {# Name is column 6 (after Category, Crate Number) — the default sort. #}
+  partsTable: function () { return [{ order: [[6, 'asc']], columnDefs: [cdNone], language: { emptyTable: 'No parts registered.' } }, {}]; },
+  consumptionTable: function () { return [{ order: [[9, 'desc']], columnDefs: [cdNone], language: { emptyTable: 'No consumptions recorded.' } }, {}]; },
+  partReqTable: function () { return [spReqTableOptions('partReqTable', 'No part requests.'), { clamp: false }]; },
+  faultyReqTable: function () { return [spReqTableOptions('faultyReqTable', 'No faulty part requests.'), { clamp: false }]; },
+  partsConsumptionTable: function () { return [{ order: [], language: { emptyTable: 'No parts consumed yet.' } }, { clamp: false }]; },
+  sourcingTable: function () { return [{ order: [], columnDefs: [cdNone], language: { emptyTable: 'No sourcing requests.' } }, {}]; },
+};
+function spInitPane(pane) {
+  if (!pane) return;
+  pane.querySelectorAll('table[id]').forEach(function (t) {
+    if (!spTables[t.id] || $.fn.dataTable.isDataTable(t)) return;
+    var o = spTables[t.id]();
+    initGlobalTable('#' + t.id, o[0], o[1]);
+  });
+  $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+}
+$('#sparePartsTabs button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
+  spInitPane(document.querySelector(this.getAttribute('data-bs-target')));
 });
 
 // Handover modal — populate from the clicked button's data-* attributes
@@ -1038,6 +1020,8 @@ document.querySelectorAll('#sparePartsTabs button').forEach(btn => {
     localStorage.setItem(activeTabKey, e.target.getAttribute('data-bs-target'));
   });
 });
+// Build the table of whichever tab is showing now (the restored one, if any).
+spInitPane(document.querySelector('#sparePartsTabContent > .tab-pane.active'));
 
 // ── Export utility ─────────────────────────────────────────────────────────
 function _csvCell(v) {
@@ -1053,25 +1037,47 @@ function _downloadCsv(filename, headerCells, rowsOfCells) {
   a.download = filename;
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
 }
-// Reads every row of a Global Table (DataTables-backed), temporarily showing
-// all pages so rows outside the current page aren't missed, then restores
-// the page length the user had picked. Returns raw <td> text, unquoted.
+// Reads every row of a table — the rows the search / Added As filters
+// currently show — as plain text cells plus whether its checkbox is ticked.
+// Data-fed tables (Part Requests, Faulty Request) are read from their row
+// data, so the ~10,000 rows never have to be drawn; HTML-row tables are read
+// by showing all pages briefly, then restoring the page length.
+function _cellText(html) {
+  var d = document.createElement('div');
+  d.innerHTML = html == null ? '' : String(html);
+  return d.textContent.trim().replace(/\s+/g, ' ');
+}
 function _readAllTableRows(tableId) {
   var table = document.getElementById(tableId);
-  if (!table) return {headers: [], rows: []};
-  var isDt = window.jQuery && $.fn.dataTable && $.fn.dataTable.isDataTable('#' + tableId);
-  var dt = isDt ? $('#' + tableId).DataTable() : null;
-  var restorePageLen = dt ? dt.page.len() : null;
-  if (dt) dt.page.len(-1).draw(false);
+  if (!table) return {headers: [], rows: [], selected: []};
   var ths = Array.from(table.querySelectorAll('thead th'));
   var headers = ths.map(function(th) { return th.textContent.trim(); });
-  var rows = [];
+  var isDt = window.jQuery && $.fn.dataTable && $.fn.dataTable.isDataTable('#' + tableId);
+  var dt = isDt ? $('#' + tableId).DataTable() : null;
+  var rows = [], selected = [];
+  if (dt && dt.init().data) {
+    var cols = dt.init().columns;
+    dt.rows({search: 'applied', order: 'applied'}).every(function() {
+      var d = this.data(), node = this.node();
+      rows.push(cols.map(function(c) {
+        var v = c.render ? c.render(c.data ? d[c.data] : d, 'display', d) : d[c.data];
+        return _cellText(v);
+      }));
+      var cb = node ? node.querySelector('input.sp-cb') : null;
+      selected.push(!!(cb && cb.checked));
+    });
+    return {headers: headers, rows: rows, selected: selected};
+  }
+  var restorePageLen = dt ? dt.page.len() : null;
+  if (dt) dt.page.len(-1).draw(false);
   table.querySelectorAll('tbody tr').forEach(function(tr) {
     if (tr.cells.length <= 1) return;
     rows.push(Array.from(tr.cells).map(function(td) { return td.textContent.trim().replace(/\s+/g, ' '); }));
+    var cb = tr.querySelector('input.sp-cb');
+    selected.push(!!(cb && cb.checked));
   });
   if (dt) dt.page.len(restorePageLen).draw(false);
-  return {headers: headers, rows: rows};
+  return {headers: headers, rows: rows, selected: selected};
 }
 function spExport(tableId, selectedOnly) {
   var table = document.getElementById(tableId);
@@ -1087,16 +1093,9 @@ function spExport(tableId, selectedOnly) {
   var skipLast = (lastTxt === 'action' || lastTxt === 'actions');
   var endIdx = skipLast ? all.headers.length - 1 : all.headers.length;
   var headers = all.headers.slice(startIdx, endIdx);
-  // Filtered the same way _readAllTableRows built all.rows, so index i lines
-  // up between the two arrays (an empty-state colspan placeholder row would
-  // otherwise desync them).
-  var trs = Array.from(table.querySelectorAll('tbody tr')).filter(function(tr) { return tr.cells.length > 1; });
   var rows = [];
   all.rows.forEach(function(cells, i) {
-    if (selectedOnly) {
-      var cb = trs[i] ? trs[i].querySelector('input.sp-cb') : null;
-      if (!cb || !cb.checked) return;
-    }
+    if (selectedOnly && !all.selected[i]) return;
     rows.push(cells.slice(startIdx, endIdx));
   });
   _downloadCsv(tableId + '.csv', headers, rows);
@@ -1212,12 +1211,13 @@ function spToggleSelButtons(tbl) {
   });
 }
 
-document.querySelectorAll('.sp-sa').forEach(function(sa) {
-  sa.addEventListener('change', function() {
-    var tbl = this.dataset.tbl;
-    document.querySelectorAll('#' + tbl + ' .sp-cb').forEach(function(c) { c.checked = sa.checked; });
-    spToggleSelButtons(tbl);
-  });
+// Delegated: with a Global Table the header row lives in DataTables' own
+// scroll-head table, so listen on the document rather than on the element.
+document.addEventListener('change', function(e) {
+  if (!e.target.classList.contains('sp-sa')) return;
+  var tbl = e.target.dataset.tbl, on = e.target.checked;
+  document.querySelectorAll('#' + tbl + ' .sp-cb').forEach(function(c) { c.checked = on; });
+  spToggleSelButtons(tbl);
 });
 
 // ── Row checkbox → enable/disable Export/Delete Selected ──────────────────
@@ -1313,8 +1313,11 @@ $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
   var tbl = settings.nTable && settings.nTable.id;
   var v = spFilterValues(tbl);
   if (!v) return true;                       // no filter bar on this table
-  var tr = settings.aoData[dataIndex].nTr;
-  return spRowMatches(tr, v);
+  var row = settings.aoData[dataIndex];
+  if (row._aData && row._aData.a !== undefined) {   // data-fed table: rows may not be drawn yet
+    return !(v.addedas && v.addedas.indexOf(row._aData.a) === -1);
+  }
+  return spRowMatches(row.nTr, v);
 });
 
 function spApplyFilters(tbl) {
@@ -1358,25 +1361,5 @@ document.querySelectorAll('[data-filterbar]').forEach(function(bar) {
   });
 });
 
-// ── Parts Consumption tab: Global Table (frozen columns, scrollX,
-// pagination) over the server-rendered rows — client-side, no ajax endpoint,
-// same as any initGlobalTable call with no `ajax` option. Own `dom` string
-// is the base initGlobalTable one (see static/js/global-table.js) with two
-// extra slots added — #pcCountArea right after the yellow row-count badge
-// ('i'), #pcExportArea just before the built-in search box ('f') — so the
-// relocated tag/part-row count and Export button land in the toolbar
-// instead of the removed card-header bar. No custom search box here
-// anymore; the table's own built-in one covers it. ──
-initGlobalTable('#partsConsumptionTable', {
-  order: [],
-  language: { emptyTable: 'No parts consumed yet.' },
-  dom: '<"gtable-top d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"' +
-         '<"d-flex align-items-center flex-wrap gap-2"li<"#pcCountArea">>' +
-         '<"d-flex align-items-center flex-wrap gap-2"<"#pcExportArea">fp>' +
-       '>rt',
-});
-$('#pcCountArea').append($('#pcCounts').removeClass('d-none'));
-$('#pcExportArea').append($('#pcExportBtn').removeClass('d-none'));
-$('#pcExportArea').append($('#pcExportPartsSummaryBtn').removeClass('d-none'));
 </script>
 {% endblock %}

@@ -459,15 +459,15 @@ def _device_search_filters(q, stage, lot, grade, category, device_type, date_fro
     # "Active Stock Only" filter (form field name kept as exclude_sold for
     # backward compatibility with saved links/bookmarks) — on by default so
     # All Inventory shows live stock rather than the full historical device
-    # list. Excludes the same 5 stages as the Dashboard's category-tile
-    # "Total" and "Total Inventory" figures (GRN/Sold/Returned/Scrapped/
-    # Scrap for Sale), so the two pages agree. Any one of those 5 stages is
-    # skipped from this exclusion when the user has explicitly selected it
-    # in the Stage filter, which would otherwise return nothing.
+    # list. Excludes GRN Receipt and Sold only (2026-10-19): Returned,
+    # Scrapped and Scrap for Sale devices are still physically held, so they
+    # now count as active stock here. (The Dashboard's "Total Inventory"
+    # figures still exclude all five.) Either stage is skipped from this
+    # exclusion when the user has explicitly selected it in the Stage filter,
+    # which would otherwise return nothing.
     if exclude_sold:
         _active_stock_excluded = [
-            s for s in (DeviceStage.grn, DeviceStage.sold, DeviceStage.returned,
-                        DeviceStage.scrapped, DeviceStage.scrap_for_sale)
+            s for s in (DeviceStage.grn, DeviceStage.sold)
             if s.value not in stage_vals
         ]
         if _active_stock_excluded:

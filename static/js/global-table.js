@@ -145,6 +145,7 @@
  *   opts.clampColumns  - column indices to restrict the >32-character
  *                        clamp+tooltip to (default: every column).
  *   opts.clampLength   - character threshold before a cell clamps+tooltips
+ *   opts.clamp         - false: no clamping at all (very large DOM tables)
  *                        (default: 32).
  *   opts.freeze        - pass false to opt out of scrollX + the frozen
  *                        first column (default: on).
@@ -323,7 +324,11 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
   if (lastHead.length && /^(actions?)?$/i.test($.trim(lastHead.text()))) {
     columnDefs.push({ targets: -1, orderable: false });
   }
-  columnDefs.push({
+  // opts.clamp === false skips the clamp renderer entirely (2026-10-19): on a
+  // DOM-sourced table any columns.render makes DataTables rewrite every
+  // cell's innerHTML at init, which on a 10,000-row table (Parts Manager →
+  // Part Requests) took tens of seconds. Big tables opt out.
+  if (opts.clamp !== false) columnDefs.push({
     // No clampColumns given → every column. HTML-bearing cells (badges,
     // links, buttons — the norm for id/status/action columns) are always
     // left untouched regardless of length; only cells DataTables would

@@ -581,6 +581,13 @@ fieldset:disabled .btn {
    or in a card without a .card-body, get .gtable-tab-wrap: the same 1rem
    padding a .card-body gives. */
 .gtable-tab-hidden-header { display: none !important; }
+
+/* Active tab in Design System navy (2026-10-19), every tab bar in the app:
+   navy background and border, white text and icon. Badges keep their own
+   colours. Inactive tabs are unchanged. */
+.nav-tabs .nav-link.active,
+.nav-tabs .nav-item.show .nav-link { background-color: #0e3a7a; border-color: #0e3a7a; color: #fff; }
+.nav-tabs .nav-link.active i, .nav-tabs .nav-link.active .bi { color: #fff; }
 .dataTables_wrapper.gtable-tab-wrap { padding: 1rem; }
 
 /* ── Global: every field has a white background (2026-10-15) ─────────────

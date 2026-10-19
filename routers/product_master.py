@@ -33,6 +33,7 @@ from models.product_master import (
 )
 from services.audit_engine import audit
 from utils.timezone import app_now
+from utils.size_units import space_size_unit, PM_SIZE_CATEGORIES
 
 router = APIRouter(prefix="/product-master", tags=["product-master"], dependencies=[Depends(verify_csrf)])
 
@@ -214,6 +215,8 @@ async def dropdown_save(request: Request,
         if pct < 0 or pct > 100:
             return _err("Discount % must be between 0 and 100.")
         value = format(pct.normalize(), "f")
+    if category in PM_SIZE_CATEGORIES:  # "12GB" -> "12 GB" (2026-10-19)
+        value = space_size_unit(value)
     if len(value) > 100:
         return _err("Value is too long (100 characters max).")
 
@@ -784,7 +787,7 @@ async def pricing_calculator_page(request: Request, db: AsyncSession = Depends(g
 @router.get("/pricing-calculator/template")
 async def pricing_calculator_template(current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
     head = ",".join(CALC_COLUMNS)
-    sample = ",".join(["123456789012", "HP", "EliteBook 840 G5", "i5", "8th", "DDR4", "8GB", "SSD", "256GB"]
+    sample = ",".join(["123456789012", "HP", "EliteBook 840 G5", "i5", "8th", "DDR4", "8 GB", "SSD", "256 GB"]
                       + ["Damaged" if lbl == "Screen" else "" for _, lbl in PART_FIELDS])
     return Response("﻿" + head + "\r\n" + sample + "\r\n", media_type="text/csv",
                     headers={"Content-Disposition": 'attachment; filename="pricing_calculator_template.csv"'})

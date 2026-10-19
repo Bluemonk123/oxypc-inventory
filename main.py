@@ -684,6 +684,17 @@ async def startup_event():
     except Exception as _pme:
         print(f"  [ProductMaster] Could not seed dropdowns: {_pme}")
 
+    # ── RAM / Storage sizes spelled "12 GB" (2026-10-19), idempotent ──────────
+    try:
+        from utils.size_units import space_existing_size_values
+        from database import AsyncSessionLocal as _ASLsz
+        async with _ASLsz() as _sesssz:
+            _szc = await space_existing_size_values(_sesssz)
+            if _szc:
+                print(f"  [SizeUnits] Spaced RAM/Storage sizes: {_szc}")
+    except Exception as _sze:
+        print(f"  [SizeUnits] Could not space RAM/Storage sizes: {_sze}")
+
     # ── Warm Master Data dropdown-options cache from DB ───────────────────────
     try:
         from utils.master_data import refresh_master_cache, ensure_master_defaults

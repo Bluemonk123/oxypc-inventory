@@ -276,6 +276,14 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
         if not _pc_in_date_range(r.actioned_at):
             continue
         sp = changed_sp_by_id.get(r.part_id)
+        # Category / Part Name / Engineer apply here too (2026-10-19), so the
+        # global filter bar covers every tab. Date stays the Verify date above.
+        if category and ((sp.category if sp else r.part_category) or "").strip().lower() != category.strip().lower():
+            continue
+        if part_name and ((sp.name if sp else r.part_name) or "").strip().lower() != part_name.strip().lower():
+            continue
+        if engineer and (r.engineer_name or r.requested_by or "").strip().lower() != engineer.strip().lower():
+            continue
         unit_price = float(sp.unit_price) if sp else 0.0
         # NOT `part_name` — that's this route's own Part Name FILTER query
         # param (see the function signature), and reusing the name here
@@ -383,6 +391,13 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
     sourcing = (await db.execute(
         select(PartSourcingRequest).order_by(PartSourcingRequest.created_at.desc())
     )).scalars().all()
+    # Global filter bar applies here too (2026-10-19): Added date = request
+    # created, Part Name = the request's part, Category = its Part Master row.
+    # Engineer has nothing to match on a sourcing request, so it is ignored.
+    if category or part_name or added_from or added_to:
+        _cat_by_part = {p.id: p.category for p in all_parts}
+        sourcing = [s for s in sourcing
+                    if _in_filter(_cat_by_part.get(s.part_id), s.part_name, s.created_at)]
 
     # ── Every estimate file from the same Generate click as each production
     # request — Part Estimate can write several files in one click (one per

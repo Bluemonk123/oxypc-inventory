@@ -19,6 +19,7 @@ from models.settings import AppSetting
 from auth.dependencies import get_current_user, require_roles, verify_csrf
 from routers.admin import _role_data
 from utils.master_data import refresh_master_cache
+from utils.size_units import space_size_unit, MASTER_SIZE_CATEGORIES
 
 router = APIRouter(prefix="/admin/master", tags=["master"], dependencies=[Depends(verify_csrf)])
 admin_only = require_roles(UserRole.admin)
@@ -600,12 +601,15 @@ async def add_master_value(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_only),
 ):
+    value = value.strip()
+    if category in MASTER_SIZE_CATEGORIES:  # "12GB" -> "12 GB" (2026-10-19)
+        value = space_size_unit(value)
     existing = await db.execute(
         select(MasterData).where(MasterData.category == category, MasterData.value == value)
     )
     if existing.scalar_one_or_none():
         return RedirectResponse(url=f"/admin/master?error=Value+already+exists+in+{category}", status_code=302)
-    item = MasterData(category=category, value=value.strip(), description=description.strip() or None)
+    item = MasterData(category=category, value=value, description=description.strip() or None)
     db.add(item)
     await db.commit()
     await refresh_master_cache(db)
@@ -626,6 +630,8 @@ async def edit_master_value(
     if not item:
         raise HTTPException(404)
     item.value = value.strip()
+    if item.category in MASTER_SIZE_CATEGORIES:  # "12GB" -> "12 GB" (2026-10-19)
+        item.value = space_size_unit(item.value)
     item.description = description.strip() or None
     await db.commit()
     await refresh_master_cache(db)
@@ -726,6 +732,8 @@ async def bulk_upload_category(
 
     for row in reader:
         value = (row.get("value") or "").strip()
+        if category in MASTER_SIZE_CATEGORIES:
+            value = space_size_unit(value)
         if not value:
             continue
         description = (row.get("description") or "").strip() or None

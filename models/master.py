@@ -65,13 +65,13 @@ MASTER_SEED = {
         "HDD", "SSD", "NVMe SSD", "eMMC", "SSHD (Hybrid)",
     ],
     "storage_size": [
-        "64GB", "128GB", "240GB", "256GB", "320GB", "480GB", "500GB", "512GB",
-        "1TB", "2TB",
+        "64 GB", "128 GB", "240 GB", "256 GB", "320 GB", "480 GB", "500 GB", "512 GB",
+        "1 TB", "2 TB",
     ],
     "ram_type": [
         "DDR3", "DDR3L", "DDR4", "DDR4L", "DDR5", "LPDDR4", "LPDDR5",
     ],
-    "ram_size": ["2GB", "4GB", "8GB", "12GB", "16GB", "24GB", "32GB", "64GB"],
+    "ram_size": ["2 GB", "4 GB", "8 GB", "12 GB", "16 GB", "24 GB", "32 GB", "64 GB"],
     "processor_brand": ["Intel", "AMD", "Apple Silicon"],
     "floor": ["Floor 1", "Floor 2", "Floor 3", "Warehouse", "Workshop", "Showroom"],
     "color": [
