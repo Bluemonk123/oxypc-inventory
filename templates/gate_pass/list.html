@@ -31,6 +31,12 @@
         <input type="text" name="lot_number" value="{{ lot_number }}" placeholder="Lot Number"
                class="form-control form-control-sm" style="width:150px">
       </div>
+      <div>
+        <label class="form-label small fw-semibold mb-1">Search</label>
+        <input type="text" name="search" value="{{ search }}" placeholder="Any detail in the table"
+               title="Tag, Sale No, Invoice, Lot, Device (brand / model), Customer"
+               class="form-control form-control-sm" style="width:220px">
+      </div>
       <div class="align-self-end">
         <button type="submit" class="btn btn-sm btn-primary">Filter</button>
         <a href="/gate-pass" class="btn btn-sm btn-outline-secondary">Reset</a>
@@ -57,7 +63,7 @@
       <table id="gpTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
-            <th style="width:36px"><input type="checkbox" id="gpSelectAll" title="Select all visible rows"></th>
+            <th style="width:36px"><input type="checkbox" id="gpSelectAll" title="Select all rows matching the search and filters (every page)"></th>
             <th>Sale ID</th><th>Date</th><th>Invoice</th><th class="ps-3">Tag Number</th>
             <th>Lot</th><th>Device</th><th>Customer</th>
             <th>Status</th><th>Delivery Challan</th><th>Action</th>
@@ -137,10 +143,29 @@ var gpSelected = new Set();
 var gpSelectAll = document.getElementById('gpSelectAll');
 var gpBulkBtn = document.getElementById('bulkExitBtn');
 
-gpSelectAll.addEventListener('change', function () {
+// Select All covers EVERY row matching the current search + filters, not
+// just the 25 on screen (2026-10-19): the ids come from /gate-pass/ids,
+// which applies the same filters as the table's own /gate-pass/data.
+gpSelectAll.addEventListener('change', async function () {
+  var on = gpSelectAll.checked;
+  var p = new URLSearchParams(window.location.search);
+  var qs = new URLSearchParams({ q: document.getElementById('gpSearch').value || '' });
+  ['sale_date_from', 'sale_date_to', 'lot_number', 'search'].forEach(function (k) { qs.set(k, p.get(k) || ''); });
+  gpSelectAll.disabled = true;
+  try {
+    var r = await fetch('/gate-pass/ids?' + qs.toString());
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    var ids = (await r.json()).ids || [];
+    if (on) ids.forEach(function (id) { gpSelected.add(id); });
+    else ids.forEach(function (id) { gpSelected.delete(id); });
+  } catch (e) {
+    alert('Could not select all matching rows — please try again.');
+    gpSelectAll.checked = !on;
+  } finally {
+    gpSelectAll.disabled = false;
+  }
   document.querySelectorAll('#gpTable .row-check:not(:disabled)').forEach(function (cb) {
-    cb.checked = gpSelectAll.checked;
-    if (cb.checked) gpSelected.add(cb.value); else gpSelected.delete(cb.value);
+    cb.checked = gpSelected.has(cb.value);
   });
   gpUpdateBulkBtn();
 });
@@ -210,6 +235,7 @@ $(document).ready(function () {
         var p = new URLSearchParams(window.location.search);
         ['sale_date_from', 'sale_date_to', 'lot_number']
           .forEach(function (k) { d[k] = p.get(k) || ''; });
+        d.search_text = p.get('search') || '';
       },
     },
     columnDefs: [
@@ -223,8 +249,46 @@ $(document).ready(function () {
       gpUpdateBulkBtn();
     },
   });
-  document.getElementById('gpSearch').addEventListener('input', function () {
+  // Scan box: filters the table as you type, and AUTO-SELECTS (2026-10-19)
+  // when the value is exactly a Tag Number, Sale No or Invoice No — a
+  // scanned tag ticks its row, an invoice ticks every row on it (any page).
+  // The text is then highlighted so the next scan simply replaces it.
+  var gpBox = document.getElementById('gpSearch');
+  var gpScanTimer = null, gpScanDone = false;
+  function gpAutoSelect(val) {
+    var p = new URLSearchParams(window.location.search);
+    var qs = new URLSearchParams({ q: val, exact: '1' });
+    ['sale_date_from', 'sale_date_to', 'lot_number', 'search'].forEach(function (k) { qs.set(k, p.get(k) || ''); });
+    fetch('/gate-pass/ids?' + qs.toString()).then(function (r) { return r.ok ? r.json() : { ids: [] }; })
+      .then(function (d) {
+        if (gpBox.value.trim() !== val || !(d.ids || []).length) return;
+        d.ids.forEach(function (id) { gpSelected.add(id); });
+        document.querySelectorAll('#gpTable .row-check:not(:disabled)').forEach(function (cb) {
+          if (gpSelected.has(cb.value)) cb.checked = true;
+        });
+        gpUpdateBulkBtn();
+        gpScanDone = true;
+        gpBox.focus(); gpBox.select();
+      });
+  }
+  // After an auto-select, the next typed/scanned character replaces the box.
+  gpBox.addEventListener('beforeinput', function (e) {
+    if (!gpScanDone) return;
+    gpScanDone = false;
+    if (e.inputType && e.inputType.indexOf('insert') === 0) gpBox.select();
+  });
+  gpBox.addEventListener('input', function () {
+    var val = this.value.trim();
     dt.search(this.value).draw();
+    clearTimeout(gpScanTimer);
+    if (val) gpScanTimer = setTimeout(function () { gpAutoSelect(val); }, 400);
+  });
+  gpBox.addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    clearTimeout(gpScanTimer);
+    var val = this.value.trim();
+    if (val) gpAutoSelect(val);
   });
 });
 

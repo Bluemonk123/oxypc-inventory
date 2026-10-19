@@ -55,6 +55,7 @@ async def gate_pass_list(request: Request,
                          sale_date_from: str = Query(default=""),
                          sale_date_to: str = Query(default=""),
                          lot_number: str = Query(default=""),
+                         search: str = Query(default=""),
                          db: AsyncSession = Depends(get_db),
                          current_user: User = Depends(allowed)):
     # Rows are supplied by /gate-pass/data (server-side DataTables) — nothing
@@ -62,10 +63,68 @@ async def gate_pass_list(request: Request,
     return templates.TemplateResponse("gate_pass/list.html", {
         "request": request, "current_user": current_user,
         "sale_date_from": sale_date_from, "sale_date_to": sale_date_to,
-        "lot_number": lot_number,
+        "lot_number": lot_number, "search": search,
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
     })
+
+
+def _gate_pass_search(search) -> list:
+    """Search-box clauses shared by /data and /ids, so Select All ticks
+    exactly the rows the search shows."""
+    search = (search or "").strip()
+    if not search:
+        return []
+    like = f"%{search}%"
+    return [or_(
+        Device.barcode.ilike(like), Device.brand.ilike(like),
+        Device.model.ilike(like),
+        func.concat(func.coalesce(Device.brand, ""), " ", func.coalesce(Device.model, "")).ilike(like),
+        Sale.sale_number.ilike(like),
+        Sale.customer_name.ilike(like), Lot.lot_number.ilike(like),
+        Sale.invoice_no.ilike(like),
+    )]
+
+
+@router.get("/ids")
+async def gate_pass_ids(
+    q: str = Query(default=""),
+    exact: str = Query(default=""),
+    search: str = Query(default=""),
+    sale_date_from: str = Query(default=""),
+    sale_date_to: str = Query(default=""),
+    lot_number: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Every exit-able sale id matching the page filters + search box —
+    powers the header Select All (2026-10-19). Server-side DataTables only
+    has the current page in the DOM, so ticking that page's boxes missed
+    every matching row on the other pages. Already dispatched/delivered
+    rows are left out, same as their disabled row checkboxes.
+
+    exact=1 (scan-box auto-select): q must equal a Tag Number, Sale No or
+    Invoice No outright (case-insensitive) — a scanned tag ticks its row, a
+    scanned/typed invoice ticks every row on that invoice; partial typing
+    never auto-ticks anything. search = the filter bar's Search field."""
+    if exact:
+        val = q.strip()
+        if not val:
+            return JSONResponse({"ids": []})
+        q_clauses = [or_(Device.barcode.ilike(val), Sale.sale_number.ilike(val),
+                         Sale.invoice_no.ilike(val))]
+    else:
+        q_clauses = _gate_pass_search(q)
+    ids = (await db.execute(
+        select(Sale.id)
+        .join(Device, Sale.device_id == Device.id)
+        .outerjoin(Lot, Device.lot_id == Lot.id)
+        .where(*_gate_pass_filters(sale_date_from, sale_date_to, lot_number),
+               *_gate_pass_search(search), *q_clauses,
+               or_(Sale.delivery_status.is_(None),
+                   Sale.delivery_status.notin_(("dispatched", "delivered"))))
+    )).scalars().all()
+    return JSONResponse({"ids": [str(i) for i in ids]})
 
 
 # NOTE: /gate-pass/data MUST stay above any /gate-pass/{sale_id} route —
@@ -81,10 +140,13 @@ async def gate_pass_data(
     sale_date_from: str = Query(default=""),
     sale_date_to: str = Query(default=""),
     lot_number: str = Query(default=""),
+    search_text: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
-    """DataTables server-side feed for the Gate Pass tag-number table."""
+    """DataTables server-side feed for the Gate Pass tag-number table.
+    search_text = the filter bar's Search field (any column), applied on top
+    of the date/lot filters; the scan box is DataTables' own search[value]."""
     base_join = (
         select(Sale, Device.id, Device.barcode, Device.brand, Device.model, Lot.lot_number)
         .join(Device, Sale.device_id == Device.id)
@@ -97,18 +159,10 @@ async def gate_pass_data(
         .outerjoin(Lot, Device.lot_id == Lot.id)
     )
 
-    page_filters = _gate_pass_filters(sale_date_from, sale_date_to, lot_number)
+    page_filters = (_gate_pass_filters(sale_date_from, sale_date_to, lot_number)
+                    + _gate_pass_search(search_text))
 
-    search = (request.query_params.get("search[value]") or "").strip()
-    search_filters = []
-    if search:
-        like = f"%{search}%"
-        search_filters.append(or_(
-            Device.barcode.ilike(like), Device.brand.ilike(like),
-            Device.model.ilike(like), Sale.sale_number.ilike(like),
-            Sale.customer_name.ilike(like), Lot.lot_number.ilike(like),
-            Sale.invoice_no.ilike(like),
-        ))
+    search_filters = _gate_pass_search(request.query_params.get("search[value]"))
 
     total = (await db.execute(count_join.where(*page_filters))).scalar() or 0
     filtered = (await db.execute(
