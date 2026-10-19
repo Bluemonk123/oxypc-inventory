@@ -21,7 +21,11 @@
   <!-- Sidebar -->
   <nav id="sidebar" class="sidebar-nav d-flex flex-column flex-shrink-0 p-0">
     <div class="sidebar-brand d-flex align-items-center px-3 py-3" style="background:#129042;color:#fff;">
-      <i class="bi bi-laptop me-2 fs-4"></i>
+      {# App logo (2026-10-19, replaces the bi-laptop icon): logo-reverse.svg —
+         no tile, colours swapped (dark box, Forest-green symbols), made for
+         this OxyPC Forest green header. 28 px ≈ 1.5× the name's cap height;
+         gap = 1/4 of the logo width (7 px). #}
+      <img src="/static/img/logo-reverse.svg" alt="OxyPC" width="28" height="28" class="flex-shrink-0" style="margin-right:7px">
       <span class="fs-6 fw-bold text-nowrap">Inventory Lifecycle</span>
     </div>
     <ul class="nav nav-pills flex-column mb-auto px-2" style="padding-top:1rem;padding-bottom:1rem;">
