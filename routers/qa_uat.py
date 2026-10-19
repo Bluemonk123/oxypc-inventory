@@ -1263,7 +1263,7 @@ async def srs_functional_spec_download(current_user: User = Depends(_view)):
 # Design System document (2026-10-15) — a fixed PDF kept in qa_docs/ (shipped
 # with the app; docs/ is excluded from the Docker image), served behind the
 # same QA view permission as the other SRS documents.
-_DESIGN_SYSTEM_PDF = "OxyPC_Inventory_Lifecycle_Design_System_2.0.pdf"
+_DESIGN_SYSTEM_PDF = "OxyPC_Inventory_Lifecycle_Design_System_2.3.pdf"  # v2.3, 19 Oct 2026
 
 
 @router.get("/srs/design-system/download")

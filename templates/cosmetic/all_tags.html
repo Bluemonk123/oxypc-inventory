@@ -160,6 +160,7 @@
 {% block scripts %}
 <script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
 
+{% set flow_badges_html %}{% for b in flow_badges %}<span class="badge rounded-pill bg-primary-subtle text-primary-emphasis border border-primary-subtle fw-semibold" title="Tags currently assigned to users mapped in {{ b.label }} (Flow Data)">Tags in {{ b.label }} - <b style="font-size:.75rem">{{ b.count|inr }}</b></span>{% endfor %}{% endset %}
 <script>
 $(document).ready(function(){
   // Column 8 is Assigned Date — default sort, most recent first. Global
@@ -170,6 +171,14 @@ $(document).ready(function(){
   // migration.
   var dt = initGlobalTable('#cosmeticAllTagsTable', {
     order: [[8, 'desc']],
+    {% if flow_badges %}
+    // Flow badges right after Page view + row count (Global Table toolbar
+    // breakdown-badge slot, same dom override as Stock IN's entity badges).
+    dom: '<"gtable-top d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2"' +
+           '<"d-flex align-items-center flex-wrap gap-2"li<"#flowBadgeArea.d-flex.flex-wrap.gap-1">>' +
+           '<"d-flex align-items-center flex-wrap gap-2"fp>' +
+         '>rt',
+    {% endif %}
     initComplete: function() {
       var container = $(this.api().table().container());
       // Cosmetic Stages filter dropdown, ahead of DataTables' own search box.
@@ -178,6 +187,9 @@ $(document).ready(function(){
                      {% for s in pipeline %}'<option value="{{ s.value }}">{{ stage_labels[s] }}</option>' +{% endfor %}
                      '</select>');
       container.find('.dataTables_filter').prepend(select);
+      {% if flow_badges %}
+      $('#flowBadgeArea').html({{ flow_badges_html|tojson }});
+      {% endif %}
     },
   });
 

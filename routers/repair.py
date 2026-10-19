@@ -215,22 +215,17 @@ async def l1_pick(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """"Pick This" — a tag sitting in the merged L1/L2 queue with no WorkID
-    yet (unclaimed pool) gets a WorkOrder created for the CURRENT user with
-    one click, no engineer-picker modal. Same WorkOrder shape as every other
-    plain L1/L2 WorkID (stage "l1", _gen_work_id's 12-digit numeric ID — see
-    routers/buckets.py's bulk_assign_devices_l1l2, the closest precedent),
-    so it shows up in this page's own work_map and on /workid-status
-    identically to an engineer-assigned pick. No StockTransfer: this isn't a
-    location move. A same-stage (l1 -> l1) StageMovement IS written though
-    (2026-09-18 fix), matching every other engineer-assignment flow's
-    close-prior/open-new pattern (routers/stock.py's Change Engineer,
-    bulk-assign, etc.) — without it, Pick This left no Tag Asset History
-    entry at all, and /workid-status's Assigned Engineer column (sourced
-    from the device's latest StageMovement, not WorkOrder.assigned_username)
-    kept showing whoever performed the device's last unrelated stage move
-    instead of the user who just picked it. No self-notification either —
-    the user just clicked the button, they already know."""
+    """"Pick This" — the clicking user takes the tag (2026-10-19: from anyone,
+    not only from the unclaimed pool). Every open WorkID of the tag is closed
+    (an absent engineer's included) and a new plain L1/L2 WorkID (stage "l1",
+    _gen_work_id's 12-digit numeric ID) is opened for the current user — the
+    same close-old / open-new pattern as TRC Production's Change Engineer.
+
+    A same-stage (l1 -> l1) StageMovement is written so the pick shows in Tag
+    Asset History and /workid-status's Assigned Engineer column (sourced from
+    the latest StageMovement) updates. Picking a tag that is already yours is
+    a no-op (double-click / page not refreshed)."""
+    from services.work_order_close import close_open_work_orders
     if not has_perm(current_user.role.value, "repair_l1", "add"):
         raise HTTPException(403, "You do not have permission to pick L1/L2 repairs")
 
@@ -240,30 +235,22 @@ async def l1_pick(
     if device.current_stage != DeviceStage.l1:
         raise HTTPException(400, "Tag is not in the L1/L2 queue")
 
-    existing = (await db.execute(
-        select(WorkOrder.id).where(
+    open_wos = (await db.execute(
+        select(WorkOrder).where(
             WorkOrder.device_id == device.id,
             WorkOrder.stage == "l1",
             WorkOrder.status != "completed",
-        )
-    )).scalar_one_or_none()
-    if existing:
-        # Already picked (double-click / two engineers racing the same row)
-        # — no-op rather than a confusing error, the page will show whoever
-        # got there first.
+        ).order_by(WorkOrder.assigned_at.desc(), WorkOrder.created_at.desc())
+    )).scalars().all()
+    if open_wos and open_wos[0].assigned_user_id == current_user.id:
         return RedirectResponse(url="/repair/l1", status_code=302)
+    previous = [(w.work_id, w.assigned_user_id, w.assigned_name or w.assigned_username) for w in open_wos]
 
-    prev_mv = (await db.execute(
-        select(StageMovement).where(
-            StageMovement.device_id == device.id,
-            StageMovement.to_stage == DeviceStage.l1,
-            StageMovement.exited_at == None,
-        ).order_by(StageMovement.moved_at.desc())
-    )).scalars().first()
-    if prev_mv:
-        prev_mv.exited_at = app_now()
+    await close_open_work_orders(db, device.id)
+    await _close_open_movement(db, device)
 
     work_id = await _gen_work_id(db)
+    picker = current_user.full_name or current_user.username
     db.add(WorkOrder(
         work_id=work_id, device_id=device.id, barcode=device.barcode,
         stage="l1", assigned_role=current_user.role.value,
@@ -271,15 +258,24 @@ async def l1_pick(
         assigned_name=current_user.full_name, status="pending",
         created_by=current_user.username,
     ))
+    prev_txt = (", closed " + ", ".join(f"{w} ({n})" for w, _u, n in previous)) if previous else ""
     db.add(StageMovement(
         device_id=device.id, from_stage=DeviceStage.l1, to_stage=DeviceStage.l1,
         moved_by=current_user.username,
-        notes=f"Picked by {current_user.full_name or current_user.username} (WorkID: {work_id})",
+        notes=f"Picked by {picker} (WorkID: {work_id}{prev_txt})",
     ))
+    for _w, uid, _n in previous:
+        if uid and uid != current_user.id:
+            await create_notification(
+                db, user_id=uid, title="Tag picked by another engineer",
+                message=f"{device.barcode} was picked by {picker} (new WorkID: {work_id}).",
+                notification_type="info", barcode=device.barcode,
+                brand=device.brand, model=device.model, stage="l1",
+            )
 
     await audit(db, user=current_user, action="L1L2_PICKED",
                 table_name="devices", record_id=str(device.id),
-                notes=f"{device.barcode} picked by {current_user.full_name or current_user.username} (WorkID: {work_id})",
+                notes=f"{device.barcode} picked by {picker} (WorkID: {work_id}{prev_txt})",
                 request=request)
     await db.commit()
     return RedirectResponse(url="/repair/l1?success=Tag+picked", status_code=302)
@@ -705,8 +701,8 @@ async def l3l4_list(request: Request,
                    # only show devices genuinely still at this stage.
                    Device.current_stage == DeviceStage.l3)
             .order_by(WorkOrder.assigned_at.desc()))
-    if not full_queue:
-        stmt = stmt.where(WorkOrder.assigned_user_id == current_user.id)
+    # Every L3/L4 engineer sees the whole queue (2026-10-19), so anyone can
+    # "Pick This" an absent colleague's tag; others' rows only offer Pick This.
     rows = (await db.execute(stmt)).all()
     # A device can end up with more than one open L3L4 WorkOrder (data drift,
     # not intended) — dedupe to one row per device, keeping the most
@@ -735,6 +731,8 @@ async def l3l4_list(request: Request,
         aging = max(0, (today - wo.assigned_at.date()).days) if wo.assigned_at else 0
         items.append({
             "work_id": wo.work_id,
+            "assigned_name": wo.assigned_name or wo.assigned_username or "—",
+            "mine": wo.assigned_user_id == current_user.id,
             "assigned_date": wo.assigned_at,
             "device_id": str(dev.id),
             "barcode": dev.barcode,
@@ -747,7 +745,7 @@ async def l3l4_list(request: Request,
 
     return templates.TemplateResponse("repair/l3l4.html", {
         "request": request, "current_user": current_user,
-        "items": items, "total": len(items),
+        "items": items, "total": len(items), "full_queue": full_queue,
         "pna_map": await _pna_map(db, [it["device_id"] for it in items]),
         "parts_badges": await parts_badge_map(db, [it["device_id"] for it in items]),
     })
@@ -809,6 +807,75 @@ async def l3l4_start(
                 notes=f"L3/L4 repair started on {device.barcode}", request=request)
     await db.commit()
     return RedirectResponse(url="/repair/l3l4?success=Repair+started", status_code=302)
+
+
+@router.post("/l3l4-pick")
+async def l3l4_pick(
+    request: Request,
+    device_id: str = Form(...),
+    csrf_token: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """"Pick This" on L3/L4 (2026-10-19) — same as L1/L2's: the clicking user
+    takes the tag. Every open WorkID of the tag is closed (e.g. an absent
+    engineer's) and a new "L3L4-" WorkID opens for the current user, keeping
+    who originally requested the L3/L4 repair. Picking your own tag is a
+    no-op."""
+    from services.work_order_close import close_open_work_orders
+    if not has_perm(current_user.role.value, "repair_l3", "enable"):
+        raise HTTPException(403, "You do not have permission to pick L3/L4 repairs")
+
+    device = (await db.execute(select(Device).where(Device.id == device_id))).scalar_one_or_none()
+    if not device:
+        raise HTTPException(404, "Device not found")
+    if device.current_stage != DeviceStage.l3:
+        raise HTTPException(400, "Tag is not in the L3/L4 queue")
+
+    open_wos = (await db.execute(
+        select(WorkOrder).where(
+            WorkOrder.device_id == device.id,
+            WorkOrder.work_id.like("L3L4-%"),
+            WorkOrder.status != "completed",
+        ).order_by(WorkOrder.assigned_at.desc(), WorkOrder.created_at.desc())
+    )).scalars().all()
+    if open_wos and open_wos[0].assigned_user_id == current_user.id:
+        return RedirectResponse(url="/repair/l3l4", status_code=302)
+    previous = [(w.work_id, w.assigned_user_id, w.assigned_name or w.assigned_username) for w in open_wos]
+    requested_by = open_wos[0].requested_by_name if open_wos else None
+
+    await close_open_work_orders(db, device.id)
+    await _close_open_movement(db, device)
+
+    picker = current_user.full_name or current_user.username
+    wo = await _create_work_order_with_unique_id(
+        db, "L3L4-", device_id=device.id, barcode=device.barcode,
+        stage="l3", assigned_role=current_user.role.value,
+        assigned_user_id=current_user.id, assigned_username=current_user.username,
+        assigned_name=current_user.full_name, status="pending",
+        requested_by_name=requested_by,
+        created_by=current_user.username,
+    )
+    prev_txt = (", closed " + ", ".join(f"{w} ({n})" for w, _u, n in previous)) if previous else ""
+    db.add(StageMovement(
+        device_id=device.id, from_stage=DeviceStage.l3, to_stage=DeviceStage.l3,
+        moved_by=current_user.username,
+        notes=f"Picked by {picker} (WorkID: {wo.work_id}{prev_txt})",
+    ))
+    for _w, uid, _n in previous:
+        if uid and uid != current_user.id:
+            await create_notification(
+                db, user_id=uid, title="Tag picked by another engineer",
+                message=f"{device.barcode} was picked by {picker} (new WorkID: {wo.work_id}).",
+                notification_type="info", barcode=device.barcode,
+                brand=device.brand, model=device.model, stage="l3",
+            )
+    await audit(db, user=current_user, action="L3L4_PICKED",
+                table_name="devices", record_id=str(device.id),
+                notes=f"{device.barcode} picked by {picker} (WorkID: {wo.work_id}{prev_txt})",
+                request=request)
+    await db.commit()
+    return RedirectResponse(url="/repair/l3l4?success=Tag+picked", status_code=302)
 
 
 @router.post("/l3l4-complete")
@@ -920,7 +987,10 @@ async def repair_list(stage: str, request: Request,
     # previous engineer's list forever. Latest assignment wins, full stop.
     # Filtering here, before the maps below, means every downstream count and
     # lookup is scoped automatically rather than each one needing to remember.
-    if not _sees_full_queue(current_user):
+    # /repair/l1 shows the whole queue to every engineer (2026-10-19) so an
+    # absent colleague's tag can be "Pick This"-ed; legacy stage pages keep
+    # the own-bench scope.
+    if stage != "l1" and not _sees_full_queue(current_user):
         dev_ids = [d.id for d, _ in devices]
         current_owner: dict[str, object] = {}
         if dev_ids:
@@ -1197,6 +1267,7 @@ async def repair_list(stage: str, request: Request,
             work_map[did_str] = {
                 "work_id": wo.work_id,
                 "assigned_name": wo.assigned_name or wo.assigned_username or "—",
+                "mine": wo.assigned_user_id == current_user.id,
                 "days_pending": max(0, raw_days - paused_days),
                 "paused": bool(wo.paused_since),
                 # Drives the Date Assigned column and the queue's default sort.
@@ -1247,6 +1318,7 @@ async def repair_list(stage: str, request: Request,
         "scrap_warning_map": scrap_warning_map,
         "suggest_qc_ids": suggest_qc_ids,
         "work_map": work_map,
+        "full_queue": _sees_full_queue(current_user),
         "parts_alert_map": parts_alert_map,
         "parts_required_map": parts_required_map,
         "parts_requested_map": parts_requested_map,

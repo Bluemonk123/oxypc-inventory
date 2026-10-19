@@ -64,6 +64,18 @@ function initScanSelect({ inputId, dt, tableSelector, checkboxSelector, selectio
   var pendingTag = null;        // value awaiting auto-select on the next draw
   var pendingReselect = false;  // re-highlight input once that draw lands
   var timer = null;
+  // Set once a scan has matched a Tag Number exactly (2026-10-19): the next
+  // scan / keystroke then replaces the box instead of being appended, so the
+  // operator never has to select or clear the old value by hand — even when
+  // the highlight was lost (table redraw, focus moved) or the scanner sends
+  // no Enter. Partial typing never sets it (exact matches only).
+  var scanDone = false;
+
+  function rearm() {
+    scanDone = true;
+    try { input.focus({ preventScroll: true }); } catch (e) { input.focus(); }
+    input.select();
+  }
 
   // Bound once, not per scan: rapid gun fire would otherwise stack a one-shot
   // handler per keystroke and re-tick rows that are already selected.
@@ -73,9 +85,12 @@ function initScanSelect({ inputId, dt, tableSelector, checkboxSelector, selectio
     pendingTag = null;
 
     var boxes = document.querySelectorAll(tableSelector + ' tbody ' + checkboxSelector);
-    var chk = null;
+    var chk = null, exact = false;
+    var up = val.toUpperCase();
     for (var i = 0; i < boxes.length; i++) {
-      if (boxes[i].value === val || boxes[i].getAttribute('data-serial') === val) { chk = boxes[i]; break; }
+      if ((boxes[i].value || '').toUpperCase() === up || (boxes[i].getAttribute('data-serial') || '').toUpperCase() === up) {
+        chk = boxes[i]; exact = true; break;
+      }
     }
     // Serial numbers aren't carried on every page's checkbox, so fall back to
     // "the search resolved to exactly one row" — that row is the scan.
@@ -90,7 +105,8 @@ function initScanSelect({ inputId, dt, tableSelector, checkboxSelector, selectio
       var tr = chk.closest('tr');
       if (tr) tr.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
-    if (pendingReselect) { input.select(); pendingReselect = false; }
+    if (exact || pendingReselect) rearm();
+    pendingReselect = false;
   });
 
   function run(val, reselect) {
@@ -104,6 +120,14 @@ function initScanSelect({ inputId, dt, tableSelector, checkboxSelector, selectio
 
   // dt.search().draw() bypasses the table's own searchDelay, so debounce here
   // or a scanner typing 12 characters fires 12 ajax round-trips.
+  // After a completed scan, the first inserted character (typed, scanned or
+  // pasted) replaces the old value: select-all just before the browser
+  // inserts it. Deleting/editing keys clear the flag and behave normally.
+  input.addEventListener('beforeinput', function (e) {
+    if (!scanDone) return;
+    scanDone = false;
+    if (e.inputType && e.inputType.indexOf('insert') === 0) input.select();
+  });
   input.addEventListener('input', function () {
     var val = this.value.trim();
     if (val.indexOf(',') !== -1) return;   // comma lists belong to initTagScanAutocheck

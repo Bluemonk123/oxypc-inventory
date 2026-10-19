@@ -491,6 +491,23 @@ async def cosmetic_all_tags(request: Request, db: AsyncSession = Depends(get_db)
                 if has_perm(u.role.value if hasattr(u.role, "value") else str(u.role), module, "enable")
             ]
 
+    # ── Flow badges (2026-10-19) — one per saved Flow Data row, after the
+    # table's Page view / row count: how many tags in this pipeline are
+    # currently assigned (Assigned to column) to any user mapped in that
+    # flow's six stage cells. Same Admin/Cosmetic Manager gate as Flow Data
+    # itself; those roles already see every tag, so this is the full total.
+    # A user mapped in two flows counts their tags in both.
+    flow_badges = []
+    if flow_rows:
+        username_by_id = {u.id: u.username for u in all_active}
+        for idx, fr in enumerate(flow_rows, start=1):
+            unames = {username_by_id.get(getattr(fr, f"{field}_user_id"))
+                      for field, _, _ in FLOW_STAGE_COLUMNS}
+            unames.discard(None)
+            count = sum(1 for d, _ in devices
+                        if assigned_map.get(str(d.id), {}).get("username") in unames)
+            flow_badges.append({"label": fr.label or f"Flow {idx}", "count": count})
+
     return templates.TemplateResponse("cosmetic/all_tags.html", {
         "request": request, "current_user": current_user,
         "devices": devices, "now": app_now(),
@@ -499,7 +516,7 @@ async def cosmetic_all_tags(request: Request, db: AsyncSession = Depends(get_db)
         "l1l2_engineer_map": l1l2_engineer_map,
         "assigned_map": assigned_map, "manager_mode": manager_mode,
         "flow_columns": FLOW_STAGE_COLUMNS, "flow_rows": flow_rows,
-        "flow_user_options": flow_user_options,
+        "flow_user_options": flow_user_options, "flow_badges": flow_badges,
     })
 
 

@@ -27,7 +27,16 @@
               {% for it in items %}
               <tr data-pna="{{ (pna_map.get(it.device_id|string, []) | length) if pna_map is defined else 0 }}">
                 <td class="text-nowrap"><a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a>{{ parts_badge(parts_badges, it.device_id) }}</td>
-                <td><span class="font-monospace fw-bold">{{ it.work_id }}</span></td>
+                {# Owner + Pick This on every tag that isn't yours (2026-10-19). #}
+                <td><span class="font-monospace fw-bold">{{ it.work_id }}</span><br><small class="text-muted">{{ it.assigned_name }}</small>
+                  {% if not it.mine and has_perm(current_user.role.value, 'repair_l3', 'enable') %}
+                  <br><form method="post" action="/repair/l3l4-pick" class="d-inline"
+                        onsubmit="return confirm('Take over this tag? Its current WorkID will be closed and a new WorkID opened for you.')">
+                    <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+                    <input type="hidden" name="device_id" value="{{ it.device_id }}">
+                    <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2 mt-1 text-nowrap"><i class="bi bi-hand-index-thumb me-1"></i>Pick This</button>
+                  </form>
+                  {% endif %}</td>
                 {# data-order carries the sortable ISO value; DataTables reads it
                    natively, so the visible date can stay in DD-MM-YYYY without
                    breaking the sort (same pattern as repair/l1.html). #}
@@ -61,7 +70,9 @@
                   {% else %}<span class="badge bg-light text-muted border">0</span>{% endif %}
                 </td>
                 <td class="text-nowrap">
-                  {% if it.status == 'Repair Started' %}
+                  {% if not it.mine and not full_queue %}
+                    {# Someone else's tag — Pick This (WorkID column) first. #}
+                  {% elif it.status == 'Repair Started' %}
                     <button type="button" class="btn btn-sm btn-success complete-btn"
                             data-device="{{ it.device_id }}" data-barcode="{{ it.barcode }}">Mark Complete</button>
                     <button type="button" class="btn btn-sm btn-danger scrap-btn"
