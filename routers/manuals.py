@@ -40,6 +40,16 @@ from utils.manual_content import MANUALS, MANUAL_SECTIONS  # noqa: E402
 _MANUAL_MAP = {m["id"]: m for m in MANUALS}
 
 
+def _visible_manuals(user: User) -> list:
+    """Role-based Manuals (2026-10-19): only the manuals whose page (its
+    'key' = Permission Matrix module key, same as the sidebar's) is enabled
+    for this user's role. Same has_perm() check the sidebar uses, so a
+    custom role (e.g. trc_manager) is covered too; Admin always sees all."""
+    from models.role_permissions import has_perm
+    role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    return [m for m in MANUALS if has_perm(role, m["key"], "enable")]
+
+
 def _manual_hash(manual: dict | None = None) -> str:
     """Short fingerprint of a manual's content (or of all manuals). The cached
     PDF filename carries it, so editing a manual's text automatically produces
@@ -242,11 +252,13 @@ async def manuals_list(
     users = res.scalars().all()
 
     shared = request.query_params.get("shared")
+    manuals = _visible_manuals(current_user)
+    present = {m["section"] for m in manuals}
     return templates.TemplateResponse("manuals/index.html", {
         "request": request,
         "current_user": current_user,
-        "manuals": MANUALS,
-        "sections": MANUAL_SECTIONS,
+        "manuals": manuals,
+        "sections": [s for s in MANUAL_SECTIONS if s in present],
         "users": users,
         "shared": shared,
     })
@@ -254,9 +266,14 @@ async def manuals_list(
 
 @router.get("/all/download")
 async def download_all_manuals(current_user: User = Depends(get_current_user)):
-    """Every manual in one PDF, with a contents page, grouped by sidebar section."""
-    pdf_bytes = _cached_pdf(f"manual_all_{_manual_hash()}.pdf",
-                            lambda: _generate_pdf(MANUALS, "All Manuals"))
+    """Every manual this user's role may see, in one PDF, with a contents
+    page, grouped by sidebar section."""
+    manuals = _visible_manuals(current_user)
+    if not manuals:
+        raise HTTPException(403, "No manuals are enabled for your role.")
+    cache_key = _manual_hash() if len(manuals) == len(MANUALS) else _manual_hash(manuals)
+    pdf_bytes = _cached_pdf(f"manual_all_{cache_key}.pdf",
+                            lambda: _generate_pdf(manuals, "All Manuals"))
     return _file_response(pdf_bytes, "All_Modules")
 
 
@@ -268,6 +285,8 @@ async def download_manual(
     manual = _MANUAL_MAP.get(mid)
     if not manual:
         raise HTTPException(404, "Manual not found")
+    if manual not in _visible_manuals(current_user):
+        raise HTTPException(403, "This manual's module is not enabled for your role.")
     pdf_bytes = _cached_pdf(f"manual_{mid}_{_manual_hash(manual)}.pdf",
                             lambda: _generate_pdf([manual]))
     return _file_response(pdf_bytes, _slug(manual["module"]))
@@ -284,6 +303,8 @@ async def share_manual(
     manual = _MANUAL_MAP.get(mid)
     if not manual:
         raise HTTPException(404, "Manual not found")
+    if manual not in _visible_manuals(current_user):
+        raise HTTPException(403, "This manual's module is not enabled for your role.")
 
     # Verify target user exists
     res = await db.execute(select(User).where(User.id == target_user_id))
