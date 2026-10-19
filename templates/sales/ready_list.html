@@ -608,6 +608,8 @@
         <label class="form-label fw-semibold">Tag Numbers CSV</label>
         <input type="file" id="bulkTagFile" class="form-control" accept=".csv">
         <div class="form-text small">One column with header <code>tag_number</code>, <code>barcode</code>, <code>Tag No</code>, or <code>Tag Number</code>, one tag per row.</div>
+        <div class="form-text small">Tags in <strong>any stage</strong> are selected for sale, as long as they belong to your entity
+          (<strong>{{ current_user.entity or 'not set on your profile' }}</strong>). Tags not found and tags of another entity are listed afterwards with a download.</div>
         <div id="bulkTagStatus" class="small mt-2"></div>
       </div>
       <div class="modal-footer">
@@ -852,11 +854,17 @@ function updateReadySel(){
 // all of them crammed into the URL risked a 414 Request-URI Too Large from
 // the web server/proxy — POSTs the selection instead (POST /sales/new/prefill,
 // same prefilled New Sale page, no URL length limit).
+// requestSubmit() (not .submit()) fires the submit event, so the global green
+// processing bar runs while the server builds a sale form for thousands of
+// tags (2026-10-19). Falls back to .submit() on very old browsers.
+function _submitShowingBar(form){
+  if (form.requestSubmit) form.requestSubmit(); else form.submit();
+}
 function sellBarcodesList(bcs){
   if (!bcs || !bcs.length) return;
   document.getElementById('multiSellBarcodes').value = bcs.join(',');
   document.getElementById('multiSellQty').value = bcs.length;
-  document.getElementById('multiSellForm').submit();
+  _submitShowingBar(document.getElementById('multiSellForm'));
 }
 document.getElementById('multiSellBtn').addEventListener('click', function(){
   sellBarcodesList(selectedReadyBarcodes());
@@ -866,7 +874,7 @@ function tagSaleBarcodesList(bcs){
   if (!bcs || !bcs.length) return;
   document.getElementById('tagSaleBarcodes').value = bcs.join(',');
   document.getElementById('tagSaleQty').value = bcs.length;
-  document.getElementById('tagSaleForm').submit();
+  _submitShowingBar(document.getElementById('tagSaleForm'));
 }
 document.getElementById('newBulkSaleBtn').addEventListener('click', function(){
   tagSaleBarcodesList(selectedReadyBarcodes());
@@ -1273,8 +1281,11 @@ document.getElementById('bulkTagBtn').addEventListener('click', async function()
     updateReadySel();
     // Groups of tags that were not selected; each gets a download of the
     // uploaded file's own rows for those tags (2026-10-18).
-    var GROUPS = [['not_found', 'Not found'], ['not_ready', 'Not ready to sale'], ['trash', 'In trash'],
-                  ['sold', 'Sold'], ['scrapped', 'Scrapped'], ['scrap_for_sale', 'Scrap for Sale']];
+    // Any stage can be sold from here (2026-10-19); only two checks remain —
+    // tag not found, and tag entity different from the user's own entity.
+    // Each list downloads as Barcode, Entity, Serial, Make, Model, RAM,
+    // Storage, Grade, Current Stage.
+    var GROUPS = [['not_found', 'Not found'], ['incorrect_entity', 'Incorrect Entity']];
     var parts = [selected.length + ' selected'];
     GROUPS.forEach(function (g) { if ((d[g[0]] || []).length) parts.push(d[g[0]].length + ' ' + g[1].toLowerCase()); });
     var baseName = (fileInput.files[0].name || 'tags.csv').replace(/\.csv$/i, '');
@@ -1296,6 +1307,9 @@ document.getElementById('bulkTagBtn').addEventListener('click', async function()
     }
     GROUPS.forEach(function (g) { detail += list(g[0], g[1], d[g[0]]); });
     detail += list(null, 'Row errors', d.errors);
+    if ((d.incorrect_entity || []).length && !d.user_entity) {
+      detail += '<div class="mt-1 text-danger">Your user profile has no entity set, so every tag counts as Incorrect Entity. Ask an admin to set your entity.</div>';
+    }
     bootstrap.Modal.getInstance(document.getElementById('bulkTagModal')).hide();
     var alertBox = document.createElement('div');
     alertBox.className = 'alert alert-info alert-dismissible fade show small mb-3 no-autohide';

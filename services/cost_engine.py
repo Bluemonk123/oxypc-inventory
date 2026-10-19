@@ -59,11 +59,16 @@ async def get_or_create_costings(
     if not devices:
         return {}
 
+    # Chunked (2026-10-19): one IN() per 5,000 ids keeps every query far
+    # below Postgres/asyncpg's 32,767 bind-parameter cap, so a bulk sale of
+    # any size (10,000+ tags) works.
     device_ids = [d.id for d in devices]
-    existing = (await db.execute(
-        select(DeviceCosting).where(DeviceCosting.device_id.in_(device_ids))
-    )).scalars().all()
-    by_device = {c.device_id: c for c in existing}
+    by_device = {}
+    for i in range(0, len(device_ids), 5000):
+        for c in (await db.execute(
+            select(DeviceCosting).where(DeviceCosting.device_id.in_(device_ids[i:i + 5000]))
+        )).scalars().all():
+            by_device[c.device_id] = c
 
     missing = [d for d in devices if d.id not in by_device]
     if missing:

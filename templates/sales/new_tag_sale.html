@@ -9,8 +9,9 @@
 </style>
 <div class="row justify-content-center">
   <div class="sale-wrap px-2">
-    <!-- PDF Invoice/PO Import -->
-    <div class="card border-0 shadow-sm mb-3">
+    <!-- PDF Invoice/PO Import — hidden 2026-10-19 (director's request); markup
+         and importPDF() kept so it can be switched back on by removing d-none. -->
+    <div class="card border-0 shadow-sm mb-3 d-none" id="pdfImportCard">
       <div class="card-body">
         <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
           <div>
@@ -29,7 +30,9 @@
     </div>
 
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-cart-plus me-2"></i>Record Sale</div>
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-cart-plus me-2"></i>Record Sale
+        <div class="small text-muted fw-normal mt-1"><i class="bi bi-info-circle me-1"></i>You can do sell upto 10000 tags at a time.</div>
+      </div>
       <div class="card-body">
         {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
         <form action="/sales/new" method="post" id="saleForm">
@@ -124,7 +127,8 @@
             <div class="col-md-4">
               <label class="form-label">Payment Mode</label>
               <select name="payment_mode" class="form-select">
-                {% for p in master_options('payment_mode') %}<option value="{{ p }}">{{ p }}</option>{% endfor %}
+                {# "Cash" pre-selected (2026-10-19); a PDF autofill can still change it. #}
+                {% for p in master_options('payment_mode') %}<option value="{{ p }}"{{ ' selected' if (p or '')|trim|lower == 'cash' }}>{{ p }}</option>{% endfor %}
               </select>
             </div>
             {# Who gets credit for the sale. Deliberately free text and separate

@@ -146,9 +146,15 @@ async def ready_to_sale_parts_data(request: Request,
                                    current_user: User = Depends(allowed)):
     """DataTables server-side feed for Ready to Sale Parts."""
     rows = await _ready_parts_rows(db)
+    # The table's own search box (DataTables search[value]) — was ignored, so
+    # typing in it never filtered anything (2026-10-19). Matches Code, Name,
+    # Make or Model, on top of the filter-bar fields above.
+    q = (request.query_params.get("search[value]") or "").strip().lower()
 
     def matches(row):
         p = row["part"]
+        if q and not any(q in (v or "").lower() for v in (p.part_code, p.name, p.make, p.model)):
+            return False
         if code and code.lower() not in (p.part_code or "").lower():
             return False
         if name and name.lower() not in (p.name or "").lower():

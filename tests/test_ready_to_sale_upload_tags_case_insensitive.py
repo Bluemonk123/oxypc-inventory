@@ -1,4 +1,10 @@
-"""Ready to Sale — Bulk Upload Tags (POST /sales/ready/upload-tags, 2026-09-11 fix):
+"""Ready to Sale — Bulk Upload Tags (POST /sales/ready/upload-tags).
+
+2026-10-19: tags of ANY stage are selectable for sale; the only two checks
+are "not found" and "Incorrect Entity" (tag entity != the user's entity; a
+user with no entity gets every tag as Incorrect Entity).
+
+2026-09-11 fix:
 
 The stage lookup was a plain `Device.barcode.in_(tags)` — an exact,
 case-sensitive match. Tag numbers get typed into spreadsheets by hand and
@@ -27,7 +33,7 @@ def _run(src):
     return r.stdout.strip()
 
 
-def _seed_ready_device(barcode):
+def _seed_device(barcode, stage="ready_to_sale", entity="ITestEntity"):
     _run(f"""
 import asyncio, sys
 sys.path.insert(0, r"{ROOT}")
@@ -40,12 +46,44 @@ async def main():
     async with AsyncSessionLocal() as db:
         lot = (await db.execute(select(Lot).limit(1))).scalars().first()
         dev = Device(barcode="{barcode}", lot_id=lot.id, brand="ITestBrand", model="ITestModel",
-                     current_stage=DeviceStage.ready_to_sale)
+                     entity={entity!r}, current_stage=DeviceStage.{stage})
         db.add(dev)
         await db.commit()
 
 asyncio.run(main())
 """)
+
+
+def _set_user_entity(username, entity):
+    _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import update
+from database import AsyncSessionLocal
+from models.user import User
+
+async def main():
+    async with AsyncSessionLocal() as db:
+        await db.execute(update(User).where(User.username == "{username}").values(entity={entity!r}))
+        await db.commit()
+
+asyncio.run(main())
+""")
+
+
+def _upload(app_client, make_user, tags, user_entity="ITestEntity"):
+    username, password = make_user("admin")
+    _set_user_entity(username, user_entity)
+    _login(app_client, username, password)
+    csrf = app_client.cookies.get("csrf_token") or ""
+    csv_body = "tag_number\n" + "".join(t + "\n" for t in tags)
+    r = app_client.post(
+        "/sales/ready/upload-tags",
+        data={"csrf_token": csrf},
+        files={"file": ("tags.csv", io.BytesIO(csv_body.encode()), "text/csv")},
+    )
+    assert r.status_code == 200, r.text[:400]
+    return r.json()
 
 
 def _cleanup(barcode):
@@ -67,73 +105,55 @@ asyncio.run(main())
 """)
 
 
-def test_upload_tags_matches_ready_to_sale_device_regardless_of_case(app_client, make_user):  # noqa: F811
-    """A tag typed in different case than the stored barcode must still
-    resolve to 'found', echoed back in the casing the database stores (the
-    page ticks rows by exact barcode string, so echoing the typed casing
-    back would select nothing)."""
-    suffix = uuid.uuid4().hex[:6].upper()
-    barcode = f"ITRTSCASE{suffix}"  # stored upper
-    _seed_ready_device(barcode)
+def test_upload_tags_matches_regardless_of_case(app_client, make_user):  # noqa: F811
+    """A tag typed in different case than the stored barcode still resolves
+    to 'found', echoed back in the casing the database stores."""
+    barcode = f"ITRTSCASE{uuid.uuid4().hex[:6].upper()}"
+    _seed_device(barcode)
     try:
-        username, password = make_user("admin")
-        _login(app_client, username, password)
-        csrf = app_client.cookies.get("csrf_token") or ""
-
-        csv_body = f"tag_number\n{barcode.lower()}\n"
-        r = app_client.post(
-            "/sales/ready/upload-tags",
-            data={"csrf_token": csrf},
-            files={"file": ("tags.csv", io.BytesIO(csv_body.encode()), "text/csv")},
-        )
-        assert r.status_code == 200, r.text[:400]
-        payload = r.json()
-        assert payload["not_found"] == [], f"case-folded tag reported not found: {payload}"
-        assert payload["not_ready"] == [], f"unexpectedly reported not ready: {payload}"
-        assert barcode in payload["found"], (
-            f"found echoed the typed casing instead of the stored barcode: {payload['found']}")
+        payload = _upload(app_client, make_user, [barcode.lower()])
+        assert payload["not_found"] == [] and payload["incorrect_entity"] == [], payload
+        assert barcode in payload["found"], payload
     finally:
         _cleanup(barcode)
 
 
-def test_upload_tags_still_reports_not_ready_for_a_different_stage(app_client, make_user):  # noqa: F811
-    """A real device that exists but isn't in Ready to Sale must still land
-    in not_ready, not found — the case-insensitive fix must not blur the
-    stage check itself."""
-    suffix = uuid.uuid4().hex[:6].upper()
-    barcode = f"ITRTSNR{suffix}"
-    _run(f"""
-import asyncio, sys
-sys.path.insert(0, r"{ROOT}")
-from sqlalchemy import select
-from database import AsyncSessionLocal
-from models.lot import Lot
-from models.device import Device, DeviceStage
-
-async def main():
-    async with AsyncSessionLocal() as db:
-        lot = (await db.execute(select(Lot).limit(1))).scalars().first()
-        dev = Device(barcode="{barcode}", lot_id=lot.id, brand="ITestBrand", model="ITestModel",
-                     current_stage=DeviceStage.iqc)
-        db.add(dev)
-        await db.commit()
-
-asyncio.run(main())
-""")
+def test_upload_tags_selects_any_stage_of_own_entity(app_client, make_user):  # noqa: F811
+    """A tag sitting in IQC (or Sold, or any stage) is selectable now."""
+    a = f"ITRTSIQC{uuid.uuid4().hex[:6].upper()}"
+    b = f"ITRTSSOLD{uuid.uuid4().hex[:6].upper()}"
+    _seed_device(a, stage="iqc")
+    _seed_device(b, stage="sold")
     try:
-        username, password = make_user("admin")
-        _login(app_client, username, password)
-        csrf = app_client.cookies.get("csrf_token") or ""
+        payload = _upload(app_client, make_user, [a, b])
+        assert set(payload["found"]) == {a, b}, payload
+    finally:
+        _cleanup(a); _cleanup(b)
 
-        csv_body = f"tag_number\n{barcode.lower()}\n"
-        r = app_client.post(
-            "/sales/ready/upload-tags",
-            data={"csrf_token": csrf},
-            files={"file": ("tags.csv", io.BytesIO(csv_body.encode()), "text/csv")},
-        )
-        assert r.status_code == 200, r.text[:400]
-        payload = r.json()
-        assert payload["found"] == [], f"wrong-stage tag was reported found: {payload}"
-        assert barcode in payload["not_ready"], f"expected in not_ready: {payload}"
+
+def test_upload_tags_reports_not_found_and_incorrect_entity(app_client, make_user):  # noqa: F811
+    other = f"ITRTSENT{uuid.uuid4().hex[:6].upper()}"
+    missing = f"ITRTSNOPE{uuid.uuid4().hex[:6].upper()}"
+    _seed_device(other, stage="l1", entity="ITestOtherEntity")
+    try:
+        payload = _upload(app_client, make_user, [other, missing])
+        assert payload["found"] == [], payload
+        assert payload["not_found"] == [missing], payload
+        assert payload["incorrect_entity"] == [other], payload
+        assert payload["header"] == ["Barcode", "Entity", "Serial", "Make", "Model", "RAM",
+                                     "Storage", "Grade", "Current Stage"]
+        row = payload["file_rows"]["incorrect_entity"][0]
+        assert row[0] == other and row[1] == "ITestOtherEntity" and row[3] == "ITestBrand", row
+        assert payload["file_rows"]["not_found"][0][0] == missing
+    finally:
+        _cleanup(other)
+
+
+def test_upload_tags_user_without_entity_gets_every_tag_incorrect(app_client, make_user):  # noqa: F811
+    barcode = f"ITRTSNOENT{uuid.uuid4().hex[:6].upper()}"
+    _seed_device(barcode)
+    try:
+        payload = _upload(app_client, make_user, [barcode], user_entity=None)
+        assert payload["found"] == [] and payload["incorrect_entity"] == [barcode], payload
     finally:
         _cleanup(barcode)

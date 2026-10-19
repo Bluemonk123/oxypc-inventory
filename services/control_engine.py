@@ -108,18 +108,12 @@ async def validate_transition(
 
 async def validate_sale_allowed(device: Device) -> None:
     """
-    Sale is only allowed when device.current_stage == ready_to_sale.
-    Raises HTTPException(403) if not ready.
+    Sale hold check. Since 2026-10-19 a sale is allowed from ANY stage
+    (director's decision: tags can be marked sold from Ready to Sale no
+    matter where they sit); the entity rule (tag entity must match the
+    seller's entity) is enforced by create_sale, which knows the user.
+    Still refused: a tag held under Block Tags.
     """
-    stage = device.current_stage.value if hasattr(device.current_stage, "value") else str(device.current_stage)
-    if stage != DeviceStage.ready_to_sale.value:
-        raise HTTPException(
-            status_code=403,
-            detail=(
-                f"CONTROL ENGINE: Sale blocked — device is in stage '{stage}'. "
-                f"Device must be in 'ready_to_sale' before a sale can be created."
-            ),
-        )
     if device.is_blocked:
         raise HTTPException(
             status_code=403,

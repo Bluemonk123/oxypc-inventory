@@ -998,8 +998,8 @@ async def upload_ready_tags(
     current_user: User = Depends(ready_allowed),
 ):
     """Bulk Upload Tags on Ready to Sale — reads a single-column CSV of tag
-    numbers and reports back which are ready to sale, so the page can tick the
-    matching rows. Read-only: selects nothing, changes nothing."""
+    numbers and reports back which can be sold (any stage, same entity as the
+    user), so the page can tick them. Read-only: changes nothing."""
     content = await file.read()
     text_data = decode_csv_bytes(content)
     reader = csv.DictReader(io.StringIO(text_data))
@@ -1022,14 +1022,11 @@ async def upload_ready_tags(
 
     tags, errors = [], []
     seen = set()
-    header = list(reader.fieldnames or [])
-    raw_by_tag = {}          # upper(tag) -> the file's rows for it (all columns)
     for i, row in enumerate(reader, start=2):
         tag = (row.get(key) or "").strip()
         if not tag:
             errors.append(f"Row {i}: tag_number is empty")
             continue
-        raw_by_tag.setdefault(tag.upper(), []).append([(row.get(f) or "") for f in header])
         if tag in seen:
             continue
         seen.add(tag)
@@ -1044,52 +1041,70 @@ async def upload_ready_tags(
     # vice versa — this codebase's barcodes are inconsistently cased). An
     # exact IN() reported every one of those as "not found" against a tag
     # that plainly exists and is sitting in Ready to Sale.
-    rows = (await db.execute(
-        select(Device.barcode, Device.current_stage, Device.is_trashed).where(
-            func.upper(Device.barcode).in_([t.upper() for t in tags])
-        )
-    )).all()
+    rows = []
+    for part in _chunks([t.upper() for t in tags]):
+        rows.extend((await db.execute(
+            select(Device).where(func.upper(Device.barcode).in_(part))
+        )).scalars().all())
     by_upper = {}
-    for stored_barcode, stage, trashed in rows:
-        by_upper.setdefault((stored_barcode or "").upper(), []).append((stored_barcode, stage, trashed))
+    for d in rows:
+        by_upper.setdefault((d.barcode or "").upper(), []).append(d)
 
-    # Each tag that is not selectable lands in exactly one group (2026-10-18):
-    # Trash first, then Sold / Scrapped / Scrap for Sale, else Not ready to sale.
-    found, not_found, not_ready = [], [], []
-    in_trash, sold, scrapped, scrap_for_sale = [], [], [], []
-    file_rows = {k: [] for k in ("not_found", "not_ready", "trash", "sold", "scrapped", "scrap_for_sale")}
+    # Mark-sold rules (2026-10-19): a tag of ANY stage can be selected and
+    # sold from here. Only two checks — (1) the tag must exist, (2) its
+    # entity must match the current user's entity (a user with no entity
+    # set gets every tag as Incorrect Entity). Each failing group comes back
+    # as downloadable rows in DETAIL_HEADER's columns.
+    user_entity = (getattr(current_user, "entity", None) or "").strip()
+
+    def detail_row(d):
+        stage = getattr(d.current_stage, "value", d.current_stage)
+        if d.storage_gb:
+            storage = f"{d.storage_gb} GB" + (f" {d.storage_type}" if d.storage_type else "")
+        else:
+            storage = ""
+        return [d.barcode or "", d.entity or "", d.serial_no or "", d.brand or "", d.model or "",
+                f"{d.ram_gb} GB" if d.ram_gb else "", storage,
+                getattr(d.grade, "value", d.grade) or "",
+                STAGE_LABELS.get(d.current_stage, stage) if d.current_stage else ""]
+
+    found, not_found, incorrect_entity = [], [], []
+    detail = {"not_found": [], "incorrect_entity": []}
     for tag in tags:
         matches = by_upper.get(tag.upper())
-        raw = raw_by_tag.get(tag.upper(), [])
         if not matches:
             not_found.append(tag)
-            file_rows["not_found"].extend(raw)
+            detail["not_found"].append([tag] + [""] * (len(DETAIL_HEADER) - 1))
             continue
-        # Echo the barcode as STORED, not as typed — the page ticks rows by
-        # exact barcode string, so echoing the user's casing back would
-        # select nothing.
-        for stored_barcode, stage, trashed in matches:
-            if trashed:
-                grp, lst = "trash", in_trash
-            elif stage == DeviceStage.sold:
-                grp, lst = "sold", sold
-            elif stage == DeviceStage.scrapped:
-                grp, lst = "scrapped", scrapped
-            elif stage == DeviceStage.scrap_for_sale:
-                grp, lst = "scrap_for_sale", scrap_for_sale
-            elif stage != DeviceStage.ready_to_sale:
-                grp, lst = "not_ready", not_ready
+        for d in matches:
+            # Echo the barcode as STORED — the page ticks rows by exact string.
+            if not user_entity or (d.entity or "").strip().lower() != user_entity.lower():
+                incorrect_entity.append(d.barcode)
+                detail["incorrect_entity"].append(detail_row(d))
             else:
-                found.append(stored_barcode)
-                continue
-            lst.append(stored_barcode)
-            file_rows[grp].extend(raw)
+                found.append(d.barcode)
 
-    # The uploaded file's own rows for each group, so each can be downloaded
-    return JSONResponse({"found": found, "not_found": not_found, "not_ready": not_ready,
-                         "trash": in_trash, "sold": sold, "scrapped": scrapped,
-                         "scrap_for_sale": scrap_for_sale, "errors": errors,
-                         "header": header, "file_rows": {k: v for k, v in file_rows.items() if v}})
+    return JSONResponse({"found": found, "not_found": not_found,
+                         "incorrect_entity": incorrect_entity, "errors": errors,
+                         "user_entity": user_entity,
+                         "header": DETAIL_HEADER,
+                         "file_rows": {k: v for k, v in detail.items() if v}})
+
+
+DETAIL_HEADER = ["Barcode", "Entity", "Serial", "Make", "Model", "RAM", "Storage", "Grade", "Current Stage"]
+
+
+_IN_CHUNK = 5000
+
+
+def _chunks(seq, size: int = _IN_CHUNK):
+    """Split a long list for IN() lookups. Postgres/asyncpg refuse a single
+    statement with more than 32,767 bind parameters, so a sale or upload of
+    tens of thousands of tags would fail outright as one IN(); batches of
+    5,000 keep any size working (2026-10-19 — no cap on bulk sale size)."""
+    seq = list(seq)
+    for i in range(0, len(seq), size):
+        yield seq[i:i + size]
 
 
 def _unit_stock_price(device, lot) -> float:
@@ -1190,10 +1205,12 @@ async def _sale_new_response(request: Request, barcode: str, barcodes: str, qty:
             prefill_barcode = ",".join(codes)
             prefill_qty = qty or len(codes)
             multi_count = len(codes)
-            rows = (await db.execute(
-                select(Device, Lot).outerjoin(Lot, Device.lot_id == Lot.id)
-                .where(Device.barcode.in_(codes))
-            )).all()
+            rows = []
+            for part in _chunks(codes):
+                rows.extend((await db.execute(
+                    select(Device, Lot).outerjoin(Lot, Device.lot_id == Lot.id)
+                    .where(Device.barcode.in_(part))
+                )).all())
             stock_price = sum(_unit_stock_price(d, l) for d, l in rows)
             if rows:
                 device, lot = rows[0]  # representative device for the info alert
@@ -1203,11 +1220,15 @@ async def _sale_new_response(request: Request, barcode: str, barcodes: str, qty:
         if device:
             lot_result = await db.execute(select(Lot).where(Lot.id == device.lot_id))
             lot = lot_result.scalar_one_or_none()
-            # Show warning if not ready
-            if device.current_stage != DeviceStage.ready_to_sale:
-                stage_val = device.current_stage.value if device.current_stage else "unknown"
-                stage_error = (f"Device is in stage '{stage_val}' — "
-                               f"it must be in 'ready_to_sale' to sell.")
+            # Any stage may be sold (2026-10-19); warn only on the entity rule
+            # create_sale enforces — tag entity must match the seller's.
+            u_ent = (getattr(current_user, "entity", None) or "").strip()
+            d_ent = (device.entity or "").strip()
+            if not u_ent:
+                stage_error = "Your user profile has no entity set, so you can't sell tags."
+            elif d_ent.lower() != u_ent.lower():
+                stage_error = (f"Incorrect entity — this tag belongs to '{d_ent or 'no entity'}', "
+                               f"your entity is '{u_ent}'.")
             # Prefill qty from the latest approved telecaller dispatch request
             appr = (await db.execute(
                 select(TelecallerDispatchRequest)
@@ -1241,7 +1262,8 @@ async def sale_new_form(request: Request, barcode: str = None,
     return await _sale_new_response(request, barcode, barcodes, qty, embed, db, current_user)
 
 
-MAX_TAG_INFO = 10000
+# No cap on how many tags New Tag Sale can look up (2026-10-19, was 10,000);
+# lookups run in _IN_CHUNK-sized batches instead — see _chunks().
 
 
 @router.post("/sales/new-tag-sale/tag-info")
@@ -1258,10 +1280,9 @@ async def sale_new_tag_info(barcodes: str = Form(""),
         c = c.strip()
         if c and c not in seen:
             seen.add(c); codes.append(c)
-    codes = codes[:MAX_TAG_INFO]
     rows = {}
-    if codes:
-        for d in (await db.execute(select(Device).where(Device.barcode.in_(codes)))).scalars().all():
+    for part in _chunks(codes):
+        for d in (await db.execute(select(Device).where(Device.barcode.in_(part)))).scalars().all():
             rows[d.barcode] = d
     out = []
     for c in codes:
@@ -1451,11 +1472,10 @@ async def create_sale(
     # database in another region that made a 600-tag bulk sale ~6,000 serial
     # round trips and it never finished inside a request timeout. Everything the
     # loop needs is now fetched in a fixed handful of queries regardless of size.
-    devices_by_code = {
-        d.barcode: d for d in (await db.execute(
-            select(Device).where(Device.barcode.in_(codes))
-        )).scalars().all()
-    }
+    devices_by_code = {}
+    for part in _chunks(codes):
+        for d in (await db.execute(select(Device).where(Device.barcode.in_(part)))).scalars().all():
+            devices_by_code[d.barcode] = d
     found = [devices_by_code[c] for c in codes if c in devices_by_code]
 
     # Costing rows for below-cost warnings (2 queries for the whole batch).
@@ -1491,10 +1511,10 @@ async def create_sale(
 
     # Open stage movements to close, keyed by device — one query, not one each.
     open_moves = {}
-    if found:
+    for part in _chunks([d.id for d in found]):
         for mv in (await db.execute(
             select(StageMovement)
-            .where(StageMovement.device_id.in_([d.id for d in found]),
+            .where(StageMovement.device_id.in_(part),
                    StageMovement.exited_at == None)
             .order_by(StageMovement.moved_at.desc())
         )).scalars().all():
@@ -1506,15 +1526,22 @@ async def create_sale(
     # submitted tag would burn a number for every skipped tag and leave holes in
     # the SALE- sequence. validate_sale_allowed is pure in-memory, so this
     # pre-pass costs no queries and keeps eligibility defined in one place.
+    # Sale rules (2026-10-19): ANY stage may be sold; the one rule is that
+    # the tag's entity must match the seller's own entity (User.entity). A
+    # user with no entity on their profile can't sell — every tag counts as
+    # Incorrect Entity until an admin sets one. Block Tags hold still applies
+    # (waived for the block's own tags when sold from that block).
+    user_entity = (getattr(current_user, "entity", None) or "").strip()
+
     async def _check_sellable(d):
+        dev_entity = (d.entity or "").strip()
+        if not user_entity or dev_entity.lower() != user_entity.lower():
+            raise HTTPException(status_code=403, detail=(
+                f"Incorrect entity — tag {d.barcode} belongs to '{dev_entity or 'no entity'}'"
+                + (f", your entity is '{user_entity}'." if user_entity
+                   else "; your user profile has no entity set, so you can't sell tags.")))
         if d.id in block_items:
-            # Block hold waived for this block's own tags; stage still enforced.
-            stage = getattr(d.current_stage, "value", d.current_stage)
-            if stage != DeviceStage.ready_to_sale.value:
-                raise HTTPException(status_code=403, detail=(
-                    f"CONTROL ENGINE: Sale blocked — device is in stage '{stage}'. "
-                    f"Device must be in 'ready_to_sale' before a sale can be created."))
-            return
+            return  # Block hold waived for this block's own tags.
         await validate_sale_allowed(d)
 
     eligible = 0
@@ -1549,7 +1576,8 @@ async def create_sale(
         except HTTPException as e:
             if not is_multi:
                 return await _fail(e.detail, device=device)
-            skipped.append(f"{code} (blocked)")
+            skipped.append(f"{code} (incorrect entity)" if str(e.detail).startswith("Incorrect entity")
+                           else f"{code} (blocked)")
             continue
 
         # ── Cost Engine: below-cost warning (first one reported) ─────────
@@ -1728,35 +1756,47 @@ async def bulk_delete_sales(
         await db.flush()
         deleted_n = len(deletable)
 
-        # Devices that no longer have ANY sale and are still sitting in "sold".
+        # Move a device back out of "sold" when (a) no sale is left behind it,
+        # or (b) one of the sales just deleted is the one that put it into
+        # Sold — its latest move into Sold carries that sale's "Sold — SALE-x"
+        # note (2026-10-19). (b) matters now that any stage can be sold: a
+        # returned tag with an older sale, re-sold from Stock In by mistake,
+        # used to stay stuck in Sold after that mistaken sale was deleted.
+        # It goes back to the stage it was sold FROM; a tag that was already
+        # Sold (a second sale) correctly stays Sold.
         still_sold_ids = set((await db.execute(
             select(Sale.device_id).where(Sale.device_id.in_(device_ids)).distinct()
         )).scalars().all())
-        to_revert = [d for did, d in devices.items()
-                     if did not in still_sold_ids and d.current_stage == DeviceStage.sold]
-        if to_revert:
+        in_sold = [d for d in devices.values() if d.current_stage == DeviceStage.sold]
+        latest_into_sold = {}
+        if in_sold:
             latest_into_sold = {
                 mv.device_id: mv for mv in (await db.execute(
                     select(StageMovement)
-                    .where(StageMovement.device_id.in_([d.id for d in to_revert]),
+                    .where(StageMovement.device_id.in_([d.id for d in in_sold]),
                            StageMovement.to_stage == DeviceStage.sold)
                     .order_by(StageMovement.device_id, StageMovement.moved_at.desc())
                     .distinct(StageMovement.device_id)
                 )).scalars().all()
             }
-            for dev in to_revert:
-                mv = latest_into_sold.get(dev.id)
-                back_to = (mv.from_stage if mv and mv.from_stage and mv.from_stage != DeviceStage.sold
-                           else DeviceStage.ready_to_sale)
-                if mv and mv.exited_at is None:
-                    mv.exited_at = app_now()
-                dev.current_stage = back_to
-                dev.updated_at = app_now()
-                db.add(StageMovement(
-                    device_id=dev.id, from_stage=DeviceStage.sold, to_stage=back_to,
-                    moved_by=current_user.username,
-                    notes=f"Sale deleted — {', '.join(sale_nos_by_device.get(dev.id, []))}"))
-                reverted_n += 1
+        for dev in in_sold:
+            mv = latest_into_sold.get(dev.id)
+            deleted_notes = {f"Sold — {n}" for n in sale_nos_by_device.get(dev.id, [])}
+            caused_by_deleted = bool(mv and (mv.notes or "") in deleted_notes)
+            if dev.id in still_sold_ids and not caused_by_deleted:
+                continue  # an older sale still stands behind its Sold stage
+            back_to = (mv.from_stage if mv and mv.from_stage else DeviceStage.ready_to_sale)
+            if back_to == DeviceStage.sold:
+                continue  # was already Sold before the deleted sale — stays Sold
+            if mv and mv.exited_at is None:
+                mv.exited_at = app_now()
+            dev.current_stage = back_to
+            dev.updated_at = app_now()
+            db.add(StageMovement(
+                device_id=dev.id, from_stage=DeviceStage.sold, to_stage=back_to,
+                moved_by=current_user.username,
+                notes=f"Sale deleted — {', '.join(sale_nos_by_device.get(dev.id, []))}"))
+            reverted_n += 1
 
         try:
             await db.commit()
