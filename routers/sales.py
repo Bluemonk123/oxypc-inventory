@@ -1692,6 +1692,67 @@ def _can_delete_sales(user: User) -> bool:
     return getattr(user.role, "value", user.role) == "admin"
 
 
+@router.post("/sales/change-date")
+async def change_sale_date(
+    request: Request,
+    sale_numbers: str = Form(""),
+    new_date: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Sales List's "Change Sale Date" (2026-10-21) — corrects the date of
+    sales recorded on the wrong day. Same admin-only gate as Delete Selected
+    (financial records). Time of day is kept; warranty expiry moves by the
+    same number of days. Each sale is audited (SALE_DATE_CHANGED)."""
+    from urllib.parse import quote
+    from datetime import date as _date, datetime as _dt
+    if not _can_delete_sales(current_user):
+        raise HTTPException(status_code=403, detail="Only an admin can change sale dates.")
+    try:
+        target = _date.fromisoformat((new_date or "").strip())
+    except ValueError:
+        return RedirectResponse(url="/sales?error=" + quote("Pick a valid new sale date."), status_code=302)
+    if target > app_now().date():
+        return RedirectResponse(url="/sales?error=" + quote("The sale date can't be in the future."), status_code=302)
+    nums = list(dict.fromkeys(n.strip().upper() for n in re.split(r"[\s,;]+", sale_numbers or "") if n.strip()))
+    if not nums:
+        return RedirectResponse(url="/sales?error=" + quote("Enter at least one Sale Number."), status_code=302)
+    if len(nums) > 500:
+        return RedirectResponse(url="/sales?error=" + quote("At most 500 sales per change."), status_code=302)
+    sales = (await db.execute(
+        select(Sale).where(func.upper(Sale.sale_number).in_(nums))
+    )).scalars().all()
+    found = {s.sale_number.upper() for s in sales}
+    missing = [n for n in nums if n not in found]
+    changed = []
+    for s in sales:
+        if not s.sold_at or s.sold_at.date() == target:
+            continue
+        old_sold, old_exp = s.sold_at, s.warranty_expires_at
+        new_sold = _dt.combine(target, old_sold.time())
+        s.sold_at = new_sold
+        if old_exp is not None:
+            s.warranty_expires_at = old_exp + (new_sold - old_sold)
+        await audit(db, user=current_user, action="SALE_DATE_CHANGED",
+                    table_name="sales", record_id=str(s.id),
+                    old_value={"sale_number": s.sale_number, "sold_at": old_sold,
+                               "warranty_expires_at": old_exp},
+                    new_value={"sale_number": s.sale_number, "sold_at": new_sold,
+                               "warranty_expires_at": s.warranty_expires_at},
+                    request=request)
+        changed.append(s.sale_number)
+    await db.commit()
+    msg = f"{len(changed)} sale(s) moved to {target.strftime('%d-%m-%Y')}"
+    if changed:
+        msg += ": " + ", ".join(sorted(changed)[:20]) + ("…" if len(changed) > 20 else "")
+    unchanged = len(sales) - len(changed)
+    if unchanged:
+        msg += f" — {unchanged} already on that date"
+    if missing:
+        msg += f" — not found: {', '.join(missing[:20])}"
+    return RedirectResponse(url="/sales?success=" + quote(msg), status_code=302)
+
+
 @router.post("/sales/bulk-delete")
 async def bulk_delete_sales(
     request: Request,

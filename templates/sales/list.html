@@ -96,6 +96,34 @@
 </form>
 {% endif %}
 
+{% if can_delete_sales %}
+{# Change Sale Date (2026-10-21, admin only) — corrects sales recorded on the
+   wrong day. Time of day is kept; warranty expiry moves with it. #}
+<div class="modal fade" id="changeSaleDateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" action="/sales/change-date" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-calendar-event me-2"></i>Change Sale Date</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label fw-semibold" for="csd_numbers">Sale Numbers <span class="text-danger">*</span></label>
+        <textarea name="sale_numbers" id="csd_numbers" class="form-control font-monospace" rows="5" required
+                  placeholder="SALE-20903&#10;SALE-20904 …  (new line, comma or space separated)"></textarea>
+        <label class="form-label fw-semibold mt-3" for="csd_date">New Sale Date <span class="text-danger">*</span></label>
+        <input type="date" name="new_date" id="csd_date" class="form-control" required max="{{ today_iso if today_iso is defined else '' }}">
+        <div class="form-text">The time of day stays the same; warranty expiry moves by the same number of days. Every change is recorded in the audit log.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary">Change Date</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
 {# ── Table (Global Table: static/js/global-table.js) ── #}
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -105,6 +133,9 @@
         <i class="bi bi-download me-1"></i>Export Selected
       </button>
       {% if can_delete_sales %}
+      <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#changeSaleDateModal">
+        <i class="bi bi-calendar-event me-1"></i>Change Sale Date
+      </button>
       <button type="button" id="deleteSelectedBtn" class="btn btn-sm btn-outline-danger text-nowrap" onclick="deleteSelected()" disabled>
         <i class="bi bi-trash me-1"></i>Delete Selected
       </button>
