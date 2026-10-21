@@ -108,9 +108,12 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <label class="form-label fw-semibold" for="csd_numbers">Sale Numbers <span class="text-danger">*</span></label>
-        <textarea name="sale_numbers" id="csd_numbers" class="form-control font-monospace" rows="5" required
+        <input type="hidden" name="sale_ids" id="csd_ids">
+        <div id="csd_selected" class="alert alert-primary py-2 small d-none"></div>
+        <label class="form-label fw-semibold" for="csd_numbers">Sale Numbers</label>
+        <textarea name="sale_numbers" id="csd_numbers" class="form-control font-monospace" rows="4"
                   placeholder="SALE-20903&#10;SALE-20904 …  (new line, comma or space separated)"></textarea>
+        <div class="form-text">Ticked rows are picked automatically; type more Sale Numbers here if needed.</div>
         <label class="form-label fw-semibold mt-3" for="csd_date">New Sale Date <span class="text-danger">*</span></label>
         <input type="date" name="new_date" id="csd_date" class="form-control" required max="{{ today_iso if today_iso is defined else '' }}">
         <div class="form-text">The time of day stays the same; warranty expiry moves by the same number of days. Every change is recorded in the audit log.</div>
@@ -206,6 +209,40 @@
 
 {% endblock %}
 {% block scripts %}
+{% if can_delete_sales %}
+<script>
+// Change Sale Date (2026-10-21): pick up the ticked sales when the window opens.
+document.addEventListener('DOMContentLoaded', function () {
+  var m = document.getElementById('changeSaleDateModal');
+  if (!m) return;
+  m.addEventListener('show.bs.modal', function () {
+    var ids = Array.from(selectedSaleIds);
+    document.getElementById('csd_ids').value = ids.join(',');
+    var box = document.getElementById('csd_selected');
+    if (!ids.length) { box.classList.add('d-none'); box.textContent = ''; return; }
+    var nums = [];
+    document.querySelectorAll('#salesTable .row-check').forEach(function (cb) {
+      if (!selectedSaleIds.has(cb.value)) return;
+      var a = cb.closest('tr') && cb.closest('tr').querySelector('a[href*="/sales/"]');
+      var t = a ? a.textContent.trim() : '';
+      if (/^SALE-/i.test(t)) nums.push(t);
+    });
+    var more = ids.length - nums.length;
+    box.textContent = ids.length + ' selected sale(s): ' + (nums.slice(0, 20).join(', ') || '')
+      + (nums.length > 20 ? ' …' : '') + (more > 0 ? (nums.length ? ' and ' : '') + more + ' on other pages' : '');
+    box.classList.remove('d-none');
+  });
+  m.querySelector('form').addEventListener('submit', function (e) {
+    if (!document.getElementById('csd_ids').value && !document.getElementById('csd_numbers').value.trim()) {
+      e.preventDefault();
+      var box = document.getElementById('csd_selected');
+      box.className = 'alert alert-danger py-2 small';
+      box.textContent = 'Tick sales in the table or type Sale Numbers.';
+    }
+  });
+});
+</script>
+{% endif %}
 <script>
 // ── Select All / individual checkboxes ──────────────────────────────────────
 // With server-side paging only the current page's checkboxes exist in the

@@ -1696,6 +1696,7 @@ def _can_delete_sales(user: User) -> bool:
 async def change_sale_date(
     request: Request,
     sale_numbers: str = Form(""),
+    sale_ids: str = Form(""),
     new_date: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1714,14 +1715,25 @@ async def change_sale_date(
         return RedirectResponse(url="/sales?error=" + quote("Pick a valid new sale date."), status_code=302)
     if target > app_now().date():
         return RedirectResponse(url="/sales?error=" + quote("The sale date can't be in the future."), status_code=302)
+    # Rows ticked in the table (sale ids, across pages) plus any typed numbers.
     nums = list(dict.fromkeys(n.strip().upper() for n in re.split(r"[\s,;]+", sale_numbers or "") if n.strip()))
-    if not nums:
-        return RedirectResponse(url="/sales?error=" + quote("Enter at least one Sale Number."), status_code=302)
-    if len(nums) > 500:
+    ids = []
+    for raw in (sale_ids or "").split(","):
+        try:
+            ids.append(_uuid.UUID(raw.strip()))
+        except ValueError:
+            continue
+    ids = list(dict.fromkeys(ids))
+    if not nums and not ids:
+        return RedirectResponse(url="/sales?error=" + quote("Select sales in the table or enter Sale Numbers."), status_code=302)
+    if len(nums) + len(ids) > 500:
         return RedirectResponse(url="/sales?error=" + quote("At most 500 sales per change."), status_code=302)
-    sales = (await db.execute(
-        select(Sale).where(func.upper(Sale.sale_number).in_(nums))
-    )).scalars().all()
+    conds = []
+    if nums:
+        conds.append(func.upper(Sale.sale_number).in_(nums))
+    if ids:
+        conds.append(Sale.id.in_(ids))
+    sales = (await db.execute(select(Sale).where(or_(*conds)))).scalars().all()
     found = {s.sale_number.upper() for s in sales}
     missing = [n for n in nums if n not in found]
     changed = []
