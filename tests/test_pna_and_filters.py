@@ -69,11 +69,12 @@ def test_post_iqc_has_add_grn_modal(app_client, make_user):  # noqa: F811
 
     assert 'id="addGrnModal"' in html
     assert "/grn/create-manual" in html
-    # GRN Number and Lot Number are deliberately absent — one is generated,
-    # the other is assigned by mapping.
+    # GRN Number is deliberately absent (generated on save). Since 2026-10-21
+    # (Flow 1) the modal takes the Entity and the Lot Number(s) to map.
     add_modal = html.split('id="addGrnModal"', 1)[1].split("</form>", 1)[0]
     assert "GRN Number" not in add_modal
-    assert "Lot Number" not in add_modal
+    assert 'name="entity"' in add_modal
+    assert 'name="lot_numbers"' in add_modal
 
 
 def test_pna_mark_and_clear_roundtrip(app_client, make_user):  # noqa: F811

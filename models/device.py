@@ -141,7 +141,7 @@ class Device(Base):
     barcode = Column(String(100), unique=True, nullable=False, index=True)
     lot_id = Column(UUID(as_uuid=True), ForeignKey("lots.id"), nullable=False, index=True)
     brand = Column(String(50), nullable=True, index=True)
-    entity = Column(String(30), nullable=True, index=True)  # OxyPC Computers / Renew Circuits — additive, auto-provisioned by db_validator
+    entity = Column(String(50), nullable=True, index=True)  # OxyPC Computers / Renew Circuits — additive, auto-provisioned by db_validator (widened 30 -> 50, 2026-10-21)
     model = Column(String(100), nullable=True)
     device_type = Column(String(30), nullable=True, index=True)  # exact-match filter + sort column on /devices — see Global Table query optimization
     invoice_number = Column(String(100), nullable=True)  # bulk-set via Product IQC Customise modal
@@ -303,8 +303,8 @@ class TagNumberMovement(Base):
     id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     moved_at         = Column(DateTime, default=app_now)
     tag_count        = Column(Integer, nullable=False)
-    from_entity      = Column(String(30), nullable=True)
-    to_entity        = Column(String(30), nullable=False)
+    from_entity      = Column(String(50), nullable=True)   # widened 30 -> 50 (2026-10-21)
+    to_entity        = Column(String(50), nullable=False)
     direction        = Column(SAEnum(MovementDirection), nullable=False)
     by_user_id       = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
     by_user_name     = Column(String(100), nullable=True)  # denormalized, survives user deletion

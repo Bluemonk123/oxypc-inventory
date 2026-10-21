@@ -26,7 +26,7 @@ from .cosmetic_flow import CosmeticFlowRow
 from .part_estimate import PartEstimate, PartEstimateLine, PartEstimateOpenLine
 from .dispatch_request import TelecallerDispatchRequest
 from .stock_validation import StockValidation
-from .grn_import import GRNImport
+from .grn_import import GRNImport, GRNLot
 from .market import MarketAvailability
 # QA / UAT tracking module
 from .qa_uat import (

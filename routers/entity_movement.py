@@ -1,7 +1,12 @@
 """Entity Movement — card counts of devices per Entity (Deshwal / OxyPC
-Computers / Renew Circuits) plus a bulk "Change Entities" tool: paste/upload
-a list of Tag Numbers and reassign them to a different Entity in one go,
-recorded as a Tag Number Movement (SOLD TO clears GRN, SEND TO keeps it)."""
+Computers / Renew Circuits) plus the bulk "Change Entities" tool.
+
+Since 2026-10-21 (Flow 2 — ReGRN) Change Entities moves the submitted Tag
+Numbers onto a selected GRN: each tag takes that GRN's grn_number, invoice
+number and entity. Tags in Sold go back to Ready to Sale (the old sale record
+is kept as history); every other stage is left as it is. Only the submitted
+tags move — the rest of their lot keeps its original GRN. Replaces the old
+SOLD TO / SEND TO rules."""
 import os
 import re
 import uuid
@@ -16,6 +21,7 @@ from utils.timezone import app_now
 from models.user import User
 from models.device import Device, DeviceStage, StageMovement, TagNumberMovement, MovementDirection
 from models.master import EXTERNAL_PARTNER_TEST_ENTITY
+from models.grn_import import GRNImport
 from utils.master_data import entity_values
 from auth.dependencies import get_current_user, require_module_perm, verify_csrf
 from services.audit_engine import audit
@@ -73,10 +79,16 @@ async def entity_movement_page(
         select(TagNumberMovement).order_by(desc(TagNumberMovement.moved_at)).limit(200)
     )).scalars().all()
 
+    # GRNs to ReGRN onto (Flow 2) — newest first, deleted ones hidden.
+    grns = (await db.execute(
+        select(GRNImport).where(GRNImport.is_deleted.isnot(True))
+        .order_by(GRNImport.created_at.desc()).limit(1000)
+    )).scalars().all()
+
     return templates.TemplateResponse("entity_movement/index.html", {
         "request": request, "current_user": current_user,
         "entity_values": entity_list, "counts": counts, "unassigned": unassigned,
-        "movements": movements,
+        "movements": movements, "grns": grns,
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
     })
@@ -86,30 +98,42 @@ async def entity_movement_page(
 async def change_entities(
     request: Request,
     tags: str = Form(""),
-    target: str = Form(...),
-    invoice_number: str = Form(""),
+    grn_id: str = Form(""),
     invoice_pdf: UploadFile | None = File(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
+    """Flow 2 — ReGRN (2026-10-21). See the module docstring for the rules."""
+    from urllib.parse import quote
     barcodes = _parse_tags(tags)
     if not barcodes:
         return RedirectResponse(url="/entity-movement?error=No+Tag+Numbers+provided", status_code=302)
-
     try:
-        direction_str, to_entity = target.split(":", 1)
-        direction = MovementDirection(direction_str)
-    except (ValueError, KeyError):
-        return RedirectResponse(url="/entity-movement?error=Invalid+SOLD+TO+/+SEND+TO+selection", status_code=302)
+        gid = uuid.UUID((grn_id or "").strip())
+    except ValueError:
+        return RedirectResponse(url="/entity-movement?error=Select+a+GRN", status_code=302)
+    g = (await db.execute(
+        select(GRNImport).where(GRNImport.id == gid, GRNImport.is_deleted.isnot(True))
+    )).scalar_one_or_none()
+    if g is None:
+        return RedirectResponse(url="/entity-movement?error=GRN+not+found", status_code=302)
+    if not g.entity:
+        return RedirectResponse(
+            url="/entity-movement?error=" + quote(
+                f"GRN {g.grn_number} has no Entity — set it with Edit GRN first."),
+            status_code=302)
 
     # Case-insensitive (2026-10-17): an exact-case IN() reported tags typed
     # with a different letter case (e.g. "...l1840" for "...L1840") as "not
     # found" although All Inventory shows them. Where duplicate-case rows
     # exist, pick one per typed tag the same way the tag lookups do: live
     # (not trashed, active) first, then exact case, then most recently updated.
-    candidates = (await db.execute(
-        select(Device).where(func.upper(Device.barcode).in_([b.upper() for b in barcodes]))
-    )).scalars().all()
+    candidates = []
+    upper = [b.upper() for b in barcodes]
+    for i in range(0, len(upper), 5000):
+        candidates.extend((await db.execute(
+            select(Device).where(func.upper(Device.barcode).in_(upper[i:i + 5000]))
+        )).scalars().all())
     by_upper: dict[str, list[Device]] = {}
     for d in candidates:
         by_upper.setdefault((d.barcode or "").upper(), []).append(d)
@@ -129,28 +153,41 @@ async def change_entities(
 
     from_entities = {d.entity for d in devices if d.entity}
     from_entity = next(iter(from_entities), None)
-    notes = "mixed source entities" if len(from_entities) > 1 else None
-    invoice_number = invoice_number.strip()
-
-    # SEND TO: entity changes, GRN stays, stage -> Stock In.
-    # SOLD TO: entity changes, GRN cleared, stage -> IQC (re-inspection required
-    # before it can move forward again under the new entity).
-    target_stage = DeviceStage.iqc if direction == MovementDirection.sold else DeviceStage.stock_in
+    now = app_now()
+    back_to_rts = 0
     for d in devices:
-        prev_stage = d.current_stage
-        d.entity = to_entity
-        if invoice_number:
-            d.invoice_number = invoice_number
-        if direction == MovementDirection.sold:
-            d.grn_number = None
-        d.current_stage = target_stage
-        d.updated_at = app_now()
-        if prev_stage != target_stage:
+        old = {"grn_number": d.grn_number, "invoice_number": d.invoice_number,
+               "entity": d.entity, "stage": d.current_stage.value if d.current_stage else None}
+        d.grn_number = g.grn_number
+        d.invoice_number = g.invoice_number
+        d.entity = g.entity
+        if d.current_stage == DeviceStage.sold:
+            # Sold -> Ready to Sale under the new entity. The Sale row is NOT
+            # touched: it stays as history; the tag simply leaves sold counts
+            # and can be sold again.
+            prev = (await db.execute(
+                select(StageMovement).where(
+                    StageMovement.device_id == d.id, StageMovement.to_stage == DeviceStage.sold,
+                    StageMovement.exited_at.is_(None),
+                ).order_by(StageMovement.moved_at.desc())
+            )).scalars().first()
+            if prev:
+                prev.exited_at = now
             db.add(StageMovement(
-                device_id=d.id, from_stage=prev_stage, to_stage=target_stage,
+                device_id=d.id, from_stage=DeviceStage.sold, to_stage=DeviceStage.ready_to_sale,
                 moved_by=current_user.username,
-                notes=f"Entity Movement — {direction.value.upper()} to {to_entity}",
-            ))
+                notes=f"ReGRN to GRN {g.grn_number} ({g.entity}) — back to Ready to Sale"))
+            d.current_stage = DeviceStage.ready_to_sale
+            back_to_rts += 1
+        d.updated_at = now
+        new = {"grn_number": d.grn_number, "invoice_number": d.invoice_number,
+               "entity": d.entity, "stage": d.current_stage.value if d.current_stage else None}
+        # One audit row per tag, written before the commit.
+        await audit(db, user=current_user, action="REGRN_TAG",
+                    table_name="devices", record_id=str(d.id),
+                    old_value={"barcode": d.barcode, **old},
+                    new_value={"barcode": d.barcode, **new},
+                    request=request)
 
     invoice_pdf_path = None
     if invoice_pdf is not None and invoice_pdf.filename:
@@ -162,21 +199,28 @@ async def change_entities(
         with open(invoice_pdf_path, "wb") as f:
             f.write(content)
 
-    db.add(TagNumberMovement(
-        tag_count=len(devices), from_entity=from_entity, to_entity=to_entity,
-        direction=direction, by_user_id=getattr(current_user, "id", None),
-        by_user_name=current_user.username, invoice_pdf_path=invoice_pdf_path, notes=notes,
-    ))
-
-    await audit(db, user=current_user, action="ENTITY_MOVEMENT_BULK_CHANGE",
-                table_name="devices", record_id=None,
-                new_value={"entity": to_entity, "direction": direction.value,
-                           "tags": len(devices), "missing": len(missing), "in_trash": len(in_trash),
-                           "invoice_number": invoice_number or None},
+    if devices:
+        # History row. `direction` is a required enum (send/sold); ReGRN is
+        # stored as "send" and named in the notes (the history table shows a
+        # ReGRN badge from the notes) — a new enum value would be a schema change.
+        db.add(TagNumberMovement(
+            tag_count=len(devices), from_entity=from_entity, to_entity=g.entity,
+            direction=MovementDirection.send, by_user_id=getattr(current_user, "id", None),
+            by_user_name=current_user.username, invoice_pdf_path=invoice_pdf_path,
+            notes=(f"ReGRN — GRN {g.grn_number}"
+                   + (" (mixed source entities)" if len(from_entities) > 1 else ""))[:255],
+        ))
+    await audit(db, user=current_user, action="REGRN_BULK",
+                table_name="devices", record_id=g.grn_number,
+                new_value={"grn_number": g.grn_number, "entity": g.entity,
+                           "invoice_number": g.invoice_number, "tags": len(devices),
+                           "sold_to_ready_to_sale": back_to_rts,
+                           "missing": len(missing), "in_trash": len(in_trash)},
                 request=request)
     await db.commit()
 
-    msg = f"Entity changed to {to_entity} ({direction.value}) for {len(devices)} tag(s)"
+    msg = (f"{len(devices)} tag(s) moved to GRN {g.grn_number} ({g.entity})"
+           + (f" — {back_to_rts} were Sold and are now Ready to Sale" if back_to_rts else ""))
     if missing:
         msg += f" — {len(missing)} tag(s) not found: {', '.join(missing[:10])}"
         if len(missing) > 10:
@@ -185,4 +229,4 @@ async def change_entities(
         msg += f" — {len(in_trash)} tag(s) skipped, in Trash (restore first): {', '.join(in_trash[:10])}"
         if len(in_trash) > 10:
             msg += "…"
-    return RedirectResponse(url=f"/entity-movement?success={msg}", status_code=302)
+    return RedirectResponse(url="/entity-movement?success=" + quote(msg), status_code=302)

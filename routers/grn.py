@@ -19,7 +19,7 @@ from models.lot import Lot
 from models.master import EXTERNAL_PARTNER_TEST_LOT_PREFIX, EXTERNAL_PARTNER_TEST_GRN_SOURCE
 from models.device import Device, DeviceStage, StageMovement, stage_sort_expr
 from models.engines import AuditLog
-from models.grn_import import GRNImport
+from models.grn_import import GRNImport, GRNLot
 from services.invoice_parser import extract_invoice_fields
 from services.audit_engine import audit
 from utils.master_data import entity_values
@@ -304,29 +304,9 @@ async def grn_post_iqc(request: Request, db: AsyncSession = Depends(get_db),
         )
     )).scalar() or 0
 
-    # Lot Number column — every Lot mapped to a GRN (Add/Edit Lot can now map
-    # several Lots onto one GRN, not just one), keyed by grn_number since
-    # that's the field each mapped Lot's own grn_system_number points back to.
-    grn_numbers = [g.grn_number for g in grns if g.grn_number]
-    lots_by_grn: dict[str, list] = {}
-    seen_lot_ids = set()
-    if grn_numbers:
-        lot_rows = (await db.execute(
-            select(Lot).where(Lot.grn_system_number.in_(grn_numbers)).order_by(Lot.lot_number)
-        )).scalars().all()
-        for l in lot_rows:
-            lots_by_grn.setdefault(l.grn_system_number, []).append(l)
-            seen_lot_ids.add(l.id)
-    # Legacy fallback: older rows may have GRNImport.lot_id set without the
-    # matching Lot.grn_system_number backfilled (see backfill_lot_grn_system_number.py).
-    missing_fk_ids = {g.lot_id for g in grns if g.lot_id} - seen_lot_ids
-    if missing_fk_ids:
-        fk_lot_by_id = {l.id: l for l in (await db.execute(
-            select(Lot).where(Lot.id.in_(missing_fk_ids))
-        )).scalars().all()}
-        for g in grns:
-            if g.lot_id in fk_lot_by_id:
-                lots_by_grn.setdefault(g.grn_number, []).append(fk_lot_by_id[g.lot_id])
+    # Lot Number column — every Lot mapped to each GRN: grn_lots links (a lot
+    # can belong to several GRNs since 2026-10-21) plus the legacy links.
+    lots_by_grn = await _lots_by_grn(db, grns)
 
     # JSON-serializable form for the "N Lots" popup (id + lot_number only —
     # Lot itself isn't JSON-safe to dump straight into a data attribute).
@@ -811,6 +791,115 @@ async def grn_delete(
     return RedirectResponse(url=f"{base}?success=GRN+{g.grn_number}+deleted", status_code=302)
 
 
+def _split_lot_numbers(raw) -> list[str]:
+    """'A, B ,A' -> ['A', 'B'] — comma/newline separated, trimmed, de-duplicated
+    case-insensitively, first spelling kept."""
+    parts = raw if isinstance(raw, list) else [raw or ""]
+    out, seen = [], set()
+    for chunk in parts:
+        for n in str(chunk or "").replace("\n", ",").split(","):
+            n = n.strip()
+            if n and n.lower() not in seen:
+                seen.add(n.lower())
+                out.append(n)
+    return out
+
+
+async def _map_lots_to_grn(db: AsyncSession, g: GRNImport, numbers: list[str],
+                           username: str) -> tuple[list[str], list[str], list[str]]:
+    """Flow 1 (2026-10-21): map each Lot Number onto GRN `g` via grn_lots.
+
+    Existing lot -> just linked (a lot can belong to many GRNs — its tags can
+    be split across invoices — so its fields are NOT copied over this GRN's).
+    Missing lot -> created from this GRN's details, then linked.
+    A trashed lot with that number is refused (its number is still taken).
+    Returns (linked_existing, created, refused). Caller commits."""
+    linked, created, refused = [], [], []
+    have = set((await db.execute(
+        select(GRNLot.lot_id).where(GRNLot.grn_id == g.id))).scalars().all())
+    for number in numbers:
+        lot = (await db.execute(
+            select(Lot).where(func.lower(Lot.lot_number) == number.lower())
+        )).scalars().first()
+        if lot is not None and lot.is_trashed:
+            refused.append(number)
+            continue
+        if lot is None:
+            lot = Lot(
+                lot_number=number,
+                supplier_name=g.sender_name or "",
+                vendor_name=g.sender_name,
+                invoice_no=g.invoice_number,
+                invoice_value=g.amount,
+                buying_price=g.amount or Decimal("0"),
+                qty=g.quantity or 1,
+                purchase_date=(datetime.combine(g.purchase_date, datetime.min.time())
+                               if g.purchase_date else app_now()),
+                grn_date=(datetime.combine(g.grn_date, datetime.min.time()) if g.grn_date else None),
+                po_number=g.po_number,
+                vehicle_number=g.vehicle_number,
+                e_way_bill=g.e_way_bill,
+                notes=g.notes,
+                # Older readers (Product IQC Lot tab, Edit Lot) still read this.
+                grn_system_number=g.grn_number,
+                is_restricted=number.upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper()),
+                created_by=username,
+            )
+            db.add(lot)
+            await db.flush()
+            created.append(lot.lot_number)
+        else:
+            if not lot.grn_system_number:
+                lot.grn_system_number = g.grn_number
+            if number.upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper()):
+                lot.is_restricted = True
+            linked.append(lot.lot_number)
+        if lot.id not in have:
+            db.add(GRNLot(grn_id=g.id, lot_id=lot.id, created_by=username))
+            have.add(lot.id)
+        # Legacy single-lot columns: keep pointing at the first mapped lot.
+        if g.lot_id is None:
+            g.lot_id = lot.id
+            g.lot_number = lot.lot_number[:60]
+    return linked, created, refused
+
+
+async def _lots_by_grn(db: AsyncSession, grns) -> dict:
+    """{grn_number: [Lot, ...]} — every lot mapped to each GRN: grn_lots links
+    (source of truth since 2026-10-21) plus the two legacy links (a lot's own
+    grn_system_number, and grn_imports.lot_id) so older GRNs still show."""
+    by_grn: dict[str, list] = {}
+    seen: dict[str, set] = {}
+
+    def _add(grn_number, lot):
+        if lot.id in seen.setdefault(grn_number, set()):
+            return
+        seen[grn_number].add(lot.id)
+        by_grn.setdefault(grn_number, []).append(lot)
+
+    grn_by_id = {g.id: g.grn_number for g in grns if g.grn_number}
+    if grn_by_id:
+        for grn_id, lot in (await db.execute(
+            select(GRNLot.grn_id, Lot).join(Lot, Lot.id == GRNLot.lot_id)
+            .where(GRNLot.grn_id.in_(list(grn_by_id)))
+        )).all():
+            _add(grn_by_id[grn_id], lot)
+        for lot in (await db.execute(
+            select(Lot).where(Lot.grn_system_number.in_(list(grn_by_id.values())))
+        )).scalars().all():
+            _add(lot.grn_system_number, lot)
+        fk = {g.lot_id for g in grns if g.lot_id}
+        if fk:
+            fk_lots = {l.id: l for l in (await db.execute(
+                select(Lot).where(Lot.id.in_(fk)))).scalars().all()}
+            for g in grns:
+                if g.lot_id in fk_lots and g.grn_number:
+                    _add(g.grn_number, fk_lots[g.lot_id])
+    for lots in by_grn.values():
+        lots.sort(key=lambda l: l.lot_number or "")
+    return by_grn
+
+
 @router.post("/create-manual")
 async def grn_create_manual(
     request: Request,
@@ -820,6 +909,9 @@ async def grn_create_manual(
     po_number: str = Form(""), vehicle_number: str = Form(""),
     e_way_bill: str = Form(""), notes: str = Form(""),
     source: str = Form("post_iqc"),
+    # Flow 1 (2026-10-21): the entity these goods belong to, and the Lot
+    # Number(s) — single or comma-separated — mapped onto this GRN on save.
+    entity: str = Form(""), lot_numbers: str = Form(""),
     # Optional, unlike the upload path's File(...). An empty file input still
     # posts an UploadFile with a blank filename, so presence is decided by
     # reading the bytes, not by the object being non-None.
@@ -860,6 +952,14 @@ async def grn_create_manual(
                     f"Invoice number {inv_no} already exists as GRN {same_grn}."),
                 status_code=302)
 
+    entity = (entity or "").strip()
+    if entity and entity not in await entity_values(db):
+        return RedirectResponse(url=f"{base}?error=" + quote(f"Unknown entity '{entity}'."),
+                                status_code=302)
+    if source == "post_iqc" and not entity:
+        return RedirectResponse(url=f"{base}?error=" + quote("Select the GRN's Entity."),
+                                status_code=302)
+
     def _int(v):
         try:
             return int(v) if v else None
@@ -893,8 +993,9 @@ async def grn_create_manual(
             with open(file_path, "wb") as f:
                 f.write(data)
 
-    db.add(GRNImport(
+    g = GRNImport(
         grn_number=grn_number,
+        entity=entity or None,
         file_name=file_name, file_path=file_path, file_hash=file_hash,
         invoice_number=inv_no or None,
         invoice_date=invoice_date or None,
@@ -908,14 +1009,26 @@ async def grn_create_manual(
         notes=notes or None,
         source=(source if source in ("post_iqc", EXTERNAL_PARTNER_TEST_GRN_SOURCE) else "invoice"),
         created_by=current_user.username,
-    ))
+    )
+    db.add(g)
+    await db.flush()
+    linked, created, refused = await _map_lots_to_grn(
+        db, g, _split_lot_numbers(lot_numbers), current_user.username)
     await audit(db, user=current_user, action="GRN_CREATED_MANUAL",
                 table_name="grn_imports", record_id=grn_number,
                 new_value={"grn_number": grn_number, "invoice_number": inv_no or None,
-                           "vendor": sender_name or None},
+                           "vendor": sender_name or None, "entity": entity or None,
+                           "lots_linked": linked, "lots_created": created},
                 request=request)
     await db.commit()
-    return RedirectResponse(url=f"{base}?success=GRN+{grn_number}+created", status_code=302)
+    msg = f"GRN {grn_number} created"
+    if linked or created:
+        msg += f" — lots mapped: {', '.join(linked + created)}"
+        if created:
+            msg += f" (new: {', '.join(created)})"
+    if refused:
+        msg += f". Not mapped (lot is in Trash): {', '.join(refused)}"
+    return RedirectResponse(url=f"{base}?success=" + quote(msg), status_code=302)
 
 
 @router.post("/{grn_id}/edit")
@@ -930,6 +1043,8 @@ async def grn_edit(
     purchase_date: str = Form(""), grn_date: str = Form(""),
     po_number: str = Form(""), vehicle_number: str = Form(""),
     e_way_bill: str = Form(""), notes: str = Form(""),
+    # None when the form has no Entity field (older callers) — keeps the value.
+    entity: str | None = Form(None),
     db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed),
     _perm: User = Depends(require_additional_perm("edit_grn")),
 ):
@@ -961,6 +1076,11 @@ async def grn_edit(
     g.vehicle_number = vehicle_number or None
     g.e_way_bill = e_way_bill or None
     g.notes = notes or None
+    if entity is not None:
+        ent = entity.strip()
+        if ent and ent not in await entity_values(db):
+            raise HTTPException(400, f"Unknown entity '{ent}'.")
+        g.entity = ent or None
 
     # Mirror the shared header fields onto every Lot mapped to this GRN. A GRN
     # can now carry several Lots via the Add/Edit Lot modal, so this can no
@@ -1049,71 +1169,17 @@ async def grn_add_lot(grn_id: str, lot_number: list[str] = Form(...),
     if conflicts:
         return JSONResponse({"ok": False, "conflicts": conflicts})
 
-    for number in numbers:
-        existing = existing_by_number[number]
-        if existing:
-            g.lot_id = existing.id
-            # Existing Lot is authoritative — pull its header fields onto this GRN row.
-            g.sender_name = existing.vendor_name or existing.supplier_name or g.sender_name
-            g.invoice_number = existing.invoice_no or g.invoice_number
-            g.amount = existing.invoice_value if existing.invoice_value is not None else g.amount
-            # Quantity is NOT taken from the Lot (2026-10-15): it is this GRN's
-            # own invoice quantity, and a GRN can map several Lots — overwriting
-            # it with one Lot's qty made the GRN table's Quantity wrong.
-            g.purchase_date = existing.purchase_date.date() if existing.purchase_date else g.purchase_date
-            g.grn_date = existing.grn_date.date() if existing.grn_date else g.grn_date
-            g.po_number = existing.po_number or g.po_number
-            g.vehicle_number = existing.vehicle_number or g.vehicle_number
-            g.e_way_bill = existing.e_way_bill or g.e_way_bill
-            g.notes = existing.notes or g.notes
-            g.lot_number = existing.lot_number
-            # Fill the Lot's own GRN-number field from this GRN if the lot didn't
-            # already have one — read by the "GRN #" column on Product IQC's Lot
-            # Numbers tab and the "GRN System Number" field on Edit Lot, neither
-            # of which look at GRNImport directly. Also how multiple Lots stay
-            # associated with one GRN — every mapped Lot shares this value.
-            if not existing.grn_system_number:
-                existing.grn_system_number = g.grn_number
-            # External Partner test-lot convention (2026-09-22, see
-            # /trade-partner/manage-lots): auto-restrict on every add-lot
-            # call, not just creation, so an EPT- lot can never end up open
-            # to the live dealer catalog even if it existed before this
-            # convention or got un-restricted some other way.
-            if number.upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper()):
-                existing.is_restricted = True
-        else:
-            new_lot = Lot(
-                lot_number=number,
-                supplier_name=g.sender_name or "",
-                vendor_name=g.sender_name,
-                invoice_no=g.invoice_number,
-                invoice_value=g.amount,
-                buying_price=g.amount or Decimal("0"),
-                qty=g.quantity or 1,
-                purchase_date=(datetime.combine(g.purchase_date, datetime.min.time())
-                               if g.purchase_date else app_now()),
-                grn_date=(datetime.combine(g.grn_date, datetime.min.time()) if g.grn_date else None),
-                po_number=g.po_number,
-                vehicle_number=g.vehicle_number,
-                e_way_bill=g.e_way_bill,
-                notes=g.notes,
-                # Same reasoning as the merge branch above — Product IQC's Lot
-                # Numbers tab and Edit Lot both read this field, not GRNImport.
-                grn_system_number=g.grn_number,
-                # External Partner test-lot convention: an EPT- lot number
-                # auto-restricts itself immediately on creation, so it's
-                # never open to the live dealer catalog by default (Lot.
-                # is_restricted otherwise defaults to False = visible to
-                # every dealer) — see /trade-partner/manage-lots.
-                is_restricted=number.upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper()),
-            )
-            db.add(new_lot)
-            await db.flush()
-            g.lot_id = new_lot.id
-            g.lot_number = new_lot.lot_number
-
+    # Flow 1 rules (2026-10-21): an existing lot is linked as-is — it no longer
+    # overwrites this GRN's invoice/vendor fields, since one lot can now sit
+    # under several GRNs (its tags split across invoices); a missing lot is
+    # created from this GRN's details. Links are recorded in grn_lots.
+    linked, created, refused = await _map_lots_to_grn(db, g, numbers, current_user.username)
+    if refused:
+        await db.rollback()
+        return JSONResponse({"ok": False, "error":
+                             "These Lot Numbers are in Trash and can't be mapped: " + ", ".join(refused)})
     await db.commit()
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "linked": linked, "created": created})
 
 
 @router.post("/{grn_id}/as-is-lot")

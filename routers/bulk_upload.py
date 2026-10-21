@@ -22,6 +22,8 @@ from models.telecalling import TelecallingRecord
 from auth.dependencies import get_current_user, require_roles, verify_csrf
 from services.audit_engine import audit
 from services.control_engine import validate_transition
+from services.location_defaults import ensure_stage_location
+from models.grn_import import GRNImport
 
 router = APIRouter(prefix="/bulk-upload", tags=["bulk_upload"], dependencies=[Depends(verify_csrf)])
 allowed = require_roles(UserRole.admin, UserRole.inventory_manager)
@@ -477,6 +479,24 @@ async def upload_devices(
     # drops that column (see DEVICE_CSV_HEADERS_TEST_PARTNER).
     forced_entity_val = entity_lookup.get(force_entity.strip().lower()) if force_entity.strip() else None
 
+    # ── Flow 1 GRN check (2026-10-21) ────────────────────────────────────
+    # A row that carries a GRN number is validated against that GRN: the GRN
+    # must exist (not deleted) and the row's Invoice Number must equal the
+    # GRN's invoice. Lot-vs-GRN mapping is deliberately NOT checked (a lot can
+    # be split across GRNs). Valid rows take grn_number, invoice_number and
+    # entity from the GRN and go straight to Stock In; invalid rows are
+    # skipped and handed back as a downloadable file. Rows with no GRN keep
+    # the old behaviour (land in IQC, mapped later via "Map this GRN").
+    grn_by_number = {
+        g.grn_number.strip().upper(): g for g in (await db.execute(
+            select(GRNImport).where(GRNImport.is_deleted.isnot(True))
+        )).scalars().all() if g.grn_number
+    }
+    file_header = list(reader.fieldnames or [])
+    grn_skipped: list[list] = []
+    to_stock_in = 0
+    now = app_now()
+
     for i, row in enumerate(reader, start=2):
         try:
             barcode = _resolve_tag_header(row)
@@ -522,6 +542,26 @@ async def upload_devices(
                     )
                     continue
                 entity_val = entity_lookup.get(entity_raw.lower()) if entity_raw else None
+
+            # GRN check — before the lot lookup, so a bad GRN/invoice is reported
+            # as such rather than hidden behind a lot error.
+            grn_obj = None
+            grn_raw = _s(row, "grn_number")
+            if grn_raw:
+                grn_obj = grn_by_number.get(grn_raw.upper())
+                inv_raw = (_s(row, "invoice_number") or "")
+                reason = None
+                if grn_obj is None:
+                    reason = f"GRN {grn_raw} not found"
+                elif (grn_obj.invoice_number or "").strip().upper() != inv_raw.strip().upper():
+                    reason = (f"Invoice Number '{inv_raw or '(blank)'}' does not match "
+                              f"GRN {grn_obj.grn_number}'s invoice '{grn_obj.invoice_number or '(blank)'}'")
+                if reason:
+                    grn_skipped.append([row.get(h) or "" for h in file_header] + [reason])
+                    errors.append(f"Row {i}: {reason} — skipped")
+                    continue
+                if grn_obj.entity and not forced_entity_val:
+                    entity_val = grn_obj.entity
 
             lot_number = _s(row, "lot_number")
             lot_id = lot_map.get(lot_number)
@@ -579,6 +619,18 @@ async def upload_devices(
                 moved_by=current_user.username, notes="Bulk Upload - IQC Entry"
             )
             db.add(movement)
+            if grn_obj is not None:
+                # GRN-validated row: details come from the GRN, stage -> Stock In.
+                device.grn_number = grn_obj.grn_number
+                device.invoice_number = grn_obj.invoice_number
+                movement.exited_at = now
+                db.add(StageMovement(
+                    device_id=device.id, from_stage=DeviceStage.iqc, to_stage=DeviceStage.stock_in,
+                    moved_by=current_user.username,
+                    notes=f"Bulk Upload IQC — GRN {grn_obj.grn_number} verified, moved to Stock Inward"))
+                device.current_stage = DeviceStage.stock_in
+                await ensure_stage_location(db, device, DeviceStage.stock_in, current_user)
+                to_stock_in += 1
 
             # ── Physical inspection checklist (mirrors the manual IQC entry
             # form's IQCInspection creation) — entirely optional per-row. ──
@@ -615,10 +667,16 @@ async def upload_devices(
             "The batch could not be saved and no rows were imported. "
             "Fix the value below and re-upload: " + str(e).split("\n")[0]
         )
+    if inserted == 0:
+        to_stock_in = 0
     return templates.TemplateResponse("bulk_upload/result.html", {
         "request": request, "current_user": current_user,
         "upload_type": "Devices", "inserted": inserted, "errors": errors,
         "back_url": "/iqc",
+        # Flow 1 GRN check: rows skipped for a bad GRN / invoice, as the
+        # uploaded file's own rows plus a Reason column (downloadable).
+        "grn_skipped": {"header": file_header + ["Reason"], "rows": grn_skipped} if grn_skipped else None,
+        "to_stock_in": to_stock_in,
         "tag_duplicates": tag_duplicates,
         "lot_duplicates": list(lot_duplicates.values()),
     })

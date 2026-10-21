@@ -3,8 +3,8 @@
 {% block page_title %}Entity Movement{% endblock %}
 {% block content %}
 
-{% if success %}<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>{% endif %}
-{% if error %}<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ error }}</div>{% endif %}
+{# ?success= / ?error= are shown once by base.html's flash area — the success
+   one as a top-right toast (flashAsToast below), errors as the banner. #}
 
 <div class="row g-3 mb-4">
   {% for e in entity_values %}
@@ -36,21 +36,42 @@
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-transparent fw-semibold"><i class="bi bi-upload me-2"></i>Bulk Upload Tags — Change Entities</div>
   <div class="card-body">
-    <div class="mb-2">
-      <label class="form-label">Tag Numbers</label>
-      <textarea id="tagsInput" class="form-control" rows="6"
-                placeholder="Paste or type Tag Numbers — separated by new line, comma or space"></textarea>
-      <div class="form-text small text-muted">
-        Upload a CSV (one Tag Number per line, or a single "barcode" column) to append instead of typing:
-        <input type="file" id="tagsCsvFile" accept=".csv,.txt" class="form-control form-control-sm d-inline-block mt-1" style="max-width:280px">
-      </div>
-    </div>
-    <div class="d-flex align-items-center gap-2">
-      <span id="tagsCount" class="small text-muted">0 tag(s) entered</span>
-      <button type="button" id="openChangeEntitiesBtn" class="btn btn-primary ms-auto">
+    <style>
+      .regrn-drop { position: relative; display: flex; flex-direction: row; align-items: center; justify-content: flex-start;
+        text-align: left; gap: 1.25rem; cursor: pointer; padding: 1.5rem; min-height: 120px; border: 2px dashed var(--bs-primary); border-radius: .75rem;
+        background: rgba(var(--bs-primary-rgb), .05); transition: background .15s, border-color .15s; }
+      .regrn-drop:hover, .regrn-drop.is-dragover { background: rgba(var(--bs-primary-rgb), .12); }
+      .regrn-drop.is-loaded { border-style: solid; border-color: var(--bs-success); background: rgba(var(--bs-success-rgb), .07); }
+      .regrn-drop.is-error { border-color: var(--bs-danger); background: rgba(var(--bs-danger-rgb), .06); }
+      .regrn-drop-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+      .regrn-drop-icon { font-size: 2.75rem; line-height: 1; color: var(--bs-primary); }
+      .regrn-drop.is-loaded .regrn-drop-icon { color: var(--bs-success); }
+      .regrn-drop.is-error .regrn-drop-icon { color: var(--bs-danger); }
+      .regrn-drop:focus-within { outline: 3px solid rgba(var(--bs-primary-rgb), .35); outline-offset: 2px; }
+      .regrn-drop-btn { position: relative; z-index: 0; pointer-events: none; margin-left: auto; flex-shrink: 0; }
+      @media (max-width: 575.98px) { .regrn-drop { flex-wrap: wrap; } .regrn-drop-btn { margin-left: 0; } }
+    </style>
+    {# Tags come only from the uploaded file (2026-10-21) — the paste box is
+       hidden; it still holds the parsed tags for the Change Entities modal. #}
+    <textarea id="tagsInput" class="d-none" aria-hidden="true"></textarea>
+    {# Prominent drop zone (2026-10-21): the whole box is the file picker —
+       click or drop a CSV. The real <input type=file> covers it, invisible. #}
+    <div class="d-flex flex-column flex-xl-row align-items-stretch gap-3">
+      <label for="tagsCsvFile" id="tagsDropZone" class="regrn-drop flex-grow-1 mb-0">
+        <input type="file" id="tagsCsvFile" accept=".csv,.txt" class="regrn-drop-input"
+               aria-describedby="tagsCount">
+        <i class="bi bi-file-earmark-arrow-up regrn-drop-icon" id="tagsDropIcon"></i>
+        <div class="flex-grow-1 text-start">
+          <div class="fw-semibold fs-6" id="tagsDropTitle">Upload/Drag-Drop CSV file with "barcode" column for all selected tags</div>
+          <div id="tagsCount" class="small text-muted mt-1">0 tag(s) entered</div>
+        </div>
+        <span class="btn btn-outline-primary btn-sm regrn-drop-btn"><i class="bi bi-folder2-open me-1"></i>Choose CSV file</span>
+      </label>
+      <button type="button" id="openChangeEntitiesBtn" class="btn btn-primary btn-lg align-self-end align-self-xl-center flex-shrink-0">
         <i class="bi bi-arrow-left-right me-1"></i>Change Entities
       </button>
     </div>
+    <div id="tagsCsvError" class="small text-danger mt-1 d-none"></div>
   </div>
 </div>
 
@@ -72,7 +93,8 @@
             <td>{{ m.moved_at.strftime('%Y-%m-%d %H:%M') if m.moved_at else '—' }}</td>
             <td>{{ m.tag_count }}</td>
             <td>{{ m.from_entity or '—' }}{% if m.notes %} <span class="text-muted small">({{ m.notes }})</span>{% endif %}</td>
-            <td>{{ m.to_entity }} <span class="badge bg-{{ 'success' if m.direction.value == 'send' else 'warning text-dark' }}">{{ m.direction.value|upper }}</span></td>
+            {% set _regrn = (m.notes or '').startswith('ReGRN') %}
+            <td>{{ m.to_entity }} <span class="badge bg-{{ 'primary' if _regrn else ('success' if m.direction.value == 'send' else 'warning text-dark') }}">{{ 'REGRN' if _regrn else m.direction.value|upper }}</span></td>
             <td>{{ m.by_user_name or '—' }}</td>
             <td>
               {% if m.invoice_pdf_path %}
@@ -101,29 +123,23 @@
       </div>
       <div class="modal-body">
         <div class="mb-2"><span class="text-muted small" id="ce_count">0 tag(s) selected</span></div>
-        <div class="row g-3 mb-3">
-          <div class="col-6">
-            <label class="form-label fw-semibold">SOLD TO <span class="text-muted small">(GRN removed)</span></label>
-            {% for e in entity_values %}
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="target" value="sold:{{ e }}" id="sold_{{ loop.index }}" required>
-              <label class="form-check-label" for="sold_{{ loop.index }}">{{ e }}</label>
-            </div>
+        {# ReGRN (2026-10-21): the submitted tags take this GRN's GRN number,
+           invoice number and entity. Sold tags go back to Ready to Sale;
+           every other stage is unchanged. #}
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Move tags to GRN <span class="text-danger">*</span></label>
+          <input type="text" class="form-control form-control-sm mb-1" id="ce_grn_filter" placeholder="Filter GRNs — number, invoice, entity or vendor">
+          <select name="grn_id" id="ce_grn" class="form-select" size="6" required>
+            {% for g in grns %}
+            <option value="{{ g.id }}" {% if not g.entity %}disabled{% endif %}
+                    data-search="{{ (g.grn_number ~ ' ' ~ (g.invoice_number or '') ~ ' ' ~ (g.entity or '') ~ ' ' ~ (g.sender_name or ''))|lower }}">
+              {{ g.grn_number }} · Inv {{ g.invoice_number or '—' }} · {{ g.entity or 'no entity — set it in Edit GRN' }}{% if g.sender_name %} · {{ g.sender_name }}{% endif %}
+            </option>
             {% endfor %}
-          </div>
-          <div class="col-6">
-            <label class="form-label fw-semibold">SEND TO <span class="text-muted small">(GRN unchanged)</span></label>
-            {% for e in entity_values %}
-            <div class="form-check">
-              <input class="form-check-input" type="radio" name="target" value="send:{{ e }}" id="send_{{ loop.index }}" required>
-              <label class="form-check-label" for="send_{{ loop.index }}">{{ e }}</label>
-            </div>
-            {% endfor %}
-          </div>
-        </div>
-        <div class="mb-2">
-          <label class="form-label">Invoice Number <span class="text-muted small">(optional)</span></label>
-          <input type="text" name="invoice_number" class="form-control" placeholder="Enter Invoice Number">
+          </select>
+          <div class="form-text">Each tag gets this GRN's GRN number, invoice number and entity.
+            Tags in <strong>Sold</strong> go back to <strong>Ready to Sale</strong> (the old sale stays as history);
+            tags in any other stage keep their stage. The rest of their lot is not changed.</div>
         </div>
         <label class="form-label">Upload Invoice PDF <span class="text-muted small">(optional)</span></label>
         <input type="file" name="invoice_pdf" accept=".pdf" class="form-control">
@@ -137,6 +153,20 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-21) */</script>
+<script>
+// ReGRN GRN picker filter (2026-10-21)
+(function () {
+  var f = document.getElementById('ce_grn_filter'), sel = document.getElementById('ce_grn');
+  if (!f || !sel) return;
+  f.addEventListener('input', function () {
+    var q = this.value.trim().toLowerCase();
+    Array.prototype.forEach.call(sel.options, function (o) {
+      o.hidden = !!q && (o.getAttribute('data-search') || '').indexOf(q) === -1;
+    });
+  });
+})();
+</script>
 <script>
 var tagsInput = document.getElementById('tagsInput');
 var tagsCount = document.getElementById('tagsCount');
@@ -153,28 +183,89 @@ function parseTags(raw) {
   });
   return out;
 }
-function refreshCount() {
-  tagsCount.textContent = parseTags(tagsInput.value).length + ' tag(s) entered';
+var tagsCsvError = document.getElementById('tagsCsvError');
+var tagsDropZone = document.getElementById('tagsDropZone');
+var tagsDropIcon = document.getElementById('tagsDropIcon');
+function showCsvError(msg) {
+  tagsCsvError.textContent = msg || '';
+  tagsCsvError.classList.toggle('d-none', !msg);
+  tagsDropZone.classList.toggle('is-error', !!msg);
+  if (msg) tagsDropZone.classList.remove('is-loaded');
 }
-tagsInput.addEventListener('input', refreshCount);
+function setDropFile(name, loaded) {
+  tagsDropZone.classList.toggle('is-loaded', !!loaded);
+  tagsDropIcon.className = 'bi regrn-drop-icon ' + (loaded ? 'bi-file-earmark-check' : 'bi-file-earmark-arrow-up');
+}
+['dragenter', 'dragover'].forEach(function (ev) {
+  tagsDropZone.addEventListener(ev, function () { tagsDropZone.classList.add('is-dragover'); });
+});
+['dragleave', 'drop'].forEach(function (ev) {
+  tagsDropZone.addEventListener(ev, function () { tagsDropZone.classList.remove('is-dragover'); });
+});
+// fileName: shown before the count once a file is loaded, e.g.
+// "regrn_tags.csv — 3 tag(s) selected from file".
+function refreshCount(fileName) {
+  var n = parseTags(tagsInput.value).length;
+  tagsCount.textContent = (fileName ? fileName + ' — ' + n + ' tag(s) selected from file' : n + ' tag(s) entered');
+  tagsCount.className = 'small mt-1 ' + (n ? 'fw-semibold text-success' : 'text-muted');
+}
+
+// Tags from the CSV's "barcode" column (also accepted: Tag No / Tag Number /
+// tag_number). A file with a single column and no such header is read as one
+// Tag Number per line. Uploading again REPLACES the previous file's tags.
+var TAG_HEADERS = ['barcode', 'tag no', 'tag number', 'tag_number', 'tag_no', 'tag'];
+function splitCsvLine(line, delim) {
+  var out = [], cur = '', q = false;
+  for (var i = 0; i < line.length; i++) {
+    var c = line[i];
+    if (c === '"') { if (q && line[i + 1] === '"') { cur += '"'; i++; } else { q = !q; } }
+    else if (c === delim && !q) { out.push(cur); cur = ''; }
+    else { cur += c; }
+  }
+  out.push(cur);
+  return out;
+}
+function tagsFromCsv(text) {
+  var lines = (text || '').replace(/[﻿​‌‍]/g, '').split(/\r\n|\n|\r/)
+    .filter(function (l) { return l.trim() !== ''; });
+  if (!lines.length) return { error: 'The file is empty.' };
+  var first = lines[0];
+  var delim = first.indexOf('\t') > -1 ? '\t' : (first.indexOf(',') === -1 && first.indexOf(';') > -1 ? ';' : ',');
+  var head = splitCsvLine(first, delim).map(function (h) { return h.trim().replace(/^["']+|["']+$/g, '').toLowerCase(); });
+  var col = -1;
+  for (var k = 0; k < TAG_HEADERS.length && col === -1; k++) col = head.indexOf(TAG_HEADERS[k]);
+  var rows;
+  if (col > -1) {
+    rows = lines.slice(1).map(function (l) { return splitCsvLine(l, delim)[col] || ''; });
+  } else if (head.length === 1) {
+    rows = lines;  // single column, no header — one Tag Number per line
+  } else {
+    return { error: 'No "barcode" column found in the file. Add a column named barcode with the Tag Numbers.' };
+  }
+  return { tags: parseTags(rows.join('\n')) };
+}
 
 document.getElementById('tagsCsvFile').addEventListener('change', function (e) {
   var file = e.target.files[0];
-  if (!file) return;
+  tagsInput.value = '';
+  showCsvError('');
+  if (!file) { setDropFile('', false); refreshCount(''); return; }
+  setDropFile(file.name, false);
   var reader = new FileReader();
   reader.onload = function (ev) {
-    var text = ev.target.result;
-    var lines = parseTags(text).filter(function (t) { return t.toLowerCase() !== 'barcode' && t.toLowerCase() !== 'tag_number'; });
-    var existing = tagsInput.value.trim();
-    tagsInput.value = (existing ? existing + '\n' : '') + lines.join('\n');
-    refreshCount();
+    var res = tagsFromCsv(ev.target.result);
+    if (res.error) { showCsvError(res.error); refreshCount(''); return; }
+    if (!res.tags.length) { showCsvError('No Tag Numbers found in the "barcode" column.'); refreshCount(''); return; }
+    tagsInput.value = res.tags.join('\n');
+    setDropFile(file.name, true);
+    refreshCount(file.name);
   };
   reader.readAsText(file);
 });
 
 document.getElementById('openChangeEntitiesBtn').addEventListener('click', function () {
   var tags = parseTags(tagsInput.value);
-  if (!tags.length) { alert('Enter or upload at least one Tag Number first.'); return; }
+  if (!tags.length) { showCsvError('Upload a CSV file with a "barcode" column first.'); return; }
   document.getElementById('ce_tags').value = tags.join(',');
   document.getElementById('ce_count').textContent = tags.length + ' tag(s) selected';
   new bootstrap.Modal(document.getElementById('changeEntitiesModal')).show();

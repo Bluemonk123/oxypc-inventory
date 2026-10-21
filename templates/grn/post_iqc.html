@@ -88,7 +88,8 @@
           {% for g in grns %}
           {% set _lots = lots_by_grn.get(g.grn_number, []) if lots_by_grn is defined else [] %}
           <tr id="grn-{{ g.grn_number }}">
-            <td class="ps-3"><span class="font-monospace fw-bold">{{ g.grn_number }}</span></td>
+            <td class="ps-3"><span class="font-monospace fw-bold">{{ g.grn_number }}</span>
+              {% if g.entity %}<div class="small text-muted text-nowrap">{{ g.entity }}</div>{% endif %}</td>
             {# Added By: display name of the user who created this GRN (created_by holds the username). #}
             <td class="text-nowrap">{{ (user_names.get(g.created_by) if user_names is defined else None) or g.created_by or '—' }}</td>
             <td>
@@ -132,6 +133,7 @@
               <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
                       data-bs-toggle="modal" data-bs-target="#editGrnModal"
                       data-id="{{ g.id }}" data-grn-number="{{ g.grn_number }}"
+                      data-entity="{{ g.entity or '' }}"
                       data-lot-number="{{ _lots | map(attribute='lot_number') | join(', ') }}"
                       data-inv="{{ g.invoice_number or '' }}" data-date="{{ g.invoice_date or '' }}"
                       data-sender="{{ g.sender_name or '' }}" data-qty="{{ g.quantity if g.quantity is not none else '' }}"
@@ -221,9 +223,10 @@
   </div>
 </form>
 
-<!-- Add GRN modal — same fields as Edit GRN, minus GRN Number and Lot Number:
-     the GRN number is generated server-side, and the lot is assigned later by
-     mapping the GRN onto tags. -->
+<!-- Add GRN modal. The GRN number is generated server-side. Since 2026-10-21
+     (Flow 1) it also takes the Entity and the Lot Number(s): each lot that
+     exists is mapped to this GRN, each one that doesn't is created from this
+     GRN's details and mapped. A lot can belong to several GRNs. -->
 <div class="modal fade" id="addGrnModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <form method="post" action="/grn/create-manual" enctype="multipart/form-data" class="modal-content">
@@ -236,6 +239,16 @@
       <div class="modal-body">
         <div class="alert alert-info py-2 small no-autohide">
           <i class="bi bi-info-circle me-1"></i>A 12-digit GRN number is generated on save.
+        </div>
+        <div class="row g-2 mb-1">
+          <div class="col-md-4"><label class="form-label fw-semibold">Entity <span class="text-danger">*</span></label>
+            <select name="entity" class="form-select" required>
+              <option value="">— Select —</option>
+              {% for e in entity_options %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+            </select></div>
+          <div class="col-md-8"><label class="form-label fw-semibold">Lot Number(s)</label>
+            <input type="text" name="lot_numbers" class="form-control" placeholder="e.g. 4590 or 4590, 4591">
+            <div class="form-text">One or more, comma-separated. An existing lot is mapped to this GRN; a new one is created from this GRN's details.</div></div>
         </div>
         <div class="row g-2">
           <div class="col-md-4"><label class="form-label fw-semibold">Date of Invoice</label>
@@ -301,6 +314,13 @@
             <input type="text" id="e_lot_number" class="form-control" readonly placeholder="— Not mapped —"></div>
           <div class="col-md-4"><label class="form-label fw-semibold">Vendor Name</label>
             <input type="text" name="sender_name" id="e_sender" class="form-control"></div>
+        </div>
+        <div class="row g-2 mt-1">
+          <div class="col-md-4"><label class="form-label fw-semibold">Entity</label>
+            <select name="entity" id="e_entity" class="form-select">
+              <option value="">— Not set —</option>
+              {% for e in entity_options %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+            </select></div>
         </div>
         <div class="row g-2 mt-1">
           <div class="col-md-4"><label class="form-label fw-semibold">Date of Invoice</label>
@@ -614,6 +634,7 @@ if (em) { em.addEventListener('show.bs.modal', function(e){
   var b = e.relatedTarget;
   document.getElementById('editGrnForm').action = '/grn/' + b.getAttribute('data-id') + '/edit';
   document.getElementById('e_grn_number').value = b.getAttribute('data-grn-number') || '';
+  document.getElementById('e_entity').value = b.getAttribute('data-entity') || '';
   document.getElementById('e_lot_number').value = b.getAttribute('data-lot-number') || '';
   document.getElementById('e_inv').value = b.getAttribute('data-inv') || '';
   document.getElementById('e_date').value = b.getAttribute('data-date') || '';
@@ -750,7 +771,7 @@ document.getElementById('addLotForm').addEventListener('submit', function(e){
           alert('Some Lot Numbers already exist — tick the confirmation box for each and Save again.');
           return;
         }
-        alert(resp.detail || 'Failed');
+        alert(resp.error || resp.detail || 'Failed');
         return;
       }
       location.reload();

@@ -684,6 +684,28 @@ async def startup_event():
     except Exception as _pme:
         print(f"  [ProductMaster] Could not seed dropdowns: {_pme}")
 
+    # ── GRN <-> Lot links: one-time backfill from grn_imports.lot_id (2026-10-21) ──
+    try:
+        from models.grn_import import backfill_grn_lots
+        from database import AsyncSessionLocal as _ASLgl
+        async with _ASLgl() as _sessgl:
+            _gl = await backfill_grn_lots(_sessgl)
+            if _gl:
+                print(f"  [GRNLots] Backfilled {_gl} GRN-Lot link(s) from grn_imports.lot_id")
+    except Exception as _gle:
+        print(f"  [GRNLots] Could not backfill GRN-Lot links: {_gle}")
+
+    # ── GRN Entity: one-time backfill of pre-existing GRNs (2026-10-21) ───────
+    try:
+        from models.grn_import import backfill_grn_entity_once
+        from database import AsyncSessionLocal as _ASLge
+        async with _ASLge() as _sessge:
+            _ge = await backfill_grn_entity_once(_sessge)
+            if _ge:
+                print(f"  [GRNEntity] Set Entity 'OxyPC Computers' on {_ge} existing GRN(s)")
+    except Exception as _gee:
+        print(f"  [GRNEntity] Could not backfill GRN Entity: {_gee}")
+
     # ── RAM / Storage sizes spelled "12 GB" (2026-10-19), idempotent ──────────
     try:
         from utils.size_units import space_existing_size_values
