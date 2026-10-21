@@ -121,10 +121,9 @@
             <td>{{ g.invoice_date or '—' }}</td>
             <td>{{ g.sender_name or '—' }}</td>
             <td>{{ g.quantity if g.quantity is not none else '—' }}</td>
-            {# Stocked (2026-10-21) = tags whose Invoice Number matches this GRN's
-               (or mapped to it). Add-only: a tag stays counted after its invoice
-               changes (e.g. on sale); one count per Tag Number; trashed tags not
-               counted. See services/grn_stocked.py. #}
+            {# Stocked (2026-10-21) = tags mapped to this GRN. Add-only: a tag stays
+               counted after it moves on (ReGRN to another GRN, edits); one count
+               per Tag Number; trashed tags not counted. See services/grn_stocked.py. #}
             {% set _st = stocked.get(g.grn_number, 0) if stocked is defined else 0 %}
             <td class="grn-stocked" data-stocked="{{ _st }}" data-qty="{{ g.quantity if g.quantity is not none else 0 }}">
               <span class="badge bg-{{ 'success' if g.quantity and _st >= g.quantity else ('warning text-dark' if _st else 'secondary') }}">{{ _st }}</span>

@@ -2127,6 +2127,9 @@ async def device_edit_save(
     device.model = model or None
     device.device_type = device_type or None
     device.serial_no = serial_no or None
+    if (grn_number or None) != device.grn_number:
+        from services.grn_stocked import remember_safely   # GRN Stocked: keep old GRN's count
+        await remember_safely(db, [device.id])
     device.grn_number = grn_number or None
     device.cpu = cpu or None
     device.cpu_make = cpu_make or None

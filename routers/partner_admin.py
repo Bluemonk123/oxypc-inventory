@@ -1400,6 +1400,9 @@ async def manage_lots_map_grn(
     )).scalar_one_or_none()
     if not device:
         return RedirectResponse(url="/trade-partner/manage-lots?error=Test+device+not+found", status_code=302)
+    if device.grn_number != grn_number.strip():
+        from services.grn_stocked import remember_safely   # GRN Stocked: keep old GRN's count
+        await remember_safely(db, [device.id])
     device.grn_number = grn_number.strip()
     await audit(db, action="MANAGE_LOTS_GRN_MAPPED", user=current_user,
                 table_name="devices", record_id=str(device.id),

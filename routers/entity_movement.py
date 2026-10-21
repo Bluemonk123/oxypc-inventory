@@ -187,6 +187,10 @@ async def change_entities(
     from_entity = next(iter(from_entities), None)
     now = app_now()
     back_to_rts = 0
+    # GRN Stocked is add-only: each tag stays counted under the GRN it is
+    # leaving (Pankaj, 2026-10-21) — recorded before its grn_number changes.
+    from services.grn_stocked import remember_safely
+    await remember_safely(db, [d.id for d in devices])
     for d in devices:
         _cur_loc = last_loc.get(d.id, d.location_id)
         old = {"grn_number": d.grn_number, "invoice_number": d.invoice_number,

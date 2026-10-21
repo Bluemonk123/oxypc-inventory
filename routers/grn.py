@@ -373,6 +373,9 @@ async def grn_map(request: Request, grn_id: str = Form(...),
     )).scalars().all()
     now = app_now()
     moved = 0
+    # GRN Stocked is add-only: keep re-mapped tags counted under their old GRN.
+    from services.grn_stocked import remember_safely
+    await remember_safely(db, [d.id for d in devices])
     for d in devices:
         d.grn_number = g.grn_number
         # Default new/legacy tags with no Entity yet to OxyPC Computers' own
@@ -569,6 +572,9 @@ async def grn_bulk_move_to_trc(
     now = app_now()
     moved = 0
     skipped = []
+    if dest == "selling":   # clears grn_number below — keep them counted (GRN Stocked)
+        from services.grn_stocked import remember_safely
+        await remember_safely(db, [d.id for d in devices])
     for d in devices:
         try:
             await validate_transition(d, target_stage, db, override_admin=is_admin)

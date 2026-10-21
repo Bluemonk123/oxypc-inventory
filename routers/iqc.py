@@ -1085,12 +1085,12 @@ async def iqc_bulk_apply_grade_type(
         if new_grade is not None:
             device.grade = new_grade
         if invoice_number.strip():
-            if device.invoice_number != invoice_number.strip():
-                await _remember_grn_stock(db, [device.id])
             device.invoice_number = invoice_number.strip()
         if po_number.strip():
             device.po_number = po_number.strip()
         if grn_number:
+            if device.grn_number != grn_number:
+                await _remember_grn_stock(db, [device.id])   # GRN Stocked: keep old GRN's count
             device.grn_number = grn_number
         if new_device_price is not None:
             device.device_price = new_device_price

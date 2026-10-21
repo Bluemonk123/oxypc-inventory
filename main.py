@@ -709,9 +709,12 @@ async def startup_event():
     # ── GRN Stocked (2026-10-21): remember current matches, then one-time
     #    recovery of tags whose purchase invoice was already replaced ─────────
     try:
-        from services.grn_stocked import remember_tags, recover_from_audit_once
+        from services.grn_stocked import remember_tags, recover_from_audit_once, rebuild_for_rule_once
         from database import AsyncSessionLocal as _ASLgs
         async with _ASLgs() as _sessgs:
+            _rb = await rebuild_for_rule_once(_sessgs)
+            if _rb is not None:
+                print(f"  [GRNStocked] Rule now mapped tags (kept after ReGRN) — cleared {_rb} row(s), recounting")
             _gs = await remember_tags(_sessgs)
             await _sessgs.commit()
             _gr = await recover_from_audit_once(_sessgs)
