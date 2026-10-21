@@ -28,6 +28,12 @@
     <div><input type="text" id="fGrn" title="Search GRN" class="form-control form-control-sm font-monospace" placeholder="Search GRN…"></div>
     <div><input type="text" id="fInvoice" title="Search Invoice" class="form-control form-control-sm" placeholder="Search invoice number…"></div>
     <div><input type="text" id="fVendor" title="Search Vendor Name" class="form-control form-control-sm" placeholder="Search vendor…"></div>
+    {# Entity filter (2026-10-21) — matches the GRN's own Entity. #}
+    <div><select id="fEntity" title="Entity" class="form-select form-select-sm">
+      <option value="">All Entities</option>
+      {% for e in entity_options %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
+      <option value="__none__">Not set</option>
+    </select></div>
     <div><input type="date" id="fFrom" title="Date of Invoice — From" class="form-control form-control-sm"></div>
     <div><input type="date" id="fTo" title="Date of Invoice — To" class="form-control form-control-sm"></div>
     <div><button type="button" id="fReset" class="btn btn-outline-secondary btn-sm">Reset Filters</button></div>
@@ -82,10 +88,18 @@
     <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Create GRNs</span>
     {# Entering a GRN by hand covers goods that arrive without a PDF invoice,
        or one that will follow later. #}
+    <div class="d-flex align-items-center gap-2 ms-auto">
     <button type="button" class="btn btn-primary btn-sm text-nowrap"
             data-bs-toggle="modal" data-bs-target="#addGrnModal">
       <i class="bi bi-plus-circle me-1"></i>Add GRN
     </button>
+    {# Export (2026-10-21): exactly the rows the table shows — every filter
+       and the table search applied; count follows the filters. #}
+    <button type="button" id="grnExportBtn" class="btn btn-outline-success btn-sm text-nowrap"
+            title="Export the rows shown (with the current filters)">
+      <i class="bi bi-download me-1"></i>Export (<span id="grnExportCount">0</span>)
+    </button>
+    </div>
   </div>
   <div class="card-body p-0">
     {# No .table-responsive: initGlobalTable's scrollX owns horizontal scroll. #}
@@ -100,7 +114,17 @@
         <tbody>
           {% for g in grns %}
           {% set _lots = lots_by_grn.get(g.grn_number, []) if lots_by_grn is defined else [] %}
-          <tr id="grn-{{ g.grn_number }}">
+          {% set _st0 = stocked.get(g.grn_number, 0) if stocked is defined else 0 %}
+          {% set _gl0 = location_by_id.get(g.location_id|string) if (location_by_id is defined and g.location_id) else None %}
+          {% set _as0 = as_is_lot.get(g.grn_number) if as_is_lot is defined else None %}
+          <tr id="grn-{{ g.grn_number }}"
+              data-entity="{{ g.entity or '' }}" data-location="{{ _gl0.unit_id if _gl0 else '' }}"
+              data-added-by="{{ (user_names.get(g.created_by) if user_names is defined else None) or g.created_by or '' }}"
+              data-lots="{{ _lots | map(attribute='lot_number') | join(', ') }}"
+              data-inv="{{ g.invoice_number or '' }}" data-inv-date="{{ g.invoice_date or '' }}"
+              data-vendor="{{ g.sender_name or '' }}" data-qty="{{ g.quantity if g.quantity is not none else '' }}"
+              data-stocked="{{ _st0 }}" data-amount="{{ g.amount if g.amount is not none else '' }}"
+              data-asis="{{ _as0 or '' }}">
             <td class="ps-3"><span class="font-monospace fw-bold">{{ g.grn_number }}</span>
               {% if g.entity %}<div class="small text-muted text-nowrap">{{ g.entity }}</div>{% endif %}
               {% set _gl = location_by_id.get(g.location_id|string) if (location_by_id is defined and g.location_id) else None %}
@@ -162,6 +186,9 @@
                       data-eway="{{ g.e_way_bill or '' }}" data-notes="{{ g.notes or '' }}">
                 <i class="bi bi-pencil"></i> Edit
               </button>
+              {# Add Lot / Edit Lot / Map this GRN hidden (Pankaj, 2026-10-21) —
+                 kept here so they can be switched back on. #}
+              {% if false %}
               {% if _lots %}
               <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 add-lot-btn"
                       data-grn-id="{{ g.id }}" data-lot-numbers="{{ _lots | map(attribute='lot_number') | join(',') }}">
@@ -176,6 +203,7 @@
                       data-id="{{ g.id }}" data-grn="{{ g.grn_number }}">
                 <i class="bi bi-link-45deg"></i> Map this GRN
               </button>
+              {% endif %}
               <form method="post" action="/grn/{{ g.id }}/delete" class="d-inline"
                     onsubmit="return confirm('Delete GRN {{ g.grn_number }}?');">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
@@ -193,6 +221,10 @@
   </div>
 </div>
 
+<style>
+  .pend-chev { transition: transform .15s; }
+  [aria-controls="pendCollapse"]:not(.collapsed) .pend-chev { transform: rotate(90deg); }
+</style>
 <!-- GRN Pending for these Tag Numbers -->
 <form method="post" action="/grn/map" id="mapForm">
   <div id="mapNotice" class="alert py-2 small no-autohide d-none"></div>
@@ -200,8 +232,13 @@
   <input type="hidden" name="grn_id" id="mapGrnId">
   <div class="card border-0 shadow-sm">
     <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <span class="fw-semibold"><i class="bi bi-upc me-2"></i>GRN Pending for these Tag Numbers
-        <span class="badge bg-secondary ms-1">{{ pending_count }}</span></span>
+      {# Accordion (2026-10-21): collapsed by default; the title toggles it,
+         the filters / Export on the right do not. #}
+      <button type="button" class="btn btn-link p-0 text-decoration-none text-body fw-semibold d-flex align-items-center collapsed"
+              data-bs-toggle="collapse" data-bs-target="#pendCollapse" aria-expanded="false" aria-controls="pendCollapse">
+        <i class="bi bi-chevron-right me-2 pend-chev"></i><i class="bi bi-upc me-2"></i>GRN Pending for these Tag Numbers
+        <span class="badge bg-secondary ms-1">{{ pending_count }}</span>
+      </button>
       {# Filters on the right of the header (2026-10-15); they feed the
          server-side query (see /grn/post-iqc/data). #}
       <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -223,7 +260,7 @@
         </button>
       </div>
     </div>
-    <div class="card-body p-0">
+    <div id="pendCollapse" class="collapse card-body p-0">
       <div>
         <table id="pendingTable" class="table table-hover mb-0 small align-middle">
           <thead class="table-dark"><tr>
@@ -506,10 +543,46 @@ $(document).ready(function(){
     document.getElementById('fGrn').addEventListener('input', function(){ dt.column(0).search(this.value).draw(); });
     document.getElementById('fInvoice').addEventListener('input', function(){ dt.column(3).search(this.value).draw(); });
     document.getElementById('fVendor').addEventListener('input', function(){ dt.column(5).search(this.value).draw(); });
+    // Entity filter: the GRN row's own Entity ("Not set" = empty).
+    $.fn.dataTable.ext.search.push(function(settings, data, idx){
+      if (settings.nTable.id !== 'grnTable') return true;
+      var want = document.getElementById('fEntity').value;
+      if (!want) return true;
+      var tr = settings.aoData[idx] && settings.aoData[idx].nTr;
+      var ent = tr ? (tr.getAttribute('data-entity') || '') : '';
+      return want === '__none__' ? ent === '' : ent === want;
+    });
+    document.getElementById('fEntity').addEventListener('change', function(){ dt.draw(); });
+    // Export: the rows the filters leave, as CSV (UTF-8 BOM so Excel opens it;
+    // dates as stored, year-first, so Excel reads them as dates).
+    function grnExportRows() { return dt.rows({search: 'applied'}).nodes().toArray(); }
+    function grnExportCount() { document.getElementById('grnExportCount').textContent = grnExportRows().length; }
+    dt.on('draw.dt', grnExportCount);
+    grnExportCount();
+    document.getElementById('grnExportBtn').addEventListener('click', function () {
+      var cols = [['GRN', function (tr) { return tr.id.replace(/^grn-/, ''); }],
+                  ['Entity', 'entity'], ['Location ID', 'location'], ['Added By', 'added-by'],
+                  ['Lot Number(s)', 'lots'], ['Invoice Number', 'inv'], ['Date of Invoice', 'inv-date'],
+                  ['Vendor Name', 'vendor'], ['Quantity', 'qty'], ['Stocked', 'stocked'],
+                  ['Amount', 'amount'], ['As-Is Lot', 'asis']];
+      function q(v) { v = v == null ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+      var lines = [cols.map(function (c) { return q(c[0]); }).join(',')];
+      grnExportRows().forEach(function (tr) {
+        lines.push(cols.map(function (c) {
+          return q(typeof c[1] === 'function' ? c[1](tr) : tr.getAttribute('data-' + c[1]));
+        }).join(','));
+      });
+      var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'grn_post_iqc_' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    });
     document.getElementById('fFrom').addEventListener('change', function(){ dt.draw(); });
     document.getElementById('fTo').addEventListener('change', function(){ dt.draw(); });
     document.getElementById('fReset').addEventListener('click', function(){
-      ['fGrn','fInvoice','fVendor','fFrom','fTo'].forEach(function(id){ document.getElementById(id).value=''; });
+      ['fGrn','fInvoice','fVendor','fFrom','fTo','fEntity'].forEach(function(id){ document.getElementById(id).value=''; });
       dt.column(0).search('').column(3).search('').column(5).search('').draw();
     });
   }
@@ -552,6 +625,12 @@ $(document).ready(function(){
   }, {
     selectAll: { headerSelector: '#checkAll', rowSelector: '.pendChk', onChange: function(){ updatePendCount(); }, resetOnDraw: false },  // drawCallback sets the header box (auto-select on search)
   });
+  // GRN Pending accordion: DataTables measures columns while hidden, so
+  // re-measure when it opens; chevron points down while open.
+  var pc = document.getElementById('pendCollapse');
+  if (pc) {
+    pc.addEventListener('shown.bs.collapse', function () { dtPend.columns.adjust(); });
+  }
   // While searching, show every match on one page so all of them can be
   // ticked and mapped together; back to 12 per page when cleared.
   var PEND_SEARCH_LEN = -1, PEND_PAGE_LEN = 12;   // -1 = every match, no cap
