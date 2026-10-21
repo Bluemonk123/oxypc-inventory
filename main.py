@@ -706,6 +706,26 @@ async def startup_event():
     except Exception as _gee:
         print(f"  [GRNEntity] Could not backfill GRN Entity: {_gee}")
 
+    # ── Tag backfills: Zone / Location Type text + Sold tags' sale invoice (2026-10-21, one-time) ──
+    try:
+        from services.tag_backfills import backfill_tag_location_text_once, backfill_sold_invoice_once
+        from database import AsyncSessionLocal as _ASLtb
+        async with _ASLtb() as _sesstb:
+            _tl = await backfill_tag_location_text_once(_sesstb)
+            if _tl is not None:
+                print(f"  [TagBackfill] Zone / Location Type text set on {_tl} tag(s)")
+    except Exception as _tbe:
+        print(f"  [TagBackfill] Could not backfill Zone / Location Type text: {_tbe}")
+    try:
+        from services.tag_backfills import backfill_sold_invoice_once
+        from database import AsyncSessionLocal as _ASLtb2
+        async with _ASLtb2() as _sesstb2:
+            _si = await backfill_sold_invoice_once(_sesstb2)
+            if _si is not None:
+                print(f"  [TagBackfill] Sale Invoice Number set on {_si} Sold tag(s)")
+    except Exception as _tbe2:
+        print(f"  [TagBackfill] Could not backfill Sold tags' invoice: {_tbe2}")
+
     # ── RAM / Storage sizes spelled "12 GB" (2026-10-19), idempotent ──────────
     try:
         from utils.size_units import space_existing_size_values
