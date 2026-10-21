@@ -12,7 +12,8 @@
     /* Clamp long notes/remarks/comment cells to 2 lines; full text on hover (title). */
     .note-clamp { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; max-width:260px; }
   </style>
-  <link rel="icon" type="image/svg+xml" href="/static/img/logo.svg">
+  <link rel="icon" type="image/svg+xml" href="/static/img/oxypc-box-dark.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/static/img/oxypc-box-dark-32.png">
   {% block head %}{% endblock %}
 </head>
 <body data-username="{{ current_user.username|default('anon', true) }}">
@@ -21,11 +22,11 @@
   <!-- Sidebar -->
   <nav id="sidebar" class="sidebar-nav d-flex flex-column flex-shrink-0 p-0">
     <div class="sidebar-brand d-flex align-items-center px-3 py-3" style="background:#129042;color:#fff;">
-      {# App logo (2026-10-19, replaces the bi-laptop icon): logo-reverse.svg —
-         no tile, colours swapped (dark box, Forest-green symbols), made for
-         this OxyPC Forest green header. 28 px ≈ 1.5× the name's cap height;
-         gap = 1/4 of the logo width (7 px). #}
-      <img src="/static/img/logo-reverse.svg" alt="OxyPC" width="28" height="28" class="flex-shrink-0" style="margin-right:7px">
+      {# App logo (2026-10-21, OxyPC box C2 Round): oxypc-box-light.svg — the
+         white-box version made for this Forest green header. The green-box
+         oxypc-box-dark.svg is the browser-tab icon and login badge. 28 px ≈
+         1.5× the name's cap height; gap = 1/4 of the logo width (7 px). #}
+      <img src="/static/img/oxypc-box-light.svg" alt="OxyPC" width="28" height="28" class="flex-shrink-0" style="margin-right:7px">
       <span class="fs-6 fw-bold text-nowrap">Inventory Lifecycle</span>
     </div>
     <ul class="nav nav-pills flex-column mb-auto px-2" style="padding-top:1rem;padding-bottom:1rem;">
@@ -892,6 +893,12 @@
         <span id="serverStatusBadge" class="badge bg-secondary" title="Live connection to the application server">
           <i class="bi bi-arrow-repeat me-1"></i>Server Connecting
         </span>
+        <!-- Raise Ticket sits before the bell (2026-10-21) -->
+        <button type="button" class="btn btn-warning btn-sm fw-semibold"
+                data-bs-toggle="modal" data-bs-target="#raiseTicketModal"
+                title="Raise a support ticket">
+          Raise Ticket
+        </button>
         <!-- Notification Bell -->
         <div class="position-relative d-inline-block">
           <button type="button" class="btn btn-link text-dark p-1 text-decoration-none" title="Alerts" onclick="openNotifPanel()">
@@ -904,11 +911,6 @@
             </span>
           </button>
         </div>
-        <button type="button" class="btn btn-warning btn-sm fw-semibold"
-                data-bs-toggle="modal" data-bs-target="#raiseTicketModal"
-                title="Raise a support ticket">
-          Raise Ticket
-        </button>
         <!-- Username + role, stacked (role badge below the name). Since
              2026-10-19 the name opens a menu with My Profile and Logout —
              Logout moved here from its own button in the header. -->

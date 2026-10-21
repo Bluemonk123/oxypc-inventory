@@ -121,8 +121,10 @@
             <td>{{ g.invoice_date or '—' }}</td>
             <td>{{ g.sender_name or '—' }}</td>
             <td>{{ g.quantity if g.quantity is not none else '—' }}</td>
-            {# Stocked = tag numbers wired to this GRN (counted from the devices
-               themselves, so mapping a tag updates it with no extra bookkeeping). #}
+            {# Stocked (2026-10-21) = tags whose Invoice Number matches this GRN's
+               (or mapped to it). Add-only: a tag stays counted after its invoice
+               changes (e.g. on sale); one count per Tag Number; trashed tags not
+               counted. See services/grn_stocked.py. #}
             {% set _st = stocked.get(g.grn_number, 0) if stocked is defined else 0 %}
             <td class="grn-stocked" data-stocked="{{ _st }}" data-qty="{{ g.quantity if g.quantity is not none else 0 }}">
               <span class="badge bg-{{ 'success' if g.quantity and _st >= g.quantity else ('warning text-dark' if _st else 'secondary') }}">{{ _st }}</span>
@@ -151,6 +153,7 @@
                       data-entity="{{ g.entity or '' }}"
                       data-location="{{ g.location_id or '' }}"
                       data-lot-number="{{ _lots | map(attribute='lot_number') | join(', ') }}"
+                      data-file="{{ g.file_name or '' }}"
                       data-inv="{{ g.invoice_number or '' }}" data-date="{{ g.invoice_date or '' }}"
                       data-sender="{{ g.sender_name or '' }}" data-qty="{{ g.quantity if g.quantity is not none else '' }}"
                       data-amount="{{ g.amount if g.amount is not none else '' }}"
@@ -316,34 +319,34 @@
   </div>
 </div>
 
-<!-- Edit GRN modal -->
+<!-- Edit GRN modal — same fields, order and rules as Add GRN (2026-10-21):
+     Entity required, Lot Number(s) editable (add = map / create, remove =
+     unmap from this GRN only), Location ID, and Upload Invoice to attach or
+     replace the PDF. -->
 <div class="modal fade" id="editGrnModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
-    <form method="post" id="editGrnForm" class="modal-content">
+    <form method="post" id="editGrnForm" enctype="multipart/form-data" class="modal-content">
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <input type="hidden" name="source" value="post_iqc">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit GRN</h5>
+        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit GRN <span id="e_grn_label" class="font-monospace fw-normal small text-muted ms-2"></span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <div class="row g-2">
-          <div class="col-md-4"><label class="form-label fw-semibold">GRN Number</label>
-            <input type="text" id="e_grn_number" class="form-control" readonly></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Lot Number</label>
-            <input type="text" id="e_lot_number" class="form-control" readonly placeholder="— Not mapped —"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Vendor Name</label>
-            <input type="text" name="sender_name" id="e_sender" class="form-control"></div>
+        <div class="alert alert-info py-2 small no-autohide">
+          <i class="bi bi-info-circle me-1"></i>GRN Number <span id="e_grn_number" class="font-monospace fw-semibold"></span> stays the same.
         </div>
-        <div class="row g-2 mt-1">
-          <div class="col-md-4"><label class="form-label fw-semibold">Entity</label>
-            <select name="entity" id="e_entity" class="form-select">
-              <option value="">— Not set —</option>
+        <div class="row g-2 mb-1">
+          <div class="col-md-4"><label class="form-label fw-semibold">Entity <span class="text-danger">*</span></label>
+            <select name="entity" id="e_entity" class="form-select" required>
+              <option value="">— Select —</option>
               {% for e in entity_options %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
             </select></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Location ID</label>
-            {{ location_select('location_id', 'e_location') }}</div>
+          <div class="col-md-8"><label class="form-label fw-semibold">Lot Number(s)</label>
+            <input type="text" name="lot_numbers" id="e_lot_number" class="form-control" placeholder="e.g. 4590 or 4590, 4591">
+            <div class="form-text">One or more, comma-separated. A new number is mapped to this GRN (created if it doesn't exist); a number you remove is only unmapped from this GRN, the lot itself is kept.</div></div>
         </div>
-        <div class="row g-2 mt-1">
+        <div class="row g-2">
           <div class="col-md-4"><label class="form-label fw-semibold">Date of Invoice</label>
             <input type="date" name="invoice_date" id="e_date" class="form-control"></div>
           <div class="col-md-4"><label class="form-label fw-semibold">Purchase Date</label>
@@ -366,6 +369,16 @@
             <input type="text" name="vehicle_number" id="e_vehicle" class="form-control"></div>
           <div class="col-md-4"><label class="form-label fw-semibold">E-Way Bill Number</label>
             <input type="text" name="e_way_bill" id="e_eway" class="form-control"></div>
+        </div>
+        <div class="row g-2 mt-1">
+          <div class="col-md-4"><label class="form-label fw-semibold">Vendor Name</label>
+            <input type="text" name="sender_name" id="e_sender" class="form-control"></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Location ID</label>
+            {{ location_select('location_id', 'e_location') }}
+            <div class="form-text">Filled onto tags uploaded with this GRN.</div></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Upload Invoice</label>
+            <input type="file" name="invoice" accept="application/pdf,.pdf" class="form-control">
+            <div class="form-text" id="e_file_hint">Optional — attach the invoice PDF if you have it.</div></div>
         </div>
         <div class="mb-2 mt-2"><label class="form-label fw-semibold">Notes</label>
           <textarea name="notes" id="e_notes" class="form-control" rows="2"></textarea></div>
@@ -654,7 +667,12 @@ var em = document.getElementById('editGrnModal');
 if (em) { em.addEventListener('show.bs.modal', function(e){
   var b = e.relatedTarget;
   document.getElementById('editGrnForm').action = '/grn/' + b.getAttribute('data-id') + '/edit';
-  document.getElementById('e_grn_number').value = b.getAttribute('data-grn-number') || '';
+  document.getElementById('e_grn_number').textContent = b.getAttribute('data-grn-number') || '';
+  document.getElementById('e_grn_label').textContent = b.getAttribute('data-grn-number') || '';
+  em.querySelector('input[name="invoice"]').value = '';
+  document.getElementById('e_file_hint').textContent = b.getAttribute('data-file')
+    ? 'Current file: ' + b.getAttribute('data-file') + '. Choose a PDF only to replace it.'
+    : 'Optional — attach the invoice PDF if you have it.';
   document.getElementById('e_entity').value = b.getAttribute('data-entity') || '';
   document.getElementById('e_location').value = b.getAttribute('data-location') || '';
   document.getElementById('e_lot_number').value = b.getAttribute('data-lot-number') || '';

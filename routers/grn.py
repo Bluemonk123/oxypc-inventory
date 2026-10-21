@@ -11,7 +11,7 @@ from utils.timezone import app_now
 from fastapi import APIRouter, Depends, Form, Request, HTTPException, Query, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, FileResponse, JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, or_, update
+from sqlalchemy import select, func, or_, update, delete as sa_delete
 
 from database import get_db
 from models.user import User, UserRole
@@ -60,22 +60,13 @@ async def _next_grn_12(db: AsyncSession) -> str:
 
 
 async def _stocked_map(db: AsyncSession, grns) -> dict:
-    """{grn_number: number of tag numbers wired to it}.
-
-    Counted from Device.grn_number rather than stored on GRNImport so the figure
-    can never drift out of step with the tags that were actually mapped.
-    Trashed / deactivated tags are excluded — they are no longer stock.
-    """
-    numbers = [g.grn_number for g in grns if g.grn_number]
-    if not numbers:
-        return {}
-    rows = (await db.execute(
-        select(Device.grn_number, func.count(Device.id))
-        .where(Device.grn_number.in_(numbers),
-               Device.is_active == True, Device.is_trashed == False)
-        .group_by(Device.grn_number)
-    )).all()
-    return {n: c for n, c in rows}
+    """{grn_number: Stocked count}. Since 2026-10-21: tags whose Invoice
+    Number matches the GRN's (or mapped to it), remembered add-only in
+    grn_stocked_tags so the count never drops when a tag's invoice changes;
+    one count per Tag Number; trashed / deactivated tags not counted.
+    See services/grn_stocked.py."""
+    from services.grn_stocked import stocked_counts
+    return await stocked_counts(db, grns)
 
 
 async def _as_is_lot_map(db: AsyncSession, grns) -> dict:
@@ -1096,6 +1087,12 @@ async def grn_edit(
     entity: str | None = Form(None),
     # None when the form has no Location field — keeps the stored value.
     location_id: str | None = Form(None),
+    # Edit GRN = Add GRN (2026-10-21): the Lot Number(s) list (None = form has
+    # no such field, e.g. Manage Lots' modal -> mappings untouched), an
+    # optional invoice PDF to attach / replace, and the page it came from.
+    lot_numbers: str | None = Form(None),
+    invoice: UploadFile | None = File(None),
+    source: str = Form(""),
     db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed),
     _perm: User = Depends(require_additional_perm("edit_grn")),
 ):
@@ -1116,6 +1113,19 @@ async def grn_edit(
     if taken:
         return RedirectResponse(url=f"{_base}?error=" + _q(
             f"Invoice number {invoice_number.strip()} already belongs to GRN {taken}."), status_code=302)
+    # Same Entity rule as Add GRN: required on the GRN Post IQC page, and must
+    # be a configured entity (a friendly error instead of a bare 400).
+    if entity is not None:
+        if entity.strip() and entity.strip() not in await entity_values(db):
+            return RedirectResponse(url=f"{_base}?error=" + _q(f"Unknown entity '{entity.strip()}'."),
+                                    status_code=302)
+        if source == "post_iqc" and not entity.strip():
+            return RedirectResponse(url=f"{_base}?error=" + _q("Select the GRN's Entity."),
+                                    status_code=302)
+    old = {"invoice_number": g.invoice_number, "entity": g.entity, "sender_name": g.sender_name,
+           "location_id": str(g.location_id) if g.location_id else None,
+           "amount": str(g.amount) if g.amount is not None else None, "quantity": g.quantity,
+           "file_name": g.file_name}
     if location_id is not None:
         try:
             g.location_id = await _resolve_location_id(db, location_id)
@@ -1141,10 +1151,20 @@ async def grn_edit(
     g.e_way_bill = e_way_bill or None
     g.notes = notes or None
     if entity is not None:
-        ent = entity.strip()
-        if ent and ent not in await entity_values(db):
-            raise HTTPException(400, f"Unknown entity '{ent}'.")
-        g.entity = ent or None
+        g.entity = entity.strip() or None
+
+    # Invoice PDF: attach, or replace the current one — stored exactly as Add
+    # GRN stores it, so the existing download link serves it. The previous
+    # file is left on disk (only the GRN's pointer moves).
+    if invoice is not None:
+        data = await invoice.read()
+        if data:
+            os.makedirs(GRN_UPLOAD_DIR, exist_ok=True)
+            g.file_hash = hashlib.sha256(data).hexdigest()
+            g.file_name = (invoice.filename or "invoice.pdf").replace("/", "_").replace("\\", "_")
+            g.file_path = os.path.join(GRN_UPLOAD_DIR, f"{g.grn_number}_{g.file_name}")
+            with open(g.file_path, "wb") as f:
+                f.write(data)
 
     # Mirror the shared header fields onto every Lot mapped to this GRN. A GRN
     # can now carry several Lots via the Add/Edit Lot modal, so this can no
@@ -1154,7 +1174,11 @@ async def grn_edit(
     )).scalars().all()
     if g.lot_id and not any(lot.id == g.lot_id for lot in mapped_lots):
         legacy_lot = (await db.execute(select(Lot).where(Lot.id == g.lot_id))).scalar_one_or_none()
-        if legacy_lot:
+        # Only a lot this GRN owns. An existing lot linked in from another GRN
+        # (Add / Edit GRN "Lot Number(s)") also lands in g.lot_id, and must
+        # keep its own GRN's invoice / vendor — overwriting it here is how
+        # lot 456 took a test GRN's details on staging (2026-10-21).
+        if legacy_lot and legacy_lot.grn_system_number in (None, g.grn_number):
             mapped_lots.append(legacy_lot)
     for lot in mapped_lots:
         lot.vendor_name = g.sender_name
@@ -1175,13 +1199,59 @@ async def grn_edit(
         lot.e_way_bill = g.e_way_bill
         lot.notes = g.notes
 
+    # Lot Number(s), after the mirror above so a lot that is only now being
+    # linked keeps its own details (same as Add GRN). Removed numbers are
+    # unmapped from THIS GRN only — every link the Mapped Lots list reads
+    # (grn_lots row, the lot's grn_system_number, the GRN's legacy lot_id).
+    linked = created = refused = unmapped = []
+    if lot_numbers is not None:
+        wanted = _split_lot_numbers(lot_numbers)
+        wanted_lc = {n.lower() for n in wanted}
+        current = (await _lots_by_grn(db, [g])).get(g.grn_number, [])
+        unmapped = []
+        for lot in current:
+            if (lot.lot_number or "").lower() in wanted_lc:
+                continue
+            await db.execute(sa_delete(GRNLot).where(GRNLot.grn_id == g.id, GRNLot.lot_id == lot.id))
+            if lot.grn_system_number == g.grn_number:
+                lot.grn_system_number = None
+            if g.lot_id == lot.id:
+                g.lot_id, g.lot_number = None, None
+            unmapped.append(lot.lot_number)
+        cur_lc = {(l.lot_number or "").lower() for l in current}
+        linked, created, refused = await _map_lots_to_grn(
+            db, g, [n for n in wanted if n.lower() not in cur_lc], current_user.username)
+        if g.lot_id is None:
+            keep = [l for l in current if (l.lot_number or "").lower() in wanted_lc]
+            if keep:
+                g.lot_id, g.lot_number = keep[0].id, keep[0].lot_number[:60]
+
+    await audit(db, user=current_user, action="GRN_EDITED", table_name="grn_imports",
+                record_id=g.grn_number, old_value=old,
+                new_value={"invoice_number": g.invoice_number, "entity": g.entity,
+                           "sender_name": g.sender_name,
+                           "location_id": str(g.location_id) if g.location_id else None,
+                           "amount": str(g.amount) if g.amount is not None else None,
+                           "quantity": g.quantity, "file_name": g.file_name,
+                           "lots_linked": linked, "lots_created": created,
+                           "lots_unmapped": unmapped, "lots_refused": refused},
+                request=request)
     await db.commit()
     # Test GRNs redirect back to Manage Lots — the Edit GRN modal there posts
     # to this same endpoint, so it must not land the operator on the live
     # GRN Records page.
     base = ("/trade-partner/manage-lots" if g.source == EXTERNAL_PARTNER_TEST_GRN_SOURCE
             else "/grn/post-iqc")
-    return RedirectResponse(url=f"{base}?success=GRN+{g.grn_number}+updated", status_code=302)
+    msg = f"GRN {g.grn_number} updated"
+    if linked or created:
+        msg += f" — lots mapped: {', '.join(linked + created)}"
+        if created:
+            msg += f" (new: {', '.join(created)})"
+    if unmapped:
+        msg += f" — unmapped: {', '.join(unmapped)}"
+    if refused:
+        msg += f". Not mapped (lot is in Trash): {', '.join(refused)}"
+    return RedirectResponse(url=f"{base}?success=" + _q(msg), status_code=302)
 
 
 @router.get("/lots/check")
@@ -1397,3 +1467,4 @@ async def submit_grn(
         )
         redirect += f"&warning={warn_msg}"
     return RedirectResponse(url=redirect, status_code=302)
+

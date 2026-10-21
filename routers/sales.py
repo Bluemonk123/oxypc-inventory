@@ -65,6 +65,17 @@ _SUMMARY_GRADES = (
 )
 
 router = APIRouter(tags=["sales"], dependencies=[Depends(verify_csrf)])
+
+async def _remember_grn_stock(db, device_ids):
+    """Before a tag's Invoice Number is overwritten, keep it counted under the
+    GRN its current invoice belongs to (GRN Stocked is add-only). In a
+    savepoint, so a failure here can never block the sale / edit itself."""
+    try:
+        from services.grn_stocked import remember_tags
+        async with db.begin_nested():
+            await remember_tags(db, list(device_ids))
+    except Exception as e:  # noqa: BLE001
+        print(f"  [GRNStocked] could not remember tags: {e}")
 allowed = require_roles(UserRole.admin, UserRole.sales, UserRole.sales_manager, UserRole.telecaller)
 # Opened to every role (2026-09-03) — was require_roles(admin, sales,
 # sales_manager, telecaller), same as `allowed` above. Reused by the page
@@ -1623,6 +1634,7 @@ async def create_sale(
         _sale_inv = (invoice_no or "").strip()
         _prev_inv = device.invoice_number
         if _sale_inv:
+            await _remember_grn_stock(db, [device.id])
             device.invoice_number = _sale_inv
         block_item = block_items.get(device.id)
         if block_item is not None:
@@ -2914,6 +2926,7 @@ async def process_return(
             )).scalar_one_or_none() or "").strip()
         _prev_repl_inv = replacement_device.invoice_number
         if _cust_inv:
+            await _remember_grn_stock(db, [replacement_device.id])
             replacement_device.invoice_number = _cust_inv
         db.add(StageMovement(device_id=replacement_device.id, from_stage=prev_stage,
                              to_stage=DeviceStage.sold, moved_by=current_user.username,

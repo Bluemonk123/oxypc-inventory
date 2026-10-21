@@ -26,6 +26,17 @@ from services.location_defaults import ensure_stage_location
 from models.grn_import import GRNImport
 
 router = APIRouter(prefix="/bulk-upload", tags=["bulk_upload"], dependencies=[Depends(verify_csrf)])
+
+async def _remember_grn_stock(db, device_ids):
+    """Before a tag's Invoice Number is overwritten, keep it counted under the
+    GRN its current invoice belongs to (GRN Stocked is add-only). In a
+    savepoint, so a failure here can never block the sale / edit itself."""
+    try:
+        from services.grn_stocked import remember_tags
+        async with db.begin_nested():
+            await remember_tags(db, list(device_ids))
+    except Exception as e:  # noqa: BLE001
+        print(f"  [GRNStocked] could not remember tags: {e}")
 allowed = require_roles(UserRole.admin, UserRole.inventory_manager)
 
 # ── Devices template column order — mirrors every field on the IQC entry
@@ -832,6 +843,7 @@ async def update_duplicate_device(
     device = (await db.execute(select(Device).where(Device.barcode == tag_number))).scalar_one_or_none()
     if not device:
         return JSONResponse({"success": False, "error": f"Tag Number '{tag_number}' not found"}, status_code=404)
+    await _remember_grn_stock(db, [device.id])   # before the row may change its invoice
     _apply_row_to_device(device, row, {e.lower(): e for e in await entity_values(db)})
     await audit(db, action="DEVICE_UPDATED", user=current_user,
                 table_name="devices", record_id=str(device.id),
@@ -866,6 +878,9 @@ async def update_all_duplicate_devices(
     entity_lookup = {e.lower(): e for e in await entity_values(db)}
 
     updated, missing = [], []
+    # GRN Stocked is add-only: remember these tags under their current
+    # invoice's GRN before the rows below may change it.
+    await _remember_grn_stock(db, [d.id for d in devices.values()])
     for r in rows:
         tag = r.get("tag_number")
         device = devices.get(tag)

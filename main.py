@@ -706,6 +706,20 @@ async def startup_event():
     except Exception as _gee:
         print(f"  [GRNEntity] Could not backfill GRN Entity: {_gee}")
 
+    # ── GRN Stocked (2026-10-21): remember current matches, then one-time
+    #    recovery of tags whose purchase invoice was already replaced ─────────
+    try:
+        from services.grn_stocked import remember_tags, recover_from_audit_once
+        from database import AsyncSessionLocal as _ASLgs
+        async with _ASLgs() as _sessgs:
+            _gs = await remember_tags(_sessgs)
+            await _sessgs.commit()
+            _gr = await recover_from_audit_once(_sessgs)
+            print(f"  [GRNStocked] {_gs} tag(s) remembered"
+                  + (f", {_gr} recovered from the audit log" if _gr is not None else ""))
+    except Exception as _gse:
+        print(f"  [GRNStocked] Could not fill GRN Stocked: {_gse}")
+
     # ── Tag backfills: Zone / Location Type text + Sold tags' sale invoice (2026-10-21, one-time) ──
     try:
         from services.tag_backfills import backfill_tag_location_text_once, backfill_sold_invoice_once

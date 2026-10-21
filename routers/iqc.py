@@ -26,6 +26,17 @@ from routers.devices import _build_model_summary
 
 router = APIRouter(prefix="/iqc", tags=["iqc"], dependencies=[Depends(verify_csrf)])
 
+async def _remember_grn_stock(db, device_ids):
+    """Before a tag's Invoice Number is overwritten, keep it counted under the
+    GRN its current invoice belongs to (GRN Stocked is add-only). In a
+    savepoint, so a failure here can never block the sale / edit itself."""
+    try:
+        from services.grn_stocked import remember_tags
+        async with db.begin_nested():
+            await remember_tags(db, list(device_ids))
+    except Exception as e:  # noqa: BLE001
+        print(f"  [GRNStocked] could not remember tags: {e}")
+
 
 def _keep_after_rollback(db, obj):
     """Detach `obj` so it stays readable once the session is rolled back.
@@ -1074,6 +1085,8 @@ async def iqc_bulk_apply_grade_type(
         if new_grade is not None:
             device.grade = new_grade
         if invoice_number.strip():
+            if device.invoice_number != invoice_number.strip():
+                await _remember_grn_stock(db, [device.id])
             device.invoice_number = invoice_number.strip()
         if po_number.strip():
             device.po_number = po_number.strip()

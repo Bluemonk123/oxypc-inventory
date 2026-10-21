@@ -70,6 +70,26 @@ class GRNLot(Base):
     created_at = Column(DateTime, nullable=False, default=app_now)
 
 
+class GRNStockedTag(Base):
+    """Tags counted in a GRN's Stocked column (approved via dbdiagram 2026-10-21).
+
+    Add-only: a tag is added when its Invoice Number matches the GRN's (or it
+    is mapped to the GRN), and is never removed when the tag's invoice later
+    changes (e.g. replaced by the sale invoice). barcode_key is the Tag Number
+    upper-cased, so case twins ("...l1218" / "...L1218") count once.
+    Filled by services/grn_stocked.py."""
+    __tablename__ = "grn_stocked_tags"
+    __table_args__ = (UniqueConstraint("grn_id", "barcode_key", name="uq_grn_stocked_grn_barcode"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    grn_id = Column(UUID(as_uuid=True), ForeignKey("grn_imports.id"), nullable=False, index=True)
+    device_id = Column(UUID(as_uuid=True), ForeignKey("devices.id"), nullable=False, index=True)
+    barcode_key = Column(String(100), nullable=False)
+    matched_invoice = Column(String(100), nullable=True)
+    source = Column(String(20), nullable=False)   # invoice_match | grn_mapped | audit_recovery
+    created_at = Column(DateTime, nullable=False, default=app_now)
+
+
 async def backfill_grn_lots(db) -> int:
     """One-time, idempotent: give every GRN that has the legacy single
     grn_imports.lot_id a matching grn_lots row. Safe to run on every startup —

@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="7 7 50 50">
+<!-- OxyPC box logo, C2 Round, no tile, full detail. Light version: white box, OxyPC Forest symbols. For green and dark backgrounds (sidebar header, Forest #129042). -->
+<defs><clipPath id="oxyBoxlight0"><path d="M28.06 11.17Q32 9 35.94 11.17L48.06 17.83Q52 20 52 24.50L52 39.50Q52 44 48.06 46.17L35.94 52.83Q32 55 28.06 52.83L15.94 46.17Q12 44 12 39.50L12 24.50Q12 20 15.94 17.83Z"/></clipPath></defs>
+<g clip-path="url(#oxyBoxlight0)">
+<path d="M32 9l20 11v24L32 55 12 44V20z" fill="#F1F5F2"/>
+<path d="M12 20l20 11 20-11L32 9z" fill="#FFFFFF"/>
+<path d="M32 31v24l20-11V20z" fill="#DCE5DF"/>
+<g transform="matrix(1 .55 0 1 0 0)"><g transform="translate(22 24) scale(.85) translate(-22 -24)"><rect x="15.5" y="18" width="13" height="9" rx="1" fill="none" stroke="#129042" stroke-width="2.2"/><path d="M14 30h16" stroke="#129042" stroke-width="2.6" stroke-linecap="round"/></g></g>
+<g transform="matrix(20 -11 0 24 32 31)"><g transform="translate(0.07 0.008) scale(0.92)"><path d="M.30 .24h.36q.04 0 .04 .04v.10h.10l.10 .14v.20q0 .03-.03 .03H.30q-.03 0-.03-.03V.27q0-.03 .03-.03z" fill="#129042"/><path d="M.73 .42h.06l.07 .10h-.13z" fill="#DCE5DF"/><circle cx=".40" cy=".70" r=".12" fill="#DCE5DF"/><circle cx=".40" cy=".70" r=".085" fill="#129042"/><circle cx=".79" cy=".70" r=".12" fill="#DCE5DF"/><circle cx=".79" cy=".70" r=".085" fill="#129042"/><path d="M.14 .36h.12M.06 .48h.20" stroke="#129042" stroke-width=".055" stroke-linecap="round"/></g></g>
+<path d="M25 21.4L29.5 23.88L39 18.65" fill="none" stroke="#b7c9bd" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M25 20L29.5 22.48L39 17.25" fill="none" stroke="#129042" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+</g>
+</svg>

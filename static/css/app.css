@@ -97,20 +97,20 @@ body {
 .nav-history-group {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 0;              /* 2026-10-21: was 4px — triangles slightly closer */
   height: 36px;
 }
 .nav-history-btn {
   border: 0;
   background: transparent;
   color: #c3cad3;
-  width: 22px;
+  width: 18px;         /* 2026-10-21: was 22px */
   height: 36px;
   padding: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.9rem;
+  font-size: 1.6rem;   /* 2026-10-21: was 1.9rem — slightly smaller triangles */
   cursor: pointer;
   transition: color 0.15s;
 }
