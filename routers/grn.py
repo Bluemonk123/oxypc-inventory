@@ -20,6 +20,7 @@ from models.master import EXTERNAL_PARTNER_TEST_LOT_PREFIX, EXTERNAL_PARTNER_TES
 from models.device import Device, DeviceStage, StageMovement, stage_sort_expr
 from models.engines import AuditLog
 from models.grn_import import GRNImport, GRNLot
+from models.location import StorageLocation
 from services.invoice_parser import extract_invoice_fields
 from services.audit_engine import audit
 from utils.master_data import entity_values
@@ -333,6 +334,7 @@ async def grn_post_iqc(request: Request, db: AsyncSession = Depends(get_db),
             by_lower[uname.lower()] = fname or uname
         user_names = {c: by_lower[c.lower()] for c in creators if c.lower() in by_lower}
 
+    _locs = await _location_options(db)
     return templates.TemplateResponse("grn/post_iqc.html", {
         "request": request, "grns": grns, "pending_count": pending_count,
         "user_names": user_names,
@@ -345,6 +347,8 @@ async def grn_post_iqc(request: Request, db: AsyncSession = Depends(get_db),
         "entity_options": await entity_values(db),
         "lots_by_grn": lots_by_grn,
         "lots_json": lots_json,
+        "location_options": _locs,
+        "location_by_id": {str(l.id): l for l in _locs},
     })
 
 
@@ -791,6 +795,48 @@ async def grn_delete(
     return RedirectResponse(url=f"{base}?success=GRN+{g.grn_number}+deleted", status_code=302)
 
 
+async def _location_options(db) -> list:
+    """Active Location master rows for the GRN modal's Location ID dropdown,
+    grouped by zone (same order as Manage Locations)."""
+    return (await db.execute(
+        select(StorageLocation).where(StorageLocation.is_active.isnot(False))
+        .order_by(StorageLocation.zone, StorageLocation.unit_id)
+    )).scalars().all()
+
+
+async def _resolve_location_id(db, raw):
+    """Form value -> active StorageLocation id, or None when blank.
+    Raises ValueError for an unknown/inactive location."""
+    raw = (raw or "").strip()
+    if not raw:
+        return None
+    import uuid as _u
+    try:
+        lid = _u.UUID(raw)
+    except ValueError:
+        raise ValueError("Unknown Location ID.")
+    loc = (await db.execute(
+        select(StorageLocation).where(StorageLocation.id == lid, StorageLocation.is_active.isnot(False))
+    )).scalar_one_or_none()
+    if loc is None:
+        raise ValueError("Unknown or inactive Location ID.")
+    return loc.id
+
+
+async def _invoice_taken_by(db, invoice_no, exclude_id=None):
+    """GRN number already using this invoice (case/space-insensitive), else None.
+    One Invoice Number belongs to exactly one GRN (Pankaj, 2026-10-21)."""
+    inv = (invoice_no or "").strip()
+    if not inv:
+        return None
+    q = select(GRNImport.grn_number).where(
+        func.upper(func.trim(GRNImport.invoice_number)) == inv.upper(),
+        GRNImport.is_deleted.isnot(True))
+    if exclude_id is not None:
+        q = q.where(GRNImport.id != exclude_id)
+    return (await db.execute(q.limit(1))).scalar_one_or_none()
+
+
 def _split_lot_numbers(raw) -> list[str]:
     """'A, B ,A' -> ['A', 'B'] — comma/newline separated, trimmed, de-duplicated
     case-insensitively, first spelling kept."""
@@ -912,6 +958,7 @@ async def grn_create_manual(
     # Flow 1 (2026-10-21): the entity these goods belong to, and the Lot
     # Number(s) — single or comma-separated — mapped onto this GRN on save.
     entity: str = Form(""), lot_numbers: str = Form(""),
+    location_id: str = Form(""),
     # Optional, unlike the upload path's File(...). An empty file input still
     # posts an UploadFile with a blank filename, so presence is decided by
     # reading the bytes, not by the object being non-None.
@@ -942,10 +989,7 @@ async def grn_create_manual(
     # than letting the same goods be received twice.
     inv_no = (invoice_number or "").strip()
     if inv_no:
-        same_grn = (await db.execute(
-            select(GRNImport.grn_number).where(GRNImport.invoice_number == inv_no,
-                                               GRNImport.is_deleted == False)
-        )).scalar_one_or_none()
+        same_grn = await _invoice_taken_by(db, inv_no)
         if same_grn:
             return RedirectResponse(
                 url=f"{base}?error=" + quote(
@@ -959,6 +1003,10 @@ async def grn_create_manual(
     if source == "post_iqc" and not entity:
         return RedirectResponse(url=f"{base}?error=" + quote("Select the GRN's Entity."),
                                 status_code=302)
+    try:
+        loc_id = await _resolve_location_id(db, location_id)
+    except ValueError as e:
+        return RedirectResponse(url=f"{base}?error=" + quote(str(e)), status_code=302)
 
     def _int(v):
         try:
@@ -996,6 +1044,7 @@ async def grn_create_manual(
     g = GRNImport(
         grn_number=grn_number,
         entity=entity or None,
+        location_id=loc_id,
         file_name=file_name, file_path=file_path, file_hash=file_hash,
         invoice_number=inv_no or None,
         invoice_date=invoice_date or None,
@@ -1045,6 +1094,8 @@ async def grn_edit(
     e_way_bill: str = Form(""), notes: str = Form(""),
     # None when the form has no Entity field (older callers) — keeps the value.
     entity: str | None = Form(None),
+    # None when the form has no Location field — keeps the stored value.
+    location_id: str | None = Form(None),
     db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed),
     _perm: User = Depends(require_additional_perm("edit_grn")),
 ):
@@ -1057,7 +1108,20 @@ async def grn_edit(
     g = (await db.execute(select(GRNImport).where(GRNImport.id == gid))).scalar_one_or_none()
     if not g:
         raise HTTPException(404, "GRN not found")
-    g.invoice_number = invoice_number or None
+    from urllib.parse import quote as _q
+    _base = ("/trade-partner/manage-lots" if g.source == EXTERNAL_PARTNER_TEST_GRN_SOURCE
+             else "/grn/post-iqc")
+    # One Invoice Number <-> one GRN (2026-10-21).
+    taken = await _invoice_taken_by(db, invoice_number, exclude_id=g.id)
+    if taken:
+        return RedirectResponse(url=f"{_base}?error=" + _q(
+            f"Invoice number {invoice_number.strip()} already belongs to GRN {taken}."), status_code=302)
+    if location_id is not None:
+        try:
+            g.location_id = await _resolve_location_id(db, location_id)
+        except ValueError as e:
+            return RedirectResponse(url=f"{_base}?error=" + _q(str(e)), status_code=302)
+    g.invoice_number = (invoice_number or "").strip() or None
     g.invoice_date = invoice_date or None
     if lot_number is not None:
         g.lot_number = lot_number or None

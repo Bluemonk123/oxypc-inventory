@@ -1617,6 +1617,13 @@ async def create_sale(
 
         device.current_stage = DeviceStage.sold
         device.updated_at    = app_now()
+        # Sale's Invoice Number replaces the tag's Invoice Number (Pankaj,
+        # 2026-10-21). The previous (purchase/GRN) invoice is kept in the
+        # SALE_CREATED audit below; the tag keeps its GRN number.
+        _sale_inv = (invoice_no or "").strip()
+        _prev_inv = device.invoice_number
+        if _sale_inv:
+            device.invoice_number = _sale_inv
         block_item = block_items.get(device.id)
         if block_item is not None:
             # Close the hold on this tag; the note links the sale to its block.
@@ -1630,8 +1637,10 @@ async def create_sale(
 
         await audit(db, user=current_user, action="SALE_CREATED",
                     table_name="sales", record_id=str(device.id),
+                    old_value=({"invoice_number": _prev_inv} if _sale_inv else None),
                     new_value={"sale_number": sale_num, "price": str(price),
                                "below_cost": bool(w),
+                               **({"invoice_number": _sale_inv} if _sale_inv else {}),
                                **({"block_id": block_rec.block_id} if block_item is not None else {})},
                     notes=w, request=request)
 

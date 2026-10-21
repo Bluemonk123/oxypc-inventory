@@ -2,6 +2,19 @@
 {% block title %}Create GRN — OxyPC{% endblock %}
 {% block page_title %}Create GRN{% endblock %}
 {% block content %}
+{# Location ID dropdown (2026-10-21) — Location master rows grouped by zone.
+   IQC bulk upload copies the GRN's Location ID (plus its zone / warehouse)
+   onto every tag received on this GRN. #}
+{% macro location_select(name, id_attr) -%}
+<select name="{{ name }}"{% if id_attr %} id="{{ id_attr }}"{% endif %} class="form-select">
+  <option value="">— Not set —</option>
+  {% for zone, locs in (location_options if location_options is defined else []) | groupby('zone_label') %}
+  <optgroup label="{{ zone }}">
+    {% for l in locs %}<option value="{{ l.id }}">{{ l.unit_id }}{% if l.slot %} [{{ l.slot }}]{% endif %}{% if l.description %} — {{ l.description }}{% endif %}</option>{% endfor %}
+  </optgroup>
+  {% endfor %}
+</select>
+{%- endmacro %}
 {% import "_multiselect_filter.html" as ms %}
 {# Flash messages are rendered once by base.html — rendering them here too
    showed every success/error twice. #}
@@ -89,7 +102,9 @@
           {% set _lots = lots_by_grn.get(g.grn_number, []) if lots_by_grn is defined else [] %}
           <tr id="grn-{{ g.grn_number }}">
             <td class="ps-3"><span class="font-monospace fw-bold">{{ g.grn_number }}</span>
-              {% if g.entity %}<div class="small text-muted text-nowrap">{{ g.entity }}</div>{% endif %}</td>
+              {% if g.entity %}<div class="small text-muted text-nowrap">{{ g.entity }}</div>{% endif %}
+              {% set _gl = location_by_id.get(g.location_id|string) if (location_by_id is defined and g.location_id) else None %}
+              {% if _gl %}<div class="small text-muted text-nowrap"><i class="bi bi-geo-alt"></i> {{ _gl.unit_id }}</div>{% endif %}</td>
             {# Added By: display name of the user who created this GRN (created_by holds the username). #}
             <td class="text-nowrap">{{ (user_names.get(g.created_by) if user_names is defined else None) or g.created_by or '—' }}</td>
             <td>
@@ -134,6 +149,7 @@
                       data-bs-toggle="modal" data-bs-target="#editGrnModal"
                       data-id="{{ g.id }}" data-grn-number="{{ g.grn_number }}"
                       data-entity="{{ g.entity or '' }}"
+                      data-location="{{ g.location_id or '' }}"
                       data-lot-number="{{ _lots | map(attribute='lot_number') | join(', ') }}"
                       data-inv="{{ g.invoice_number or '' }}" data-date="{{ g.invoice_date or '' }}"
                       data-sender="{{ g.sender_name or '' }}" data-qty="{{ g.quantity if g.quantity is not none else '' }}"
@@ -282,7 +298,10 @@
              a PDF is attached it is stored and downloadable exactly as an
              uploaded GRN's is, but its fields are not parsed — what is typed
              above wins. #}
-          <div class="col-md-8"><label class="form-label fw-semibold">Upload Invoice</label>
+          <div class="col-md-4"><label class="form-label fw-semibold">Location ID</label>
+            {{ location_select('location_id', 'a_location') }}
+            <div class="form-text">Filled onto tags uploaded with this GRN.</div></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Upload Invoice</label>
             <input type="file" name="invoice" accept="application/pdf,.pdf" class="form-control">
             <div class="form-text">Optional — attach the invoice PDF if you have it.</div></div>
         </div>
@@ -321,6 +340,8 @@
               <option value="">— Not set —</option>
               {% for e in entity_options %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
             </select></div>
+          <div class="col-md-4"><label class="form-label fw-semibold">Location ID</label>
+            {{ location_select('location_id', 'e_location') }}</div>
         </div>
         <div class="row g-2 mt-1">
           <div class="col-md-4"><label class="form-label fw-semibold">Date of Invoice</label>
@@ -635,6 +656,7 @@ if (em) { em.addEventListener('show.bs.modal', function(e){
   document.getElementById('editGrnForm').action = '/grn/' + b.getAttribute('data-id') + '/edit';
   document.getElementById('e_grn_number').value = b.getAttribute('data-grn-number') || '';
   document.getElementById('e_entity').value = b.getAttribute('data-entity') || '';
+  document.getElementById('e_location').value = b.getAttribute('data-location') || '';
   document.getElementById('e_lot_number').value = b.getAttribute('data-lot-number') || '';
   document.getElementById('e_inv').value = b.getAttribute('data-inv') || '';
   document.getElementById('e_date').value = b.getAttribute('data-date') || '';

@@ -20,6 +20,10 @@ class GRNImport(Base):
     # the IQC bulk upload and by ReGRN on the Change Entity page. Approved via
     # dbdiagram 2026-10-21; String(50) to match users.entity / companies.
     entity = Column(String(50), nullable=True)
+    # Default storage location for tags received on this GRN (2026-10-21,
+    # approved on dbdiagram). IQC bulk upload copies it onto each tag along
+    # with the zone / warehouse derived from Location master.
+    location_id = Column(UUID(as_uuid=True), ForeignKey("storage_locations.id"), nullable=True)
     invoice_number = Column(String(100), nullable=True)
     invoice_date = Column(String(40), nullable=True)     # text (parsed from PDF, may be free-form)
     sender_name = Column(String(200), nullable=True)     # "Vendor Name" in UI

@@ -144,7 +144,6 @@
             <tr><th class="ps-3 text-muted small">Bin Location</th><td class="font-monospace small">{{ device.bin_location or (assigned_location.slot if assigned_location and assigned_location.slot else '—') }}</td></tr>
             <tr><th class="ps-3 text-muted small">Location Type</th><td>{{ assigned_location.unit_type_label if assigned_location else '—' }}</td></tr>
             <tr><th class="ps-3 text-muted small">Zone</th><td>{{ assigned_location.zone_label if assigned_location else '—' }}</td></tr>
-            <tr><th class="ps-3 text-muted small">Warehouse</th><td>{{ device.warehouse or '—' }}</td></tr>
             <tr><th class="ps-3 text-muted small">Return Status</th>
               <td><span class="badge bg-{{ 'warning text-dark' if device.return_status else 'secondary' }}">{{ 'Yes' if device.return_status else 'No' }}</span></td></tr>
             <tr><th class="ps-3 text-muted small">Warranty Status</th>

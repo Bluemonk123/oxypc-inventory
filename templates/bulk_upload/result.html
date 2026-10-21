@@ -28,15 +28,15 @@
         {% if to_stock_in is defined and to_stock_in %}
         <div class="alert alert-info">
           <i class="bi bi-box-arrow-in-down me-2"></i><strong>{{ to_stock_in }}</strong> tag{{ 's' if to_stock_in != 1 }}
-          matched {{ 'their' if to_stock_in != 1 else 'its' }} GRN and Invoice Number and went straight to <strong>Stock In</strong>
-          (GRN, invoice and entity taken from the GRN).
+          matched {{ 'their' if to_stock_in != 1 else 'its' }} GRN or Invoice Number and went straight to <strong>Stock In</strong>
+          (GRN, Invoice Number, Location ID and Entity taken from the GRN).
         </div>
         {% endif %}
         {% if grn_skipped is defined and grn_skipped %}
         <div class="alert alert-warning">
           <i class="bi bi-exclamation-triangle me-2"></i><strong>{{ grn_skipped.rows|length }}</strong>
-          row{{ 's' if grn_skipped.rows|length != 1 }} skipped — the GRN was not found, or the Invoice Number
-          did not match that GRN's invoice. Fix them in the file and upload just those rows again.
+          row{{ 's' if grn_skipped.rows|length != 1 }} skipped — the GRN was not found, the Invoice Number
+          did not match that GRN's invoice, or the invoice is on more than one GRN. The reason is in the last column. Fix them in the file and upload just those rows again.
           <button type="button" class="btn btn-sm btn-outline-dark ms-2 py-0" id="grnSkippedDl">
             <i class="bi bi-file-earmark-arrow-down me-1"></i>Download skipped rows</button>
         </div>

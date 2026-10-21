@@ -3,7 +3,8 @@ Computers / Renew Circuits) plus the bulk "Change Entities" tool.
 
 Since 2026-10-21 (Flow 2 — ReGRN) Change Entities moves the submitted Tag
 Numbers onto a selected GRN: each tag takes that GRN's grn_number, invoice
-number and entity. Tags in Sold go back to Ready to Sale (the old sale record
+number and entity (and its Location ID, with zone / location type from
+Location master, when the GRN has one). Tags in Sold go back to Ready to Sale (the old sale record
 is kept as history); every other stage is left as it is. Only the submitted
 tags move — the rest of their lot keeps its original GRN. Replaces the old
 SOLD TO / SEND TO rules."""
@@ -22,6 +23,7 @@ from models.user import User
 from models.device import Device, DeviceStage, StageMovement, TagNumberMovement, MovementDirection
 from models.master import EXTERNAL_PARTNER_TEST_ENTITY
 from models.grn_import import GRNImport
+from models.location import StorageLocation, DeviceLocationLog, LocationAction
 from utils.master_data import entity_values
 from auth.dependencies import get_current_user, require_module_perm, verify_csrf
 from services.audit_engine import audit
@@ -151,13 +153,57 @@ async def change_entities(
             continue
         devices.append(best)
 
+    # Location (2026-10-21): when the GRN has a Location ID, each tag takes it
+    # — Location ID, Zone and Location Type all come from Location master. A
+    # DeviceLocationLog row is written because every page reads the tag's
+    # location from its LATEST log (see routers/transfers.py); the raw
+    # column alone would be ignored. A GRN with no Location ID leaves the
+    # tags' locations as they are.
+    grn_loc = None
+    if g.location_id:
+        grn_loc = (await db.execute(
+            select(StorageLocation).where(StorageLocation.id == g.location_id)
+        )).scalar_one_or_none()
+    last_loc: dict = {}  # device_id -> latest logged location_id
+    if grn_loc is not None and devices:
+        ids = [d.id for d in devices]
+        for i in range(0, len(ids), 5000):
+            for dev_id, loc_id in (await db.execute(
+                select(DeviceLocationLog.device_id, DeviceLocationLog.location_id)
+                .where(DeviceLocationLog.device_id.in_(ids[i:i + 5000]))
+                .order_by(DeviceLocationLog.device_id, DeviceLocationLog.logged_at.desc())
+                .distinct(DeviceLocationLog.device_id)
+            )).all():
+                last_loc[dev_id] = loc_id
+    loc_names: dict = {}
+    if grn_loc is not None:
+        _old_ids = {d.location_id for d in devices if d.location_id} | {v for v in last_loc.values() if v}
+        if _old_ids:
+            loc_names = {l.id: l.unit_id for l in (await db.execute(
+                select(StorageLocation).where(StorageLocation.id.in_(_old_ids))
+            )).scalars().all()}
+
     from_entities = {d.entity for d in devices if d.entity}
     from_entity = next(iter(from_entities), None)
     now = app_now()
     back_to_rts = 0
     for d in devices:
+        _cur_loc = last_loc.get(d.id, d.location_id)
         old = {"grn_number": d.grn_number, "invoice_number": d.invoice_number,
                "entity": d.entity, "stage": d.current_stage.value if d.current_stage else None}
+        if grn_loc is not None:
+            old["location_id"] = loc_names.get(_cur_loc) if _cur_loc else None
+        if grn_loc is not None:
+            if _cur_loc != grn_loc.id:
+                db.add(DeviceLocationLog(
+                    device_id=d.id, location_id=grn_loc.id,
+                    action=LocationAction.moved if d.id in last_loc else LocationAction.assigned,
+                    actor_id=current_user.id, actor_name=current_user.full_name,
+                    notes=f"ReGRN to GRN {g.grn_number}"))
+                d.bin_location = None  # the old bin belongs to the old location
+            d.location_id = grn_loc.id
+            d.floor = grn_loc.zone_label
+            d.warehouse = grn_loc.display_name
         d.grn_number = g.grn_number
         d.invoice_number = g.invoice_number
         d.entity = g.entity
@@ -182,6 +228,8 @@ async def change_entities(
         d.updated_at = now
         new = {"grn_number": d.grn_number, "invoice_number": d.invoice_number,
                "entity": d.entity, "stage": d.current_stage.value if d.current_stage else None}
+        if grn_loc is not None:
+            new["location_id"] = grn_loc.unit_id
         # One audit row per tag, written before the commit.
         await audit(db, user=current_user, action="REGRN_TAG",
                     table_name="devices", record_id=str(d.id),
@@ -214,12 +262,14 @@ async def change_entities(
                 table_name="devices", record_id=g.grn_number,
                 new_value={"grn_number": g.grn_number, "entity": g.entity,
                            "invoice_number": g.invoice_number, "tags": len(devices),
+                           "location_id": grn_loc.unit_id if grn_loc is not None else None,
                            "sold_to_ready_to_sale": back_to_rts,
                            "missing": len(missing), "in_trash": len(in_trash)},
                 request=request)
     await db.commit()
 
-    msg = (f"{len(devices)} tag(s) moved to GRN {g.grn_number} ({g.entity})"
+    msg = (f"{len(devices)} tag(s) moved to GRN {g.grn_number} ({g.entity}"
+           + (f", Location {grn_loc.unit_id}" if grn_loc is not None else "") + ")"
            + (f" — {back_to_rts} were Sold and are now Ready to Sale" if back_to_rts else ""))
     if missing:
         msg += f" — {len(missing)} tag(s) not found: {', '.join(missing[:10])}"

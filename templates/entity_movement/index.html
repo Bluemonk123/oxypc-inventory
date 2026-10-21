@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% import "_csv_dropzone.html" as dz %}
 {% block title %}Entity Movement — OxyPC{% endblock %}
 {% block page_title %}Entity Movement{% endblock %}
 {% block content %}
@@ -36,37 +37,16 @@
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-transparent fw-semibold"><i class="bi bi-upload me-2"></i>Bulk Upload Tags — Change Entities</div>
   <div class="card-body">
-    <style>
-      .regrn-drop { position: relative; display: flex; flex-direction: row; align-items: center; justify-content: flex-start;
-        text-align: left; gap: 1.25rem; cursor: pointer; padding: 1.5rem; min-height: 120px; border: 2px dashed var(--bs-primary); border-radius: .75rem;
-        background: rgba(var(--bs-primary-rgb), .05); transition: background .15s, border-color .15s; }
-      .regrn-drop:hover, .regrn-drop.is-dragover { background: rgba(var(--bs-primary-rgb), .12); }
-      .regrn-drop.is-loaded { border-style: solid; border-color: var(--bs-success); background: rgba(var(--bs-success-rgb), .07); }
-      .regrn-drop.is-error { border-color: var(--bs-danger); background: rgba(var(--bs-danger-rgb), .06); }
-      .regrn-drop-input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-      .regrn-drop-icon { font-size: 2.75rem; line-height: 1; color: var(--bs-primary); }
-      .regrn-drop.is-loaded .regrn-drop-icon { color: var(--bs-success); }
-      .regrn-drop.is-error .regrn-drop-icon { color: var(--bs-danger); }
-      .regrn-drop:focus-within { outline: 3px solid rgba(var(--bs-primary-rgb), .35); outline-offset: 2px; }
-      .regrn-drop-btn { position: relative; z-index: 0; pointer-events: none; margin-left: auto; flex-shrink: 0; }
-      @media (max-width: 575.98px) { .regrn-drop { flex-wrap: wrap; } .regrn-drop-btn { margin-left: 0; } }
-    </style>
+    {{ dz.styles() }}
     {# Tags come only from the uploaded file (2026-10-21) — the paste box is
        hidden; it still holds the parsed tags for the Change Entities modal. #}
     <textarea id="tagsInput" class="d-none" aria-hidden="true"></textarea>
     {# Prominent drop zone (2026-10-21): the whole box is the file picker —
        click or drop a CSV. The real <input type=file> covers it, invisible. #}
     <div class="d-flex flex-column flex-xl-row align-items-stretch gap-3">
-      <label for="tagsCsvFile" id="tagsDropZone" class="regrn-drop flex-grow-1 mb-0">
-        <input type="file" id="tagsCsvFile" accept=".csv,.txt" class="regrn-drop-input"
-               aria-describedby="tagsCount">
-        <i class="bi bi-file-earmark-arrow-up regrn-drop-icon" id="tagsDropIcon"></i>
-        <div class="flex-grow-1 text-start">
-          <div class="fw-semibold fs-6" id="tagsDropTitle">Upload/Drag-Drop CSV file with "barcode" column for all selected tags</div>
-          <div id="tagsCount" class="small text-muted mt-1">0 tag(s) entered</div>
-        </div>
-        <span class="btn btn-outline-primary btn-sm regrn-drop-btn"><i class="bi bi-folder2-open me-1"></i>Choose CSV file</span>
-      </label>
+      {{ dz.zone(input_id='tagsCsvFile', zone_id='tagsDropZone', icon_id='tagsDropIcon', status_id='tagsCount',
+                 title='Upload/Drag-Drop CSV file with "barcode" column for all selected tags',
+                 status_text='0 tag(s) entered', template_link_id='tagsTemplateLink') }}
       <button type="button" id="openChangeEntitiesBtn" class="btn btn-primary btn-lg align-self-end align-self-xl-center flex-shrink-0">
         <i class="bi bi-arrow-left-right me-1"></i>Change Entities
       </button>
@@ -137,7 +117,7 @@
             </option>
             {% endfor %}
           </select>
-          <div class="form-text">Each tag gets this GRN's GRN number, invoice number and entity.
+          <div class="form-text">Each tag gets this GRN's GRN number, invoice number, entity and Location ID (with its Zone and Location Type).
             Tags in <strong>Sold</strong> go back to <strong>Ready to Sale</strong> (the old sale stays as history);
             tags in any other stage keep their stage. The rest of their lot is not changed.</div>
         </div>
@@ -194,7 +174,7 @@ function showCsvError(msg) {
 }
 function setDropFile(name, loaded) {
   tagsDropZone.classList.toggle('is-loaded', !!loaded);
-  tagsDropIcon.className = 'bi regrn-drop-icon ' + (loaded ? 'bi-file-earmark-check' : 'bi-file-earmark-arrow-up');
+  tagsDropIcon.className = 'bi csv-drop-icon ' + (loaded ? 'bi-file-earmark-check' : 'bi-file-earmark-arrow-up');
 }
 ['dragenter', 'dragover'].forEach(function (ev) {
   tagsDropZone.addEventListener(ev, function () { tagsDropZone.classList.add('is-dragover'); });
@@ -261,6 +241,15 @@ document.getElementById('tagsCsvFile').addEventListener('change', function (e) {
     refreshCount(file.name);
   };
   reader.readAsText(file);
+});
+
+// Download template: a one-column CSV with the "barcode" header.
+document.getElementById('tagsTemplateLink').addEventListener('click', function (e) {
+  e.preventDefault(); e.stopPropagation();
+  var url = URL.createObjectURL(new Blob(['barcode\r\n'], { type: 'text/csv' }));
+  var a = document.createElement('a'); a.href = url; a.download = 'regrn_tags_template.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
 });
 
 document.getElementById('openChangeEntitiesBtn').addEventListener('click', function () {

@@ -487,11 +487,24 @@ async def upload_devices(
     # entity from the GRN and go straight to Stock In; invalid rows are
     # skipped and handed back as a downloadable file. Rows with no GRN keep
     # the old behaviour (land in IQC, mapped later via "Map this GRN").
-    grn_by_number = {
-        g.grn_number.strip().upper(): g for g in (await db.execute(
-            select(GRNImport).where(GRNImport.is_deleted.isnot(True))
-        )).scalars().all() if g.grn_number
-    }
+    _live_grns = (await db.execute(
+        select(GRNImport).where(GRNImport.is_deleted.isnot(True))
+    )).scalars().all()
+    grn_by_number = {g.grn_number.strip().upper(): g for g in _live_grns if g.grn_number}
+    # GRN <-> Invoice Number is one-to-one (2026-10-21), so a row may give
+    # either one. An invoice that legacy data has on 2+ GRNs is ambiguous and
+    # is reported rather than guessed.
+    grns_by_invoice: dict[str, list] = {}
+    for _g in _live_grns:
+        if _g.invoice_number and _g.invoice_number.strip():
+            grns_by_invoice.setdefault(_g.invoice_number.strip().upper(), []).append(_g)
+    # Location master rows used by those GRNs — Location ID, zone and
+    # warehouse on the tag come from here, never from the file.
+    from models.location import StorageLocation
+    _loc_ids = {g.location_id for g in _live_grns if g.location_id}
+    loc_by_id = {l.id: l for l in (await db.execute(
+        select(StorageLocation).where(StorageLocation.id.in_(_loc_ids))
+    )).scalars().all()} if _loc_ids else {}
     file_header = list(reader.fieldnames or [])
     grn_skipped: list[list] = []
     to_stock_in = 0
@@ -546,21 +559,36 @@ async def upload_devices(
             # GRN check — before the lot lookup, so a bad GRN/invoice is reported
             # as such rather than hidden behind a lot error.
             grn_obj = None
-            grn_raw = _s(row, "grn_number")
-            if grn_raw:
-                grn_obj = grn_by_number.get(grn_raw.upper())
-                inv_raw = (_s(row, "invoice_number") or "")
+            grn_raw = (_s(row, "grn_number") or "").strip()
+            inv_raw = (_s(row, "invoice_number") or "").strip()
+            if grn_raw or inv_raw:
                 reason = None
-                if grn_obj is None:
-                    reason = f"GRN {grn_raw} not found"
-                elif (grn_obj.invoice_number or "").strip().upper() != inv_raw.strip().upper():
-                    reason = (f"Invoice Number '{inv_raw or '(blank)'}' does not match "
-                              f"GRN {grn_obj.grn_number}'s invoice '{grn_obj.invoice_number or '(blank)'}'")
+                if grn_raw:
+                    grn_obj = grn_by_number.get(grn_raw.upper())
+                    if grn_obj is None:
+                        reason = f"GRN {grn_raw} not found"
+                    elif inv_raw and (grn_obj.invoice_number or "").strip().upper() != inv_raw.upper():
+                        reason = (f"Invoice Number '{inv_raw}' does not match "
+                                  f"GRN {grn_obj.grn_number}'s invoice '{grn_obj.invoice_number or '(blank)'}'")
+                else:
+                    # Invoice only: a match fills everything from its GRN. No
+                    # match keeps the pre-2026-10-21 behaviour (tag lands in IQC
+                    # with the file's invoice) — External Partner test uploads
+                    # and invoice-only intakes rely on it.
+                    matches = grns_by_invoice.get(inv_raw.upper(), [])
+                    if not matches:
+                        pass  # no GRN for this invoice -> old path (IQC, file's invoice)
+                    elif len(matches) > 1:
+                        reason = (f"Invoice Number {inv_raw} is on {len(matches)} GRNs "
+                                  f"({', '.join(m.grn_number for m in matches)}) — add the GRN number")
+                    else:
+                        grn_obj = matches[0]
                 if reason:
+                    grn_obj = None
                     grn_skipped.append([row.get(h) or "" for h in file_header] + [reason])
                     errors.append(f"Row {i}: {reason} — skipped")
                     continue
-                if grn_obj.entity and not forced_entity_val:
+                if grn_obj is not None and grn_obj.entity and not forced_entity_val:
                     entity_val = grn_obj.entity
 
             lot_number = _s(row, "lot_number")
@@ -623,13 +651,22 @@ async def upload_devices(
                 # GRN-validated row: details come from the GRN, stage -> Stock In.
                 device.grn_number = grn_obj.grn_number
                 device.invoice_number = grn_obj.invoice_number
+                # Location from the GRN overrides the file's floor/warehouse
+                # (2026-10-21): Location ID, zone and warehouse all come from
+                # Location master.
+                _gloc = loc_by_id.get(grn_obj.location_id) if grn_obj.location_id else None
+                if _gloc is not None:
+                    device.location_id = _gloc.id
+                    device.floor = _gloc.zone_label
+                    device.warehouse = _gloc.display_name
                 movement.exited_at = now
                 db.add(StageMovement(
                     device_id=device.id, from_stage=DeviceStage.iqc, to_stage=DeviceStage.stock_in,
                     moved_by=current_user.username,
                     notes=f"Bulk Upload IQC — GRN {grn_obj.grn_number} verified, moved to Stock Inward"))
                 device.current_stage = DeviceStage.stock_in
-                await ensure_stage_location(db, device, DeviceStage.stock_in, current_user)
+                await ensure_stage_location(db, device, DeviceStage.stock_in, current_user,
+                                            preferred_location_id=(_gloc.id if _gloc is not None else None))
                 to_stock_in += 1
 
             # ── Physical inspection checklist (mirrors the manual IQC entry
