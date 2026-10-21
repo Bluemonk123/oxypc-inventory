@@ -7,14 +7,16 @@
   <i class="bi bi-lock me-2"></i>Pricing visibility is disabled for your role. Contact an admin if you need access to this report.
 </div>
 {% else %}
-<div class="d-flex justify-content-between align-items-center mb-3 gap-2">
+<div class="mb-3">
   <span class="small text-muted"><i class="bi bi-info-circle me-1"></i>Trashed lots/devices are excluded. Net Revenue = Gross Sales − Returns. <b>Profit</b> is for the whole lot; <b>Profit on Sold Units</b> compares Net Revenue with the cost of only the devices sold so far.</span>
-  <a href="/reports/export/lot-pl" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</a>
 </div>
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span class="fw-semibold"><i class="bi bi-graph-up me-2"></i>Lot P&amp;L</span>
-    <span class="badge bg-primary" id="plSelCount">0 selected</span>
+    {# Export (N): the ticked lots, or every lot when none is ticked (2026-10-21). #}
+    <button type="button" id="plExportBtn" class="btn btn-outline-success btn-sm" title="Export the ticked lots, or every lot when none is ticked">
+      <i class="bi bi-download me-1"></i>Export CSV (<span id="plExportCount">{{ lot_pl | length }}</span>)
+    </button>
   </div>
   <div class="card-body p-0">
     <div>
@@ -84,13 +86,26 @@
     </div>
   </div>
 </div>
+<form method="post" action="/reports/export/lot-pl" id="plExportForm" class="d-none">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+  <input type="hidden" name="ids" id="plExportIds" value="">
+</form>
 {% endif %}
 {% endblock %}
 {% block scripts %}
 <script>
 $(document).ready(function(){
   if (!$('#plTable').length) return;
-  function updateCount(){ $('#plSelCount').text($('.plRowChk:checked').length + ' selected'); }
+  var total = {{ lot_pl | length }};
+  function updateCount(){
+    var n = $('.plRowChk:checked').length;
+    $('#plExportCount').text(n || total);
+  }
+  $('#plExportBtn').on('click', function(){
+    var ids = $('.plRowChk:checked').map(function(){ return this.value; }).get();
+    $('#plExportIds').val(ids.join(','));
+    $('#plExportForm').trigger('submit');
+  });
   initGlobalTable('#plTable', {
     order: [[4, 'desc']],
     columnDefs: [{ orderable: false, targets: 0 }],

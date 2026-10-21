@@ -117,13 +117,7 @@
       <i class="bi bi-recycle lt-tile-wm"></i>
     </div>
   </div>
-  <div>
-    <div class="lt-tile h-100" style="--tc:#6f42c1">
-      <div class="lt-tile-count">{{ total_part_types }}</div>
-      <div class="lt-tile-label">Part Types</div>
-      <i class="bi bi-grid-3x3-gap lt-tile-wm"></i>
-    </div>
-  </div>
+  {# Part Types tile hidden (2026-10-21, Pankaj) — total_part_types is still passed by the route. #}
   <div>
     <div class="lt-tile h-100" style="--tc:{{ '#dc3545' if below_min_count > 0 else '#0F7A37' }}">
       <div class="lt-tile-count">{{ below_min_count }}</div>

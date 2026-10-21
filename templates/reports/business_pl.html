@@ -110,7 +110,10 @@
 
 <!-- Monthly Table -->
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent fw-semibold"><i class="bi bi-table me-2"></i>Monthly Breakdown</div>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
+    <span class="fw-semibold"><i class="bi bi-table me-2"></i>Monthly Breakdown</span>
+    <a href="/reports/business-pl/export-fy?fy={{ fy }}" class="btn btn-outline-success btn-sm" title="All tags sold in FY {{ fy_text }} — same columns as each month's export"><i class="bi bi-download me-1"></i>Export FY {{ fy_text }}</a>
+  </div>
   <div class="card-body p-0">
     <table class="table table-hover mb-0 small">
       <thead class="table-dark">

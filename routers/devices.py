@@ -1490,8 +1490,9 @@ async def _export_rows(db: AsyncSession, rows) -> Response:
             location_display,
             device.bin_location or loc_info.get("slot") or "",
             zone_display, device.warehouse, device.notes,
-            device.created_at.strftime("%d-%m-%Y %H:%M") if device.created_at else "",
-            device.updated_at.strftime("%d-%m-%Y %H:%M") if device.updated_at else "",
+            # Year-first so Excel reads real dates on any PC locale (2026-10-21).
+            device.created_at.strftime("%Y-%m-%d %H:%M") if device.created_at else "",
+            device.updated_at.strftime("%Y-%m-%d %H:%M") if device.updated_at else "",
             _pna_label(device, pna_device_ids),
             _stock_label(device),
         ]

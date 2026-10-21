@@ -606,8 +606,9 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             it.get("model") or "",
             it.get("engineer") or "",
             it.get("stage_label") or "",
-            it["assigned_date"].strftime("%d-%m-%Y %H:%M") if it.get("assigned_date") else "",
-            it["completed_at"].strftime("%d-%m-%Y %H:%M") if it.get("completed_at") else "",
+            # Year-first so Excel reads real dates on any PC locale (2026-10-21).
+            it["assigned_date"].strftime("%Y-%m-%d %H:%M") if it.get("assigned_date") else "",
+            it["completed_at"].strftime("%Y-%m-%d %H:%M") if it.get("completed_at") else "",
             "Yes" if it.get("pna") else "No",
             it.get("pna_history_text") or "",
         ])

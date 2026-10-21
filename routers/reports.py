@@ -24,6 +24,18 @@ from services.business_pl import compute_year_parts_labour_cogs, compute_year_de
 from utils.master_data import report_year_values, master_options
 from auth.dependencies import get_current_user, require_roles, verify_csrf
 
+# CSV dates (2026-10-21): year first ("2026-10-13 10:18"). Excel reads
+# "13-10-2026" by the PC's own locale — on a month-first PC "01-10-2026"
+# became 10 January and any day above 12 stayed text, so date filters and
+# sorting in the export were wrong. Year-first is read the same everywhere.
+def _csv_date(d) -> str:
+    return d.strftime("%Y-%m-%d") if d else ""
+
+
+def _csv_datetime(d) -> str:
+    return d.strftime("%Y-%m-%d %H:%M") if d else ""
+
+
 # Maximum rows returned by any CSV export endpoint — prevents OOM on large datasets
 MAX_EXPORT_ROWS = 5_000
 
@@ -569,6 +581,105 @@ async def daily_stock_export_location(
     return _csv_response(text, f"daily_stock_location_{day.isoformat()}.csv")
 
 
+# ── Daily Report workbook (2026-10-21) ─────────────────────────────────────
+# The three Daily Stock exports (Overall / Tag Based / Location Based) as
+# three sheets of one .xlsx. Built from the same CSV text the separate
+# exports produce, so the sheets can never disagree with those files.
+_DS_SHEETS = (("overall", "Overall"), ("tags", "Tag Based"), ("location", "Location Based"))
+_DS_NUMERIC = {"Opening Stock", "Closing Stock", "Net Change"}
+
+
+def _daily_report_xlsx(csv_by_kind: dict) -> bytes:
+    from datetime import date as _date
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    head_font = Font(bold=True, color="FFFFFF")
+    head_fill = PatternFill("solid", fgColor="212529")
+    for kind, title in _DS_SHEETS:
+        ws = wb.create_sheet(title)
+        rows = list(csv.reader(io.StringIO((csv_by_kind.get(kind) or "").lstrip("\ufeff"))))
+        if not rows:
+            continue
+        header = rows[0]
+        ws.append(header)
+        for c in ws[1]:
+            c.font, c.fill = head_font, head_fill
+        date_col = header.index("Report Date") if "Report Date" in header else None
+        num_cols = {i for i, h in enumerate(header) if h in _DS_NUMERIC}
+        widths = [len(h) for h in header]
+        for r in rows[1:]:
+            out = []
+            for i, v in enumerate(r):
+                if i == date_col and v:
+                    try:
+                        v = _date.fromisoformat(v)   # a real date cell, not text
+                    except ValueError:
+                        pass
+                elif i in num_cols and v.lstrip("-").isdigit():
+                    v = int(v)
+                out.append(v)
+                if i < len(widths):
+                    widths[i] = max(widths[i], len(str(v)))
+            ws.append(out)
+            if date_col is not None:
+                ws.cell(row=ws.max_row, column=date_col + 1).number_format = "yyyy-mm-dd"
+        ws.freeze_panes = "A2"
+        ws.auto_filter.ref = ws.dimensions
+        for i, w in enumerate(widths, start=1):
+            ws.column_dimensions[get_column_letter(i)].width = min(max(w + 2, 10), 45)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _xlsx_response(data: bytes, filename: str) -> Response:
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+@router.get("/daily-stock/export/daily-report")
+async def daily_stock_export_daily_report(
+    date: str = Query(default=""),
+    exclude_admin: bool = Query(default=False),
+    entity: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Filter-area "Daily Report": all three exports for the chosen date /
+    entity / admin filter, one sheet each."""
+    day = _parse_daily_stock_date(date)
+    ents = _parse_multi(entity)
+    data = _daily_report_xlsx({
+        "overall": await build_overall_csv(db, day, exclude_admin, ents),
+        "tags": await build_tags_csv(db, day, exclude_admin, ents),
+        "location": await build_location_csv(db, day, exclude_admin, ents),
+    })
+    return _xlsx_response(data, f"daily_report_{day.isoformat()}.xlsx")
+
+
+@router.get("/daily-stock/report/{report_date}/workbook")
+async def daily_stock_saved_workbook(
+    report_date: str,
+    current_user: User = Depends(get_current_user),
+):
+    """Daily Report table row: that day's three saved 9 PM files as one workbook."""
+    from services.daily_stock_reports import report_file
+    texts = {}
+    for kind, _title in _DS_SHEETS:
+        path = report_file(report_date, kind)
+        if path is None:
+            raise HTTPException(status_code=404, detail="Report not found")
+        texts[kind] = path.read_text(encoding="utf-8")
+    return _xlsx_response(_daily_report_xlsx(texts), f"daily_report_{report_date}.xlsx")
+
+
 @router.get("/daily-stock/report/{report_date}/{kind}")
 async def daily_stock_saved_report(
     report_date: str,
@@ -726,11 +837,14 @@ async def sales_report(request: Request, db: AsyncSession = Depends(get_db), cur
     })
 
 
-@router.get("/export/lot-pl")
-async def export_lot_pl(db: AsyncSession = Depends(get_db), current_user: User = Depends(_require_financials)):
-    lots_result = await db.execute(
-        select(Lot).order_by(Lot.created_at.desc()).limit(MAX_EXPORT_ROWS)
-    )
+async def _lot_pl_csv(db: AsyncSession, lot_ids=None) -> Response:
+    """Lot P&L CSV. lot_ids: only these lots (the rows ticked on the page);
+    None = every lot."""
+    # Trashed lots excluded, same as the page — so "Export (N)" matches its rows.
+    q = select(Lot).where(Lot.is_trashed.isnot(True)).order_by(Lot.created_at.desc()).limit(MAX_EXPORT_ROWS)
+    if lot_ids is not None:
+        q = q.where(Lot.id.in_(lot_ids))
+    lots_result = await db.execute(q)
     lots = lots_result.scalars().all()
 
     rev_rows = await db.execute(
@@ -763,13 +877,36 @@ async def export_lot_pl(db: AsyncSession = Depends(get_db), current_user: User =
         total   = buying + parts + labour
         profit  = revenue - total
         margin  = round(profit / revenue * 100, 1) if revenue > 0 else 0
-        writer.writerow([lot.lot_number, lot.supplier_name, lot.purchase_date.strftime("%d-%m-%Y"),
+        writer.writerow([lot.lot_number, lot.supplier_name, _csv_date(lot.purchase_date),
                          lot.qty, buying, parts, labour, total, revenue, profit, margin])
     if len(lots) == MAX_EXPORT_ROWS:
         writer.writerow(["# TRUNCATED", f"Export capped at {MAX_EXPORT_ROWS} rows", "", "", "", "", "", "", "", "", ""])
     output.seek(0)
-    return Response(content=output.getvalue().encode(), media_type="text/csv",
-                             headers={"Content-Disposition": "attachment; filename=lot_pl.csv"})
+    return Response(content=output.getvalue().encode("utf-8-sig"), media_type="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=lot_pl.csv"})
+
+
+@router.get("/export/lot-pl")
+async def export_lot_pl(db: AsyncSession = Depends(get_db), current_user: User = Depends(_require_financials)):
+    return await _lot_pl_csv(db)
+
+
+@router.post("/export/lot-pl")
+async def export_lot_pl_selected(
+    ids: str = Form(default=""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_require_financials),
+    _csrf=Depends(verify_csrf),
+):
+    """The lots ticked on the Lot P&L page (2026-10-21). Empty = every lot."""
+    import uuid as _uuid
+    lot_ids = []
+    for part in ids.split(","):
+        try:
+            lot_ids.append(_uuid.UUID(part.strip()))
+        except ValueError:
+            continue
+    return await _lot_pl_csv(db, lot_ids or None)
 
 
 # ── Tag-level exports (2026-10-16) ─────────────────────────────────────────
@@ -858,6 +995,24 @@ async def business_pl_export_month(
     return await _tag_export_csv(db, rows, f"business_pl_{names[month - 1]}_{year}_tags.csv")
 
 
+@router.get("/business-pl/export-fy")
+async def business_pl_export_fy(
+    fy: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(_require_financials),
+):
+    """Every tag sold in the whole Financial Year (Apr fy – Mar fy+1) — the
+    twelve month exports in one file, same columns (2026-10-21)."""
+    rows = (await db.execute(
+        select(Device, Lot.lot_number, Sale.sale_price)
+        .join(Sale, Sale.device_id == Device.id)
+        .outerjoin(Lot, Lot.id == Device.lot_id)
+        .where(Sale.sold_at >= datetime(fy, 4, 1), Sale.sold_at < datetime(fy + 1, 4, 1))
+        .order_by(Sale.sold_at, Device.barcode)
+    )).all()
+    return await _tag_export_csv(db, rows, f"business_pl_FY_{fy}-{str(fy + 1)[-2:]}_tags.csv")
+
+
 @router.get("/lot-pl/{lot_id}/export")
 async def lot_pl_export_lot(
     lot_id: str,
@@ -892,20 +1047,51 @@ async def lot_pl_export_lot(
     return await _tag_export_csv(db, rows, f"lot_pl_{safe}_tags.csv")
 
 
+def _parse_range(from_date: str, to_date: str):
+    """Sales Report date range -> (from_dt, to_dt), same parsing as the page;
+    (None, None) when not given or unparseable (= all time)."""
+    try:
+        return (datetime.strptime(from_date, "%Y-%m-%d"),
+                datetime.strptime(to_date, "%Y-%m-%d").replace(hour=23, minute=59, second=59))
+    except (TypeError, ValueError):
+        return None, None
+
+
 @router.get("/export/sales")
-async def export_sales(db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def export_sales(from_date: str = Query(default=""), to_date: str = Query(default=""),
+                       db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Sales Report CSV. With from_date/to_date (what the page's Export button
+    sends, 2026-10-21): exactly the page's rows; without: all time."""
+    return await _sales_csv(db, *_parse_range(from_date, to_date))
+
+
+@router.post("/export/sales")
+async def export_sales_selected(from_date: str = Form(default=""), to_date: str = Form(default=""),
+                                tags: str = Form(default=""),
+                                db: AsyncSession = Depends(get_db),
+                                current_user: User = Depends(get_current_user),
+                                _csrf=Depends(verify_csrf)):
+    """The rows ticked on the Sales Report (Tags P&L) page, by tag number."""
+    wanted = {t.strip().upper() for t in tags.split(",") if t.strip()} or None
+    return await _sales_csv(db, *_parse_range(from_date, to_date), tags=wanted)
+
+
+async def _sales_csv(db: AsyncSession, from_dt=None, to_dt=None, tags=None) -> Response:
     # Capped at the SQL level, same as before — the orphan set added below is
     # always small in practice (legacy stragglers, not an ongoing stream), so
     # bounding just the real-Sale query here is enough to keep this endpoint
     # from ever pulling an unbounded result set into memory.
-    result = await db.execute(
+    q = (
         select(Sale, Device.id, Device.barcode, Device.brand, Device.model,
                Device.sub_category, Lot.lot_number)
         .join(Device, Sale.device_id == Device.id)
         .join(Lot, Device.lot_id == Lot.id)
-        .order_by(Sale.sold_at.desc())
-        .limit(MAX_EXPORT_ROWS)
     )
+    if from_dt is not None:
+        q = q.where(Sale.sold_at >= from_dt, Sale.sold_at <= to_dt)
+    if tags:
+        q = q.where(func.upper(Device.barcode).in_(list(tags)))
+    result = await db.execute(q.order_by(Sale.sold_at.desc()).limit(MAX_EXPORT_ROWS))
     rows = [{
         "sale_number": s.Sale.sale_number, "sold_at": s.Sale.sold_at, "barcode": s.barcode,
         "brand": s.brand, "model": s.model, "lot_number": s.lot_number,
@@ -920,7 +1106,10 @@ async def export_sales(db: AsyncSession = Depends(get_db), current_user: User = 
     # Same "sold with no Sale row" devices the Sales Report page shows (see
     # _sold_orphan_rows above) — no date filter here, matching this export's
     # own existing all-time scope, so the CSV isn't a subset of the page.
-    rows.extend(await _sold_orphan_rows(db))
+    orphans = await _sold_orphan_rows(db, from_dt, to_dt)
+    if tags:
+        orphans = [r for r in orphans if (r["barcode"] or "").upper() in tags]
+    rows.extend(orphans)
     rows.sort(key=lambda r: r["sold_at"] or datetime.min, reverse=True)
     truncated = len(rows) > MAX_EXPORT_ROWS
     rows = rows[:MAX_EXPORT_ROWS]
@@ -936,7 +1125,7 @@ async def export_sales(db: AsyncSession = Depends(get_db), current_user: User = 
         writer.writerow([
             r["sale_number"] or "NO SALE RECORD",
             r["invoice_no"] or "",
-            r["sold_at"].strftime("%d-%m-%Y") if r["sold_at"] else "",
+            _csv_date(r["sold_at"]),
             r["barcode"], r["brand"], r["model"], r["lot_number"],
             float(r["sale_price"]) if r["sale_price"] is not None else "",
             r["customer_name"] or "", r["customer_phone"] or "", r["payment_mode"] or "", r["sold_by"] or "",

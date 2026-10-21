@@ -19,9 +19,11 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Sales Report</span>
     <div class="d-flex align-items-center gap-2">
-      <span class="badge bg-primary" id="srSelCount">0 selected</span>
       <span class="fw-bold text-success small">Total: ₹{{ ((total) | inr) }}</span>
-      <a href="/reports/export/sales" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>Export CSV</a>
+      {# Export (N): the ticked rows, or every row of this date range when none is ticked (2026-10-21). #}
+      <button type="button" id="srExportBtn" class="btn btn-outline-success btn-sm" title="Export the ticked rows, or every row in this date range when none is ticked">
+        <i class="bi bi-download me-1"></i>Export CSV (<span id="srExportCount">{{ sales_data | length }}</span>)
+      </button>
     </div>
   </div>
   <div class="card-body p-0">
@@ -33,6 +35,12 @@
     </div>
   </div>
 </div>
+<form method="post" action="/reports/export/sales" id="srExportForm" class="d-none">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+  <input type="hidden" name="from_date" value="{{ from_date }}">
+  <input type="hidden" name="to_date" value="{{ to_date }}">
+  <input type="hidden" name="tags" id="srExportTags" value="">
+</form>
 {% endif %}
 {% endblock %}
 {% block scripts %}
@@ -41,7 +49,12 @@
 var SR_DATA = {{ sales_data | tojson }};
 $(document).ready(function(){
   function esc(v){ return $('<div>').text(v == null ? '' : v).html(); }
-  function srUpdate(){ $('#srSelCount').text(dtSr.$('.srRowChk:checked').length + ' selected'); }
+  function srChecked(){ return dtSr ? dtSr.$('.srRowChk:checked').map(function(){ return this.value; }).get() : []; }
+  function srUpdate(){ var n = srChecked().length; $('#srExportCount').text(n || SR_DATA.length); }
+  $('#srExportBtn').on('click', function(){
+    $('#srExportTags').val(srChecked().join(','));
+    $('#srExportForm').trigger('submit');
+  });
   var dtSr = initGlobalTable('#srTable', {
     data: SR_DATA,
     deferRender: true,

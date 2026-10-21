@@ -385,7 +385,8 @@ async def export_transfers(
     for t, live_lot_number, live_stage in rows:
         stage_label = STAGE_LABELS.get(live_stage, live_stage.value) if live_stage else (t.product_stage or "")
         w.writerow([
-            t.transfer_date.strftime("%d-%m-%Y %H:%M") if t.transfer_date else "",
+            # Year-first so Excel reads real dates on any PC locale (2026-10-21).
+            t.transfer_date.strftime("%Y-%m-%d %H:%M") if t.transfer_date else "",
             location_by_id.get(str(t.to_location_id), "") if t.to_location_id else "",
             transfer_type_label(t.transfer_type),
             t.barcode or "",
