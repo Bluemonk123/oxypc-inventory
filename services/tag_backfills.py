@@ -25,6 +25,7 @@ from services.audit_engine import audit
 
 LOCATION_TEXT_MARKER = "tag_location_text_backfill_2026_10_21"
 SOLD_INVOICE_MARKER = "sold_invoice_backfill_2026_10_21"
+REPLACEMENT_INVOICE_MARKER = "replacement_invoice_backfill_2026_10_21"
 _CHUNK = 5000
 
 
@@ -120,5 +121,52 @@ async def backfill_sold_invoice_once(db) -> int | None:
                 record_id="backfill-2026-10-21",
                 new_value={"tags_updated": len(changes), "sold_tags_checked": len(rows)})
     _mark(db, SOLD_INVOICE_MARKER, len(changes), "One-time: Sold tags take their latest sale's Invoice Number")
+    await db.commit()
+    return len(changes)
+
+
+async def backfill_replacement_invoice_once(db) -> int | None:
+    """Tags given to a customer as a replacement ("Replaced with <tag>") take
+    the Invoice Number the customer's original tag was sold on — its latest
+    sale with an invoice. Previous values kept in per-tag audit rows.
+    Returns tags updated, or None when already done."""
+    if await _done(db, REPLACEMENT_INVOICE_MARKER):
+        return None
+    repl = (await db.execute(
+        select(Device.id, Device.barcode, Device.invoice_number, Device.replaced)
+        .where(Device.replaced.like("Replaced with %"))
+    )).all()
+    orig_of = {r.id: r.replaced[len("Replaced with "):].strip().upper() for r in repl if r.replaced}
+    inv_by_tag: dict = {}
+    if orig_of:
+        tags = list(set(orig_of.values()))
+        for i in range(0, len(tags), _CHUNK):
+            for bc, inv in (await db.execute(
+                select(func.upper(Device.barcode), Sale.invoice_no)
+                .join(Device, Device.id == Sale.device_id)
+                .where(func.upper(Device.barcode).in_(tags[i:i + _CHUNK]),
+                       func.coalesce(func.trim(Sale.invoice_no), "") != "")
+                .order_by(Sale.sold_at.desc())
+            )).all():
+                inv_by_tag.setdefault(bc, inv.strip())
+    changes = []
+    for r in repl:
+        inv = inv_by_tag.get(orig_of.get(r.id, ""))
+        if inv and inv != (r.invoice_number or "").strip():
+            changes.append((r.id, inv, r.invoice_number, r.barcode, orig_of[r.id]))
+    _t = Device.__table__
+    stmt = update(_t).where(_t.c.id == bindparam("b_id")).values(invoice_number=bindparam("b_inv"))
+    if changes:
+        await db.execute(stmt, [{"b_id": c[0], "b_inv": c[1]} for c in changes])
+    for dev_id, inv, old, barcode, orig in changes:
+        await audit(db, action="BACKFILL_REPLACEMENT_INVOICE", user=None, table_name="devices",
+                    record_id=str(dev_id),
+                    old_value={"barcode": barcode, "invoice_number": old},
+                    new_value={"barcode": barcode, "invoice_number": inv, "replaced_with": orig})
+    await audit(db, action="BACKFILL_REPLACEMENT_INVOICE_SUM", user=None, table_name="devices",
+                record_id="backfill-2026-10-21",
+                new_value={"tags_updated": len(changes), "replacement_tags_checked": len(repl)})
+    _mark(db, REPLACEMENT_INVOICE_MARKER, len(changes),
+          "One-time: replacement tags take the customer's original invoice")
     await db.commit()
     return len(changes)

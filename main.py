@@ -725,6 +725,15 @@ async def startup_event():
                 print(f"  [TagBackfill] Sale Invoice Number set on {_si} Sold tag(s)")
     except Exception as _tbe2:
         print(f"  [TagBackfill] Could not backfill Sold tags' invoice: {_tbe2}")
+    try:
+        from services.tag_backfills import backfill_replacement_invoice_once
+        from database import AsyncSessionLocal as _ASLtb3
+        async with _ASLtb3() as _sesstb3:
+            _ri = await backfill_replacement_invoice_once(_sesstb3)
+            if _ri is not None:
+                print(f"  [TagBackfill] Customer invoice set on {_ri} replacement tag(s)")
+    except Exception as _tbe3:
+        print(f"  [TagBackfill] Could not backfill replacement tags' invoice: {_tbe3}")
 
     # ── RAM / Storage sizes spelled "12 GB" (2026-10-19), idempotent ──────────
     try:

@@ -2171,6 +2171,25 @@ async def sales_list_data(
         from html import escape
         return escape(str(v)) if v is not None else ""
 
+    # Replacement sales (2026-10-21): the Invoice column shows the invoice the
+    # customer's ORIGINAL tag (the one in "Replaced with <tag>") was sold on —
+    # its latest sale that has an invoice number. One query per page.
+    _orig_tags = {}
+    for r in rows:
+        _rt = (r.replaced or "").strip()
+        if _rt.startswith("Replaced with ") and not float(r.Sale.sale_price or 0):
+            _orig_tags[r.Sale.id] = _rt[len("Replaced with "):].strip().upper()
+    orig_invoice = {}
+    if _orig_tags:
+        for _bc, _inv in (await db.execute(
+            select(func.upper(Device.barcode), Sale.invoice_no)
+            .join(Device, Device.id == Sale.device_id)
+            .where(func.upper(Device.barcode).in_(set(_orig_tags.values())),
+                   func.coalesce(func.trim(Sale.invoice_no), "") != "")
+            .order_by(Sale.sold_at.desc())
+        )).all():
+            orig_invoice.setdefault(_bc, _inv)
+
     data = []
     for r in rows:
         s = r.Sale
@@ -2183,9 +2202,12 @@ async def sales_list_data(
                         else '<span class="text-muted">—</span>')
         if is_replacement:
             repl_badge = f'<span class="badge bg-info text-dark">{esc(repl_text)}</span>'
+            # Invoice of the original (replaced) tag's sale above the badge;
+            # this ₹0 sale's own invoice only if the original has none.
+            _inv = orig_invoice.get(_orig_tags.get(s.id, "")) or s.invoice_no
             # No "—" above the badge when there is no invoice number.
-            invoice_cell = (f'<span class="font-monospace">{esc(s.invoice_no)}</span><br>{repl_badge}'
-                            if s.invoice_no else repl_badge)
+            invoice_cell = (f'<span class="font-monospace">{esc(_inv)}</span><br>{repl_badge}'
+                            if _inv else repl_badge)
         cells = [
             f'<input type="checkbox" class="row-check" value="{s.id}">',
             (f'<a href="/sales/{s.id}" class="text-decoration-none fw-semibold text-nowrap">{esc(s.sale_number)}</a>'
@@ -2877,12 +2899,30 @@ async def process_return(
         # "Replaced by/from <tag>"; "Replaced with " here is this page's own
         # prefix and is what the Returns list badge matches on.
         replacement_device.replaced = f"Replaced with {barcode}"
+        # The replacing tag carries the customer's invoice (2026-10-21) — the
+        # Invoice Number the returned tag was sold on. The ₹0 replacement
+        # Sale itself stays without one so the invoice isn't counted twice.
+        _cust_inv = (sale.invoice_no or "").strip()
+        if not _cust_inv:
+            # The returned sale has no invoice (e.g. an internal ₹0 sale):
+            # use the customer tag's latest sale that has one.
+            _cust_inv = ((await db.execute(
+                select(Sale.invoice_no).where(
+                    Sale.device_id == device.id,
+                    func.coalesce(func.trim(Sale.invoice_no), "") != "")
+                .order_by(Sale.sold_at.desc()).limit(1)
+            )).scalar_one_or_none() or "").strip()
+        _prev_repl_inv = replacement_device.invoice_number
+        if _cust_inv:
+            replacement_device.invoice_number = _cust_inv
         db.add(StageMovement(device_id=replacement_device.id, from_stage=prev_stage,
                              to_stage=DeviceStage.sold, moved_by=current_user.username,
                              notes=f"Replacement sale for returned tag {barcode} — {sale_num}"))
         await audit(db, user=current_user, action="RETURN_REPLACEMENT_SOLD",
                     table_name="devices", record_id=str(replacement_device.id),
-                    new_value={"replaced_with": barcode, "sale_number": sale_num},
+                    old_value=({"invoice_number": _prev_repl_inv} if _cust_inv else None),
+                    new_value={"replaced_with": barcode, "sale_number": sale_num,
+                               **({"invoice_number": _cust_inv} if _cust_inv else {})},
                     request=request)
 
     await db.commit()
