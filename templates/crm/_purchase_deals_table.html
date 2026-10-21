@@ -22,7 +22,8 @@
           <tr>
             <th>PO Number</th>
             <th>Supplier</th>
-            <th class="text-end">Amount</th>
+            <th class="text-end">Asking Price</th>
+            <th class="text-end">Offer Price</th>
             <th>Status</th>
             <th class="text-center">Download</th>
           </tr>
@@ -35,6 +36,7 @@
             </td>
             <td class="small">{{ po.contact.company_name if po.contact else '—' }}</td>
             <td class="small text-end">₹{{ ((po.total_amount or 0) | inr) }}</td>
+            <td class="small text-end">{% if po.offer_total %}<span class="text-primary fw-semibold">₹{{ ((po.offer_total) | inr) }}</span>{% else %}—{% endif %}</td>
             <td>
               <span class="badge bg-{{ _po_status_colors.get(po.status, 'secondary') }}">
                 {{ po.status | replace('_',' ') | title }}
