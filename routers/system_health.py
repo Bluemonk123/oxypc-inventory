@@ -251,37 +251,52 @@ async def device_type_backfill_apply(request: Request, current_user: User = Depe
 
 
 # ── RAM / Storage fill (2026-10-22) ──────────────────────────────────────────
-# Brings existing tags in line with the eight spec fields: blank counts -> 1,
-# Total RAM / Hard Drive Size <-> RAM / Hard Drive GB filled from each other,
-# old HDD GB column used when Hard Drive GB is blank. Blank fields only.
+# Fills each tag's blank RAM fields (RAM GB, RAM, Total RAM Count/Size) and
+# Storage fields (SSD GB, Hard Drive, Total HDD Count/Size) from the others in
+# the same set; HDD GB is the second drive, added in, never filled. Rules in
+# utils/device_spec.fill_defaults. Blank fields only.
 # GET previews (read-only); POST applies and audits the changed tag ids.
 
-_SPEC_COLS = ("total_ram_size", "ram_gb", "total_ram_count",
-              "total_hdd_size", "storage_gb", "total_hdd_count")
+_SPEC_COLS = ("ram_gb", "ram_summary", "total_ram_count", "total_ram_size",
+              "storage_gb", "hdd_summary", "total_hdd_count", "total_hdd_size")
+_SPEC_READ = _SPEC_COLS + ("hdd_capacity_gb",)
 
 
-async def _spec_changes(db):
+async def _spec_changes(db, with_rows=False):
     from sqlalchemy import select
     from types import SimpleNamespace
     from models.device import Device
     from utils.device_spec import fill_defaults
-    cols = (Device.id, Device.ram_gb, Device.total_ram_size, Device.total_ram_count,
-            Device.storage_gb, Device.hdd_capacity_gb, Device.total_hdd_size, Device.total_hdd_count)
+    cols = [Device.id, Device.barcode] + [getattr(Device, c) for c in _SPEC_READ]
     out = []
     for r in (await db.execute(select(*cols))).all():
         ch = fill_defaults(SimpleNamespace(**r._mapping))
         if ch:
-            out.append((r.id, ch))
+            out.append((r.id, ch, r) if with_rows else (r.id, ch))
     return out
 
 
 @router.get("/spec-fill")
 async def spec_fill_preview(current_user: User = Depends(admin_only)):
+    """Read-only. Counts per field, plus up to 12 example tags (before -> after),
+    picked to cover different kinds of change."""
     from database import AsyncSessionLocal
     async with AsyncSessionLocal() as db:
-        changes = await _spec_changes(db)
-    per_field = {c: sum(1 for _i, ch in changes if c in ch) for c in _SPEC_COLS}
-    return JSONResponse({"tags_to_change": len(changes), "per_field": per_field})
+        changes = await _spec_changes(db, with_rows=True)
+    per_field = {c: sum(1 for _i, ch, _r in changes if c in ch) for c in _SPEC_COLS}
+    examples, seen = [], set()
+    for _i, ch, r in changes:
+        kind = tuple(sorted(ch))
+        if kind in seen:
+            continue
+        seen.add(kind)
+        examples.append({"tag": r.barcode,
+                         "before": {c: getattr(r, c) for c in _SPEC_READ if getattr(r, c) not in (None, "")},
+                         "fills": ch})
+        if len(examples) >= 12:
+            break
+    return JSONResponse({"tags_to_change": len(changes), "per_field": per_field,
+                         "examples": examples})
 
 
 @router.post("/spec-fill")
@@ -308,7 +323,7 @@ async def spec_fill_apply(request: Request, current_user: User = Depends(admin_o
         await audit(db, user=current_user, action="DEVICE_SPEC_FILL", table_name="devices",
                     record_id=f"{len(changes)} tags",
                     new_value={"count": len(changes), "device_ids_by_field": per_field},
-                    notes="Blank RAM/Storage fields filled (counts 1, size <-> GB). "
+                    notes="Blank RAM/Storage fields filled from the others in each set. "
                           "Reverse: set each listed field back to NULL for its ids.",
                     request=request)
         await db.commit()

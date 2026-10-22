@@ -14,7 +14,12 @@ storage_gb (TB x 1024, parts like "8GB+8GB" added up).
 import re
 
 _NUM_ONLY = re.compile(r"^\s*\d+(?:\.\d+)?\s*$")
-_PART = re.compile(r"(\d+(?:\.\d+)?)\s*(TB|GB|T|G)?", re.I)
+# One size per part. A part is split on "," or "+": "8GB+8GB", "1TB SSD + 500GB HDD",
+# and OxyQC's packed "16GB_DDR4_2300MHz_Samsung, 8GB_DDR4_2133MHz_Crucial".
+# Only a number carrying GB/TB counts (so DDR4's 4 and 2300MHz are ignored);
+# a part that is just a number ("16") counts as GB.
+_SPLIT = re.compile(r"[,+]")
+_SIZED = re.compile(r"(\d+(?:\.\d+)?)\s*(TB|GB|T|G)(?![A-Za-z])", re.I)
 
 
 def normalize_size(value):
@@ -29,18 +34,31 @@ def normalize_size(value):
     return v
 
 
+def _part_sizes(value):
+    """GB of each part in a size text, in order. Parts with no size are skipped."""
+    v = (str(value) if value is not None else "").strip()
+    out = []
+    for part in _SPLIT.split(v) if v else []:
+        m = _SIZED.search(part)
+        if m:
+            n = float(m.group(1))
+            out.append(n * 1024 if m.group(2).upper().startswith("T") else n)
+        elif _NUM_ONLY.match(part):
+            out.append(float(part))
+    return out
+
+
 def size_to_gb(value):
     """Whole GB from a size text: "16GB" 16, "1TB" 1024, "8GB+8GB" 16,
-    "512GB SSD" 512, "16" 16. None if no number."""
-    v = (str(value) if value is not None else "").strip()
-    if not v:
-        return None
-    total, found = 0.0, False
-    for num, unit in _PART.findall(v):
-        found = True
-        n = float(num)
-        total += n * 1024 if unit and unit.upper().startswith("T") else n
-    return int(round(total)) if found else None
+    "512GB SSD" 512, "16" 16, "16GB_DDR4_2300MHz_X, 8GB_DDR4_2133MHz_Y" 24.
+    None if no size."""
+    parts = _part_sizes(value)
+    return int(round(sum(parts))) if parts else None
+
+
+def part_count(value):
+    """How many sized parts a text has: "8GB+8GB" 2, "16GB" 1, "" 0."""
+    return len(_part_sizes(value))
 
 
 def gb_text(n):
@@ -79,37 +97,68 @@ def upload_spec(ram_value, storage_value) -> dict:
     out = {}
     ram = normalize_size(ram_value)
     if ram:
-        out.update(total_ram_size=ram[:50], ram_gb=size_to_gb(ram), total_ram_count="1")
+        g = size_to_gb(ram)
+        out.update(total_ram_size=ram[:50], ram_gb=g, total_ram_count=str(max(part_count(ram), 1)),
+                   ram_summary=(gb_text(g) or ram)[:255])
     sto = normalize_size(storage_value)
     if sto:
-        out.update(total_hdd_size=sto[:50], storage_gb=size_to_gb(sto), total_hdd_count="1")
+        g = size_to_gb(sto)
+        out.update(total_hdd_size=sto[:50], storage_gb=g, total_hdd_count=str(max(part_count(sto), 1)),
+                   hdd_summary=(gb_text(g) or sto)[:255])
     return out
 
 
 def fill_defaults(d) -> dict:
-    """Changes that bring an existing tag in line (blank fields only):
-    counts -> "1" when the tag has that spec, sizes <-> GB filled from each
-    other, else from the old HDD GB column. Never overwrites a value."""
+    """Fill a tag's blank RAM / Storage fields from the ones it has, within
+    each set. Never overwrites a value. (2026-10-22, second version)
+
+    RAM set: RAM GB (ram_gb), RAM (ram_summary), Total RAM Count, Total RAM Size.
+    Storage set: SSD GB (storage_gb), HDD GB (hdd_capacity_gb, the second
+    drive), Hard Drive (hdd_summary), Total HDD Count, Total HDD Size.
+    HDD GB is added to SSD GB, never copied into it, and is never filled.
+    """
     ch = {}
-    rs = (d.total_ram_size or "").strip()
-    if not rs and d.ram_gb:
-        ch["total_ram_size"] = gb_text(d.ram_gb)
-    if not d.ram_gb and rs:
-        g = size_to_gb(rs)
-        if g:
-            ch["ram_gb"] = g
-    if not (d.total_ram_count or "").strip() and (rs or d.ram_gb or ch.get("ram_gb")):
-        ch["total_ram_count"] = "1"
-    hs = (d.total_hdd_size or "").strip()
-    gb = d.storage_gb or d.hdd_capacity_gb
-    if not d.storage_gb and d.hdd_capacity_gb:
-        ch["storage_gb"] = d.hdd_capacity_gb
-    if not hs and gb:
-        ch["total_hdd_size"] = gb_text(gb)
-    if not gb and hs:
-        g = size_to_gb(hs)
-        if g:
-            ch["storage_gb"] = g
-    if not (d.total_hdd_count or "").strip() and (hs or gb or ch.get("storage_gb")):
-        ch["total_hdd_count"] = "1"
+    blank = lambda v: not (str(v).strip() if v is not None else "")
+    # Text with no real size ("0", "N/A") is treated as blank: never copied.
+    sized = lambda t: t if size_to_gb(t) else ""
+
+    # ── RAM ──
+    rs, rsum = sized((d.total_ram_size or "").strip()), sized((d.ram_summary or "").strip())
+    ram_gb = d.ram_gb or size_to_gb(rs) or size_to_gb(rsum)
+    if not d.ram_gb and ram_gb:
+        ch["ram_gb"] = ram_gb
+    if blank(d.total_ram_size):
+        v = rsum or gb_text(ram_gb)
+        if v:
+            ch["total_ram_size"] = v[:50]
+    if blank(d.ram_summary):
+        v = gb_text(ram_gb) or rs
+        if v:
+            ch["ram_summary"] = v[:255]
+    if blank(d.total_ram_count) and ram_gb:
+        ch["total_ram_count"] = str(max(part_count(rs), part_count(rsum), 1))
+
+    # ── Storage ──
+    # A Total HDD Size / Hard Drive text already on the tag is trusted first;
+    # SSD GB + HDD GB is used only when there is no such text (some tags carry
+    # the same drive in both GB fields, e.g. 256 + 256 with "256 GB" as total).
+    hs, hsum = sized((d.total_hdd_size or "").strip()), sized((d.hdd_summary or "").strip())
+    drives = [g for g in (d.storage_gb, d.hdd_capacity_gb) if g]
+    text_total = size_to_gb(hs) or size_to_gb(hsum)
+    total = text_total or (sum(drives) if drives else None)
+    if not drives and total:
+        ch["storage_gb"] = total          # one figure, no second drive known
+    if blank(d.total_hdd_size):
+        v = hsum or gb_text(total)
+        if v:
+            ch["total_hdd_size"] = v[:50]
+    if blank(d.hdd_summary):
+        v = gb_text(total) or hs
+        if v:
+            ch["hdd_summary"] = v[:255]
+    if blank(d.total_hdd_count) and total:
+        n = max(part_count(hs), part_count(hsum))
+        if not text_total or (len(drives) == 2 and sum(drives) == text_total):
+            n = max(n, len(drives))
+        ch["total_hdd_count"] = str(max(n, 1))
     return ch
