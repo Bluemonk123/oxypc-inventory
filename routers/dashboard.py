@@ -1093,19 +1093,24 @@ async def dashboard(
     }
     role_val = current_user.role.value if current_user.role else ""
     wq_stages = ROLE_STAGE_MAP.get(role_val, [])
-    if current_user.role and current_user.role.value == "admin":
-        wq_stages = list(DeviceStage)
+    # Admin sees every stage, so no stage filter at all. It used to send the
+    # full DeviceStage list, and a stage value the database type doesn't have
+    # yet (on_rent on production, 2026-10-22) failed the query.
+    is_admin_wq = bool(current_user.role and current_user.role.value == "admin")
 
     work_queue_devices = []
-    if wq_stages:
+    if wq_stages or is_admin_wq:
+        q_wq = select(Device).where(Device.is_trashed == False)
+        if not is_admin_wq:
+            q_wq = q_wq.where(Device.current_stage.in_(wq_stages))
         try:
-            wq_result = await db.execute(
-                select(Device)
-                .where(Device.is_trashed == False, Device.current_stage.in_(wq_stages))
-                .order_by(Device.updated_at.asc())
-                .limit(15)
-            )
-            work_queue_devices = wq_result.scalars().all()
+            # Savepoint: a failure here must not abort the page's transaction,
+            # or every query after it fails and the dashboard returns 500.
+            async with db.begin_nested():
+                wq_result = await db.execute(
+                    q_wq.order_by(Device.updated_at.asc()).limit(15)
+                )
+                work_queue_devices = wq_result.scalars().all()
         except Exception:
             _log.exception("work_queue_devices failed for role=%s", role_val)
 
