@@ -28,11 +28,20 @@
                placeholder="Tag, make, model, CPU, RAM, storage, invoice no. — e.g. Dell i5 8GB">
       </div>
       {{ ms.multiselect('entity', 'Entity', entity_options, entity) }}
+      {{ ms.multiselect('stage', 'Stage', stage_choices, stage) }}
       {{ ms.multiselect('device_type', 'Device Type', device_type_options, device_type) }}
       {{ ms.multiselect('grade', 'Grade', grade_options() + [('none', 'No Grade')], grade) }}
       {{ ms.multiselect('lot', 'Lot', lot_choices, lot) }}
       {{ ms.multiselect('stock_type', 'Stock Type', stock_type_options, stock_type) }}
-      {{ ms.multiselect('stage', 'Stage', stage_choices, stage) }}
+      {# PNA Check (2026-10-22): Yes = in the PNA summary (active PNA part, in
+         L1/L2/L3) — same rule as the export's PNA column. #}
+      <div>
+        <select name="pna" class="form-select form-select-sm" title="PNA Check">
+          <option value="" {% if not pna %}selected{% endif %}>PNA Check: All</option>
+          <option value="yes" {% if pna == 'yes' %}selected{% endif %}>PNA Check: Yes</option>
+          <option value="no" {% if pna == 'no' %}selected{% endif %}>PNA Check: No</option>
+        </select>
+      </div>
       {# Date From/To filter on the date the tag reached its current stage. #}
       {% include "_date_range_fields.html" %}
       <div class="filter-bar-check">
@@ -40,9 +49,9 @@
           <input class="form-check-input" type="checkbox" name="exclude_sold" value="1"
                  id="excludeSoldChk" {% if exclude_sold %}checked{% endif %}>
           <label class="form-check-label small fw-semibold" for="excludeSoldChk">
-            Active Stock Only
+            Exclude Sold
             <i class="bi bi-info-circle text-muted ms-1"
-               title="Excludes these stages: GRN Receipt, Sold"></i>
+               title="Hides Sold tags. (GRN Receipt is hidden too, but tags enter the system at IQC, so it holds none.)"></i>
           </label>
         </div>
       </div>
@@ -109,7 +118,7 @@
         <i class="bi bi-upload me-1"></i>Upload Tags
       </button>
       <a id="exportCsvLink"
-         href="/devices/export?q={{ q | urlencode }}&stage={{ stage | urlencode }}&lot={{ lot | urlencode }}&grade={{ grade | urlencode }}&category={{ category | urlencode }}&device_type={{ device_type | urlencode }}&entity={{ entity | urlencode }}&stock_type={{ stock_type | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}&exclude_sold={{ '1' if exclude_sold else '' }}&fs=1"
+         href="/devices/export?q={{ q | urlencode }}&stage={{ stage | urlencode }}&lot={{ lot | urlencode }}&grade={{ grade | urlencode }}&category={{ category | urlencode }}&device_type={{ device_type | urlencode }}&entity={{ entity | urlencode }}&stock_type={{ stock_type | urlencode }}&pna={{ pna | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}&exclude_sold={{ '1' if exclude_sold else '' }}&fs=1"
          class="btn btn-sm btn-outline-success" onclick="return submitExport(event)"
          title="Exports the selected Tag Numbers, or every filtered result if none are ticked">
         <i class="bi bi-download me-1"></i><span id="exportCsvLabel">Export CSV</span>
@@ -447,7 +456,7 @@ var devicesSelected = new Set();
 // posting thousands of Tag Numbers.
 var devicesSelecting = false;
 var selectAllSize = -1;
-var DEVICE_FILTER_KEYS = ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs'];
+var DEVICE_FILTER_KEYS = ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'pna', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs'];
 function filterParams() {
   var p = new URLSearchParams(window.location.search), out = new URLSearchParams();
   DEVICE_FILTER_KEYS.forEach(function (k) { out.set(k, p.get(k) || ''); });
@@ -482,7 +491,7 @@ $(document).ready(function() {
       url: '/devices/data',
       data: function (d) {
         var p = new URLSearchParams(window.location.search);
-        ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
+        ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'pna', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
           .forEach(function (k) { d[k] = p.get(k) || ''; });
       },
       dataSrc: function (json) { return json.data; },
@@ -697,7 +706,7 @@ $(document).ready(function() {
   function msParams() {
     var p = new URLSearchParams(window.location.search);
     var params = new URLSearchParams();
-    ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
+    ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'pna', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
       .forEach(function (k) { params.set(k, p.get(k) || ''); });
     params.set('tsearch', MS.tsearch || '');
     ['s_entity', 's_make', 's_device_type', 's_touch', 's_stock', 's_grade'].forEach(function (k) {
