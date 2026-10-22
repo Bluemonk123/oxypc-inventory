@@ -178,6 +178,7 @@ from routers.grn import router as grn_router
 from routers.entity_movement import router as entity_movement_router
 from routers.part_estimation import router as part_estimation_router
 from routers.rentals import router as rentals_router
+from routers.system_health import router as system_health_router, record_startup as _record_schema_startup
 from routers.extended_warranty import router as extended_warranty_router
 from routers.parts_grn import router as parts_grn_router
 import models.parts_grn  # ensure parts_grn tables are in Base.metadata
@@ -270,6 +271,7 @@ app.include_router(grn_router)
 app.include_router(entity_movement_router)
 app.include_router(part_estimation_router)
 app.include_router(rentals_router)
+app.include_router(system_health_router)   # /admin/system/health (2026-10-22)
 app.include_router(extended_warranty_router)
 app.include_router(parts_grn_router)
 app.include_router(stage_control_router)
@@ -524,6 +526,8 @@ async def startup_event():
         _auto_fix = os.environ.get("OXYPC_AUTO_FIX", "1") == "1"
         summary = await validate_and_fix(_engine, auto_fix=_auto_fix)
 
+        _record_schema_startup(auto_fix=_auto_fix, fixed=summary.get("fixed", []),
+                               remaining=summary.get("remaining", []))
         if summary["issues_fixed"]:
             print(f"  [Schema] Auto-fixed {summary['issues_fixed']} issue(s):")
             for msg in summary["fixed"]:
@@ -538,6 +542,7 @@ async def startup_event():
     except Exception as exc:
         # DB not reachable yet -warn but don't abort (connection errors surface on first request)
         print(f"  [Schema] WARNING: Could not validate schema: {exc}")
+        _record_schema_startup(warning=f"{type(exc).__name__}: {str(exc)[:800]}")
 
     # ── Load saved application timezone ──────────────────────────────────────
     try:
