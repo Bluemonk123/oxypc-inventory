@@ -299,10 +299,15 @@ async def scrap_sale_report(request: Request, db: AsyncSession = Depends(get_db)
         select(ScrapSale).where(ScrapSale.is_trashed.isnot(True))
         .order_by(ScrapSale.sale_date.desc(), ScrapSale.sale_number.desc())
     )).scalars().all()
+    # Entity name LIVE from Company Setting (2026-10-22, on request); the copy
+    # saved on the sale is used only if its company row is gone.
+    from models.company import Company
+    _cids = list({s.company_id for s in sales if s.company_id})
+    _live = {c.id: c for c in (await db.execute(select(Company).where(Company.id.in_(_cids)))).scalars().all()} if _cids else {}
     rows = [{
         "sale_number": s.sale_number, "sale_date": s.sale_date.isoformat(),
         "sale_date_label": s.sale_date.strftime("%d-%m-%Y"),
-        "entity": s.entity or "—", "entity_name": s.entity_name or "",
+        "entity": s.entity or "—", "entity_name": (_live[s.company_id].company_name if s.company_id in _live else s.entity_name) or "",
         "invoice_number": s.invoice_number or "—", "sales_person": s.sales_person or "—",
         "customer_company": s.customer_company, "customer_phone": s.customer_phone or "",
         "customer_email": s.customer_email or "",

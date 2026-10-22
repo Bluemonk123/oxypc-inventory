@@ -38,16 +38,22 @@
   <div class="card-header bg-transparent fw-semibold"><i class="bi bi-upload me-2"></i>Bulk Upload Tags — Change Entities</div>
   <div class="card-body">
     {{ dz.styles() }}
-    {# Tags come only from the uploaded file (2026-10-21) — the paste box is
-       hidden; it still holds the parsed tags for the Change Entities modal. #}
-    <textarea id="tagsInput" class="d-none" aria-hidden="true"></textarea>
-    {# Prominent drop zone (2026-10-21): the whole box is the file picker —
-       click or drop a CSV. The real <input type=file> covers it, invisible. #}
-    <div class="d-flex flex-column flex-xl-row align-items-stretch gap-3">
-      {{ dz.zone(input_id='tagsCsvFile', zone_id='tagsDropZone', icon_id='tagsDropIcon', status_id='tagsCount',
-                 title='Upload/Drag-Drop CSV file with "barcode" column for all selected tags',
-                 status_text='0 tag(s) entered', template_link_id='tagsTemplateLink') }}
-      <button type="button" id="openChangeEntitiesBtn" class="btn btn-primary btn-lg align-self-end align-self-xl-center flex-shrink-0">
+    {# One row (2026-10-22): Upload area, Tag Number box, Change Entities.
+       Tags can be typed/pasted in the box (back by request) or uploaded — an
+       uploaded file's tags are added to the box, where they can be checked
+       and edited. The box is what Change Entities uses. #}
+    <div class="d-flex flex-column flex-lg-row align-items-stretch gap-3">
+      <div class="d-flex" style="flex:1 1 0;min-width:0">
+        {{ dz.zone(input_id='tagsCsvFile', zone_id='tagsDropZone', icon_id='tagsDropIcon', status_id='tagsCount',
+                   title='Upload/Drag-Drop CSV file with "barcode" column for all selected tags',
+                   status_text='0 tag(s) entered', template_link_id='tagsTemplateLink') }}
+      </div>
+      <div class="d-flex flex-column" style="flex:1 1 0;min-width:0">
+        <label for="tagsInput" class="form-label small fw-semibold mb-1">Tag Numbers</label>
+        <textarea id="tagsInput" class="form-control flex-grow-1" rows="4" style="min-height:96px"
+                  placeholder="Type or paste Tag Numbers — separated by new line, comma or space"></textarea>
+      </div>
+      <button type="button" id="openChangeEntitiesBtn" class="btn btn-primary btn-lg align-self-end align-self-lg-center flex-shrink-0">
         <i class="bi bi-arrow-left-right me-1"></i>Change Entities
       </button>
     </div>
@@ -164,6 +170,7 @@ function parseTags(raw) {
   return out;
 }
 var tagsCsvError = document.getElementById('tagsCsvError');
+tagsInput.addEventListener('input', function () { showCsvError(''); refreshCount(''); });
 var tagsDropZone = document.getElementById('tagsDropZone');
 var tagsDropIcon = document.getElementById('tagsDropIcon');
 function showCsvError(msg) {
@@ -186,7 +193,7 @@ function setDropFile(name, loaded) {
 // "regrn_tags.csv — 3 tag(s) selected from file".
 function refreshCount(fileName) {
   var n = parseTags(tagsInput.value).length;
-  tagsCount.textContent = (fileName ? fileName + ' — ' + n + ' tag(s) selected from file' : n + ' tag(s) entered');
+  tagsCount.textContent = (fileName ? fileName + ' — ' + n + ' tag(s) in the box' : n + ' tag(s) entered');
   tagsCount.className = 'small mt-1 ' + (n ? 'fw-semibold text-success' : 'text-muted');
 }
 
@@ -227,7 +234,6 @@ function tagsFromCsv(text) {
 
 document.getElementById('tagsCsvFile').addEventListener('change', function (e) {
   var file = e.target.files[0];
-  tagsInput.value = '';
   showCsvError('');
   if (!file) { setDropFile('', false); refreshCount(''); return; }
   setDropFile(file.name, false);
@@ -236,9 +242,12 @@ document.getElementById('tagsCsvFile').addEventListener('change', function (e) {
     var res = tagsFromCsv(ev.target.result);
     if (res.error) { showCsvError(res.error); refreshCount(''); return; }
     if (!res.tags.length) { showCsvError('No Tag Numbers found in the "barcode" column.'); refreshCount(''); return; }
-    tagsInput.value = res.tags.join('\n');
+    // Added to whatever is already in the box (duplicates count once).
+    var typed = parseTags(tagsInput.value);
+    tagsInput.value = parseTags(typed.concat(res.tags).join('\n')).join('\n');
     setDropFile(file.name, true);
     refreshCount(file.name);
+    e.target.value = '';   // the same file can be chosen again
   };
   reader.readAsText(file);
 });
@@ -254,7 +263,7 @@ document.getElementById('tagsTemplateLink').addEventListener('click', function (
 
 document.getElementById('openChangeEntitiesBtn').addEventListener('click', function () {
   var tags = parseTags(tagsInput.value);
-  if (!tags.length) { showCsvError('Upload a CSV file with a "barcode" column first.'); return; }
+  if (!tags.length) { showCsvError('Enter Tag Numbers in the box or upload a CSV file with a "barcode" column first.'); return; }
   document.getElementById('ce_tags').value = tags.join(',');
   document.getElementById('ce_count').textContent = tags.length + ' tag(s) selected';
   new bootstrap.Modal(document.getElementById('changeEntitiesModal')).show();

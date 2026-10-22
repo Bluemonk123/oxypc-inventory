@@ -17,12 +17,26 @@ from routers.settings import get_company_settings
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
 
+async def _sale_company(db: AsyncSession, sale: Sale) -> dict:
+    """Company details for a sale's Tax Invoice / Delivery Challan — LIVE from
+    Company Setting (2026-10-22, on request): the sale's own company row is read
+    at print time, so an edit in Company Setting shows on every invoice, past
+    ones included. Falls back to the copy saved on the sale only when that
+    company row no longer exists, and to the default company for very old
+    sales that have neither."""
+    if sale.company_id:
+        from models.company import Company
+        company = await db.get(Company, sale.company_id)
+        if company:
+            return await get_company_settings(db, str(company.id))
+    return _sale_company_snapshot(sale) or await get_company_settings(db)
+
+
 def _sale_company_snapshot(sale: Sale) -> dict | None:
-    """The company details frozen onto this Sale at creation time (see
-    routers/sales.py create_sale) — used verbatim, NEVER re-resolved against
-    the live Company Setting, so a Tax Invoice/Delivery Challan always shows
-    the company as it was on the sale date even if that company's own
-    name/GSTIN/address is edited or the row is deactivated afterward.
+    """The company details copied onto this Sale at creation time (see
+    routers/sales.py create_sale). Since 2026-10-22 only a FALLBACK for
+    _sale_company (above), which reads Company Setting live: used when the
+    sale's company row no longer exists.
     Returns None for a sale recorded before this column existed (no
     snapshot), so the caller can fall back to get_company_settings' live
     "oldest active company" default for those older rows only."""
@@ -101,7 +115,7 @@ async def print_invoice(
         return RedirectResponse(url="/sales?error=Sale+not+found", status_code=302)
     sale, device, lot = row
 
-    company = _sale_company_snapshot(sale) or await get_company_settings(db)
+    company = await _sale_company(db, sale)
     gst_intra_pct, gst_inter_pct = await _fetch_gst_rates(db)
     gst        = _compute_gst(
         float(sale.sale_price), company["state"],
@@ -134,7 +148,7 @@ async def print_waybill(
     if not row:
         return RedirectResponse(url="/sales?error=Sale+not+found", status_code=302)
     sale, device, lot = row
-    company    = _sale_company_snapshot(sale) or await get_company_settings(db)
+    company    = await _sale_company(db, sale)
     invoice_no = getattr(sale, "invoice_no", None) or sale.sale_number
     return templates.TemplateResponse("invoices/waybill.html", {
         "request": request, "current_user": current_user,

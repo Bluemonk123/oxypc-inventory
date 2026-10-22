@@ -170,6 +170,27 @@ def _model_summary(items) -> list:
     return out
 
 
+def _entity(r, company=None) -> dict:
+    """Billing Entity details to SHOW for a rental — LIVE from Company Setting
+    (2026-10-22, on request), so an edit there shows on every rental, past ones
+    included. The copy saved on the rental is used only if the company row is
+    gone."""
+    if company is not None:
+        return {"name": company.company_name or "", "address": company.company_address or "",
+                "gstin": company.company_gstin or "", "state": company.company_state or "",
+                "phone": company.company_phone or "", "email": company.company_email or ""}
+    return {"name": r.billing_entity_name or "", "address": r.billing_entity_address or "",
+            "gstin": r.billing_entity_gstin or "", "state": r.billing_entity_state or "",
+            "phone": r.billing_entity_phone or "", "email": r.billing_entity_email or ""}
+
+
+async def _companies_by_id(db, rentals) -> dict:
+    ids = list({r.billing_company_id for r in rentals if r.billing_company_id})
+    if not ids:
+        return {}
+    return {c.id: c for c in (await db.execute(select(Company).where(Company.id.in_(ids)))).scalars().all()}
+
+
 def _model_line(g) -> str:
     """'Dell Latitude 5420 i5 11th 16 GB 256 GB x2' — one Model Summary row as text."""
     return " ".join(f"{g['make']} {g['model']} {g['cpu']} {g['gen']} {g['ram']} {g['storage']}".split()) + f" x{g['qty']}"
@@ -251,23 +272,25 @@ async def rental_records(request: Request, status: str = Query(default=""),
         q = q.where(RentalRecord.status == status)
     rentals = (await db.execute(q)).scalars().all()
     items = await _items_of(db, [r.id for r in rentals])
+    companies = await _companies_by_id(db, rentals)
     rows = []
     for r in rentals:
         its = items.get(r.id, [])
+        ent = _entity(r, companies.get(r.billing_company_id))
         summary = _model_summary([_item_dict(i) for i in its])
-        rows.append({"r": r, "duration": _duration_text(r), "models": summary,
+        rows.append({"r": r, "ent": ent, "duration": _duration_text(r), "models": summary,
                      "tags": [i.barcode for i in its],
                      "export": {
                          "Rental ID": r.rental_number,
                          "Created On": r.created_at.strftime("%d-%m-%Y") if r.created_at else "",
                          "Status": r.status.capitalize(),
                          "Bill Type": dict(BILL_TYPES).get(r.bill_type, r.bill_type),
-                         "Billing Entity": r.billing_entity_name or "",
-                         "Billing Entity GSTIN": r.billing_entity_gstin or "",
-                         "Billing Entity Address": r.billing_entity_address or "",
-                         "Billing Entity State": r.billing_entity_state or "",
-                         "Billing Entity Phone": r.billing_entity_phone or "",
-                         "Billing Entity Email": r.billing_entity_email or "",
+                         "Billing Entity": ent["name"],
+                         "Billing Entity GSTIN": ent["gstin"],
+                         "Billing Entity Address": ent["address"],
+                         "Billing Entity State": ent["state"],
+                         "Billing Entity Phone": ent["phone"],
+                         "Billing Entity Email": ent["email"],
                          "Company Name": r.customer_company or "",
                          "GSTIN": r.customer_gstin or "",
                          "Person Name": r.person_name or "",
@@ -463,8 +486,10 @@ async def rental_view(request: Request, rental_id: str, db: AsyncSession = Depen
                       current_user: User = Depends(allowed)):
     r = await _get_rental(db, rental_id)
     its = (await _items_of(db, [r.id])).get(r.id, [])
+    company = (await _companies_by_id(db, [r])).get(r.billing_company_id)
     return templates.TemplateResponse("rentals/detail.html", {
         "request": request, "current_user": current_user, "r": r, "items": its,
+        "ent": _entity(r, company),
         "summary": _model_summary([_item_dict(i) for i in its]), "duration": _duration_text(r),
         "bill_types": dict(BILL_TYPES), "statuses": dict(RENTAL_STATUSES),
     })
@@ -476,8 +501,10 @@ async def rental_print(request: Request, rental_id: str, db: AsyncSession = Depe
     """Printable rental summary — the browser's Print / Save as PDF."""
     r = await _get_rental(db, rental_id)
     its = (await _items_of(db, [r.id])).get(r.id, [])
+    company = (await _companies_by_id(db, [r])).get(r.billing_company_id)
     return templates.TemplateResponse("rentals/print.html", {
         "request": request, "current_user": current_user, "r": r, "items": its,
+        "ent": _entity(r, company),
         "summary": _model_summary([_item_dict(i) for i in its]), "duration": _duration_text(r),
         "bill_types": dict(BILL_TYPES), "statuses": dict(RENTAL_STATUSES),
     })

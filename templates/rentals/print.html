@@ -45,12 +45,12 @@
 
   <div class="header">
     <div>
-      <div class="company-name">{{ r.billing_entity_name or 'OxyPC Computers' }}</div>
+      <div class="company-name">{{ ent.name or 'OxyPC Computers' }}</div>
       <div class="company-sub">
-        {% if r.billing_entity_address %}{{ r.billing_entity_address }}<br>{% endif %}
-        {% if r.billing_entity_state %}{{ r.billing_entity_state }}{% endif %}
-        {% if r.billing_entity_gstin %}{% if r.billing_entity_state %} · {% endif %}GSTIN: {{ r.billing_entity_gstin }}{% endif %}
-        {% if r.billing_entity_phone or r.billing_entity_email %}<br>{{ [r.billing_entity_phone, r.billing_entity_email] | select | join(' · ') }}{% endif %}
+        {% if ent.address %}{{ ent.address }}<br>{% endif %}
+        {% if ent.state %}{{ ent.state }}{% endif %}
+        {% if ent.gstin %}{% if ent.state %} · {% endif %}GSTIN: {{ ent.gstin }}{% endif %}
+        {% if ent.phone or ent.email %}<br>{{ [ent.phone, ent.email] | select | join(' · ') }}{% endif %}
       </div>
     </div>
     <div class="doc-title">
@@ -121,7 +121,7 @@
 
   <div class="footer">
     <div><div class="sign">Customer Signature</div></div>
-    <div><div class="sign">For {{ r.billing_entity_name or 'OxyPC Computers' }}</div></div>
+    <div><div class="sign">For {{ ent.name or 'OxyPC Computers' }}</div></div>
   </div>
 
   <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });</script>

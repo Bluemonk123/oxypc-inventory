@@ -55,7 +55,7 @@
             <td>{{ bill_types.get(r.bill_type, r.bill_type) }}</td>
             <td>
               <span class="rental-tip" data-bs-toggle="tooltip" data-bs-html="true" data-bs-custom-class="rental-tooltip"
-                    title="{{ tip_line('Entity', r.billing_entity_name) }}{{ tip_line('GSTIN', r.billing_entity_gstin) }}{{ tip_line('Address', r.billing_entity_address) }}{{ tip_line('State', r.billing_entity_state) }}{{ tip_line('Phone', r.billing_entity_phone) }}{{ tip_line('Email', r.billing_entity_email) }}">{{ r.billing_entity_name or '—' }}</span>
+                    title="{{ tip_line('Entity', row.ent.name) }}{{ tip_line('GSTIN', row.ent.gstin) }}{{ tip_line('Address', row.ent.address) }}{{ tip_line('State', row.ent.state) }}{{ tip_line('Phone', row.ent.phone) }}{{ tip_line('Email', row.ent.email) }}">{{ row.ent.name or '—' }}</span>
             </td>
             <td>
               <span class="rental-tip d-inline-block" data-bs-toggle="tooltip" data-bs-html="true" data-bs-custom-class="rental-tooltip"

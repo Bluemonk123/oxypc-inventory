@@ -34,12 +34,12 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-transparent fw-semibold"><i class="bi bi-building me-2"></i>Billing Entity</div>
       <div class="card-body small">
-        <div class="fw-semibold">{{ r.billing_entity_name or '—' }}</div>
-        {% if r.billing_entity_gstin %}<div><span class="text-muted">GSTIN:</span> {{ r.billing_entity_gstin }}</div>{% endif %}
-        {% if r.billing_entity_address %}<div><span class="text-muted">Address:</span> {{ r.billing_entity_address }}</div>{% endif %}
-        {% if r.billing_entity_state %}<div><span class="text-muted">State:</span> {{ r.billing_entity_state }}</div>{% endif %}
-        {% if r.billing_entity_phone %}<div><span class="text-muted">Phone:</span> {{ r.billing_entity_phone }}</div>{% endif %}
-        {% if r.billing_entity_email %}<div><span class="text-muted">Email:</span> {{ r.billing_entity_email }}</div>{% endif %}
+        <div class="fw-semibold">{{ ent.name or '—' }}</div>
+        {% if ent.gstin %}<div><span class="text-muted">GSTIN:</span> {{ ent.gstin }}</div>{% endif %}
+        {% if ent.address %}<div><span class="text-muted">Address:</span> {{ ent.address }}</div>{% endif %}
+        {% if ent.state %}<div><span class="text-muted">State:</span> {{ ent.state }}</div>{% endif %}
+        {% if ent.phone %}<div><span class="text-muted">Phone:</span> {{ ent.phone }}</div>{% endif %}
+        {% if ent.email %}<div><span class="text-muted">Email:</span> {{ ent.email }}</div>{% endif %}
       </div>
     </div>
   </div>
