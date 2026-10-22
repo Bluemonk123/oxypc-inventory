@@ -452,6 +452,7 @@ async def validate_and_fix(engine: AsyncEngine, auto_fix: bool = True) -> dict:
     # ALTER TYPE ... ADD VALUE cannot run inside a transaction, so this phase
     # uses its own AUTOCOMMIT connection before the main transactional pass.
     enum_fixes: list[str] = []
+    enum_errors: list[str] = []
     if auto_fix:
         wanted: dict[str, set] = {}
         for table in Base.metadata.tables.values():
@@ -470,13 +471,25 @@ async def validate_and_fix(engine: AsyncEngine, auto_fix: bool = True) -> dict:
                 if not existing:
                     continue  # type doesn't exist yet — create_all will make it complete
                 for val in sorted(values - existing):
-                    await ac.execute(text(
-                        f"ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS '{val}'"))
-                    enum_fixes.append(f"Added enum value {enum_name}.'{val}'")
+                    # One refused ALTER TYPE (e.g. "must be owner of type", when
+                    # the type belongs to another DB role) must not abort the
+                    # whole validation — tables, columns and stage rows below
+                    # still get created. Reported in `remaining` instead
+                    # (2026-10-22: production lost the Rentals tables this way).
+                    try:
+                        await ac.execute(text(
+                            f"ALTER TYPE {enum_name} ADD VALUE IF NOT EXISTS '{val}'"))
+                        enum_fixes.append(f"Added enum value {enum_name}.'{val}'")
+                    except Exception as exc:  # noqa: BLE001
+                        enum_errors.append(
+                            f"ENUM VALUE NOT ADDED: {enum_name}.'{val}' — "
+                            f"{type(getattr(exc, 'orig', exc)).__name__}: "
+                            f"{str(getattr(exc, 'orig', exc)).splitlines()[0][:200]}")
 
     async with engine.begin() as conn:
         v = SchemaValidator(conn)
         v.fixed.extend(enum_fixes)
+        v.issues.extend(enum_errors)   # reported, not fatal (see Phase 0)
 
         # ── Phase 1: check + fix missing tables ───────────────────────────────
         await v.check_tables(Base.metadata)
