@@ -119,12 +119,19 @@ def fill_defaults(d) -> dict:
     """
     ch = {}
     blank = lambda v: not (str(v).strip() if v is not None else "")
-    # Text with no real size ("0", "N/A") is treated as blank: never copied.
-    sized = lambda t: t if size_to_gb(t) else ""
+    # Values that look entered wrong are never copied (they stay for a person
+    # to fix — see /admin/system/data-fixes): RAM over 128GB, storage under
+    # 32GB (some tags carry SSD GB 1 / 2 meaning 1TB / 2TB). Text with no real
+    # size ("0", "N/A") is treated as blank.
+    ok_ram = lambda g: g if g and g <= 128 else None
+    ok_sto = lambda g: g if g and g >= 32 else None
+    sized = lambda t, ok: t if ok(size_to_gb(t)) else ""
 
     # ── RAM ──
-    rs, rsum = sized((d.total_ram_size or "").strip()), sized((d.ram_summary or "").strip())
-    ram_gb = d.ram_gb or size_to_gb(rs) or size_to_gb(rsum)
+    rs, rsum = sized((d.total_ram_size or "").strip(), ok_ram), sized((d.ram_summary or "").strip(), ok_ram)
+    if d.ram_gb and not ok_ram(d.ram_gb):
+        rs = rsum = ""                    # RAM GB itself looks wrong: fill nothing from this set
+    ram_gb = ok_ram(d.ram_gb) or size_to_gb(rs) or size_to_gb(rsum)
     if not d.ram_gb and ram_gb:
         ch["ram_gb"] = ram_gb
     if blank(d.total_ram_size):
@@ -142,7 +149,9 @@ def fill_defaults(d) -> dict:
     # A Total HDD Size / Hard Drive text already on the tag is trusted first;
     # SSD GB + HDD GB is used only when there is no such text (some tags carry
     # the same drive in both GB fields, e.g. 256 + 256 with "256 GB" as total).
-    hs, hsum = sized((d.total_hdd_size or "").strip()), sized((d.hdd_summary or "").strip())
+    hs, hsum = sized((d.total_hdd_size or "").strip(), ok_sto), sized((d.hdd_summary or "").strip(), ok_sto)
+    if any(g and not ok_sto(g) for g in (d.storage_gb, d.hdd_capacity_gb)):
+        return ch                         # a GB value looks wrong: fill nothing from this set
     drives = [g for g in (d.storage_gb, d.hdd_capacity_gb) if g]
     text_total = size_to_gb(hs) or size_to_gb(hsum)
     total = text_total or (sum(drives) if drives else None)

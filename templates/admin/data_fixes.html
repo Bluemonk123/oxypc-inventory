@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+{% block title %}Data Fixes — OxyPC{% endblock %}
+{% block page_title %}Data Fixes{% endblock %}
+{% block content %}
+{% set csrf = request.cookies.get('csrf_token', '') %}
+{% if done %}
+<div class="alert alert-success py-2 small"><i class="bi bi-check-circle me-1"></i>{{ done }}</div>
+{% endif %}
+
+<div class="row g-3">
+  {# ── RAM / Storage fill ── #}
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-memory me-2"></i>RAM / Storage fill</span>
+        {% if spec_total %}
+        <form method="post" action="/admin/system/spec-fill"
+              onsubmit="this.querySelector('button').disabled=true; return confirm('Fill blank RAM / Storage fields on {{ "{:,}".format(spec_total) }} tags?\n\nOnly blank fields are written; every changed tag is logged and can be reversed.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Apply to {{ "{:,}".format(spec_total) }} tags</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not spec_total %}
+        <div class="text-muted">Nothing to fill — every tag's RAM / Storage set is complete.</div>
+        {% else %}
+        <p class="text-muted mb-2">Fills each tag's blank fields from the ones it has in the same set. Values already there are never changed; HDD GB is never filled.</p>
+        <table class="table table-sm mb-3">
+          <thead><tr><th>Field</th><th class="text-end">Tags filled</th></tr></thead>
+          <tbody>
+            {% for f, n in spec_fields.items() if n %}
+            <tr><td>{{ field_labels[f] }}</td><td class="text-end">{{ "{:,}".format(n) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="fw-semibold mb-1">Examples</div>
+        <table class="table table-sm table-bordered mb-0" style="font-size:.78rem">
+          <thead class="table-light"><tr><th>Tag</th><th>Has</th><th>Gets</th></tr></thead>
+          <tbody>
+            {% for e in spec_examples %}
+            <tr>
+              <td class="text-nowrap"><a href="/devices/{{ e.tag }}" target="_blank">{{ e.tag }}</a></td>
+              <td>{% for k, v in e.before.items() %}<div>{{ field_labels[k] }}: <span class="text-muted">{{ v }}</span></div>{% else %}<span class="text-muted">—</span>{% endfor %}</td>
+              <td>{% for k, v in e.fills.items() %}<div>{{ field_labels[k] }}: <strong>{{ v }}</strong></div>{% endfor %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Sub-Category fill ── #}
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Sub-Category fill from Device Type</span>
+        {% if subcat_total %}
+        <form method="post" action="/admin/system/subcategory-fill"
+              onsubmit="this.querySelector('button').disabled=true; return confirm('Fill blank Sub-Category on {{ subcat_total }} tags from their Device Type?\n\nEvery changed tag is logged and can be reversed.')">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Apply to {{ subcat_total }} tags</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not subcat_total %}
+        <div class="text-muted">Nothing to fill — no tag has a Device Type with a blank Sub-Category.</div>
+        {% else %}
+        <p class="text-muted mb-2">Tags with a Device Type but a blank Sub-Category. Same pairing as Bulk Upload.</p>
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Device Type</th><th>Sub-Category becomes</th><th class="text-end">Tags</th></tr></thead>
+          <tbody>
+            {% for g in subcat_by %}
+            <tr><td>{{ g.dt }}</td><td><strong>{{ g.sc }}</strong></td><td class="text-end">{{ g.n }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Data check ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="fw-semibold"><i class="bi bi-exclamation-triangle me-2"></i>RAM / Storage data check
+          <span class="badge bg-secondary ms-1">{{ "{:,}".format(issues_total) }} tags</span></span>
+        {% if issues_total %}
+        <a href="/admin/system/spec-check?csv=1" class="btn btn-sm btn-outline-success"><i class="bi bi-download me-1"></i>Export all (CSV)</a>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        <p class="text-muted mb-2">Read-only. Values that look entered wrong — correct them on each tag's Edit page. The fill never changes these.</p>
+        {% if issue_counts %}
+        <div class="d-flex flex-wrap gap-2 mb-3">
+          {% for i, n in issue_counts %}<span class="badge bg-light text-dark border">{{ i }}: {{ "{:,}".format(n) }}</span>{% endfor %}
+        </div>
+        {% endif %}
+        {% if issues %}
+        {% if issues_total > issues|length %}<div class="text-muted mb-1">Showing first {{ issues|length }} — Export has all {{ "{:,}".format(issues_total) }}.</div>{% endif %}
+        <div class="table-responsive">
+          <table id="specCheckTable" class="table table-sm table-hover mb-0 align-middle" style="font-size:.78rem">
+            <thead class="table-dark"><tr>
+              <th>Tag</th><th>Brand / Model</th><th>Issues</th>
+              <th>RAM GB</th><th>RAM</th><th>Total RAM Size</th>
+              <th>SSD GB</th><th>HDD GB</th><th>Hard Drive</th><th>Total HDD Size</th><th></th>
+            </tr></thead>
+            <tbody>
+              {% for r in issues %}
+              <tr>
+                <td class="text-nowrap"><a href="/devices/{{ r.tag }}" target="_blank">{{ r.tag }}</a></td>
+                <td>{{ r.brand }} {{ r.model }}</td>
+                <td class="text-danger">{{ r.issues | join('; ') }}</td>
+                <td>{{ r.ram_gb if r.ram_gb is not none else '' }}</td>
+                <td>{{ r.ram_summary or '' }}</td>
+                <td>{{ r.total_ram_size or '' }}</td>
+                <td>{{ r.storage_gb if r.storage_gb is not none else '' }}</td>
+                <td>{{ r.hdd_capacity_gb if r.hdd_capacity_gb is not none else '' }}</td>
+                <td>{{ r.hdd_summary or '' }}</td>
+                <td>{{ r.total_hdd_size or '' }}</td>
+                <td><a href="/devices/{{ r.tag }}/edit" target="_blank" class="btn btn-sm btn-outline-primary py-0" title="Edit"><i class="bi bi-pencil"></i></a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-muted">No problems found.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function () {
+  if (document.getElementById('specCheckTable')) {
+    initGlobalTable('#specCheckTable', { order: [], pageLength: 25, columnDefs: [{ orderable: false, targets: [10] }] });
+  }
+});
+</script>
+{% endblock %}
