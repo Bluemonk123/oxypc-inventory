@@ -710,6 +710,10 @@ async def generate_po_from_deal(
             deal_id=deal.id, contact_id=deal.contact_id,
             supplier_gstin=(contact.gstin if contact else None),
             total_amount=total, status="draft", created_by=username,
+            # Our offer (sum of the line items' Offer Price) — shown as Offer
+            # Price in Purchase Deals (2026-10-22). None when no offer is set.
+            offer_total=(round(sum(float(li.offer_price) for li in items if li.offer_price is not None), 2)
+                         if any(li.offer_price is not None for li in items) else None),
         )
         db.add(po)
         try:

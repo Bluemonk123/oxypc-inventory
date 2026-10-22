@@ -12,114 +12,79 @@
 
 <div class="row g-4">
 
-  <!-- Left col: info -->
+  <!-- Left col: stage progress, linked lot, actions -->
   <div class="col-xl-4">
 
-    <!-- Deal Info Card -->
+    <!-- Stage Progress (2026-10-22): vertical steps on the left. Filled
+         circle — green = passed, blue = current, grey = upcoming. Only the
+         closing stage that applies is shown (Won, or Lost when lost). -->
+    <style>
+      .sd-steps { list-style: none; margin: 0; padding: 0; }
+      .sd-step { position: relative; display: flex; gap: .75rem; padding: .55rem .75rem .55rem .5rem; border-radius: .75rem; border: 1px solid transparent; }
+      .sd-step::before { content: ""; position: absolute; left: calc(.5rem + 7px); top: 0; bottom: 0; border-left: 2px solid var(--sd-line, #ced4da); }
+      .sd-step:first-child::before { top: 1.1rem; }
+      .sd-step:last-child::before { bottom: calc(100% - 1.1rem); }
+      .sd-step.is-upcoming::before { border-left-style: dashed; }
+      .sd-dot { position: relative; z-index: 1; flex-shrink: 0; width: 16px; height: 16px; margin-top: .2rem; border-radius: 50%; background: var(--sd-dot); box-shadow: 0 0 0 3px #fff; }
+      .sd-step.is-done    { --sd-dot: #198754; --sd-line: #198754; }
+      .sd-step.is-current { --sd-dot: var(--bs-primary); --sd-line: #ced4da; background: #fff; border-color: var(--bs-primary); box-shadow: 0 .4rem 1rem rgba(13,110,253,.12); }
+      .sd-step.is-current::before { border-left-style: dashed; }
+      .sd-step.is-upcoming { --sd-dot: #adb5bd; --sd-line: #ced4da; }
+      .sd-title { font-weight: 600; line-height: 1.3; }
+      .sd-step.is-upcoming .sd-title { color: #6c757d; font-weight: 500; }
+      .sd-status { font-size: .8rem; }
+    </style>
     <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-        <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i>Deal Info</span>
-        <span class="badge bg-{{ stage_colors.get(deal.stage,'secondary') }}">
-          {{ stage_labels.get(deal.stage, deal.stage | replace('_',' ') | title) }}
-        </span>
-      </div>
-      <div class="card-body">
-        <div class="mb-2">
-          <div class="small text-muted">Deal Number</div>
-          <code>{{ deal.deal_number }}</code>
-        </div>
-        <div class="mb-2">
-          <div class="small text-muted">Title</div>
-          <div class="fw-semibold">{{ deal.title }}</div>
-        </div>
-        {% if contact %}
-        <div class="mb-2">
-          <div class="small text-muted">Contact</div>
-          <a href="/crm/contacts/{{ contact.id }}" class="text-decoration-none">{{ contact.company_name }}</a>
-          {% if contact.contact_person %}<div class="small text-muted">{{ contact.contact_person }}</div>{% endif %}
-        </div>
-        {% endif %}
-        <div class="mb-2">
-          <div class="small text-muted">Source Type</div>
-          <div>{% if deal.source_type %}<span class="badge bg-light text-dark border">{{ deal.source_type | replace('_',' ') | title }}</span>{% else %}—{% endif %}</div>
-        </div>
-        <div class="mb-2">
-          <div class="small text-muted">Device Type</div>
-          <div>{{ deal.device_type or '—' }}</div>
-        </div>
-        <div class="mb-2">
-          <div class="small text-muted">Material Type</div>
-          <div>{% if deal.material_type %}<span class="badge bg-light text-dark border">{{ material_map.get(deal.material_type, deal.material_type | title) }}</span>{% else %}—{% endif %}</div>
-        </div>
-        <div class="mb-2">
-          <div class="small text-muted">Priority</div>
-          <span class="badge bg-{{ priority_colors.get(deal.priority,'secondary') }}">{{ deal.priority | title }}</span>
-        </div>
-        <div class="mb-2">
-          <div class="small text-muted">Assigned To</div>
-          <div>{{ deal.assigned_to or '—' }}</div>
-        </div>
-        {% if deal.notes %}
-        <hr class="my-2">
-        <div class="small text-muted fw-semibold mb-1">Notes</div>
-        <div class="small">{{ deal.notes }}</div>
-        {% endif %}
-        {% if deal.purchase_invoice_path or deal.purchase_order_path or deal.eway_bill_path or deal.quote_received_path %}
-        <hr class="my-2">
-        <div class="small text-muted fw-semibold mb-1">Documents</div>
-        <div class="d-flex flex-column gap-1">
-          {% if deal.purchase_invoice_path %}
-          <a href="/uploads/crm/{{ deal.purchase_invoice_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>Purchase Invoice</a>
+      <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-diagram-3 me-1 text-primary"></i>Stage Progress</div>
+      <div class="card-body pt-1">
+        <ol class="sd-steps mb-3">
+          {% for i, (val, label) in stage_list %}
+          {% if not ((val == 'lost' and deal.stage != 'lost') or (val == 'won' and deal.stage == 'lost')) %}
+          {% set _state = 'done' if i < current_idx else ('current' if i == current_idx else 'upcoming') %}
+          <li class="sd-step is-{{ _state }}">
+            <span class="sd-dot" aria-hidden="true"></span>
+            <div>
+              <div class="sd-title">{{ label }}</div>
+              {% if _state == 'done' %}<div class="sd-status text-success">Completed</div>
+              {% elif _state == 'current' %}<div class="sd-status text-primary">Current stage</div>{% endif %}
+            </div>
+          </li>
           {% endif %}
-          {% if deal.purchase_order_path %}
-          <a href="/uploads/crm/{{ deal.purchase_order_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>Purchase Order</a>
-          {% endif %}
-          {% if deal.eway_bill_path %}
-          <a href="/uploads/crm/{{ deal.eway_bill_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>E-way Bill</a>
-          {% endif %}
-          {% if deal.quote_received_path %}
-          <a href="/uploads/crm/{{ deal.quote_received_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>Quote Received</a>
-          {% endif %}
-        </div>
-        {% endif %}
-      </div>
-    </div>
+          {% endfor %}
+        </ol>
 
-    <!-- Financial Card -->
-    {% if can_view_pricing(current_user) %}
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-currency-rupee me-1 text-success"></i>Financials</div>
-      <div class="card-body">
-        <div class="row g-2 text-center">
-          <div class="col-6">
-            <div class="small text-muted">Asking Total</div>
-            <div class="fw-semibold small">{% if deal_po_items_total %}₹{{ ((deal_po_items_total) | inr) }}{% else %}—{% endif %}</div>
+        <!-- Stage Move Form -->
+        {% if deal.stage not in ['won','lost'] %}
+        <form method="post" action="/crm/sourcing/{{ deal.id }}/stage" class="row g-2 align-items-end">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+          <div class="col-12">
+            <label class="form-label small fw-semibold mb-1">Move to Stage</label>
+            <select name="new_stage" class="form-select form-select-sm">
+              {% for val, label in sourcing_stages %}
+              <option value="{{ val }}" {% if val==deal.stage %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
           </div>
-          <div class="col-6">
-            <div class="small text-muted">Offer Price</div>
-            <div class="fw-semibold small text-primary">{% if deal_po_items_offer_total %}₹{{ ((deal_po_items_offer_total) | inr) }}{% else %}—{% endif %}</div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold mb-1">Final Price / Unit (₹)</label>
+            <input type="number" name="final_price_unit" class="form-control form-control-sm" step="0.01" min="0"
+              value="{{ deal.final_price_unit or '' }}" placeholder="Optional">
           </div>
-          {% if deal.final_price_unit %}
-          <div class="col-6">
-            <div class="small text-muted">Final / Unit</div>
-            <div class="fw-semibold small text-success">₹{{ ((deal.final_price_unit) | inr) }}</div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold mb-1">Win/Loss Reason</label>
+            <input type="text" name="win_loss_reason" class="form-control form-control-sm" placeholder="Optional">
           </div>
-          <div class="col-6">
-            <div class="small text-muted">Final Total</div>
-            <div class="fw-semibold small text-success">{% if deal.final_price_total %}₹{{ ((deal.final_price_total) | inr) }}{% else %}—{% endif %}</div>
+          <div class="col-12">
+            <button class="btn btn-sm btn-primary"><i class="bi bi-arrow-right-circle me-1"></i>Update Stage</button>
           </div>
-          {% endif %}
+        </form>
+        {% else %}
+        <div class="alert alert-{{ 'success' if deal.stage=='won' else 'danger' }} py-2 mb-0">
+          <strong>Deal {{ deal.stage | upper }}</strong>{% if deal.win_loss_reason %} — {{ deal.win_loss_reason }}{% endif %}
         </div>
-        {% if deal.payment_advance_pct %}
-        <hr class="my-2">
-        <div class="small text-muted">Payment Advance: <strong>{{ deal.payment_advance_pct }}%</strong></div>
-        {% endif %}
-        {% if deal.payment_terms %}
-        <div class="small text-muted mt-1">Terms: {{ deal.payment_terms }}</div>
         {% endif %}
       </div>
     </div>
-    {% endif %}
 
     <!-- Lot Card -->
     {% if lot %}
@@ -191,9 +156,6 @@
     </div>
     {% endif %}
 
-    <!-- Purchase Deals (POs raised from this sourcing deal) -->
-    {% include "crm/_purchase_deals_table.html" %}
-
     <!-- Action Buttons -->
     <div class="d-flex gap-2 flex-wrap">
       <a href="/crm/sourcing/{{ deal.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit Deal</a>
@@ -218,57 +180,228 @@
 
   </div>
 
-  <!-- Right col: stage + activities -->
+  <!-- Right col: deal info, PO line items, purchase deals, activities -->
   <div class="col-xl-8">
 
-    <!-- Stage Progress Bar -->
+    <!-- Deal Info (2026-10-22: top of the right column, four fields per row) -->
     <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-diagram-3 me-1 text-primary"></i>Stage Progress</div>
-      <div class="card-body">
-        <div class="d-flex flex-wrap gap-1 mb-3">
-          {% for i, (val, label) in stage_list %}
-          <div class="text-center" style="flex:1;min-width:70px">
-            <div class="rounded px-2 py-1 small fw-semibold
-              {% if i < current_idx %}bg-success text-white
-              {% elif i == current_idx %}bg-primary text-white
-              {% else %}bg-light text-muted{% endif %}">
-              {{ label }}
+      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i>Deal Info</span>
+        <span class="badge bg-{{ stage_colors.get(deal.stage,'secondary') }}">
+          {{ stage_labels.get(deal.stage, deal.stage | replace('_',' ') | title) }}
+        </span>
+      </div>
+      <div class="card-body pt-1">
+        <div class="row g-3">
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Deal Number</div>
+            <code>{{ deal.deal_number }}</code>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Title</div>
+            <div class="fw-semibold">{{ deal.title }}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Contact</div>
+            {% if contact %}
+            <a href="/crm/contacts/{{ contact.id }}" class="text-decoration-none">{{ contact.company_name }}</a>
+            {% if contact.contact_person %}<div class="small text-muted">{{ contact.contact_person }}</div>{% endif %}
+            {% else %}—{% endif %}
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Source Type</div>
+            <div>{% if deal.source_type %}<span class="badge bg-light text-dark border">{{ deal.source_type | replace('_',' ') | title }}</span>{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Device Type</div>
+            <div>{{ deal.device_type or '—' }}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Material Type</div>
+            <div>{% if deal.material_type %}<span class="badge bg-light text-dark border">{{ material_map.get(deal.material_type, deal.material_type | title) }}</span>{% else %}—{% endif %}</div>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Priority</div>
+            <span class="badge bg-{{ priority_colors.get(deal.priority,'secondary') }}">{{ deal.priority | title }}</span>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">Assigned To</div>
+            <div>{{ deal.assigned_to or '—' }}</div>
+          </div>
+          {% if deal.notes %}
+          <div class="col-12">
+            <div class="small text-muted">Notes</div>
+            <div class="small">{{ deal.notes }}</div>
+          </div>
+          {% endif %}
+          {% if deal.purchase_invoice_path or deal.purchase_order_path or deal.eway_bill_path or deal.quote_received_path %}
+          <div class="col-12">
+            <div class="small text-muted mb-1">Documents</div>
+            <div class="d-flex flex-wrap gap-3">
+              {% if deal.purchase_invoice_path %}
+              <a href="/uploads/crm/{{ deal.purchase_invoice_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>Purchase Invoice</a>
+              {% endif %}
+              {% if deal.purchase_order_path %}
+              <a href="/uploads/crm/{{ deal.purchase_order_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>Purchase Order</a>
+              {% endif %}
+              {% if deal.eway_bill_path %}
+              <a href="/uploads/crm/{{ deal.eway_bill_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>E-way Bill</a>
+              {% endif %}
+              {% if deal.quote_received_path %}
+              <a href="/uploads/crm/{{ deal.quote_received_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>Quote Received</a>
+              {% endif %}
             </div>
-            {% if not loop.last %}<div class="text-muted" style="font-size:0.6rem">&#9658;</div>{% endif %}
           </div>
-          {% endfor %}
+          {% endif %}
         </div>
+      </div>
+    </div>
 
-        <!-- Stage Move Form -->
-        {% if deal.stage not in ['won','lost'] %}
-        <form method="post" action="/crm/sourcing/{{ deal.id }}/stage" class="row g-2 align-items-end">
-          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
-          <div class="col-md-4">
-            <label class="form-label small fw-semibold mb-1">Move to Stage</label>
-            <select name="new_stage" class="form-select form-select-sm">
-              {% for val, label in sourcing_stages %}
-              <option value="{{ val }}" {% if val==deal.stage %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
+    <!-- Profitability Calculator + Upload Documents: accordions under Deal
+         Info, both collapsed by default (2026-10-22). -->
+    <style>
+      .sd-acc-chev { transition: transform .15s; }
+      .sd-acc:not(.collapsed) .sd-acc-chev { transform: rotate(180deg); }
+    </style>
+    <!-- ═══ Pricing / Profitability Calculator ═══ -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center sd-acc collapsed"
+           style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#calcBody"
+           role="button" aria-expanded="false" aria-controls="calcBody">
+        <span class="fw-semibold"><i class="bi bi-calculator me-1 text-success"></i>Deal Profitability Calculator</span>
+        <i class="bi bi-chevron-down text-muted small sd-acc-chev"></i>
+      </div>
+      <div class="collapse" id="calcBody">
+        <div class="card-body">
+          <div class="row g-2 mb-3">
+            <!-- Inputs -->
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold mb-1">PO Line Item</label>
+              <select id="c_po_item" class="form-select form-select-sm">
+                <option value="">— Select —</option>
+                {# Acquisition cost = negotiated Offer Price when one is set,
+                   falling back to list Unit Price — profitability must reflect
+                   what we actually offered, not the vendor's asking price. #}
+                {% for li in deal_po_items %}
+                <option value="{{ li.id }}" data-qty="{{ li.quantity or 0 }}" data-unit="{{ li.offer_price if li.offer_price else (li.unit_price or 0) }}">{{ li.item_name }}</option>
+                {% endfor %}
+                {% if deal_po_items %}
+                {% set _all_eff = namespace(total=0) %}
+                {% for li in deal_po_items %}{% set _all_eff.total = _all_eff.total + (li.offer_price if li.offer_price else (li.unit_price or 0)) %}{% endfor %}
+                <option value="__all__"
+                        data-qty="{{ deal_po_items | sum(attribute='quantity') }}"
+                        data-unit="{{ _all_eff.total }}">All Item</option>
+                {% endif %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold mb-1">Acquisition ₹/unit</label>
+              <input type="number" id="c_acq" class="form-control form-control-sm" step="1" min="0"
+                     value="{{ deal.our_offer_unit or deal.asking_price_unit or '' }}" placeholder="0">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold mb-1">Qty (units)</label>
+              <input type="number" id="c_qty" class="form-control form-control-sm" step="1" min="1"
+                     value="{{ deal.est_quantity or '' }}" placeholder="0">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold mb-1">Pickup cost (₹ total)</label>
+              <input type="number" id="c_pickup" class="form-control form-control-sm" step="1" min="0" value="0" placeholder="0">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold mb-1">Transport cost (₹ total)</label>
+              <input type="number" id="c_transport" class="form-control form-control-sm" step="1" min="0" value="0" placeholder="0">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold mb-1">Processing ₹/unit</label>
+              <input type="number" id="c_process" class="form-control form-control-sm" step="1" min="0" value="0" placeholder="0">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-semibold mb-1">Expected sell ₹/unit</label>
+              <input type="number" id="c_sell" class="form-control form-control-sm" step="1" min="0" value="0" placeholder="0">
+            </div>
+            <div class="col-md-3 d-flex align-items-end">
+              <button class="btn btn-success btn-sm w-100" onclick="calcProfit()">
+                <i class="bi bi-play-fill me-1"></i>Calculate
+              </button>
+            </div>
           </div>
-          <div class="col-md-4">
-            <label class="form-label small fw-semibold mb-1">Final Price / Unit (₹)</label>
-            <input type="number" name="final_price_unit" class="form-control form-control-sm" step="0.01" min="0"
-              value="{{ deal.final_price_unit or '' }}" placeholder="Optional">
+
+          <!-- Results (hidden until calc runs) -->
+          <div id="calcResults" style="display:none">
+            <hr class="my-2">
+            <div class="row g-2 text-center">
+              <div class="col-6 col-md-3">
+                <div class="small text-muted">Total Cost</div>
+                <div class="fw-bold small" id="r_cost">—</div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="small text-muted">Realisable Rev.</div>
+                <div class="fw-bold small text-success" id="r_rev">—</div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="small text-muted">Gross Profit</div>
+                <div class="fw-bold small" id="r_gp">—</div>
+              </div>
+              <div class="col-6 col-md-3">
+                <div class="small text-muted">Net Margin %</div>
+                <div class="fw-bold" id="r_margin">—</div>
+              </div>
+            </div>
+            <div class="text-center mt-3">
+              <span id="r_verdict" class="badge fs-6 px-4 py-2"></span>
+            </div>
+            <div class="mt-2 small text-muted text-center" id="r_note"></div>
           </div>
-          <div class="col-md-4">
-            <label class="form-label small fw-semibold mb-1">Win/Loss Reason</label>
-            <input type="text" name="win_loss_reason" class="form-control form-control-sm" placeholder="Optional">
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload Documents -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center sd-acc collapsed"
+           style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#uploadBody"
+           role="button" aria-expanded="false" aria-controls="uploadBody">
+        <span class="fw-semibold"><i class="bi bi-cloud-upload me-1 text-primary"></i>Upload Documents</span>
+        <i class="bi bi-chevron-down text-muted small sd-acc-chev"></i>
+      </div>
+      <div class="collapse" id="uploadBody">
+      <div class="card-body">
+        <form method="post" action="/crm/sourcing/{{ deal.id }}/upload" enctype="multipart/form-data" class="row g-2 align-items-end">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">Purchase Invoice</label>
+            <input type="file" name="purchase_invoice" class="form-control form-control-sm">
+            {% if deal.purchase_invoice_path %}
+            <a href="/uploads/crm/{{ deal.purchase_invoice_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
+            {% endif %}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">Purchase Order</label>
+            <input type="file" name="purchase_order" class="form-control form-control-sm">
+            {% if deal.purchase_order_path %}
+            <a href="/uploads/crm/{{ deal.purchase_order_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
+            {% endif %}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">E-way Bill</label>
+            <input type="file" name="eway_bill" class="form-control form-control-sm">
+            {% if deal.eway_bill_path %}
+            <a href="/uploads/crm/{{ deal.eway_bill_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
+            {% endif %}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">Quote Received</label>
+            <input type="file" name="quote_received" class="form-control form-control-sm">
+            {% if deal.quote_received_path %}
+            <a href="/uploads/crm/{{ deal.quote_received_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
+            {% endif %}
           </div>
           <div class="col-12">
-            <button class="btn btn-sm btn-primary"><i class="bi bi-arrow-right-circle me-1"></i>Update Stage</button>
+            <button class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload me-1"></i>Upload</button>
           </div>
         </form>
-        {% else %}
-        <div class="alert alert-{{ 'success' if deal.stage=='won' else 'danger' }} py-2 mb-0">
-          <strong>Deal {{ deal.stage | upper }}</strong>{% if deal.win_loss_reason %} — {{ deal.win_loss_reason }}{% endif %}
-        </div>
-        {% endif %}
+      </div>
       </div>
     </div>
 
@@ -435,98 +568,8 @@
       </div>
     </div>
 
-    <!-- ═══ Pricing / Profitability Calculator ═══ -->
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center"
-           style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#calcBody">
-        <span class="fw-semibold"><i class="bi bi-calculator me-1 text-success"></i>Deal Profitability Calculator</span>
-        <i class="bi bi-chevron-down text-muted small"></i>
-      </div>
-      <div class="collapse show" id="calcBody">
-        <div class="card-body">
-          <div class="row g-2 mb-3">
-            <!-- Inputs -->
-            <div class="col-md-3">
-              <label class="form-label small fw-semibold mb-1">PO Line Item</label>
-              <select id="c_po_item" class="form-select form-select-sm">
-                <option value="">— Select —</option>
-                {# Acquisition cost = negotiated Offer Price when one is set,
-                   falling back to list Unit Price — profitability must reflect
-                   what we actually offered, not the vendor's asking price. #}
-                {% for li in deal_po_items %}
-                <option value="{{ li.id }}" data-qty="{{ li.quantity or 0 }}" data-unit="{{ li.offer_price if li.offer_price else (li.unit_price or 0) }}">{{ li.item_name }}</option>
-                {% endfor %}
-                {% if deal_po_items %}
-                {% set _all_eff = namespace(total=0) %}
-                {% for li in deal_po_items %}{% set _all_eff.total = _all_eff.total + (li.offer_price if li.offer_price else (li.unit_price or 0)) %}{% endfor %}
-                <option value="__all__"
-                        data-qty="{{ deal_po_items | sum(attribute='quantity') }}"
-                        data-unit="{{ _all_eff.total }}">All Item</option>
-                {% endif %}
-              </select>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label small fw-semibold mb-1">Acquisition ₹/unit</label>
-              <input type="number" id="c_acq" class="form-control form-control-sm" step="1" min="0"
-                     value="{{ deal.our_offer_unit or deal.asking_price_unit or '' }}" placeholder="0">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label small fw-semibold mb-1">Qty (units)</label>
-              <input type="number" id="c_qty" class="form-control form-control-sm" step="1" min="1"
-                     value="{{ deal.est_quantity or '' }}" placeholder="0">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label small fw-semibold mb-1">Pickup cost (₹ total)</label>
-              <input type="number" id="c_pickup" class="form-control form-control-sm" step="1" min="0" value="0" placeholder="0">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label small fw-semibold mb-1">Transport cost (₹ total)</label>
-              <input type="number" id="c_transport" class="form-control form-control-sm" step="1" min="0" value="0" placeholder="0">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label small fw-semibold mb-1">Processing ₹/unit</label>
-              <input type="number" id="c_process" class="form-control form-control-sm" step="1" min="0" value="0" placeholder="0">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label small fw-semibold mb-1">Expected sell ₹/unit</label>
-              <input type="number" id="c_sell" class="form-control form-control-sm" step="1" min="0" value="0" placeholder="0">
-            </div>
-            <div class="col-md-3 d-flex align-items-end">
-              <button class="btn btn-success btn-sm w-100" onclick="calcProfit()">
-                <i class="bi bi-play-fill me-1"></i>Calculate
-              </button>
-            </div>
-          </div>
-
-          <!-- Results (hidden until calc runs) -->
-          <div id="calcResults" style="display:none">
-            <hr class="my-2">
-            <div class="row g-2 text-center">
-              <div class="col-6 col-md-3">
-                <div class="small text-muted">Total Cost</div>
-                <div class="fw-bold small" id="r_cost">—</div>
-              </div>
-              <div class="col-6 col-md-3">
-                <div class="small text-muted">Realisable Rev.</div>
-                <div class="fw-bold small text-success" id="r_rev">—</div>
-              </div>
-              <div class="col-6 col-md-3">
-                <div class="small text-muted">Gross Profit</div>
-                <div class="fw-bold small" id="r_gp">—</div>
-              </div>
-              <div class="col-6 col-md-3">
-                <div class="small text-muted">Net Margin %</div>
-                <div class="fw-bold" id="r_margin">—</div>
-              </div>
-            </div>
-            <div class="text-center mt-3">
-              <span id="r_verdict" class="badge fs-6 px-4 py-2"></span>
-            </div>
-            <div class="mt-2 small text-muted text-center" id="r_note"></div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <!-- Purchase Deals (POs raised from this deal) — below PO Line Items (2026-10-22) -->
+    {% include "crm/_purchase_deals_table.html" %}
 
     <!-- Next Follow-up Alert -->
     {% if next_fu and not next_fu.followup_done %}
@@ -545,47 +588,6 @@
       </form>
     </div>
     {% endif %}
-
-    <!-- Upload Documents -->
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-cloud-upload me-1 text-primary"></i>Upload Documents</div>
-      <div class="card-body">
-        <form method="post" action="/crm/sourcing/{{ deal.id }}/upload" enctype="multipart/form-data" class="row g-2 align-items-end">
-          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">Purchase Invoice</label>
-            <input type="file" name="purchase_invoice" class="form-control form-control-sm">
-            {% if deal.purchase_invoice_path %}
-            <a href="/uploads/crm/{{ deal.purchase_invoice_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
-            {% endif %}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">Purchase Order</label>
-            <input type="file" name="purchase_order" class="form-control form-control-sm">
-            {% if deal.purchase_order_path %}
-            <a href="/uploads/crm/{{ deal.purchase_order_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
-            {% endif %}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">E-way Bill</label>
-            <input type="file" name="eway_bill" class="form-control form-control-sm">
-            {% if deal.eway_bill_path %}
-            <a href="/uploads/crm/{{ deal.eway_bill_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
-            {% endif %}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">Quote Received</label>
-            <input type="file" name="quote_received" class="form-control form-control-sm">
-            {% if deal.quote_received_path %}
-            <a href="/uploads/crm/{{ deal.quote_received_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
-            {% endif %}
-          </div>
-          <div class="col-12">
-            <button class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload me-1"></i>Upload</button>
-          </div>
-        </form>
-      </div>
-    </div>
 
     <!-- Log Activity -->
     <div class="card border-0 shadow-sm mb-3">
