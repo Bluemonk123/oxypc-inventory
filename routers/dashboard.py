@@ -529,6 +529,104 @@ async def dashboard(
     minipc_available = category_counts.get("Mini PC", {}).get("ready_to_sale", 0)
     server_available = category_counts.get("Server", {}).get("ready_to_sale", 0)
 
+    # ── From/To set: counts show tags MOVED in the range (2026-10-22) ───────
+    # No dates: every count is live stock ("where tags are now") — unchanged.
+    # Dates set (user's choice, "moved in range"): every count is the tags that
+    # moved into that stage between the dates; a tag counts once per stage,
+    # however often it moved there. Sold = tags with a sale dated in the range.
+    #   Pipeline tiles + Split Entity / Split Zone  -> moved into that step
+    #   Returned / Scrapped / Scrap for Sale / On Rent -> moved into that stage
+    #   Category cards: total = moved into any active step (IQC..Ready to
+    #     Sale); In Ready = moved into Ready to Sale; In TRC = the rest
+    #   Total Inventory = moved into any active step; In Repair = moved into
+    #     any repair step; charts follow the same counts
+    #   Revenue / Profit tiles -> sales dated in the range (below)
+    # Never cached: it depends on the dates.
+    side_counts = None          # None -> template uses live stage_counts
+    range_moves = None          # step -> {device_id: (entity, zone, sub_category)}
+    if _pl_active:
+        try:
+            def _rng(col):
+                w = []
+                if _pl_from_dt:
+                    w.append(col >= _pl_from_dt)
+                if _pl_to_dt:
+                    w.append(col <= _pl_to_dt)
+                return w
+
+            _zone_of = {str(l.id): l.zone for l in (await db.execute(select(StorageLocation))).scalars().all()}
+
+            def _zl(loc_id):
+                z = _zone_of.get(str(loc_id)) if loc_id else None
+                return ZONE_LABELS.get(z, getattr(z, "value", z)) if z else "Unassigned"
+
+            _abase = [Device.is_trashed == False, *_ent, *_dtype, *_loc]  # noqa: E712
+            _side_key = {DeviceStage.returned: "returned", DeviceStage.scrapped: "scrapped",
+                         DeviceStage.scrap_for_sale: "scrap_for_sale", DeviceStage.on_rent: "on_rent"}
+            _step_of = {st: k for k, sts in STEP_STAGES.items() if k != "sold" for st in sts}
+            _tags: dict = {k: {} for k in STEP_STAGES}
+            _side: dict = {k: set() for k in _side_key.values()}
+            for to_stage, did, ent, loc_id, subcat in (await db.execute(
+                select(StageMovement.to_stage, Device.id, Device.entity, _resolved_location_id, Device.sub_category)
+                .select_from(StageMovement).join(Device, Device.id == StageMovement.device_id)
+                .outerjoin(_loc_latest, _loc_latest.c.device_id == Device.id)
+                .where(*_abase, StageMovement.to_stage.in_(list(_step_of) + list(_side_key)),
+                       *_rng(StageMovement.moved_at))
+                .distinct()
+            )).all():
+                if to_stage in _side_key:
+                    _side[_side_key[to_stage]].add(did)
+                else:
+                    _tags[_step_of[to_stage]][did] = (ent, _zl(loc_id), subcat)
+            # Sold by the sale's own date (Change Sale Date moves it; the
+            # stage move into Sold keeps its original timestamp).
+            for did, ent, loc_id, subcat in (await db.execute(
+                select(Device.id, Device.entity, _resolved_location_id, Device.sub_category)
+                .select_from(Sale).join(Device, Device.id == Sale.device_id)
+                .outerjoin(_loc_latest, _loc_latest.c.device_id == Device.id)
+                .where(*_abase, *_rng(Sale.sold_at)).distinct()
+            )).all():
+                _tags["sold"][did] = (ent, _zl(loc_id), subcat)
+
+            def _ordered(c):
+                c = {k: v for k, v in c.items() if v}
+                out = {n: c.pop(n) for n in ENTITY_DISPLAY_ORDER if n in c}
+                out.update({n: c[n] for n in sorted(c)})
+                return out
+
+            pipeline_counts = {k: len(_tags.get(k, {})) for k, _ in PIPELINE_STEPS}
+            pipeline_by_entity, pipeline_by_location = {}, {}
+            for k, _w in PIPELINE_STEPS:
+                e, z = {}, {}
+                for ent, zone, _sc in _tags.get(k, {}).values():
+                    e[ent or "Unassigned"] = e.get(ent or "Unassigned", 0) + 1
+                    z[zone] = z.get(zone, 0) + 1
+                pipeline_by_entity[k] = _ordered(e)
+                pipeline_by_location[k] = dict(sorted(z.items()))
+            side_counts = {k: len(v) for k, v in _side.items()}
+
+            _active_steps = [k for k in STEP_STAGES if k != "sold"]
+            _active = {}
+            for k in _active_steps:
+                _active.update(_tags[k])
+            _repair = set().union(*(_tags[k].keys() for k in
+                                    ("production", "l1l2", "l3l4", "qc_check", "cosmetic", "final_qc")))
+            total_devices = len(_active)
+            in_repair_count = len(_repair)
+            category_counts = {cat: {"total": sum(1 for v in _active.values() if v[2] == cat)}
+                               for cat in CATEGORIES}
+            _ready = {cat: sum(1 for v in _tags["ready_to_sale"].values() if v[2] == cat) for cat in CATEGORIES}
+            laptops_available = _ready.get("Laptop", 0)
+            desktops_available = _ready.get("Desktop", 0)
+            tft_available = _ready.get("TFT Monitor", 0)
+            tablets_available = _ready.get("Tablet", 0)
+            minipc_available = _ready.get("Mini PC", 0)
+            server_available = _ready.get("Server", 0)
+            range_moves = _tags
+        except Exception:
+            _log.exception("moved-in-range counts failed")
+            side_counts = range_moves = None
+
     _mark("pipeline")
     # ── Role-based user queue ─────────────────────────────────────────────────
     role = current_user.role
@@ -673,9 +771,17 @@ async def dashboard(
     ]
     chart_labels = [lbl for lbl, _ in chart_groups]
     chart_data: dict = {}
-    for cat in CATEGORIES:
-        chart_data[cat] = [sum(category_counts[cat].get(_sv(st), 0) for st in sts)
-                           for _, sts in chart_groups]
+    if range_moves is not None:
+        # Date range set: tags of the category that moved into each step.
+        _chart_steps = ["iqc", "stock_in", "production", "l1l2", "l3l4",
+                        "qc_check", "cosmetic", "final_qc", "ready_to_sale"]
+        for cat in CATEGORIES:
+            chart_data[cat] = [sum(1 for v in range_moves[k].values() if v[2] == cat)
+                               for k in _chart_steps]
+    else:
+        for cat in CATEGORIES:
+            chart_data[cat] = [sum(category_counts[cat].get(_sv(st), 0) for st in sts)
+                               for _, sts in chart_groups]
 
     # ── Lot P&L (10 queries; cached 30 s when no P&L From/To filter is
     # active — the common case, and identical for every viewer) ───────────────
@@ -941,7 +1047,7 @@ async def dashboard(
     # cycle as stage/category/pipeline above, since it's gated by the same
     # Entity/Device Type/Location filters (_dash_filters_active).
     # Own timestamp — same stale-forever issue as the pipeline cache above.
-    if (not _dash_filters_active and _AGG_CACHE.get("admin_analytics") is not None
+    if (not _dash_filters_active and not _pl_active and _AGG_CACHE.get("admin_analytics") is not None
             and (_now - _AGG_CACHE.get("analytics_ts", 0.0)) < _AGG_TTL):
         admin_analytics, admin_charts = _AGG_CACHE["admin_analytics"]
     else:
@@ -1064,7 +1170,7 @@ async def dashboard(
             admin_charts["seller_po_weekly"] = _weekly_series(seller_po_rows, lambda r: r[0], lambda r: float(r[1] or 0))
         except Exception:
             _log.exception("admin_analytics failed")
-        if not _dash_filters_active:
+        if not _dash_filters_active and not _pl_active:   # range counts are per-request
             _AGG_CACHE["admin_analytics"] = (admin_analytics, admin_charts)
             _AGG_CACHE["analytics_ts"] = _now
 
@@ -1139,6 +1245,22 @@ async def dashboard(
     # grouped query with it — this dashboard already issues a lot of queries,
     # so there is no reason to keep computing a breakdown nothing renders.
 
+    # Revenue / Profit tiles: This Month by default; with a date range set,
+    # sales dated in the range (same Gross Profit definition as Business P&L).
+    tile_revenue, tile_profit, tile_period = month_revenue, month_profit, "This Month"
+    if _pl_active:
+        try:
+            from services.business_pl import compute_range_revenue_profit
+            tile_revenue, tile_profit = await compute_range_revenue_profit(
+                db, _pl_from_dt, _pl_to_dt, device_where=[*_ent, *_dtype, *_loc])
+            _d = lambda dt: dt.strftime("%d %b") if dt else "…"
+            tile_period = f"{_d(_pl_from_dt)} – {_d(_pl_to_dt)}"     # "01 Oct – 22 Oct"
+            if _pl_from_dt and _pl_to_dt and _pl_from_dt.year != _pl_to_dt.year:
+                tile_period = f"{_pl_from_dt:%d %b %y} – {_pl_to_dt:%d %b %y}"
+        except Exception:
+            _log.exception("range revenue/profit failed")
+            tile_revenue, tile_profit, tile_period = month_revenue, month_profit, "This Month"
+
     _year_choices = await report_year_values(db)
     _mark("work queue+follow-ups")
     _resp = templates.TemplateResponse("dashboard.html", {
@@ -1177,6 +1299,12 @@ async def dashboard(
         "chart_labels": chart_labels,
         "lot_pl": lot_pl,
         "pl_active": _pl_active,
+        # Returned / Scrapped / Scrap for Sale / On Rent row: moved-in-range
+        # counts when dates are set, else the live (stage-filtered) counts.
+        "side_counts": side_counts if side_counts is not None else filtered_stage_counts,
+        "tile_revenue": tile_revenue,
+        "tile_profit": tile_profit,
+        "tile_period": tile_period,
         "month_revenue": month_revenue,
         "total_revenue": total_revenue,
         "total_investment": total_investment,

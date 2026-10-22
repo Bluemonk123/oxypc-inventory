@@ -26,7 +26,7 @@ ZONE_LABELS = {
     ZoneType.second_floor: "2nd Floor",
     ZoneType.workshop:     "TRC Floor",
     ZoneType.dispatch:     "Dispatch Area",
-    ZoneType.warehouse:    "Warehouse",
+    ZoneType.warehouse:    "Plant-Floor",   # was "Warehouse"; renamed 2026-10-22 (only PLANT-FLOOR uses it). Stored value unchanged.
     ZoneType.holding:      "TRC Store",
 }
 

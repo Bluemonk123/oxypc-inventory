@@ -245,9 +245,14 @@
     <button type="button" id="splitLocationToggle" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-geo-alt me-1"></i>Split Zone
     </button>
+    {% if pl_active %}
+    <span class="badge bg-warning text-dark ms-auto" title="Each count = tags that moved into that stage between the dates (Sold = sale date in the range). Clear the dates to see live stock.">
+      <i class="bi bi-calendar-range me-1"></i>Moved {{ tile_period }}</span>
+    {% else %}
     <span class="text-muted small ms-auto">Live counts — click to filter devices</span>
+    {% endif %}
   </div>
-  <div class="card-body py-3">
+  <div class="card-body py-3 d-flex flex-column">
     {# Each step carries the link that reproduces its own count on All
        Inventory, which is why they are not all the same shape: GRN is not a
        stage a device sits in, and L3/L4 is a status inside L1. Order follows
@@ -275,8 +280,10 @@
           {% set by_ent = pipeline_by_entity.get(key, {}) %}
           {% if by_ent %}
           <div class="split-entity-detail d-none small text-muted mt-1 text-start">
+            {# Long names cut to 8 characters + ".." ("OxyPC Co..") so tiles stay
+               narrow; full name on hover. #}
             {% for ent, cnt in by_ent.items() %}
-            <div>{{ ent }}: <strong>{{ cnt }}</strong></div>
+            <div class="text-nowrap" title="{{ ent }}: {{ cnt }}">{{ ent if ent|length <= 10 else ent[:8] ~ '..' }}: <strong>{{ cnt }}</strong></div>
             {% endfor %}
           </div>
           {% endif %}
@@ -295,15 +302,19 @@
       {% endif %}
       {% endfor %}
     </div>
-    <div class="mt-2 small text-muted">
-      {# Returned/Scrapped/Scrap for Sale are excluded from every total on
-         this page (Total Devices, category cards) — this is their own
-         callout, not a total. #}
-      Returned: <strong>{{ stage_counts.get('returned', 0) }}</strong>
-      &nbsp;·&nbsp;
-      Scrapped: <strong>{{ stage_counts.get('scrapped', 0) }}</strong>
-      &nbsp;·&nbsp;
-      Scrap for Sale: <strong>{{ stage_counts.get('scrap_for_sale', 0) }}</strong>
+    {# Returned/Scrapped/Scrap for Sale are excluded from every total on this
+       page (Total Devices, category cards) — this is their own callout, not a
+       total. On Rent added 2026-10-22. Pinned to the bottom of the card, four
+       equal columns, centred, separated by lines. #}
+    <div class="pipeline-side-stats mt-auto pt-2 border-top d-flex small text-muted text-center">
+      {% for key, label in [('returned', 'Returned'), ('scrapped', 'Scrapped'),
+                             ('scrap_for_sale', 'Scrap for Sale'), ('on_rent', 'On Rent')] %}
+      <a href="/devices?stage={{ key }}{% if f_entity %}&entity={{ f_entity | urlencode }}{% endif %}"
+         class="flex-fill text-decoration-none text-muted px-2{% if not loop.first %} border-start{% endif %}"
+         style="flex-basis:0">
+        {{ label }}: <strong class="text-body">{{ side_counts.get(key, 0) }}</strong>
+      </a>
+      {% endfor %}
     </div>
   </div>
   <i class="bi bi-diagram-3 dash-wm" aria-hidden="true"></i>
@@ -496,7 +507,14 @@
   <div class="col-sm-6 col-xl-3">
     <div class="card border-0 shadow-sm stat-card stat-primary"><div class="card-body d-flex align-items-center gap-3">
       <div class="rounded-3 p-3 bg-white text-primary"><i class="bi bi-box-seam fs-3"></i></div>
-      <div><div class="text-muted small">Total Inventory</div><div class="fs-3 fw-bold">{{ total_devices }}</div></div>
+      <div><div class="text-muted small">Total Inventory
+        {% if pl_active %}
+        <i class="bi bi-info-circle ms-1" style="cursor:help"
+           title="Tags that moved into any active stage (IQC, Stock In, Production, L1/L2, L3/L4, Stress/QC, Cosmetic, Final QC, Ready to Sale) between the dates.&#10;&#10;Not counted: Sold, Returned, Scrapped, Scrap for Sale, On Rent, GRN Receipt, and tags in Trash."></i>
+        {% else %}
+        <i class="bi bi-info-circle ms-1" style="cursor:help"
+           title="All tags in stock right now.&#10;&#10;Excluded: GRN Receipt (not yet through IQC), Sold, Returned, Scrapped, Scrap for Sale, and tags in Trash.&#10;Included: every stage from IQC to Ready to Sale, plus On Rent."></i>
+        {% endif %}</div><div class="fs-3 fw-bold">{{ total_devices }}</div></div>
     </div></div>
   </div>
   <div class="col-sm-6 col-xl-3">
@@ -508,16 +526,16 @@
   <div class="col-sm-6 col-xl-3">
     <div class="card border-0 shadow-sm stat-card stat-success"><div class="card-body d-flex align-items-center gap-3">
       <div class="rounded-3 p-3 bg-white text-success"><i class="bi bi-currency-rupee fs-3"></i></div>
-      <div><div class="text-muted small">Revenue This Month</div><div class="fs-3 fw-bold">₹{{ month_revenue | inr }}</div></div>
+      <div><div class="text-muted small">Revenue {{ tile_period }}</div><div class="fs-3 fw-bold">₹{{ tile_revenue | inr }}</div></div>
     </div></div>
   </div>
   <div class="col-sm-6 col-xl-3">
     {# Profit This Month = Business P&L's Gross Profit for the current month
        (Revenue − Device − Parts − Labour). Replaced the all-time "Overall
        Profit", which subtracted the cost of unsold stock (2026-10-15). #}
-    <div class="card border-0 shadow-sm stat-card {% if month_profit >= 0 %}stat-success{% else %}stat-danger{% endif %}"><div class="card-body d-flex align-items-center gap-3">
-      <div class="rounded-3 p-3 bg-white {% if month_profit >= 0 %}text-success{% else %}text-danger{% endif %}"><i class="bi bi-graph-up-arrow fs-3"></i></div>
-      <div><div class="text-muted small" title="Revenue − Device Cost − Parts − Labour for this month — same as Business P&amp;L's Gross Profit">Profit This Month</div><div class="fs-3 fw-bold {% if month_profit >= 0 %}text-success{% else %}text-danger{% endif %}">₹{{ month_profit | inr }}</div></div>
+    <div class="card border-0 shadow-sm stat-card {% if tile_profit >= 0 %}stat-success{% else %}stat-danger{% endif %}"><div class="card-body d-flex align-items-center gap-3">
+      <div class="rounded-3 p-3 bg-white {% if tile_profit >= 0 %}text-success{% else %}text-danger{% endif %}"><i class="bi bi-graph-up-arrow fs-3"></i></div>
+      <div><div class="text-muted small" title="Revenue − Device Cost − Parts − Labour for sales in this period — same as Business P&amp;L's Gross Profit">Profit {{ tile_period }}</div><div class="fs-3 fw-bold {% if tile_profit >= 0 %}text-success{% else %}text-danger{% endif %}">₹{{ tile_profit | inr }}</div></div>
     </div></div>
   </div>
 </div>

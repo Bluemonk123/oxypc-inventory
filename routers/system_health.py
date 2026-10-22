@@ -490,6 +490,48 @@ async def spec_check(csv: int = 0, current_user: User = Depends(admin_only)):
                     headers={"Content-Disposition": "attachment; filename=ram_storage_check.csv"})
 
 
+# ── Tag numbers that differ only by letter case (2026-10-22) ─────────────────
+# Read-only. e.g. 4430110426L0274 and 4430110426l0274 are two separate tags
+# in the database but the same number to a person. Lists each group with
+# what hangs off every copy (sales, returns), so someone can decide which
+# copy is real. Trashed copies are listed too, marked.
+
+async def _case_duplicates(db):
+    from sqlalchemy import func, select
+    from models.device import Device
+    from models.lot import Lot
+    from models.sales import Sale, Return
+    keys = select(func.upper(Device.barcode).label("k")).group_by(func.upper(Device.barcode)) \
+        .having(func.count(Device.id) > 1).subquery()
+    sales_n = select(func.count(Sale.id)).where(Sale.device_id == Device.id).correlate(Device).scalar_subquery()
+    ret_n = select(func.count(Return.id)).where(Return.device_id == Device.id).correlate(Device).scalar_subquery()
+    rows = (await db.execute(
+        select(Device.barcode, Device.current_stage, Device.entity, Device.brand, Device.model,
+               Device.is_trashed, Device.created_at, Lot.lot_number, sales_n.label("sales"), ret_n.label("returns"))
+        .join(keys, keys.c.k == func.upper(Device.barcode))
+        .outerjoin(Lot, Lot.id == Device.lot_id)
+        .order_by(func.upper(Device.barcode), Device.created_at)
+    )).all()
+    groups: dict = {}
+    for r in rows:
+        groups.setdefault(r.barcode.upper(), []).append({
+            "tag": r.barcode, "stage": getattr(r.current_stage, "value", r.current_stage),
+            "entity": r.entity or "", "model": f"{r.brand or ''} {r.model or ''}".strip(),
+            "lot": r.lot_number or "", "trashed": bool(r.is_trashed),
+            "created": r.created_at.strftime("%d-%m-%Y") if r.created_at else "",
+            "sales": int(r.sales or 0), "returns": int(r.returns or 0)})
+    return [{"key": k, "tags": v} for k, v in groups.items()]
+
+
+@router.get("/tag-case-duplicates")
+async def tag_case_duplicates(current_user: User = Depends(admin_only)):
+    from database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        groups = await _case_duplicates(db)
+    live = [g for g in groups if sum(1 for t in g["tags"] if not t["trashed"]) > 1]
+    return JSONResponse({"groups": len(groups), "groups_with_2_live_copies": len(live), "list": groups})
+
+
 # ── Data Fixes page (2026-10-22) ─────────────────────────────────────────────
 # One admin page: preview + Apply button for each fill, and the data check.
 # The Apply buttons are ordinary form posts the admin clicks.
@@ -502,6 +544,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         spec = await _spec_changes(db, with_rows=True)
         subcat = await _subcat_changes(db)
         issues = await _spec_issues(db)
+        case_dupes = await _case_duplicates(db)
     spec_fields = {c: sum(1 for _i, ch, _r in spec if c in ch) for c in _SPEC_COLS}
     spec_examples, seen = [], set()
     for _i, ch, r in spec:
@@ -523,6 +566,10 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         "subcat_total": len(subcat), "subcat_by": [{"dt": k[0], "sc": k[1], "n": n} for k, n in sorted(subcat_by.items(), key=lambda x: -x[1])],
         "issues": issues[:500], "issues_total": len(issues),
         "issue_counts": _issue_counts(issues),
+        # Only numbers with 2+ copies NOT in Trash need a decision; the rest
+        # (one copy already trashed) are counted, not listed.
+        "case_dupes": [g for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) > 1],
+        "case_dupes_handled": sum(1 for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) <= 1),
         "field_labels": {"ram_gb": "RAM GB", "ram_summary": "RAM", "total_ram_count": "Total RAM Count",
                          "total_ram_size": "Total RAM Size", "storage_gb": "SSD GB",
                          "hdd_summary": "Hard Drive", "total_hdd_count": "Total HDD Count",

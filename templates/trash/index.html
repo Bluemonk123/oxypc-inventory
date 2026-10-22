@@ -48,6 +48,10 @@
       <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
         <strong class="small text-nowrap"><i class="bi bi-upc-scan me-1"></i>Trashed Tags</strong>
         <div class="d-flex align-items-center gap-2 flex-wrap">
+          <div class="form-check form-switch mb-0 small" title="Show only trashed tags that still have a sale or a return record">
+            <input class="form-check-input" type="checkbox" id="onlySaleRet" {{ 'disabled' if not sale_ret_ids }}>
+            <label class="form-check-label text-nowrap" for="onlySaleRet">With sale/return only ({{ sale_ret_ids | length }})</label>
+          </div>
           {% if dup_kept %}
           <span class="small text-muted" title="These duplicates have their own sale or return record, which a permanent delete would also remove">
             {{ dup_kept }} duplicate(s) with a sale/return are kept
@@ -71,8 +75,10 @@
           <tbody>
             {% for row in trashed_devices %}
             {% set dev = row.Device %}
-            <tr>
+            {% set _sr = dev.id|string in sale_ret_ids %}
+            <tr data-sr="{{ '1' if _sr else '0' }}">
               <td class="font-monospace"><code>{{ dev.barcode }}</code>
+                {% if _sr %}<span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1" title="This trashed tag still has a sale or return record">Sale/Return</span>{% endif %}
                 {% if dev.id|string in dup_ids %}<span class="badge bg-warning text-dark ms-1" title="A live tag with the same number in different capital/small letters exists">Duplicate</span>{% endif %}
               </td>
               <td><span class="badge bg-info text-dark">{{ row.lot_number }}</span></td>
@@ -244,6 +250,16 @@ $(document).ready(function () {
     columnDefs: [{ orderable: false, targets: -1 }],
     language: { emptyTable: 'No trashed lots.' },
   });
+  // "With sale/return only": rows carry data-sr="1" when the tag has a
+  // sale or return record.
+  $.fn.dataTable.ext.search.push(function (settings, data, idx) {
+    if (settings.nTable.id !== 'trashTagsTable') return true;
+    var cb = document.getElementById('onlySaleRet');
+    if (!cb || !cb.checked) return true;
+    var tr = settings.aoData[idx] && settings.aoData[idx].nTr;
+    return !!tr && tr.getAttribute('data-sr') === '1';
+  });
+  $('#onlySaleRet').on('change', function () { dtTags.draw(); });
   // A table laid out inside a hidden tab measures its columns as zero wide.
   $('#trashTabs button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
     dtTags.columns.adjust(); dtLots.columns.adjust();

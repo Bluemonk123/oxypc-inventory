@@ -166,3 +166,48 @@ async def compute_month_profit(db: AsyncSession, year: int, month: int) -> float
     dev = (await compute_year_device_cogs(db, year))[i]
     parts, labour = await compute_year_parts_labour_cogs(db, year)
     return rev - dev - parts[i] - labour[i]
+
+
+async def compute_range_revenue_profit(db: AsyncSession, start=None, end=None, device_where=()) -> tuple[float, float]:
+    """(revenue, gross profit) for sales dated start..end (datetimes, either
+    may be None) — the Dashboard's Revenue / Profit tiles when a From/To date
+    range is set (2026-10-22). Same definitions as Business P&L: Revenue −
+    Device Cost − Parts Cost − Labour Cost, per sale date. Business P&L's
+    monthly admin overrides can't be split across an arbitrary range, so
+    they are not applied here. `device_where` adds Device filters (entity,
+    device type, zone)."""
+    from models.device import Device
+
+    def in_range(col):
+        w = []
+        if start is not None:
+            w.append(col >= start)
+        if end is not None:
+            w.append(col <= end)
+        return w
+
+    sales_where = [*in_range(Sale.sold_at), *device_where]
+    rev, dev = (await db.execute(
+        select(func.coalesce(func.sum(Sale.sale_price), 0), func.coalesce(func.sum(Device.device_price), 0))
+        .select_from(Sale).join(Device, Sale.device_id == Device.id).where(*sales_where)
+    )).one()
+    parts = (await db.execute(
+        select(func.coalesce(func.sum(PartRequest.qty_handed_over * func.coalesce(SparePart.unit_price, 0)), 0))
+        .select_from(PartRequest)
+        .join(Sale, Sale.device_id == PartRequest.device_id)
+        .join(Device, Sale.device_id == Device.id)
+        .outerjoin(SparePart, PartRequest.part_id == SparePart.id)
+        .where(PartRequest.status == "received", *sales_where)
+    )).scalar() or 0
+    rate_row = (await db.execute(
+        select(CostConfig.value).where(CostConfig.key == "repair_labour_rate")
+    )).scalar_one_or_none()
+    labour_rate = float(rate_row) if rate_row is not None else 150.0
+    worked_on = select(StageMovement.device_id).where(StageMovement.to_stage.in_(LABOUR_STAGES)).distinct()
+    labour_tags = (await db.execute(
+        select(func.count(func.distinct(Sale.device_id)))
+        .select_from(Sale).join(Device, Sale.device_id == Device.id)
+        .where(Sale.device_id.in_(worked_on), *sales_where)
+    )).scalar() or 0
+    revenue = float(rev or 0)
+    return revenue, revenue - float(dev or 0) - float(parts) - labour_tags * labour_rate

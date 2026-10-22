@@ -80,6 +80,11 @@ async def trash_index(
     )).all()
     dup_ids = {str(r.id) for r in dup_rows}
     dup_kept = sum(1 for r in dup_rows if r.has_sale)
+    # Trashed tags that still carry a sale or return record — badged, and
+    # the "With sale/return only" checkbox filters to them (2026-10-22).
+    sale_ret_ids = {str(i) for i in (await db.execute(
+        select(Device.id).where(Device.is_trashed == True, _has_sale_or_return())  # noqa: E712
+    )).scalars().all()}
 
     return templates.TemplateResponse("trash/index.html", {
         "request": request,
@@ -89,6 +94,7 @@ async def trash_index(
         "dup_ids": dup_ids,
         "dup_deletable": len(dup_rows) - dup_kept,
         "dup_kept": dup_kept,
+        "sale_ret_ids": sale_ret_ids,
     })
 
 

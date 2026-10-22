@@ -73,6 +73,8 @@
    reloads, same as submitting the filter form with just that Entity picked —
    "Unassigned" is handled server-side in _device_search_filters (matches
    NULL/empty, not the literal string). #}
+{# Same size as the row-count badge beside them (.gtable-count-badge, 2026-10-22). #}
+<style>#entityBadges .entity-filter-badge { font-size: .75rem; vertical-align: middle; }</style>
 <div id="entityBadges" class="d-none d-flex flex-wrap gap-2">
   {% for e, c in entity_counts.items() %}
   <a href="#" class="badge text-decoration-none entity-filter-badge {% if entity == e %}bg-primary text-white{% else %}bg-light text-dark border{% endif %}"
