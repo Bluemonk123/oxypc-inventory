@@ -13,6 +13,7 @@ from database import get_db
 from utils.csv_decode import decode_csv_bytes
 from utils.master_data import entity_values, master_values
 from utils.device_category import pair_type_and_category
+from utils.device_spec import upload_spec
 from utils.grades import parse_grade
 from models.user import User, UserRole
 from models.device import Device, DeviceStage, StageMovement, STAGE_LABELS
@@ -48,13 +49,14 @@ allowed = require_roles(UserRole.admin, UserRole.inventory_manager)
 # the two can never drift apart. ────────────────────────────────────────────
 DEVICE_CORE_FIELDS = [
     "entity",
-    "Tag No", "serial_no", "brand", "model", "cpu", "cpu_make", "generation", "ram_gb", "storage_gb",
+    "Tag No", "serial_no", "brand", "model", "cpu", "cpu_make", "generation", "RAM", "Storage",
     "category", "lot_number",
 ]
 DEVICE_REST_FIELDS = [
-    "device_type", "storage_type", "hdd_capacity_gb",
-    "ram_summary", "hdd_summary",
-    "total_ram_count", "total_ram_size", "total_hdd_count", "total_hdd_size",
+    # RAM / Storage only (2026-10-22): ram_gb, storage_gb, storage_type,
+    # hdd_capacity_gb, ram/hdd_summary and the four Total RAM/HDD columns are
+    # no longer in the template (old files with them still import).
+    "device_type",
     "invoice_number",
     "screen_size", "battery_health_pct", "bios_password", "color", "grade",
     "floor", "warehouse", "grn_number", "qty", "device_price", "notes",
@@ -209,12 +211,9 @@ _DEVICE_EXAMPLE_MAP = {
     "Tag No": "OXY-00001", "serial_no": "SN123456",
     "brand": "HP", "model": "EliteBook 840 G6",
     "cpu": "Intel Core i5-8250U", "cpu_make": "Intel", "generation": "8th Gen",
-    "ram_gb": "8", "storage_gb": "256",
+    "RAM": "8", "Storage": "256",
     "category": "Laptop", "lot_number": "LOT-001",
-    "device_type": "Laptop", "storage_type": "SSD",
-    "ram_summary": "8GB_DDR4_2400MHz_Samsung", "hdd_summary": "256GB_SSD_Samsung",
-    "total_ram_count": "1", "total_ram_size": "8GB",
-    "total_hdd_count": "1", "total_hdd_size": "256GB",
+    "device_type": "Laptop",
     "invoice_number": "INV-2024-001",
     "screen_size": "14.0 FHD", "battery_health_pct": "78", "bios_password": "no",
     "color": "Silver", "grade": "B",
@@ -628,6 +627,10 @@ async def upload_devices(
             dev_id = uuid.uuid4()
             row_dt, row_sc = pair_type_and_category(_s(row, "device_type"), _s(row, "category"),
                                                     dt_master, sc_master)
+            # RAM / Storage (2026-10-22). Old files without them fall back to
+            # their previous columns, so they import as before.
+            spec = upload_spec(_s(row, "RAM") or _s(row, "total_ram_size") or _s(row, "ram_gb"),
+                               _s(row, "Storage") or _s(row, "total_hdd_size") or _s(row, "storage_gb"))
             device = Device(
                 id=dev_id, barcode=barcode, lot_id=lot_id,
                 entity=entity_val,
@@ -637,15 +640,15 @@ async def upload_devices(
                 serial_no=_s(row, "serial_no"),
                 grn_number=_s(row, "grn_number"),
                 cpu=_s(row, "cpu"), cpu_make=_s(row, "cpu_make"), generation=_s(row, "generation"),
-                ram_gb=_i(row, "ram_gb"), storage_gb=_i(row, "storage_gb"),
+                ram_gb=spec.get("ram_gb"), storage_gb=spec.get("storage_gb"),
                 storage_type=_s(row, "storage_type"),
                 hdd_capacity_gb=_i(row, "hdd_capacity_gb"),
                 ram_summary=_s(row, "ram_summary"),
                 hdd_summary=_s(row, "hdd_summary"),
-                total_ram_count=_s(row, "total_ram_count"),
-                total_ram_size=_s(row, "total_ram_size"),
-                total_hdd_count=_s(row, "total_hdd_count"),
-                total_hdd_size=_s(row, "total_hdd_size"),
+                total_ram_count=_s(row, "total_ram_count") or spec.get("total_ram_count"),
+                total_ram_size=spec.get("total_ram_size"),
+                total_hdd_count=_s(row, "total_hdd_count") or spec.get("total_hdd_count"),
+                total_hdd_size=spec.get("total_hdd_size"),
                 invoice_number=_s(row, "invoice_number"),
                 screen_size=_s(row, "screen_size"),
                 battery_health_pct=_i(row, "battery_health_pct"),
@@ -828,6 +831,11 @@ def _apply_row_to_device(device: Device, row: dict, entity_lookup: dict | None =
     if s("total_ram_size"): device.total_ram_size = s("total_ram_size")
     if s("total_hdd_count"): device.total_hdd_count = s("total_hdd_count")
     if s("total_hdd_size"): device.total_hdd_size = s("total_hdd_size")
+    # RAM / Storage columns (2026-10-22) — fill size, GB and count together.
+    for k, v in upload_spec(_row_get(row, "RAM"), _row_get(row, "Storage")).items():
+        if k.endswith("_count") and (getattr(device, k) or "").strip():
+            continue   # keep an existing stick/drive count
+        setattr(device, k, v)
     if s("invoice_number"): device.invoice_number = s("invoice_number")
     if s("screen_size"): device.screen_size = s("screen_size")
     if i("battery_health_pct") is not None: device.battery_health_pct = i("battery_health_pct")

@@ -81,12 +81,17 @@
         <tr><th class="ps-3 text-muted small">CPU Make</th><td>{{ device.cpu_make or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">CPU / Processor</th><td>{{ device.cpu or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Generation</th><td>{{ device.generation or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Total RAM Count</th><td>{{ device.total_ram_count or '—' }}</td></tr>
+        {# GB number as text, whole TB in TB (1024/1000 -> 1TB) — utils/device_spec.gb_text #}
+        {% macro _gbtb(n) %}{% if n %}{% if n >= 1024 and n % 1024 == 0 %}{{ n // 1024 }}TB{% elif n >= 1000 and n % 1000 == 0 %}{{ n // 1000 }}TB{% else %}{{ n }}GB{% endif %}{% endif %}{% endmacro %}
+        {# RAM / Hard Drive — the eight spec fields (2026-10-22). #}
+        <tr><th class="ps-3 text-muted small">RAM</th><td>{% call _cell(_cp, 'RAM', True) %}{{ _gbtb(device.ram_gb) if device.ram_gb else (device.total_ram_size or '—') }}{% endcall %}</td></tr>
         <tr><th class="ps-3 text-muted small">Total RAM Size</th><td>{{ device.total_ram_size or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">RAM</th><td>{% call _cell(_cp, 'RAM', True) %}{{ device.ram_summary or (device.ram_gb ~ ' GB' if device.ram_gb else '—') }}{% endcall %}</td></tr>
-        <tr><th class="ps-3 text-muted small">Total Hard Drive Count</th><td>{{ device.total_hdd_count or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Total RAM Count</th><td>{{ device.total_ram_count or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Hard Drive</th><td>{% call _cell(_cp, 'Hard Drive', True) %}{{ _gbtb(device.storage_gb) if device.storage_gb else (device.total_hdd_size or '—') }}{% endcall %}</td></tr>
         <tr><th class="ps-3 text-muted small">Total Hard Drive Size</th><td>{{ device.total_hdd_size or '—' }}</td></tr>
-        <tr><th class="ps-3 text-muted small">Hard Drive</th><td>{% call _cell(_cp, 'Hard Drive', True) %}{{ device.hdd_summary or (((device.storage_gb ~ 'GB ' ~ (device.storage_type or ''))|trim) if device.storage_gb else '—') }}{% endcall %}</td></tr>
+        <tr><th class="ps-3 text-muted small">Total Hard Drive Count</th><td>{{ device.total_hdd_count or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Total RAM Summary</th><td>{{ device.ram_summary or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Total Hard Drive Summary</th><td>{{ device.hdd_summary or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Screen Size</th><td>{{ device.screen_size or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Battery Cable</th><td>{% call _cell(_cp, 'Battery Cable', False) %}{{ (iqc.battery_cable if iqc else None) or '—' }}{% endcall %}</td></tr>
         <tr><th class="ps-3 text-muted small">Battery Health %</th>

@@ -34,6 +34,8 @@ from auth.dependencies import get_current_user, require_roles, verify_csrf, requ
 from utils.warranty import effective_warranty_for_sale, warranty_status_for_sale
 from utils.master_data import master_values, entity_values
 
+from utils.device_spec import gb_text as _gb_text  # whole TB shown as TB (2026-10-22)
+
 router = APIRouter(prefix="/devices", tags=["devices"], dependencies=[Depends(verify_csrf)])
 # All logged-in users can search/view; only admin+invmgr can edit
 view_allowed = get_current_user
@@ -96,9 +98,9 @@ async def device_brief(barcode: str, require_stage: str = "", db: AsyncSession =
         loc = info["unit_id"]
     if not loc:
         loc = device.warehouse or device.floor or "—"
-    ram = f"{device.ram_gb} GB" if device.ram_gb else "—"
+    ram = _gb_text(device.ram_gb) or "—"
     if device.storage_gb:
-        storage = f"{device.storage_gb} GB" + (f" {device.storage_type}" if device.storage_type else "")
+        storage = _gb_text(device.storage_gb) + (f" {device.storage_type}" if device.storage_type else "")
     else:
         storage = "—"
     sold_grade = device.grade or "—"
@@ -156,9 +158,9 @@ async def search_tags(q: str = "", db: AsyncSession = Depends(get_db),
     )).all()
     results = []
     for device, lot_number in rows:
-        ram = f"{device.ram_gb} GB" if device.ram_gb else "—"
+        ram = _gb_text(device.ram_gb) or "—"
         if device.storage_gb:
-            storage = f"{device.storage_gb} GB" + (f" {device.storage_type}" if device.storage_type else "")
+            storage = _gb_text(device.storage_gb) + (f" {device.storage_type}" if device.storage_type else "")
         else:
             storage = "—"
         results.append({
@@ -629,8 +631,8 @@ async def device_search_data(
                 "secondary" if g == "C" else "danger" if g in ("D", "scrap") else "light text-dark")
         stage_val = getattr(d.current_stage, "value", d.current_stage)
         stage_lbl = STAGE_LABELS.get(d.current_stage, stage_val)
-        ram = d.ram_summary or (f"{d.ram_gb}GB" if d.ram_gb else "—")
-        storage = d.hdd_summary or (f"{d.storage_gb}GB {d.storage_type or ''}".strip() if d.storage_gb else "—")
+        ram = d.ram_summary or _gb_text(d.ram_gb) or "—"
+        storage = d.hdd_summary or (f"{_gb_text(d.storage_gb)} {d.storage_type or ''}".strip() if d.storage_gb else "—")
         cells = [
             f'<input type="checkbox" class="form-check-input rowChk" value="{esc(d.barcode)}">',
             (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="font-monospace fw-bold text-decoration-none">{esc(d.barcode)}</a>'
@@ -1330,9 +1332,10 @@ async def model_summary_tags(
 
 _EXPORT_HEADER = [
     "Barcode", "Lot", "GRN", "Invoice No", "Entity", "Sub-Category", "Brand", "Model", "Device Type",
-    "Serial No", "CPU", "CPU Make", "Generation", "RAM GB", "RAM", "Total RAM Count", "Total RAM Size",
-    "SSD GB", "Storage Type", "Hard Drive",
-    "HDD GB", "Total HDD Count", "Total HDD Size", "Screen Size", "Battery %", "BIOS Pwd", "Color",
+    # RAM / Storage only (2026-10-22) — replaced RAM GB, RAM, Total RAM
+    # Count/Size, SSD GB, Storage Type, Hard Drive, HDD GB, Total HDD Count/Size.
+    "Serial No", "CPU", "CPU Make", "Generation", "RAM", "Storage",
+    "Screen Size", "Battery %", "BIOS Pwd", "Color",
     # ── Hardware / functional (IQC) — blank for a device with no IQC row yet ──
     "Power On", "Power Status", "HDD Connector", "HDD Casing", "Battery Present", "Battery Cable",
     "Charging Port", "DVD Drive", "Wi-Fi", "Web Cam", "Speaker", "Fan Working",
@@ -1364,6 +1367,9 @@ def _pna_label(device, pna_device_ids) -> str:
 def _stock_label(device) -> str:
     """Stock Type for the export — same rule as the table (stock_type_key)."""
     return STOCK_TYPE_LABELS[stock_type_key(device.current_stage, device.sub_lot_number)]
+
+
+from utils.device_spec import ram_text, storage_text  # noqa: E402  (RAM / Storage export, 2026-10-22)
 
 
 async def _export_rows(db: AsyncSession, rows) -> Response:
@@ -1482,10 +1488,8 @@ async def _export_rows(db: AsyncSession, rows) -> Response:
         row = [
             device.barcode, lot_number, device.grn_number, device.invoice_number, device.entity,
             device.sub_category, device.brand, device.model, device.device_type, device.serial_no,
-            device.cpu, device.cpu_make, device.generation, device.ram_gb, device.ram_summary,
-            device.total_ram_count, device.total_ram_size, device.storage_gb,
-            device.storage_type, device.hdd_summary, device.hdd_capacity_gb,
-            device.total_hdd_count, device.total_hdd_size, device.screen_size,
+            device.cpu, device.cpu_make, device.generation,
+            ram_text(device), storage_text(device), device.screen_size,
             device.battery_health_pct, "Yes" if device.bios_password else "No",
             device.color,
             *_iqc_cols(iqc),
@@ -2145,10 +2149,21 @@ async def device_edit_save(
     # ram_gb/storage_gb inputs were replaced on the Edit form by the IQC-style
     # RAM/Hard Drive (summary) fields; keep them non-destructive — only overwrite
     # the legacy numeric columns when a value is actually submitted.
-    if (ram_gb or "").strip():
-        device.ram_gb = int(ram_gb) if ram_gb.strip().isdigit() else None
-    if (storage_gb or "").strip():
-        device.storage_gb = int(storage_gb) if storage_gb.strip().isdigit() else None
+    # RAM (GB) / Hard Drive (GB) are on the form again (2026-10-22); "16",
+    # "16GB" and "1TB" are all read as GB. Blank clears the value.
+    # The form shows whole TB as "1TB" (1000 or 1024 GB); an unchanged box
+    # keeps the stored number exactly instead of re-reading it as 1024.
+    from utils.device_spec import size_to_gb, gb_text
+
+    def _gb_from_form(posted, current):
+        posted = (posted or "").strip()
+        if not posted:
+            return None
+        if current and posted.upper().replace(" ", "") == (gb_text(current) or "").upper():
+            return current
+        return size_to_gb(posted)
+    device.ram_gb = _gb_from_form(ram_gb, device.ram_gb)
+    device.storage_gb = _gb_from_form(storage_gb, device.storage_gb)
     # IQC-style hardware fields (plain summed size in RAM / Hard Drive)
     device.total_ram_count = total_ram_count.strip() or None
     device.total_ram_size = total_ram_size.strip() or None
@@ -2156,8 +2171,12 @@ async def device_edit_save(
     device.total_hdd_count = total_hdd_count.strip() or None
     device.total_hdd_size = total_hdd_size.strip() or None
     device.hdd_summary = hdd_summary.strip() or None
-    device.storage_type = storage_type or None
-    device.hdd_capacity_gb = int(hdd_capacity_gb) if (hdd_capacity_gb or "").strip().isdigit() else None
+    # Storage Type / HDD Capacity left the Edit form (2026-10-22) — only
+    # changed when a value is actually posted, so a save never wipes them.
+    if (storage_type or "").strip():
+        device.storage_type = storage_type
+    if (hdd_capacity_gb or "").strip().isdigit():
+        device.hdd_capacity_gb = int(hdd_capacity_gb)
     device.screen_size = screen_size or None
     device.battery_health_pct = int(battery_health_pct) if (battery_health_pct or "").strip().isdigit() else None
     device.bios_password = (bios_password == "yes")

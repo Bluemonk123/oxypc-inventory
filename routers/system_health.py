@@ -248,3 +248,69 @@ async def device_type_backfill_apply(request: Request, current_user: User = Depe
     return JSONResponse({"ok": True, "updated": total,
                          "by_value": {k: len(v) for k, v in groups.items()}, "skipped": skipped})
 
+
+
+# ── RAM / Storage fill (2026-10-22) ──────────────────────────────────────────
+# Brings existing tags in line with the eight spec fields: blank counts -> 1,
+# Total RAM / Hard Drive Size <-> RAM / Hard Drive GB filled from each other,
+# old HDD GB column used when Hard Drive GB is blank. Blank fields only.
+# GET previews (read-only); POST applies and audits the changed tag ids.
+
+_SPEC_COLS = ("total_ram_size", "ram_gb", "total_ram_count",
+              "total_hdd_size", "storage_gb", "total_hdd_count")
+
+
+async def _spec_changes(db):
+    from sqlalchemy import select
+    from types import SimpleNamespace
+    from models.device import Device
+    from utils.device_spec import fill_defaults
+    cols = (Device.id, Device.ram_gb, Device.total_ram_size, Device.total_ram_count,
+            Device.storage_gb, Device.hdd_capacity_gb, Device.total_hdd_size, Device.total_hdd_count)
+    out = []
+    for r in (await db.execute(select(*cols))).all():
+        ch = fill_defaults(SimpleNamespace(**r._mapping))
+        if ch:
+            out.append((r.id, ch))
+    return out
+
+
+@router.get("/spec-fill")
+async def spec_fill_preview(current_user: User = Depends(admin_only)):
+    from database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        changes = await _spec_changes(db)
+    per_field = {c: sum(1 for _i, ch in changes if c in ch) for c in _SPEC_COLS}
+    return JSONResponse({"tags_to_change": len(changes), "per_field": per_field})
+
+
+@router.post("/spec-fill")
+async def spec_fill_apply(request: Request, current_user: User = Depends(admin_only)):
+    from collections import defaultdict
+    from sqlalchemy import update
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        changes = await _spec_changes(db)
+        groups = defaultdict(list)          # same set of fields -> one statement
+        for did, ch in changes:
+            groups[tuple(sorted(ch))].append((did, ch))
+        from sqlalchemy import bindparam
+        conn = await db.connection()
+        for keys, items in groups.items():
+            stmt = (update(Device.__table__).where(Device.__table__.c.id == bindparam("b_id"))
+                    .values({k: bindparam("b_" + k) for k in keys}))
+            params = [{"b_id": did, **{"b_" + k: ch[k] for k in keys}} for did, ch in items]
+            for i in range(0, len(params), 2000):
+                await conn.execute(stmt, params[i:i + 2000])   # executemany
+        per_field = {c: [str(d) for d, ch in changes if c in ch] for c in _SPEC_COLS}
+        await audit(db, user=current_user, action="DEVICE_SPEC_FILL", table_name="devices",
+                    record_id=f"{len(changes)} tags",
+                    new_value={"count": len(changes), "device_ids_by_field": per_field},
+                    notes="Blank RAM/Storage fields filled (counts 1, size <-> GB). "
+                          "Reverse: set each listed field back to NULL for its ids.",
+                    request=request)
+        await db.commit()
+    return JSONResponse({"ok": True, "updated": len(changes),
+                         "per_field": {c: len(v) for c, v in per_field.items()}})
