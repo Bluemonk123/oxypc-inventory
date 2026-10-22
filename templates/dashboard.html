@@ -257,12 +257,12 @@
       {% for key, label, color, link in [
           ('iqc',           'IQC',           'secondary', '/devices?stage=iqc'),
           ('stock_in',      'Stock In',      'secondary', '/devices?stage=stock_in'),
-          ('production',    'Production',    'info',      '/devices?stage=trc_production'),
-          ('l1l2',          'L1/L2',         'warning',   '/devices?stage=l1,l2'),
-          ('l3l4',          'L3/L4',         'danger',    '/repair/l3l4'),
-          ('qc_check',      'Stress/QC',     'primary',   '/devices?stage=qc_check'),
-          ('cosmetic',      'Cosmetic',      'info',      '/devices?stage=cosmetic_received,cleaning,putty,dry_sanding,masking,painting,water_sanding,cosmetic_completed'),
-          ('final_qc',      'Final QC',      'primary',   '/devices?stage=final_qc,final_qc_pass_hold,final_qc_fail_hold'),
+          ('production',    'Production',    'secondary', '/devices?stage=trc_production'),
+          ('l1l2',          'L1/L2',         'secondary', '/devices?stage=l1,l2'),
+          ('l3l4',          'L3/L4',         'secondary', '/repair/l3l4'),
+          ('qc_check',      'Stress/QC',     'secondary', '/devices?stage=qc_check'),
+          ('cosmetic',      'Cosmetic',      'secondary', '/devices?stage=cosmetic_received,cleaning,putty,dry_sanding,masking,painting,water_sanding,cosmetic_completed'),
+          ('final_qc',      'Final QC',      'secondary', '/devices?stage=final_qc,final_qc_pass_hold,final_qc_fail_hold'),
           ('ready_to_sale', 'Ready to Sale', 'success',   '/devices?stage=ready_to_sale'),
           ('sold',          'Sold',          'dark',      '/devices?stage=sold'),
       ] %}
