@@ -33,6 +33,7 @@ class DeviceStage(str, enum.Enum):
     returned = "returned"
     scrapped = "scrapped"
     scrap_for_sale = "scrap_for_sale"
+    on_rent = "on_rent"            # out on a Rental (routers/rentals.py), 2026-10-22
 
 
 class DeviceGrade(str, enum.Enum):
@@ -69,6 +70,7 @@ STAGE_LABELS = {
     DeviceStage.returned: "Returned",
     DeviceStage.scrapped: "Scrapped",
     DeviceStage.scrap_for_sale: "Scrap for Sale",
+    DeviceStage.on_rent: "On Rent",
 }
 
 # Every Stage dropdown/filter across the app builds its option list from this,
@@ -131,6 +133,7 @@ STAGE_COLORS = {
     DeviceStage.returned: "warning",
     DeviceStage.scrapped: "danger",
     DeviceStage.scrap_for_sale: "dark",
+    DeviceStage.on_rent: "info",
 }
 
 

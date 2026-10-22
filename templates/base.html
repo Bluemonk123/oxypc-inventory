@@ -105,7 +105,7 @@
       {% endif %}
 
       {# ── INVENTORY ───────────────────────────────────────────────────── #}
-      {% if any_perm(role,'stock','production_manager','extended_warranty','part_estimation','credit_note','transfers','inventory_requests','model_requested') %}
+      {% if any_perm(role,'stock','production_manager','extended_warranty','part_estimation','rentals','credit_note','transfers','inventory_requests','model_requested') %}
       <li class="nav-section">INVENTORY</li>
       {% if has_perm(role,'stock','enable') and not module_hidden('stock') %}
       <li><a href="/stock" class="nav-link {% if request.url.path == '/stock' %}active{% endif %}">
@@ -143,6 +143,12 @@
       {% if has_perm(role,'part_estimation','enable') and not module_hidden('part_estimation') %}
       <li><a href="/part-estimation" class="nav-link {% if '/part-estimation' in request.url.path %}active{% endif %}">
         <i class="bi bi-calculator me-2"></i> {{ sidebar_label('part_estimation', 'Part Estimation') }}
+      </a></li>
+      {% endif %}
+      {# Rentals (2026-10-22) — below Lots Estimation (Part Estimation); off by default for every role. #}
+      {% if has_perm(role,'rentals','enable') and not module_hidden('rentals') %}
+      <li><a href="/rentals" class="nav-link {% if request.url.path.startswith('/rentals') %}active{% endif %}">
+        <i class="bi bi-calendar2-range me-2"></i> {{ sidebar_label('rentals', 'Rentals') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'transfers','enable') and not module_hidden('transfers') %}

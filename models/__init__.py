@@ -68,3 +68,5 @@ from .care import (
 from .audit_record import AuditRecord, AuditRecordItem
 from .block_tags import BlockRecord, BlockRecordItem, BlockItemStatus
 from .as_is_lot_price import AsIsLotPrice
+# Rentals (2026-10-22)
+from .rental import RentalRecord, RentalItem

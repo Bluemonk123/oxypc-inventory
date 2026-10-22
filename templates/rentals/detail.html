@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}{{ r.rental_number }} — Rentals — OxyPC{% endblock %}
+{% block page_title %}Rental {{ r.rental_number }}{% endblock %}
+
+{% block content %}
+{% set csrf = request.cookies.get('csrf_token', '') %}
+{% set status_badge = {'active': 'primary', 'returned': 'success', 'cancelled': 'secondary'} %}
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+  <div>
+    <a href="/rentals" class="btn btn-sm btn-outline-secondary me-2"><i class="bi bi-arrow-left"></i> Rental Records</a>
+    <span class="fs-5 fw-semibold align-middle">{{ r.rental_number }}</span>
+    <span class="badge bg-{{ status_badge.get(r.status, 'secondary') }} align-middle ms-1">{{ statuses.get(r.status, r.status) }}</span>
+  </div>
+  <div class="d-flex gap-2">
+    <a href="/rentals/{{ r.id }}/print" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-file-earmark-pdf me-1"></i>Summary (PDF)</a>
+    <a href="/rentals/{{ r.id }}/tags.csv" class="btn btn-sm btn-outline-primary"><i class="bi bi-filetype-csv me-1"></i>Tags CSV</a>
+    {% if r.status == 'active' %}
+    <form method="post" action="/rentals/{{ r.id }}/return" class="d-inline"
+          onsubmit="return confirm('Mark {{ r.rental_number }} as Returned? Its tags go back to Ready to Sale.')">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn btn-sm btn-success"><i class="bi bi-box-arrow-in-down-left me-1"></i>Mark Returned</button>
+    </form>
+    <form method="post" action="/rentals/{{ r.id }}/cancel" class="d-inline"
+          onsubmit="return confirm('Cancel {{ r.rental_number }}? Its tags go back to Ready to Sale.')">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-lg me-1"></i>Cancel Rental</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-building me-2"></i>Billing Entity</div>
+      <div class="card-body small">
+        <div class="fw-semibold">{{ r.billing_entity_name or '—' }}</div>
+        {% if r.billing_entity_gstin %}<div><span class="text-muted">GSTIN:</span> {{ r.billing_entity_gstin }}</div>{% endif %}
+        {% if r.billing_entity_address %}<div><span class="text-muted">Address:</span> {{ r.billing_entity_address }}</div>{% endif %}
+        {% if r.billing_entity_state %}<div><span class="text-muted">State:</span> {{ r.billing_entity_state }}</div>{% endif %}
+        {% if r.billing_entity_phone %}<div><span class="text-muted">Phone:</span> {{ r.billing_entity_phone }}</div>{% endif %}
+        {% if r.billing_entity_email %}<div><span class="text-muted">Email:</span> {{ r.billing_entity_email }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-person-vcard me-2"></i>Billing To <span class="badge text-bg-light border ms-1">{{ bill_types.get(r.bill_type, r.bill_type) }}</span></div>
+      <div class="card-body small">
+        {% if r.bill_type == 'business' %}
+          <div class="fw-semibold">{{ r.customer_company or '—' }}</div>
+          {% if r.customer_gstin %}<div><span class="text-muted">GSTIN:</span> {{ r.customer_gstin }}</div>{% endif %}
+        {% endif %}
+        <div><span class="text-muted">Person:</span> {{ r.person_name }}</div>
+        {% if r.phone %}<div><span class="text-muted">Phone:</span> {{ r.phone }}</div>{% endif %}
+        {% if r.email %}<div><span class="text-muted">Email:</span> {{ r.email }}</div>{% endif %}
+        {% if r.address %}<div><span class="text-muted">Address:</span> {{ r.address }}</div>{% endif %}
+        {% if r.city or r.state %}<div><span class="text-muted">City / State:</span> {{ [r.city, r.state] | select | join(', ') }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-receipt me-2"></i>Rental Terms</div>
+      <div class="card-body small">
+        <div><span class="text-muted">Duration:</span> <span class="fw-semibold">{{ duration }}</span></div>
+        <div><span class="text-muted">Start Date:</span> {{ r.start_date.strftime('%d-%m-%Y') }}</div>
+        <div><span class="text-muted">End Date:</span> {{ r.end_date.strftime('%d-%m-%Y') }}</div>
+        <div><span class="text-muted">Total Quantity:</span> {{ r.total_quantity }}</div>
+        <div><span class="text-muted">Total Price:</span> <span class="fw-semibold">₹{{ r.total_price | inr(2) }}</span>
+          {% if r.suggested_price is not none and r.suggested_price != r.total_price %}<span class="text-muted">(Min Selling total ₹{{ r.suggested_price | inr(2) }})</span>{% endif %}</div>
+        {% if r.notes %}<div class="mt-1"><span class="text-muted">Notes:</span> {{ r.notes }}</div>{% endif %}
+        <hr class="my-2">
+        <div class="text-muted">Created by {{ r.created_by or '—' }} on {{ r.created_at | ist_datetime }}</div>
+        {% if r.closed_at %}<div class="text-muted">{{ statuses.get(r.status, r.status) }} by {{ r.closed_by or '—' }} on {{ r.closed_at | ist_datetime }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent fw-semibold"><i class="bi bi-grid-3x3-gap me-2"></i>Model Summary</div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0 small align-middle">
+      <thead class="table-light"><tr><th>Make / Model</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th><th class="text-end">Quantity</th><th>Grades</th></tr></thead>
+      <tbody>
+        {% for g in summary %}
+        <tr><td class="fw-semibold">{{ g.make }} {{ g.model }}</td><td>{{ g.cpu }}</td><td>{{ g.gen }}</td><td>{{ g.ram }}</td><td>{{ g.storage }}</td>
+          <td class="text-end fw-semibold">{{ g.qty }}</td>
+          <td>{% for k, n in g.grades %}<span class="badge text-bg-light border me-1">{{ k }}: {{ n }}</span>{% endfor %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent fw-semibold"><i class="bi bi-upc-scan me-2"></i>Tags ({{ items | length }})</div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table id="rentalItemsTable" class="table table-sm table-hover mb-0 small align-middle">
+        <thead class="table-dark"><tr><th>Tag</th><th>Make / Model</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th><th>Grade</th><th class="text-end">Min Price</th></tr></thead>
+        <tbody>
+          {% for it in items %}
+          <tr><td class="fw-semibold">{{ it.barcode }}</td><td>{{ it.make or '' }} {{ it.model or '' }}</td><td>{{ it.cpu or '' }}</td>
+            <td>{{ it.generation or '' }}</td><td>{{ it.ram or '' }}</td><td>{{ it.storage or '' }}</td><td>{{ it.grade or '' }}</td>
+            <td class="text-end">{% if it.min_selling_price is not none %}₹{{ it.min_selling_price | inr }}{% else %}—{% endif %}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function () { initGlobalTable('#rentalItemsTable', { order: [], pageLength: 25 }); });
+</script>
+{% endblock %}

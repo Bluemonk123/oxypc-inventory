@@ -741,6 +741,10 @@ async def l3l4_list(request: Request,
             "notes": wo.requested_by_name or "—",
             "repair_notes": dev.repair_notes or "—",
             "aging": aging,
+            # Filter-bar flags (2026-10-22): As-Is = carries a Sub-Lot Number
+            # (same rule as All Inventory's Stock Type); Failed = Final QC fail.
+            "as_is": bool((dev.sub_lot_number or "").strip()),
+            "fqc_fail": dev.final_qc_status == "fail",
         })
 
     return templates.TemplateResponse("repair/l3l4.html", {

@@ -1,0 +1,400 @@
+{% extends "base.html" %}
+{% block title %}New Rental — OxyPC{% endblock %}
+{% block page_title %}New Rental{% endblock %}
+
+{% block content %}
+<form id="rentalForm" method="post" action="/rentals/new" autocomplete="off">
+<input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+<input type="hidden" name="barcodes" id="fBarcodes">
+
+<div class="row g-3">
+  {# ── Left: tags ─────────────────────────────────────────────────────── #}
+  <div class="col-xl-7">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <span class="fw-semibold"><i class="bi bi-upc-scan me-2"></i>Tags <span class="text-muted small fw-normal">(Ready to Sale only)</span></span>
+        <div class="d-flex gap-2">
+          <input type="file" id="tagFile" accept=".csv,.txt" class="d-none">
+          <button type="button" class="btn btn-sm btn-outline-primary" onclick="document.getElementById('tagFile').click()">
+            <i class="bi bi-upload me-1"></i>Upload Tags
+          </button>
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="input-group input-group-sm mb-2">
+          <span class="input-group-text"><i class="bi bi-search"></i></span>
+          <input type="text" id="tagSearch" class="form-control" placeholder="Search Tag Number, Serial, Make or Model (min 2 characters)">
+        </div>
+        <div class="form-text mt-0 mb-2">Upload: a CSV or text file with Tag Numbers in the first column (header row optional).</div>
+        <div id="uploadMsg" class="alert py-2 small d-none mb-2"></div>
+
+        <div id="searchBox" class="border rounded d-none mb-3">
+          <div class="d-flex align-items-center justify-content-between px-2 py-1 bg-light border-bottom small">
+            <span id="searchInfo" class="text-muted"></span>
+            <div class="d-flex gap-2">
+              <button type="button" class="btn btn-sm btn-outline-primary py-0" id="addTickedBtn" disabled>Add ticked</button>
+              <button type="button" class="btn btn-sm btn-outline-secondary py-0" id="addAllBtn">Add all</button>
+            </div>
+          </div>
+          <div style="max-height:260px;overflow:auto">
+            <table class="table table-sm table-hover mb-0 small align-middle">
+              <thead class="table-light" style="position:sticky;top:0">
+                <tr><th style="width:28px"><input type="checkbox" class="form-check-input" id="searchAll"></th>
+                  <th>Tag</th><th>Make / Model</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th><th>Grade</th><th class="text-end">Min Price</th></tr>
+              </thead>
+              <tbody id="searchBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="d-flex align-items-center justify-content-between mb-1">
+          <span class="fw-semibold small">Selected tags (<span id="selCount">0</span>)</span>
+          <button type="button" class="btn btn-sm btn-link text-danger p-0 d-none" id="clearSel">Remove all</button>
+        </div>
+        <div class="table-responsive border rounded" style="max-height:340px;overflow:auto">
+          <table class="table table-sm table-hover mb-0 small align-middle">
+            <thead class="table-dark" style="position:sticky;top:0">
+              <tr><th>Tag</th><th>Make / Model</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th><th>Grade</th><th class="text-end">Min Price</th><th></th></tr>
+            </thead>
+            <tbody id="selBody"><tr class="sel-empty"><td colspan="9" class="text-center text-muted py-3">No tags selected yet — search above or upload a file.</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-grid-3x3-gap me-2"></i>Model Summary</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0 small align-middle">
+          <thead class="table-light">
+            <tr><th>Make / Model</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th><th class="text-end">Quantity</th><th>Grades</th></tr>
+          </thead>
+          <tbody id="msBody"><tr><td colspan="7" class="text-center text-muted py-3">Add tags to see the summary.</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── Right: billing, duration, price ─────────────────────────────────── #}
+  <div class="col-xl-5">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-building me-2"></i>Billing Entity</div>
+      <div class="card-body">
+        <select name="billing_company_id" id="fCompany" class="form-select form-select-sm" required>
+          <option value="">— Select Billing Entity —</option>
+          {% for c in companies %}
+          <option value="{{ c.id }}">{{ c.company_name }}{% if c.company_entity %} ({{ c.company_entity }}){% endif %}</option>
+          {% endfor %}
+        </select>
+        <div id="companyCard" class="border rounded bg-light p-2 mt-2 small d-none"></div>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-person-vcard me-2"></i>Billing To</div>
+      <div class="card-body">
+        <div class="mb-2">
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="bill_type" id="btBusiness" value="business" checked>
+            <label class="form-check-label" for="btBusiness">Business</label>
+          </div>
+          <div class="form-check form-check-inline">
+            <input class="form-check-input" type="radio" name="bill_type" id="btIndividual" value="individual">
+            <label class="form-check-label" for="btIndividual">Individual</label>
+          </div>
+        </div>
+        <div class="row g-2">
+          <div class="col-md-7 biz-only"><label class="form-label small mb-0">Company Name <span class="text-danger">*</span></label>
+            <input type="text" name="customer_company" id="fCustCompany" class="form-control form-control-sm" maxlength="200"></div>
+          <div class="col-md-5 biz-only"><label class="form-label small mb-0">GSTIN</label>
+            <input type="text" name="customer_gstin" class="form-control form-control-sm text-uppercase" maxlength="15"></div>
+          <div class="col-md-6"><label class="form-label small mb-0">Person Name <span class="text-danger">*</span></label>
+            <input type="text" name="person_name" id="fPerson" class="form-control form-control-sm" maxlength="150" required></div>
+          <div class="col-md-6"><label class="form-label small mb-0">Phone</label>
+            <input type="tel" name="phone" class="form-control form-control-sm" maxlength="20"></div>
+          <div class="col-md-12"><label class="form-label small mb-0">Email</label>
+            <input type="email" name="email" class="form-control form-control-sm" maxlength="150"></div>
+          <div class="col-md-6"><label class="form-label small mb-0">City</label>
+            <input type="text" name="city" class="form-control form-control-sm" maxlength="100"></div>
+          <div class="col-md-6"><label class="form-label small mb-0">State</label>
+            <input type="text" name="state" class="form-control form-control-sm" maxlength="100"></div>
+          <div class="col-12"><label class="form-label small mb-0">Address</label>
+            <textarea name="address" rows="2" class="form-control form-control-sm"></textarea></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-receipt me-2"></i>Rental Terms</div>
+      <div class="card-body">
+        <div class="row g-2">
+          <div class="col-md-7">
+            <label class="form-label small mb-0">Rental Duration <span class="text-danger">*</span></label>
+            <div class="input-group input-group-sm" id="durGroup">
+              <input type="number" name="duration_value" id="fDur" class="form-control" min="1" step="1" required placeholder="e.g. 6">
+              <select name="duration_unit" id="fUnit" class="form-select" style="max-width:110px">
+                {% for val, label in units %}
+                <option value="{{ val }}" {% if val == 'months' %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="col-md-5">
+            <label class="form-label small mb-0">Start Date</label>
+            <input type="date" name="start_date" id="fStart" class="form-control form-control-sm" value="{{ today }}">
+          </div>
+          <div class="col-12"><div class="small text-muted" id="durText">&nbsp;</div></div>
+          <div class="col-md-5">
+            <label class="form-label small mb-0">Total Quantity</label>
+            <input type="text" id="fQty" class="form-control form-control-sm" value="0" readonly>
+          </div>
+          <div class="col-md-7">
+            <label class="form-label small mb-0">Total Price (₹)</label>
+            <input type="number" name="total_price" id="fPrice" class="form-control form-control-sm" min="0" step="0.01">
+            <div class="form-text mt-0">Total Min Selling Price: ₹<span id="suggested">0</span>
+              <a href="#" id="resetPrice" class="ms-1 d-none">use this</a></div>
+          </div>
+          <div class="col-12">
+            <label class="form-label small mb-0">Additional Notes</label>
+            <textarea name="notes" rows="2" class="form-control form-control-sm"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 justify-content-end">
+      <a href="/rentals" class="btn btn-sm btn-outline-secondary">Cancel</a>
+      <button type="submit" class="btn btn-sm btn-primary" id="submitBtn"><i class="bi bi-check2 me-1"></i>Create Rental</button>
+    </div>
+  </div>
+</div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  var COMPANIES = {{ company_json | tojson }};
+  var GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'NG'];
+  var selected = new Map();      // barcode(upper) -> tag
+  var results = [];
+  var priceEdited = false;
+
+  function csrf() { return (document.cookie.match(/csrf_token=([^;]+)/) || [, ''])[1]; }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function money(n) { return n == null ? '—' : Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
+  function heldBadge(t) { return t.held ? ' <span class="badge bg-warning-subtle text-warning-emphasis" title="Blocked / assigned in Ready to Sale">Blocked</span>' : ''; }
+  function cells(t) {
+    return '<td class="fw-semibold">' + esc(t.barcode) + heldBadge(t) + '</td>' +
+      '<td>' + esc((t.make + ' ' + t.model).trim()) + '</td><td>' + esc(t.cpu) + '</td><td>' + esc(t.gen) + '</td>' +
+      '<td>' + esc(t.ram) + '</td><td>' + esc(t.storage) + '</td><td>' + esc(t.grade) + '</td>' +
+      '<td class="text-end">' + money(t.min_price) + '</td>';
+  }
+
+  // ── Search ──
+  var timer, searchSeq = 0;
+  document.getElementById('tagSearch').addEventListener('input', function () {
+    clearTimeout(timer);
+    var q = this.value.trim();
+    timer = setTimeout(function () { runSearch(q); }, 300);
+  });
+  function runSearch(q) {
+    var box = document.getElementById('searchBox');
+    if (q.length < 2) { box.classList.add('d-none'); results = []; return; }
+    var seq = ++searchSeq;
+    fetch('/rentals/tags/search?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); }).then(function (data) {
+      if (seq !== searchSeq) return;
+      results = data.tags || [];
+      renderResults();
+      box.classList.remove('d-none');
+    });
+  }
+  function renderResults() {
+    var body = document.getElementById('searchBody');
+    var fresh = results.filter(function (t) { return !selected.has(t.barcode.toUpperCase()); });
+    document.getElementById('searchInfo').textContent = results.length
+      ? results.length + (results.length >= 50 ? '+ (first 50)' : '') + ' Ready to Sale match(es), ' + fresh.length + ' not yet added'
+      : 'No Ready to Sale tags match.';
+    body.innerHTML = results.map(function (t, i) {
+      var added = selected.has(t.barcode.toUpperCase());
+      return '<tr class="' + (added ? 'text-muted' : '') + '"><td>' +
+        (added ? '<i class="bi bi-check2 text-success"></i>' : '<input type="checkbox" class="form-check-input res-chk" data-i="' + i + '">') +
+        '</td>' + cells(t) + '</tr>';
+    }).join('');
+    document.getElementById('searchAll').checked = false;
+    syncTicked();
+  }
+  function syncTicked() {
+    document.getElementById('addTickedBtn').disabled = !document.querySelector('#searchBody .res-chk:checked');
+  }
+  document.getElementById('searchBody').addEventListener('change', syncTicked);
+  document.getElementById('searchAll').addEventListener('change', function () {
+    var on = this.checked;
+    document.querySelectorAll('#searchBody .res-chk').forEach(function (c) { c.checked = on; });
+    syncTicked();
+  });
+  document.getElementById('addTickedBtn').addEventListener('click', function () {
+    var picks = [];
+    document.querySelectorAll('#searchBody .res-chk:checked').forEach(function (c) { picks.push(results[+c.dataset.i]); });
+    addTags(picks);
+  });
+  document.getElementById('addAllBtn').addEventListener('click', function () { addTags(results); });
+
+  // ── Upload ──
+  document.getElementById('tagFile').addEventListener('change', function () {
+    if (!this.files.length) return;
+    var fd = new FormData();
+    fd.append('csrf_token', csrf());
+    fd.append('file', this.files[0]);
+    this.value = '';
+    var msg = document.getElementById('uploadMsg');
+    msg.className = 'alert alert-info py-2 small mb-2'; msg.textContent = 'Reading file…';
+    fetch('/rentals/tags/upload', { method: 'POST', body: fd }).then(function (r) { return r.json(); }).then(function (data) {
+      if (data.error) { msg.className = 'alert alert-danger py-2 small mb-2'; msg.textContent = data.error; return; }
+      var before = selected.size;
+      addTags(data.tags || []);
+      var added = selected.size - before;
+      var parts = ['<b>' + added + '</b> tag(s) added' + ((data.tags || []).length - added ? ' (' + ((data.tags || []).length - added) + ' already in the list)' : '') + '.'];
+      if ((data.not_ready || []).length) parts.push('<b>' + data.not_ready.length + '</b> not in Ready to Sale: ' +
+        data.not_ready.slice(0, 15).map(function (x) { return esc(x.barcode) + ' <span class="text-muted">(' + esc(x.stage) + ')</span>'; }).join(', ') +
+        (data.not_ready.length > 15 ? ' …' : ''));
+      if ((data.not_found || []).length) parts.push('<b>' + data.not_found.length + '</b> not found: ' +
+        data.not_found.slice(0, 15).map(esc).join(', ') + (data.not_found.length > 15 ? ' …' : ''));
+      msg.className = 'alert ' + (parts.length > 1 ? 'alert-warning' : 'alert-success') + ' py-2 small mb-2';
+      msg.innerHTML = parts.join('<br>');
+    }).catch(function () { msg.className = 'alert alert-danger py-2 small mb-2'; msg.textContent = 'Upload failed.'; });
+  });
+
+  // ── Selected tags ──
+  function addTags(list) {
+    list.forEach(function (t) { if (t && !selected.has(t.barcode.toUpperCase())) selected.set(t.barcode.toUpperCase(), t); });
+    renderSelected();
+    renderResults();
+  }
+  document.getElementById('selBody').addEventListener('click', function (e) {
+    var b = e.target.closest('.rm-tag');
+    if (!b) return;
+    selected.delete(b.dataset.k);
+    renderSelected();
+    if (results.length) renderResults();
+  });
+  document.getElementById('clearSel').addEventListener('click', function () {
+    if (!confirm('Remove all ' + selected.size + ' selected tags?')) return;
+    selected.clear(); renderSelected(); if (results.length) renderResults();
+  });
+  function renderSelected() {
+    var body = document.getElementById('selBody');
+    var rows = [];
+    selected.forEach(function (t, k) {
+      rows.push('<tr>' + cells(t) + '<td class="text-end"><button type="button" class="btn btn-sm btn-link text-danger p-0 rm-tag" data-k="' + esc(k) + '" title="Remove"><i class="bi bi-x-circle"></i></button></td></tr>');
+    });
+    body.innerHTML = rows.length ? rows.join('') : '<tr><td colspan="9" class="text-center text-muted py-3">No tags selected yet — search above or upload a file.</td></tr>';
+    document.getElementById('selCount').textContent = selected.size;
+    document.getElementById('clearSel').classList.toggle('d-none', !selected.size);
+    renderSummary();
+  }
+
+  // ── Model Summary + totals ──
+  function renderSummary() {
+    var groups = new Map(), total = 0;
+    selected.forEach(function (t) {
+      var key = [(t.make || '').trim(), (t.model || '').trim(), t.cpu, t.gen, t.ram, t.storage].join('|');
+      var g = groups.get(key);
+      if (!g) { g = { t: t, qty: 0, grades: {} }; groups.set(key, g); }
+      g.qty++;
+      var gr = t.grade || 'NG';
+      g.grades[gr] = (g.grades[gr] || 0) + 1;
+      if (t.min_price != null) total += Number(t.min_price);
+    });
+    var list = Array.from(groups.values()).sort(function (a, b) { return b.qty - a.qty; });
+    document.getElementById('msBody').innerHTML = list.length ? list.map(function (g) {
+      var grades = Object.keys(g.grades).sort(function (a, b) {
+        var ia = GRADE_ORDER.indexOf(a), ib = GRADE_ORDER.indexOf(b);
+        return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+      }).map(function (k) { return '<span class="badge text-bg-light border me-1">' + esc(k) + ': ' + g.grades[k] + '</span>'; }).join('');
+      var t = g.t;
+      return '<tr><td class="fw-semibold">' + esc((t.make + ' ' + t.model).trim()) + '</td><td>' + esc(t.cpu) + '</td><td>' + esc(t.gen) +
+        '</td><td>' + esc(t.ram) + '</td><td>' + esc(t.storage) + '</td><td class="text-end fw-semibold">' + g.qty + '</td><td>' + grades + '</td></tr>';
+    }).join('') : '<tr><td colspan="7" class="text-center text-muted py-3">Add tags to see the summary.</td></tr>';
+
+    total = Math.round(total * 100) / 100;
+    document.getElementById('fQty').value = selected.size;
+    document.getElementById('suggested').textContent = money(total);
+    var price = document.getElementById('fPrice');
+    price.dataset.suggested = total;
+    if (!priceEdited) price.value = total ? total.toFixed(2) : '';
+    syncReset();
+  }
+  function syncReset() {
+    var price = document.getElementById('fPrice');
+    document.getElementById('resetPrice').classList.toggle('d-none',
+      Number(price.value || 0) === Number(price.dataset.suggested || 0));
+  }
+  document.getElementById('fPrice').addEventListener('input', function () { priceEdited = true; syncReset(); });
+  document.getElementById('resetPrice').addEventListener('click', function (e) {
+    e.preventDefault();
+    var price = document.getElementById('fPrice');
+    price.value = Number(price.dataset.suggested || 0).toFixed(2);
+    priceEdited = false; syncReset();
+  });
+
+  // ── Billing entity details ──
+  document.getElementById('fCompany').addEventListener('change', function () {
+    var c = COMPANIES[this.value], card = document.getElementById('companyCard');
+    if (!c) { card.classList.add('d-none'); return; }
+    var line = function (label, v) { return v ? '<div><span class="text-muted">' + label + ':</span> ' + esc(v) + '</div>' : ''; };
+    card.innerHTML = '<div class="fw-semibold mb-1">' + esc(c.name) + (c.entity ? ' <span class="badge text-bg-secondary">' + esc(c.entity) + '</span>' : '') + '</div>' +
+      line('GSTIN', c.gstin) + line('Address', c.address) + line('State', c.state) + line('Phone', c.phone) + line('Email', c.email);
+    card.classList.remove('d-none');
+  });
+
+  // ── Billing To ──
+  function syncBillType() {
+    var biz = document.getElementById('btBusiness').checked;
+    document.querySelectorAll('.biz-only').forEach(function (el) { el.classList.toggle('d-none', !biz); });
+    document.getElementById('fCustCompany').required = biz;
+  }
+  document.querySelectorAll('input[name="bill_type"]').forEach(function (r) { r.addEventListener('change', syncBillType); });
+  syncBillType();
+
+  // ── Duration → start / end dates (hover) ──
+  function fmt(d) { return ('0' + d.getDate()).slice(-2) + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + d.getFullYear(); }
+  function endDate(start, n, unit) {
+    if (unit === 'days') { var e = new Date(start); e.setDate(e.getDate() + n - 1); return e; }
+    var months = n * (unit === 'years' ? 12 : 1);
+    var y = start.getFullYear() + Math.floor((start.getMonth() + months) / 12), m = (start.getMonth() + months) % 12;
+    var last = new Date(y, m + 1, 0).getDate();
+    var e2 = new Date(y, m, Math.min(start.getDate(), last));
+    e2.setDate(e2.getDate() - 1);
+    return e2;
+  }
+  var durTipHtml = 'Enter a duration';
+  new bootstrap.Tooltip(document.getElementById('durGroup'), { html: true, placement: 'top', title: function () { return durTipHtml; } });
+  function syncDuration() {
+    var n = parseInt(document.getElementById('fDur').value, 10), unit = document.getElementById('fUnit').value;
+    var s = document.getElementById('fStart').value, text = ' ', tip = 'Enter a duration';
+    if (n > 0 && s) {
+      var p = s.split('-'), start = new Date(+p[0], +p[1] - 1, +p[2]);
+      var end = endDate(start, n, unit);
+      tip = 'Start Date: <b>' + fmt(start) + '</b><br>End Date: <b>' + fmt(end) + '</b>';
+      text = 'Start ' + fmt(start) + ' → End ' + fmt(end);
+    }
+    document.getElementById('durText').textContent = text;
+    durTipHtml = tip;
+  }
+  ['fDur', 'fUnit', 'fStart'].forEach(function (id) {
+    document.getElementById(id).addEventListener('input', syncDuration);
+    document.getElementById(id).addEventListener('change', syncDuration);
+  });
+  syncDuration();
+
+  // ── Submit ──
+  document.getElementById('rentalForm').addEventListener('submit', function (e) {
+    if (!selected.size) { e.preventDefault(); alert('Add at least one tag.'); return; }
+    if (!document.getElementById('fCompany').value) { e.preventDefault(); alert('Select the Billing Entity.'); return; }
+    document.getElementById('fBarcodes').value = Array.from(selected.values()).map(function (t) { return t.barcode; }).join(',');
+    document.getElementById('submitBtn').disabled = true;
+  });
+})();
+</script>
+{% endblock %}

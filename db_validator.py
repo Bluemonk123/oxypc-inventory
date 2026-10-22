@@ -65,6 +65,7 @@ CANONICAL_STAGES = [
     ("ready_to_sale", "Ready to Sale",      15),
     ("sold",          "Sold",               16),
     ("returned",      "Returned",           17),
+    ("on_rent",       "On Rent",            18),   # Rentals (2026-10-22)
     ("scrapped",      "Scrapped",           99),
 ]
 
@@ -125,6 +126,9 @@ CANONICAL_TRANSITIONS = [
     ("final_qc",      "stock_in"),
     # Sales
     ("ready_to_sale", "sold"),
+    # Rentals (2026-10-22): out on rent and back to Ready to Sale on return / cancel
+    ("ready_to_sale", "on_rent"),
+    ("on_rent",       "ready_to_sale"),
     ("sold",          "returned"),
     ("returned",      "iqc"),
     ("returned",      "scrapped"),

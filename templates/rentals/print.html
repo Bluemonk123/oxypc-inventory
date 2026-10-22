@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rental {{ r.rental_number }} — OxyPC Inventory</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; color: #222; background: #fff; padding: 28px 36px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start;
+              border-bottom: 3px solid #0377c2; padding-bottom: 14px; margin-bottom: 18px; }
+    .company-name { font-size: 18pt; font-weight: bold; color: #0377c2; }
+    .company-sub { font-size: 9pt; color: #555; margin-top: 2px; line-height: 1.4; }
+    .doc-title { text-align: right; }
+    .doc-title h2 { font-size: 16pt; color: #0377c2; }
+    .doc-title .num { font-size: 11pt; color: #444; margin-top: 2px; }
+    .doc-title .status { display: inline-block; margin-top: 4px; font-size: 8.5pt; padding: 2px 8px;
+                         border-radius: 10px; background: #e7f1fb; color: #0377c2; text-transform: uppercase; }
+    .meta { display: flex; gap: 32px; margin-bottom: 18px; }
+    .meta-block { flex: 1; }
+    .meta-block h4 { font-size: 8.5pt; text-transform: uppercase; color: #888; letter-spacing: .5px;
+                     border-bottom: 1px solid #eee; padding-bottom: 3px; margin-bottom: 5px; }
+    .meta-block p { line-height: 1.5; }
+    .muted { color: #777; }
+    h3 { font-size: 10pt; text-transform: uppercase; color: #0377c2; letter-spacing: .5px; margin: 14px 0 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+    th { background: #0377c2; color: #fff; text-align: left; padding: 6px 8px; font-weight: 600; }
+    td { padding: 5px 8px; border-bottom: 1px solid #e6e6e6; vertical-align: top; }
+    tr:nth-child(even) td { background: #fafafa; }
+    .r { text-align: right; }
+    .totals { margin-top: 12px; display: flex; justify-content: flex-end; }
+    .totals table { width: 300px; }
+    .totals td { border: none; padding: 4px 8px; }
+    .totals .grand td { font-size: 12pt; font-weight: bold; color: #0377c2; border-top: 2px solid #0377c2; }
+    .notes { margin-top: 14px; padding: 8px 10px; border: 1px solid #eee; background: #fcfcfc; }
+    .footer { margin-top: 28px; display: flex; justify-content: space-between; font-size: 9pt; color: #666; }
+    .sign { margin-top: 40px; border-top: 1px solid #999; width: 200px; text-align: center; padding-top: 4px; }
+    .no-print { margin-bottom: 14px; }
+    .no-print button { padding: 6px 14px; background: #0377c2; color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
+    @media print { .no-print { display: none; } body { padding: 0 6mm; } @page { margin: 12mm; } }
+  </style>
+</head>
+<body>
+  <div class="no-print"><button onclick="window.print()">Print / Save as PDF</button></div>
+
+  <div class="header">
+    <div>
+      <div class="company-name">{{ r.billing_entity_name or 'OxyPC Computers' }}</div>
+      <div class="company-sub">
+        {% if r.billing_entity_address %}{{ r.billing_entity_address }}<br>{% endif %}
+        {% if r.billing_entity_state %}{{ r.billing_entity_state }}{% endif %}
+        {% if r.billing_entity_gstin %}{% if r.billing_entity_state %} · {% endif %}GSTIN: {{ r.billing_entity_gstin }}{% endif %}
+        {% if r.billing_entity_phone or r.billing_entity_email %}<br>{{ [r.billing_entity_phone, r.billing_entity_email] | select | join(' · ') }}{% endif %}
+      </div>
+    </div>
+    <div class="doc-title">
+      <h2>RENTAL SUMMARY</h2>
+      <div class="num">{{ r.rental_number }}</div>
+      <div class="muted" style="font-size:9pt">Date: {{ r.created_at | ist_date }}</div>
+      <div class="status">{{ statuses.get(r.status, r.status) }}</div>
+    </div>
+  </div>
+
+  <div class="meta">
+    <div class="meta-block">
+      <h4>Billing To ({{ bill_types.get(r.bill_type, r.bill_type) }})</h4>
+      <p>
+        {% if r.bill_type == 'business' and r.customer_company %}<strong>{{ r.customer_company }}</strong><br>
+          {% if r.customer_gstin %}GSTIN: {{ r.customer_gstin }}<br>{% endif %}
+          Attn: {{ r.person_name }}<br>
+        {% else %}<strong>{{ r.person_name }}</strong><br>{% endif %}
+        {% if r.address %}{{ r.address }}<br>{% endif %}
+        {% if r.city or r.state %}{{ [r.city, r.state] | select | join(', ') }}<br>{% endif %}
+        {% if r.phone %}Phone: {{ r.phone }}<br>{% endif %}
+        {% if r.email %}Email: {{ r.email }}{% endif %}
+      </p>
+    </div>
+    <div class="meta-block">
+      <h4>Rental Terms</h4>
+      <p>
+        Duration: <strong>{{ duration }}</strong><br>
+        Start Date: {{ r.start_date.strftime('%d-%m-%Y') }}<br>
+        End Date: {{ r.end_date.strftime('%d-%m-%Y') }}<br>
+        Total Quantity: {{ r.total_quantity }}
+      </p>
+    </div>
+  </div>
+
+  <h3>Model Summary</h3>
+  <table>
+    <thead><tr><th>#</th><th>Make / Model</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th><th>Grades</th><th class="r">Qty</th></tr></thead>
+    <tbody>
+      {% for g in summary %}
+      <tr><td>{{ loop.index }}</td><td><strong>{{ g.make }} {{ g.model }}</strong></td><td>{{ g.cpu }}</td><td>{{ g.gen }}</td>
+        <td>{{ g.ram }}</td><td>{{ g.storage }}</td>
+        <td>{% for k, n in g.grades %}{{ k }}: {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
+        <td class="r">{{ g.qty }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <table>
+      <tr><td>Total Quantity</td><td class="r">{{ r.total_quantity }}</td></tr>
+      <tr class="grand"><td>Total Rental Price</td><td class="r">₹{{ r.total_price | inr(2) }}</td></tr>
+    </table>
+  </div>
+
+  {% if r.notes %}<div class="notes"><strong>Notes:</strong> {{ r.notes }}</div>{% endif %}
+
+  <h3>Tags ({{ items | length }})</h3>
+  <table>
+    <thead><tr><th>#</th><th>Tag</th><th>Make / Model</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th><th>Grade</th></tr></thead>
+    <tbody>
+      {% for it in items %}
+      <tr><td>{{ loop.index }}</td><td>{{ it.barcode }}</td><td>{{ it.make or '' }} {{ it.model or '' }}</td><td>{{ it.cpu or '' }}</td>
+        <td>{{ it.generation or '' }}</td><td>{{ it.ram or '' }}</td><td>{{ it.storage or '' }}</td><td>{{ it.grade or '' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <div><div class="sign">Customer Signature</div></div>
+    <div><div class="sign">For {{ r.billing_entity_name or 'OxyPC Computers' }}</div></div>
+  </div>
+
+  <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });</script>
+</body>
+</html>

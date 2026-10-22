@@ -652,28 +652,40 @@ fieldset:disabled .btn {
 
 /* Header column separators, cell spacing and sort arrows (2026-10-18):
    thin white line between header labels (option B), 12px left/right padding
-   in header and body cells (first column keeps its 16px left), and the
-   sort arrows sit 12px after the label instead of at the cell's edge. */
+   in header and body cells (first column keeps its 16px left). Sort arrows:
+   12px after the label from 2026-10-18; at the column's right end since
+   2026-10-22, in space reserved by the header's right padding (below). */
 .gtable-cards table.gtable thead th + th { box-shadow: inset 1px 0 0 rgba(255,255,255,.25); }
 .gtable-cards table.gtable thead th:not(:first-child),
 .gtable-cards table.gtable tbody td:not(:first-child) { padding-left: 12px !important; padding-right: 12px !important; }
-.gtable-cards table.gtable thead th.sorting, .gtable-cards table.gtable thead th.sorting_asc, .gtable-cards table.gtable thead th.sorting_desc { padding-right: 12px !important; }
-.gtable-cards table.gtable thead th.sorting::before, .gtable-cards table.gtable thead th.sorting_asc::before, .gtable-cards table.gtable thead th.sorting_desc::before { display: none !important; }
-.gtable-cards table.gtable thead th.sorting::after, .gtable-cards table.gtable thead th.sorting_asc::after, .gtable-cards table.gtable thead th.sorting_desc::after {
-  content: '' !important; position: static !important; display: inline-block !important;
-  width: 7px !important; height: 12px !important; margin-left: 12px !important;
-  vertical-align: -1px !important; opacity: 1 !important;
+/* Sortable headers reserve the arrow's room in their right padding (2026-10-22):
+   12px cell padding + 7px arrow + 12px gap = 31px. Padding counts in the
+   column's minimum width (left padding + label + 31px) in BOTH the visible
+   header and DataTables' hidden sizing header, so the label can never run
+   under the arrow and header/body columns stay aligned. */
+.gtable-cards table.gtable thead th.sorting, .gtable-cards table.gtable thead th.sorting_asc, .gtable-cards table.gtable thead th.sorting_desc { padding-right: 31px !important; }
+.gtable-cards table.gtable thead th.sorting::after, .gtable-cards table.gtable thead th.sorting_asc::after, .gtable-cards table.gtable thead th.sorting_desc::after { display: none !important; }
+.gtable-cards table.gtable thead th.sorting::before, .gtable-cards table.gtable thead th.sorting_asc::before, .gtable-cards table.gtable thead th.sorting_desc::before {
+  /* 2026-10-22: arrow pinned at the column's right end, inside the 31px
+     right padding reserved above (12px from the edge, vertically centred).
+     A float was tried first: it reserves no width in DataTables' sizing
+     header, so the arrow overlapped the label (and, as ::after, wrapped to
+     a second line). The th is already positioned (DataTables' relative, or
+     sticky on frozen columns), so it anchors the arrow. */
+  content: '' !important; position: absolute !important; display: block !important; float: none !important;
+  right: 12px !important; left: auto !important; top: 50% !important; bottom: auto !important;
+  width: 7px !important; height: 12px !important; margin: -6px 0 0 0 !important;
+  vertical-align: 0 !important; opacity: 1 !important; line-height: 0 !important;
   background: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%277%27%20height%3D%2712%27%3E%3Cpath%20d%3D%27M3.5%200L7%204.5H0z%27%20fill%3D%27rgba%28255%2C255%2C255%2C.45%29%27/%3E%3Cpath%20d%3D%27M3.5%2012L0%207.5H7z%27%20fill%3D%27rgba%28255%2C255%2C255%2C.45%29%27/%3E%3C/svg%3E") no-repeat !important;
 }
-.gtable-cards table.gtable thead th.sorting_asc::after  { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%277%27%20height%3D%2712%27%3E%3Cpath%20d%3D%27M3.5%200L7%204.5H0z%27%20fill%3D%27rgba%28255%2C255%2C255%2C1%29%27/%3E%3Cpath%20d%3D%27M3.5%2012L0%207.5H7z%27%20fill%3D%27rgba%28255%2C255%2C255%2C.3%29%27/%3E%3C/svg%3E") !important; }
-.gtable-cards table.gtable thead th.sorting_desc::after { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%277%27%20height%3D%2712%27%3E%3Cpath%20d%3D%27M3.5%200L7%204.5H0z%27%20fill%3D%27rgba%28255%2C255%2C255%2C.3%29%27/%3E%3Cpath%20d%3D%27M3.5%2012L0%207.5H7z%27%20fill%3D%27rgba%28255%2C255%2C255%2C1%29%27/%3E%3C/svg%3E") !important; }
-/* DataTables' hidden sizing header inside the scroll body: keep the arrow's
-   width (so columns line up with the visible header) but no height. */
-.gtable-cards .dataTables_scrollBody table.gtable thead th:is(.sorting, .sorting_asc, .sorting_desc)::after { height: 0 !important; background: none !important; vertical-align: top !important; }
+.gtable-cards table.gtable thead th.sorting_asc::before  { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%277%27%20height%3D%2712%27%3E%3Cpath%20d%3D%27M3.5%200L7%204.5H0z%27%20fill%3D%27rgba%28255%2C255%2C255%2C1%29%27/%3E%3Cpath%20d%3D%27M3.5%2012L0%207.5H7z%27%20fill%3D%27rgba%28255%2C255%2C255%2C.3%29%27/%3E%3C/svg%3E") !important; }
+.gtable-cards table.gtable thead th.sorting_desc::before { background-image: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20width%3D%277%27%20height%3D%2712%27%3E%3Cpath%20d%3D%27M3.5%200L7%204.5H0z%27%20fill%3D%27rgba%28255%2C255%2C255%2C.3%29%27/%3E%3Cpath%20d%3D%27M3.5%2012L0%207.5H7z%27%20fill%3D%27rgba%28255%2C255%2C255%2C1%29%27/%3E%3C/svg%3E") !important; }
+/* DataTables' hidden sizing header inside the scroll body: no arrow drawn
+   there; its width comes from the same 31px right padding as the visible header. */
+.gtable-cards .dataTables_scrollBody table.gtable thead th:is(.sorting, .sorting_asc, .sorting_desc)::before { height: 0 !important; background: none !important; vertical-align: top !important; }
 .gtable-cards .dataTables_scrollBody thead th { padding-top: 0 !important; padding-bottom: 0 !important; line-height: 0 !important; }
-/* The label in that sizing row sits in a block div, which would push the
-   arrow onto its own line and leave it out of the column width. Keep both on
-   one line so body columns are exactly as wide as the visible header. */
+/* Keep the sizing row's label on one line so body columns are exactly as
+   wide as the visible header. */
 .gtable-cards .dataTables_scrollBody thead th .dataTables_sizing { display: inline-block !important; vertical-align: top; }
 /* Rows */
 .gtable-cards table.gtable tbody td {

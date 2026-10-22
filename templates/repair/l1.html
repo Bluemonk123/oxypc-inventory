@@ -40,12 +40,6 @@
             <i class="bi bi-clock-history me-1"></i>Search Tags</button>
           <input type="text" id="l1SearchBox" class="form-control form-control-sm"
                  style="width:180px" placeholder="Search Tag / GRN / Model">
-          <input type="text" id="l1CpuFilter" class="form-control form-control-sm"
-                 style="width:110px" placeholder="CPU">
-          <input type="text" id="l1RamFilter" class="form-control form-control-sm"
-                 style="width:110px" placeholder="RAM">
-          <input type="text" id="l1HddFilter" class="form-control form-control-sm"
-                 style="width:130px" placeholder="Hard Drive">
           <select id="l1LotFilter" class="form-select form-select-sm" style="width:150px">
             <option value="">All Lots</option>
             {% set seen_lots = [] %}
@@ -56,14 +50,21 @@
             {% endif %}
             {% endfor %}
           </select>
-          <span class="form-check form-check-inline mb-0">
-            <input class="form-check-input" type="checkbox" id="onlyPnaL1">
-            <label class="form-check-label small" for="onlyPnaL1">PNA</label>
-          </span>
-          <span class="form-check form-check-inline mb-0">
-            <input class="form-check-input" type="checkbox" id="onlyFqcFailL1">
-            <label class="form-check-label small" for="onlyFqcFailL1">Failed from Final QC</label>
-          </span>
+          {# Yes/No dropdowns (2026-10-22) replace the CPU / RAM / Hard Drive boxes and
+             the PNA / Failed-from-Final-QC checkboxes. As-Is = tag carries a
+             Sub-Lot Number (same rule as All Inventory's Stock Type). #}
+          <select id="l1AsIsFilter" class="form-select form-select-sm" style="width:120px" title="As-Is">
+            <option value="">As-Is: All</option><option value="1">As-Is: Yes</option><option value="0">As-Is: No</option>
+          </select>
+          <select id="l1PnaFilter" class="form-select form-select-sm" style="width:110px" title="PNA">
+            <option value="">PNA: All</option><option value="1">PNA: Yes</option><option value="0">PNA: No</option>
+          </select>
+          <select id="l1FailedFilter" class="form-select form-select-sm" style="width:125px" title="Failed from Final QC">
+            <option value="">Failed: All</option><option value="1">Failed: Yes</option><option value="0">Failed: No</option>
+          </select>
+          <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l1ExportBtn"
+                  title="Export the rows shown (current filters / search) to CSV">
+            <i class="bi bi-download me-1"></i>Export (<span id="l1ExportBtnCount">0</span>)</button>
         </div>
       </div>
       {# No .table-responsive wrapper — initGlobalTable's own scrollX
@@ -81,6 +82,7 @@
               <tr data-device-id="{{ device.id }}"
                   data-pna="{{ (pna_map.get(device.id|string, []) | length) if pna_map is defined else 0 }}"
                   data-fqc-fail="{{ '1' if failed_fqc else '0' }}"
+                  data-as-is="{{ '1' if (device.sub_lot_number or '').strip() else '0' }}"
                   data-search="{{ (device.barcode or '') ~ ' ' ~ (device.grn_number or '') ~ ' ' ~ (device.model or '') }}"
                   data-cpu="{{ device.cpu or '' }}"
                   data-ram="{{ device.ram_gb or '' }}"
@@ -413,14 +415,64 @@ $(document).ready(function(){
   var dt = initGlobalTable('#l1Table', {
     order: [[2, 'desc']],
     columnDefs: [{ orderable: false, targets: [-1] }],
+    drawCallback: function () { $('#l1ExportBtnCount').text(this.api().rows({ search: 'applied' }).count()); },
+  });
+
+  // ── Export (2026-10-22): every row matching the current filters/search (all
+  // pages, current sort) — or the whole table when nothing is filtered. Cell
+  // text without buttons; As-Is / PNA / Failed added from the row's flags.
+  function exportRepairTable(dt, fileBase, extra) {
+    var heads = [], keep = [];
+    $(dt.table().header()).find('th').each(function (i) {
+      var t = $(this).text().replace(/\s+/g, ' ').trim();
+      if (t && t.toLowerCase() !== 'action') { heads.push(t); keep.push(i); }
+    });
+    var extraHeads = (extra || []).map(function (e) { return e[0]; });
+    var lines = [heads.concat(extraHeads)];
+    dt.rows({ search: 'applied', order: 'applied' }).every(function () {
+      var tr = this.node();
+      var row = keep.map(function (i) {
+        // Each text piece of the live cell (WorkID, engineer name, badges…),
+        // skipping buttons/inputs, joined with " / ".
+        var parts = [], walker = document.createTreeWalker(tr.cells[i], NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          var n = walker.currentNode, t = n.nodeValue.replace(/\s+/g, ' ').trim();
+          if (t && !$(n.parentNode).closest('button, .btn, .tooltip, select, option, script').length) parts.push(t);
+        }
+        return parts.join(' / ');
+      });
+      (extra || []).forEach(function (e) { row.push(e[1](tr)); });
+      lines.push(row);
+    });
+    if (lines.length < 2) { alert('No rows to export.'); return; }
+    var q = function (v) { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var csv = '﻿' + lines.map(function (r) { return r.map(q).join(','); }).join('\r\n');
+    var a = document.createElement('a'), d = new Date();
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = fileBase + '_' + d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+  var ynFlag = function (attr) { return function (tr) { return tr.getAttribute(attr) === '1' ? 'Yes' : 'No'; }; };
+  $('#l1ExportBtn').on('click', function () {
+    exportRepairTable(dt, 'l1l2_repair', [
+      ['Model', function (tr) { return (tr.getAttribute('data-search') || '').split(' ').slice(2).join(' ').trim(); }],
+      ['CPU', function (tr) { return tr.getAttribute('data-cpu') || ''; }],
+      ['RAM (GB)', function (tr) { return tr.getAttribute('data-ram') || ''; }],
+      ['Hard Drive', function (tr) { return (tr.getAttribute('data-hdd') || '').trim(); }],
+      ['Lot', function (tr) { return tr.getAttribute('data-lot') || ''; }],
+      ['As-Is', ynFlag('data-as-is')],
+      ['PNA', function (tr) { return parseInt(tr.getAttribute('data-pna') || '0', 10) > 0 ? 'Yes' : 'No'; }],
+      ['Failed from Final QC', ynFlag('data-fqc-fail')],
+    ]);
   });
 
   // Search (Tag/GRN/Model), CPU, RAM, Hard Drive, Lot, PNA, and Failed from
   // Final QC now live on the right side of the card header (server-rendered
   // above), not injected into DataTables' own filter box — so these bind
   // immediately rather than waiting for initComplete.
-  $('#l1SearchBox, #l1CpuFilter, #l1RamFilter, #l1HddFilter').on('keyup', applyL1Filters);
-  $('#l1LotFilter, #onlyPnaL1, #onlyFqcFailL1').on('change', applyL1Filters);
+  $('#l1SearchBox').on('keyup', applyL1Filters);
+  $('#l1LotFilter, #l1AsIsFilter, #l1PnaFilter, #l1FailedFilter').on('change', applyL1Filters);
 
   // Filter bar (card header, right side): Search (Tag/GRN/Model), CPU, RAM,
   // Hard Drive, Lot Number, PNA, and Failed from Final QC — all as one
@@ -430,16 +482,13 @@ $(document).ready(function(){
     if (settings.nTable.id !== 'l1Table') return true;
     var tr = settings.aoData[dataIndex].nTr;
     if (!tr) return true;
-    if ($('#onlyPnaL1').prop('checked') && parseInt(tr.getAttribute('data-pna') || '0', 10) <= 0) return false;
-    if ($('#onlyFqcFailL1').prop('checked') && tr.getAttribute('data-fqc-fail') !== '1') return false;
+    // Yes/No dropdowns: '' = All, '1' = Yes, '0' = No
+    var yn = function (sel, isYes) { var v = $(sel).val(); return !v || (v === '1') === isYes; };
+    if (!yn('#l1AsIsFilter', tr.getAttribute('data-as-is') === '1')) return false;
+    if (!yn('#l1PnaFilter', parseInt(tr.getAttribute('data-pna') || '0', 10) > 0)) return false;
+    if (!yn('#l1FailedFilter', tr.getAttribute('data-fqc-fail') === '1')) return false;
     var q = $('#l1SearchBox').val().trim().toLowerCase();
     if (q && (tr.getAttribute('data-search') || '').toLowerCase().indexOf(q) === -1) return false;
-    var cpu = $('#l1CpuFilter').val().trim().toLowerCase();
-    if (cpu && (tr.getAttribute('data-cpu') || '').toLowerCase().indexOf(cpu) === -1) return false;
-    var ram = $('#l1RamFilter').val().trim().toLowerCase();
-    if (ram && (tr.getAttribute('data-ram') || '').toLowerCase().indexOf(ram) === -1) return false;
-    var hdd = $('#l1HddFilter').val().trim().toLowerCase();
-    if (hdd && (tr.getAttribute('data-hdd') || '').toLowerCase().indexOf(hdd) === -1) return false;
     var lot = $('#l1LotFilter').val();
     if (lot && tr.getAttribute('data-lot') !== lot) return false;
     return true;

@@ -13,10 +13,25 @@
          Final-QC filters and QC's Failed-from-Final-QC filter), so the
          header's right side is empty. No .table-responsive wrapper either,
          since initGlobalTable's own scrollX owns horizontal scrolling. #}
-      <div class="card-header bg-transparent d-flex align-items-center justify-content-between">
+      <div class="card-header bg-transparent d-flex flex-wrap align-items-center justify-content-between gap-2">
         <span class="fw-semibold">L3/L4 Work Orders</span>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
-          <i class="bi bi-clock-history me-1"></i>Search Tags</button>
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
+            <i class="bi bi-clock-history me-1"></i>Search Tags</button>
+          {# Yes/No filters in the card header (2026-10-22), same place as L1/L2's. #}
+          <select id="l34AsIsFilter" class="form-select form-select-sm" style="width:120px" title="As-Is">
+            <option value="">As-Is: All</option><option value="1">As-Is: Yes</option><option value="0">As-Is: No</option>
+          </select>
+          <select id="l34PnaFilter" class="form-select form-select-sm" style="width:110px" title="PNA">
+            <option value="">PNA: All</option><option value="1">PNA: Yes</option><option value="0">PNA: No</option>
+          </select>
+          <select id="l34FailedFilter" class="form-select form-select-sm" style="width:125px" title="Failed from Final QC">
+            <option value="">Failed: All</option><option value="1">Failed: Yes</option><option value="0">Failed: No</option>
+          </select>
+          <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l34ExportBtn"
+                  title="Export the rows shown (current filters / search) to CSV">
+            <i class="bi bi-download me-1"></i>Export (<span id="l34ExportBtnCount">0</span>)</button>
+        </div>
       </div>
       <div class="card-body p-0">
           <table id="l3l4Table" class="table table-hover mb-0 small">
@@ -25,7 +40,8 @@
             </thead>
             <tbody>
               {% for it in items %}
-              <tr data-pna="{{ (pna_map.get(it.device_id|string, []) | length) if pna_map is defined else 0 }}">
+              <tr data-pna="{{ (pna_map.get(it.device_id|string, []) | length) if pna_map is defined else 0 }}"
+                  data-as-is="{{ '1' if it.as_is else '0' }}" data-fqc-fail="{{ '1' if it.fqc_fail else '0' }}">
                 <td class="text-nowrap"><a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a>{{ parts_badge(parts_badges, it.device_id) }}</td>
                 {# Owner + Pick This on every tag that isn't yours (2026-10-19). #}
                 <td><span class="font-monospace fw-bold">{{ it.work_id }}</span><br><small class="text-muted">{{ it.assigned_name }}</small>
@@ -180,22 +196,64 @@ $(document).ready(function(){
     language: { emptyTable: "No L3/L4 work orders assigned." },
     order: [[2, 'desc']],  // default sort: Date Assigned, most recent first
     columnDefs: [{ orderable: false, targets: [-1] }],
-    initComplete: function() {
-      var pnaFilter = $('<div class="form-check form-check-inline me-2">' +
-        '<input class="form-check-input" type="checkbox" id="onlyPnaL34">' +
-        '<label class="form-check-label small" for="onlyPnaL34">Only show PNA</label></div>');
-      $(this.api().table().container()).find('.dataTables_filter').prepend(pnaFilter);
-      $('#onlyPnaL34').on('change', function() { dt.draw(); });
-    },
+    drawCallback: function () { $('#l34ExportBtnCount').text(this.api().rows({ search: 'applied' }).count()); },
+  });
+  $('#l34AsIsFilter, #l34PnaFilter, #l34FailedFilter').on('change', function() { dt.draw(); });
+
+  // ── Export (2026-10-22): every row matching the current filters/search (all
+  // pages, current sort) — or the whole table when nothing is filtered. Cell
+  // text without buttons; As-Is / PNA / Failed added from the row's flags.
+  function exportRepairTable(dt, fileBase, extra) {
+    var heads = [], keep = [];
+    $(dt.table().header()).find('th').each(function (i) {
+      var t = $(this).text().replace(/\s+/g, ' ').trim();
+      if (t && t.toLowerCase() !== 'action') { heads.push(t); keep.push(i); }
+    });
+    var extraHeads = (extra || []).map(function (e) { return e[0]; });
+    var lines = [heads.concat(extraHeads)];
+    dt.rows({ search: 'applied', order: 'applied' }).every(function () {
+      var tr = this.node();
+      var row = keep.map(function (i) {
+        // Each text piece of the live cell (WorkID, engineer name, badges…),
+        // skipping buttons/inputs, joined with " / ".
+        var parts = [], walker = document.createTreeWalker(tr.cells[i], NodeFilter.SHOW_TEXT);
+        while (walker.nextNode()) {
+          var n = walker.currentNode, t = n.nodeValue.replace(/\s+/g, ' ').trim();
+          if (t && !$(n.parentNode).closest('button, .btn, .tooltip, select, option, script').length) parts.push(t);
+        }
+        return parts.join(' / ');
+      });
+      (extra || []).forEach(function (e) { row.push(e[1](tr)); });
+      lines.push(row);
+    });
+    if (lines.length < 2) { alert('No rows to export.'); return; }
+    var q = function (v) { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var csv = '﻿' + lines.map(function (r) { return r.map(q).join(','); }).join('\r\n');
+    var a = document.createElement('a'), d = new Date();
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' }));
+    a.download = fileBase + '_' + d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  }
+  var ynFlag = function (attr) { return function (tr) { return tr.getAttribute(attr) === '1' ? 'Yes' : 'No'; }; };
+  $('#l34ExportBtn').on('click', function () {
+    exportRepairTable(dt, 'l3l4_repair', [
+      ['As-Is', ynFlag('data-as-is')],
+      ['PNA', function (tr) { return parseInt(tr.getAttribute('data-pna') || '0', 10) > 0 ? 'Yes' : 'No'; }],
+      ['Failed from Final QC', ynFlag('data-fqc-fail')],
+    ]);
   });
 
-  // "Only show PNA" — a DataTables search hook rather than row.hide(), so the
-  // filter survives paging and sorting instead of only affecting page 1.
+  // As-Is / PNA / Failed — a DataTables search hook rather than row.hide(), so
+  // the filters survive paging and sorting instead of only affecting page 1.
   $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
     if (settings.nTable.id !== 'l3l4Table') return true;
-    if (!$('#onlyPnaL34').prop('checked')) return true;
     var tr = settings.aoData[dataIndex].nTr;
-    return parseInt(tr && tr.getAttribute('data-pna') || '0', 10) > 0;
+    if (!tr) return true;
+    var yn = function (sel, isYes) { var v = $(sel).val(); return !v || (v === '1') === isYes; };
+    return yn('#l34AsIsFilter', tr.getAttribute('data-as-is') === '1') &&
+           yn('#l34PnaFilter', parseInt(tr.getAttribute('data-pna') || '0', 10) > 0) &&
+           yn('#l34FailedFilter', tr.getAttribute('data-fqc-fail') === '1');
   });
 
   document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {

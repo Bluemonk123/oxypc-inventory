@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block title %}Rental Records — OxyPC{% endblock %}
+{% block page_title %}Rental Records{% endblock %}
+
+{% block content %}
+{% set csrf = request.cookies.get('csrf_token', '') %}
+{% set status_badge = {'active': 'primary', 'returned': 'success', 'cancelled': 'secondary'} %}
+{% set can_delete = has_perm(current_user.role.value, 'rentals', 'edit') %}
+{# Hover-card line: "Label: value<br>" (Bootstrap's tooltip sanitizer cleans the HTML). #}
+{% macro tip_line(label, value) %}{% if value %}<b>{{ label }}:</b> {{ value }}<br>{% endif %}{% endmacro %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex align-items-center justify-content-between flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-calendar2-range me-2"></i>Rental Records</span>
+    <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end">
+      <form method="get" class="d-flex gap-2 align-items-center">
+        <select name="status" class="form-select form-select-sm" style="width:150px" onchange="this.form.submit()">
+          <option value="">All Statuses</option>
+          {% for val, label in statuses %}
+          <option value="{{ val }}" {% if status == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="rentalExportBtn"
+              title="Export the rows shown (current filter / search) to CSV">
+        <i class="bi bi-download me-1"></i>Export (<span id="rentalExportCount">{{ rows | length }}</span>)
+      </button>
+      <a href="/rentals/new" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-plus-lg me-1"></i>New Rental</a>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="table-responsive">
+      <table id="rentalTable" class="table table-hover mb-0 small align-middle">
+        <thead class="table-dark">
+          <tr>
+            <th>Rental ID</th>
+            <th>Bill Type</th>
+            <th>Billing Entity</th>
+            <th>Billing To</th>
+            <th class="text-end">Models</th>
+            <th class="text-end">Tags</th>
+            <th>Duration</th>
+            <th class="text-end">Quantity</th>
+            <th class="text-end">Price</th>
+            <th>Status</th>
+            <th>Download</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          {% set r = row.r %}
+          <tr data-idx="{{ loop.index0 }}">
+            <td class="fw-semibold"><a href="/rentals/{{ r.id }}" class="text-decoration-none">{{ r.rental_number }}</a>
+              <div class="text-muted" style="font-size:.75rem">{{ r.created_at | ist_date }}</div></td>
+            <td>{{ bill_types.get(r.bill_type, r.bill_type) }}</td>
+            <td>
+              <span class="rental-tip" data-bs-toggle="tooltip" data-bs-html="true" data-bs-custom-class="rental-tooltip"
+                    title="{{ tip_line('Entity', r.billing_entity_name) }}{{ tip_line('GSTIN', r.billing_entity_gstin) }}{{ tip_line('Address', r.billing_entity_address) }}{{ tip_line('State', r.billing_entity_state) }}{{ tip_line('Phone', r.billing_entity_phone) }}{{ tip_line('Email', r.billing_entity_email) }}">{{ r.billing_entity_name or '—' }}</span>
+            </td>
+            <td>
+              <span class="rental-tip d-inline-block" data-bs-toggle="tooltip" data-bs-html="true" data-bs-custom-class="rental-tooltip"
+                    title="{% if r.bill_type == 'business' %}{{ tip_line('Company Name', r.customer_company) }}{{ tip_line('GSTIN', r.customer_gstin) }}{% endif %}{{ tip_line('Person Name', r.person_name) }}{{ tip_line('Phone', r.phone) }}{{ tip_line('Email', r.email) }}{{ tip_line('City', r.city) }}{{ tip_line('State', r.state) }}{{ tip_line('Address', r.address) }}">
+              {% if r.bill_type == 'business' %}
+                <div class="fw-semibold">{{ r.customer_company or r.person_name }}</div>
+                <div class="text-muted" style="font-size:.75rem">{{ r.customer_gstin or 'No GSTIN' }}</div>
+              {% else %}
+                <div class="fw-semibold">{{ r.person_name }}</div>
+                <div class="text-muted" style="font-size:.75rem">{{ r.phone or '—' }}</div>
+              {% endif %}
+              </span>
+            </td>
+            <td class="text-end">
+              <span title="{% for g in row.models %}{{ g.make }} {{ g.model }} — {{ g.qty }}&#10;{% endfor %}">{{ row.models | length }}</span>
+            </td>
+            <td class="text-end">
+              <span title="{{ row.tags[:30] | join(', ') }}{% if row.tags | length > 30 %} …{% endif %}">{{ row.tags | length }}</span>
+            </td>
+            <td class="text-nowrap">
+              <span data-bs-toggle="tooltip" data-bs-html="true"
+                    title="Start: {{ r.start_date.strftime('%d-%m-%Y') }}<br>End: {{ r.end_date.strftime('%d-%m-%Y') }}"
+                    style="border-bottom:1px dotted #888;cursor:help">{{ row.duration }}</span>
+              {% if r.status == 'active' and r.end_date < today %}<span class="badge bg-danger-subtle text-danger ms-1">Overdue</span>{% endif %}
+            </td>
+            <td class="text-end">{{ r.total_quantity }}</td>
+            <td class="text-end text-nowrap" data-order="{{ r.total_price }}">₹{{ r.total_price | inr }}</td>
+            <td><span class="badge bg-{{ status_badge.get(r.status, 'secondary') }}">{{ r.status | capitalize }}</span></td>
+            <td class="text-nowrap">
+              <div class="dropdown">
+                <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button">
+                  <i class="bi bi-download"></i>
+                </button>
+                <ul class="dropdown-menu">
+                  <li><a class="dropdown-item" href="/rentals/{{ r.id }}/print" target="_blank"><i class="bi bi-file-earmark-pdf me-2"></i>Summary (PDF)</a></li>
+                  <li><a class="dropdown-item" href="/rentals/{{ r.id }}/tags.csv"><i class="bi bi-filetype-csv me-2"></i>Tags CSV</a></li>
+                </ul>
+              </div>
+            </td>
+            <td class="text-nowrap">
+              <a href="/rentals/{{ r.id }}" class="btn btn-sm btn-outline-primary" title="View"><i class="bi bi-eye"></i></a>
+              {% if r.status == 'active' %}
+              <form method="post" action="/rentals/{{ r.id }}/return" class="d-inline"
+                    onsubmit="return confirm('Mark {{ r.rental_number }} as Returned? Its {{ r.total_quantity }} tag(s) go back to Ready to Sale.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf }}">
+                <button class="btn btn-sm btn-outline-success" title="Mark Returned"><i class="bi bi-box-arrow-in-down-left"></i></button>
+              </form>
+              <form method="post" action="/rentals/{{ r.id }}/cancel" class="d-inline"
+                    onsubmit="return confirm('Cancel {{ r.rental_number }}? Its tags go back to Ready to Sale.')">
+                <input type="hidden" name="csrf_token" value="{{ csrf }}">
+                <button class="btn btn-sm btn-outline-danger" title="Cancel"><i class="bi bi-x-lg"></i></button>
+              </form>
+              {% endif %}
+              {% if can_delete %}
+              <form method="post" action="/rentals/{{ r.id }}/delete" class="d-inline"
+                    onsubmit="return confirm('PERMANENTLY delete {{ r.rental_number }}?\n\nThe rental record and its tag list are removed and cannot be recovered.{% if r.status == 'active' %} Its tags still On Rent go back to Ready to Sale.{% endif %}')">
+                <input type="hidden" name="csrf_token" value="{{ csrf }}">
+                <button class="btn btn-sm btn-danger" title="Delete permanently"><i class="bi bi-trash"></i></button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+  .rental-tip { border-bottom: 1px dotted #888; cursor: help; }
+  .rental-tooltip .tooltip-inner { max-width: 340px; text-align: left; }
+</style>
+<script id="rentalExportData" type="application/json">{{ rows | map(attribute='export') | list | tojson }}</script>
+<script>
+$(document).ready(function () {
+  var EXPORT_ROWS = JSON.parse(document.getElementById('rentalExportData').textContent);
+  var dt = initGlobalTable('#rentalTable', {
+    order: [],
+    pageLength: 25,
+    columnDefs: [{ orderable: false, targets: [10, 11] }],
+    language: { emptyTable: 'No rentals yet — click New Rental to create one.' },
+    drawCallback: function () {
+      document.querySelectorAll('#rentalTable [data-bs-toggle="tooltip"]').forEach(function (el) {
+        bootstrap.Tooltip.getOrCreateInstance(el);
+      });
+      var n = this.api().rows({ search: 'applied' }).count();
+      var c = document.getElementById('rentalExportCount');
+      if (c) c.textContent = n;
+    },
+  });
+
+  // Export — the rows currently shown (status filter + table search), all pages.
+  document.getElementById('rentalExportBtn').addEventListener('click', function () {
+    var picked = [];
+    dt.rows({ search: 'applied', order: 'applied' }).every(function () {
+      var i = this.node() && this.node().getAttribute('data-idx');
+      if (i !== null && EXPORT_ROWS[+i]) picked.push(EXPORT_ROWS[+i]);
+    });
+    if (!picked.length) { alert('No rows to export.'); return; }
+    var cols = Object.keys(picked[0]);
+    var q = function (v) { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var lines = [cols.map(q).join(',')].concat(picked.map(function (r) { return cols.map(function (k) { return q(r[k]); }).join(','); }));
+    var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    var d = new Date();
+    a.href = URL.createObjectURL(blob);
+    a.download = 'rental_records_' + d.getFullYear() + ('0' + (d.getMonth() + 1)).slice(-2) + ('0' + d.getDate()).slice(-2) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  });
+});
+</script>
+{% endblock %}

@@ -177,6 +177,7 @@ from routers.m_telecalling import router as m_telecalling_router
 from routers.grn import router as grn_router
 from routers.entity_movement import router as entity_movement_router
 from routers.part_estimation import router as part_estimation_router
+from routers.rentals import router as rentals_router
 from routers.extended_warranty import router as extended_warranty_router
 from routers.parts_grn import router as parts_grn_router
 import models.parts_grn  # ensure parts_grn tables are in Base.metadata
@@ -268,6 +269,7 @@ app.include_router(m_telecalling_router)
 app.include_router(grn_router)
 app.include_router(entity_movement_router)
 app.include_router(part_estimation_router)
+app.include_router(rentals_router)
 app.include_router(extended_warranty_router)
 app.include_router(parts_grn_router)
 app.include_router(stage_control_router)
