@@ -67,6 +67,14 @@
   <option value="non_touch" {{ 'selected' if value == 'non_touch' }}>Non-Touch (NT)</option>
 </select>
 {% endmacro %}
+{# Availability filter (2026-10-22): Open = not blocked, Blocked = held by Block Tags. #}
+{% macro avail_select(id, value='') %}
+<select id="{{ id }}" class="form-select form-select-sm ready-avail-filter" style="width:auto;min-width:150px" title="Availability">
+  <option value="" {{ 'selected' if not value }}>All Availability</option>
+  <option value="open" {{ 'selected' if value == 'open' }}>Open</option>
+  <option value="blocked" {{ 'selected' if value == 'blocked' }}>Blocked</option>
+</select>
+{% endmacro %}
 {% macro model_summary_table(table_id, rows, selectable, empty_text) %}
 <table id="{{ table_id }}" class="table table-hover mb-0 small w-100">
   <thead class="table-dark">
@@ -81,13 +89,17 @@
   </thead>
   <tbody>
     {% for g in rows %}
-    <tr data-qty="{{ g.total_count }}" data-min="{{ g.min_total or 0 }}">
+    <tr data-qty="{{ g.total_count }}" data-min="{{ g.min_total or 0 }}"
+        data-open="{{ g.open_count }}" data-blocked="{{ g.blocked_count }}">
       {% if selectable %}
       <td><input type="checkbox" class="modelSumChk" value="{{ loop.index0 }}"
                  data-model="{{ g.model }}" data-make="{{ g.make }}"
                  data-barcodes='{{ g.barcodes | tojson }}'></td>
       {% endif %}
-      <td>{{ g.model }}</td>
+      {# Export this configuration's tags — same file as All Inventory's export (2026-10-22). #}
+      <td class="text-nowrap"><button type="button" class="btn btn-sm btn-link text-success p-0 me-1 align-baseline ms-export-btn"
+                  title="Export these {{ g.total_count }} tag(s) — All Inventory format"
+                  data-barcodes='{{ g.barcodes | tojson }}'><i class="bi bi-download"></i></button>{{ g.model }}</td>
       <td>{{ g.make }}</td>
       <td>{{ g.device_type }}</td>
       <td>{{ g.cpu }}</td>
@@ -95,7 +107,16 @@
       <td class="text-nowrap">{{ g.ram }}</td>
       <td class="text-nowrap">{{ g.storage }}</td>
       <td class="text-nowrap" data-order="{{ g.total_count }}">
+        {% if selectable %}
+        {# Total (outline) then Open (filled pill) on one line (2026-10-22).
+           Blocked is hidden; filter Availability = Blocked to see those. #}
+        <div class="d-flex gap-1 flex-nowrap">
+          <span class="badge border border-primary text-primary bg-transparent" title="Total Quantity">Total {{ g.total_count }}</span>
+          <span class="badge rounded-pill bg-success" title="Open (not blocked)">Open {{ g.open_count }}</span>
+        </div>
+        {% else %}
         <span class="badge bg-primary">{{ g.total_count }}</span>
+        {% endif %}
       </td>
       {# The same tags split by grade (A, B, C, D, E, NG). #}
       <td>
@@ -143,6 +164,11 @@
 </table>
 {% endmacro %}
 
+{# Shared form behind the Model Summary row export buttons: posts the row's
+   Tag Numbers to All Inventory's export (POST /devices/export). #}
+<form id="msExportForm" method="post" action="/devices/export" class="d-none">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+</form>
 <ul class="nav nav-tabs ready-tabs" id="readyTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#readyTagsPane" type="button" role="tab">
@@ -165,6 +191,7 @@
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold"><i class="bi bi-upc-scan me-2"></i>Ready for Sale Tags</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2" id="readyFilterBar">
+      {{ avail_select('readyAvail') }}
       {{ touch_select('readyTouch') }}
       {{ ms.multiselect_inline('device_type', 'Device Types', device_type_options, '') }}
       {{ ms.multiselect_inline('entity', 'Entity', entity_options, '') }}
@@ -228,6 +255,7 @@
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold"><i class="bi bi-collection me-2"></i>Ready for Sale Model Summary</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+      {{ avail_select('msAvail', f.ms_avail) }}
       {{ touch_select('msTouch', f.ms_touch) }}
       {{ ms.multiselect_inline('ms_grade', 'Grades', summary_grade_options, f.ms_grade) }}
       {{ ms.multiselect_inline('ms_dtype', 'Device Types', device_type_options, f.ms_dtype) }}
@@ -712,6 +740,7 @@ $(document).ready(function(){
         d.entity = (document.getElementById('ms_val_entity') || {}).value || '';
         d.touch = (document.getElementById('readyTouch') || {}).value || '';
         d.device_type = (document.getElementById('ms_val_device_type') || {}).value || '';
+        d.availability = (document.getElementById('readyAvail') || {}).value || '';
       },
       dataSrc: function (json) { return json.data; },
     },
@@ -745,6 +774,9 @@ $(document).ready(function(){
   document.getElementById('readyTouch').addEventListener('change', function () {
     readyDt.ajax.reload(null, true);
   });
+  document.getElementById('readyAvail').addEventListener('change', function () {
+    readyDt.ajax.reload(null, true);
+  });
   document.getElementById('ms_val_device_type').addEventListener('ms:change', function () {
     readyDt.ajax.reload(null, true);
   });
@@ -755,6 +787,7 @@ $(document).ready(function(){
   });
   document.getElementById('readyFilterReset').addEventListener('click', function () {
     document.getElementById('readyTouch').value = '';
+    document.getElementById('readyAvail').value = '';
     [['device_type', 'Device Types'], ['entity', 'Entity']].forEach(function (f) {
       var hid = document.getElementById('ms_val_' + f[0]);
       if (hid) hid.value = '';
@@ -900,7 +933,8 @@ document.getElementById('readySelectAll').addEventListener('change', async funct
   if (ck) {
     var r = await fetch('/sales/ready/barcodes?entity=' + encodeURIComponent((document.getElementById('ms_val_entity') || {}).value || '')
       + '&touch=' + encodeURIComponent((document.getElementById('readyTouch') || {}).value || '')
-      + '&device_type=' + encodeURIComponent((document.getElementById('ms_val_device_type') || {}).value || ''));
+      + '&device_type=' + encodeURIComponent((document.getElementById('ms_val_device_type') || {}).value || '')
+      + '&availability=' + encodeURIComponent((document.getElementById('readyAvail') || {}).value || ''));
     var d = await r.json();
     (d.barcodes || []).forEach(function(bc){ readySelected.add(bc); });
   } else {
@@ -1132,9 +1166,12 @@ var SUMMARY_OPTS = {
 // visible one).
 var SUMMARY_GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'NG'];
 function summaryFooter() {
-  var api = this.api(), qty = 0, min = 0, grades = {}, cls = {};
+  var api = this.api(), qty = 0, min = 0, grades = {}, cls = {}, open = 0, blocked = 0;
+  var split = api.table().node().id === 'readyModelSummaryTable';
   api.rows({ search: 'applied' }).nodes().each(function (tr) {
     qty += Number(tr.getAttribute('data-qty')) || 0;
+    open += Number(tr.getAttribute('data-open')) || 0;
+    blocked += Number(tr.getAttribute('data-blocked')) || 0;
     min += Number(tr.getAttribute('data-min')) || 0;
     tr.querySelectorAll('.ms-grade').forEach(function (b) {
       var g = b.getAttribute('data-grade');
@@ -1143,7 +1180,10 @@ function summaryFooter() {
     });
   });
   var foot = $(api.table().footer());
-  foot.find('.ms-total-qty').html('<span class="badge bg-primary">' + qty + '</span>');
+  foot.find('.ms-total-qty').html(split
+    ? '<div class="d-flex gap-1 flex-nowrap"><span class="badge border border-primary text-primary bg-transparent">Total ' + qty
+      + '</span><span class="badge rounded-pill bg-success">Open ' + open + '</span></div>'
+    : '<span class="badge bg-primary">' + qty + '</span>');
   foot.find('.ms-total-grades').html('<div class="d-flex flex-wrap gap-1">' +
     SUMMARY_GRADE_ORDER.filter(function (g) { return grades[g]; }).map(function (g) {
       return '<span class="' + cls[g] + '">' + g + ' ' + grades[g] + '</span>';
@@ -1165,7 +1205,7 @@ buildSummaryTable('asIsModelSummaryTable');
 function readyPageUrl(){
   var p = new URLSearchParams();
   function v(id){ return (document.getElementById(id) || {}).value || ''; }
-  [['ms_touch','msTouch'],['ms_entity','ms_val_ms_entity'],['ms_dtype','ms_val_ms_dtype'],
+  [['ms_touch','msTouch'],['ms_avail','msAvail'],['ms_entity','ms_val_ms_entity'],['ms_dtype','ms_val_ms_dtype'],
    ['ms_grade','ms_val_ms_grade'],['am_grade','ms_val_am_grade'],
    ['al_touch','alTouch'],['al_entity','ms_val_al_entity'],['al_dtype','ms_val_al_dtype'],
    ['am_touch','amTouch'],['am_entity','ms_val_am_entity'],['am_dtype','ms_val_am_dtype']].forEach(function(x){
@@ -1205,6 +1245,22 @@ function refreshSummaryTable(id, badgeId){
     if (el) el.addEventListener('ms:change', x[3]);
   });
 });
+// Model Summary row export: that row's tags in the All Inventory export format.
+// Delegated, so it keeps working after a filter swaps the table's rows.
+$(document).on('click', '.ms-export-btn', function () {
+  var tags = [];
+  try { tags = JSON.parse(this.getAttribute('data-barcodes') || '[]'); } catch (e) {}
+  if (!tags.length) return;
+  var f = document.getElementById('msExportForm');
+  $(f).find('input[name="barcodes"]').remove();
+  tags.forEach(function (bc) { $('<input>').attr({ type: 'hidden', name: 'barcodes', value: bc }).appendTo(f); });
+  f.submit();
+});
+// Availability (Open / Blocked) on the Ready for Sale Model Summary.
+(function(){
+  var a = document.getElementById('msAvail');
+  if (a) a.addEventListener('change', function(){ refreshSummaryTable('readyModelSummaryTable', 'msCountBadge'); });
+})();
 // Tables inside a tab that was hidden at load measure their columns as zero
 // width — re-measure whenever a tab is shown.
 document.querySelectorAll('#readyTabs button[data-bs-toggle="tab"], #asIsTabs button[data-bs-toggle="tab"]').forEach(function(btn){

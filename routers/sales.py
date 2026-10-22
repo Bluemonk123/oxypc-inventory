@@ -138,6 +138,26 @@ def _device_type_of(device) -> str:
 _device_type_expr = func.coalesce(func.nullif(func.trim(Device.device_type), ""), Device.sub_category)
 
 
+def _avail_clause(availability: str):
+    """Ready to Sale "Availability" filter (2026-10-22): open = not blocked,
+    blocked = Device.is_blocked. None = no filter."""
+    a = (availability or "").strip().lower()
+    if a == "open":
+        return Device.is_blocked.isnot(True)
+    if a == "blocked":
+        return Device.is_blocked.is_(True)
+    return None
+
+
+def _avail_passes(device, availability: str) -> bool:
+    a = (availability or "").strip().lower()
+    if a == "open":
+        return not device.is_blocked
+    if a == "blocked":
+        return bool(device.is_blocked)
+    return True
+
+
 def _row_passes(device, touch: str, entities: list, dtypes: list | None = None) -> bool:
     """Same Touch Type + Entity filter as _touch_clause, applied in Python to the
     already-loaded rows behind the Model Summary / As-Is Lot tables."""
@@ -166,6 +186,7 @@ async def ready_list_barcodes(
     entity: str = "",
     touch: str = "",
     device_type: str = "",
+    availability: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(ready_allowed),
 ):
@@ -187,6 +208,7 @@ async def ready_list_barcodes(
             *([Device.entity.in_(entities)] if entities else []),
             *([_touch_clause(touch)] if _touch_clause(touch) is not None else []),
             *([_device_type_expr.in_(_entity_values(device_type))] if _entity_values(device_type) else []),
+            *([_avail_clause(availability)] if _avail_clause(availability) is not None else []),
         )
     )).scalars().all()
     return {"barcodes": [b for b in barcodes if b]}
@@ -199,6 +221,7 @@ async def ready_list_data(
     entity: str = "",
     touch: str = "",
     device_type: str = "",
+    availability: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(ready_allowed),
 ):
@@ -235,6 +258,8 @@ async def ready_list_data(
         entity_filter.append(_touch_clause(touch))
     if _entity_values(device_type):
         entity_filter.append(_device_type_expr.in_(_entity_values(device_type)))
+    if _avail_clause(availability) is not None:          # Open / Blocked
+        entity_filter.append(_avail_clause(availability))
 
     base = (
         select(Device, Lot.lot_number, Lot.buying_price, Lot.qty, Lot.selling_price)
@@ -439,6 +464,7 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
     ms_grades = set(_entity_values(qp.get("ms_grade", "")))
     am_grades = set(_entity_values(qp.get("am_grade", "")))
     ms_dtypes = _entity_values(qp.get("ms_dtype", ""))
+    ms_avail = qp.get("ms_avail", "")     # Availability: open / blocked (2026-10-22)
     al_dtypes = _entity_values(qp.get("al_dtype", ""))
     am_dtypes = _entity_values(qp.get("am_dtype", ""))
     result = await db.execute(
@@ -492,8 +518,10 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
                 "storage": (f"{key[4]} GB" + (f" {key[5]}" if key[5] else "")) if key[4] else "—",
                 "total_count": 0, "total_purchase_price": 0.0,
                 "min_total": 0.0, "min_units": [], "barcodes": [], "grade_counts": {},
+                "open_count": 0, "blocked_count": 0,
             })
             g["total_count"] += 1
+            g["blocked_count" if device.is_blocked else "open_count"] += 1
             grade = getattr(device.grade, "value", device.grade) if device.grade else ""
             g["grade_counts"][grade] = g["grade_counts"].get(grade, 0) + 1
             g["total_purchase_price"] += unit_cost
@@ -517,7 +545,8 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
     model_summary_ready = _build_model_summary(
         [r for r in devices if not (r[0].sub_lot_number or "").strip()
          and _row_passes(r[0], ms_touch, ms_entities, ms_dtypes)
-         and _grade_passes(r[0], ms_grades)])
+         and _grade_passes(r[0], ms_grades)
+         and _avail_passes(r[0], ms_avail)])
     model_summary_as_is = _build_model_summary(
         [r for r in devices if (r[0].sub_lot_number or "").strip()
          and _row_passes(r[0], am_touch, am_entities, am_dtypes)
@@ -695,7 +724,7 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
         "interested_dealers": interested_dealers,
         "model_summary_ready": model_summary_ready,
         "model_summary_as_is": model_summary_as_is,
-        "f": {"ms_touch": ms_touch, "ms_entity": qp.get("ms_entity", ""),
+        "f": {"ms_touch": ms_touch, "ms_avail": ms_avail, "ms_entity": qp.get("ms_entity", ""),
               "al_touch": al_touch, "al_entity": qp.get("al_entity", ""),
               "am_touch": am_touch, "am_entity": qp.get("am_entity", ""),
               "ms_dtype": qp.get("ms_dtype", ""), "al_dtype": qp.get("al_dtype", ""),
