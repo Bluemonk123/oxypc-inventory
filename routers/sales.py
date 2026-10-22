@@ -138,23 +138,31 @@ def _device_type_of(device) -> str:
 _device_type_expr = func.coalesce(func.nullif(func.trim(Device.device_type), ""), Device.sub_category)
 
 
+def _is_held(device) -> bool:
+    """Ready to Sale's Blocked state (2026-10-22): a Block Tags hold
+    (Device.is_blocked) OR assigned to a user (Device.assigned_to_user_id —
+    Floor Movement / Assign / Block For). Open = neither."""
+    return bool(device.is_blocked) or device.assigned_to_user_id is not None
+
+
 def _avail_clause(availability: str):
-    """Ready to Sale "Availability" filter (2026-10-22): open = not blocked,
-    blocked = Device.is_blocked. None = no filter."""
+    """Ready to Sale "Availability" filter (2026-10-22). Same rule as _is_held.
+    None = no filter."""
     a = (availability or "").strip().lower()
+    held = or_(Device.is_blocked.is_(True), Device.assigned_to_user_id.isnot(None))
     if a == "open":
-        return Device.is_blocked.isnot(True)
+        return ~held
     if a == "blocked":
-        return Device.is_blocked.is_(True)
+        return held
     return None
 
 
 def _avail_passes(device, availability: str) -> bool:
     a = (availability or "").strip().lower()
     if a == "open":
-        return not device.is_blocked
+        return not _is_held(device)
     if a == "blocked":
-        return bool(device.is_blocked)
+        return _is_held(device)
     return True
 
 
@@ -411,7 +419,8 @@ async def ready_list_data(
         # otherwise. The Name above it is Device.assigned_to_user_id, which
         # Block Tags' New Block Tags / Edit modals set to the Block For user
         # on top of however this page's own Assign action already sets it.
-        assign_badge = ('<span class="badge bg-danger">Blocked</span>' if d.is_blocked
+        # Since 2026-10-22 an assigned user also means Blocked (_is_held).
+        assign_badge = ('<span class="badge bg-danger">Blocked</span>' if _is_held(d)
                          else '<span class="badge bg-success">Open</span>')
         cells.append(
             (esc(assigned_name) if assigned_name else '<span class="text-muted">—</span>')
@@ -521,7 +530,7 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
                 "open_count": 0, "blocked_count": 0,
             })
             g["total_count"] += 1
-            g["blocked_count" if device.is_blocked else "open_count"] += 1
+            g["blocked_count" if _is_held(device) else "open_count"] += 1
             grade = getattr(device.grade, "value", device.grade) if device.grade else ""
             g["grade_counts"][grade] = g["grade_counts"].get(grade, 0) + 1
             g["total_purchase_price"] += unit_cost

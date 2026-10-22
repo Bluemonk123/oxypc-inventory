@@ -377,12 +377,37 @@ async def export_transfers(
     name_map = await _user_display_name_map(
         db, [v for t, _, _ in rows for v in (t.transferred_by, t.received_by)])
 
+    # From / To (2026-10-22): Location IDs, not the free-text warehouse names.
+    #   From = the tag's location just before this movement — its latest
+    #          DeviceLocationLog entry dated before the transfer (a movement
+    #          stamps transfer_date first, then logs the new location).
+    #   To   = the movement's destination; when it set none, From (unchanged).
+    dev_ids = list({t.device_id for t, _l, _s in rows if t.device_id})
+    logs_by_dev: dict = {}
+    for i in range(0, len(dev_ids), 20000):
+        for did, lid, at in (await db.execute(
+            select(DeviceLocationLog.device_id, DeviceLocationLog.location_id, DeviceLocationLog.logged_at)
+            .where(DeviceLocationLog.device_id.in_(dev_ids[i:i + 20000]))
+            .order_by(DeviceLocationLog.logged_at)
+        )).all():
+            logs_by_dev.setdefault(did, []).append((at, lid))
+
+    def _loc_before(t):
+        before = None
+        for at, lid in logs_by_dev.get(t.device_id, ()):
+            if at is None or t.transfer_date is None or at >= t.transfer_date:
+                break
+            before = lid
+        return location_by_id.get(str(before), "") if before else ""
+
     buf = _io.StringIO()
     w = _csv.writer(buf)
     w.writerow(["Date", "Location ID", "Type", "Tag Number", "Make / Model", "Quantity",
                 "Lot", "From", "To", "Dept.", "Transferred By", "Received By", "Stage",
                 "Serial Number", "CPU", "GEN", "RAM", "STORAGE"])
     for t, live_lot_number, live_stage in rows:
+        _from_loc = _loc_before(t)
+        _to_loc = (location_by_id.get(str(t.to_location_id), "") if t.to_location_id else "") or _from_loc
         stage_label = STAGE_LABELS.get(live_stage, live_stage.value) if live_stage else (t.product_stage or "")
         w.writerow([
             # Year-first so Excel reads real dates on any PC locale (2026-10-21).
@@ -393,8 +418,8 @@ async def export_transfers(
             f"{t.make or ''} {t.model or ''}".strip(),
             t.quantity if t.quantity is not None else "",
             live_lot_number or t.lot_number or "",
-            t.from_warehouse or "",
-            t.to_warehouse or "",
+            _from_loc,
+            _to_loc,
             t.department or "",
             name_map.get(t.transferred_by, t.transferred_by) or "",
             name_map.get(t.received_by, t.received_by) or "",
@@ -574,6 +599,52 @@ async def lot_lookup(
     })
 
 
+
+async def _block_for_assignee(db, devices, transfer_type: str, assigned_user, loc, current_user) -> str | None:
+    """Floor Movement with Transfer Type Finish Good / As-Is Lot (2026-10-22):
+    the moved tags are BLOCKED for the Assigned To user — Ready to Sale shows
+    them as Blocked, not Open. Done as a real Block Tags record (one per
+    movement) so the hold shows on the Block Tags page and can be released
+    there like any other block. Container / zone / box come from the
+    destination location (Floor when none). Tags already blocked are left as
+    they are. Returns the new Block ID, or None when nothing was blocked.
+    Caller commits."""
+    if transfer_type not in ("ready_for_sale", "as_is_lot") or not assigned_user:
+        return None
+    to_block = [d for d in devices if not d.is_blocked]
+    if not to_block:
+        return None
+    from models.block_tags import BlockRecord, BlockRecordItem
+    from models.location import UnitType
+    from routers.block_tags import _next_block_id
+    b_date = app_now().date()
+    container = getattr(loc, "unit_type", None) or UnitType.floor
+    record = BlockRecord(
+        block_id=await _next_block_id(db, b_date, container),
+        block_date=b_date,
+        container=container,
+        box_number=(getattr(loc, "unit_id", None) or None),
+        location_zone=getattr(loc, "zone", None),
+        block_for_user_id=assigned_user.id,
+        customer_name=None,
+        created_by_user_id=current_user.id,
+    )
+    db.add(record)
+    await db.flush()
+    for d in to_block:
+        db.add(BlockRecordItem(
+            block_record_id=record.id, device_id=d.id,
+            barcode=d.barcode, lot_number=d.sub_lot_number or None,
+            model=f"{d.brand or ''} {d.model or ''}".strip(),
+            cpu=d.cpu, ram_gb=d.ram_gb, storage_gb=d.storage_gb,
+        ))
+        d.is_blocked = True
+    await audit(db, user=current_user, action="FLOOR_MOVEMENT_BLOCKED",
+                table_name="block_records", record_id=record.block_id,
+                new_value={"block_id": record.block_id, "transfer_type": transfer_type,
+                           "block_for": assigned_user.username, "tags": len(to_block)})
+    return record.block_id
+
 @router.post("/transfers/new")
 async def create_transfer(
     request: Request,
@@ -635,6 +706,7 @@ async def create_transfer(
     if loc_uuid:
         loc = (await db.execute(select(StorageLocation).where(StorageLocation.id == loc_uuid))).scalar_one_or_none()
     moved, not_found, work_ids = [], [], []
+    assigned_devices = []   # Finish Good / As-Is Lot: blocked for the assignee after the loop
     for bc in barcodes:
         result = await db.execute(
             select(Device, Lot.lot_number)
@@ -657,6 +729,7 @@ async def create_transfer(
         # this row to scrap_batch (see StockTransfer below).
         if transfer_type in ("ready_for_sale", "as_is_lot"):
             device.assigned_to_user_id = assigned_user.id
+            assigned_devices.append(device)
 
         transfer = StockTransfer(
             device_id=device.id,
@@ -742,6 +815,8 @@ async def create_transfer(
         )
         moved.append(bc)
 
+    block_id = await _block_for_assignee(db, assigned_devices, transfer_type, assigned_user, loc, current_user)
+
     await audit(db, user=current_user, action="STOCK_TRANSFER",
                 table_name="stock_transfers", record_id=None,
                 new_value={
@@ -756,6 +831,8 @@ async def create_transfer(
             url=f"/transfers/new?error=None+of+the+scanned+tag+numbers+were+found:+{','.join(not_found)}",
             status_code=302)
     msg = f"Moved+{len(moved)}+tag+number(s)"
+    if block_id:
+        msg += f"+—+blocked+for+the+assignee+(Block+{block_id})"
     if work_ids:
         msg += f"+—+{len(work_ids)}+WorkID(s)+created"
     if not_found:
@@ -859,6 +936,7 @@ async def _move_devices_bulk(
     scrap_batch = await _maybe_create_scrap_batch(db, transfer_type, assigned_user, current_user)
 
     moved = []
+    assigned_devices = []
     for device in devices:
         lot_number = None
         if getattr(device, "lot_id", None):
@@ -867,6 +945,7 @@ async def _move_devices_bulk(
 
         if transfer_type in ("ready_for_sale", "as_is_lot"):
             device.assigned_to_user_id = assigned_user.id
+            assigned_devices.append(device)
 
         _from_wh = getattr(device, "warehouse", None) or "—"
         transfer = StockTransfer(
@@ -939,6 +1018,8 @@ async def _move_devices_bulk(
             barcode=device.barcode, brand=device.brand, model=device.model,
         )
         moved.append(device.barcode)
+
+    await _block_for_assignee(db, assigned_devices, transfer_type, assigned_user, loc, current_user)
 
     await audit(db, user=current_user, action="STOCK_TRANSFER_BULK",
                 table_name="stock_transfers", record_id=None,

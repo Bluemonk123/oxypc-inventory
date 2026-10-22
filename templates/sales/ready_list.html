@@ -67,7 +67,7 @@
   <option value="non_touch" {{ 'selected' if value == 'non_touch' }}>Non-Touch (NT)</option>
 </select>
 {% endmacro %}
-{# Availability filter (2026-10-22): Open = not blocked, Blocked = held by Block Tags. #}
+{# Availability filter (2026-10-22): Blocked = held by Block Tags OR assigned to a user; Open = neither. #}
 {% macro avail_select(id, value='') %}
 <select id="{{ id }}" class="form-select form-select-sm ready-avail-filter" style="width:auto;min-width:150px" title="Availability">
   <option value="" {{ 'selected' if not value }}>All Availability</option>
@@ -206,7 +206,7 @@
         <i class="bi bi-telephone-outbound me-1"></i>Multi-Request with selected (<span id="readySelCount">0</span>)
       </button>
       <button type="button" id="multiSellBtn" class="btn btn-sm btn-outline-success" disabled>
-        <i class="bi bi-cart-plus me-1"></i>Multi-Sell with selected (<span id="readySelCount2">0</span>)
+        <i class="bi bi-cart-plus me-1"></i>Multi-Sell (<span id="readySelCount2">0</span>)
       </button>
       {# New Bulk Sale: same selection as Multi-Sell, opens the separate New Tag Sale
          page (per-tag prices, no quantity cap). Multi-Sell above is unchanged. #}
@@ -215,11 +215,11 @@
         <i class="bi bi-cart-plus me-1"></i>New Bulk Sale (<span id="readySelCount4">0</span>)
       </button>
       <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
-        <i class="bi bi-upload me-1"></i>Bulk Upload Tags
+        <i class="bi bi-upload me-1"></i>Upload Tags
       </button>
       {% if can_set_price(current_user) %}
       <button type="button" id="bulkSetPriceBtn" class="btn btn-sm btn-outline-dark" disabled>
-        <i class="bi bi-tag me-1"></i>Bulk Set price (<span id="readySelCount3">0</span>)
+        <i class="bi bi-tag me-1"></i>Set Price (<span id="readySelCount3">0</span>)
       </button>
       {% else %}
       {# Hidden stand-in so the page script's getElementById('bulkSetPriceBtn') still finds an element. #}
