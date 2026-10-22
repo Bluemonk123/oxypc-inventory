@@ -11,7 +11,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from database import get_db
 from utils.csv_decode import decode_csv_bytes
-from utils.master_data import entity_values
+from utils.master_data import entity_values, master_values
+from utils.device_category import pair_type_and_category
 from utils.grades import parse_grade
 from models.user import User, UserRole
 from models.device import Device, DeviceStage, StageMovement, STAGE_LABELS
@@ -484,6 +485,9 @@ async def upload_devices(
     # breakdown on All Inventory. Blank is allowed — unassigned is a valid
     # state, and entity can still be set later via Customise or Entity Movement.
     entity_lookup = {e.lower(): e for e in await entity_values(db)}
+    # Device Type / Sub-Category: either column fills both (2026-10-22).
+    dt_master = await master_values(db, "device_type")
+    sc_master = await master_values(db, "sub_category")
     # Manage Lots' "Bulk Upload IQC" form (External Partner test data) posts
     # this so every row lands on that entity regardless of whether the file
     # even has an "entity" column — the test-partner template intentionally
@@ -622,12 +626,14 @@ async def upload_devices(
             # still be None when building the StageMovement below now that
             # rows are no longer flushed one at a time.
             dev_id = uuid.uuid4()
+            row_dt, row_sc = pair_type_and_category(_s(row, "device_type"), _s(row, "category"),
+                                                    dt_master, sc_master)
             device = Device(
                 id=dev_id, barcode=barcode, lot_id=lot_id,
                 entity=entity_val,
-                sub_category=_s(row, "category"),
+                sub_category=row_sc,
                 brand=_s(row, "brand"), model=_s(row, "model"),
-                device_type=_s(row, "device_type"),
+                device_type=row_dt,
                 serial_no=_s(row, "serial_no"),
                 grn_number=_s(row, "grn_number"),
                 cpu=_s(row, "cpu"), cpu_make=_s(row, "cpu_make"), generation=_s(row, "generation"),
@@ -779,7 +785,8 @@ async def approve_duplicate_move(
 _parse_grade = parse_grade
 
 
-def _apply_row_to_device(device: Device, row: dict, entity_lookup: dict | None = None) -> None:
+def _apply_row_to_device(device: Device, row: dict, entity_lookup: dict | None = None,
+                         dt_master: list | None = None, sc_master: list | None = None) -> None:
     """Apply one CSV row's field values onto an already-existing device —
     shared by the single-row Update and bulk Update All actions on the
     duplicate-review modal. Never touches barcode/lot_number (identity).
@@ -797,7 +804,16 @@ def _apply_row_to_device(device: Device, row: dict, entity_lookup: dict | None =
 
     if s("brand"): device.brand = s("brand")
     if s("model"): device.model = s("model")
-    if s("device_type"): device.device_type = s("device_type")
+    # Either column fills both (2026-10-22): a value in the file wins; a blank
+    # one is taken from the other column (only if the tag has none yet).
+    if s("device_type") or s("category"):
+        dt, sc = pair_type_and_category(s("device_type") or device.device_type,
+                                        s("category") or device.sub_category,
+                                        dt_master or [], sc_master or [])
+        if s("device_type") or not (device.device_type or "").strip():
+            device.device_type = dt
+        if s("category") or not (device.sub_category or "").strip():
+            device.sub_category = sc
     if s("serial_no"): device.serial_no = s("serial_no")
     if s("cpu"): device.cpu = s("cpu")
     if s("cpu_make"): device.cpu_make = s("cpu_make")
@@ -844,7 +860,8 @@ async def update_duplicate_device(
     if not device:
         return JSONResponse({"success": False, "error": f"Tag Number '{tag_number}' not found"}, status_code=404)
     await _remember_grn_stock(db, [device.id])   # before the row may change its invoice
-    _apply_row_to_device(device, row, {e.lower(): e for e in await entity_values(db)})
+    _apply_row_to_device(device, row, {e.lower(): e for e in await entity_values(db)},
+                         await master_values(db, "device_type"), await master_values(db, "sub_category"))
     await audit(db, action="DEVICE_UPDATED", user=current_user,
                 table_name="devices", record_id=str(device.id),
                 new_value={"source": "bulk_upload_duplicate_update"}, request=request)
@@ -876,6 +893,8 @@ async def update_all_duplicate_devices(
 
     # Fetched once for the whole batch rather than per row.
     entity_lookup = {e.lower(): e for e in await entity_values(db)}
+    dt_master = await master_values(db, "device_type")
+    sc_master = await master_values(db, "sub_category")
 
     updated, missing = [], []
     # GRN Stocked is add-only: remember these tags under their current
@@ -887,7 +906,7 @@ async def update_all_duplicate_devices(
         if not device:
             missing.append(tag)
             continue
-        _apply_row_to_device(device, r.get("row") or {}, entity_lookup)
+        _apply_row_to_device(device, r.get("row") or {}, entity_lookup, dt_master, sc_master)
         updated.append(tag)
 
     if updated:

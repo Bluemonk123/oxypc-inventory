@@ -128,3 +128,123 @@ async def system_schema_fix(request: Request, current_user: User = Depends(admin
     except Exception:  # noqa: BLE001 — the fix itself already ran
         pass
     return JSONResponse(result, status_code=200 if result["ok"] else 500)
+
+
+# ── Device Type backfill (2026-10-22) ────────────────────────────────────────
+# Many tags have a blank Device Type but a Sub-Category (Laptop / Desktop /
+# TFT). GET previews (read-only); POST copies Sub-Category into Device Type
+# where it is blank and logs every changed tag id in the audit row, so the
+# change can be reversed.
+
+# Sub-Category spellings that aren't a Device Type value as written.
+_SUBCAT_ALIASES = {"tft": "TFT Monitor", "sarvar": "Server", "all in one": "All-in-One"}
+
+
+def _map_sub_category(value, device_types) -> str | None:
+    """Device Type for a Sub-Category: the Device Type master value it matches
+    (ignoring case), else a known alias; None if nothing matches (left blank)."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    by_lower = {d.lower(): d for d in device_types}
+    return by_lower.get(v.lower()) or _SUBCAT_ALIASES.get(v.lower())
+
+
+async def _device_type_master(db) -> list:
+    from sqlalchemy import select
+    from models.master import MasterData
+    return (await db.execute(
+        select(MasterData.value).where(MasterData.category == "device_type", MasterData.is_active.isnot(False))
+        .order_by(MasterData.display_order, MasterData.value))).scalars().all()
+
+
+def _blank_device_type():
+    from sqlalchemy import func, or_
+    from models.device import Device
+    return or_(Device.device_type.is_(None), func.trim(Device.device_type) == "")
+
+
+@router.get("/device-type-backfill")
+async def device_type_backfill_preview(current_user: User = Depends(admin_only)):
+    from sqlalchemy import func, select
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from models.master import MasterData
+    async with AsyncSessionLocal() as db:
+        blanks = (await db.execute(
+            select(Device.sub_category, func.count()).where(_blank_device_type())
+            .group_by(Device.sub_category).order_by(func.count().desc()))).all()
+        in_use = (await db.execute(
+            select(Device.device_type, func.count())
+            .where(Device.device_type.isnot(None), func.trim(Device.device_type) != "")
+            .group_by(Device.device_type).order_by(func.count().desc()))).all()
+        masters = {}
+        for cat in ("device_type", "sub_category"):
+            masters[cat] = (await db.execute(
+                select(MasterData.value).where(MasterData.category == cat, MasterData.is_active.isnot(False))
+                .order_by(MasterData.display_order, MasterData.value))).scalars().all()
+    mapping = [{"sub_category": s, "tags": n, "device_type": _map_sub_category(s, masters["device_type"])}
+               for s, n in blanks]
+    # The reverse gap: Sub-Category blank while Device Type is set (read-only).
+    async with AsyncSessionLocal() as db:
+        from sqlalchemy import or_
+        rev = (await db.execute(
+            select(Device.device_type, func.count())
+            .where(or_(Device.sub_category.is_(None), func.trim(Device.sub_category) == ""),
+                   Device.device_type.isnot(None), func.trim(Device.device_type) != "")
+            .group_by(Device.device_type).order_by(func.count().desc()))).all()
+    return JSONResponse({
+        "blank_device_type_by_sub_category": mapping,
+        "would_fill": sum(m["tags"] for m in mapping if m["device_type"]),
+        "blank_sub_category_by_device_type": [{"device_type": d, "tags": n} for d, n in rev],
+        "blank_sub_category_total": sum(n for _d, n in rev),
+        "left_blank": sum(m["tags"] for m in mapping if not m["device_type"]),
+        "device_type_values_in_use": [{"device_type": d, "tags": n} for d, n in in_use],
+        "device_type_master_list": masters["device_type"],
+        "sub_category_master_list": masters["sub_category"],
+    })
+
+
+@router.post("/device-type-backfill")
+async def device_type_backfill_apply(request: Request, current_user: User = Depends(admin_only)):
+    """Copy Sub-Category into Device Type for every tag whose Device Type is
+    blank and Sub-Category is set. Audited with the changed tag ids."""
+    from sqlalchemy import func, select, update
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from services.audit_engine import audit
+    from utils.timezone import app_now
+    async with AsyncSessionLocal() as db:
+        device_types = await _device_type_master(db)
+        cond = (_blank_device_type(), Device.sub_category.isnot(None), func.trim(Device.sub_category) != "")
+        rows = (await db.execute(select(Device.id, Device.sub_category).where(*cond))).all()
+        groups: dict = {}      # target Device Type -> [device ids]
+        skipped: dict = {}     # unmatched Sub-Category -> count
+        for did, sc in rows:
+            target = _map_sub_category(sc, device_types)
+            if target:
+                groups.setdefault(target, []).append(did)
+            else:
+                skipped[sc.strip()] = skipped.get(sc.strip(), 0) + 1
+        if not groups:
+            return JSONResponse({"ok": True, "updated": 0, "skipped": skipped})
+        now = app_now()
+        for target, ids in groups.items():
+            for i in range(0, len(ids), 5000):
+                await db.execute(update(Device).where(Device.id.in_(ids[i:i + 5000]), _blank_device_type())
+                                 .values(device_type=target, updated_at=now)
+                                 .execution_options(synchronize_session=False))
+        total = sum(len(v) for v in groups.values())
+        await audit(db, user=current_user, action="DEVICE_TYPE_BACKFILL_FROM_SUB_CATEGORY",
+                    table_name="devices", record_id=f"{total} tags",
+                    old_value={"device_type": None},
+                    new_value={"count": total, "by_value": {k: len(v) for k, v in groups.items()},
+                               "device_ids": {k: [str(x) for x in v] for k, v in groups.items()},
+                               "skipped": skipped},
+                    notes="Device Type was blank; set from the tag's Sub-Category. "
+                          "Reverse: set device_type = NULL for these ids.",
+                    request=request)
+        await db.commit()
+    return JSONResponse({"ok": True, "updated": total,
+                         "by_value": {k: len(v) for k, v in groups.items()}, "skipped": skipped})
+

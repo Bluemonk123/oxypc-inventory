@@ -83,7 +83,9 @@ class Return(Base):
     __tablename__ = "returns"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    sale_id = Column(UUID(as_uuid=True), ForeignKey("sales.id"), nullable=False, index=True)
+    # Optional since 2026-10-22 (approved dbdiagram change): a Credit Note
+    # return gets its sale only at "Payment Invoice Done", not on entry.
+    sale_id = Column(UUID(as_uuid=True), ForeignKey("sales.id"), nullable=True, index=True)
     device_id = Column(UUID(as_uuid=True), ForeignKey("devices.id"), nullable=False, index=True)
     return_date         = Column(DateTime, default=app_now)
     reason              = Column(Text, nullable=True)

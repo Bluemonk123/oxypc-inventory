@@ -39,9 +39,21 @@
       <input type="text" name="q" value="{{ q }}" title="Tag Number / Brand / Model" placeholder="Tag Number / Brand / Model…"
              class="form-control form-control-sm">
     </div>
+    {# Sale# filter removed (2026-10-22); Stock Type + Sale Type added. #}
     <div>
-      <input type="text" name="sale_no" value="{{ sale_no }}" title="Sale#" placeholder="Sale#"
-             class="form-control form-control-sm font-monospace">
+      <select name="stock_type" class="form-select form-select-sm" title="Stock Type">
+        <option value="">All Stock Types</option>
+        <option value="finish_good" {% if stock_type == 'finish_good' %}selected{% endif %}>Finish Good</option>
+        <option value="as_is" {% if stock_type == 'as_is' %}selected{% endif %}>As-Is</option>
+      </select>
+    </div>
+    <div>
+      <select name="sale_type" class="form-select form-select-sm" title="Sale Type">
+        <option value="">All Sale Types</option>
+        <option value="normal" {% if sale_type == 'normal' %}selected{% endif %}>Normal</option>
+        <option value="replaced" {% if sale_type == 'replaced' %}selected{% endif %}>Replaced</option>
+        <option value="credit_note" {% if sale_type == 'credit_note' %}selected{% endif %}>Credit Note</option>
+      </select>
     </div>
     <div>
       <input type="text" name="customer" value="{{ customer }}" title="Customer" placeholder="Customer name"
@@ -144,7 +156,7 @@
       </button>
       {% endif %}
       <a id="exportFilteredBtn" class="btn btn-sm btn-outline-success text-nowrap"
-         href="/sales/export?q={{ q | urlencode }}&sale_no={{ sale_no | urlencode }}&sold_by_filter={{ sold_by_filter | urlencode }}&customer={{ customer | urlencode }}&grade={{ grade | urlencode }}&lot_id={{ selected_lot | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
+         href="/sales/export?q={{ q | urlencode }}&stock_type={{ stock_type | urlencode }}&sale_type={{ sale_type | urlencode }}&sold_by_filter={{ sold_by_filter | urlencode }}&customer={{ customer | urlencode }}&grade={{ grade | urlencode }}&lot_id={{ selected_lot | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
         <i class="bi bi-download me-1"></i>Export
       </a>
       <a href="/reports/export/sales" class="btn btn-sm btn-outline-secondary text-nowrap">
@@ -267,7 +279,7 @@ selectAll.addEventListener('change', async function() {
   if (ck) {
     const p = new URLSearchParams(window.location.search);
     const params = new URLSearchParams();
-    ['q', 'sale_no', 'sold_by_filter', 'customer', 'grade', 'lot_id', 'date_from', 'date_to']
+    ['q', 'stock_type', 'sale_type', 'sold_by_filter', 'customer', 'grade', 'lot_id', 'date_from', 'date_to']
       .forEach(function (k) { params.set(k, p.get(k) || ''); });
     const dt = $('#salesTable').DataTable();
     params.set('search', dt.search() || '');
@@ -344,7 +356,7 @@ $(document).ready(function() {
         // Carry the page's own filter bar through to the server so the table
         // and the filter form always describe the same set of rows.
         var p = new URLSearchParams(window.location.search);
-        ['q', 'sale_no', 'sold_by_filter', 'customer', 'grade', 'lot_id', 'date_from', 'date_to']
+        ['q', 'stock_type', 'sale_type', 'sold_by_filter', 'customer', 'grade', 'lot_id', 'date_from', 'date_to']
           .forEach(function (k) { d[k] = p.get(k) || ''; });
       },
       dataSrc: function (json) {

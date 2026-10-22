@@ -435,6 +435,13 @@ class SchemaValidator:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+# (table, column) pairs whose NOT NULL was removed by an approved schema
+# change — applied at startup (and by /admin/system/schema-fix).
+RELAX_NOT_NULL = [
+    ("returns", "sale_id"),   # 2026-10-22: Credit Note sale created at Payment Invoice Done
+]
+
+
 async def validate_and_fix(engine: AsyncEngine, auto_fix: bool = True) -> dict:
     """
     Run all schema checks, auto-fix what's fixable.
@@ -503,6 +510,25 @@ async def validate_and_fix(engine: AsyncEngine, auto_fix: bool = True) -> dict:
         # Widening runs first: a column that exists but is too narrow is not
         # "missing", so ADD COLUMN never touches it, and the mismatch would
         # otherwise stay invisible until an INSERT overflowed it.
+        # Approved NOT NULL -> NULL relaxations (explicit list; never generic).
+        # A refusal (e.g. "must be owner of table") is reported, not fatal.
+        for _tbl, _col in RELAX_NOT_NULL:
+            try:
+                _r = await conn.execute(text(
+                    "SELECT is_nullable FROM information_schema.columns "
+                    "WHERE table_name = :t AND column_name = :c"), {"t": _tbl, "c": _col})
+                _row = _r.first()
+                if _row and _row[0] == "NO":
+                    if auto_fix:
+                        async with conn.begin_nested():
+                            await conn.execute(text(f'ALTER TABLE "{_tbl}" ALTER COLUMN "{_col}" DROP NOT NULL'))
+                        v.fixed.append(f"Made {_tbl}.{_col} optional (DROP NOT NULL)")
+                    else:
+                        v.issues.append(f"COLUMN STILL NOT NULL: {_tbl}.{_col}")
+            except Exception as _exc:  # noqa: BLE001
+                v.issues.append(f"COLUMN NOT RELAXED: {_tbl}.{_col} — "
+                                f"{str(getattr(_exc, 'orig', _exc)).splitlines()[0][:200]}")
+
         widen_cols = await v.check_column_widths(Base.metadata)
         if auto_fix and widen_cols:
             await v.fix_column_widths(widen_cols)

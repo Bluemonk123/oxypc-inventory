@@ -2066,7 +2066,8 @@ def _parse_simple_date(s: str):
         return None
 
 
-def _sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from="", date_to=""):
+def _sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from="", date_to="",
+                   stock_type="", sale_type=""):
     """Filter clauses shared by the Sales list page, its data endpoint, and
     its CSV export, so none of the three can ever disagree about what the
     filters mean."""
@@ -2092,6 +2093,25 @@ def _sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_fro
     d_to = _parse_simple_date(date_to)
     if d_to:
         w.append(Sale.sold_at <= d_to.replace(hour=23, minute=59, second=59))
+    # Stock Type / Sale Type (2026-10-22) — same rules as the table's Stock
+    # Type and Invoice columns: As-Is = the tag has a Sub-Lot Number;
+    # Replaced = a ₹0 sale on a tag marked "Replaced with …"; Credit Note =
+    # Payment Mode "Credit Note"; Normal = everything else.
+    sub_lot = func.coalesce(func.trim(Device.sub_lot_number), "")
+    if stock_type == "as_is":
+        w.append(sub_lot != "")
+    elif stock_type == "finish_good":
+        w.append(sub_lot == "")
+    from sqlalchemy import and_ as _and, not_ as _not
+    is_replaced = _and(func.coalesce(func.trim(Device.replaced), "").ilike("Replaced with %"),
+                       func.coalesce(Sale.sale_price, 0) == 0)
+    is_cn = func.coalesce(Sale.payment_mode, "") == "Credit Note"
+    if sale_type == "replaced":
+        w.append(is_replaced)
+    elif sale_type == "credit_note":
+        w.append(is_cn)
+    elif sale_type == "normal":
+        w.append(_and(_not(is_replaced), _not(is_cn)))
     return w
 
 
@@ -2131,6 +2151,8 @@ async def sales_list_data(
     lot_id: str = Query(default=""),
     date_from: str = Query(default=""),
     date_to: str = Query(default=""),
+    stock_type: str = Query(default=""),
+    sale_type: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
@@ -2173,7 +2195,8 @@ async def sales_list_data(
         .join(Lot, Device.lot_id == Lot.id)
     )
 
-    page_filters = _sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to)
+    page_filters = _sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to,
+                   stock_type, sale_type)
 
     # DataTables' own search box, on top of the page's filter bar.
     search = (request.query_params.get("search[value]") or "").strip()
@@ -2258,6 +2281,12 @@ async def sales_list_data(
             # No "—" above the badge when there is no invoice number.
             invoice_cell = (f'<span class="font-monospace">{esc(_inv)}</span><br>{repl_badge}'
                             if _inv else repl_badge)
+        elif s.payment_mode == "Credit Note":
+            # Credit Note ₹0 sale (Payment Invoice Done): badge under the
+            # Payment Invoice number, same layout as the Replaced badge.
+            cn_badge = '<span class="badge bg-warning text-dark">Credit Note</span>'
+            invoice_cell = (f'<span class="font-monospace">{esc(s.invoice_no)}</span><br>{cn_badge}'
+                            if s.invoice_no else cn_badge)
         cells = [
             f'<input type="checkbox" class="row-check" value="{s.id}">',
             (f'<a href="/sales/{s.id}" class="text-decoration-none fw-semibold text-nowrap">{esc(s.sale_number)}</a>'
@@ -2302,6 +2331,7 @@ async def sales_list_data(
         cells += [
             esc(s.customer_name or "—"),
             ('<span class="badge bg-info text-dark">Replaced</span>' if is_replacement
+             else '<span class="badge bg-warning text-dark">Credit Note</span>' if s.payment_mode == "Credit Note"
              else f'<span class="badge bg-secondary">{esc(s.payment_mode or "—")}</span>'),
             f'<span class="text-muted">{esc(s.sold_by or "—")}</span>',
             esc(s.sales_person or "—"),
@@ -2341,6 +2371,8 @@ async def export_sales_filtered(
     lot_id: str = Query(default=""),
     date_from: str = Query(default=""),
     date_to: str = Query(default=""),
+    stock_type: str = Query(default=""),
+    sale_type: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
@@ -2357,7 +2389,8 @@ async def export_sales_filtered(
                Device.grade, Device.sub_category, Lot.lot_number)
         .join(Device, Sale.device_id == Device.id)
         .join(Lot, Device.lot_id == Lot.id)
-        .where(*_sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to))
+        .where(*_sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to,
+                   stock_type, sale_type))
         .order_by(Sale.sold_at.desc())
         .limit(MAX_EXPORT_ROWS)
     )).all()
@@ -2403,6 +2436,8 @@ async def sales_list_ids(
     lot_id: str = Query(default=""),
     date_from: str = Query(default=""),
     date_to: str = Query(default=""),
+    stock_type: str = Query(default=""),
+    sale_type: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
@@ -2419,7 +2454,8 @@ async def sales_list_ids(
         .join(Device, Sale.device_id == Device.id)
         .join(Lot, Device.lot_id == Lot.id)
         .where(
-            *_sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to),
+            *_sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to,
+                   stock_type, sale_type),
             *_sales_search_filter(search.strip()),
         )
         .order_by(Sale.sold_at.desc())
@@ -2526,6 +2562,8 @@ async def sales_list(
     lot_id: str = Query(default=""),
     date_from: str = Query(default=""),
     date_to: str = Query(default=""),
+    stock_type: str = Query(default=""),
+    sale_type: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
@@ -2540,7 +2578,8 @@ async def sales_list(
         .select_from(Sale)
         .join(Device, Sale.device_id == Device.id)
         .join(Lot, Device.lot_id == Lot.id)
-        .where(*_sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to))
+        .where(*_sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to,
+                   stock_type, sale_type))
     )).scalar() or 0
     sales = []
 
@@ -2576,7 +2615,7 @@ async def sales_list(
         "can_delete_sales": _can_delete_sales(current_user),
         # Filters
         "q": q,
-        "sale_no": sale_no,
+        "sale_no": sale_no, "stock_type": stock_type, "sale_type": sale_type,
         "sold_by_filter": sold_by_filter,
         "customer": customer,
         "grade": grade,
@@ -2600,7 +2639,7 @@ async def returns_list(request: Request, db: AsyncSession = Depends(get_db),
                Sale.sale_price, Sale.sale_number, Sale.customer_name,
                Sale.customer_phone, Sale.customer_address)
         .join(Device, Return.device_id == Device.id)
-        .join(Sale, Return.sale_id == Sale.id)
+        .join(Sale, Return.sale_id == Sale.id, isouter=True)   # Credit Note: no sale before Payment Invoice Done
         .order_by(Return.return_date.desc())
     )
     returns = result.all()
@@ -2642,7 +2681,7 @@ async def return_receipt(return_id: str, request: Request, db: AsyncSession = De
         select(Return, Device.barcode, Device.brand, Device.model, Device.entity,
                Sale.customer_name, Sale.customer_phone, Sale.customer_address)
         .join(Device, Return.device_id == Device.id)
-        .join(Sale, Return.sale_id == Sale.id)
+        .join(Sale, Return.sale_id == Sale.id, isouter=True)
         .where(Return.id == rid)
     )).first()
     if not row:
@@ -3194,9 +3233,18 @@ async def process_credit_note(
         return RedirectResponse(
             url="/returns/new?active_tab=credit&error=Invalid+Debit+Note+Amount", status_code=302)
 
-    devices = (await db.execute(
-        select(Device).where(func.upper(Device.barcode).in_([c.upper() for c in codes]))
-    )).scalars().all()
+    # Exact Tag Number first; ignoring letter case only when that finds exactly
+    # one device (2026-10-22) — "4430110426L0274" and "4430110426l0274" are
+    # two devices, and one credit note entry used to hit both.
+    devices = []
+    for code in dict.fromkeys(codes):
+        exact = (await db.execute(select(Device).where(Device.barcode == code))).scalars().first()
+        if exact is None:
+            ci = (await db.execute(select(Device).where(
+                func.upper(Device.barcode) == code.upper()).limit(2))).scalars().all()
+            exact = ci[0] if len(ci) == 1 else None
+        if exact is not None and exact not in devices:
+            devices.append(exact)
     updated = 0
     for device in devices:
         ret = (await db.execute(
@@ -3207,20 +3255,10 @@ async def process_credit_note(
             # No Internal Tag return on file for this device — Credit Note
             # is independent of that flow (2026-09-24), so create the
             # underlying Return record here instead of skipping the tag.
-            # Return.sale_id is NOT NULL, so a placeholder Sale is created
-            # too — same pattern as the External Tag tab (process_external_
-            # return above) for a device with no prior Sale in the system.
-            sale_num = await _next_sale_number(db)
-            placeholder_sale = Sale(
-                sale_number=sale_num, device_id=device.id, sale_price=Decimal("0"),
-                sold_by=current_user.username, sold_at=app_now(), warranty_type="none",
-                sales_person=received_by,
-                notes="Placeholder sale — Credit Note tag with no prior Internal Tag return on file",
-            )
-            db.add(placeholder_sale)
-            await db.flush()
+            # No sale yet (2026-10-22, Return.sale_id now optional): the ₹0
+            # Credit Note sale is created at "Payment Invoice Done".
             ret = Return(
-                sale_id=placeholder_sale.id, device_id=device.id,
+                sale_id=None, device_id=device.id,
                 processed_by=current_user.username,
                 serial_captured=device.barcode,
                 notes="Auto-created for Credit Note — no prior Internal Tag return on file.",
@@ -3370,6 +3408,119 @@ async def _reset_device_return_flags_if_orphaned(db: AsyncSession, device_id) ->
         device.tag_return_status = None
 
 
+_CN_PLACEHOLDER_NOTE = "Placeholder sale — Credit Note tag"
+
+
+async def _cn_complete_old_tag(db, ret: Return, current_user, request) -> str | None:
+    """Payment Invoice Done (2026-10-22, option A): the customer's returned
+    device has been re-entered as a new "CN<tag>" tag, so the OLD tag leaves
+    stock — marked Sold with a ₹0 sale (Payment Mode "Credit Note", Invoice =
+    the Payment Invoice number). Uses the credit note's ₹0 placeholder sale
+    if it has one (older records), else creates the ₹0 sale and links it to
+    the credit note when it had none. A real, priced earlier sale is never
+    changed. A tag already Sold is left alone. Returns the sale number."""
+    device = await db.get(Device, ret.device_id)
+    if device is None or device.current_stage == DeviceStage.sold:
+        return None
+    sale = await db.get(Sale, ret.sale_id) if ret.sale_id else None
+    reuse = (sale is not None and (sale.sale_price or 0) == 0
+             and (sale.notes or "").startswith(_CN_PLACEHOLDER_NOTE))
+    if reuse:
+        sale.sold_at = app_now()       # the sale happens now, not on entry
+    if not reuse:
+        from models.company import Company
+        company = None
+        if device.entity:
+            company = (await db.execute(select(Company).where(
+                Company.is_active == True, Company.company_entity == device.entity)
+                .order_by(Company.created_at))).scalars().first()
+        sale = Sale(
+            sale_number=await _next_sale_number(db), device_id=device.id, sale_price=Decimal("0"),
+            sold_by=current_user.username, sold_at=app_now(), warranty_type="none",
+            notes=f"Credit Note — Payment Invoice Done; tag replaced by CN{device.barcode}; ₹0 sale so the old tag leaves stock.",
+            company_id=company.id if company else None,
+            company_name=company.company_name if company else None,
+            company_address=company.company_address if company else None,
+            company_gstin=company.company_gstin if company else None,
+            company_state=company.company_state if company else None,
+            company_state_code=company.company_state_code if company else None,
+            company_phone=company.company_phone if company else None,
+            company_email=company.company_email if company else None,
+        )
+        db.add(sale)
+        await db.flush()
+        if ret.sale_id is None:
+            ret.sale_id = sale.id      # the credit note's own sale from now on
+    # Sales Report's Invoice Number column shows the replacement tag, CN<old tag>.
+    if not (sale.invoice_no or "").strip():
+        sale.invoice_no = f"CN{device.barcode}"[:50]
+    # Sales page / Sales Report export (2026-10-22, on request): Invoice = the
+    # credit note's Payment Invoice number, Payment Mode = "Credit Note".
+    if (ret.payment_invoice or "").strip():
+        sale.invoice_no = ret.payment_invoice.strip()[:50]
+    sale.payment_mode = "Credit Note"
+    prev = device.current_stage
+    # Close what the old tag still has open, like any other move off a stage.
+    from routers.repair import _close_open_movement, _close_l1l2_work_orders
+    await _close_open_movement(db, device)
+    if prev in (DeviceStage.l1, DeviceStage.l2):
+        await _close_l1l2_work_orders(db, device.id)
+    elif prev == DeviceStage.l3:
+        from sqlalchemy import update as sa_update
+        from models.work_order import WorkOrder
+        await db.execute(sa_update(WorkOrder).where(
+            WorkOrder.device_id == device.id, WorkOrder.work_id.like("L3L4-%"),
+            WorkOrder.status != "completed").values(status="completed", completed_at=app_now()))
+    device.current_stage = DeviceStage.sold
+    device.updated_at = app_now()
+    db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=DeviceStage.sold,
+                         moved_by=current_user.username,
+                         notes=f"Credit Note complete ({sale.sale_number}) — replaced by CN{device.barcode}"))
+    await audit(db, user=current_user, action="CREDIT_NOTE_OLD_TAG_SOLD",
+                table_name="devices", record_id=str(device.id),
+                old_value={"stage": getattr(prev, "value", prev)},
+                new_value={"stage": "sold", "sale_number": sale.sale_number, "sale_reused": reuse,
+                           "barcode": device.barcode}, request=request)
+    return sale.sale_number
+
+
+async def _cn_complete_pending(db):
+    """Credit notes at Payment Invoice Done or later whose old tag is still not Sold."""
+    done_stages = CN_STAGES[CN_STAGES.index("Payment Invoice Done"):]
+    rows = (await db.execute(
+        select(Return, Device).join(Device, Return.device_id == Device.id)
+        .where(Return.cn_stage.in_(done_stages), Device.current_stage != DeviceStage.sold)
+    )).all()
+    return rows
+
+
+@router.get("/credit-note/complete-old-tags")
+async def cn_complete_old_tags_preview(db: AsyncSession = Depends(get_db),
+                                       current_user: User = Depends(require_roles(UserRole.admin))):
+    """Read-only: credit notes at Payment Invoice Done or later whose old tag is still in stock."""
+    from fastapi.responses import JSONResponse
+    rows = await _cn_complete_pending(db)
+    return JSONResponse({"count": len(rows), "tags": [
+        {"barcode": d.barcode, "stage": STAGE_LABELS.get(d.current_stage, d.current_stage.value),
+         "debit_note": r.debit_note_number} for r, d in rows]})
+
+
+@router.post("/credit-note/complete-old-tags")
+async def cn_complete_old_tags_apply(request: Request, db: AsyncSession = Depends(get_db),
+                                     current_user: User = Depends(require_roles(UserRole.admin))):
+    """One-time catch-up for credit notes past Payment Invoice Done before
+    2026-10-22: mark each one's old tag Sold at ₹0, exactly as Payment
+    Invoice Done now does."""
+    from fastapi.responses import JSONResponse
+    done = []
+    for ret, d in await _cn_complete_pending(db):
+        sale_no = await _cn_complete_old_tag(db, ret, current_user, request)
+        if sale_no:
+            done.append({"barcode": d.barcode, "sale_number": sale_no})
+    await db.commit()
+    return JSONResponse({"ok": True, "marked_sold": done})
+
+
 @router.post("/credit-note/{return_id}/advance")
 async def credit_note_advance(
     request: Request,
@@ -3396,9 +3547,14 @@ async def credit_note_advance(
     await audit(db, user=current_user, action="CREDIT_NOTE_STAGE_ADVANCED",
                 table_name="returns", record_id=str(ret.id),
                 new_value={"cn_stage": next_stage}, request=request)
+    sold_note = ""
+    if next_stage == "Payment Invoice Done":
+        sale_no = await _cn_complete_old_tag(db, ret, current_user, request)
+        if sale_no:
+            sold_note = f" — old tag {ret.serial_captured or ''} marked Sold (₹0, {sale_no})"
     await db.commit()
     return RedirectResponse(
-        url=f"/credit-note?success=Marked+{next_stage.replace(' ', '+')}", status_code=302)
+        url=f"/credit-note?success={quote_plus('Marked ' + next_stage + sold_note)}", status_code=302)
 
 
 @router.post("/credit-note/{return_id}/delete")
@@ -3493,7 +3649,7 @@ async def credit_note_bulk_verify(
     if not ids:
         return RedirectResponse(url="/credit-note?error=Select+at+least+one+row", status_code=302)
     rets = (await db.execute(select(Return).where(Return.id.in_(ids)))).scalars().all()
-    advanced, skipped = 0, 0
+    advanced, skipped, sold = 0, 0, 0
     for ret in rets:
         reason = _try_advance_return(ret)
         if reason:
@@ -3503,8 +3659,12 @@ async def credit_note_bulk_verify(
                     table_name="returns", record_id=str(ret.id),
                     new_value={"cn_stage": ret.cn_stage}, request=request)
         advanced += 1
+        if ret.cn_stage == "Payment Invoice Done" and await _cn_complete_old_tag(db, ret, current_user, request):
+            sold += 1
     await db.commit()
     msg = f"{advanced}+advanced"
+    if sold:
+        msg += f",+{sold}+old+tag(s)+marked+Sold+(₹0)"
     if skipped:
         msg += f",+{skipped}+skipped+(needs+Debit+Note+or+Payment+Invoice+set+individually)"
     return RedirectResponse(url=f"/credit-note?success={msg}", status_code=302)
@@ -3568,7 +3728,7 @@ async def pending_returns(request: Request, db: AsyncSession = Depends(get_db),
         select(Return, Device.barcode, Device.brand, Device.model,
                Sale.sale_price, Sale.sale_number)
         .join(Device, Return.device_id == Device.id)
-        .join(Sale, Return.sale_id == Sale.id)
+        .join(Sale, Return.sale_id == Sale.id, isouter=True)
         .where(Return.approval_status == 'pending')
         .order_by(Return.return_date.desc())
     )
