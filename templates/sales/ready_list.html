@@ -67,7 +67,7 @@
   <option value="non_touch" {{ 'selected' if value == 'non_touch' }}>Non-Touch (NT)</option>
 </select>
 {% endmacro %}
-{# Availability filter (2026-10-22): Blocked = held by Block Tags OR assigned to a user; Open = neither. #}
+{# Entity is the first filter in all four tabs (2026-10-22). Availability filter (2026-10-22): Blocked = held by Block Tags OR assigned to a user; Open = neither. #}
 {% macro avail_select(id, value='') %}
 <select id="{{ id }}" class="form-select form-select-sm ready-avail-filter" style="width:auto;min-width:150px" title="Availability">
   <option value="" {{ 'selected' if not value }}>All Availability</option>
@@ -191,10 +191,10 @@
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold"><i class="bi bi-upc-scan me-2"></i>Ready for Sale Tags</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2" id="readyFilterBar">
+      {{ ms.multiselect_inline('entity', 'Entity', entity_options, '') }}
       {{ avail_select('readyAvail') }}
       {{ touch_select('readyTouch') }}
       {{ ms.multiselect_inline('device_type', 'Device Types', device_type_options, '') }}
-      {{ ms.multiselect_inline('entity', 'Entity', entity_options, '') }}
       <button type="button" id="readyFilterSearch" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
       <button type="button" id="readyFilterReset" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</button>
       </div>
@@ -255,11 +255,11 @@
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold"><i class="bi bi-collection me-2"></i>Ready for Sale Model Summary</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+      {{ ms.multiselect_inline('ms_entity', 'Entity', entity_options, f.ms_entity) }}
       {{ avail_select('msAvail', f.ms_avail) }}
       {{ touch_select('msTouch', f.ms_touch) }}
       {{ ms.multiselect_inline('ms_grade', 'Grades', summary_grade_options, f.ms_grade) }}
       {{ ms.multiselect_inline('ms_dtype', 'Device Types', device_type_options, f.ms_dtype) }}
-      {{ ms.multiselect_inline('ms_entity', 'Entity', entity_options, f.ms_entity) }}
       <button type="button" id="modelSumRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Request Selected (<span id="modelSumSelCount">0</span>)
       </button>
@@ -290,9 +290,9 @@
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>As-Is Lot</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+      {{ ms.multiselect_inline('al_entity', 'Entity', entity_options, f.al_entity) }}
       {{ touch_select('alTouch', f.al_touch) }}
       {{ ms.multiselect_inline('al_dtype', 'Device Types', device_type_options, f.al_dtype) }}
-      {{ ms.multiselect_inline('al_entity', 'Entity', entity_options, f.al_entity) }}
       </div>
     </div>
     <div class="card-body px-0 pb-0">
@@ -393,10 +393,10 @@
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold"><i class="bi bi-collection me-2"></i>As-Is Model Summary</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+      {{ ms.multiselect_inline('am_entity', 'Entity', entity_options, f.am_entity) }}
       {{ touch_select('amTouch', f.am_touch) }}
       {{ ms.multiselect_inline('am_grade', 'Grades', summary_grade_options, f.am_grade) }}
       {{ ms.multiselect_inline('am_dtype', 'Device Types', device_type_options, f.am_dtype) }}
-      {{ ms.multiselect_inline('am_entity', 'Entity', entity_options, f.am_entity) }}
       </div>
     </div>
     <div class="card-body px-0 pb-0">
