@@ -52,8 +52,8 @@
           <div class="mb-3">
             <label class="form-label fw-semibold">Customer Tag</label>
             <div class="input-group">
-              <input type="text" id="returnIdentity" class="form-control barcode-field font-monospace" placeholder="Scan Tag Number or Serial Number" autofocus>
-              <button type="button" class="btn btn-primary" id="checkBtn"><i class="bi bi-search me-1"></i>Check</button>
+              <input type="text" id="returnIdentity" class="form-control font-monospace" placeholder="Scan Tag Number or Serial Number" autofocus>
+              <button type="button" class="btn btn-primary d-none" id="checkBtn"><i class="bi bi-search me-1"></i>Check</button>
             </div>
           </div>
           <div id="deviceBriefMsg" class="mb-2"></div>
@@ -87,9 +87,9 @@
             <label class="form-label fw-semibold">Replace With — Tag Number</label>
             <input type="hidden" name="replace_tag" id="replaceTagHidden">
             <div class="input-group">
-              <input type="text" id="replaceIdentity" class="form-control barcode-field font-monospace"
+              <input type="text" id="replaceIdentity" class="form-control font-monospace"
                      placeholder="Scan Tag Number to replace with (Ready to Sale only)">
-              <button type="button" class="btn btn-outline-primary" id="replaceSearchBtn">
+              <button type="button" class="btn btn-outline-primary d-none" id="replaceSearchBtn">
                 <i class="bi bi-search me-1"></i>Search</button>
             </div>
             <div id="replaceBriefMsg" class="mt-2"></div>
@@ -267,7 +267,7 @@
           <div class="mb-3">
             <label class="form-label fw-semibold">Search Tag Number</label>
             <div class="input-group">
-              <input type="text" id="cnScanInput" class="form-control barcode-field font-monospace"
+              <input type="text" id="cnScanInput" class="form-control font-monospace"
                      placeholder="Scan or type Tag Number, Enter to add">
               <button type="button" class="btn btn-outline-primary" id="cnScanAddBtn"><i class="bi bi-plus-circle me-1"></i>Add</button>
             </div>
@@ -327,16 +327,23 @@
     barcodeHidden.value = '';
   }
 
+  // Auto-check (2026-10-22): looked up ~0.6s after typing stops, at once on
+  // paste or Enter — no Check click. checkSeq drops a slower, older reply so
+  // it can never overwrite the result for what's in the box now.
+  var checkSeq = 0, checkTimer = null;
   function check(){
     var val = identity.value.trim();
+    var seq = ++checkSeq;
     if(!val){
       clearBrief();
-      msg.innerHTML = '<div class="alert alert-warning py-2 px-3 small mb-0">Please enter Tag Number or Serial Number in textbox to validate.</div>';
       return;
     }
+    barcodeHidden.value = '';
+    msg.innerHTML = '<div class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Checking…</div>';
     fetch('/devices/api/brief?barcode='+encodeURIComponent(val))
       .then(function(r){ return r.ok ? r.json() : {found:false}; })
       .then(function(d){
+        if(seq !== checkSeq) return;
         if(d && d.found){
           barcodeHidden.value = d.barcode;
           document.getElementById('br_make').textContent = d.make;
@@ -373,7 +380,11 @@
   }
 
   checkBtn.addEventListener('click', check);
-  identity.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); check(); } });
+  identity.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); clearTimeout(checkTimer); check(); } });
+  identity.addEventListener('input', function(e){
+    clearTimeout(checkTimer);
+    checkTimer = setTimeout(check, e.inputType === 'insertFromPaste' ? 0 : 600);
+  });
 })();
 
 (function(){
@@ -406,16 +417,21 @@
   noRadio.addEventListener('change', toggleBox);
   yesRadio.addEventListener('change', toggleBox);
 
+  // Auto-search (2026-10-22), same as the customer tag above — no Search click.
+  var replaceSeq = 0, replaceTimer = null;
   function searchReplace(){
     var val = replaceIdentity.value.trim();
+    var seq = ++replaceSeq;
     if(!val){
       clearReplace();
-      msg.innerHTML = '<div class="alert alert-warning py-2 px-3 small mb-0">Enter a Tag Number to search.</div>';
       return;
     }
+    replaceTagHidden.value = '';
+    msg.innerHTML = '<div class="text-muted small"><span class="spinner-border spinner-border-sm me-1"></span>Checking…</div>';
     fetch('/devices/api/brief?barcode=' + encodeURIComponent(val) + '&require_stage=ready_to_sale')
       .then(function(r){ return r.ok ? r.json() : {found:false}; })
       .then(function(d){
+        if(seq !== replaceSeq) return;
         if(d && d.found){
           replaceTagHidden.value = d.barcode;
           document.getElementById('rp_barcode').textContent = d.barcode;
@@ -435,13 +451,17 @@
       }).catch(function(){ clearReplace(); });
   }
   searchBtn.addEventListener('click', searchReplace);
-  replaceIdentity.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); searchReplace(); } });
+  replaceIdentity.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); clearTimeout(replaceTimer); searchReplace(); } });
+  replaceIdentity.addEventListener('input', function(e){
+    clearTimeout(replaceTimer);
+    replaceTimer = setTimeout(searchReplace, e.inputType === 'insertFromPaste' ? 0 : 600);
+  });
 
   if(form){
     form.addEventListener('submit', function(e){
       if(yesRadio.checked && !replaceTagHidden.value){
         e.preventDefault();
-        alert('Search and select a valid Ready to Sale Tag Number to replace with, or set Replace Now to No.');
+        alert('Enter a valid Ready to Sale Tag Number to replace with (it is checked automatically), or set Replace Now to No.');
       }
     });
   }

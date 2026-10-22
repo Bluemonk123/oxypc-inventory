@@ -47,6 +47,11 @@
                 {% for value, label in stage_options %}
                 <option value="{{ value }}">{{ label }}</option>
                 {% endfor %}
+                {# Admin only (2026-10-22): each tag also gets a basic sale with no
+                   customer or price — routers/iqc.py _customise_sale. #}
+                {% if current_user and current_user.role.value == 'admin' %}
+                <option value="sold">Sold (admin — creates a sale with no customer/price)</option>
+                {% endif %}
               </select>
             </div>
           </div>

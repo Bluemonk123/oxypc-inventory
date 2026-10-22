@@ -883,6 +883,40 @@ async def iqc_create_lot_from_selection(
 _CUSTOMISE_RETURN_PATHS = {"/iqc", "/devices", "/stock"}
 
 
+async def _customise_sale(db, device, current_user) -> str:
+    """Basic Sale for a tag an admin moves to Sold from the Customise modal:
+    price 0, no customer, clearly noted, with the tag's entity company (so
+    its invoice shows the right company). Edit it later to add the details."""
+    from decimal import Decimal as _D
+    from models.sales import Sale
+    from models.company import Company
+    from routers.sales import _next_sale_number
+    company = None
+    if device.entity:
+        company = (await db.execute(select(Company).where(
+            Company.is_active == True, Company.company_entity == device.entity)
+            .order_by(Company.created_at))).scalars().first()
+    if company is None:
+        company = (await db.execute(select(Company).where(Company.is_active == True)
+                                    .order_by(Company.created_at))).scalars().first()
+    num = await _next_sale_number(db)
+    db.add(Sale(
+        sale_number=num, device_id=device.id, sale_price=_D("0"),
+        sold_by=current_user.username, sold_at=app_now(), warranty_type="none",
+        notes="Marked Sold by an admin from the Customise modal — no customer or price "
+              "recorded; edit this sale to add them.",
+        company_id=company.id if company else None,
+        company_name=company.company_name if company else None,
+        company_address=company.company_address if company else None,
+        company_gstin=company.company_gstin if company else None,
+        company_state=company.company_state if company else None,
+        company_state_code=company.company_state_code if company else None,
+        company_phone=company.company_phone if company else None,
+        company_email=company.company_email if company else None,
+    ))
+    return num
+
+
 @router.post("/bulk-apply-grade-type")
 async def iqc_bulk_apply_grade_type(
     request: Request,
@@ -995,15 +1029,20 @@ async def iqc_bulk_apply_grade_type(
 
     new_stage = None
     skipped_moves = []
+    sold_sales = []   # sale numbers created by an admin "Move to Sold"
     if to_stage:
         try:
             new_stage = DeviceStage(to_stage)
         except ValueError:
             return RedirectResponse(url=f"{return_to}?error=Invalid+stage+{to_stage}", status_code=302)
-        # Sold is never a Customise target (not in the dropdown either): a sale
-        # must go through New Sale so a Sale record exists for the tag.
-        if new_stage == DeviceStage.sold:
-            return RedirectResponse(url=f"{return_to}?error=Use+New+Sale+to+mark+tags+Sold", status_code=302)
+        # Sold via Customise is ADMIN ONLY (2026-10-22, on request; was never
+        # allowed). Each tag also gets a basic Sale (price 0, no customer) so it
+        # is never "sold with no sale record" — the state that used to block
+        # returns with "Sale record not found" (see 7670e47). Everyone else
+        # still sells through New Sale / Multi-Sell.
+        if new_stage == DeviceStage.sold and current_user.role.value != "admin":
+            return RedirectResponse(url=f"{return_to}?error=Only+an+admin+can+mark+tags+Sold+here+-+use+New+Sale",
+                                    status_code=302)
 
     # Grade is a Postgres enum, so an unrecognised string would only fail at
     # commit — after the loop below has already mutated every selected device.
@@ -1126,6 +1165,8 @@ async def iqc_bulk_apply_grade_type(
         if hdd_summary.strip():
             device.hdd_summary = hdd_summary.strip()
         if new_stage is not None:
+            if new_stage == DeviceStage.sold and device.current_stage == DeviceStage.sold:
+                continue   # already Sold — never a second sale for the same tag
             try:
                 await validate_transition(device, new_stage, db, override_admin=override_transitions)
             except HTTPException:
@@ -1162,6 +1203,8 @@ async def iqc_bulk_apply_grade_type(
                 )
             db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=new_stage,
                                   moved_by=current_user.username, notes="Bulk Customise modal — bulk Move to Stage"))
+            if new_stage == DeviceStage.sold:
+                sold_sales.append(await _customise_sale(db, device, current_user))
 
     await audit(db, action="IQC_BULK_GRADE_TYPE_APPLIED", user=current_user,
                 table_name="devices", record_id=",".join(str(d.id) for d in devices)[:50],
@@ -1180,10 +1223,15 @@ async def iqc_bulk_apply_grade_type(
                            "total_ram_count": total_ram_count or None, "total_ram_size": total_ram_size or None,
                            "total_hdd_count": total_hdd_count or None, "total_hdd_size": total_hdd_size or None,
                            "hdd_summary": hdd_summary or None,
-                           "to_stage": to_stage or None, "count": len(devices)},
+                           "to_stage": to_stage or None, "count": len(devices),
+                           "sales_created": sold_sales or None},
                 request=request)
     await db.commit()
     msg = f"{len(devices)}+device(s)+updated"
+    if sold_sales:
+        msg += f"+-+{len(sold_sales)}+sale(s)+created+({sold_sales[0]}"
+        msg += (f"+to+{sold_sales[-1]})" if len(sold_sales) > 1 else ")")
+        msg += "+with+no+customer+or+price"
     if skipped_moves:
         import urllib.parse
         msg += f"&warning={urllib.parse.quote(f'{len(skipped_moves)} tag(s) could not move to {to_stage} (not an allowed transition): ' + ', '.join(skipped_moves[:10]))}"
