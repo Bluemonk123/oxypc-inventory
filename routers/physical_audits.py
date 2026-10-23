@@ -74,6 +74,53 @@ async def _resolve_device_system_location_id(db: AsyncSession, device: Device):
     return device.location_id
 
 
+def _devices_at_query(cols, stage, location_id, category):
+    """SELECT `cols` over the devices that _count_devices_at counts: not
+    trashed, current_stage == stage, resolved location == location_id,
+    sub_category == category (shared so the Difference sheet lists exactly
+    the tags behind Current Count)."""
+    latest_sub = (
+        select(DeviceLocationLog.device_id, func.max(DeviceLocationLog.logged_at).label("latest"))
+        .group_by(DeviceLocationLog.device_id).subquery()
+    )
+    latest_log = (
+        select(DeviceLocationLog.device_id, DeviceLocationLog.location_id)
+        .join(latest_sub, and_(DeviceLocationLog.device_id == latest_sub.c.device_id,
+                               DeviceLocationLog.logged_at == latest_sub.c.latest))
+        .subquery()
+    )
+    resolved_loc = sa_case((latest_log.c.device_id.isnot(None), latest_log.c.location_id),
+                           else_=Device.location_id)
+    q = (select(*cols).select_from(Device)
+         .outerjoin(latest_log, latest_log.c.device_id == Device.id)
+         .where(Device.current_stage == stage, Device.is_trashed == False))  # noqa: E712
+    q = q.where(resolved_loc.is_(None)) if location_id is None else q.where(resolved_loc == location_id)
+    q = q.where(Device.sub_category.is_(None)) if category is None else q.where(Device.sub_category == category)
+    return q
+
+
+async def _missing_tags(db: AsyncSession, record, scanned: set) -> list:
+    """Missing tags of one audit record (2026-10-23): every tag the system has
+    at the record's Audit Stage + Audit Location + Category (the same rule as
+    Current Count) that was NOT scanned into it. Read live, so a tag moved
+    since the audit drops off. Rows: (barcode, lot_id, model, serial, category)."""
+    q = _devices_at_query([Device.barcode, Device.lot_id, Device.model, Device.serial_no, Device.sub_category],
+                          record.my_stage, record.my_location_id, record.category)
+    return [r for r in (await db.execute(q.order_by(Device.barcode))).all()
+            if (r.barcode or "").upper() not in scanned]
+
+
+async def _scanned_by_record(db: AsyncSession, record_ids) -> dict:
+    out = {}
+    if record_ids:
+        for rid, bc in (await db.execute(
+            select(AuditRecordItem.audit_record_id, AuditRecordItem.barcode)
+            .where(AuditRecordItem.audit_record_id.in_(list(record_ids)))
+        )).all():
+            out.setdefault(rid, set()).add((bc or "").upper())
+    return out
+
+
 async def _count_devices_at(db: AsyncSession, stage, location_id, category) -> int:
     """Live count of Devices (is_trashed=False) whose current_stage == stage,
     whose resolved system location == location_id, and whose sub_category ==
@@ -81,40 +128,7 @@ async def _count_devices_at(db: AsyncSession, stage, location_id, category) -> i
     _resolve_device_system_location_id but batched into one query instead of
     one-per-device. This is "how many does the system say should be here",
     compared against physical_count ("how many were actually found")."""
-    latest_sub = (
-        select(
-            DeviceLocationLog.device_id,
-            func.max(DeviceLocationLog.logged_at).label("latest"),
-        )
-        .group_by(DeviceLocationLog.device_id)
-        .subquery()
-    )
-    latest_log = (
-        select(DeviceLocationLog.device_id, DeviceLocationLog.location_id)
-        .join(latest_sub, and_(
-            DeviceLocationLog.device_id == latest_sub.c.device_id,
-            DeviceLocationLog.logged_at == latest_sub.c.latest,
-        ))
-        .subquery()
-    )
-    resolved_loc = sa_case(
-        (latest_log.c.device_id.isnot(None), latest_log.c.location_id),
-        else_=Device.location_id,
-    )
-    q = (
-        select(func.count(Device.id))
-        .select_from(Device)
-        .outerjoin(latest_log, latest_log.c.device_id == Device.id)
-        .where(Device.current_stage == stage, Device.is_trashed == False)
-    )
-    if location_id is None:
-        q = q.where(resolved_loc.is_(None))
-    else:
-        q = q.where(resolved_loc == location_id)
-    if category is None:
-        q = q.where(Device.sub_category.is_(None))
-    else:
-        q = q.where(Device.sub_category == category)
+    q = _devices_at_query([func.count(Device.id)], stage, location_id, category)
     return (await db.execute(q)).scalar() or 0
 
 
@@ -366,8 +380,10 @@ async def list_records(
         locs = (await db.execute(select(StorageLocation).where(StorageLocation.id.in_(loc_ids)))).scalars().all()
         loc_map = {loc.id: loc for loc in locs}
 
+    scanned = await _scanned_by_record(db, [r.id for r in records])
     data = []
     for r in records:
+        missing = len(await _missing_tags(db, r, scanned.get(r.id, set())))
         data.append({
             "id": str(r.id),
             "report_date": r.report_date.isoformat() if r.report_date else "",
@@ -377,6 +393,7 @@ async def list_records(
             "current_count": r.current_count,
             "physical_count": r.physical_count,
             "difference": r.difference,
+            "missing": missing,
             "notes": r.notes or "",
         })
     return JSONResponse({"data": data})
@@ -475,11 +492,28 @@ async def _audit_workbook(db: AsyncSession, records: list) -> bytes:
     tag_header = ["Report Date", "Tag Number", "Lot Number", "Model", "Serial", "Category",
                   "Current Stage", "Current Location", "Audit Stage", "Audit Location",
                   "Difference", "Notes"]
+    # Missing Tags sheet (2026-10-23): per audit record, the tags behind
+    # Current Count that were not scanned (see _missing_tags).
+    scanned_by_rec = {}
+    for it in items:
+        scanned_by_rec.setdefault(it.audit_record_id, set()).add((it.barcode or "").upper())
+    missing_rows = []
+    for r in sorted(records, key=lambda r: (r.report_date or date.min)):
+        for m in await _missing_tags(db, r, scanned_by_rec.get(r.id, set())):
+            missing_rows.append([_date(r.report_date), m.barcode, m.lot_id, m.model or "", m.serial_no or "",
+                                 m.sub_category or "", STAGE_LABELS.get(r.my_stage, r.my_stage),
+                                 _loc_short(loc_map.get(r.my_location_id))])
+    lot_ids = {row[2] for row in missing_rows if row[2]}
+    lot_no = {}
+    if lot_ids:
+        lot_no = dict((await db.execute(select(Lot.id, Lot.lot_number).where(Lot.id.in_(lot_ids)))).all())
+    for row in missing_rows:
+        row[2] = lot_no.get(row[2], "") if row[2] else ""
+
     sheets = [
         ("Tags Summary", tag_header, tags),
-        # Only the tags found somewhere other than the system's stage /
-        # location (Difference = Yes) — 2026-10-23.
-        ("Difference Tags", tag_header, [t for t in tags if t[10] == "Yes"]),
+        ("Missing Tags", ["Report Date", "Tag Number", "Lot Number", "Model", "Serial", "Category",
+                          "System Stage", "System Location"], missing_rows),
         ("Stage Summary", ["Audit Stage", "Current Count", "Audit Count", "Difference"], stage_rows),
         ("Location Summary", ["Audit Location", "Current Count", "Audit Count", "Difference"], loc_rows),
     ]

@@ -119,7 +119,7 @@
         <div class="d-flex gap-2 align-items-center flex-wrap">
           <input type="date" id="auditRecordsDateFilter" class="form-control form-control-sm" style="width:auto">
           <button type="button" id="auditExportBtn" class="btn btn-sm btn-outline-success"
-                  title="Excel workbook: Tags Summary, Difference Tags, Stage Summary and Location Summary sheets (the date picked, or all dates)">
+                  title="Excel workbook: Tags Summary (scanned), Missing Tags, Stage Summary and Location Summary sheets (the date picked, or all dates)">
             <i class="bi bi-file-earmark-excel me-1"></i>Export
           </button>
         </div>
@@ -136,6 +136,7 @@
                 <th>Current Count</th>
                 <th>Physical Count</th>
                 <th>Difference</th>
+                <th>Missing</th>
                 <th>Notes</th>
                 <th>Download</th>
                 <th>Delete</th>
@@ -297,13 +298,17 @@ $(function () {
       { data: 'my_stage' },
       { data: 'my_location' },
       { data: 'category' },
-      // Count cells coloured (2026-10-23): Current grey, Physical blue,
-      // Difference green when 0 (all found), orange otherwise (missing, or
-      // extra/misplaced tags when below 0).
-      { data: 'current_count', createdCell: function (td) { auditCountCell(td, '#6c757d'); } },
+      // Count cells coloured (2026-10-23): Physical blue, Difference green
+      // when 0 (all found), orange otherwise (missing, or extra/misplaced
+      // tags when below 0). Current Count: plain (no background).
+      { data: 'current_count', createdCell: function (td) { td.style.textAlign = 'center'; } },
       { data: 'physical_count', createdCell: function (td) { auditCountCell(td, '#0d6efd'); } },
       { data: 'difference', createdCell: function (td, v) {
           auditCountCell(td, Number(v) === 0 ? '#0F7A37' : '#fd7e14'); } },
+      // Missing = tags the system has for this row's stage / location /
+      // category that were not scanned (the Missing Tags sheet lists them).
+      { data: 'missing', createdCell: function (td, v) {
+          if (Number(v) > 0) { td.style.color = '#dc3545'; td.style.fontWeight = '600'; } td.style.textAlign = 'center'; } },
       {
         data: 'notes', orderable: false,
         render: function (data, type, row) {
@@ -316,7 +321,7 @@ $(function () {
       {
         data: null, orderable: false,
         render: function (data, type, row) {
-          return '<a class="btn btn-sm btn-outline-secondary" href="/audits/records/' + row.id + '/download" title="Excel: Tags, Difference Tags, Stage and Location summary">' +
+          return '<a class="btn btn-sm btn-outline-secondary" href="/audits/records/' + row.id + '/download" title="Excel: Tags (scanned), Missing Tags, Stage and Location summary">' +
                  '<i class="bi bi-download"></i></a>';
         },
       },
