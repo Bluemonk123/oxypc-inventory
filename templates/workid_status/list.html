@@ -32,6 +32,15 @@
     <div>
       <input type="date" name="completed_to" value="{{ f_completed_to }}" class="form-control form-control-sm" title="Completed To">
     </div>
+    <div>
+      {# Scrap Type (2026-10-23): the L3/L4 Normal / Replacement Scrap decision
+         taken on a WorkID. Default No Scrap. #}
+      <select name="scrap_type" class="form-select form-select-sm" title="Scrap Type">
+        {% for v, lbl in [('all', 'All Scrap Types'), ('normal', 'Normal Scrap'), ('replacement', 'Replacement Scrap'), ('none', 'No Scrap')] %}
+        <option value="{{ v }}" {% if f_scrap_type == v %}selected{% endif %}>{{ lbl }}</option>
+        {% endfor %}
+      </select>
+    </div>
     <div class="filter-bar-check">
       <div class="form-check text-nowrap mb-0">
         <input type="checkbox" class="form-check-input" id="excludeAdminChk" name="exclude_admin"
@@ -101,7 +110,7 @@
     {# Carries the current filters, so Export always matches the table —
        with a filter applied or without one. #}
     <a class="btn btn-outline-success btn-sm text-nowrap"
-       href="/workid-status/export?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&show_reassigned={{ f_show_reassigned | urlencode }}">
+       href="/workid-status/export?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&show_reassigned={{ f_show_reassigned | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}">
       <i class="bi bi-download me-1"></i>Export
     </a>
   </div>
@@ -109,8 +118,8 @@
       <table id="workidTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
-            <th>Tag Number</th><th>WorkID</th><th>Model</th><th>Stage</th>
-            <th>Aging</th><th>Assigned Date</th><th>Completed Date</th><th>Notes</th><th>Assigned Engineer</th><th>PNA</th><th>PNA History</th>
+            <th>Tag Number</th><th>WorkID</th><th>Assigned Engineer</th><th>Model</th><th>Stage</th>
+            <th>Aging</th><th>Assigned Date</th><th>Completed Date</th><th>Notes</th><th>Scrap</th><th>PNA</th><th>PNA History</th>
           </tr>
         </thead>
         {# Rows come from #workidRows below and are drawn by DataTables a page
@@ -153,6 +162,7 @@ $(document).ready(function(){
     { data: 'b', render: text(function (d) {
         return '<a href="/devices/' + encodeURIComponent(d) + '" class="font-monospace text-decoration-none">' + esc(d) + '</a>'; }) },
     { data: 'w', createdCell: cls('font-monospace fw-bold'), render: text(esc) },
+    { data: 'e', render: text(esc) },
     { data: 'm', render: text(clamp) },
     { data: 's', render: text(function (d) { return '<span class="badge bg-secondary">' + esc(d) + '</span>'; }) },
     // Aging: Assigned -> Completed (or "ongoing") + day count badge.
@@ -183,7 +193,12 @@ $(document).ready(function(){
         }
         return type === 'sort' ? r.cs : (type === 'display' ? (d || '\u2014') : d); } },
     { data: 'n', createdCell: cls('text-muted'), render: text(clamp) },
-    { data: 'e', render: text(esc) },
+    // Scrap: the L3/L4 scrap decision taken on this WorkID.
+    { data: 'x', createdCell: cls('text-nowrap'), render: function (d, type) {
+        if (type !== 'display') return d || '';
+        if (!d) return '<span class="text-muted">\u2014</span>';
+        return '<span class="badge ' + (d.indexOf('Replacement') === 0 ? 'bg-warning text-dark' : 'bg-danger') + '">' + esc(d) + '</span>';
+      } },
     { data: 'p', createdCell: cls('text-nowrap'), render: function (d, type, r) {
         if (type !== 'display') return d ? 'PNA' : '';
         return d ? '<span class="badge bg-danger" title="' + esc(r.pt) + '">PNA</span>' : '<span class="text-muted">\u2014</span>';

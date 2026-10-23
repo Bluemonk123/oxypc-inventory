@@ -176,6 +176,29 @@ def _is_l3l4_request_movement(mv) -> bool:
 
 MAIN_ROW_CAP = 3000
 
+# ── Scrap column / Scrap Type filter (2026-10-23) ───────────────────────────
+# An L3/L4 engineer's Normal Scrap / Replacement Scrap (routers/repair.py
+# l3l4_scrap) closes their L3L4- WorkID and writes the Asset History note
+# "L3/L4 <type> — returned to L1/L2" in the same request. A WorkID's scrap
+# decision = that note on the same tag within 10 seconds of its close time.
+SCRAP_TYPES = {"normal": "Normal Scrap", "replacement": "Replacement Scrap"}
+_SCRAP_WINDOW = timedelta(seconds=10)
+
+
+def _scrap_exists(*labels):
+    """SQL: this WorkOrder row's tag has an L3/L4 scrap note (any of `labels`)
+    within _SCRAP_WINDOW of the WorkID's close time."""
+    from sqlalchemy import and_, exists, or_
+    return and_(
+        WorkOrder.work_id.like("L3L4-%"), WorkOrder.completed_at.isnot(None),
+        exists().where(
+            StageMovement.device_id == WorkOrder.device_id,
+            or_(*[StageMovement.notes.like(f"L3/L4 {lb}%") for lb in labels]),
+            StageMovement.moved_at >= WorkOrder.completed_at - _SCRAP_WINDOW,
+            StageMovement.moved_at <= WorkOrder.completed_at + _SCRAP_WINDOW,
+        ),
+    )
+
 
 def _fmt(dt, f="%d-%m-%Y %H:%M"):
     return dt.strftime(f) if dt else ""
@@ -210,6 +233,7 @@ def _rows_json(items) -> str:
             "p": bool(it.get("pna")), "pt": pna_tip, "h": it.get("pna_history") or [],
             "r": _fmt(it.get("reassigned_at")), "rd": _fmt(it.get("reassigned_at"), "%d-%m-%Y"),
             "rt": it.get("reassigned_to") or "",
+            "x": it.get("scrap") or "",
         })
     # "</" escaped so a value can never close the <script> block it sits in.
     return json.dumps(rows, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
@@ -268,6 +292,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
                         cosmetic_stage: str = Query(default=""),
                         exclude_admin: str = Query(default=""),
                         show_reassigned: str = Query(default=""),
+                        scrap_type: str = Query(default="none"),
                         highlight: str = Query(default="")):
     # ── Base query: WorkOrders joined to their Device ──────────────────────────
     # stage="asgn" WorkOrders come from /transfers' "Assign To Employee" field
@@ -286,6 +311,17 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
     # A link to one WorkID (?highlight=) always finds it, reassigned or not.
     if not show_reassigned and not highlight:
         stmt = stmt.where(WorkOrder.status != "reassigned")
+    # Scrap Type filter (default "No Scrap"): in SQL before the row cap, so
+    # the tiles and Export follow it too. ?highlight= always finds its WorkID.
+    scrap_type = (scrap_type or "none").strip().lower()
+    if scrap_type not in ("all", "none", *SCRAP_TYPES):
+        scrap_type = "none"
+    if not highlight and scrap_type != "all":
+        from sqlalchemy import not_
+        if scrap_type == "none":
+            stmt = stmt.where(not_(_scrap_exists(*SCRAP_TYPES.values())))
+        else:
+            stmt = stmt.where(_scrap_exists(SCRAP_TYPES[scrap_type]))
     if workid:
         stmt = stmt.where(WorkOrder.work_id.ilike(f"%{workid.strip()}%"))
     if tag:
@@ -473,6 +509,23 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
                     successor_by_wo[wo.id] = ("moved to " + STAGE_LABELS.get(m.to_stage, getattr(m.to_stage, "value", "") or "")
                                               + (f" by {who}" if who else ""))
 
+    # Scrap column: the scrap note matched to each closed L3L4- WorkID.
+    scrap_by_wo = {}
+    _l3_closed = [wo for wo, _d in rows if (wo.work_id or "").startswith("L3L4-") and wo.completed_at]
+    if _l3_closed:
+        from sqlalchemy import or_ as _or
+        _notes = (await db.execute(
+            select(StageMovement.device_id, StageMovement.moved_at, StageMovement.notes)
+            .where(StageMovement.device_id.in_({wo.device_id for wo in _l3_closed}),
+                   _or(*[StageMovement.notes.like(f"L3/L4 {lb}%") for lb in SCRAP_TYPES.values()]))
+        )).all()
+        for wo in _l3_closed:
+            near = [n for n in _notes if n.device_id == wo.device_id and n.moved_at
+                    and abs(n.moved_at - wo.completed_at) <= _SCRAP_WINDOW]
+            if near:
+                n = min(near, key=lambda n: abs((n.moved_at - wo.completed_at).total_seconds()))
+                scrap_by_wo[wo.id] = next((lb for lb in SCRAP_TYPES.values() if n.notes.startswith(f"L3/L4 {lb}")), "")
+
     today = app_now()
     items = []
     for wo, dev in rows:
@@ -552,6 +605,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
             "ongoing": movement_completed_at is None and reassigned_at is None,
             "reassigned_at": reassigned_at,
             "reassigned_to": successor_by_wo.get(wo.id, ""),
+            "scrap": scrap_by_wo.get(wo.id, ""),
             "notes": (dev.notes if dev else None),
             "engineer": movement_engineer,
             "engineer_username": engineer_username,
@@ -682,6 +736,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
         "f_completed_from": completed_from, "f_completed_to": completed_to,
         "f_cosmetic_stage": cosmetic_stage, "f_exclude_admin": exclude_admin,
         "f_show_reassigned": show_reassigned,
+        "f_scrap_type": scrap_type,
         "highlight": highlight,
         "main_truncated": main_truncated, "main_total": main_total,
         "main_cap": MAIN_ROW_CAP,
@@ -698,7 +753,8 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
                                completed_to: str = Query(default=""),
                                cosmetic_stage: str = Query(default=""),
                                exclude_admin: str = Query(default=""),
-                               show_reassigned: str = Query(default="")):
+                               show_reassigned: str = Query(default=""),
+                               scrap_type: str = Query(default="none")):
     """CSV of exactly the rows the page is showing.
 
     Delegates to the page handler rather than repeating its query, so the
@@ -714,13 +770,13 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
                                workid=workid, tag=tag, engineer=engineer,
                                completed_from=completed_from, completed_to=completed_to,
                                cosmetic_stage=cosmetic_stage, exclude_admin=exclude_admin,
-                               show_reassigned=show_reassigned, highlight="")
+                               show_reassigned=show_reassigned, scrap_type=scrap_type, highlight="")
     items = page.context["items"]
 
     buf = _io.StringIO()
     w = _csv.writer(buf)
     w.writerow(["Tag Number", "Lot Number", "Make", "Model", "Engineer Name", "Stage",
-                "Assigned Date", "Completed Date", "Status", "PNA", "PNA History"])
+                "Assigned Date", "Completed Date", "Status", "Scrap", "PNA", "PNA History"])
     for it in items:
         w.writerow([
             it.get("barcode") or "",
@@ -735,6 +791,7 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             (("Reassigned " + it["reassigned_at"].strftime("%Y-%m-%d %H:%M")
               + (f" ({it['reassigned_to']})" if it.get("reassigned_to") else ""))
              if it.get("reassigned_at") else ("Completed" if it.get("completed_at") else "Open")),
+            it.get("scrap") or "",
             "Yes" if it.get("pna") else "No",
             it.get("pna_history_text") or "",
         ])
