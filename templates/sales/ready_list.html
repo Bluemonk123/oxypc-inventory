@@ -239,6 +239,7 @@
           <th>Warranty</th>
           <th>Assigned To</th>
           <th>Min Selling Price</th><th>Max Selling Price</th>
+          <th>QC Report</th>
           <th>Action</th>
         </tr>
       </thead>
@@ -649,6 +650,25 @@
 </div>
 
 <!-- Set price modal — one Tag Number -->
+{# QC Report preview (2026-10-23): the tag's latest Stress / QC report PDF. #}
+<div class="modal fade" id="qcReportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>QC Report — <code id="qcr_tag"></code></h6>
+        <div class="ms-auto d-flex gap-2 align-items-center">
+          <a id="qcr_download" class="btn btn-sm btn-success" href="#"><i class="bi bi-download me-1"></i>Download</a>
+          <button type="button" id="qcr_print" class="btn btn-sm btn-primary"><i class="bi bi-printer me-1"></i>Print</button>
+          <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+      </div>
+      <div class="modal-body p-0" style="height:80vh">
+        <iframe id="qcr_frame" title="QC Report" style="width:100%;height:100%;border:0"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="tagSetPriceModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <form method="post" action="/sales/ready/set-price" class="modal-content" id="tagSetPriceForm">
@@ -748,7 +768,7 @@ $(document).ready(function(){
     // (pricing-gated) rendered before it — computed server-side since Jinja
     // already knows can_view_pricing at render time.
     columnDefs: [
-      { orderable: false, targets: [0, -1] },
+      { orderable: false, targets: [0, -2, -1] },
       { visible: false, targets: [{{ 10 if can_view_pricing(current_user) else 9 }}] },
     ],
     initComplete: function () {
@@ -808,6 +828,24 @@ if (_dm) {
     document.getElementById('dm_model').textContent = b.getAttribute('data-model') || '—';
   });
 }
+
+// ── QC Report preview popup (rows are server-rendered, so delegated) ───────
+$('#readyTable').on('click', '.qc-report-btn', function () {
+  var bc = this.getAttribute('data-barcode'), rid = this.getAttribute('data-result');
+  var url = '/stress/' + encodeURIComponent(bc) + '/report?result_id=' + encodeURIComponent(rid);
+  document.getElementById('qcr_tag').textContent = bc;
+  document.getElementById('qcr_download').href = url;
+  document.getElementById('qcr_frame').src = url + '&inline=1';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('qcReportModal')).show();
+});
+document.getElementById('qcr_print').addEventListener('click', function () {
+  var fr = document.getElementById('qcr_frame');
+  try { fr.contentWindow.focus(); fr.contentWindow.print(); }
+  catch (e) { window.open(fr.src, '_blank'); }
+});
+document.getElementById('qcReportModal').addEventListener('hidden.bs.modal', function () {
+  document.getElementById('qcr_frame').src = 'about:blank';
+});
 
 // ── Set price (one Tag Number) — button is inside DataTables-rendered rows,
 // so this is a delegated handler, not a per-element .forEach() wire-up. ──────

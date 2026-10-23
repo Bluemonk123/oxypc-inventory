@@ -366,6 +366,19 @@ async def ready_list_data(
 
     parts_badges, parts_data = await parts_display_map(db, device_ids)
 
+    # QC Report column (2026-10-23): each tag's latest saved Stress / QC
+    # result, previewed in a popup with Download / Print.
+    qc_map = {}
+    page_barcodes = [d.barcode for d, *_ in rows if d.barcode]
+    if page_barcodes:
+        from models.stress import StressTestResult
+        for bc, rid, ov in (await db.execute(
+            select(StressTestResult.barcode, StressTestResult.id, StressTestResult.overall_status)
+            .where(StressTestResult.barcode.in_(page_barcodes))
+            .order_by(StressTestResult.run_at.desc(), StressTestResult.id.desc())
+        )).all():
+            qc_map.setdefault(bc, (rid, ov))
+
     def esc(v):
         return escape(str(v)) if v is not None else ""
 
@@ -438,6 +451,17 @@ async def ready_list_data(
             cells.append('<span class="text-muted">—</span>')
         cells.append(f'₹{float(d.max_selling_price):,.0f}' if d.max_selling_price is not None
                     else '<span class="text-muted">—</span>')
+        qc = qc_map.get(d.barcode)
+        if qc:
+            ov = (qc[1] or "").upper()
+            qcls = "success" if ov == "PASS" else "danger" if ov == "FAIL" else "warning text-dark" if ov else "secondary"
+            cells.append(
+                f'<button type="button" class="btn btn-sm btn-outline-primary py-0 qc-report-btn text-nowrap" '
+                f'data-barcode="{esc(d.barcode)}" data-result="{qc[0]}" title="Preview QC Report">'
+                f'<i class="bi bi-file-earmark-pdf me-1"></i>View</button>'
+                + (f'<br><span class="badge bg-{qcls}" style="font-size:.65rem">{esc(ov.replace("_", " "))}</span>' if ov else ''))
+        else:
+            cells.append('<span class="text-muted">—</span>')
         action = f'<a href="/sales/new?barcodes={esc(d.barcode)}&qty=1" class="btn btn-sm btn-success">Sell</a>'
         if approved:
             action += '<span class="badge bg-success align-self-center ms-1">Approved</span>'
