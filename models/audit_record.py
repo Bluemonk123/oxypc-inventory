@@ -72,7 +72,9 @@ class AuditRecordItem(Base):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     audit_record_id = Column(UUID(as_uuid=True), ForeignKey("audit_records.id", ondelete="CASCADE"),
                               nullable=False, index=True)
-    device_id = Column(UUID(as_uuid=True), ForeignKey("devices.id"), nullable=False, index=True)
+    # NULL = the scanned Tag Number doesn't exist in the system: recorded as
+    # Missing (2026-10-23, schema change approved: "i approve dbdiagram").
+    device_id = Column(UUID(as_uuid=True), ForeignKey("devices.id"), nullable=True, index=True)
 
     # ── Snapshot at audit time ────────────────────────────────────────────
     barcode = Column(String(100), nullable=False)
@@ -82,7 +84,7 @@ class AuditRecordItem(Base):
     serial_no = Column(String(100), nullable=True)
     category = Column(String(100), nullable=True)
 
-    system_stage = Column(SAEnum(DeviceStage, name="devicestage"), nullable=False)
+    system_stage = Column(SAEnum(DeviceStage, name="devicestage"), nullable=True)   # NULL for a Missing (unknown) tag
     system_location_id = Column(UUID(as_uuid=True), ForeignKey("storage_locations.id"), nullable=True)
     my_stage = Column(SAEnum(DeviceStage, name="devicestage"), nullable=False)
     my_location_id = Column(UUID(as_uuid=True), ForeignKey("storage_locations.id"), nullable=True)

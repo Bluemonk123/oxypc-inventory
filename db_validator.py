@@ -439,6 +439,10 @@ class SchemaValidator:
 # change — applied at startup (and by /admin/system/schema-fix).
 RELAX_NOT_NULL = [
     ("returns", "sale_id"),   # 2026-10-22: Credit Note sale created at Payment Invoice Done
+    # 2026-10-23: Physical Audit records an unknown Tag Number as Missing
+    # (no device, no system stage) — approved ("i approve dbdiagram").
+    ("audit_record_items", "device_id"),
+    ("audit_record_items", "system_stage"),
 ]
 
 
