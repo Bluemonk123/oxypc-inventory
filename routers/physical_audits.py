@@ -472,10 +472,14 @@ async def _audit_workbook(db: AsyncSession, records: list) -> bytes:
     loc_rows = _totals(lambda r: r.my_location_id, lambda k: _loc_short(loc_map.get(k)))
 
     wb = Workbook()
+    tag_header = ["Report Date", "Tag Number", "Lot Number", "Model", "Serial", "Category",
+                  "Current Stage", "Current Location", "Audit Stage", "Audit Location",
+                  "Difference", "Notes"]
     sheets = [
-        ("Tags Summary", ["Report Date", "Tag Number", "Lot Number", "Model", "Serial", "Category",
-                          "Current Stage", "Current Location", "Audit Stage", "Audit Location",
-                          "Difference", "Notes"], tags),
+        ("Tags Summary", tag_header, tags),
+        # Only the tags found somewhere other than the system's stage /
+        # location (Difference = Yes) — 2026-10-23.
+        ("Difference Tags", tag_header, [t for t in tags if t[10] == "Yes"]),
         ("Stage Summary", ["Audit Stage", "Current Count", "Audit Count", "Difference"], stage_rows),
         ("Location Summary", ["Audit Location", "Current Count", "Audit Count", "Difference"], loc_rows),
     ]

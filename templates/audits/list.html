@@ -119,7 +119,7 @@
         <div class="d-flex gap-2 align-items-center flex-wrap">
           <input type="date" id="auditRecordsDateFilter" class="form-control form-control-sm" style="width:auto">
           <button type="button" id="auditExportBtn" class="btn btn-sm btn-outline-success"
-                  title="Excel workbook: Tags Summary, Stage Summary and Location Summary sheets (the date picked, or all dates)">
+                  title="Excel workbook: Tags Summary, Difference Tags, Stage Summary and Location Summary sheets (the date picked, or all dates)">
             <i class="bi bi-file-earmark-excel me-1"></i>Export
           </button>
         </div>
@@ -316,7 +316,7 @@ $(function () {
       {
         data: null, orderable: false,
         render: function (data, type, row) {
-          return '<a class="btn btn-sm btn-outline-secondary" href="/audits/records/' + row.id + '/download" title="Excel: Tags, Stage and Location summary">' +
+          return '<a class="btn btn-sm btn-outline-secondary" href="/audits/records/' + row.id + '/download" title="Excel: Tags, Difference Tags, Stage and Location summary">' +
                  '<i class="bi bi-download"></i></a>';
         },
       },
