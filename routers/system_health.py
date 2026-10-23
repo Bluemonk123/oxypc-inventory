@@ -617,6 +617,90 @@ async def reassign_fix_apply(request: Request, current_user: User = Depends(admi
     return JSONResponse({"ok": True, "updated": len(ids)})
 
 
+# ── Physical Audit: two rows for one Report Date (2026-10-23) ────────────────
+# A day scanned both before and after the one-row-per-date change got an old
+# row (with stage / location set) and a new one (unset). Merge moves the old
+# rows' tags into the new row, recounts Physical, keeps the new row's Current
+# Count (active stock), joins notes, then deletes the emptied old rows.
+# Only dates that have a new-style row are touched; older dates are left as
+# they were saved. Audited with every id before delete.
+
+async def _audit_merge_candidates(db):
+    from sqlalchemy import func, select
+    from models.audit_record import AuditRecord, AuditRecordItem
+    dates = (await db.execute(
+        select(AuditRecord.report_date).group_by(AuditRecord.report_date).having(func.count(AuditRecord.id) > 1)
+    )).scalars().all()
+    out = []
+    for d in sorted(dates, reverse=True):
+        recs = (await db.execute(
+            select(AuditRecord).where(AuditRecord.report_date == d).order_by(AuditRecord.created_at.asc())
+        )).scalars().all()
+        target = next((r for r in recs if r.my_stage is None and r.my_location_id is None and r.category is None), None)
+        if target is None:
+            continue
+        others = [r for r in recs if r.id != target.id]
+        counts = dict((await db.execute(
+            select(AuditRecordItem.audit_record_id, func.count(AuditRecordItem.id))
+            .where(AuditRecordItem.audit_record_id.in_([r.id for r in recs]))
+            .group_by(AuditRecordItem.audit_record_id)
+        )).all())
+        out.append({"date": d, "target": target, "others": others,
+                    "target_tags": counts.get(target.id, 0),
+                    "moved_tags": sum(counts.get(r.id, 0) for r in others)})
+    return out
+
+
+@router.get("/audit-merge-fix")
+async def audit_merge_preview(current_user: User = Depends(admin_only)):
+    from database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        c = await _audit_merge_candidates(db)
+    return JSONResponse({"dates": len(c), "list": [
+        {"date": x["date"].isoformat(), "keep_row": str(x["target"].id), "rows_merged": len(x["others"]),
+         "tags_moved": x["moved_tags"], "tags_already_in_row": x["target_tags"]} for x in c]})
+
+
+@router.post("/audit-merge-fix")
+async def audit_merge_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import func, select, update, delete
+    from database import AsyncSessionLocal
+    from models.audit_record import AuditRecord, AuditRecordItem
+    from services.audit_engine import audit
+    merged_rows = 0
+    async with AsyncSessionLocal() as db:
+        for x in await _audit_merge_candidates(db):
+            target, others = x["target"], x["others"]
+            other_ids = [r.id for r in others]
+            await audit(db, user=current_user, action="PHYSICAL_AUDIT_ROWS_MERGED", table_name="audit_records",
+                        record_id=str(target.id),
+                        old_value={"report_date": x["date"].isoformat(), "rows": [
+                            {"id": str(r.id), "my_stage": r.my_stage.value if r.my_stage else None,
+                             "my_location_id": str(r.my_location_id) if r.my_location_id else None,
+                             "category": r.category, "current_count": r.current_count,
+                             "physical_count": r.physical_count, "notes": r.notes} for r in others]},
+                        new_value={"kept_row": str(target.id), "tags_moved": x["moved_tags"]},
+                        notes="Same Report Date rows merged into the one-row-per-date row; "
+                              "the merged rows' tags now belong to the kept row.",
+                        request=request)
+            await db.execute(update(AuditRecordItem).where(AuditRecordItem.audit_record_id.in_(other_ids))
+                             .values(audit_record_id=target.id).execution_options(synchronize_session=False))
+            notes = [n for n in [target.notes] + [r.notes for r in others] if (n or "").strip()]
+            target.notes = " | ".join(notes) if notes else None
+            target.physical_count = (await db.execute(
+                select(func.count(AuditRecordItem.id)).where(AuditRecordItem.audit_record_id == target.id,
+                                                             AuditRecordItem.device_id.isnot(None))
+            )).scalar() or 0
+            await db.execute(delete(AuditRecord).where(AuditRecord.id.in_(other_ids))
+                             .execution_options(synchronize_session=False))
+            merged_rows += len(other_ids)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Physical Audit merge done: {merged_rows} row(s) merged.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "merged_rows": merged_rows})
+
+
 # ── Data Fixes page (2026-10-22) ─────────────────────────────────────────────
 # One admin page: preview + Apply button for each fill, and the data check.
 # The Apply buttons are ordinary form posts the admin clicks.
@@ -631,6 +715,9 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
         reassign_c = await _reassign_candidates(db)
+        audit_merge = [{"date": x["date"].strftime("%d-%m-%Y"), "rows": len(x["others"]),
+                        "moved": x["moved_tags"], "kept": x["target_tags"]}
+                       for x in await _audit_merge_candidates(db)]
     spec_fields = {c: sum(1 for _i, ch, _r in spec if c in ch) for c in _SPEC_COLS}
     spec_examples, seen = [], set()
     for _i, ch, r in spec:
@@ -655,6 +742,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         # Only numbers with 2+ copies NOT in Trash need a decision; the rest
         # (one copy already trashed) are counted, not listed.
         "reassign_c": reassign_c[:300], "reassign_total": len(reassign_c),
+        "audit_merge": audit_merge, "audit_merge_rows": sum(a["rows"] for a in audit_merge),
         "case_dupes": [g for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) > 1],
         "case_dupes_handled": sum(1 for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) <= 1),
         "field_labels": {"ram_gb": "RAM GB", "ram_summary": "RAM", "total_ram_count": "Total RAM Count",

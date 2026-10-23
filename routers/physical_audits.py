@@ -345,11 +345,13 @@ async def submit_audit(
         except ValueError:
             return JSONResponse({"ok": False, "error": "Invalid location selected."})
 
-    # The day's row: report_date only (stage / location / category unset).
-    # Rows saved before 2026-10-23 carry those and are left as they are.
+    # The day's row: report_date only. Prefer the row with stage / location /
+    # category unset; otherwise join any row already saved for that date
+    # (rows saved before 2026-10-23 carry those fields) so one date never
+    # gets a second row.
     audit_record = (await db.execute(
-        select(AuditRecord).where(AuditRecord.report_date == r_date, AuditRecord.my_stage.is_(None),
-                                  AuditRecord.my_location_id.is_(None), AuditRecord.category.is_(None))
+        select(AuditRecord).where(AuditRecord.report_date == r_date)
+        .order_by(AuditRecord.my_stage.is_(None).desc(), AuditRecord.created_at.asc())
     )).scalars().first()
     if not audit_record:
         audit_record = AuditRecord(report_date=r_date, current_count=await _active_stock_count(db),
