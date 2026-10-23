@@ -66,10 +66,10 @@
               <i class="bi bi-pencil"></i> Edit
             </button>
             {% if r.status != 'sold' %}
-            <form method="post" action="/scrap-for-sale/{{ r.id }}/sell" class="d-inline">
-              <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
-              <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2">Sell</button>
-            </form>
+            {# Opens the scrap sale form for this Scrap ID; saving records it on
+               the Scrap Sale Report and moves its tags to Sold (2026-10-23). #}
+            <button type="button" class="btn btn-sm btn-outline-success py-0 px-2"
+                    onclick="openScrapSale({batch: '{{ r.id }}'})">Sell</button>
             {% else %}
             <span class="badge bg-success">Sold</span>
             {% endif %}
@@ -86,33 +86,8 @@
   </div>
 </div>
 
-<!-- Devices at this stage with no batch yet — reached Scrap for Sale via a
-     bulk stage-move instead of the /transfers workflow, so they have no
-     Scrap ID. Listed here so they stay visible/actionable. -->
-<div class="card border-0 shadow-sm mt-3">
-  <div class="card-header bg-transparent fw-semibold">
-    <i class="bi bi-exclamation-triangle text-warning me-2"></i>Devices Not Yet in a Batch
-    <span class="badge bg-secondary ms-1">{{ unbatched_devices | length }}</span>
-  </div>
-  <div class="card-body p-0">
-    <table id="scrapForSaleUnbatchedTable" class="table table-hover mb-0 small">
-      <thead class="table-dark">
-        <tr><th>Tag Number</th><th>Brand</th><th>Model</th><th>Grade</th><th>Moved</th></tr>
-      </thead>
-      <tbody>
-        {% for d in unbatched_devices %}
-        <tr>
-          <td><a href="/devices/{{ d.barcode }}" class="font-monospace text-decoration-none">{{ d.barcode }}</a></td>
-          <td>{{ d.brand or '—' }}</td>
-          <td>{{ d.model or '—' }}</td>
-          <td>{{ d.grade }}</td>
-          <td>{{ d.updated_at.strftime('%d-%m-%Y') if d.updated_at else '—' }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-</div>
+{# "Devices Not Yet in a Batch" removed (2026-10-23): scrap tags stay on Tags
+   Scrapped (/scrap-products) until Verified and batched through Transfers. #}
 
 <!-- Edit modal — sets Min/Max Selling Price for this Scrap ID -->
 <div class="modal fade" id="scrapEditModal" tabindex="-1" aria-hidden="true">
@@ -178,139 +153,7 @@
   </div>
 </div>
 
-<!-- Custom Sale modal (2026-10-16) — saves a stand-alone scrap sale for the
-     Scrap Sale Report. Line totals shown here are a preview only; the server
-     recomputes every total from the raw fields on save. -->
-<style>
-  #customSaleModal .cs-entity-box { background: #f8f9fa; border: 1px solid #dee2e6; border-radius: .375rem; padding: .5rem .75rem; font-size: .85rem; }
-  #customSaleModal .cs-items td { vertical-align: middle; }
-  #customSaleModal .cs-items input, #customSaleModal .cs-items select { min-width: 90px; }
-  #customSaleModal .cs-items .cs-name { min-width: 160px; }
-  #customSaleModal .cs-items input:disabled { background: #e9ecef; }
-</style>
-<div class="modal fade" id="customSaleModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
-    <form method="post" action="/scrap-for-sale/custom-sale" id="customSaleForm" class="modal-content" autocomplete="off">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-cart-plus me-2"></i>Custom Sale</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        {# Row 0 — Entity + its Company Setting details #}
-        <div class="row g-3 mb-3">
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">Entity <span class="text-danger">*</span></label>
-            <select name="entity" id="csEntity" class="form-select" required>
-              <option value="">— Select Entity —</option>
-              {% for e in cs_entities %}<option value="{{ e }}">{{ e }}</option>{% endfor %}
-            </select>
-          </div>
-          <div class="col-md-8">
-            <label class="form-label fw-semibold">Entity Details</label>
-            <div id="csEntityDetails" class="cs-entity-box text-muted">Select an entity to see its details.</div>
-          </div>
-        </div>
-        {# Row 1 #}
-        <div class="row g-3 mb-3">
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">Sale Date <span class="text-danger">*</span></label>
-            <input type="date" name="sale_date" class="form-control" value="{{ cs_today }}" required>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">Sales Person</label>
-            <input type="text" name="sales_person" class="form-control" list="csSalesPersonList" maxlength="100">
-            <datalist id="csSalesPersonList">
-              {% for sp in cs_sales_people %}<option value="{{ sp }}">{% endfor %}
-            </datalist>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">Invoice Number</label>
-            <input type="text" name="invoice_number" class="form-control" maxlength="50">
-          </div>
-        </div>
-        {# Row 2 — Customer #}
-        <div class="row g-3 mb-3">
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">Company Name <span class="text-danger">*</span></label>
-            <input type="text" name="customer_company" class="form-control" maxlength="200" required>
-          </div>
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">Phone Number</label>
-            <input type="tel" name="customer_phone" class="form-control" maxlength="50">
-          </div>
-          <div class="col-md-4">
-            <label class="form-label fw-semibold">Email Address</label>
-            <input type="email" name="customer_email" class="form-control" maxlength="100">
-          </div>
-        </div>
-        {# Row 3 — Customer address #}
-        <div class="row g-3 mb-3">
-          <div class="col-md-6">
-            <label class="form-label fw-semibold">Address</label>
-            <input type="text" name="customer_address" class="form-control" maxlength="500">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-semibold">City</label>
-            <input type="text" name="customer_city" class="form-control" maxlength="100">
-          </div>
-          <div class="col-md-3">
-            <label class="form-label fw-semibold">State</label>
-            <input type="text" name="customer_state" class="form-control" maxlength="100">
-          </div>
-        </div>
-        {# Row 4 — Items #}
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <span class="fw-semibold">Items</span>
-          <span class="small text-muted">Total Price = Total Weight &times; Unit Price (Weight) <em>or</em> Quantity &times; Unit Price</span>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-sm table-bordered cs-items mb-0">
-            <thead class="table-light">
-              <tr>
-                <th>Item Name</th><th>Item Category</th><th>Total Weight (kg)</th><th>Unit Price (Weight)</th>
-                <th>Quantity</th><th>Unit Price</th><th class="text-end">Total Price</th><th></th>
-              </tr>
-            </thead>
-            <tbody id="csItemsBody"></tbody>
-            <tfoot>
-              <tr>
-                <td colspan="8">
-                  <button type="button" id="csAddRow" class="btn btn-sm btn-outline-primary"><i class="bi bi-plus-lg me-1"></i>Add Item</button>
-                </td>
-              </tr>
-              <tr class="table-light fw-semibold">
-                <td colspan="6" class="text-end">Total Sale Price</td>
-                <td class="text-end text-nowrap" id="csGrandTotal">₹0.00</td><td></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-        <template id="csRowTpl">
-          <tr>
-            <td><input type="text" name="item_name" class="form-control form-control-sm cs-name" maxlength="200" required></td>
-            <td>
-              <select name="item_category" class="form-select form-select-sm">
-                <option value="">—</option>
-                {% for c in cs_categories %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
-              </select>
-            </td>
-            <td><input type="number" step="0.001" min="0" name="total_weight" class="form-control form-control-sm cs-w"></td>
-            <td><input type="number" step="0.01" min="0" name="unit_price_weight" class="form-control form-control-sm cs-w"></td>
-            <td><input type="number" step="1" min="0" name="quantity" class="form-control form-control-sm cs-q"></td>
-            <td><input type="number" step="0.01" min="0" name="unit_price" class="form-control form-control-sm cs-q"></td>
-            <td class="text-end text-nowrap cs-line-total">₹0.00</td>
-            <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 cs-del" title="Remove item"><i class="bi bi-x-lg"></i></button></td>
-          </tr>
-        </template>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Save Sale</button>
-      </div>
-    </form>
-  </div>
-</div>
+{% include "scrap/_sale_modal.html" %}
 
 {% endblock %}
 {% block scripts %}
@@ -319,10 +162,6 @@ initGlobalTable('#scrapForSaleTable', {
   order: [[0, 'desc']],
   language: { emptyTable: 'No Scrap for Sale batches yet — created from /transfers when Transfer Type is Scrap for Sale.' },
   columnDefs: [{ orderable: false, targets: [6] }],
-});
-initGlobalTable('#scrapForSaleUnbatchedTable', {
-  order: [[4, 'desc']],
-  language: { emptyTable: 'No unbatched devices — every device at this stage came through a Scrap for Sale batch.' },
 });
 
 document.getElementById('scrapEditForm').addEventListener('submit', function(){
@@ -360,72 +199,5 @@ function wireBreakdownModal(btnSelector, modalId, labelId, bodyId){
 wireBreakdownModal('.scrap-tags-btn', 'scrapTagsModal', 'scrapTagsLabel', 'scrapTagsBody');
 wireBreakdownModal('.scrap-parts-btn', 'scrapPartsModal', 'scrapPartsLabel', 'scrapPartsBody');
 
-// ── Custom Sale modal ────────────────────────────────────────────────────────
-(function () {
-  var ENTITY_DETAILS = {{ cs_entity_details | tojson }};
-  var body = document.getElementById('csItemsBody');
-  var tpl = document.getElementById('csRowTpl');
-  var inr = function (n) { return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
-  var num = function (el) { var v = parseFloat(el.value); return isNaN(v) ? null : v; };
-
-  document.getElementById('csEntity').addEventListener('change', function () {
-    var box = document.getElementById('csEntityDetails');
-    var d = ENTITY_DETAILS[this.value];
-    if (!this.value) { box.className = 'cs-entity-box text-muted'; box.textContent = 'Select an entity to see its details.'; return; }
-    if (!d) { box.className = 'cs-entity-box text-warning'; box.textContent = 'No Company Setting is tagged with this entity — the sale will save without entity details.'; return; }
-    box.className = 'cs-entity-box';
-    box.innerHTML = '<div class="fw-semibold">' + escHtml(d.name) + '</div>' +
-      (d.address ? '<div>' + escHtml(d.address) + '</div>' : '') +
-      '<div class="text-muted">' + [d.gstin ? 'GSTIN: ' + escHtml(d.gstin) : '', d.state ? 'State: ' + escHtml(d.state) : '',
-        d.phone ? 'Phone: ' + escHtml(d.phone) : '', d.email ? 'Email: ' + escHtml(d.email) : ''].filter(Boolean).join(' &middot; ') + '</div>';
-  });
-
-  function recalc() {
-    var grand = 0;
-    body.querySelectorAll('tr').forEach(function (tr) {
-      var w = tr.querySelectorAll('.cs-w'), q = tr.querySelectorAll('.cs-q');
-      var wUsed = Array.prototype.some.call(w, function (i) { return i.value !== ''; });
-      var qUsed = Array.prototype.some.call(q, function (i) { return i.value !== ''; });
-      // One pricing combination per row: filling one pair locks the other.
-      w.forEach(function (i) { i.disabled = qUsed; });
-      q.forEach(function (i) { i.disabled = wUsed; });
-      var t = 0;
-      if (wUsed && num(w[0]) !== null && num(w[1]) !== null) t = num(w[0]) * num(w[1]);
-      else if (qUsed && num(q[0]) !== null && num(q[1]) !== null) t = num(q[0]) * num(q[1]);
-      t = Math.round(t * 100) / 100;
-      tr.querySelector('.cs-line-total').textContent = inr(t);
-      grand += t;
-    });
-    document.getElementById('csGrandTotal').textContent = inr(grand);
-  }
-  function addRow() {
-    body.appendChild(tpl.content.cloneNode(true));
-    recalc();
-  }
-  body.addEventListener('input', recalc);
-  body.addEventListener('click', function (e) {
-    var b = e.target.closest('.cs-del');
-    if (!b) return;
-    if (body.querySelectorAll('tr').length > 1) b.closest('tr').remove();
-    else b.closest('tr').querySelectorAll('input').forEach(function (i) { i.value = ''; });
-    recalc();
-  });
-  document.getElementById('csAddRow').addEventListener('click', addRow);
-  addRow();
-
-  document.getElementById('customSaleForm').addEventListener('submit', function (e) {
-    var bad = null;
-    body.querySelectorAll('tr').forEach(function (tr, idx) {
-      if (bad) return;
-      var w = tr.querySelectorAll('.cs-w'), q = tr.querySelectorAll('.cs-q');
-      var wOk = w[0].value !== '' && w[1].value !== '', qOk = q[0].value !== '' && q[1].value !== '';
-      if (!wOk && !qOk) bad = 'Item row ' + (idx + 1) + ': enter Total Weight × Unit Price (Weight) or Quantity × Unit Price.';
-    });
-    if (bad) { e.preventDefault(); alert(bad); return; }
-    // Disabled inputs are not submitted, which would misalign the parallel
-    // item arrays — re-enable them (they are empty) just before submit.
-    body.querySelectorAll('input:disabled').forEach(function (i) { i.disabled = false; });
-  });
-})();
 </script>
 {% endblock %}

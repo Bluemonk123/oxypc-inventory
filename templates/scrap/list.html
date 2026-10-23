@@ -5,18 +5,32 @@
 <div class="d-flex justify-content-between align-items-center mb-2">
   <span class="text-muted small">{{ items|length }} scrapped product(s)</span>
 </div>
+{# Bulk action, moved next to the table's search box once the table is ready. #}
+<div id="scrapBulkBtns" class="d-none align-items-center gap-2 me-2">
+  <button type="button" id="scrapBulkVerifyBtn" class="btn btn-warning btn-sm text-nowrap" disabled>
+    <i class="bi bi-clipboard-check me-1"></i>Verify (<span id="scrapBulkCount">0</span>)
+  </button>
+  <button type="button" id="scrapBulkSellBtn" class="btn btn-success btn-sm text-nowrap" disabled>
+    <i class="bi bi-cart-plus me-1"></i>Sell (<span id="scrapSellCount">0</span>)
+  </button>
+</div>
 <div class="card border-0 shadow-sm">
   <div class="card-body p-0">
     <div class="table-responsive">
       <table id="scrapTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark"><tr>
+          <th><input type="checkbox" class="form-check-input" id="scrapSelectAll" title="Select all on this page"></th>
           <th>Scrapped Tag Numbers</th><th>Brand</th><th>Model</th><th>Grade</th>
           <th>Received User</th><th>Amount</th><th>Updated On</th><th>Notes</th>
           <th>Received</th><th>Action</th>
         </tr></thead>
         <tbody>
           {% for it in items %}
-          <tr>
+          {# Checkbox where the row offers Verify or Sell: Verify (n) acts on
+             the ticked unverified tags, Sell (n) on the ticked verified ones. #}
+          {% set can_verify = it.can_verify or it.scrap_verified %}
+          <tr data-tag="{{ it.barcode }}">
+            <td>{% if can_verify %}<input type="checkbox" class="form-check-input scrapChk" value="{{ it.barcode }}">{% endif %}</td>
             <td>
               <a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a>
               {% if it.replace_with_barcode %}
@@ -44,7 +58,8 @@
                       title="Search and select the replacement tag">
                 <i class="bi bi-arrow-repeat"></i> Replace
               </button>
-              {% else %}
+              {% endif %}
+              {% if it.l34_status != 'Replacement Scrap' or it.replace_with_barcode %}
               {% if not it.scrap_verified %}
               <button type="button" class="btn btn-sm btn-warning py-0 px-2"
                       onclick="openVerifyModal('{{ it.barcode }}', '{{ it.brand }} {{ it.model }}')"
@@ -52,14 +67,14 @@
                 <i class="bi bi-clipboard-check"></i> Verify
               </button>
               {% else %}
-              <a href="/sales/new?barcode={{ it.barcode }}" class="btn btn-sm btn-success py-0 px-2"><i class="bi bi-cart-plus"></i> Sell</a>
+              <button type="button" class="btn btn-sm btn-success py-0 px-2" onclick="openScrapSale({tags: ['{{ it.barcode }}']})"><i class="bi bi-cart-plus"></i> Sell</button>
               {% endif %}
               <a href="/devices/{{ it.barcode }}" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="bi bi-eye"></i> View</a>
               {% endif %}
             </td>
           </tr>
           {% else %}
-          <tr><td colspan="10" class="text-center text-muted py-4">No scrapped products.</td></tr>
+          <tr><td colspan="11" class="text-center text-muted py-4">No scrapped products.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -95,6 +110,35 @@
           {% endfor %}
         </tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+{% include "scrap/_sale_modal.html" %}
+
+<!-- Bulk Verify Modal (2026-10-23) -->
+<div class="modal fade" id="bulkVerifyModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-warning bg-opacity-10">
+        <h5 class="modal-title"><i class="bi bi-clipboard-check me-2"></i>Verify <span id="bvCount">0</span> Scrapped Tag(s)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="bulkVerifyForm">
+        <div class="modal-body">
+          <div class="mb-2 small text-muted">Each tag below is marked Received = Yes, and its Sell button appears.</div>
+          <div id="bvTags" class="border rounded p-2 mb-3 font-monospace small" style="max-height:160px;overflow:auto"></div>
+          <div class="mb-1">
+            <label class="form-label fw-semibold">Notes <span class="text-muted fw-normal">(added to every selected tag)</span></label>
+            <textarea name="notes" class="form-control" rows="2" placeholder="Condition, remarks..."></textarea>
+          </div>
+          <div id="bvError" class="alert alert-danger py-2 small d-none mt-2"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-warning" id="bvSubmit"><i class="bi bi-check2-circle me-1"></i>Verify</button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -173,10 +217,93 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script src="/static/js/tag-scan-autocheck.js?v={{ ASSET_VERSION }}"></script>
 <script>
+// Selected tags live in this Set (not just the checkboxes) so a selection on
+// one page survives paging and the scan box narrowing the table.
+var scrapSelected = new Set();
+var SCRAP_VERIFIED = {{ verified_map | tojson }};
+function selVerify() { return Array.from(scrapSelected).filter(function (b) { return !SCRAP_VERIFIED[b]; }); }
+function selSell() { return Array.from(scrapSelected).filter(function (b) { return SCRAP_VERIFIED[b]; }); }
+function updateScrapSel() {
+  var nv = selVerify().length, ns = selSell().length;
+  document.getElementById('scrapBulkCount').textContent = nv;
+  document.getElementById('scrapBulkVerifyBtn').disabled = nv === 0;
+  document.getElementById('scrapSellCount').textContent = ns;
+  document.getElementById('scrapBulkSellBtn').disabled = ns === 0;
+  var boxes = document.querySelectorAll('#scrapTable tbody .scrapChk');
+  var all = boxes.length > 0 && Array.prototype.every.call(boxes, function (c) { return c.checked; });
+  var sa = document.getElementById('scrapSelectAll');
+  if (sa) sa.checked = all;
+}
 $(document).ready(function(){
-  if ($('#scrapTable tbody tr td').length > 1) $('#scrapTable').DataTable({pageLength: 12, order:[]});
+  if ($('#scrapTable tbody tr td').length > 1) {
+    // Global Table with scan-to-select: scanning a Tag Number in the table's
+    // own search box narrows the table and ticks that tag.
+    initGlobalTable('#scrapTable', {
+      pageLength: 12, order: [],
+      columnDefs: [{ orderable: false, targets: [0, -1] }],
+      initComplete: function () {
+        $('#scrapBulkBtns').removeClass('d-none').addClass('d-flex')
+          .insertBefore($(this.api().table().container()).find('.dataTables_filter'));
+      },
+      drawCallback: function () {
+        document.querySelectorAll('#scrapTable tbody .scrapChk').forEach(function (c) {
+          c.checked = scrapSelected.has(c.value);
+        });
+        updateScrapSel();
+      },
+    }, {
+      scan: { inputId: 'scrapScanInput', selection: scrapSelected, checkboxSelector: '.scrapChk',
+              onChange: updateScrapSel, placeholder: 'Scan Tag Number, or search…' },
+    });
+  }
   if ($('#scrapPartsTable tbody tr td').length > 1) $('#scrapPartsTable').DataTable({pageLength: 12, order:[]});
+});
+
+$('#scrapTable').on('change', '.scrapChk', function () {
+  if (this.checked) scrapSelected.add(this.value); else scrapSelected.delete(this.value);
+  updateScrapSel();
+});
+// Delegated from document: the Global Table moves the header (and this
+// checkbox) into its own scroll-head, outside #scrapTable.
+$(document).on('change', '#scrapSelectAll', function () {
+  var ck = this.checked;
+  document.querySelectorAll('#scrapTable tbody .scrapChk').forEach(function (c) {
+    c.checked = ck;
+    if (ck) scrapSelected.add(c.value); else scrapSelected.delete(c.value);
+  });
+  updateScrapSel();
+});
+document.getElementById('scrapBulkSellBtn').addEventListener('click', function () {
+  var tags = selSell();
+  if (tags.length) openScrapSale({tags: tags});
+});
+document.getElementById('scrapBulkVerifyBtn').addEventListener('click', function () {
+  var tags = selVerify();
+  if (!tags.length) return;
+  document.getElementById('bvCount').textContent = tags.length;
+  document.getElementById('bvTags').textContent = tags.join(', ');
+  document.getElementById('bvError').classList.add('d-none');
+  document.getElementById('bvSubmit').disabled = false;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('bulkVerifyModal')).show();
+});
+document.getElementById('bulkVerifyForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var fd = new FormData(this), err = document.getElementById('bvError'), btn = document.getElementById('bvSubmit');
+  fd.append('barcodes', selVerify().join(','));
+  var csrfEl = document.querySelector('[name="csrf_token"]');
+  fd.append('csrf_token', csrfEl ? csrfEl.value : '');
+  btn.disabled = true;
+  fetch('/scrap/bulk-verify', { method: 'POST', body: new URLSearchParams(fd),
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'}, credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (!d.ok) { err.textContent = d.error || 'Verify failed.'; err.classList.remove('d-none'); btn.disabled = false; return; }
+      var msg = d.verified.length + ' tag(s) verified' + (d.skipped.length ? ', ' + d.skipped.length + ' skipped (already verified or not in Scrap for Sale)' : '');
+      window.location.href = '/scrap-products?success=' + encodeURIComponent(msg);
+    })
+    .catch(function () { err.textContent = 'Network error — please try again.'; err.classList.remove('d-none'); btn.disabled = false; });
 });
 
 function openVerifyModal(barcode, name) {
@@ -204,13 +331,15 @@ document.getElementById('verifyScrapForm').addEventListener('submit', function(e
         var tagCell = row.querySelector('td:first-child a');
         if (tagCell && tagCell.href.endsWith('/' + barcode)) {
           // Update Received badge (2nd-to-last cell)
+          SCRAP_VERIFIED[barcode] = true;   // the row's checkbox now counts toward Sell
+          updateScrapSel();
           var receivedCell = row.querySelector('td:nth-last-child(2)');
           if (receivedCell) receivedCell.innerHTML = '<span class="badge bg-success">Yes</span>';
           // Update Action cell (last cell)
           var actionCell = row.querySelector('td:last-child');
           if (actionCell) {
             actionCell.innerHTML =
-              '<a href="/sales/new?barcode=' + barcode + '" class="btn btn-sm btn-success py-0 px-2"><i class="bi bi-cart-plus"></i> Sell</a> ' +
+              '<button type="button" class="btn btn-sm btn-success py-0 px-2" onclick="openScrapSale({tags: [\'' + barcode + '\']})"><i class="bi bi-cart-plus"></i> Sell</button> ' +
               '<a href="/devices/' + barcode + '" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="bi bi-eye"></i> View</a>';
           }
         }

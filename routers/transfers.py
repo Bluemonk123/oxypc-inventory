@@ -1,4 +1,5 @@
 import uuid
+from urllib.parse import quote_plus
 from datetime import datetime
 from utils.timezone import app_now
 from fastapi import APIRouter, Depends, Form, Request, HTTPException
@@ -699,6 +700,22 @@ async def create_transfer(
     if not assigned_user:
         return RedirectResponse(url="/transfers/new?error=Select+an+employee+to+assign", status_code=302)
 
+    # Scrap for Sale takes only tags Tags Scrapped hands over (2026-10-23):
+    # Scrap for Sale stage, Verified, not already in a Scrap ID batch.
+    refused = []
+    if transfer_type == "scrap_for_sale":
+        from services.scrap_flow import split_scrap_transfer, refused_text
+        found = (await db.execute(select(Device).where(Device.barcode.in_(barcodes)))).scalars().all()
+        ok, refused = await split_scrap_transfer(db, found)
+        ok_bc = {d.barcode for d in ok}
+        found_bc = {d.barcode for d in found}
+        barcodes = [b for b in barcodes if b in ok_bc or b not in found_bc]
+        if refused and not ok_bc:
+            return RedirectResponse(
+                url="/transfers/new?error=" + quote_plus(
+                    "Scrap for Sale takes only Verified tags from Tags Scrapped. Refused: " + refused_text(refused)),
+                status_code=302)
+
     scrap_batch = await _maybe_create_scrap_batch(db, transfer_type, assigned_user, current_user)
 
     loc_uuid = _resolve_location_uuid(to_location_id)
@@ -837,6 +854,9 @@ async def create_transfer(
         msg += f"+—+{len(work_ids)}+WorkID(s)+created"
     if not_found:
         msg += f"+({len(not_found)}+not+found)"
+    if refused:
+        from services.scrap_flow import refused_text
+        msg += "+" + quote_plus(f"({len(refused)} refused: {refused_text(refused)})")
     return RedirectResponse(url=f"/transfers?success={msg}", status_code=302)
 
 
@@ -922,6 +942,7 @@ async def _move_devices_bulk(
     devices: list, move_kind: str, bucket_id, lot_id, group_label: str,
     transfer_type: str, assigned_user: User, transfer_date: str,
     transferred_by: str, received_by: str, notes: str, loc_uuid=None,
+    refused_out: list | None = None,
 ):
     """Shared bulk-assign logic for Move Bucket / Move Lot tabs — creates one
     StockTransfer row per member device and a WorkOrder recording the device
@@ -932,6 +953,15 @@ async def _move_devices_bulk(
     loc = None
     if loc_uuid:
         loc = (await db.execute(select(StorageLocation).where(StorageLocation.id == loc_uuid))).scalar_one_or_none()
+
+    # Scrap for Sale: only Verified Tags Scrapped tags (see create_transfer).
+    if transfer_type == "scrap_for_sale":
+        from services.scrap_flow import split_scrap_transfer
+        devices, _refused = await split_scrap_transfer(db, devices)
+        if refused_out is not None:
+            refused_out.extend(_refused)
+        if not devices:
+            return []
 
     scrap_batch = await _maybe_create_scrap_batch(db, transfer_type, assigned_user, current_user)
 
@@ -1059,7 +1089,7 @@ async def create_bucket_transfer(
         return RedirectResponse(url="/transfers/new?error=Select+an+employee+to+assign", status_code=302)
 
     loc_uuid = _resolve_location_uuid(to_location_id)
-    total_moved, not_found = [], []
+    total_moved, not_found, refused = [], [], []
     for uid in unit_ids:
         loc = (await db.execute(
             select(StorageLocation).where(StorageLocation.unit_id.ilike(uid))
@@ -1075,17 +1105,24 @@ async def create_bucket_transfer(
         moved = await _move_devices_bulk(
             db, request, current_user, devices, "bucket", None, None, uid,
             transfer_type, assigned_user, transfer_date, transferred_by, received_by,
-            notes, loc_uuid,
+            notes, loc_uuid, refused_out=refused,
         )
         total_moved.extend(moved)
 
+    from services.scrap_flow import refused_text
     if not total_moved:
+        if refused:
+            return RedirectResponse(url="/transfers/new?error=" + quote_plus(
+                "Scrap for Sale takes only Verified tags from Tags Scrapped. Refused: " + refused_text(refused)),
+                status_code=302)
         return RedirectResponse(
             url=f"/transfers/new?error=No+active+devices+found+for+bucket(s):+{','.join(unit_ids)}",
             status_code=302)
     msg = f"Moved+{len(total_moved)}+device(s)+from+{len(unit_ids) - len(not_found)}+bucket(s)"
     if not_found:
         msg += f"+({len(not_found)}+bucket(s)+not+found)"
+    if refused:
+        msg += "+" + quote_plus(f"({len(refused)} refused: {refused_text(refused)})")
     return RedirectResponse(url=f"/transfers?success={msg}", status_code=302)
 
 
@@ -1116,7 +1153,7 @@ async def create_lot_transfer(
         return RedirectResponse(url="/transfers/new?error=Select+an+employee+to+assign", status_code=302)
 
     loc_uuid = _resolve_location_uuid(to_location_id)
-    total_moved, not_found = [], []
+    total_moved, not_found, refused = [], [], []
     for ln in lot_numbers:
         lot = (await db.execute(
             select(Lot).where(Lot.lot_number.ilike(ln))
@@ -1132,17 +1169,24 @@ async def create_lot_transfer(
         moved = await _move_devices_bulk(
             db, request, current_user, devices, "lot", None, lot.id, ln,
             transfer_type, assigned_user, transfer_date, transferred_by, received_by,
-            notes, loc_uuid,
+            notes, loc_uuid, refused_out=refused,
         )
         total_moved.extend(moved)
 
+    from services.scrap_flow import refused_text
     if not total_moved:
+        if refused:
+            return RedirectResponse(url="/transfers/new?error=" + quote_plus(
+                "Scrap for Sale takes only Verified tags from Tags Scrapped. Refused: " + refused_text(refused)),
+                status_code=302)
         return RedirectResponse(
             url=f"/transfers/new?error=No+active+devices+found+for+lot(s):+{','.join(lot_numbers)}",
             status_code=302)
     msg = f"Moved+{len(total_moved)}+device(s)+from+{len(lot_numbers) - len(not_found)}+lot(s)"
     if not_found:
         msg += f"+({len(not_found)}+lot(s)+not+found)"
+    if refused:
+        msg += "+" + quote_plus(f"({len(refused)} refused: {refused_text(refused)})")
     return RedirectResponse(url=f"/transfers?success={msg}", status_code=302)
 
 

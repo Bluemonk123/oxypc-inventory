@@ -42,7 +42,7 @@ from .crm import (
 )
 from .crm_team import CRMContactTeamMember
 from .scrap_for_sale import ScrapForSale
-from .scrap_sale import ScrapSale, ScrapSaleItem
+from .scrap_sale import ScrapSale, ScrapSaleItem, ScrapSaleTag
 from .settings import AppSetting
 from .api_key import APIKey
 from .webhook import Webhook

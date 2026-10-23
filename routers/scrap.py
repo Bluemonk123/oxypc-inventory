@@ -35,6 +35,11 @@ async def scrap_products(request: Request, db: AsyncSession = Depends(get_db),
                Device.is_trashed == False)
         .order_by(Device.updated_at.desc())
     )).all()
+    # A tag leaves Tags Scrapped once it is in a live Scrap ID batch (made
+    # through Transfers) — from then on it is only on Scrap for Sale.
+    from services.scrap_flow import batched_device_ids, can_verify
+    _in_batch = await batched_device_ids(db, [d.id for d, _ in rows])
+    rows = [(d, ln) for d, ln in rows if d.id not in _in_batch]
     device_ids = [d.id for d, _ in rows]
 
     # Amount = device P&L total cost (DeviceCosting); fallback to device_price * qty
@@ -80,6 +85,7 @@ async def scrap_products(request: Request, db: AsyncSession = Depends(get_db),
             "scrap_verified": device.scrap_verified,
             "l34_status": device.l34_status or "",
             "replace_with_barcode": device.replace_with_barcode or "",
+            "can_verify": can_verify(device),
         })
 
     # Scrapped Spare Parts — faulty parts marked Scrap on the Parts Dashboard's
@@ -89,9 +95,14 @@ async def scrap_products(request: Request, db: AsyncSession = Depends(get_db),
         .order_by(PartRequest.actioned_at.desc())
     )).scalars().all()
 
+    # Sell opens the scrap sale form here too (2026-10-23) — the sale lands on
+    # the Scrap Sale Report and the tags move to Sold.
+    from routers.scrap_for_sale import _custom_sale_form_context
     return templates.TemplateResponse("scrap/list.html", {
         "request": request, "current_user": current_user, "items": items,
-        "scrapped_parts": scrapped_parts,
+        "scrapped_parts": scrapped_parts, "cs_back": "scrap-products",
+        "verified_map": {it["barcode"]: bool(it["scrap_verified"]) for it in items},
+        **(await _custom_sale_form_context(db)),
     })
 
 
@@ -116,6 +127,53 @@ async def verify_scrap(
 
     await db.commit()
     return JSONResponse({"ok": True})
+
+
+@router.post("/scrap/bulk-verify")
+async def bulk_verify_scrap(
+    request: Request,
+    barcodes: str = Form(""),
+    notes: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Tags Scrapped page "Verify (n)" (2026-10-23): the row Verify for many
+    tags at once. Only tags the row button would offer it for are changed —
+    in Scrap for Sale, not trashed, not yet verified; a Replacement Scrap tag
+    only once its replacement is set. The rest are reported as skipped."""
+    from services.audit_engine import audit
+    from services.scrap_flow import can_verify
+    wanted, seen = [], set()
+    for b in barcodes.replace("\n", ",").split(","):
+        b = b.strip()
+        if b and b.upper() not in seen:
+            seen.add(b.upper())
+            wanted.append(b)
+    if not wanted:
+        return JSONResponse({"ok": False, "error": "Select at least one tag."}, status_code=400)
+    devices = (await db.execute(
+        select(Device).where(func.upper(Device.barcode).in_([w.upper() for w in wanted]))
+    )).scalars().all()
+    done, skipped = [], []
+    by_upper = {d.barcode.upper(): d for d in devices}
+    note = notes.strip()
+    for w in wanted:
+        d = by_upper.get(w.upper())
+        if (d is None or d.is_trashed or d.current_stage != DeviceStage.scrap_for_sale
+                or not can_verify(d)):
+            skipped.append(w)
+            continue
+        d.scrap_verified = True
+        if note:
+            d.notes = ((d.notes or "") + "\n[Verify] " + note).strip()
+        done.append(d.barcode)
+    if done:
+        await audit(db, user=current_user, action="SCRAP_BULK_VERIFIED", table_name="devices",
+                    record_id=f"{len(done)} tags",
+                    new_value={"scrap_verified": True, "barcodes": done, "notes": note or None},
+                    notes=f"Bulk Verify on Tags Scrapped: {len(done)} tag(s)", request=request)
+    await db.commit()
+    return JSONResponse({"ok": True, "verified": done, "skipped": skipped})
 
 
 @router.post("/scrap-products/{barcode}/set-replacement")

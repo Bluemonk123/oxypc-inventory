@@ -11,17 +11,17 @@ from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import quote_plus
 from fastapi import APIRouter, Depends, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 
 from templates_config import templates
 from database import get_db
 from models.user import User, UserRole
-from models.device import Device, DeviceStage
+from models.device import Device, DeviceStage, StageMovement
 from models.stock_transfer import StockTransfer
 from models.scrap_for_sale import ScrapForSale
-from models.scrap_sale import ScrapSale, ScrapSaleItem
+from models.scrap_sale import ScrapSale, ScrapSaleItem, ScrapSaleTag
 from models.company import Company
 from auth.dependencies import get_current_user, require_roles, verify_csrf, require_module_perm
 from utils.master_data import entity_values, master_values
@@ -31,6 +31,10 @@ from services.audit_engine import audit
 
 router = APIRouter(tags=["scrap_for_sale"], dependencies=[Depends(verify_csrf)])
 allowed = require_roles(UserRole.admin, UserRole.inventory_manager, UserRole.sales_manager)
+# The sale form also opens from Tags Scrapped (/scrap-products), which sales
+# users can reach — they could already sell a scrapped tag from there.
+sale_allowed = require_roles(UserRole.admin, UserRole.inventory_manager, UserRole.sales_manager,
+                             UserRole.sales)
 
 
 @router.get("/scrap-for-sale", response_class=HTMLResponse)
@@ -86,35 +90,10 @@ async def scrap_for_sale_list(request: Request, db: AsyncSession = Depends(get_d
                 "assigned_to_name": user_name_map.get(b.assigned_to_user_id, "—"),
             })
 
-    # Devices sitting at the Scrap for Sale stage that never went through a
-    # /transfers batch — reached here via a bulk stage-move (Bulk Customise,
-    # IQC Customise, "Back to Inventory — Normal Scrap from repair line")
-    # instead of the formal Scrap for Sale transfer, so they have no
-    # ScrapForSale row and no StockTransfer link. Listed separately so they
-    # are visible/actionable instead of silently missing from this page,
-    # same fix pattern as the L3/L4 orphaned-WorkOrder issue fixed earlier.
-    batched_device_ids = {
-        t.device_id for t in (await db.execute(
-            select(StockTransfer.device_id).where(StockTransfer.scrap_for_sale_id.isnot(None))
-        )).scalars().all()
-    }
-    unbatched_result = await db.execute(
-        select(Device)
-        .where(Device.current_stage == DeviceStage.scrap_for_sale, Device.is_trashed == False)
-        .order_by(Device.updated_at.desc())
-    )
-    unbatched_devices = [
-        {
-            "barcode": d.barcode, "brand": d.brand, "model": d.model,
-            "grade": d.grade.value if d.grade else "—",
-            "updated_at": d.updated_at,
-        }
-        for d in unbatched_result.scalars().all() if d.id not in batched_device_ids
-    ]
-
+    # "Devices Not Yet in a Batch" removed (2026-10-23): those tags are on
+    # Tags Scrapped until they are Verified and batched through Transfers.
     return templates.TemplateResponse("scrap/for_sale.html", {
         "request": request, "current_user": current_user, "rows": rows,
-        "unbatched_devices": unbatched_devices,
         **(await _custom_sale_form_context(db)),
     })
 
@@ -188,11 +167,122 @@ def _cs_redirect(msg: str, ok: bool = False):
     return RedirectResponse(url=f"/scrap-for-sale?{key}={quote_plus(msg)}", status_code=302)
 
 
+# ── Sell from a Scrap ID batch / from Tags Scrapped (2026-10-23) ────────────
+# Both open the Custom Sale form filled with the tags (grouped by model) and,
+# for a batch, its parts. Saving links the tags (scrap_sale_tags) and the
+# batch (scrap_sales.scrap_for_sale_id) to the sale, moves the tags to Sold
+# and marks the batch Sold, so the sale shows on the Scrap Sale Report.
+
+async def _batch_sell_tags(db: AsyncSession, batch) -> tuple[list, list]:
+    """(devices still in Scrap for Sale in this batch, part transfer rows)."""
+    trs = (await db.execute(
+        select(StockTransfer).where(StockTransfer.scrap_for_sale_id == batch.id)
+    )).scalars().all()
+    dev_ids = [t.device_id for t in trs if t.device_id and t.move_kind != "parts"]
+    devices = []
+    if dev_ids:
+        devices = (await db.execute(
+            select(Device).where(Device.id.in_(dev_ids), Device.is_trashed.isnot(True),
+                                 Device.current_stage == DeviceStage.scrap_for_sale)
+            .order_by(Device.barcode)
+        )).scalars().all()
+    return devices, [t for t in trs if t.move_kind == "parts"]
+
+
+async def _tags_sell_devices(db: AsyncSession, barcodes: list) -> tuple[list, list]:
+    """(sellable devices, [(barcode, reason)]) for Sell on Tags Scrapped:
+    on Tags Scrapped (Scrap for Sale stage, not in a live batch) and Verified."""
+    from services.scrap_flow import batched_device_ids
+    ups = [b.upper() for b in barcodes]
+    found = (await db.execute(
+        select(Device).where(func.upper(Device.barcode).in_(ups))
+    )).scalars().all() if ups else []
+    in_batch = await batched_device_ids(db, [d.id for d in found])
+    by_up = {d.barcode.upper(): d for d in found}
+    ok, bad = [], []
+    for b in barcodes:
+        d = by_up.get(b.upper())
+        if d is None:
+            bad.append((b, "not found"))
+        elif d.is_trashed or d.current_stage != DeviceStage.scrap_for_sale:
+            bad.append((b, "not on Tags Scrapped"))
+        elif d.id in in_batch:
+            bad.append((b, f"in Scrap ID {in_batch[d.id]} — sell the batch"))
+        elif not d.scrap_verified:
+            bad.append((b, "not verified"))
+        elif d not in ok:
+            ok.append(d)
+    return ok, bad
+
+
+def _tag_lines(devices) -> list:
+    groups = {}
+    for d in devices:
+        key = (" ".join(x for x in (d.brand, d.model) if x) or "Scrap device", d.sub_category or "")
+        groups[key] = groups.get(key, 0) + 1
+    return [{"name": n, "category": c, "qty": q} for (n, c), q in sorted(groups.items())]
+
+
+@router.get("/scrap-for-sale/sell-prefill")
+async def sell_prefill(batch: str = "", tags: str = "", db: AsyncSession = Depends(get_db),
+                       current_user: User = Depends(sale_allowed)):
+    from services.scrap_flow import refused_text
+    if batch:
+        try:
+            b = (await db.execute(select(ScrapForSale).where(ScrapForSale.id == _uuid.UUID(batch)))).scalar_one_or_none()
+        except ValueError:
+            b = None
+        if b is None or b.is_trashed:
+            return JSONResponse({"ok": False, "error": "Scrap ID not found."})
+        if b.status == "sold":
+            return JSONResponse({"ok": False, "error": f"Scrap ID {b.scrap_id} is already sold."})
+        devices, parts = await _batch_sell_tags(db, b)
+        lines = _tag_lines(devices) + [
+            {"name": t.model or "Spare part", "category": t.category or "", "qty": t.quantity or 1} for t in parts]
+        if not lines:
+            return JSONResponse({"ok": False, "error": f"Scrap ID {b.scrap_id} has nothing left to sell."})
+        return JSONResponse({"ok": True, "title": f"Sell Scrap ID {b.scrap_id}", "scrap_for_sale_id": str(b.id),
+                             "barcodes": [d.barcode for d in devices], "lines": lines})
+    wanted = [t.strip() for t in tags.split(",") if t.strip()]
+    ok, bad = await _tags_sell_devices(db, wanted)
+    if not ok:
+        return JSONResponse({"ok": False, "error": "Nothing to sell. " + refused_text(bad)})
+    return JSONResponse({"ok": True, "title": f"Sell {len(ok)} Scrapped Tag(s)", "scrap_for_sale_id": "",
+                         "barcodes": [d.barcode for d in ok], "lines": _tag_lines(ok),
+                         "skipped": refused_text(bad) if bad else ""})
+
+
 @router.post("/scrap-for-sale/custom-sale")
 async def create_custom_scrap_sale(request: Request, db: AsyncSession = Depends(get_db),
-                                   current_user: User = Depends(allowed)):
+                                   current_user: User = Depends(sale_allowed)):
     form = await request.form()
     g = lambda k: (form.get(k) or "").strip()
+    # Where to land afterwards: Tags Scrapped when the form was opened there.
+    back = "/scrap-products" if g("back") == "scrap-products" else "/scrap-for-sale"
+
+    def _cs_redirect(msg: str, ok: bool = False):
+        key = "success" if ok else "error"
+        return RedirectResponse(url=f"{back}?{key}={quote_plus(msg)}", status_code=302)
+
+    # Selling a Scrap ID batch or Tags Scrapped tags (2026-10-23).
+    batch, sell_devices = None, []
+    sell_barcodes = [b.strip() for b in g("device_barcodes").split(",") if b.strip()]
+    if g("scrap_for_sale_id"):
+        try:
+            batch = (await db.execute(select(ScrapForSale).where(
+                ScrapForSale.id == _uuid.UUID(g("scrap_for_sale_id"))))).scalar_one_or_none()
+        except ValueError:
+            batch = None
+        if batch is None or batch.is_trashed:
+            return _cs_redirect("Scrap ID not found.")
+        if batch.status == "sold":
+            return _cs_redirect(f"Scrap ID {batch.scrap_id} is already sold.")
+        sell_devices, _parts = await _batch_sell_tags(db, batch)
+    elif sell_barcodes:
+        from services.scrap_flow import refused_text
+        sell_devices, bad = await _tags_sell_devices(db, sell_barcodes)
+        if bad:
+            return _cs_redirect("Not sold — " + refused_text(bad))
 
     entity = g("entity")
     if not entity:
@@ -279,17 +369,36 @@ async def create_custom_scrap_sale(request: Request, db: AsyncSession = Depends(
         created_by=current_user.username,
         items=items,
     )
+    if batch is not None:
+        sale.scrap_for_sale_id = batch.id
     db.add(sale)
     await db.flush()
+    sold_barcodes = []
+    for d in sell_devices:
+        db.add(ScrapSaleTag(scrap_sale_id=sale.id, device_id=d.id))
+        prev = d.current_stage
+        d.current_stage = DeviceStage.sold
+        d.updated_at = app_now()
+        db.add(StageMovement(device_id=d.id, from_stage=prev, to_stage=DeviceStage.sold,
+                             moved_by=current_user.username,
+                             notes=f"Sold in scrap sale {sale.sale_number}"
+                                   + (f" (Scrap ID {batch.scrap_id})" if batch is not None else "")))
+        sold_barcodes.append(d.barcode)
+    if batch is not None:
+        batch.status = "sold"
     await audit(db, user=current_user, action="SCRAP_CUSTOM_SALE_CREATED",
                 table_name="scrap_sales", record_id=str(sale.id),
                 new_value={"sale_number": sale.sale_number, "entity": entity,
                            "customer_company": sale.customer_company,
                            "invoice_number": sale.invoice_number,
-                           "items": len(items), "total_sale_price": str(sale.total_sale_price)},
+                           "items": len(items), "total_sale_price": str(sale.total_sale_price),
+                           "scrap_id": batch.scrap_id if batch is not None else None,
+                           "tags_sold": sold_barcodes},
                 request=request)
     await db.commit()
-    return _cs_redirect(f"Custom Sale {sale.sale_number} saved (Rs {sale.total_sale_price:,.2f})", ok=True)
+    what = (f"Scrap ID {batch.scrap_id} sold" if batch is not None
+            else f"{len(sold_barcodes)} tag(s) sold" if sold_barcodes else "Custom Sale")
+    return _cs_redirect(f"{what}: {sale.sale_number} saved (Rs {sale.total_sale_price:,.2f})", ok=True)
 
 
 @router.get("/scrap-sale-report", response_class=HTMLResponse)
@@ -304,6 +413,13 @@ async def scrap_sale_report(request: Request, db: AsyncSession = Depends(get_db)
     from models.company import Company
     _cids = list({s.company_id for s in sales if s.company_id})
     _live = {c.id: c for c in (await db.execute(select(Company).where(Company.id.in_(_cids)))).scalars().all()} if _cids else {}
+    # Scrap ID and Tag Numbers sold in each sale (2026-10-23).
+    _bids = list({s.scrap_for_sale_id for s in sales if s.scrap_for_sale_id})
+    _scrap_ids = dict((await db.execute(
+        select(ScrapForSale.id, ScrapForSale.scrap_id).where(ScrapForSale.id.in_(_bids))
+    )).all()) if _bids else {}
+    _tag_ids = [t.device_id for s in sales for t in s.tags]
+    _bc = dict((await db.execute(select(Device.id, Device.barcode).where(Device.id.in_(_tag_ids)))).all()) if _tag_ids else {}
     rows = [{
         "sale_number": s.sale_number, "sale_date": s.sale_date.isoformat(),
         "sale_date_label": s.sale_date.strftime("%d-%m-%Y"),
@@ -314,6 +430,8 @@ async def scrap_sale_report(request: Request, db: AsyncSession = Depends(get_db)
         "customer_place": ", ".join(x for x in (s.customer_city, s.customer_state) if x),
         "customer_address": s.customer_address or "",
         "item_count": len(s.items), "total": float(s.total_sale_price or 0),
+        "scrap_id": _scrap_ids.get(s.scrap_for_sale_id, "") if s.scrap_for_sale_id else "",
+        "tags": sorted(_bc.get(t.device_id, "") for t in s.tags),
         "created_by": s.created_by or "—",
         "items": [{
             "name": it.item_name, "category": it.item_category or "—", "basis": it.pricing_basis,

@@ -20,7 +20,7 @@
       <thead class="table-dark">
         <tr>
           <th>Sale No.</th><th>Sale Date</th><th>Entity</th><th>Invoice Number</th><th>Sales Person</th>
-          <th>Customer</th><th>Phone</th><th>City / State</th><th>Items</th><th>Total Sale Price</th>
+          <th>Customer</th><th>Phone</th><th>City / State</th><th>Scrap ID</th><th>Tags</th><th>Items</th><th>Total Sale Price</th>
           <th>Created By</th><th>Action</th>
         </tr>
       </thead>
@@ -35,6 +35,8 @@
           <td>{{ r.customer_company }}</td>
           <td>{{ r.customer_phone or '—' }}</td>
           <td>{{ r.customer_place or '—' }}</td>
+          <td class="font-monospace">{{ r.scrap_id or '—' }}</td>
+          <td data-search="{{ r.tags | join(' ') }}">{{ r.tags | length if r.tags else '—' }}</td>
           <td>{{ r.item_count }}</td>
           <td class="text-nowrap" data-order="{{ r.total }}">₹{{ ((r.total) | inr(2)) }}</td>
           <td>{{ r.created_by }}</td>
@@ -75,6 +77,10 @@
             </tr>
           </tfoot>
         </table>
+        <div id="ssrTagsWrap" class="mt-3 d-none">
+          <div class="fw-semibold small mb-1">Tag Numbers sold (<span id="ssrTagCount"></span>)</div>
+          <div id="ssrTags" class="border rounded p-2 font-monospace small" style="max-height:160px;overflow:auto"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -84,7 +90,7 @@
 <script>
 initGlobalTable('#scrapSaleReportTable', {
   order: [[1, 'desc'], [0, 'desc']],
-  language: { emptyTable: 'No custom scrap sales yet — add one from Scrap for Sale → Custom Sale.' },
+  language: { emptyTable: 'No scrap sales yet — sell a Scrap ID or Tags Scrapped tags, or add a Custom Sale.' },
   columnDefs: [{ orderable: false, targets: [-1] }],
 });
 
@@ -115,6 +121,14 @@ initGlobalTable('#scrapSaleReportTable', {
         '<td class="text-end text-nowrap">' + inr(it.total) + '</td></tr>';
     }).join('');
     document.getElementById('ssrTotal').textContent = inr(s.total);
+    var tw = document.getElementById('ssrTagsWrap');
+    if (s.tags && s.tags.length) {
+      document.getElementById('ssrTagCount').textContent = s.tags.length + (s.scrap_id ? ' · Scrap ID ' + s.scrap_id : '');
+      document.getElementById('ssrTags').innerHTML = s.tags.map(function (t) {
+        return '<a href="/devices/' + encodeURIComponent(t) + '" target="_blank" class="me-2 text-decoration-none">' + esc(t) + '</a>';
+      }).join(' ');
+      tw.classList.remove('d-none');
+    } else { tw.classList.add('d-none'); }
     modal.show();
   });
 })();

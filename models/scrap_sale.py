@@ -18,6 +18,9 @@ class ScrapSale(Base):
     __tablename__ = "scrap_sales"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    # Scrap ID batch this sale sold, when made from a batch's Sell (2026-10-23,
+    # schema change approved: "I approve dbdiagram"). NULL for a Custom Sale.
+    scrap_for_sale_id = Column(UUID(as_uuid=True), ForeignKey("scrap_for_sale.id"), nullable=True, index=True)
     sale_number = Column(String(20), unique=True, nullable=False, index=True)  # SCS-0001
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=True)
 
@@ -51,6 +54,8 @@ class ScrapSale(Base):
     items = relationship("ScrapSaleItem", back_populates="sale",
                          cascade="all, delete-orphan", order_by="ScrapSaleItem.line_no",
                          lazy="selectin")
+    tags = relationship("ScrapSaleTag", back_populates="sale",
+                        cascade="all, delete-orphan", lazy="selectin")
 
 
 class ScrapSaleItem(Base):
@@ -73,3 +78,17 @@ class ScrapSaleItem(Base):
     total_price = Column(Numeric(14, 2), nullable=False, default=0)
 
     sale = relationship("ScrapSale", back_populates="items")
+
+
+class ScrapSaleTag(Base):
+    """A Tag Number sold in a ScrapSale (2026-10-23, schema change approved:
+    "I approve dbdiagram"). Written when the sale is made from a Scrap ID
+    batch's Sell or from Tags Scrapped's Sell; the tag moves to Sold then."""
+    __tablename__ = "scrap_sale_tags"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    scrap_sale_id = Column(UUID(as_uuid=True), ForeignKey("scrap_sales.id", ondelete="CASCADE"),
+                           nullable=False, index=True)
+    device_id = Column(UUID(as_uuid=True), ForeignKey("devices.id"), nullable=False, index=True)
+
+    sale = relationship("ScrapSale", back_populates="tags")
