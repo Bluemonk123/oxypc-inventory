@@ -419,55 +419,126 @@ async def delete_record(
 
 # ── Per-row download (one AuditRecord's tag items) ──────────────────────────
 
-@router.get("/records/{record_id}/download")
-async def download_record(
-    record_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    record = (await db.execute(select(AuditRecord).where(AuditRecord.id == record_id))).scalar_one_or_none()
-    if not record:
-        return JSONResponse({"ok": False, "error": "Audit record not found."}, status_code=404)
+# ── Excel workbook: Tags Summary + Stage Summary + Location Summary ─────────
+# (2026-10-23) One workbook for both the per-record Download and the card
+# header's Export: the three sheets always come from the same set of audit
+# records, so their totals agree.
 
-    items = (await db.execute(
-        select(AuditRecordItem)
-        .where(AuditRecordItem.audit_record_id == record.id)
-        .order_by(AuditRecordItem.created_at.asc())
-    )).scalars().all()
-
-    loc_ids = {it.system_location_id for it in items if it.system_location_id}
+async def _audit_workbook(db: AsyncSession, records: list) -> bytes:
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    rec_by_id = {r.id: r for r in records}
+    items = []
+    if records:
+        items = (await db.execute(
+            select(AuditRecordItem)
+            .where(AuditRecordItem.audit_record_id.in_(list(rec_by_id)))
+            .order_by(AuditRecordItem.created_at.asc())
+        )).scalars().all()
+    loc_ids = {r.my_location_id for r in records if r.my_location_id}
+    loc_ids |= {it.system_location_id for it in items if it.system_location_id}
     loc_ids |= {it.my_location_id for it in items if it.my_location_id}
     loc_map = {}
     if loc_ids:
         locs = (await db.execute(select(StorageLocation).where(StorageLocation.id.in_(loc_ids)))).scalars().all()
         loc_map = {loc.id: loc for loc in locs}
 
-    header = [
-        "Tag Number", "Lot Number", "Model", "Serial", "Category", "Current Stage", "Current Location",
-        "Audit Stage", "Audit Location", "Difference", "Notes",
-    ]
-    rows = []
-    for it in items:
-        stage_match = it.my_stage == it.system_stage
-        loc_match = it.my_location_id == it.system_location_id
-        # "Difference" = Yes when either the stage or the location the
-        # auditor entered doesn't match what the system had on record for
-        # this tag at audit time; No when both matched. (Decision: the spec
-        # left this column's exact meaning to judgement — a plain "was there
-        # a difference" flag is more directly useful on a per-item export
-        # than leaving it blank.)
-        difference = "No" if (stage_match and loc_match) else "Yes"
-        rows.append([
-            it.barcode, it.lot_number or "", it.model or "", it.serial_no or "", it.category or "",
-            STAGE_LABELS.get(it.system_stage, it.system_stage),
-            _loc_short(loc_map.get(it.system_location_id)),
-            STAGE_LABELS.get(it.my_stage, it.my_stage),
-            _loc_short(loc_map.get(it.my_location_id)),
-            difference,
-            it.notes or "",
+    def _date(d):
+        return d.strftime("%d-%m-%Y") if d else ""
+
+    tags = []
+    for it in sorted(items, key=lambda i: (rec_by_id[i.audit_record_id].report_date or date.min, i.created_at or datetime.min)):
+        rec = rec_by_id[it.audit_record_id]
+        # Difference = Yes when the stage or the location the auditor found
+        # the tag in doesn't match the system's record for it at audit time.
+        same = it.my_stage == it.system_stage and it.my_location_id == it.system_location_id
+        tags.append([
+            _date(rec.report_date), it.barcode, it.lot_number or "", it.model or "", it.serial_no or "",
+            it.category or "",
+            STAGE_LABELS.get(it.system_stage, it.system_stage), _loc_short(loc_map.get(it.system_location_id)),
+            STAGE_LABELS.get(it.my_stage, it.my_stage), _loc_short(loc_map.get(it.my_location_id)),
+            "No" if same else "Yes", it.notes or "",
         ])
-    fname = f"audit_record_{record.report_date}_{record.id}.csv"
-    return _csv_response(header, rows, fname)
+
+    def _totals(key_fn, label_fn):
+        t = {}
+        for r in records:
+            v = t.setdefault(key_fn(r), [0, 0])
+            v[0] += r.current_count or 0
+            v[1] += r.physical_count or 0
+        return [[label_fn(k), c, p_, c - p_] for k, (c, p_) in t.items()]
+
+    stage_rows = _totals(lambda r: r.my_stage, lambda k: STAGE_LABELS.get(k, k))
+    loc_rows = _totals(lambda r: r.my_location_id, lambda k: _loc_short(loc_map.get(k)))
+
+    wb = Workbook()
+    sheets = [
+        ("Tags Summary", ["Report Date", "Tag Number", "Lot Number", "Model", "Serial", "Category",
+                          "Current Stage", "Current Location", "Audit Stage", "Audit Location",
+                          "Difference", "Notes"], tags),
+        ("Stage Summary", ["Audit Stage", "Current Count", "Audit Count", "Difference"], stage_rows),
+        ("Location Summary", ["Audit Location", "Current Count", "Audit Count", "Difference"], loc_rows),
+    ]
+    head_fill = PatternFill("solid", fgColor="0377C2")
+    for i, (title, header, rows) in enumerate(sheets):
+        ws = wb.active if i == 0 else wb.create_sheet()
+        ws.title = title
+        ws.append(header)
+        for c in ws[1]:
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = head_fill
+        for row in rows:
+            ws.append(row)
+        ws.freeze_panes = "A2"
+        for col in ws.columns:
+            width = max(len(str(c.value or "")) for c in col)
+            ws.column_dimensions[col[0].column_letter].width = min(max(width + 2, 10), 40)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _xlsx_response(data: bytes, filename: str) -> Response:
+    return Response(content=data,
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/records/{record_id}/download")
+async def download_record(
+    record_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """One audit record as a workbook: its tags, plus its Stage and Location
+    summary rows."""
+    record = (await db.execute(select(AuditRecord).where(AuditRecord.id == record_id))).scalar_one_or_none()
+    if not record:
+        return JSONResponse({"ok": False, "error": "Audit record not found."}, status_code=404)
+    data = await _audit_workbook(db, [record])
+    return _xlsx_response(data, f"audit_record_{record.report_date}.xlsx")
+
+
+@router.get("/export/workbook")
+async def export_workbook(
+    report_date: str = "",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Card header Export: every audit record (or one Report Date's) as a
+    workbook with Tags Summary, Stage Summary and Location Summary sheets."""
+    q = select(AuditRecord).order_by(AuditRecord.report_date.desc(), AuditRecord.created_at.desc())
+    suffix = "all"
+    if report_date.strip():
+        try:
+            r_date = datetime.strptime(report_date.strip(), "%Y-%m-%d").date()
+            q = q.where(AuditRecord.report_date == r_date)
+            suffix = r_date.isoformat()
+        except ValueError:
+            pass
+    records = (await db.execute(q)).scalars().all()
+    data = await _audit_workbook(db, records)
+    return _xlsx_response(data, f"physical_audit_{suffix}.xlsx")
 
 
 # ── Whole-table exports ──────────────────────────────────────────────────────

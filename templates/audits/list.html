@@ -77,14 +77,16 @@
                 </div>
                 <div class="col-md-3">
                   <div class="text-muted small">System Stage</div>
-                  <div class="fw-semibold" id="cf_sys_stage">—</div>
+                  <div class="fw-semibold"><span id="cf_sys_stage">—</span> <span id="cf_stage_match"></span></div>
                 </div>
                 <div class="col-md-3">
                   <div class="text-muted small">System Location</div>
-                  <div class="fw-semibold" id="cf_sys_location">—</div>
+                  <div class="fw-semibold"><span id="cf_sys_location">—</span> <span id="cf_loc_match"></span></div>
                 </div>
               </div>
-              <div class="row g-3 mt-1 align-items-end">
+              {# Hidden on request (2026-10-23); kept in the page so the
+                 receipt script's field updates still have their targets. #}
+              <div class="row g-3 mt-1 align-items-end d-none">
                 <div class="col">
                   <div class="text-muted small">Assigned By</div>
                   <div class="fw-semibold" id="cf_assigned_by">—</div>
@@ -116,14 +118,9 @@
         <span class="fw-semibold"><i class="bi bi-table me-2"></i>Audit Records</span>
         <div class="d-flex gap-2 align-items-center flex-wrap">
           <input type="date" id="auditRecordsDateFilter" class="form-control form-control-sm" style="width:auto">
-          <button type="button" id="auditExportStageBtn" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-download me-1"></i>Stage Summary
-          </button>
-          <button type="button" id="auditExportLocationBtn" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-download me-1"></i>Location Summary
-          </button>
-          <button type="button" id="auditExportTagsBtn" class="btn btn-sm btn-outline-secondary">
-            <i class="bi bi-download me-1"></i>Tags Summary
+          <button type="button" id="auditExportBtn" class="btn btn-sm btn-outline-success"
+                  title="Excel workbook: Tags Summary, Stage Summary and Location Summary sheets (the date picked, or all dates)">
+            <i class="bi bi-file-earmark-excel me-1"></i>Export
           </button>
         </div>
       </div>
@@ -242,6 +239,15 @@ function auditDoLookup() {
           document.getElementById('cf_my_location').textContent = locSel.value ? locSel.options[locSel.selectedIndex].text : '—';
           document.getElementById('cf_sys_stage').textContent = d.system_stage_label || '—';
           document.getElementById('cf_sys_location').textContent = d.system_location_label || '—';
+          // Matched / Unmatched: the tag's system stage and location against
+          // the Audit Stage / Audit Location the auditor picked (2026-10-23).
+          function matchBadge(id, ok) {
+            var el = document.getElementById(id);
+            el.className = 'badge ms-1 ' + (ok ? 'bg-success' : 'bg-danger');
+            el.textContent = ok ? 'Matched' : 'Unmatched';
+          }
+          matchBadge('cf_stage_match', (d.system_stage || '') === stageSel.value);
+          matchBadge('cf_loc_match', (d.system_location_id || '') === (locSel.value || ''));
           document.getElementById('cf_assigned_by').textContent = d.assigned_by_label || '—';
           document.getElementById('cf_assigned_to').textContent = d.assigned_to_label || '—';
           document.getElementById('cf_category').textContent = d.category || '—';
@@ -271,6 +277,12 @@ document.getElementById('auditBarcodeInput').addEventListener('keydown', functio
 });
 
 // ── Audit Records table ─────────────────────────────────────────────────────
+function auditCountCell(td, bg) {
+  td.style.backgroundColor = bg;
+  td.style.color = '#fff';
+  td.style.fontWeight = '600';
+  td.style.textAlign = 'center';
+}
 $(function () {
   window.auditRecordsDt = $('#auditRecordsTable').DataTable({
     pageLength: 15,
@@ -285,9 +297,13 @@ $(function () {
       { data: 'my_stage' },
       { data: 'my_location' },
       { data: 'category' },
-      { data: 'current_count' },
-      { data: 'physical_count' },
-      { data: 'difference' },
+      // Count cells coloured (2026-10-23): Current grey, Physical blue,
+      // Difference green when 0 (all found), orange otherwise (missing, or
+      // extra/misplaced tags when below 0).
+      { data: 'current_count', createdCell: function (td) { auditCountCell(td, '#6c757d'); } },
+      { data: 'physical_count', createdCell: function (td) { auditCountCell(td, '#0d6efd'); } },
+      { data: 'difference', createdCell: function (td, v) {
+          auditCountCell(td, Number(v) === 0 ? '#0F7A37' : '#fd7e14'); } },
       {
         data: 'notes', orderable: false,
         render: function (data, type, row) {
@@ -300,7 +316,7 @@ $(function () {
       {
         data: null, orderable: false,
         render: function (data, type, row) {
-          return '<a class="btn btn-sm btn-outline-secondary" href="/audits/records/' + row.id + '/download">' +
+          return '<a class="btn btn-sm btn-outline-secondary" href="/audits/records/' + row.id + '/download" title="Excel: Tags, Stage and Location summary">' +
                  '<i class="bi bi-download"></i></a>';
         },
       },
@@ -343,15 +359,9 @@ $(function () {
       .catch(function () { alert('Could not delete.'); });
   });
 
-  document.getElementById('auditExportStageBtn').addEventListener('click', function () {
-    window.location = '/audits/export/stage-summary';
-  });
-  document.getElementById('auditExportLocationBtn').addEventListener('click', function () {
-    window.location = '/audits/export/location-summary';
-  });
-  document.getElementById('auditExportTagsBtn').addEventListener('click', function () {
+  document.getElementById('auditExportBtn').addEventListener('click', function () {
     var d = document.getElementById('auditRecordsDateFilter').value;
-    window.location = '/audits/export/tags-summary' + (d ? ('?report_date=' + encodeURIComponent(d)) : '');
+    window.location = '/audits/export/workbook' + (d ? ('?report_date=' + encodeURIComponent(d)) : '');
   });
 });
 </script>
