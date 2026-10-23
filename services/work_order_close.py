@@ -18,6 +18,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.work_order import WorkOrder
 from utils.timezone import app_now
 
+# A WorkOrder is OPEN unless its status is one of these (2026-10-23).
+# "reassigned" = the tag was taken off this engineer before they finished it
+# (Pick This, Change Engineer, Customise / manual Move to Stage) — closed, but
+# NOT the engineer's completed work. completed_at holds the moment it closed
+# either way. Every "open WorkOrders" query must use wo_open(), not
+# `status != "completed"`, or reassigned rows would reappear in queues.
+CLOSED_WO_STATUSES = ("completed", "reassigned")
+
+
+def wo_open():
+    """SQL condition: the WorkOrder is still open."""
+    return WorkOrder.status.notin_(CLOSED_WO_STATUSES)
+
 
 async def close_open_work_orders(db: AsyncSession, device_id: uuid.UUID, at=None,
                                  keep_id: uuid.UUID | None = None) -> int:
@@ -27,14 +40,25 @@ async def close_open_work_orders(db: AsyncSession, device_id: uuid.UUID, at=None
 
     "asgn" rows are /transfers' plain assignment bookkeeping, not pipeline work,
     and are left alone (the WorkID Status page hides them)."""
-    conds = [WorkOrder.device_id == device_id,
-             WorkOrder.status != "completed",
-             WorkOrder.stage != "asgn"]
+    return await _close(db, device_id, "completed", at, keep_id)
+
+
+async def reassign_open_work_orders(db: AsyncSession, device_id: uuid.UUID, at=None,
+                                    keep_id: uuid.UUID | None = None) -> int:
+    """The tag is being taken off its current engineer(s) before they finished:
+    close every open (non-"asgn") WorkOrder as "reassigned" (not completed).
+    Used by Pick This (L1/L2, L3/L4), Change Engineer and stage moves from the
+    Customise modal / Move Device page."""
+    return await _close(db, device_id, "reassigned", at, keep_id)
+
+
+async def _close(db, device_id, status, at, keep_id) -> int:
+    conds = [WorkOrder.device_id == device_id, wo_open(), WorkOrder.stage != "asgn"]
     if keep_id is not None:
         conds.append(WorkOrder.id != keep_id)
     result = await db.execute(
         update(WorkOrder).where(*conds)
-        .values(status="completed", completed_at=at or app_now())
+        .values(status=status, completed_at=at or app_now())
     )
     return result.rowcount or 0
 
@@ -60,7 +84,7 @@ async def reuse_open_stress_work_order(db: AsyncSession, device_id: uuid.UUID, n
         select(WorkOrder).where(
             WorkOrder.device_id == device_id,
             WorkOrder.work_id.like("STRS-%"),
-            WorkOrder.status != "completed",
+            wo_open(),
             WorkOrder.assigned_user_id.is_(None),
         ).order_by(WorkOrder.created_at.desc())
     )).scalars().first()

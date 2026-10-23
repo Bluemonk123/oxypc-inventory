@@ -50,6 +50,7 @@ from utils.warranty import (
     warranty_from_sold_at, latest_sold_at_map,
     parse_warranty_duration, warranty_status_for_sale,
 )
+from services.work_order_close import wo_open  # open = not completed / reassigned
 
 
 # Model Summary "Total Quantity" grade split: (stored grade, label, badge class).
@@ -3470,7 +3471,7 @@ async def _cn_complete_old_tag(db, ret: Return, current_user, request) -> str | 
         from models.work_order import WorkOrder
         await db.execute(sa_update(WorkOrder).where(
             WorkOrder.device_id == device.id, WorkOrder.work_id.like("L3L4-%"),
-            WorkOrder.status != "completed").values(status="completed", completed_at=app_now()))
+            wo_open()).values(status="completed", completed_at=app_now()))
     device.current_stage = DeviceStage.sold
     device.updated_at = app_now()
     db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=DeviceStage.sold,

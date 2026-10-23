@@ -1221,6 +1221,7 @@
               <td>{{ wo.assigned_name or wo.assigned_username or '—' }}</td>
               <td>
                 {% if wo.status == 'completed' %}<span class="badge bg-success">Completed</span>
+                {% elif wo.status == 'reassigned' %}<span class="badge bg-info text-dark" title="Taken off this engineer before it was finished (Pick This / Change Engineer / stage move){% if wo.completed_at %} on {{ wo.completed_at.strftime('%d-%m-%Y %H:%M') }}{% endif %}">Reassigned</span>
                 {% elif wo.status == 'in_progress' %}<span class="badge bg-warning text-dark">In Progress</span>
                 {% else %}<span class="badge bg-secondary">{{ wo.status|replace('_',' ')|title }}</span>{% endif %}
               </td>

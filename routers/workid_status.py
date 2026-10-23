@@ -208,9 +208,53 @@ def _rows_json(items) -> str:
             "c": _fmt(c), "cd": _fmt(c, "%d-%m-%Y"), "cs": _fmt(c, "%Y%m%d%H%M"),
             "d": it.get("days"), "n": it.get("notes") or "", "e": it.get("engineer") or "",
             "p": bool(it.get("pna")), "pt": pna_tip, "h": it.get("pna_history") or [],
+            "r": _fmt(it.get("reassigned_at")), "rd": _fmt(it.get("reassigned_at"), "%d-%m-%Y"),
+            "rt": it.get("reassigned_to") or "",
         })
     # "</" escaped so a value can never close the <script> block it sits in.
     return json.dumps(rows, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
+async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, code_stage) -> dict:
+    """WorkID Status tiles counted in SQL over every WorkID matching the page's
+    SQL filters (no row cap), with the Python-side filters re-applied as SQL:
+    Stage (via the stage code stored on the WorkID), exact Completed From/To
+    (completed WorkIDs only), Exclude Admin. Same definitions as the in-Python
+    tiles, including the L1/L2 "Repair Started" = ongoing rule."""
+    from sqlalchemy import and_, case, distinct, exists
+    from models.pna_part import DevicePNAPart
+    q = full_stmt.with_only_columns(
+        WorkOrder.id.label("id"), WorkOrder.status.label("st"), WorkOrder.stage.label("sg"),
+        WorkOrder.barcode.label("bc"), WorkOrder.device_id.label("did"),
+        Device.l1l2_status.label("l12"),
+    ).order_by(None)
+    if stage_vals:
+        codes = [c for c, st in code_stage.items() if st.value in stage_vals]
+        q = q.where(WorkOrder.stage.in_(codes or ["__none__"]))
+    if cf or ct:
+        q = q.where(WorkOrder.status == "completed")
+        if cf:
+            q = q.where(WorkOrder.completed_at >= cf)
+        if ct:
+            q = q.where(WorkOrder.completed_at <= ct.replace(hour=23, minute=59, second=59))
+    if exclude_admin:
+        admins = select(User.username).where(User.role == UserRole.admin)
+        q = q.where(WorkOrder.assigned_username.notin_(admins))
+    sub = q.subquery()
+    eff = case((and_(sub.c.st == "pending", sub.c.sg.in_(["l1", "l2"]),
+                     sub.c.l12 == "Repair Started"), "in_progress"), else_=sub.c.st)
+    has_pna = exists().where(DevicePNAPart.device_id == sub.c.did, DevicePNAPart.is_active == True)  # noqa: E712
+    r = (await db.execute(select(
+        func.count().filter(eff.notin_(["completed", "reassigned"])),
+        func.count().filter(sub.c.st.in_(["completed", "reassigned"])),
+        func.count().filter(sub.c.st == "reassigned"),
+        func.count(distinct(sub.c.bc)).filter(eff == "pending"),
+        func.count(distinct(sub.c.bc)).filter(eff == "in_progress"),
+        func.count(distinct(sub.c.bc)).filter(sub.c.st == "completed"),
+        func.count().filter(has_pna),
+    ))).one()
+    return {"open_workids": r[0], "closed_workids": r[1], "reassigned_workids": r[2],
+            "open_tags": r[3], "ongoing_tags": r[4], "completed_tags": r[5], "total_pna": r[6]}
 
 
 @router.get("/workid-status", response_class=HTMLResponse)
@@ -223,6 +267,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
                         completed_to: str = Query(default=""),
                         cosmetic_stage: str = Query(default=""),
                         exclude_admin: str = Query(default=""),
+                        show_reassigned: str = Query(default=""),
                         highlight: str = Query(default="")):
     # ── Base query: WorkOrders joined to their Device ──────────────────────────
     # stage="asgn" WorkOrders come from /transfers' "Assign To Employee" field
@@ -235,6 +280,12 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
             .join(Device, WorkOrder.device_id == Device.id, isouter=True)
             .where(WorkOrder.stage != "asgn")
             .order_by(WorkOrder.assigned_at.desc()))
+    # "Show Reassigned" (2026-10-23, off by default): WorkIDs taken off an
+    # engineer by Pick This / Change Engineer / a stage move are hidden from the
+    # table, tiles and Export unless ticked. Filtered here, before the row cap.
+    # A link to one WorkID (?highlight=) always finds it, reassigned or not.
+    if not show_reassigned and not highlight:
+        stmt = stmt.where(WorkOrder.status != "reassigned")
     if workid:
         stmt = stmt.where(WorkOrder.work_id.ilike(f"%{workid.strip()}%"))
     if tag:
@@ -284,6 +335,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
         select(func.count()).select_from(stmt.subquery())
     )).scalar() or 0
     main_truncated = main_total > MAIN_ROW_CAP
+    full_stmt = stmt            # every matching WorkID — the tiles count these (see below)
     stmt = stmt.limit(MAIN_ROW_CAP)
 
     rows = (await db.execute(stmt)).all()
@@ -316,7 +368,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
         # names (mv.from_stage, mv.moved_at, mv.moved_by, mv.notes), so the
         # matching logic below is unchanged.
         move_rows = (await db.execute(
-            select(StageMovement.device_id, StageMovement.from_stage,
+            select(StageMovement.device_id, StageMovement.from_stage, StageMovement.to_stage,
                    StageMovement.moved_at, StageMovement.moved_by, StageMovement.notes)
             .where(StageMovement.device_id.in_(device_ids))
             .order_by(StageMovement.moved_at.asc())
@@ -378,6 +430,49 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
             )
         return dev_movements[-1]
 
+    # ── Reassigned WorkIDs (2026-10-23) ─────────────────────────────────────
+    # Pick This / Change Engineer / a stage move take a tag off its engineer:
+    # their WorkID is closed as "reassigned", not completed. Such a row shows
+    # the stage stored ON the WorkID (the nearest Asset History movement is the
+    # pick/move itself, which mislabelled e.g. a Masking WorkID "L1/L2
+    # Repair"), no Completed Date, and who took it over: the WorkID opened
+    # for the same tag within a minute, else the stage move at that moment.
+    from routers.cosmetic import MOVE_STAGE_CODE
+    _code_stage = {}
+    for _st in DeviceStage:
+        _code_stage.setdefault(_st.value[:5], _st)
+    _code_stage.update({code: st for st, code in MOVE_STAGE_CODE.items()})
+    _code_stage.update({"l1": DeviceStage.l1, "l2": DeviceStage.l2, "l3": DeviceStage.l3})
+
+    def _wo_stage(wo):
+        st = _code_stage.get((wo.stage or "").strip())
+        return (st.value, STAGE_LABELS.get(st, st.value)) if st else (wo.stage or "", (wo.stage or "—").upper())
+
+    successor_by_wo = {}
+    _re_devs = {wo.device_id for wo, _d in rows if wo.status == "reassigned" and wo.completed_at}
+    if _re_devs:
+        _others = (await db.execute(
+            select(WorkOrder.id, WorkOrder.device_id, WorkOrder.assigned_at,
+                   WorkOrder.assigned_name, WorkOrder.assigned_username)
+            .where(WorkOrder.device_id.in_(_re_devs), WorkOrder.stage != "asgn")
+        )).all()
+        for wo, _d in rows:
+            if wo.status != "reassigned" or not wo.completed_at:
+                continue
+            near = [o for o in _others if o.device_id == wo.device_id and o.id != wo.id and o.assigned_at
+                    and abs((o.assigned_at - wo.completed_at).total_seconds()) <= 60]
+            if near:
+                o = min(near, key=lambda o: abs((o.assigned_at - wo.completed_at).total_seconds()))
+                successor_by_wo[wo.id] = "to " + (o.assigned_name or o.assigned_username or "unassigned")
+            else:
+                mvs = [m for m in movements_by_device.get(str(wo.device_id), []) if m.moved_at
+                       and abs((m.moved_at - wo.completed_at).total_seconds()) <= 60]
+                if mvs:
+                    m = min(mvs, key=lambda m: abs((m.moved_at - wo.completed_at).total_seconds()))
+                    who = display_name_by_username.get(m.moved_by) or m.moved_by or ""
+                    successor_by_wo[wo.id] = ("moved to " + STAGE_LABELS.get(m.to_stage, getattr(m.to_stage, "value", "") or "")
+                                              + (f" by {who}" if who else ""))
+
     today = app_now()
     items = []
     for wo, dev in rows:
@@ -386,7 +481,14 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
         finalqc_dt = finalqc_date_map.get(did)
 
         handoff_stage = _handoff_stage(wo)
-        if handoff_stage:
+        reassigned_at = wo.completed_at if wo.status == "reassigned" else None
+        if reassigned_at:
+            stage_value, stage_label = _wo_stage(wo)
+            movement_completed_at = None
+            movement_engineer = (wo.assigned_name or display_name_by_username.get(wo.assigned_username)
+                                 or wo.assigned_username or "—")
+            engineer_username = wo.assigned_username
+        elif handoff_stage:
             stage_value = handoff_stage.value
             stage_label = STAGE_LABELS.get(handoff_stage, handoff_stage.value)
             movement_completed_at = wo.completed_at
@@ -425,7 +527,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
         # WorkID is genuinely completed (2026-09-19 clarification: it's a
         # running counter, not blank, while still with this engineer; only
         # Completed Date itself stays blank until then).
-        aging_end = movement_completed_at or today
+        aging_end = movement_completed_at or reassigned_at or today
         days = max(0, (aging_end.date() - start.date()).days) if start else None
         items.append({
             "row_key": f"wo-{wo.work_id}",
@@ -436,13 +538,20 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
             "brand": (dev.brand if dev else None),
             "stage_label": stage_label,
             "stage_value": stage_value,
-            "wo_status": wo.status,
+            # Effective status for the tiles: an open L1/L2 WorkID whose tag
+            # shows "Repair Started" is ongoing even if the WorkID itself was
+            # left "pending" (L1/L2 Start didn't update it before 2026-10-23).
+            "wo_status": ("in_progress" if (wo.status == "pending" and (wo.stage or "") in ("l1", "l2")
+                                            and dev is not None and dev.l1l2_status == "Repair Started")
+                          else wo.status),
             "start": start,
             "assigned_date": start,
             "finalqc": finalqc_dt,
             "completed_at": movement_completed_at,
             "days": days,
-            "ongoing": movement_completed_at is None,
+            "ongoing": movement_completed_at is None and reassigned_at is None,
+            "reassigned_at": reassigned_at,
+            "reassigned_to": successor_by_wo.get(wo.id, ""),
             "notes": (dev.notes if dev else None),
             "engineer": movement_engineer,
             "engineer_username": engineer_username,
@@ -512,9 +621,20 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
     def _tags(status):
         return len({it["barcode"] for it in items
                     if it["wo_status"] == status and it.get("barcode") and it["barcode"] != "—"})
-    tile_counts = {
-        "open_workids": sum(1 for it in items if it["wo_status"] != "completed"),
-        "closed_workids": sum(1 for it in items if it["wo_status"] == "completed"),
+    if main_truncated:
+        # More WorkIDs match than the table loads (MAIN_ROW_CAP): count the
+        # tiles in SQL over ALL of them, with the same filters, instead of
+        # just the loaded rows (2026-10-23 — "Ongoing tile not calculating":
+        # older open WorkIDs fell outside the loaded rows and were missed).
+        tile_counts = await _sql_tile_counts(
+            db, full_stmt, stage_vals=stage_vals, cf=cf, ct=ct,
+            exclude_admin=bool(exclude_admin), code_stage=_code_stage)
+    else:
+        tile_counts = None
+    tile_counts = tile_counts or {
+        "open_workids": sum(1 for it in items if it["wo_status"] not in ("completed", "reassigned")),
+        "closed_workids": sum(1 for it in items if it["wo_status"] in ("completed", "reassigned")),
+        "reassigned_workids": sum(1 for it in items if it["wo_status"] == "reassigned"),
         "open_tags": _tags("pending"),
         "ongoing_tags": _tags("in_progress"),
         "completed_tags": _tags("completed"),
@@ -561,6 +681,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
         "f_workid": workid, "f_tag": tag, "f_engineer": engineer,
         "f_completed_from": completed_from, "f_completed_to": completed_to,
         "f_cosmetic_stage": cosmetic_stage, "f_exclude_admin": exclude_admin,
+        "f_show_reassigned": show_reassigned,
         "highlight": highlight,
         "main_truncated": main_truncated, "main_total": main_total,
         "main_cap": MAIN_ROW_CAP,
@@ -576,7 +697,8 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
                                completed_from: str = Query(default=""),
                                completed_to: str = Query(default=""),
                                cosmetic_stage: str = Query(default=""),
-                               exclude_admin: str = Query(default="")):
+                               exclude_admin: str = Query(default=""),
+                               show_reassigned: str = Query(default="")):
     """CSV of exactly the rows the page is showing.
 
     Delegates to the page handler rather than repeating its query, so the
@@ -591,13 +713,14 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     page = await workid_status(request=request, db=db, current_user=current_user,
                                workid=workid, tag=tag, engineer=engineer,
                                completed_from=completed_from, completed_to=completed_to,
-                               cosmetic_stage=cosmetic_stage, exclude_admin=exclude_admin, highlight="")
+                               cosmetic_stage=cosmetic_stage, exclude_admin=exclude_admin,
+                               show_reassigned=show_reassigned, highlight="")
     items = page.context["items"]
 
     buf = _io.StringIO()
     w = _csv.writer(buf)
     w.writerow(["Tag Number", "Lot Number", "Make", "Model", "Engineer Name", "Stage",
-                "Assigned Date", "Completed Date", "PNA", "PNA History"])
+                "Assigned Date", "Completed Date", "Status", "PNA", "PNA History"])
     for it in items:
         w.writerow([
             it.get("barcode") or "",
@@ -609,6 +732,9 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             # Year-first so Excel reads real dates on any PC locale (2026-10-21).
             it["assigned_date"].strftime("%Y-%m-%d %H:%M") if it.get("assigned_date") else "",
             it["completed_at"].strftime("%Y-%m-%d %H:%M") if it.get("completed_at") else "",
+            (("Reassigned " + it["reassigned_at"].strftime("%Y-%m-%d %H:%M")
+              + (f" ({it['reassigned_to']})" if it.get("reassigned_to") else ""))
+             if it.get("reassigned_at") else ("Completed" if it.get("completed_at") else "Open")),
             "Yes" if it.get("pna") else "No",
             it.get("pna_history_text") or "",
         ])

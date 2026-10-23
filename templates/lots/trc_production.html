@@ -881,12 +881,26 @@ document.getElementById('asgDevSubmit').addEventListener('click', function(){
 // (default L1), submit moves the tag and hands it to that user with a new
 // WorkID (routers/stock.py change_engineer), which then shows up on
 // /workid-status the same way any other WorkOrder does.
+// Users are listed per target stage (2026-10-23): only those who can work
+// the chosen stage. Reloaded whenever the Stage changes; a selection that is
+// still eligible is kept.
 var _ceUsers = [];
-fetch('/api/change-engineer-users').then(function(r){return r.json();}).then(function(list){
-  _ceUsers = list;
+function loadCeUsers() {
   var sel = document.getElementById('ceModal_user');
-  list.forEach(function(u){ sel.add(new Option(u.name, u.id)); });
-});
+  var stage = (document.getElementById('ceModal_stage') || {}).value || '';
+  var keep = sel.value;
+  fetch('/api/change-engineer-users?stage=' + encodeURIComponent(stage))
+    .then(function(r){return r.json();}).then(function(list){
+      _ceUsers = list;
+      while (sel.options.length > 1) sel.remove(1);
+      list.forEach(function(u){ sel.add(new Option(u.name, u.id)); });
+      sel.value = list.some(function(u){ return u.id === keep; }) ? keep : '';
+      if (typeof updateCeSubmitState === 'function') updateCeSubmitState();
+    });
+}
+loadCeUsers();
+document.getElementById('ceModal_stage') &&
+  document.getElementById('ceModal_stage').addEventListener('change', loadCeUsers);
 
 var ceSelectedBarcode = null;
 
@@ -1007,7 +1021,10 @@ document.getElementById('ceModal_submit').addEventListener('click', function(){
   fd.append('assigned_user_id', userId);
   fd.append('target_stage', stage);
   fetch('/devices/change-engineer', {method:'POST', body:fd}).then(function(r){
-    if (!r.ok) return r.text().then(function(t){ throw new Error(t || ('HTTP ' + r.status)); });
+    if (!r.ok) return r.text().then(function(t){
+      var m; try { m = JSON.parse(t); } catch (e) {}
+      throw new Error((m && (m.error || m.detail)) || ('Could not assign (HTTP ' + r.status + ')'));
+    });
     return r.json();
   }).then(function(d){
     if (d.ok) {

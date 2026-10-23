@@ -85,6 +85,47 @@
     </div>
   </div>
 
+  {# ── Past reassignments recorded as completed ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-arrow-left-right me-2"></i>WorkIDs closed by a reassignment but marked Completed
+          <span class="badge {% if reassign_total %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ "{:,}".format(reassign_total) }}</span></span>
+        {% if reassign_total %}
+        <form method="post" action="/admin/system/reassign-fix" class="df-confirm"
+              data-confirm="Click again to change {{ reassign_total }} WorkIDs">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Change {{ "{:,}".format(reassign_total) }} to Reassigned</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        <p class="text-muted mb-2">The previous engineer's WorkID when someone used Pick This, Change Engineer, or moved the tag (Customise / Manual move). It was saved as Completed, so it counted as that engineer's finished work. Apply changes these to <strong>Reassigned</strong> (closed, not completed). Logged; reversible.</p>
+        {% if reassign_c %}
+        {% if reassign_total > reassign_c|length %}<div class="text-muted mb-1">Showing the latest {{ reassign_c|length }} of {{ "{:,}".format(reassign_total) }}.</div>{% endif %}
+        <div class="table-responsive" style="max-height:420px">
+          <table class="table table-sm table-bordered mb-0 align-middle" style="font-size:.78rem">
+            <thead class="table-dark" style="position:sticky;top:0"><tr><th>WorkID</th><th>Tag</th><th>Stage</th><th>Engineer</th><th>Assigned</th><th>Closed</th><th>Closed by</th></tr></thead>
+            <tbody>
+              {% for r in reassign_c %}
+              <tr>
+                <td class="font-monospace"><a href="/workid-status?highlight={{ r.work_id }}" target="_blank">{{ r.work_id }}</a></td>
+                <td class="text-nowrap"><a href="/devices/{{ r.tag }}" target="_blank"><code>{{ r.tag }}</code></a></td>
+                <td>{{ r.stage | upper }}</td><td>{{ r.engineer }}</td><td class="text-nowrap">{{ r.assigned }}</td>
+                <td class="text-nowrap">{{ r.closed }}</td><td>{{ r.action }} <span class="text-muted">({{ r.by }})</span></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="text-success"><i class="bi bi-check-circle me-1"></i>None.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {# ── Tag numbers that differ only by capital / small letters ── #}
   <div class="col-12">
     <div class="card border-0 shadow-sm">

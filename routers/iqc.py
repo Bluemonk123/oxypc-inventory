@@ -23,6 +23,7 @@ from services.location_defaults import ensure_stage_location
 from utils.master_data import master_values
 from utils.grades import parse_grade
 from routers.devices import _build_model_summary
+from services.work_order_close import wo_open  # open = not completed / reassigned
 
 router = APIRouter(prefix="/iqc", tags=["iqc"], dependencies=[Depends(verify_csrf)])
 
@@ -1188,19 +1189,14 @@ async def iqc_bulk_apply_grade_type(
             # Manager's queue tiles, disagreeing with the device's real (now
             # different) stage forever. Same fix already applied to the
             # dedicated manual-move endpoint in routers/repair.py.
-            if prev in (DeviceStage.l1, DeviceStage.l2) and new_stage not in (DeviceStage.l1, DeviceStage.l2):
-                # Also matches stage l1/l2 WorkIDs (the plain engineer-pick
-                # ones), not just "L1L2-" — those were left open here.
-                from routers.repair import _close_l1l2_work_orders
-                await _close_l1l2_work_orders(db, device.id)
-            elif prev == DeviceStage.l3 and new_stage != DeviceStage.l3:
-                from sqlalchemy import update as sa_update
-                await db.execute(
-                    sa_update(WorkOrder)
-                    .where(WorkOrder.device_id == device.id, WorkOrder.work_id.like("L3L4-%"),
-                           WorkOrder.status != "completed")
-                    .values(status="completed", completed_at=app_now())
-                )
+            # 2026-10-23: a move to another stage takes the tag off whoever
+            # held it (any stage, cosmetic included — a Masking WorkID used to
+            # stay open after a move back to L1/L2, then got closed as
+            # "completed" by the next Pick This). Every open WorkID is closed
+            # as "reassigned": closed, but not counted as that engineer's work.
+            if prev != new_stage:
+                from services.work_order_close import reassign_open_work_orders
+                await reassign_open_work_orders(db, device.id)
             db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=new_stage,
                                   moved_by=current_user.username, notes="Bulk Customise modal — bulk Move to Stage"))
             if new_stage == DeviceStage.sold:

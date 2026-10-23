@@ -23,6 +23,7 @@ from models.part_request import PartRequest, PartSourcingRequest
 from models.pna_part import DevicePNAPart
 from auth.dependencies import get_current_user, require_roles, verify_csrf
 from services.audit_engine import audit
+from services.work_order_close import wo_open  # open = not completed / reassigned
 
 router = APIRouter(tags=["part_requests"], dependencies=[Depends(verify_csrf)])
 
@@ -61,7 +62,7 @@ async def create_part_request(
     if not device:
         raise HTTPException(404, "Device not found")
     wo = (await db.execute(
-        select(WorkOrder).where(WorkOrder.device_id == device.id, WorkOrder.status != "completed")
+        select(WorkOrder).where(WorkOrder.device_id == device.id, wo_open())
         .order_by(WorkOrder.assigned_at.desc())
     )).scalars().first()
     stage = device.current_stage.value if device.current_stage else None
@@ -154,7 +155,7 @@ async def create_part_requests_batch(
     if not device:
         raise HTTPException(404, "Device not found")
     wo = (await db.execute(
-        select(WorkOrder).where(WorkOrder.device_id == device.id, WorkOrder.status != "completed")
+        select(WorkOrder).where(WorkOrder.device_id == device.id, wo_open())
         .order_by(WorkOrder.assigned_at.desc())
     )).scalars().first()
     stage = device.current_stage.value if device.current_stage else None

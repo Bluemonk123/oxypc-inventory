@@ -35,6 +35,7 @@ from utils.warranty import effective_warranty_for_sale, warranty_status_for_sale
 from utils.master_data import master_values, entity_values
 
 from utils.device_spec import gb_text as _gb_text  # whole TB shown as TB (2026-10-22)
+from services.work_order_close import wo_open  # open = not completed / reassigned
 
 router = APIRouter(prefix="/devices", tags=["devices"], dependencies=[Depends(verify_csrf)])
 # All logged-in users can search/view; only admin+invmgr can edit
@@ -506,7 +507,7 @@ async def _employee_device_id_filter(db: AsyncSession, employee: str):
     name, via WorkOrder (Device has no direct assigned-employee column)."""
     emp_device_ids = set((await db.execute(
         select(WorkOrder.device_id)
-        .where(WorkOrder.assigned_name == employee, WorkOrder.status != "completed")
+        .where(WorkOrder.assigned_name == employee, wo_open())
     )).scalars().all())
     return Device.id.in_(emp_device_ids) if emp_device_ids else Device.id.in_([])
 

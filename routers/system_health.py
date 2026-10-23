@@ -532,6 +532,91 @@ async def tag_case_duplicates(current_user: User = Depends(admin_only)):
     return JSONResponse({"groups": len(groups), "groups_with_2_live_copies": len(live), "list": groups})
 
 
+# ── Past reassignments recorded as "completed" (2026-10-23) ──────────────────
+# Before 2026-10-23, Pick This / Change Engineer / Customise or Manual Move
+# closed the previous engineer's WorkID as "completed", so it counted as their
+# finished work. Those WorkIDs are found by the action's own Asset History
+# entry on the same tag within 10 seconds of the WorkID's completed time, and
+# only when the WorkID already existed before that action (so the new
+# engineer's own WorkID is never caught). Apply sets them to "reassigned";
+# completed_at (the close time) is kept. Audited with every id.
+_REASSIGN_NOTES = ("Picked by %", "Changed engineer to %", "Bulk Customise modal — bulk Move to Stage%",
+                   "Manual move%")
+
+
+async def _reassign_candidates(db):
+    from datetime import timedelta
+    from sqlalchemy import and_, or_, select
+    from models.device import Device, StageMovement
+    from models.work_order import WorkOrder
+    win = timedelta(seconds=10)
+    rows = (await db.execute(
+        select(WorkOrder.id, WorkOrder.work_id, WorkOrder.barcode, WorkOrder.stage,
+               WorkOrder.assigned_name, WorkOrder.assigned_username, WorkOrder.assigned_at,
+               WorkOrder.completed_at, StageMovement.notes, StageMovement.moved_by, StageMovement.moved_at)
+        .join(StageMovement, and_(
+            StageMovement.device_id == WorkOrder.device_id,
+            StageMovement.moved_at >= WorkOrder.completed_at - win,
+            StageMovement.moved_at <= WorkOrder.completed_at + win,
+            or_(*[StageMovement.notes.like(n) for n in _REASSIGN_NOTES])))
+        .where(WorkOrder.status == "completed", WorkOrder.completed_at.isnot(None),
+               WorkOrder.stage != "asgn", WorkOrder.assigned_at < StageMovement.moved_at - timedelta(seconds=5))
+        .order_by(WorkOrder.completed_at.desc())
+    )).all()
+    seen, out = set(), []
+    for r in rows:
+        if r.id in seen:
+            continue
+        seen.add(r.id)
+        out.append({"id": r.id, "work_id": r.work_id, "tag": r.barcode or "", "stage": r.stage,
+                    "engineer": r.assigned_name or r.assigned_username or "",
+                    "assigned": r.assigned_at.strftime("%d-%m-%Y %H:%M") if r.assigned_at else "",
+                    "closed": r.completed_at.strftime("%d-%m-%Y %H:%M") if r.completed_at else "",
+                    "action": (r.notes or "")[:80], "by": r.moved_by or ""})
+    return out
+
+
+@router.get("/reassign-fix")
+async def reassign_fix_preview(current_user: User = Depends(admin_only)):
+    from database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        c = await _reassign_candidates(db)
+    for r in c:
+        r["id"] = str(r["id"])
+    return JSONResponse({"workids_to_change": len(c), "list": c})
+
+
+@router.post("/reassign-fix")
+async def reassign_fix_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import update
+    from database import AsyncSessionLocal
+    from models.work_order import WorkOrder
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        c = await _reassign_candidates(db)
+        ids = [r["id"] for r in c]
+        for i in range(0, len(ids), 5000):
+            await db.execute(update(WorkOrder)
+                             .where(WorkOrder.id.in_(ids[i:i + 5000]), WorkOrder.status == "completed")
+                             .values(status="reassigned")
+                             .execution_options(synchronize_session=False))
+        if ids:
+            await audit(db, user=current_user, action="WORKID_REASSIGNED_BACKFILL", table_name="work_orders",
+                        record_id=f"{len(ids)} workids",
+                        old_value={"status": "completed"},
+                        new_value={"status": "reassigned", "count": len(ids),
+                                   "work_order_ids": [str(i) for i in ids],
+                                   "work_ids": [r["work_id"] for r in c]},
+                        notes="Past Pick This / Change Engineer / stage-move closes changed from completed "
+                              "to reassigned. Reverse: set status = 'completed' for these ids.",
+                        request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Reassigned fix done: {len(ids):,} WorkIDs changed to Reassigned.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "updated": len(ids)})
+
+
 # ── Data Fixes page (2026-10-22) ─────────────────────────────────────────────
 # One admin page: preview + Apply button for each fill, and the data check.
 # The Apply buttons are ordinary form posts the admin clicks.
@@ -545,6 +630,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         subcat = await _subcat_changes(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
+        reassign_c = await _reassign_candidates(db)
     spec_fields = {c: sum(1 for _i, ch, _r in spec if c in ch) for c in _SPEC_COLS}
     spec_examples, seen = [], set()
     for _i, ch, r in spec:
@@ -568,6 +654,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         "issue_counts": _issue_counts(issues),
         # Only numbers with 2+ copies NOT in Trash need a decision; the rest
         # (one copy already trashed) are counted, not listed.
+        "reassign_c": reassign_c[:300], "reassign_total": len(reassign_c),
         "case_dupes": [g for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) > 1],
         "case_dupes_handled": sum(1 for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) <= 1),
         "field_labels": {"ram_gb": "RAM GB", "ram_summary": "RAM", "total_ram_count": "Total RAM Count",

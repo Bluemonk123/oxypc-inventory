@@ -37,7 +37,7 @@ from models.bucket import Bucket, _new_bucket_number
 from models.pna_part import DevicePNAPart
 from routers.transfers import _gen_work_id
 from services.notifications import create_notification
-from services.work_order_close import close_open_work_orders, reuse_open_stress_work_order
+from services.work_order_close import close_open_work_orders, reassign_open_work_orders, reuse_open_stress_work_order, wo_open
 from services.location_defaults import ensure_stage_location
 from utils.flag import flag_badge_html, is_flagged
 
@@ -1641,7 +1641,7 @@ async def _move_device_to_l1l2(db: AsyncSession, device: Device, current_user: U
     await db.execute(
         update(WorkOrder)
         .where(WorkOrder.device_id == device.id, WorkOrder.stage == "l1",
-               WorkOrder.status != "completed")
+               wo_open())
         .values(status="completed", completed_at=app_now())
     )
     device.current_stage = DeviceStage.l1
@@ -1801,7 +1801,7 @@ async def trc_production_list(
     if repair_line_ids:
         wo_rows = (await db.execute(
             select(WorkOrder.device_id, WorkOrder.assigned_name)
-            .where(WorkOrder.device_id.in_(repair_line_ids), WorkOrder.status != "completed")
+            .where(WorkOrder.device_id.in_(repair_line_ids), wo_open())
             .order_by(WorkOrder.device_id, WorkOrder.assigned_at.desc())
         )).all()
         for did, name in wo_rows:
@@ -1881,7 +1881,7 @@ async def trc_production_list(
         # Stock Transfer department (what Tag Number Allocation shows).
         for did, name in (await db.execute(
             select(WorkOrder.device_id, WorkOrder.assigned_name)
-            .where(WorkOrder.device_id.in_(as_is_ids), WorkOrder.status != "completed")
+            .where(WorkOrder.device_id.in_(as_is_ids), wo_open())
             .order_by(WorkOrder.device_id, WorkOrder.assigned_at.desc())
         )).all():
             if name and str(did) not in as_is_assigned_map:
@@ -2067,16 +2067,48 @@ CHANGE_ENGINEER_STAGES = [
 CHANGE_ENGINEER_STAGE_CODE = {stage: stage.value[:5] for stage, _ in CHANGE_ENGINEER_STAGES}
 
 
+# Who can be handed a tag at each Change Engineer stage (2026-10-23): the
+# built-in roles for that stage, plus any role (custom ones included) whose
+# Module Permission row for the stage's page is switched on. Uses
+# is_narrowly_scoped_to, not has_perm: has_perm treats an unconfigured module
+# as allowed, which would let e.g. a cosmetic Masking role be given an L1/L2
+# tag. Admin is always eligible.
+_CE_STAGE_ROLES = {
+    "l1": ("l1_engineer", "l2_engineer"), "l3": ("l3_engineer",),
+    "qc_check": ("qc_inspector",), "cosmetic_received": ("cosmetic_manager",),
+    "final_qc": ("qc_inspector", "cosmetic_manager"), "stock_in": ("inventory_manager",),
+    "trc_production": ("inventory_manager",),
+}
+_CE_STAGE_MODULES = {
+    "l1": ("repair_l1", "repair_l2"), "l3": ("repair_l3",), "qc_check": ("qc_check",),
+    "cosmetic_received": ("cosmetic_received", "cosmetic_cleaning", "cosmetic_putty",
+                          "cosmetic_dry_sanding", "cosmetic_masking", "cosmetic_painting",
+                          "cosmetic_water_sanding", "cosmetic_completed"),
+    "final_qc": ("cosmetic_finalqc",), "stock_in": ("stock",), "trc_production": ("production_manager",),
+}
+
+
+def _ce_user_eligible(user, stage_value: str) -> bool:
+    from models.role_permissions import is_narrowly_scoped_to
+    role = user.role.value if hasattr(user.role, "value") else str(user.role)
+    if role == "admin" or role in _CE_STAGE_ROLES.get(stage_value, ()):
+        return True
+    mods = _CE_STAGE_MODULES.get(stage_value)
+    return bool(mods) and is_narrowly_scoped_to(role, *mods)
+
+
 @router.get("/api/change-engineer-users")
-async def change_engineer_users(db: AsyncSession = Depends(get_db),
+async def change_engineer_users(stage: str = "", db: AsyncSession = Depends(get_db),
                                 current_user: User = Depends(allowed)):
     """Production Manager's Change Engineer modal — "User Display Name"
-    dropdown. Every active user, not just a fixed engineer-role subset (the
-    feature is a general reassignment tool, not scoped to one role), sorted
-    by display name."""
+    dropdown, sorted by display name. With ?stage= (the modal's target stage)
+    only users who can work that stage are listed (2026-10-23); without it,
+    every active user (old behaviour)."""
     rows = (await db.execute(
         select(User).where(User.status == True).order_by(User.full_name)
     )).scalars().all()
+    if stage:
+        rows = [u for u in rows if _ce_user_eligible(u, stage)]
     return JSONResponse([{"id": str(u.id), "name": u.full_name or u.username} for u in rows])
 
 
@@ -2120,6 +2152,12 @@ async def change_engineer(
             break
     if not new_stage:
         raise HTTPException(400, "Invalid target stage")
+    if not _ce_user_eligible(user, new_stage.value):
+        # JSON (not an HTTPException page) so the modal can show the message.
+        return JSONResponse({"ok": False, "error": (
+            f"{user.full_name or user.username} can't work "
+            f"{dict(CHANGE_ENGINEER_STAGES).get(new_stage, new_stage.value)} — pick a user for that stage")},
+            status_code=400)
 
     prev_stage = device.current_stage
     prev_mv = (await db.execute(
@@ -2134,6 +2172,8 @@ async def change_engineer(
 
     device.current_stage = new_stage
     reset_repair_cycle_on_entry(device, prev_stage, new_stage)
+    if new_stage == DeviceStage.l1:
+        device.l1l2_status = "New"   # new engineer hasn't started (2026-10-23)
     device.updated_at = app_now()
     db.add(StageMovement(
         device_id=device.id, from_stage=prev_stage, to_stage=new_stage,
@@ -2145,7 +2185,8 @@ async def change_engineer(
     # open, unassigned STRS- WorkID from L1/L2 Mark Complete if there is one.
     reused_wo = await reuse_open_stress_work_order(
         db, device.id, new_stage, user, created_by=current_user.username)
-    await close_open_work_orders(db, device.id, keep_id=reused_wo.id if reused_wo else None)   # previous engineer's WorkID completes now
+    # Previous engineer's WorkID is REASSIGNED, not completed (2026-10-23).
+    await reassign_open_work_orders(db, device.id, keep_id=reused_wo.id if reused_wo else None)
     if reused_wo:
         work_id = reused_wo.work_id
     else:

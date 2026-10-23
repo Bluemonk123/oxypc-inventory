@@ -35,6 +35,7 @@ from models.iqc_inspection import IQCInspection
 from models.bucket import Bucket
 from services.parts_required import compute_required
 from routers.transfers import _gen_work_id
+from services.work_order_close import wo_open  # open = not completed / reassigned
 
 router = APIRouter(prefix="/repair", tags=["repair"], dependencies=[Depends(verify_csrf)])
 
@@ -118,7 +119,7 @@ async def _close_l1l2_work_orders(db: AsyncSession, device_id) -> None:
         sa_update(WorkOrder)
         .where(WorkOrder.device_id == device_id,
                or_(WorkOrder.work_id.like("L1L2-%"), WorkOrder.stage.in_(["l1", "l2"])),
-               WorkOrder.status != "completed")
+               wo_open())
         .values(status="completed", completed_at=app_now())
     )
 
@@ -182,6 +183,16 @@ async def l1l2_start(
         raise HTTPException(404, "Device not found")
     device.l1l2_status = "Repair Started"
     device.updated_at = app_now()
+    # The engineer's open L1/L2 WorkID is now "in progress" (2026-10-23) —
+    # same as L3/L4 Start. WorkID Status's Ongoing Tags tile counts these;
+    # L1/L2 starts used to leave the WorkID "pending", so the tile read ~0.
+    from sqlalchemy import update as sa_update
+    await db.execute(
+        sa_update(WorkOrder)
+        .where(WorkOrder.device_id == device.id, WorkOrder.stage.in_(["l1", "l2"]),
+               WorkOrder.status == "pending")
+        .values(status="in_progress", started_at=app_now())
+    )
 
     # Stage label ("L1"/"L2") derived from the device's current stage — this is
     # exactly what repair_list's open_jobs query filters on (RepairJob.stage).
@@ -225,7 +236,7 @@ async def l1_pick(
     Asset History and /workid-status's Assigned Engineer column (sourced from
     the latest StageMovement) updates. Picking a tag that is already yours is
     a no-op (double-click / page not refreshed)."""
-    from services.work_order_close import close_open_work_orders
+    from services.work_order_close import reassign_open_work_orders
     if not has_perm(current_user.role.value, "repair_l1", "add"):
         raise HTTPException(403, "You do not have permission to pick L1/L2 repairs")
 
@@ -239,15 +250,17 @@ async def l1_pick(
         select(WorkOrder).where(
             WorkOrder.device_id == device.id,
             WorkOrder.stage == "l1",
-            WorkOrder.status != "completed",
+            wo_open(),
         ).order_by(WorkOrder.assigned_at.desc(), WorkOrder.created_at.desc())
     )).scalars().all()
     if open_wos and open_wos[0].assigned_user_id == current_user.id:
         return RedirectResponse(url="/repair/l1", status_code=302)
     previous = [(w.work_id, w.assigned_user_id, w.assigned_name or w.assigned_username) for w in open_wos]
 
-    await close_open_work_orders(db, device.id)
+    # Previous engineer's WorkID is REASSIGNED, not completed (2026-10-23).
+    await reassign_open_work_orders(db, device.id)
     await _close_open_movement(db, device)
+    device.l1l2_status = "New"   # the picker hasn't started yet — Start Repair is theirs to click
 
     work_id = await _gen_work_id(db)
     picker = current_user.full_name or current_user.username
@@ -350,7 +363,7 @@ async def bulk_part_request(
 
     wo_rows = (await db.execute(
         select(WorkOrder).where(WorkOrder.device_id.in_(device_ids),
-                                WorkOrder.status != "completed")
+                                wo_open())
         .order_by(WorkOrder.assigned_at.desc())
     )).scalars().all()
     wo_by_dev = {}
@@ -595,7 +608,7 @@ async def l1l2_complete_to_stress(
         sa_update(WorkOrder)
         .where(WorkOrder.device_id == device.id,
                or_(WorkOrder.work_id.like("L1L2-%"), WorkOrder.stage.in_(["l1", "l2"])),
-               WorkOrder.status != "completed")
+               wo_open())
         .values(status="completed", completed_at=app_now())
     )
     # Also close any open RepairJobs so the device drops out of the side
@@ -693,7 +706,7 @@ async def l3l4_list(request: Request,
             .join(Device, WorkOrder.device_id == Device.id)
             .join(Lot, Device.lot_id == Lot.id, isouter=True)
             .where(WorkOrder.work_id.like("L3L4-%"),
-                   WorkOrder.status != "completed",
+                   wo_open(),
                    Device.is_trashed == False,
                    # A device whose WorkOrder is still open but has already
                    # moved on (Ready to Sale, Scrap for Sale, ...) via some
@@ -801,7 +814,7 @@ async def l3l4_start(
     await db.execute(
         sa_update(WorkOrder)
         .where(WorkOrder.device_id == device.id, WorkOrder.work_id.like("L3L4-%"),
-               WorkOrder.status != "completed")
+               wo_open())
         .values(status="in_progress", started_at=app_now())
     )
     device.l34_status = "Repair Started"
@@ -826,7 +839,7 @@ async def l3l4_pick(
     engineer's) and a new "L3L4-" WorkID opens for the current user, keeping
     who originally requested the L3/L4 repair. Picking your own tag is a
     no-op."""
-    from services.work_order_close import close_open_work_orders
+    from services.work_order_close import reassign_open_work_orders
     if not has_perm(current_user.role.value, "repair_l3", "enable"):
         raise HTTPException(403, "You do not have permission to pick L3/L4 repairs")
 
@@ -840,7 +853,7 @@ async def l3l4_pick(
         select(WorkOrder).where(
             WorkOrder.device_id == device.id,
             WorkOrder.work_id.like("L3L4-%"),
-            WorkOrder.status != "completed",
+            wo_open(),
         ).order_by(WorkOrder.assigned_at.desc(), WorkOrder.created_at.desc())
     )).scalars().all()
     if open_wos and open_wos[0].assigned_user_id == current_user.id:
@@ -848,7 +861,8 @@ async def l3l4_pick(
     previous = [(w.work_id, w.assigned_user_id, w.assigned_name or w.assigned_username) for w in open_wos]
     requested_by = open_wos[0].requested_by_name if open_wos else None
 
-    await close_open_work_orders(db, device.id)
+    # Previous engineer's WorkID is REASSIGNED, not completed (2026-10-23).
+    await reassign_open_work_orders(db, device.id)
     await _close_open_movement(db, device)
 
     picker = current_user.full_name or current_user.username
@@ -899,7 +913,7 @@ async def l3l4_complete(
     await db.execute(
         sa_update(WorkOrder)
         .where(WorkOrder.device_id == device.id, WorkOrder.work_id.like("L3L4-%"),
-               WorkOrder.status != "completed")
+               wo_open())
         .values(status="completed", completed_at=app_now())
     )
     device.l34_status = "Completed"
@@ -946,7 +960,7 @@ async def l3l4_scrap(
     await db.execute(
         sa_update(WorkOrder)
         .where(WorkOrder.device_id == device.id, WorkOrder.work_id.like("L3L4-%"),
-               WorkOrder.status != "completed")
+               wo_open())
         .values(status="completed", completed_at=app_now())
     )
     device.l34_status = scrap_type
@@ -1002,7 +1016,7 @@ async def repair_list(stage: str, request: Request,
                 select(WorkOrder.device_id, WorkOrder.assigned_user_id)
                 .where(WorkOrder.device_id.in_(dev_ids),
                        WorkOrder.stage == stage,
-                       WorkOrder.status != "completed",
+                       wo_open(),
                        WorkOrder.assigned_user_id.isnot(None))
                 # created_at breaks ties: two work orders can share an
                 # assigned_at when a reassignment happens in the same second.
@@ -1079,7 +1093,7 @@ async def repair_list(stage: str, request: Request,
             select(WorkOrder).where(
                 WorkOrder.device_id.in_(device_ids),
                 WorkOrder.stage == stage,
-                WorkOrder.status != "completed",
+                wo_open(),
             ).order_by(WorkOrder.assigned_at.desc())
         )).scalars().all()
         for wo in wo_rows:
@@ -1566,7 +1580,7 @@ async def complete_repair(
         # Carry the same WorkID forward (re-stage the open WorkOrder)
         await db.execute(
             sa_update(WorkOrder)
-            .where(WorkOrder.device_id == device.id, WorkOrder.status != "completed")
+            .where(WorkOrder.device_id == device.id, wo_open())
             .values(stage=escalate_to.value)
         )
 
@@ -1827,14 +1841,12 @@ async def move_device(
     # this the WorkOrder is orphaned: it keeps showing on /repair/l3l4 and in
     # Production Manager's "Total Tags in L3/L4" tile's underlying queue,
     # disagreeing with the device's real (now different) stage forever.
-    if prev == DeviceStage.l3 and new_stage != DeviceStage.l3:
-        from sqlalchemy import update as sa_update
-        await db.execute(
-            sa_update(WorkOrder)
-            .where(WorkOrder.device_id == device.id, WorkOrder.work_id.like("L3L4-%"),
-                   WorkOrder.status != "completed")
-            .values(status="completed", completed_at=app_now())
-        )
+    # 2026-10-23: any stage change here takes the tag off whoever held it —
+    # every open WorkID is closed as "reassigned" (was: only L3L4- ones, and
+    # as "completed", which counted as that engineer's finished work).
+    if prev != new_stage:
+        from services.work_order_close import reassign_open_work_orders
+        await reassign_open_work_orders(db, device.id)
     db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=new_stage,
                          moved_by=current_user.username, notes=notes or "Manual move"))
     await audit(db, user=current_user, action="STAGE_MOVED",
