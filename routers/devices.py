@@ -179,6 +179,49 @@ async def search_tags(q: str = "", db: AsyncSession = Depends(get_db),
     return JSONResponse({"results": results})
 
 
+@router.get("/api/quick-search")
+async def quick_search(q: str = "", db: AsyncSession = Depends(get_db),
+                       current_user: User = Depends(view_allowed)):
+    """Top-bar Search / Scan box (2026-10-24, templates/base.html +
+    static/js/topbar-search.js): Tag Number or Serial Number, partial match,
+    up to 10 tags (not in Trash). Exact Tag Number first, then tags starting
+    with q, then active before inactive, then most recently updated."""
+    from sqlalchemy import case as _case, func as _func
+    q = (q or "").strip()
+    if len(q) < 2:
+        return JSONResponse({"results": []})
+    like = f"%{q}%"
+    exact = _func.upper(Device.barcode) == q.upper()
+    starts = Device.barcode.ilike(f"{q}%")
+    rows = (await db.execute(
+        select(Device, Lot.lot_number)
+        .join(Lot, Device.lot_id == Lot.id, isouter=True)
+        .where((Device.barcode.ilike(like)) | (Device.serial_no.ilike(like)),
+               Device.is_trashed.isnot(True))
+        .order_by(_case((exact, 0), else_=1), _case((starts, 0), else_=1),
+                  Device.is_active.desc(), Device.updated_at.desc())
+        .limit(10)
+    )).all()
+    results = []
+    for device, lot_number in rows:
+        if device.storage_gb:
+            storage = _gb_text(device.storage_gb) + (f" {device.storage_type}" if device.storage_type else "")
+        else:
+            storage = "—"
+        results.append({
+            "barcode": device.barcode,
+            "lot_number": lot_number or "—",
+            "cpu": device.cpu or "—",
+            "ram": _gb_text(device.ram_gb) or "—",
+            "storage": storage,
+            "grade": device.grade.value if device.grade else "—",
+            "stage": str(device.stage_label or "—"),
+            "stage_color": device.stage_color or "secondary",
+            "exact": (device.barcode or "").upper() == q.upper(),
+        })
+    return JSONResponse({"results": results})
+
+
 @router.get("/api/asset-history")
 async def device_asset_history(barcode: str, db: AsyncSession = Depends(get_db),
                                current_user: User = Depends(view_allowed)):

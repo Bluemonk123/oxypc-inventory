@@ -548,7 +548,11 @@
 </div>
 {% endmacro %}
 
-<!-- ROW 1: 3/4 (Device Stage Pipeline) + 1/4 (Financial Summary), equal height.
+{{ category_quick_view_cards() }}
+{{ summary_stat_cards() }}
+
+<!-- 3/4 (Device Stage Pipeline) + 1/4 (Financial Summary), equal height —
+     below the four tint tiles, above Analytics (2026-10-24, on request).
      The Location Gaps widget was removed from the dashboard (2026-10-15);
      the full list stays on /locations/gaps. -->
 <div class="row g-3 mb-4">
@@ -559,9 +563,6 @@
     {{ financial_summary_card() }}
   </div>
 </div>
-
-{{ category_quick_view_cards() }}
-{{ summary_stat_cards() }}
 
 {% include "dashboard/_admin_analytics.html" %}
 

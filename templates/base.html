@@ -11,6 +11,30 @@
   <style>
     /* Clamp long notes/remarks/comment cells to 2 lines; full text on hover (title). */
     .note-clamp { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; max-width:260px; }
+    /* Top-bar Search / Scan box (2026-10-24) — static/js/topbar-search.js.
+       Never write a brace directly followed by # in this block: Jinja reads it
+       as a comment opener and every page 500s. */
+    #tbSearchWrap { position:relative; flex:1 1 300px; width:300px; max-width:300px; min-width:160px; }
+    #tbSearchWrap .tbs-ico { position:absolute; left:.6rem; top:50%; transform:translateY(-50%); color:#6c757d; pointer-events:none; }
+    /* Light Colour from the design system (--sidebar-text #f0f4f8, the page background). */
+    #tbSearch { padding-left:2rem; background-color:var(--sidebar-text, #f0f4f8); }
+    #tbSearchMenu { position:absolute; top:calc(100% + 4px); left:50%; transform:translateX(-50%);
+      width:max-content; min-width:380px; max-width:calc(100vw - 24px); max-height:420px; overflow-y:auto;
+      background:#fff; border:1px solid #dee2e6; border-radius:.5rem; box-shadow:0 .5rem 1rem rgba(0,0,0,.15);
+      z-index:1080; display:grid; column-gap:8px; padding:4px 0; font-size:.8rem;
+      grid-template-columns:max-content max-content fit-content(220px) max-content max-content max-content max-content; }
+    #tbSearchMenu[hidden] { display:none; }
+    #tbSearchMenu .tbs-row { grid-column:1 / -1; display:grid; grid-template-columns:subgrid; align-items:center;
+      padding:3px 10px; cursor:pointer; white-space:nowrap; }
+    #tbSearchMenu .tbs-row.active, #tbSearchMenu .tbs-row:hover { background:#e7f1ff; }
+    #tbSearchMenu .tbs-tag { font-family:var(--bs-font-monospace); font-weight:700; color:#0e3a7a; }
+    #tbSearchMenu .tbs-cpu { overflow:hidden; text-overflow:ellipsis; }
+    #tbSearchMenu .tbs-stage { justify-self:end; }
+    #tbSearchMenu .tbs-empty { grid-column:1 / -1; padding:6px 12px; color:#6c757d; }
+    /* Server status (2026-10-24): plain icon + text, no badge background. */
+    #serverStatusBadge { font-size:.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+      display:inline-flex; align-items:center; white-space:nowrap; }
+    .srv-ico { width:1.35em; height:1.35em; margin-right:.3em; }
   </style>
   <link rel="icon" type="image/svg+xml" href="/static/img/oxypc-box-dark.svg">
   <link rel="icon" type="image/png" sizes="32x32" href="/static/img/oxypc-box-dark-32.png">
@@ -894,10 +918,17 @@
          Management's "Today Login"). Empty on every other page. #}
       {% block page_title_extra %}{% endblock %}
       <div class="ms-auto d-flex align-items-center gap-3">
+        <!-- Search / Scan Tag Number (2026-10-24) — static/js/topbar-search.js -->
+        <div id="tbSearchWrap">
+          <i class="bi bi-upc-scan tbs-ico"></i>
+          <input type="search" id="tbSearch" class="form-control form-control-sm font-monospace"
+                 placeholder="Search / Scan Tag Number" autocomplete="off" spellcheck="false"
+                 aria-label="Search or scan a Tag Number">
+        </div>
         <!-- Server connection status — real /health polling, see watchdog
              script near the closing </body>. Not a decorative indicator. -->
-        <span id="serverStatusBadge" class="badge bg-secondary" title="Live connection to the application server">
-          <i class="bi bi-arrow-repeat me-1"></i>Server Connecting
+        <span id="serverStatusBadge" style="color:#6c757d" title="Live connection to the application server">
+          <i class="bi bi-arrow-repeat me-1"></i>CONNECTING
         </span>
         <!-- Raise Ticket sits before the bell (2026-10-21) -->
         <button type="button" class="btn btn-warning btn-sm fw-semibold"
@@ -1046,6 +1077,8 @@ $.extend(true, $.fn.dataTable.defaults, {
      page like form-autosave.js above — see static/js/global-table.js. Any
      page calls initGlobalTable(...) from its own page-specific scripts block below. -->
 <script src="/static/js/global-table.js?v={{ ASSET_VERSION }}"></script>
+<!-- Top-bar Search / Scan Tag Number (2026-10-24). -->
+<script src="/static/js/topbar-search.js?v={{ ASSET_VERSION }}"></script>
 {% block scripts %}{% endblock %}
 <script>
 /* Save the sidebar's scroll position continuously (and right before a
@@ -1498,15 +1531,17 @@ window.flashAsToast = function () {
   function setState(state) {
     if (badge.getAttribute('data-state') === state) return;
     badge.setAttribute('data-state', state);
+    // Plain icon + text (2026-10-24). Cloud icons are static/img/icons/*.svg,
+    // inlined so they take the text colour (currentColor).
     if (state === 'up') {
-      badge.className = 'badge bg-success';
-      badge.innerHTML = '<i class="bi bi-check-circle me-1"></i>Server Connected';
+      badge.style.color = '#129042';
+      badge.innerHTML = '<svg class="srv-ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><defs><mask id="cem"><rect width="24" height="24" fill="#fff"/><path d="M13.4 8.6L9.3 13.9h3l-1 4.2 4.3-5.6h-3.1z" fill="#000" stroke="#000" stroke-width="0.8" stroke-linejoin="round"/></mask></defs><path d="M7 18.5h10.5a4.5 4.5 0 0 0 .6-8.96A6 6 0 0 0 6.4 10.6 4 4 0 0 0 7 18.5z" fill="currentColor" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round" mask="url(#cem)"/></svg>CONNECTED';
     } else if (state === 'down') {
-      badge.className = 'badge bg-danger';
-      badge.innerHTML = '<i class="bi bi-x-circle me-1"></i>Server Disconnected';
+      badge.style.color = '#dc3545';
+      badge.innerHTML = '<svg class="srv-ico" aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><g transform="translate(12 12.5) scale(.86) translate(-12 -13)"><defs><clipPath id="csfl"><path d="M0 0H12.6L11.2 9.2L13.2 12.6L11.6 24H0Z"/></clipPath><clipPath id="csfr"><path d="M24 0H12.6L11.2 9.2L13.2 12.6L11.6 24H24Z"/></clipPath></defs><g fill="currentColor" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><g transform="translate(-1.3 0)"><path d="M7 18.5h10.5a4.5 4.5 0 0 0 .6-8.96A6 6 0 0 0 6.4 10.6 4 4 0 0 0 7 18.5z" clip-path="url(#csfl)"/></g><g transform="translate(1.3 0)"><path d="M7 18.5h10.5a4.5 4.5 0 0 0 .6-8.96A6 6 0 0 0 6.4 10.6 4 4 0 0 0 7 18.5z" clip-path="url(#csfr)"/></g></g></g></svg>DISCONNECTED';
     } else {
-      badge.className = 'badge bg-secondary';
-      badge.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Server Connecting';
+      badge.style.color = '#6c757d';
+      badge.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>CONNECTING';
     }
   }
 

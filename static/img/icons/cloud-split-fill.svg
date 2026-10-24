@@ -1,0 +1,3 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+<!-- Split cloud, filled. Uses currentColor. -->
+<g transform="translate(12 12.5) scale(.86) translate(-12 -13)"><defs><clipPath id="csfl"><path d="M0 0H12.6L11.2 9.2L13.2 12.6L11.6 24H0Z"/></clipPath><clipPath id="csfr"><path d="M24 0H12.6L11.2 9.2L13.2 12.6L11.6 24H24Z"/></clipPath></defs><g fill="currentColor" stroke="currentColor" stroke-width="1.75" stroke-linejoin="round"><g transform="translate(-1.3 0)"><path d="M7 18.5h10.5a4.5 4.5 0 0 0 .6-8.96A6 6 0 0 0 6.4 10.6 4 4 0 0 0 7 18.5z" clip-path="url(#csfl)"/></g><g transform="translate(1.3 0)"><path d="M7 18.5h10.5a4.5 4.5 0 0 0 .6-8.96A6 6 0 0 0 6.4 10.6 4 4 0 0 0 7 18.5z" clip-path="url(#csfr)"/></g></g></g></svg>

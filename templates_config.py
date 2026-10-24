@@ -33,6 +33,8 @@ _VERSIONED_ASSETS = [
     # here since it was added — fixed before it could bite the same way, now
     # that templates/lots/trc_production.html adopts it too.
     os.path.join(BASE_DIR, "static", "js", "tag-scan-autocheck.js"),
+    # Top-bar Search / Scan box (2026-10-24), loaded on every page by base.html.
+    os.path.join(BASE_DIR, "static", "js", "topbar-search.js"),
 ]
 try:
     ASSET_VERSION = str(int(max(
