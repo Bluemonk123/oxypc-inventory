@@ -1559,6 +1559,119 @@ async def cosmetic_fail_assign(
     )
 
 
+async def _paint_fail_painter(db: AsyncSession, device) -> User | None:
+    """Painting user to send a Paint Fail tag back to (2026-10-24):
+      1. Cosmetic Flow (All Tags -> Flow Data): the row whose Water Sanding
+         user is the one holding this tag now (its pending "water" WorkID,
+         else nobody) -> that row's Painting user;
+      2. otherwise whoever last had this tag's Painting WorkID.
+    Only an active user is returned."""
+    water_wo = (await db.execute(
+        select(WorkOrder).where(WorkOrder.device_id == device.id,
+                                WorkOrder.stage == MOVE_STAGE_CODE[DeviceStage.water_sanding],
+                                WorkOrder.assigned_user_id.isnot(None))
+        .order_by(WorkOrder.assigned_at.desc())
+    )).scalars().first()
+    candidates = []
+    if water_wo:
+        row = (await db.execute(
+            select(CosmeticFlowRow).where(CosmeticFlowRow.water_sanding_user_id == water_wo.assigned_user_id,
+                                          CosmeticFlowRow.painting_user_id.isnot(None))
+            .order_by(CosmeticFlowRow.created_at)
+        )).scalars().first()
+        if row:
+            candidates.append(row.painting_user_id)
+    paint_wo = (await db.execute(
+        select(WorkOrder).where(WorkOrder.device_id == device.id,
+                                WorkOrder.stage == MOVE_STAGE_CODE[DeviceStage.painting],
+                                WorkOrder.assigned_user_id.isnot(None))
+        .order_by(WorkOrder.assigned_at.desc())
+    )).scalars().first()
+    if paint_wo:
+        candidates.append(paint_wo.assigned_user_id)
+    for uid in candidates:
+        user = (await db.execute(select(User).where(User.id == uid, User.status == True))).scalar_one_or_none()  # noqa: E712
+        if user:
+            return user
+    return None
+
+
+@router.post("/{barcode}/paint-fail")
+async def cosmetic_paint_fail(
+    barcode: str,
+    notes: str = Form(""),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """'Paint Fail' on Water Sanding (2026-10-24): back to Painting, assigned
+    to the painter the Cosmetic Flow gives (see _paint_fail_painter), with a
+    new Painting WorkID. The Water Sanding WorkID is closed."""
+    device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
+    if not device:
+        raise HTTPException(404, f"Device {barcode} not found")
+    if device.current_stage != DeviceStage.water_sanding:
+        raise HTTPException(400, "This device is not at Water Sanding.")
+    role_val = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    module_key = PERM_MODULE_BY_STAGE[DeviceStage.water_sanding]
+    if not has_perm(role_val, module_key, "edit"):
+        raise HTTPException(403, f"Your role ({role_val}) does not have 'edit' permission for the {module_key} module.")
+
+    painter = await _paint_fail_painter(db, device)
+    if not painter:
+        raise HTTPException(400, "No Painting user found for this tag (no Cosmetic Flow row and no earlier "
+                                 "Painting WorkID). Use Move / Assign instead.")
+
+    prev_stage = device.current_stage
+    await db.execute(
+        update(WorkOrder)
+        .where(WorkOrder.device_id == device.id,
+               WorkOrder.stage == MOVE_STAGE_CODE[DeviceStage.water_sanding],
+               WorkOrder.status == "pending")
+        .values(status="completed", completed_at=app_now())
+    )
+    prev_mv = (await db.execute(
+        select(StageMovement).where(StageMovement.device_id == device.id,
+                                    StageMovement.to_stage == prev_stage,
+                                    StageMovement.exited_at == None)  # noqa: E711
+        .order_by(StageMovement.moved_at.desc())
+    )).scalars().first()
+    if prev_mv:
+        prev_mv.exited_at = app_now()
+
+    painter_name = painter.full_name or painter.username
+    note = f"Paint Fail — sent back to Painting, assigned to {painter_name}"
+    if (notes or "").strip():
+        note += f". {notes.strip()}"
+    device.current_stage = DeviceStage.painting
+    device.updated_at = app_now()
+    db.add(StageMovement(device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.painting,
+                         moved_by=current_user.username, notes=note))
+
+    work_id = await _gen_work_id(db)
+    painter_role = painter.role.value if hasattr(painter.role, "value") else str(painter.role)
+    db.add(WorkOrder(
+        work_id=work_id, device_id=device.id, barcode=device.barcode,
+        stage=MOVE_STAGE_CODE[DeviceStage.painting], assigned_role=painter_role,
+        assigned_user_id=painter.id, assigned_username=painter.username,
+        assigned_name=painter.full_name, status="pending", created_by=current_user.username,
+    ))
+    await create_notification(
+        db, user_id=painter.id, title="Paint Fail — Device Back to You",
+        message=f"{device.barcode} failed paint at Water Sanding and is back in Painting for you (WorkID: {work_id}).",
+        notification_type="warning",
+        barcode=device.barcode, brand=device.brand, model=device.model,
+        stage=DeviceStage.painting.value,
+    )
+    await audit(db, user=current_user, action="COSMETIC_PAINT_FAIL",
+                table_name="devices", record_id=str(device.id),
+                old_value={"stage": prev_stage.value},
+                new_value={"stage": DeviceStage.painting.value, "assigned_to": painter.username,
+                           "work_id": work_id, "notes": notes},
+                request=None)
+    await db.commit()
+    return JSONResponse({"ok": True, "work_id": work_id, "assigned_to": painter_name})
+
+
 @router.post("/bulk-assign")
 async def bulk_assign(
     barcodes: str = Form(...),

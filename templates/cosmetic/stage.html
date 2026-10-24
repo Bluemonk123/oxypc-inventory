@@ -68,6 +68,14 @@
                         onclick="directMoveOrManual('{{ device.barcode }}', '{{ next_stage_label }}', this)">
                   <i class="bi bi-check2 me-1"></i>Move to {{ next_stage_label }}
                 </button>
+                {% if stage.value == 'water_sanding' %}
+                {# Paint Fail (2026-10-24): back to Painting, to the painter the
+                   Cosmetic Flow gives. Click twice to confirm. #}
+                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1 text-nowrap"
+                        onclick="paintFail('{{ device.barcode }}', this)">
+                  <i class="bi bi-arrow-counterclockwise me-1"></i>Paint Fail
+                </button>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -184,6 +192,43 @@ async function directMoveOrManual(barcode, targetLabel, btn) {
     alert('Network error: ' + e.message);
     btn.disabled = false;
   }
+}
+
+// Paint Fail (Water Sanding, 2026-10-24): first click asks to confirm,
+// second click sends the tag back to Painting.
+async function paintFail(barcode, btn) {
+  if (!btn.dataset.armed) {
+    btn.dataset.armed = '1';
+    btn.dataset.html = btn.innerHTML;
+    btn.classList.replace('btn-outline-danger', 'btn-danger');
+    btn.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Confirm Paint Fail';
+    setTimeout(function () {
+      if (btn.dataset.armed) {
+        delete btn.dataset.armed;
+        btn.classList.replace('btn-danger', 'btn-outline-danger');
+        btn.innerHTML = btn.dataset.html;
+      }
+    }, 4000);
+    return;
+  }
+  delete btn.dataset.armed;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/cosmetic/' + encodeURIComponent(barcode) + '/paint-fail', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': CSRF},
+      body: 'csrf_token=' + encodeURIComponent(CSRF),
+    });
+    if (r.ok) { window.location.reload(); return; }
+    let msg = '';
+    try { msg = (await r.json()).detail || ''; } catch (e) { msg = ''; }
+    alert('Paint Fail not done' + (msg ? ': ' + msg : ''));
+  } catch (e) {
+    alert('Network error: ' + e.message);
+  }
+  btn.disabled = false;
+  btn.classList.replace('btn-danger', 'btn-outline-danger');
+  btn.innerHTML = btn.dataset.html;
 }
 
 function openMoveModal(barcode, targetLabel) {
