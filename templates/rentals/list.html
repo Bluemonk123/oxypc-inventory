@@ -30,7 +30,7 @@
       </li>
       {% endfor %}
     </ul>
-    <div class="table-responsive">
+    <div>
       <table id="rentalTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
@@ -264,14 +264,30 @@ $(document).ready(function () {
     columnDefs: [{ orderable: false, targets: [10, 11] }],
     language: { emptyTable: 'No rentals yet — click New Rental to create one.' },
     drawCallback: function () {
+      // boundary: body (2026-10-24) — inside the scrolling table the tall
+      // Billing Entity / Billing To tooltips were pushed down over the text
+      // they belong to, so the mouse "left" at once and they never stayed open.
       document.querySelectorAll('#rentalTable [data-bs-toggle="tooltip"]').forEach(function (el) {
-        bootstrap.Tooltip.getOrCreateInstance(el);
+        bootstrap.Tooltip.getOrCreateInstance(el, { boundary: document.body, container: 'body',
+                                                     fallbackPlacements: ['bottom', 'right', 'left'] });
       });
       var n = this.api().rows({ search: 'applied' }).count();
       var c = document.getElementById('rentalExportCount');
       if (c) c.textContent = n;
     },
   });
+
+  // Keep header and rows lined up when fonts finish loading, the window or
+  // sidebar changes size, or the page zoom changes (2026-10-24).
+  var realign = function () { dt.columns.adjust(); };
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(realign);
+  window.addEventListener('load', realign);
+  var rt;
+  window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(realign, 150); });
+  if (window.ResizeObserver) {
+    new ResizeObserver(function () { clearTimeout(rt); rt = setTimeout(realign, 150); })
+      .observe(document.getElementById('rentalTable').closest('.card-body'));
+  }
 
   // Export — the rows currently shown (status filter + table search), all pages.
   document.getElementById('rentalExportBtn').addEventListener('click', function () {

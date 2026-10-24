@@ -134,7 +134,7 @@
       {% endif %}
 
       {# ── INVENTORY ───────────────────────────────────────────────────── #}
-      {% if any_perm(role,'stock','production_manager','extended_warranty','part_estimation','rentals','credit_note','transfers','inventory_requests','model_requested') %}
+      {% if any_perm(role,'stock','production_manager','extended_warranty','part_estimation','credit_note','transfers','inventory_requests','model_requested') %}
       <li class="nav-section">INVENTORY</li>
       {% if has_perm(role,'stock','enable') and not module_hidden('stock') %}
       <li><a href="/stock" class="nav-link {% if request.url.path == '/stock' %}active{% endif %}">
@@ -172,12 +172,6 @@
       {% if has_perm(role,'part_estimation','enable') and not module_hidden('part_estimation') %}
       <li><a href="/part-estimation" class="nav-link {% if '/part-estimation' in request.url.path %}active{% endif %}">
         <i class="bi bi-calculator me-2"></i> {{ sidebar_label('part_estimation', 'Part Estimation') }}
-      </a></li>
-      {% endif %}
-      {# Rentals (2026-10-22) — below Lots Estimation (Part Estimation); off by default for every role. #}
-      {% if has_perm(role,'rentals','enable') and not module_hidden('rentals') %}
-      <li><a href="/rentals" class="nav-link {% if request.url.path.startswith('/rentals') %}active{% endif %}">
-        <i class="bi bi-calendar2-range me-2"></i> {{ sidebar_label('rentals', 'Rentals') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'transfers','enable') and not module_hidden('transfers') %}
@@ -515,7 +509,7 @@
       {# ── SELLING (2026-10-19) — every sell / sale-report / exit / return
          page in one section, moved out of Sales & CRM (and Credit Note out
          of Inventory), in the director's order. #}
-      {% if any_perm(role,'sales','ready_to_sale_parts','scrap_for_sale','sales_list','part_sales','scrap_sale_report','block_tags','gate_pass','credit_note','returns') %}
+      {% if any_perm(role,'sales','ready_to_sale_parts','scrap_for_sale','sales_list','part_sales','scrap_sale_report','block_tags','gate_pass','credit_note','returns','rentals') %}
       <li class="nav-section">SELLING</li>
       {% if has_perm(role,'sales','enable') and not module_hidden('sales') %}
       <li><a href="/sales/ready" class="nav-link {% if '/sales/ready' in request.url.path %}active{% endif %}">
@@ -552,19 +546,26 @@
         <i class="bi bi-lock me-2"></i> {{ sidebar_label('block_tags', 'Block Tags') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'gate_pass','enable') and not module_hidden('gate_pass') %}
-      <li><a href="/gate-pass" class="nav-link {% if '/gate-pass' in request.url.path %}active{% endif %}">
-        <i class="bi bi-shield-check me-2"></i> {{ sidebar_label('gate_pass', 'Gate Pass') }}
-      </a></li>
-      {% endif %}
       {% if has_perm(role,'credit_note','enable') and not module_hidden('credit_note') %}
       <li><a href="/credit-note" class="nav-link {% if '/credit-note' in request.url.path %}active{% endif %}">
         <i class="bi bi-receipt-cutoff me-2"></i> {{ sidebar_label('credit_note', 'Credit Note') }}
       </a></li>
       {% endif %}
+      {# Rentals (moved here 2026-10-24: just before Return from Customer); off by default for every role. #}
+      {% if has_perm(role,'rentals','enable') and not module_hidden('rentals') %}
+      <li><a href="/rentals" class="nav-link {% if request.url.path.startswith('/rentals') %}active{% endif %}">
+        <i class="bi bi-calendar2-range me-2"></i> {{ sidebar_label('rentals', 'Rentals') }}
+      </a></li>
+      {% endif %}
       {% if has_perm(role,'returns','enable') and not module_hidden('returns') %}
       <li><a href="/returns" class="nav-link {% if '/returns' in request.url.path %}active{% endif %}">
         <i class="bi bi-arrow-return-left me-2"></i> {{ sidebar_label('returns', 'Returns') }}
+      </a></li>
+      {% endif %}
+      {# Exit Gate Pass after Return from Customer (2026-10-24). #}
+      {% if has_perm(role,'gate_pass','enable') and not module_hidden('gate_pass') %}
+      <li><a href="/gate-pass" class="nav-link {% if '/gate-pass' in request.url.path %}active{% endif %}">
+        <i class="bi bi-shield-check me-2"></i> {{ sidebar_label('gate_pass', 'Gate Pass') }}
       </a></li>
       {% endif %}
       {% endif %}
