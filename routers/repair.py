@@ -697,6 +697,18 @@ async def back_to_production(
 
 
 # ── L3/L4 Repair page (WorkOrder-driven, per assigned engineer) ────────────────
+async def _customer_return_ids(db: AsyncSession, device_ids) -> set:
+    """Device ids (as str) that a customer has ever returned — any Return row,
+    the same rule as the "Customer Return" label on Gate Pass (2026-10-24)."""
+    from models.sales import Return
+    ids = [d for d in device_ids if d]
+    if not ids:
+        return set()
+    return {str(d) for d in (await db.execute(
+        select(Return.device_id).where(Return.device_id.in_(ids)).distinct()
+    )).scalars().all()}
+
+
 @router.get("/l3l4", response_class=HTMLResponse)
 async def l3l4_list(request: Request,
                     db: AsyncSession = Depends(get_db),
@@ -764,6 +776,7 @@ async def l3l4_list(request: Request,
         "request": request, "current_user": current_user,
         "items": items, "total": len(items), "full_queue": full_queue,
         "pna_map": await _pna_map(db, [it["device_id"] for it in items]),
+        "cust_return_ids": await _customer_return_ids(db, [dev.id for _w, dev, _l in rows]),
         "parts_badges": await parts_badge_map(db, [it["device_id"] for it in items]),
     })
 
@@ -1330,6 +1343,7 @@ async def repair_list(stage: str, request: Request,
     return templates.TemplateResponse(f"repair/{stage}.html", {
         "request": request, "devices": devices, "open_jobs": open_jobs,
         "parts_badges": await parts_badge_map(db, [d.id for d, *_ in devices]),
+        "cust_return_ids": await _customer_return_ids(db, [d.id for d, *_ in devices]),
         "l3l4_engineers": l3l4_engineers, "stress_engineers": stress_engineers,
         "stage": stage.upper(), "current_user": current_user,
         "returned_job_ids": returned_job_ids,

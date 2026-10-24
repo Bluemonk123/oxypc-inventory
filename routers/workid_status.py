@@ -234,9 +234,34 @@ def _rows_json(items) -> str:
             "r": _fmt(it.get("reassigned_at")), "rd": _fmt(it.get("reassigned_at"), "%d-%m-%Y"),
             "rt": it.get("reassigned_to") or "",
             "x": it.get("scrap") or "",
+            # Tile filters (2026-10-24): status for Assigned / Ongoing /
+            # Completed, and whether a customer ever returned the tag.
+            "st": it.get("wo_status") or "", "cr": bool(it.get("cust_return")),
         })
     # "</" escaped so a value can never close the <script> block it sits in.
     return json.dumps(rows, ensure_ascii=False, separators=(",", ":")).replace("</", "<\\/")
+
+
+def _sql_filtered(full_stmt, stage_vals, cf, ct, exclude_admin, code_stage):
+    """full_stmt as (id, bc, did) rows with the Python-side filters re-applied
+    in SQL — Stage (stage code on the WorkID), exact Completed From/To
+    (completed WorkIDs only), Exclude Admin. Same rules as _sql_tile_counts."""
+    q = full_stmt.with_only_columns(
+        WorkOrder.id.label("id"), WorkOrder.barcode.label("bc"), WorkOrder.device_id.label("did"),
+    ).order_by(None)
+    if stage_vals:
+        codes = [c for c, st in code_stage.items() if st.value in stage_vals]
+        q = q.where(WorkOrder.stage.in_(codes or ["__none__"]))
+    if cf or ct:
+        q = q.where(WorkOrder.status == "completed")
+        if cf:
+            q = q.where(WorkOrder.completed_at >= cf)
+        if ct:
+            q = q.where(WorkOrder.completed_at <= ct.replace(hour=23, minute=59, second=59))
+    if exclude_admin:
+        admins = select(User.username).where(User.role == UserRole.admin)
+        q = q.where(WorkOrder.assigned_username.notin_(admins))
+    return q
 
 
 async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, code_stage) -> dict:
@@ -316,12 +341,13 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
     scrap_type = (scrap_type or "none").strip().lower()
     if scrap_type not in ("all", "none", *SCRAP_TYPES):
         scrap_type = "none"
+    scrap_clause = None
     if not highlight and scrap_type != "all":
         from sqlalchemy import not_
         if scrap_type == "none":
-            stmt = stmt.where(not_(_scrap_exists(*SCRAP_TYPES.values())))
+            scrap_clause = not_(_scrap_exists(*SCRAP_TYPES.values()))
         else:
-            stmt = stmt.where(_scrap_exists(SCRAP_TYPES[scrap_type]))
+            scrap_clause = _scrap_exists(SCRAP_TYPES[scrap_type])
     if workid:
         stmt = stmt.where(WorkOrder.work_id.ilike(f"%{workid.strip()}%"))
     if tag:
@@ -358,6 +384,11 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
         team = await managed_usernames(db, current_user.username)
         visible_usernames = set(team) | {current_user.username}
         stmt = stmt.where(WorkOrder.assigned_username.in_(visible_usernames))
+    # Every filter except Scrap Type — the Total Scrap tile counts from this
+    # (2026-10-24), so it isn't stuck at 0 under the default "No Scrap".
+    stmt_any_scrap = stmt
+    if scrap_clause is not None:
+        stmt = stmt.where(scrap_clause)
 
     # ── Row cap on the base WorkOrder query (2026-09-15 — "table taking too
     # much time to load"): the unfiltered default view previously fetched
@@ -685,6 +716,28 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
             exclude_admin=bool(exclude_admin), code_stage=_code_stage)
     else:
         tile_counts = None
+    # Total Scrap (WorkIDs with an L3/L4 scrap decision, Scrap Type filter
+    # ignored) and Total Customer Return (distinct tags a customer returned),
+    # 2026-10-24 — both over every matching WorkID, not just loaded rows.
+    from models.sales import Return
+    scrap_q = _sql_filtered(stmt_any_scrap.where(_scrap_exists(*SCRAP_TYPES.values())),
+                            stage_vals, cf, ct, bool(exclude_admin), _code_stage).subquery()
+    total_scrap = (await db.execute(select(func.count()).select_from(scrap_q))).scalar() or 0
+    if main_truncated:
+        cr_q = _sql_filtered(full_stmt, stage_vals, cf, ct, bool(exclude_admin), _code_stage).subquery()
+        total_cust_return = (await db.execute(
+            select(func.count(func.distinct(cr_q.c.bc)))
+            .where(select(Return.id).where(Return.device_id == cr_q.c.did).exists())
+        )).scalar() or 0
+    _dids = {it["device_id"] for it in items if it.get("device_id")}
+    _ret = set((await db.execute(select(Return.device_id).where(Return.device_id.in_(_dids)).distinct())
+                ).scalars().all()) if _dids else set()
+    for it in items:
+        it["cust_return"] = it.get("device_id") in _ret
+    if not main_truncated:
+        total_cust_return = len({it["barcode"] for it in items
+                                 if it.get("device_id") in _ret and it.get("barcode") not in (None, "—")})
+
     tile_counts = tile_counts or {
         "open_workids": sum(1 for it in items if it["wo_status"] not in ("completed", "reassigned")),
         "closed_workids": sum(1 for it in items if it["wo_status"] in ("completed", "reassigned")),
@@ -696,6 +749,8 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
         # the same filters as the table.
         "total_pna": sum(1 for it in items if it.get("pna")),
     }
+    tile_counts["total_scrap"] = total_scrap
+    tile_counts["total_cust_return"] = total_cust_return
 
     # Distinct engineers for the filter dropdown.
     #

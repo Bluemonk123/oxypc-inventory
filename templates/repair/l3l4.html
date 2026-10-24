@@ -28,6 +28,10 @@
           <select id="l34FailedFilter" class="form-select form-select-sm" style="width:125px" title="Failed from Final QC">
             <option value="">Failed: All</option><option value="1">Failed: Yes</option><option value="0">Failed: No</option>
           </select>
+          {# Customer Return (2026-10-24): the tag was ever returned by a customer. #}
+          <select id="l34CustRetFilter" class="form-select form-select-sm" style="width:190px" title="Customer Return">
+            <option value="">Customer Return: All</option><option value="1">Customer Return: Yes</option><option value="0">Customer Return: No</option>
+          </select>
           <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l34ExportBtn"
                   title="Export the rows shown (current filters / search) to CSV">
             <i class="bi bi-download me-1"></i>Export (<span id="l34ExportBtnCount">0</span>)</button>
@@ -41,7 +45,8 @@
             <tbody>
               {% for it in items %}
               <tr data-pna="{{ (pna_map.get(it.device_id|string, []) | length) if pna_map is defined else 0 }}"
-                  data-as-is="{{ '1' if it.as_is else '0' }}" data-fqc-fail="{{ '1' if it.fqc_fail else '0' }}">
+                  data-as-is="{{ '1' if it.as_is else '0' }}" data-fqc-fail="{{ '1' if it.fqc_fail else '0' }}"
+                  data-cust-return="{{ '1' if it.device_id in cust_return_ids else '0' }}">
                 <td class="text-nowrap"><a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a>{{ parts_badge(parts_badges, it.device_id) }}</td>
                 {# Owner + Pick This on every tag that isn't yours (2026-10-19). #}
                 <td><span class="font-monospace fw-bold">{{ it.work_id }}</span><br><small class="text-muted">{{ it.assigned_name }}</small>
@@ -198,7 +203,7 @@ $(document).ready(function(){
     columnDefs: [{ orderable: false, targets: [-1] }],
     drawCallback: function () { $('#l34ExportBtnCount').text(this.api().rows({ search: 'applied' }).count()); },
   });
-  $('#l34AsIsFilter, #l34PnaFilter, #l34FailedFilter').on('change', function() { dt.draw(); });
+  $('#l34AsIsFilter, #l34PnaFilter, #l34FailedFilter, #l34CustRetFilter').on('change', function() { dt.draw(); });
 
   // ── Export (2026-10-22): every row matching the current filters/search (all
   // pages, current sort) — or the whole table when nothing is filtered. Cell
@@ -241,6 +246,7 @@ $(document).ready(function(){
       ['As-Is', ynFlag('data-as-is')],
       ['PNA', function (tr) { return parseInt(tr.getAttribute('data-pna') || '0', 10) > 0 ? 'Yes' : 'No'; }],
       ['Failed from Final QC', ynFlag('data-fqc-fail')],
+      ['Customer Return', ynFlag('data-cust-return')],
     ]);
   });
 
@@ -253,7 +259,8 @@ $(document).ready(function(){
     var yn = function (sel, isYes) { var v = $(sel).val(); return !v || (v === '1') === isYes; };
     return yn('#l34AsIsFilter', tr.getAttribute('data-as-is') === '1') &&
            yn('#l34PnaFilter', parseInt(tr.getAttribute('data-pna') || '0', 10) > 0) &&
-           yn('#l34FailedFilter', tr.getAttribute('data-fqc-fail') === '1');
+           yn('#l34FailedFilter', tr.getAttribute('data-fqc-fail') === '1') &&
+           yn('#l34CustRetFilter', tr.getAttribute('data-cust-return') === '1');
   });
 
   document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {

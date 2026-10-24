@@ -62,6 +62,10 @@
           <select id="l1FailedFilter" class="form-select form-select-sm" style="width:125px" title="Failed from Final QC">
             <option value="">Failed: All</option><option value="1">Failed: Yes</option><option value="0">Failed: No</option>
           </select>
+          {# Customer Return (2026-10-24): the tag was ever returned by a customer. #}
+          <select id="l1CustRetFilter" class="form-select form-select-sm" style="width:190px" title="Customer Return">
+            <option value="">Customer Return: All</option><option value="1">Customer Return: Yes</option><option value="0">Customer Return: No</option>
+          </select>
           <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l1ExportBtn"
                   title="Export the rows shown (current filters / search) to CSV">
             <i class="bi bi-download me-1"></i>Export (<span id="l1ExportBtnCount">0</span>)</button>
@@ -83,6 +87,7 @@
                   data-pna="{{ (pna_map.get(device.id|string, []) | length) if pna_map is defined else 0 }}"
                   data-fqc-fail="{{ '1' if failed_fqc else '0' }}"
                   data-as-is="{{ '1' if (device.sub_lot_number or '').strip() else '0' }}"
+                  data-cust-return="{{ '1' if (device.id|string) in cust_return_ids else '0' }}"
                   data-search="{{ (device.barcode or '') ~ ' ' ~ (device.grn_number or '') ~ ' ' ~ (device.model or '') }}"
                   data-cpu="{{ device.cpu or '' }}"
                   data-ram="{{ device.ram_gb or '' }}"
@@ -464,6 +469,7 @@ $(document).ready(function(){
       ['As-Is', ynFlag('data-as-is')],
       ['PNA', function (tr) { return parseInt(tr.getAttribute('data-pna') || '0', 10) > 0 ? 'Yes' : 'No'; }],
       ['Failed from Final QC', ynFlag('data-fqc-fail')],
+      ['Customer Return', ynFlag('data-cust-return')],
     ]);
   });
 
@@ -472,7 +478,7 @@ $(document).ready(function(){
   // above), not injected into DataTables' own filter box — so these bind
   // immediately rather than waiting for initComplete.
   $('#l1SearchBox').on('keyup', applyL1Filters);
-  $('#l1LotFilter, #l1AsIsFilter, #l1PnaFilter, #l1FailedFilter').on('change', applyL1Filters);
+  $('#l1LotFilter, #l1AsIsFilter, #l1PnaFilter, #l1FailedFilter, #l1CustRetFilter').on('change', applyL1Filters);
 
   // Filter bar (card header, right side): Search (Tag/GRN/Model), CPU, RAM,
   // Hard Drive, Lot Number, PNA, and Failed from Final QC — all as one
@@ -487,6 +493,7 @@ $(document).ready(function(){
     if (!yn('#l1AsIsFilter', tr.getAttribute('data-as-is') === '1')) return false;
     if (!yn('#l1PnaFilter', parseInt(tr.getAttribute('data-pna') || '0', 10) > 0)) return false;
     if (!yn('#l1FailedFilter', tr.getAttribute('data-fqc-fail') === '1')) return false;
+    if (!yn('#l1CustRetFilter', tr.getAttribute('data-cust-return') === '1')) return false;
     var q = $('#l1SearchBox').val().trim().toLowerCase();
     if (q && (tr.getAttribute('data-search') || '').toLowerCase().indexOf(q) === -1) return false;
     var lot = $('#l1LotFilter').val();

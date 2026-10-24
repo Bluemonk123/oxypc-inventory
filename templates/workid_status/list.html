@@ -82,16 +82,23 @@
   .pm-tile-lbl { font-size: .82rem; color: rgba(255,255,255,.88); position: relative; z-index: 1; }
   .pm-tile-wm { position: absolute; right: -6px; bottom: -14px; font-size: 4.6rem; line-height: 1;
                 color: rgba(255,255,255,.22); pointer-events: none; }
+  .wid-tile { cursor: pointer; transition: opacity .15s, box-shadow .15s; }
+  .wid-tiles-active .wid-tile:not(.active) { opacity: .45; }
+  .wid-tile.active { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #0e3a7a; }
 </style>
-<div class="row g-3 mb-3">
-  {% for label, n, bg, icon in [('Open WorkIDs', tile_counts.open_workids, '#343a40', 'bi-folder2-open'),
-      ('Closed WorkIDs' ~ (' (' ~ tile_counts.reassigned_workids ~ ' reassigned)' if tile_counts.reassigned_workids else ''), tile_counts.closed_workids, '#6c757d', 'bi-folder-check'),
-      ('Assigned Tags', tile_counts.open_tags, '#0d6efd', 'bi-tag'),
-      ('Ongoing Tags', tile_counts.ongoing_tags, '#f0ad00', 'bi-hourglass-split'),
-      ('Completed Tags', tile_counts.completed_tags, '#0F7A37', 'bi-check-circle'),
-      ('Total PNA', tile_counts.total_pna, '#dc3545', 'bi-exclamation-triangle')] %}
+<div class="row g-3 mb-3" id="widTiles">
+  {# Open / Closed WorkIDs tiles hidden (2026-10-24); Total Scrap and Total
+     Customer Return added. Total Scrap ignores the Scrap Type filter. #}
+  {# Each tile filters the table on click (2026-10-24); click again to clear. #}
+  {% for key, label, n, bg, icon in [('scrap', 'Total Scrap', tile_counts.total_scrap, '#343a40', 'bi-recycle'),
+      ('cr', 'Total Customer Return', tile_counts.total_cust_return, '#6c757d', 'bi-arrow-return-left'),
+      ('assigned', 'Assigned Tags', tile_counts.open_tags, '#0d6efd', 'bi-tag'),
+      ('ongoing', 'Ongoing Tags', tile_counts.ongoing_tags, '#f0ad00', 'bi-hourglass-split'),
+      ('completed', 'Completed Tags', tile_counts.completed_tags, '#0F7A37', 'bi-check-circle'),
+      ('pna', 'Total PNA', tile_counts.total_pna, '#dc3545', 'bi-exclamation-triangle')] %}
   <div class="col-6 col-md-4 col-xl-2">
-    <div class="pm-tile p-3 h-100" style="background:{{ bg }}">
+    <div class="pm-tile wid-tile p-3 h-100" data-tile="{{ key }}" role="button" tabindex="0"
+         title="Show only these rows (click again to clear)" style="background:{{ bg }}">
       <div class="pm-tile-num">{{ n }}</div>
       <div class="pm-tile-lbl">{{ label }}</div>
       <i class="bi {{ icon }} pm-tile-wm"></i>
@@ -224,6 +231,51 @@ $(document).ready(function(){
     },
     language: { emptyTable: 'No WorkIDs found.' }
   });
+
+  // ── Tile filters (2026-10-24) ─────────────────────────────────────────
+  var TILE_TEST = {
+    scrap: function (r) { return !!r.x; },
+    cr: function (r) { return !!r.cr; },
+    assigned: function (r) { return r.st === 'pending'; },
+    ongoing: function (r) { return r.st === 'in_progress'; },
+    completed: function (r) { return r.st === 'completed'; },
+    pna: function (r) { return !!r.p; },
+  };
+  var activeTile = '';
+  $.fn.dataTable.ext.search.push(function (settings, data, idx) {
+    if (settings.nTable.id !== 'workidTable' || !activeTile) return true;
+    var r = settings.aoData[idx]._aData;
+    return TILE_TEST[activeTile](r);
+  });
+  function setTile(key) {
+    activeTile = key;
+    document.querySelectorAll('.wid-tile').forEach(function (t) {
+      t.classList.toggle('active', t.getAttribute('data-tile') === key);
+    });
+    document.getElementById('widTiles').classList.toggle('wid-tiles-active', !!key);
+    if (dt) dt.draw();
+  }
+  var SCRAP_TYPE = {{ f_scrap_type | tojson }};
+  function tileClick(key) {
+    if (key === activeTile) { setTile(''); return; }
+    // Scrap WorkIDs are hidden while Scrap Type = No Scrap: reload with All.
+    if (key === 'scrap' && SCRAP_TYPE === 'none') {
+      var u = new URL(window.location.href);
+      u.searchParams.set('scrap_type', 'all');
+      u.searchParams.set('tile', 'scrap');
+      window.location.href = u.toString();
+      return;
+    }
+    setTile(key);
+  }
+  document.querySelectorAll('.wid-tile').forEach(function (t) {
+    t.addEventListener('click', function () { tileClick(t.getAttribute('data-tile')); });
+    t.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); tileClick(t.getAttribute('data-tile')); }
+    });
+  });
+  var startTile = new URLSearchParams(window.location.search).get('tile');
+  if (startTile && TILE_TEST[startTile]) setTile(startTile);
 
   if (HL) {
     // Open the page that holds the highlighted WorkID, then scroll to it.
