@@ -33,6 +33,7 @@ from templates_config import templates
 from utils.timezone import app_now
 from auth.dependencies import get_current_user, verify_csrf
 from models.user import User
+from services.pna_lookup import active_pna_parts
 from models.device import Device, DeviceStage, STAGE_LABELS, DROPDOWN_STAGES
 from models.location import StorageLocation, DeviceLocationLog
 from models.lot import Lot
@@ -126,34 +127,46 @@ async def _difference_tags(db: AsyncSession, items) -> tuple:
     """Difference Tags (2026-10-23): for every Audit Stage + Audit Location
     combination scanned (per Report Date row), the tags the system has there
     now (any category, not in Trash) minus every tag scanned into that row.
-    Returns (rows, current_by_combo): rows are
-    (record_id, stage, location_id, barcode, lot_id, model, serial, category);
-    current_by_combo[(record_id, stage, location_id)] = system tags there."""
+    Returns (rows, current_by_combo, current_ids): rows are
+    (record_id, stage, location_id, barcode, lot_id, model, serial, category,
+     device_id, current_stage, sub_lot_number);
+    current_by_combo[(record_id, stage, location_id)] = system tags there;
+    current_ids[(record_id, stage, location_id)] = their device ids."""
     combos, scanned = {}, {}
     for it in items:
         combos.setdefault((it.audit_record_id, it.my_stage, it.my_location_id), None)
         scanned.setdefault(it.audit_record_id, set()).add((it.barcode or "").upper())
-    rows, current = [], {}
+    rows, current, current_ids = [], {}, {}
     live_cache = {}
     for rid, stage, loc in combos:
         key = (stage, loc)
         if key not in live_cache:
             q = _devices_at_query([Device.barcode, Device.lot_id, Device.model, Device.serial_no,
-                                   Device.sub_category], stage, loc, _ANY)
+                                   Device.sub_category, Device.id, Device.current_stage,
+                                   Device.sub_lot_number], stage, loc, _ANY)
             live_cache[key] = (await db.execute(q.order_by(Device.barcode))).all()
         tags = live_cache[key]
         current[(rid, stage, loc)] = len(tags)
+        current_ids[(rid, stage, loc)] = [t.id for t in tags]
         for t in tags:
             if (t.barcode or "").upper() not in scanned.get(rid, set()):
-                rows.append((rid, stage, loc, t.barcode, t.lot_id, t.model, t.serial_no, t.sub_category))
-    return rows, current
+                rows.append((rid, stage, loc, t.barcode, t.lot_id, t.model, t.serial_no, t.sub_category,
+                             t.id, t.current_stage, t.sub_lot_number))
+    return rows, current, current_ids
 
 
-async def _record_stats(db: AsyncSession, record_ids) -> dict:
+PNA_STAGES = {DeviceStage.l1, DeviceStage.l2, DeviceStage.l3}   # L1/L2 and L3/L4 rows show PNA counts
+
+
+async def _record_stats(db: AsyncSession, record_ids, pna=None) -> dict:
     """{record_id: (physical, difference, missing)}: physical = scanned tags
     that exist; difference = Difference Tags (expected at the scanned
     stage/location combinations but not scanned); missing = scanned Tag
-    Numbers not in the system."""
+    Numbers not in the system.
+
+    pna (a dict, optional): filled with {record_id: {"current", "physical",
+    "difference"}} PNA tag counts (tags with an active PNA part) for rows
+    audited at L1/L2 or L3/L4 Repair (2026-10-24)."""
     out = {}
     items = []
     if record_ids:
@@ -167,10 +180,25 @@ async def _record_stats(db: AsyncSession, record_ids) -> dict:
         else:
             p_ += 1
         out[it.audit_record_id] = (p_, d_, m_)
-    diff_rows, _cur = await _difference_tags(db, items)
+    diff_rows, _cur, cur_ids = await _difference_tags(db, items)
     for row in diff_rows:
         p_, d_, m_ = out.get(row[0], (0, 0, 0))
         out[row[0]] = (p_, d_ + 1, m_)
+    if pna is not None:
+        pna_rids = {it.audit_record_id for it in items if it.my_stage in PNA_STAGES}
+        if pna_rids:
+            ids = {it.device_id for it in items if it.audit_record_id in pna_rids and it.device_id}
+            ids |= {d for (rid, _s, _l), v in cur_ids.items() if rid in pna_rids for d in v}
+            with_pna = set(await active_pna_parts(db, ids)) if ids else set()
+            for rid in pna_rids:
+                pna[rid] = {
+                    "current": len({d for (r, st, _l), v in cur_ids.items() if r == rid and st in PNA_STAGES
+                                    for d in v if d in with_pna}),
+                    "physical": len({it.device_id for it in items if it.audit_record_id == rid
+                                     and it.my_stage in PNA_STAGES and it.device_id in with_pna}),
+                    "difference": sum(1 for r in diff_rows if r[0] == rid and r[1] in PNA_STAGES
+                                      and r[8] in with_pna),
+                }
     return out
 
 
@@ -416,7 +444,8 @@ async def list_records(
         locs = (await db.execute(select(StorageLocation).where(StorageLocation.id.in_(loc_ids)))).scalars().all()
         loc_map = {loc.id: loc for loc in locs}
 
-    stats = await _record_stats(db, [r.id for r in records])
+    pna_counts = {}
+    stats = await _record_stats(db, [r.id for r in records], pna=pna_counts)
     # Audit Stage / Audit Location columns: every stage and location scanned
     # into the row (a day's row can cover several), in first-scanned order.
     stages_by, locs_by = {}, {}
@@ -450,6 +479,8 @@ async def list_records(
             "difference": difference,
             "missing": missing,
             "notes": r.notes or "",
+            # L1/L2 and L3/L4 rows only: PNA tags within each count (2026-10-24).
+            "pna": pna_counts.get(r.id),
         })
     return JSONResponse({"data": data})
 
@@ -545,7 +576,10 @@ async def _audit_workbook(db: AsyncSession, records: list) -> bytes:
                 "Unmatched" if _is_mismatch(it) else "Matched", it.notes or ""]
 
     phys = [_tag_row(it) for it in found]
-    diff_raw, current_by_combo = await _difference_tags(db, items)
+    diff_raw, current_by_combo, _cur_ids = await _difference_tags(db, items)
+    # PNA + Stock Type for the Difference Tags sheet (2026-10-24).
+    from routers.devices import STOCK_TYPE_LABELS, stock_type_key
+    diff_pna = set(await active_pna_parts(db, {r[8] for r in diff_raw})) if diff_raw else set()
     lot_ids = {r[4] for r in diff_raw if r[4]}
     lot_no = {}
     if lot_ids:
@@ -555,9 +589,15 @@ async def _audit_workbook(db: AsyncSession, records: list) -> bytes:
         for loc in (await db.execute(select(StorageLocation).where(StorageLocation.id.in_(loc_ids2)))).scalars().all():
             loc_map[loc.id] = loc
     diff = [[_date(rec_by_id[r[0]].report_date), r[3], lot_no.get(r[4], "") if r[4] else "", r[5] or "",
-             r[6] or "", r[7] or "", STAGE_LABELS.get(r[1], r[1]), _loc_short(loc_map.get(r[2])),
+             r[6] or "", r[7] or "",
+             "Yes" if r[8] in diff_pna else "No", STOCK_TYPE_LABELS[stock_type_key(r[9], r[10])],
+             STAGE_LABELS.get(r[9], r[9]), _loc_short(loc_map.get(r[2])),
+             STAGE_LABELS.get(r[1], r[1]), _loc_short(loc_map.get(r[2])),
              "Not scanned"] for r in diff_raw]
+    # Missing Tags are not in the system, so PNA / Stock Type / Current Stage /
+    # Current Location have nothing to show.
     missing = [[_date(rec_by_id[it.audit_record_id].report_date), it.barcode, "—",
+                "—", "—", "—", "—",
                 STAGE_LABELS.get(it.my_stage, it.my_stage), _loc_short(loc_map.get(it.my_location_id)),
                 users.get(it.audited_by_user_id, ""),
                 it.created_at.strftime("%d-%m-%Y %H:%M") if it.created_at else ""] for it in unknown]
@@ -587,8 +627,11 @@ async def _audit_workbook(db: AsyncSession, records: list) -> bytes:
     sheets = [
         ("Physical Tags", phys_header, phys),
         ("Difference Tags", ["Report Date", "Tag Number", "Lot Number", "Model", "Serial", "Category",
+                             "PNA", "Stock Type", "Current Stage", "Current Location",
                              "Audit/Physical Stage", "Audit/Physical Location", "Status"], diff),
-        ("Missing Tags", ["Report Date", "Tag Number", "Category", "Audit/Physical Stage", "Audit/Physical Location",
+        ("Missing Tags", ["Report Date", "Tag Number", "Category",
+                          "PNA", "Stock Type", "Current Stage", "Current Location",
+                          "Audit/Physical Stage", "Audit/Physical Location",
                           "Audited By", "Scanned At"], missing),
         ("Stage Summary", ["Audit/Physical Stage"] + sum_cols, stage_rows),
         ("Location Summary", ["Audit/Physical Location"] + sum_cols, loc_rows),

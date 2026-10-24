@@ -293,6 +293,16 @@ document.getElementById('auditBarcodeInput').addEventListener('keydown', functio
 });
 
 // ── Audit Records table ─────────────────────────────────────────────────────
+// "PNA n" beside a count — rows audited at L1/L2 or L3/L4 Repair only
+// (r.pna is null on every other row). 2026-10-24.
+function withPna(key, onColour) {
+  return function (v, type, r) {
+    if (type !== 'display' || !r.pna) return v;
+    var n = r.pna[key] || 0;
+    var cls = onColour ? 'bg-light text-dark' : 'bg-danger';
+    return v + ' <span class="badge ' + cls + ' ms-1" title="Tags with an active PNA part">PNA ' + n + '</span>';
+  };
+}
 function auditCountCell(td, bg) {
   td.style.backgroundColor = bg;
   td.style.color = '#fff';
@@ -316,9 +326,11 @@ $(function () {
       { data: 'report_date' },
       { data: 'my_stage' },
       { data: 'my_location' },
-      { data: 'current_count', createdCell: function (td) { td.style.textAlign = 'center'; } },
-      { data: 'physical_count', createdCell: function (td) { auditCountCell(td, '#0d6efd'); } },
-      { data: 'difference', createdCell: function (td, v) {
+      { data: 'current_count', render: withPna('current', false),
+        createdCell: function (td) { td.style.textAlign = 'center'; } },
+      { data: 'physical_count', render: withPna('physical', true),
+        createdCell: function (td) { auditCountCell(td, '#0d6efd'); } },
+      { data: 'difference', render: withPna('difference', true), createdCell: function (td, v) {
           auditCountCell(td, Number(v) === 0 ? '#0F7A37' : '#fd7e14'); } },
       { data: 'missing', createdCell: function (td, v) {
           if (Number(v) > 0) { td.style.color = '#dc3545'; td.style.fontWeight = '600'; } td.style.textAlign = 'center'; } },
