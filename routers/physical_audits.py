@@ -23,7 +23,7 @@ import io
 import uuid as uuid_module
 from datetime import datetime, date
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, Response
 from sqlalchemy import select, func, and_, case as sa_case
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -31,8 +31,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import get_db
 from templates_config import templates
 from utils.timezone import app_now
-from auth.dependencies import get_current_user, verify_csrf
-from models.user import User
+from auth.dependencies import get_current_user, require_roles, verify_csrf
+from models.user import User, UserRole
 from services.pna_lookup import active_pna_parts
 from models.device import Device, DeviceStage, STAGE_LABELS, DROPDOWN_STAGES
 from models.location import StorageLocation, DeviceLocationLog
@@ -441,36 +441,68 @@ async def submit_audit(
       * a tag that exists adds to Physical Count; one whose stage or location
         differs from the system's counts in Difference (worked out on read);
       * a Tag Number that isn't in the system is recorded as Missing (only)."""
-    try:
-        r_date = datetime.strptime(report_date.strip(), "%Y-%m-%d").date()
-    except (ValueError, AttributeError):
-        return JSONResponse({"ok": False, "error": "Invalid report date."})
+    parsed = _parse_audit_target(report_date, my_stage, my_location_id, pna)
+    if isinstance(parsed, str):
+        return JSONResponse({"ok": False, "error": parsed})
+    r_date, my_stage_enum, my_loc_uuid, pna_group = parsed
     bc = (barcode or "").strip()
     if not bc:
         return JSONResponse({"ok": False, "error": "Enter a Tag Number."})
-    device = (await db.execute(select(Device).where(Device.barcode.ilike(bc)))).scalars().first()
-    if await _already_audited(db, device.barcode if device else bc, r_date):
+    result, audit_record = await _record_tag(db, r_date, bc, my_stage_enum, my_loc_uuid, pna_group, current_user)
+    if result == "already":
         return JSONResponse({"ok": False, "error": "You already audited this tag."})
+    await db.commit()
+    if result == "missing":
+        return JSONResponse({"ok": True, "missing": True, "audit_record_id": str(audit_record.id)})
+    return JSONResponse({"ok": True, "missing": False, "audit_record_id": str(audit_record.id),
+                         "current_count": audit_record.current_count,
+                         "physical_count": audit_record.physical_count})
 
+
+def _parse_audit_target(report_date, my_stage, my_location_id, pna):
+    """(report date, stage, location uuid, pna_group) from the Perform Audit
+    fields, or an error message. Shared by the single scan and Upload Tag."""
+    try:
+        r_date = datetime.strptime((report_date or "").strip(), "%Y-%m-%d").date()
+    except (ValueError, AttributeError):
+        return "Invalid report date."
     try:
         my_stage_enum = DeviceStage(my_stage)
     except ValueError:
-        return JSONResponse({"ok": False, "error": "Invalid stage selected."})
+        return "Invalid stage selected."
     my_loc_uuid = None
     if (my_location_id or "").strip():
         try:
             my_loc_uuid = uuid_module.UUID(my_location_id.strip())
         except ValueError:
-            return JSONResponse({"ok": False, "error": "Invalid location selected."})
+            return "Invalid location selected."
+    # L1/L2 and L3/L4 (2026-10-24): the PNA checkbox gives its own row,
+    # "<stage> - PNA"; unticked is "<stage> - Line".
+    pna_group = (("PNA" if (pna or "").strip().lower() in ("1", "on", "true", "yes") else "Line")
+                 if my_stage_enum in PNA_STAGES else None)
+    return r_date, my_stage_enum, my_loc_uuid, pna_group
+
+
+async def _record_tag(db: AsyncSession, r_date, bc, my_stage_enum, my_loc_uuid, pna_group, current_user):
+    """Record one tag into its Audit Records row (no commit). Returns
+    ("already" | "missing" | "ok", audit_record or None).
+    Rules (2026-10-24):
+      * one Audit Records row per Report Date + Audit/Physical Stage +
+        Audit/Physical Location (Category is kept per tag, in the sheets,
+        not as a row key);
+      * Current Count = tags the system has at that stage + location (any
+        category, not in Trash) when the row's first tag is scanned;
+      * a tag that exists adds to Physical Count; one whose stage or location
+        differs from the system's counts in Difference (worked out on read);
+      * a Tag Number that isn't in the system is recorded as Missing (only)."""
+    device = (await db.execute(select(Device).where(Device.barcode.ilike(bc)))).scalars().first()
+    if await _already_audited(db, device.barcode if device else bc, r_date):
+        return "already", None
 
     # The row for this Report Date + Stage + Location (2026-10-24: a new row
     # whenever any of the three differs). A row saved before 2026-10-23 also
     # carries a Category — prefer the one without, else join the oldest.
     loc_match = (AuditRecord.my_location_id == my_loc_uuid) if my_loc_uuid else AuditRecord.my_location_id.is_(None)
-    # L1/L2 and L3/L4 (2026-10-24): the PNA checkbox gives its own row,
-    # "<stage> - PNA"; unticked is "<stage> - Line".
-    pna_group = (("PNA" if (pna or "").strip().lower() in ("1", "on", "true", "yes") else "Line")
-                 if my_stage_enum in PNA_STAGES else None)
     grp_match = (AuditRecord.pna_group == pna_group) if pna_group else AuditRecord.pna_group.is_(None)
     audit_record = (await db.execute(
         select(AuditRecord).where(AuditRecord.report_date == r_date,
@@ -496,8 +528,8 @@ async def submit_audit(
             audited_by_user_id=current_user.id,
         ))
         audit_record.updated_at = app_now()
-        await db.commit()
-        return JSONResponse({"ok": True, "missing": True, "audit_record_id": str(audit_record.id)})
+        await db.flush()
+        return "missing", audit_record
 
     system_location_id = await _resolve_device_system_location_id(db, device)
     lot_number = None
@@ -513,10 +545,97 @@ async def submit_audit(
         assigned_by_user_id=None,   # see module docstring
         assigned_to_user_id=device.assigned_to_user_id, audited_by_user_id=current_user.id,
     ))
+    await db.flush()
+    return "ok", audit_record
+
+
+# ── Upload Tag (admin, 2026-10-24) ───────────────────────────────────────────
+# Same as scanning each tag with Validate, for a whole file at once, into the
+# selected Report Date + Audit/Physical Stage + Location (+ PNA checkbox).
+
+_HEADER_WORDS = {"tag", "tags", "tag number", "tag no", "tag_number", "barcode", "barcodes", "tag id"}
+
+
+def _tags_from_upload(filename: str, raw: bytes) -> list:
+    """Tag numbers from the first column of a .xlsx / .csv / .txt file, in
+    file order, blank cells and a header row skipped."""
+    name = (filename or "").lower()
+    vals = []
+    if name.endswith((".xlsx", ".xlsm")):
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        for row in wb.worksheets[0].iter_rows(min_col=1, max_col=1, values_only=True):
+            v = row[0] if row else None
+            if v is None:
+                continue
+            if isinstance(v, float) and v.is_integer():
+                v = int(v)
+            vals.append(str(v))
+        wb.close()
+    else:
+        text = None
+        for enc in ("utf-8-sig", "cp1252", "latin-1"):
+            try:
+                text = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        for row in csv.reader(io.StringIO(text or "")):
+            if row:
+                vals.append(row[0])
+    out = []
+    for i, v in enumerate(vals):
+        v = (v or "").strip()
+        if not v or (i == 0 and v.lower() in _HEADER_WORDS):
+            continue
+        out.append(v[:100])
+    return out
+
+
+@router.post("/upload")
+async def upload_tags(
+    file: UploadFile = File(...),
+    report_date: str = Form(...),
+    my_stage: str = Form(...),
+    my_location_id: str = Form(""),
+    pna: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.admin)),
+):
+    if not (my_location_id or "").strip():
+        return JSONResponse({"ok": False, "error": "Select Audit/Physical Location first."})
+    parsed = _parse_audit_target(report_date, my_stage, my_location_id, pna)
+    if isinstance(parsed, str):
+        return JSONResponse({"ok": False, "error": parsed})
+    r_date, my_stage_enum, my_loc_uuid, pna_group = parsed
+    try:
+        tags = _tags_from_upload(file.filename, await file.read())
+    except Exception:
+        return JSONResponse({"ok": False, "error": "Could not read the file. Upload .xlsx, .csv or .txt "
+                                                   "with tag numbers in the first column."})
+    if not tags:
+        return JSONResponse({"ok": False, "error": "No tag numbers found in the first column."})
+    if len(tags) > 5000:
+        return JSONResponse({"ok": False, "error": f"{len(tags):,} tags in the file — upload 5,000 or fewer at a time."})
+
+    seen, dup_in_file, already, missing, recorded = set(), [], [], [], 0
+    for bc in tags:
+        if bc.upper() in seen:
+            dup_in_file.append(bc)
+            continue
+        seen.add(bc.upper())
+        result, _rec = await _record_tag(db, r_date, bc, my_stage_enum, my_loc_uuid, pna_group, current_user)
+        if result == "already":
+            already.append(bc)
+        elif result == "missing":
+            missing.append(bc)
+        else:
+            recorded += 1
     await db.commit()
-    return JSONResponse({"ok": True, "missing": False, "audit_record_id": str(audit_record.id),
-                         "current_count": audit_record.current_count,
-                         "physical_count": audit_record.physical_count})
+    return JSONResponse({"ok": True, "total": len(tags), "recorded": recorded,
+                         "missing": len(missing), "missing_tags": missing[:200],
+                         "already": len(already), "already_tags": already[:200],
+                         "duplicates": len(dup_in_file), "duplicate_tags": dup_in_file[:200]})
 
 
 # ── Audit Records table ──────────────────────────────────────────────────────

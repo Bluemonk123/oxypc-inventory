@@ -285,8 +285,13 @@ async def ready_list_data(
     search_filters = []
     if search:
         like = f"%{search}%"
+        # Assigned user (2026-10-24): the search box also matches the
+        # assigned user's name or username.
+        assigned_match = Device.assigned_to_user_id.in_(
+            select(User.id).where(or_(User.full_name.ilike(like), User.username.ilike(like))))
         search_filters.append(or_(
             Device.barcode.ilike(like), Device.brand.ilike(like), Device.model.ilike(like),
+            assigned_match,
         ))
     # Without a search term this is the same query as the total above, and
     # DataTables asks on every draw — only pay for it when a term narrows the set.

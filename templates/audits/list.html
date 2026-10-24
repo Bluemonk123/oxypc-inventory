@@ -8,8 +8,16 @@
   <!-- Perform Audit -->
   <div class="col-12">
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent fw-semibold">
-        <i class="bi bi-clipboard2-check me-2"></i>Perform Audit
+      <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-clipboard2-check me-2"></i>Perform Audit</span>
+        {# Upload Tag (2026-10-24, admin only): swaps the scan box + Validate for
+           a file upload + Submit that records every tag in the file. #}
+        {% if role_allowed(current_user.role, 'admin') %}
+        <div class="form-check form-switch mb-0 small">
+          <input class="form-check-input" type="checkbox" id="auditUploadMode">
+          <label class="form-check-label fw-semibold" for="auditUploadMode">Upload Tag</label>
+        </div>
+        {% endif %}
       </div>
       <div class="card-body">
         {# no-autohide: this is reused on every Submit (shown + hidden via its
@@ -56,16 +64,31 @@
               {% endfor %}
             </select>
           </div>
-          <div class="col-md-2">
+          <div class="col-md-2 audit-scan-only">
             <label class="form-label fw-semibold small">Tag Number</label>
             <input type="text" id="auditBarcodeInput" class="form-control" placeholder="Scan or type a tag number">
           </div>
-          <div class="col-md-2">
+          <div class="col-md-2 audit-scan-only">
             <button type="button" id="auditLookupBtn" class="btn btn-outline-primary w-100">
               <i class="bi bi-search me-1"></i>Validate
             </button>
           </div>
+          {% if role_allowed(current_user.role, 'admin') %}
+          <div class="col-md-2 audit-upload-only d-none">
+            <label class="form-label fw-semibold small">Tag File</label>
+            <input type="file" id="auditUploadFile" class="form-control" accept=".xlsx,.csv,.txt"
+                   title="Tag numbers in the first column (.xlsx, .csv or .txt)">
+          </div>
+          <div class="col-md-2 audit-upload-only d-none">
+            <button type="button" id="auditUploadBtn" class="btn btn-primary w-100">
+              <i class="bi bi-upload me-1"></i>Submit
+            </button>
+          </div>
+          {% endif %}
         </div>
+        {% if role_allowed(current_user.role, 'admin') %}
+        <div id="auditUploadResult" class="d-none mt-3 small"></div>
+        {% endif %}
 
         <!-- Receipt: Lookup now performs the lookup AND the submit in one
              click (one interaction instead of two) — this panel shows what
@@ -327,6 +350,77 @@ function auditDoLookup() {
       auditSelectTagBox();
     });
 }
+// ── Upload Tag (admin, 2026-10-24) ──────────────────────────────────────────
+(function () {
+  var mode = document.getElementById('auditUploadMode');
+  if (!mode) return;
+  function sync() {
+    var up = mode.checked;
+    document.querySelectorAll('.audit-scan-only').forEach(function (el) { el.classList.toggle('d-none', up); });
+    document.querySelectorAll('.audit-upload-only').forEach(function (el) { el.classList.toggle('d-none', !up); });
+    document.getElementById('auditConfirmPanel').classList.add('d-none');
+    document.getElementById('auditLookupError').classList.add('d-none');
+    if (!up) document.getElementById('auditUploadResult').classList.add('d-none');
+  }
+  mode.addEventListener('change', sync);
+
+  function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+  function list(label, n, tags, cls) {
+    if (!n) return '';
+    return '<div class="mt-1"><span class="badge ' + cls + ' me-1">' + n + '</span>' + label +
+           (tags && tags.length ? ': <span class="font-monospace">' + tags.map(esc).join(', ') +
+             (n > tags.length ? ' …' : '') + '</span>' : '') + '</div>';
+  }
+
+  document.getElementById('auditUploadBtn').addEventListener('click', function () {
+    var err = document.getElementById('auditLookupError');
+    var out = document.getElementById('auditUploadResult');
+    err.classList.add('d-none');
+    out.classList.add('d-none');
+    var reportDateVal = document.getElementById('auditReportDate').value;
+    var stageSel = document.getElementById('auditMyStage');
+    var locSel = document.getElementById('auditMyLocation');
+    var fileInp = document.getElementById('auditUploadFile');
+    var msg = !reportDateVal ? 'Select a Report Date first.'
+            : !stageSel.value ? 'Select Audit/Physical Stage first.'
+            : !locSel.value ? 'Select Audit/Physical Location first.'
+            : !(fileInp.files && fileInp.files.length) ? 'Choose a file of tag numbers first.' : '';
+    if (msg) { err.textContent = msg; err.classList.remove('d-none'); return; }
+    var fd = new FormData();
+    fd.append('csrf_token', auditCsrfToken());
+    fd.append('report_date', reportDateVal);
+    fd.append('my_stage', stageSel.value);
+    fd.append('my_location_id', locSel.value);
+    if (auditPnaStage()) fd.append('pna', document.getElementById('auditPna').checked ? '1' : '0');
+    fd.append('file', fileInp.files[0]);
+    var btn = this;
+    btn.disabled = true;
+    var oldHtml = btn.innerHTML;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Submitting…';
+    fetch('/audits/upload', { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { err.textContent = d.error || 'Upload failed.'; err.classList.remove('d-none'); return; }
+        var target = stageSel.options[stageSel.selectedIndex].text +
+          (auditPnaStage() ? (document.getElementById('auditPna').checked ? ' - PNA' : ' - Line') : '') +
+          ' / ' + locSel.options[locSel.selectedIndex].text;
+        out.innerHTML = '<div class="alert alert-success py-2 mb-0">' +
+          '<div class="fw-semibold"><i class="bi bi-check-circle me-1"></i>' + d.total + ' tag(s) in file → ' +
+          esc(target) + '</div>' +
+          list('recorded', d.recorded, null, 'bg-success') +
+          list('not in system (recorded as Missing)', d.missing, d.missing_tags, 'bg-danger') +
+          list('already audited for this date (skipped)', d.already, d.already_tags, 'bg-warning text-dark') +
+          list('repeated in the file (skipped)', d.duplicates, d.duplicate_tags, 'bg-secondary') +
+          '</div>';
+        out.classList.remove('d-none');
+        fileInp.value = '';
+        if (window.auditRecordsDt) window.auditRecordsDt.ajax.reload(null, false);
+      })
+      .catch(function () { err.textContent = 'Upload failed — please try again.'; err.classList.remove('d-none'); })
+      .then(function () { btn.disabled = false; btn.innerHTML = oldHtml; });
+  });
+})();
+
 document.getElementById('auditLookupBtn').addEventListener('click', auditDoLookup);
 document.getElementById('auditBarcodeInput').addEventListener('keydown', function (e) {
   if (e.key === 'Enter') { e.preventDefault(); auditDoLookup(); }
