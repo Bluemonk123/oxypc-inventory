@@ -325,7 +325,12 @@ function auditDoLookup() {
               var el = document.getElementById(id); el.className = ''; el.textContent = ''; });
           } else {
             // Scrapped and Scrap for Sale count as one stage (2026-10-24).
-            var grp = function (v) { return (v === 'scrapped' || v === 'scrap_for_sale') ? 'scrap' : (v || ''); };
+            // Final QC + its Pass / Fail Hold also count as one stage (2026-10-24).
+            var grp = function (v) {
+              if (v === 'scrapped' || v === 'scrap_for_sale') return 'scrap';
+              if (v === 'final_qc' || v === 'final_qc_pass_hold' || v === 'final_qc_fail_hold') return 'fqc';
+              return v || '';
+            };
             matchBadge('cf_stage_match', grp(d.system_stage) === grp(stageSel.value));
             matchBadge('cf_loc_match', (d.system_location_id || '') === (locSel.value || ''));
           }

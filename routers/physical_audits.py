@@ -105,8 +105,8 @@ def _devices_at_query(cols, stage, location_id, category, pna_group=None, only_s
          .outerjoin(latest_log, latest_log.c.device_id == Device.id)
          .where(Device.is_trashed == False))  # noqa: E712
     if stage is not _ANY:
-        if _stage_key(stage) == DeviceStage.scrapped:
-            q = q.where(Device.current_stage.in_(SCRAP_GROUP))
+        if _stage_key(stage) in STAGE_GROUPS:
+            q = q.where(Device.current_stage.in_(_stage_members(stage)))
         else:
             q = q.where(Device.current_stage == stage)
     if location_id is not _ANY:
@@ -132,24 +132,41 @@ async def _active_stock_count(db: AsyncSession) -> int:
     )).scalar() or 0
 
 
-# Scrapped and Scrap for Sale are one audit stage (2026-10-24): picking either
-# counts and matches tags in both, and the row shows "Scrapped+Scrap for Sale".
+# Audit stages that cover several system stages (2026-10-24): picking any
+# member counts and matches tags in all of them, and the row shows the group
+# label.
+#   Scrapped + Scrap for Sale
+#   Final QC + Final QC Pass Hold + Final QC Fail Hold
 SCRAP_GROUP = (DeviceStage.scrapped, DeviceStage.scrap_for_sale)
 SCRAP_GROUP_LABEL = "Scrapped+Scrap for Sale"
+FQC_GROUP = (DeviceStage.final_qc, DeviceStage.final_qc_pass_hold, DeviceStage.final_qc_fail_hold)
+FQC_GROUP_LABEL = "Final QC+Pass Hold+Fail Hold"
+STAGE_GROUPS = {SCRAP_GROUP[0]: SCRAP_GROUP, FQC_GROUP[0]: FQC_GROUP}
+STAGE_GROUP_LABELS = {SCRAP_GROUP[0]: SCRAP_GROUP_LABEL, FQC_GROUP[0]: FQC_GROUP_LABEL}
+_GROUP_HEAD = {m: head for head, members in STAGE_GROUPS.items() for m in members}
+_GROUP_HEAD.update({m.value: head for head, members in STAGE_GROUPS.items() for m in members})
 
 
 def _stage_key(st):
-    """Audit stage for grouping / comparing: either scrap stage -> Scrapped."""
-    if isinstance(st, str) and st in {g.value for g in SCRAP_GROUP}:
-        return DeviceStage.scrapped
-    return DeviceStage.scrapped if st in SCRAP_GROUP else st
+    """Audit stage for grouping / comparing: any member of a stage group ->
+    the group's first stage (Scrapped / Final QC)."""
+    try:
+        return _GROUP_HEAD.get(st, st)
+    except TypeError:
+        return st
+
+
+def _stage_members(st) -> tuple:
+    """Every system stage an audit stage covers (just itself if not grouped)."""
+    k = _stage_key(st)
+    return STAGE_GROUPS.get(k, (st,))
 
 
 def _stage_label(st, pna_group=None) -> str:
-    """Audit stage as shown: "Scrapped+Scrap for Sale" for either scrap stage;
+    """Audit stage as shown: the group label for a grouped stage;
     "L1/L2 Repair - PNA" / "- Line" on rows split by PNA (2026-10-24)."""
-    if _stage_key(st) == DeviceStage.scrapped and st is not None:
-        return SCRAP_GROUP_LABEL
+    if st is not None and _stage_key(st) in STAGE_GROUP_LABELS:
+        return STAGE_GROUP_LABELS[_stage_key(st)]
     base = str(STAGE_LABELS.get(st, st)) if st is not None else ""
     return f"{base} - {pna_group}" if (base and pna_group) else base
 
@@ -207,7 +224,7 @@ async def _difference_tags(db: AsyncSession, items, groups=None) -> tuple:
     # location, then sorted into each row's stage + location (+ PNA / Line).
     stages = set()
     for _rid, st, _loc in combos:
-        stages |= set(SCRAP_GROUP) if _stage_key(st) == DeviceStage.scrapped else {st}
+        stages |= set(_stage_members(st))
     stages.discard(None)
     q = _devices_at_query([Device.barcode, Device.lot_id, Device.model, Device.serial_no,
                            Device.sub_category, Device.id, Device.current_stage,
@@ -497,7 +514,8 @@ async def _find_audit_row(db: AsyncSession, r_date, my_stage_enum, my_loc_uuid, 
     grp_match = (AuditRecord.pna_group == pna_group) if pna_group else AuditRecord.pna_group.is_(None)
     return (await db.execute(
         select(AuditRecord).where(AuditRecord.report_date == r_date,
-                                  (AuditRecord.my_stage.in_(SCRAP_GROUP) if my_stage_enum in SCRAP_GROUP
+                                  (AuditRecord.my_stage.in_(_stage_members(my_stage_enum))
+                                   if _stage_key(my_stage_enum) in STAGE_GROUPS
                                    else AuditRecord.my_stage == my_stage_enum),
                                   loc_match, grp_match)
         .order_by(AuditRecord.category.is_(None).desc(), AuditRecord.created_at.asc())
