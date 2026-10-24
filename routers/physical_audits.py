@@ -798,7 +798,10 @@ async def download_record(
     if not record:
         return JSONResponse({"ok": False, "error": "Audit record not found."}, status_code=404)
     data = await _audit_workbook(db, [record])
-    return _xlsx_response(data, f"audit_record_{record.report_date}.xlsx")
+    # File name = Report Date + Audit/Physical Stage column value (2026-10-24),
+    # e.g. "24_10_2026_L1-L2 Repair - PNA.xlsx" ("/" is not allowed in names).
+    stage_txt = (_stage_label(record.my_stage, record.pna_group) or "Audit").replace("/", "-")
+    return _xlsx_response(data, f"{record.report_date.strftime('%d_%m_%Y')}_{stage_txt}.xlsx")
 
 
 @router.get("/export/workbook")
@@ -810,17 +813,19 @@ async def export_workbook(
     """Card header Export: every audit record (or one Report Date's) as a
     workbook with Tags Summary, Stage Summary and Location Summary sheets."""
     q = select(AuditRecord).order_by(AuditRecord.report_date.desc(), AuditRecord.created_at.desc())
-    suffix = "all"
+    # File name DD_MM_YYYY_Physical_Audit_Report (2026-10-24): the filtered
+    # Report Date, or today's date when exporting every record.
+    name_date = date.today()
     if report_date.strip():
         try:
             r_date = datetime.strptime(report_date.strip(), "%Y-%m-%d").date()
             q = q.where(AuditRecord.report_date == r_date)
-            suffix = r_date.isoformat()
+            name_date = r_date
         except ValueError:
             pass
     records = (await db.execute(q)).scalars().all()
     data = await _audit_workbook(db, records)
-    return _xlsx_response(data, f"physical_audit_{suffix}.xlsx")
+    return _xlsx_response(data, f"{name_date.strftime('%d_%m_%Y')}_Physical_Audit_Report.xlsx")
 
 
 # ── Whole-table exports ──────────────────────────────────────────────────────

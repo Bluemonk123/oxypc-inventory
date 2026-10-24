@@ -122,9 +122,22 @@ async def _release_items(db: AsyncSession, item_ids: list, current_user: User):
         it.status_changed_by_user_id = current_user.id
         it.status_changed_at = datetime.utcnow()
     if device_ids:
+        # Block For user of each released tag's block: creating the block set
+        # Device.assigned_to_user_id to that user, and Ready for Sale shows
+        # Blocked while a tag is assigned — so Release clears that assignment
+        # too (2026-10-24). An assignment to anyone else (Floor Movement /
+        # Assign) is left alone.
+        rec_ids = {it.block_record_id for it in items if it.device_id in device_ids}
+        block_for = dict((await db.execute(
+            select(BlockRecord.id, BlockRecord.block_for_user_id).where(BlockRecord.id.in_(rec_ids))
+        )).all())
+        held_for = {it.device_id: block_for.get(it.block_record_id) for it in items if it.device_id in device_ids}
         devices = (await db.execute(select(Device).where(Device.id.in_(device_ids)))).scalars().all()
         for d in devices:
             d.is_blocked = False
+            bf = held_for.get(d.id)
+            if bf is not None and d.assigned_to_user_id == bf:
+                d.assigned_to_user_id = None
     await db.commit()
     return len(device_ids)
 

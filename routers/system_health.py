@@ -924,6 +924,89 @@ async def audit_pna_apply(request: Request, current_user: User = Depends(admin_o
     return JSONResponse({"ok": True, "split": done})
 
 
+# ── Hold for Selling: released tags still assigned (2026-10-24) ─────────────
+# Release used to clear only Device.is_blocked, leaving assigned_to_user_id =
+# the block's Block For user, so Ready for Sale kept showing Blocked. Fix:
+# clear that assignment on tags with a released (not sold) hold, no open hold,
+# and still assigned to that hold's Block For user. Audited.
+
+async def _hold_release_candidates(db):
+    from sqlalchemy import select, and_, or_
+    from models.device import Device, DeviceStage
+    from models.user import User
+    from models.block_tags import BlockRecord, BlockRecordItem, BlockItemStatus, SOLD_NOTE_PREFIX
+    from sqlalchemy.orm import aliased
+    open_item = aliased(BlockRecordItem)   # own alias: the outer query joins BlockRecordItem too
+    still_blocked = (select(open_item.id)
+                     .where(open_item.device_id == Device.id,
+                            open_item.status == BlockItemStatus.blocked)
+                     .correlate(Device).exists())
+    rows = (await db.execute(
+        select(Device.id, Device.barcode, Device.current_stage, BlockRecord.block_id,
+               User.full_name, User.username, BlockRecordItem.status_changed_at)
+        .join(BlockRecordItem, BlockRecordItem.device_id == Device.id)
+        .join(BlockRecord, BlockRecord.id == BlockRecordItem.block_record_id)
+        .outerjoin(User, User.id == Device.assigned_to_user_id)
+        .where(BlockRecordItem.status == BlockItemStatus.released,
+               or_(BlockRecordItem.notes.is_(None), ~BlockRecordItem.notes.like(SOLD_NOTE_PREFIX + "%")),
+               BlockRecord.block_for_user_id.isnot(None),
+               Device.assigned_to_user_id == BlockRecord.block_for_user_id,
+               Device.is_blocked.isnot(True),
+               Device.current_stage != DeviceStage.sold,
+               ~still_blocked)
+        .order_by(BlockRecordItem.status_changed_at.desc().nullslast())
+    )).all()
+    seen, out = set(), []
+    for r in rows:
+        if r.id in seen:
+            continue
+        seen.add(r.id)
+        out.append({"id": r.id, "tag": r.barcode or "", "block_id": r.block_id or "",
+                    "assigned": r.full_name or r.username or "",
+                    "stage": getattr(r.current_stage, "value", r.current_stage) or "",
+                    "released": r.status_changed_at.strftime("%d-%m-%Y %H:%M") if r.status_changed_at else ""})
+    return out
+
+
+@router.get("/hold-release-fix")
+async def hold_release_preview(current_user: User = Depends(admin_only)):
+    from database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        c = await _hold_release_candidates(db)
+    for r in c:
+        r["id"] = str(r["id"])
+    return JSONResponse({"tags": len(c), "list": c})
+
+
+@router.post("/hold-release-fix")
+async def hold_release_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import update
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        c = await _hold_release_candidates(db)
+        ids = [r["id"] for r in c]
+        for i in range(0, len(ids), 5000):
+            await db.execute(update(Device).where(Device.id.in_(ids[i:i + 5000]))
+                             .values(assigned_to_user_id=None)
+                             .execution_options(synchronize_session=False))
+        if ids:
+            await audit(db, user=current_user, action="HOLD_RELEASE_UNASSIGN_BACKFILL", table_name="devices",
+                        record_id=f"{len(ids)} tags",
+                        old_value={"tags": [{"tag": r["tag"], "block_id": r["block_id"], "assigned": r["assigned"]}
+                                            for r in c]},
+                        new_value={"assigned_to_user_id": None, "count": len(ids)},
+                        notes="Released Hold for Selling tags still assigned to the Block For user "
+                              "(showed Blocked on Ready for Sale). Assignment cleared.",
+                        request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Released holds fixed: {len(ids):,} tags now Open.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "updated": len(ids)})
+
+
 # ── Data Fixes page (2026-10-22) ─────────────────────────────────────────────
 # One admin page: preview + Apply button for each fill, and the data check.
 # The Apply buttons are ordinary form posts the admin clicks.
@@ -941,6 +1024,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         audit_split = await _audit_split_preview_rows(db, await _audit_split_candidates(db))
         audit_scrap = await _audit_scrap_preview(db, await _audit_scrap_candidates(db))
         audit_pna = await _audit_pna_preview(db, await _audit_pna_candidates(db))
+        hold_rel = await _hold_release_candidates(db)
     spec_fields = {c: sum(1 for _i, ch, _r in spec if c in ch) for c in _SPEC_COLS}
     spec_examples, seen = [], set()
     for _i, ch, r in spec:
@@ -965,7 +1049,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         # Only numbers with 2+ copies NOT in Trash need a decision; the rest
         # (one copy already trashed) are counted, not listed.
         "reassign_c": reassign_c[:300], "reassign_total": len(reassign_c),
-        "audit_split": audit_split, "audit_scrap": audit_scrap, "audit_pna": audit_pna,
+        "audit_split": audit_split, "audit_scrap": audit_scrap, "audit_pna": audit_pna, "hold_rel": hold_rel[:300], "hold_rel_total": len(hold_rel),
         "case_dupes": [g for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) > 1],
         "case_dupes_handled": sum(1 for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) <= 1),
         "field_labels": {"ram_gb": "RAM GB", "ram_summary": "RAM", "total_ram_count": "Total RAM Count",
