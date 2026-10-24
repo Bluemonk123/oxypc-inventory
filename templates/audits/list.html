@@ -173,6 +173,15 @@
                   title="Excel workbook: Physical Tags, Difference Tags (not scanned), Missing Tags (not in system), Stage Summary and Location Summary sheets (the date picked, or all dates)">
             <i class="bi bi-file-earmark-excel me-1"></i>Export
           </button>
+          {# Zip (2026-10-24): every row now shown, each row's Download file, in one zip. #}
+          <button type="button" id="auditZipBtn" class="btn btn-sm btn-outline-primary"
+                  title="Download every row shown in the table (each row's Download file) in one .zip">
+            <i class="bi bi-download me-1"></i>Zip
+          </button>
+          <form method="post" action="/audits/export/zip" id="auditZipForm" class="d-none">
+            <input type="hidden" name="csrf_token" id="auditZipCsrf">
+            <input type="hidden" name="ids" id="auditZipIds">
+          </form>
         </div>
       </div>
       <div class="card-body p-0">
@@ -193,6 +202,17 @@
               </tr>
             </thead>
             <tbody></tbody>
+            {# Total row (2026-10-24): the rows shown (date filter + search). #}
+            <tfoot class="table-light fw-semibold">
+              <tr>
+                <td colspan="3" class="text-end">Total (<span id="auditTotRows">0</span> rows)</td>
+                <td class="text-center" id="auditTotCurrent">0</td>
+                <td class="text-center" id="auditTotPhysical">0</td>
+                <td class="text-center" id="auditTotDifference">0</td>
+                <td class="text-center" id="auditTotMissing">0</td>
+                <td colspan="3"></td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>
@@ -467,7 +487,16 @@ function auditDoLookup() {
     var oldHtml = btn.innerHTML;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Submitting…';
     fetch('/audits/upload', { method: 'POST', body: fd, credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        // A non-JSON answer (timeout page, error page) says why instead of a bare "Upload failed".
+        return r.text().then(function (t) {
+          try { return JSON.parse(t); }
+          catch (e) {
+            return { ok: false, error: 'Upload failed (server answered ' + r.status +
+              (r.status === 504 || r.status === 502 ? ' — it took too long; try a smaller file' : '') + ').' };
+          }
+        });
+      })
       .then(function (d) {
         if (!d.ok) { err.textContent = d.error || 'Upload failed.'; err.classList.remove('d-none'); return; }
         var target = stageSel.options[stageSel.selectedIndex].text +
@@ -534,6 +563,16 @@ $(function () {
   window.auditRecordsDt = $('#auditRecordsTable').DataTable({
     pageLength: 15,
     order: [[0, 'desc']],
+    footerCallback: function () {
+      var api = this.api(), rows = api.rows({ search: 'applied' }).data().toArray();
+      var sum = function (k) { return rows.reduce(function (a, r) { return a + (Number(r[k]) || 0); }, 0); };
+      var fmt = function (n) { return n.toLocaleString('en-IN'); };
+      document.getElementById('auditTotRows').textContent = rows.length;
+      document.getElementById('auditTotCurrent').textContent = fmt(sum('current_count'));
+      document.getElementById('auditTotPhysical').textContent = fmt(sum('physical_count'));
+      document.getElementById('auditTotDifference').textContent = fmt(sum('difference'));
+      document.getElementById('auditTotMissing').textContent = fmt(sum('missing'));
+    },
     ajax: {
       url: '/audits/records',
       data: function (d) { d.report_date = document.getElementById('auditRecordsDateFilter').value; },
@@ -608,6 +647,15 @@ $(function () {
         else alert(d.error || 'Could not delete.');
       })
       .catch(function () { alert('Could not delete.'); });
+  });
+
+  document.getElementById('auditZipBtn').addEventListener('click', function () {
+    var ids = window.auditRecordsDt.rows({ search: 'applied', order: 'applied' }).data().toArray()
+      .map(function (r) { return r.id; });
+    if (!ids.length) { alert('No rows to download.'); return; }
+    document.getElementById('auditZipCsrf').value = auditCsrfToken();
+    document.getElementById('auditZipIds').value = ids.join(',');
+    document.getElementById('auditZipForm').submit();
   });
 
   document.getElementById('auditExportBtn').addEventListener('click', function () {

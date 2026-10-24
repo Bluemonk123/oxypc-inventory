@@ -317,7 +317,11 @@ async def _count_devices_at(db: AsyncSession, stage, location_id, category, pna_
     _resolve_device_system_location_id but batched into one query instead of
     one-per-device. This is "how many does the system say should be here",
     compared against physical_count ("how many were actually found")."""
-    q = _devices_at_query([func.count(Device.id)], stage, location_id, category, pna_group)
+    # only_stages (2026-10-24): read the location history of just this stage's
+    # tags — over the whole log this one count took ~18 s on staging, which
+    # made the first scan / upload into a new row time out.
+    only = set(_stage_members(stage)) if stage is not _ANY and stage is not None else None
+    q = _devices_at_query([func.count(Device.id)], stage, location_id, category, pna_group, only_stages=only)
     return (await db.execute(q)).scalar() or 0
 
 
@@ -683,19 +687,67 @@ async def upload_tags(
     if len(tags) > 5000:
         return JSONResponse({"ok": False, "error": f"{len(tags):,} tags in the file — upload 5,000 or fewer at a time."})
 
-    seen, dup_in_file, already, missing, recorded = set(), [], [], [], 0
+    # Batched (2026-10-24): the per-tag path made ~6 queries per tag, so a
+    # 200-tag file outran the proxy timeout on production ("Upload failed").
+    # Same rules as _record_tag, a handful of queries for the whole file.
+    seen, uniq, dup_in_file = set(), [], []
     for bc in tags:
         if bc.upper() in seen:
             dup_in_file.append(bc)
-            continue
-        seen.add(bc.upper())
-        result, _rec = await _record_tag(db, r_date, bc, my_stage_enum, my_loc_uuid, pna_group, current_user)
-        if result == "already":
-            already.append(bc)
-        elif result == "missing":
-            missing.append(bc)
         else:
-            recorded += 1
+            seen.add(bc.upper())
+            uniq.append(bc)
+    uppers = [b.upper() for b in uniq]
+    dev_by_upper = {}
+    for i in range(0, len(uppers), 1000):
+        for d in (await db.execute(select(Device).where(func.upper(Device.barcode).in_(uppers[i:i + 1000])))).scalars().all():
+            dev_by_upper.setdefault(d.barcode.upper(), d)
+    done = set()
+    for i in range(0, len(uppers), 1000):
+        done |= {b for (b,) in (await db.execute(
+            select(func.upper(AuditRecordItem.barcode))
+            .join(AuditRecord, AuditRecordItem.audit_record_id == AuditRecord.id)
+            .where(AuditRecord.report_date == r_date,
+                   func.upper(AuditRecordItem.barcode).in_(uppers[i:i + 1000]))
+        )).all()}
+    already = [b for b in uniq if b.upper() in done]
+    todo = [b for b in uniq if b.upper() not in done]
+    missing = [b for b in todo if b.upper() not in dev_by_upper]
+    found = [dev_by_upper[b.upper()] for b in todo if b.upper() in dev_by_upper]
+    recorded = len(found)
+    if todo:
+        audit_record = await _find_audit_row(db, r_date, my_stage_enum, my_loc_uuid, pna_group)
+        if not audit_record:
+            audit_record = AuditRecord(report_date=r_date, my_stage=my_stage_enum, my_location_id=my_loc_uuid,
+                                       pna_group=pna_group,
+                                       current_count=await _count_devices_at(db, my_stage_enum, my_loc_uuid, _ANY,
+                                                                             pna_group),
+                                       physical_count=0)
+            db.add(audit_record)
+            await db.flush()
+        loc_map = await _build_location_map(db, [str(d.id) for d in found]) if found else {}
+        lot_ids = list({d.lot_id for d in found if d.lot_id})
+        lots = dict((await db.execute(select(Lot.id, Lot.lot_number).where(Lot.id.in_(lot_ids)))).all()) if lot_ids else {}
+        for bc in missing:
+            db.add(AuditRecordItem(
+                audit_record_id=audit_record.id, device_id=None, barcode=bc[:100],
+                system_stage=None, system_location_id=None,
+                my_stage=my_stage_enum, my_location_id=my_loc_uuid,
+                audited_by_user_id=current_user.id,
+            ))
+        for d in found:
+            info = loc_map.get(str(d.id))
+            sys_loc = info.get("location_id") if info is not None else d.location_id
+            db.add(AuditRecordItem(
+                audit_record_id=audit_record.id, device_id=d.id, barcode=d.barcode,
+                lot_number=lots.get(d.lot_id), brand=d.brand, model=d.model, serial_no=d.serial_no,
+                category=d.sub_category, system_stage=d.current_stage,
+                system_location_id=sys_loc, my_stage=my_stage_enum, my_location_id=my_loc_uuid,
+                assigned_by_user_id=None,   # see module docstring
+                assigned_to_user_id=d.assigned_to_user_id, audited_by_user_id=current_user.id,
+            ))
+        audit_record.physical_count = (audit_record.physical_count or 0) + recorded
+        audit_record.updated_at = app_now()
     await db.commit()
     return JSONResponse({"ok": True, "total": len(tags), "recorded": recorded,
                          "missing": len(missing), "missing_tags": missing[:200],
@@ -984,10 +1036,63 @@ async def download_record(
     if not record:
         return JSONResponse({"ok": False, "error": "Audit record not found."}, status_code=404)
     data = await _audit_workbook(db, [record])
-    # File name = Report Date + Audit/Physical Stage column value (2026-10-24),
-    # e.g. "24_10_2026_L1-L2 Repair - PNA.xlsx" ("/" is not allowed in names).
+    return _xlsx_response(data, _record_file_name(record))
+
+
+def _record_file_name(record, extra: str = "") -> str:
+    """Report Date + Audit/Physical Stage column value (2026-10-24), e.g.
+    "24_10_2026_L1-L2 Repair - PNA.xlsx" ("/" is not allowed in names)."""
     stage_txt = (_stage_label(record.my_stage, record.pna_group) or "Audit").replace("/", "-")
-    return _xlsx_response(data, f"{record.report_date.strftime('%d_%m_%Y')}_{stage_txt}.xlsx")
+    extra = f"_{extra}" if extra else ""
+    return f"{record.report_date.strftime('%d_%m_%Y')}_{stage_txt}{extra}.xlsx".replace("/", "-").replace("\\", "-")
+
+
+@router.post("/export/zip")
+async def export_zip(
+    ids: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Zip button (2026-10-24): every row now shown in Audit Records, each as
+    the same workbook its Download button gives, in one .zip."""
+    import zipfile
+    wanted = []
+    for x in ids.split(","):
+        try:
+            wanted.append(uuid_module.UUID(x.strip()))
+        except ValueError:
+            continue
+    if not wanted:
+        return JSONResponse({"ok": False, "error": "No audit rows to download."}, status_code=400)
+    records = (await db.execute(
+        select(AuditRecord).where(AuditRecord.id.in_(wanted))
+        .order_by(AuditRecord.report_date.desc(), AuditRecord.created_at.desc())
+    )).scalars().all()
+    locs = {}
+    loc_ids = {r.my_location_id for r in records if r.my_location_id}
+    if loc_ids:
+        locs = {l.id: l for l in (await db.execute(
+            select(StorageLocation).where(StorageLocation.id.in_(loc_ids)))).scalars().all()}
+    base_count = {}
+    for r in records:
+        base_count[_record_file_name(r)] = base_count.get(_record_file_name(r), 0) + 1
+    buf = io.BytesIO()
+    used = set()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for r in records:
+            name = _record_file_name(r)
+            if base_count[name] > 1:      # same date + stage at several locations: add the location
+                name = _record_file_name(r, _loc_short(locs.get(r.my_location_id)) or "No Location")
+            stem, n = name[:-5], 2
+            while name in used:
+                name = f"{stem} ({n}).xlsx"
+                n += 1
+            used.add(name)
+            zf.writestr(name, await _audit_workbook(db, [r]))
+    dates = sorted({r.report_date for r in records})
+    stamp = dates[0].strftime("%d_%m_%Y") if len(dates) == 1 else date.today().strftime("%d_%m_%Y")
+    return Response(content=buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": f'attachment; filename="{stamp}_Physical_Audit_Files.zip"'})
 
 
 @router.get("/export/workbook")
