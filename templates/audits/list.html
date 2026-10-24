@@ -178,6 +178,14 @@ var auditCurrentLookup = null;
 // user interaction instead of two (Lookup, review, Submit). If the lookup
 // itself fails (not found / already audited today) nothing is submitted;
 // if the lookup succeeds the submit follows immediately in the same chain.
+// Error after a scan (already audited, not found, submit error): keep the tag
+// in the box but select it, so the next scan simply overwrites it (2026-10-24).
+function auditSelectTagBox() {
+  var inp = document.getElementById('auditBarcodeInput');
+  if (!inp) return;
+  inp.focus();
+  inp.select();
+}
 function auditDoLookup() {
   var bc = document.getElementById('auditBarcodeInput').value.trim();
   var err = document.getElementById('auditLookupError');
@@ -226,6 +234,7 @@ function auditDoLookup() {
         err.textContent = d.error || 'Tag not found.';
         err.classList.remove('d-none');
         auditCurrentLookup = null;
+        auditSelectTagBox();
         return;
       }
       auditCurrentLookup = d;
@@ -243,6 +252,7 @@ function auditDoLookup() {
           if (!sd.ok) {
             err.textContent = sd.error || 'Could not submit audit.';
             err.classList.remove('d-none');
+            auditSelectTagBox();
             return;
           }
           // Receipt — what was just recorded, not a preview to confirm.
@@ -314,6 +324,7 @@ function auditDoLookup() {
       btn.disabled = false;
       err.textContent = 'Lookup failed — please try again.';
       err.classList.remove('d-none');
+      auditSelectTagBox();
     });
 }
 document.getElementById('auditLookupBtn').addEventListener('click', auditDoLookup);
