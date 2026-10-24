@@ -239,7 +239,7 @@ async def _difference_tags(db: AsyncSession, items, groups=None) -> tuple:
 PNA_STAGES = {DeviceStage.l1, DeviceStage.l2, DeviceStage.l3}   # L1/L2 and L3/L4 rows show PNA counts
 
 
-async def _record_stats(db: AsyncSession, record_ids, pna=None) -> dict:
+async def _record_stats(db: AsyncSession, record_ids, pna=None, live_current=None) -> dict:
     """{record_id: (physical, difference, missing)}: physical = scanned tags
     that exist; difference = Difference Tags (expected at the scanned
     stage/location combinations but not scanned); missing = scanned Tag
@@ -267,6 +267,11 @@ async def _record_stats(db: AsyncSession, record_ids, pna=None) -> dict:
             select(AuditRecord.id, AuditRecord.pna_group).where(AuditRecord.id.in_(list(record_ids)))
         )).all())
     diff_rows, _cur, cur_ids = await _difference_tags(db, items, groups)
+    if live_current is not None:
+        # Current Count as the system has it now (2026-10-24), the same number
+        # Difference and the Export's "Current Count (system now)" use.
+        for (rid, _st, _loc), n in _cur.items():
+            live_current[rid] = live_current.get(rid, 0) + n
     for row in diff_rows:
         p_, d_, m_ = out.get(row[0], (0, 0, 0))
         out[row[0]] = (p_, d_ + 1, m_)
@@ -703,8 +708,8 @@ async def list_records(
         locs = (await db.execute(select(StorageLocation).where(StorageLocation.id.in_(loc_ids)))).scalars().all()
         loc_map = {loc.id: loc for loc in locs}
 
-    pna_counts = {}
-    stats = await _record_stats(db, [r.id for r in records], pna=pna_counts)
+    pna_counts, live_current = {}, {}
+    stats = await _record_stats(db, [r.id for r in records], pna=pna_counts, live_current=live_current)
     # Audit Stage / Audit Location columns: every stage and location scanned
     # into the row (a day's row can cover several), in first-scanned order.
     stages_by, locs_by = {}, {}
@@ -733,7 +738,9 @@ async def list_records(
             "report_date": r.report_date.isoformat() if r.report_date else "",
             "my_stage": ", ".join(dict.fromkeys(_stage_label(x, r.pna_group) for x in st_list)) or "—",
             "my_location": ", ".join(_loc_short(loc_map.get(x)) for x in lc_list) or "—",
-            "current_count": r.current_count,
+            # Live count when the row has scans; a row with none (No Tags)
+            # keeps its saved count.
+            "current_count": live_current.get(r.id, r.current_count),
             "physical_count": physical,
             "difference": difference,
             "missing": missing,
