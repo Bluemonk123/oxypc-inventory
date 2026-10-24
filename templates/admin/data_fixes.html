@@ -192,6 +192,39 @@
     </div>
   </div>
 
+  {# ── Physical Audit: plain L1/L2 + L3/L4 rows -> PNA / Line (2026-10-24) ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-exclamation-triangle me-2"></i>Physical Audit L1/L2 / L3/L4 rows to split into PNA / Line
+          <span class="badge {% if audit_pna %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ audit_pna | length }}</span></span>
+        {% if audit_pna %}
+        <form method="post" action="/admin/system/audit-pna-fix" class="df-confirm"
+              data-confirm="Click again to split {{ audit_pna | length }} row(s)">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Split {{ audit_pna | length }} row(s)</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        <p class="text-muted mb-2">Rows scanned before the PNA checkbox existed. Each scanned tag goes by its PNA mark in the system: an active PNA part goes to the "- PNA" row, the rest (and tag numbers not in the system) to the "- Line" row. Current Count is recounted for each. Logged.</p>
+        {% if audit_pna %}
+        <table class="table table-sm table-bordered mb-0 align-middle" style="font-size:.78rem;max-width:720px">
+          <thead class="table-dark"><tr><th>Report Date</th><th>Stage</th><th>Location</th><th>Tags to "- PNA"</th><th>Tags to "- Line"</th></tr></thead>
+          <tbody>
+            {% for a in audit_pna %}
+            <tr><td>{{ a.date }}</td><td>{{ a.stage }}</td><td>{{ a.location }}</td><td>{{ a.pna_tags }}</td><td>{{ a.line_tags }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-success"><i class="bi bi-check-circle me-1"></i>None.</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {# ── Tag numbers that differ only by capital / small letters ── #}
   <div class="col-12">
     <div class="card border-0 shadow-sm">

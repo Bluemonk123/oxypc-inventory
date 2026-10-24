@@ -802,6 +802,128 @@ async def audit_scrap_apply(request: Request, current_user: User = Depends(admin
     return JSONResponse({"ok": True, "fixed": fixed})
 
 
+# ── Physical Audit: split plain L1/L2 + L3/L4 rows into PNA / Line (2026-10-24)
+# Rows scanned before the PNA checkbox existed carry no PNA / Line. Each
+# scanned tag goes by its PNA mark in the system: an active PNA part ->
+# "<stage> - PNA" row, otherwise (and tag numbers not in the system) ->
+# "<stage> - Line" row. Joins an existing PNA / Line row of the same date +
+# stage + location; Current Count is recounted for each half. Audited.
+
+async def _audit_pna_candidates(db):
+    from sqlalchemy import select
+    from models.audit_record import AuditRecord, AuditRecordItem
+    from routers.physical_audits import PNA_STAGES
+    from services.pna_lookup import active_pna_parts
+    recs = (await db.execute(
+        select(AuditRecord).where(AuditRecord.my_stage.in_(list(PNA_STAGES)), AuditRecord.pna_group.is_(None))
+        .order_by(AuditRecord.report_date.desc(), AuditRecord.created_at.asc())
+    )).scalars().all()
+    out = []
+    for r in recs:
+        items = (await db.execute(
+            select(AuditRecordItem).where(AuditRecordItem.audit_record_id == r.id))).scalars().all()
+        ids = {it.device_id for it in items if it.device_id}
+        with_pna = set(await active_pna_parts(db, ids)) if ids else set()
+        pna_items = [it for it in items if it.device_id in with_pna]
+        line_items = [it for it in items if it.device_id not in with_pna]
+        out.append({"record": r, "pna": pna_items, "line": line_items})
+    return out
+
+
+async def _audit_pna_preview(db, cands):
+    from sqlalchemy import select
+    from models.location import StorageLocation
+    from models.device import STAGE_LABELS
+    ids = {c["record"].my_location_id for c in cands if c["record"].my_location_id}
+    names = {}
+    if ids:
+        names = {l.id: l.unit_id for l in (await db.execute(
+            select(StorageLocation).where(StorageLocation.id.in_(ids)))).scalars().all()}
+    return [{"date": c["record"].report_date.strftime("%d-%m-%Y"),
+             "stage": str(STAGE_LABELS.get(c["record"].my_stage, c["record"].my_stage)),
+             "location": names.get(c["record"].my_location_id, "No Location") if c["record"].my_location_id
+             else "No Location",
+             "pna_tags": len(c["pna"]), "line_tags": len(c["line"])} for c in cands]
+
+
+@router.get("/audit-pna-fix")
+async def audit_pna_preview(current_user: User = Depends(admin_only)):
+    from database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        rows = await _audit_pna_preview(db, await _audit_pna_candidates(db))
+    return JSONResponse({"rows": len(rows), "list": rows})
+
+
+@router.post("/audit-pna-fix")
+async def audit_pna_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import update, delete, select, func
+    from database import AsyncSessionLocal
+    from models.audit_record import AuditRecord, AuditRecordItem
+    from routers.physical_audits import _count_devices_at, _ANY
+    from services.audit_engine import audit
+    done = 0
+    async with AsyncSessionLocal() as db:
+        for c in await _audit_pna_candidates(db):
+            r = c["record"]
+            before = {"current_count": r.current_count, "physical_count": r.physical_count}
+            loc_match = (AuditRecord.my_location_id == r.my_location_id) if r.my_location_id \
+                else AuditRecord.my_location_id.is_(None)
+            existing = {x.pna_group: x for x in (await db.execute(
+                select(AuditRecord).where(AuditRecord.report_date == r.report_date,
+                                          AuditRecord.my_stage == r.my_stage, loc_match,
+                                          AuditRecord.pna_group.in_(["PNA", "Line"]))
+            )).scalars().all()}
+            # Only the halves that get tags (no empty PNA / Line rows). The plain
+            # row itself becomes the first half without an existing row.
+            needed = [g for g, its in (("Line", c["line"]), ("PNA", c["pna"])) if its] or ["Line"]
+            targets, reused = {}, False
+            for grp in needed:
+                if grp in existing:
+                    targets[grp] = existing[grp]
+                elif not reused:
+                    r.pna_group = grp
+                    targets[grp] = r
+                    reused = True
+                else:
+                    t = AuditRecord(report_date=r.report_date, my_stage=r.my_stage,
+                                    my_location_id=r.my_location_id, pna_group=grp,
+                                    current_count=0, physical_count=0)
+                    db.add(t)
+                    await db.flush()
+                    targets[grp] = t
+            for grp, its in (("PNA", c["pna"]), ("Line", c["line"])):
+                if grp not in targets:
+                    continue
+                tid = targets[grp].id
+                ids = [it.id for it in its if it.audit_record_id != tid]
+                if ids:
+                    await db.execute(update(AuditRecordItem).where(AuditRecordItem.id.in_(ids))
+                                     .values(audit_record_id=tid).execution_options(synchronize_session=False))
+            result = {}
+            for grp, t in targets.items():
+                t.current_count = await _count_devices_at(db, t.my_stage, t.my_location_id, _ANY, grp)
+                t.physical_count = (await db.execute(
+                    select(func.count(AuditRecordItem.id)).where(AuditRecordItem.audit_record_id == t.id,
+                                                                 AuditRecordItem.device_id.isnot(None))
+                )).scalar() or 0
+                result[grp] = {"id": str(t.id), "current_count": t.current_count, "physical_count": t.physical_count}
+            await audit(db, user=current_user, action="PHYSICAL_AUDIT_PNA_SPLIT", table_name="audit_records",
+                        record_id=str(r.id),
+                        old_value={"report_date": r.report_date.isoformat(), "stage": r.my_stage.value, **before},
+                        new_value={"rows": result, "pna_tags": len(c["pna"]), "line_tags": len(c["line"])},
+                        notes="Plain L1/L2 / L3/L4 audit row split into PNA / Line rows by each tag's "
+                              "PNA mark in the system.", request=request)
+            if not reused:          # all tags went into existing rows: the plain row is empty now
+                await db.execute(delete(AuditRecord).where(AuditRecord.id == r.id)
+                                 .execution_options(synchronize_session=False))
+            done += 1
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Physical Audit rows split into PNA / Line: {done}.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "split": done})
+
+
 # ── Data Fixes page (2026-10-22) ─────────────────────────────────────────────
 # One admin page: preview + Apply button for each fill, and the data check.
 # The Apply buttons are ordinary form posts the admin clicks.
@@ -818,6 +940,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         reassign_c = await _reassign_candidates(db)
         audit_split = await _audit_split_preview_rows(db, await _audit_split_candidates(db))
         audit_scrap = await _audit_scrap_preview(db, await _audit_scrap_candidates(db))
+        audit_pna = await _audit_pna_preview(db, await _audit_pna_candidates(db))
     spec_fields = {c: sum(1 for _i, ch, _r in spec if c in ch) for c in _SPEC_COLS}
     spec_examples, seen = [], set()
     for _i, ch, r in spec:
@@ -842,7 +965,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         # Only numbers with 2+ copies NOT in Trash need a decision; the rest
         # (one copy already trashed) are counted, not listed.
         "reassign_c": reassign_c[:300], "reassign_total": len(reassign_c),
-        "audit_split": audit_split, "audit_scrap": audit_scrap,
+        "audit_split": audit_split, "audit_scrap": audit_scrap, "audit_pna": audit_pna,
         "case_dupes": [g for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) > 1],
         "case_dupes_handled": sum(1 for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) <= 1),
         "field_labels": {"ram_gb": "RAM GB", "ram_summary": "RAM", "total_ram_count": "Total RAM Count",
