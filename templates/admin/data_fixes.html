@@ -225,6 +225,48 @@
     </div>
   </div>
 
+  {# ── Physical Audit: remove listed Missing tags (2026-10-24) ── #}
+  <div class="col-12" id="auditMissingRemove">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-x-octagon me-2"></i>Physical Audit: remove Missing tags
+          {% if miss_list %}<span class="badge {% if miss_found %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ miss_found | length }}</span>{% endif %}</span>
+        {% if miss_found %}
+        <form method="post" action="/admin/system/audit-missing-remove" class="df-confirm"
+              data-confirm="Click again to remove {{ miss_found | length }} Missing tag(s)">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <input type="hidden" name="tags" value="{{ miss_list | join(' ') }}">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Remove {{ miss_found | length }} Missing tag(s)</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        <p class="text-muted mb-2">Paste the Missing tag numbers to remove (one per line), then Preview. Only Missing entries (tag numbers not in the system) are removed — real tags are never touched. Every removed entry is saved in the audit log first.</p>
+        <form method="get" action="/admin/system/data-fixes#auditMissingRemove" class="mb-2">
+          <textarea name="missing_tags" class="form-control form-control-sm font-monospace mb-2" rows="4"
+                    placeholder="One tag number per line">{{ missing_tags }}</textarea>
+          <button class="btn btn-sm btn-outline-primary"><i class="bi bi-search me-1"></i>Preview</button>
+        </form>
+        {% if miss_list %}
+        {% if miss_found %}
+        <table class="table table-sm table-bordered mb-2 align-middle" style="font-size:.78rem;max-width:820px">
+          <thead class="table-dark"><tr><th>Tag (Missing)</th><th>Report Date</th><th>Audit/Physical Stage</th><th>Location</th></tr></thead>
+          <tbody>
+            {% for f in miss_found %}
+            <tr><td class="font-monospace">{{ f.tag }}</td><td>{{ f.date }}</td><td>{{ f.stage }}</td><td>{{ f.location }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+        {% if miss_not_found %}
+        <div class="text-muted">Not found as Missing (nothing to remove): <span class="font-monospace">{{ miss_not_found | join(', ') }}</span></div>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {# ── Hold for Selling: released tags still assigned (2026-10-24) ── #}
   <div class="col-12">
     <div class="card border-0 shadow-sm">

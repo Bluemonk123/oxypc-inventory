@@ -1007,12 +1007,84 @@ async def hold_release_apply(request: Request, current_user: User = Depends(admi
     return JSONResponse({"ok": True, "updated": len(ids)})
 
 
+# ── Physical Audit: remove listed Missing tags (2026-10-24) ─────────────────
+# Missing = a scanned Tag Number not in the system (AuditRecordItem with no
+# device). Wrong scans (two tags read as one, typed names) are removed by
+# listing them. Every removed row is written to the audit log first.
+
+def _split_tag_list(text: str) -> list:
+    import re
+    seen, out = set(), []
+    for t in re.split(r"[\s,;]+", text or ""):
+        t = t.strip()
+        if t and t.upper() not in seen:
+            seen.add(t.upper())
+            out.append(t)
+    return out
+
+
+async def _audit_missing_matches(db, tags: list):
+    from sqlalchemy import select, func
+    from models.audit_record import AuditRecord, AuditRecordItem
+    from routers.physical_audits import _stage_label, _loc_short
+    from models.location import StorageLocation
+    if not tags:
+        return []
+    rows = (await db.execute(
+        select(AuditRecordItem, AuditRecord.report_date, AuditRecord.my_stage, AuditRecord.pna_group,
+               StorageLocation)
+        .join(AuditRecord, AuditRecordItem.audit_record_id == AuditRecord.id)
+        .outerjoin(StorageLocation, StorageLocation.id == AuditRecord.my_location_id)
+        .where(AuditRecordItem.device_id.is_(None),
+               func.upper(AuditRecordItem.barcode).in_([t.upper() for t in tags]))
+        .order_by(AuditRecord.report_date.desc(), AuditRecordItem.barcode)
+    )).all()
+    return [{"item": it, "tag": it.barcode, "date": d.strftime("%d-%m-%Y") if d else "",
+             "stage": _stage_label(st, grp), "location": _loc_short(loc) if loc else "—"}
+            for it, d, st, grp, loc in rows]
+
+
+@router.post("/audit-missing-remove")
+async def audit_missing_remove(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import delete
+    from database import AsyncSessionLocal
+    from models.audit_record import AuditRecordItem
+    from services.audit_engine import audit
+    form = await request.form()
+    tags = _split_tag_list(form.get("tags") or "")
+    async with AsyncSessionLocal() as db:
+        found = await _audit_missing_matches(db, tags)
+        ids = [f["item"].id for f in found]
+        if ids:
+            await audit(db, user=current_user, action="AUDIT_MISSING_TAGS_REMOVED",
+                        table_name="audit_record_items", record_id=f"{len(ids)} items",
+                        old_value={"items": [{"id": str(f["item"].id),
+                                              "audit_record_id": str(f["item"].audit_record_id),
+                                              "barcode": f["tag"], "report_date": f["date"],
+                                              "stage": f["stage"], "location": f["location"],
+                                              "my_stage": getattr(f["item"].my_stage, "value", f["item"].my_stage),
+                                              "my_location_id": str(f["item"].my_location_id or ""),
+                                              "audited_by_user_id": str(f["item"].audited_by_user_id or ""),
+                                              "created_at": str(f["item"].created_at)} for f in found]},
+                        new_value={"removed": len(ids)},
+                        notes="Physical Audit Missing tags removed from Data Fixes (wrong scans).",
+                        request=request)
+            await db.execute(delete(AuditRecordItem).where(AuditRecordItem.id.in_(ids),
+                                                           AuditRecordItem.device_id.is_(None)))
+        await db.commit()
+    back = _back_to_page(form, f"Removed {len(ids)} Missing tag(s) from Physical Audit.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "removed": len(ids)})
+
+
 # ── Data Fixes page (2026-10-22) ─────────────────────────────────────────────
 # One admin page: preview + Apply button for each fill, and the data check.
 # The Apply buttons are ordinary form posts the admin clicks.
 
 @router.get("/data-fixes")
-async def data_fixes_page(request: Request, done: str = "", current_user: User = Depends(admin_only)):
+async def data_fixes_page(request: Request, done: str = "", missing_tags: str = "",
+                          current_user: User = Depends(admin_only)):
     from templates_config import templates
     from database import AsyncSessionLocal
     async with AsyncSessionLocal() as db:
@@ -1025,6 +1097,9 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         audit_scrap = await _audit_scrap_preview(db, await _audit_scrap_candidates(db))
         audit_pna = await _audit_pna_preview(db, await _audit_pna_candidates(db))
         hold_rel = await _hold_release_candidates(db)
+        miss_list = _split_tag_list(missing_tags)
+        miss_found = [{k: v for k, v in f.items() if k != "item"}
+                      for f in await _audit_missing_matches(db, miss_list)]
     spec_fields = {c: sum(1 for _i, ch, _r in spec if c in ch) for c in _SPEC_COLS}
     spec_examples, seen = [], set()
     for _i, ch, r in spec:
@@ -1050,6 +1125,9 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         # (one copy already trashed) are counted, not listed.
         "reassign_c": reassign_c[:300], "reassign_total": len(reassign_c),
         "audit_split": audit_split, "audit_scrap": audit_scrap, "audit_pna": audit_pna, "hold_rel": hold_rel[:300], "hold_rel_total": len(hold_rel),
+        "missing_tags": missing_tags, "miss_list": miss_list, "miss_found": miss_found,
+        "miss_not_found": [t for t in miss_list
+                           if t.upper() not in {f["tag"].upper() for f in miss_found}],
         "case_dupes": [g for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) > 1],
         "case_dupes_handled": sum(1 for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) <= 1),
         "field_labels": {"ram_gb": "RAM GB", "ram_summary": "RAM", "total_ram_count": "Total RAM Count",
