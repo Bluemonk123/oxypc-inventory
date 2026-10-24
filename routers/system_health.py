@@ -1012,6 +1012,11 @@ async def hold_release_apply(request: Request, current_user: User = Depends(admi
 # device). Wrong scans (two tags read as one, typed names) are removed by
 # listing them. Every removed row is written to the audit log first.
 
+def _norm_tag(t: str) -> str:
+    import re
+    return re.sub(r"[^A-Za-z0-9-]", "", t or "").upper()
+
+
 def _split_tag_list(text: str) -> list:
     import re
     seen, out = set(), []
@@ -1036,7 +1041,10 @@ async def _audit_missing_matches(db, tags: list):
         .join(AuditRecord, AuditRecordItem.audit_record_id == AuditRecord.id)
         .outerjoin(StorageLocation, StorageLocation.id == AuditRecord.my_location_id)
         .where(AuditRecordItem.device_id.is_(None),
-               func.upper(AuditRecordItem.barcode).in_([t.upper() for t in tags]))
+               # Compare letters, digits and "-" only: a scan can carry hidden
+               # characters (Enter / Tab / scanner separators) between two tags.
+               func.upper(func.regexp_replace(AuditRecordItem.barcode, "[^A-Za-z0-9-]", "", "g"))
+               .in_([_norm_tag(t) for t in tags]))
         .order_by(AuditRecord.report_date.desc(), AuditRecordItem.barcode)
     )).all()
     return [{"item": it, "tag": it.barcode, "date": d.strftime("%d-%m-%Y") if d else "",
@@ -1127,7 +1135,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "audit_split": audit_split, "audit_scrap": audit_scrap, "audit_pna": audit_pna, "hold_rel": hold_rel[:300], "hold_rel_total": len(hold_rel),
         "missing_tags": missing_tags, "miss_list": miss_list, "miss_found": miss_found,
         "miss_not_found": [t for t in miss_list
-                           if t.upper() not in {f["tag"].upper() for f in miss_found}],
+                           if _norm_tag(t) not in {_norm_tag(f["tag"]) for f in miss_found}],
         "case_dupes": [g for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) > 1],
         "case_dupes_handled": sum(1 for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) <= 1),
         "field_labels": {"ram_gb": "RAM GB", "ram_summary": "RAM", "total_ram_count": "Total RAM Count",

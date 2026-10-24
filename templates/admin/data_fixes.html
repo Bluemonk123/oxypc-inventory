@@ -254,7 +254,7 @@
           <thead class="table-dark"><tr><th>Tag (Missing)</th><th>Report Date</th><th>Audit/Physical Stage</th><th>Location</th></tr></thead>
           <tbody>
             {% for f in miss_found %}
-            <tr><td class="font-monospace">{{ f.tag }}</td><td>{{ f.date }}</td><td>{{ f.stage }}</td><td>{{ f.location }}</td></tr>
+            <tr><td class="font-monospace">{{ f.tag | replace('\r', '⏎') | replace('\n', '⏎') | replace('\t', '⇥') }}</td><td>{{ f.date }}</td><td>{{ f.stage }}</td><td>{{ f.location }}</td></tr>
             {% endfor %}
           </tbody>
         </table>
