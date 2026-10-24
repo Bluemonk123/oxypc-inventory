@@ -42,6 +42,10 @@ class AuditRecord(Base):
     my_stage = Column(SAEnum(DeviceStage, name="devicestage"), nullable=True, index=True)
     my_location_id = Column(UUID(as_uuid=True), ForeignKey("storage_locations.id"), nullable=True, index=True)
     category = Column(String(100), nullable=True, index=True)
+    # L1/L2 and L3/L4 audit rows (2026-10-24, schema change approved: "I approve
+    # dbdiagram"): "PNA" = tags with an active PNA part, "Line" = the rest.
+    # NULL for every other stage (and rows saved before).
+    pna_group = Column(String(10), nullable=True)
     current_count = Column(Integer, nullable=False, default=0)
     physical_count = Column(Integer, nullable=False, default=0)
     notes = Column(Text, nullable=True)

@@ -715,6 +715,93 @@ async def audit_split_apply(request: Request, current_user: User = Depends(admin
     return JSONResponse({"ok": True, "new_rows": made})
 
 
+# ── Physical Audit: Scrapped + Scrap for Sale rows (2026-10-24) ───────────────
+# Scrapped and Scrap for Sale are one audit stage now. Rows saved before that
+# counted only the stage picked (e.g. Current 0 for "Scrapped" while the tags
+# sit in Scrap for Sale). Fix: per Report Date + Location, join the two scrap
+# rows into one and recount Current Count across both stages. Audited.
+
+async def _audit_scrap_candidates(db):
+    from sqlalchemy import select
+    from models.audit_record import AuditRecord
+    from routers.physical_audits import SCRAP_GROUP, _count_devices_at, _ANY
+    recs = (await db.execute(
+        select(AuditRecord).where(AuditRecord.my_stage.in_(SCRAP_GROUP))
+        .order_by(AuditRecord.report_date.desc(), AuditRecord.created_at.asc())
+    )).scalars().all()
+    groups = {}
+    for r in recs:
+        groups.setdefault((r.report_date, r.my_location_id), []).append(r)
+    out = []
+    for (d, loc), rows in groups.items():
+        now = await _count_devices_at(db, SCRAP_GROUP[0], loc, _ANY)
+        if len(rows) > 1 or rows[0].current_count != now:
+            out.append({"date": d, "location_id": loc, "rows": rows, "current_now": now})
+    return out
+
+
+async def _audit_scrap_preview(db, cands):
+    from sqlalchemy import select
+    from models.location import StorageLocation
+    ids = {c["location_id"] for c in cands if c["location_id"]}
+    names = {}
+    if ids:
+        names = {l.id: l.unit_id for l in (await db.execute(
+            select(StorageLocation).where(StorageLocation.id.in_(ids)))).scalars().all()}
+    return [{"date": c["date"].strftime("%d-%m-%Y"),
+             "location": names.get(c["location_id"], "No Location") if c["location_id"] else "No Location",
+             "rows": len(c["rows"]), "current_before": sum(r.current_count or 0 for r in c["rows"]),
+             "current_now": c["current_now"]} for c in cands]
+
+
+@router.get("/audit-scrap-fix")
+async def audit_scrap_preview(current_user: User = Depends(admin_only)):
+    from database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        rows = await _audit_scrap_preview(db, await _audit_scrap_candidates(db))
+    return JSONResponse({"groups": len(rows), "list": rows})
+
+
+@router.post("/audit-scrap-fix")
+async def audit_scrap_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import update, delete, select, func
+    from database import AsyncSessionLocal
+    from models.audit_record import AuditRecord, AuditRecordItem
+    from services.audit_engine import audit
+    fixed = 0
+    async with AsyncSessionLocal() as db:
+        for c in await _audit_scrap_candidates(db):
+            keep, others = c["rows"][0], c["rows"][1:]
+            old = [{"id": str(r.id), "my_stage": r.my_stage.value, "current_count": r.current_count,
+                    "physical_count": r.physical_count, "notes": r.notes} for r in c["rows"]]
+            if others:
+                oids = [r.id for r in others]
+                await db.execute(update(AuditRecordItem).where(AuditRecordItem.audit_record_id.in_(oids))
+                                 .values(audit_record_id=keep.id).execution_options(synchronize_session=False))
+                notes = [n for n in [keep.notes] + [r.notes for r in others] if (n or "").strip()]
+                keep.notes = " | ".join(notes) if notes else None
+            keep.current_count = c["current_now"]
+            keep.physical_count = (await db.execute(
+                select(func.count(AuditRecordItem.id)).where(AuditRecordItem.audit_record_id == keep.id,
+                                                             AuditRecordItem.device_id.isnot(None))
+            )).scalar() or 0
+            await audit(db, user=current_user, action="PHYSICAL_AUDIT_SCRAP_ROWS_FIXED", table_name="audit_records",
+                        record_id=str(keep.id), old_value={"rows": old},
+                        new_value={"kept_row": str(keep.id), "current_count": keep.current_count,
+                                   "physical_count": keep.physical_count},
+                        notes="Scrapped + Scrap for Sale audit rows joined; Current Count recounted across both.",
+                        request=request)
+            if others:
+                await db.execute(delete(AuditRecord).where(AuditRecord.id.in_([r.id for r in others]))
+                                 .execution_options(synchronize_session=False))
+            fixed += 1
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Physical Audit scrap rows fixed: {fixed}.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "fixed": fixed})
+
+
 # ── Data Fixes page (2026-10-22) ─────────────────────────────────────────────
 # One admin page: preview + Apply button for each fill, and the data check.
 # The Apply buttons are ordinary form posts the admin clicks.
@@ -730,6 +817,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         case_dupes = await _case_duplicates(db)
         reassign_c = await _reassign_candidates(db)
         audit_split = await _audit_split_preview_rows(db, await _audit_split_candidates(db))
+        audit_scrap = await _audit_scrap_preview(db, await _audit_scrap_candidates(db))
     spec_fields = {c: sum(1 for _i, ch, _r in spec if c in ch) for c in _SPEC_COLS}
     spec_examples, seen = [], set()
     for _i, ch, r in spec:
@@ -754,7 +842,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         # Only numbers with 2+ copies NOT in Trash need a decision; the rest
         # (one copy already trashed) are counted, not listed.
         "reassign_c": reassign_c[:300], "reassign_total": len(reassign_c),
-        "audit_split": audit_split,
+        "audit_split": audit_split, "audit_scrap": audit_scrap,
         "case_dupes": [g for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) > 1],
         "case_dupes_handled": sum(1 for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) <= 1),
         "field_labels": {"ram_gb": "RAM GB", "ram_summary": "RAM", "total_ram_count": "Total RAM Count",

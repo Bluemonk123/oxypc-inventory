@@ -37,6 +37,12 @@
               <option value="{{ val }}">{{ label }}</option>
               {% endfor %}
             </select>
+            {# L1/L2 and L3/L4 only (2026-10-24): ticked = "<stage> - PNA" row,
+               unticked = "<stage> - Line" row. #}
+            <div class="form-check mt-1 d-none" id="auditPnaWrap">
+              <input class="form-check-input" type="checkbox" id="auditPna">
+              <label class="form-check-label small fw-semibold" for="auditPna">PNA</label>
+            </div>
           </div>
           <div class="col-md-3">
             <label class="form-label fw-semibold small">Audit/Physical Location</label>
@@ -82,6 +88,11 @@
                 <div class="col-md-3">
                   <div class="text-muted small">System Location</div>
                   <div class="fw-semibold"><span id="cf_sys_location">—</span> <span id="cf_loc_match"></span></div>
+                </div>
+                {# L1/L2 and L3/L4 only (2026-10-24): the system's PNA mark vs the PNA box. #}
+                <div class="col-md-3 d-none" id="cf_pna_wrap">
+                  <div class="text-muted small">System PNA</div>
+                  <div class="fw-semibold"><span id="cf_sys_pna">—</span> <span id="cf_pna_match"></span></div>
                 </div>
               </div>
               {# Hidden on request (2026-10-23); kept in the page so the
@@ -221,6 +232,7 @@ function auditDoLookup() {
       fd.append('barcode', d.barcode);
       fd.append('my_stage', stageSel.value);
       fd.append('my_location_id', locSel.value);
+      if (auditPnaStage()) fd.append('pna', document.getElementById('auditPna').checked ? '1' : '0');
       return fetch('/audits/submit', { method: 'POST', body: fd, credentials: 'same-origin' })
         .then(function (r2) { return r2.json(); })
         .then(function (sd) {
@@ -246,7 +258,8 @@ function auditDoLookup() {
           } else {
             lbl.textContent = d.barcode + ' — ' + d.brand + ' ' + d.model + (d.serial_no && d.serial_no !== '—' ? ' (' + d.serial_no + ')' : '');
           }
-          document.getElementById('cf_my_stage').textContent = stageSel.options[stageSel.selectedIndex].text;
+          document.getElementById('cf_my_stage').textContent = stageSel.options[stageSel.selectedIndex].text +
+            (auditPnaStage() ? (document.getElementById('auditPna').checked ? ' - PNA' : ' - Line') : '');
           document.getElementById('cf_my_location').textContent = locSel.value ? locSel.options[locSel.selectedIndex].text : '—';
           document.getElementById('cf_sys_stage').textContent = d.system_stage_label || '—';
           document.getElementById('cf_sys_location').textContent = d.system_location_label || '—';
@@ -261,8 +274,21 @@ function auditDoLookup() {
             ['cf_stage_match', 'cf_loc_match'].forEach(function (id) {
               var el = document.getElementById(id); el.className = ''; el.textContent = ''; });
           } else {
-            matchBadge('cf_stage_match', (d.system_stage || '') === stageSel.value);
+            // Scrapped and Scrap for Sale count as one stage (2026-10-24).
+            var grp = function (v) { return (v === 'scrapped' || v === 'scrap_for_sale') ? 'scrap' : (v || ''); };
+            matchBadge('cf_stage_match', grp(d.system_stage) === grp(stageSel.value));
             matchBadge('cf_loc_match', (d.system_location_id || '') === (locSel.value || ''));
+          }
+          var pnaWrap = document.getElementById('cf_pna_wrap');
+          if (!d.unknown && auditPnaStage()) {
+            var ticked = document.getElementById('auditPna').checked;
+            document.getElementById('cf_sys_pna').textContent = d.pna ? 'Yes' : 'No';
+            var pm = document.getElementById('cf_pna_match');
+            pm.className = 'badge ms-1 ' + (!!d.pna === ticked ? 'bg-success' : 'bg-danger');
+            pm.textContent = !!d.pna === ticked ? 'Matched' : 'PNA Mismatch';
+            pnaWrap.classList.remove('d-none');
+          } else {
+            pnaWrap.classList.add('d-none');
           }
           document.getElementById('cf_assigned_by').textContent = d.assigned_by_label || '—';
           document.getElementById('cf_assigned_to').textContent = d.assigned_to_label || '—';
@@ -293,13 +319,31 @@ document.getElementById('auditBarcodeInput').addEventListener('keydown', functio
 });
 
 // ── Audit Records table ─────────────────────────────────────────────────────
+// PNA checkbox: shown only for L1/L2 and L3/L4 Repair (2026-10-24).
+function auditPnaStage() {
+  var v = (document.getElementById('auditMyStage') || {}).value;
+  return v === 'l1' || v === 'l2' || v === 'l3';
+}
+(function () {
+  var sel = document.getElementById('auditMyStage'), wrap = document.getElementById('auditPnaWrap');
+  if (!sel || !wrap) return;
+  function sync() { wrap.classList.toggle('d-none', !auditPnaStage()); }
+  sel.addEventListener('change', sync);
+  sync();
+})();
 // "PNA n" beside a count — rows audited at L1/L2 or L3/L4 Repair only
 // (r.pna is null on every other row). 2026-10-24.
 function withPna(key, onColour) {
   return function (v, type, r) {
     if (type !== 'display' || !r.pna) return v;
-    var n = r.pna[key] || 0;
     var cls = onColour ? 'bg-light text-dark' : 'bg-danger';
+    // "<stage> - PNA" rows: only the "PNA n" badge, no plain count beside it
+    // (every tag in the row is PNA). "- Line" rows: plain count, no badge.
+    // Rows saved before the PNA / Line split: count + "PNA n". (2026-10-24)
+    if (r.pna_group === 'Line') return v;
+    if (r.pna_group === 'PNA')
+      return '<span class="badge ' + cls + '" title="Tags with an active PNA part">PNA ' + (r.pna[key] || 0) + '</span>';
+    var n = r.pna[key] || 0;
     return v + ' <span class="badge ' + cls + ' ms-1" title="Tags with an active PNA part">PNA ' + n + '</span>';
   };
 }
