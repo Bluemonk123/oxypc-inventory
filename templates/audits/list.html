@@ -31,7 +31,7 @@
             <input type="date" id="auditReportDate" class="form-control" value="{{ today }}">
           </div>
           <div class="col-md-2">
-            <label class="form-label fw-semibold small">Audit Stage</label>
+            <label class="form-label fw-semibold small">Audit/Physical Stage</label>
             <select id="auditMyStage" class="form-select">
               {% for val, label in stage_options %}
               <option value="{{ val }}">{{ label }}</option>
@@ -39,7 +39,7 @@
             </select>
           </div>
           <div class="col-md-3">
-            <label class="form-label fw-semibold small">Audit Location</label>
+            <label class="form-label fw-semibold small">Audit/Physical Location</label>
             <select id="auditMyLocation" class="form-select">
               <option value="">— No Location —</option>
               {% for loc in location_options %}
@@ -68,11 +68,11 @@
             <div class="card-body">
               <div class="row g-3">
                 <div class="col-md-3">
-                  <div class="text-muted small">Audit Stage</div>
+                  <div class="text-muted small">Audit/Physical Stage</div>
                   <div class="fw-semibold" id="cf_my_stage">—</div>
                 </div>
                 <div class="col-md-3">
-                  <div class="text-muted small">Audit Location</div>
+                  <div class="text-muted small">Audit/Physical Location</div>
                   <div class="fw-semibold" id="cf_my_location">—</div>
                 </div>
                 <div class="col-md-3">
@@ -130,11 +130,11 @@
             <thead class="table-light">
               <tr>
                 <th>Report Date</th>
-                <th>Audit Stage</th>
-                <th>Audit Location</th>
-                <th title="Active stock in the system (not Sold / Trash) when the day's first tag was scanned">Current Count</th>
+                <th>Audit/Physical Stage</th>
+                <th>Audit/Physical Location</th>
+                <th title="Tags the system has at this Audit/Physical Stage + Location (any category, not in Trash) when the row's first tag was scanned">Current Count</th>
                 <th>Physical Count</th>
-                <th title="Tags the system has at the scanned Audit Stage / Location that were not scanned">Difference</th>
+                <th title="Tags the system has at the scanned Audit/Physical Stage / Location that were not scanned">Difference</th>
                 <th title="Scanned Tag Numbers not found in the system">Missing</th>
                 <th>Notes</th>
                 <th>Download</th>
@@ -182,12 +182,12 @@ function auditDoLookup() {
     return;
   }
   if (!stageSel.value) {
-    err.textContent = 'Select Audit Stage first.';
+    err.textContent = 'Select Audit/Physical Stage first.';
     err.classList.remove('d-none');
     return;
   }
   if (!locSel.value) {
-    err.textContent = 'Select Audit Location first.';
+    err.textContent = 'Select Audit/Physical Location first.';
     err.classList.remove('d-none');
     return;
   }

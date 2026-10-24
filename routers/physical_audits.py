@@ -315,11 +315,12 @@ async def submit_audit(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Record one scanned tag (2026-10-23 rules):
-      * one Audit Records row per Report Date (Category is kept per tag, in
-        the sheets, not as a row key);
-      * Current Count = active stock in the system (not Sold / Trash) when
-        the day's first tag is scanned;
+    """Record one scanned tag (rules of 2026-10-24):
+      * one Audit Records row per Report Date + Audit/Physical Stage +
+        Audit/Physical Location (Category is kept per tag, in the sheets,
+        not as a row key);
+      * Current Count = tags the system has at that stage + location (any
+        category, not in Trash) when the row's first tag is scanned;
       * a tag that exists adds to Physical Count; one whose stage or location
         differs from the system's counts in Difference (worked out on read);
       * a Tag Number that isn't in the system is recorded as Missing (only)."""
@@ -345,16 +346,18 @@ async def submit_audit(
         except ValueError:
             return JSONResponse({"ok": False, "error": "Invalid location selected."})
 
-    # The day's row: report_date only. Prefer the row with stage / location /
-    # category unset; otherwise join any row already saved for that date
-    # (rows saved before 2026-10-23 carry those fields) so one date never
-    # gets a second row.
+    # The row for this Report Date + Stage + Location (2026-10-24: a new row
+    # whenever any of the three differs). A row saved before 2026-10-23 also
+    # carries a Category — prefer the one without, else join the oldest.
+    loc_match = (AuditRecord.my_location_id == my_loc_uuid) if my_loc_uuid else AuditRecord.my_location_id.is_(None)
     audit_record = (await db.execute(
-        select(AuditRecord).where(AuditRecord.report_date == r_date)
-        .order_by(AuditRecord.my_stage.is_(None).desc(), AuditRecord.created_at.asc())
+        select(AuditRecord).where(AuditRecord.report_date == r_date, AuditRecord.my_stage == my_stage_enum,
+                                  loc_match)
+        .order_by(AuditRecord.category.is_(None).desc(), AuditRecord.created_at.asc())
     )).scalars().first()
     if not audit_record:
-        audit_record = AuditRecord(report_date=r_date, current_count=await _active_stock_count(db),
+        audit_record = AuditRecord(report_date=r_date, my_stage=my_stage_enum, my_location_id=my_loc_uuid,
+                                   current_count=await _count_devices_at(db, my_stage_enum, my_loc_uuid, _ANY),
                                    physical_count=0)
         db.add(audit_record)
         await db.flush()
@@ -578,17 +581,17 @@ async def _audit_workbook(db: AsyncSession, records: list) -> bytes:
     loc_rows = _summary(lambda st, lc: lc, lambda it: it.my_location_id, lambda k: _loc_short(loc_map.get(k)))
 
     phys_header = ["Report Date", "Tag Number", "Lot Number", "Model", "Serial", "Category",
-                   "Current Stage", "Current Location", "Audit Stage", "Audit Location",
+                   "Current Stage", "Current Location", "Audit/Physical Stage", "Audit/Physical Location",
                    "Stage/Location Match", "Notes"]
     sum_cols = ["Current Count (system now)", "Physical Count", "Difference", "Missing"]
     sheets = [
         ("Physical Tags", phys_header, phys),
         ("Difference Tags", ["Report Date", "Tag Number", "Lot Number", "Model", "Serial", "Category",
-                             "Audit Stage", "Audit Location", "Status"], diff),
-        ("Missing Tags", ["Report Date", "Tag Number", "Category", "Audit Stage", "Audit Location",
+                             "Audit/Physical Stage", "Audit/Physical Location", "Status"], diff),
+        ("Missing Tags", ["Report Date", "Tag Number", "Category", "Audit/Physical Stage", "Audit/Physical Location",
                           "Audited By", "Scanned At"], missing),
-        ("Stage Summary", ["Audit Stage"] + sum_cols, stage_rows),
-        ("Location Summary", ["Audit Location"] + sum_cols, loc_rows),
+        ("Stage Summary", ["Audit/Physical Stage"] + sum_cols, stage_rows),
+        ("Location Summary", ["Audit/Physical Location"] + sum_cols, loc_rows),
     ]
     wb = Workbook()
     head_fill = PatternFill("solid", fgColor="0377C2")

@@ -617,88 +617,102 @@ async def reassign_fix_apply(request: Request, current_user: User = Depends(admi
     return JSONResponse({"ok": True, "updated": len(ids)})
 
 
-# ── Physical Audit: two rows for one Report Date (2026-10-23) ────────────────
-# A day scanned both before and after the one-row-per-date change got an old
-# row (with stage / location set) and a new one (unset). Merge moves the old
-# rows' tags into the new row, recounts Physical, keeps the new row's Current
-# Count (active stock), joins notes, then deletes the emptied old rows.
-# Only dates that have a new-style row are touched; older dates are left as
-# they were saved. Audited with every id before delete.
+# ── Physical Audit: split one-per-date rows (2026-10-24) ─────────────────────
+# Rows are per Report Date + Audit/Physical Stage + Location again. Rows made
+# under the short-lived one-row-per-date rule (stage / location / category
+# unset) are split: the tags of each stage + location scanned into such a row
+# go to their own row, and every resulting row's Current Count is recounted
+# as the tags the system has at that stage + location now. Audited.
 
-async def _audit_merge_candidates(db):
-    from sqlalchemy import func, select
+async def _audit_split_candidates(db):
+    from sqlalchemy import select
     from models.audit_record import AuditRecord, AuditRecordItem
-    dates = (await db.execute(
-        select(AuditRecord.report_date).group_by(AuditRecord.report_date).having(func.count(AuditRecord.id) > 1)
+    recs = (await db.execute(
+        select(AuditRecord).where(AuditRecord.my_stage.is_(None), AuditRecord.my_location_id.is_(None),
+                                  AuditRecord.category.is_(None))
+        .order_by(AuditRecord.report_date.desc())
     )).scalars().all()
     out = []
-    for d in sorted(dates, reverse=True):
-        recs = (await db.execute(
-            select(AuditRecord).where(AuditRecord.report_date == d).order_by(AuditRecord.created_at.asc())
+    for r in recs:
+        items = (await db.execute(
+            select(AuditRecordItem).where(AuditRecordItem.audit_record_id == r.id)
+            .order_by(AuditRecordItem.created_at.asc())
         )).scalars().all()
-        target = next((r for r in recs if r.my_stage is None and r.my_location_id is None and r.category is None), None)
-        if target is None:
-            continue
-        others = [r for r in recs if r.id != target.id]
-        counts = dict((await db.execute(
-            select(AuditRecordItem.audit_record_id, func.count(AuditRecordItem.id))
-            .where(AuditRecordItem.audit_record_id.in_([r.id for r in recs]))
-            .group_by(AuditRecordItem.audit_record_id)
-        )).all())
-        out.append({"date": d, "target": target, "others": others,
-                    "target_tags": counts.get(target.id, 0),
-                    "moved_tags": sum(counts.get(r.id, 0) for r in others)})
+        groups = {}
+        for it in items:
+            groups.setdefault((it.my_stage, it.my_location_id), []).append(it)
+        if groups:
+            out.append({"record": r, "groups": groups})
     return out
 
 
-@router.get("/audit-merge-fix")
-async def audit_merge_preview(current_user: User = Depends(admin_only)):
+async def _audit_split_preview_rows(db, cands):
+    from sqlalchemy import select
+    from models.location import StorageLocation
+    from models.device import STAGE_LABELS
+    loc_ids = {loc for c in cands for (_st, loc) in c["groups"] if loc}
+    names = {}
+    if loc_ids:
+        names = {l.id: (l.unit_id or str(l.id)) for l in (await db.execute(
+            select(StorageLocation).where(StorageLocation.id.in_(loc_ids)))).scalars().all()}
+    return [{"date": c["record"].report_date.strftime("%d-%m-%Y"),
+             "rows": [{"stage": str(STAGE_LABELS.get(st, getattr(st, "value", st) or "—")),
+                       "location": names.get(loc, "No Location") if loc else "No Location",
+                       "tags": len(its)} for (st, loc), its in c["groups"].items()]}
+            for c in cands]
+
+
+@router.get("/audit-split-fix")
+async def audit_split_preview(current_user: User = Depends(admin_only)):
     from database import AsyncSessionLocal
     async with AsyncSessionLocal() as db:
-        c = await _audit_merge_candidates(db)
-    return JSONResponse({"dates": len(c), "list": [
-        {"date": x["date"].isoformat(), "keep_row": str(x["target"].id), "rows_merged": len(x["others"]),
-         "tags_moved": x["moved_tags"], "tags_already_in_row": x["target_tags"]} for x in c]})
+        rows = await _audit_split_preview_rows(db, await _audit_split_candidates(db))
+    return JSONResponse({"rows_to_split": len(rows), "list": rows})
 
 
-@router.post("/audit-merge-fix")
-async def audit_merge_apply(request: Request, current_user: User = Depends(admin_only)):
-    from sqlalchemy import func, select, update, delete
+@router.post("/audit-split-fix")
+async def audit_split_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import update
     from database import AsyncSessionLocal
     from models.audit_record import AuditRecord, AuditRecordItem
+    from routers.physical_audits import _count_devices_at, _ANY
     from services.audit_engine import audit
-    merged_rows = 0
+    made = 0
     async with AsyncSessionLocal() as db:
-        for x in await _audit_merge_candidates(db):
-            target, others = x["target"], x["others"]
-            other_ids = [r.id for r in others]
-            await audit(db, user=current_user, action="PHYSICAL_AUDIT_ROWS_MERGED", table_name="audit_records",
-                        record_id=str(target.id),
-                        old_value={"report_date": x["date"].isoformat(), "rows": [
-                            {"id": str(r.id), "my_stage": r.my_stage.value if r.my_stage else None,
-                             "my_location_id": str(r.my_location_id) if r.my_location_id else None,
-                             "category": r.category, "current_count": r.current_count,
-                             "physical_count": r.physical_count, "notes": r.notes} for r in others]},
-                        new_value={"kept_row": str(target.id), "tags_moved": x["moved_tags"]},
-                        notes="Same Report Date rows merged into the one-row-per-date row; "
-                              "the merged rows' tags now belong to the kept row.",
+        for c in await _audit_split_candidates(db):
+            r = c["record"]
+            before = {"current_count": r.current_count, "physical_count": r.physical_count}
+            result = []
+            for n, ((st, loc), its) in enumerate(c["groups"].items()):
+                if n == 0:
+                    target = r
+                    target.my_stage, target.my_location_id = st, loc
+                else:
+                    target = AuditRecord(report_date=r.report_date, my_stage=st, my_location_id=loc,
+                                         current_count=0, physical_count=0)
+                    db.add(target)
+                    await db.flush()
+                    await db.execute(update(AuditRecordItem)
+                                     .where(AuditRecordItem.id.in_([it.id for it in its]))
+                                     .values(audit_record_id=target.id)
+                                     .execution_options(synchronize_session=False))
+                    made += 1
+                target.current_count = await _count_devices_at(db, st, loc, _ANY) if st else 0
+                target.physical_count = sum(1 for it in its if it.device_id is not None)
+                result.append({"id": str(target.id), "stage": getattr(st, "value", st),
+                               "location_id": str(loc) if loc else None, "tags": len(its),
+                               "current_count": target.current_count})
+            await audit(db, user=current_user, action="PHYSICAL_AUDIT_ROW_SPLIT", table_name="audit_records",
+                        record_id=str(r.id), old_value={"report_date": r.report_date.isoformat(), **before},
+                        new_value={"rows": result},
+                        notes="One-per-date audit row split into one row per Stage + Location; "
+                              "Current Count recounted at each stage + location.",
                         request=request)
-            await db.execute(update(AuditRecordItem).where(AuditRecordItem.audit_record_id.in_(other_ids))
-                             .values(audit_record_id=target.id).execution_options(synchronize_session=False))
-            notes = [n for n in [target.notes] + [r.notes for r in others] if (n or "").strip()]
-            target.notes = " | ".join(notes) if notes else None
-            target.physical_count = (await db.execute(
-                select(func.count(AuditRecordItem.id)).where(AuditRecordItem.audit_record_id == target.id,
-                                                             AuditRecordItem.device_id.isnot(None))
-            )).scalar() or 0
-            await db.execute(delete(AuditRecord).where(AuditRecord.id.in_(other_ids))
-                             .execution_options(synchronize_session=False))
-            merged_rows += len(other_ids)
         await db.commit()
-    back = _back_to_page(await request.form(), f"Physical Audit merge done: {merged_rows} row(s) merged.")
+    back = _back_to_page(await request.form(), f"Physical Audit rows split: {made} new row(s).")
     if back:
         return back
-    return JSONResponse({"ok": True, "merged_rows": merged_rows})
+    return JSONResponse({"ok": True, "new_rows": made})
 
 
 # ── Data Fixes page (2026-10-22) ─────────────────────────────────────────────
@@ -715,9 +729,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
         reassign_c = await _reassign_candidates(db)
-        audit_merge = [{"date": x["date"].strftime("%d-%m-%Y"), "rows": len(x["others"]),
-                        "moved": x["moved_tags"], "kept": x["target_tags"]}
-                       for x in await _audit_merge_candidates(db)]
+        audit_split = await _audit_split_preview_rows(db, await _audit_split_candidates(db))
     spec_fields = {c: sum(1 for _i, ch, _r in spec if c in ch) for c in _SPEC_COLS}
     spec_examples, seen = [], set()
     for _i, ch, r in spec:
@@ -742,7 +754,7 @@ async def data_fixes_page(request: Request, done: str = "", current_user: User =
         # Only numbers with 2+ copies NOT in Trash need a decision; the rest
         # (one copy already trashed) are counted, not listed.
         "reassign_c": reassign_c[:300], "reassign_total": len(reassign_c),
-        "audit_merge": audit_merge, "audit_merge_rows": sum(a["rows"] for a in audit_merge),
+        "audit_split": audit_split,
         "case_dupes": [g for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) > 1],
         "case_dupes_handled": sum(1 for g in case_dupes if sum(1 for t in g["tags"] if not t["trashed"]) <= 1),
         "field_labels": {"ram_gb": "RAM GB", "ram_summary": "RAM", "total_ram_count": "Total RAM Count",

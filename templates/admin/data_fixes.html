@@ -126,30 +126,30 @@
     </div>
   </div>
 
-  {# ── Physical Audit: two rows for one Report Date ── #}
+  {# ── Physical Audit: split one-per-date rows (2026-10-24) ── #}
   <div class="col-12">
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-        <span class="fw-semibold"><i class="bi bi-clipboard-check me-2"></i>Physical Audit dates with more than one row
-          <span class="badge {% if audit_merge_rows %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ audit_merge_rows }}</span></span>
-        {% if audit_merge_rows %}
-        <form method="post" action="/admin/system/audit-merge-fix" class="df-confirm"
-              data-confirm="Click again to merge {{ audit_merge_rows }} row(s)">
+        <span class="fw-semibold"><i class="bi bi-clipboard-check me-2"></i>Physical Audit rows to split by Stage + Location
+          <span class="badge {% if audit_split %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ audit_split | length }}</span></span>
+        {% if audit_split %}
+        <form method="post" action="/admin/system/audit-split-fix" class="df-confirm"
+              data-confirm="Click again to split {{ audit_split | length }} row(s)">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <input type="hidden" name="back" value="1">
-          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Merge {{ audit_merge_rows }} row(s)</button>
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Split {{ audit_split | length }} row(s)</button>
         </form>
         {% endif %}
       </div>
       <div class="card-body small">
-        <p class="text-muted mb-2">A date scanned both before and after the one-row-per-date change got two rows. Merge moves the older row's tags into the day's row, recounts Physical Count and keeps the day's Current Count (active stock). Logged.</p>
-        {% if audit_merge %}
+        <p class="text-muted mb-2">Rows saved as one row per Report Date (23-10-2026). Split gives each Stage + Location scanned in them its own row, and recounts each row's Current Count as the tags the system has at that stage + location now. Logged.</p>
+        {% if audit_split %}
         <table class="table table-sm table-bordered mb-0 align-middle" style="font-size:.78rem;max-width:640px">
-          <thead class="table-dark"><tr><th>Report Date</th><th>Rows merged</th><th>Tags moved</th><th>Tags already in the day's row</th></tr></thead>
+          <thead class="table-dark"><tr><th>Report Date</th><th>Becomes row: Stage</th><th>Location</th><th>Tags</th></tr></thead>
           <tbody>
-            {% for a in audit_merge %}
-            <tr><td>{{ a.date }}</td><td>{{ a.rows }}</td><td>{{ a.moved }}</td><td>{{ a.kept }}</td></tr>
-            {% endfor %}
+            {% for a in audit_split %}{% for r in a.rows %}
+            <tr><td>{{ a.date }}</td><td>{{ r.stage }}</td><td>{{ r.location }}</td><td>{{ r.tags }}</td></tr>
+            {% endfor %}{% endfor %}
           </tbody>
         </table>
         {% else %}
