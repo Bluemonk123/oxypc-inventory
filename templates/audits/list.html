@@ -12,12 +12,20 @@
         <span><i class="bi bi-clipboard2-check me-2"></i>Perform Audit</span>
         {# Upload Tag (2026-10-24, admin only): swaps the scan box + Validate for
            a file upload + Submit that records every tag in the file. #}
-        {% if role_allowed(current_user.role, 'admin') %}
-        <div class="form-check form-switch mb-0 small">
-          <input class="form-check-input" type="checkbox" id="auditUploadMode">
-          <label class="form-check-label fw-semibold" for="auditUploadMode">Upload Tag</label>
+        <div class="d-flex align-items-center gap-3">
+          {% if role_allowed(current_user.role, 'admin') %}
+          <div class="form-check form-switch mb-0 small">
+            <input class="form-check-input" type="checkbox" id="auditUploadMode">
+            <label class="form-check-label fw-semibold" for="auditUploadMode">Upload Tag</label>
+          </div>
+          {% endif %}
+          {# No Tags (2026-10-24): nothing found at the selected Stage + Location;
+             records the row with all four counts 0. #}
+          <div class="form-check form-switch mb-0 small">
+            <input class="form-check-input" type="checkbox" id="auditNoTagsMode">
+            <label class="form-check-label fw-semibold" for="auditNoTagsMode">No Tags</label>
+          </div>
         </div>
-        {% endif %}
       </div>
       <div class="card-body">
         {# no-autohide: this is reused on every Submit (shown + hidden via its
@@ -85,10 +93,16 @@
             </button>
           </div>
           {% endif %}
+          <div class="col-md-2 audit-notags-only d-none">
+            <button type="button" id="auditNoTagsBtn" class="btn btn-warning w-100">
+              <i class="bi bi-inbox me-1"></i>Save No Tags
+            </button>
+          </div>
         </div>
         {% if role_allowed(current_user.role, 'admin') %}
         <div id="auditUploadResult" class="d-none mt-3 small"></div>
         {% endif %}
+        <div id="auditNoTagsResult" class="d-none mt-3 small"></div>
 
         <!-- Receipt: Lookup now performs the lookup AND the submit in one
              click (one interaction instead of two) — this panel shows what
@@ -350,19 +364,69 @@ function auditDoLookup() {
       auditSelectTagBox();
     });
 }
+// ── Scan / Upload Tag / No Tags modes (2026-10-24) ──────────────────────────
+// Upload Tag and No Tags are switches in the card header; only one can be on.
+(function () {
+  var up = document.getElementById('auditUploadMode');
+  var nt = document.getElementById('auditNoTagsMode');
+  function sync() {
+    var isUp = !!(up && up.checked), isNt = !!(nt && nt.checked);
+    document.querySelectorAll('.audit-scan-only').forEach(function (el) { el.classList.toggle('d-none', isUp || isNt); });
+    document.querySelectorAll('.audit-upload-only').forEach(function (el) { el.classList.toggle('d-none', !isUp); });
+    document.querySelectorAll('.audit-notags-only').forEach(function (el) { el.classList.toggle('d-none', !isNt); });
+    document.getElementById('auditConfirmPanel').classList.add('d-none');
+    document.getElementById('auditLookupError').classList.add('d-none');
+    var ur = document.getElementById('auditUploadResult');
+    if (ur && !isUp) ur.classList.add('d-none');
+    if (!isNt) document.getElementById('auditNoTagsResult').classList.add('d-none');
+  }
+  if (up) up.addEventListener('change', function () { if (up.checked && nt) nt.checked = false; sync(); });
+  if (nt) nt.addEventListener('change', function () { if (nt.checked && up) up.checked = false; sync(); });
+
+  document.getElementById('auditNoTagsBtn').addEventListener('click', function () {
+    var err = document.getElementById('auditLookupError');
+    var out = document.getElementById('auditNoTagsResult');
+    err.classList.add('d-none');
+    out.classList.add('d-none');
+    var reportDateVal = document.getElementById('auditReportDate').value;
+    var stageSel = document.getElementById('auditMyStage');
+    var locSel = document.getElementById('auditMyLocation');
+    var msg = !reportDateVal ? 'Select a Report Date first.'
+            : !stageSel.value ? 'Select Audit/Physical Stage first.'
+            : !locSel.value ? 'Select Audit/Physical Location first.' : '';
+    if (msg) { err.textContent = msg; err.classList.remove('d-none'); return; }
+    var fd = new FormData();
+    fd.append('csrf_token', auditCsrfToken());
+    fd.append('report_date', reportDateVal);
+    fd.append('my_stage', stageSel.value);
+    fd.append('my_location_id', locSel.value);
+    if (auditPnaStage()) fd.append('pna', document.getElementById('auditPna').checked ? '1' : '0');
+    var btn = this;
+    btn.disabled = true;
+    fetch('/audits/no-tags', { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { err.textContent = d.error || 'Could not save.'; err.classList.remove('d-none'); return; }
+        var target = stageSel.options[stageSel.selectedIndex].text +
+          (auditPnaStage() ? (document.getElementById('auditPna').checked ? ' - PNA' : ' - Line') : '') +
+          ' / ' + locSel.options[locSel.selectedIndex].text;
+        out.innerHTML = '';
+        var a = document.createElement('div');
+        a.className = 'alert alert-success py-2 mb-0';
+        a.textContent = 'No Tags saved for ' + target + ' — all counts 0.';
+        out.appendChild(a);
+        out.classList.remove('d-none');
+        if (window.auditRecordsDt) window.auditRecordsDt.ajax.reload(null, false);
+      })
+      .catch(function () { err.textContent = 'Could not save — please try again.'; err.classList.remove('d-none'); })
+      .then(function () { btn.disabled = false; });
+  });
+})();
+
 // ── Upload Tag (admin, 2026-10-24) ──────────────────────────────────────────
 (function () {
   var mode = document.getElementById('auditUploadMode');
   if (!mode) return;
-  function sync() {
-    var up = mode.checked;
-    document.querySelectorAll('.audit-scan-only').forEach(function (el) { el.classList.toggle('d-none', up); });
-    document.querySelectorAll('.audit-upload-only').forEach(function (el) { el.classList.toggle('d-none', !up); });
-    document.getElementById('auditConfirmPanel').classList.add('d-none');
-    document.getElementById('auditLookupError').classList.add('d-none');
-    if (!up) document.getElementById('auditUploadResult').classList.add('d-none');
-  }
-  mode.addEventListener('change', sync);
 
   function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
   function list(label, n, tags, cls) {

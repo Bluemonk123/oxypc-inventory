@@ -483,6 +483,22 @@ def _parse_audit_target(report_date, my_stage, my_location_id, pna):
     return r_date, my_stage_enum, my_loc_uuid, pna_group
 
 
+async def _find_audit_row(db: AsyncSession, r_date, my_stage_enum, my_loc_uuid, pna_group):
+    """The Audit Records row for this Report Date + Stage + Location (+ PNA /
+    Line), or None (2026-10-24: a new row whenever any of them differs). A row
+    saved before 2026-10-23 also carries a Category — prefer the one without,
+    else the oldest."""
+    loc_match = (AuditRecord.my_location_id == my_loc_uuid) if my_loc_uuid else AuditRecord.my_location_id.is_(None)
+    grp_match = (AuditRecord.pna_group == pna_group) if pna_group else AuditRecord.pna_group.is_(None)
+    return (await db.execute(
+        select(AuditRecord).where(AuditRecord.report_date == r_date,
+                                  (AuditRecord.my_stage.in_(SCRAP_GROUP) if my_stage_enum in SCRAP_GROUP
+                                   else AuditRecord.my_stage == my_stage_enum),
+                                  loc_match, grp_match)
+        .order_by(AuditRecord.category.is_(None).desc(), AuditRecord.created_at.asc())
+    )).scalars().first()
+
+
 async def _record_tag(db: AsyncSession, r_date, bc, my_stage_enum, my_loc_uuid, pna_group, current_user):
     """Record one tag into its Audit Records row (no commit). Returns
     ("already" | "missing" | "ok", audit_record or None).
@@ -499,18 +515,7 @@ async def _record_tag(db: AsyncSession, r_date, bc, my_stage_enum, my_loc_uuid, 
     if await _already_audited(db, device.barcode if device else bc, r_date):
         return "already", None
 
-    # The row for this Report Date + Stage + Location (2026-10-24: a new row
-    # whenever any of the three differs). A row saved before 2026-10-23 also
-    # carries a Category — prefer the one without, else join the oldest.
-    loc_match = (AuditRecord.my_location_id == my_loc_uuid) if my_loc_uuid else AuditRecord.my_location_id.is_(None)
-    grp_match = (AuditRecord.pna_group == pna_group) if pna_group else AuditRecord.pna_group.is_(None)
-    audit_record = (await db.execute(
-        select(AuditRecord).where(AuditRecord.report_date == r_date,
-                                  (AuditRecord.my_stage.in_(SCRAP_GROUP) if my_stage_enum in SCRAP_GROUP
-                                   else AuditRecord.my_stage == my_stage_enum),
-                                  loc_match, grp_match)
-        .order_by(AuditRecord.category.is_(None).desc(), AuditRecord.created_at.asc())
-    )).scalars().first()
+    audit_record = await _find_audit_row(db, r_date, my_stage_enum, my_loc_uuid, pna_group)
     if not audit_record:
         audit_record = AuditRecord(report_date=r_date, my_stage=my_stage_enum, my_location_id=my_loc_uuid,
                                    pna_group=pna_group,
@@ -547,6 +552,43 @@ async def _record_tag(db: AsyncSession, r_date, bc, my_stage_enum, my_loc_uuid, 
     ))
     await db.flush()
     return "ok", audit_record
+
+
+# ── No Tags (2026-10-24) ─────────────────────────────────────────────────────
+# The auditor found no tags at the selected Stage + Location: records that
+# row with Current, Physical, Difference and Missing all 0.
+
+NO_TAGS_NOTE = "No tags at this location"
+
+
+@router.post("/no-tags")
+async def record_no_tags(
+    report_date: str = Form(...),
+    my_stage: str = Form(...),
+    my_location_id: str = Form(""),
+    pna: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not (my_location_id or "").strip():
+        return JSONResponse({"ok": False, "error": "Select Audit/Physical Location first."})
+    parsed = _parse_audit_target(report_date, my_stage, my_location_id, pna)
+    if isinstance(parsed, str):
+        return JSONResponse({"ok": False, "error": parsed})
+    r_date, my_stage_enum, my_loc_uuid, pna_group = parsed
+    existing = await _find_audit_row(db, r_date, my_stage_enum, my_loc_uuid, pna_group)
+    if existing:
+        n = (await db.execute(select(func.count(AuditRecordItem.id))
+                              .where(AuditRecordItem.audit_record_id == existing.id))).scalar() or 0
+        if n:
+            return JSONResponse({"ok": False, "error": f"{n} tag(s) are already audited for this Report Date, "
+                                                       "Stage and Location, so it can't be recorded as No Tags."})
+        return JSONResponse({"ok": False, "error": "This Report Date, Stage and Location is already recorded."})
+    db.add(AuditRecord(report_date=r_date, my_stage=my_stage_enum, my_location_id=my_loc_uuid,
+                       pna_group=pna_group, current_count=0, physical_count=0,
+                       notes=f"{NO_TAGS_NOTE} (by {current_user.full_name or current_user.username})"))
+    await db.commit()
+    return JSONResponse({"ok": True})
 
 
 # ── Upload Tag (admin, 2026-10-24) ───────────────────────────────────────────
