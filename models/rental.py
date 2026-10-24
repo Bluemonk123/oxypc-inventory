@@ -16,7 +16,11 @@ from sqlalchemy.dialects.postgresql import UUID
 from database import Base
 from utils.timezone import app_now
 
-RENTAL_STATUSES = [("active", "Active"), ("returned", "Returned"), ("cancelled", "Cancelled")]
+# "returned" = closed by the old Mark Returned button (shown under Complete).
+# "payment_due" / "complete" come from Rental Return (2026-10-24).
+RENTAL_STATUSES = [("active", "Active"), ("payment_due", "Payment Due"), ("complete", "Complete"),
+                   ("returned", "Returned"), ("cancelled", "Cancelled")]
+RETURN_DECISIONS = [("payment_due", "Payment Due"), ("waive_off", "Waive Off")]
 DURATION_UNITS = [("days", "Days"), ("months", "Months"), ("years", "Years")]
 BILL_TYPES = [("business", "Business"), ("individual", "Individual")]
 
@@ -78,3 +82,42 @@ class RentalItem(Base):
     storage = Column(String(50), nullable=True)
     grade = Column(String(10), nullable=True)
     min_selling_price = Column(Numeric(14, 2), nullable=True)
+
+
+class RentalReturn(Base):
+    """One Rental Return (2026-10-24, approved via dbdiagram): some or all of a
+    rental's tags received back. Amounts are worked out on the server:
+      daily_rate         = rental price per tag per day (Start..Stop inclusive)
+      rental_price       = the returned tags' share of the rental price
+      extra_days         = days from Stop Date to Received Date (0 if on time)
+      outstanding_amount = extra_days x daily_rate x returned tags
+    decision: payment_due (receipt, later Mark Paid with Invoice / UTR) or
+    waive_off (nothing to collect)."""
+    __tablename__ = "rental_returns"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    return_number = Column(String(20), unique=True, nullable=False, index=True)   # RRT-2026-0001
+    rental_id = Column(UUID(as_uuid=True), ForeignKey("rental_records.id"), nullable=False, index=True)
+    received_date = Column(Date, nullable=False)
+    stop_date = Column(Date, nullable=False)
+    rental_price = Column(Numeric(14, 2), nullable=False)
+    daily_rate = Column(Numeric(14, 4), nullable=False)
+    extra_days = Column(Integer, nullable=False, default=0)
+    outstanding_amount = Column(Numeric(14, 2), nullable=False, default=0)
+    decision = Column(String(20), nullable=False)            # payment_due | waive_off
+    notes = Column(Text, nullable=True)
+    created_by = Column(String(50), nullable=True)
+    created_at = Column(DateTime, nullable=False, default=app_now)
+    paid_at = Column(DateTime, nullable=True)
+    paid_by = Column(String(50), nullable=True)
+    payment_reference = Column(String(100), nullable=True)  # Invoice / UTR number from Mark Paid
+
+
+class RentalReturnItem(Base):
+    """A tag received back in a Rental Return (2026-10-24, approved via dbdiagram)."""
+    __tablename__ = "rental_return_items"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    rental_return_id = Column(UUID(as_uuid=True), ForeignKey("rental_returns.id"), nullable=False, index=True)
+    device_id = Column(UUID(as_uuid=True), ForeignKey("devices.id"), nullable=False, index=True)
+    barcode = Column(String(100), nullable=False)

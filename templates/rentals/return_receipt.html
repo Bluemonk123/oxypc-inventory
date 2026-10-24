@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{{ ret.return_number }} — Rental Return — OxyPC Inventory</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 10.5pt; color: #222; background: #fff; padding: 28px 36px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start;
+              border-bottom: 3px solid #0377c2; padding-bottom: 14px; margin-bottom: 18px; }
+    .company-name { font-size: 18pt; font-weight: bold; color: #0377c2; }
+    .company-sub { font-size: 9pt; color: #555; margin-top: 2px; line-height: 1.4; }
+    .doc-title { text-align: right; }
+    .doc-title h2 { font-size: 16pt; color: #0377c2; }
+    .doc-title .num { font-size: 11pt; color: #444; margin-top: 2px; }
+    .doc-title .status { display: inline-block; margin-top: 4px; font-size: 8.5pt; padding: 2px 8px;
+                         border-radius: 10px; background: #e7f1fb; color: #0377c2; text-transform: uppercase; }
+    .meta { display: flex; gap: 32px; margin-bottom: 18px; }
+    .meta-block { flex: 1; }
+    .meta-block h4 { font-size: 8.5pt; text-transform: uppercase; color: #888; letter-spacing: .5px;
+                     border-bottom: 1px solid #eee; padding-bottom: 3px; margin-bottom: 5px; }
+    .meta-block p { line-height: 1.5; }
+    .muted { color: #777; }
+    h3 { font-size: 10pt; text-transform: uppercase; color: #0377c2; letter-spacing: .5px; margin: 14px 0 6px; }
+    table { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
+    th { background: #0377c2; color: #fff; text-align: left; padding: 6px 8px; font-weight: 600; }
+    td { padding: 5px 8px; border-bottom: 1px solid #e6e6e6; vertical-align: top; }
+    tr:nth-child(even) td { background: #fafafa; }
+    .r { text-align: right; }
+    .totals { margin-top: 12px; display: flex; justify-content: flex-end; }
+    .totals table { width: 300px; }
+    .totals td { border: none; padding: 4px 8px; }
+    .totals .grand td { font-size: 12pt; font-weight: bold; color: #0377c2; border-top: 2px solid #0377c2; }
+    .notes { margin-top: 14px; padding: 8px 10px; border: 1px solid #eee; background: #fcfcfc; }
+    .footer { margin-top: 28px; display: flex; justify-content: space-between; font-size: 9pt; color: #666; }
+    .sign { margin-top: 40px; border-top: 1px solid #999; width: 200px; text-align: center; padding-top: 4px; }
+    .no-print { margin-bottom: 14px; }
+    .no-print button { padding: 6px 14px; background: #0377c2; color: #fff; border: 0; border-radius: 4px; cursor: pointer; }
+    @media print { .no-print { display: none; } body { padding: 0 6mm; } @page { margin: 12mm; } }
+  </style>
+</head>
+<body>
+  <div class="no-print"><button onclick="window.print()">Print / Save as PDF</button></div>
+
+  <div class="header">
+    <div>
+      <div class="company-name">{{ ent.name or 'OxyPC Computers' }}</div>
+      <div class="company-sub">
+        {% if ent.address %}{{ ent.address }}<br>{% endif %}
+        {% if ent.state %}{{ ent.state }}{% endif %}
+        {% if ent.gstin %}{% if ent.state %} · {% endif %}GSTIN: {{ ent.gstin }}{% endif %}
+        {% if ent.phone or ent.email %}<br>{{ [ent.phone, ent.email] | select | join(' · ') }}{% endif %}
+      </div>
+    </div>
+    <div class="doc-title">
+      <h2>{{ 'PAYMENT DUE RECEIPT' if ret.decision == 'payment_due' else 'RENTAL RETURN RECEIPT' }}</h2>
+      <div class="num">{{ ret.return_number }}</div>
+      <div class="muted" style="font-size:9pt">Rental: {{ r.rental_number }} · Date: {{ ret.created_at | ist_date }}</div>
+      <div class="status">{% if ret.decision == 'waive_off' %}Waived Off{% elif ret.paid_at %}Paid{% else %}Payment Due{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="meta">
+    <div class="meta-block">
+      <h4>Customer</h4>
+      <p>
+        {% if r.bill_type == 'business' and r.customer_company %}<strong>{{ r.customer_company }}</strong><br>
+          {% if r.customer_gstin %}GSTIN: {{ r.customer_gstin }}<br>{% endif %}
+          Attn: {{ r.person_name }}<br>
+        {% else %}<strong>{{ r.person_name }}</strong><br>{% endif %}
+        {% if r.address %}{{ r.address }}<br>{% endif %}
+        {% if r.city or r.state %}{{ [r.city, r.state] | select | join(', ') }}<br>{% endif %}
+        {% if r.phone %}Phone: {{ r.phone }}<br>{% endif %}
+        {% if r.email %}Email: {{ r.email }}{% endif %}
+      </p>
+    </div>
+    <div class="meta-block">
+      <h4>Rental Return</h4>
+      <p>
+        Rental Start Date: {{ r.start_date.strftime('%d-%m-%Y') }}<br>
+        Rental Stop Date: {{ ret.stop_date.strftime('%d-%m-%Y') }}<br>
+        Received Date: <strong>{{ ret.received_date.strftime('%d-%m-%Y') }}</strong><br>
+        Extra Days: {{ ret.extra_days }}<br>
+        Tags Returned: {{ lines | length }} of {{ r.total_quantity }}
+      </p>
+    </div>
+  </div>
+
+  <h3>Tags Returned ({{ lines | length }})</h3>
+  <table>
+    <thead><tr><th>#</th><th>Tag</th><th>Make / Model</th><th>CPU</th><th>RAM</th><th>Storage</th></tr></thead>
+    <tbody>
+      {% for l in lines %}
+      <tr><td>{{ loop.index }}</td><td>{{ l.barcode }}</td>
+        <td>{{ (l.it.make or '') if l.it else '' }} {{ (l.it.model or '') if l.it else '' }}</td>
+        <td>{{ (l.it.cpu or '') if l.it else '' }}</td><td>{{ (l.it.ram or '') if l.it else '' }}</td>
+        <td>{{ (l.it.storage or '') if l.it else '' }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="totals">
+    <table>
+      <tr><td>Rental Price ({{ lines | length }} tag(s))</td><td class="r">₹{{ ret.rental_price | inr(2) }}</td></tr>
+      <tr><td>Daily Rate (per tag, {{ rental_days }} day(s))</td><td class="r">₹{{ ret.daily_rate | inr(2) }}</td></tr>
+      <tr><td>Extra Days</td><td class="r">{{ ret.extra_days }}</td></tr>
+      <tr class="grand"><td>{{ 'Outstanding Due' if ret.decision == 'payment_due' else 'Outstanding (Waived Off)' }}</td>
+        <td class="r">₹{{ ret.outstanding_amount | inr(2) }}</td></tr>
+      {% if ret.paid_at %}<tr><td>Paid ({{ ret.payment_reference }})</td><td class="r">{{ ret.paid_at | ist_date }}</td></tr>{% endif %}
+    </table>
+  </div>
+
+  {% if ret.notes %}<div class="notes"><strong>Notes:</strong> {{ ret.notes }}</div>{% endif %}
+
+  <div class="footer">
+    <div><div class="sign">Customer Signature</div></div>
+    <div><div class="sign">For {{ ent.name or 'OxyPC Computers' }}</div></div>
+  </div>
+
+  <script>window.addEventListener('load', function () { setTimeout(function () { window.print(); }, 300); });</script>
+</body>
+</html>

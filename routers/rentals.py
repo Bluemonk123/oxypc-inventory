@@ -33,7 +33,8 @@ from database import get_db
 from models.company import Company
 from models.device import STAGE_LABELS, Device, DeviceStage, StageMovement
 from models.lot import Lot
-from models.rental import BILL_TYPES, DURATION_UNITS, RENTAL_STATUSES, RentalItem, RentalRecord
+from models.rental import (BILL_TYPES, DURATION_UNITS, RENTAL_STATUSES, RETURN_DECISIONS, RentalItem,
+                           RentalRecord, RentalReturn, RentalReturnItem)
 from models.user import User
 from services.audit_engine import audit
 from services.ready_pricing import load_ready_rates, tag_min_price, unit_price
@@ -264,26 +265,45 @@ async def _items_of(db, rental_ids) -> dict:
 
 # ── pages ────────────────────────────────────────────────────────────────────
 
+# Rental Records tabs (2026-10-24): tab -> statuses shown. "returned" (old Mark
+# Returned) counts as Complete.
+RENTAL_TABS = [("active", "Active", ("active",)), ("complete", "Complete", ("complete", "returned")),
+               ("cancelled", "Cancelled", ("cancelled",)), ("payment_due", "Payment Due", ("payment_due",))]
+
+
 @router.get("", response_class=HTMLResponse)
-async def rental_records(request: Request, status: str = Query(default=""),
+async def rental_records(request: Request, tab: str = Query(default="active"),
                          db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed)):
-    q = select(RentalRecord).order_by(RentalRecord.created_at.desc())
-    if status:
-        q = q.where(RentalRecord.status == status)
+    tabs = {k: st for k, _l, st in RENTAL_TABS}
+    if tab not in tabs:
+        tab = "active"
+    counts = dict((await db.execute(
+        select(RentalRecord.status, func.count()).group_by(RentalRecord.status))).all())
+    tab_counts = {k: sum(counts.get(x, 0) for x in st) for k, st in tabs.items()}
+    q = (select(RentalRecord).where(RentalRecord.status.in_(tabs[tab]))
+         .order_by(RentalRecord.created_at.desc()))
     rentals = (await db.execute(q)).scalars().all()
     items = await _items_of(db, [r.id for r in rentals])
+    returns = await _returns_of(db, [r.id for r in rentals])
+    returned_ids = await _returned_device_ids(db, [r.id for r in rentals])
     companies = await _companies_by_id(db, rentals)
     rows = []
     for r in rentals:
         its = items.get(r.id, [])
+        rets = returns.get(r.id, [])
+        due = [x for x in rets if x.decision == "payment_due" and x.paid_at is None]
         ent = _entity(r, companies.get(r.billing_company_id))
         summary = _model_summary([_item_dict(i) for i in its])
         rows.append({"r": r, "ent": ent, "duration": _duration_text(r), "models": summary,
                      "tags": [i.barcode for i in its],
+                     "returns": rets, "due": due,
+                     "due_total": sum((x.outstanding_amount for x in due), Decimal("0")),
+                     "out_count": len([i for i in its if i.device_id not in returned_ids.get(r.id, set())]),
+                     "refs": list(dict.fromkeys(x.payment_reference for x in rets if x.payment_reference)),
                      "export": {
                          "Rental ID": r.rental_number,
                          "Created On": r.created_at.strftime("%d-%m-%Y") if r.created_at else "",
-                         "Status": r.status.capitalize(),
+                         "Status": dict(RENTAL_STATUSES).get(r.status, r.status),
                          "Bill Type": dict(BILL_TYPES).get(r.bill_type, r.bill_type),
                          "Billing Entity": ent["name"],
                          "Billing Entity GSTIN": ent["gstin"],
@@ -313,10 +333,16 @@ async def rental_records(request: Request, status: str = Query(default=""),
                          "Created By": r.created_by or "",
                          "Closed On": r.closed_at.strftime("%d-%m-%Y") if r.closed_at else "",
                          "Closed By": r.closed_by or "",
+                         "Returns": " ".join(x.return_number for x in rets),
+                         "Outstanding Due": str(sum((x.outstanding_amount for x in due), Decimal("0"))),
+                         "Invoice / UTR": "; ".join(dict.fromkeys(x.payment_reference for x in rets
+                                                                  if x.payment_reference)),
                      }})
     return templates.TemplateResponse("rentals/list.html", {
-        "request": request, "current_user": current_user, "rows": rows, "status": status,
-        "statuses": RENTAL_STATUSES, "bill_types": dict(BILL_TYPES), "today": app_today(),
+        "request": request, "current_user": current_user, "rows": rows, "tab": tab,
+        "tabs": RENTAL_TABS, "tab_counts": tab_counts,
+        "statuses": RENTAL_STATUSES, "status_labels": dict(RENTAL_STATUSES),
+        "bill_types": dict(BILL_TYPES), "today": app_today(),
     })
 
 
@@ -481,6 +507,288 @@ async def rental_create(
         f"Rental {r.rental_number} created — {quantity} tag(s) moved to On Rent"), status_code=302)
 
 
+# ── Rental Return (2026-10-24) ───────────────────────────────────────────────
+# Returns > New > "Rental Return" tab. Scan the tags received back (all from one
+# rental; some or all of its tags), pick the Received Date, then Payment Due
+# (receipt; Mark Paid later with an Invoice / UTR number) or Waive Off. Amounts
+# are worked out here, never taken from the page (financial-snapshot pattern).
+
+OPEN_STATUSES = ("active", "payment_due")
+
+
+async def _returned_device_ids(db, rental_ids) -> dict:
+    """{rental_id: {device ids already received back in a Rental Return}}."""
+    out: dict = {}
+    if not rental_ids:
+        return out
+    for rid, did in (await db.execute(
+        select(RentalReturn.rental_id, RentalReturnItem.device_id)
+        .join(RentalReturnItem, RentalReturnItem.rental_return_id == RentalReturn.id)
+        .where(RentalReturn.rental_id.in_(list(rental_ids)))
+    )).all():
+        out.setdefault(rid, set()).add(did)
+    return out
+
+
+async def _returns_of(db, rental_ids) -> dict:
+    out: dict = {}
+    if not rental_ids:
+        return out
+    for x in (await db.execute(
+        select(RentalReturn).where(RentalReturn.rental_id.in_(list(rental_ids)))
+        .order_by(RentalReturn.created_at)
+    )).scalars().all():
+        out.setdefault(x.rental_id, []).append(x)
+    return out
+
+
+def _return_amounts(r: RentalRecord, n_tags: int, received: date) -> dict:
+    """Server-side amounts for returning n_tags of rental r on `received`."""
+    days = max(1, (r.end_date - r.start_date).days + 1)
+    qty = max(1, r.total_quantity or 1)
+    per_tag = Decimal(r.total_price or 0) / qty
+    daily = per_tag / days
+    extra = max(0, (received - r.end_date).days)
+    return {
+        "rental_days": days,
+        "daily_rate": daily.quantize(Decimal("0.0001")),
+        "rental_price": (per_tag * n_tags).quantize(Decimal("0.01")),
+        "extra_days": extra,
+        "outstanding": (daily * extra * n_tags).quantize(Decimal("0.01")),
+    }
+
+
+async def _refresh_status(db, r: RentalRecord, username: str, now) -> None:
+    """Rental status after a return / Mark Paid: Payment Due while any return
+    is unpaid; otherwise Active while tags are still out, else Complete."""
+    if r.status == "cancelled":
+        return
+    rets = (await _returns_of(db, [r.id])).get(r.id, [])
+    unpaid = any(x.decision == "payment_due" and x.paid_at is None for x in rets)
+    item_ids = {it.device_id for it in (await _items_of(db, [r.id])).get(r.id, [])}
+    remaining = item_ids - (await _returned_device_ids(db, [r.id])).get(r.id, set())
+    new = "payment_due" if unpaid else ("active" if remaining else "complete")
+    r.status = new
+    if not remaining and r.closed_at is None:
+        r.closed_at = now
+        r.closed_by = username
+
+
+async def _next_return_number(db: AsyncSession) -> str:
+    prefix = f"RRT-{app_today().year}-"
+    last = (await db.execute(
+        select(RentalReturn.return_number).where(RentalReturn.return_number.like(prefix + "%"))
+        .order_by(RentalReturn.return_number.desc()).limit(1))).scalar_one_or_none()
+    n = int(last.rsplit("-", 1)[1]) + 1 if last else 1
+    return f"{prefix}{n:04d}"
+
+
+def _rental_brief(r: RentalRecord) -> dict:
+    return {
+        "id": str(r.id), "number": r.rental_number, "status": r.status,
+        "start_date": r.start_date.isoformat(), "stop_date": r.end_date.isoformat(),
+        "start_text": r.start_date.strftime("%d-%m-%Y"), "stop_text": r.end_date.strftime("%d-%m-%Y"),
+        "rental_days": max(1, (r.end_date - r.start_date).days + 1),
+        "total_quantity": r.total_quantity, "total_price": str(r.total_price),
+        "bill_type": dict(BILL_TYPES).get(r.bill_type, r.bill_type),
+        "customer_company": r.customer_company or "", "customer_gstin": r.customer_gstin or "",
+        "person_name": r.person_name or "", "phone": r.phone or "", "email": r.email or "",
+        "city": r.city or "", "state": r.state or "", "address": r.address or "",
+    }
+
+
+async def _open_rental_of_tag(db, barcode: str):
+    """(device, rental, error) for a tag out on an open rental and not yet returned."""
+    bc = (barcode or "").strip()
+    if not bc:
+        return None, None, "Enter a Tag Number."
+    device = (await db.execute(select(Device).where(func.upper(Device.barcode) == bc.upper()))).scalars().first()
+    if not device:
+        return None, None, f"{bc}: tag not found."
+    rows = (await db.execute(
+        select(RentalRecord).join(RentalItem, RentalItem.rental_id == RentalRecord.id)
+        .where(RentalItem.device_id == device.id, RentalRecord.status.in_(OPEN_STATUSES))
+        .order_by(RentalRecord.created_at.desc())
+    )).scalars().all()
+    returned = await _returned_device_ids(db, [x.id for x in rows])
+    for r in rows:
+        if device.id not in returned.get(r.id, set()):
+            return device, r, None
+    return device, None, f"{device.barcode}: not out on an open rental (or already returned)."
+
+
+@router.get("/return/lookup")
+async def rental_return_lookup(barcode: str = Query(default=""), db: AsyncSession = Depends(get_db),
+                               current_user: User = Depends(allowed)):
+    device, r, err = await _open_rental_of_tag(db, barcode)
+    if err:
+        return JSONResponse({"ok": False, "error": err})
+    return JSONResponse({"ok": True, "tag": {"barcode": device.barcode, "make": device.brand or "",
+                                              "model": device.model or ""},
+                         "rental": _rental_brief(r)})
+
+
+@router.get("/return/rental/{rental_id}")
+async def rental_return_prefill(rental_id: str, db: AsyncSession = Depends(get_db),
+                                current_user: User = Depends(allowed)):
+    """The tags of one rental still out — the Rental Return tab opened from
+    Rental Records' Return button starts with these."""
+    r = await _get_rental(db, rental_id)
+    if r.status not in OPEN_STATUSES:
+        return JSONResponse({"ok": False, "error": f"{r.rental_number} is {r.status}."})
+    done = (await _returned_device_ids(db, [r.id])).get(r.id, set())
+    tags = [{"barcode": it.barcode, "make": it.make or "", "model": it.model or ""}
+            for it in (await _items_of(db, [r.id])).get(r.id, []) if it.device_id not in done]
+    return JSONResponse({"ok": True, "rental": _rental_brief(r), "tags": tags})
+
+
+@router.post("/return/submit")
+async def rental_return_submit(
+    request: Request,
+    barcodes: str = Form(""),
+    received_date: str = Form(""),
+    decision: str = Form(""),
+    notes: str = Form(""),
+    db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed),
+):
+    def back(msg):
+        return RedirectResponse(url="/returns/new?active_tab=rental&error=" + quote(msg), status_code=302)
+
+    if decision not in dict(RETURN_DECISIONS):
+        return back("Choose Payment Due or Waive Off.")
+    try:
+        received = date.fromisoformat(received_date)
+    except ValueError:
+        return back("Pick the Received Date.")
+    wanted, seen = [], set()
+    for b in barcodes.replace("\n", ",").split(","):
+        b = b.strip()
+        if b and b.upper() not in seen:
+            seen.add(b.upper())
+            wanted.append(b)
+    if not wanted:
+        return back("Scan at least one Tag Number.")
+    rental, devices, errors = None, [], []
+    for b in wanted:
+        device, r, err = await _open_rental_of_tag(db, b)
+        if err:
+            errors.append(err)
+            continue
+        if rental is None:
+            rental = r
+        elif r.id != rental.id:
+            errors.append(f"{device.barcode} is on {r.rental_number}, not {rental.rental_number} — "
+                          "return one rental at a time.")
+            continue
+        devices.append(device)
+    if errors:
+        return back(" ".join(errors[:5]) + (f" (+{len(errors) - 5} more)" if len(errors) > 5 else ""))
+    if received < rental.start_date:
+        return back("Received Date can't be before the Rental Start Date.")
+
+    amt = _return_amounts(rental, len(devices), received)
+    now = app_now()
+    ret = None
+    for _attempt in range(3):
+        ret = RentalReturn(
+            return_number=await _next_return_number(db), rental_id=rental.id, received_date=received,
+            stop_date=rental.end_date, rental_price=amt["rental_price"], daily_rate=amt["daily_rate"],
+            extra_days=amt["extra_days"], outstanding_amount=amt["outstanding"], decision=decision,
+            notes=notes.strip() or None, created_by=current_user.username)
+        db.add(ret)
+        try:
+            await db.flush()
+            break
+        except IntegrityError:
+            await db.rollback()
+            ret = None
+            rental = await db.get(RentalRecord, rental.id)
+            devices = [await db.get(Device, d_id) for d_id in [d.id for d in devices]]
+    if ret is None:
+        return back("Could not allocate a Return number — please submit again.")
+    for d in devices:
+        db.add(RentalReturnItem(rental_return_id=ret.id, device_id=d.id, barcode=d.barcode))
+    on_rent = [d for d in devices if d.current_stage == DeviceStage.on_rent]
+    await _move_stage(db, on_rent, DeviceStage.ready_to_sale, current_user.username,
+                      f"Rental Return {ret.return_number} — {rental.rental_number}", now)
+    await db.flush()
+    await _refresh_status(db, rental, current_user.username, now)
+    await audit(db, user=current_user, action="RENTAL_RETURN", table_name="rental_returns",
+                record_id=ret.return_number,
+                new_value={"rental": rental.rental_number, "tags": [d.barcode for d in devices],
+                           "received_date": received.isoformat(), "stop_date": rental.end_date.isoformat(),
+                           "rental_price": str(amt["rental_price"]), "daily_rate": str(amt["daily_rate"]),
+                           "extra_days": amt["extra_days"], "outstanding": str(amt["outstanding"]),
+                           "decision": decision, "rental_status": rental.status},
+                request=request)
+    await db.commit()
+    tab = "payment_due" if rental.status == "payment_due" else ("complete" if rental.status == "complete" else "active")
+    msg = (f"{ret.return_number}: {len(devices)} tag(s) of {rental.rental_number} received back — "
+           + (f"₹{amt['outstanding']:,.2f} Payment Due" if decision == "payment_due" else "Waived Off")
+           + (f". {rental.rental_number} is still Active (tags still out)." if rental.status == "active" else "."))
+    return RedirectResponse(url=f"/rentals?tab={tab}&success=" + quote(msg), status_code=302)
+
+
+@router.get("/returns/{return_id}/receipt", response_class=HTMLResponse)
+async def rental_return_receipt(request: Request, return_id: str, db: AsyncSession = Depends(get_db),
+                                current_user: User = Depends(allowed)):
+    """Payment Due receipt — printable (Print / Save as PDF)."""
+    try:
+        rid = _uuid.UUID(return_id)
+    except ValueError:
+        raise HTTPException(404, "Return not found")
+    ret = (await db.execute(select(RentalReturn).where(RentalReturn.id == rid))).scalar_one_or_none()
+    if not ret:
+        raise HTTPException(404, "Return not found")
+    r = await db.get(RentalRecord, ret.rental_id)
+    items = (await db.execute(select(RentalReturnItem).where(RentalReturnItem.rental_return_id == ret.id)
+                              .order_by(RentalReturnItem.barcode))).scalars().all()
+    rent_items = {it.device_id: it for it in (await _items_of(db, [r.id])).get(r.id, [])}
+    company = (await _companies_by_id(db, [r])).get(r.billing_company_id)
+    return templates.TemplateResponse("rentals/return_receipt.html", {
+        "request": request, "current_user": current_user, "ret": ret, "r": r,
+        "lines": [{"barcode": i.barcode, "it": rent_items.get(i.device_id)} for i in items],
+        "ent": _entity(r, company), "decisions": dict(RETURN_DECISIONS),
+        "rental_days": max(1, (r.end_date - r.start_date).days + 1),
+    })
+
+
+@router.post("/{rental_id}/paid")
+async def rental_mark_paid(request: Request, rental_id: str, payment_reference: str = Form(""),
+                           db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed)):
+    """Mark Paid: every unpaid Payment Due return of this rental gets the
+    Invoice / UTR number; the rental then moves on (Complete, or Active while
+    tags are still out)."""
+    r = await _get_rental(db, rental_id)
+    ref = payment_reference.strip()[:100]
+    if not ref:
+        return RedirectResponse(url="/rentals?tab=payment_due&error=" + quote("Enter the Invoice or UTR number."),
+                                status_code=302)
+    unpaid = [x for x in (await _returns_of(db, [r.id])).get(r.id, [])
+              if x.decision == "payment_due" and x.paid_at is None]
+    if not unpaid:
+        return RedirectResponse(url="/rentals?tab=payment_due&error=" + quote(f"{r.rental_number} has nothing due."),
+                                status_code=302)
+    now = app_now()
+    for x in unpaid:
+        x.paid_at = now
+        x.paid_by = current_user.username
+        x.payment_reference = ref
+    await db.flush()
+    await _refresh_status(db, r, current_user.username, now)
+    await audit(db, user=current_user, action="RENTAL_PAYMENT_RECEIVED", table_name="rental_returns",
+                record_id=r.rental_number, old_value={"status": "payment_due"},
+                new_value={"returns": [x.return_number for x in unpaid], "payment_reference": ref,
+                           "amount": str(sum((x.outstanding_amount for x in unpaid), Decimal("0"))),
+                           "rental_status": r.status},
+                request=request)
+    await db.commit()
+    tab = "complete" if r.status == "complete" else "active"
+    return RedirectResponse(url=f"/rentals?tab={tab}&success=" + quote(
+        f"{r.rental_number} marked paid ({ref}) — now {dict(RENTAL_STATUSES).get(r.status, r.status)}."),
+        status_code=302)
+
+
 @router.get("/{rental_id}", response_class=HTMLResponse)
 async def rental_view(request: Request, rental_id: str, db: AsyncSession = Depends(get_db),
                       current_user: User = Depends(allowed)):
@@ -507,6 +815,26 @@ async def rental_print(request: Request, rental_id: str, db: AsyncSession = Depe
         "ent": _entity(r, company),
         "summary": _model_summary([_item_dict(i) for i in its]), "duration": _duration_text(r),
         "bill_types": dict(BILL_TYPES), "statuses": dict(RENTAL_STATUSES),
+    })
+
+
+@router.get("/{rental_id}/summary")
+async def rental_summary_json(rental_id: str, db: AsyncSession = Depends(get_db),
+                              current_user: User = Depends(allowed)):
+    """Rental Records' Quantity modal (2026-10-24): the detail page's Tags and
+    Model Summary tables as JSON."""
+    r = await _get_rental(db, rental_id)
+    its = (await _items_of(db, [r.id])).get(r.id, [])
+    return JSONResponse({
+        "number": r.rental_number,
+        "tags": [{"barcode": it.barcode, "make": it.make or "", "model": it.model or "", "cpu": it.cpu or "",
+                  "gen": it.generation or "", "ram": it.ram or "", "storage": it.storage or "",
+                  "grade": it.grade or "",
+                  "min_price": float(it.min_selling_price) if it.min_selling_price is not None else None}
+                 for it in its],
+        "models": [{"make": g["make"], "model": g["model"], "cpu": g["cpu"], "gen": g["gen"], "ram": g["ram"],
+                    "storage": g["storage"], "qty": g["qty"], "grades": g["grades"]}
+                   for g in _model_summary([_item_dict(i) for i in its])],
     })
 
 
@@ -548,8 +876,9 @@ async def _close(request, rental_id, new_status, db, current_user):
                 old_value={"status": "active"},
                 new_value={"status": new_status, "tags_back_to_ready_to_sale": back}, request=request)
     await db.commit()
-    return RedirectResponse(url="/rentals?success=" + quote(
-        f"Rental {r.rental_number} {label.lower()} — {back} tag(s) back to Ready to Sale"), status_code=302)
+    return RedirectResponse(url=f"/rentals?tab={'cancelled' if new_status == 'cancelled' else 'complete'}&success="
+                            + quote(f"Rental {r.rental_number} {label.lower()} — {back} tag(s) back to Ready to Sale"),
+                            status_code=302)
 
 
 @router.post("/{rental_id}/return")
@@ -574,17 +903,31 @@ async def rental_delete(request: Request, rental_id: str, db: AsyncSession = Dep
     its = (await _items_of(db, [r.id])).get(r.id, [])
     ids = [it.device_id for it in its]
     devices = (await db.execute(select(Device).where(Device.id.in_(ids)))).scalars().all() if ids else []
-    on_rent = [d for d in devices if d.current_stage == DeviceStage.on_rent] if r.status == "active" else []
+    on_rent = ([d for d in devices if d.current_stage == DeviceStage.on_rent]
+               if r.status in ("active", "payment_due") else [])
     now = app_now()
     await _move_stage(db, on_rent, DeviceStage.ready_to_sale, current_user.username,
                       f"Rental Deleted — {r.rental_number}", now)
     snapshot = {c.name: (str(getattr(r, c.name)) if getattr(r, c.name) is not None else None)
                 for c in RentalRecord.__table__.columns}
     snapshot["tags"] = [it.barcode for it in its]
+    rets = (await db.execute(select(RentalReturn).where(RentalReturn.rental_id == r.id))).scalars().all()
+    if rets:
+        snapshot["returns"] = [{"return_number": x.return_number, "received_date": str(x.received_date),
+                                "outstanding": str(x.outstanding_amount), "decision": x.decision,
+                                "payment_reference": x.payment_reference} for x in rets]
     await audit(db, user=current_user, action="RENTAL_DELETED", table_name="rental_records",
                 record_id=r.rental_number, old_value=snapshot,
                 new_value={"deleted": True, "tags_back_to_ready_to_sale": len(on_rent)}, request=request)
     number = r.rental_number
+    if rets:
+        for ri in (await db.execute(select(RentalReturnItem).where(
+                RentalReturnItem.rental_return_id.in_([x.id for x in rets])))).scalars().all():
+            await db.delete(ri)
+        await db.flush()
+        for x in rets:
+            await db.delete(x)
+        await db.flush()
     for it in its:
         await db.delete(it)
     await db.flush()

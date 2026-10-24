@@ -36,6 +36,15 @@
           <i class="bi bi-receipt-cutoff me-1"></i>Credit Note
         </button>
       </li>
+      {% set can_rental_return = has_perm(current_user.role.value, 'rentals') %}
+      {% if can_rental_return %}
+      <li class="nav-item">
+        <button class="nav-link {{ 'active' if active_tab == 'rental' else '' }}"
+                data-bs-toggle="tab" data-bs-target="#rentalReturnTab" type="button">
+          <i class="bi bi-calendar2-check me-1"></i>Rental Return
+        </button>
+      </li>
+      {% endif %}
     </ul>
 
     <div class="tab-content">
@@ -307,6 +316,78 @@
     </div>
     </div>
 
+    {# ═══════════════ RENTAL RETURN (2026-10-24) — tags back from a rental ═══════ #}
+    {% if can_rental_return %}
+    <div class="tab-pane fade {{ 'show active' if active_tab == 'rental' else '' }}" id="rentalReturnTab">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-calendar2-check me-2"></i>Rental Return</div>
+      <div class="card-body">
+        {% if error and active_tab == 'rental' %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
+        <form action="/rentals/return/submit" method="post" id="rrForm">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <input type="hidden" name="barcodes" id="rrBarcodes">
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Tag Number</label>
+            <div class="input-group">
+              <input type="text" id="rrScan" class="form-control font-monospace" placeholder="Scan or type Tag Number, Enter to add">
+              <button type="button" class="btn btn-outline-primary" id="rrAddBtn"><i class="bi bi-plus-circle me-1"></i>Add</button>
+            </div>
+            <div id="rrMsg" class="mt-2"></div>
+            <div id="rrList" class="mt-2 d-flex flex-wrap gap-1"></div>
+          </div>
+
+          <div id="rrDetails" class="d-none">
+            <div class="row g-2 mb-3">
+              <div class="col-sm-4">
+                <label class="form-label fw-semibold small">Rental Start Date</label>
+                <input type="text" id="rrStart" class="form-control" readonly>
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label fw-semibold small">Rental Stop Date</label>
+                <input type="text" id="rrStop" class="form-control" readonly>
+              </div>
+              <div class="col-sm-4">
+                <label class="form-label fw-semibold small">Received Date <span class="text-danger">*</span></label>
+                <input type="date" name="received_date" id="rrReceived" class="form-control" required>
+              </div>
+            </div>
+
+            <div class="card bg-light border-0 mb-3">
+              <div class="card-body py-2 small" id="rrCustomer"></div>
+            </div>
+
+            <table class="table table-sm mb-3 small">
+              <tr><td>Rental Price (<span id="rrTagCount">0</span> of <span id="rrQty">0</span> tag(s))</td><td class="text-end fw-semibold" id="rrPrice">—</td></tr>
+              <tr><td>Daily Rate (per tag, <span id="rrDays">0</span> rental day(s))</td><td class="text-end" id="rrDaily">—</td></tr>
+              <tr><td>Extra Days (after Stop Date)</td><td class="text-end" id="rrExtra">0</td></tr>
+              <tr class="table-warning"><td class="fw-semibold">Outstanding Price</td><td class="text-end fw-bold" id="rrOutstanding">—</td></tr>
+            </table>
+
+            <div class="mb-3">
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="decision" id="rrDue" value="payment_due" checked>
+                <label class="form-check-label fw-semibold" for="rrDue">Payment Due</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="decision" id="rrWaive" value="waive_off">
+                <label class="form-check-label fw-semibold" for="rrWaive">Waive Off</label>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Notes</label>
+              <textarea name="notes" class="form-control" rows="2"></textarea>
+            </div>
+            <div class="d-flex gap-2">
+              <button type="submit" class="btn btn-primary px-4" id="rrSubmit"><i class="bi bi-receipt me-2"></i>Generate and Submit</button>
+              <a href="/rentals" class="btn btn-outline-secondary">Cancel</a>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+    </div>
+    {% endif %}
+
     </div>
   </div>
 </div>
@@ -529,6 +610,132 @@
   addBtn.addEventListener('click', add);
   scanInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); add(); } });
   render();
+})();
+</script>
+<script>
+// ── Rental Return (2026-10-24) ──────────────────────────────────────────────
+(function () {
+  var scan = document.getElementById('rrScan');
+  if (!scan) return;
+  var listEl = document.getElementById('rrList'), msgEl = document.getElementById('rrMsg');
+  var details = document.getElementById('rrDetails'), received = document.getElementById('rrReceived');
+  var rental = null, tags = [];   // tags: [{barcode, make, model}]
+
+  function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  function inr(n) { return '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function msg(text, cls) { msgEl.innerHTML = text ? '<div class="small text-' + (cls || 'danger') + '">' + esc(text) + '</div>' : ''; }
+  function iso(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
+  if (!received.value) received.value = iso(new Date());
+
+  // Same arithmetic as routers/rentals.py _return_amounts (the server recomputes on submit).
+  function calc() {
+    if (!rental) return;
+    var days = rental.rental_days, qty = Math.max(1, rental.total_quantity), n = tags.length;
+    var perTag = Number(rental.total_price) / qty, daily = perTag / days;
+    var extra = 0;
+    if (received.value) {
+      extra = Math.round((new Date(received.value + 'T00:00:00') - new Date(rental.stop_date + 'T00:00:00')) / 86400000);
+      if (extra < 0) extra = 0;
+    }
+    document.getElementById('rrTagCount').textContent = n;
+    document.getElementById('rrQty').textContent = rental.total_quantity;
+    document.getElementById('rrDays').textContent = days;
+    document.getElementById('rrPrice').textContent = inr(perTag * n);
+    document.getElementById('rrDaily').textContent = inr(daily);
+    document.getElementById('rrExtra').textContent = extra;
+    document.getElementById('rrOutstanding').textContent = inr(daily * extra * n);
+  }
+
+  function render() {
+    listEl.innerHTML = '';
+    tags.forEach(function (t, i) {
+      var b = document.createElement('span');
+      b.className = 'badge bg-light text-dark border font-monospace';
+      b.innerHTML = esc(t.barcode) + ' <span class="text-muted">' + esc((t.make + ' ' + t.model).trim()) + '</span> ' +
+        '<a href="#" class="text-danger ms-1" data-i="' + i + '" title="Remove">&times;</a>';
+      listEl.appendChild(b);
+    });
+    document.getElementById('rrBarcodes').value = tags.map(function (t) { return t.barcode; }).join(',');
+    if (!tags.length) rental = null;
+    details.classList.toggle('d-none', !rental);
+    if (rental) {
+      document.getElementById('rrStart').value = rental.start_text;
+      document.getElementById('rrStop').value = rental.stop_text;
+      var c = rental, lines = [];
+      lines.push('<div class="fw-semibold mb-1">' + esc(c.number) + ' · ' + esc(c.bill_type) + '</div>');
+      if (c.customer_company) lines.push('<div><strong>' + esc(c.customer_company) + '</strong>' + (c.customer_gstin ? ' · GSTIN ' + esc(c.customer_gstin) : '') + '</div>');
+      lines.push('<div>' + esc(c.person_name) + (c.phone ? ' · ' + esc(c.phone) : '') + (c.email ? ' · ' + esc(c.email) : '') + '</div>');
+      var place = [c.address, c.city, c.state].filter(Boolean).join(', ');
+      if (place) lines.push('<div class="text-muted">' + esc(place) + '</div>');
+      document.getElementById('rrCustomer').innerHTML = lines.join('');
+      calc();
+    }
+  }
+
+  function addTag(t, r) {
+    if (rental && r.id !== rental.id) {
+      msg(t.barcode + ' is on ' + r.number + ', not ' + rental.number + ' — return one rental at a time.');
+      return false;
+    }
+    if (tags.some(function (x) { return x.barcode.toUpperCase() === t.barcode.toUpperCase(); })) {
+      msg(t.barcode + ' is already added.', 'warning');
+      return false;
+    }
+    rental = rental || r;
+    tags.push(t);
+    return true;
+  }
+
+  function add() {
+    var bc = scan.value.trim();
+    if (!bc) return;
+    fetch('/rentals/return/lookup?barcode=' + encodeURIComponent(bc), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { msg(d.error); scan.select(); return; }
+        if (addTag(d.tag, d.rental)) { msg(''); scan.value = ''; render(); }
+        else scan.select();
+        scan.focus();
+      })
+      .catch(function () { msg('Lookup failed — please try again.'); });
+  }
+  scan.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); add(); } });
+  document.getElementById('rrAddBtn').addEventListener('click', add);
+  listEl.addEventListener('click', function (e) {
+    var a = e.target.closest('a[data-i]');
+    if (!a) return;
+    e.preventDefault();
+    tags.splice(+a.getAttribute('data-i'), 1);
+    render();
+  });
+  received.addEventListener('change', calc);
+
+  var btn = document.getElementById('rrSubmit');
+  function syncBtn() {
+    var waive = document.getElementById('rrWaive').checked;
+    btn.innerHTML = waive ? '<i class="bi bi-check2-circle me-2"></i>Complete'
+                          : '<i class="bi bi-receipt me-2"></i>Generate and Submit';
+    btn.className = 'btn px-4 ' + (waive ? 'btn-success' : 'btn-primary');
+  }
+  document.getElementById('rrDue').addEventListener('change', syncBtn);
+  document.getElementById('rrWaive').addEventListener('change', syncBtn);
+  syncBtn();
+  document.getElementById('rrForm').addEventListener('submit', function (e) {
+    if (!tags.length) { e.preventDefault(); msg('Scan at least one Tag Number.'); return; }
+    btn.disabled = true;
+  });
+
+  // Opened from Rental Records' Return button: start with that rental's tags still out.
+  var rid = new URLSearchParams(location.search).get('rental');
+  if (rid) {
+    fetch('/rentals/return/rental/' + encodeURIComponent(rid), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { msg(d.error); return; }
+        d.tags.forEach(function (t) { addTag(t, d.rental); });
+        render();
+      });
+  }
 })();
 </script>
 {% endblock %}

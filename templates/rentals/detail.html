@@ -4,7 +4,7 @@
 
 {% block content %}
 {% set csrf = request.cookies.get('csrf_token', '') %}
-{% set status_badge = {'active': 'primary', 'returned': 'success', 'cancelled': 'secondary'} %}
+{% set status_badge = {'active': 'primary', 'returned': 'success', 'complete': 'success', 'cancelled': 'secondary', 'payment_due': 'warning text-dark'} %}
 <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
   <div>
     <a href="/rentals" class="btn btn-sm btn-outline-secondary me-2"><i class="bi bi-arrow-left"></i> Rental Records</a>
@@ -14,12 +14,12 @@
   <div class="d-flex gap-2">
     <a href="/rentals/{{ r.id }}/print" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-file-earmark-pdf me-1"></i>Summary (PDF)</a>
     <a href="/rentals/{{ r.id }}/tags.csv" class="btn btn-sm btn-outline-primary"><i class="bi bi-filetype-csv me-1"></i>Tags CSV</a>
+    {% if r.status in ('active', 'payment_due') %}
+    {# Rental Return (2026-10-24) replaces Mark Returned. #}
+    <a href="/returns/new?active_tab=rental&rental={{ r.id }}" class="btn btn-sm btn-success">
+      <i class="bi bi-box-arrow-in-down-left me-1"></i>Rental Return</a>
+    {% endif %}
     {% if r.status == 'active' %}
-    <form method="post" action="/rentals/{{ r.id }}/return" class="d-inline"
-          onsubmit="return confirm('Mark {{ r.rental_number }} as Returned? Its tags go back to Ready to Sale.')">
-      <input type="hidden" name="csrf_token" value="{{ csrf }}">
-      <button class="btn btn-sm btn-success"><i class="bi bi-box-arrow-in-down-left me-1"></i>Mark Returned</button>
-    </form>
     <form method="post" action="/rentals/{{ r.id }}/cancel" class="d-inline"
           onsubmit="return confirm('Cancel {{ r.rental_number }}? Its tags go back to Ready to Sale.')">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">

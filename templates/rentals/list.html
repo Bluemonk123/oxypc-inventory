@@ -4,7 +4,7 @@
 
 {% block content %}
 {% set csrf = request.cookies.get('csrf_token', '') %}
-{% set status_badge = {'active': 'primary', 'returned': 'success', 'cancelled': 'secondary'} %}
+{% set status_badge = {'active': 'primary', 'returned': 'success', 'complete': 'success', 'cancelled': 'secondary', 'payment_due': 'warning text-dark'} %}
 {% set can_delete = has_perm(current_user.role.value, 'rentals', 'edit') %}
 {# Hover-card line: "Label: value<br>" (Bootstrap's tooltip sanitizer cleans the HTML). #}
 {% macro tip_line(label, value) %}{% if value %}<b>{{ label }}:</b> {{ value }}<br>{% endif %}{% endmacro %}
@@ -12,14 +12,6 @@
   <div class="card-header bg-transparent d-flex align-items-center justify-content-between flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-calendar2-range me-2"></i>Rental Records</span>
     <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end">
-      <form method="get" class="d-flex gap-2 align-items-center">
-        <select name="status" class="form-select form-select-sm" style="width:150px" onchange="this.form.submit()">
-          <option value="">All Statuses</option>
-          {% for val, label in statuses %}
-          <option value="{{ val }}" {% if status == val %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </form>
       <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="rentalExportBtn"
               title="Export the rows shown (current filter / search) to CSV">
         <i class="bi bi-download me-1"></i>Export (<span id="rentalExportCount">{{ rows | length }}</span>)
@@ -28,6 +20,16 @@
     </div>
   </div>
   <div class="card-body">
+    {# Tabs (2026-10-24): Active / Complete / Cancelled / Payment Due. #}
+    <ul class="nav nav-tabs mb-3">
+      {% for key, label, _st in tabs %}
+      <li class="nav-item">
+        <a class="nav-link {{ 'active' if tab == key else '' }}" href="/rentals?tab={{ key }}">
+          {{ label }} <span class="badge {{ 'bg-warning text-dark' if key == 'payment_due' and tab_counts[key] else 'bg-secondary' }} ms-1">{{ tab_counts[key] }}</span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
     <div class="table-responsive">
       <table id="rentalTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
@@ -81,9 +83,18 @@
                     style="border-bottom:1px dotted #888;cursor:help">{{ row.duration }}</span>
               {% if r.status == 'active' and r.end_date < today %}<span class="badge bg-danger-subtle text-danger ms-1">Overdue</span>{% endif %}
             </td>
-            <td class="text-end">{{ r.total_quantity }}</td>
+            <td class="text-end">
+              {# Quantity opens the Tags / Model Summary modal (2026-10-24). #}
+              <a href="#" class="fw-semibold text-decoration-none rental-qty-link" data-id="{{ r.id }}"
+                 data-number="{{ r.rental_number }}" title="Tags and Model Summary">{{ r.total_quantity }}</a>
+            </td>
             <td class="text-end text-nowrap" data-order="{{ r.total_price }}">₹{{ r.total_price | inr }}</td>
-            <td><span class="badge bg-{{ status_badge.get(r.status, 'secondary') }}">{{ r.status | capitalize }}</span></td>
+            <td>
+              <span class="badge bg-{{ status_badge.get(r.status, 'secondary') }}">{{ status_labels.get(r.status, r.status) }}</span>
+              {% if row.due %}<div class="text-danger fw-semibold" style="font-size:.75rem">Due ₹{{ row.due_total | inr(2) }}</div>{% endif %}
+              {% if r.status in ('active', 'payment_due') and row.returns %}<div class="text-muted" style="font-size:.75rem">{{ row.out_count }} of {{ r.total_quantity }} still out</div>{% endif %}
+              {% for ref in row.refs %}<div class="text-muted" style="font-size:.75rem" title="Invoice / UTR">Paid: {{ ref }}</div>{% endfor %}
+            </td>
             <td class="text-nowrap">
               <div class="dropdown">
                 <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button">
@@ -92,17 +103,28 @@
                 <ul class="dropdown-menu">
                   <li><a class="dropdown-item" href="/rentals/{{ r.id }}/print" target="_blank"><i class="bi bi-file-earmark-pdf me-2"></i>Summary (PDF)</a></li>
                   <li><a class="dropdown-item" href="/rentals/{{ r.id }}/tags.csv"><i class="bi bi-filetype-csv me-2"></i>Tags CSV</a></li>
+                  {% for x in row.returns %}
+                  {% if loop.first %}<li><hr class="dropdown-divider"></li>{% endif %}
+                  <li><a class="dropdown-item" href="/rentals/returns/{{ x.id }}/receipt" target="_blank">
+                    <i class="bi bi-receipt me-2"></i>{{ 'Payment Due Receipt' if x.decision == 'payment_due' else 'Return Receipt' }} {{ x.return_number }}</a></li>
+                  {% endfor %}
                 </ul>
               </div>
             </td>
             <td class="text-nowrap">
               <a href="/rentals/{{ r.id }}" class="btn btn-sm btn-outline-primary" title="View"><i class="bi bi-eye"></i></a>
-              {% if r.status == 'active' %}
-              <form method="post" action="/rentals/{{ r.id }}/return" class="d-inline"
-                    onsubmit="return confirm('Mark {{ r.rental_number }} as Returned? Its {{ r.total_quantity }} tag(s) go back to Ready to Sale.')">
-                <input type="hidden" name="csrf_token" value="{{ csrf }}">
-                <button class="btn btn-sm btn-outline-success" title="Mark Returned"><i class="bi bi-box-arrow-in-down-left"></i></button>
-              </form>
+              {% if r.status in ('active', 'payment_due') and row.out_count %}
+              {# Return (2026-10-24): opens Returns > Rental Return with this rental's tags still out. #}
+              <a href="/returns/new?active_tab=rental&rental={{ r.id }}" class="btn btn-sm btn-outline-success" title="Rental Return">
+                <i class="bi bi-box-arrow-in-down-left"></i></a>
+              {% endif %}
+              {% if row.due %}
+              <button type="button" class="btn btn-sm btn-success" title="Mark Paid"
+                      data-bs-toggle="modal" data-bs-target="#rentalPaidModal"
+                      data-action="/rentals/{{ r.id }}/paid" data-number="{{ r.rental_number }}"
+                      data-amount="{{ row.due_total | inr(2) }}"><i class="bi bi-cash-coin me-1"></i>Mark Paid</button>
+              {% endif %}
+              {% if r.status == 'active' and not row.returns %}
               <form method="post" action="/rentals/{{ r.id }}/cancel" class="d-inline"
                     onsubmit="return confirm('Cancel {{ r.rental_number }}? Its tags go back to Ready to Sale.')">
                 <input type="hidden" name="csrf_token" value="{{ csrf }}">
@@ -124,6 +146,66 @@
     </div>
   </div>
 </div>
+
+{# Quantity modal (2026-10-24): same Tags and Model Summary tables as the Rental detail page. #}
+<div class="modal fade" id="rentalQtyModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-list-ul me-2"></i><span id="rentalQtyTitle"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <ul class="nav nav-tabs mb-3">
+          <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#rqTags" type="button">
+            Tags Summary <span class="badge bg-secondary ms-1" id="rqTagCount">0</span></button></li>
+          <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#rqModels" type="button">
+            Model Summary <span class="badge bg-secondary ms-1" id="rqModelCount">0</span></button></li>
+        </ul>
+        <div class="tab-content">
+          <div class="tab-pane fade show active" id="rqTags">
+            <div class="table-responsive">
+              <table class="table table-sm table-hover mb-0 small align-middle">
+                <thead class="table-dark"><tr><th>Tag</th><th>Make / Model</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th><th>Grade</th><th class="text-end">Min Price</th></tr></thead>
+                <tbody id="rqTagsBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="tab-pane fade" id="rqModels">
+            <div class="table-responsive">
+              <table class="table table-sm mb-0 small align-middle">
+                <thead class="table-light"><tr><th>Make / Model</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th><th class="text-end">Quantity</th><th>Grades</th></tr></thead>
+                <tbody id="rqModelsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Mark Paid (2026-10-24): Invoice or UTR number for the rental's Payment Due returns. #}
+<div class="modal fade" id="rentalPaidModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" class="modal-content" id="rentalPaidForm">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-cash-coin me-2"></i>Mark Paid — <span id="rentalPaidNumber"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2 small">Amount due: <strong>₹<span id="rentalPaidAmount"></span></strong></div>
+        <label class="form-label fw-semibold">Invoice or UTR Number <span class="text-danger">*</span></label>
+        <input type="text" name="payment_reference" class="form-control" maxlength="100" required>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-check2 me-1"></i>Submit</button>
+      </div>
+    </form>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -134,6 +216,47 @@
 <script id="rentalExportData" type="application/json">{{ rows | map(attribute='export') | list | tojson }}</script>
 <script>
 $(document).ready(function () {
+  var paidModal = document.getElementById('rentalPaidModal');
+  paidModal.addEventListener('show.bs.modal', function (e) {
+    var b = e.relatedTarget;
+    document.getElementById('rentalPaidForm').action = b.getAttribute('data-action');
+    document.getElementById('rentalPaidNumber').textContent = b.getAttribute('data-number');
+    document.getElementById('rentalPaidAmount').textContent = b.getAttribute('data-amount');
+    paidModal.querySelector('input[name=payment_reference]').value = '';
+  });
+  paidModal.addEventListener('shown.bs.modal', function () {
+    paidModal.querySelector('input[name=payment_reference]').focus();
+  });
+  // Quantity -> Tags / Model Summary modal (2026-10-24).
+  function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  function inr0(n) { return '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
+  $(document).on('click', '.rental-qty-link', function (e) {
+    e.preventDefault();
+    var id = this.getAttribute('data-id');
+    document.getElementById('rentalQtyTitle').textContent = this.getAttribute('data-number');
+    var tb = document.getElementById('rqTagsBody'), mb = document.getElementById('rqModelsBody');
+    tb.innerHTML = mb.innerHTML = '<tr><td colspan="8" class="text-muted">Loading…</td></tr>';
+    bootstrap.Tab.getOrCreateInstance(document.querySelector('#rentalQtyModal [data-bs-target="#rqTags"]')).show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('rentalQtyModal')).show();
+    fetch('/rentals/' + encodeURIComponent(id) + '/summary', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        document.getElementById('rqTagCount').textContent = d.tags.length;
+        document.getElementById('rqModelCount').textContent = d.models.length;
+        tb.innerHTML = d.tags.map(function (t) {
+          return '<tr><td class="fw-semibold">' + esc(t.barcode) + '</td><td>' + esc((t.make + ' ' + t.model).trim()) +
+            '</td><td>' + esc(t.cpu) + '</td><td>' + esc(t.gen) + '</td><td>' + esc(t.ram) + '</td><td>' + esc(t.storage) +
+            '</td><td>' + esc(t.grade) + '</td><td class="text-end">' + (t.min_price == null ? '—' : inr0(t.min_price)) + '</td></tr>';
+        }).join('') || '<tr><td colspan="8" class="text-muted">No tags.</td></tr>';
+        mb.innerHTML = d.models.map(function (g) {
+          return '<tr><td class="fw-semibold">' + esc((g.make + ' ' + g.model).trim()) + '</td><td>' + esc(g.cpu) + '</td><td>' +
+            esc(g.gen) + '</td><td>' + esc(g.ram) + '</td><td>' + esc(g.storage) + '</td><td class="text-end fw-semibold">' + g.qty +
+            '</td><td>' + g.grades.map(function (kv) { return '<span class="badge text-bg-light border me-1">' + esc(kv[0]) + ': ' + kv[1] + '</span>'; }).join('') + '</td></tr>';
+        }).join('') || '<tr><td colspan="7" class="text-muted">No models.</td></tr>';
+      })
+      .catch(function () { tb.innerHTML = '<tr><td colspan="8" class="text-danger">Could not load.</td></tr>'; mb.innerHTML = ''; });
+  });
+
   var EXPORT_ROWS = JSON.parse(document.getElementById('rentalExportData').textContent);
   var dt = initGlobalTable('#rentalTable', {
     order: [],
