@@ -33,7 +33,12 @@
     #tbSearchMenu .tbs-empty { grid-column:1 / -1; padding:6px 12px; color:#6c757d; }
     /* Server status (2026-10-24): plain icon + text, no badge background. */
     #serverStatusBadge { font-size:.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
-      display:inline-flex; align-items:center; white-space:nowrap; }
+      display:inline-flex; align-items:center; white-space:nowrap;
+      padding:.3rem .75rem; border-radius:999px; border:1px solid #dee2e6; background:#f1f3f5; }
+    /* Status pill (2026-10-24): light tint + border in the state's colour. */
+    #serverStatusBadge[data-state="up"] { background:#E8F5E6; border-color:#b9e2b4; }
+    #serverStatusBadge[data-state="down"] { background:#fdeaea; border-color:#f1aeb5;
+      box-shadow:0 0 0 3px rgba(220,53,69,.12); }
     .srv-ico { width:1.35em; height:1.35em; margin-right:.3em; }
   </style>
   <link rel="icon" type="image/svg+xml" href="/static/img/oxypc-box-dark.svg">
