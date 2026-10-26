@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_tag_spec_edit.html" import spec_edit_btn, spec_edit_modal %}
 {% block title %}Stress Test — OxyPC{% endblock %}
 {% block page_title %}Stress Test{% endblock %}
 {% block content %}
@@ -41,7 +42,7 @@
             {% set failed_fqc = device.final_qc_status == 'fail' %}
             <tr id="row-{{ device.barcode }}" class="{% if sr %}table-light{% endif %}" data-failed-fqc="{{ '1' if failed_fqc else '0' }}">
               <td>
-                <a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none text-dark" title="View device details">{{ device.barcode }}</a>{{ parts_badge(parts_badges, device.id) }}
+                <a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none text-dark" title="View device details">{{ device.barcode }}</a>{{ parts_badge(parts_badges, device.id) }}{{ spec_edit_btn(device, can(current_user, 'qc_check', 'edit')) }}
                 {% if failed_fqc %}<br><span class="text-nowrap"><span class="badge bg-danger">Failed from Final QC</span>
                 <i class="bi bi-info-circle text-danger ms-1" style="cursor:help"
                    data-bs-toggle="tooltip" data-bs-placement="top"
@@ -189,6 +190,8 @@
   </div>
 </div>
 
+{# Pencil next to the Tag Number: quick spec edit (2026-10-26). #}
+{{ spec_edit_modal() }}
 {% include "_search_tags_modal.html" %}
 {% endblock %}
 {% block scripts %}

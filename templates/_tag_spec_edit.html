@@ -1,0 +1,135 @@
+{#- Quick spec edit (2026-10-26): pencil next to the Tag Number on L1/L2,
+    Stress Test and Final QC. Saves Serial Number / CPU / CPU Gen / Make /
+    Model / RAM / Hard Drive through POST /devices/{barcode}/specs (gated on
+    Edit for repair_l1 / qc_check / cosmetic_finalqc).
+
+    Usage:
+      {% from "_tag_spec_edit.html" import spec_edit_btn, spec_edit_modal %}
+      {{ spec_edit_btn(device, can(current_user, '<module>', 'edit')) }}   next to the tag
+      {{ spec_edit_modal() }}                                              once per page -#}
+
+{#- GB as the app shows it: whole TB as "1TB" (1024 or 1000), else "512GB"
+    — same rule as utils/device_spec.gb_text. -#}
+{% macro _gb(n) -%}
+{%- if n -%}
+{%- if n >= 1024 and n % 1024 == 0 -%}{{ n // 1024 }}TB
+{%- elif n >= 1000 and n % 1000 == 0 -%}{{ n // 1000 }}TB
+{%- else -%}{{ n }}GB{%- endif -%}
+{%- endif -%}
+{%- endmacro %}
+
+{% macro spec_edit_btn(device, allowed) -%}
+{%- if allowed -%}
+<button type="button" class="btn btn-primary rounded-circle p-0 ms-1 spec-edit-btn d-inline-flex align-items-center justify-content-center align-middle"
+        style="width:20px;height:20px;font-size:.65rem"
+        title="Edit Serial Number, CPU, Make, Model, RAM, Hard Drive"
+        data-barcode="{{ device.barcode }}"
+        data-serial="{{ device.serial_no or '' }}"
+        data-cpu="{{ device.cpu or '' }}"
+        data-gen="{{ device.generation or '' }}"
+        data-make="{{ device.brand or '' }}"
+        data-model="{{ device.model or '' }}"
+        data-ram="{{ _gb(device.ram_gb) }}"
+        data-hdd="{{ _gb(device.storage_gb) }}"><i class="bi bi-pencil-fill"></i></button>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro spec_edit_modal() %}
+<div class="modal fade" id="specEditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form class="modal-content" id="specEditForm" autocomplete="off">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-pencil-fill me-2"></i>Edit Tag Details — <span class="font-monospace" id="specEditTag"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2">
+          <div class="col-12"><label class="form-label small fw-semibold mb-1">Serial Number</label>
+            <input type="text" name="serial_no" class="form-control form-control-sm" maxlength="100"></div>
+          <div class="col-6"><label class="form-label small fw-semibold mb-1">Make</label>
+            <input type="text" name="brand" class="form-control form-control-sm" maxlength="50"></div>
+          <div class="col-6"><label class="form-label small fw-semibold mb-1">Model</label>
+            <input type="text" name="model" class="form-control form-control-sm" maxlength="100"></div>
+          <div class="col-6"><label class="form-label small fw-semibold mb-1">CPU</label>
+            <input type="text" name="cpu" class="form-control form-control-sm" maxlength="100" placeholder="e.g. I5"></div>
+          <div class="col-6"><label class="form-label small fw-semibold mb-1">CPU Gen</label>
+            <input type="text" name="generation" class="form-control form-control-sm" maxlength="50" placeholder="e.g. 8TH"></div>
+          <div class="col-6"><label class="form-label small fw-semibold mb-1">RAM</label>
+            <input type="text" name="ram" class="form-control form-control-sm" placeholder="e.g. 16GB"></div>
+          <div class="col-6"><label class="form-label small fw-semibold mb-1">Hard Drive</label>
+            <input type="text" name="hard_drive" class="form-control form-control-sm" placeholder="e.g. 512GB or 1TB"></div>
+        </div>
+        <div class="form-text small">RAM / Hard Drive: a number is read as GB (16 = 16GB); 1TB = 1024GB.</div>
+        <div id="specEditError" class="text-danger small mt-2"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-sm btn-primary" id="specEditSave"><i class="bi bi-check2 me-1"></i>Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var modalEl = document.getElementById('specEditModal');
+  var form = document.getElementById('specEditForm');
+  var err = document.getElementById('specEditError');
+  var saveBtn = document.getElementById('specEditSave');
+  var barcode = null;
+  var FIELDS = { serial_no: 'serial', brand: 'make', model: 'model', cpu: 'cpu', generation: 'gen', ram: 'ram', hard_drive: 'hdd' };
+  function csrf() { var c = document.cookie.split('; ').find(function (x) { return x.indexOf('csrf_token=') === 0; }); return c ? c.split('=')[1] : ''; }
+
+  // Delegated: works for rows DataTables draws later (paging) too.
+  document.addEventListener('click', function (e) {
+    var btn = e.target.closest('.spec-edit-btn');
+    if (!btn) return;
+    e.preventDefault(); e.stopPropagation();   // don't also trigger the row / card click
+    barcode = btn.getAttribute('data-barcode');
+    document.getElementById('specEditTag').textContent = barcode;
+    Object.keys(FIELDS).forEach(function (name) { form.elements[name].value = btn.getAttribute('data-' + FIELDS[name]) || ''; });
+    err.textContent = ''; saveBtn.disabled = false;
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  });
+  modalEl.addEventListener('shown.bs.modal', function () { form.elements.serial_no.focus(); });
+
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (!barcode) return;
+    var body = new URLSearchParams(new FormData(form));
+    body.append('csrf_token', csrf());
+    saveBtn.disabled = true; err.textContent = '';
+    fetch('/devices/' + encodeURIComponent(barcode) + '/specs', {
+      method: 'POST', headers: { 'X-CSRF-Token': csrf(), 'Accept': 'application/json' }, body: body
+    })
+    .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Could not save (HTTP ' + r.status + ')' }; }); })
+    .then(function (d) {
+      if (!d || !d.ok) throw new Error((d && d.error) || 'Could not save');
+      if (!d.changed) { bootstrap.Modal.getInstance(modalEl).hide(); if (window.showTopToast) window.showTopToast('primary', 'No changes to save.'); return; }
+      // Reload so every column on the page shows the new values; the toast and
+      // the selected tag (Final QC's card list) are restored after the reload.
+      try {
+        sessionStorage.setItem('specEditToast', 'Details updated for ' + barcode + '.');
+        sessionStorage.setItem('specEditFocus', barcode);
+      } catch (x) {}
+      location.reload();
+    })
+    .catch(function (x) { err.textContent = x.message; saveBtn.disabled = false; });
+  });
+
+  // 'load', not DOMContentLoaded: the page's own card-click handlers must be
+  // bound before the saved tag is re-selected.
+  window.addEventListener('load', function () {
+    var msg = null, focus = null;
+    try {
+      msg = sessionStorage.getItem('specEditToast'); focus = sessionStorage.getItem('specEditFocus');
+      sessionStorage.removeItem('specEditToast'); sessionStorage.removeItem('specEditFocus');
+    } catch (x) {}
+    if (focus) {
+      var card = document.querySelector('.fqc-card[data-barcode="' + (window.CSS && CSS.escape ? CSS.escape(focus) : focus) + '"]');
+      if (card) card.click();
+    }
+    if (msg && window.showTopToast) window.showTopToast('success', msg);
+  });
+})();
+</script>
+{% endmacro %}

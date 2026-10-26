@@ -2337,3 +2337,75 @@ async def device_edit_save(
         url=f"/devices/{device.barcode}?success=Device+updated+successfully",
         status_code=302
     )
+
+
+# ── Quick spec edit from the pipeline pages (2026-10-26) ─────────────────────
+# L1/L2, Stress Test and Final QC show a pencil next to the Tag Number that
+# opens a small modal for Serial Number / CPU / CPU Gen / Make / Model / RAM /
+# Hard Drive. Gated (auth/route_actions.py) on Edit for ANY of those three
+# modules, so the engineers on those pages can fix specs without the full
+# Device Edit (admin / inventory manager only).
+SPEC_EDIT_MODULES = ("repair_l1", "qc_check", "cosmetic_finalqc")
+
+
+@router.post("/{barcode}/specs")
+async def device_specs_quick_save(
+    barcode: str,
+    request: Request,
+    serial_no: str = Form(""),
+    cpu: str = Form(""),
+    generation: str = Form(""),
+    brand: str = Form(""),
+    model: str = Form(""),
+    ram: str = Form(""),
+    hard_drive: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from models.role_permissions import has_any_perm
+    from services.audit_engine import audit
+    from utils.device_spec import size_to_gb, gb_text
+
+    role = getattr(current_user.role, "value", current_user.role)
+    if not has_any_perm(role, SPEC_EDIT_MODULES, "edit"):
+        return JSONResponse({"ok": False, "error": "Your role does not have Edit permission here."}, status_code=403)
+    device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
+    if not device:
+        return JSONResponse({"ok": False, "error": "Tag not found"}, status_code=404)
+
+    def _size(posted, current, label):
+        posted = (posted or "").strip()
+        if not posted:
+            return None
+        # An unchanged box ("1TB" shown for 1000 or 1024) keeps the stored number.
+        if current and posted.upper().replace(" ", "") == (gb_text(current) or "").upper():
+            return current
+        n = size_to_gb(posted)
+        if n is None:
+            raise ValueError(f"{label}: enter a size like 16, 16GB or 1TB")
+        return n
+
+    try:
+        new_ram = _size(ram, device.ram_gb, "RAM")
+        new_hdd = _size(hard_drive, device.storage_gb, "Hard Drive")
+    except ValueError as e:
+        return JSONResponse({"ok": False, "error": str(e)}, status_code=400)
+
+    new = {
+        "serial_no": serial_no.strip() or None, "cpu": cpu.strip() or None,
+        "generation": generation.strip() or None, "brand": brand.strip() or None,
+        "model": model.strip() or None, "ram_gb": new_ram, "storage_gb": new_hdd,
+    }
+    old = {k: getattr(device, k) for k in new}
+    changed = {k: v for k, v in new.items() if v != old[k]}
+    if not changed:
+        return JSONResponse({"ok": True, "changed": 0, "message": "No changes"})
+    for k, v in changed.items():
+        setattr(device, k, v)
+    await audit(db, user=current_user, action="DEVICE_SPECS_QUICK_EDIT",
+                table_name="devices", record_id=str(device.id),
+                old_value={"barcode": device.barcode, **{k: old[k] for k in changed}},
+                new_value={"barcode": device.barcode, **changed},
+                request=request)
+    await db.commit()
+    return JSONResponse({"ok": True, "changed": len(changed)})

@@ -221,10 +221,10 @@ ROUTE_ACTIONS = {
     ('POST', '/transfers/new/bucket'): ('transfers', 'add'),  # create_bucket_transfer
     ('POST', '/transfers/new/lot'): ('transfers', 'add'),  # create_lot_transfer
     # ===== routers/part_requests.py =====
-    ('POST', '/part-requests/create'): ('devices', 'add'),  # create_part_request: raised from Device Detail page by engineers (alias part-requests -> spare_parts/parts_consumption would wrongly gate engineers)
-    ('POST', '/part-requests/multi-create'): ('devices', 'add'),  # create_part_requests_batch: Device Detail page
+    ('POST', '/part-requests/create'): None,  # (2026-10-26) Device Detail Parts Consumption — New / Replace / Downgrade / Faulty open to every signed-in user, outside the Permission Matrix. Previously: create_part_request: raised from Device Detail page by engineers (alias part-requests -> spare_parts/parts_consumption would wrongly gate engineers)
+    ('POST', '/part-requests/multi-create'): None,  # (2026-10-26) Multi Request, open to every signed-in user. Previously: create_part_requests_batch: Device Detail page
     ('POST', '/part-requests/{req_id}/handover'): ('spare_parts', 'edit'),  # handover_part: Parts Manager list
-    ('POST', '/part-requests/{req_id}/validate-receiving'): ('devices', 'edit'),  # validate_receiving: engineer confirms receipt on Device Detail
+    ('POST', '/part-requests/{req_id}/validate-receiving'): None,  # (2026-10-26) Verify, open to every signed-in user. Previously: validate_receiving: engineer confirms receipt on Device Detail
     ('POST', '/part-requests/{req_id}/not-in-stock'): ('spare_parts', 'edit'),  # not_in_stock
     ('POST', '/part-requests/{req_id}/procure'): ('spare_parts', 'edit'),  # procure_part: moves request to procurement
     ('POST', '/part-requests/{req_id}/scrap'): ('spare_parts', 'edit'),  # scrap_part_request
@@ -236,6 +236,7 @@ ROUTE_ACTIONS = {
     ('POST', '/part-sourcing/{sr_id}/request-reupload'): ('spare_parts', 'edit'),  # request_sourcing_reupload
     ('POST', '/spare-parts/requests/bulk-action'): ('spare_parts', 'edit'),  # bulk_request_action: bulk handover/status action
     ('POST', '/devices/{barcode}/pna/clear-all'): None,  # clear_all_pna: open to any signed-in user like the PNA tick itself (2026-10-26 — engineers without All Inventories Edit were refused)
+    ('POST', '/devices/{barcode}/specs'): (('repair_l1', 'qc_check', 'cosmetic_finalqc'), 'edit'),  # device_specs_quick_save: pencil next to Tag Number on L1/L2, Stress Test, Final QC (2026-10-26)
     ('POST', '/devices/{barcode}/pna'): None,  # mark_part_pna: any signed-in user holding the unit may flag a part not available (route docstring); gating on devices/edit blocked L1-L4 engineers (2026-10-26)
     # ===== routers/dispatch.py =====
     ('POST', '/inventory-requests/upload-tags'): None,  # upload_request_tags: read-only tag lookup

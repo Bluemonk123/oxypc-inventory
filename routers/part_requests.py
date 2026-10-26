@@ -56,7 +56,7 @@ async def create_part_request(
     qty: int = Form(1),
     from_page: str = Form(""),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(eng_allowed),
+    current_user: User = Depends(get_current_user),  # any signed-in user (2026-10-26): Parts Consumption is outside the Permission Matrix
 ):
     device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
     if not device:
@@ -127,7 +127,7 @@ async def create_part_requests_batch(
     request_type: str = Form("new"),
     from_page: str = Form(""),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(eng_allowed),
+    current_user: User = Depends(get_current_user),  # any signed-in user (2026-10-26): Parts Consumption is outside the Permission Matrix
 ):
     """Device Detail Parts Consumption's "Multi Request" button: check several
     rows, then in the Assign & Move-to-Cleaning-style modal pick a Make/Model/

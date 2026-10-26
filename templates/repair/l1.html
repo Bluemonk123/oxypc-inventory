@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_tag_spec_edit.html" import spec_edit_btn, spec_edit_modal %}
 {% block title %}L1/L2 Repair — OxyPC{% endblock %}
 {% block page_title %}L1/L2 Repair Stage{% endblock %}
 {% block content %}
@@ -98,7 +99,7 @@
                   data-lot="{{ lot_number or '' }}">
                 <td>
                   {# Tag Number + parts-changed icon kept on one line (2026-10-17). #}
-                  <span class="text-nowrap"><a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none">{{ device.barcode }}</a>{{ parts_badge(parts_badges, device.id) }}</span>
+                  <span class="text-nowrap"><a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none">{{ device.barcode }}</a>{{ parts_badge(parts_badges, device.id) }}{{ spec_edit_btn(device, can(current_user, 'repair_l1', 'edit')) }}</span>
                   {% if failed_fqc %}<br><span class="text-nowrap"><span class="badge bg-danger">Failed from Final QC</span>
                   <i class="bi bi-info-circle text-danger ms-1" style="cursor:help"
                      data-bs-toggle="tooltip" data-bs-placement="top"
@@ -406,6 +407,8 @@
     </div>
   </div>
 </div>
+{# Pencil next to the Tag Number: quick spec edit (2026-10-26). #}
+{{ spec_edit_modal() }}
 {% include "_search_tags_modal.html" %}
 {% endblock %}
 {% block scripts %}

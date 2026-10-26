@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_tag_spec_edit.html" import spec_edit_btn, spec_edit_modal %}
 {% block title %}Final QC — OxyPC{% endblock %}
 {% block page_title %}Final QC{% endblock %}
 {% block content %}
@@ -56,7 +57,7 @@
     <div class="fqc-detail-pane {% if not loop.first %}d-none{% endif %}" id="dev-{{ device.id }}">
       <div class="card border-0 shadow-sm mb-2">
         <div class="card-body py-2 d-flex align-items-center gap-2">
-          <a href="/devices/{{ device.barcode }}" class="font-monospace fw-semibold text-decoration-none">{{ device.barcode }}</a>
+          <a href="/devices/{{ device.barcode }}" class="font-monospace fw-semibold text-decoration-none">{{ device.barcode }}</a>{{ spec_edit_btn(device, can(current_user, 'cosmetic_finalqc', 'edit')) }}
           {{ flag_badge(device) }}{{ parts_badge(parts_badges, device.id) }}
           <span class="badge bg-secondary">{{ lot_number }}</span>
           <span class="text-muted small">L1/L2 Engineer: <span class="fw-semibold">{{ l1l2_engineer_map.get(device.id|string, '—') }}</span></span>
@@ -466,6 +467,8 @@
   });
 })();
 </script>
+{# Pencil next to the Tag Number: quick spec edit (2026-10-26). #}
+{{ spec_edit_modal() }}
 {% include "_search_tags_modal.html" %}
 {% endblock %}
 {% block scripts %}
