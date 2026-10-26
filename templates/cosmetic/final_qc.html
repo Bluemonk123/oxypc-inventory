@@ -4,16 +4,15 @@
 {% block page_title %}Final QC{% endblock %}
 {% block content %}
 
+{# Top row (2026-10-26): awaiting count on the left; Scan Tag, Entity and
+   Search Tags on the right, in that order. Scan or type a Tag Number to
+   filter the card list; Enter jumps straight to the (first) matching card. #}
 <div class="mb-3 d-flex align-items-center flex-wrap gap-2">
-  <div>
-    <span class="badge bg-warning text-dark fs-6 px-3 py-2">{{ devices|length }} device(s) awaiting Final QC</span>
-    <span class="text-muted small ms-2">Review IQC details + parts, revalidate if needed, then grade and move to Ready to Sale.</span>
-  </div>
-  {# Scan or type a Tag Number to filter the card list on the left; Enter
-     jumps straight to the (first) matching card — same flow as scanning a
-     barcode gun into a search box elsewhere in the app. #}
+  <span class="badge bg-warning text-dark fs-6 px-3 py-2">{{ devices|length }} device(s) awaiting Final QC</span>
   <div class="ms-auto d-flex align-items-center gap-2">
-    <form method="get" class="d-flex align-items-center gap-2">
+    <input type="text" id="fqcScanSearch" class="form-control form-control-sm" style="width:240px"
+           placeholder="Scan / search Tag Number…" autocomplete="off">
+    <form method="get" class="d-flex align-items-center gap-2 mb-0">
       <select name="entity" class="form-select form-select-sm" style="width:160px"
               onchange="this.form.submit()">
         <option value="">All Entities</option>
@@ -22,16 +21,35 @@
         {% endfor %}
       </select>
     </form>
-    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
+    <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" onclick="openSearchTagsModal()">
       <i class="bi bi-clock-history me-1"></i>Search Tags</button>
-    <input type="text" id="fqcScanSearch" class="form-control form-control-sm" style="width:240px"
-           placeholder="Scan / search Tag Number…" autocomplete="off">
   </div>
 </div>
 
+<style>
+  .fqc-report-pill { font-size:.7rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+    display:inline-flex; align-items:center; gap:.35em; white-space:nowrap;
+    padding:.3rem .75rem; border-radius:999px; border:1px solid #dee2e6; background:#f1f3f5; color:#6c757d; }
+  .fqc-report-pill i { font-size:1.05rem; line-height:1; }
+  /* Download pill (2026-10-26): solid Forest green, white text, for every
+     saved report; the result shows as a small chip inside it. */
+  a.fqc-report-pill { background:#129042; border-color:#129042; color:#fff; }
+  a.fqc-report-pill:hover { background:#0F7A37; border-color:#0F7A37; color:#fff; }
+  .fqc-report-status { font-size:.62rem; font-weight:700; padding:.1rem .4rem; border-radius:999px;
+    background:#fff; color:#129042; }
+  .fqc-report-status[data-state="fail"]  { background:#dc3545; color:#fff; }
+  .fqc-report-status[data-state="other"] { background:#ffc107; color:#212529; }
+  /* Tag list: Bluemonk blue Tag Number on the not-selected tags (2026-10-26). */
+  .fqc-card:not(.active) .fqc-tag { color:#0377c2; }
+  .fqc-card:not(.active) { background:#f0f4f8; }
+  .fqc-card:not(.active):hover { background:#e4ebf3; }
+
+</style>
 {% macro fld(label, value) %}<tr><th class="text-muted fw-normal" style="width:52%">{{ label }}</th><td>{{ value if (value is not none and value != '') else '—' }}</td></tr>{% endmacro %}
 
 {% if devices %}
+{# Tag list + tag details sit in one card (2026-10-26). #}
+<div class="card border-0 shadow-sm"><div class="card-body p-3">
 <div class="row g-3">
 
   <!-- 1/4: vertical clickable card list -->
@@ -40,10 +58,10 @@
       {% for device, lot_number in devices %}
       <a href="#" class="list-group-item list-group-item-action fqc-card {% if loop.first %}active{% endif %}"
          data-target="dev-{{ device.id }}" data-barcode="{{ device.barcode }}">
-        <div class="font-monospace fw-semibold">{{ device.barcode }}{{ flag_badge(device) }}{{ parts_badge(parts_badges, device.id) }}</div>
-        <div class="small {% if loop.first %}text-white-50{% else %}text-muted{% endif %}">
-          {{ device.serial_no or '—' }} — {{ device.brand or '' }} {{ device.model or '' }}
-        </div>
+        <div class="font-monospace fw-semibold fqc-tag">{{ device.barcode }}{{ flag_badge(device) }}{{ parts_badge(parts_badges, device.id) }}</div>
+        {# Tag / Serial Number / Model on separate lines (2026-10-26). #}
+        <div class="small {% if loop.first %}text-white-50{% else %}text-muted{% endif %}" title="Serial Number">Serial - {{ device.serial_no or '—' }}</div>
+        <div class="small {% if loop.first %}text-white-50{% else %}text-muted{% endif %}" title="Model">Model - {{ device.model or '—' }}</div>
       </a>
       {% endfor %}
     </div>
@@ -55,30 +73,29 @@
     {% set iqc = iqc_map.get(device.id|string) %}
     {% set rjs = repairs_map.get(device.id|string, []) %}
     <div class="fqc-detail-pane {% if not loop.first %}d-none{% endif %}" id="dev-{{ device.id }}">
-      <div class="card border-0 shadow-sm mb-2">
-        <div class="card-body py-2 d-flex align-items-center gap-2">
-          <a href="/devices/{{ device.barcode }}" class="font-monospace fw-semibold text-decoration-none">{{ device.barcode }}</a>{{ spec_edit_btn(device, can(current_user, 'cosmetic_finalqc', 'edit')) }}
-          {{ flag_badge(device) }}{{ parts_badge(parts_badges, device.id) }}
-          <span class="badge bg-secondary">{{ lot_number }}</span>
-          <span class="text-muted small">L1/L2 Engineer: <span class="fw-semibold">{{ l1l2_engineer_map.get(device.id|string, '—') }}</span></span>
-          <span class="ms-auto small">Grade:
-            {% if device.grade %}<span class="badge bg-info text-dark">{{ device.grade.value }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
-          </span>
-          {% set sr = stress_map.get(device.barcode) %}
-          {% if sr %}
-          {% if can(current_user, 'cosmetic_finalqc', 'export') %}<a href="/stress/{{ device.barcode }}/report?result_id={{ sr.result_id }}"
-             class="btn btn-sm btn-outline-primary py-0 px-2 text-nowrap"
-             title="Download Stress/QC Report{% if sr.overall_status %} — {{ sr.overall_status }}{% endif %}">
-            <i class="bi bi-file-earmark-arrow-down me-1"></i>Stress/QC Report{% if sr.overall_status %}
-            <span class="badge bg-{{ 'success' if sr.overall_status == 'PASS' else 'danger' if sr.overall_status == 'FAIL' else 'warning text-dark' }} ms-1">{{ sr.overall_status }}</span>{% endif %}
-          </a>{% endif %}
-          {% else %}
-          <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 text-nowrap" disabled
-                  title="No stress test report saved for this tag yet">
-            <i class="bi bi-file-earmark-x me-1"></i>No Stress/QC Report
-          </button>
-          {% endif %}
-        </div>
+      {# Header bar (2026-10-26): Tag, pencil, flag / parts icons, Grade on the
+         left; L1/L2 Engineer and the Stress/QC Report pill on the right. Lot
+         number removed. The pill uses the topbar CONNECTED badge's look. #}
+      <div class="d-flex align-items-center flex-wrap gap-2 px-3 py-2 mb-2 rounded border" style="background:#e7f1ff;border-color:#b6d4fe !important;">
+        <a href="/devices/{{ device.barcode }}" class="font-monospace fw-semibold text-decoration-none">{{ device.barcode }}</a>{{ spec_edit_btn(device, can(current_user, 'cosmetic_finalqc', 'edit')) }}
+        {{ flag_badge(device) }}{{ parts_badge(parts_badges, device.id) }}
+        <span class="small">Grade:
+          {% if device.grade %}<span class="badge bg-info text-dark">{{ device.grade.value }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
+        </span>
+        <span class="ms-auto text-muted small">L1/L2 Engineer: <span class="fw-semibold text-body">{{ l1l2_engineer_map.get(device.id|string, '—') }}</span></span>
+        {% set sr = stress_map.get(device.barcode) %}
+        {% if sr %}
+        {% set _st = (sr.overall_status or '') | upper %}
+        {% if can(current_user, 'cosmetic_finalqc', 'export') %}<a href="/stress/{{ device.barcode }}/report?result_id={{ sr.result_id }}"
+           class="fqc-report-pill text-decoration-none"
+           title="Download Stress/QC Report{% if sr.overall_status %} — {{ sr.overall_status }}{% endif %}">
+          <i class="bi bi-file-earmark-arrow-down"></i>Stress/QC Report{% if sr.overall_status %}
+          <span class="fqc-report-status" data-state="{{ 'pass' if _st == 'PASS' else 'fail' if _st == 'FAIL' else 'other' }}">{{ sr.overall_status }}</span>{% endif %}
+        </a>{% endif %}
+        {% else %}
+        <span class="fqc-report-pill" data-state="none" title="No stress test report saved for this tag yet">
+          <i class="bi bi-file-earmark-x"></i>No Stress/QC Report</span>
+        {% endif %}
       </div>
 
       <ul class="nav nav-tabs" id="fqcTabs-{{ loop.index }}" role="tablist">
@@ -235,6 +252,7 @@
     </div>
   </div>
 </div>
+</div></div>{# /card #}
 {% else %}
 <div class="card border-0 shadow-sm"><div class="card-body text-center text-muted py-5">No devices awaiting Final QC.</div></div>
 {% endif %}
@@ -344,8 +362,7 @@
       document.querySelectorAll('.fqc-card').forEach(function (c) { c.classList.remove('active'); });
       document.querySelectorAll('.fqc-card .text-white-50').forEach(function (el) { el.classList.replace('text-white-50', 'text-muted'); });
       card.classList.add('active');
-      var sub = card.querySelector('.small');
-      if (sub) sub.classList.replace('text-muted', 'text-white-50');
+      card.querySelectorAll('.small').forEach(function (sub) { sub.classList.replace('text-muted', 'text-white-50'); });
       document.querySelectorAll('.fqc-detail-pane').forEach(function (p) { p.classList.add('d-none'); });
       var target = document.getElementById(card.dataset.target);
       if (target) target.classList.remove('d-none');

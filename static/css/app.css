@@ -532,6 +532,17 @@ fieldset:disabled .btn {
 .filter-bar .ms-filter .btn:hover, .filter-bar .ms-filter .btn:focus,
 .filter-bar .ms-filter .btn.show { background-color: #fff !important; color: #212529 !important; border-color: #ced4da !important; }
 .filter-bar .ms-filter .btn { width: 100%; min-width: 0 !important; }
+/* One look for every field in a filter bar (2026-10-26): white background,
+   the same 1px #ced4da border and the same height, whether it is a text box,
+   the scan box, a date, a select or a multi-select button. The scan box uses
+   the same font, size and 1px border as the rest here; corners are rounded
+   8px (2026-10-26). */
+.filter-bar .form-control:not(:disabled),
+.filter-bar .form-select:not(:disabled),
+.filter-bar .ms-filter .btn { background-color: #fff !important; border: 1px solid #ced4da !important; height: 31px !important;
+  border-radius: 8px !important; }
+/* Same font as the other fields (the scan box's monospace dropped here). */
+.filter-bar .barcode-field { font-family: inherit !important; font-size: .875rem; }
 .filter-bar .ms-label { overflow: hidden; text-overflow: ellipsis; }
 /* A free-text search box gets double the share of the row; a checkbox keeps its
    natural width so its label never truncates. */
@@ -720,6 +731,16 @@ fieldset:disabled .btn {
 .gtable-cards table.gtable tbody tr:hover td::before {
   bottom: 100%; height: 5px;
   background: linear-gradient(rgba(14, 58, 122, 0), rgba(14, 58, 122, .14));
+}
+
+/* Hovered row: 8px accent on its left edge in Bluemonk blue #0377c2
+   (2026-10-26). An inset shadow on the first cell, not a border, so nothing
+   shifts. Card tables have the cell shadows cleared above, so the accent is
+   the only one there; a Global Table outside a card keeps Bootstrap's hover
+   tint (also an inset shadow) alongside it. */
+.gtable-cards table.gtable tbody tr:hover > td:first-child { box-shadow: inset 8px 0 0 #0377c2 !important; }
+table.gtable tbody tr:hover > td:first-child {
+  box-shadow: inset 8px 0 0 #0377c2, inset 0 0 0 9999px var(--bs-table-bg-state, var(--bs-table-bg-type, var(--bs-table-accent-bg)));
 }
 
 /* Footer total row (any <tfoot> in a Global Table): the standard "disabled"
