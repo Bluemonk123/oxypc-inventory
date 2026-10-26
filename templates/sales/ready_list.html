@@ -220,7 +220,7 @@
       <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
         <i class="bi bi-upload me-1"></i>Upload Tags
       </button>
-      {% if can_set_price(current_user) and can(current_user, 'sales', 'pricing') %}
+      {% if can(current_user, 'sales', 'pricing') %}
       <button type="button" id="bulkSetPriceBtn" class="btn btn-sm btn-outline-dark" disabled>
         <i class="bi bi-tag me-1"></i>Set Price (<span id="readySelCount3">0</span>)
       </button>
@@ -236,7 +236,7 @@
           <th><input type="checkbox" id="readySelectAll" class="form-check-input"></th>
           <th>Tag Number</th><th>Lot</th><th>Location ID</th><th>Brand</th><th>Model</th>
           <th>RAM</th><th>Storage</th><th>Grade</th>
-          {% if can_view_pricing(current_user) %}
+          {% if can(current_user, 'sales', 'pricing') %}
           <th title="Device-specific price if set, otherwise Lot Buying Price ÷ Lot Qty">Unit Cost</th>
           {% endif %}
           <th>Warranty</th>
@@ -356,7 +356,7 @@
               <i class="bi bi-pencil"></i>
             </button>
             {% endif %}
-            {% if can_set_price(current_user) and can(current_user, 'sales', 'pricing') %}
+            {% if can(current_user, 'sales', 'pricing') %}
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 as-is-lot-edit-btn"
                     data-lot-id="{{ r.lot_id }}" data-sub-lot="{{ r.sub_lot_number }}"
                     data-lot-number="{{ r.lot_number or '' }}"
@@ -778,10 +778,10 @@ $(document).ready(function(){
     // already knows can_view_pricing at render time.
     columnDefs: [
       { orderable: false, targets: [0, -2, -1] },
-      { visible: false, targets: [{{ 10 if can_view_pricing(current_user) else 9 }}] },
+      { visible: false, targets: [{{ 10 if can(current_user, 'sales', 'pricing') else 9 }}] },
       {# Module-level pricing: /sales/ready/data still sends Unit Cost (when the role-wide flag is on) and
          Min/Max Selling Price, so those columns stay in the header and are hidden here instead. #}
-      {% if not can(current_user, 'sales', 'pricing') %}{ visible: false, targets: [{{ '9, 12, 13' if can_view_pricing(current_user) else '11, 12' }}] },{% endif %}
+      {% if not can(current_user, 'sales', 'pricing') %}{ visible: false, targets: [{{ '9, 12, 13' if can(current_user, 'sales', 'pricing') else '11, 12' }}] },{% endif %}
     ],
     initComplete: function () {
       // Bulk buttons sit just before the table's search/scan box.

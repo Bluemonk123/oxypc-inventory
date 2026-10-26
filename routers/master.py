@@ -978,48 +978,8 @@ async def save_additional_permissions(
     )
 
 
-@router.post("/permissions/save-pricing-visibility")
-async def save_pricing_visibility(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_only),
-):
-    """Pricing Visibility tab (Batch 9) — bulk-save can_view_pricing for every
-    non-admin role in one submit, matching this page's other tabs' plain-form
-    convention. Upserts RoleAdditionalPermission rows without touching their
-    other fields (ADDITIONAL_PERMS)."""
-    form = await request.form()
-    all_roles, _ = await _role_data(db)
-
-    existing_rows = {
-        r.role_name: r for r in (await db.execute(select(RoleAdditionalPermission))).scalars().all()
-    }
-
-    for role_val, _label in all_roles:
-        if role_val == "admin":
-            continue
-        new_val = f"pricing_{role_val}" in form
-        set_price_val = f"setprice_{role_val}" in form
-        row = existing_rows.get(role_val)
-        if row:
-            row.can_view_pricing = new_val
-            row.can_set_price = set_price_val
-            row.updated_by = current_user.username
-        else:
-            db.add(RoleAdditionalPermission(role_name=role_val, can_view_pricing=new_val,
-                                             can_set_price=set_price_val,
-                                             updated_by=current_user.username))
-
-        cached = dict(_ADDITIONAL_PERM_CACHE.get(role_val) or {
-            key.removeprefix("can_"): True for key, _label in ADDITIONAL_PERMS
-        })
-        cached["view_pricing"] = new_val
-        cached["set_price"] = set_price_val
-        set_cached_additional_perms(role_val, cached)
-
-    await db.commit()
-    return RedirectResponse(
-        url="/admin/master?main_tab=pricing_visibility&success=Pricing+visibility+saved", status_code=302)
+# (Pricing Visibility tab save route removed 2026-10-26 — merged into the
+# Permission Matrix Pricing tick; see main._merge_pricing_visibility_once.)
 
 
 @router.post("/permissions/save-sub-admin")

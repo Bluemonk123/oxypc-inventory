@@ -41,12 +41,6 @@
       <i class="bi bi-shield-plus me-1"></i>Role Additional Permissions
     </a>
   </li>
-  <li class="nav-item">
-    <a class="nav-link {{ 'active' if main_tab == 'pricing_visibility' else '' }}"
-       href="/admin/master?main_tab=pricing_visibility">
-      <i class="bi bi-currency-rupee me-1"></i>Pricing Visibility
-    </a>
-  </li>
   {# Sub Admin Role tab hidden from the nav bar 2026-09-02 — the underlying
      ?main_tab=sub_admin content block and its save endpoint are untouched,
      just not linked to from here. #}
@@ -528,59 +522,12 @@
 {# TAB 4 — PRICING VISIBILITY (Batch 9)                                       #}
 {# ═══════════════════════════════════════════════════════════════════════════ #}
 {% if main_tab == 'pricing_visibility' %}
-
-{% set pricing_rows = pricing_rows|default([]) %}
-
-<form method="post" action="/admin/master/permissions/save-pricing-visibility">
-  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-  <div class="card border-0 shadow-sm">
-    <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-      <span class="fw-semibold"><i class="bi bi-currency-rupee me-2"></i>Pricing Visibility by Role</span>
-    </div>
-    <div class="card-body p-0">
-      <div class="alert alert-info m-3 mb-0">
-        <i class="bi bi-info-circle me-2"></i>
-        When <strong>enabled</strong> for a role, users in that role can see pricing columns/fields
-        (unit price, sale price, cost, etc.) everywhere in the app. When <strong>disabled</strong>,
-        pricing is hidden from that role everywhere. <strong>Set Price</strong> controls the Set price and
-        Bulk Set price buttons on Ready to Sale (Tag table and As-Is Lot table). Admin always has both.
-      </div>
-      <div class="table-responsive mt-3">
-        <table class="table table-hover mb-0">
-          <thead class="table-dark">
-            <tr><th>Role</th><th class="text-center" style="width:160px">Pricing Visible</th>
-                <th class="text-center" style="width:160px" title="Set price / Bulk Set price buttons on Ready to Sale">Set Price</th></tr>
-          </thead>
-          <tbody>
-            {% for rval, rlabel, visible, set_price in pricing_rows %}
-            <tr>
-              <td class="fw-semibold">{{ rlabel }}</td>
-              <td class="text-center">
-                <div class="form-check d-flex justify-content-center">
-                  <input class="form-check-input" type="checkbox"
-                         name="pricing_{{ rval }}" {% if visible %}checked{% endif %}>
-                </div>
-              </td>
-              <td class="text-center">
-                <div class="form-check d-flex justify-content-center">
-                  <input class="form-check-input" type="checkbox"
-                         name="setprice_{{ rval }}" {% if set_price %}checked{% endif %}>
-                </div>
-              </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="3" class="text-center text-muted py-4">No roles found.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      <div class="px-3 py-3 border-top">
-        <button type="submit" class="btn btn-primary px-4"><i class="bi bi-save me-1"></i>Save Pricing Visibility</button>
-      </div>
-    </div>
-  </div>
-</form>
-
+{# Pricing Visibility was merged into the Permission Matrix's Pricing tick (2026-10-26). #}
+<div class="alert alert-info">
+  <i class="bi bi-info-circle me-2"></i>Pricing Visibility has moved into the
+  <a href="/admin/master?main_tab=permissions" class="alert-link">Permission Matrix</a>: the <strong>Pricing</strong>
+  tick on each module now controls seeing and changing prices there (Ready to Sale's Pricing tick also controls Set Price).
+</div>
 {% endif %}{# end tab 4 #}
 
 {# ═══════════════════════════════════════════════════════════════════════════ #}

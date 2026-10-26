@@ -249,12 +249,13 @@ async def ready_list_data(
     _can_sell_row = _hp_sell(current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role), "sales", "add")
     from sqlalchemy import desc as _desc, asc as _asc
     from html import escape
-    from models.role_permissions import can_view_pricing as _cvp
+    from models.role_permissions import has_perm as _hp
 
     role = getattr(current_user.role, "value", current_user.role)
-    show_pricing = _cvp(role)
-    from models.role_permissions import can_set_price as _csp
-    show_set_price = _csp(role)
+    # Permission Matrix -> Ready to Sale -> Pricing: see AND set prices
+    # (replaces the old Pricing Visibility tab, 2026-10-26).
+    show_pricing = _hp(role, "sales", "pricing")
+    show_set_price = show_pricing
     rates = await load_ready_rates(db)
 
     # As-Is sub-lot devices (non-empty sub_lot_number) are locked to the As-Is
@@ -481,7 +482,7 @@ async def ready_list_data(
                 action += f'<span class="badge bg-danger align-self-center ms-1" title="{esc(rejected_notes)}">Rejected</span>'
             action += (f'<button class="btn btn-sm btn-outline-primary ms-1 d-none" data-bs-toggle="modal" data-bs-target="#dispatchModal" '
                       f'data-barcode="{esc(d.barcode)}" data-model="{esc((d.brand or "") + " " + (d.model or ""))}">Request</button>')
-        if show_set_price:  # Master Data → Pricing Visibility → Set Price
+        if show_set_price:  # Permission Matrix → Ready to Sale → Pricing
             action += (f'<button type="button" class="btn btn-sm btn-outline-dark ms-1 tag-set-price-btn" '
                       f'data-barcode="{esc(d.barcode)}" '
                       f'data-min="{d.min_selling_price if d.min_selling_price is not None else ""}" '
@@ -790,8 +791,8 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
 def _role_can_set_price(user) -> bool:
     """Master Data → Pricing Visibility → Set Price, enforced on the server too
     so a hidden button can't be bypassed with a direct request."""
-    from models.role_permissions import can_set_price as _csp
-    return _csp(getattr(user.role, "value", user.role))
+    from models.role_permissions import has_perm as _hp
+    return _hp(getattr(user.role, "value", user.role), "sales", "pricing")
 
 
 @router.post("/sales/ready/as-is-lot/price")
@@ -2203,10 +2204,10 @@ async def sales_list_data(
     from the table — the difference is only how much travels per request.
     """
     from sqlalchemy import desc as _desc, asc as _asc
-    from models.role_permissions import can_view_pricing as _cvp
+    from models.role_permissions import has_perm as _hp
 
     role = getattr(current_user.role, "value", current_user.role)
-    show_pricing = _cvp(role)
+    show_pricing = _hp(role, "sales_list", "pricing")   # Permission Matrix -> Sales List -> Pricing
 
     base_join = (
         select(Sale, Device.barcode, Device.brand, Device.model, Device.grade,

@@ -174,7 +174,6 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/master/bulk-upload/{category}'): None,  # bulk_upload_category: admin-only master data
     ('POST', '/admin/master/permissions/save'): None,  # save_role_permissions: permission matrix itself
     ('POST', '/admin/master/permissions/save-additional'): None,  # save_additional_permissions: permission matrix itself
-    ('POST', '/admin/master/permissions/save-pricing-visibility'): None,  # save_pricing_visibility: permission matrix itself
     ('POST', '/admin/master/permissions/save-sub-admin'): None,  # save_sub_admin_permissions: permission matrix itself
     ('POST', '/admin/master/permissions/add-role'): None,  # add_custom_role: role management, admin-only
     ('POST', '/admin/master/permissions/edit-role/{role_id}'): None,  # edit_custom_role: role management, admin-only

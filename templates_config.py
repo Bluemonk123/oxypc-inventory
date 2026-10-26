@@ -118,7 +118,6 @@ from models.role_permissions import (
     is_narrowly_scoped_to as _is_narrowly_scoped_to_fn,
     get_cached_sidebar_label as _sidebar_label,
     get_cached_page_title as _get_cached_page_title,
-    can_view_pricing as _can_view_pricing_by_role,
 )
 
 
@@ -132,23 +131,18 @@ def _has_explicit_perm(role, module):
 
 
 def _can_view_pricing(current_user):
-    """Template helper: {% if can_view_pricing(current_user) %}. Accepts the
-    current_user object (not a bare role string) since that's what every
-    template already has in context — resolves its .role.value internally."""
+    """Kept for old templates: the Pricing Visibility tab was merged into the
+    Permission Matrix (2026-10-26) — now Ready to Sale's Pricing tick."""
     if current_user is None:
         return True
-    role_val = getattr(getattr(current_user, "role", None), "value", None) or str(getattr(current_user, "role", ""))
-    return _can_view_pricing_by_role(role_val)
+    return _can(current_user, "sales", "pricing")
 
 
 def _can_set_price(current_user):
-    """Template helper: {% if can_set_price(current_user) %} — the Pricing
-    Visibility tab's Set Price column (Ready to Sale's Set price buttons)."""
+    """Kept for old templates: Ready to Sale's Pricing tick (2026-10-26)."""
     if current_user is None:
         return True
-    from models.role_permissions import can_set_price as _csp
-    role_val = getattr(getattr(current_user, "role", None), "value", None) or str(getattr(current_user, "role", ""))
-    return _csp(role_val)
+    return _can(current_user, "sales", "pricing")
 
 
 def _any_perm(role, *modules):
@@ -253,15 +247,12 @@ def _can(current_user, module, action="enable"):
     """Template helper (2026-10-25): {% if can(current_user, 'grn', 'add') %}.
     `module` may be one key or a list (allowed if any of them allows it).
     Admin always True. Actions: enable, add, upload, edit, delete, pricing.
-    Pricing also respects the older app-wide Pricing Visibility switch."""
+    (The old app-wide Pricing Visibility tab was merged into Pricing, 2026-10-26.)"""
     if not current_user:
         return False
     role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
     mods = (module,) if isinstance(module, str) else tuple(module)
-    ok = any(_has_perm(role, m, action) for m in mods)
-    if ok and action == "pricing":
-        ok = _can_view_pricing_by_role(role)
-    return ok
+    return any(_has_perm(role, m, action) for m in mods)
 # Actions: enable, add, upload, edit, delete, pricing, export (Download / Export, 2026-10-26).
 
 

@@ -587,6 +587,7 @@ async def startup_event():
         async with _ASL() as _sess:
             await _backfill_action_perms_once(_sess)
             await _backfill_export_perm_once(_sess)
+            await _merge_pricing_visibility_once(_sess)
             await load_all_permissions_to_cache(_sess)
         print("  [Perms] Role permission cache loaded")
     except Exception as _pe:
@@ -902,6 +903,52 @@ async def _backfill_export_perm_once(sess) -> None:
         {"v": str(res.rowcount)})
     await sess.commit()
     print(f"  [Perms] Download / Export tick backfilled on {res.rowcount} enabled matrix row(s)")
+
+
+async def _merge_pricing_visibility_once(sess) -> None:
+    """One-time (2026-10-26): the old app-wide Pricing Visibility tab is merged
+    into the Permission Matrix's per-module Pricing tick, and the tab removed.
+      - "Pricing Visible" off -> Pricing unticked on every module of that role
+        (a matrix row is added for any module the role has no row for, with
+        Enable as it was and every other tick on, so nothing else changes);
+      - "Set Price" off -> Pricing unticked on Ready to Sale ('sales').
+    The old role_additional_permissions columns are left as they are.
+    Recorded in app_settings like the backfills above."""
+    from sqlalchemy import text as _t
+    import uuid as _uuid
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'pricing_visibility_merge_v1'"))).first()
+    if done:
+        return
+    from routers.master import PERM_MODULES
+    from models.role_permissions import DEFAULT_DISABLED_MODULES
+    modules = [m[0] for m in PERM_MODULES]
+    rows = (await sess.execute(_t(
+        "SELECT role_name, can_view_pricing, can_set_price FROM role_additional_permissions "
+        "WHERE role_name <> 'admin' AND (can_view_pricing IS FALSE OR can_set_price IS FALSE)"))).all()
+    no_view, no_set, added = [], [], 0
+    for role, view, setp in rows:
+        targets = modules if view is False else ["sales"]
+        (no_view if view is False else no_set).append(role)
+        have = {m for (m,) in (await sess.execute(_t(
+            "SELECT module FROM role_module_permissions WHERE role_name = :r"), {"r": role})).all()}
+        for m in targets:
+            if m in have:
+                await sess.execute(_t("UPDATE role_module_permissions SET can_pricing = FALSE "
+                                      "WHERE role_name = :r AND module = :m"), {"r": role, "m": m})
+            else:
+                await sess.execute(_t(
+                    "INSERT INTO role_module_permissions (id, role_name, module, can_enable, can_add, can_edit, "
+                    "can_upload, can_delete, can_pricing, can_export, updated_at, updated_by) VALUES "
+                    "(:id, :r, :m, :en, TRUE, TRUE, TRUE, TRUE, FALSE, TRUE, now(), 'system')"),
+                    {"id": str(_uuid.uuid4()), "r": role, "m": m, "en": m not in DEFAULT_DISABLED_MODULES})
+                added += 1
+    note = f"pricing hidden: {','.join(no_view) or '-'}; set price off: {','.join(no_set) or '-'}; rows added: {added}"
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('pricing_visibility_merge_v1', :v, 'Pricing Visibility merged into the Permission Matrix', "
+        "'system', now())"), {"v": note[:500]})
+    await sess.commit()
+    print(f"  [Perms] Pricing Visibility merged into the matrix — {note}")
 
 
 if __name__ == "__main__":

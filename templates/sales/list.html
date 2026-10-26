@@ -182,7 +182,7 @@
           <th>Sale#</th><th>Invoice</th><th>Date</th><th>Tag Number</th>
           <th>Brand/Model</th>
           <th>Lot</th>
-          <th>Grade</th><th>Stock Type</th>{% if can_view_pricing(current_user) %}<th>Cost/Unit</th><th>Price</th><th>Margin</th>{% endif %}
+          <th>Grade</th><th>Stock Type</th>{% if can(current_user, 'sales_list', 'pricing') %}<th>Cost/Unit</th><th>Price</th><th>Margin</th>{% endif %}
           <th>Customer</th>
           <th>Payment</th><th>By</th><th>Sales Person</th><th>Download</th><th>Action</th>
         </tr>
@@ -337,7 +337,7 @@ function exportSelected() {
 // 9,000 rows. Search and paging still reach EVERY record — they are simply
 // answered by the server instead of by the browser, so nothing is hidden.
 $(document).ready(function() {
-  var showPricing = {{ 'true' if can_view_pricing(current_user) else 'false' }};
+  var showPricing = {{ 'true' if can(current_user, 'sales_list', 'pricing') else 'false' }};
   // Column indices shift when pricing columns are hidden from the role. Stock
   // Type (column 7, after Grade) pushed everything after it one place later.
   // Invoice (column 2, after Sale#) pushed everything after it one more place.

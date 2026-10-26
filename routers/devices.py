@@ -583,11 +583,11 @@ async def device_search_data(
     a page at a time; search, sort and paging still reach every device.
     """
     from sqlalchemy import desc as _desc, asc as _asc
-    from models.role_permissions import can_view_pricing as _cvp
+    from models.role_permissions import has_perm as _hp
     from html import escape
 
     role = getattr(current_user.role, "value", current_user.role)
-    show_pricing = _cvp(role)
+    show_pricing = _hp(role, "devices", "pricing")   # Permission Matrix -> Inventory Search -> Pricing
 
     page_filters = _device_search_filters(q, stage, lot, grade, category, device_type, date_from, date_to,
                                      entity=entity, exclude_sold=_exclude_sold(exclude_sold, fs),
@@ -1255,8 +1255,8 @@ async def model_summary_data(
     columns (one row per distinct combination incl. entity / touch / stock /
     grade), then folded in Python into the displayed rows — the RAM / Storage
     text is derived from several columns, same as the Tag table."""
-    from models.role_permissions import can_view_pricing as _cvp
-    show_pricing = _cvp(getattr(current_user.role, "value", current_user.role))
+    from models.role_permissions import has_perm as _hp
+    show_pricing = _hp(getattr(current_user.role, "value", current_user.role), "devices", "pricing")
 
     page_scope = await _ms_page_scope(db, q, stage, lot, grade, category, device_type, date_from,
                                       date_to, employee, entity, exclude_sold, fs, tsearch, stock_type, pna)
