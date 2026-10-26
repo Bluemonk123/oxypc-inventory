@@ -90,11 +90,12 @@
   {# Open / Closed WorkIDs tiles hidden (2026-10-24); Total Scrap and Total
      Customer Return added. Total Scrap ignores the Scrap Type filter. #}
   {# Each tile filters the table on click (2026-10-24); click again to clear. #}
-  {% for key, label, n, bg, icon in [('scrap', 'Total Scrap', tile_counts.total_scrap, '#343a40', 'bi-recycle'),
-      ('cr', 'Total Customer Return', tile_counts.total_cust_return, '#6c757d', 'bi-arrow-return-left'),
-      ('assigned', 'Assigned Tags', tile_counts.open_tags, '#0d6efd', 'bi-tag'),
-      ('ongoing', 'Ongoing Tags', tile_counts.ongoing_tags, '#f0ad00', 'bi-hourglass-split'),
+  {# Order (2026-10-26): Assigned, Completed, Ongoing, Customer Return, Scrap, PNA. #}
+  {% for key, label, n, bg, icon in [('assigned', 'Assigned Tags', tile_counts.open_tags, '#0d6efd', 'bi-tag'),
       ('completed', 'Completed Tags', tile_counts.completed_tags, '#0F7A37', 'bi-check-circle'),
+      ('ongoing', 'Ongoing Tags', tile_counts.ongoing_tags, '#f0ad00', 'bi-hourglass-split'),
+      ('cr', 'Total Customer Return', tile_counts.total_cust_return, '#6c757d', 'bi-arrow-return-left'),
+      ('scrap', 'Total Scrap', tile_counts.total_scrap, '#343a40', 'bi-recycle'),
       ('pna', 'Total PNA', tile_counts.total_pna, '#dc3545', 'bi-exclamation-triangle')] %}
   <div class="col-6 col-md-4 col-xl-2">
     <div class="pm-tile wid-tile p-3 h-100" data-tile="{{ key }}" role="button" tabindex="0"

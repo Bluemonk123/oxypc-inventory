@@ -71,7 +71,7 @@
           <thead class="table-dark">
             <tr>
               <th>Tag Number</th><th>Lot</th><th>Brand / Model</th>
-              <th>Grade</th><th>Stage</th><th>Trashed On</th><th>Action</th>
+              <th>Grade</th><th>Stage</th><th>Trashed On</th><th>Updated On</th><th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -92,6 +92,8 @@
               </td>
               <td><span class="badge bg-light text-dark">{{ dev.current_stage.value }}</span></td>
               <td class="text-muted" data-order="{{ dev.trashed_at.strftime('%Y%m%d%H%M%S') if dev.trashed_at else '' }}">{{ dev.trashed_at.strftime('%d-%m-%Y %H:%M') if dev.trashed_at else '—' }}</td>
+              {# Updated On (2026-10-26): the tag's last change (Device.updated_at). #}
+              <td class="text-muted text-nowrap" data-order="{{ dev.updated_at.strftime('%Y%m%d%H%M%S') if dev.updated_at else '' }}">{{ dev.updated_at.strftime('%d-%m-%Y %H:%M') if dev.updated_at else '—' }}</td>
               <td class="text-nowrap">
                 {% if can(current_user, 'location_trash', 'edit') %}
                 <form method="post" action="/trash/devices/{{ dev.barcode | urlencode }}/restore" style="display:inline">

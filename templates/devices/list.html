@@ -91,6 +91,25 @@
   {% endfor %}
 </div>
 
+{# Tabs (2026-10-26): All Tags / Model Summary / Lot Summary, one table each.
+   The last-open tab is remembered per browser tab (sessionStorage) so a
+   filter submit reloads back onto the same tab. #}
+<ul class="nav nav-tabs mb-0" id="invTabs">
+  <li class="nav-item">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#invTagsTab" type="button">
+      <i class="bi bi-hdd-stack me-1"></i>All Tags</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#invModelTab" type="button">
+      <i class="bi bi-collection me-1"></i>Model Summary</button>
+  </li>
+  <li class="nav-item">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#invLotTab" type="button">
+      <i class="bi bi-box-seam me-1"></i>Lot Summary</button>
+  </li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="invTagsTab">
 <!-- Device Table -->
 {# No .table-responsive wrapper here — initGlobalTable's scrollX already owns
    horizontal scrolling (with the first column frozen via sticky position),
@@ -114,15 +133,16 @@
       <button type="button" id="customiseBtn" class="btn btn-outline-primary btn-sm d-none" onclick="openCustomiseModal('devices')">
         <i class="bi bi-sliders me-1"></i>Customise (<span id="customiseCount">0</span>)
       </button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
-        <i class="bi bi-upload me-1"></i>Upload Tags
-      </button>
       <a {% if not can(current_user, 'devices', 'export') %}hidden {% endif %}id="exportCsvLink"
          href="/devices/export?q={{ q | urlencode }}&stage={{ stage | urlencode }}&lot={{ lot | urlencode }}&grade={{ grade | urlencode }}&category={{ category | urlencode }}&device_type={{ device_type | urlencode }}&entity={{ entity | urlencode }}&stock_type={{ stock_type | urlencode }}&pna={{ pna | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}&exclude_sold={{ '1' if exclude_sold else '' }}&fs=1"
          class="btn btn-sm btn-outline-success" onclick="return submitExport(event)"
          title="Exports the selected Tag Numbers, or every filtered result if none are ticked">
         <i class="bi bi-download me-1"></i><span id="exportCsvLabel">Export CSV</span>
       </a>
+      {# After Export, solid primary (2026-10-26). #}
+      <button type="button" class="btn btn-sm btn-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
+        <i class="bi bi-upload me-1"></i>Upload Tags
+      </button>
     </div>
   </div>
   <div class="card-body p-0">
@@ -154,6 +174,8 @@
       </table>
   </div>
 </div>
+
+</div>{# /#invTagsTab #}
 
 <form id="bulkTrashForm" method="post" action="/trash/bulk/devices" style="display:none">
   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
@@ -194,6 +216,7 @@
   </div>
 </div>
 
+<div class="tab-pane fade" id="invModelTab">
 <!-- Model Based Table -->
 {# Model Summary (2026-10-10): one row per Model + Make + Device Type + CPU +
    RAM + Storage, built from exactly the devices the Tag table above shows
@@ -202,7 +225,7 @@
    table's own filters change. Its search box covers Make / Model / CPU / RAM /
    Storage (words together or alone); the Total row (tfoot) sums only the rows
    that search leaves visible. #}
-<div class="card border-0 shadow-sm mt-3">
+<div class="card border-0 shadow-sm">
   <div class="card-header bg-white py-2">
     {# Title, the 6 filters and Reset stay on ONE line: the filters share the
        space left after the title and shrink together (text ends in "…"). #}
@@ -254,8 +277,11 @@
   </div>
 </div>
 
+</div>{# /#invModelTab #}
+
+<div class="tab-pane fade" id="invLotTab">
 <!-- Lot Based Table -->
-<div class="card border-0 shadow-sm mt-3">
+<div class="card border-0 shadow-sm">
   {# Same Global Table convention as Model Based Summary above: search moves
      into the table's own toolbar (this one keeps its old global-search
      behavior, unlike Model Based's column-scoped search — see the
@@ -335,6 +361,9 @@
       </table>
   </div>
 </div>
+
+</div>{# /#invLotTab #}
+</div>{# /.tab-content #}
 
 <!-- Model Detail Modal -->
 <div class="modal fade" id="modelDetailModal" tabindex="-1">
@@ -981,5 +1010,27 @@ document.getElementById('bulkTagBtn').addEventListener('click', async function()
     this.disabled = false;
   }
 });
+</script>
+<script>
+/* Inventory tabs (2026-10-26): reopen the last tab after a reload, and
+   re-measure DataTables when a tab is shown — a table initialised inside a
+   hidden tab has zero-width columns until it's adjusted. */
+(function () {
+  var KEY = 'devicesInvTab';
+  document.querySelectorAll('#invTabs [data-bs-toggle="tab"]').forEach(function (btn) {
+    btn.addEventListener('shown.bs.tab', function () {
+      try { sessionStorage.setItem(KEY, btn.getAttribute('data-bs-target')); } catch (e) {}
+      if (window.jQuery && $.fn.dataTable) {
+        $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+      }
+    });
+  });
+  var saved = null;
+  try { saved = sessionStorage.getItem(KEY); } catch (e) {}
+  if (saved && saved !== '#invTagsTab') {
+    var b = document.querySelector('#invTabs [data-bs-target="' + saved + '"]');
+    if (b && window.bootstrap) bootstrap.Tab.getOrCreateInstance(b).show();
+  }
+})();
 </script>
 {% endblock %}
