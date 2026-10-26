@@ -61,7 +61,7 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i>Sourcing Funnel</span>
-        <a href="/crm/sourcing/new" class="btn btn-sm btn-primary"><i class="bi bi-plus"></i> New Deal</a>
+        {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary"><i class="bi bi-plus"></i> New Deal</a>{% endif %}
       </div>
       <div class="card-body py-2">
         {% set stages_to_show = [('lead','Lead'), ('contacted','Contacted'), ('inspection','Inspection'), ('negotiation','Negotiation'), ('agreed','Agreed'), ('po_raised','PO Raised')] %}
@@ -87,7 +87,7 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-graph-up-arrow me-1 text-info"></i>Sales Funnel</span>
-        <a href="/crm/sales/new" class="btn btn-sm btn-info text-white"><i class="bi bi-plus"></i> New Opp</a>
+        {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-sm btn-info text-white"><i class="bi bi-plus"></i> New Opp</a>{% endif %}
       </div>
       <div class="card-body py-2">
         {% set sstages = [('lead','Lead'), ('contacted','Contacted'), ('quoted','Quoted'), ('negotiation','Negotiation'), ('confirmed','Confirmed'), ('invoiced','Invoiced')] %}
@@ -136,11 +136,13 @@
               {% endif %}
             {% endif %}
             <div class="small text-muted">{{ act.summary[:60] }}{% if act.summary|length > 60 %}…{% endif %}</div>
+            {% if can(current_user, 'crm_dashboard', 'edit') %}
             <form method="post" action="/crm/activities/{{ act.id }}/done" class="mt-1">
               <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
               <input type="hidden" name="redirect_to" value="/procure-dashboard">
               <button class="btn btn-xs btn-outline-success btn-sm py-0 px-2" style="font-size:.7rem">✓ Mark Done</button>
             </form>
+            {% endif %}
           </div>
           {% endfor %}
         </div>
@@ -157,10 +159,10 @@
 <div class="row g-2 mb-4">
   <div class="col-12">
     <div class="d-flex gap-2 flex-wrap">
-      <a href="/crm/contacts/new" class="btn btn-outline-secondary btn-sm"><i class="bi bi-person-plus me-1"></i>Add Contact</a>
-      <a href="/crm/sourcing/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>New Sourcing Deal</a>
-      <a href="/crm/sales/new" class="btn btn-outline-info btn-sm"><i class="bi bi-graph-up me-1"></i>New Sales Opportunity</a>
-      <a href="/crm/quotes/new" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-text me-1"></i>New Quote</a>
+      {% if can(current_user, 'crm_contacts', 'add') %}<a href="/crm/contacts/new" class="btn btn-outline-secondary btn-sm"><i class="bi bi-person-plus me-1"></i>Add Contact</a>{% endif %}
+      {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>New Sourcing Deal</a>{% endif %}
+      {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-outline-info btn-sm"><i class="bi bi-graph-up me-1"></i>New Sales Opportunity</a>{% endif %}
+      {% if can(current_user, 'crm_quotes', 'add') %}<a href="/crm/quotes/new" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-text me-1"></i>New Quote</a>{% endif %}
       <a href="/crm/activities/followups" class="btn btn-outline-warning btn-sm"><i class="bi bi-bell me-1"></i>All Follow-ups</a>
     </div>
   </div>
@@ -223,9 +225,11 @@
               <td class="text-muted" style="max-width:180px; white-space:normal;">{{ r.notes or r.sourcing_notes or '—' }}</td>
               <td>
                 {% if is_sm and r.status in ('open', 'partially_fulfilled') %}
+                {% if can(current_user, 'crm_dashboard', 'edit') %}
                 <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#closeSourcingDealModal"
                         data-req="{{ r.id }}"
                         data-model="{{ r.sub_category or 'Any' }} — {{ r.brand or '' }} {{ r.model or '' }}">Close Deal</button>
+                {% endif %}
                 {% else %}<span class="text-muted">—</span>{% endif %}
               </td>
             </tr>
@@ -293,8 +297,10 @@
                 {% if s.status == 'closed' %}
                 <span class="badge bg-success">Closed</span>
                 {% elif is_sm %}
+                {% if can(current_user, 'crm_dashboard', 'edit') %}
                 <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#closeDealModal"
                         data-sr="{{ s.id }}" data-part="{{ s.part_name }}">Close Deal</button>
+                {% endif %}
                 {% else %}<span class="text-muted">—</span>{% endif %}
               </td>
             </tr>

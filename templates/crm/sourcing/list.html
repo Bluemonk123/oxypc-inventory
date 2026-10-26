@@ -29,7 +29,7 @@
     <a href="/crm/sourcing" class="btn btn-sm btn-outline-secondary">Clear</a>
     {% endif %}
   </form>
-  <a href="/crm/sourcing/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle me-1"></i>New Deal</a>
+  {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle me-1"></i>New Deal</a>{% endif %}
 </div>
 
 <!-- Summary cards -->
@@ -108,7 +108,7 @@
             {% set line_totals = line_totals_map.get(d.id|string) %}
             <td class="small">{{ line_totals.qty if line_totals else '—' }}</td>
             <td class="small">
-              {% if line_totals and line_totals.value %}₹{{ ((line_totals.value) | inr) }}
+              {% if line_totals and line_totals.value and can(current_user, 'crm_sourcing', 'pricing') %}₹{{ ((line_totals.value) | inr) }}
               {% else %}—{% endif %}
             </td>
             <td>
@@ -118,7 +118,7 @@
             {% set has_po = latest_po_map.get(d.id|string) %}
             {% set has_any_file = has_po or d.purchase_invoice_path or d.purchase_order_path or d.eway_bill_path or d.quote_received_path %}
             <td class="text-center">
-              {% if has_any_file %}
+              {% if has_any_file and can(current_user, 'crm_sourcing', 'export') %}
               <div class="dropdown">
                 <button class="btn btn-sm btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown">
                   <i class="bi bi-file-earmark-arrow-down me-1"></i>Download
@@ -148,7 +148,7 @@
             <td>
               <div class="btn-group btn-group-sm">
                 <a href="/crm/sourcing/{{ d.id }}" class="btn btn-outline-primary" title="View"><i class="bi bi-eye"></i></a>
-                <a href="/crm/sourcing/{{ d.id }}/edit" class="btn btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>
+                {% if can(current_user, 'crm_sourcing', 'edit') %}<a href="/crm/sourcing/{{ d.id }}/edit" class="btn btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>{% endif %}
               </div>
             </td>
           </tr>

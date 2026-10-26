@@ -5,9 +5,11 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-4">
   <p class="text-muted mb-0">Monthly physical audits — compare system records vs actual floor count</p>
+  {% if can(current_user, 'location_audit', 'add') %}
   <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newAuditModal">
     <i class="bi bi-clipboard-plus me-1"></i> Initiate New Audit
   </button>
+  {% endif %}
 </div>
 
 <!-- Audit history table -->

@@ -16,9 +16,11 @@
 {% endif %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h5 class="mb-0 fw-bold">Parts GRN</h5>
+  {% if can(current_user, 'spare_parts', 'add') %}
   <a href="/parts-grn/new" class="btn btn-primary btn-sm">
     <i class="bi bi-plus-circle me-1"></i>New GRN
   </a>
+  {% endif %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -47,15 +49,17 @@
             <td>{{ g.invoice_number or '—' }}</td>
             <td>{{ g.date_received.strftime('%d-%m-%Y') if g.date_received else '—' }}</td>
             <td>{{ g.total_physical_qty or '—' }}</td>
-            <td>{% if g.invoice_value %}₹{{ ((g.invoice_value) | inr(2)) }}{% else %}—{% endif %}</td>
+            <td>{% if can(current_user, 'spare_parts', 'pricing') %}{% if g.invoice_value %}₹{{ ((g.invoice_value) | inr(2)) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
             <td class="text-muted">{{ g.created_by or '—' }}</td>
             <td class="text-nowrap">
               <a href="/parts-grn/{{ g.id }}" class="btn btn-xs btn-outline-primary btn-sm py-0 px-2">View</a>
+              {% if can(current_user, 'spare_parts', 'delete') %}
               <button type="button" class="btn btn-xs btn-outline-danger btn-sm py-0 px-2 ms-1"
                       onclick="if(confirm('Delete GRN {{ g.grn_number }}?')) { document.getElementById('delGrn_{{ loop.index }}').submit(); }"
                       title="Delete">
                 <i class="bi bi-trash3"></i>
               </button>
+              {% endif %}
               <form id="delGrn_{{ loop.index }}" method="post" action="/parts-grn/{{ g.id }}/delete" style="display:none">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
               </form>

@@ -56,8 +56,8 @@
           <td><code>{{ code }}</code></td>
           <td>{{ name }}</td>
           <td>{{ pur.qty }}</td>
-          <td>₹{{ ((pur.unit_price) | inr(2)) }}</td>
-          <td class="fw-semibold">₹{{ ((pur.total_price) | inr) }}</td>
+          <td>{% if can(current_user, 'spare_parts', 'pricing') %}₹{{ ((pur.unit_price) | inr(2)) }}{% else %}—{% endif %}</td>
+          <td class="fw-semibold">{% if can(current_user, 'spare_parts', 'pricing') %}₹{{ ((pur.total_price) | inr) }}{% else %}—{% endif %}</td>
           <td class="text-muted">{{ pur.supplier or '—' }}</td>
           <td class="text-muted">{{ pur.invoice_no or '—' }}</td>
           <td class="text-muted">{{ pur.purchased_by }}</td>

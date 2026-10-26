@@ -32,7 +32,7 @@
           <select id="l34CustRetFilter" class="form-select form-select-sm" style="width:190px" title="Customer Return">
             <option value="">Customer Return: All</option><option value="1">Customer Return: Yes</option><option value="0">Customer Return: No</option>
           </select>
-          <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l34ExportBtn"
+          <button {% if not can(current_user, 'repair_l3', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l34ExportBtn"
                   title="Export the rows shown (current filters / search) to CSV">
             <i class="bi bi-download me-1"></i>Export (<span id="l34ExportBtnCount">0</span>)</button>
         </div>
@@ -94,17 +94,23 @@
                   {% if not it.mine and not full_queue %}
                     {# Someone else's tag — Pick This (WorkID column) first. #}
                   {% elif it.status == 'Repair Started' %}
+                    {% if can(current_user, 'repair_l3', 'edit') %}
                     <button type="button" class="btn btn-sm btn-success complete-btn"
                             data-device="{{ it.device_id }}" data-barcode="{{ it.barcode }}">Mark Complete</button>
+                    {% endif %}
+                    {% if can(current_user, 'repair_l3', 'edit') %}
                     <button type="button" class="btn btn-sm btn-danger scrap-btn"
                             data-device="{{ it.device_id }}" data-barcode="{{ it.barcode }}">
                       <i class="bi bi-trash3"></i> Scrap</button>
+                    {% endif %}
                   {% else %}
+                    {% if can(current_user, 'repair_l3', 'edit') %}
                     <form method="post" action="/repair/l3l4-start" class="d-inline">
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ it.device_id }}">
                       <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-play-fill"></i> Start Repair</button>
                     </form>
+                    {% endif %}
                   {% endif %}
                   {# Request Part — plain link to the device page, same pattern
                      as L1/L2's own Request Part (2026-09-09), replacing the

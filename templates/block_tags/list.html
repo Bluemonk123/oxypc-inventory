@@ -36,9 +36,11 @@
             </select>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="bfClear">Clear</button>
           </div>
+          {% if can(current_user, 'block_tags', 'add') %}
           <button type="button" class="btn btn-sm btn-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#newBlockModal">
             <i class="bi bi-plus-lg me-1"></i>New Block Tags
           </button>
+          {% endif %}
         </div>
       </div>
       <div class="card-body">
@@ -50,10 +52,10 @@
            .prepend(...) call in the script block. Kept server-rendered here
            rather than JS-authored from scratch, just relocated. #}
         <div id="blockActionButtons" class="d-flex gap-2 d-none">
-          <button type="button" id="blockExportSelectedBtn" class="btn btn-sm btn-outline-warning" disabled>
+          <button {% if not can(current_user, 'block_tags', 'export') %}hidden {% endif %}type="button" id="blockExportSelectedBtn" class="btn btn-sm btn-outline-warning" disabled>
             <i class="bi bi-download me-1"></i>Export Selected
           </button>
-          <button type="button" id="blockBulkReleaseBtn" class="btn btn-sm btn-outline-primary" disabled>
+          <button {% if not can(current_user, 'block_tags', 'edit') %}hidden {% endif %}type="button" id="blockBulkReleaseBtn" class="btn btn-sm btn-outline-primary" disabled>
             <i class="bi bi-unlock me-1"></i>Bulk Release
           </button>
           {# Upload a list of Block IDs / Tag Numbers to tick those rows for the
@@ -64,7 +66,7 @@
                     title="Upload a .csv or .xlsx with block_id and/or tag_number columns to select those rows">
               <i class="bi bi-upload me-1"></i>Upload to Select
             </button>
-            <button type="button" id="blockUploadTemplateBtn" class="btn btn-sm btn-outline-dark"
+            <button {% if not can(current_user, 'block_tags', 'export') %}hidden {% endif %}type="button" id="blockUploadTemplateBtn" class="btn btn-sm btn-outline-dark"
                     title="Download a sample upload file"><i class="bi bi-file-earmark-arrow-down"></i></button>
           </div>
           <input type="file" id="blockUploadFile" accept=".csv,.txt,.xlsx,.xlsm" class="d-none">
@@ -281,10 +283,10 @@
         <iframe id="bpFrame" src="" style="width:100%;height:380px;border:0;"></iframe>
       </div>
       <div class="modal-footer justify-content-center">
-        <a id="bpDownloadBtn" href="#" class="btn btn-outline-success btn-sm">
+        <a {% if not can(current_user, 'block_tags', 'export') %}hidden {% endif %}id="bpDownloadBtn" href="#" class="btn btn-outline-success btn-sm">
           <i class="bi bi-download me-1"></i>Download
         </a>
-        <button type="button" id="bpPrintBtn" class="btn btn-primary btn-sm">
+        <button {% if not can(current_user, 'block_tags', 'export') %}hidden {% endif %}type="button" id="bpPrintBtn" class="btn btn-primary btn-sm">
           <i class="bi bi-printer me-1"></i>Print
         </button>
       </div>

@@ -341,11 +341,13 @@
               <input type="number" name="qty" class="form-control" min="1"
                      value="{{ device.qty or 1 }}" placeholder="1">
             </div>
+            {% if can(current_user, 'devices', 'pricing') %}
             <div class="col-md-3">
               <label class="form-label">Unit Price inclusive taxes (₹)</label>
               <input type="number" name="device_price_input" class="form-control" step="0.01" min="0"
                      value="{{ device.device_price or '' }}" placeholder="e.g. 4500.00">
             </div>
+            {% endif %}
             <div class="col-md-3">
               <label class="form-label">IQC Grade</label>
               {# Grade is an enum — use static options, do NOT load from master data #}
@@ -363,6 +365,7 @@
                 <label class="form-check-label" for="biosPwd">BIOS Password Set?</label>
               </div>
             </div>
+            {% if can(current_user, 'devices', 'pricing') %}
             <div class="col-md-3">
               <label class="form-label">Min Selling Price (₹)</label>
               <input type="number" name="min_selling_price_input" class="form-control" step="0.01" min="0"
@@ -373,6 +376,11 @@
               <input type="number" name="max_selling_price_input" class="form-control" step="0.01" min="0"
                      value="{{ device.max_selling_price or '' }}" placeholder="e.g. 6500.00">
             </div>
+            {% else %}
+            {# Not allowed to see/set pricing: carry the current values through so saving the form does not clear them. #}
+            <input type="hidden" name="min_selling_price_input" value="{{ device.min_selling_price or '' }}">
+            <input type="hidden" name="max_selling_price_input" value="{{ device.max_selling_price or '' }}">
+            {% endif %}
 
             <!-- Tracked storage location (new system) -->
             <div class="col-md-6">

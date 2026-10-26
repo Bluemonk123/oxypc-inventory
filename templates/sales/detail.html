@@ -6,7 +6,7 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div>
     <span class="fw-bold fs-5">{{ sale.sale_number }}</span>
-    {% if can_view_pricing(current_user) %}
+    {% if can(current_user, 'sales_list', 'pricing') %}
     <span class="badge bg-success ms-2">₹{{ ((sale.sale_price) | inr) }}</span>
     {% endif %}
     <small class="text-muted ms-2">{{ sale.sold_at.strftime('%d %b %Y, %I:%M %p') }}</small>
@@ -15,12 +15,12 @@
     {% endif %}
   </div>
   <div class="d-flex gap-2">
-    <a href="/invoices/print/{{ sale.id }}" target="_blank" class="btn btn-sm btn-outline-secondary">
+    {% if can(current_user, 'sales_list', 'export') %}<a href="/invoices/print/{{ sale.id }}" target="_blank" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-receipt me-1"></i>Invoice
-    </a>
-    <a href="/invoices/waybill/{{ sale.id }}" target="_blank" class="btn btn-sm btn-outline-primary">
+    </a>{% endif %}
+    {% if can(current_user, 'sales_list', 'export') %}<a href="/invoices/waybill/{{ sale.id }}" target="_blank" class="btn btn-sm btn-outline-primary">
       <i class="bi bi-truck me-1"></i>Waybill
-    </a>
+    </a>{% endif %}
     <a href="/sales" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-arrow-left me-1"></i>Back to List
     </a>
@@ -113,7 +113,7 @@
       <div class="card-body">
         <table class="table table-sm table-borderless mb-0">
           <tbody>
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'sales_list', 'pricing') %}
             <tr><th class="text-muted w-40">Sale Price</th>
                 <td class="fw-bold text-success fs-5">₹{{ ((sale.sale_price) | inr(2)) }}</td></tr>
             {% endif %}
@@ -140,9 +140,11 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center">
         <span><i class="bi bi-truck me-2"></i>Transport Details</span>
+        {% if can(current_user, 'sales_list', 'edit') %}
         <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#transportModal">
           <i class="bi bi-pencil-square me-1"></i>Update Transport
         </button>
+        {% endif %}
       </div>
       <div class="card-body">
         <table class="table table-sm table-borderless mb-0">

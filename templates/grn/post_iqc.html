@@ -89,13 +89,15 @@
     {# Entering a GRN by hand covers goods that arrive without a PDF invoice,
        or one that will follow later. #}
     <div class="d-flex align-items-center gap-2 ms-auto">
+    {% if can(current_user, 'grn_post_iqc', 'add') %}
     <button type="button" class="btn btn-primary btn-sm text-nowrap"
             data-bs-toggle="modal" data-bs-target="#addGrnModal">
       <i class="bi bi-plus-circle me-1"></i>Add GRN
     </button>
+    {% endif %}
     {# Export (2026-10-21): exactly the rows the table shows — every filter
        and the table search applied; count follows the filters. #}
-    <button type="button" id="grnExportBtn" class="btn btn-outline-success btn-sm text-nowrap"
+    <button {% if not can(current_user, 'grn_post_iqc', 'export') %}hidden {% endif %}type="button" id="grnExportBtn" class="btn btn-outline-success btn-sm text-nowrap"
             title="Export the rows shown (with the current filters)">
       <i class="bi bi-download me-1"></i>Export (<span id="grnExportCount">0</span>)
     </button>
@@ -123,7 +125,7 @@
               data-lots="{{ _lots | map(attribute='lot_number') | join(', ') }}"
               data-inv="{{ g.invoice_number or '' }}" data-inv-date="{{ g.invoice_date or '' }}"
               data-vendor="{{ g.sender_name or '' }}" data-qty="{{ g.quantity if g.quantity is not none else '' }}"
-              data-stocked="{{ _st0 }}" data-amount="{{ g.amount if g.amount is not none else '' }}"
+              data-stocked="{{ _st0 }}" data-amount="{{ g.amount if (g.amount is not none and can(current_user, 'grn_post_iqc', 'pricing')) else '' }}"
               data-asis="{{ _as0 or '' }}">
             <td class="ps-3"><span class="font-monospace fw-bold">{{ g.grn_number }}</span>
               {% if g.entity %}<div class="small text-muted text-nowrap">{{ g.entity }}</div>{% endif %}
@@ -152,24 +154,27 @@
             <td class="grn-stocked" data-stocked="{{ _st }}" data-qty="{{ g.quantity if g.quantity is not none else 0 }}">
               <span class="badge bg-{{ 'success' if g.quantity and _st >= g.quantity else ('warning text-dark' if _st else 'secondary') }}">{{ _st }}</span>
             </td>
-            <td>{% if g.amount is not none %}₹{{ ((g.amount) | inr(2)) }}{% else %}—{% endif %}</td>
+            <td>{% if can(current_user, 'grn_post_iqc', 'pricing') %}{% if g.amount is not none %}₹{{ ((g.amount) | inr(2)) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
             <td>
               {% set _asIs = as_is_lot.get(g.grn_number) if as_is_lot is defined else None %}
               {% if _asIs %}
               <span class="font-monospace">{{ _asIs }}</span>
               {% elif _st > 0 %}
+              {% if can(current_user, 'grn_post_iqc', 'edit') %}
               <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 as-is-lot-btn"
                       data-grn-id="{{ g.id }}" data-grn="{{ g.grn_number }}">Yes As-Is</button>
+              {% endif %}
               {% else %}
               <span class="text-muted">—</span>
               {% endif %}
             </td>
             <td>
               {% if g.file_path %}
-              <a href="/grn/download/{{ g.id }}" class="btn btn-sm btn-outline-secondary py-0 px-2"><i class="bi bi-download"></i></a>
+              {% if can(current_user, 'grn_post_iqc', 'export') %}<a href="/grn/download/{{ g.id }}" class="btn btn-sm btn-outline-secondary py-0 px-2"><i class="bi bi-download"></i></a>{% endif %}
               {% else %}—{% endif %}
             </td>
             <td class="text-nowrap">
+              {% if can(current_user, 'grn_post_iqc', 'edit') %}
               <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
                       data-bs-toggle="modal" data-bs-target="#editGrnModal"
                       data-id="{{ g.id }}" data-grn-number="{{ g.grn_number }}"
@@ -186,6 +191,7 @@
                       data-eway="{{ g.e_way_bill or '' }}" data-notes="{{ g.notes or '' }}">
                 <i class="bi bi-pencil"></i> Edit
               </button>
+              {% endif %}
               {# Add Lot / Edit Lot / Map this GRN hidden (Pankaj, 2026-10-21) —
                  kept here so they can be switched back on. #}
               {% if false %}
@@ -204,12 +210,14 @@
                 <i class="bi bi-link-45deg"></i> Map this GRN
               </button>
               {% endif %}
+              {% if can(current_user, 'grn_post_iqc', 'delete') %}
               <form method="post" action="/grn/{{ g.id }}/delete" class="d-inline"
                     onsubmit="return confirm('Delete GRN {{ g.grn_number }}?');">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                 <input type="hidden" name="source" value="post_iqc">
                 <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2"><i class="bi bi-trash3"></i></button>
               </form>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -254,7 +262,7 @@
         <button type="button" id="fPendReset" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset Filters</button>
         {# Export: the ticked rows when any are ticked, else every row matching
            the filters + search. Count follows the same rule (pendExportUpdate). #}
-        <button type="button" id="pendExportBtn" class="btn btn-outline-success btn-sm text-nowrap"
+        <button {% if not can(current_user, 'grn_post_iqc', 'export') %}hidden {% endif %}type="button" id="pendExportBtn" class="btn btn-outline-success btn-sm text-nowrap"
                 title="Export ticked rows, or all rows matching the filters when none are ticked">
           <i class="bi bi-download me-1"></i>Export (<span id="pendExportCount">0</span>)
         </button>

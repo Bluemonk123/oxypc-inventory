@@ -57,11 +57,13 @@
             {{ dup_kept }} duplicate(s) with a sale/return are kept
           </span>
           {% endif %}
+          {% if can(current_user, 'location_trash', 'delete') %}
           <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" {{ 'disabled' if not dup_deletable }}
                   data-bs-toggle="modal" data-bs-target="#dupModal"
                   title="Permanently delete trashed tags that are only a different-letter copy of a live tag">
             <i class="bi bi-trash3 me-1"></i>Delete Duplicates ({{ dup_deletable }})
           </button>
+          {% endif %}
         </div>
       </div>
       <div class="card-body p-0">
@@ -91,6 +93,7 @@
               <td><span class="badge bg-light text-dark">{{ dev.current_stage.value }}</span></td>
               <td class="text-muted" data-order="{{ dev.trashed_at.strftime('%Y%m%d%H%M%S') if dev.trashed_at else '' }}">{{ dev.trashed_at.strftime('%d-%m-%Y %H:%M') if dev.trashed_at else '—' }}</td>
               <td class="text-nowrap">
+                {% if can(current_user, 'location_trash', 'edit') %}
                 <form method="post" action="/trash/devices/{{ dev.barcode | urlencode }}/restore" style="display:inline">
                   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
                   <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2"
@@ -98,12 +101,15 @@
                     <i class="bi bi-arrow-counterclockwise me-1"></i>Restore
                   </button>
                 </form>
+                {% endif %}
+                {% if can(current_user, 'location_trash', 'delete') %}
                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1"
                         title="Delete this tag permanently"
                         onclick="confirmPurge('/trash/devices/{{ dev.barcode | urlencode }}/delete',
                                               {{ dev.barcode | tojson }}, 'device', null)">
                   <i class="bi bi-trash3 me-1"></i>Delete
                 </button>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -124,7 +130,7 @@
           <thead class="table-dark">
             <tr>
               <th>Lot #</th><th>Supplier</th><th>Purchase Date</th>
-              <th>Qty</th>{% if can_view_pricing(current_user) %}<th>Buying Price</th>{% endif %}<th>Trashed On</th><th>Action</th>
+              <th>Qty</th>{% if can(current_user, 'location_trash', 'pricing') %}<th>Buying Price</th>{% endif %}<th>Trashed On</th><th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -134,9 +140,10 @@
               <td>{{ lot.supplier_name }}</td>
               <td data-order="{{ lot.purchase_date.strftime('%Y%m%d') if lot.purchase_date else '' }}">{{ lot.purchase_date.strftime('%d-%m-%Y') if lot.purchase_date else '—' }}</td>
               <td class="text-center">{{ lot.qty }}</td>
-              {% if can_view_pricing(current_user) %}<td class="text-danger fw-semibold" data-order="{{ lot.buying_price or 0 }}">₹{{ ((lot.buying_price or 0) | inr) }}</td>{% endif %}
+              {% if can(current_user, 'location_trash', 'pricing') %}<td class="text-danger fw-semibold" data-order="{{ lot.buying_price or 0 }}">₹{{ ((lot.buying_price or 0) | inr) }}</td>{% endif %}
               <td class="text-muted" data-order="{{ lot.trashed_at.strftime('%Y%m%d%H%M%S') if lot.trashed_at else '' }}">{{ lot.trashed_at.strftime('%d-%m-%Y %H:%M') if lot.trashed_at else '—' }}</td>
               <td class="text-nowrap">
+                {% if can(current_user, 'location_trash', 'edit') %}
                 <form method="post" action="/trash/lots/{{ lot.id }}/restore" style="display:inline">
                   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
                   <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2"
@@ -144,6 +151,8 @@
                     <i class="bi bi-arrow-counterclockwise me-1"></i>Restore
                   </button>
                 </form>
+                {% endif %}
+                {% if can(current_user, 'location_trash', 'delete') %}
                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1"
                         title="Delete this lot and its devices permanently"
                         onclick="confirmPurge('/trash/lots/{{ lot.id }}/delete',
@@ -151,6 +160,7 @@
                                               {{ lot.qty | tojson }})">
                   <i class="bi bi-trash3 me-1"></i>Delete
                 </button>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -246,7 +256,7 @@ $(document).ready(function () {
     language: { emptyTable: 'No trashed tags.' },
   });
   var dtLots = initGlobalTable('#trashLotsTable', {
-    order: [[{{ 5 if can_view_pricing(current_user) else 4 }}, 'desc']],
+    order: [[{{ 5 if can(current_user, 'location_trash', 'pricing') else 4 }}, 'desc']],
     columnDefs: [{ orderable: false, targets: -1 }],
     language: { emptyTable: 'No trashed lots.' },
   });

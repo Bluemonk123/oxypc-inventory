@@ -15,7 +15,7 @@
   </div>
   <div class="d-flex gap-2">
     {% if is_privileged %}
-    <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#markModal"><i class="bi bi-pencil-square me-1"></i>Mark Attendance</button>
+    {% if can(current_user, 'attendance', 'add') %}<button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#markModal"><i class="bi bi-pencil-square me-1"></i>Mark Attendance</button>{% endif %}
     {% endif %}
     <a href="/attendance/history" class="btn btn-sm btn-outline-secondary"><i class="bi bi-calendar3 me-1"></i>History</a>
     {% if is_privileged %}

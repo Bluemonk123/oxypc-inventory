@@ -33,16 +33,20 @@
   <td>{{ ld.latest_deals_in }}</td>
   <td>
     <div class="btn-group btn-group-sm">
+      {% if can(current_user, 'crm_assign_leads', 'edit') %}
       <button class="btn btn-outline-primary py-0 px-1"
               data-lead='{{ ld | tojson }}'
               onclick="showEditLeadModal(this)" title="Edit">
         <i class="bi bi-pencil"></i>
       </button>
+      {% endif %}
+      {% if can(current_user, 'crm_assign_leads', 'add') %}
       <button class="btn btn-outline-success py-0 px-1"
               data-lead='{{ ld | tojson }}'
               onclick="showCallModal(this)" title="Log Call">
         <i class="bi bi-telephone"></i>
       </button>
+      {% endif %}
       <button class="btn btn-outline-info py-0 px-1"
               onclick="showHistoryModal('{{ ld.id }}', '{{ ld.name | e }}')"
               title="Call History">

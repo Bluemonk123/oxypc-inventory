@@ -11,11 +11,13 @@
       <h6 class="fw-bold mb-1"><i class="bi bi-file-earmark-arrow-up me-2"></i>Upload Invoice</h6>
       <span class="text-muted small">Upload an invoice PDF — a 12-digit GRN is generated and the fields are read from the file. Duplicates are rejected.</span>
     </div>
+    {% if can(current_user, 'grn', 'upload') %}
     <form action="/grn/upload" method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center">
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
       <input type="file" name="invoice" accept="application/pdf,.pdf" class="form-control form-control-sm" style="min-width:260px" required>
       <button type="submit" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-cloud-upload me-1"></i>Upload Invoice</button>
     </form>
+    {% endif %}
   </div>
 </div>
 
@@ -98,13 +100,14 @@
             <td class="grn-stocked" data-stocked="{{ _st }}" data-qty="{{ g.quantity if g.quantity is not none else 0 }}">
               <span class="badge bg-{{ 'success' if g.quantity and _st >= g.quantity else ('warning text-dark' if _st else 'secondary') }}">{{ _st }}</span>
             </td>
-            <td>{% if g.amount is not none %}₹{{ ((g.amount) | inr(2)) }}{% else %}—{% endif %}</td>
+            <td>{% if can(current_user, 'grn', 'pricing') %}{% if g.amount is not none %}₹{{ ((g.amount) | inr(2)) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
             <td>
               {% if g.file_path %}
-              <a href="/grn/download/{{ g.id }}" class="btn btn-sm btn-outline-secondary py-0 px-2"><i class="bi bi-download"></i></a>
+              {% if can(current_user, 'grn', 'export') %}<a href="/grn/download/{{ g.id }}" class="btn btn-sm btn-outline-secondary py-0 px-2"><i class="bi bi-download"></i></a>{% endif %}
               {% else %}—{% endif %}
             </td>
             <td class="text-nowrap">
+              {% if can(current_user, 'grn', 'edit') %}
               <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
                       data-bs-toggle="modal" data-bs-target="#editGrnModal"
                       data-id="{{ g.id }}" data-inv="{{ g.invoice_number or '' }}" data-date="{{ g.invoice_date or '' }}"
@@ -112,15 +115,20 @@
                       data-amount="{{ g.amount if g.amount is not none else '' }}">
                 <i class="bi bi-pencil"></i> Edit
               </button>
+              {% endif %}
+              {% if can(current_user, 'grn', 'add') %}
               <a href="/lots/new?grn_system_number={{ g.grn_number }}&grn_date={{ (g.invoice_date or '') | urlencode }}&supplier={{ (g.sender_name or '') | urlencode }}&lot_number={{ (g.lot_number or '') | urlencode }}" class="btn btn-sm btn-outline-primary py-0 px-2">
                 <i class="bi bi-plus-circle"></i> Lot
               </a>
+              {% endif %}
+              {% if can(current_user, 'grn', 'delete') %}
               <form method="post" action="/grn/{{ g.id }}/delete" class="d-inline"
                     onsubmit="return confirm('Delete GRN {{ g.grn_number }}? It will be removed from the list (kept for audit).');">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                 <input type="hidden" name="source" value="invoice">
                 <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2"><i class="bi bi-trash3"></i></button>
               </form>
+              {% endif %}
             </td>
           </tr>
           {% else %}

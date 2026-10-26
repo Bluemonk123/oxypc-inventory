@@ -2,7 +2,7 @@
 {% block title %}Sales Report — OxyPC{% endblock %}
 {% block page_title %}Sales Report{% endblock %}
 {% block content %}
-{% if not can_view_pricing(current_user) %}
+{% if not can(current_user, 'report_sales', 'pricing') %}
 <div class="alert alert-warning">
   <i class="bi bi-lock me-2"></i>Pricing visibility is disabled for your role. Contact an admin if you need access to this report.
 </div>
@@ -21,7 +21,7 @@
     <div class="d-flex align-items-center gap-2">
       <span class="fw-bold text-success small">Total: ₹{{ ((total) | inr) }}</span>
       {# Export (N): the ticked rows, or every row of this date range when none is ticked (2026-10-21). #}
-      <button type="button" id="srExportBtn" class="btn btn-outline-success btn-sm" title="Export the ticked rows, or every row in this date range when none is ticked">
+      <button {% if not can(current_user, 'report_sales', 'export') %}hidden {% endif %}type="button" id="srExportBtn" class="btn btn-outline-success btn-sm" title="Export the ticked rows, or every row in this date range when none is ticked">
         <i class="bi bi-download me-1"></i>Export CSV (<span id="srExportCount">{{ sales_data | length }}</span>)
       </button>
     </div>
@@ -45,7 +45,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-{% if can_view_pricing(current_user) %}
+{% if can(current_user, 'report_sales', 'pricing') %}
 var SR_DATA = {{ sales_data | tojson }};
 $(document).ready(function(){
   function esc(v){ return $('<div>').text(v == null ? '' : v).html(); }

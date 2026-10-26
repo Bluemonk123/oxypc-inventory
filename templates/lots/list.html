@@ -41,21 +41,25 @@
   </span>
   <div class="d-flex gap-2 flex-wrap">
     {# Export respects current filters: passes q / date_from / date_to as query params #}
-    <a href="/lots/export-all-csv?q={{ q }}&date_from={{ date_from }}&date_to={{ date_to }}"
+    {% if can(current_user, 'lots', 'export') %}<a href="/lots/export-all-csv?q={{ q }}&date_from={{ date_from }}&date_to={{ date_to }}"
        class="btn btn-outline-info btn-sm"
        title="{% if q or date_from or date_to %}Export filtered lots{% else %}Export all lots{% endif %}">
       <i class="bi bi-file-earmark-arrow-down me-1"></i>
       {% if q or date_from or date_to %}Export Filtered CSV{% else %}Export All CSV{% endif %}
-    </a>
-    <button type="button" class="btn btn-outline-success btn-sm" id="exportSelectedBtn" onclick="submitExportSelected()" disabled>
+    </a>{% endif %}
+    <button {% if not can(current_user, 'lots', 'export') %}hidden {% endif %}type="button" class="btn btn-outline-success btn-sm" id="exportSelectedBtn" onclick="submitExportSelected()" disabled>
       <i class="bi bi-download me-1"></i>Export Selected
     </button>
+    {% if can(current_user, 'lots', 'upload') %}
     <a href="/bulk-upload?type=lots" class="btn btn-outline-success btn-sm">
       <i class="bi bi-cloud-upload me-1"></i>Bulk Upload Lots
     </a>
+    {% endif %}
+    {% if can(current_user, 'lots', 'add') %}
     <a href="/lots/new" class="btn btn-primary btn-sm">
       <i class="bi bi-plus-circle me-1"></i>New Lot
     </a>
+    {% endif %}
   </div>
 </div>
 
@@ -78,14 +82,14 @@
             <th>Purchase Date</th>
             <th>Rcvd Date</th>
             <th>Invoice No.</th>
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'lots', 'pricing') %}
             <th>Invoice Value</th>
             <th>SGST</th><th>CGST</th><th>IGST</th>
             {% endif %}
             <th>Qty</th>
             <th>Registered</th>
             <th>Sold</th>
-            {% if can_view_pricing(current_user) %}<th>Buying Price</th>{% endif %}
+            {% if can(current_user, 'lots', 'pricing') %}<th>Buying Price</th>{% endif %}
             <th>Actions</th>
           </tr>
         </thead>
@@ -105,7 +109,7 @@
             <td>{{ lot.purchase_date.strftime('%d-%m-%Y') }}</td>
             <td>{{ lot.grn_date.strftime('%d-%m-%Y') if lot.grn_date else '—' }}</td>
             <td class="font-monospace small">{{ lot.invoice_no or '—' }}</td>
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'lots', 'pricing') %}
             <td>{% if lot.invoice_value %}₹{{ ((lot.invoice_value) | inr) }}{% else %}—{% endif %}</td>
             <td>{% if lot.sgst %}₹{{ ((lot.sgst) | inr) }}{% else %}—{% endif %}</td>
             <td>{% if lot.cgst %}₹{{ ((lot.cgst) | inr) }}{% else %}—{% endif %}</td>
@@ -114,9 +118,12 @@
             <td class="text-center">{{ lot.qty }}</td>
             <td class="text-center"><span class="badge bg-primary">{{ stat.devices }}</span></td>
             <td class="text-center"><span class="badge bg-success">{{ stat.sold }}</span></td>
-            {% if can_view_pricing(current_user) %}<td class="fw-semibold text-danger">₹{{ ((lot.buying_price) | inr) }}</td>{% endif %}
+            {% if can(current_user, 'lots', 'pricing') %}<td class="fw-semibold text-danger">₹{{ ((lot.buying_price) | inr) }}</td>{% endif %}
             <td class="text-nowrap">
+              {% if can(current_user, 'lots', 'edit') %}
               <a href="/lots/{{ lot.id }}/edit" class="btn btn-sm btn-outline-secondary py-0">Edit</a>
+              {% endif %}
+              {% if can(current_user, 'lots', 'edit') %}
               <button type="button" class="btn btn-sm btn-outline-success py-0"
                       data-bs-toggle="modal" data-bs-target="#grnModal"
                       data-lot-id="{{ lot.id }}"
@@ -124,6 +131,8 @@
                       data-expected="{{ lot.qty }}">
                 <i class="bi bi-receipt-cutoff me-1"></i>Validate GRN
               </button>
+              {% endif %}
+              {% if can(current_user, 'lots', 'delete') %}
               <form method="post" action="/lots/{{ lot.id }}/delete" class="d-inline"
                     onsubmit="return confirm('Permanently delete lot {{ lot.lot_number }}?\n\nThis cannot be undone. All lot data will be removed.')">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
@@ -131,6 +140,7 @@
                   <i class="bi bi-trash3"></i>
                 </button>
               </form>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -195,7 +205,7 @@
 <script>
 $(document).ready(function(){
   $('#lotsTable').DataTable({ pageLength: 12, order:[[1,'desc']],
-    columnDefs:[{visible:false, targets:[4,6,8,9,10,11]}] });
+    columnDefs:[{visible:false, targets:{% if can(current_user, 'lots', 'pricing') %}[4,6,8,9,10,11]{% else %}[4,6]{% endif %}}] });
 });
 
 // Pre-fill GRN modal from row data attributes

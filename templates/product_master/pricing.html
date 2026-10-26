@@ -48,7 +48,7 @@
             </div>
           </td>
           <td class="pp-status">{% if p.pricing_done %}<span class="badge bg-success">Pricing Done</span>{% else %}<span class="badge bg-warning text-dark">Pricing Pending</span>{% endif %}</td>
-          <td><button type="button" class="btn btn-sm btn-primary pp-save" disabled><i class="bi bi-save me-1"></i>Save</button></td>
+          <td>{% if can(current_user, 'pm_product_pricing', 'pricing') %}<button type="button" class="btn btn-sm btn-primary pp-save" disabled><i class="bi bi-save me-1"></i>Save</button>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -74,7 +74,7 @@
       <select class="form-select form-select-sm w-auto" id="ppTable_price" title="Price">
         <option value="">Price: All</option><option value="empty">Fully Empty</option><option value="filled">Fully Filled</option><option value="partial">Partially Filled</option>
       </select>
-      <button type="button" class="btn btn-sm btn-outline-success" id="ppTable_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+      <button {% if not can(current_user, 'pm_product_pricing', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success" id="ppTable_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
     </div>
   </div>
   <div class="px-3 pt-2 small text-muted">
@@ -91,7 +91,7 @@
       <select class="form-select form-select-sm w-auto" id="ppTableDone_gen" title="CPU Gen"><option value="">All CPU Gens</option></select>
       <select class="form-select form-select-sm w-auto" id="ppTableDone_ram" title="RAM Name"><option value="">All RAM Names</option></select>
       <select class="form-select form-select-sm w-auto" id="ppTableDone_sto" title="Storage Name"><option value="">All Storage Names</option></select>
-      <button type="button" class="btn btn-sm btn-outline-success" id="ppTableDone_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+      <button {% if not can(current_user, 'pm_product_pricing', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success" id="ppTableDone_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
     </div>
   </div>
   <div class="px-3 pt-2 small text-muted">

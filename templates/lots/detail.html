@@ -18,7 +18,7 @@
       <div class="fw-semibold small">{{ lot.supplier_name }}</div>
     </div>
   </div>
-  {% if can_view_pricing(current_user) %}
+  {% if can(current_user, 'lots', 'pricing') %}
   <div class="col-md-2">
     <div class="card border-0 shadow-sm text-center p-3">
       <div class="text-muted small mb-1">Buying Price</div>
@@ -32,7 +32,7 @@
       <div class="fw-semibold">{{ lot.qty }} / {{ devices|length }}</div>
     </div>
   </div>
-  {% if can_view_pricing(current_user) %}
+  {% if can(current_user, 'lots', 'pricing') %}
   <div class="col-md-2">
     <div class="card border-0 shadow-sm text-center p-3">
       <div class="text-muted small mb-1">Invoice Value</div>
@@ -62,16 +62,22 @@
       <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center">
         <span><i class="bi bi-receipt me-2"></i>GRN & Invoice Details</span>
         <div class="d-flex gap-2">
+          {% if can(current_user, 'lots', 'edit') %}
           <button class="btn btn-sm btn-success py-0" type="button"
                   data-bs-toggle="collapse" data-bs-target="#grnInlineForm">
             <i class="bi bi-receipt-cutoff me-1"></i>Validate GRN
           </button>
+          {% endif %}
+          {% if can(current_user, 'lots', 'add') %}
           <a href="/lots/{{ lot.id }}/register" class="btn btn-sm btn-success py-0">
             <i class="bi bi-upc-scan me-1"></i>Add New Tag
           </a>
+          {% endif %}
+          {% if can(current_user, 'lots', 'edit') %}
           <a href="/lots/{{ lot.id }}/edit" class="btn btn-sm btn-outline-primary py-0">
             <i class="bi bi-pencil me-1"></i>Edit Lot
           </a>
+          {% endif %}
         </div>
       </div>
       {# ── Inline GRN form (collapsed by default) ─────────── #}
@@ -130,7 +136,7 @@
   </div>
 
   <!-- ── GST Breakdown ── -->
-  {% if can_view_pricing(current_user) %}
+  {% if can(current_user, 'lots', 'pricing') %}
   <div class="col-lg-6">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-transparent fw-semibold">
@@ -167,7 +173,7 @@
 </div>
 
 {# ── Lot Profit Summary ──────────────────────────────────────────────────── #}
-{% if can_view_pricing(current_user) %}
+{% if can(current_user, 'lots', 'pricing') %}
 <div class="card border-0 shadow-sm mb-4">
   <div class="card-header bg-transparent fw-semibold">
     <i class="bi bi-graph-up me-2"></i>Lot P&amp;L Summary
@@ -221,15 +227,19 @@
     <div id="lineItemsBody" class="accordion-collapse collapse">
       <div class="accordion-body p-0">
         <div class="d-flex justify-content-end gap-2 p-2 border-bottom">
-          <button class="btn btn-sm btn-outline-secondary" onclick="exportLineItemsCSV()">
+          {% if can(current_user, 'lots', 'export') %}<button class="btn btn-sm btn-outline-secondary" onclick="exportLineItemsCSV()">
             <i class="bi bi-download me-1"></i>Export CSV
-          </button>
+          </button>{% endif %}
+          {% if can(current_user, 'lots', 'upload') %}
           <button class="btn btn-sm btn-outline-primary" onclick="openBulkLineImport()">
             <i class="bi bi-upload me-1"></i>Bulk Import
           </button>
+          {% endif %}
+          {% if can(current_user, 'lots', 'add') %}
           <button class="btn btn-sm btn-success" onclick="openAddLineItem()">
             <i class="bi bi-plus-circle me-1"></i>Add Line Item
           </button>
+          {% endif %}
         </div>
     <div id="lineItemsContainer">
       {% if line_items %}
@@ -287,14 +297,18 @@
               <td class="text-end fw-bold text-success">₹{{ ((item.unit_price * item.qty) | inr) }}</td>
               <td class="text-muted small">{{ item.notes or '' }}</td>
               <td class="text-nowrap">
+                {% if can(current_user, 'lots', 'edit') %}
                 <button class="btn btn-xs btn-outline-secondary py-0 px-1 me-1"
                         onclick='editLineItem({{ {'id': item.id|string, 'sub_category': item.sub_category, 'brand': item.brand or '', 'model': item.model or '', 'cpu': item.cpu or '', 'generation': item.generation or '', 'ram_gb': item.ram_gb, 'has_ram': item.has_ram, 'storage_gb': item.storage_gb, 'storage_type': item.storage_type or '', 'has_storage': item.has_storage, 'screen_size': item.screen_size or '', 'grade': item.grade or '', 'unit_price': item.unit_price|string, 'qty': item.qty, 'notes': item.notes or ''} | tojson }})' title="Edit">
                   <i class="bi bi-pencil" style="font-size:.7rem;"></i>
                 </button>
+                {% endif %}
+                {% if can(current_user, 'lots', 'delete') %}
                 <button class="btn btn-xs btn-outline-danger py-0 px-1"
                         onclick="deleteLineItem('{{ item.id }}')" title="Delete">
                   <i class="bi bi-trash" style="font-size:.7rem;"></i>
                 </button>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -489,9 +503,9 @@
             <label class="form-label fw-semibold">CSV File</label>
             <input type="file" name="file" class="form-control" accept=".csv" required>
           </div>
-          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="downloadLineItemTemplate()">
+          {% if can(current_user, 'lots', 'export') %}<button type="button" class="btn btn-sm btn-outline-secondary" onclick="downloadLineItemTemplate()">
             <i class="bi bi-download me-1"></i>Download Template
-          </button>
+          </button>{% endif %}
         </div>
         <div class="modal-footer py-2">
           <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -506,9 +520,11 @@
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
     <span class="fw-semibold"><i class="bi bi-laptop me-2"></i>Individual Product Tags in this Lot ({{ devices|length }})</span>
+    {% if can(current_user, 'lots', 'add') %}
     <a href="/iqc/new?lot_id={{ lot.id }}&grn_number={{ lot.grn_system_number or lot.grn_number_new or '' }}" class="btn btn-sm btn-outline-success">
       <i class="bi bi-plus-circle me-1"></i>Register Device
     </a>
+    {% endif %}
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -578,7 +594,7 @@
 </div>
 
 {# Category / Model Based Line Items accordion — moved to the bottom #}
-{% if can_view_pricing(current_user) %}
+{% if can(current_user, 'lots', 'pricing') %}
 {{ lineitems_block }}
 {% endif %}
 {% endblock %}

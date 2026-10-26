@@ -62,20 +62,21 @@
               <td class="text-center text-nowrap">
                 {% if sr %}
                   {% set ov = sr.overall_status or '' %}
-                  <a href="/stress/{{ device.barcode }}/report?result_id={{ sr.result_id }}"
+                  {% if can(current_user, 'qc_check', 'export') %}<a href="/stress/{{ device.barcode }}/report?result_id={{ sr.result_id }}"
                      class="btn btn-sm py-0 px-1 text-nowrap
                      {% if ov == 'PASS' %}btn-outline-success
                      {% elif ov == 'FAIL' %}btn-outline-danger
                      {% else %}btn-outline-warning{% endif %}"
                      title="Download Stress Report — {{ ov }} — {{ sr.run_at }}">
                     <i class="bi bi-file-earmark-arrow-down me-1"></i>PDF
-                  </a>
+                  </a>{% endif %}
                 {% else %}
                   <span class="text-muted small">—</span>
                 {% endif %}
               </td>
               <td>
                 <div class="d-flex gap-1 flex-wrap">
+                  {% if can(current_user, 'qc_check', 'edit') %}
                   <button type="button"
                     class="btn btn-sm btn-outline-warning py-0 start-test-btn"
                     data-barcode="{{ device.barcode }}"
@@ -86,6 +87,7 @@
                     title="Start Stress Test for this device">
                     <i class="bi bi-lightning-charge-fill me-1"></i>Stress
                   </button>
+                  {% endif %}
                 </div>
               </td>
             </tr>

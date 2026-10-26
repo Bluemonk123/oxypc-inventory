@@ -19,7 +19,7 @@
       </div>
       <div class="col-md-2 d-flex gap-1 align-items-end">
         <button class="btn btn-primary btn-sm">Filter</button>
-        <a href="/telecalling/add" class="btn btn-success btn-sm"><i class="bi bi-plus"></i> Log Call</a>
+        {% if can(current_user, 'telecalling', 'add') %}<a href="/telecalling/add" class="btn btn-success btn-sm"><i class="bi bi-plus"></i> Log Call</a>{% endif %}
       </div>
     </form>
   </div>

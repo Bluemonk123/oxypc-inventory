@@ -78,9 +78,11 @@
     <a href="/trade-partner/partners" class="btn btn-sm btn-outline-secondary">Clear</a>
     {% endif %}
   </form>
+  {% if can(current_user, 'trade_partner_partners', 'add') %}
   <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#enableModal">
     <i class="bi bi-person-plus me-1"></i>Generate Access
   </button>
+  {% endif %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -123,25 +125,30 @@
             </td>
             <td>
               <div class="btn-group btn-group-sm">
+                {% if can(current_user, 'trade_partner_partners', 'edit') %}
                 <button class="btn btn-outline-secondary" title="Edit"
                         data-bs-toggle="modal" data-bs-target="#editModal{{ loop.index }}">
                   <i class="bi bi-pencil"></i>
                 </button>
+                {% endif %}
                 {# Reset opens a real Bootstrap modal, not a native confirm().
                    confirm() is silently suppressed once a browser's "prevent
                    this page from creating additional dialogs" is ticked — the
                    form then submitted with no prompt and jumped straight to the
                    success banner. A DOM modal cannot be suppressed that way. #}
+                {% if can(current_user, 'trade_partner_partners', 'edit') %}
                 <button type="button" class="btn btn-outline-warning" title="Reset password"
                         data-bs-toggle="modal" data-bs-target="#resetPwModal"
                         data-action="/trade-partner/partners/{{ p.id }}/reset-password"
                         data-name="{{ p.business_name }}">
                   <i class="bi bi-key"></i>
                 </button>
+                {% endif %}
                 {# Toggle opens a Bootstrap modal too — same reason as Reset:
                    a native confirm() is silently suppressed once the browser's
                    "prevent additional dialogs" is ticked, flipping portal
                    access with no prompt. #}
+                {% if can(current_user, 'trade_partner_partners', 'edit') %}
                 <button type="button" class="btn btn-outline-{{ 'danger' if p.portal_enabled else 'success' }}"
                         title="{{ 'Disable' if p.portal_enabled else 'Enable' }}"
                         data-bs-toggle="modal" data-bs-target="#togglePortalModal"
@@ -150,16 +157,19 @@
                         data-verb="{{ 'Disable' if p.portal_enabled else 'Enable' }}">
                   <i class="bi bi-{{ 'slash-circle' if p.portal_enabled else 'check-circle' }}"></i>
                 </button>
+                {% endif %}
                 {# Delete opens a real Bootstrap modal too — same reason as
                    Reset/Toggle above: a native confirm() is silently
                    suppressed once the browser's "prevent additional dialogs"
                    is ticked, and this action is permanent. #}
+                {% if can(current_user, 'trade_partner_partners', 'delete') %}
                 <button type="button" class="btn btn-outline-danger" title="Delete"
                         data-bs-toggle="modal" data-bs-target="#deletePartnerModal"
                         data-action="/trade-partner/partners/{{ p.id }}/delete"
                         data-name="{{ p.business_name }}">
                   <i class="bi bi-trash3"></i>
                 </button>
+                {% endif %}
               </div>
 
               <!-- Edit modal -->

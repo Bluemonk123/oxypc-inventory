@@ -2,7 +2,7 @@
 {% block title %}Business P&L FY {{ fy_text }} — OxyPC{% endblock %}
 {% block page_title %}Business P&L Dashboard — FY {{ fy_text }}{% endblock %}
 {% block content %}
-{% if not can_view_pricing(current_user) %}
+{% if not can(current_user, 'report_bizpl', 'pricing') %}
 <div class="alert alert-warning">
   <i class="bi bi-lock me-2"></i>Pricing visibility is disabled for your role. Contact an admin if you need access to this report.
 </div>
@@ -112,7 +112,7 @@
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span class="fw-semibold"><i class="bi bi-table me-2"></i>Monthly Breakdown</span>
-    <a href="/reports/business-pl/export-fy?fy={{ fy }}" class="btn btn-outline-success btn-sm" title="All tags sold in FY {{ fy_text }} — same columns as each month's export"><i class="bi bi-download me-1"></i>Export FY {{ fy_text }}</a>
+    {% if can(current_user, 'report_bizpl', 'export') %}<a href="/reports/business-pl/export-fy?fy={{ fy }}" class="btn btn-outline-success btn-sm" title="All tags sold in FY {{ fy_text }} — same columns as each month's export"><i class="bi bi-download me-1"></i>Export FY {{ fy_text }}</a>{% endif %}
   </div>
   <div class="card-body p-0">
     <table class="table table-hover mb-0 small">
@@ -136,7 +136,7 @@
         {% set profit = monthly_profit[i] %}
         {% set margin = (profit / rev * 100) | round(1) if rev > 0 else 0 %}
         <tr>
-          <td class="fw-semibold text-nowrap"><a href="/reports/business-pl/export-month?year={{ mrow.year }}&month={{ mrow.month }}" class="text-success me-1" title="Export all tags sold in {{ mrow.label }}"><i class="bi bi-download"></i></a>{{ mrow.label }}
+          <td class="fw-semibold text-nowrap">{% if can(current_user, 'report_bizpl', 'export') %}<a href="/reports/business-pl/export-month?year={{ mrow.year }}&month={{ mrow.month }}" class="text-success me-1" title="Export all tags sold in {{ mrow.label }}"><i class="bi bi-download"></i></a>{% endif %}{{ mrow.label }}
             {% if monthly_overridden[i] %}<span class="badge bg-info-subtle text-info-emphasis border ms-1" title="One or more figures on this row were manually overridden">edited</span>{% endif %}
           </td>
           <td>₹{{ (rev) | inr }}</td>

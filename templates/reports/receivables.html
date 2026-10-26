@@ -6,9 +6,9 @@
   <div class="d-flex align-items-center gap-3 mb-4 flex-wrap">
     <h4 class="fw-bold mb-0"><i class="bi bi-hourglass-split me-2 text-warning"></i>Receivables Ageing</h4>
     <span class="text-muted small">As of {{ as_of.strftime('%d %b %Y %H:%M') }}</span>
-    <a href="?export=csv" class="btn btn-sm btn-outline-success ms-auto">
+    {% if can(current_user, 'report_receivables', 'export') %}<a href="?export=csv" class="btn btn-sm btn-outline-success ms-auto">
       <i class="bi bi-download me-1"></i> Export CSV
-    </a>
+    </a>{% endif %}
   </div>
 
   <!-- Summary cards -->
@@ -59,10 +59,10 @@
                 </a>
               </td>
               <td>
-                <a href="/dealers/{{ r.dealer.id }}/orders/{{ r.order.id }}/invoice"
+                {% if can(current_user, 'report_receivables', 'export') %}<a href="/dealers/{{ r.dealer.id }}/orders/{{ r.order.id }}/invoice"
                    class="font-monospace text-decoration-none small" target="_blank">
                   <code>{{ r.order.order_number }}</code>
-                </a>
+                </a>{% else %}<code class="small">{{ r.order.order_number }}</code>{% endif %}
               </td>
               <td>{{ r.order.order_date.strftime('%d-%m-%Y') }}</td>
               <td>{% if r.order.payment_due_date %}{{ r.order.payment_due_date.strftime('%d-%m-%Y') }}{% else %}<span class="text-muted">&mdash;</span>{% endif %}</td>

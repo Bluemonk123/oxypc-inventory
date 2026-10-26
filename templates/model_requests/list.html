@@ -24,9 +24,11 @@
     <button class="btn btn-sm btn-outline-primary">Filter</button>
     <a href="/model-requests" class="btn btn-sm btn-outline-secondary">Clear</a>
   </form>
+  {% if can(current_user, 'model_requests', 'add') %}
   <a href="/model-requests/new" class="btn btn-sm btn-primary">
     <i class="bi bi-plus-circle me-1"></i>New Request
   </a>
+  {% endif %}
 </div>
 
 {% if request.query_params.get('success') %}
@@ -112,16 +114,20 @@
             <td class="text-muted" style="max-width:180px; white-space:normal;">{{ r.notes or r.fulfillment_notes or '—' }}</td>
             <td>
               {% if is_fulfiller and r.status in ('open', 'partially_fulfilled') %}
+              {% if can(current_user, 'model_requests', 'edit') %}
               <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#fulfilModal"
                       onclick="openFulfil('{{ r.id }}', {{ r.qty_requested }}, {{ r.qty_fulfilled }})">
                 <i class="bi bi-check2-circle"></i> Update
               </button>
               {% endif %}
+              {% endif %}
               {% if r.status in ('open', 'partially_fulfilled') and (r.requested_by == current_user.username or is_fulfiller) %}
+              {% if can(current_user, 'model_requests', 'edit') %}
               <form method="post" action="/model-requests/{{ r.id }}/cancel" class="d-inline" onsubmit="return confirm('Cancel this request?')">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                 <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle"></i></button>
               </form>
+              {% endif %}
               {% endif %}
             </td>
           </tr>

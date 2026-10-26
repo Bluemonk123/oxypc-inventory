@@ -527,9 +527,45 @@ async def hardware_page(request: Request, db: AsyncSession = Depends(get_db),
                     lambda r: r.ram_category, lambda r: r.ram_capacity, lambda r: r.ram_price)
     sto_rows = grid(dd["storage_category"], dd["storage_capacity"], stos, lambda r: r.storage_name,
                     lambda r: r.storage_category, lambda r: r.storage_capacity, lambda r: r.storage_price)
+
+    # Product demand per combination (2026-10-25 redesign): products linked
+    # to a saved price ("using"), and products whose RAM/Storage Type + Size
+    # pick has no price yet ("waiting", shown as Pending on Product Master).
+    prods = (await db.execute(select(PMProduct.make, PMProduct.model, PMProduct.cpu,
+                                     PMProduct.ram_type, PMProduct.ram_size, PMProduct.ram_id,
+                                     PMProduct.storage_type, PMProduct.storage_size, PMProduct.storage_id))).all()
+    demand = {"ram": {}, "storage": {}}
+    waiting_products = set()
+    product_labels = [" ".join(x for x in (p.make, p.model, p.cpu) if x) for p in prods]
+    for i, p in enumerate(prods):
+        label = i   # index into product_labels, so the page can recount live
+        for kind, t, z, linked in (("ram", p.ram_type, p.ram_size, p.ram_id),
+                                   ("storage", p.storage_type, p.storage_size, p.storage_id)):
+            if not (t and z):
+                continue
+            d = demand[kind].setdefault(f"{t}/{z}".lower(), {"using": [], "waiting": []})
+            if linked:
+                d["using"].append(label)
+            else:
+                d["waiting"].append(label)
+                waiting_products.add(i)
+    for kind, rows in (("ram", ram_rows), ("storage", sto_rows)):
+        for r in rows:
+            d = demand[kind].get(r["name"].lower(), {"using": [], "waiting": []})
+            r["using"], r["waiting"] = d["using"], d["waiting"]
+            if r["price"] is not None:
+                r["price"] = float(r["price"])
+    priced = lambda rows: sum(1 for r in rows if r["price"] is not None)
+    stats = {
+        "ram_priced": priced(ram_rows), "ram_total": len(ram_rows),
+        "sto_priced": priced(sto_rows), "sto_total": len(sto_rows),
+        "pending": (len(ram_rows) - priced(ram_rows)) + (len(sto_rows) - priced(sto_rows)),
+        "waiting_products": len(waiting_products),
+    }
     return templates.TemplateResponse("product_master/hardware.html", {
         "request": request, "current_user": current_user,
-        "ram_rows": ram_rows, "storage_rows": sto_rows,
+        "ram_rows": ram_rows, "storage_rows": sto_rows, "stats": stats,
+        "product_labels": product_labels,
     })
 
 

@@ -2,7 +2,7 @@
 {% block title %}Lot P&L — OxyPC{% endblock %}
 {% block page_title %}Lot Profit & Loss Report{% endblock %}
 {% block content %}
-{% if not can_view_pricing(current_user) %}
+{% if not can(current_user, 'reports', 'pricing') %}
 <div class="alert alert-warning">
   <i class="bi bi-lock me-2"></i>Pricing visibility is disabled for your role. Contact an admin if you need access to this report.
 </div>
@@ -14,7 +14,7 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span class="fw-semibold"><i class="bi bi-graph-up me-2"></i>Lot P&amp;L</span>
     {# Export (N): the ticked lots, or every lot when none is ticked (2026-10-21). #}
-    <button type="button" id="plExportBtn" class="btn btn-outline-success btn-sm" title="Export the ticked lots, or every lot when none is ticked">
+    <button {% if not can(current_user, 'reports', 'export') %}hidden {% endif %}type="button" id="plExportBtn" class="btn btn-outline-success btn-sm" title="Export the ticked lots, or every lot when none is ticked">
       <i class="bi bi-download me-1"></i>Export CSV (<span id="plExportCount">{{ lot_pl | length }}</span>)
     </button>
   </div>
@@ -38,7 +38,7 @@
           {% set ns.total_profit_sold = ns.total_profit_sold + lp.profit_sold %}
           <tr class="{{ 'table-success' if lp.profit > 0 else 'table-danger' if lp.profit < 0 else '' }}">
             <td><input type="checkbox" class="form-check-input plRowChk" value="{{ lp.lot_id }}"></td>
-            <td class="text-nowrap"><a href="/reports/lot-pl/{{ lp.lot_id }}/export" class="text-success me-1" title="Export all tags of {{ lp.lot_number }}"><i class="bi bi-download"></i></a><a href="/lots/{{ lp.lot_id }}" class="fw-semibold text-decoration-none">{{ lp.lot_number }}</a></td>
+            <td class="text-nowrap">{% if can(current_user, 'reports', 'export') %}<a href="/reports/lot-pl/{{ lp.lot_id }}/export" class="text-success me-1" title="Export all tags of {{ lp.lot_number }}"><i class="bi bi-download"></i></a>{% endif %}<a href="/lots/{{ lp.lot_id }}" class="fw-semibold text-decoration-none">{{ lp.lot_number }}</a></td>
             <td>{{ lp.supplier }}</td>
             <td>{{ lp.purchase_date.strftime('%d-%m-%Y') }}</td>
             <td data-order="{{ lp.last_updated.strftime('%Y%m%d%H%M%S') if lp.last_updated else '0' }}">{{ lp.last_updated.strftime('%d-%m-%Y %H:%M') if lp.last_updated else '—' }}</td>

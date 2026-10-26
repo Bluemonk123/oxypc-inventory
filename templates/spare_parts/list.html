@@ -205,24 +205,30 @@
       <strong class="small text-nowrap"><i class="bi bi-box-seam me-1"></i>Part Master</strong>
       <div class="d-flex gap-2 flex-wrap align-items-center">
         {{ filter_bar('partsTable', ['New', 'Harvest']) }}
-        <button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('partsTable',false)">
+        {% if can(current_user, 'spare_parts', 'export') %}<button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('partsTable',false)">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export All
-        </button>
-        <button id="expSel_partsTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('partsTable',true)" disabled>
+        </button>{% endif %}
+        <button {% if not can(current_user, 'spare_parts', 'export') %}hidden {% endif %}id="expSel_partsTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('partsTable',true)" disabled>
           <i class="bi bi-download me-1"></i>Export Selected
         </button>
-        <button id="delSel_partsTable" class="btn btn-outline-danger btn-sm d-none text-nowrap" onclick="spBulkDelete()" disabled>
+        <button {% if not can(current_user, 'spare_parts', 'delete') %}hidden {% endif %}id="delSel_partsTable" class="btn btn-outline-danger btn-sm d-none text-nowrap" onclick="spBulkDelete()" disabled>
           <i class="bi bi-trash3 me-1"></i>Delete Selected
         </button>
+        {% if can(current_user, 'spare_parts', 'add') %}
         <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#addPartModal">
           <i class="bi bi-plus-circle me-1"></i>Add Part
         </button>
+        {% endif %}
+        {% if can(current_user, 'spare_parts', 'upload') %}
         <button type="button" class="btn btn-outline-success btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#uploadNewModal">
           <i class="bi bi-cloud-upload me-1"></i>Upload New
         </button>
+        {% endif %}
+        {% if can(current_user, 'spare_parts', 'upload') %}
         <button type="button" class="btn btn-outline-warning btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#uploadHarvestModal">
           <i class="bi bi-cloud-upload me-1"></i>Upload Harvest
         </button>
+        {% endif %}
       </div>
     </div>
       <table id="partsTable" class="table table-hover mb-0 small">
@@ -232,7 +238,7 @@
             <th>Code</th><th>GRN</th><th>Added As</th><th>Category</th>
             <th>Crate Number</th><th>Name</th><th>Make</th><th>Model</th>
             <th>Min Alert</th><th>In Stock</th><th>Consumed</th><th>Sold</th>
-            {% if can_view_pricing(current_user) %}<th>Unit Price</th>
+            {% if can(current_user, 'spare_parts', 'pricing') %}<th>Unit Price</th>
             <th>Stock Value</th>{% endif %}
             <th>Added On</th>
             <th>Actions</th>
@@ -290,24 +296,30 @@
                (spExport() below uses td.textContent), so dropping the symbol
                here is what drops it from the CSV too — no separate export
                formatting to touch. #}
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'spare_parts', 'pricing') %}
             <td>{{ part.unit_price | inr(2) }}</td>
             <td>{{ (part.unit_price * live_stock) | inr }}</td>
             {% endif %}
             <td class="text-nowrap">{{ part.created_at | ist_date if part.created_at else '—' }}</td>
             <td>
               <div class="d-flex gap-1">
+                {% if can(current_user, 'spare_parts', 'edit') %}
                 <a href="/spare-parts/{{ part.id }}/edit"
                    class="btn btn-xs btn-outline-primary btn-sm py-0 px-2">Edit</a>
+                {% endif %}
+                {% if can(current_user, 'spare_parts', 'edit') %}
                 <form method="post" action="/spare-parts/{{ part.id }}/procure" class="d-inline">
                   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                   <button class="btn btn-xs btn-outline-info btn-sm py-0 px-2" title="Send to Sourcing">Procure</button>
                 </form>
+                {% endif %}
+                {% if can(current_user, 'spare_parts', 'delete') %}
                 <button type="button" class="btn btn-xs btn-outline-danger btn-sm py-0 px-2"
                         onclick="if(confirm('Delete part {{ part.part_code }}?')) { document.getElementById('delPart_{{ loop.index }}').submit(); }"
                         title="Delete">
                   <i class="bi bi-trash3"></i>
                 </button>
+                {% endif %}
                 <form id="delPart_{{ loop.index }}" method="post" action="/spare-parts/{{ part.id }}/delete" style="display:none">
                   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
                 </form>
@@ -326,15 +338,17 @@
     <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
       <strong class="small text-nowrap"><i class="bi bi-tools me-1"></i>Consumption</strong>
       <div class="d-flex gap-2 flex-wrap align-items-center">
-        <button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('consumptionTable',false)">
+        {% if can(current_user, 'spare_parts', 'export') %}<button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('consumptionTable',false)">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export All
-        </button>
-        <button id="expSel_consumptionTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('consumptionTable',true)" disabled>
+        </button>{% endif %}
+        <button {% if not can(current_user, 'spare_parts', 'export') %}hidden {% endif %}id="expSel_consumptionTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('consumptionTable',true)" disabled>
           <i class="bi bi-download me-1"></i>Export Selected
         </button>
+        {% if can(current_user, 'spare_parts', 'add') %}
         <a href="/spare-parts/consume" class="btn btn-warning btn-sm text-nowrap">
           <i class="bi bi-plus-circle me-1"></i>Record Consumption
         </a>
+        {% endif %}
       </div>
     </div>
       <table id="consumptionTable" class="table table-hover mb-0 small">
@@ -354,8 +368,8 @@
             <td class="fw-semibold">{{ part_name }}</td>
             <td><code>{{ part_code }}</code></td>
             <td><span class="badge bg-warning text-dark">{{ consumption.qty_used }}</span></td>
-            <td>&#8377;{{ consumption.unit_cost | inr(2) }}</td>
-            <td class="fw-semibold">&#8377;{{ consumption.total_cost | inr }}</td>
+            <td>{% if can(current_user, 'spare_parts', 'pricing') %}&#8377;{{ consumption.unit_cost | inr(2) }}{% else %}—{% endif %}</td>
+            <td class="fw-semibold">{% if can(current_user, 'spare_parts', 'pricing') %}&#8377;{{ consumption.total_cost | inr }}{% else %}—{% endif %}</td>
             <td>
               {% if device_barcode %}
               <a href="/devices/{{ device_barcode }}" class="font-monospace small text-decoration-none">
@@ -384,17 +398,17 @@
       <strong class="small text-nowrap" title="Handover is enabled whenever Part Master stock is available"><i class="bi bi-bag-plus me-1"></i>Part Requests</strong>
       <div class="d-flex gap-2 flex-wrap align-items-center">
         {{ filter_bar('partReqTable', ['New', 'Replace', 'Downgrade']) }}
-        <button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('partReqTable',false)">
+        {% if can(current_user, 'spare_parts', 'export') %}<button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('partReqTable',false)">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export All
-        </button>
-        <button id="expSel_partReqTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('partReqTable',true)" disabled>
+        </button>{% endif %}
+        <button {% if not can(current_user, 'spare_parts', 'export') %}hidden {% endif %}id="expSel_partReqTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('partReqTable',true)" disabled>
           <i class="bi bi-download me-1"></i>Export Selected
         </button>
-        <button id="bulkHandover_partReqTable" class="btn btn-outline-success btn-sm text-nowrap"
+        <button {% if not can(current_user, 'spare_parts', 'edit') %}hidden {% endif %}id="bulkHandover_partReqTable" class="btn btn-outline-success btn-sm text-nowrap"
                 onclick="spBulkRequestAction('partReqTable','handover')" disabled>
           <i class="bi bi-box-arrow-right me-1"></i>Handover Selected
         </button>
-        <button id="bulkDelete_partReqTable" class="btn btn-outline-danger btn-sm text-nowrap"
+        <button {% if not can(current_user, 'spare_parts', 'delete') %}hidden {% endif %}id="bulkDelete_partReqTable" class="btn btn-outline-danger btn-sm text-nowrap"
                 onclick="spBulkRequestAction('partReqTable','delete')" disabled>
           <i class="bi bi-trash3 me-1"></i>Delete Selected
         </button>
@@ -424,17 +438,17 @@
       <strong class="small text-nowrap" title="Handover is enabled whenever Part Master stock is available"><i class="bi bi-exclamation-triangle me-1"></i>Faulty Request</strong>
       <div class="d-flex gap-2 flex-wrap align-items-center">
         {{ filter_bar('faultyReqTable', ['Faulty']) }}
-        <button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('faultyReqTable',false)">
+        {% if can(current_user, 'spare_parts', 'export') %}<button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('faultyReqTable',false)">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export All
-        </button>
-        <button id="expSel_faultyReqTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('faultyReqTable',true)" disabled>
+        </button>{% endif %}
+        <button {% if not can(current_user, 'spare_parts', 'export') %}hidden {% endif %}id="expSel_faultyReqTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('faultyReqTable',true)" disabled>
           <i class="bi bi-download me-1"></i>Export Selected
         </button>
-        <button id="bulkHandover_faultyReqTable" class="btn btn-outline-success btn-sm text-nowrap"
+        <button {% if not can(current_user, 'spare_parts', 'edit') %}hidden {% endif %}id="bulkHandover_faultyReqTable" class="btn btn-outline-success btn-sm text-nowrap"
                 onclick="spBulkRequestAction('faultyReqTable','handover')" disabled>
           <i class="bi bi-box-arrow-right me-1"></i>Handover Selected
         </button>
-        <button id="bulkDelete_faultyReqTable" class="btn btn-outline-danger btn-sm text-nowrap"
+        <button {% if not can(current_user, 'spare_parts', 'delete') %}hidden {% endif %}id="bulkDelete_faultyReqTable" class="btn btn-outline-danger btn-sm text-nowrap"
                 onclick="spBulkRequestAction('faultyReqTable','delete')" disabled>
           <i class="bi bi-trash3 me-1"></i>Delete Selected
         </button>
@@ -468,10 +482,10 @@
       <strong class="small text-nowrap"><i class="bi bi-clipboard-data me-1"></i>Parts Consumption
         <span id="pcCounts" class="text-muted fw-normal ms-1">{{ tag_consumption_tag_count }} tag(s), {{ tag_consumption_rows|length }} part row(s)</span></strong>
       <div class="d-flex gap-2 flex-wrap align-items-center">
-        <button id="pcExportBtn" type="button" class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('partsConsumptionTable',false)">
+        <button {% if not can(current_user, 'spare_parts', 'export') %}hidden {% endif %}id="pcExportBtn" type="button" class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('partsConsumptionTable',false)">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Tags Summary
         </button>
-        <button id="pcExportPartsSummaryBtn" type="button" class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExportPartsSummary()">
+        <button {% if not can(current_user, 'spare_parts', 'export') %}hidden {% endif %}id="pcExportPartsSummaryBtn" type="button" class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExportPartsSummary()">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Parts Summary
         </button>
       </div>
@@ -495,8 +509,8 @@
           <td class="text-nowrap">{{ row.date_added.strftime('%d-%m-%Y') if row.date_added else '—' }}</td>
           <td class="fw-semibold">{{ row.part_name }}</td>
           <td><span class="badge bg-info text-dark">{{ row.total_qty }}</span></td>
-          <td>&#8377;{{ row.unit_price | inr(2) }}</td>
-          <td class="fw-semibold">&#8377;{{ row.total_price | inr(2) }}</td>
+          <td>{% if can(current_user, 'spare_parts', 'pricing') %}&#8377;{{ row.unit_price | inr(2) }}{% else %}—{% endif %}</td>
+          <td class="fw-semibold">{% if can(current_user, 'spare_parts', 'pricing') %}&#8377;{{ row.total_price | inr(2) }}{% else %}—{% endif %}</td>
         </tr>
         {# Empty case is DataTables' own emptyTable message (see initGlobalTable
            below) — a colspan placeholder row crashes DataTables
@@ -513,10 +527,10 @@
     <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
       <strong class="small text-nowrap" title="Pending Requests For Part Sourcing — synced with CRM Dashboard (read-only here)"><i class="bi bi-box-arrow-in-down me-1"></i>Sourcing Requests</strong>
       <div class="d-flex gap-2 flex-wrap align-items-center">
-        <button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('sourcingTable',false)">
+        {% if can(current_user, 'spare_parts', 'export') %}<button class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('sourcingTable',false)">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export All
-        </button>
-        <button id="expSel_sourcingTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('sourcingTable',true)" disabled>
+        </button>{% endif %}
+        <button {% if not can(current_user, 'spare_parts', 'export') %}hidden {% endif %}id="expSel_sourcingTable" class="btn btn-outline-info btn-sm d-none text-nowrap" onclick="spExport('sourcingTable',true)" disabled>
           <i class="bi bi-download me-1"></i>Export Selected
         </button>
       </div>
@@ -563,10 +577,10 @@
               {% if _files %}
               <div class="d-flex flex-wrap gap-1">
                 {% for f in _files %}
-                <a class="btn btn-sm btn-outline-success py-0 px-1"
+                {% if can(current_user, 'spare_parts', 'export') %}<a class="btn btn-sm btn-outline-success py-0 px-1"
                    href="/part-estimation/download/{{ f.id }}" title="{{ f.file_name }}">
                   <i class="bi bi-file-earmark-excel me-1"></i>{{ f.grade or 'Estimate' }}
-                </a>
+                </a>{% endif %}
                 {% endfor %}
               </div>
               {% else %}<span class="text-muted">No file attached</span>{% endif %}
@@ -613,14 +627,18 @@
               {% if s.verified %}
               <span class="badge bg-success"><i class="bi bi-patch-check"></i> Verified</span>
               {% elif s.status == 'closed' %}
+              {% if can(current_user, 'spare_parts', 'edit') %}
               <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
                       onclick="openSourcingVerifyModal('{{ s.id }}', '{{ s.part_name }}')">Verify</button>
+              {% endif %}
               {% elif s.source == 'production' %}
                 {% if s.confirmed %}
                 <span class="badge bg-success"><i class="bi bi-patch-check"></i> Confirmed</span>
                 {% else %}
+                {% if can(current_user, 'spare_parts', 'edit') %}
                 <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
                         onclick="confirmProductionRequest('{{ s.id }}', this)">Confirm Request</button>
+                {% endif %}
                 {% endif %}
               {% else %}
               <span class="badge bg-warning text-dark">Pending at Sourcing</span>
@@ -715,9 +733,9 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <a href="/spare-parts/bulk-template" class="btn btn-outline-secondary btn-sm mb-3">
+        {% if can(current_user, 'spare_parts', 'export') %}<a href="/spare-parts/bulk-template" class="btn btn-outline-secondary btn-sm mb-3">
           <i class="bi bi-download me-1"></i>Download Sample File
-        </a>
+        </a>{% endif %}
         <label class="form-label small fw-semibold">CSV File</label>
         <input type="file" name="file" accept=".csv" class="form-control form-control-sm" required>
       </div>
@@ -740,9 +758,9 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <a href="/spare-parts/bulk-template" class="btn btn-outline-secondary btn-sm mb-3">
+        {% if can(current_user, 'spare_parts', 'export') %}<a href="/spare-parts/bulk-template" class="btn btn-outline-secondary btn-sm mb-3">
           <i class="bi bi-download me-1"></i>Download Sample File
-        </a>
+        </a>{% endif %}
         <label class="form-label small fw-semibold">CSV File</label>
         <input type="file" name="file" accept=".csv" class="form-control form-control-sm" required>
       </div>
@@ -801,10 +819,12 @@
                 {% for b in part_brands %}<option>{{ b }}</option>{% endfor %}
               </select>
             </div>
+            {% if can(current_user, 'spare_parts', 'pricing') %}
             <div class="col-md-4">
               <label class="form-label small fw-semibold">Price (₹)</label>
               <input type="number" name="price" step="0.01" min="0" class="form-control form-control-sm">
             </div>
+            {% endif %}
             <div class="col-md-4">
               <label class="form-label small fw-semibold">Physical Qty</label>
               <input type="number" name="physical_qty" id="hv_phys_qty" class="form-control form-control-sm" min="1" value="1">
@@ -855,7 +875,8 @@ function spEsc(v) {
   });
 }
 function spPost(action, label, cls, confirmText) {
-  return '<form method="post" action="' + action + '" class="d-inline"' +
+  {% if not can(current_user, 'spare_parts', 'edit') %}return '';  // no 'edit' permission on this module: no state-change buttons
+  {% endif %}  return '<form method="post" action="' + action + '" class="d-inline"' +
     (confirmText ? ' onsubmit="return confirm(\'' + confirmText + '\')"' : '') + '>' +
     '<input type="hidden" name="csrf_token" value="' + spEsc(SP_CSRF) + '">' +
     '<button class="btn btn-sm ' + cls + ' py-0 px-2">' + label + '</button></form>';
@@ -878,9 +899,9 @@ function spStatusCell(r) {
 function spActionCell(r, faulty) {
   var h = '';
   if (r.st === 'requested') {
-    h += '<button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#handoverModal"' +
+{% if can(current_user, 'spare_parts', 'edit') %}    h += '<button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#handoverModal"' +
          ' data-req="' + spEsc(r.id) + '" data-part="' + spEsc(r.n) + '" data-eng="' + spEsc(r.e) + '"' +
-         ' data-qty="' + spEsc(r.q) + '"' + (r.av ? '' : ' disabled') + '>Handover</button>';
+         ' data-qty="' + spEsc(r.q) + '"' + (r.av ? '' : ' disabled') + '>Handover</button>';{% endif %}
   } else if (r.st === 'handed_over') h += '<span class="badge bg-success">Handed Over &times;' + spEsc(r.h) + '</span>';
   else if (r.st === 'not_in_stock') h += '<span class="badge bg-danger">Not In Stock</span>';
   else if (r.st === 'procure') h += '<span class="badge bg-info text-dark">Sent for Sourcing</span>';

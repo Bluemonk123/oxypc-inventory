@@ -89,7 +89,7 @@
   </thead>
   <tbody>
     {% for g in rows %}
-    <tr data-qty="{{ g.total_count }}" data-min="{{ g.min_total or 0 }}"
+    <tr data-qty="{{ g.total_count }}" data-min="{{ (g.min_total or 0) if can(current_user, 'sales', 'pricing') else 0 }}"
         data-open="{{ g.open_count }}" data-blocked="{{ g.blocked_count }}">
       {% if selectable %}
       <td><input type="checkbox" class="modelSumChk" value="{{ loop.index0 }}"
@@ -97,9 +97,9 @@
                  data-barcodes='{{ g.barcodes | tojson }}'></td>
       {% endif %}
       {# Export this configuration's tags — same file as All Inventory's export (2026-10-22). #}
-      <td class="text-nowrap"><button type="button" class="btn btn-sm btn-link text-success p-0 me-1 align-baseline ms-export-btn"
+      <td class="text-nowrap">{% if can(current_user, 'sales', 'export') %}<button type="button" class="btn btn-sm btn-link text-success p-0 me-1 align-baseline ms-export-btn"
                   title="Export these {{ g.total_count }} tag(s) — All Inventory format"
-                  data-barcodes='{{ g.barcodes | tojson }}'><i class="bi bi-download"></i></button>{{ g.model }}</td>
+                  data-barcodes='{{ g.barcodes | tojson }}'><i class="bi bi-download"></i></button>{% endif %}{{ g.model }}</td>
       <td>{{ g.make }}</td>
       <td>{{ g.device_type }}</td>
       <td>{{ g.cpu }}</td>
@@ -126,8 +126,9 @@
           {% endfor %}
         </div>
       </td>
-      <td class="text-nowrap" data-order="{{ g.min_total }}">
-        {% if g.min_lo is not none %}
+      <td class="text-nowrap" data-order="{{ g.min_total if can(current_user, 'sales', 'pricing') else 0 }}">
+        {% if not can(current_user, 'sales', 'pricing') %}<span class="text-muted">—</span>
+        {% elif g.min_lo is not none %}
           <span class="fw-semibold">₹{{ ((g.min_total) | inr) }}</span>
           <div class="text-muted" style="font-size:.7rem">
             {% if g.min_lo == g.min_hi %}₹{{ ((g.min_lo) | inr) }} / tag{% else %}₹{{ ((g.min_lo) | inr) }} – ₹{{ ((g.min_hi) | inr) }} / tag{% endif %}
@@ -143,8 +144,10 @@
                   data-barcodes='{{ g.barcodes | tojson }}' data-max="{{ g.total_count }}">Request</button>
           {% endif %}
           {% if g.barcodes %}
+          {% if can(current_user, 'sales', 'add') %}
           <button type="button" class="btn btn-sm btn-outline-success py-0 model-sum-sell-btn"
                   data-barcodes='{{ g.barcodes | tojson }}'>Sell</button>
+          {% endif %}
           {% endif %}
         </div>
       </td>
@@ -205,19 +208,19 @@
       <button type="button" id="multiRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Multi-Request with selected (<span id="readySelCount">0</span>)
       </button>
-      <button type="button" id="multiSellBtn" class="btn btn-sm btn-outline-success" disabled>
+      <button {% if not can(current_user, 'sales', 'add') %}hidden {% endif %}type="button" id="multiSellBtn" class="btn btn-sm btn-outline-success" disabled>
         <i class="bi bi-cart-plus me-1"></i>Multi-Sell (<span id="readySelCount2">0</span>)
       </button>
       {# New Bulk Sale: same selection as Multi-Sell, opens the separate New Tag Sale
          page (per-tag prices, no quantity cap). Multi-Sell above is unchanged. #}
-      <button type="button" id="newBulkSaleBtn" class="btn btn-sm btn-success" disabled
+      <button {% if not can(current_user, 'sales', 'add') %}hidden {% endif %}type="button" id="newBulkSaleBtn" class="btn btn-sm btn-success" disabled
               title="Open the New Tag Sale page with the selected tags">
         <i class="bi bi-cart-plus me-1"></i>New Bulk Sale (<span id="readySelCount4">0</span>)
       </button>
       <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
         <i class="bi bi-upload me-1"></i>Upload Tags
       </button>
-      {% if can_set_price(current_user) %}
+      {% if can_set_price(current_user) and can(current_user, 'sales', 'pricing') %}
       <button type="button" id="bulkSetPriceBtn" class="btn btn-sm btn-outline-dark" disabled>
         <i class="bi bi-tag me-1"></i>Set Price (<span id="readySelCount3">0</span>)
       </button>
@@ -302,7 +305,7 @@
         <tr>
           <th>Sub Lot</th><th>Lot Number</th><th>Device Type</th><th>Model Name</th>
           <th>Total Quantities</th><th>Availability</th>
-          {% if can_view_pricing(current_user) %}
+          {% if can(current_user, 'sales', 'pricing') %}
           <th title="Sum of the available tags' unit prices (availability × device price)">Lot Price</th>
           {% endif %}
           <th>Min Selling Price</th><th>Max Selling Price</th><th>Assigned To</th><th>Action</th>
@@ -336,11 +339,11 @@
           </td>
           <td>{{ r.total_qty }}</td>
           <td>{{ r.availability }}</td>
-          {% if can_view_pricing(current_user) %}
+          {% if can(current_user, 'sales', 'pricing') %}
           <td>{% if r.lot_price is not none %}₹{{ ((r.lot_price) | inr) }}{% else %}—{% endif %}</td>
           {% endif %}
-          <td>{% if r.min_price is not none %}₹{{ ((r.min_price) | inr) }}{% if r.min_is_auto %}<span class="text-muted ms-1" style="font-size:.7rem" title="Calculated: Lot Price + As-Is margin. Use Set price to override.">auto</span>{% endif %}{% else %}—{% endif %}</td>
-          <td>{% if r.max_price is not none %}₹{{ ((r.max_price) | inr) }}{% else %}—{% endif %}</td>
+          <td>{% if can(current_user, 'sales', 'pricing') %}{% if r.min_price is not none %}₹{{ ((r.min_price) | inr) }}{% if r.min_is_auto %}<span class="text-muted ms-1" style="font-size:.7rem" title="Calculated: Lot Price + As-Is margin. Use Set price to override.">auto</span>{% endif %}{% else %}—{% endif %}{% else %}—{% endif %}</td>
+          <td>{% if can(current_user, 'sales', 'pricing') %}{% if r.max_price is not none %}₹{{ ((r.max_price) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
           <td>{{ r.assigned_to_name }}</td>
           <td class="text-nowrap">
             {% if role_allowed(current_user.role, 'admin') %}
@@ -353,7 +356,7 @@
               <i class="bi bi-pencil"></i>
             </button>
             {% endif %}
-            {% if can_set_price(current_user) %}
+            {% if can_set_price(current_user) and can(current_user, 'sales', 'pricing') %}
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 as-is-lot-edit-btn"
                     data-lot-id="{{ r.lot_id }}" data-sub-lot="{{ r.sub_lot_number }}"
                     data-lot-number="{{ r.lot_number or '' }}"
@@ -363,17 +366,23 @@
               <i class="bi bi-tag"></i> Set price
             </button>
             {% endif %}
+            {% if can(current_user, 'sales', 'edit') %}
             <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2 as-is-lot-open-btn"
                     data-lot-id="{{ r.lot_id }}" data-sub-lot="{{ r.sub_lot_number }}"
                     data-lot-number="{{ r.lot_number or '' }}"
                     data-availability="{{ r.availability }}">
               <i class="bi bi-unlock"></i> Open Tag
             </button>
+            {% endif %}
+            {% if can(current_user, 'sales', 'add') %}
             <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 as-is-lot-sell-btn"
                     data-barcodes='{{ r.barcodes | tojson }}'>Sell</button>
+            {% endif %}
+            {% if can(current_user, 'sales', 'add') %}
             <button type="button" class="btn btn-sm btn-success py-0 px-2 as-is-lot-newsell-btn"
                     title="Open the New Tag Sale page with this lot's tags"
                     data-barcodes='{{ r.barcodes | tojson }}'>New Sell</button>
+            {% endif %}
           </td>
           <td class="d-none">{{ r.cpu }}</td>
           <td class="d-none">{{ r.ram }}</td>
@@ -657,8 +666,8 @@
       <div class="modal-header py-2">
         <h6 class="modal-title"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>QC Report — <code id="qcr_tag"></code></h6>
         <div class="ms-auto d-flex gap-2 align-items-center">
-          <a id="qcr_download" class="btn btn-sm btn-success" href="#"><i class="bi bi-download me-1"></i>Download</a>
-          <button type="button" id="qcr_print" class="btn btn-sm btn-primary"><i class="bi bi-printer me-1"></i>Print</button>
+          <a {% if not can(current_user, 'sales', 'export') %}hidden {% endif %}id="qcr_download" class="btn btn-sm btn-success" href="#"><i class="bi bi-download me-1"></i>Download</a>
+          <button {% if not can(current_user, 'sales', 'export') %}hidden {% endif %}type="button" id="qcr_print" class="btn btn-sm btn-primary"><i class="bi bi-printer me-1"></i>Print</button>
           <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
       </div>
@@ -770,6 +779,9 @@ $(document).ready(function(){
     columnDefs: [
       { orderable: false, targets: [0, -2, -1] },
       { visible: false, targets: [{{ 10 if can_view_pricing(current_user) else 9 }}] },
+      {# Module-level pricing: /sales/ready/data still sends Unit Cost (when the role-wide flag is on) and
+         Min/Max Selling Price, so those columns stay in the header and are hidden here instead. #}
+      {% if not can(current_user, 'sales', 'pricing') %}{ visible: false, targets: [{{ '9, 12, 13' if can_view_pricing(current_user) else '11, 12' }}] },{% endif %}
     ],
     initComplete: function () {
       // Bulk buttons sit just before the table's search/scan box.
@@ -1010,8 +1022,8 @@ function buildAsIsLotTable(){
     // Lot Price (pricing-gated) shifts every column after it by one — Jinja
     // already knows can_view_pricing at render time, same as the Tag table.
     columnDefs: [
-      { orderable: false, targets: [{{ 10 if can_view_pricing(current_user) else 9 }}] },
-      { visible: false, targets: [{% if can_view_pricing(current_user) %}11, 12, 13, 14, 15, 16{% else %}10, 11, 12, 13, 14, 15{% endif %}] },
+      { orderable: false, targets: [{{ 10 if can(current_user, 'sales', 'pricing') else 9 }}] },
+      { visible: false, targets: [{% if can(current_user, 'sales', 'pricing') %}11, 12, 13, 14, 15, 16{% else %}10, 11, 12, 13, 14, 15{% endif %}] },
     ],
   });
   $(dtAsIsLot.table().container()).find('input[type="search"]')
@@ -1226,7 +1238,7 @@ function summaryFooter() {
     SUMMARY_GRADE_ORDER.filter(function (g) { return grades[g]; }).map(function (g) {
       return '<span class="' + cls[g] + '">' + g + ' ' + grades[g] + '</span>';
     }).join('') + '</div>');
-  foot.find('.ms-total-min').text('₹' + Math.round(min).toLocaleString('en-IN'));
+  foot.find('.ms-total-min').text({% if can(current_user, 'sales', 'pricing') %}'₹' + Math.round(min).toLocaleString('en-IN'){% else %}'—'{% endif %});
 }
 function buildSummaryTable(id){
   if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();

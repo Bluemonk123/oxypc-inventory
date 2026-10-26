@@ -18,12 +18,14 @@
       <button type="button" id="retResetBtn" class="btn btn-sm btn-outline-secondary text-nowrap">
         <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
       </button>
-      <button type="button" id="retExportBtn" class="btn btn-sm btn-outline-success text-nowrap">
+      <button {% if not can(current_user, 'returns', 'export') %}hidden {% endif %}type="button" id="retExportBtn" class="btn btn-sm btn-outline-success text-nowrap">
         <i class="bi bi-download me-1"></i>Export
       </button>
+      {% if can(current_user, 'returns', 'add') %}
       <a href="/returns/new" class="btn btn-sm btn-warning text-nowrap">
         <i class="bi bi-arrow-return-left me-1"></i>Add New Return
       </a>
+      {% endif %}
     </div>
   </div>
   <div class="card-body p-0">
@@ -46,8 +48,8 @@
           <td>{{ serial_no or '—' }}</td>
           <td>{{ brand }} {{ model }}</td>
           <td><code>{{ sale_number }}</code></td>
-          <td>&#8377;{{ ((sale_price) | inr) }}</td>
-          <td>{{ ('₹' ~ ((ret.refund_amount) | inr)) if ret.refund_amount else '—' }}</td>
+          <td>{% if can(current_user, 'returns', 'pricing') %}&#8377;{{ ((sale_price) | inr) }}{% else %}—{% endif %}</td>
+          <td>{% if can(current_user, 'returns', 'pricing') %}{{ ('₹' ~ ((ret.refund_amount) | inr)) if ret.refund_amount else '—' }}{% else %}—{% endif %}</td>
           <td>{{ ret.reason or '—' }}</td>
           <td>
             {% if ret.condition_on_return %}
@@ -95,7 +97,7 @@
           <td>{{ serial_no or '—' }}</td>
           <td>{{ brand }} {{ model }}</td>
           <td><code>{{ sale_number }}</code></td>
-          <td>&#8377;{{ ((sale_price) | inr) }}</td>
+          <td>{% if can(current_user, 'returns', 'pricing') %}&#8377;{{ ((sale_price) | inr) }}{% else %}—{% endif %}</td>
           <td>—</td>
           <td>—</td>
           <td>—</td>
@@ -136,7 +138,7 @@
         </table>
       </div>
       <div class="modal-footer">
-        <a id="rcpt_download_link" href="#" target="_blank" class="btn btn-primary">
+        <a {% if not can(current_user, 'returns', 'export') %}hidden {% endif %}id="rcpt_download_link" href="#" target="_blank" class="btn btn-primary">
           <i class="bi bi-download me-1"></i>Download / Print
         </a>
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>

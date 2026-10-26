@@ -259,6 +259,7 @@ async def block_tags_data(
     from models.role_permissions import has_perm as _has_perm
     role_val = getattr(current_user.role, "value", None) or str(current_user.role)
     can_sell = _has_perm(role_val, "sales", "add")
+    can_edit_block = _has_perm(role_val, "block_tags", "edit")  # Permission Matrix tick (2026-10-25)
 
     data = []
     for rec in records:
@@ -284,8 +285,9 @@ async def block_tags_data(
 
         ids_attr = ",".join(item_ids)
         actions = (
-            f'<a href="#" class="btn btn-outline-secondary btn-sm py-0 px-1 block-edit-btn" data-id="{rec.id}" title="Edit"><i class="bi bi-pencil"></i></a>'
-            f' <a href="#" class="btn btn-outline-primary btn-sm py-0 px-1 block-release-btn" data-items="{ids_attr}" '
+            (f'<a href="#" class="btn btn-outline-secondary btn-sm py-0 px-1 block-edit-btn" data-id="{rec.id}" title="Edit"><i class="bi bi-pencil"></i></a> '
+             if can_edit_block else '')
+            + f'<a href="#" class="btn btn-outline-primary btn-sm py-0 px-1 block-release-btn" data-items="{ids_attr}" '
             f'data-blockid="{esc(rec.block_id)}" data-count="{n_tags}" title="Release all tags in this block"><i class="bi bi-unlock"></i></a>'
         )
         if can_sell and n_tags:

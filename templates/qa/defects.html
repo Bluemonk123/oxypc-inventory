@@ -22,9 +22,11 @@
     </select>
     <button class="btn btn-sm btn-outline-secondary">Filter</button>
   </form>
+  {% if can(current_user, 'qa', 'add') %}
   <button class="btn btn-sm btn-danger" data-bs-toggle="modal" data-bs-target="#newDefectModal">
     <i class="bi bi-bug me-1"></i>Log Defect
   </button>
+  {% endif %}
 </div>
 
 <!-- Defect lifecycle legend -->

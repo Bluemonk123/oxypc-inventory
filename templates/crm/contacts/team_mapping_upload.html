@@ -45,9 +45,9 @@
           matched exactly against the Reference panel on the right. A blank
           role column leaves that bucket unchanged for the matched account.
         </p>
-        <a href="/crm/contacts/team-mapping/sample-csv" class="btn btn-sm btn-outline-secondary mb-3">
+        {% if can(current_user, 'crm_contacts', 'export') %}<a href="/crm/contacts/team-mapping/sample-csv" class="btn btn-sm btn-outline-secondary mb-3">
           <i class="bi bi-download me-1"></i>Download Sample CSV (all accounts)
-        </a>
+        </a>{% endif %}
         <form action="/crm/contacts/team-mapping/upload" method="post" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
           <div class="mb-3">

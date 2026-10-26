@@ -12,19 +12,23 @@
     <span class="badge bg-{{ status_badge.get(r.status, 'secondary') }} align-middle ms-1">{{ statuses.get(r.status, r.status) }}</span>
   </div>
   <div class="d-flex gap-2">
-    <a href="/rentals/{{ r.id }}/print" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-file-earmark-pdf me-1"></i>Summary (PDF)</a>
-    <a href="/rentals/{{ r.id }}/tags.csv" class="btn btn-sm btn-outline-primary"><i class="bi bi-filetype-csv me-1"></i>Tags CSV</a>
+    {% if can(current_user, 'rentals', 'export') %}<a href="/rentals/{{ r.id }}/print" target="_blank" class="btn btn-sm btn-outline-primary"><i class="bi bi-file-earmark-pdf me-1"></i>Summary (PDF)</a>{% endif %}
+    {% if can(current_user, 'rentals', 'export') %}<a href="/rentals/{{ r.id }}/tags.csv" class="btn btn-sm btn-outline-primary"><i class="bi bi-filetype-csv me-1"></i>Tags CSV</a>{% endif %}
     {% if r.status in ('active', 'payment_due') %}
     {# Rental Return (2026-10-24) replaces Mark Returned. #}
+    {% if can(current_user, 'rentals', 'add') %}
     <a href="/returns/new?active_tab=rental&rental={{ r.id }}" class="btn btn-sm btn-success">
       <i class="bi bi-box-arrow-in-down-left me-1"></i>Rental Return</a>
     {% endif %}
+    {% endif %}
     {% if r.status == 'active' %}
+    {% if can(current_user, 'rentals', 'edit') %}
     <form method="post" action="/rentals/{{ r.id }}/cancel" class="d-inline"
           onsubmit="return confirm('Cancel {{ r.rental_number }}? Its tags go back to Ready to Sale.')">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-lg me-1"></i>Cancel Rental</button>
     </form>
+    {% endif %}
     {% endif %}
   </div>
 </div>
@@ -67,8 +71,10 @@
         <div><span class="text-muted">Start Date:</span> {{ r.start_date.strftime('%d-%m-%Y') }}</div>
         <div><span class="text-muted">End Date:</span> {{ r.end_date.strftime('%d-%m-%Y') }}</div>
         <div><span class="text-muted">Total Quantity:</span> {{ r.total_quantity }}</div>
+        {% if can(current_user, 'rentals', 'pricing') %}
         <div><span class="text-muted">Total Price:</span> <span class="fw-semibold">₹{{ r.total_price | inr(2) }}</span>
           {% if r.suggested_price is not none and r.suggested_price != r.total_price %}<span class="text-muted">(Min Selling total ₹{{ r.suggested_price | inr(2) }})</span>{% endif %}</div>
+        {% endif %}
         {% if r.notes %}<div class="mt-1"><span class="text-muted">Notes:</span> {{ r.notes }}</div>{% endif %}
         <hr class="my-2">
         <div class="text-muted">Created by {{ r.created_by or '—' }} on {{ r.created_at | ist_datetime }}</div>
@@ -104,7 +110,7 @@
           {% for it in items %}
           <tr><td class="fw-semibold">{{ it.barcode }}</td><td>{{ it.make or '' }} {{ it.model or '' }}</td><td>{{ it.cpu or '' }}</td>
             <td>{{ it.generation or '' }}</td><td>{{ it.ram or '' }}</td><td>{{ it.storage or '' }}</td><td>{{ it.grade or '' }}</td>
-            <td class="text-end">{% if it.min_selling_price is not none %}₹{{ it.min_selling_price | inr }}{% else %}—{% endif %}</td></tr>
+            <td class="text-end">{% if can(current_user, 'rentals', 'pricing') %}{% if it.min_selling_price is not none %}₹{{ it.min_selling_price | inr }}{% else %}—{% endif %}{% else %}—{% endif %}</td></tr>
           {% endfor %}
         </tbody>
       </table>

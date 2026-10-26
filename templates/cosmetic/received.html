@@ -75,19 +75,25 @@
               <td class="text-muted small">{{ wo.name if wo else '—' }}</td>
               <td class="text-muted small">{{ wo.date.strftime('%d-%b %H:%M') if wo and wo.date else '—' }}</td>
               <td>
+                {% if can(current_user, 'cosmetic_received', 'edit') %}
                 <button type="button" class="btn btn-sm btn-success py-0 px-2"
                         onclick="openMoveModal('{{ device.barcode }}', 'Cleaning')">
                   <i class="bi bi-check2 me-1"></i>Move to Cleaning
                 </button>
+                {% endif %}
+                {% if can(current_user, 'cosmetic_received', 'edit') %}
                 <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 ms-1"
                         onclick="directMoveToFinalQC('{{ device.barcode }}', this)"
                         title="Skip cosmetic stages and move to Final QC">
                   <i class="bi bi-skip-forward me-1"></i>Move to Final QC
                 </button>
+                {% endif %}
+                {% if can(current_user, 'cosmetic_received', 'edit') %}
                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1"
                         onclick="openFailModal('{{ device.barcode }}')">
                   <i class="bi bi-x-circle me-1"></i>Fail
                 </button>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -360,7 +366,7 @@ $(document).ready(function(){
     columnDefs: [{ orderable: false, targets: CAN_BULK_ASSIGN ? [0, -1] : [-1] }],
     initComplete: function() {
       {% if current_user.role.value in ('admin', 'cosmetic_manager') %}
-      var btn = $('<button type="button" id="cosmeticRecvAssignBtn" class="btn btn-sm btn-primary me-2" disabled>' +
+      var btn = $('<button {% if not can(current_user, 'cosmetic_received', 'add') %}hidden {% endif %}type="button" id="cosmeticRecvAssignBtn" class="btn btn-sm btn-primary me-2" disabled>' +
                   '<i class="bi bi-person-check me-1"></i>Assign</button>');
       btn.on('click', openCosmeticRecvBulkAssignModal);
       $(this.api().table().container()).find('.dataTables_filter').prepend(btn);

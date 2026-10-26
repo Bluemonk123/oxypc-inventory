@@ -70,6 +70,7 @@
                 {% endif %}
               </select>
             </div>
+            {% if can(current_user, 'spare_parts', 'pricing') %}
             <div class="col-md-4">
               <label class="form-label fw-semibold">Unit Price (₹)</label>
               <div class="input-group">
@@ -77,6 +78,10 @@
                 <input type="number" name="unit_price" class="form-control" value="{{ part.unit_price }}" min="0" step="0.01">
               </div>
             </div>
+            {% else %}
+            {# Not allowed to see/set pricing: carry the current price so saving does not reset it to 0. #}
+            <input type="hidden" name="unit_price" value="{{ part.unit_price }}">
+            {% endif %}
             <div class="col-md-4">
               <label class="form-label fw-semibold">In Stock (qty)</label>
               <input type="number" name="qty_in_stock" class="form-control" value="{{ part.qty_in_stock or 0 }}" min="0">

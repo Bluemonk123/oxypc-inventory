@@ -24,10 +24,12 @@
   </form>
   {% if can_edit %}
   <div class="d-flex gap-2">
+    {% if can(current_user, 'crm_price_matrix', 'upload') %}
     <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#uploadModal">
       <i class="bi bi-cloud-upload me-1"></i>Upload CSV/XLSX
     </button>
-    <a href="/crm/price-matrix/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle me-1"></i>Add Row</a>
+    {% endif %}
+    {% if can(current_user, 'crm_price_matrix', 'add') %}<a href="/crm/price-matrix/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle me-1"></i>Add Row</a>{% endif %}
   </div>
   {% endif %}
 </div>
@@ -48,10 +50,12 @@
             <th>Grade</th>
             <th>Material</th>
             <th>Brand</th>
+            {% if can(current_user, 'crm_price_matrix', 'pricing') %}
             <th>Min Buy ₹</th>
             <th>Max Buy ₹</th>
             <th>Target Sell ₹</th>
             <th>Min Margin %</th>
+            {% endif %}
             <th>Notes</th>
             <th>Updated</th>
             {% if can_edit %}<th></th>{% endif %}
@@ -65,6 +69,7 @@
             <td><span class="badge bg-warning text-dark">{{ row.grade }}</span></td>
             <td class="small">{{ material_map.get(row.material_type, row.material_type or '—') }}</td>
             <td class="small text-muted">{{ row.brand or '—' }}</td>
+            {% if can(current_user, 'crm_price_matrix', 'pricing') %}
             <td class="small">{% if row.min_buy_price %}₹{{ ((row.min_buy_price) | inr) }}{% else %}—{% endif %}</td>
             <td class="small">{% if row.max_buy_price %}<span class="text-danger fw-semibold">₹{{ ((row.max_buy_price) | inr) }}</span>{% else %}—{% endif %}</td>
             <td class="small">{% if row.target_sell %}<span class="text-success fw-semibold">₹{{ ((row.target_sell) | inr) }}</span>{% else %}—{% endif %}</td>
@@ -73,17 +78,20 @@
                 {{ row.min_margin_pct or 15 }}%
               </span>
             </td>
+            {% endif %}
             <td class="small text-muted">{{ row.notes or '—' }}</td>
             <td class="small text-muted">{{ row.updated_at.strftime('%d %b') if row.updated_at else '—' }}<br><span style="font-size:.65rem">{{ row.updated_by or '' }}</span></td>
             {% if can_edit %}
             <td>
               <div class="btn-group btn-group-sm">
-                <a href="/crm/price-matrix/{{ row.id }}/edit" class="btn btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>
+                {% if can(current_user, 'crm_price_matrix', 'edit') %}<a href="/crm/price-matrix/{{ row.id }}/edit" class="btn btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>{% endif %}
+                {% if can(current_user, 'crm_price_matrix', 'delete') %}
                 <form method="post" action="/crm/price-matrix/{{ row.id }}/delete" class="d-inline"
                       onsubmit="return confirm('Delete this row?')">
                   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
                   <button class="btn btn-outline-danger" title="Delete"><i class="bi bi-trash"></i></button>
                 </form>
+                {% endif %}
               </div>
             </td>
             {% endif %}
@@ -118,9 +126,9 @@
           <div class="mb-3">
             <div class="d-flex align-items-center justify-content-between mb-2">
               <span class="fw-semibold small"><i class="bi bi-1-circle-fill text-primary me-1"></i>Download &amp; fill the sample file</span>
-              <a href="/static/samples/price_matrix_sample.csv" class="btn btn-sm btn-primary" download>
+              {% if can(current_user, 'crm_price_matrix', 'export') %}<a href="/static/samples/price_matrix_sample.csv" class="btn btn-sm btn-primary" download>
                 <i class="bi bi-file-earmark-spreadsheet me-1"></i>Download Sample CSV
-              </a>
+              </a>{% endif %}
             </div>
             <!-- Column preview table -->
             <div class="table-responsive border rounded" style="max-height:140px;overflow-y:auto">

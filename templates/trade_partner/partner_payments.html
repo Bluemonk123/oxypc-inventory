@@ -24,7 +24,7 @@
         <tbody>
           {% for r in rows %}
           <tr>
-            <td class="ps-2 fw-bold text-success">₹{{ ((r.bid.bid_amount) | inr) }}</td>
+            <td class="ps-2 fw-bold text-success">{% if can(current_user, 'partner_payments', 'pricing') %}₹{{ ((r.bid.bid_amount) | inr) }}{% else %}—{% endif %}</td>
             <td class="font-monospace small">{{ r.bid.bid_number }}</td>
             <td class="font-monospace small">
               {% if r.lot_id %}<a href="/lots/{{ r.lot_id }}" class="text-decoration-none">{{ r.lot_number }}</a>
@@ -35,19 +35,21 @@
             <td><span class="badge {{ r.payment_badge }}">{{ r.payment_status }}</span></td>
             <td class="text-nowrap">
               {% for d in r.documents %}
-              <a href="/trade-partner/bids/document/{{ d.id }}"
+              {% if can(current_user, 'partner_payments', 'export') %}<a href="/trade-partner/bids/document/{{ d.id }}"
                  class="btn btn-sm btn-outline-secondary py-0 px-1 mb-1"
                  title="{{ d.original_name or d.filename }}">
                 <i class="bi bi-download"></i> {{ d.doc_type | upper }}
-              </a>
+              </a>{% endif %}
               {% else %}<span class="text-muted small">—</span>{% endfor %}
             </td>
             <td class="text-nowrap">
+              {% if can(current_user, 'partner_payments', 'edit') %}
               <button type="button" class="btn btn-sm btn-primary py-0 px-2 verify-btn"
                       data-bid-id="{{ r.bid.id }}" data-bid-number="{{ r.bid.bid_number }}"
                       {% if r.payment_status == 'Payment Done' %}disabled title="Already verified"{% endif %}>
                 <i class="bi bi-patch-check me-1"></i>Verify Payment
               </button>
+              {% endif %}
             </td>
           </tr>
           {% else %}

@@ -59,7 +59,7 @@
           </td>
           <td>{{ brand }} {{ model }}</td>
           <td><code>{{ sale_number }}</code></td>
-          <td>&#8377;{{ ((sale_price) | inr) }}</td>
+          <td>{% if can(current_user, 'returns', 'pricing') %}&#8377;{{ ((sale_price) | inr) }}{% else %}—{% endif %}</td>
           <td>{{ ret.reason or '—' }}</td>
           <td>
             {% if ret.condition_on_return %}
@@ -72,7 +72,7 @@
             <span class="badge {{ 'bg-secondary' if ret.action_taken == 'restock' else 'bg-danger' }}">
               {{ ret.action_taken or '—' }}
             </span>
-            {% if ret.refund_amount %}
+            {% if ret.refund_amount and can(current_user, 'returns', 'pricing') %}
             <div class="text-muted small">Refund: &#8377;{{ ((ret.refund_amount) | inr) }}</div>
             {% endif %}
           </td>
@@ -80,6 +80,7 @@
           <td>
             <div class="d-flex flex-column gap-1">
               <!-- Approve -->
+              {% if can(current_user, 'returns', 'edit') %}
               <form action="/returns/{{ ret.id }}/approve" method="post" class="d-inline">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
                 <button type="submit" class="btn btn-success btn-sm w-100"
@@ -87,11 +88,14 @@
                   <i class="bi bi-check-circle me-1"></i>Approve
                 </button>
               </form>
+              {% endif %}
               <!-- Reject -->
+              {% if can(current_user, 'returns', 'edit') %}
               <button type="button" class="btn btn-danger btn-sm w-100"
                       data-bs-toggle="modal" data-bs-target="#rejectModal{{ loop.index }}">
                 <i class="bi bi-x-circle me-1"></i>Reject
               </button>
+              {% endif %}
             </div>
 
             <!-- Reject Modal -->

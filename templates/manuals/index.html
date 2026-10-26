@@ -32,9 +32,9 @@
       </select>
       <input type="search" id="manSearch" class="form-control form-control-sm" style="width:240px"
              placeholder="Search manuals…" autocomplete="off">
-      <a href="/manuals/all/download" class="btn btn-sm btn-primary text-nowrap" title="Every manual in one PDF">
+      {% if can(current_user, 'manuals', 'export') %}<a href="/manuals/all/download" class="btn btn-sm btn-primary text-nowrap" title="Every manual in one PDF">
         <i class="bi bi-file-earmark-pdf me-1"></i>Download All (PDF)
-      </a>
+      </a>{% endif %}
     </div>
   </div>
   <div class="card-body py-2 small text-muted">
@@ -69,9 +69,9 @@
             <button type="button" class="btn btn-sm btn-outline-primary flex-fill man-view-btn" data-mid="{{ m.id }}">
               <i class="bi bi-eye me-1"></i>View
             </button>
-            <a href="/manuals/{{ m.id }}/download" class="btn btn-sm btn-primary flex-fill" title="Download PDF manual">
+            {% if can(current_user, 'manuals', 'export') %}<a href="/manuals/{{ m.id }}/download" class="btn btn-sm btn-primary flex-fill" title="Download PDF manual">
               <i class="bi bi-download me-1"></i>Download
-            </a>
+            </a>{% endif %}
             <button type="button" class="btn btn-sm btn-outline-secondary flex-fill share-btn"
                     data-mid="{{ m.id }}" data-mname="{{ m.module }}"
                     data-bs-toggle="modal" data-bs-target="#shareModal" title="Share with a team member">
@@ -104,7 +104,7 @@
       <div class="modal-body" id="mvBody"></div>
       <div class="modal-footer">
         <a href="#" id="mvOpen" class="btn btn-outline-secondary btn-sm"><i class="bi bi-box-arrow-up-right me-1"></i>Open page</a>
-        <a href="#" id="mvDownload" class="btn btn-primary btn-sm"><i class="bi bi-download me-1"></i>Download PDF</a>
+        <a {% if not can(current_user, 'manuals', 'export') %}hidden {% endif %}href="#" id="mvDownload" class="btn btn-primary btn-sm"><i class="bi bi-download me-1"></i>Download PDF</a>
       </div>
     </div>
   </div>

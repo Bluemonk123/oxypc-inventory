@@ -144,24 +144,26 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Sold Tags</span>
     <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
-      <button type="button" id="exportSelectedBtn" class="btn btn-sm btn-outline-warning text-nowrap" onclick="exportSelected()" disabled>
+      <button {% if not can(current_user, 'sales_list', 'export') %}hidden {% endif %}type="button" id="exportSelectedBtn" class="btn btn-sm btn-outline-warning text-nowrap" onclick="exportSelected()" disabled>
         <i class="bi bi-download me-1"></i>Export Selected
       </button>
       {% if can_delete_sales %}
+      {% if can(current_user, 'sales_list', 'edit') %}
       <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#changeSaleDateModal">
         <i class="bi bi-calendar-event me-1"></i>Change Sale Date
       </button>
-      <button type="button" id="deleteSelectedBtn" class="btn btn-sm btn-outline-danger text-nowrap" onclick="deleteSelected()" disabled>
+      {% endif %}
+      <button {% if not can(current_user, 'sales_list', 'delete') %}hidden {% endif %}type="button" id="deleteSelectedBtn" class="btn btn-sm btn-outline-danger text-nowrap" onclick="deleteSelected()" disabled>
         <i class="bi bi-trash me-1"></i>Delete Selected
       </button>
       {% endif %}
-      <a id="exportFilteredBtn" class="btn btn-sm btn-outline-success text-nowrap"
+      <a {% if not can(current_user, 'sales_list', 'export') %}hidden {% endif %}id="exportFilteredBtn" class="btn btn-sm btn-outline-success text-nowrap"
          href="/sales/export?q={{ q | urlencode }}&stock_type={{ stock_type | urlencode }}&sale_type={{ sale_type | urlencode }}&sold_by_filter={{ sold_by_filter | urlencode }}&customer={{ customer | urlencode }}&grade={{ grade | urlencode }}&lot_id={{ selected_lot | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
         <i class="bi bi-download me-1"></i>Export
       </a>
-      <a href="/reports/export/sales" class="btn btn-sm btn-outline-secondary text-nowrap">
+      {% if can(current_user, 'sales_list', 'export') %}<a href="/reports/export/sales" class="btn btn-sm btn-outline-secondary text-nowrap">
         <i class="bi bi-download me-1"></i>Export All CSV
-      </a>
+      </a>{% endif %}
     </div>
   </div>
   <div>
@@ -191,7 +193,7 @@
       <tbody></tbody>
     </table>
   </div>
-  {% if can_view_pricing(current_user) %}
+  {% if can(current_user, 'sales_list', 'pricing') %}
   {# Sits OUTSIDE the table on purpose. A tfoot row uses colspans, which cannot
      survive DataTables hiding columns — the label and figure would drift out of
      position the moment a column's visibility changed. The total covers every
@@ -342,6 +344,11 @@ $(document).ready(function() {
   var lastTwo = showPricing ? [16, 17] : [13, 14];
   // Brand/Model, Lot and Customer: present and searchable, not displayed.
   var hiddenCols = showPricing ? [5, 6, 12] : [5, 6, 9];
+  // Module-level pricing (Permission Matrix): /sales/data still sends the
+  // Cost/Unit, Price and Margin cells whenever the role-wide pricing flag is
+  // on, so the columns stay in the header (keeps cell/column counts aligned)
+  // and are hidden here instead when this module's pricing is denied.
+  if (showPricing && !{{ 'true' if can(current_user, 'sales_list', 'pricing') else 'false' }}) { hiddenCols = hiddenCols.concat([9, 10, 11]); }
 
   // Global Table module (static/js/global-table.js): frozen first columns,
   // scrollX, shared toolbar, page length 12, empty-state image.

@@ -1,3 +1,4 @@
+{% set _qsm = qt_perm_module if qt_perm_module is defined else ['dealers', 'quotations'] %}
 {# Shared "Quotation Shared" table — included on Dealer Management (all
    quotations) and Dealer Detail (this dealer's quotations only). Expects a
    `quotations` list in the including template's context.
@@ -29,7 +30,7 @@
           <td class="ps-3">{{ q.customer_name }} <span class="text-muted small">({{ q.quote_number }})</span></td>
           <td><span class="badge bg-secondary">{{ (q.customer_type or '—') | title }}</span></td>
           <td>{{ q.total_quantity }}</td>
-          <td>₹{{ ((q.total_price or 0) | inr) }}</td>
+          <td>{% if can(current_user, _qsm, 'pricing') %}₹{{ ((q.total_price or 0) | inr) }}{% else %}—{% endif %}</td>
           <td>
             {% if q.status == 'confirmed' %}
             <span class="badge bg-success">Confirmed</span>
@@ -40,16 +41,20 @@
           <td>
             <div class="btn-group btn-group-sm">
               {% if q.status != 'confirmed' %}
+              {% if can(current_user, _qsm, 'edit') %}
               <form method="post" action="/dealer-quotations/{{ q.id }}/confirm" class="d-inline">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
                 <input type="hidden" name="return_to" value="{{ request.url.path }}">
                 <button type="submit" class="btn btn-outline-success" title="Confirm"><i class="bi bi-check-lg"></i></button>
               </form>
               {% endif %}
+              {% endif %}
+              {% if can(current_user, _qsm, 'delete') %}
               <button type="button" class="btn btn-outline-danger qtnDeleteBtn" title="Delete"
                       data-quotation-id="{{ q.id }}" data-customer-name="{{ q.customer_name }}">
                 <i class="bi bi-trash"></i>
               </button>
+              {% endif %}
             </div>
           </td>
         </tr>

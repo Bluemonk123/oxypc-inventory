@@ -30,22 +30,24 @@
         <hr>
         <div class="row g-2 text-center">
           <div class="col-6"><div class="small text-muted">Last Sale</div><div class="fw-semibold small">{% if dealer.last_sale_date %}{{ dealer.last_sale_date.strftime('%d-%m-%Y') }}{% else %}Never{% endif %}</div></div>
-          <div class="col-6"><div class="small text-muted">Last Amt</div><div class="fw-semibold small">{% if dealer.last_sale_amount %}₹{{ ((dealer.last_sale_amount) | inr) }}{% else %}—{% endif %}</div></div>
-          <div class="col-6"><div class="small text-muted">Total Purchases</div><div class="fw-semibold small">₹{{ ((dealer.total_purchases or 0) | inr) }}</div></div>
-          <div class="col-6"><div class="small text-muted">Outstanding</div><div class="fw-semibold small {% if outstanding_live > 0 %}text-danger{% endif %}">₹{{ ((outstanding_live) | inr) }}</div></div>
-          <div class="col-6"><div class="small text-muted">Credit Limit</div><div class="fw-semibold small">₹{{ ((dealer.credit_limit or 0) | inr) }}</div></div>
+          <div class="col-6"><div class="small text-muted">Last Amt</div><div class="fw-semibold small">{% if can(current_user, 'dealers', 'pricing') %}{% if dealer.last_sale_amount %}₹{{ ((dealer.last_sale_amount) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}</div></div>
+          <div class="col-6"><div class="small text-muted">Total Purchases</div><div class="fw-semibold small">{% if can(current_user, 'dealers', 'pricing') %}₹{{ ((dealer.total_purchases or 0) | inr) }}{% else %}—{% endif %}</div></div>
+          <div class="col-6"><div class="small text-muted">Outstanding</div><div class="fw-semibold small {% if outstanding_live > 0 %}text-danger{% endif %}">{% if can(current_user, 'dealers', 'pricing') %}₹{{ ((outstanding_live) | inr) }}{% else %}—{% endif %}</div></div>
+          <div class="col-6"><div class="small text-muted">Credit Limit</div><div class="fw-semibold small">{% if can(current_user, 'dealers', 'pricing') %}₹{{ ((dealer.credit_limit or 0) | inr) }}{% else %}—{% endif %}</div></div>
         </div>
         <div class="mt-3 d-flex gap-2 flex-wrap">
-          <a href="/dealers/{{ dealer.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>
-          <a href="/dealers/{{ dealer.id }}/call" class="btn btn-sm btn-success"><i class="bi bi-telephone-plus me-1"></i>Log Call</a>
+          {% if can(current_user, 'dealers', 'edit') %}<a href="/dealers/{{ dealer.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
+          {% if can(current_user, 'dealers', 'add') %}<a href="/dealers/{{ dealer.id }}/call" class="btn btn-sm btn-success"><i class="bi bi-telephone-plus me-1"></i>Log Call</a>{% endif %}
           <a href="/dealers/{{ dealer.id }}/ledger" class="btn btn-sm btn-outline-info"><i class="bi bi-journal-text me-1"></i>Ledger</a>
           {# WhatsApp integration removed — button disabled
           <a href="/whatsapp/compose?dealer_id={{ dealer.id }}" class="btn btn-sm btn-outline-dark"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
           #}
-          <a href="/dealers/{{ dealer.id }}/statement.csv" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Statement</a>
+          {% if can(current_user, 'dealers', 'export') %}<a href="/dealers/{{ dealer.id }}/statement.csv" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Statement</a>{% endif %}
+          {% if can(current_user, 'dealers', 'add') %}
           <button type="button" class="btn btn-sm btn-info text-white" onclick='openQuotationModal({{ {"id": dealer.id|string, "business_name": dealer.business_name, "dealer_type": dealer.dealer_type, "phone": dealer.phone or "", "email": dealer.email or "", "address": dealer.address or "", "gstin": dealer.gstin or ""} | tojson }})'>
             <i class="bi bi-file-earmark-text me-1"></i>Quotation
           </button>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -73,7 +75,7 @@
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-telephone-inbound me-2"></i>Call History</span>
-        <a href="/dealers/{{ dealer.id }}/call" class="btn btn-sm btn-success"><i class="bi bi-plus me-1"></i>Log Call</a>
+        {% if can(current_user, 'dealers', 'add') %}<a href="/dealers/{{ dealer.id }}/call" class="btn btn-sm btn-success"><i class="bi bi-plus me-1"></i>Log Call</a>{% endif %}
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
@@ -119,9 +121,11 @@
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Orders &amp; Invoices</span>
+        {% if can(current_user, 'dealers', 'add') %}
         <a href="/dealers/{{ dealer.id }}/orders/new" class="btn btn-sm btn-success">
           <i class="bi bi-plus me-1"></i>New Order
         </a>
+        {% endif %}
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
@@ -132,16 +136,18 @@
               <tr>
                 <td><code>{{ order.order_number }}</code></td>
                 <td>{{ order.order_date.strftime('%d-%m-%Y') }}</td>
-                <td>₹{{ ((order.total_amount or 0) | inr) }}</td>
-                <td class="text-success">₹{{ ((order.paid_amount or 0) | inr) }}</td>
-                <td class="{% if order.due_amount > 0 %}text-danger fw-semibold{% endif %}">₹{{ ((order.due_amount or 0) | inr) }}</td>
+                <td>{% if can(current_user, 'dealers', 'pricing') %}₹{{ ((order.total_amount or 0) | inr) }}{% else %}—{% endif %}</td>
+                <td class="text-success">{% if can(current_user, 'dealers', 'pricing') %}₹{{ ((order.paid_amount or 0) | inr) }}{% else %}—{% endif %}</td>
+                <td class="{% if order.due_amount > 0 %}text-danger fw-semibold{% endif %}">{% if can(current_user, 'dealers', 'pricing') %}₹{{ ((order.due_amount or 0) | inr) }}{% else %}—{% endif %}</td>
                 <td><span class="badge bg-{% if order.status=='paid' %}success{% elif order.status=='pending' %}warning{% else %}secondary{% endif %}">{{ order.status | title }}</span></td>
                 <td>
                   {% if order.due_amount > 0 %}
+                  {% if can(current_user, 'dealers', 'edit') %}
                   <button class="btn btn-sm btn-outline-success me-1" data-bs-toggle="modal"
                           data-bs-target="#payModal{{ loop.index }}" title="Record Payment">
                     <i class="bi bi-cash"></i>
                   </button>
+                  {% endif %}
                   <div class="modal fade" id="payModal{{ loop.index }}" tabindex="-1">
                     <div class="modal-dialog modal-sm">
                       <div class="modal-content">
@@ -174,10 +180,12 @@
                   {# WhatsApp integration removed — reminder button disabled #}
                   {% endif %}
                   {% if order.status != 'cancelled' %}
+                  {% if can(current_user, 'dealers', 'edit') %}
                   <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal"
                           data-bs-target="#cnModal{{ loop.index }}" title="Issue Credit Note / Return">
                     <i class="bi bi-arrow-return-left"></i>
                   </button>
+                  {% endif %}
                   <div class="modal fade" id="cnModal{{ loop.index }}" tabindex="-1">
                     <div class="modal-dialog modal-sm">
                       <div class="modal-content">
@@ -213,10 +221,10 @@
                     </div>
                   </div>
                   {% endif %}
-                  <a href="/dealers/{{ dealer.id }}/orders/{{ order.id }}/invoice"
+                  {% if can(current_user, 'dealers', 'export') %}<a href="/dealers/{{ dealer.id }}/orders/{{ order.id }}/invoice"
                      class="btn btn-sm btn-outline-secondary me-1" title="Print Invoice" target="_blank">
                     <i class="bi bi-receipt"></i>
-                  </a>
+                  </a>{% endif %}
                   {# WhatsApp integration removed — send invoice button disabled #}
                 </td>
               </tr>
@@ -268,7 +276,7 @@
                 <td><code>{{ cn.credit_number }}</code></td>
                 <td>{{ cn.credit_date.strftime('%d-%m-%Y') }}</td>
                 <td>{% if cn.order %}<code>{{ cn.order.order_number }}</code>{% else %}—{% endif %}</td>
-                <td class="text-warning fw-semibold">₹{{ ((cn.amount) | inr) }}</td>
+                <td class="text-warning fw-semibold">{% if can(current_user, 'dealers', 'pricing') %}₹{{ ((cn.amount) | inr) }}{% else %}—{% endif %}</td>
                 <td>{{ (cn.reason or '—') | replace('_', ' ') | title }}</td>
                 <td class="text-muted">{{ cn.created_by or '—' }}</td>
                 <td>
@@ -283,6 +291,7 @@
                 </td>
                 <td>
                   {% if not cn.is_applied and open_orders %}
+                  {% if can(current_user, 'dealers', 'edit') %}
                   <form method="POST" action="/dealers/{{ dealer.id }}/credit-notes/{{ cn.id }}/apply"
                         class="d-flex gap-1 align-items-center">
                     <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
@@ -297,6 +306,7 @@
                       Apply
                     </button>
                   </form>
+                  {% endif %}
                   {% elif cn.is_applied %}
                     <span class="text-muted small">—</span>
                   {% else %}

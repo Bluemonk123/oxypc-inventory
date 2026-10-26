@@ -16,7 +16,7 @@
     <div class="card border-0 shadow-sm text-center">
       <div class="card-body">
         <div class="text-muted small">Total Cost @ Buying Price</div>
-        <div class="fs-4 fw-bold text-secondary">₹{{ ((grand['cost']) | inr) }}</div>
+        <div class="fs-4 fw-bold text-secondary">{% if can(current_user, 'report_aging', 'pricing') %}₹{{ ((grand['cost']) | inr) }}{% else %}—{% endif %}</div>
       </div>
     </div>
   </div>
@@ -66,12 +66,12 @@
             <td class="text-end">
               {% if cell['count'] > 0 %}
                 <span class="{% if b in ['61–90 days','90+ days'] %}text-danger fw-semibold{% endif %}">{{ cell['count'] }}</span>
-                <small class="text-muted d-block" style="font-size:10px">₹{{ ((cell['cost']) | inr) }}</small>
+                <small class="text-muted d-block" style="font-size:10px">{% if can(current_user, 'report_aging', 'pricing') %}₹{{ ((cell['cost']) | inr) }}{% else %}—{% endif %}</small>
               {% else %}—{% endif %}
             </td>
             {% endfor %}
             <td class="text-end fw-semibold">{{ stage_totals[stage]['count'] }}</td>
-            <td class="text-end">₹{{ ((stage_totals[stage]['cost']) | inr) }}</td>
+            <td class="text-end">{% if can(current_user, 'report_aging', 'pricing') %}₹{{ ((stage_totals[stage]['cost']) | inr) }}{% else %}—{% endif %}</td>
           </tr>
           {% else %}
           <tr><td colspan="{{ brackets|length + 3 }}" class="text-center text-muted py-4">No devices in stock.</td></tr>
@@ -83,7 +83,7 @@
             <td>Total</td>
             {% for b in brackets %}<td class="text-end">{{ bracket_totals[b]['count'] }}</td>{% endfor %}
             <td class="text-end">{{ grand['count'] }}</td>
-            <td class="text-end">₹{{ ((grand['cost']) | inr) }}</td>
+            <td class="text-end">{% if can(current_user, 'report_aging', 'pricing') %}₹{{ ((grand['cost']) | inr) }}{% else %}—{% endif %}</td>
           </tr>
         </tfoot>
         {% endif %}
@@ -113,7 +113,7 @@
           <td class="text-end fw-semibold {% if d.age > 90 %}text-danger{% elif d.age > 60 %}text-warning{% endif %}">
             {{ d.age }}
           </td>
-          <td class="text-end">₹{{ ((d.cost) | inr) }}</td>
+          <td class="text-end">{% if can(current_user, 'report_aging', 'pricing') %}₹{{ ((d.cost) | inr) }}{% else %}—{% endif %}</td>
         </tr>
         {% endfor %}
       </tbody>

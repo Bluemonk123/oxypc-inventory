@@ -3,7 +3,7 @@
 {% block content %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4><i class="bi bi-box-seam me-2 text-primary"></i>GRN — Goods Receipt Notes</h4>
-  <a href="/grn/new" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>New GRN</a>
+  {% if can(current_user, 'grn', 'add') %}<a href="/grn/new" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>New GRN</a>{% endif %}
 </div>
 
 {% if request.query_params.get('success') %}

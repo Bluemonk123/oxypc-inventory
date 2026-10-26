@@ -7,10 +7,10 @@
 </div>
 {# Bulk action, moved next to the table's search box once the table is ready. #}
 <div id="scrapBulkBtns" class="d-none align-items-center gap-2 me-2">
-  <button type="button" id="scrapBulkVerifyBtn" class="btn btn-warning btn-sm text-nowrap" disabled>
+  <button {% if not can(current_user, 'scrap_products', 'edit') %}hidden {% endif %}type="button" id="scrapBulkVerifyBtn" class="btn btn-warning btn-sm text-nowrap" disabled>
     <i class="bi bi-clipboard-check me-1"></i>Verify (<span id="scrapBulkCount">0</span>)
   </button>
-  <button type="button" id="scrapBulkSellBtn" class="btn btn-success btn-sm text-nowrap" disabled>
+  <button {% if not can(current_user, 'scrap_products', 'add') %}hidden {% endif %}type="button" id="scrapBulkSellBtn" class="btn btn-success btn-sm text-nowrap" disabled>
     <i class="bi bi-cart-plus me-1"></i>Sell (<span id="scrapSellCount">0</span>)
   </button>
 </div>
@@ -41,7 +41,7 @@
             <td>{{ it.model }}</td>
             <td><span class="badge bg-secondary">{{ it.grade }}</span></td>
             <td>{{ it.received_user }}</td>
-            <td>{% if it.amount is not none %}₹{{ ((it.amount) | inr(2)) }}{% else %}—{% endif %}</td>
+            <td>{% if can(current_user, 'scrap_products', 'pricing') %}{% if it.amount is not none %}₹{{ ((it.amount) | inr(2)) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
             <td class="text-muted small">{{ it.updated_at.strftime('%d-%m-%Y %H:%M') if it.updated_at else '—' }}</td>
             <td class="text-muted">{{ it.notes }}</td>
             <td>
@@ -53,21 +53,25 @@
             </td>
             <td class="text-nowrap">
               {% if it.l34_status == 'Replacement Scrap' %}
+              {% if can(current_user, 'scrap_products', 'edit') %}
               <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2"
                       onclick="openReplaceModal('{{ it.barcode }}', '{{ it.brand }} {{ it.model }}')"
                       title="Search and select the replacement tag">
                 <i class="bi bi-arrow-repeat"></i> Replace
               </button>
               {% endif %}
+              {% endif %}
               {% if it.l34_status != 'Replacement Scrap' or it.replace_with_barcode %}
               {% if not it.scrap_verified %}
+              {% if can(current_user, 'scrap_products', 'edit') %}
               <button type="button" class="btn btn-sm btn-warning py-0 px-2"
                       onclick="openVerifyModal('{{ it.barcode }}', '{{ it.brand }} {{ it.model }}')"
                       title="Verify received quantity">
                 <i class="bi bi-clipboard-check"></i> Verify
               </button>
+              {% endif %}
               {% else %}
-              <button type="button" class="btn btn-sm btn-success py-0 px-2" onclick="openScrapSale({tags: ['{{ it.barcode }}']})"><i class="bi bi-cart-plus"></i> Sell</button>
+              {% if can(current_user, 'scrap_products', 'add') %}<button type="button" class="btn btn-sm btn-success py-0 px-2" onclick="openScrapSale({tags: ['{{ it.barcode }}']})"><i class="bi bi-cart-plus"></i> Sell</button>{% endif %}
               {% endif %}
               <a href="/devices/{{ it.barcode }}" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="bi bi-eye"></i> View</a>
               {% endif %}
@@ -339,7 +343,7 @@ document.getElementById('verifyScrapForm').addEventListener('submit', function(e
           var actionCell = row.querySelector('td:last-child');
           if (actionCell) {
             actionCell.innerHTML =
-              '<button type="button" class="btn btn-sm btn-success py-0 px-2" onclick="openScrapSale({tags: [\'' + barcode + '\']})"><i class="bi bi-cart-plus"></i> Sell</button> ' +
+{% if can(current_user, 'scrap_products', 'add') %}              '<button type="button" class="btn btn-sm btn-success py-0 px-2" onclick="openScrapSale({tags: [\'' + barcode + '\']})"><i class="bi bi-cart-plus"></i> Sell</button> ' +{% endif %}
               '<a href="/devices/' + barcode + '" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="bi bi-eye"></i> View</a>';
           }
         }

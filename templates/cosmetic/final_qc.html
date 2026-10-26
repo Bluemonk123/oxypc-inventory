@@ -65,12 +65,12 @@
           </span>
           {% set sr = stress_map.get(device.barcode) %}
           {% if sr %}
-          <a href="/stress/{{ device.barcode }}/report?result_id={{ sr.result_id }}"
+          {% if can(current_user, 'cosmetic_finalqc', 'export') %}<a href="/stress/{{ device.barcode }}/report?result_id={{ sr.result_id }}"
              class="btn btn-sm btn-outline-primary py-0 px-2 text-nowrap"
              title="Download Stress/QC Report{% if sr.overall_status %} — {{ sr.overall_status }}{% endif %}">
             <i class="bi bi-file-earmark-arrow-down me-1"></i>Stress/QC Report{% if sr.overall_status %}
             <span class="badge bg-{{ 'success' if sr.overall_status == 'PASS' else 'danger' if sr.overall_status == 'FAIL' else 'warning text-dark' }} ms-1">{{ sr.overall_status }}</span>{% endif %}
-          </a>
+          </a>{% endif %}
           {% else %}
           <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 text-nowrap" disabled
                   title="No stress test report saved for this tag yet">
@@ -124,7 +124,7 @@
           {% else %}<p class="text-muted small mb-0">No required parts.</p>{% endif %}
 
           {% set price = price_map.get(device.id|string) %}
-          {% if price and can_view_pricing(current_user) %}
+          {% if price and can(current_user, 'cosmetic_finalqc', 'pricing') %}
           <div class="small fw-semibold text-muted mt-3">Pricing</div>
           <table class="table table-sm small mb-0" style="max-width:500px">
             <tbody>
@@ -205,12 +205,16 @@
               <label class="form-label small">Fail Note</label>
               <input type="text" name="notes" class="form-control form-control-sm" placeholder="Remarks">
             </div>
+            {% if can(current_user, 'cosmetic_finalqc', 'edit') %}
             <button type="submit" class="btn btn-success w-100 btn-sm fqc-pass-only">
               <i class="bi bi-patch-check me-1"></i>Complete
             </button>
+            {% endif %}
+            {% if can(current_user, 'cosmetic_finalqc', 'edit') %}
             <button type="submit" class="btn btn-danger w-100 btn-sm fqc-fail-only">
               <i class="bi bi-x-circle me-1"></i>Fail
             </button>
+            {% endif %}
           </form>
         </div>
 
@@ -243,7 +247,7 @@
     <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
       <input type="text" id="fqcPassedSearch" class="form-control form-control-sm" style="max-width: 280px;"
              placeholder="Search Tag Number or Bucket Name">
-      <button type="button" class="btn btn-sm btn-success" id="fqcBulkMoveInvBtn" disabled>
+      <button {% if not can(current_user, 'cosmetic_finalqc', 'edit') %}hidden {% endif %}type="button" class="btn btn-sm btn-success" id="fqcBulkMoveInvBtn" disabled>
         <i class="bi bi-arrow-right-circle me-1"></i>Bulk Move to Inventory (<span id="fqcBulkMoveInvCount">0</span>)
       </button>
     </div>
@@ -267,8 +271,10 @@
           <td><span class="badge bg-success">Final QC — Pass Hold</span></td>
           <td class="small">{{ row.pass_notes or '—' }}</td>
           <td class="text-nowrap">
+            {% if can(current_user, 'cosmetic_finalqc', 'edit') %}
             <button type="button" class="btn btn-sm btn-success fqc-move-one-passed" data-barcode="{{ row.barcode }}">Move to Inventory</button>
             <button type="button" class="btn btn-sm btn-outline-secondary fqc-edit" data-barcode="{{ row.barcode }}">Edit</button>
+            {% endif %}
           </td>
         </tr>
         {% else %}
@@ -285,7 +291,7 @@
         <input class="form-check-input" type="checkbox" id="fqcNoEngineerFilter">
         <label class="form-check-label small" for="fqcNoEngineerFilter">No Engineer</label>
       </div>
-      <button type="button" class="btn btn-sm btn-primary" id="fqcBulkMoveBtn" disabled>
+      <button {% if not can(current_user, 'cosmetic_finalqc', 'edit') %}hidden {% endif %}type="button" class="btn btn-sm btn-primary" id="fqcBulkMoveBtn" disabled>
         <i class="bi bi-arrow-right-circle me-1"></i>Bulk Move (<span id="fqcBulkMoveCount">0</span>)
       </button>
     </div>
@@ -314,8 +320,10 @@
           <td class="small">{{ row.failure_reason or '—' }}</td>
           <td class="small">{{ row.final_notes or '—' }}</td>
           <td class="text-nowrap">
+            {% if can(current_user, 'cosmetic_finalqc', 'edit') %}
             <button type="button" class="btn btn-sm btn-primary fqc-move-one" data-barcode="{{ row.barcode }}">Move</button>
             <button type="button" class="btn btn-sm btn-outline-secondary fqc-edit" data-barcode="{{ row.barcode }}">Edit</button>
+            {% endif %}
           </td>
         </tr>
         {% else %}

@@ -26,6 +26,11 @@ class RoleModulePermission(Base):
     can_add    = Column(Boolean, default=False)  # create records
     can_edit   = Column(Boolean, default=False)  # edit records
     can_upload = Column(Boolean, default=False)  # bulk upload / CSV import
+    # Per-module Delete and Pricing (2026-10-25). Default True so existing
+    # rows keep today's access; admin unticks to restrict.
+    can_delete  = Column(Boolean, nullable=True, default=True, server_default="true")
+    can_pricing = Column(Boolean, nullable=True, default=True, server_default="true")  # see + change prices
+    can_export  = Column(Boolean, nullable=True, default=True, server_default="true")  # Download / Export (2026-10-26)
     updated_at = Column(DateTime, default=app_now, onupdate=app_now)
     updated_by = Column(String(50), nullable=True)
 
@@ -219,26 +224,46 @@ DEFAULT_DISABLED_MODULES = frozenset({
 })
 
 
-def has_perm(role_name: str, module: str, action: str = "enable") -> bool:
-    """Check if role_name has the given action on module.
-    Admin always returns True. Unknown roles/modules default to True (permissive).
+PERM_ACTIONS = ("add", "upload", "edit", "delete", "pricing", "export")
 
-    "enable" is the MASTER SWITCH for a module: if a role has the module enabled,
-    it may fully use it (view + add + edit + upload). A disabled module blocks
-    everything. The finer Add/Edit/Upload bits do NOT further restrict an enabled
-    module — this avoids surprising 403s where an admin enabled a module for a role
-    but left the Add/Edit boxes unchecked, then the role got 403 on create/edit.
+
+def has_perm(role_name: str, module: str, action: str = "enable") -> bool:
+    """Check if role_name may perform `action` on `module`.
+
+    Admin always True. "enable" is the module's master switch (page access).
+    Since 2026-10-25 the action ticks are ENFORCED: add / upload / edit /
+    delete / pricing each require the module enabled AND that tick set.
+    (Before this, any enabled module allowed every action, so unticking
+    Add/Edit/Upload in the Permission Matrix had no effect.)
+
+    Defaults stay permissive for anything never configured: no rows for the
+    role, or no row for the module -> allowed (except DEFAULT_DISABLED_MODULES);
+    a row that predates a tick column -> that tick counts as allowed.
     """
     if role_name == "admin":
         return True
     role_perms = _PERM_CACHE.get(role_name)
     default = module not in DEFAULT_DISABLED_MODULES
     if not role_perms:
-        return default   # no matrix configured → allow (except default-off modules)
+        return default   # no matrix configured -> allow (except default-off modules)
     mod_perms = role_perms.get(module)
     if not mod_perms:
-        return default   # module not in matrix → allow (except default-off modules)
-    return bool(mod_perms.get("enable", True))
+        return default   # module not in matrix -> allow (except default-off modules)
+    if not mod_perms.get("enable", True):
+        return False     # module switched off -> nothing allowed
+    if action == "enable":
+        return True
+    val = mod_perms.get(action)
+    return True if val is None else bool(val)
+
+
+def has_any_perm(role_name: str, modules, action: str) -> bool:
+    """True when `action` is allowed on at least one of `modules` (used for
+    endpoints shared by several modules, e.g. one repair endpoint for L1/L2
+    and L3/L4)."""
+    if isinstance(modules, str):
+        modules = (modules,)
+    return any(has_perm(role_name, m, action) for m in modules)
 
 
 def is_narrowly_scoped_to(role_name: str, *modules: str) -> bool:

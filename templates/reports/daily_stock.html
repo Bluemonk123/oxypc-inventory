@@ -20,16 +20,16 @@
       <a href="/reports/daily-stock" class="btn btn-sm btn-outline-secondary">Today</a>
       <div class="ms-auto d-flex gap-2">
         {# One workbook, three sheets: Overall / Tag Based / Location Based (2026-10-21) #}
-        <a id="dsExportDailyReport" href="#" class="btn btn-sm btn-success" title="Overall, Tag Based and Location Based as three sheets of one Excel file">
+        <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportDailyReport" href="#" class="btn btn-sm btn-success" title="Overall, Tag Based and Location Based as three sheets of one Excel file">
           <i class="bi bi-download me-1"></i>Daily Report
         </a>
-        <a id="dsExportOverall" href="#" class="btn btn-sm btn-outline-success">
+        <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportOverall" href="#" class="btn btn-sm btn-outline-success">
           <i class="bi bi-download me-1"></i>Overall Export
         </a>
-        <a id="dsExportTags" href="#" class="btn btn-sm btn-outline-success">
+        <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportTags" href="#" class="btn btn-sm btn-outline-success">
           <i class="bi bi-download me-1"></i>Tag Based Export
         </a>
-        <a id="dsExportLocation" href="#" class="btn btn-sm btn-outline-success">
+        <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportLocation" href="#" class="btn btn-sm btn-outline-success">
           <i class="bi bi-download me-1"></i>Location Export
         </a>
       </div>
@@ -126,10 +126,10 @@
         <tr>
           {# data-order makes the column sort chronologically, not alphabetically by "06-Oct-2026" #}
           <td data-order="{{ r.date }}" class="fw-semibold">{{ r.label }}</td>
-          <td><a class="btn btn-sm btn-success py-0" href="/reports/daily-stock/report/{{ r.date }}/workbook" title="All three reports as sheets of one Excel file"><i class="bi bi-download me-1"></i>Daily Report</a></td>
-          <td><a class="btn btn-sm btn-outline-success py-0" href="/reports/daily-stock/report/{{ r.date }}/overall"><i class="bi bi-download me-1"></i>Overall</a></td>
-          <td><a class="btn btn-sm btn-outline-success py-0" href="/reports/daily-stock/report/{{ r.date }}/tags"><i class="bi bi-download me-1"></i>Tag Based</a></td>
-          <td><a class="btn btn-sm btn-outline-success py-0" href="/reports/daily-stock/report/{{ r.date }}/location"><i class="bi bi-download me-1"></i>Location Based</a></td>
+          <td>{% if can(current_user, 'report_daily_stock', 'export') %}<a class="btn btn-sm btn-success py-0" href="/reports/daily-stock/report/{{ r.date }}/workbook" title="All three reports as sheets of one Excel file"><i class="bi bi-download me-1"></i>Daily Report</a>{% endif %}</td>
+          <td>{% if can(current_user, 'report_daily_stock', 'export') %}<a class="btn btn-sm btn-outline-success py-0" href="/reports/daily-stock/report/{{ r.date }}/overall"><i class="bi bi-download me-1"></i>Overall</a>{% endif %}</td>
+          <td>{% if can(current_user, 'report_daily_stock', 'export') %}<a class="btn btn-sm btn-outline-success py-0" href="/reports/daily-stock/report/{{ r.date }}/tags"><i class="bi bi-download me-1"></i>Tag Based</a>{% endif %}</td>
+          <td>{% if can(current_user, 'report_daily_stock', 'export') %}<a class="btn btn-sm btn-outline-success py-0" href="/reports/daily-stock/report/{{ r.date }}/location"><i class="bi bi-download me-1"></i>Location Based</a>{% endif %}</td>
         </tr>
         {% else %}
         <tr><td colspan="5" class="text-center text-muted py-4">No daily reports yet &mdash; the first one is generated at 9:00 PM.</td></tr>

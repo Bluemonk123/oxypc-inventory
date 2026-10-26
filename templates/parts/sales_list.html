@@ -23,13 +23,15 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-cart-check me-2"></i>Sold Spare Parts</span>
     <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
-      <a class="btn btn-sm btn-outline-success text-nowrap"
+      {% if can(current_user, 'part_sales', 'export') %}<a class="btn btn-sm btn-outline-success text-nowrap"
          href="/part-sales/export?date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
         <i class="bi bi-download me-1"></i>Export
-      </a>
+      </a>{% endif %}
+      {% if can(current_user, 'part_sales', 'add') %}
       <a href="/part-sales/new" class="btn btn-success btn-sm text-nowrap">
         <i class="bi bi-plus-circle me-1"></i>New Parts Sale
       </a>
+      {% endif %}
     </div>
   </div>
   <div>
@@ -38,7 +40,7 @@
           <tr>
             <th>Sale ID</th><th>Invoice</th><th>Date</th><th>Part Name</th>
             <th>Part Make</th><th>Part Model</th><th>Qty</th>
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'part_sales', 'pricing') %}
             <th>Stock Unit Price</th><th>Sale Unit Price</th><th>Margin</th>
             {% endif %}
             <th>Payment Mode</th><th>Sales Person</th>
@@ -54,7 +56,7 @@
             <td>{{ s.make or '—' }}</td>
             <td>{{ s.model or '—' }}</td>
             <td>{{ s.qty }}</td>
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'part_sales', 'pricing') %}
             <td>{% if s.stock_unit_price is not none %}₹{{ ((s.stock_unit_price) | inr(2)) }}{% else %}—{% endif %}</td>
             <td>₹{{ ((s.sale_unit_price or 0) | inr(2)) }}</td>
             <td>

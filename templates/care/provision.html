@@ -39,11 +39,11 @@
             <td>
               <form method="post" action="/care-support/provision/{{ d.id }}" onsubmit="return confirm('Generate a one-time provisioning secret for {{ d.barcode }}?');">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                <button class="btn btn-sm btn-outline-primary">Provision</button>
+                {% if can(current_user, 'care_support', 'add') %}<button class="btn btn-sm btn-outline-primary">Provision</button>{% endif %}
               </form>
             </td>
             <td>
-              <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#exc{{ loop.index }}">Exception</button>
+              {% if can(current_user, 'care_support', 'edit') %}<button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#exc{{ loop.index }}">Exception</button>{% endif %}
               <div class="modal fade" id="exc{{ loop.index }}" tabindex="-1">
                 <div class="modal-dialog"><div class="modal-content">
                   <form method="post" action="/care-support/dispatch-exceptions">

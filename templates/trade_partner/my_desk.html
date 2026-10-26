@@ -37,7 +37,7 @@
           <td><code class="small">{{ b.booking_number }}</code></td>
           <td class="small">{{ b.dealer.business_name if b.dealer }}</td>
           <td class="small">{{ b.listing.title[:35] if b.listing }}</td>
-          <td class="small fw-semibold">₹{{ ((b.token_total) | inr) }}</td>
+          <td class="small fw-semibold">{% if can(current_user, 'trade_partner_my_desk', 'pricing') %}₹{{ ((b.token_total) | inr) }}{% else %}—{% endif %}</td>
           <td class="text-end"><a href="/trade-partner/bookings?status=proof_uploaded" class="btn btn-sm btn-outline-primary">Open queue</a></td>
         </tr>
         {% endfor %}
@@ -58,7 +58,7 @@
           <td><code class="small">{{ b.booking_number }}</code></td>
           <td class="small">{{ b.dealer.business_name if b.dealer }}</td>
           <td class="small text-danger">exp {{ b.expires_at | ist_datetime }}</td>
-          <td class="small">Token ₹{{ ((b.token_total) | inr) }}</td>
+          <td class="small">Token {% if can(current_user, 'trade_partner_my_desk', 'pricing') %}₹{{ ((b.token_total) | inr) }}{% else %}—{% endif %}</td>
           <td class="text-end">
             {% if b.dealer %}{{ wa_btn(b.dealer, 'Reminder: booking ' ~ b.booking_number ~ ' — token ₹' ~ b.token_total ~ ' due before ' ~ (b.expires_at | ist_datetime) ~ '. Upload proof: ' ~ base_url ~ '/partner/bookings/' ~ b.id) }}{% endif %}
           </td>
@@ -102,7 +102,7 @@
         <tr>
           <td><code class="small">{{ l.listing_code }}</code></td>
           <td class="small">{{ l.title[:40] }}</td>
-          <td class="small">₹{{ ((l.dealer_price) | inr) }}/unit</td>
+          <td class="small">{% if can(current_user, 'trade_partner_my_desk', 'pricing') %}₹{{ ((l.dealer_price) | inr) }}/unit{% else %}—{% endif %}</td>
           <td class="small text-muted">reviewed {{ (l.price_reviewed_at or l.created_at) | ist_datetime }}</td>
           <td class="text-end"><a href="/trade-partner/listings" class="btn btn-sm btn-outline-primary">Review</a></td>
         </tr>

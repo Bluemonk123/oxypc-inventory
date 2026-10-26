@@ -70,13 +70,13 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span class="fw-semibold"><i class="bi bi-receipt-cutoff me-2"></i>Credit Note</span>
     <div class="d-flex gap-2 align-items-center flex-wrap">
-      <button type="button" id="cnBulkVerifyBtn" class="btn btn-sm btn-outline-primary" disabled>
+      <button {% if not can(current_user, 'credit_note', 'edit') %}hidden {% endif %}type="button" id="cnBulkVerifyBtn" class="btn btn-sm btn-outline-primary" disabled>
         <i class="bi bi-check2-circle me-1"></i>Verify (<span id="cnVerifySelCount">0</span>)
       </button>
-      <button type="button" id="cnBulkDeleteBtn" class="btn btn-sm btn-outline-danger" disabled>
+      <button {% if not can(current_user, 'credit_note', 'delete') %}hidden {% endif %}type="button" id="cnBulkDeleteBtn" class="btn btn-sm btn-outline-danger" disabled>
         <i class="bi bi-trash me-1"></i>Delete (<span id="cnDeleteSelCount">0</span>)
       </button>
-      <button type="button" id="cnExportBtn" class="btn btn-sm btn-outline-success" disabled>
+      <button {% if not can(current_user, 'credit_note', 'export') %}hidden {% endif %}type="button" id="cnExportBtn" class="btn btn-sm btn-outline-success" disabled>
         <i class="bi bi-download me-1"></i>Export (<span id="cnExportSelCount">0</span>)
       </button>
     </div>
@@ -105,9 +105,9 @@
             <td>{{ d.tag_return_status or '—' }}</td>
             <td><span class="badge bg-info text-dark">{{ row.lot_number or '—' }}</span></td>
             <td>{{ d.sub_lot_number or '—' }}</td>
-            <td>{{ '%.2f'|format(d.device_price) if d.device_price is not none else '—' }}</td>
+            <td>{% if can(current_user, 'credit_note', 'pricing') %}{{ '%.2f'|format(d.device_price) if d.device_price is not none else '—' }}{% else %}—{% endif %}</td>
             <td>{{ row.sale_date.strftime('%d-%m-%Y') if row.sale_date else '—' }}</td>
-            <td>{% if ret.debit_note_amount is not none %}₹{{ ((ret.debit_note_amount) | inr) }}{% else %}—{% endif %}</td>
+            <td>{% if can(current_user, 'credit_note', 'pricing') %}{% if ret.debit_note_amount is not none %}₹{{ ((ret.debit_note_amount) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
             <td>{{ ret.debit_note_number or '—' }}</td>
             <td>{% if row.sale_id %}<a href="/sales/{{ row.sale_id }}" class="text-decoration-none">{{ row.sale_number }}</a>{% else %}—{% endif %}</td>
             <td>{{ ret.payment_invoice or '—' }}</td>
@@ -126,6 +126,7 @@
             <td class="text-nowrap">
               <div class="d-flex gap-1">
                 {% if row.next_stage %}
+                {% if can(current_user, 'credit_note', 'edit') %}
                 <form method="post" action="/credit-note/{{ row.return_id }}/advance" class="d-flex gap-1">
                   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                   {% if row.next_stage == 'Payment Invoice Done' %}
@@ -133,15 +134,18 @@
                   {% endif %}
                   <button type="submit" class="btn btn-sm btn-outline-primary py-0 px-2">{{ row.action_label }}</button>
                 </form>
+                {% endif %}
                 {% else %}
                 <span class="text-muted">—</span>
                 {% endif %}
+                {% if can(current_user, 'credit_note', 'delete') %}
                 <form method="post" action="/credit-note/{{ row.return_id }}/delete" class="cn-delete-form">
                   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                   <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2" title="Permanently delete this return record">
                     <i class="bi bi-trash"></i>
                   </button>
                 </form>
+                {% endif %}
               </div>
             </td>
           </tr>

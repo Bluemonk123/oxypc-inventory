@@ -26,9 +26,11 @@
   </div>
   <div class="d-flex gap-2">
     <a href="/qa/rtm" class="btn btn-sm btn-outline-dark"><i class="bi bi-table me-1"></i>RTM View</a>
+    {% if can(current_user, 'qa', 'add') %}
     <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newReqModal">
       <i class="bi bi-plus-circle me-1"></i>New Requirement
     </button>
+    {% endif %}
   </div>
 </div>
 

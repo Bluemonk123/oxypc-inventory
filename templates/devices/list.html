@@ -107,7 +107,7 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-hdd-stack me-2"></i>All Tags Inventory</span>
     <div class="d-flex gap-2">
-      <button type="button" id="bulkDeleteBtn" class="btn btn-sm btn-outline-danger" disabled
+      <button {% if not can(current_user, 'devices', 'delete') %}hidden {% endif %}type="button" id="bulkDeleteBtn" class="btn btn-sm btn-outline-danger" disabled
               onclick="submitBulkTrash()" title="Move selected devices to Trash">
         <i class="bi bi-trash3 me-1"></i>Delete Selected (<span id="selCount">0</span>)
       </button>
@@ -117,7 +117,7 @@
       <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
         <i class="bi bi-upload me-1"></i>Upload Tags
       </button>
-      <a id="exportCsvLink"
+      <a {% if not can(current_user, 'devices', 'export') %}hidden {% endif %}id="exportCsvLink"
          href="/devices/export?q={{ q | urlencode }}&stage={{ stage | urlencode }}&lot={{ lot | urlencode }}&grade={{ grade | urlencode }}&category={{ category | urlencode }}&device_type={{ device_type | urlencode }}&entity={{ entity | urlencode }}&stock_type={{ stock_type | urlencode }}&pna={{ pna | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}&exclude_sold={{ '1' if exclude_sold else '' }}&fs=1"
          class="btn btn-sm btn-outline-success" onclick="return submitExport(event)"
          title="Exports the selected Tag Numbers, or every filtered result if none are ticked">
@@ -233,7 +233,7 @@
             <th>Grade</th>
             <th>Stock Type</th>
             <th>Total Count</th>
-            {% if can_view_pricing(current_user) %}<th>Total Price</th>{% endif %}
+            {% if can(current_user, 'devices', 'pricing') %}<th>Total Price</th>{% endif %}
             <th></th>
           </tr>
         </thead>
@@ -246,7 +246,7 @@
             <td class="ms-foot-grade"></td>
             <td class="ms-foot-stock"></td>
             <td class="ms-foot-total"></td>
-            {% if can_view_pricing(current_user) %}<td class="ms-foot-price"></td>{% endif %}
+            {% if can(current_user, 'devices', 'pricing') %}<td class="ms-foot-price"></td>{% endif %}
             <td></td>
           </tr>
         </tfoot>
@@ -280,7 +280,7 @@
             <th>Device Type</th>
             <th>Total Quantity</th>
             <th>Condition</th>
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'devices', 'pricing') %}
             <th>Buying Price</th>
             <th>Selling Price</th>
             <th>Actual Selling</th>
@@ -307,7 +307,7 @@
             <td class="small">{{ l.device_type }}</td>
             <td class="small">{{ l.qty }}</td>
             <td class="small">{{ l.condition }}</td>
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'devices', 'pricing') %}
             <td class="small">₹{{ ((l.buying_price) | inr) }}</td>
             <td class="small">{% if l.selling_price is not none %}₹{{ ((l.selling_price) | inr) }}{% else %}—{% endif %}</td>
             <td class="small">₹{{ ((l.actual_selling) | inr) }}</td>
@@ -380,7 +380,7 @@
                 <th>Tag Number</th>
                 <th>Quantity</th>
                 <th>Supplier Name</th>
-                {% if can_view_pricing(current_user) %}<th>Buying Price</th>{% endif %}
+                {% if can(current_user, 'devices', 'pricing') %}<th>Buying Price</th>{% endif %}
               </tr>
             </thead>
             <tbody id="ldTagsBody"></tbody>
@@ -443,7 +443,7 @@
   });
 })();
 
-var CAN_VIEW_PRICING = {{ 'true' if can_view_pricing(current_user) else 'false' }};
+var CAN_VIEW_PRICING = {{ 'true' if can(current_user, 'devices', 'pricing') else 'false' }};
 
 // Selection persists across pages/redraws as a Set of barcodes rather than
 // DOM checkbox state — with serverSide:true only the current page's rows

@@ -11,10 +11,10 @@
      — distinct-tag count across L1/L2 + L3/L4 only, matching pna_tag_count
      below so the number on the button is never stale relative to the file
      it downloads. #}
-  <a href="/trc-production/pna-summary" class="btn btn-outline-danger btn-sm"
+  {% if can(current_user, 'part_estimation', 'export') %}<a href="/trc-production/pna-summary" class="btn btn-outline-danger btn-sm"
      title="Download PNA parts summary for tags currently in L1/L2 or L3/L4 Repair">
     <i class="bi bi-file-earmark-arrow-down me-1"></i>Recent PNA under L1/L2/L3/L4 {{ pna_tag_count }}
-  </a>
+  </a>{% endif %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -43,11 +43,11 @@
           <td>{{ r.total_products }}</td>
           <td>{{ r.total_parts_required }}</td>
           <td>
-            <a class="btn btn-sm btn-outline-secondary py-0 px-2"
+            {% if can(current_user, 'part_estimation', 'export') %}<a class="btn btn-sm btn-outline-secondary py-0 px-2"
                href="/part-estimation/{{ r.lot.id }}/iqc-data.xlsx"
                title="Download every device in this lot with its full IQC inspection record">
               <i class="bi bi-file-earmark-spreadsheet me-1"></i>IQC Data
-            </a>
+            </a>{% endif %}
           </td>
           <td>
             {# A lot can now carry several attached files — a re-estimate, or
@@ -61,16 +61,18 @@
             <div class="d-flex flex-wrap gap-1">
               {% for est in r.estimates %}
               <span class="d-inline-flex align-items-center border rounded px-1">
-                <a class="btn btn-sm btn-outline-success py-0 px-2 border-0"
+                {% if can(current_user, 'part_estimation', 'export') %}<a class="btn btn-sm btn-outline-success py-0 px-2 border-0"
                    href="/part-estimation/download/{{ est.id }}"
                    title="{{ est.file_name }}">
                   <i class="bi bi-file-earmark-excel me-1"></i>{{ est.grade or 'Estimate' }}
-                </a>
+                </a>{% endif %}
+                {% if can(current_user, 'part_estimation', 'delete') %}
                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 border-0"
                         title="Delete this file"
                         onclick="deleteEstimateFile('{{ est.id }}', '{{ r.lot.lot_number }}', this)">
                   <i class="bi bi-trash3"></i>
                 </button>
+                {% endif %}
               </span>
               {% endfor %}
             </div>
@@ -102,11 +104,13 @@
             </button>
             {# Free-form parts x models grid — every cell is typed by hand,
                nothing derived from IQC. #}
+            {% if can(current_user, 'part_estimation', 'add') %}
             <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2"
                     onclick="openOpenEstimateModal('{{ r.lot.id }}', '{{ r.lot.lot_number }}')"
                     {% if not r.total_products %}disabled title="This lot has no tags"{% endif %}>
               <i class="bi bi-grid-3x3 me-1"></i>Open Estimate
             </button>
+            {% endif %}
           </td>
         </tr>
         {% else %}

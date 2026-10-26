@@ -46,7 +46,7 @@
           <i class="bi bi-upload me-1"></i>Upload Tags
         </button>
         <button type="button" id="gpClearSel" class="btn btn-sm btn-outline-secondary d-none" onclick="gpClearSelection()">Clear</button>
-        <button type="button" id="bulkExitBtn" class="btn btn-sm btn-success" onclick="bulkConfirmExit()" disabled>
+        <button {% if not can(current_user, 'gate_pass', 'edit') %}hidden {% endif %}type="button" id="bulkExitBtn" class="btn btn-sm btn-success" onclick="bulkConfirmExit()" disabled>
           <i class="bi bi-box-arrow-right me-1"></i>Confirm Exit
         </button>
       </div>

@@ -13,9 +13,9 @@
     <span style="flex:1 1 auto;min-width:0"><span class="fw-semibold text-nowrap"><i class="bi bi-calculator me-2"></i>Pricing Calculator</span>
       <span class="small text-muted ms-2">Selling Price = (Base Price + RAM Price + Storage Price) − Prices of the Spare Parts marked Damage / Not Working.</span></span>
     <div class="d-flex align-items-center gap-2 flex-shrink-0">
-      <button type="button" class="btn btn-sm btn-outline-success" id="pcExport"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
-      <a href="/product-master/pricing-calculator/template" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download me-1"></i>Template</a>
-      <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#pcUploadModal"><i class="bi bi-upload me-1"></i>Upload File</button>
+      <button {% if not can(current_user, 'pm_pricing_calculator', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success" id="pcExport"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+      {% if can(current_user, 'pm_pricing_calculator', 'export') %}<a href="/product-master/pricing-calculator/template" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download me-1"></i>Template</a>{% endif %}
+      {% if can(current_user, 'pm_pricing_calculator', 'upload') %}<button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#pcUploadModal"><i class="bi bi-upload me-1"></i>Upload File</button>{% endif %}
     </div>
   </div>
   <div class="card-body">
@@ -43,9 +43,11 @@
           </td>
           <td data-order="{{ g.avg if g.avg is not none else -1 }}">{{ money(g.avg) }}</td>
           <td><div class="d-flex justify-content-center">
+            {% if can(current_user, 'pm_pricing_calculator', 'delete') %}
             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 pc-del" title="Delete"
                     data-ids="{{ g.row_ids|join(',') }}" data-qty="{{ g.qty }}"
                     data-name="{{ g.sku }} · {{ g.make }} {{ g.model }} · {{ g.ram }} · {{ g.ssd }}"><i class="bi bi-trash3"></i></button>
+            {% endif %}
           </div></td>
         </tr>
       {% endfor %}
@@ -82,11 +84,11 @@
     <div class="small text-muted mb-3" id="pcMissingInfo"></div>
     <div id="pcMissBlock" class="mb-3">
       <p class="mb-2" id="pcMissingMsg"></p>
-      <a href="#" class="btn btn-sm btn-outline-primary" id="pcMissingLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcMissingName">Download file</span></a>
+      <a {% if not can(current_user, 'pm_pricing_calculator', 'export') %}hidden {% endif %}href="#" class="btn btn-sm btn-outline-primary" id="pcMissingLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcMissingName">Download file</span></a>
     </div>
     <div id="pcMisBlock" class="mb-3">
       <p class="mb-2" id="pcMisMsg"></p>
-      <a href="#" class="btn btn-sm btn-outline-primary" id="pcMisLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcMisName">Download file</span></a>
+      <a {% if not can(current_user, 'pm_pricing_calculator', 'export') %}hidden {% endif %}href="#" class="btn btn-sm btn-outline-primary" id="pcMisLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcMisName">Download file</span></a>
     </div>
   </div>
   <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button></div>

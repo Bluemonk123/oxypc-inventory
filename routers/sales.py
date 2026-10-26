@@ -245,6 +245,8 @@ async def ready_list_data(
     than by reading checkbox state from the DOM, so it survives every page
     change; see readySelected in the template's script block.
     """
+    from models.role_permissions import has_perm as _hp_sell
+    _can_sell_row = _hp_sell(current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role), "sales", "add")
     from sqlalchemy import desc as _desc, asc as _asc
     from html import escape
     from models.role_permissions import can_view_pricing as _cvp
@@ -467,7 +469,9 @@ async def ready_list_data(
                 + (f'<br><span class="badge bg-{qcls}" style="font-size:.65rem">{esc(ov.replace("_", " "))}</span>' if ov else ''))
         else:
             cells.append('<span class="text-muted">—</span>')
-        action = f'<a href="/sales/new?barcodes={esc(d.barcode)}&qty=1" class="btn btn-sm btn-success">Sell</a>'
+        # Sell follows the Permission Matrix's Sales > Add tick (2026-10-25)
+        action = (f'<a href="/sales/new?barcodes={esc(d.barcode)}&qty=1" class="btn btn-sm btn-success">Sell</a>'
+                  if _can_sell_row else '')
         if approved:
             action += '<span class="badge bg-success align-self-center ms-1">Approved</span>'
         elif requested:

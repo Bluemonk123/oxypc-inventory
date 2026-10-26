@@ -58,7 +58,7 @@
             <th>Grade</th>
             <th>PO Category</th>
             <th class="text-center">Qty</th>
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'crm_quotes', 'pricing') %}
             <th class="text-end">Unit Price</th>
             <th class="text-end">Total</th>
             {% endif %}
@@ -77,7 +77,7 @@
             <td>{% if item.grade %}<span class="badge bg-{{ grade_colors.get(item.grade,'secondary') }}">{{ item.grade }}</span>{% else %}—{% endif %}</td>
             <td>{{ item.po_category or '—' }}</td>
             <td class="text-center">{{ item.quantity }}</td>
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'crm_quotes', 'pricing') %}
             <td class="text-end">₹{{ ((item.unit_price) | inr) }}</td>
             <td class="text-end fw-semibold">₹{{ ((item.total_price) | inr) }}</td>
             {% endif %}
@@ -89,7 +89,7 @@
           <tr><td colspan="8" class="text-center text-muted py-3">No line items.</td></tr>
           {% endfor %}
         </tbody>
-        {% if quote.total_amount and can_view_pricing(current_user) %}
+        {% if quote.total_amount and can(current_user, 'crm_quotes', 'pricing') %}
         <tfoot>
           <tr class="table-light">
             <td colspan="6" class="text-end fw-bold">Grand Total</td>
@@ -120,6 +120,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-arrow-repeat me-1 text-warning"></i>Update Status</div>
       <div class="card-body">
+        {% if can(current_user, 'crm_quotes', 'edit') %}
         <form method="post" action="/crm/quotes/{{ quote.id }}/status" class="d-flex gap-2">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
           <select name="new_status" class="form-select form-select-sm">
@@ -129,6 +130,7 @@
           </select>
           <button class="btn btn-sm btn-warning text-dark flex-shrink-0"><i class="bi bi-check me-1"></i>Update</button>
         </form>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -137,9 +139,9 @@
       <button class="btn btn-sm btn-outline-secondary" disabled title="Edit not yet implemented">
         <i class="bi bi-pencil me-1"></i>Edit Quote
       </button>
-      <a href="/crm/quotes/{{ quote.id }}/print" class="btn btn-sm btn-outline-primary" target="_blank">
+      {% if can(current_user, 'crm_quotes', 'export') %}<a href="/crm/quotes/{{ quote.id }}/print" class="btn btn-sm btn-outline-primary" target="_blank">
         <i class="bi bi-printer me-1"></i>Print Quote
-      </a>
+      </a>{% endif %}
       {# WhatsApp integration removed — Share via WhatsApp button disabled
       <button type="button" class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#waShareModal">
         <i class="bi bi-whatsapp me-1"></i>Share via WhatsApp

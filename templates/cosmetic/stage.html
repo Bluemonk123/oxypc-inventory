@@ -64,17 +64,21 @@
               <td><span class="badge bg-secondary">{{ lot_number }}</span></td>
               <td class="text-muted small">{{ device.updated_at.strftime('%d-%b %H:%M') if device.updated_at else '—' }}</td>
               <td>
+                {% if can(current_user, ('cosmetic_' ~ stage.value), 'edit') %}
                 <button type="button" class="btn btn-sm btn-success py-0 px-2"
                         onclick="directMoveOrManual('{{ device.barcode }}', '{{ next_stage_label }}', this)">
                   <i class="bi bi-check2 me-1"></i>Move to {{ next_stage_label }}
                 </button>
+                {% endif %}
                 {% if stage.value == 'water_sanding' %}
                 {# Paint Fail (2026-10-24): back to Painting, to the painter the
                    Cosmetic Flow gives. Click twice to confirm. #}
+                {% if can(current_user, ('cosmetic_' ~ stage.value), 'edit') %}
                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1 text-nowrap"
                         onclick="paintFail('{{ device.barcode }}', this)">
                   <i class="bi bi-arrow-counterclockwise me-1"></i>Paint Fail
                 </button>
+                {% endif %}
                 {% endif %}
               </td>
             </tr>
@@ -286,7 +290,7 @@ $(document).ready(function(){
       // "view Assign button before searchbox" — inject it into DataTables'
       // own filter box, ahead of the search input, rather than a separate
       // toolbar row.
-      var btn = $('<button type="button" id="cosmeticAssignBtn" class="btn btn-sm btn-primary me-2" disabled>' +
+      var btn = $('<button {% if not can(current_user, ('cosmetic_' ~ stage.value), 'add') %}hidden {% endif %}type="button" id="cosmeticAssignBtn" class="btn btn-sm btn-primary me-2" disabled>' +
                   '<i class="bi bi-person-check me-1"></i>Assign</button>');
       btn.on('click', openBulkAssignModal);
       $(this.api().table().container()).find('.dataTables_filter').prepend(btn);

@@ -216,7 +216,7 @@
             <td>{{ li.part_model or '—' }}</td>
             <td>{{ li.invoice_qty or '—' }}</td>
             <td>{{ li.physical_qty or '—' }}</td>
-            <td>{% if li.price %}₹{{ ((li.price) | inr(2)) }}{% else %}—{% endif %}</td>
+            <td>{% if can(current_user, 'spare_parts', 'pricing') %}{% if li.price %}₹{{ ((li.price) | inr(2)) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
             <td>{{ li.vehicle_number or '—' }}</td>
             <td>{{ li.remarks or '—' }}</td>
           </tr>

@@ -340,24 +340,36 @@
                 {% set row = perm_rows.get(mod_key) if perm_rows is defined else none %}
                 <tr>
                   <td class="fw-semibold small">{{ sidebar_label(mod_key, mod_label) }}</td>
+                  {% set _mod_default_on = mod_key not in (default_disabled_modules|default([])) %}
+                  {% set _acts = module_actions.get(mod_key, []) if module_actions is defined else [] %}
                   {% for action_key, action_label in perm_actions %}
+                  {% set _act = action_key[4:] %}
                   {% if row %}
-                    {% if action_key == 'can_enable' %}{% set checked = row.can_enable %}
-                    {% elif action_key == 'can_add' %}{% set checked = row.can_add %}
-                    {% elif action_key == 'can_edit' %}{% set checked = row.can_edit %}
-                    {% else %}{% set checked = row.can_upload %}{% endif %}
+                    {% set _val = row[action_key] %}
+                    {# A row saved before a tick existed counts as allowed #}
+                    {% set checked = true if _val is none else _val %}
                   {% else %}
-                    {# Unsaved row: Enable ticked, except modules that start OFF #}
-                    {% set checked = (action_key == 'can_enable') and mod_key not in (default_disabled_modules|default([])) %}
+                    {# Unsaved row: same as today's behaviour — all ticks follow
+                       Enable (modules that start OFF start fully unticked) #}
+                    {% set checked = _mod_default_on %}
                   {% endif %}
+                  {% if action_key == 'can_enable' or _act == 'pricing' or _act in _acts %}
                   <td class="text-center">
                     <div class="form-check d-flex justify-content-center">
-                      <input class="form-check-input perm-cb" type="checkbox"
+                      <input class="form-check-input perm-cb{% if action_key != 'can_enable' %} perm-act{% endif %}" type="checkbox"
                              name="perm_{{ mod_key }}_{{ action_key }}"
                              id="cb_{{ mod_key }}_{{ action_key }}"
+                             data-mod="{{ mod_key }}" data-act="{{ _act }}"
                              {% if checked %}checked{% endif %}>
                     </div>
                   </td>
+                  {% else %}
+                  {# Not applicable: this module has no such action. Saved as
+                     allowed so a later route for it isn't blocked by surprise. #}
+                  <td class="text-center text-muted small" title="This module has no {{ action_label }} action">—
+                    <input type="hidden" name="perm_{{ mod_key }}_{{ action_key }}" value="on">
+                  </td>
+                  {% endif %}
                   {% endfor %}
                 </tr>
                 {% endfor %}
@@ -891,7 +903,24 @@ if (urlAdd) openAddInline(urlAdd, urlAdd);
 
 function toggleAll(state) {
   document.querySelectorAll('.perm-cb').forEach(cb => cb.checked = state);
+  syncPermRows();
 }
+// Action ticks only matter while the module is enabled: fade them when
+// Enable is off (still submitted, so turning Enable back on restores them).
+function syncPermRows() {
+  document.querySelectorAll('#permMatrix tbody tr').forEach(function (tr) {
+    var en = tr.querySelector('input[name$="_can_enable"]');
+    if (!en) return;
+    tr.querySelectorAll('.perm-act').forEach(function (cb) {
+      cb.closest('td').style.opacity = en.checked ? '' : '.35';
+      cb.title = en.checked ? '' : 'Module is not enabled for this role';
+    });
+  });
+}
+document.addEventListener('change', function (e) {
+  if (e.target.matches && e.target.matches('#permMatrix input[name$="_can_enable"]')) syncPermRows();
+});
+document.addEventListener('DOMContentLoaded', syncPermRows);
 
 // Existing role slugs (built-in + custom) — used for live duplicate checks
 const EXISTING_ROLE_SLUGS = {{ (all_roles|map(attribute=0)|list)|tojson }};

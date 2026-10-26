@@ -49,10 +49,10 @@
     <div class="prod-tile h-100" style="--tc:#6f42c1">
       <div class="prod-tile-count">{{ tags_at_you }}</div>
       <div class="prod-tile-label">Total Tags at You</div>
-      <a href="/trc-production/summary/at-you" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+      {% if can(current_user, 'production_manager', 'export') %}<a href="/trc-production/summary/at-you" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
          style="font-size:.65rem" title="Download summary of these tags (CSV)">
         <i class="bi bi-file-earmark-arrow-down"></i> Summary
-      </a>
+      </a>{% endif %}
       <i class="bi bi-person-workspace prod-tile-wm"></i>
     </div>
   </div>
@@ -60,10 +60,10 @@
     <div class="prod-tile h-100" style="--tc:#0d6efd">
       <div class="prod-tile-count">{{ tags_l1l2 }}</div>
       <div class="prod-tile-label">Total Tags in L1/L2</div>
-      <a href="/trc-production/summary/l1-l2" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+      {% if can(current_user, 'production_manager', 'export') %}<a href="/trc-production/summary/l1-l2" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
          style="font-size:.65rem" title="Download summary of these tags (CSV)">
         <i class="bi bi-file-earmark-arrow-down"></i> Summary
-      </a>
+      </a>{% endif %}
       <i class="bi bi-tools prod-tile-wm"></i>
     </div>
   </div>
@@ -71,10 +71,10 @@
     <div class="prod-tile h-100" style="--tc:#fd7e14">
       <div class="prod-tile-count">{{ tags_l3l4 }}</div>
       <div class="prod-tile-label">Total Tags in L3/L4</div>
-      <a href="/trc-production/summary/l3-l4" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+      {% if can(current_user, 'production_manager', 'export') %}<a href="/trc-production/summary/l3-l4" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
          style="font-size:.65rem" title="Download summary of these tags (CSV)">
         <i class="bi bi-file-earmark-arrow-down"></i> Summary
-      </a>
+      </a>{% endif %}
       <i class="bi bi-wrench-adjustable prod-tile-wm"></i>
     </div>
   </div>
@@ -85,10 +85,10 @@
         {# PNA parts for L1/L2 + L3/L4 tags — broader than the tile's own
            count above (L1/L2 only), by design; see the router's docstring
            on this export. #}
-      <a href="/trc-production/pna-summary" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+      {% if can(current_user, 'production_manager', 'export') %}<a href="/trc-production/pna-summary" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
          style="font-size:.65rem" title="Download PNA parts summary (L1/L2 + L3/L4 tags)">
         <i class="bi bi-file-earmark-arrow-down"></i> Summary
-      </a>
+      </a>{% endif %}
       <i class="bi bi-exclamation-triangle prod-tile-wm"></i>
     </div>
   </div>
@@ -96,10 +96,10 @@
     <div class="prod-tile h-100" style="--tc:#20c997">
       <div class="prod-tile-count">{{ tags_stress }}</div>
       <div class="prod-tile-label">Total Tags in Stress</div>
-      <a href="/trc-production/summary/stress" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+      {% if can(current_user, 'production_manager', 'export') %}<a href="/trc-production/summary/stress" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
          style="font-size:.65rem" title="Download summary of these tags (CSV)">
         <i class="bi bi-file-earmark-arrow-down"></i> Summary
-      </a>
+      </a>{% endif %}
       <i class="bi bi-activity prod-tile-wm"></i>
     </div>
   </div>
@@ -107,10 +107,10 @@
     <div class="prod-tile h-100" style="--tc:#e83e8c">
       <div class="prod-tile-count">{{ tags_cosmetic }}</div>
       <div class="prod-tile-label">Total Tags in Cosmetic</div>
-      <a href="/trc-production/summary/cosmetic" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+      {% if can(current_user, 'production_manager', 'export') %}<a href="/trc-production/summary/cosmetic" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
          style="font-size:.65rem" title="Download summary of these tags (CSV)">
         <i class="bi bi-file-earmark-arrow-down"></i> Summary
-      </a>
+      </a>{% endif %}
       <i class="bi bi-palette prod-tile-wm"></i>
     </div>
   </div>
@@ -118,10 +118,10 @@
     <div class="prod-tile h-100" style="--tc:#0F7A37">
       <div class="prod-tile-count">{{ tags_final_qc }}</div>
       <div class="prod-tile-label">Total Tags in Final QC</div>
-      <a href="/trc-production/summary/final-qc" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+      {% if can(current_user, 'production_manager', 'export') %}<a href="/trc-production/summary/final-qc" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
          style="font-size:.65rem" title="Download summary of these tags (CSV)">
         <i class="bi bi-file-earmark-arrow-down"></i> Summary
-      </a>
+      </a>{% endif %}
       <i class="bi bi-patch-check prod-tile-wm"></i>
     </div>
   </div>
@@ -129,18 +129,20 @@
     <div class="prod-tile h-100" style="--tc:#6c757d">
       <div class="prod-tile-count">{{ tags_returned }}</div>
       <div class="prod-tile-label">Tags Returned</div>
-      <a href="/trc-production/summary/returned" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
+      {% if can(current_user, 'production_manager', 'export') %}<a href="/trc-production/summary/returned" class="btn btn-outline-light btn-sm mt-1 py-0 px-1 prod-tile-btn"
          style="font-size:.65rem" title="Download summary of these tags (CSV)">
         <i class="bi bi-file-earmark-arrow-down"></i> Summary
-      </a>
+      </a>{% endif %}
       <i class="bi bi-arrow-return-left prod-tile-wm"></i>
     </div>
   </div>
 </div>
 
 <div class="d-flex justify-content-end gap-2 mb-2">
+  {% if can(current_user, 'production_manager', 'edit') %}
   <button type="button" class="btn btn-sm btn-outline-primary" onclick="openChangeEngineerModal()">
     <i class="bi bi-person-gear me-1"></i>Change Engineer</button>
+  {% endif %}
   <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
     <i class="bi bi-clock-history me-1"></i>Search Tags</button>
 </div>
@@ -187,10 +189,12 @@
             <td>{{ device.grade or '—' }}</td>
             <td>{% set dept = assigned_dept_map.get(device.id|string) if assigned_dept_map is defined else None %}{% if dept %}<span class="badge bg-secondary">{{ dept }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
             <td class="text-nowrap">
+              {% if can(current_user, 'production_manager', 'add') %}
               <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 dev-assign-btn"
                       data-barcode="{{ device.barcode }}" data-model="{{ device.brand or '' }} {{ device.model or '' }}">
                 <i class="bi bi-person-check"></i> Assign
               </button>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -219,7 +223,7 @@
   <div class="tab-pane fade p-0" id="asIsTrcTab">
 <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>As-Is Lots in TRC</span>
-        <button type="button" id="asIsExportBtn" class="btn btn-sm btn-outline-success text-nowrap" disabled
+        <button {% if not can(current_user, 'production_manager', 'export') %}hidden {% endif %}type="button" id="asIsExportBtn" class="btn btn-sm btn-outline-success text-nowrap" disabled
                 title="Export the selected tags to CSV"><i class="bi bi-download me-1"></i>Export (<span id="asIsSelCount">0</span>)</button></div>
       <div>
       <table id="asIsTrcTable" class="table table-hover mb-0 small">
@@ -288,7 +292,7 @@
             <td>{{ row.count }}</td>
             <td><span class="badge bg-warning text-dark">L1 — Pending Assign</span></td>
             <td class="small">{{ row.failure_reason or '—' }}</td>
-            <td><button class="btn btn-sm btn-primary py-0 px-2 rl-fqc-assign-btn" data-id="{{ row.bucket_id }}" data-number="{{ row.bucket_number }}" data-count="{{ row.count }}">Assign</button></td>
+            <td>{% if can(current_user, 'production_manager', 'add') %}<button class="btn btn-sm btn-primary py-0 px-2 rl-fqc-assign-btn" data-id="{{ row.bucket_id }}" data-number="{{ row.bucket_number }}" data-count="{{ row.count }}">Assign</button>{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -359,12 +363,16 @@
             <td>{{ device.grade or '—' }}</td>
             <td class="text-muted small">{{ device.replaced or device.notes or '—' }}</td>
             <td class="text-nowrap">
+              {% if can(current_user, 'production_manager', 'edit') %}
               <form method="post" action="/scrap-products/{{ device.barcode }}/move-to-inventory" class="d-inline">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                 <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2"><i class="bi bi-box-arrow-in-left"></i> Move to Inventory</button>
               </form>
+              {% endif %}
+              {% if can(current_user, 'production_manager', 'edit') %}
               <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2 replace-scrap-btn"
                       data-barcode="{{ device.barcode }}"><i class="bi bi-arrow-repeat"></i> Replace With Another</button>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -642,7 +650,7 @@ $(document).ready(function(){
       $(this.api().table().container()).find('.dataTables_filter').prepend(failedFqcFilter);
       $('#trcFailedFqcFilter').on('change', function() { trcDt.draw(); });
 
-      var bulkBtn = $('<button type="button" id="trcBulkAssignBtn" class="btn btn-sm btn-primary me-2" disabled>' +
+      var bulkBtn = $('<button {% if not can(current_user, 'production_manager', 'add') %}hidden {% endif %}type="button" id="trcBulkAssignBtn" class="btn btn-sm btn-primary me-2" disabled>' +
                       '<i class="bi bi-person-check me-1"></i>Bulk Assign</button>');
       bulkBtn.on('click', openTrcBulkAssignModal);
       $(this.api().table().container()).find('.dataTables_filter').prepend(bulkBtn);
@@ -697,7 +705,7 @@ function loadTrcBuckets(){
         '<td><span class="badge bg-secondary">'+b.device_count+'</span></td>'+
         '<td>'+receivedQty+'</td>'+
         '<td class="text-nowrap">'+
-          '<button class="btn btn-xs btn-outline-primary btn-sm py-0 px-2 trc-assign-bkt" data-id="'+b.id+'" data-number="'+b.bucket_number+'" data-count="'+b.device_count+'">Assign</button>'+
+{% if can(current_user, 'production_manager', 'add') %}          '<button class="btn btn-xs btn-outline-primary btn-sm py-0 px-2 trc-assign-bkt" data-id="'+b.id+'" data-number="'+b.bucket_number+'" data-count="'+b.device_count+'">Assign</button>'+{% endif %}
         '</td>'+
       '</tr>';
     }).join('');
@@ -1056,7 +1064,7 @@ function loadProdAllocationTable(){
         '<td><span class="badge bg-danger">'+b.total_fail+'</span></td>'+
         '<td><span class="badge bg-info text-dark">'+b.device_count+'</span></td>'+
         '<td><span class="badge bg-primary">L1/L2 Engineer</span></td>'+
-        '<td><button class="btn btn-xs btn-outline-danger btn-sm py-0 px-2 release-bkt-btn" data-id="'+b.id+'" data-number="'+b.bucket_number+'"><i class="bi bi-box-arrow-up"></i> Release Bucket</button></td>'+
+        '<td>{% if can(current_user, 'production_manager', 'edit') %}<button class="btn btn-xs btn-outline-danger btn-sm py-0 px-2 release-bkt-btn" data-id="'+b.id+'" data-number="'+b.bucket_number+'"><i class="bi bi-box-arrow-up"></i> Release Bucket</button>{% endif %}</td>'+
       '</tr>';
     }).join('');
     prodAllocationDt.clear();

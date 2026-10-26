@@ -115,10 +115,12 @@
       <div class="col-sm-3 d-flex gap-2 align-items-center">
         <button type="submit" class="btn btn-sm btn-primary">Filter</button>
         <a href="/crm/assign-social-leads" class="btn btn-sm btn-outline-secondary">Clear</a>
+        {% if can(current_user, 'crm_assign_leads', 'add') %}
         <button type="button" class="btn btn-sm btn-success ms-auto"
                 onclick="showAddGroupModal()">
           <i class="bi bi-plus-lg me-1"></i>Add Lead Group
         </button>
+        {% endif %}
       </div>
     </form>
   </div>
@@ -145,16 +147,20 @@
       <option value="{{ group.id }}" data-name="{{ group.name | e }}">{{ group.name }}</option>
       {% endfor %}
     </select>
-    <a href="/crm/assign-social-leads/sample" class="btn btn-outline-teal btn-sm">Sample</a>
-    <button type="button" class="btn btn-outline-primary btn-sm" onclick="showImportModal(document.getElementById('aslGroupSelect').value)">Import</button>
+    {% if can(current_user, 'crm_assign_leads', 'export') %}<a href="/crm/assign-social-leads/sample" class="btn btn-outline-teal btn-sm">Sample</a>{% endif %}
+    {% if can(current_user, 'crm_assign_leads', 'upload') %}<button type="button" class="btn btn-outline-primary btn-sm" onclick="showImportModal(document.getElementById('aslGroupSelect').value)">Import</button>{% endif %}
+    {% if can(current_user, 'crm_assign_leads', 'add') %}
     <button type="button" class="btn btn-outline-success btn-sm"
             onclick="var s=document.getElementById('aslGroupSelect'); showAddLeadModal(s.value, s.selectedOptions[0].dataset.name)">
       <i class="bi bi-plus-lg me-1"></i>Add Lead
     </button>
+    {% endif %}
+    {% if can(current_user, 'crm_assign_leads', 'edit') %}
     <button type="button" class="btn btn-outline-secondary btn-sm"
             onclick="var s=document.getElementById('aslGroupSelect'); showEditGroupModal(s.value, s.selectedOptions[0].dataset.name)">
       <i class="bi bi-pencil me-1"></i>Edit Group Name
     </button>
+    {% endif %}
   </div>
 </div>
 {% endif %}
@@ -212,12 +218,16 @@
           <td>{{ ld.group_name }}</td>
           <td>
             <div class="btn-group btn-group-sm">
+              {% if can(current_user, 'crm_assign_leads', 'edit') %}
               <button class="btn btn-outline-primary py-0 px-1" data-lead='{{ ld | tojson }}' onclick="showEditLeadModal(this)" title="Edit">
                 <i class="bi bi-pencil"></i>
               </button>
+              {% endif %}
+              {% if can(current_user, 'crm_assign_leads', 'add') %}
               <button class="btn btn-outline-success py-0 px-1" data-lead='{{ ld | tojson }}' onclick="showCallModal(this)" title="Log Call">
                 <i class="bi bi-telephone"></i>
               </button>
+              {% endif %}
               <button class="btn btn-outline-info py-0 px-1" onclick="showHistoryModal('{{ ld.id }}', '{{ ld.name | e }}')" title="Call History">
                 <i class="bi bi-clock-history"></i>
               </button>
@@ -752,16 +762,20 @@ function leadRowHtml(ld) {
     <td>${esc(ld.latest_deals_in)}</td>
     <td>
       <div class="btn-group btn-group-sm">
+        {% if can(current_user, 'crm_assign_leads', 'edit') %}
         <button class="btn btn-outline-primary py-0 px-1"
                 data-lead='${JSON.stringify(ld).replace(/'/g, "&#39;")}'
                 onclick="showEditLeadModal(this)" title="Edit">
           <i class="bi bi-pencil"></i>
         </button>
+        {% endif %}
+        {% if can(current_user, 'crm_assign_leads', 'add') %}
         <button class="btn btn-outline-success py-0 px-1"
                 data-lead='${JSON.stringify(ld).replace(/'/g, "&#39;")}'
                 onclick="showCallModal(this)" title="Log Call">
           <i class="bi bi-telephone"></i>
         </button>
+        {% endif %}
         <button class="btn btn-outline-info py-0 px-1"
                 onclick="showHistoryModal('${ld.id}', '${esc(ld.name)}')"
                 title="Call History">
@@ -839,10 +853,10 @@ function newGroupItemHtml(gid, name) {
         </span>
       </button>
       <div class="d-flex align-items-center gap-1 pe-2 flex-shrink-0">
-        <a href="/crm/assign-social-leads/sample" class="btn btn-outline-teal py-0 px-2" style="font-size:.75rem;line-height:1.6">Sample</a>
-        <button type="button" class="btn btn-outline-primary py-0 px-2" style="font-size:.75rem;line-height:1.6" onclick="showImportModal('${gid}')">Import</button>
-        <button type="button" class="btn btn-sm btn-outline-success py-0 px-1" onclick="showAddLeadModal('${gid}', '${esc(name)}')" title="Add Lead"><i class="bi bi-plus-lg"></i></button>
-        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="showEditGroupModal('${gid}', '${esc(name)}')" title="Edit Group Name"><i class="bi bi-pencil"></i></button>
+        {% if can(current_user, 'crm_assign_leads', 'export') %}<a href="/crm/assign-social-leads/sample" class="btn btn-outline-teal py-0 px-2" style="font-size:.75rem;line-height:1.6">Sample</a>{% endif %}
+        {% if can(current_user, 'crm_assign_leads', 'upload') %}<button type="button" class="btn btn-outline-primary py-0 px-2" style="font-size:.75rem;line-height:1.6" onclick="showImportModal('${gid}')">Import</button>{% endif %}
+        {% if can(current_user, 'crm_assign_leads', 'add') %}<button type="button" class="btn btn-sm btn-outline-success py-0 px-1" onclick="showAddLeadModal('${gid}', '${esc(name)}')" title="Add Lead"><i class="bi bi-plus-lg"></i></button>{% endif %}
+        {% if can(current_user, 'crm_assign_leads', 'edit') %}<button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" onclick="showEditGroupModal('${gid}', '${esc(name)}')" title="Edit Group Name"><i class="bi bi-pencil"></i></button>{% endif %}
       </div>
     </h2>
     <div id="gc-${gid}" class="accordion-collapse collapse" data-bs-parent="">

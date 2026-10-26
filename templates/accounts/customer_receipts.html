@@ -68,7 +68,7 @@
           <input type="file" name="payment_photo" accept="image/*" class="form-control form-control-sm">
         </div>
         <div class="col-12">
-          <button type="submit" class="btn btn-success btn-sm px-4"><i class="bi bi-check-circle me-2"></i>Record Receipt</button>
+          {% if can(current_user, 'finance_customer', 'add') %}<button type="submit" class="btn btn-success btn-sm px-4"><i class="bi bi-check-circle me-2"></i>Record Receipt</button>{% endif %}
         </div>
       </div>
     </form>
@@ -77,9 +77,11 @@
 {% endif %}
 
 <div class="d-flex justify-content-end mb-2">
+  {% if can(current_user, 'finance_customer', 'upload') %}
   <a href="/accounts/customer-receipts/bulk-upload" class="btn btn-outline-primary btn-sm">
     <i class="bi bi-upload me-2"></i>Bulk Upload CSV
   </a>
+  {% endif %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -126,9 +128,13 @@
           <td class="text-nowrap">
             {% if can_edit %}
             {% if q.payment_status != 'paid' %}
+            {% if can(current_user, 'finance_customer', 'edit') %}
             <button type="button" class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#quoteCompletePaymentModal" data-id="{{ q.id }}">Complete Payment</button>
             {% endif %}
+            {% endif %}
+            {% if can(current_user, 'finance_customer', 'upload') %}
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal" data-bs-target="#quoteUploadInvoiceModal" data-id="{{ q.id }}">Upload Invoice</button>
+            {% endif %}
             {% endif %}
           </td>
         </tr>

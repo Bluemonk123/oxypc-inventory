@@ -61,28 +61,32 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-person-lines-fill me-2"></i>Dealer Leads</span>
     <div class="d-flex gap-2 flex-wrap justify-content-end">
-      <button type="button" class="btn btn-sm text-nowrap btn-outline-primary" id="btnAssignUser" disabled
+      <button {% if not can(current_user, 'assign_dealer_leads', 'edit') %}hidden {% endif %}type="button" class="btn btn-sm text-nowrap btn-outline-primary" id="btnAssignUser" disabled
               data-bs-toggle="modal" data-bs-target="#assignUserModal">
         <i class="bi bi-person-check me-1"></i>Assign User <span class="badge bg-primary" id="selCountBadge">0</span>
       </button>
-      <a href="/dealers/bulk-upload-template" class="btn btn-sm text-nowrap btn-outline-success">
+      {% if can(current_user, 'assign_dealer_leads', 'export') %}<a href="/dealers/bulk-upload-template" class="btn btn-sm text-nowrap btn-outline-success">
         <i class="bi bi-download me-1"></i>Download Sample
-      </a>
+      </a>{% endif %}
+      {% if can(current_user, 'assign_dealer_leads', 'upload') %}
       <a href="/dealers/bulk-upload" class="btn btn-sm text-nowrap btn-outline-success">
         <i class="bi bi-cloud-upload me-1"></i>Upload Bulk
       </a>
+      {% endif %}
       {% if can_manage_dealers %}
-      <button type="button" id="adlBulkDeleteBtn" class="btn btn-sm text-nowrap btn-outline-danger" disabled>
+      <button {% if not can(current_user, 'assign_dealer_leads', 'delete') %}hidden {% endif %}type="button" id="adlBulkDeleteBtn" class="btn btn-sm text-nowrap btn-outline-danger" disabled>
         <i class="bi bi-trash me-1"></i>Delete Selected (<span id="adlDelCount">0</span>)
       </button>
       {% endif %}
-      <button type="button" id="adlExportBtn" class="btn btn-sm text-nowrap btn-outline-secondary"
+      <button {% if not can(current_user, 'assign_dealer_leads', 'export') %}hidden {% endif %}type="button" id="adlExportBtn" class="btn btn-sm text-nowrap btn-outline-secondary"
               title="Export the selected rows, or every row the table is showing">
         <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export
       </button>
+      {% if can(current_user, 'assign_dealer_leads', 'add') %}
       <button type="button" class="btn btn-sm text-nowrap btn-primary" onclick="openDealerAddModal()">
         <i class="bi bi-plus-circle me-1"></i>Add Dealer
       </button>
+      {% endif %}
     </div>
   </div>
   <div class="card-body p-0">
@@ -127,17 +131,23 @@
             <td class="small" style="max-width:160px; white-space:normal;">{{ d.notes or '—' }}</td>
             <td>
               <div class="btn-group btn-group-sm">
+                {% if can(current_user, 'assign_dealer_leads', 'edit') %}
                 <a href="/dealers/{{ d.id }}/edit" class="btn btn-outline-secondary" title="Edit">
                   <i class="bi bi-pencil"></i>
                 </a>
+                {% endif %}
+                {% if can(current_user, 'assign_dealer_leads', 'edit') %}
                 <button type="button" class="btn btn-outline-primary btnAssignOne" title="Assign"
                         data-dealer-id="{{ d.id }}" data-bs-toggle="modal" data-bs-target="#assignUserModal">
                   <i class="bi bi-person-check"></i>
                 </button>
+                {% endif %}
+                {% if can(current_user, 'assign_dealer_leads', 'delete') %}
                 <button type="button" class="btn btn-outline-danger btnDeleteOne" title="Delete"
                         data-dealer-id="{{ d.id }}" data-dealer-name="{{ d.business_name }}">
                   <i class="bi bi-trash"></i>
                 </button>
+                {% endif %}
               </div>
             </td>
           </tr>

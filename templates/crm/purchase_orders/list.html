@@ -11,7 +11,7 @@
     {% endfor %}
   </div>
   {% if can_edit %}
-  <a href="/crm/purchase-orders/new" class="btn btn-success btn-sm"><i class="bi bi-plus-lg me-1"></i>New PO</a>
+  {% if can(current_user, 'crm_purchase_orders', 'add') %}<a href="/crm/purchase-orders/new" class="btn btn-success btn-sm"><i class="bi bi-plus-lg me-1"></i>New PO</a>{% endif %}
   {% endif %}
 </div>
 <div class="card border-0 shadow-sm">
@@ -28,17 +28,17 @@
           <td>{{ po.deal.title[:40] if po.deal else '—' }}</td>
           <td>{{ po.po_date.strftime('%d-%m-%Y') if po.po_date else '—' }}</td>
           <td>{{ po.expected_delivery_date.strftime('%d-%m-%Y') if po.expected_delivery_date else '—' }}</td>
-          <td class="fw-semibold">₹{{ ((po.total_amount or 0) | inr) }}</td>
+          <td class="fw-semibold">{% if can(current_user, 'crm_purchase_orders', 'pricing') %}₹{{ ((po.total_amount or 0) | inr) }}{% else %}—{% endif %}</td>
           <td>
             {% set sc = {'draft':'secondary','issued':'primary','acknowledged':'info','received':'success','cancelled':'danger'} %}
             <span class="badge bg-{{ sc.get(po.status,'secondary') }}">{{ po.status|capitalize }}</span>
           </td>
           <td>
-            <a href="/crm/purchase-orders/{{ po.id }}/print" target="_blank" class="btn btn-sm btn-success"><i class="bi bi-download me-1"></i>Generate PO</a>
+            {% if can(current_user, 'crm_purchase_orders', 'export') %}<a href="/crm/purchase-orders/{{ po.id }}/print" target="_blank" class="btn btn-sm btn-success"><i class="bi bi-download me-1"></i>Generate PO</a>{% endif %}
           </td>
           <td>
             <a href="/crm/purchase-orders/{{ po.id }}" class="btn btn-sm btn-outline-primary">View</a>
-            <a href="/crm/purchase-orders/{{ po.id }}/print" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-printer"></i></a>
+            {% if can(current_user, 'crm_purchase_orders', 'export') %}<a href="/crm/purchase-orders/{{ po.id }}/print" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-printer"></i></a>{% endif %}
           </td>
         </tr>
         {% else %}

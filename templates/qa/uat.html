@@ -15,9 +15,11 @@
     </select>
     <button class="btn btn-sm btn-outline-secondary">Filter</button>
   </form>
+  {% if can(current_user, 'qa', 'add') %}
   <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#newUATModal">
     <i class="bi bi-plus-circle me-1"></i>New UAT Scenario
   </button>
+  {% endif %}
 </div>
 
 <!-- UAT Entry Criteria reminder -->

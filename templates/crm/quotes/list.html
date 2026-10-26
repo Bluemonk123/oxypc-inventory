@@ -5,7 +5,7 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="text-muted small">{{ quotes | length }} quote(s) total</div>
-  <a href="/crm/quotes/new" class="btn btn-sm btn-success"><i class="bi bi-file-earmark-plus me-1"></i>New Quote</a>
+  {% if can(current_user, 'crm_quotes', 'add') %}<a href="/crm/quotes/new" class="btn btn-sm btn-success"><i class="bi bi-file-earmark-plus me-1"></i>New Quote</a>{% endif %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -52,14 +52,14 @@
               </span>
               {% else %}—{% endif %}
             </td>
-            <td class="small fw-semibold">{% if qt.total_amount %}₹{{ ((qt.total_amount) | inr) }}{% else %}—{% endif %}</td>
+            <td class="small fw-semibold">{% if can(current_user, 'crm_quotes', 'pricing') %}{% if qt.total_amount %}₹{{ ((qt.total_amount) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
             <td>
               <span class="badge bg-{{ status_colors.get(qt.status,'secondary') }}">{{ qt.status | title }}</span>
             </td>
             <td>
               <div class="btn-group btn-group-sm">
                 <a href="/crm/quotes/{{ qt.id }}" class="btn btn-outline-primary" title="View"><i class="bi bi-eye"></i></a>
-                <a href="/crm/quotes/{{ qt.id }}/print" class="btn btn-outline-secondary" title="Print" target="_blank"><i class="bi bi-printer"></i></a>
+                {% if can(current_user, 'crm_quotes', 'export') %}<a href="/crm/quotes/{{ qt.id }}/print" class="btn btn-outline-secondary" title="Print" target="_blank"><i class="bi bi-printer"></i></a>{% endif %}
               </div>
             </td>
           </tr>

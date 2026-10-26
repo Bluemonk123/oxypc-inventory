@@ -53,7 +53,7 @@
         <textarea id="tagsInput" class="form-control flex-grow-1" rows="4" style="min-height:96px"
                   placeholder="Type or paste Tag Numbers — separated by new line, comma or space"></textarea>
       </div>
-      <button type="button" id="openChangeEntitiesBtn" class="btn btn-primary btn-lg align-self-end align-self-lg-center flex-shrink-0">
+      <button {% if not can(current_user, 'entity_movement', 'edit') %}hidden {% endif %}type="button" id="openChangeEntitiesBtn" class="btn btn-primary btn-lg align-self-end align-self-lg-center flex-shrink-0">
         <i class="bi bi-arrow-left-right me-1"></i>Change Entities
       </button>
     </div>

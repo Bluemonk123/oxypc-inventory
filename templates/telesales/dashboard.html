@@ -48,7 +48,7 @@
           </div>
           <i class="bi bi-receipt fs-4 text-success opacity-50"></i>
         </div>
-        {% if can_view_pricing(current_user) %}
+        {% if can(current_user, 'telesales_dashboard', 'pricing') %}
         <div class="text-muted" style="font-size:0.7rem">₹{{ ((sales_stats.today_revenue) | inr) }} today · ₹{{ ((sales_stats.month_revenue) | inr) }} MTD</div>
         {% endif %}
       </div>
@@ -106,12 +106,12 @@
       </div>
       <div class="table-responsive">
         <table class="table table-hover mb-0" style="font-size:0.78rem">
-          <thead class="table-light"><tr><th>Customer</th>{% if can_view_pricing(current_user) %}<th>Amount</th>{% endif %}<th>Date</th></tr></thead>
+          <thead class="table-light"><tr><th>Customer</th>{% if can(current_user, 'telesales_dashboard', 'pricing') %}<th>Amount</th>{% endif %}<th>Date</th></tr></thead>
           <tbody>
             {% for s in recent_sales %}
             <tr>
               <td>{{ s.customer_name or '—' }}</td>
-              {% if can_view_pricing(current_user) %}<td class="fw-semibold">₹{{ ((s.sale_price) | inr) }}</td>{% endif %}
+              {% if can(current_user, 'telesales_dashboard', 'pricing') %}<td class="fw-semibold">₹{{ ((s.sale_price) | inr) }}</td>{% endif %}
               <td class="text-muted">{{ s.sold_at.strftime('%d-%m-%Y') if s.sold_at else '—' }}</td>
             </tr>
             {% else %}
@@ -159,7 +159,7 @@
           <th class="ps-3">Customer Name</th>
           <th>Customer Type</th>
           <th>Total Quantity</th>
-          {% if can_view_pricing(current_user) %}<th>Total Quotation Price</th>{% endif %}
+          {% if can(current_user, 'telesales_dashboard', 'pricing') %}<th>Total Quotation Price</th>{% endif %}
           <th>Status</th>
         </tr>
       </thead>
@@ -169,7 +169,7 @@
           <td class="ps-3">{{ q.customer_name }}</td>
           <td><span class="badge bg-secondary">{{ (q.customer_type or '—') | title }}</span></td>
           <td>{{ q.total_quantity }}</td>
-          {% if can_view_pricing(current_user) %}<td>₹{{ ((q.total_price or 0) | inr) }}</td>{% endif %}
+          {% if can(current_user, 'telesales_dashboard', 'pricing') %}<td>₹{{ ((q.total_price or 0) | inr) }}</td>{% endif %}
           <td>
             {% if q.status == 'confirmed' %}
             <span class="badge bg-success">Confirmed</span>

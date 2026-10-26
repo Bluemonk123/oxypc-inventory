@@ -12,11 +12,11 @@
   <div class="card-header bg-transparent d-flex align-items-center justify-content-between flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-calendar2-range me-2"></i>Rental Records</span>
     <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end">
-      <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="rentalExportBtn"
+      <button {% if not can(current_user, 'rentals', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success text-nowrap" id="rentalExportBtn"
               title="Export the rows shown (current filter / search) to CSV">
         <i class="bi bi-download me-1"></i>Export (<span id="rentalExportCount">{{ rows | length }}</span>)
       </button>
-      <a href="/rentals/new" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-plus-lg me-1"></i>New Rental</a>
+      {% if can(current_user, 'rentals', 'add') %}<a href="/rentals/new" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-plus-lg me-1"></i>New Rental</a>{% endif %}
     </div>
   </div>
   <div class="card-body">
@@ -88,7 +88,7 @@
               <a href="#" class="fw-semibold text-decoration-none rental-qty-link" data-id="{{ r.id }}"
                  data-number="{{ r.rental_number }}" title="Tags and Model Summary">{{ r.total_quantity }}</a>
             </td>
-            <td class="text-end text-nowrap" data-order="{{ r.total_price }}">₹{{ r.total_price | inr }}</td>
+            <td class="text-end text-nowrap" data-order="{{ r.total_price if can(current_user, 'rentals', 'pricing') else 0 }}">{% if can(current_user, 'rentals', 'pricing') %}₹{{ r.total_price | inr }}{% else %}—{% endif %}</td>
             <td>
               <span class="badge bg-{{ status_badge.get(r.status, 'secondary') }}">{{ status_labels.get(r.status, r.status) }}</span>
               {% if row.due %}<div class="text-danger fw-semibold" style="font-size:.75rem">Due ₹{{ row.due_total | inr(2) }}</div>{% endif %}
@@ -96,7 +96,7 @@
               {% for ref in row.refs %}<div class="text-muted" style="font-size:.75rem" title="Invoice / UTR">Paid: {{ ref }}</div>{% endfor %}
             </td>
             <td class="text-nowrap">
-              <div class="dropdown">
+              {% if can(current_user, 'rentals', 'export') %}<div class="dropdown">
                 <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" type="button">
                   <i class="bi bi-download"></i>
                 </button>
@@ -109,34 +109,42 @@
                     <i class="bi bi-receipt me-2"></i>{{ 'Payment Due Receipt' if x.decision == 'payment_due' else 'Return Receipt' }} {{ x.return_number }}</a></li>
                   {% endfor %}
                 </ul>
-              </div>
+              </div>{% endif %}
             </td>
             <td class="text-nowrap">
               <a href="/rentals/{{ r.id }}" class="btn btn-sm btn-outline-primary" title="View"><i class="bi bi-eye"></i></a>
               {% if r.status in ('active', 'payment_due') and row.out_count %}
               {# Return (2026-10-24): opens Returns > Rental Return with this rental's tags still out. #}
+              {% if can(current_user, 'rentals', 'add') %}
               <a href="/returns/new?active_tab=rental&rental={{ r.id }}" class="btn btn-sm btn-outline-success" title="Rental Return">
                 <i class="bi bi-box-arrow-in-down-left"></i></a>
               {% endif %}
+              {% endif %}
               {% if row.due %}
+              {% if can(current_user, 'rentals', 'edit') %}
               <button type="button" class="btn btn-sm btn-success" title="Mark Paid"
                       data-bs-toggle="modal" data-bs-target="#rentalPaidModal"
                       data-action="/rentals/{{ r.id }}/paid" data-number="{{ r.rental_number }}"
                       data-amount="{{ row.due_total | inr(2) }}"><i class="bi bi-cash-coin me-1"></i>Mark Paid</button>
               {% endif %}
+              {% endif %}
               {% if r.status == 'active' and not row.returns %}
+              {% if can(current_user, 'rentals', 'edit') %}
               <form method="post" action="/rentals/{{ r.id }}/cancel" class="d-inline"
                     onsubmit="return confirm('Cancel {{ r.rental_number }}? Its tags go back to Ready to Sale.')">
                 <input type="hidden" name="csrf_token" value="{{ csrf }}">
                 <button class="btn btn-sm btn-outline-danger" title="Cancel"><i class="bi bi-x-lg"></i></button>
               </form>
               {% endif %}
+              {% endif %}
               {% if can_delete %}
+              {% if can(current_user, 'rentals', 'delete') %}
               <form method="post" action="/rentals/{{ r.id }}/delete" class="d-inline"
                     onsubmit="return confirm('PERMANENTLY delete {{ r.rental_number }}?\n\nThe rental record and its tag list are removed and cannot be recovered.{% if r.status == 'active' %} Its tags still On Rent go back to Ready to Sale.{% endif %}')">
                 <input type="hidden" name="csrf_token" value="{{ csrf }}">
                 <button class="btn btn-sm btn-danger" title="Delete permanently"><i class="bi bi-trash"></i></button>
               </form>
+              {% endif %}
               {% endif %}
             </td>
           </tr>
@@ -246,7 +254,7 @@ $(document).ready(function () {
         tb.innerHTML = d.tags.map(function (t) {
           return '<tr><td class="fw-semibold">' + esc(t.barcode) + '</td><td>' + esc((t.make + ' ' + t.model).trim()) +
             '</td><td>' + esc(t.cpu) + '</td><td>' + esc(t.gen) + '</td><td>' + esc(t.ram) + '</td><td>' + esc(t.storage) +
-            '</td><td>' + esc(t.grade) + '</td><td class="text-end">' + (t.min_price == null ? '—' : inr0(t.min_price)) + '</td></tr>';
+            '</td><td>' + esc(t.grade) + '</td><td class="text-end">' + ({% if not can(current_user, 'rentals', 'pricing') %}true || {% endif %}t.min_price == null ? '—' : inr0(t.min_price)) + '</td></tr>';
         }).join('') || '<tr><td colspan="8" class="text-muted">No tags.</td></tr>';
         mb.innerHTML = d.models.map(function (g) {
           return '<tr><td class="fw-semibold">' + esc((g.make + ' ' + g.model).trim()) + '</td><td>' + esc(g.cpu) + '</td><td>' +

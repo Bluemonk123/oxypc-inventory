@@ -71,12 +71,14 @@
                   {% if started_ids is defined and device.id|string in started_ids %}
                   <span class="badge rounded-pill bg-info"><i class="bi bi-play-circle me-1"></i>Repair Started</span>
                   {% else %}
+                  {% if can(current_user, 'repair_l3', 'edit') %}
                   <form method="post" action="/repair/start" class="d-inline">
                     <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                     <input type="hidden" name="barcode" value="{{ device.barcode }}">
                     <input type="hidden" name="stage" value="{{ stage }}">
                     <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-play-fill"></i> Start Repair</button>
                   </form>
+                  {% endif %}
                   {% endif %}
                   <a href="/devices/{{ device.barcode }}?from=repair_l3#parts" class="btn btn-sm" style="background-color:#ffc107;color:#000000;border-color:#ffc107;"><i class="bi bi-bag-plus"></i> Request Part</a>
                 </td>

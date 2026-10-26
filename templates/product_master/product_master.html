@@ -61,8 +61,8 @@
           <select class="form-select form-select-sm w-auto" id="pmFCpu" title="CPU"><option value="">All CPUs</option></select>
           <select class="form-select form-select-sm w-auto" id="pmFRam" title="RAM Name"><option value="">All RAM Names</option></select>
           <select class="form-select form-select-sm w-auto" id="pmFSto" title="Storage Name"><option value="">All Storage Names</option></select>
-          <button type="button" class="btn btn-sm btn-outline-success" id="pmExport"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
-          <button type="button" class="btn btn-sm btn-primary" id="pmAddProductBtn"><i class="bi bi-plus-circle me-1"></i>Add Product</button>
+          <button {% if not can(current_user, 'pm_product_master', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success" id="pmExport"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+          <button {% if not can(current_user, 'pm_product_master', 'add') %}hidden {% endif %}type="button" class="btn btn-sm btn-primary" id="pmAddProductBtn"><i class="bi bi-plus-circle me-1"></i>Add Product</button>
         </div>
       </div>
       <div class="card-body">
@@ -103,10 +103,14 @@
               <td class="pm-date text-nowrap" data-order="{{ p.updated_at[6:] ~ p.updated_at[3:5] ~ p.updated_at[:2] }}">{{ p.updated_at }}</td>
               <td>
                 <div class="d-flex gap-1 justify-content-center">
+                  {% if can(current_user, 'pm_product_master', 'edit') %}
                   <button type="button" class="btn btn-sm btn-outline-warning py-0 px-1 pm-edit-product" title="Edit"
                           data-product='{{ {"id": p.id, "make": p.make, "model": p.model, "cpu": p.cpu, "cpu_gen": p.cpu_gen}|tojson|forceescape }}'><i class="bi bi-pencil"></i></button>
+                  {% endif %}
+                  {% if can(current_user, 'pm_product_master', 'delete') %}
                   <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 pm-del-product" title="Delete"
                           data-id="{{ p.id }}" data-name="{{ p.product_name }}"><i class="bi bi-trash3"></i></button>
+                  {% endif %}
                 </div>
               </td>
             </tr>
@@ -125,7 +129,9 @@
         <div class="card border-0 shadow-sm h-100">
           <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
             <span class="fw-semibold">{{ label }} <span class="badge bg-light text-dark border ms-1">{{ dropdowns[cat]|length }}</span></span>
+            {% if can(current_user, 'pm_product_master', 'add') %}
             <button type="button" class="btn btn-sm btn-outline-primary pm-dd-add" data-cat="{{ cat }}"><i class="bi bi-plus"></i> Add</button>
+            {% endif %}
           </div>
           <div class="card-body p-0" style="max-height:280px;overflow:auto">
             <ul class="list-group list-group-flush">
@@ -134,11 +140,15 @@
               <li class="list-group-item d-flex justify-content-between align-items-center py-1 small">
                 <span>{% if cat == 'model' and parent %}<span class="text-muted">{{ parent.value }} → </span>{% endif %}{{ d.value }}{% if cat == 'discount_pct' %}%{% endif %}</span>
                 <span class="text-nowrap">
+                  {% if can(current_user, 'pm_product_master', 'edit') %}
                   <button type="button" class="btn btn-sm btn-link text-warning p-0 me-2 pm-dd-edit" title="Edit"
                           data-cat="{{ cat }}" data-id="{{ d.id }}" data-parent="{{ d.parent_id or '' }}"
                           data-value="{{ d.value }}"><i class="bi bi-pencil"></i></button>
+                  {% endif %}
+                  {% if can(current_user, 'pm_product_master', 'delete') %}
                   <button type="button" class="btn btn-sm btn-link text-danger p-0 pm-dd-del" title="Delete"
                           data-id="{{ d.id }}" data-value="{{ d.value }}"><i class="bi bi-trash3"></i></button>
+                  {% endif %}
                 </span>
               </li>
               {% else %}
@@ -158,7 +168,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span class="fw-semibold"><i class="bi bi-graph-up-arrow me-2"></i>Competitive Brands</span>
-        <button type="button" class="btn btn-sm btn-primary" id="pmCompAddBtn"><i class="bi bi-plus-circle me-1"></i>Add Competitive Brand</button>
+        <button {% if not can(current_user, 'pm_product_master', 'add') %}hidden {% endif %}type="button" class="btn btn-sm btn-primary" id="pmCompAddBtn"><i class="bi bi-plus-circle me-1"></i>Add Competitive Brand</button>
       </div>
       <div class="card-body">
         <div class="row g-4">
@@ -170,8 +180,12 @@
                 <tr>
                   <td class="fw-semibold">{{ cl.name }}</td>
                   <td><div class="d-flex gap-1 justify-content-center">
+                    {% if can(current_user, 'pm_product_master', 'edit') %}
                     <button type="button" class="btn btn-sm btn-outline-warning py-0 px-1 pm-comp-edit" title="Edit" data-id="{{ cl.id }}" data-name="{{ cl.name }}"><i class="bi bi-pencil"></i></button>
+                    {% endif %}
+                    {% if can(current_user, 'pm_product_master', 'delete') %}
                     <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 pm-comp-del" title="Delete" data-id="{{ cl.id }}" data-name="{{ cl.name }}"><i class="bi bi-trash3"></i></button>
+                    {% endif %}
                   </div></td>
                 </tr>
                 {% endfor %}

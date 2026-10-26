@@ -68,25 +68,33 @@
                 </td>
                 <td class="text-nowrap">
                   {% if device.l34_status in ['Normal Scrap', 'Replacement Scrap'] %}
+                    {% if can(current_user, 'repair_l2', 'edit') %}
                     <form method="post" action="/repair/back-to-production" class="d-inline">
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ device.id }}">
                       <button type="submit" class="btn btn-sm btn-dark"><i class="bi bi-arrow-return-left"></i> Back to Inventory</button>
                     </form>
+                    {% endif %}
                   {% elif device.l1l2_status == 'Repair Started' %}
+                    {% if can(current_user, 'repair_l2', 'edit') %}
                     <button type="button" class="btn btn-sm btn-success complete-btn"
                             data-device="{{ device.id }}" data-barcode="{{ device.barcode }}">
                       <i class="bi bi-check-lg"></i> Complete</button>
+                    {% endif %}
                     <a href="/devices/{{ device.barcode }}" class="btn btn-sm" style="background-color:#ffc107;color:#000;border-color:#ffc107;"><i class="bi bi-bag-plus"></i> Request Part</a>
+                    {% if can(current_user, 'repair_l2', 'edit') %}
                     <button type="button" class="btn btn-sm btn-outline-primary request-l3l4-btn"
                             data-device="{{ device.id }}" data-barcode="{{ device.barcode }}">
                       <i class="bi bi-arrow-up-right-circle"></i> Request to L3/L4</button>
+                    {% endif %}
                   {% else %}
+                    {% if can(current_user, 'repair_l2', 'edit') %}
                     <form method="post" action="/repair/l1l2-start" class="d-inline">
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ device.id }}">
                       <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-play-fill"></i> Start Repair</button>
                     </form>
+                    {% endif %}
                   {% endif %}
                 </td>
               </tr>

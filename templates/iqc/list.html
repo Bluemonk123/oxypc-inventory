@@ -85,20 +85,24 @@
     <strong class="small text-nowrap"><i class="bi bi-upc-scan me-1"></i>Tag Number
       <span class="badge bg-secondary ms-1" title="Devices matching the filters">{{ devices|length }}</span></strong>
     <div class="d-flex gap-2 flex-wrap">
-      <button type="button" id="createLotBtn" class="btn btn-success btn-sm text-nowrap d-none" onclick="openCreateLotModal()">
+      <button {% if not can(current_user, 'iqc', 'add') %}hidden {% endif %}type="button" id="createLotBtn" class="btn btn-success btn-sm text-nowrap d-none" onclick="openCreateLotModal()">
         <i class="bi bi-box-seam me-1"></i>Create/Add Lot (<span id="createLotCount">0</span>)
       </button>
       {# Exports the ticked Tag Numbers only (selection persists across pages). #}
-      <button type="button" id="exportSelectedBtn" class="btn btn-outline-info btn-sm text-nowrap" disabled
+      <button {% if not can(current_user, 'iqc', 'export') %}hidden {% endif %}type="button" id="exportSelectedBtn" class="btn btn-outline-info btn-sm text-nowrap" disabled
               onclick="exportSelectedIqc()" title="Tick Tag Numbers to export them">
         <i class="bi bi-file-earmark-arrow-down me-1"></i>Export (<span id="exportSelectedCount">0</span>)
       </button>
+      {% if can(current_user, 'iqc', 'upload') %}
       <a href="/bulk-upload?type=devices" class="btn btn-outline-success btn-sm text-nowrap">
         <i class="bi bi-cloud-upload me-1"></i>Bulk Upload IQC
       </a>
+      {% endif %}
+      {% if can(current_user, 'iqc', 'add') %}
       <a href="/iqc/new" class="btn btn-primary btn-sm text-nowrap">
         <i class="bi bi-plus-circle me-1"></i>Add New Asset
       </a>
+      {% endif %}
     </div>
   </div>
   <div class="card-body p-0">
@@ -126,7 +130,7 @@
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2">
     <strong class="small text-nowrap"><i class="bi bi-collection me-1"></i>Model Summary</strong>
-    <button type="button" id="iqcModelExportBtn" class="btn btn-outline-info btn-sm text-nowrap">
+    <button {% if not can(current_user, 'iqc', 'export') %}hidden {% endif %}type="button" id="iqcModelExportBtn" class="btn btn-outline-info btn-sm text-nowrap">
       <i class="bi bi-file-earmark-arrow-down me-1"></i>Export
     </button>
   </div>
@@ -150,7 +154,7 @@
             <td class="small">{{ g.make }}</td>
             <td class="small">{{ g.device_type }}</td>
             <td class="small">{{ g.total_count }}</td>
-            <td class="small">₹{{ ((g.total_price) | inr) }}</td>
+            <td class="small">{% if can(current_user, 'iqc', 'pricing') %}₹{{ ((g.total_price) | inr) }}{% else %}—{% endif %}</td>
             <td class="small">{{ g.repaired_count }}</td>
           </tr>
           {% endfor %}
@@ -169,16 +173,20 @@
   <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center gap-2 flex-wrap">
     <strong class="small text-nowrap"><i class="bi bi-box-seam me-1"></i>Product Lots</strong>
     <div class="d-flex gap-2 flex-wrap">
-      <a href="/bulk-upload/template/lots" class="btn btn-outline-secondary btn-sm text-nowrap"
+      {% if can(current_user, 'iqc', 'export') %}<a href="/bulk-upload/template/lots" class="btn btn-outline-secondary btn-sm text-nowrap"
          title="Download a sample CSV with the exact column headers">
         <i class="bi bi-file-earmark-arrow-down me-1"></i>Sample File
-      </a>
+      </a>{% endif %}
+      {% if can(current_user, 'iqc', 'upload') %}
       <a href="/bulk-upload?type=lots" class="btn btn-outline-success btn-sm text-nowrap">
         <i class="bi bi-cloud-upload me-1"></i>Upload Lots
       </a>
+      {% endif %}
+      {% if can(current_user, 'iqc', 'add') %}
       <a href="/lots/new" class="btn btn-primary btn-sm text-nowrap">
         <i class="bi bi-plus-circle me-1"></i>Add Lot
       </a>
+      {% endif %}
     </div>
   </div>
   <div class="card-body p-0">
@@ -192,11 +200,11 @@
             <th>Purchase Date</th>
             <th>Rcvd Date</th>
             <th>Invoice No.</th>
-            {% if can_view_pricing(current_user) %}<th>Invoice Value</th>{% endif %}
+            {% if can(current_user, 'iqc', 'pricing') %}<th>Invoice Value</th>{% endif %}
             <th>Qty</th>
             <th>Registered</th>
             <th>Sold</th>
-            {% if can_view_pricing(current_user) %}<th>Buying Price</th>{% endif %}
+            {% if can(current_user, 'iqc', 'pricing') %}<th>Buying Price</th>{% endif %}
             <th>Actions</th>
           </tr>
         </thead>
@@ -214,17 +222,17 @@
             <td class="small">{{ lot.purchase_date.strftime('%d-%m-%Y') if lot.purchase_date else '—' }}</td>
             <td class="small">{{ lot.grn_date.strftime('%d-%m-%Y') if lot.grn_date else '—' }}</td>
             <td class="font-monospace small">{{ lot.invoice_no or '—' }}</td>
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'iqc', 'pricing') %}
             <td class="small">{% if lot.invoice_value %}₹{{ ((lot.invoice_value) | inr) }}{% else %}—{% endif %}</td>
             {% endif %}
             <td class="text-center small">{{ lot.qty }}</td>
             <td class="text-center"><span class="badge bg-primary">{{ stat.devices }}</span></td>
             <td class="text-center"><span class="badge bg-success">{{ stat.sold }}</span></td>
-            {% if can_view_pricing(current_user) %}
+            {% if can(current_user, 'iqc', 'pricing') %}
             <td class="fw-semibold text-danger small">₹{{ ((lot.buying_price or 0) | inr) }}</td>
             {% endif %}
             <td class="text-nowrap">
-              <a href="/lots/{{ lot.id }}/edit" class="btn btn-sm btn-outline-secondary py-0">Edit</a>
+              {% if can(current_user, 'iqc', 'edit') %}<a href="/lots/{{ lot.id }}/edit" class="btn btn-sm btn-outline-secondary py-0">Edit</a>{% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -276,6 +284,7 @@
             <label class="form-label small">Condition</label>
             <input type="text" name="condition" class="form-control form-control-sm" placeholder="e.g. New / Refurbished / Used">
           </div>
+          {% if can(current_user, 'iqc', 'pricing') %}
           <div class="col-md-4">
             <label class="form-label small">Buying Price</label>
             <input type="number" step="0.01" name="buying_price" class="form-control form-control-sm" placeholder="Total lot cost">
@@ -284,6 +293,7 @@
             <label class="form-label small">Selling Price</label>
             <input type="number" step="0.01" name="selling_price" class="form-control form-control-sm">
           </div>
+          {% endif %}
           <div class="col-md-12">
             <label class="form-label small">Remarks</label>
             <textarea name="notes" class="form-control form-control-sm" rows="2"></textarea>

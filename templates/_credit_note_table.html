@@ -17,7 +17,7 @@
         <td>{{ row.device.tag_return_status or '—' }}</td>
         <td><span class="badge bg-info text-dark">{{ row.lot_number or '—' }}</span></td>
         <td>{{ row.device.sub_lot_number or '—' }}</td>
-        <td>{{ '%.2f'|format(row.device.device_price) if row.device.device_price is not none else '—' }}</td>
+        <td>{% if can(current_user, 'credit_note', 'pricing') %}{{ '%.2f'|format(row.device.device_price) if row.device.device_price is not none else '—' }}{% else %}—{% endif %}</td>
         <td>{{ row.sale_date.strftime('%d-%m-%Y') if row.sale_date else '—' }}</td>
       </tr>
       {% else %}

@@ -29,16 +29,16 @@
         <p class="text-muted small">Upload multiple purchase lots/GRNs at once via CSV.</p>
         <p class="small"><strong>Required:</strong> lot_number, supplier_name, buying_price, qty, purchase_date</p>
         <p class="small"><strong>Optional GRN/Invoice:</strong> grn_system_number, grn_number_new, grn_date, invoice_no, invoice_value, taxable_amount, sgst, cgst, igst, po_number, vehicle_number, e_way_bill, notes (invoice date is taken from purchase_date)</p>
-        <a href="/bulk-upload/template/lots" class="btn btn-sm btn-outline-secondary mb-3">
+        {% if can(current_user, 'lots', 'export') %}<a href="/bulk-upload/template/lots" class="btn btn-sm btn-outline-secondary mb-3">
           <i class="bi bi-download me-1"></i>Download Template
-        </a>
+        </a>{% endif %}
         <form action="/bulk-upload/lots" method="post" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
           <div class="mb-3">
             <label class="form-label fw-semibold">CSV File</label>
             <input type="file" name="file" class="form-control" accept=".csv" required>
           </div>
-          <button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload me-2"></i>Upload Lots</button>
+          {% if can(current_user, 'lots', 'upload') %}<button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload me-2"></i>Upload Lots</button>{% endif %}
         </form>
       </div>
     </div>
@@ -51,16 +51,16 @@
       <div class="card-body">
         <p class="text-muted small">Upload multiple devices directly into IQC stage.</p>
         <p class="small"><strong>Required columns:</strong> barcode, lot_number (must exist), brand, model</p>
-        <a href="/bulk-upload/template/devices" class="btn btn-sm btn-outline-secondary mb-3">
+        {% if can(current_user, 'iqc', 'export') %}<a href="/bulk-upload/template/devices" class="btn btn-sm btn-outline-secondary mb-3">
           <i class="bi bi-download me-1"></i>Download Template
-        </a>
+        </a>{% endif %}
         <form action="/bulk-upload/devices" method="post" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
           <div class="mb-3">
             <label class="form-label fw-semibold">CSV File</label>
             <input type="file" name="file" class="form-control" accept=".csv" required>
           </div>
-          <button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload me-2"></i>Upload Devices</button>
+          {% if can(current_user, 'iqc', 'upload') %}<button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload me-2"></i>Upload Devices</button>{% endif %}
         </form>
       </div>
     </div>
@@ -75,16 +75,16 @@
       <div class="card-body">
         <p class="text-muted small">Bulk import lead-gen data for telecalling with full product requirement details.</p>
         <p class="small"><strong>Required:</strong> phone &nbsp;|&nbsp; <strong>Optional:</strong> customer_name, category, brand, model, generation, processor, RAM, HDD, grade, customer_type, city, state, budget, qty, outcome</p>
-        <a href="/bulk-upload/template/leads" class="btn btn-sm btn-outline-secondary mb-3">
+        {% if can(current_user, 'telecalling', 'export') %}<a href="/bulk-upload/template/leads" class="btn btn-sm btn-outline-secondary mb-3">
           <i class="bi bi-download me-1"></i>Download Template
-        </a>
+        </a>{% endif %}
         <form action="/bulk-upload/leads" method="post" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
           <div class="mb-3">
             <label class="form-label fw-semibold">CSV File</label>
             <input type="file" name="file" class="form-control" accept=".csv" required>
           </div>
-          <button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload me-2"></i>Upload Leads</button>
+          {% if can(current_user, 'telecalling', 'upload') %}<button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload me-2"></i>Upload Leads</button>{% endif %}
         </form>
       </div>
     </div>
@@ -97,16 +97,16 @@
       <div class="card-body">
         <p class="text-muted small">Bulk add spare parts to the parts inventory.</p>
         <p class="small"><strong>Required columns:</strong> part_code, name, category</p>
-        <a href="/bulk-upload/template/spare_parts" class="btn btn-sm btn-outline-secondary mb-3">
+        {% if can(current_user, 'spare_parts', 'export') %}<a href="/bulk-upload/template/spare_parts" class="btn btn-sm btn-outline-secondary mb-3">
           <i class="bi bi-download me-1"></i>Download Template
-        </a>
+        </a>{% endif %}
         <form action="/bulk-upload/spare-parts" method="post" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
           <div class="mb-3">
             <label class="form-label fw-semibold">CSV File</label>
             <input type="file" name="file" class="form-control" accept=".csv" required>
           </div>
-          <button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload me-2"></i>Upload Parts</button>
+          {% if can(current_user, 'spare_parts', 'upload') %}<button type="submit" class="btn btn-primary w-100"><i class="bi bi-upload me-2"></i>Upload Parts</button>{% endif %}
         </form>
       </div>
     </div>
@@ -164,9 +164,9 @@
             </select>
           </div>
           <div class="col-md-3 d-flex align-items-end gap-2">
-            <button class="btn btn-sm btn-outline-secondary" onclick="downloadMasterTemplate()">
+            {% if can(current_user, 'admin_master', 'export') %}<button class="btn btn-sm btn-outline-secondary" onclick="downloadMasterTemplate()">
               <i class="bi bi-download me-1"></i>Download Template
-            </button>
+            </button>{% endif %}
             <a href="/admin/master" class="btn btn-sm btn-outline-primary">
               <i class="bi bi-gear me-1"></i>Manage Master Data
             </a>
@@ -177,9 +177,11 @@
               <label class="form-label fw-semibold">Upload CSV</label>
               <div class="input-group input-group-sm">
                 <input type="file" name="file" class="form-control" accept=".csv" required id="masterBulkFile">
+                {% if can(current_user, 'admin_master', 'upload') %}
                 <button type="button" class="btn btn-primary" onclick="submitMasterBulk()">
                   <i class="bi bi-upload me-1"></i>Import
                 </button>
+                {% endif %}
               </div>
             </form>
           </div>

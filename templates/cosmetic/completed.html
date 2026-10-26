@@ -65,14 +65,18 @@
               <td class="text-muted small">{{ wo.name if wo else '—' }}</td>
               <td class="text-muted small">{{ wo.date.strftime('%d-%b %H:%M') if wo and wo.date else '—' }}</td>
               <td>
+                {% if can(current_user, 'cosmetic_completed', 'edit') %}
                 <button type="button" class="btn btn-sm btn-success py-0 px-2"
                         onclick="directMoveToFinalQC('{{ device.barcode }}', this)">
                   <i class="bi bi-check2 me-1"></i>Move to Final QC
                 </button>
+                {% endif %}
+                {% if can(current_user, 'cosmetic_completed', 'edit') %}
                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1"
                         onclick="openFailModal('{{ device.barcode }}')">
                   <i class="bi bi-x-circle me-1"></i>Fail
                 </button>
+                {% endif %}
               </td>
             </tr>
             {% endfor %}

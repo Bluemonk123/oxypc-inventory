@@ -166,27 +166,33 @@
         <i class="bi bi-bell me-1"></i>Follow-ups Due
         <span class="badge bg-white text-warning">{{ followup_count }}</span>
       </a>
+      {% if can(current_user, 'dealers', 'upload') %}
       <a href="/dealers/bulk-upload" class="btn btn-sm text-nowrap btn-outline-success">
         <i class="bi bi-cloud-upload me-1"></i>Bulk Upload
       </a>
+      {% endif %}
+      {% if can(current_user, 'dealers', 'upload') %}
       <button type="button" class="btn btn-sm text-nowrap btn-outline-success" data-bs-toggle="modal"
               data-bs-target="#callBulkUploadModal">
         <i class="bi bi-telephone-plus me-1"></i>Bulk Upload Call Records
       </button>
+      {% endif %}
       {% if can_manage_dealers %}
-      <button type="button" id="dealerBulkDeleteBtn" class="btn btn-sm text-nowrap btn-outline-danger" disabled
+      <button {% if not can(current_user, 'dealers', 'delete') %}hidden {% endif %}type="button" id="dealerBulkDeleteBtn" class="btn btn-sm text-nowrap btn-outline-danger" disabled
               onclick="submitDealerBulkDelete()">
         <i class="bi bi-trash me-1"></i>Delete Selected (<span id="dealerSelCount">0</span>)
       </button>
       {% endif %}
-      <button type="button" id="dealerExportBtn" class="btn btn-sm text-nowrap btn-outline-secondary"
+      <button {% if not can(current_user, 'dealers', 'export') %}hidden {% endif %}type="button" id="dealerExportBtn" class="btn btn-sm text-nowrap btn-outline-secondary"
               title="Export the selected rows, or every dealer matching the filters and search"
               onclick="exportDealers()">
         <i class="bi bi-file-earmark-spreadsheet me-1"></i>Export
       </button>
+      {% if can(current_user, 'dealers', 'add') %}
       <button type="button" class="btn btn-sm text-nowrap btn-primary" onclick="openDealerAddModal()">
         <i class="bi bi-plus-circle me-1"></i>Add Dealer
       </button>
+      {% endif %}
     </div>
   </div>
   <div class="card-body p-0">
@@ -309,9 +315,9 @@
           existing dealer via <code>dealer_phone</code> or <code>business_name</code> —
           unmatched rows are skipped and reported.
         </p>
-        <a href="/dealers/calls/bulk-upload-template" class="btn btn-sm btn-outline-secondary mb-3">
+        {% if can(current_user, 'dealers', 'export') %}<a href="/dealers/calls/bulk-upload-template" class="btn btn-sm btn-outline-secondary mb-3">
           <i class="bi bi-download me-1"></i>Download Sample CSV
-        </a>
+        </a>{% endif %}
         <input type="file" name="file" accept=".csv" class="form-control" required>
       </div>
       <div class="modal-footer py-2">

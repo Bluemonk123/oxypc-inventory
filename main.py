@@ -97,6 +97,12 @@ async def _force_https(request: Request, call_next):
 # and they are already cache-busted by the ?v=ASSET_VERSION stamp that
 # templates_config.py derives from asset mtime. An explicit Cache-Control set
 # by a route (a file download, an export) wins over this default.
+# Per-module Add / Bulk Upload / Edit / Delete / Pricing gate (2026-10-25)
+# — see auth/action_guard.py and auth/route_actions.py.
+from auth.action_guard import action_permission_middleware as _action_perm_mw
+app.middleware("http")(_action_perm_mw)
+
+
 @app.middleware("http")
 async def _no_store_pages(request: Request, call_next):
     resp = await call_next(request)
@@ -579,6 +585,8 @@ async def startup_event():
         from routers.master import load_all_permissions_to_cache
         from database import AsyncSessionLocal as _ASL
         async with _ASL() as _sess:
+            await _backfill_action_perms_once(_sess)
+            await _backfill_export_perm_once(_sess)
             await load_all_permissions_to_cache(_sess)
         print("  [Perms] Role permission cache loaded")
     except Exception as _pe:
@@ -855,6 +863,47 @@ def open_browser():
     webbrowser.open(f"http://localhost:{APP_PORT}")
 
 
+async def _backfill_action_perms_once(sess) -> None:
+    """One-time (2026-10-25): the Permission Matrix action ticks are now
+    enforced. Before this, every enabled module allowed Add/Upload/Edit even
+    when those boxes were unticked, so to keep everyone's current access every
+    ENABLED row gets Add, Bulk Upload, Edit, Delete and Pricing ticked. Admin
+    then unticks what to restrict. Runs once, recorded in app_settings."""
+    from sqlalchemy import text as _t
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'perm_actions_backfill_v1'"))).first()
+    if done:
+        return
+    await sess.execute(_t("ALTER TABLE role_module_permissions ADD COLUMN IF NOT EXISTS can_delete BOOLEAN DEFAULT TRUE"))
+    await sess.execute(_t("ALTER TABLE role_module_permissions ADD COLUMN IF NOT EXISTS can_pricing BOOLEAN DEFAULT TRUE"))
+    res = await sess.execute(_t(
+        "UPDATE role_module_permissions SET can_add = TRUE, can_upload = TRUE, can_edit = TRUE, "
+        "can_delete = TRUE, can_pricing = TRUE WHERE can_enable IS TRUE"))
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('perm_actions_backfill_v1', :v, 'Permission action ticks backfilled', 'system', now())"),
+        {"v": str(res.rowcount)})
+    await sess.commit()
+    print(f"  [Perms] Action ticks backfilled on {res.rowcount} enabled matrix row(s)")
+
+
+async def _backfill_export_perm_once(sess) -> None:
+    """One-time (2026-10-26): new Download / Export tick. Every ENABLED
+    matrix row gets it ticked so nobody loses access; admin unticks to
+    restrict. Recorded in app_settings like the action backfill above."""
+    from sqlalchemy import text as _t
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'perm_export_backfill_v1'"))).first()
+    if done:
+        return
+    await sess.execute(_t("ALTER TABLE role_module_permissions ADD COLUMN IF NOT EXISTS can_export BOOLEAN DEFAULT TRUE"))
+    res = await sess.execute(_t("UPDATE role_module_permissions SET can_export = TRUE WHERE can_enable IS TRUE"))
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('perm_export_backfill_v1', :v, 'Download / Export tick backfilled', 'system', now())"),
+        {"v": str(res.rowcount)})
+    await sess.commit()
+    print(f"  [Perms] Download / Export tick backfilled on {res.rowcount} enabled matrix row(s)")
+
+
 if __name__ == "__main__":
     # Open browser only when explicitly requested (set OXYPC_OPEN_BROWSER=0 to disable)
     if os.environ.get("OXYPC_OPEN_BROWSER", "1") == "1":
@@ -873,3 +922,4 @@ if __name__ == "__main__":
         proxy_headers=True,
         forwarded_allow_ips="*",
     )
+

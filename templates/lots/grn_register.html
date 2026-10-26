@@ -41,7 +41,7 @@
       </div>
       <div class="col ms-auto text-end">
         <a href="/lots/{{ lot.id }}" class="btn btn-sm btn-outline-secondary me-2"><i class="bi bi-arrow-left me-1"></i>Back to Lot</a>
-        <button class="btn btn-sm btn-warning" onclick="advanceToIQC()"><i class="bi bi-arrow-right-circle me-1"></i>Send All to IQC</button>
+        {% if can(current_user, 'lots', 'edit') %}<button class="btn btn-sm btn-warning" onclick="advanceToIQC()"><i class="bi bi-arrow-right-circle me-1"></i>Send All to IQC</button>{% endif %}
       </div>
     </div>
     {# Progress bar #}
@@ -70,7 +70,7 @@
       </div>
       <div class="card-body">
         <!-- Line Item Picker -->
-        <div class="mb-2" id="lineItemPickerWrap">
+        <div class="mb-2{% if not can(current_user, 'lots', 'pricing') %} d-none{% endif %}" id="lineItemPickerWrap">
           <label class="form-label fw-semibold small">Apply Invoice Price (select line item)</label>
           <select id="lineItemPicker" class="form-select form-select-sm" onchange="applyLineItem(this.value)">
             <option value="">— Select to auto-fill price —</option>
@@ -115,7 +115,7 @@
               <option value="Other">Other</option>
             </select>
           </div>
-          <div class="col-6">
+          <div class="col-6{% if not '+P+' %} d-none{% endif %}">
             <label class="form-label small fw-semibold">Price (₹)</label>
             <input type="number" id="priceInput" class="form-control form-control-sm" placeholder="Optional">
           </div>
@@ -151,6 +151,7 @@
       </div>
     </div>
 
+    {% if can(current_user, 'lots', 'upload') %}
     {# Bulk Import Card #}
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-header bg-transparent fw-semibold small">
@@ -166,12 +167,13 @@
         </div>
         <div id="csvFeedback" class="mt-2 d-none"></div>
         <div class="mt-2">
-          <a href="#" class="small text-muted" onclick="downloadTemplate(); return false">
+          {% if can(current_user, 'lots', 'export') %}<a href="#" class="small text-muted" onclick="downloadTemplate(); return false">
             <i class="bi bi-download me-1"></i>Download CSV template
-          </a>
+          </a>{% endif %}
         </div>
       </div>
     </div>
+    {% endif %}
 
     {# Lot Invoice Details #}
     <div class="card border-0 shadow-sm">
@@ -240,7 +242,7 @@
               <td><span class="badge bg-info text-dark">{{ d.sub_category or '—' }}</span></td>
               <td>{{ d.brand or '' }} {{ d.model or '' }}</td>
               <td class="text-muted">{{ d.serial_no or '—' }}</td>
-              <td>{% if d.device_price %}₹{{ ((d.device_price) | inr) }}{% else %}—{% endif %}</td>
+              <td>{% if can(current_user, 'lots', 'pricing') and d.device_price %}₹{{ ((d.device_price) | inr) }}{% else %}—{% endif %}</td>
               <td>
                 <span class="badge bg-{% if d.current_stage.value == 'grn' %}warning text-dark{% else %}success{% endif %}">
                   {{ d.current_stage.value | upper }}
@@ -248,10 +250,12 @@
               </td>
               <td>
                 {% if d.current_stage.value == 'grn' %}
+                {% if can(current_user, 'lots', 'delete') %}
                 <button class="btn btn-link btn-sm p-0 text-danger"
                         onclick="removeDevice('{{ d.barcode }}')" title="Remove">
                   <i class="bi bi-trash"></i>
                 </button>
+                {% endif %}
                 {% endif %}
               </td>
             </tr>
@@ -415,9 +419,9 @@ function addRowToTable(d) {
     <td><span class="badge bg-info text-dark">${d.sub_category || '—'}</span></td>
     <td>${d.brand || ''} ${d.model || ''}</td>
     <td class="text-muted">${d.serial_no || '—'}</td>
-    <td>${d.device_price ? '₹'+Number(d.device_price).toLocaleString('en-IN') : '—'}</td>
+    <td>{% if can(current_user, 'lots', 'pricing') %}${d.device_price ? '₹'+Number(d.device_price).toLocaleString('en-IN') : '—'}{% else %}—{% endif %}</td>
     <td><span class="badge bg-warning text-dark">GRN</span></td>
-    <td><button class="btn btn-link btn-sm p-0 text-danger" onclick="removeDevice('${d.barcode}')" title="Remove"><i class="bi bi-trash"></i></button></td>
+    <td>{% if can(current_user, 'lots', 'delete') %}<button class="btn btn-link btn-sm p-0 text-danger" onclick="removeDevice('${d.barcode}')" title="Remove"><i class="bi bi-trash"></i></button>{% endif %}</td>
   `;
   tbody.insertBefore(tr, tbody.firstChild);
 }

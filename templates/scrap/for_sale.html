@@ -23,9 +23,11 @@
         <i class="bi bi-receipt-cutoff me-1"></i>Scrap Sale Report
       </a>
       {% endif %}
+      {% if can(current_user, 'scrap_for_sale', 'add') %}
       <button type="button" class="btn btn-sm btn-success text-nowrap" data-bs-toggle="modal" data-bs-target="#customSaleModal">
         <i class="bi bi-cart-plus me-1"></i>Custom Sale
       </button>
+      {% endif %}
     </div>
   </div>
   <div class="card-body p-0">
@@ -55,29 +57,35 @@
             {% else %}<span class="text-muted small">Parts 0</span>{% endif %}
           </td>
           <td>{{ r.total_qty }}</td>
-          <td>{% if r.min_price is not none %}₹{{ ((r.min_price) | inr) }}{% else %}—{% endif %}</td>
-          <td>{% if r.max_price is not none %}₹{{ ((r.max_price) | inr) }}{% else %}—{% endif %}</td>
+          <td>{% if can(current_user, 'scrap_for_sale', 'pricing') %}{% if r.min_price is not none %}₹{{ ((r.min_price) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
+          <td>{% if can(current_user, 'scrap_for_sale', 'pricing') %}{% if r.max_price is not none %}₹{{ ((r.max_price) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
           <td>{{ r.assigned_to_name }}</td>
           <td class="text-nowrap">
+            {% if can(current_user, 'scrap_for_sale', 'pricing') %}
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 scrap-edit-btn"
                     data-id="{{ r.id }}" data-scrap-id="{{ r.scrap_id }}"
                     data-min="{{ r.min_price if r.min_price is not none else '' }}"
                     data-max="{{ r.max_price if r.max_price is not none else '' }}">
               <i class="bi bi-pencil"></i> Edit
             </button>
+            {% endif %}
             {% if r.status != 'sold' %}
             {# Opens the scrap sale form for this Scrap ID; saving records it on
                the Scrap Sale Report and moves its tags to Sold (2026-10-23). #}
+            {% if can(current_user, 'scrap_for_sale', 'add') %}
             <button type="button" class="btn btn-sm btn-outline-success py-0 px-2"
                     onclick="openScrapSale({batch: '{{ r.id }}'})">Sell</button>
+            {% endif %}
             {% else %}
             <span class="badge bg-success">Sold</span>
             {% endif %}
+            {% if can(current_user, 'scrap_for_sale', 'delete') %}
             <form method="post" action="/scrap-for-sale/{{ r.id }}/delete" class="d-inline"
                   onsubmit="return confirm('Remove Scrap {{ r.scrap_id }} from this list?');">
               <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
               <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2">Delete</button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

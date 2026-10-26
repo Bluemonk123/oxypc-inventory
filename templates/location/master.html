@@ -8,9 +8,11 @@
   <div>
     <span class="text-muted small">Manage physical zones, racks, crates and bins</span>
   </div>
+  {% if can(current_user, 'location_master', 'add') %}
   <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addLocationModal">
     <i class="bi bi-plus-circle me-1"></i> Add Location
   </button>
+  {% endif %}
 </div>
 
 <!-- Summary cards per zone -->
@@ -56,10 +58,12 @@
                  name='file', accept='.csv', required=true,
                  title='Upload/Drag-Drop CSV file with zone, unit_type, unit_id columns',
                  status_text='Optional columns: slot, description, capacity',
-                 template_href='/locations/master/bulk-template') }}
+                 template_href=('/locations/master/bulk-template' if can(current_user, 'location_master', 'export') else none)) }}
+      {% if can(current_user, 'location_master', 'upload') %}
       <button type="submit" class="btn btn-primary btn-lg align-self-end align-self-xl-center flex-shrink-0">
         <i class="bi bi-upload me-2"></i>Upload
       </button>
+      {% endif %}
     </form>
   </div>
 </div>
@@ -104,6 +108,7 @@
             {% endif %}
           </td>
           <td class="text-nowrap">
+            {% if can(current_user, 'location_master', 'edit') %}
             <button type="button" class="btn btn-outline-primary btn-sm py-0 me-1" title="Edit"
                     onclick='openEditLocationModal({{ {
                       "id": loc.id|string, "zone": loc.zone.value, "unit_type": loc.unit_type.value,
@@ -112,12 +117,16 @@
                     } | tojson }})'>
               <i class="bi bi-pencil"></i>
             </button>
+            {% endif %}
+            {% if can(current_user, 'location_master', 'edit') %}
             <form action="/locations/master/{{ loc.id }}/toggle" method="post" class="d-inline">
               <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
               <button class="btn btn-outline-secondary btn-sm py-0">
                 {% if loc.is_active %}Deactivate{% else %}Activate{% endif %}
               </button>
             </form>
+            {% endif %}
+            {% if can(current_user, 'location_master', 'delete') %}
             <form action="/locations/master/{{ loc.id }}/delete" method="post" class="d-inline"
                   onsubmit="return confirm('Permanently delete {{ loc.unit_id }}? This only works if it has never been used — otherwise it will be rejected. This cannot be undone.');">
               <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
@@ -125,6 +134,7 @@
                 <i class="bi bi-trash3"></i>
               </button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

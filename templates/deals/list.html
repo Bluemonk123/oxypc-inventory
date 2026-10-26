@@ -5,9 +5,11 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <span class="badge bg-secondary fs-6 px-3 py-2">{{ deals|length }} deal(s)</span>
+  {% if can(current_user, 'trade_partner_all_deals', 'add') %}
   <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createDealModal">
     <i class="bi bi-plus-lg me-1"></i>Create Deal
   </button>
+  {% endif %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -32,7 +34,7 @@
           <td>{{ d.contact.company_name if d.contact else '—' }}</td>
           <td>{{ (d.contact.contact_type | title) if d.contact else '—' }}</td>
           <td>{{ (d.location.address ~ ', ' ~ (d.location.city or '')) if d.location else '—' }}</td>
-          <td class="text-end">₹{{ ((d.amount) | inr(2)) }}</td>
+          <td class="text-end">{% if can(current_user, 'trade_partner_all_deals', 'pricing') %}₹{{ ((d.amount) | inr(2)) }}{% else %}—{% endif %}</td>
           <td class="small">
             {% set ab = added_by.get(d.created_by) %}
             {% if ab %}
@@ -47,24 +49,30 @@
           <td><span class="badge bg-{{ 'success' if d.status == 'approved' else 'secondary' }}">{{ d.status | title }}</span></td>
           <td class="text-nowrap">
             {% if d.status == 'pending' %}
+            {% if can(current_user, 'trade_partner_all_deals', 'edit') %}
             <form method="post" action="/deals/{{ d.id }}/approve" class="d-inline"
                   onsubmit="return confirm('Approve {{ d.deal_number }}?')">
               <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
               <button type="submit" class="btn btn-sm btn-success" title="Approve"><i class="bi bi-check-circle"></i></button>
             </form>
             {% endif %}
+            {% endif %}
             {% if d.payment_status != 'paid' %}
+            {% if can(current_user, 'trade_partner_all_deals', 'edit') %}
             <form method="post" action="/deals/{{ d.id }}/payment" class="d-inline"
                   onsubmit="return confirm('Mark {{ d.deal_number }} as paid?')">
               <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
               <button type="submit" class="btn btn-sm btn-primary" title="Payment"><i class="bi bi-cash-coin"></i></button>
             </form>
             {% endif %}
+            {% endif %}
+            {% if can(current_user, 'trade_partner_all_deals', 'delete') %}
             <form method="post" action="/deals/{{ d.id }}/delete" class="d-inline"
                   onsubmit="return confirm('Permanently delete {{ d.deal_number }}? This cannot be undone.')">
               <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
               <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete"><i class="bi bi-trash3"></i></button>
             </form>
+            {% endif %}
           </td>
         </tr>
         {% endfor %}

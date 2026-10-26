@@ -12,9 +12,9 @@
       <small class="text-muted">As of {{ as_of.strftime('%d-%m-%Y %H:%M') }} UTC</small>
     </div>
     <div class="d-flex gap-2">
-      <a href="?export=csv" class="btn btn-sm btn-outline-success">
+      {% if can(current_user, 'dealers', 'export') %}<a href="?export=csv" class="btn btn-sm btn-outline-success">
         <i class="bi bi-download me-1"></i> Export CSV
-      </a>
+      </a>{% endif %}
       <a href="/dealers" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i> Back to Dealers
       </a>

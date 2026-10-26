@@ -38,13 +38,15 @@
       <a href="/admin/login-log" class="btn btn-sm btn-outline-secondary text-nowrap">
         <i class="bi bi-clock-history me-1"></i>Login Log
       </a>
-      <button type="button" id="usersExportBtn" class="btn btn-sm btn-outline-success text-nowrap"
+      <button {% if not can(current_user, 'admin_users', 'export') %}hidden {% endif %}type="button" id="usersExportBtn" class="btn btn-sm btn-outline-success text-nowrap"
               title="Download the users shown in the table as CSV">
         <i class="bi bi-download me-1"></i>Export
       </button>
+      {% if can(current_user, 'admin_users', 'add') %}
       <a href="/admin/users/new" class="btn btn-sm btn-primary text-nowrap">
         <i class="bi bi-person-plus me-1"></i>Add User
       </a>
+      {% endif %}
     </form>
   </div>
   <div class="card-body p-0">
@@ -71,10 +73,12 @@
             </span>
           </td>
           <td>
-            <a href="/admin/users/{{ user.id }}/edit" class="btn btn-sm btn-outline-primary">Edit</a>
+            {% if can(current_user, 'admin_users', 'edit') %}<a href="/admin/users/{{ user.id }}/edit" class="btn btn-sm btn-outline-primary">Edit</a>{% endif %}
+            {% if can(current_user, 'admin_users', 'edit') %}
             <button class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#resetModal" data-uid="{{ user.id }}" data-uname="{{ user.username }}">
               Reset Pwd
             </button>
+            {% endif %}
             {% if user.id != current_user.id %}
             {# Soft-delete only — sets status=False, same as unchecking "Account
                Active" on Edit. Never a hard row delete: login history and
@@ -82,11 +86,13 @@
                data-uname (not a Jinja value spliced into a JS string
                literal) so a username containing an apostrophe can't break
                out of the confirm() string and silently no-op the button. #}
+            {% if can(current_user, 'admin_users', 'delete') %}
             <form method="post" action="/admin/users/{{ user.id }}/delete" class="d-inline user-delete-form"
                   data-uname="{{ user.username }}">
               <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
               <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
             </form>
+            {% endif %}
             {% endif %}
           </td>
         </tr>

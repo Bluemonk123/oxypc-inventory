@@ -88,13 +88,13 @@
                    title="Tag numbers in the first column (.xlsx, .csv or .txt)">
           </div>
           <div class="col-md-2 audit-upload-only d-none">
-            <button type="button" id="auditUploadBtn" class="btn btn-primary w-100">
+            <button {% if not can(current_user, 'physical_audits', 'upload') %}hidden {% endif %}type="button" id="auditUploadBtn" class="btn btn-primary w-100">
               <i class="bi bi-upload me-1"></i>Submit
             </button>
           </div>
           {% endif %}
           <div class="col-md-2 audit-notags-only d-none">
-            <button type="button" id="auditNoTagsBtn" class="btn btn-warning w-100">
+            <button {% if not can(current_user, 'physical_audits', 'add') %}hidden {% endif %}type="button" id="auditNoTagsBtn" class="btn btn-warning w-100">
               <i class="bi bi-inbox me-1"></i>Save No Tags
             </button>
           </div>
@@ -169,12 +169,12 @@
         <span class="fw-semibold"><i class="bi bi-table me-2"></i>Audit Records</span>
         <div class="d-flex gap-2 align-items-center flex-wrap">
           <input type="date" id="auditRecordsDateFilter" class="form-control form-control-sm" style="width:auto">
-          <button type="button" id="auditExportBtn" class="btn btn-sm btn-outline-success"
+          <button {% if not can(current_user, 'physical_audits', 'export') %}hidden {% endif %}type="button" id="auditExportBtn" class="btn btn-sm btn-outline-success"
                   title="Excel workbook: Physical Tags, Difference Tags (not scanned), Missing Tags (not in system), Stage Summary and Location Summary sheets (the date picked, or all dates)">
             <i class="bi bi-file-earmark-excel me-1"></i>Export
           </button>
           {# Zip (2026-10-24): every row now shown, each row's Download file, in one zip. #}
-          <button type="button" id="auditZipBtn" class="btn btn-sm btn-outline-primary"
+          <button {% if not can(current_user, 'physical_audits', 'export') %}hidden {% endif %}type="button" id="auditZipBtn" class="btn btn-sm btn-outline-primary"
                   title="Download every row shown in the table (each row's Download file) in one .zip">
             <i class="bi bi-download me-1"></i>Zip
           </button>
@@ -606,6 +606,7 @@ $(function () {
       {
         data: null, orderable: false,
         render: function (data, type, row) {
+          {% if not can(current_user, 'physical_audits', 'export') %}return '';{% endif %}
           return '<a class="btn btn-sm btn-outline-secondary" href="/audits/records/' + row.id + '/download" title="Excel: Physical, Difference, Missing tags, Stage and Location summary">' +
                  '<i class="bi bi-download"></i></a>';
         },
@@ -613,6 +614,7 @@ $(function () {
       {
         data: null, orderable: false,
         render: function (data, type, row) {
+          {% if not can(current_user, 'physical_audits', 'delete') %}return '';{% endif %}
           return '<button type="button" class="btn btn-sm btn-outline-danger audit-delete-btn" data-id="' + row.id + '">' +
                  '<i class="bi bi-trash3"></i></button>';
         },

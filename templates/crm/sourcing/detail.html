@@ -55,6 +55,7 @@
 
         <!-- Stage Move Form -->
         {% if deal.stage not in ['won','lost'] %}
+        {% if can(current_user, 'crm_sourcing', 'edit') %}
         <form method="post" action="/crm/sourcing/{{ deal.id }}/stage" class="row g-2 align-items-end">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
           <div class="col-12">
@@ -65,11 +66,13 @@
               {% endfor %}
             </select>
           </div>
+          {% if can(current_user, 'crm_sourcing', 'pricing') %}
           <div class="col-12">
             <label class="form-label small fw-semibold mb-1">Final Price / Unit (₹)</label>
             <input type="number" name="final_price_unit" class="form-control form-control-sm" step="0.01" min="0"
               value="{{ deal.final_price_unit or '' }}" placeholder="Optional">
           </div>
+          {% endif %}
           <div class="col-12">
             <label class="form-label small fw-semibold mb-1">Win/Loss Reason</label>
             <input type="text" name="win_loss_reason" class="form-control form-control-sm" placeholder="Optional">
@@ -78,6 +81,7 @@
             <button class="btn btn-sm btn-primary"><i class="bi bi-arrow-right-circle me-1"></i>Update Stage</button>
           </div>
         </form>
+        {% endif %}
         {% else %}
         <div class="alert alert-{{ 'success' if deal.stage=='won' else 'danger' }} py-2 mb-0">
           <strong>Deal {{ deal.stage | upper }}</strong>{% if deal.win_loss_reason %} — {{ deal.win_loss_reason }}{% endif %}
@@ -158,23 +162,29 @@
 
     <!-- Action Buttons -->
     <div class="d-flex gap-2 flex-wrap">
-      <a href="/crm/sourcing/{{ deal.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit Deal</a>
+      {% if can(current_user, 'crm_sourcing', 'edit') %}<a href="/crm/sourcing/{{ deal.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit Deal</a>{% endif %}
       {% if deal.stage not in ['won','lost'] %}
       {# Create Lot pre-fills with deal data and auto-marks deal as WON after creation #}
+      {% if can(current_user, 'crm_sourcing', 'edit') %}
       <a href="/lots/new?from_deal={{ deal.id }}&prefill_supplier={{ (contact.company_name if contact else deal.title) | urlencode }}&prefill_qty={{ deal.est_quantity or '' }}&prefill_price={{ deal.final_price_total or deal.our_offer_total or '' }}&prefill_notes={{ deal.title | urlencode }}&prefill_po={{ deal.deal_number | urlencode }}"
          class="btn btn-sm btn-success">
         <i class="bi bi-boxes me-1"></i>Create Lot &amp; Mark WON
       </a>
+      {% endif %}
+      {% if can(current_user, 'crm_sourcing', 'edit') %}
       <form method="post" action="/crm/sourcing/{{ deal.id }}/stage" class="d-inline">
         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
         <input type="hidden" name="new_stage" value="won">
         <button class="btn btn-sm btn-outline-success"><i class="bi bi-trophy me-1"></i>Mark WON (no lot)</button>
       </form>
+      {% endif %}
+      {% if can(current_user, 'crm_sourcing', 'edit') %}
       <form method="post" action="/crm/sourcing/{{ deal.id }}/stage" class="d-inline">
         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
         <input type="hidden" name="new_stage" value="lost">
         <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle me-1"></i>Mark LOST</button>
       </form>
+      {% endif %}
       {% endif %}
     </div>
 
@@ -264,7 +274,8 @@
       .sd-acc:not(.collapsed) .sd-acc-chev { transform: rotate(180deg); }
     </style>
     <!-- ═══ Pricing / Profitability Calculator ═══ -->
-    <div class="card border-0 shadow-sm mb-3">
+    {# Kept in the DOM (its script binds by id) but hidden without module pricing. #}
+    <div {% if not can(current_user, 'crm_sourcing', 'pricing') %}hidden {% endif %}class="card border-0 shadow-sm mb-3">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center sd-acc collapsed"
            style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#calcBody"
            role="button" aria-expanded="false" aria-controls="calcBody">
@@ -367,6 +378,7 @@
       </div>
       <div class="collapse" id="uploadBody">
       <div class="card-body">
+        {% if can(current_user, 'crm_sourcing', 'upload') %}
         <form method="post" action="/crm/sourcing/{{ deal.id }}/upload" enctype="multipart/form-data" class="row g-2 align-items-end">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
           <div class="col-md-3">
@@ -401,6 +413,7 @@
             <button class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload me-1"></i>Upload</button>
           </div>
         </form>
+        {% endif %}
       </div>
       </div>
     </div>
@@ -411,8 +424,8 @@
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-list-check me-1 text-primary"></i>PO Line Items ({{ deal_po_items|length }})</span>
         <div class="d-flex gap-1">
-          <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addDealPoItemModal"><i class="bi bi-plus-lg me-1"></i>Add PO Items</button>
-          <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#generatePoModal"><i class="bi bi-file-earmark-arrow-down me-1"></i>Generate PO</button>
+          {% if can(current_user, 'crm_sourcing', 'add') %}<button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addDealPoItemModal"><i class="bi bi-plus-lg me-1"></i>Add PO Items</button>{% endif %}
+          {% if can(current_user, 'crm_sourcing', 'add') %}<button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#generatePoModal"><i class="bi bi-file-earmark-arrow-down me-1"></i>Generate PO</button>{% endif %}
         </div>
       </div>
       <div class="card-body p-0">
@@ -425,10 +438,11 @@
                 <td class="small">{{ li.item_name }}{% if li.description %}<div class="text-muted" style="font-size:.7rem">{{ li.description }}</div>{% endif %}</td>
                 <td class="small">{{ li.po_category or '—' }}</td>
                 <td class="small text-end">{{ li.quantity }}</td>
-                <td class="small text-end">₹{{ ((li.unit_price or 0) | inr(2)) }}</td>
-                <td class="small text-end">₹{{ ((li.total_price or 0) | inr(2)) }}</td>
+                <td class="small text-end">{% if can(current_user, 'crm_sourcing', 'pricing') %}₹{{ ((li.unit_price or 0) | inr(2)) }}{% else %}—{% endif %}</td>
+                <td class="small text-end">{% if can(current_user, 'crm_sourcing', 'pricing') %}₹{{ ((li.total_price or 0) | inr(2)) }}{% else %}—{% endif %}</td>
                 <td class="small text-end">
-                  {% if li.offer_price %}
+                  {% if not can(current_user, 'crm_sourcing', 'pricing') %}—
+                  {% elif li.offer_price %}
                   <span class="text-primary fw-semibold">₹{{ ((li.offer_price) | inr(2)) }}</span>
                   <button type="button" class="btn btn-sm btn-link py-0 px-1 offer-price-btn"
                           data-item-id="{{ li.id }}" data-total-price="{{ li.total_price or 0 }}"
@@ -440,10 +454,12 @@
                   {% endif %}
                 </td>
                 <td>
+                  {% if can(current_user, 'crm_sourcing', 'delete') %}
                   <form method="post" action="/crm/sourcing/{{ deal.id }}/po-items/{{ li.id }}/delete" onsubmit="return confirm('Remove this item?')">
                     <input type="hidden" name="csrf_token" value="{{ csrf }}">
                     <button class="btn btn-sm btn-outline-danger py-0 px-1"><i class="bi bi-trash"></i></button>
                   </form>
+                  {% endif %}
                 </td>
               </tr>
               {% else %}
@@ -452,8 +468,8 @@
             </tbody>
             {% if deal_po_items %}
             <tfoot>
-              <tr class="table-light"><td colspan="4" class="text-end fw-semibold small">Gross Price</td><td class="text-end fw-semibold small">₹{{ ((deal_po_items_total) | inr(2)) }}</td><td></td><td></td></tr>
-              <tr class="table-light"><td colspan="4" class="text-end fw-semibold small text-primary">Offer Price</td><td></td><td class="text-end fw-semibold small text-primary">₹{{ ((deal_po_items_offer_total) | inr(2)) }}</td><td></td></tr>
+              <tr class="table-light"><td colspan="4" class="text-end fw-semibold small">Gross Price</td><td class="text-end fw-semibold small">{% if can(current_user, 'crm_sourcing', 'pricing') %}₹{{ ((deal_po_items_total) | inr(2)) }}{% else %}—{% endif %}</td><td></td><td></td></tr>
+              <tr class="table-light"><td colspan="4" class="text-end fw-semibold small text-primary">Offer Price</td><td></td><td class="text-end fw-semibold small text-primary">{% if can(current_user, 'crm_sourcing', 'pricing') %}₹{{ ((deal_po_items_offer_total) | inr(2)) }}{% else %}—{% endif %}</td><td></td></tr>
             </tfoot>
             {% endif %}
           </table>
@@ -569,6 +585,7 @@
     </div>
 
     <!-- Purchase Deals (POs raised from this deal) — below PO Line Items (2026-10-22) -->
+    {% set po_perm_module = 'crm_sourcing' %}
     {% include "crm/_purchase_deals_table.html" %}
 
     <!-- Next Follow-up Alert -->
@@ -581,11 +598,13 @@
         {% if next_fu.next_followup < now %}<span class="badge bg-danger ms-2">OVERDUE</span>{% endif %}
         <div class="small mt-1">{{ next_fu.summary }}</div>
       </div>
+      {% if can(current_user, 'crm_sourcing', 'edit') %}
       <form method="post" action="/crm/activities/{{ next_fu.id }}/done" class="ms-3 flex-shrink-0">
         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
         <input type="hidden" name="redirect_to" value="/crm/sourcing/{{ deal.id }}">
         <button class="btn btn-sm btn-success"><i class="bi bi-check me-1"></i>Mark Done</button>
       </form>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -625,7 +644,9 @@
             <input type="text" name="followup_assigned_to" class="form-control form-control-sm" placeholder="Follow-up assigned to" value="{{ current_user.username }}">
           </div>
           <div class="col-md-4">
+            {% if can(current_user, 'crm_sourcing', 'add') %}
             <button class="btn btn-sm btn-success w-100"><i class="bi bi-check me-1"></i>Log Activity</button>
+            {% endif %}
           </div>
         </form>
       </div>

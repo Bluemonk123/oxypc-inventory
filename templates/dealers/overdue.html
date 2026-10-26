@@ -48,7 +48,7 @@
                 {{ days }}d overdue
               </span>
             </td>
-            <td class="fw-semibold text-danger">₹{{ ((order.due_amount) | inr) }}</td>
+            <td class="fw-semibold text-danger">{% if can(current_user, 'dealers', 'pricing') %}₹{{ ((order.due_amount) | inr) }}{% else %}—{% endif %}</td>
             <td>
               <div class="d-flex gap-1">
                 <a href="/dealers/{{ dealer.id }}" class="btn btn-sm btn-outline-primary" title="View dealer"><i class="bi bi-eye"></i></a>

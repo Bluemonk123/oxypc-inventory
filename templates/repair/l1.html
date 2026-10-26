@@ -66,7 +66,7 @@
           <select id="l1CustRetFilter" class="form-select form-select-sm" style="width:190px" title="Customer Return">
             <option value="">Customer Return: All</option><option value="1">Customer Return: Yes</option><option value="0">Customer Return: No</option>
           </select>
-          <button type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l1ExportBtn"
+          <button {% if not can(current_user, 'repair_l1', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l1ExportBtn"
                   title="Export the rows shown (current filters / search) to CSV">
             <i class="bi bi-download me-1"></i>Export (<span id="l1ExportBtnCount">0</span>)</button>
         </div>
@@ -146,35 +146,45 @@
                   {% if wo and not wo.mine and not full_queue %}
                     {# Someone else's tag — Pick This (WorkID column) first. #}
                   {% elif device.l34_status in ['Normal Scrap', 'Replacement Scrap'] %}
+                    {% if can(current_user, 'repair_l1', 'edit') %}
                     <form method="post" action="/repair/back-to-production" class="d-inline">
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ device.id }}">
                       <button type="submit" class="btn btn-sm btn-dark"><i class="bi bi-arrow-return-left"></i> Back to Inventory</button>
                     </form>
+                    {% endif %}
                   {% elif device.l1l2_status == 'Repair Started' %}
                     {% if pna %}
                     {# Open PNA parts: shown disabled, but still clickable so it can
                        explain why (a real disabled button gets no click). #}
+                    {% if can(current_user, 'repair_l1', 'edit') %}
                     <button type="button" class="btn btn-sm btn-success mark-complete-pna-btn opacity-50"
                             aria-disabled="true" style="cursor:not-allowed"
                             data-barcode="{{ device.barcode }}" data-pna="{{ pna | join(', ') }}"
                             title="Open PNA parts — unselect them first">Mark Complete</button>
+                    {% endif %}
                     {% else %}
+                    {% if can(current_user, 'repair_l1', 'edit') %}
                     <form method="post" action="/repair/l1l2-complete-to-stress" class="d-inline mark-complete-form">
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ device.id }}">
                       <button type="submit" class="btn btn-sm btn-success mark-complete-btn">Mark Complete</button>
                     </form>
                     {% endif %}
+                    {% endif %}
+                    {% if can(current_user, 'repair_l1', 'edit') %}
                     <button type="button" class="btn btn-sm btn-outline-primary request-l3l4-btn"
                             data-device="{{ device.id }}" data-barcode="{{ device.barcode }}">
                       <i class="bi bi-arrow-up-right-circle"></i> Request to L3/L4</button>
+                    {% endif %}
                   {% else %}
+                    {% if can(current_user, 'repair_l1', 'edit') %}
                     <form method="post" action="/repair/l1l2-start" class="d-inline">
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ device.id }}">
                       <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-play-fill"></i> Start Repair</button>
                     </form>
+                    {% endif %}
                   {% endif %}
                   {# Request Part — outside the if/elif/else above (2026-09-09)
                      so it's always available regardless of repair status,
@@ -226,6 +236,7 @@
                 <td class="text-center"><span class="badge bg-{{ 'success' if bp.changed else 'light text-muted border' }}">{{ bp.changed }}</span></td>
                 <td>
                   <div class="d-flex gap-1 flex-wrap">
+                    {% if can(current_user, 'repair_l1', 'add') %}
                     <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
                             onclick="openBulkPartRequest('new', '{{ bp.label | e }}', '{{ bp.category | e }}', {{ bp.qty }}, {{ bp.requested }})">
                       <i class="bi bi-bag-plus"></i> New Request</button>
@@ -236,6 +247,7 @@
                     <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2"
                             onclick="openBulkPartRequest('downgrade', '{{ bp.label | e }}', '{{ bp.category | e }}', {{ bp.qty }}, {{ bp.requested }})">
                       <i class="bi bi-arrow-down-circle"></i> Downgrade</button>
+                    {% endif %}
                     {% endif %}
                   </div>
                 </td>
@@ -567,11 +579,11 @@ function rebuildBulkPartsTable(visibleIds) {
       '<td class="text-center"><span class="badge bg-' + (bp.requested ? 'primary' : 'light text-muted border') + '">' + bp.requested + '</span></td>' +
       '<td class="text-center"><span class="badge bg-' + (bp.changed ? 'success' : 'light text-muted border') + '">' + bp.changed + '</span></td>' +
       '<td><div class="d-flex gap-1 flex-wrap">' +
-        '<button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" onclick="openBulkPartRequest(\'new\', ' + args + ')">' +
+{% if can(current_user, 'repair_l1', 'add') %}        '<button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" onclick="openBulkPartRequest(\'new\', ' + args + ')">' +
         '<i class="bi bi-bag-plus"></i> New Request</button>' +
         '<button type="button" class="btn btn-sm btn-outline-warning py-0 px-2" onclick="openBulkPartRequest(\'replace\', ' + args + ')">' +
         '<i class="bi bi-arrow-repeat"></i> Replace Request</button>' +
-        dgBtn +
+        dgBtn +{% endif %}
       '</div></td>' +
     '</tr>';
   }).join('');

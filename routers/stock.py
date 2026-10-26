@@ -939,6 +939,10 @@ async def stock_in_data(
 
     parts_badges = await parts_badge_map(db, device_ids)
 
+    # Row buttons follow the Permission Matrix's Stock Inwards > Edit tick (2026-10-25)
+    from models.role_permissions import has_perm as _hp
+    _role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    _can_move = _hp(_role, "stock", "edit")
     data = []
     for d, lot_number_val in rows:
         data.append([
@@ -960,7 +964,8 @@ async def stock_in_data(
             # (d-none, not removed — same form/endpoint still works if it's
             # ever unhidden again) and Move to L1/L2 is the primary-styled
             # action now (2026-09-18).
-            (f'<form method="post" action="/stock/move-to-trc" class="d-inline d-none">'
+            ('<span class="text-muted">—</span>' if not _can_move else
+             f'<form method="post" action="/stock/move-to-trc" class="d-inline d-none">'
              f'<input type="hidden" name="csrf_token" value="{esc(request.cookies.get("csrf_token", ""))}">'
              f'<input type="hidden" name="barcode" value="{esc(d.barcode)}">'
              f'<button type="submit" class="btn btn-sm btn-outline-info py-0 px-2 mb-1"><i class="bi bi-cpu"></i> Move to Production</button>'

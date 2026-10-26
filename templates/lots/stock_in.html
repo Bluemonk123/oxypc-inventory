@@ -118,7 +118,7 @@
   <span class="badge bg-light text-dark border">{{ e }}: <strong>{{ c }}</strong></span>
   {% endfor %}
 </div>
-<button type="button" id="assignBucketBtn" class="d-none btn btn-sm btn-success me-2" disabled
+<button {% if not can(current_user, 'stock', 'edit') %}hidden {% endif %}type="button" id="assignBucketBtn" class="d-none btn btn-sm btn-success me-2" disabled
         data-bs-toggle="modal" data-bs-target="#addToBucketModal">
   <i class="bi bi-box me-1"></i>Assign Bucket (<span id="bktSelCount">0</span>)
 </button>
@@ -170,11 +170,11 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-archive me-2"></i>Inventory Stock</span>
     <div id="stkHeaderBtns" class="d-flex align-items-center gap-2 flex-wrap">
-      <button type="button" id="flagItemsBtn" class="btn btn-outline-danger btn-sm d-none text-nowrap me-2" disabled
+      <button {% if not can(current_user, 'stock', 'edit') %}hidden {% endif %}type="button" id="flagItemsBtn" class="btn btn-outline-danger btn-sm d-none text-nowrap me-2" disabled
               title="Flag the selected tags as Urgent at inventory">
         <i class="bi bi-flag-fill me-1"></i>Flag Items (<span id="flagItemsCount">0</span>)
       </button>
-      <button type="button" id="bulkMoveL1L2Btn" class="btn btn-primary btn-sm d-none text-nowrap" disabled>
+      <button {% if not can(current_user, 'stock', 'edit') %}hidden {% endif %}type="button" id="bulkMoveL1L2Btn" class="btn btn-primary btn-sm d-none text-nowrap" disabled>
         <i class="bi bi-tools me-1"></i>Bulk Move to L1/L2 (<span id="bulkMoveL1L2Count">0</span>)
       </button>
       <button type="button" id="customiseBtn" class="btn btn-outline-primary btn-sm d-none text-nowrap"
@@ -215,7 +215,7 @@
          The selected count now shows inside the Assign Bucket button. #}
       <input type="text" id="rsSearchBox" class="form-control form-control-sm" style="width:220px;"
              placeholder="Search Tag / Serial / Model">
-      <button type="button" id="rsAssignBucketBtn" class="btn btn-sm btn-primary text-nowrap" disabled>
+      <button {% if not can(current_user, 'stock', 'edit') %}hidden {% endif %}type="button" id="rsAssignBucketBtn" class="btn btn-sm btn-primary text-nowrap" disabled>
         <i class="bi bi-box me-1"></i>Assign Bucket (<span id="rsSelectedCount">0</span>)
       </button>
     </div>
@@ -251,16 +251,20 @@
             <td>{{ ret.reason or '—' }}</td>
             <td>{{ ret.condition_on_return or '—' }}</td>
             <td>{{ ret.complaint_text or '—' }}</td>
-            <td class="rs-repair-cost">{{ '%.2f'|format(ret.repair_cost) if ret.repair_cost is not none else '—' }}</td>
-            <td class="rs-labour-cost">{{ '%.2f'|format(row.labour_cost) if row.labour_cost is not none else '—' }}</td>
-            <td>{{ '%.2f'|format(row.part_cost) if row.part_cost is not none else '—' }}</td>
+            <td class="rs-repair-cost">{% if can(current_user, 'stock', 'pricing') %}{{ '%.2f'|format(ret.repair_cost) if ret.repair_cost is not none else '—' }}{% else %}—{% endif %}</td>
+            <td class="rs-labour-cost">{% if can(current_user, 'stock', 'pricing') %}{{ '%.2f'|format(row.labour_cost) if row.labour_cost is not none else '—' }}{% else %}—{% endif %}</td>
+            <td>{% if can(current_user, 'stock', 'pricing') %}{{ '%.2f'|format(row.part_cost) if row.part_cost is not none else '—' }}{% else %}—{% endif %}</td>
             <td class="text-nowrap">
+              {% if can(current_user, 'stock', 'pricing') %}
               <button type="button" class="btn btn-xs btn-outline-primary btn-sm py-0 px-2 me-1 rs-verify-btn"
                       data-barcode="{{ d.barcode }}"
                       data-repair-cost="{{ ret.repair_cost if ret.repair_cost is not none else '' }}"
                       data-labour-cost="{{ row.labour_cost if row.labour_cost is not none else '' }}">Charges</button>
+              {% endif %}
+              {% if can(current_user, 'stock', 'edit') %}
               <button type="button" class="btn btn-xs btn-outline-success btn-sm py-0 px-2 rs-complete-btn"
                       data-barcode="{{ d.barcode }}">Complete</button>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -305,7 +309,7 @@
             <td><a href="#" class="text-decoration-none view-bkt-tags" data-id="{{ row.bucket_id }}" data-number="{{ row.bucket_number }}">{{ row.bucket_name or '—' }}</a></td>
             <td class="font-monospace">{{ row.bucket_number }}</td>
             <td><span class="badge bg-success">Ready to Sale</span></td>
-            <td><button class="btn btn-sm btn-outline-danger release-bucket-btn" data-bucket-id="{{ row.bucket_id }}">Release Bucket</button></td>
+            <td>{% if can(current_user, 'stock', 'edit') %}<button class="btn btn-sm btn-outline-danger release-bucket-btn" data-bucket-id="{{ row.bucket_id }}">Release Bucket</button>{% endif %}</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -910,8 +914,8 @@ function loadBucketTable(){
         '<td>'+(b.category||'—')+'</td>'+
         '<td><span class="badge bg-secondary">'+b.device_count+'</span></td>'+
         '<td class="text-nowrap">'+
-          '<button class="btn btn-xs btn-outline-primary btn-sm py-0 px-2 me-1 rename-bkt" data-id="'+b.id+'" data-number="'+b.bucket_number+'" data-name="'+esc(b.name||'')+'">Edit</button>'+
-          '<button class="btn btn-xs btn-outline-warning btn-sm py-0 px-2 me-1 move-bkt-trc" data-id="'+b.id+'" data-number="'+b.bucket_number+'">Move to Production</button>'+
+{% if can(current_user, 'stock', 'edit') %}          '<button class="btn btn-xs btn-outline-primary btn-sm py-0 px-2 me-1 rename-bkt" data-id="'+b.id+'" data-number="'+b.bucket_number+'" data-name="'+esc(b.name||'')+'">Edit</button>'+
+          '<button class="btn btn-xs btn-outline-warning btn-sm py-0 px-2 me-1 move-bkt-trc" data-id="'+b.id+'" data-number="'+b.bucket_number+'">Move to Production</button>'+{% endif %}
         '</td>'+
       '</tr>';
     }).join('');

@@ -43,9 +43,9 @@
           <div class="col-6"><div class="small text-muted">Outstanding</div><div class="fw-semibold small {% if contact.outstanding > 0 %}text-danger{% endif %}">₹{{ ((contact.outstanding or 0) | inr) }}</div></div>
         </div>
         <div class="mt-3 d-flex gap-2 flex-wrap">
-          <a href="/crm/contacts/{{ contact.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>
-          <a href="/crm/sourcing/new?contact_id={{ contact.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-box-arrow-in-down me-1"></i>New Deal</a>
-          <a href="/crm/sales/new?contact_id={{ contact.id }}" class="btn btn-sm btn-outline-info"><i class="bi bi-graph-up me-1"></i>New Opp</a>
+          {% if can(current_user, 'crm_contacts', 'edit') %}<a href="/crm/contacts/{{ contact.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
+          {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new?contact_id={{ contact.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-box-arrow-in-down me-1"></i>New Deal</a>{% endif %}
+          {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new?contact_id={{ contact.id }}" class="btn btn-sm btn-outline-info"><i class="bi bi-graph-up me-1"></i>New Opp</a>{% endif %}
         </div>
       </div>
     </div>
@@ -63,9 +63,11 @@
         {% if contact.kyc_verified %}
         <div class="small text-muted">Verified by {{ contact.kyc_verified_by or '—' }}{% if contact.kyc_verified_at %} on {{ contact.kyc_verified_at.strftime('%d-%m-%Y %H:%M') }}{% endif %}</div>
         {% else %}
+        {% if can(current_user, 'crm_contacts', 'edit') %}
         <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#verifyKycModal">
           <i class="bi bi-check-circle me-1"></i>Verify KYC
         </button>
+        {% endif %}
         {% endif %}
       </div>
     </div>
@@ -152,7 +154,9 @@
             <input type="text" name="followup_assigned_to" class="form-control form-control-sm" placeholder="Follow-up assigned to" value="{{ current_user.username }}">
           </div>
           <div class="col-md-4">
+            {% if can(current_user, 'crm_contacts', 'add') %}
             <button class="btn btn-sm btn-success w-100"><i class="bi bi-check me-1"></i>Log Activity</button>
+            {% endif %}
           </div>
         </form>
       </div>
@@ -163,7 +167,7 @@
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-header bg-white border-0 d-flex justify-content-between">
         <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i>Sourcing Deals ({{ sourcing_deals|length }})</span>
-        <a href="/crm/sourcing/new?contact_id={{ contact.id }}" class="btn btn-xs btn-outline-primary btn-sm">+ New Deal</a>
+        {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new?contact_id={{ contact.id }}" class="btn btn-xs btn-outline-primary btn-sm">+ New Deal</a>{% endif %}
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
@@ -175,7 +179,7 @@
                 <td><a href="/crm/sourcing/{{ d.id }}" class="text-decoration-none fw-semibold small">{{ d.title[:50] }}{% if d.title|length > 50 %}…{% endif %}</a></td>
                 <td><span class="badge bg-secondary">{{ d.stage | replace('_',' ') | title }}</span></td>
                 <td class="small">{{ d.est_quantity or '—' }}</td>
-                <td class="small">{% if d.our_offer_total %}₹{{ ((d.our_offer_total) | inr) }}{% elif d.asking_price_total %}₹{{ ((d.asking_price_total) | inr) }}{% else %}—{% endif %}</td>
+                <td class="small">{% if can(current_user, 'crm_contacts', 'pricing') %}{% if d.our_offer_total %}₹{{ ((d.our_offer_total) | inr) }}{% elif d.asking_price_total %}₹{{ ((d.asking_price_total) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
                 <td><span class="badge bg-{{ {'low':'secondary','medium':'info','high':'warning','urgent':'danger'}.get(d.priority,'secondary') }}">{{ d.priority | title }}</span></td>
               </tr>
               {% endfor %}
@@ -191,7 +195,7 @@
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-header bg-white border-0 d-flex justify-content-between">
         <span class="fw-semibold"><i class="bi bi-graph-up me-1 text-info"></i>Sales Opportunities ({{ sales_opps|length }})</span>
-        <a href="/crm/sales/new?contact_id={{ contact.id }}" class="btn btn-xs btn-outline-info btn-sm">+ New Opp</a>
+        {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new?contact_id={{ contact.id }}" class="btn btn-xs btn-outline-info btn-sm">+ New Opp</a>{% endif %}
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
@@ -242,9 +246,9 @@
                   <a href="/lots/{{ b.lot_id }}" class="text-decoration-none">{{ b.lot_number }}</a>
                   {% else %}{{ b.lot_number }}{% endif %}
                 </td>
-                <td class="small fw-semibold">₹{{ ((b.bid.bid_amount) | inr) }}</td>
+                <td class="small fw-semibold">{% if can(current_user, 'crm_contacts', 'pricing') %}₹{{ ((b.bid.bid_amount) | inr) }}{% else %}—{% endif %}</td>
                 <td class="small text-muted">
-                  {% if b.bid.base_amount %}₹{{ ((b.bid.base_amount) | inr) }}{% else %}—{% endif %}
+                  {% if can(current_user, 'crm_contacts', 'pricing') %}{% if b.bid.base_amount %}₹{{ ((b.bid.base_amount) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}
                 </td>
                 <td class="small text-muted">
                   {{ b.bid.created_at.strftime('%d %b %Y') if b.bid.created_at else '—' }}
@@ -268,11 +272,13 @@
     {% set nq_contact_id = contact.id %}
     {% set nq_opp_id = '' %}
     {% set nq_return_to = '/crm/contacts/' ~ contact.id %}
+    {% set nq_perm_module = 'crm_contacts' %}
     {% set nq_won_lots = won_lots %}
     {% include "crm/_quotes_generated.html" %}
 
     <!-- Purchase Order section (POs where this contact is the supplier) + Add -->
     {% set po_section_title = 'Purchase Order' %}
+    {% set po_perm_module = 'crm_contacts' %}
     {% set add_po_url = '/crm/purchase-orders/new?contact_id=' ~ contact.id %}
     {% include "crm/_purchase_deals_table.html" %}
 

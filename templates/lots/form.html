@@ -109,6 +109,7 @@
             </div>
           </div>
 
+          {% if can(current_user, 'lots', 'pricing') %}
           <!-- ════════════════ SECTION 3: Financial & GST ════════════════ -->
           <div class="bg-light rounded p-3 mb-4">
             <h6 class="fw-bold text-primary mb-3"><i class="bi bi-currency-rupee me-2"></i>Financial & GST</h6>
@@ -186,6 +187,16 @@
               </div>
             </div>
           </div>
+          {% else %}
+          {# Not allowed to see/set pricing: carry current values through so an edit does not clear them. #}
+          <input type="hidden" name="buying_price" value="{{ lot.buying_price if lot else '' }}">
+          <input type="hidden" name="selling_price" value="{{ lot.selling_price or '' if lot else '' }}">
+          <input type="hidden" name="invoice_value" value="{{ lot.invoice_value or '' if lot else '' }}">
+          <input type="hidden" name="taxable_amount" value="{{ lot.taxable_amount or '' if lot else '' }}">
+          <input type="hidden" name="sgst" value="{{ lot.sgst or '' if lot else '' }}">
+          <input type="hidden" name="cgst" value="{{ lot.cgst or '' if lot else '' }}">
+          <input type="hidden" name="igst" value="{{ lot.igst or '' if lot else '' }}">
+          {% endif %}
 
           <!-- ════════════════ SECTION 4: Notes ════════════════ -->
           <div class="row g-3 mb-4">

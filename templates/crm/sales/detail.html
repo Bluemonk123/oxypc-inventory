@@ -70,7 +70,7 @@
           </div>
           <div class="col-6">
             <div class="small text-muted">Est. Value</div>
-            <div class="fw-semibold text-success">{% if opp.estimated_value %}₹{{ ((opp.estimated_value) | inr) }}{% else %}—{% endif %}</div>
+            <div class="fw-semibold text-success">{% if can(current_user, 'crm_sales_opp', 'pricing') %}{% if opp.estimated_value %}₹{{ ((opp.estimated_value) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}</div>
           </div>
           {% if opp.expected_close_date %}
           <div class="col-12">
@@ -108,7 +108,7 @@
         </div>
         {% set qstatus_colors = {'draft':'secondary','sent':'info','negotiating':'warning','accepted':'success','rejected':'danger','expired':'secondary'} %}
         <span class="badge bg-{{ qstatus_colors.get(quote.status,'secondary') }}">{{ quote.status | title }}</span>
-        {% if quote.total_amount %}
+        {% if quote.total_amount and can(current_user, 'crm_sales_opp', 'pricing') %}
         <div class="small text-muted mt-2">Total: <strong class="text-success">₹{{ ((quote.total_amount) | inr) }}</strong></div>
         {% endif %}
       </div>
@@ -117,26 +117,32 @@
 
     <!-- Action Buttons -->
     <div class="d-flex gap-2 flex-wrap">
-      <a href="/crm/sales/{{ opp.id }}/edit" class="btn btn-sm btn-outline-info"><i class="bi bi-pencil me-1"></i>Edit</a>
+      {% if can(current_user, 'crm_sales_opp', 'edit') %}<a href="/crm/sales/{{ opp.id }}/edit" class="btn btn-sm btn-outline-info"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
       {% if quote %}
       <a href="/crm/quotes/{{ quote.id }}" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-text me-1"></i>View Quote</a>
       {% else %}
-      <a href="/crm/quotes/new?opp_id={{ opp.id }}" class="btn btn-sm btn-success"><i class="bi bi-file-earmark-plus me-1"></i>Create Quote</a>
+      {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/quotes/new?opp_id={{ opp.id }}" class="btn btn-sm btn-success"><i class="bi bi-file-earmark-plus me-1"></i>Create Quote</a>{% endif %}
       {% endif %}
+      {% if can(current_user, 'crm_sales_opp', 'edit') %}
       <a href="/crm/sales/{{ opp.id }}/link-sale" class="btn btn-sm btn-outline-primary">
         <i class="bi bi-link-45deg me-1"></i>Link Sale{% if opp.linked_sale_ids %} ({{ opp.linked_sale_ids.split(',')|length }}){% endif %}
       </a>
+      {% endif %}
       {% if opp.stage not in ['won','lost'] %}
+      {% if can(current_user, 'crm_sales_opp', 'edit') %}
       <form method="post" action="/crm/sales/{{ opp.id }}/stage" class="d-inline">
         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
         <input type="hidden" name="new_stage" value="won">
         <button class="btn btn-sm btn-success"><i class="bi bi-trophy me-1"></i>Mark WON</button>
       </form>
+      {% endif %}
+      {% if can(current_user, 'crm_sales_opp', 'edit') %}
       <form method="post" action="/crm/sales/{{ opp.id }}/stage" class="d-inline">
         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
         <input type="hidden" name="new_stage" value="lost">
         <button class="btn btn-sm btn-outline-danger"><i class="bi bi-x-circle me-1"></i>Mark LOST</button>
       </form>
+      {% endif %}
       {% endif %}
     </div>
 
@@ -164,6 +170,7 @@
 
         <!-- Stage Move Form -->
         {% if opp.stage not in ['won','lost'] %}
+        {% if can(current_user, 'crm_sales_opp', 'edit') %}
         <form method="post" action="/crm/sales/{{ opp.id }}/stage" class="row g-2 align-items-end">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
           <div class="col-md-5">
@@ -182,6 +189,7 @@
             <button class="btn btn-sm btn-info text-white w-100"><i class="bi bi-arrow-right-circle me-1"></i>Update</button>
           </div>
         </form>
+        {% endif %}
         {% else %}
         <div class="alert alert-{{ 'success' if opp.stage=='won' else 'danger' }} py-2 mb-0">
           <strong>Opportunity {{ opp.stage | upper }}</strong>{% if opp.win_loss_reason %} — {{ opp.win_loss_reason }}{% endif %}
@@ -200,11 +208,13 @@
         {% if next_fu.next_followup < now %}<span class="badge bg-danger ms-2">OVERDUE</span>{% endif %}
         <div class="small mt-1">{{ next_fu.summary }}</div>
       </div>
+      {% if can(current_user, 'crm_sales_opp', 'edit') %}
       <form method="post" action="/crm/activities/{{ next_fu.id }}/done" class="ms-3 flex-shrink-0">
         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
         <input type="hidden" name="redirect_to" value="/crm/sales/{{ opp.id }}">
         <button class="btn btn-sm btn-success"><i class="bi bi-check me-1"></i>Mark Done</button>
       </form>
+      {% endif %}
     </div>
     {% endif %}
 
@@ -244,7 +254,9 @@
             <input type="text" name="followup_assigned_to" class="form-control form-control-sm" placeholder="Follow-up assigned to" value="{{ current_user.username }}">
           </div>
           <div class="col-md-4">
+            {% if can(current_user, 'crm_sales_opp', 'add') %}
             <button class="btn btn-sm btn-success w-100"><i class="bi bi-check me-1"></i>Log Activity</button>
+            {% endif %}
           </div>
         </form>
       </div>
@@ -258,6 +270,7 @@
     {% set nq_contact_id = opp.contact_id or '' %}
     {% set nq_opp_id = opp.id %}
     {% set nq_return_to = '/crm/sales/' ~ opp.id %}
+    {% set nq_perm_module = 'crm_sales_opp' %}
     {% set nq_lot_id = lot.id if lot else '' %}
     {% include "crm/_quotes_generated.html" %}
 

@@ -34,25 +34,27 @@
                  data-lot-number="{{ s.lot_number }}">{{ s.lot_number }}</a>
             </td>
             <td><span class="badge bg-secondary">{{ s.total_bids }}</span></td>
-            <td class="text-muted">₹{{ ((s.lowest) | inr) }}</td>
-            <td class="fw-bold text-success">₹{{ ((s.highest) | inr) }}</td>
+            <td class="text-muted">{% if can(current_user, 'trade_partner_bids', 'pricing') %}₹{{ ((s.lowest) | inr) }}{% else %}—{% endif %}</td>
+            <td class="fw-bold text-success">{% if can(current_user, 'trade_partner_bids', 'pricing') %}₹{{ ((s.highest) | inr) }}{% else %}—{% endif %}</td>
             <td>{{ s.account_name }}</td>
             <td>{{ s.manager_name }}</td>
             <td class="text-nowrap">
               {% for d in s.documents %}
-              <a href="/trade-partner/bids/document/{{ d.id }}"
+              {% if can(current_user, 'trade_partner_bids', 'export') %}<a href="/trade-partner/bids/document/{{ d.id }}"
                  class="btn btn-sm btn-outline-secondary py-0 px-1 mb-1"
                  title="{{ d.original_name or d.filename }}">
                 <i class="bi bi-download"></i> {{ d.doc_type | upper }}
-              </a>
+              </a>{% endif %}
               {% else %}<span class="text-muted small">—</span>{% endfor %}
             </td>
             <td class="text-nowrap">
+              {% if can(current_user, 'trade_partner_bids', 'edit') %}
               <form method="post" action="/trade-partner/bids/{{ s.top_bid.id }}/mark-won"
                     onsubmit="return confirm('Mark the highest bid (₹{{ ((s.highest) | inr) }} by {{ s.account_name }}) as won for lot {{ s.lot_number }}?\n\nAll other live bids on this lot become lost.');">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
                 <button class="btn btn-sm btn-success py-0 px-2"><i class="bi bi-trophy me-1"></i>Mark Won</button>
               </form>
+              {% endif %}
             </td>
           </tr>
           {% else %}
@@ -86,11 +88,11 @@
       {% for r in rows %}
       <tr>
         <td class="text-nowrap">
-          <span class="fw-bold text-success">₹{{ ((r.bid.bid_amount) | inr) }}</span>
+          {% if can(current_user, 'trade_partner_bids', 'pricing') %}<span class="fw-bold text-success">₹{{ ((r.bid.bid_amount) | inr) }}</span>{% else %}—{% endif %}
           {% if r.bid.bid_type == 'custom' %}
           <span class="badge bg-info-subtle text-info-emphasis border ms-1">custom</span>
           {% endif %}
-          {% if r.base_amount %}
+          {% if r.base_amount and can(current_user, 'trade_partner_bids', 'pricing') %}
           <div class="small text-muted" style="font-size:.72rem">
             Base ₹{{ ((r.base_amount) | inr) }}
             {% if r.profit is not none %}
@@ -132,20 +134,23 @@
         {% endif %}
         <td class="text-nowrap">
           {% for d in r.documents %}
-          <a href="/trade-partner/bids/document/{{ d.id }}"
+          {% if can(current_user, 'trade_partner_bids', 'export') %}<a href="/trade-partner/bids/document/{{ d.id }}"
              class="btn btn-sm btn-outline-secondary py-0 px-1 mb-1"
              title="{{ d.original_name or d.filename }}">
             <i class="bi bi-download"></i> {{ d.doc_type | upper }}
-          </a>
+          </a>{% endif %}
           {% else %}<span class="text-muted small">—</span>{% endfor %}
+          {% if can(current_user, 'trade_partner_bids', 'upload') %}
           <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1 mb-1"
                   data-bs-toggle="modal" data-bs-target="#uploadDocModal"
                   data-bid-id="{{ r.bid.id }}" data-bid-number="{{ r.bid.bid_number }}">
             <i class="bi bi-paperclip"></i>
           </button>
+          {% endif %}
         </td>
         <td class="text-nowrap">
           {% if mode == 'active' %}
+          {% if can(current_user, 'trade_partner_bids', 'edit') %}
           <form method="post" action="/trade-partner/bids/{{ r.bid.id }}/mark-won"
                 onsubmit="return confirm('Mark {{ r.bid.bid_number }} as won?\n\nThis creates a Buyer Deal and marks all other live bids on the same lot as lost.');">
             <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
@@ -153,6 +158,7 @@
               <i class="bi bi-trophy me-1"></i>Mark Won
             </button>
           </form>
+          {% endif %}
           {% elif mode == 'won' %}
           <div class="small text-muted">
             {{ r.bid.won_by or '—' }}<br>
@@ -164,9 +170,11 @@
         </td>
         {% if mode == 'won' %}
         <td class="text-nowrap">
+          {% if can(current_user, 'trade_partner_bids', 'add') %}
           <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 gen-po-btn"
                   data-bid-id="{{ r.bid.id }}">
             <i class="bi bi-file-earmark-text me-1"></i>Generate PO</button>
+          {% endif %}
         </td>
         {% endif %}
       </tr>

@@ -106,8 +106,8 @@
             <td class="small">{{ l.title[:35] if l else '—' }}{% if l and l.title|length > 35 %}…{% endif %}
               <div class="text-muted">{{ l.listing_code if l }}</div></td>
             <td class="small">{{ b.qty }}</td>
-            <td class="small fw-semibold">₹{{ ((b.token_total) | inr) }}</td>
-            <td class="small">₹{{ ((b.unit_price_snapshot * b.qty - b.token_total) | inr) }}</td>
+            <td class="small fw-semibold">{% if can(current_user, 'trade_partner_bookings', 'pricing') %}₹{{ ((b.token_total) | inr) }}{% else %}—{% endif %}</td>
+            <td class="small">{% if can(current_user, 'trade_partner_bookings', 'pricing') %}₹{{ ((b.unit_price_snapshot * b.qty - b.token_total) | inr) }}{% else %}—{% endif %}</td>
             <td>
               {% for p in b.proofs %}
               <div class="small">
@@ -123,24 +123,30 @@
             <td style="min-width:170px">
               <div class="d-flex flex-wrap gap-1">
                 {% if b.status == 'proof_uploaded' %}
+                {% if can(current_user, 'trade_partner_bookings', 'edit') %}
                 <form method="post" action="/trade-partner/bookings/{{ b.id }}/verify" class="d-inline"
                       onsubmit="return confirm('Verify token payment for {{ b.booking_number }}?');">
                         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
                   <button class="btn btn-sm btn-success" title="Verify token proof"><i class="bi bi-check2-circle"></i> Verify</button>
                 </form>
                 {% endif %}
+                {% endif %}
                 {% if b.status in ('pending_payment','proof_uploaded') %}
+                {% if can(current_user, 'trade_partner_bookings', 'edit') %}
                 <button class="btn btn-sm btn-outline-danger" title="Reject" data-bs-toggle="modal" data-bs-target="#rejectModal{{ loop.index }}">
                   <i class="bi bi-x-circle"></i>
                 </button>
                 {% endif %}
+                {% endif %}
                 {% if b.status == 'pending_payment' %}
+                {% if can(current_user, 'trade_partner_bookings', 'edit') %}
                 <form method="post" action="/trade-partner/bookings/{{ b.id }}/extend" class="d-inline"
                       onsubmit="return confirm('Extend hold by 24h?');">
                         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
                   <input type="hidden" name="extra_hours" value="24">
                   <button class="btn btn-sm btn-outline-secondary" title="Extend hold 24h"><i class="bi bi-clock-history"></i></button>
                 </form>
+                {% endif %}
                 {% if wa %}
                 <a class="btn btn-sm btn-outline-success" target="_blank" title="WhatsApp payment reminder"
                    href="https://wa.me/{{ wa }}?text={{ ('Reminder: booking ' ~ b.booking_number ~ ' — token ₹' ~ b.token_total ~ ' due before ' ~ (b.expires_at | ist_datetime) ~ '. Upload proof: ' ~ base_url ~ '/partner/bookings/' ~ b.id) | urlencode }}">
@@ -149,11 +155,13 @@
                 {% endif %}
                 {% endif %}
                 {% if b.status in ('confirmed_token','balance_pending') %}
+                {% if can(current_user, 'trade_partner_bookings', 'edit') %}
                 <form method="post" action="/trade-partner/bookings/{{ b.id }}/balance-verify" class="d-inline"
                       onsubmit="return confirm('Confirm balance received for {{ b.booking_number }}? Booking becomes ready for dispatch.');">
                         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
                   <button class="btn btn-sm btn-primary" title="Verify balance"><i class="bi bi-cash-stack"></i> Balance OK</button>
                 </form>
+                {% endif %}
                 {% if wa and b.status == 'confirmed_token' %}
                 <a class="btn btn-sm btn-outline-success" target="_blank" title="Request balance on WhatsApp"
                    href="https://wa.me/{{ wa }}?text={{ ('Booking ' ~ b.booking_number ~ ' token confirmed! Balance ₹' ~ (b.unit_price_snapshot * b.qty - b.token_total) ~ ' due. Upload proof: ' ~ base_url ~ '/partner/bookings/' ~ b.id) | urlencode }}">
@@ -162,11 +170,13 @@
                 {% endif %}
                 {% endif %}
                 {% if b.status == 'ready_for_dispatch' %}
+                {% if can(current_user, 'trade_partner_bookings', 'edit') %}
                 <form method="post" action="/trade-partner/bookings/{{ b.id }}/dispatched" class="d-inline"
                       onsubmit="return confirm('Mark {{ b.booking_number }} as dispatched?');">
                         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
                   <button class="btn btn-sm btn-dark" title="Mark dispatched"><i class="bi bi-truck"></i> Dispatched</button>
                 </form>
+                {% endif %}
                 {% endif %}
               </div>
 

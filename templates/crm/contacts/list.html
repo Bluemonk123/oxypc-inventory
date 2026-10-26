@@ -91,12 +91,14 @@
       {# The old accounts-only uploader is kept reachable but no longer the
          primary button: the new one accepts its columns unchanged AND handles
          call records, so it supersedes it. #}
-      <a href="/crm/contacts/upload" class="btn btn-sm btn-outline-secondary"><i class="bi bi-cloud-upload me-1"></i>Bulk Upload CSV</a>
+      {% if can(current_user, 'crm_contacts', 'upload') %}<a href="/crm/contacts/upload" class="btn btn-sm btn-outline-secondary"><i class="bi bi-cloud-upload me-1"></i>Bulk Upload CSV</a>{% endif %}
+      {% if can(current_user, 'crm_contacts', 'upload') %}
       <a href="/crm/contacts/team-mapping/upload" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-people me-1"></i>Team Mapping CSV
       </a>
+      {% endif %}
       {% if has_perm(current_user.role.value, 'crm_contacts', 'edit') %}
-      <button type="button" id="bulkTeamMappingBtn" class="btn btn-sm btn-outline-dark" disabled>
+      <button {% if not can(current_user, 'crm_contacts', 'edit') %}hidden {% endif %}type="button" id="bulkTeamMappingBtn" class="btn btn-sm btn-outline-dark" disabled>
         <i class="bi bi-person-badge me-1"></i>Bulk Team Mapping (<span id="teamSelCount">0</span>)
       </button>
       {% endif %}
@@ -112,7 +114,7 @@
         <i class="bi bi-download me-1"></i>Export CSV
       </a>
       {% endif %}
-      <a href="/crm/contacts/new" class="btn btn-sm btn-primary"><i class="bi bi-person-plus me-1"></i>Add Account</a>
+      {% if can(current_user, 'crm_contacts', 'add') %}<a href="/crm/contacts/new" class="btn btn-sm btn-primary"><i class="bi bi-person-plus me-1"></i>Add Account</a>{% endif %}
     </div>
   </div>
   <div class="card-body p-0">
@@ -289,9 +291,9 @@
             <td>
               <div class="d-flex gap-1 flex-wrap">
                 <a href="/crm/contacts/{{ c.id }}"      class="btn btn-sm btn-outline-primary"   title="Profile"><i class="bi bi-eye"></i></a>
-                <a href="/crm/sourcing/new?contact_id={{ c.id }}" class="btn btn-sm btn-outline-secondary" title="New Sourcing Deal"><i class="bi bi-box-arrow-in-down"></i></a>
-                <a href="/crm/sales/new?contact_id={{ c.id }}"    class="btn btn-sm btn-outline-info"      title="New Sales Opp"><i class="bi bi-graph-up"></i></a>
-                <a href="/crm/contacts/{{ c.id }}/edit"  class="btn btn-sm btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>
+                {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new?contact_id={{ c.id }}" class="btn btn-sm btn-outline-secondary" title="New Sourcing Deal"><i class="bi bi-box-arrow-in-down"></i></a>{% endif %}
+                {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new?contact_id={{ c.id }}"    class="btn btn-sm btn-outline-info"      title="New Sales Opp"><i class="bi bi-graph-up"></i></a>{% endif %}
+                {% if can(current_user, 'crm_contacts', 'edit') %}<a href="/crm/contacts/{{ c.id }}/edit"  class="btn btn-sm btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>{% endif %}
                 {% if has_perm(current_user.role.value, 'crm_contacts', 'edit') %}
                 <button type="button" class="btn btn-sm btn-outline-dark map-team-btn" title="Map Team"
                         data-contact-id="{{ c.id }}" data-company="{{ c.company_name }}"
@@ -299,6 +301,7 @@
                   <i class="bi bi-person-badge"></i>
                 </button>
                 {% endif %}
+                {% if can(current_user, 'crm_contacts', 'delete') %}
                 <form method="post" action="/crm/contacts/{{ c.id }}/trash" class="d-inline"
                       onsubmit="return confirm('Move {{ c.company_name }} to trash?')">
                   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
@@ -306,6 +309,7 @@
                     <i class="bi bi-trash3"></i>
                   </button>
                 </form>
+                {% endif %}
               </div>
             </td>
           </tr>
@@ -358,12 +362,14 @@
                   {% endif %}
                 </td>
                 <td>
+                  {% if can(current_user, 'crm_contacts', 'edit') %}
                   <form method="post" action="/crm/contacts/{{ c.id }}/restore" class="d-inline">
                     <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
                     <button type="submit" class="btn btn-sm btn-outline-success" title="Restore contact">
                       <i class="bi bi-arrow-counterclockwise me-1"></i>Restore
                     </button>
                   </form>
+                  {% endif %}
                 </td>
               </tr>
               {% endfor %}
@@ -459,9 +465,9 @@
           This accepts the plain Bulk Upload CSV columns unchanged, so it also
           covers straightforward account-only imports.
         </p>
-        <a href="/crm/contacts/calls/bulk-upload-template" class="btn btn-sm btn-outline-secondary mb-3">
+        {% if can(current_user, 'crm_contacts', 'export') %}<a href="/crm/contacts/calls/bulk-upload-template" class="btn btn-sm btn-outline-secondary mb-3">
           <i class="bi bi-download me-1"></i>Download Sample CSV
-        </a>
+        </a>{% endif %}
         <input type="file" name="file" accept=".csv" class="form-control" required>
       </div>
       <div class="modal-footer py-2">

@@ -36,7 +36,7 @@
         <input class="form-check-input" type="checkbox" name="consent_required" id="cr" checked>
         <label class="form-check-label small" for="cr">Only send to customers who opted into marketing (recommended)</label>
       </div>
-      <div class="col-12"><button class="btn btn-sm btn-primary">Create Offer</button></div>
+      {% if can(current_user, 'care_support', 'add') %}<div class="col-12"><button class="btn btn-sm btn-primary">Create Offer</button></div>{% endif %}
     </form>
   </div>
 </div>
@@ -58,7 +58,7 @@
             <td class="d-flex gap-1">
               <form method="post" action="/care-support/offers/{{ o.id }}/toggle">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                <button class="btn btn-sm btn-outline-secondary">{{ 'Deactivate' if o.is_active else 'Activate' }}</button>
+                {% if can(current_user, 'care_support', 'edit') %}<button class="btn btn-sm btn-outline-secondary">{{ 'Deactivate' if o.is_active else 'Activate' }}</button>{% endif %}
               </form>
               {% if o.channel in ('whatsapp','both') %}
               <form method="post" action="/care-support/offers/{{ o.id }}/send"

@@ -26,9 +26,11 @@
   <form action="/locations/audit/{{ audit.id }}/close" method="post"
         onsubmit="return confirm('Close this audit? This is final and cannot be undone.')">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+    {% if can(current_user, 'location_audit', 'edit') %}
     <button class="btn btn-success btn-sm">
       <i class="bi bi-check2-circle me-1"></i> Close Audit
     </button>
+    {% endif %}
   </form>
   {% endif %}
 </div>

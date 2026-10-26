@@ -27,7 +27,7 @@
                      name="{{ col }}" placeholder="₹" value="{{ '%g'|format(p.parts[col]) if p.parts[col] is not none else '' }}"></td>
           {% endfor %}
           <td class="sp-status">{% if p.parts_done %}<span class="badge bg-success">Pricing Done</span>{% else %}<span class="badge bg-warning text-dark">Pricing Pending</span>{% endif %}</td>
-          <td><button type="button" class="btn btn-sm btn-primary sp-save" disabled><i class="bi bi-save me-1"></i>Save</button></td>
+          <td>{% if can(current_user, 'pm_spare_parts', 'pricing') %}<button type="button" class="btn btn-sm btn-primary sp-save" disabled><i class="bi bi-save me-1"></i>Save</button>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>
@@ -51,7 +51,7 @@
       <select class="form-select form-select-sm w-auto" id="spTable_price" title="Price">
         <option value="">Price: All</option><option value="empty">Fully Empty</option><option value="filled">Fully Filled</option><option value="partial">Partially Filled</option>
       </select>
-      <button type="button" class="btn btn-sm btn-outline-success" id="spTable_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+      <button {% if not can(current_user, 'pm_spare_parts', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success" id="spTable_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
     </div>
   </div>
   <div class="card-body">{{ sp_table('spTable', pending) }}</div>
@@ -62,7 +62,7 @@
     <div class="d-flex align-items-center flex-wrap gap-2">
       <select class="form-select form-select-sm w-auto" id="spTableDone_cpu" title="CPU"><option value="">All CPUs</option></select>
       <select class="form-select form-select-sm w-auto" id="spTableDone_gen" title="CPU Gen"><option value="">All CPU Gens</option></select>
-      <button type="button" class="btn btn-sm btn-outline-success" id="spTableDone_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
+      <button {% if not can(current_user, 'pm_spare_parts', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success" id="spTableDone_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
     </div>
   </div>
   <div class="card-body">{{ sp_table('spTableDone', done) }}</div>

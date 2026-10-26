@@ -16,9 +16,11 @@
 </div>
 
 <div class="d-flex justify-content-end mb-3">
+  {% if can(current_user, 'qa', 'add') %}
   <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newReleaseModal">
     <i class="bi bi-plus-circle me-1"></i>New Release
   </button>
+  {% endif %}
 </div>
 
 {% if releases %}

@@ -10,11 +10,15 @@
      nq_contact_id / nq_opp_id / nq_return_to - carried into the from-lot post
 
    Included on both the Buyer Deal and the Account Detail page so the two
-   cannot drift apart in columns or behaviour. #}
+   cannot drift apart in columns or behaviour.
+
+   Permission module: the including page sets `nq_perm_module`; falls back
+   to the candidate modules. #}
+{% set _qm = nq_perm_module if nq_perm_module is defined else ['crm_quotes', 'crm_sales_opp', 'crm_contacts'] %}
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
     <span class="fw-semibold"><i class="bi bi-file-earmark-ruled me-1 text-primary"></i>Quotes Generated ({{ quote_rows|length }})</span>
-    <button type="button" class="btn btn-sm btn-outline-primary" id="newQuoteBtn">
+    <button {% if not can(current_user, _qm, 'add') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-primary" id="newQuoteBtn">
       <i class="bi bi-plus-lg me-1"></i>New Quote
     </button>
   </div>
@@ -45,24 +49,26 @@
             {% endif %}
             <td class="small text-end">{{ r.total_models }}</td>
             <td class="small text-end">{{ r.total_qty }}</td>
-            <td class="small text-end">₹{{ ((r.total_price) | inr) }}</td>
+            <td class="small text-end">{% if can(current_user, _qm, 'pricing') %}₹{{ ((r.total_price) | inr) }}{% else %}—{% endif %}</td>
             <td class="text-center">
               {# Only a document actually produced by Generate is downloadable —
                  an empty cell here means nobody has generated one yet. #}
               {% if r.has_pdf %}
-              <a href="/crm/quotes/{{ r.quote.id }}/download"
+              {% if can(current_user, _qm, 'export') %}<a href="/crm/quotes/{{ r.quote.id }}/download"
                  class="btn btn-sm btn-outline-secondary py-0 px-2" title="Download the generated quote">
                 <i class="bi bi-file-earmark-pdf"></i>
-              </a>
+              </a>{% endif %}
               {% else %}
               <span class="text-muted small" title="Not generated yet">—</span>
               {% endif %}
             </td>
             <td class="text-center">
+              {% if can(current_user, _qm, 'export') %}
               <button type="button" class="btn btn-sm btn-success py-0 px-2 generate-quote-btn"
                       data-quote-id="{{ r.quote.id }}" data-quote-number="{{ r.quote.quote_number }}">
                 <i class="bi bi-gear me-1"></i>Generate
               </button>
+              {% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -137,8 +143,8 @@
                 </td>
                 <td><label for="wl{{ loop.index }}" class="font-monospace mb-0">{{ l.lot_number }}</label></td>
                 <td class="text-end">{{ l.total_qty }}</td>
-                <td class="text-end">₹{{ ((l.base_price) | inr) }}</td>
-                <td class="text-end fw-semibold text-success">₹{{ ((l.won_bid_price) | inr) }}</td>
+                <td class="text-end">{% if can(current_user, _qm, 'pricing') %}₹{{ ((l.base_price) | inr) }}{% else %}—{% endif %}</td>
+                <td class="text-end fw-semibold text-success">{% if can(current_user, _qm, 'pricing') %}₹{{ ((l.won_bid_price) | inr) }}{% else %}—{% endif %}</td>
               </tr>
               {% endfor %}
             </tbody>

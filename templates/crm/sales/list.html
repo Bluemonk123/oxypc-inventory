@@ -29,7 +29,7 @@
     <a href="/crm/sales" class="btn btn-sm btn-outline-secondary">Clear</a>
     {% endif %}
   </form>
-  <a href="/crm/sales/new" class="btn btn-sm btn-info text-white"><i class="bi bi-plus-circle me-1"></i>New Opportunity</a>
+  {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-sm btn-info text-white"><i class="bi bi-plus-circle me-1"></i>New Opportunity</a>{% endif %}
 </div>
 
 <!-- Summary cards -->
@@ -109,7 +109,7 @@
               </span>
             </td>
             <td class="small">{{ o.required_qty or '—' }}</td>
-            <td class="small">{% if o.estimated_value %}₹{{ ((o.estimated_value) | inr) }}{% else %}—{% endif %}</td>
+            <td class="small">{% if can(current_user, 'crm_sales_opp', 'pricing') %}{% if o.estimated_value %}₹{{ ((o.estimated_value) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
             <td class="small">{% if o.grade_required %}<span class="badge bg-light text-dark border">{{ o.grade_required }}</span>{% else %}—{% endif %}</td>
             <td>
               <span class="badge bg-{{ priority_colors.get(o.priority,'secondary') }}">{{ o.priority | title }}</span>
@@ -117,9 +117,9 @@
             <td class="small">{{ o.assigned_to or '—' }}</td>
             <td class="text-center">
               {% if o.product_records_file %}
-              <a href="/uploads/crm/{{ o.product_records_file }}" class="btn btn-sm btn-outline-success" title="Download Product Records" target="_blank" download>
+              {% if can(current_user, 'crm_sales_opp', 'export') %}<a href="/uploads/crm/{{ o.product_records_file }}" class="btn btn-sm btn-outline-success" title="Download Product Records" target="_blank" download>
                 <i class="bi bi-file-earmark-arrow-down me-1"></i>Download
-              </a>
+              </a>{% endif %}
               {% else %}
               <span class="text-muted small">—</span>
               {% endif %}
@@ -127,7 +127,7 @@
             <td>
               <div class="btn-group btn-group-sm">
                 <a href="/crm/sales/{{ o.id }}" class="btn btn-outline-info" title="View"><i class="bi bi-eye"></i></a>
-                <a href="/crm/sales/{{ o.id }}/edit" class="btn btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>
+                {% if can(current_user, 'crm_sales_opp', 'edit') %}<a href="/crm/sales/{{ o.id }}/edit" class="btn btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>{% endif %}
               </div>
             </td>
           </tr>

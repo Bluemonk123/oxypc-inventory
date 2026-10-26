@@ -303,7 +303,29 @@ async def load_module_visibility_to_cache(db: AsyncSession) -> None:
 
 PERM_ACTIONS = [
     ("can_enable", "Enable"),
+    ("can_pricing", "Pricing"),
+    ("can_add", "Add"),
+    ("can_edit", "Edit"),
+    ("can_delete", "Delete"),
+    ("can_upload", "Upload"),
+    ("can_export", "Export"),
 ]
+
+
+def module_action_map() -> dict:
+    """{module: {"add", "edit", ...}} — which action ticks actually gate
+    something for each module, from auth/route_actions.py. Ticks a module has
+    no route for show as "—" in the matrix. Pricing is always offered: it
+    also hides price columns on the module's pages, not only price changes."""
+    from auth.route_actions import ROUTE_ACTIONS
+    out: dict = {}
+    for entry in ROUTE_ACTIONS.values():
+        if not entry:
+            continue
+        mods, action = entry
+        for m in ((mods,) if isinstance(mods, str) else mods):
+            out.setdefault(m, set()).add(action)
+    return out
 
 # ── Role Additional Permissions — cross-cutting, not tied to any one module ──
 # "Add New Data" was split into per-record-type toggles (can_add_lot/iqc/grn)
@@ -539,6 +561,7 @@ async def master_list(
         "default_disabled_modules": DEFAULT_DISABLED_MODULES,
         "perm_modules": PERM_MODULES,
         "perm_actions": PERM_ACTIONS,
+        "module_actions": module_action_map(),
         "custom_roles_list": custom_roles_list,
         # Additional permissions tab data
         "additional_perms": ADDITIONAL_PERMS,
@@ -812,6 +835,7 @@ async def permissions_matrix(
         "default_disabled_modules": DEFAULT_DISABLED_MODULES,
         "perm_modules": PERM_MODULES,
         "perm_actions": PERM_ACTIONS,
+        "module_actions": module_action_map(),
         "custom_roles_list": custom_roles_list,
     })
 
@@ -832,6 +856,9 @@ async def load_role_permissions(
             "can_add":    r.can_add,
             "can_edit":   r.can_edit,
             "can_upload": r.can_upload,
+            "can_delete": True if r.can_delete is None else r.can_delete,
+            "can_pricing": True if r.can_pricing is None else r.can_pricing,
+            "can_export": True if r.can_export is None else r.can_export,
         }
         for r in rows
     }
@@ -865,6 +892,9 @@ async def save_role_permissions(
         can_add    = f"perm_{mod_key}_can_add"    in form
         can_edit   = f"perm_{mod_key}_can_edit"   in form
         can_upload = f"perm_{mod_key}_can_upload" in form
+        can_delete  = f"perm_{mod_key}_can_delete"  in form
+        can_pricing = f"perm_{mod_key}_can_pricing" in form
+        can_export  = f"perm_{mod_key}_can_export"  in form
         db.add(RoleModulePermission(
             role_name  = role_name,
             module     = mod_key,
@@ -872,11 +902,16 @@ async def save_role_permissions(
             can_add    = can_add,
             can_edit   = can_edit,
             can_upload = can_upload,
+            can_delete  = can_delete,
+            can_pricing = can_pricing,
+            can_export  = can_export,
             updated_by = current_user.username,
         ))
         new_perms[mod_key] = {
             "enable": can_enable, "add": can_add,
             "edit":   can_edit,   "upload": can_upload,
+            "delete": can_delete, "pricing": can_pricing,
+            "export": can_export,
         }
 
     await db.commit()
@@ -1011,11 +1046,16 @@ async def save_sub_admin_permissions(
             can_add    = can_enable,
             can_edit   = can_enable,
             can_upload = can_enable,
+            can_delete  = can_enable,
+            can_pricing = can_enable,
+            can_export  = can_enable,
             updated_by = current_user.username,
         ))
         new_perms[mod_key] = {
             "enable": can_enable, "add": can_enable,
             "edit":   can_enable, "upload": can_enable,
+            "delete": can_enable, "pricing": can_enable,
+            "export": can_enable,
         }
 
     await db.commit()
@@ -1116,6 +1156,8 @@ async def load_all_permissions_to_cache(db: AsyncSession) -> None:
         tmp.setdefault(r.role_name, {})[r.module] = {
             "enable": r.can_enable, "add": r.can_add,
             "edit":   r.can_edit,   "upload": r.can_upload,
+            "delete": r.can_delete, "pricing": r.can_pricing,
+            "export": r.can_export,
         }
     _PERM_CACHE.clear()
     _PERM_CACHE.update(tmp)

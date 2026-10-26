@@ -35,6 +35,7 @@ Runs at `192.168.1.100:8000` on LAN. 30+ concurrent users.
 Lot Management cleanup: cascade delete just shipped. Next: verify in app, then move to device/sale page enhancements.
 
 ## Critical Rules (from global CLAUDE.md)
+- Permission Matrix (2026-10-25): every new POST/PUT/PATCH/DELETE route must be added to `auth/route_actions.py` as (module, action) — action is add / upload / edit / delete / pricing / export (Download / Export — also add export/download GET links), or None if it must not be gated — and its buttons wrapped in `{% if can(current_user, '<module>', '<action>') %}`. Run `python _scan_action_coverage.py` before any push: it must print "0 unmapped, 0 stale, 0 bad". Make Active / Inactive toggles count as **edit**.
 - Never delete files without explicit per-file user permission
 - No schema changes without dbdiagram.io approval
 - `is_trashed.isnot(True)` — always, not `== False`

@@ -44,7 +44,9 @@
             <td class="small">{{ p.last_seen_at | ist_datetime if p.last_seen_at else '—' }}</td>
             <td>
               {% if p.is_active %}
+              {% if can(current_user, 'care_support', 'edit') %}
               <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#revoke{{ loop.index }}">Revoke</button>
+              {% endif %}
               <div class="modal fade" id="revoke{{ loop.index }}" tabindex="-1">
                 <div class="modal-dialog"><div class="modal-content">
                   <form method="post" action="/care-support/pairings/{{ p.id }}/revoke">

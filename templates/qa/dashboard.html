@@ -134,18 +134,18 @@
             <div class="small fw-semibold">Technical Specification</div>
             <div class="text-muted" style="font-size:.7rem">Architecture, data model, security</div>
           </div>
-          <a href="/qa/srs/technical-spec/download" class="btn btn-sm btn-outline-primary">
+          {% if can(current_user, 'qa', 'export') %}<a href="/qa/srs/technical-spec/download" class="btn btn-sm btn-outline-primary">
             <i class="bi bi-download"></i>
-          </a>
+          </a>{% endif %}
         </div>
         <div class="d-flex justify-content-between align-items-center">
           <div>
             <div class="small fw-semibold">Functional Specification</div>
             <div class="text-muted" style="font-size:.7rem">Roles, workflows, acceptance criteria</div>
           </div>
-          <a href="/qa/srs/functional-spec/download" class="btn btn-sm btn-outline-primary">
+          {% if can(current_user, 'qa', 'export') %}<a href="/qa/srs/functional-spec/download" class="btn btn-sm btn-outline-primary">
             <i class="bi bi-download"></i>
-          </a>
+          </a>{% endif %}
         </div>
         <hr class="my-2">
         <div class="d-flex justify-content-between align-items-center">
@@ -154,10 +154,10 @@
             <div class="text-muted" style="font-size:.7rem">88 modules, 8 cross-module flows, coupling</div>
           </div>
           <div class="btn-group btn-group-sm">
-            <a href="/qa/srs/module-map/download" class="btn btn-outline-primary"
-               title="Download as PDF"><i class="bi bi-filetype-pdf"></i></a>
-            <a href="/qa/srs/module-map/download.pptx" class="btn btn-outline-primary"
-               title="Download as PowerPoint"><i class="bi bi-filetype-ppt"></i></a>
+            {% if can(current_user, 'qa', 'export') %}<a href="/qa/srs/module-map/download" class="btn btn-outline-primary"
+               title="Download as PDF"><i class="bi bi-filetype-pdf"></i></a>{% endif %}
+            {% if can(current_user, 'qa', 'export') %}<a href="/qa/srs/module-map/download.pptx" class="btn btn-outline-primary"
+               title="Download as PowerPoint"><i class="bi bi-filetype-ppt"></i></a>{% endif %}
           </div>
         </div>
         <hr class="my-2">
@@ -166,8 +166,8 @@
             <div class="small fw-semibold">Design System <span class="badge bg-light text-secondary border fw-normal">v2.3</span></div>
             <div class="text-muted" style="font-size:.7rem">Colours, type, layout, components and their rules</div>
           </div>
-          <a href="/qa/srs/design-system/download" class="btn btn-sm btn-outline-primary"
-             title="Download as PDF"><i class="bi bi-filetype-pdf"></i></a>
+          {% if can(current_user, 'qa', 'export') %}<a href="/qa/srs/design-system/download" class="btn btn-sm btn-outline-primary"
+             title="Download as PDF"><i class="bi bi-filetype-pdf"></i></a>{% endif %}
         </div>
       </div>
     </div>

@@ -247,6 +247,25 @@ def _breadcrumb_enabled(path: str) -> bool:
 
 
 templates.env.globals["has_perm"] = _has_perm
+
+
+def _can(current_user, module, action="enable"):
+    """Template helper (2026-10-25): {% if can(current_user, 'grn', 'add') %}.
+    `module` may be one key or a list (allowed if any of them allows it).
+    Admin always True. Actions: enable, add, upload, edit, delete, pricing.
+    Pricing also respects the older app-wide Pricing Visibility switch."""
+    if not current_user:
+        return False
+    role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    mods = (module,) if isinstance(module, str) else tuple(module)
+    ok = any(_has_perm(role, m, action) for m in mods)
+    if ok and action == "pricing":
+        ok = _can_view_pricing_by_role(role)
+    return ok
+# Actions: enable, add, upload, edit, delete, pricing, export (Download / Export, 2026-10-26).
+
+
+templates.env.globals["can"] = _can
 templates.env.globals["has_explicit_perm"] = _has_explicit_perm
 templates.env.globals["any_perm"] = _any_perm
 templates.env.globals["narrowly_scoped_to"] = _narrowly_scoped_to

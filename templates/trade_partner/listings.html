@@ -38,9 +38,11 @@
     </select>
     <button class="btn btn-sm btn-outline-primary">Filter</button>
   </form>
+  {% if can(current_user, 'trade_partner_listings', 'add') %}
   <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
     <i class="bi bi-plus-circle me-1"></i>New Listing
   </button>
+  {% endif %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -73,8 +75,8 @@
             </td>
             <td><span class="badge bg-light text-dark border">{{ l.listing_type | replace('_',' ') | title }}</span></td>
             <td class="small">{{ l.qty_available }}/{{ l.qty_total }}</td>
-            <td class="small fw-semibold">₹{{ ((l.dealer_price) | inr) }}</td>
-            <td class="small">₹{{ ((l.token_amount) | inr) }}</td>
+            <td class="small fw-semibold">{% if can(current_user, 'trade_partner_listings', 'pricing') %}₹{{ ((l.dealer_price) | inr) }}{% else %}—{% endif %}</td>
+            <td class="small">{% if can(current_user, 'trade_partner_listings', 'pricing') %}₹{{ ((l.token_amount) | inr) }}{% else %}—{% endif %}</td>
             <td>
               {% if a and a.days is not none %}
               <span class="badge bg-{{ a.color }}">{{ a.label }} · {{ a.days }}d</span>
@@ -84,19 +86,25 @@
             <td>
               <div class="btn-group btn-group-sm">
                 {% if l.status in ('draft','paused') %}
+                {% if can(current_user, 'trade_partner_listings', 'edit') %}
                 <button class="btn btn-outline-success" title="Publish" data-bs-toggle="modal" data-bs-target="#publishModal{{ loop.index }}">
                   <i class="bi bi-broadcast"></i>
                 </button>
+                {% endif %}
                 {% elif l.status == 'published' %}
+                {% if can(current_user, 'trade_partner_listings', 'edit') %}
                 <form method="post" action="/trade-partner/listings/{{ l.id }}/pause" class="d-inline"
                       onsubmit="return confirm('Pause {{ l.listing_code }}? Dealers will stop seeing it.');">
                         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
                   <button class="btn btn-outline-warning" title="Pause"><i class="bi bi-pause-circle"></i></button>
                 </form>
                 {% endif %}
+                {% endif %}
+                {% if can(current_user, 'trade_partner_listings', 'pricing') %}
                 <button class="btn btn-outline-secondary" title="Reprice / review price" data-bs-toggle="modal" data-bs-target="#repriceModal{{ loop.index }}">
                   <i class="bi bi-currency-rupee"></i>
                 </button>
+                {% endif %}
               </div>
 
               <!-- Publish modal (floor gate aware) -->

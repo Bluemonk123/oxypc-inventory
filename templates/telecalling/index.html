@@ -110,9 +110,11 @@
       <a href="/telecalling" class="btn btn-sm btn-outline-secondary">Clear</a>
 
       <div class="ms-auto d-flex gap-2">
+        {% if can(current_user, 'telecalling', 'add') %}
         <a href="/telecalling/add" class="btn btn-sm btn-primary">
           <i class="bi bi-plus me-1"></i>Log Call
         </a>
+        {% endif %}
         <a href="/telecalling/records" class="btn btn-sm btn-outline-secondary">
           <i class="bi bi-list me-1"></i>All Records
         </a>
@@ -177,9 +179,11 @@
                 <td>{{ (rec.items_discussed or '—')[:50] }}</td>
                 <td>{{ rec.called_by }}</td>
                 <td>
+                  {% if can(current_user, 'telecalling', 'add') %}
                   <a href="/dealers/{{ rec.dealer_id }}/call" class="btn btn-sm btn-success">
                     Call Now
                   </a>
+                  {% endif %}
                   {# WhatsApp integration removed — button disabled
                   {% if rec.dealer and rec.dealer.whatsapp_number %}
                   <a href="/whatsapp/compose?dealer_id={{ rec.dealer_id }}"
@@ -209,11 +213,11 @@
       <i class="bi bi-clock-history me-2"></i>Recent Calls
       <small class="text-muted fw-normal ms-2">(sourced from Dealer Management call logs)</small>
     </span>
-    <a href="/telecalling/export-csv?q={{ q }}&assigned={{ assigned }}&city={{ city }}&outcome={{ outcome }}&date_from={{ date_from }}&date_to={{ date_to }}&followup_from={{ followup_from }}&followup_to={{ followup_to }}"
+    {% if can(current_user, 'telecalling', 'export') %}<a href="/telecalling/export-csv?q={{ q }}&assigned={{ assigned }}&city={{ city }}&outcome={{ outcome }}&date_from={{ date_from }}&date_to={{ date_to }}&followup_from={{ followup_from }}&followup_to={{ followup_to }}"
        class="btn btn-sm btn-outline-success"
        title="Export all matching calls (no row cap) — includes full call log + dealer details">
       <i class="bi bi-file-earmark-arrow-down me-1"></i>Export CSV
-    </a>
+    </a>{% endif %}
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">
@@ -243,7 +247,9 @@
             <th>Model</th>
             <th>Configuration</th>
             <th>QTY</th>
+            {% if can(current_user, 'telecalling', 'pricing') %}
             <th>Asking Price</th>
+            {% endif %}
             <th>Status</th>
             <th>Requirements / Sample Config</th>
             <th>Whom To Sale</th>
@@ -293,7 +299,9 @@
             <td>{{ rec.product_model or '—' }}</td>
             <td>{{ rec.configuration or '—' }}</td>
             <td>{{ rec.qty if rec.qty is not none else '—' }}</td>
+            {% if can(current_user, 'telecalling', 'pricing') %}
             <td>{{ '₹%.0f'|format(rec.asking_price) if rec.asking_price is not none else '—' }}</td>
+            {% endif %}
             <td>{{ (rec.deal_status or '—') | replace('_',' ') | title }}</td>
             <td class="text-truncate" style="max-width:160px" title="{{ rec.requirements_preferred_config or '' }}">{{ (rec.requirements_preferred_config or '—')[:40] }}</td>
             <td>{{ (rec.whom_to_sell or '—') | replace('_',' ') | title }}</td>

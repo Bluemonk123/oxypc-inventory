@@ -30,7 +30,7 @@
       </div>
       <div class="col-md-2 d-flex gap-1">
         <button class="btn btn-primary btn-sm">Filter</button>
-        <a href="?date_from={{ date_from }}&date_to={{ date_to }}&user_id={{ user_id }}&status_filter={{ status_filter }}&export=csv" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>CSV</a>
+        {% if can(current_user, 'attendance_report', 'export') %}<a href="?date_from={{ date_from }}&date_to={{ date_to }}&user_id={{ user_id }}&status_filter={{ status_filter }}&export=csv" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>CSV</a>{% endif %}
       </div>
     </form>
   </div>

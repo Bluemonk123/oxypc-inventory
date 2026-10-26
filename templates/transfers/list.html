@@ -58,13 +58,13 @@
     {% if has_perm(current_user.role.value, 'transfers', 'edit') %}
     <form method="post" action="/transfers/bulk-delete" id="transfersBulkDeleteForm" class="mb-0">
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
-      <button type="button" id="transfersBulkDeleteBtn" class="btn btn-sm btn-outline-danger d-none">
+      <button {% if not can(current_user, 'transfers', 'delete') %}hidden {% endif %}type="button" id="transfersBulkDeleteBtn" class="btn btn-sm btn-outline-danger d-none">
         <i class="bi bi-trash me-1"></i>Delete Selected (<span id="transfersDeleteSelCount">0</span>)
       </button>
     </form>
     {% endif %}
-    <a href="/transfers/new" class="btn btn-sm btn-success text-nowrap"><i class="bi bi-plus-circle me-1"></i>New Transfer</a>
-    <a id="exportCsvLink" class="btn btn-sm btn-outline-success text-nowrap"
+    {% if can(current_user, 'transfers', 'add') %}<a href="/transfers/new" class="btn btn-sm btn-success text-nowrap"><i class="bi bi-plus-circle me-1"></i>New Transfer</a>{% endif %}
+    <a {% if not can(current_user, 'transfers', 'export') %}hidden {% endif %}id="exportCsvLink" class="btn btn-sm btn-outline-success text-nowrap"
        href="/transfers/export?q={{ q | urlencode }}&transfer_type={{ transfer_type | urlencode }}&transferred_by={{ transferred_by | urlencode }}&location_id={{ location_id | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
       <i class="bi bi-download me-1"></i>Export
     </a>

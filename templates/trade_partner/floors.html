@@ -43,7 +43,7 @@
         <input type="text" name="floor_value" class="form-control form-control-sm" placeholder="absolute floor">
       </div>
       <div class="col-md-2">
-        <button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-circle me-1"></i>Add Version</button>
+        {% if can(current_user, 'trade_partner_floors', 'add') %}<button class="btn btn-sm btn-primary w-100"><i class="bi bi-plus-circle me-1"></i>Add Version</button>{% endif %}
       </div>
     </form>
     <div class="form-text">If both are set, the higher of (% floor, absolute floor) applies. Listings with no cost basis fall back to the absolute floor.</div>
@@ -63,7 +63,7 @@
           <td><span class="badge bg-light text-dark border">{{ r.listing_type | replace('_',' ') | title }}</span></td>
           <td class="small">{{ r.floor_rule_type | replace('_',' ') | title }}</td>
           <td class="small">{{ r.floor_pct if r.floor_pct is not none else '—' }}</td>
-          <td class="small">{{ ('₹' ~ ((r.floor_value) | inr)) if r.floor_value is not none else '—' }}</td>
+          <td class="small">{% if can(current_user, 'trade_partner_floors', 'pricing') %}{{ ('₹' ~ ((r.floor_value) | inr)) if r.floor_value is not none else '—' }}{% else %}—{% endif %}</td>
           <td class="small">{{ r.effective_from | ist_datetime }}</td>
           <td class="small">{{ r.created_by or '—' }}</td>
           <td>
