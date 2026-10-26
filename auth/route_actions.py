@@ -235,8 +235,8 @@ ROUTE_ACTIONS = {
     ('POST', '/part-sourcing/{sr_id}/confirm'): ('spare_parts', 'edit'),  # confirm_production_sourcing
     ('POST', '/part-sourcing/{sr_id}/request-reupload'): ('spare_parts', 'edit'),  # request_sourcing_reupload
     ('POST', '/spare-parts/requests/bulk-action'): ('spare_parts', 'edit'),  # bulk_request_action: bulk handover/status action
-    ('POST', '/devices/{barcode}/pna/clear-all'): ('devices', 'edit'),  # clear_all_pna
-    ('POST', '/devices/{barcode}/pna'): ('devices', 'edit'),  # mark_part_pna: mark part not available
+    ('POST', '/devices/{barcode}/pna/clear-all'): None,  # clear_all_pna: open to any signed-in user like the PNA tick itself (2026-10-26 — engineers without All Inventories Edit were refused)
+    ('POST', '/devices/{barcode}/pna'): None,  # mark_part_pna: any signed-in user holding the unit may flag a part not available (route docstring); gating on devices/edit blocked L1-L4 engineers (2026-10-26)
     # ===== routers/dispatch.py =====
     ('POST', '/inventory-requests/upload-tags'): None,  # upload_request_tags: read-only tag lookup
     ('POST', '/dispatch/request'): ('sales', 'add'),  # create_dispatch_request: raised from Ready to Sale page (templates/sales/ready_list.html)

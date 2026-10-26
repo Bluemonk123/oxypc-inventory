@@ -88,7 +88,12 @@ def _match_route(request: Request):
 def _wants_json(request: Request) -> bool:
     h = request.headers
     return ("application/json" in h.get("accept", "") or h.get("x-requested-with") == "XMLHttpRequest"
-            or "application/json" in h.get("content-type", "") or "/api/" in request.url.path)
+            or "application/json" in h.get("content-type", "") or "/api/" in request.url.path
+            # fetch()/XHR from page scripts (2026-10-26): browsers send
+            # Sec-Fetch-Dest: empty for these and "document" for a normal form
+            # post, so a refused fetch gets the JSON message instead of a
+            # redirect page that the caller's .json() can't parse.
+            or h.get("sec-fetch-dest") == "empty")
 
 
 def _denied(request: Request, msg: str):
