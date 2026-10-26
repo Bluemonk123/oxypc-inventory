@@ -49,10 +49,10 @@
                   data-cust-return="{{ '1' if it.device_id in cust_return_ids else '0' }}">
                 <td class="text-nowrap"><a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a>{{ parts_badge(parts_badges, it.device_id) }}</td>
                 {# Owner + Pick This on every tag that isn't yours (2026-10-19). #}
-                <td><span class="font-monospace fw-bold">{{ it.work_id }}</span><br><small class="text-muted">{{ it.assigned_name }}</small>
+                <td>{% if it.unassigned %}<span class="badge bg-warning text-dark" title="Moved to L3/L4 without a WorkID — Pick This to take it">Unassigned</span>{% else %}<span class="font-monospace fw-bold">{{ it.work_id }}</span><br><small class="text-muted">{{ it.assigned_name }}</small>{% endif %}
                   {% if not it.mine and has_perm(current_user.role.value, 'repair_l3', 'enable') %}
                   <br><form method="post" action="/repair/l3l4-pick" class="d-inline"
-                        onsubmit="return confirm('Take over this tag? Its current WorkID will be closed and a new WorkID opened for you.')">
+                        onsubmit="return confirm({% if it.unassigned %}'Take this tag? A new L3/L4 WorkID will be opened for you.'{% else %}'Take over this tag? Its current WorkID will be closed and a new WorkID opened for you.'{% endif %})">
                     <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                     <input type="hidden" name="device_id" value="{{ it.device_id }}">
                     <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2 mt-1 text-nowrap"><i class="bi bi-hand-index-thumb me-1"></i>Pick This</button>
@@ -91,8 +91,8 @@
                   {% else %}<span class="badge bg-light text-muted border">0</span>{% endif %}
                 </td>
                 <td class="text-nowrap">
-                  {% if not it.mine and not full_queue %}
-                    {# Someone else's tag — Pick This (WorkID column) first. #}
+                  {% if it.unassigned or (not it.mine and not full_queue) %}
+                    {# Someone else's tag, or no WorkID yet — Pick This (WorkID column) first. #}
                   {% elif it.status == 'Repair Started' %}
                     {% if can(current_user, 'repair_l3', 'edit') %}
                     <button type="button" class="btn btn-sm btn-success complete-btn"

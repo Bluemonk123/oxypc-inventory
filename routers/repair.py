@@ -751,7 +751,42 @@ async def l3l4_list(request: Request,
             if d.bucket_id:
                 bucket_map[str(d.id)] = bkt_by_id.get(str(d.bucket_id), "")
 
+    # Tags moved to L3/L4 without a WorkID (e.g. Customise -> bulk Move to
+    # Stage, 2026-10-26): listed as "Unassigned"; Pick This opens the WorkID
+    # for whoever clicks it.
+    open_l3l4 = (select(WorkOrder.id).where(WorkOrder.device_id == Device.id,
+                                             WorkOrder.work_id.like("L3L4-%"), wo_open()).exists())
+    unassigned = (await db.execute(
+        select(Device).where(Device.current_stage == DeviceStage.l3, Device.is_trashed == False,  # noqa: E712
+                             ~open_l3l4)
+        .order_by(Device.updated_at.desc())
+    )).scalars().all()
+    unassigned = [d for d in unassigned if d.id not in _seen_device_ids]
+    if unassigned:
+        u_ids = [d.id for d in unassigned]
+        u_since = dict((await db.execute(
+            select(StageMovement.device_id, func.max(StageMovement.moved_at))
+            .where(StageMovement.device_id.in_(u_ids), StageMovement.to_stage == DeviceStage.l3)
+            .group_by(StageMovement.device_id))).all())
+        u_bkt = [d.bucket_id for d in unassigned if d.bucket_id]
+        if u_bkt:
+            for b in (await db.execute(select(Bucket).where(Bucket.id.in_(u_bkt)))).scalars().all():
+                for d in unassigned:
+                    if d.bucket_id == b.id:
+                        bucket_map[str(d.id)] = b.name or b.bucket_number
+
     items = []
+    for dev in unassigned:
+        since = u_since.get(dev.id) or dev.updated_at
+        items.append({
+            "work_id": "—", "assigned_name": "Unassigned", "mine": False, "unassigned": True,
+            "assigned_date": since, "device_id": str(dev.id), "barcode": dev.barcode,
+            "status": dev.l34_status or "New", "bucket": bucket_map.get(str(dev.id), ""),
+            "notes": "—", "repair_notes": dev.repair_notes or "—",
+            "aging": max(0, (today - since.date()).days) if since else 0,
+            "as_is": bool((dev.sub_lot_number or "").strip()),
+            "fqc_fail": dev.final_qc_status == "fail",
+        })
     for wo, dev, lot_number in rows:
         aging = max(0, (today - wo.assigned_at.date()).days) if wo.assigned_at else 0
         items.append({
@@ -776,7 +811,8 @@ async def l3l4_list(request: Request,
         "request": request, "current_user": current_user,
         "items": items, "total": len(items), "full_queue": full_queue,
         "pna_map": await _pna_map(db, [it["device_id"] for it in items]),
-        "cust_return_ids": await _customer_return_ids(db, [dev.id for _w, dev, _l in rows]),
+        "cust_return_ids": await _customer_return_ids(db, [dev.id for _w, dev, _l in rows] + [d.id for d in unassigned]),
+        "unassigned_count": len(unassigned),
         "parts_badges": await parts_badge_map(db, [it["device_id"] for it in items]),
     })
 

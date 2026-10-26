@@ -24,6 +24,7 @@ from models.master import MasterData
 from services.audit_engine import audit
 from services.notifications import create_notification
 from utils.warranty import warranty_status_for_sale
+from utils.master_data import entity_values
 
 router = APIRouter(tags=["transfers"], dependencies=[Depends(verify_csrf)])
 allowed = require_roles(UserRole.admin, UserRole.inventory_manager,
@@ -215,7 +216,7 @@ def _parse_simple_date(s: str):
         return None
 
 
-def _transfers_list_filters(q, transfer_type, transferred_by, location_id, date_from, date_to):
+def _transfers_list_filters(q, transfer_type, transferred_by, location_id, date_from, date_to, entity=""):
     """Filter clauses shared by the /transfers page and its CSV export, so
     export can never drift from what the table is showing.
 
@@ -239,6 +240,9 @@ def _transfers_list_filters(q, transfer_type, transferred_by, location_id, date_
             w.append(StockTransfer.transfer_type == transfer_type)
     if transferred_by:
         w.append(StockTransfer.transferred_by == transferred_by)
+    if entity:
+        # Device's live Entity (2026-10-26) — the query outer-joins Device.
+        w.append(Device.entity == entity)
     if location_id:
         try:
             w.append(StockTransfer.to_location_id == uuid.UUID(location_id))
@@ -253,7 +257,7 @@ def _transfers_list_filters(q, transfer_type, transferred_by, location_id, date_
     return w
 
 
-async def _transfers_list_rows(db, q, transfer_type, transferred_by, location_id, date_from, date_to):
+async def _transfers_list_rows(db, q, transfer_type, transferred_by, location_id, date_from, date_to, entity=""):
     """StockTransfer rows plus a LIVE-joined Lot Number and current Stage —
     StockTransfer.lot_number/product_stage are denormalized snapshots taken
     once at transfer-creation time, so a device whose lot lookup missed at
@@ -261,10 +265,10 @@ async def _transfers_list_rows(db, q, transfer_type, transferred_by, location_id
     values forever even though the device has since changed. Prefer the
     live join for both."""
     stmt = (
-        select(StockTransfer, Lot.lot_number, Device.current_stage)
+        select(StockTransfer, Lot.lot_number, Device.current_stage, Device.entity)
         .outerjoin(Device, StockTransfer.device_id == Device.id)
         .outerjoin(Lot, Device.lot_id == Lot.id)
-        .where(*_transfers_list_filters(q, transfer_type, transferred_by, location_id, date_from, date_to))
+        .where(*_transfers_list_filters(q, transfer_type, transferred_by, location_id, date_from, date_to, entity))
         .order_by(desc(StockTransfer.transfer_date))
     )
     return (await db.execute(stmt)).all()
@@ -279,14 +283,16 @@ async def list_transfers(
     location_id: str = "",
     date_from: str = "",
     date_to: str = "",
+    entity: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    rows = await _transfers_list_rows(db, q, transfer_type, transferred_by, location_id, date_from, date_to)
+    rows = await _transfers_list_rows(db, q, transfer_type, transferred_by, location_id, date_from, date_to, entity)
     transfers = []
     name_map = await _user_display_name_map(
-        db, [v for t, _, _ in rows for v in (t.transferred_by, t.received_by)])
-    for t, live_lot_number, live_stage in rows:
+        db, [v for t, *_ in rows for v in (t.transferred_by, t.received_by)])
+    for t, live_lot_number, live_stage, live_entity in rows:
+        t._display_entity = live_entity or ""
         t._display_lot_number = live_lot_number or t.lot_number or "—"
         t._display_transferred_by = name_map.get(t.transferred_by, t.transferred_by)
         t._display_received_by = name_map.get(t.received_by, t.received_by)
@@ -319,6 +325,7 @@ async def list_transfers(
         "location_id": location_id, "storage_locations": storage_locations,
         "location_by_id": location_by_id, "zone_labels": ZONE_LABELS,
         "date_from": date_from, "date_to": date_to,
+        "entity": entity, "entity_options": await entity_values(db),
     })
 
 
@@ -363,6 +370,7 @@ async def export_transfers(
     location_id: str = "",
     date_from: str = "",
     date_to: str = "",
+    entity: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
@@ -372,18 +380,18 @@ async def export_transfers(
     import io as _io
     from datetime import date as _date
 
-    rows = await _transfers_list_rows(db, q, transfer_type, transferred_by, location_id, date_from, date_to)
+    rows = await _transfers_list_rows(db, q, transfer_type, transferred_by, location_id, date_from, date_to, entity)
     storage_locations = (await db.execute(select(StorageLocation))).scalars().all()
     location_by_id = {str(loc.id): loc.unit_id for loc in storage_locations}
     name_map = await _user_display_name_map(
-        db, [v for t, _, _ in rows for v in (t.transferred_by, t.received_by)])
+        db, [v for t, *_ in rows for v in (t.transferred_by, t.received_by)])
 
     # From / To (2026-10-22): Location IDs, not the free-text warehouse names.
     #   From = the tag's location just before this movement — its latest
     #          DeviceLocationLog entry dated before the transfer (a movement
     #          stamps transfer_date first, then logs the new location).
     #   To   = the movement's destination; when it set none, From (unchanged).
-    dev_ids = list({t.device_id for t, _l, _s in rows if t.device_id})
+    dev_ids = list({t.device_id for t, *_ in rows if t.device_id})
     logs_by_dev: dict = {}
     for i in range(0, len(dev_ids), 20000):
         for did, lid, at in (await db.execute(
@@ -403,10 +411,10 @@ async def export_transfers(
 
     buf = _io.StringIO()
     w = _csv.writer(buf)
-    w.writerow(["Date", "Location ID", "Type", "Tag Number", "Make / Model", "Quantity",
+    w.writerow(["Date", "Location ID", "Type", "Tag Number", "Entity", "Make / Model", "Quantity",
                 "Lot", "From", "To", "Dept.", "Transferred By", "Received By", "Stage",
                 "Serial Number", "CPU", "GEN", "RAM", "STORAGE"])
-    for t, live_lot_number, live_stage in rows:
+    for t, live_lot_number, live_stage, live_entity in rows:
         _from_loc = _loc_before(t)
         _to_loc = (location_by_id.get(str(t.to_location_id), "") if t.to_location_id else "") or _from_loc
         stage_label = STAGE_LABELS.get(live_stage, live_stage.value) if live_stage else (t.product_stage or "")
@@ -416,6 +424,7 @@ async def export_transfers(
             location_by_id.get(str(t.to_location_id), "") if t.to_location_id else "",
             transfer_type_label(t.transfer_type),
             t.barcode or "",
+            live_entity or "",
             f"{t.make or ''} {t.model or ''}".strip(),
             t.quantity if t.quantity is not None else "",
             live_lot_number or t.lot_number or "",

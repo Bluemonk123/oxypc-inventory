@@ -19,6 +19,14 @@
       <input type="text" name="q" class="form-control form-control-sm" title="Search Tag" placeholder="Search Tag Number..." value="{{ q }}">
     </div>
     <div>
+      <select name="entity" class="form-select form-select-sm" title="Entity">
+        <option value="">All Entities</option>
+        {% for e in entity_options %}
+        <option value="{{ e }}" {% if entity == e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
       <select name="transfer_type" class="form-select form-select-sm" title="Transfer Type">
         <option value="">All Types</option>
         {% for t in master_options('transfer_type') %}
@@ -65,7 +73,7 @@
     {% endif %}
     {% if can(current_user, 'transfers', 'add') %}<a href="/transfers/new" class="btn btn-sm btn-success text-nowrap"><i class="bi bi-plus-circle me-1"></i>New Transfer</a>{% endif %}
     <a {% if not can(current_user, 'transfers', 'export') %}hidden {% endif %}id="exportCsvLink" class="btn btn-sm btn-outline-success text-nowrap"
-       href="/transfers/export?q={{ q | urlencode }}&transfer_type={{ transfer_type | urlencode }}&transferred_by={{ transferred_by | urlencode }}&location_id={{ location_id | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
+       href="/transfers/export?q={{ q | urlencode }}&transfer_type={{ transfer_type | urlencode }}&transferred_by={{ transferred_by | urlencode }}&location_id={{ location_id | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}&entity={{ entity | urlencode }}">
       <i class="bi bi-download me-1"></i>Export
     </a>
     </div>
@@ -107,6 +115,7 @@
               {% if t.barcode %}
               <a href="/devices/{{ t.barcode }}" class="font-monospace fw-semibold text-decoration-none">{{ t.barcode }}</a>
               {% else %}—{% endif %}
+              {% if t._display_entity %}<div class="text-muted" style="font-size:.75rem;">{{ t._display_entity }}</div>{% endif %}
             </td>
             <td class="font-monospace text-muted">
               {{ location_by_id[t.to_location_id | string].unit_id if t.to_location_id and (t.to_location_id | string) in location_by_id else '—' }}
