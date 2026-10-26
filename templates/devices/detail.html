@@ -1082,6 +1082,10 @@
           .then(function(r) { return r.json(); })
           .then(function(d) {
             if (!d || !d.ok) throw new Error((d && d.error) || 'save failed');
+            // Success popup (2026-10-26) — same top-right toast as Remove All PNA.
+            var pn = cb.dataset.partName || 'Part';
+            if (window.showTopToast) window.showTopToast('success',
+              cb.checked ? pn + ' marked as PNA on {{ device.barcode }}.' : 'PNA removed from ' + pn + ' on {{ device.barcode }}.');
           })
           .catch(function(e) {
             cb.checked = !cb.checked;          // put the tick back where it was

@@ -16,8 +16,6 @@
       <div class="card-header bg-transparent d-flex flex-wrap align-items-center justify-content-between gap-2">
         <span class="fw-semibold">L3/L4 Work Orders</span>
         <div class="d-flex flex-wrap align-items-center gap-2">
-          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
-            <i class="bi bi-clock-history me-1"></i>Search Tags</button>
           {# Yes/No filters in the card header (2026-10-22), same place as L1/L2's. #}
           <select id="l34AsIsFilter" class="form-select form-select-sm" style="width:120px" title="As-Is">
             <option value="">As-Is: All</option><option value="1">As-Is: Yes</option><option value="0">As-Is: No</option>
@@ -35,6 +33,9 @@
           <button {% if not can(current_user, 'repair_l3', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l34ExportBtn"
                   title="Export the rows shown (current filters / search) to CSV">
             <i class="bi bi-download me-1"></i>Export (<span id="l34ExportBtnCount">0</span>)</button>
+          {# Search Tags after Export (2026-10-26). #}
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
+            <i class="bi bi-clock-history me-1"></i>Search Tags</button>
         </div>
       </div>
       <div class="card-body p-0">

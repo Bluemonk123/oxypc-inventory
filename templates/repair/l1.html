@@ -36,11 +36,11 @@
       <div class="card-header bg-transparent d-flex flex-wrap align-items-center justify-content-between gap-2">
         <span class="fw-semibold">Devices in L1/L2</span>
         <div class="d-flex flex-wrap align-items-center gap-2">
-          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
-            <i class="bi bi-clock-history me-1"></i>Search Tags</button>
-          <input type="text" id="l1SearchBox" class="form-control form-control-sm"
+          {# Search box + Lot filter hidden (2026-10-26) — left in the DOM empty so
+             applyL1Filters keeps working; the table's own search still filters. #}
+          <input type="text" id="l1SearchBox" class="form-control form-control-sm d-none"
                  style="width:180px" placeholder="Search Tag / GRN / Model">
-          <select id="l1LotFilter" class="form-select form-select-sm" style="width:150px">
+          <select id="l1LotFilter" class="form-select form-select-sm d-none" style="width:150px">
             <option value="">All Lots</option>
             {% set seen_lots = [] %}
             {% for device, lot_number in devices %}
@@ -69,6 +69,9 @@
           <button {% if not can(current_user, 'repair_l1', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l1ExportBtn"
                   title="Export the rows shown (current filters / search) to CSV">
             <i class="bi bi-download me-1"></i>Export (<span id="l1ExportBtnCount">0</span>)</button>
+          {# Search Tags after Export (2026-10-26). #}
+          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
+            <i class="bi bi-clock-history me-1"></i>Search Tags</button>
         </div>
       </div>
       {# No .table-responsive wrapper — initGlobalTable's own scrollX
