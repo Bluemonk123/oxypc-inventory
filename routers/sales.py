@@ -436,10 +436,12 @@ async def ready_list_data(
         cells = [
             (f'<input type="checkbox" class="form-check-input readyChk" value="{esc(d.barcode)}" '
              f'data-serial="{esc(d.serial_no or "")}">'),
-            (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="text-decoration-none"><code class="fw-bold">{esc(d.barcode)}</code></a>'
+            # Tag Number cell in the All Inventory style (2026-10-27): bold
+            # monospace link, entity as small grey text underneath ("—" if none).
+            (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="font-monospace fw-bold text-decoration-none">{esc(d.barcode)}</a>'
              + touch_badge_html(d.touch_type) + flag_badge_html(d)
              + parts_badges.get(did, '') + '</span>'
-             + (f'<br><span class="badge bg-info text-dark">{esc(d.entity)}</span>' if d.entity else '')),
+             + f'<div style="color:#999999;font-size:12px;">{esc(d.entity) if d.entity else "—"}</div>'),
             (f'<a href="/devices?lot={esc(lot_number)}" class="btn btn-sm py-0 px-2 small text-decoration-none" '
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),
             f'<span class="font-monospace">{esc(loc_name)}</span>' if loc_name else '<span class="text-muted">—</span>',
@@ -563,6 +565,16 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
                 ram_gb or 0, storage_gb or 0, (storage_type or "").strip(),
                 (generation or "").strip())
 
+    # Entity short names for the Model Summary entity pills (2026-10-27).
+    _ENTITY_SHORT = {"oxypc computers": "OXY", "renew circuits": "RC", "deshwal": "DES"}
+    _ENTITY_ORDER = ["OXY", "RC", "DES", "UN"]
+
+    def _entity_short(name):
+        n = (name or "").strip()
+        if not n:
+            return "UN"                       # no entity set = Unassigned
+        return _ENTITY_SHORT.get(n.lower()) or n[:3].upper()
+
     def _build_model_summary(rows):
         summary: dict = {}
         for device, lot_number, buying_price, lot_qty, selling_price in rows:
@@ -584,12 +596,15 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
                 "storage": (f"{key[4]} GB" + (f" {key[5]}" if key[5] else "")) if key[4] else "—",
                 "total_count": 0, "total_purchase_price": 0.0,
                 "min_total": 0.0, "min_units": [], "barcodes": [], "grade_counts": {},
-                "open_count": 0, "blocked_count": 0,
+                "open_count": 0, "blocked_count": 0, "entity_counts": {},
             })
             g["total_count"] += 1
             g["blocked_count" if _is_held(device) else "open_count"] += 1
             grade = getattr(device.grade, "value", device.grade) if device.grade else ""
             g["grade_counts"][grade] = g["grade_counts"].get(grade, 0) + 1
+            ent = (device.entity or "").strip()
+            ec = g["entity_counts"].setdefault(_entity_short(ent), [0, ent or "Unassigned"])
+            ec[0] += 1
             g["total_purchase_price"] += unit_cost
             if tag_min is not None:
                 g["min_total"] += tag_min
@@ -602,6 +617,12 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
             g["min_missing"] = g["total_count"] - len(g["min_units"])
             # Grades in fixed order (A, B, C, D, E, then no grade), only
             # the ones this configuration has: [(label, count, badge class)].
+            # Entity pills: OXY, RC, DES, UN first, then any other entity —
+            # [(short, count, full name)].
+            ecs = g.pop("entity_counts")
+            g["entities"] = sorted(
+                ((k, v[0], v[1]) for k, v in ecs.items()),
+                key=lambda e: (_ENTITY_ORDER.index(e[0]) if e[0] in _ENTITY_ORDER else 99, e[0]))
             gc = g.pop("grade_counts")
             g["grades"] = [
                 (label, gc[code], cls) for code, label, cls in _SUMMARY_GRADES if gc.get(code)

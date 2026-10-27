@@ -96,10 +96,19 @@
                  data-model="{{ g.model }}" data-make="{{ g.make }}"
                  data-barcodes='{{ g.barcodes | tojson }}'></td>
       {% endif %}
-      {# Export this configuration's tags — same file as All Inventory's export (2026-10-22). #}
-      <td class="text-nowrap">{% if can(current_user, 'sales', 'export') %}<button type="button" class="btn btn-sm btn-link text-success p-0 me-1 align-baseline ms-export-btn"
+      {# Model cell (2026-10-27): model name (semi-bold navy) on top; below it the
+         export icon, a separator, then tag counts per entity (forest green,
+         separated by thin lines): OXY = OxyPC Computers, RC = Renew Circuits,
+         DES = Deshwal, UN = none set. The icon exports this configuration's
+         tags in the All Inventory format. #}
+      {% set _can_exp = can(current_user, 'sales', 'export') %}
+      <td class="text-nowrap"><span class="fw-semibold" style="color:#0e3a7a">{{ g.model }}</span>
+        {% if _can_exp or g.entities %}<div class="d-flex flex-nowrap align-items-center mt-1 small fw-semibold" style="color:#129042">
+          {% if _can_exp %}<button type="button" class="btn btn-sm btn-link text-success p-0 lh-1 ms-export-btn"
                   title="Export these {{ g.total_count }} tag(s) — All Inventory format"
-                  data-barcodes='{{ g.barcodes | tojson }}'><i class="bi bi-download"></i></button>{% endif %}{{ g.model }}</td>
+                  data-barcodes='{{ g.barcodes | tojson }}'><i class="bi bi-download"></i></button>{% if g.entities %}<span class="vr mx-2"></span>{% endif %}{% endif %}
+          {% for short, cnt, full in g.entities %}{% if not loop.first %}<span class="vr mx-2"></span>{% endif %}<span title="{{ full }}">{{ short }} - {{ cnt }}</span>{% endfor %}
+        </div>{% endif %}</td>
       <td>{{ g.make }}</td>
       <td>{{ g.device_type }}</td>
       <td>{{ g.cpu }}</td>
@@ -120,8 +129,9 @@
         {% endif %}
       </td>
       {# The same tags split by grade (A, B, C, D, E, NG). #}
-      <td>
-        <div class="d-flex flex-wrap gap-1">
+      <td class="text-nowrap">
+        {# Grades on one line (2026-10-27). #}
+        <div class="d-flex flex-nowrap gap-1">
           {% for label, count, cls in g.grades %}
           <span class="badge {{ cls }} ms-grade" data-grade="{{ label }}" data-count="{{ count }}" title="{{ 'No grade' if label == 'NG' else 'Grade ' ~ label }}">{{ label }} {{ count }}</span>
           {% endfor %}
@@ -1236,7 +1246,7 @@ function summaryFooter() {
       + '<div class="d-flex gap-1 flex-nowrap mt-1"><span class="badge rounded-pill bg-success">Open ' + open
       + '</span><span class="badge rounded-pill bg-danger">Blocked ' + blocked + '</span></div>'
     : '<span class="badge bg-primary">' + qty + '</span>');
-  foot.find('.ms-total-grades').html('<div class="d-flex flex-wrap gap-1">' +
+  foot.find('.ms-total-grades').html('<div class="d-flex flex-nowrap gap-1">' +
     SUMMARY_GRADE_ORDER.filter(function (g) { return grades[g]; }).map(function (g) {
       return '<span class="' + cls[g] + '">' + g + ' ' + grades[g] + '</span>';
     }).join('') + '</div>');
