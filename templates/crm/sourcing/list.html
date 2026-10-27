@@ -3,34 +3,6 @@
 {% block page_title %}Sourcing Deals{% endblock %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
-  <form method="get" class="d-flex gap-2 flex-wrap">
-    <input type="text" name="q" value="{{ q }}" placeholder="Search deals…" class="form-control form-control-sm" style="width:200px">
-    <select name="stage" class="form-select form-select-sm" style="width:150px">
-      <option value="">All Stages</option>
-      {% for val, label in sourcing_stages %}
-      <option value="{{ val }}" {% if stage==val %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-    <select name="source_type" class="form-select form-select-sm" style="width:150px">
-      <option value="">All Source Types</option>
-      {% for val, label in source_types %}
-      <option value="{{ val }}" {% if source_type==val %}selected{% endif %}>{{ label }}</option>
-      {% endfor %}
-    </select>
-    <select name="priority" class="form-select form-select-sm" style="width:120px">
-      <option value="">All Priority</option>
-      {% for p in priorities %}
-      <option value="{{ p }}" {% if priority==p %}selected{% endif %}>{{ p | title }}</option>
-      {% endfor %}
-    </select>
-    <button class="btn btn-sm btn-outline-primary">Filter</button>
-    {% if q or stage or source_type or priority %}
-    <a href="/crm/sourcing" class="btn btn-sm btn-outline-secondary">Clear</a>
-    {% endif %}
-  </form>
-  {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle me-1"></i>New Deal</a>{% endif %}
-</div>
 
 <!-- Summary tiles: dark tile cards (2026-10-27, .lt-tiles-row.lt-dark in app.css) -->
 <div class="lt-tiles-row lt-dark">
@@ -65,7 +37,39 @@
 </div>
 
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent py-2 fw-semibold"><i class="bi bi-box-arrow-in-down me-2"></i>Your Supplier Deals</div>
+  {# Filters and the Add button sit in the card header, right of the title
+     (2026-10-27, Pankaj); Add button in primary. #}
+  <div class="card-header bg-transparent py-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold text-nowrap"><i class="bi bi-box-arrow-in-down me-2"></i>Your Supplier Deals</span>
+    <div class="d-flex gap-2 flex-wrap align-items-center ms-auto">
+    <form method="get" class="d-flex gap-2 flex-wrap align-items-center mb-0">
+      <input type="text" name="q" value="{{ q }}" placeholder="Search deals…" class="form-control form-control-sm" style="width:200px">
+      <select name="stage" class="form-select form-select-sm" style="width:150px">
+        <option value="">All Stages</option>
+        {% for val, label in sourcing_stages %}
+        <option value="{{ val }}" {% if stage==val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="source_type" class="form-select form-select-sm" style="width:150px">
+        <option value="">All Source Types</option>
+        {% for val, label in source_types %}
+        <option value="{{ val }}" {% if source_type==val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+      <select name="priority" class="form-select form-select-sm" style="width:120px">
+        <option value="">All Priority</option>
+        {% for p in priorities %}
+        <option value="{{ p }}" {% if priority==p %}selected{% endif %}>{{ p | title }}</option>
+        {% endfor %}
+      </select>
+      <button class="btn btn-sm btn-outline-primary">Filter</button>
+      {% if q or stage or source_type or priority %}
+      <a href="/crm/sourcing" class="btn btn-sm btn-outline-secondary">Clear</a>
+      {% endif %}
+    </form>
+    {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-plus-circle me-1"></i>New Deal</a>{% endif %}
+    </div>
+  </div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0" id="sourcingTable">

@@ -108,11 +108,12 @@
       <td class="text-nowrap">{{ g.storage }}</td>
       <td class="text-nowrap" data-order="{{ g.total_count }}">
         {% if selectable %}
-        {# Total (outline) then Open (filled pill) on one line (2026-10-22).
-           Blocked is hidden; filter Availability = Blocked to see those. #}
-        <div class="d-flex gap-1 flex-nowrap">
-          <span class="badge border border-primary text-primary bg-transparent" title="Total Quantity">Total {{ g.total_count }}</span>
+        {# Total (outline) on top; Open and Blocked pills together on the line
+           below (2026-10-27). Blocked = Block Tags hold or assigned to a user. #}
+        <span class="badge border border-primary text-primary bg-transparent" title="Total Quantity">Total {{ g.total_count }}</span>
+        <div class="d-flex gap-1 flex-nowrap mt-1">
           <span class="badge rounded-pill bg-success" title="Open (not blocked)">Open {{ g.open_count }}</span>
+          <span class="badge rounded-pill bg-danger" title="Blocked (Block Tags hold or assigned to a user)">Blocked {{ g.blocked_count }}</span>
         </div>
         {% else %}
         <span class="badge bg-primary">{{ g.total_count }}</span>
@@ -175,12 +176,12 @@
 <ul class="nav nav-tabs ready-tabs" id="readyTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#readyTagsPane" type="button" role="tab">
-      <i class="bi bi-upc-scan me-1"></i>Ready for Sale Tags <span class="badge rounded-pill bg-success ms-1">{{ ready_tag_count }}</span>
+      <i class="bi bi-upc-scan me-1"></i>Ready for Sale - Tags <span class="badge rounded-pill bg-success ms-1">{{ ready_tag_count }}</span>
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#readyModelSumPane" type="button" role="tab">
-      <i class="bi bi-collection me-1"></i>Ready for Sale Model Summary <span class="badge rounded-pill bg-secondary ms-1" id="msCountBadge">{{ model_summary_ready|length }}</span>
+      <i class="bi bi-collection me-1"></i>Ready for Sale - Model Summary <span class="badge rounded-pill bg-secondary ms-1" id="msCountBadge">{{ model_summary_ready|length }}</span>
     </button>
   </li>
 </ul>
@@ -192,14 +193,19 @@
        it); Search re-runs the table, Reset clears all three. The scan/search
        box stays the Global Table's own search box (#readyScanInput). #}
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <span class="fw-semibold"><i class="bi bi-upc-scan me-2"></i>Ready for Sale Tags</span>
+      <span class="fw-semibold">Tag Wise Table</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2" id="readyFilterBar">
+      {# Order (2026-10-27): Entity, Device Type, Grade, Touch Type, Availability. #}
       {{ ms.multiselect_inline('entity', 'Entity', entity_options, '') }}
-      {{ avail_select('readyAvail') }}
-      {{ touch_select('readyTouch') }}
       {{ ms.multiselect_inline('device_type', 'Device Types', device_type_options, '') }}
-      <button type="button" id="readyFilterSearch" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
-      <button type="button" id="readyFilterReset" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</button>
+      {{ ms.multiselect_inline('grade', 'Grades', summary_grade_options, '') }}
+      {{ touch_select('readyTouch') }}
+      {{ avail_select('readyAvail') }}
+      {# Search / Reset removed (2026-10-27): every filter already reloads the
+         table as soon as it changes. #}
+      {# Export (2026-10-27): every tag matching the filters above, in the
+         All Inventory export format. #}
+      {% if can(current_user, 'sales', 'export') %}<button type="button" id="readyExportBtn" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>{% endif %}
       </div>
     </div>
     {# Bulk buttons: moved into the table toolbar, just before the search box,
@@ -208,12 +214,12 @@
       <button type="button" id="multiRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Multi-Request with selected (<span id="readySelCount">0</span>)
       </button>
-      <button {% if not can(current_user, 'sales', 'add') %}hidden {% endif %}type="button" id="multiSellBtn" class="btn btn-sm btn-outline-success" disabled>
+      <button {% if not can(current_user, 'sales', 'add') %}hidden {% endif %}type="button" id="multiSellBtn" class="btn btn-sm btn-outline-success d-none" disabled>
         <i class="bi bi-cart-plus me-1"></i>Multi-Sell (<span id="readySelCount2">0</span>)
       </button>
       {# New Bulk Sale: same selection as Multi-Sell, opens the separate New Tag Sale
          page (per-tag prices, no quantity cap). Multi-Sell above is unchanged. #}
-      <button {% if not can(current_user, 'sales', 'add') %}hidden {% endif %}type="button" id="newBulkSaleBtn" class="btn btn-sm btn-success" disabled
+      <button {% if not can(current_user, 'sales', 'add') %}hidden {% endif %}type="button" id="newBulkSaleBtn" class="btn btn-sm btn-success d-none" disabled
               title="Open the New Tag Sale page with the selected tags">
         <i class="bi bi-cart-plus me-1"></i>New Bulk Sale (<span id="readySelCount4">0</span>)
       </button>
@@ -221,12 +227,12 @@
         <i class="bi bi-upload me-1"></i>Upload Tags
       </button>
       {% if can(current_user, 'sales', 'pricing') %}
-      <button type="button" id="bulkSetPriceBtn" class="btn btn-sm btn-outline-dark" disabled>
+      <button type="button" id="bulkSetPriceBtn" class="btn btn-sm btn-outline-dark d-none" disabled>
         <i class="bi bi-tag me-1"></i>Set Price (<span id="readySelCount3">0</span>)
       </button>
       {% else %}
       {# Hidden stand-in so the page script's getElementById('bulkSetPriceBtn') still finds an element. #}
-      <button type="button" id="bulkSetPriceBtn" class="d-none" disabled><span id="readySelCount3">0</span></button>
+      <button type="button" id="bulkSetPriceBtn" class="d-none" hidden disabled><span id="readySelCount3">0</span></button>
       {% endif %}
     </div>
   <div class="card-body px-0 pb-0">
@@ -257,13 +263,16 @@
   <div class="tab-pane fade" id="readyModelSumPane" role="tabpanel">
   <div class="card">
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <span class="fw-semibold"><i class="bi bi-collection me-2"></i>Ready for Sale Model Summary</span>
+      <span class="fw-semibold">Model Wise Table</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+      {# Order (2026-10-27): Entity, Device Type, Grade, Touch Type, Availability. #}
       {{ ms.multiselect_inline('ms_entity', 'Entity', entity_options, f.ms_entity) }}
-      {{ avail_select('msAvail', f.ms_avail) }}
-      {{ touch_select('msTouch', f.ms_touch) }}
-      {{ ms.multiselect_inline('ms_grade', 'Grades', summary_grade_options, f.ms_grade) }}
       {{ ms.multiselect_inline('ms_dtype', 'Device Types', device_type_options, f.ms_dtype) }}
+      {{ ms.multiselect_inline('ms_grade', 'Grades', summary_grade_options, f.ms_grade) }}
+      {{ touch_select('msTouch', f.ms_touch) }}
+      {{ avail_select('msAvail', f.ms_avail) }}
+      {# Export (2026-10-27): the tags of every row the summary shows. #}
+      {% if can(current_user, 'sales', 'export') %}<button type="button" id="msExportAllBtn" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>{% endif %}
       <button type="button" id="modelSumRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Request Selected (<span id="modelSumSelCount">0</span>)
       </button>
@@ -770,6 +779,7 @@ $(document).ready(function(){
         d.touch = (document.getElementById('readyTouch') || {}).value || '';
         d.device_type = (document.getElementById('ms_val_device_type') || {}).value || '';
         d.availability = (document.getElementById('readyAvail') || {}).value || '';
+        d.grade = (document.getElementById('ms_val_grade') || {}).value || '';
       },
       dataSrc: function (json) { return json.data; },
     },
@@ -812,23 +822,10 @@ $(document).ready(function(){
   document.getElementById('ms_val_device_type').addEventListener('ms:change', function () {
     readyDt.ajax.reload(null, true);
   });
-  // Global filter bar: Search re-runs the table; Reset clears Touch, Device
-  // Types and Entity together and reloads once.
-  document.getElementById('readyFilterSearch').addEventListener('click', function () {
+  document.getElementById('ms_val_grade').addEventListener('ms:change', function () {
     readyDt.ajax.reload(null, true);
   });
-  document.getElementById('readyFilterReset').addEventListener('click', function () {
-    document.getElementById('readyTouch').value = '';
-    document.getElementById('readyAvail').value = '';
-    [['device_type', 'Device Types'], ['entity', 'Entity']].forEach(function (f) {
-      var hid = document.getElementById('ms_val_' + f[0]);
-      if (hid) hid.value = '';
-      document.querySelectorAll('.ms-filter[data-ms="' + f[0] + '"] .ms-opt').forEach(function (c) { c.checked = false; });
-      var lbl = document.querySelector('#ms_btn_' + f[0] + ' .ms-label');
-      if (lbl) lbl.textContent = 'All ' + f[1];
-    });
-    readyDt.ajax.reload(null, true);
-  });
+  // (Search / Reset buttons removed 2026-10-27 — the filters auto-apply.)
 
 });
 var _dm = document.getElementById('dispatchModal');
@@ -925,6 +922,10 @@ function updateReadySel(){
   $('#multiRequestBtn').prop('disabled', n === 0);
   $('#multiSellBtn').prop('disabled', n === 0);
   $('#bulkSetPriceBtn').prop('disabled', n === 0);
+  // Multi-Sell, New Bulk Sale and Set Price only show once a tag is ticked
+  // (2026-10-27). Buttons the user has no permission for stay hidden via
+  // their own `hidden` attribute.
+  $('#multiSellBtn, #newBulkSaleBtn, #bulkSetPriceBtn').toggleClass('d-none', n === 0);
 }
 
 // ── Selling — always goes to the full New Sale page ──
@@ -1208,7 +1209,7 @@ document.getElementById('asIsLotOpenForm').addEventListener('submit', function (
 
 // ── Model Summary: checkboxes + per-row Request modal + Request Selected ──
 var SUMMARY_OPTS = {
-  readyModelSummaryTable: {pageLength:12, order:[[8,'desc']], language:{emptyTable:'No Ready for Sale tags.'}, columnDefs:[{orderable:false, targets:[0,9,11]}, {visible:false, targets:[0]}]},
+  readyModelSummaryTable: {pageLength:12, order:[[8,'desc']], language:{emptyTable:'No Ready for Sale tags.', searchPlaceholder:'Model/Make/Type/CPU/RAM/Storage'}, columnDefs:[{orderable:false, targets:[0,9,11]}, {visible:false, targets:[0]}]},
   asIsModelSummaryTable:  {pageLength:12, order:[[7,'desc']], language:{emptyTable:'No As-Is tags.'}, columnDefs:[{orderable:false, targets:[8,10]}]},
 };
 // Total row: sums Total Quantity, each Grade and Min Selling Price over every
@@ -1231,8 +1232,9 @@ function summaryFooter() {
   });
   var foot = $(api.table().footer());
   foot.find('.ms-total-qty').html(split
-    ? '<div class="d-flex gap-1 flex-nowrap"><span class="badge border border-primary text-primary bg-transparent">Total ' + qty
-      + '</span><span class="badge rounded-pill bg-success">Open ' + open + '</span></div>'
+    ? '<span class="badge border border-primary text-primary bg-transparent">Total ' + qty + '</span>'
+      + '<div class="d-flex gap-1 flex-nowrap mt-1"><span class="badge rounded-pill bg-success">Open ' + open
+      + '</span><span class="badge rounded-pill bg-danger">Blocked ' + blocked + '</span></div>'
     : '<span class="badge bg-primary">' + qty + '</span>');
   foot.find('.ms-total-grades').html('<div class="d-flex flex-wrap gap-1">' +
     SUMMARY_GRADE_ORDER.filter(function (g) { return grades[g]; }).map(function (g) {
@@ -1294,6 +1296,38 @@ function refreshSummaryTable(id, badgeId){
     var el = document.getElementById(id);
     if (el) el.addEventListener('ms:change', x[3]);
   });
+});
+// Export buttons (2026-10-27). Both post Tag Numbers to All Inventory's
+// export (msExportForm), like the per-row export below.
+function postTagExport(tags) {
+  if (!tags.length) { alert('No tags match the current filters.'); return; }
+  var f = document.getElementById('msExportForm');
+  $(f).find('input[name="barcodes"]').remove();
+  tags.forEach(function (bc) { $('<input>').attr({ type: 'hidden', name: 'barcodes', value: bc }).appendTo(f); });
+  f.submit();
+}
+// Tags tab: every tag matching the filters (all pages), from the same
+// barcode list Select All uses.
+$(document).on('click', '#readyExportBtn', function () {
+  var btn = this, v = function (id) { return (document.getElementById(id) || {}).value || ''; };
+  var qs = new URLSearchParams({ entity: v('ms_val_entity'), touch: v('readyTouch'), device_type: v('ms_val_device_type'),
+                                 availability: v('readyAvail'), grade: v('ms_val_grade') });
+  btn.disabled = true;
+  fetch('/sales/ready/barcodes?' + qs.toString(), { credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (j) { postTagExport(j.barcodes || []); })
+    .catch(function () { alert('Could not prepare the export. Please try again.'); })
+    .finally(function () { btn.disabled = false; });
+});
+// Model Summary tab: the tags of every row the summary currently shows
+// (its filters and search, all pages).
+$(document).on('click', '#msExportAllBtn', function () {
+  var tags = [], rows;
+  try { rows = $('#readyModelSummaryTable').DataTable().rows({ search: 'applied' }).nodes(); } catch (e) { rows = document.querySelectorAll('#readyModelSummaryTable tbody tr'); }
+  $(rows).find('.ms-export-btn').each(function () {
+    try { tags = tags.concat(JSON.parse(this.getAttribute('data-barcodes') || '[]')); } catch (e) {}
+  });
+  postTagExport(Array.from(new Set(tags)));
 });
 // Model Summary row export: that row's tags in the All Inventory export format.
 // Delegated, so it keeps working after a filter swaps the table's rows.

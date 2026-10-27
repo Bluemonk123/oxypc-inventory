@@ -23,7 +23,7 @@ from fastapi.responses import StreamingResponse
 from database import get_db
 from utils.csv_decode import decode_csv_bytes
 from models.user import User, UserRole
-from models.device import Device, DeviceStage, StageMovement, STAGE_LABELS
+from models.device import Device, DeviceStage, DeviceGrade, StageMovement, STAGE_LABELS
 from models.lot import Lot
 from models.location import StorageLocation
 from models.as_is_lot_price import AsIsLotPrice
@@ -182,6 +182,22 @@ def _row_passes(device, touch: str, entities: list, dtypes: list | None = None) 
         return False
     return True
 
+def _grade_clause(grade: str):
+    """Grades filter for the Ready for Sale Tags table (2026-10-27): same
+    values as the Model Summary's (A..E, scrap, "NG" = no grade). None = no
+    filter."""
+    vals = _entity_values(grade)
+    if not vals:
+        return None
+    codes = [DeviceGrade(v) for v in vals if v in DeviceGrade._value2member_map_]
+    parts = []
+    if codes:
+        parts.append(Device.grade.in_(codes))
+    if "NG" in vals:
+        parts.append(Device.grade.is_(None))
+    return or_(*parts) if parts else None
+
+
 def _grade_passes(device, grades: set) -> bool:
     """Model Summary Grades filter: empty = every grade; "NG" = no grade set."""
     if not grades:
@@ -196,10 +212,12 @@ async def ready_list_barcodes(
     touch: str = "",
     device_type: str = "",
     availability: str = "",
+    grade: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(ready_allowed),
 ):
-    """Every ready-to-sale barcode, for "Select All" on the Ready to Sale table.
+    """Every ready-to-sale barcode, for "Select All" on the Ready to Sale table
+    (and, since 2026-10-27, the Tags tab's Export of the filtered tags).
 
     With client-side DataTables every row existed in the DOM regardless of
     page, so ticking Select All selected every ready-to-sale device, not just
@@ -218,6 +236,7 @@ async def ready_list_barcodes(
             *([_touch_clause(touch)] if _touch_clause(touch) is not None else []),
             *([_device_type_expr.in_(_entity_values(device_type))] if _entity_values(device_type) else []),
             *([_avail_clause(availability)] if _avail_clause(availability) is not None else []),
+            *([_grade_clause(grade)] if _grade_clause(grade) is not None else []),
         )
     )).scalars().all()
     return {"barcodes": [b for b in barcodes if b]}
@@ -231,6 +250,7 @@ async def ready_list_data(
     touch: str = "",
     device_type: str = "",
     availability: str = "",
+    grade: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(ready_allowed),
 ):
@@ -272,6 +292,8 @@ async def ready_list_data(
         entity_filter.append(_device_type_expr.in_(_entity_values(device_type)))
     if _avail_clause(availability) is not None:          # Open / Blocked
         entity_filter.append(_avail_clause(availability))
+    if _grade_clause(grade) is not None:                 # Grades (2026-10-27)
+        entity_filter.append(_grade_clause(grade))
 
     base = (
         select(Device, Lot.lot_number, Lot.buying_price, Lot.qty, Lot.selling_price)

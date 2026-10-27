@@ -80,7 +80,7 @@
             data-step="{{ key }}" data-label="{{ label }}"><i class="bi bi-upload"></i></button>{% endif %}
       </div>
     {%- endmacro %}
-    <div class="card border-0 shadow-sm mb-3">
+    <div class="card border-0 shadow-sm hdr-card mb-3">
       <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-diagram-3 me-1 text-primary"></i>Stage Progress</div>
       <div class="card-body pt-1">
         <ol class="sd-steps mb-3">
@@ -249,7 +249,7 @@
 
     <!-- Lot Card -->
     {% if lot %}
-    <div class="card border-0 shadow-sm mb-3" style="border-left:4px solid #0dcaf0 !important;">
+    <div class="card border-0 shadow-sm hdr-card mb-3" style="border-left:4px solid #0dcaf0 !important;">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-boxes me-1 text-info"></i>Linked Lot</span>
         <a href="/lots/{{ lot.id }}" class="btn btn-outline-info btn-sm py-0 px-2">
@@ -346,7 +346,7 @@
   <div class="col-xl-8">
 
     <!-- Deal Info (2026-10-22: top of the right column, four fields per row) -->
-    <div class="card border-0 shadow-sm mb-3">
+    <div class="card border-0 shadow-sm hdr-card mb-3">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i>Deal Info</span>
         <span class="badge bg-{{ stage_colors.get(deal.stage,'secondary') }}">
@@ -471,7 +471,7 @@
     </style>
     <!-- ═══ Pricing / Profitability Calculator ═══ -->
     {# Hidden for everyone (2026-10-27) — kept in the DOM because its script binds by id. #}
-    <div hidden class="card border-0 shadow-sm mb-3">
+    <div hidden class="card border-0 shadow-sm hdr-card mb-3">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center sd-acc collapsed"
            style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#calcBody"
            role="button" aria-expanded="false" aria-controls="calcBody">
@@ -566,7 +566,7 @@
 
     <!-- ═══ PO Line Items ═══ -->
     {% set csrf = request.cookies.get('csrf_token', '') %}
-    <div class="card border-0 shadow-sm mb-3">
+    <div class="card border-0 shadow-sm hdr-card mb-3">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-list-check me-1 text-primary"></i>PO Line Items ({{ deal_po_items|length }})</span>
         <div class="d-flex gap-1">
@@ -757,7 +757,7 @@
     {% endif %}
 
     <!-- Activity Timeline -->
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm hdr-card">
       <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-clock-history me-1 text-muted"></i>Activity Log</div>
       {# Log Activity (2026-10-27): inside Activity Log on one row — follow-up
          date, type, outcome, summary, button. Follow-up goes to the current

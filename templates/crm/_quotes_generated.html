@@ -15,7 +15,7 @@
    Permission module: the including page sets `nq_perm_module`; falls back
    to the candidate modules. #}
 {% set _qm = nq_perm_module if nq_perm_module is defined else ['crm_quotes', 'crm_sales_opp', 'crm_contacts'] %}
-<div class="card border-0 shadow-sm mb-3">
+<div class="card border-0 shadow-sm mb-3{% if qg_hdr_card %} hdr-card{% endif %}">
   <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
     <span class="fw-semibold"><i class="bi bi-file-earmark-ruled me-1 text-primary"></i>Quotes Generated ({{ quote_rows|length }})</span>
     <button {% if not can(current_user, _qm, 'add') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-primary" id="newQuoteBtn">

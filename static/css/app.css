@@ -581,14 +581,19 @@ fieldset:disabled .btn {
 /* Global Table card header: light sky blue with navy title. The card is tagged
    .gtable-card by initGlobalTable() (static/js/global-table.js). !important
    because these headers carry bg-transparent / bg-white utility classes. */
-.gtable-card > .card-header { background: #d9ebf6 !important; color: #0e3a7a; border-bottom: 1px solid #c0ddf0; }
+/* .hdr-card (2026-10-27): the same header on any plain card that is not a
+   Global Table — e.g. every card on the Supplier / Customer Deal pages. */
+.gtable-card > .card-header, .hdr-card > .card-header { background: #d9ebf6 !important; color: #0e3a7a; border-bottom: 1px solid #c0ddf0; }
 .gtable-card > .card-header > .fw-semibold, .gtable-card > .card-header > span,
-.gtable-card > .card-header > h5, .gtable-card > .card-header > h6 { color: #0e3a7a; }
+.gtable-card > .card-header > h5, .gtable-card > .card-header > h6,
+.hdr-card > .card-header > .fw-semibold, .hdr-card > .card-header > span,
+.hdr-card > .card-header > h5, .hdr-card > .card-header > h6 { color: #0e3a7a; }
 /* Outline buttons in a Global Table card header sit on plain white so they
    stand out on the blue header (2026-10-16). Beats the app-wide 5% tint
    below; hover/active/open keep Bootstrap's solid fill; outline-light (meant
    for dark backgrounds) is left alone. */
 .gtable-card > .card-header [class*="btn-outline-"]:not(.btn-outline-light):not(:hover):not(:active):not(.active):not(.show) { background-color: #fff; }
+.hdr-card > .card-header [class*="btn-outline-"]:not(.btn-outline-light):not(:hover):not(:active):not(.active):not(.show) { background-color: #fff; }
 
 /* App-wide small shadow (Bootstrap .shadow-sm, used on cards everywhere):
    was 0 .125rem .25rem rgba(0,0,0,.075). */
