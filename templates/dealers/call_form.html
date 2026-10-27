@@ -18,6 +18,12 @@
         </a>
       </div>
       <div class="card-body">
+        {# Dealer name with the company phone below it, both bold dark
+           (2026-10-27, Pankaj). #}
+        <div class="mb-3 pb-2 border-bottom">
+          <div class="fw-bold text-dark fs-6">{{ dealer.business_name }}</div>
+          {% if dealer.phone %}<div class="fw-bold text-dark"><i class="bi bi-telephone me-1"></i><a href="tel:{{ dealer.phone }}" class="text-dark text-decoration-none">{{ dealer.phone }}</a></div>{% endif %}
+        </div>
         <form method="post" action="{% if edit_call %}/dealers/{{ dealer.id }}/calls/{{ edit_call.id }}/edit{% else %}/dealers/{{ dealer.id }}/call{% endif %}">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
           <div class="row g-3">
