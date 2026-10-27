@@ -204,6 +204,67 @@ def _fmt(dt, f="%d-%m-%Y %H:%M"):
     return dt.strftime(f) if dt else ""
 
 
+# Stage tiles / Stage & Staff Summary (2026-10-27): WorkIDs grouped by the
+# stage each WorkID was created for (_wid_stage_value — the WorkID's stage
+# code, or its L3L4-/STRS- prefix). Not the table's Stage column: that comes
+# from Asset History and, for an open WorkID, can show the stage the tag came
+# FROM. Stages outside these groups are left out of the tiles; the summary
+# sheets list them under "Other".
+STAGE_GROUPS = [
+    ("l1l2", "L1/L2", ("l1", "l2"), "#0d6efd", "bi-tools"),
+    ("l3l4", "L3/L4", ("l3",), "#6f42c1", "bi-cpu"),
+    ("stress", "Stress", ("qc_check",), "#fd7e14", "bi-speedometer2"),
+    ("cosmetic", "Cosmetic", ("cosmetic_received", "cleaning", "putty", "dry_sanding", "masking",
+                              "painting", "water_sanding", "cosmetic_completed"), "#0aa2c0", "bi-droplet"),
+    ("final_qc", "Final QC", ("final_qc", "final_qc_pass_hold", "final_qc_fail_hold"), "#0F7A37", "bi-patch-check"),
+]
+_GROUP_BY_STAGE = {sv: key for key, _l, svs, _c, _i in STAGE_GROUPS for sv in svs}
+
+
+def _wid_stage_value(work_id, code, code_stage) -> str:
+    """Stage a WorkID was created for: the L3/L4 and Stress hand-off prefixes,
+    else the stage code stored on the WorkID."""
+    wid = work_id or ""
+    if wid.startswith("L3L4-"):
+        return "l3"
+    if wid.startswith("STRS-"):
+        return "qc_check"
+    st = code_stage.get((code or "").strip())
+    return st.value if st else ""
+
+
+def _stage_group(stage_value) -> str:
+    return _GROUP_BY_STAGE.get(stage_value or "", "other")
+
+
+def _is_done(status) -> bool:
+    return status == "completed"
+
+
+def _is_open(status) -> bool:
+    return status not in ("completed", "reassigned")
+
+
+def _stage_tile_counts_from_items(items) -> dict:
+    """{group: {"total", "assigned", "completed"}} over the loaded rows.
+    Assigned = still open (pending / in progress); Completed = completed.
+    Reassigned WorkIDs (only present with Show Reassigned) count in neither."""
+    out = {key: {"total": 0, "assigned": 0, "completed": 0} for key, *_ in STAGE_GROUPS}
+    for it in items:
+        g = out.get(_stage_group(it.get("wid_stage")))
+        if g is None:
+            continue
+        st = it.get("wo_status")
+        if _is_open(st):
+            g["assigned"] += 1
+        elif _is_done(st):
+            g["completed"] += 1
+        else:
+            continue
+        g["total"] += 1
+    return out
+
+
 def _rows_json(items) -> str:
     """The table's rows as compact JSON for the page's DataTable (2026-10-15).
 
@@ -304,6 +365,36 @@ async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, 
     ))).one()
     return {"open_workids": r[0], "closed_workids": r[1], "reassigned_workids": r[2],
             "open_tags": r[3], "ongoing_tags": r[4], "completed_tags": r[5], "total_pna": r[6]}
+
+
+async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, code_stage) -> dict:
+    """Stage tiles over EVERY matching WorkID when the table is capped
+    (same filters as _sql_tile_counts), grouped by the stage code stored on
+    the WorkID."""
+    q = _sql_filtered(full_stmt, stage_vals, cf, ct, exclude_admin, code_stage).with_only_columns(
+        WorkOrder.stage.label("sg"), WorkOrder.status.label("st"), WorkOrder.work_id.label("wid"),
+        Device.l1l2_status.label("l12"),
+    )
+    sub = q.subquery()
+    # The WorkID prefix (first 5 chars) marks the L3/L4 and Stress hand-off
+    # WorkIDs, whose stage the page reads from the prefix (see _HANDOFF_STAGE).
+    prefix = func.substr(sub.c.wid, 1, 5)
+    rows = (await db.execute(
+        select(sub.c.sg, sub.c.st, prefix, func.count()).group_by(sub.c.sg, sub.c.st, prefix)
+    )).all()
+    out = {key: {"total": 0, "assigned": 0, "completed": 0} for key, *_ in STAGE_GROUPS}
+    for code, st, prefix, n in rows:
+        g = out.get(_stage_group(_wid_stage_value(prefix, code, code_stage)))
+        if g is None:
+            continue
+        if _is_open(st):
+            g["assigned"] += n
+        elif _is_done(st):
+            g["completed"] += n
+        else:
+            continue
+        g["total"] += n
+    return out
 
 
 @router.get("/workid-status", response_class=HTMLResponse)
@@ -622,6 +713,9 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
             "brand": (dev.brand if dev else None),
             "stage_label": stage_label,
             "stage_value": stage_value,
+            # The stage the WorkID itself was created for (stage tiles and
+            # the export summaries, 2026-10-27) — same rule as the SQL count.
+            "wid_stage": _wid_stage_value(wo.work_id, wo.stage, _code_stage),
             # Effective status for the tiles: an open L1/L2 WorkID whose tag
             # shows "Repair Started" is ongoing even if the WorkID itself was
             # left "pending" (L1/L2 Start didn't update it before 2026-10-23).
@@ -751,6 +845,13 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
     }
     tile_counts["total_scrap"] = total_scrap
     tile_counts["total_cust_return"] = total_cust_return
+    # Stage tiles (2026-10-27): L1/L2, L3/L4, Stress, Cosmetic, Final QC.
+    if main_truncated:
+        stage_tiles = await _sql_stage_tile_counts(
+            db, full_stmt, stage_vals=stage_vals, cf=cf, ct=ct,
+            exclude_admin=bool(exclude_admin), code_stage=_code_stage)
+    else:
+        stage_tiles = _stage_tile_counts_from_items(items)
 
     # Distinct engineers for the filter dropdown.
     #
@@ -787,6 +888,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
         "items": items, "rows_json": _rows_json(items),
         "engineers": engineers, "is_admin": is_admin,
         "tile_counts": tile_counts, "cosmetic_stage_choices": cosmetic_stage_choices,
+        "stage_tiles": stage_tiles, "stage_groups": STAGE_GROUPS,
         "f_workid": workid, "f_tag": tag, "f_engineer": engineer,
         "f_completed_from": completed_from, "f_completed_to": completed_to,
         "f_cosmetic_stage": cosmetic_stage, "f_exclude_admin": exclude_admin,
@@ -810,16 +912,20 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
                                exclude_admin: str = Query(default=""),
                                show_reassigned: str = Query(default=""),
                                scrap_type: str = Query(default="none")):
-    """CSV of exactly the rows the page is showing.
+    """Excel workbook of exactly the rows the page is showing (2026-10-27;
+    was a single CSV): Tag Summary (the former CSV columns, one row per
+    WorkID), Stage Summary and Staff Summary.
 
     Delegates to the page handler rather than repeating its query, so the
     export cannot drift from the table — including the row-visibility rules,
     which are the part that would be damaging to get wrong: a non-admin must
     not be able to export rows the page would not show them.
     """
-    import csv as _csv
     import io as _io
     from datetime import date as _date
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
 
     page = await workid_status(request=request, db=db, current_user=current_user,
                                workid=workid, tag=tag, engineer=engineer,
@@ -828,21 +934,46 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
                                show_reassigned=show_reassigned, scrap_type=scrap_type, highlight="")
     items = page.context["items"]
 
-    buf = _io.StringIO()
-    w = _csv.writer(buf)
-    w.writerow(["Tag Number", "Lot Number", "Make", "Model", "Engineer Name", "Stage",
-                "Assigned Date", "Completed Date", "Status", "Scrap", "PNA", "PNA History"])
+    hdr_font = Font(bold=True, color="FFFFFF")
+    hdr_fill = PatternFill("solid", fgColor="0E3A7A")
+    bold = Font(bold=True)
+
+    def _sheet(ws, header, rows, total_row=None):
+        ws.append(header)
+        for c in ws[1]:
+            c.font, c.fill = hdr_font, hdr_fill
+            c.alignment = Alignment(vertical="center")
+        for r in rows:
+            ws.append(r)
+        if total_row:
+            ws.append(total_row)
+            for c in ws[ws.max_row]:
+                c.font = bold
+        ws.freeze_panes = "A2"
+        for i, col in enumerate(ws.iter_cols(min_row=1, max_row=min(ws.max_row, 500)), start=1):
+            width = max((len(str(c.value)) for c in col if c.value is not None), default=8)
+            ws.column_dimensions[get_column_letter(i)].width = min(max(width + 2, 10), 60)
+
+    def _status(it):
+        if it.get("reassigned_at"):
+            return "Reassigned"
+        return "Completed" if it.get("wo_status") == "completed" else "Open"
+
+    wb = Workbook()
+    # ── Sheet 1: Tag Summary (the former CSV) ──
+    ws = wb.active
+    ws.title = "Tag Summary"
+    tag_rows = []
     for it in items:
-        w.writerow([
+        tag_rows.append([
             it.get("barcode") or "",
             it.get("lot_number") or "",
             it.get("brand") or "",
             it.get("model") or "",
             it.get("engineer") or "",
             it.get("stage_label") or "",
-            # Year-first so Excel reads real dates on any PC locale (2026-10-21).
-            it["assigned_date"].strftime("%Y-%m-%d %H:%M") if it.get("assigned_date") else "",
-            it["completed_at"].strftime("%Y-%m-%d %H:%M") if it.get("completed_at") else "",
+            it.get("assigned_date"),
+            it.get("completed_at"),
             (("Reassigned " + it["reassigned_at"].strftime("%Y-%m-%d %H:%M")
               + (f" ({it['reassigned_to']})" if it.get("reassigned_to") else ""))
              if it.get("reassigned_at") else ("Completed" if it.get("completed_at") else "Open")),
@@ -850,9 +981,85 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             "Yes" if it.get("pna") else "No",
             it.get("pna_history_text") or "",
         ])
-    # utf-8-sig so Excel opens it without mangling non-ASCII names.
-    data = buf.getvalue().encode("utf-8-sig")
-    fname = f"workid_status_{_date.today().isoformat()}.csv"
+    _sheet(ws, ["Tag Number", "Lot Number", "Make", "Model", "Engineer Name", "Stage",
+                "Assigned Date", "Completed Date", "Status", "Scrap", "PNA", "PNA History"], tag_rows)
+    for row in ws.iter_rows(min_row=2, min_col=7, max_col=8):
+        for c in row:
+            c.number_format = "yyyy-mm-dd hh:mm"
+
+    # Both summaries count distinct Tags, not WorkIDs (2026-10-27): a tag
+    # with several WorkIDs in one stage counts once there. A tag can still
+    # appear under both Assigned and Completed (e.g. an old completed WorkID
+    # and a newer open one), so Assigned + Completed can exceed Total Tags.
+    def _bucket():
+        return {"total": set(), "assigned": set(), "completed": set(), "reassigned": set(),
+                "pna": set(), "days": [], "groups": {}}
+
+    def _add(b, it):
+        tag = it.get("barcode")
+        if not tag or tag == "—":
+            return
+        st = _status(it)
+        b["total"].add(tag)
+        b["assigned" if st == "Open" else st.lower()].add(tag)
+        if it.get("pna"):
+            b["pna"].add(tag)
+        if st == "Completed" and it.get("days") is not None:
+            b["days"].append(it["days"])
+        b["groups"].setdefault(_stage_group(it.get("wid_stage")), set()).add(tag)
+
+    def _avg(days):
+        return round(sum(days) / len(days), 1) if days else ""
+
+    def _n(b, k):
+        return len(b[k])
+
+    group_label = {key: lbl for key, lbl, *_ in STAGE_GROUPS}
+    group_label["other"] = "Other"
+    group_order = [key for key, *_ in STAGE_GROUPS] + ["other"]
+
+    # ── Sheet 2: Stage Summary — one row per stage, grouped ──
+    by_stage = {}
+    for it in items:
+        _ws = it.get("wid_stage") or ""
+        _lbl = next((lb for st, lb in STAGE_LABELS.items() if st.value == _ws), _ws.upper() or "—")
+        key = (_stage_group(_ws), _lbl)
+        _add(by_stage.setdefault(key, _bucket()), it)
+    total_b = _bucket()
+    for it in items:
+        _add(total_b, it)
+    stage_rows = [[group_label[g], lbl, _n(b, "total"), _n(b, "assigned"), _n(b, "completed"),
+                   _n(b, "reassigned"), _n(b, "pna"), _avg(b["days"])]
+                  for (g, lbl), b in sorted(by_stage.items(),
+                                             key=lambda kv: (group_order.index(kv[0][0]), kv[0][1]))]
+    _sheet(wb.create_sheet("Stage Summary"),
+           ["Stage Group", "Stage", "Total Tags", "Assigned Tags (Open)", "Completed Tags",
+            "Reassigned Tags", "Tags with PNA", "Avg Days to Complete"],
+           stage_rows,
+           ["Total", "", _n(total_b, "total"), _n(total_b, "assigned"), _n(total_b, "completed"),
+            _n(total_b, "reassigned"), _n(total_b, "pna"), _avg(total_b["days"])])
+
+    # ── Sheet 3: Staff Summary — one row per engineer ──
+    by_eng = {}
+    for it in items:
+        _add(by_eng.setdefault(it.get("engineer") or "—", _bucket()), it)
+    staff_rows = [[eng, _n(b, "total"), _n(b, "assigned"), _n(b, "completed"), _n(b, "reassigned")]
+                  + [len(b["groups"].get(g, ())) for g in group_order]
+                  + [_n(b, "pna"), _avg(b["days"])]
+                  for eng, b in sorted(by_eng.items(), key=lambda kv: (-len(kv[1]["total"]), kv[0].lower()))]
+    _sheet(wb.create_sheet("Staff Summary"),
+           ["Engineer", "Total Tags", "Assigned Tags (Open)", "Completed Tags", "Reassigned Tags"]
+           + [group_label[g] + " Tags" for g in group_order] + ["Tags with PNA", "Avg Days to Complete"],
+           staff_rows,
+           ["Total", _n(total_b, "total"), _n(total_b, "assigned"), _n(total_b, "completed"),
+            _n(total_b, "reassigned")]
+           + [len(total_b["groups"].get(g, ())) for g in group_order]
+           + [_n(total_b, "pna"), _avg(total_b["days"])])
+
+    out = _io.BytesIO()
+    wb.save(out)
+    fname = f"workid_status_{_date.today().isoformat()}.xlsx"
     return Response(
-        content=data, media_type="text/csv",
+        content=out.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'})

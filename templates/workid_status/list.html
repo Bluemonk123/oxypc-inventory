@@ -108,6 +108,37 @@
   {% endfor %}
 </div>
 
+{# Stage tiles (2026-10-27): light tint tiles, one per stage group, from the
+   same filters as the table. Stage name, then Assigned (still open) and
+   Completed WorkID counts, each big. Built in routers/workid_status.py
+   (stage_tiles; STAGE_GROUPS). #}
+<style>
+  .wid-stage-name { font-size:.85rem; font-weight:700; color:var(--tc); position:relative; z-index:1;
+                    margin-bottom:.35rem; white-space:nowrap; }
+  .wid-stage-line { display:flex; align-items:baseline; gap:.4rem; position:relative; z-index:1; }
+  .wid-stage-line + .wid-stage-line { margin-top:.15rem; }
+  .wid-stage-sub { font-size:.72rem; color:#343a40; white-space:nowrap; }
+</style>
+<div class="lt-tiles-row" id="widStageTiles">
+  {% for key, label, _stages, color, icon in stage_groups %}
+  {% set t = stage_tiles[key] %}
+  <div>
+    {# Stage name, then Assigned and Completed counts, stacked (2026-10-27;
+       no total). #}
+    <div class="lt-tile h-100" style="--tc:{{ color }}">
+      <div class="wid-stage-name">{{ label }}</div>
+      <div class="wid-stage-line" title="Still with the engineer (not completed)">
+        <span class="lt-tile-count">{{ t.assigned }}</span><span class="wid-stage-sub">Assigned</span>
+      </div>
+      <div class="wid-stage-line" title="Completed">
+        <span class="lt-tile-count">{{ t.completed }}</span><span class="wid-stage-sub">Completed</span>
+      </div>
+      <i class="bi {{ icon }} lt-tile-wm"></i>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
 <div class="card border-0 shadow-sm">
   {# Global Table convention (static/js/global-table.js): no plain count
      badge here — the table-top toolbar's own row-count badge already

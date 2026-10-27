@@ -2364,7 +2364,7 @@ async def device_specs_quick_save(
 ):
     from models.role_permissions import has_any_perm
     from services.audit_engine import audit
-    from utils.device_spec import size_to_gb, gb_text
+    from utils.device_spec import size_to_gb, gb_text, gb_text_spaced, respace_summary
 
     role = getattr(current_user.role, "value", current_user.role)
     if not has_any_perm(role, SPEC_EDIT_MODULES, "edit"):
@@ -2396,6 +2396,22 @@ async def device_specs_quick_save(
         "generation": generation.strip() or None, "brand": brand.strip() or None,
         "model": model.strip() or None, "ram_gb": new_ram, "storage_gb": new_hdd,
     }
+    # RAM / Hard Drive text copies (2026-10-27): "16GB" and "16 GB" both save
+    # as "16 GB" (with a space; whole TB as "1 TB"). Exports and the L1/L2
+    # list read these text fields first, so they follow the edit too. The
+    # Hard Drive summary keeps a drive-type word after the size ("256 GB SSD").
+    # Detailed summaries ("16GB_DDR4_2300MHz_Samsung, 8GB_...") are left
+    # as they are — rewriting them would lose the stick / drive details.
+    def _simple(text):
+        return not text or ("_" not in text and "," not in text)
+    if new_ram:
+        new["total_ram_size"] = gb_text_spaced(new_ram)
+        if _simple(device.ram_summary):
+            new["ram_summary"] = gb_text_spaced(new_ram)
+    if new_hdd:
+        new["total_hdd_size"] = gb_text_spaced(new_hdd)
+        if _simple(device.hdd_summary):
+            new["hdd_summary"] = respace_summary(device.hdd_summary, new_hdd)
     old = {k: getattr(device, k) for k in new}
     changed = {k: v for k, v in new.items() if v != old[k]}
     if not changed:

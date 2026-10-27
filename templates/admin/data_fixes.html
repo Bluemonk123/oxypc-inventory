@@ -85,6 +85,51 @@
     </div>
   </div>
 
+  {# ── RAM / Storage size spacing (2026-10-27) ── #}
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-hdd me-2"></i>RAM / Storage size spacing</span>
+        {% if space_total %}
+        <form method="post" action="/admin/system/size-space-fix" class="df-confirm"
+              data-confirm="Click again to fix {{ "{:,}".format(space_total) }} tags">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Apply to {{ "{:,}".format(space_total) }} tags</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not space_total %}
+        <div class="text-muted">Nothing to fix — every RAM / Storage size already has a space ("16 GB").</div>
+        {% else %}
+        <p class="text-muted mb-2">Adds the space between the number and GB / TB: "16GB" → "16 GB", "256GB SSD" → "256 GB SSD", "1tb" → "1 TB". Same form the Basic Specs edit saves. Detailed multi-stick / multi-drive summaries are left as they are.</p>
+        <table class="table table-sm mb-3">
+          <thead><tr><th>Field</th><th class="text-end">Tags fixed</th></tr></thead>
+          <tbody>
+            {% for f, n in space_fields.items() if n %}
+            <tr><td>{{ field_labels[f] }}</td><td class="text-end">{{ "{:,}".format(n) }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        <div class="fw-semibold mb-1">Examples</div>
+        <table class="table table-sm table-bordered mb-0" style="font-size:.78rem">
+          <thead class="table-light"><tr><th>Tag</th><th>Before</th><th>After</th></tr></thead>
+          <tbody>
+            {% for e in space_examples %}
+            <tr>
+              <td class="text-nowrap"><a href="/devices/{{ e.tag }}" target="_blank">{{ e.tag }}</a></td>
+              <td>{% for k, v in e.ch.items() %}<div>{{ field_labels[k] }}: <span class="text-muted">{{ v[0] }}</span></div>{% endfor %}</td>
+              <td>{% for k, v in e.ch.items() %}<div>{{ field_labels[k] }}: <strong>{{ v[1] }}</strong></div>{% endfor %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {# ── Past reassignments recorded as completed ── #}
   <div class="col-12">
     <div class="card border-0 shadow-sm">

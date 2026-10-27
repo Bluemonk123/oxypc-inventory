@@ -344,6 +344,80 @@ async def spec_fill_apply(request: Request, current_user: User = Depends(admin_o
                          "per_field": {c: len(v) for c, v in per_field.items()}})
 
 
+# ── RAM / Storage size spacing (2026-10-27) ──────────────────────────────────
+# Text sizes written without a space ("16GB", "256GB SSD", "1tb") become
+# "16 GB", "256 GB SSD", "1 TB" — the form the Basic Specs edit modal saves.
+# Only plain values are touched: packed multi-stick / multi-drive summaries
+# ("16GB_DDR4_2300MHz_Samsung, 8GB_...") are left as they are, same rule as
+# the modal. The numeric RAM GB / SSD GB columns are not involved.
+_SPACE_FIELDS = ("total_ram_size", "ram_summary", "total_hdd_size", "hdd_summary")
+
+
+def _space_size_text(v):
+    import re
+    if not v or "_" in v or "," in v:
+        return v
+    return re.sub(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(GB|TB)\b",
+                  lambda m: f"{m.group(1)} {m.group(2).upper()}", v, flags=re.IGNORECASE)
+
+
+async def _space_changes(db):
+    """[(device_id, barcode, {field: (old, new)})] for tags with a size text
+    that needs the space."""
+    from sqlalchemy import or_, select
+    from models.device import Device
+    cols = [getattr(Device, f) for f in _SPACE_FIELDS]
+    rows = (await db.execute(
+        select(Device.id, Device.barcode, *cols)
+        .where(or_(*[c.op("~*")(r"[0-9](gb|tb)") for c in cols]))
+    )).all()
+    out = []
+    for r in rows:
+        ch = {}
+        for f in _SPACE_FIELDS:
+            old = getattr(r, f)
+            new = _space_size_text(old)
+            if new != old:
+                ch[f] = (old, new)
+        if ch:
+            out.append((r.id, r.barcode, ch))
+    return out
+
+
+@router.post("/size-space-fix")
+async def size_space_fix_apply(request: Request, current_user: User = Depends(admin_only)):
+    from collections import defaultdict
+    from sqlalchemy import bindparam, update
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        changes = await _space_changes(db)
+        groups = defaultdict(list)          # same set of fields -> one statement
+        for did, _tag, ch in changes:
+            groups[tuple(sorted(ch))].append((did, ch))
+        conn = await db.connection()
+        for keys, items in groups.items():
+            stmt = (update(Device.__table__).where(Device.__table__.c.id == bindparam("b_id"))
+                    .values({k: bindparam("b_" + k) for k in keys}))
+            params = [{"b_id": did, **{"b_" + k: ch[k][1] for k in keys}} for did, ch in items]
+            for i in range(0, len(params), 2000):
+                await conn.execute(stmt, params[i:i + 2000])   # executemany
+        per_field = {f: [str(d) for d, _t, ch in changes if f in ch] for f in _SPACE_FIELDS}
+        await audit(db, user=current_user, action="DEVICE_SIZE_SPACE_FIX", table_name="devices",
+                    record_id=f"{len(changes)} tags",
+                    new_value={"count": len(changes), "device_ids_by_field": per_field},
+                    notes='RAM / Storage text sizes given a space: "16GB" -> "16 GB", "1tb" -> "1 TB". '
+                          "Reverse: remove the space between the number and GB/TB for the listed ids.",
+                    request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"RAM / Storage spacing done: {len(changes):,} tags updated.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "updated": len(changes),
+                         "per_field": {f: len(v) for f, v in per_field.items()}})
+
+
 # ── Sub-Category fill from Device Type (2026-10-22) ──────────────────────────
 # The reverse of the Device Type backfill: Sub-Category blank, Device Type set.
 # Uses the same pairing as upload (utils/device_category): the Sub-Category
@@ -1097,6 +1171,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
     from database import AsyncSessionLocal
     async with AsyncSessionLocal() as db:
         spec = await _spec_changes(db, with_rows=True)
+        space = await _space_changes(db)
         subcat = await _subcat_changes(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
@@ -1126,6 +1201,9 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
     return templates.TemplateResponse("admin/data_fixes.html", {
         "request": request, "current_user": current_user, "done": done,
         "spec_total": len(spec), "spec_fields": spec_fields, "spec_examples": spec_examples,
+        "space_total": len(space),
+        "space_fields": {f: sum(1 for _d, _t, ch in space if f in ch) for f in _SPACE_FIELDS},
+        "space_examples": [{"tag": t, "ch": ch} for _d, t, ch in space[:12]],
         "subcat_total": len(subcat), "subcat_by": [{"dt": k[0], "sc": k[1], "n": n} for k, n in sorted(subcat_by.items(), key=lambda x: -x[1])],
         "issues": issues[:500], "issues_total": len(issues),
         "issue_counts": _issue_counts(issues),

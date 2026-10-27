@@ -8,13 +8,13 @@
       {{ spec_edit_btn(device, can(current_user, '<module>', 'edit')) }}   next to the tag
       {{ spec_edit_modal() }}                                              once per page -#}
 
-{#- GB as the app shows it: whole TB as "1TB" (1024 or 1000), else "512GB"
-    — same rule as utils/device_spec.gb_text. -#}
+{#- GB with a space, the form the modal saves: whole TB as "1 TB" (1024 or
+    1000), else "512 GB" — same rule as utils/device_spec.gb_text_spaced. -#}
 {% macro _gb(n) -%}
 {%- if n -%}
-{%- if n >= 1024 and n % 1024 == 0 -%}{{ n // 1024 }}TB
-{%- elif n >= 1000 and n % 1000 == 0 -%}{{ n // 1000 }}TB
-{%- else -%}{{ n }}GB{%- endif -%}
+{%- if n >= 1024 and n % 1024 == 0 -%}{{ n // 1024 }} TB
+{%- elif n >= 1000 and n % 1000 == 0 -%}{{ n // 1000 }} TB
+{%- else -%}{{ n }} GB{%- endif -%}
 {%- endif -%}
 {%- endmacro %}
 
@@ -55,11 +55,11 @@
           <div class="col-6"><label class="form-label small fw-semibold mb-1">CPU Gen</label>
             <input type="text" name="generation" class="form-control form-control-sm" maxlength="50" placeholder="e.g. 8TH"></div>
           <div class="col-6"><label class="form-label small fw-semibold mb-1">RAM</label>
-            <input type="text" name="ram" class="form-control form-control-sm" placeholder="e.g. 16GB"></div>
+            <input type="text" name="ram" class="form-control form-control-sm" placeholder="e.g. 16 GB"></div>
           <div class="col-6"><label class="form-label small fw-semibold mb-1">Hard Drive</label>
-            <input type="text" name="hard_drive" class="form-control form-control-sm" placeholder="e.g. 512GB or 1TB"></div>
+            <input type="text" name="hard_drive" class="form-control form-control-sm" placeholder="e.g. 512 GB or 1 TB"></div>
         </div>
-        <div class="form-text small">RAM / Hard Drive: a number is read as GB (16 = 16GB); 1TB = 1024GB.</div>
+        <div class="form-text small">RAM / Hard Drive: 16, 16GB and 16 GB all save as 16 GB; 1TB = 1 TB.</div>
         <div id="specEditError" class="text-danger small mt-2"></div>
       </div>
       <div class="modal-footer py-2">

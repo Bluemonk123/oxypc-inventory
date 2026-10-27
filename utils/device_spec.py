@@ -73,6 +73,32 @@ def gb_text(n):
     return f"{n}GB"
 
 
+def gb_text_spaced(n):
+    """Same as gb_text but with a space: "16 GB", "256 GB", "1 TB" — the form
+    the Basic Specs edit modal saves RAM / Hard Drive text in (2026-10-27)."""
+    t = gb_text(n)
+    if not t:
+        return None
+    return t[:-2] + " " + t[-2:]
+
+
+_SIZE_TOKEN = re.compile(r"^\s*\d+(?:\.\d+)?\s*(?:GB|TB|G|T)\b\s*", re.IGNORECASE)
+
+
+def respace_summary(summary, n):
+    """A summary like "256GB SSD" rewritten for size n as "256 GB SSD": the
+    leading size is replaced, any words after it (drive type) are kept."""
+    size = gb_text_spaced(n)
+    if not size:
+        return summary
+    rest = _SIZE_TOKEN.sub("", summary or "", count=1).strip() if summary and _SIZE_TOKEN.match(summary) else ""
+    # Keep only a plain drive-type word ("SSD", "NVMe"); a multi-part value
+    # ("8GB+8GB") becomes just the new total.
+    if any(ch.isdigit() for ch in rest) or rest[:1] in "+,/&":
+        rest = ""
+    return f"{size} {rest}".strip()
+
+
 _gb_text = gb_text
 
 
