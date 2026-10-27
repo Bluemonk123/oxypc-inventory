@@ -401,6 +401,35 @@ async def delete_device_forever(
         url="/trash?success=" + quote(f"{tag} deleted permanently"), status_code=302)
 
 
+@router.post("/bulk/devices/restore", response_class=HTMLResponse)
+async def restore_devices_bulk(
+    request: Request,
+    barcodes: list[str] = Form(default=[]),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Trash page Bulk Restore (2026-10-27): restores the ticked tags (ticked
+    by hand or with Upload Tag). Audit-logged with every restored tag."""
+    from urllib.parse import quote
+    barcodes = [b.strip() for b in (barcodes or []) if b and b.strip()]
+    if not barcodes:
+        return RedirectResponse(url="/trash?tab=tags&error=" + quote("Select at least one tag"), status_code=302)
+    devices = (await db.execute(
+        select(Device).where(Device.barcode.in_(barcodes), Device.is_trashed == True)  # noqa: E712
+    )).scalars().all()
+    for d in devices:
+        d.is_trashed = False
+        d.trashed_at = None
+    if devices:
+        await audit(db, action="DEVICES_RESTORED_BULK", user=current_user,
+                    table_name="devices", record_id=f"bulk:{len(devices)}",
+                    new_value={"count": len(devices), "barcodes": [d.barcode for d in devices]},
+                    request=request)
+    await db.commit()
+    return RedirectResponse(
+        url="/trash?tab=tags&success=" + quote(f"{len(devices)} tag(s) restored"), status_code=302)
+
+
 @router.post("/devices/{barcode}/restore", response_class=HTMLResponse)
 async def restore_device(
     barcode: str,

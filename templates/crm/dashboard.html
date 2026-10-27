@@ -62,7 +62,7 @@
         {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary"><i class="bi bi-plus"></i> New Deal</a>{% endif %}
       </div>
       <div class="card-body py-2">
-        {% set stages_to_show = [('lead','Lead'), ('contacted','Contacted'), ('inspection','Inspection'), ('negotiation','Negotiation'), ('agreed','Agreed'), ('po_raised','PO Raised')] %}
+        {% set stages_to_show = [('lead','Lead'), ('contacted','Contacted'), ('inspection','Inspection'), ('quote','Quote'), ('negotiation','Negotiations'), ('purchase_order','Purchase Order'), ('payment','Payment'), ('received','Stock Received')] %}
         {% for key, label in stages_to_show %}
         {% set cnt = sourcing_funnel.get(key, 0) %}
         <div class="d-flex align-items-center mb-2">

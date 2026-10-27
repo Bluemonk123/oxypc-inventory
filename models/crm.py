@@ -7,7 +7,8 @@ import uuid
 from datetime import datetime, date
 from utils.timezone import app_now
 from sqlalchemy import (
-    Column, String, DateTime, Numeric, Integer, Text, Boolean, ForeignKey, Date
+    Column, String, DateTime, Numeric, Integer, Text, Boolean, ForeignKey, Date,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -35,18 +36,58 @@ BUYER_TYPES = [
 ]
 
 # ── SOURCING DEAL STAGES ──────────────────────────────────────────────────────
+# Reworked 2026-10-27 (old keys quoted / agreed / po_raised are mapped once at
+# startup by main._migrate_sourcing_stages_once: quoted -> quote,
+# agreed -> negotiation, po_raised -> purchase_order).
 SOURCING_STAGES = [
-    ("lead",        "Lead Identified"),
-    ("contacted",   "Initial Contact Made"),
-    ("inspection",  "Inspection Arranged"),
-    ("quoted",      "Quote Received"),
-    ("negotiation", "Negotiation"),
-    ("agreed",      "Deal Agreed"),
-    ("po_raised",   "PO Raised"),
-    ("received",    "Stock Received"),
-    ("won",         "Closed — Won"),
-    ("lost",        "Closed — Lost"),
+    ("lead",           "Lead Identified"),
+    ("contacted",      "Contacted"),
+    ("inspection",     "Inspection"),
+    ("quote",          "Quote"),
+    ("negotiation",    "Negotiations"),
+    ("purchase_order", "Purchase Order"),
+    ("payment",        "Payment"),
+    ("received",       "Stock Received"),
+    ("won",            "Closed — Won"),
+    ("lost",           "Closed — Lost"),
 ]
+
+# Items shown under each stage in Stage Progress, stored per deal in
+# crm_sourcing_steps (one row per deal + step_key).
+#   kind "user"     — assign a user (user icon opens the Assign modal)
+#   kind "approval" — assign an approver, who then Approves / Rejects
+#   kind "file"     — attach a document (shown on the right)
+# Purchase Order's document is the latest PO generated from the deal — shown
+# automatically, nothing to attach.
+SOURCING_STAGE_STEPS = {
+    "inspection": [
+        ("inspection_assign", "Assign to Inspection", "user"),
+        ("inspection_report", "Inspection Report", "file"),
+    ],
+    "quote": [
+        ("quote_l1", "Level 1", "approval"),
+        ("quote_l2", "Level 2", "approval"),
+        ("quote_file", "Quote", "file"),
+    ],
+    "negotiation": [
+        ("negotiation_l1", "Level 1", "approval"),
+        ("negotiation_quote", "Updated Quote", "file"),
+    ],
+    "purchase_order": [
+        ("po_l1", "Level 1", "approval"),
+        ("po_l2", "Level 2", "approval"),
+    ],
+    "payment": [
+        ("payment_l1", "Level 1", "approval"),
+        ("payment_invoice", "Invoice", "file"),
+    ],
+    "received": [
+        ("received_assign", "Assign to Inventory", "user"),
+    ],
+}
+SOURCING_STEP_INDEX = {key: (stage, label, kind)
+                       for stage, steps in SOURCING_STAGE_STEPS.items()
+                       for key, label, kind in steps}
 
 # ── SALES OPPORTUNITY STAGES ──────────────────────────────────────────────────
 SALES_STAGES = [
@@ -260,6 +301,28 @@ class CRMSourcingDeal(Base):
     po_line_items = relationship("CRMSourcingDealLineItem", back_populates="deal",
                                  cascade="all, delete-orphan",
                                  order_by="CRMSourcingDealLineItem.sort_order")
+
+
+class CRMSourcingStep(Base):
+    """One Stage Progress item on a Sourcing Deal (2026-10-27): an assigned
+    user, an approval or an attached document — see SOURCING_STAGE_STEPS.
+    Approved on dbdiagram.io."""
+    __tablename__ = "crm_sourcing_steps"
+    __table_args__ = (UniqueConstraint("deal_id", "step_key", name="uq_crm_sourcing_steps_deal_step"),)
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    deal_id     = Column(UUID(as_uuid=True), ForeignKey("crm_sourcing_deals.id"), nullable=False, index=True)
+    stage       = Column(String(30),  nullable=False)
+    step_key    = Column(String(40),  nullable=False)
+    assigned_to = Column(String(50),  nullable=True)    # username
+    status      = Column(String(20),  nullable=False, default="pending")  # pending / approved / rejected / done
+    file_path   = Column(String(500), nullable=True)    # stored filename under uploads/crm/
+    acted_by    = Column(String(50),  nullable=True)    # who approved / rejected / attached
+    acted_at    = Column(DateTime,    nullable=True)
+    note        = Column(Text,        nullable=True)    # approval remark
+    created_by  = Column(String(50),  nullable=True)
+    created_at  = Column(DateTime,    default=app_now)
+    updated_at  = Column(DateTime,    default=app_now, onupdate=app_now)
 
 
 class CRMSalesOpportunity(Base):

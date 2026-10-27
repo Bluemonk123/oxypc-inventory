@@ -21,6 +21,7 @@ from services.po_pdf import build_po_pdf
 from models.crm import (
     CRMContact, CRMSourcingDeal, CRMActivity, CRMPurchaseOrder, CRMPOLineItem,
     CRMSourcingDealLineItem, SOURCE_TYPES, MATERIAL_TYPES, SOURCING_STAGES, PRIORITIES,
+    CRMSourcingStep, SOURCING_STAGE_STEPS, SOURCING_STEP_INDEX,
 )
 from routers.settings import get_company_settings
 from routers.terms_conditions import get_active_terms
@@ -325,6 +326,24 @@ async def deal_detail(
         for li in deal_po_items
     )
 
+    # ── Stage Progress items (2026-10-27) ──────────────────────────────────
+    step_rows = (await db.execute(
+        select(CRMSourcingStep).where(CRMSourcingStep.deal_id == deal.id)
+    )).scalars().all()
+    steps = {r.step_key: r for r in step_rows}
+    # Contacted: the latest logged contact (anything but the system notes).
+    last_contact = next((a for a in activities if a.activity_type != "note"), None)
+    # Purchase Order: the latest PO generated from this deal is its document.
+    latest_po = purchase_orders[0] if purchase_orders else None
+    staff = (await db.execute(
+        select(User).where(User.status == True).order_by(User.full_name)  # noqa: E712
+    )).scalars().all()
+    user_names = {u.username: (u.full_name or u.username) for u in staff}
+    open_stage_keys = [k for k, _ in SOURCING_STAGES if k not in ("won", "lost")]
+    next_stage = None
+    if deal.stage in open_stage_keys and deal.stage != "received":
+        next_stage = open_stage_keys[open_stage_keys.index(deal.stage) + 1]
+
     from models.company import Company
     companies = (await db.execute(
         select(Company).where(Company.is_active == True).order_by(Company.company_name)
@@ -345,6 +364,9 @@ async def deal_detail(
         "lot_sold": lot_sold,
         "sourcing_stages": SOURCING_STAGES,
         "stage_list": stage_list, "current_idx": current_idx,
+        "stage_steps": SOURCING_STAGE_STEPS, "steps": steps,
+        "last_contact": last_contact, "latest_po": latest_po,
+        "staff": staff, "user_names": user_names, "next_stage": next_stage,
         "stage_labels": dict(SOURCING_STAGES),
         "source_map": dict(SOURCE_TYPES),
         "material_map": dict(MATERIAL_TYPES),
@@ -397,6 +419,203 @@ async def move_stage(
     db.add(activity)
     await db.commit()
     return RedirectResponse(url=f"/crm/sourcing/{deal_id}?success=Stage+updated", status_code=302)
+
+
+# ── STAGE PROGRESS ACTIONS (2026-10-27) ───────────────────────────────────────
+# Assign a user / approver, Approve or Reject, attach a document, and Next
+# Stage. Every action is audit-logged and noted in the deal's Activity Log.
+
+STEP_FILE_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif",
+                  ".xlsx", ".xls", ".csv", ".doc", ".docx"}
+STEP_FILE_MAX_BYTES = 20 * 1024 * 1024
+
+
+async def _deal_and_step(db, deal_id: str, step_key: str):
+    deal = (await db.execute(
+        select(CRMSourcingDeal).where(CRMSourcingDeal.id == deal_id))).scalar_one_or_none()
+    if not deal or step_key not in SOURCING_STEP_INDEX:
+        return deal, None
+    step = (await db.execute(select(CRMSourcingStep).where(
+        CRMSourcingStep.deal_id == deal.id, CRMSourcingStep.step_key == step_key))).scalar_one_or_none()
+    return deal, step
+
+
+def _note(deal, user, text):
+    return CRMActivity(contact_id=deal.contact_id, deal_id=deal.id, deal_type="sourcing",
+                       activity_type="note", summary=text, performed_by=user.username, outcome="done")
+
+
+def _back(deal_id, msg, ok=True):
+    from urllib.parse import quote_plus
+    return RedirectResponse(url=f"/crm/sourcing/{deal_id}?{'success' if ok else 'error'}={quote_plus(msg)}",
+                            status_code=302)
+
+
+@router.post("/{deal_id}/steps/{step_key}/assign")
+async def assign_step(
+    request: Request, deal_id: str, step_key: str,
+    username: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """User icon on a Stage Progress item: assign a user (Assign to
+    Inspection / Inventory) or an approver (Level 1 / Level 2). The assignee
+    gets a bell notification; re-assigning an approval resets it to pending."""
+    deal, step = await _deal_and_step(db, deal_id, step_key)
+    if not deal or step_key not in SOURCING_STEP_INDEX:
+        return _back(deal_id, "Step not found", ok=False)
+    stage, label, kind = SOURCING_STEP_INDEX[step_key]
+    if kind == "file":
+        return _back(deal_id, "This item takes a file, not a user", ok=False)
+    user = (await db.execute(select(User).where(User.username == username.strip(),
+                                                User.status == True))).scalar_one_or_none()  # noqa: E712
+    if not user:
+        return _back(deal_id, "Select an active user", ok=False)
+    old = {"assigned_to": step.assigned_to, "status": step.status} if step else None
+    if not step:
+        step = CRMSourcingStep(deal_id=deal.id, stage=stage, step_key=step_key,
+                               created_by=current_user.username)
+        db.add(step)
+    step.assigned_to = user.username
+    step.status = "pending" if kind == "approval" else "done"
+    step.acted_by = None if kind == "approval" else current_user.username
+    step.acted_at = None if kind == "approval" else app_now()
+    step.note = None
+    stage_label = dict(SOURCING_STAGES).get(stage, stage)
+    who = user.full_name or user.username
+    db.add(_note(deal, current_user, f"{stage_label} — {label}: assigned to {who}"))
+    await audit(db, action="CRM_SOURCING_STEP_ASSIGNED", user=current_user,
+                table_name="crm_sourcing_steps", record_id=str(deal.id), old_value=old,
+                new_value={"step": step_key, "assigned_to": user.username}, request=request)
+    await db.commit()
+    from services.notifications import create_notification
+    what = f"{label} approval" if kind == "approval" else label
+    await create_notification(
+        db, user_id=user.id, notification_type="info",
+        title=f"{deal.deal_number}: {stage_label} — {what}",
+        message=f"{current_user.full_name or current_user.username} assigned you to {what} "
+                f"on Sourcing Deal {deal.deal_number} ({deal.title[:80]}).")
+    return _back(deal_id, f"{label} assigned to {who}")
+
+
+@router.post("/{deal_id}/steps/{step_key}/decide")
+async def decide_step(
+    request: Request, deal_id: str, step_key: str,
+    decision: str = Form(...),
+    note: str = Form(default=""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Approve / Reject an approval item. Only the assigned approver (or an
+    admin) may decide; the remark is kept on the step and in the Activity Log."""
+    deal, step = await _deal_and_step(db, deal_id, step_key)
+    if not deal or not step or SOURCING_STEP_INDEX[step_key][2] != "approval":
+        return _back(deal_id, "Approval not found", ok=False)
+    role = getattr(current_user.role, "value", current_user.role)
+    if step.assigned_to != current_user.username and role != "admin":
+        return _back(deal_id, "Only the assigned approver can approve or reject", ok=False)
+    if decision not in ("approved", "rejected"):
+        return _back(deal_id, "Choose Approve or Reject", ok=False)
+    old = {"status": step.status, "note": step.note}
+    step.status = decision
+    step.note = (note or "").strip() or None
+    step.acted_by = current_user.username
+    step.acted_at = app_now()
+    stage, label, _k = SOURCING_STEP_INDEX[step_key]
+    stage_label = dict(SOURCING_STAGES).get(stage, stage)
+    db.add(_note(deal, current_user, f"{stage_label} — {label}: {decision.title()}"
+                                     + (f" — {step.note}" if step.note else "")))
+    await audit(db, action="CRM_SOURCING_STEP_DECIDED", user=current_user,
+                table_name="crm_sourcing_steps", record_id=str(deal.id), old_value=old,
+                new_value={"step": step_key, "status": decision, "note": step.note}, request=request)
+    await db.commit()
+    return _back(deal_id, f"{label} {decision}")
+
+
+@router.post("/{deal_id}/steps/{step_key}/attach")
+async def attach_step_file(
+    request: Request, deal_id: str, step_key: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Attach the document for a file item (Inspection Report, Quote, Updated
+    Quote, Invoice). PDF / image / Excel / Word, up to 20 MB; replaces any
+    earlier file for that item."""
+    deal, step = await _deal_and_step(db, deal_id, step_key)
+    if not deal or step_key not in SOURCING_STEP_INDEX or SOURCING_STEP_INDEX[step_key][2] != "file":
+        return _back(deal_id, "Document item not found", ok=False)
+    if not file or not file.filename:
+        return _back(deal_id, "No file selected", ok=False)
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in STEP_FILE_EXTS:
+        return _back(deal_id, "Allowed files: PDF, image, Excel or Word", ok=False)
+    content = await file.read()
+    if len(content) > STEP_FILE_MAX_BYTES:
+        return _back(deal_id, "File is larger than 20 MB", ok=False)
+    safe_name = f"{_uuid.uuid4().hex}{ext}"
+    uploads_dir = os.path.join(UPLOADS_DIR, "crm")
+    os.makedirs(uploads_dir, exist_ok=True)
+    with open(os.path.join(uploads_dir, safe_name), "wb") as f:
+        f.write(content)
+    stage, label, _k = SOURCING_STEP_INDEX[step_key]
+    old = {"file_path": step.file_path} if step else None
+    if not step:
+        step = CRMSourcingStep(deal_id=deal.id, stage=stage, step_key=step_key,
+                               created_by=current_user.username)
+        db.add(step)
+    step.file_path = safe_name
+    step.status = "done"
+    step.acted_by = current_user.username
+    step.acted_at = app_now()
+    stage_label = dict(SOURCING_STAGES).get(stage, stage)
+    db.add(_note(deal, current_user, f"{stage_label} — {label} attached ({file.filename[:120]})"))
+    await audit(db, action="CRM_SOURCING_STEP_FILE", user=current_user,
+                table_name="crm_sourcing_steps", record_id=str(deal.id), old_value=old,
+                new_value={"step": step_key, "file_path": safe_name, "original": file.filename[:200]},
+                request=request)
+    await db.commit()
+    return _back(deal_id, f"{label} attached")
+
+
+@router.post("/{deal_id}/next-stage")
+async def next_stage(
+    request: Request, deal_id: str,
+    outcome: str = Form(default=""),
+    win_loss_reason: str = Form(default=""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Next Stage: moves the deal one stage on. Never blocked by open items.
+    From Stock Received it closes the deal as Won or Lost with a reason."""
+    deal = (await db.execute(
+        select(CRMSourcingDeal).where(CRMSourcingDeal.id == deal_id))).scalar_one_or_none()
+    if not deal:
+        return RedirectResponse(url="/crm/sourcing?error=Deal+not+found", status_code=302)
+    order = [k for k, _ in SOURCING_STAGES if k not in ("won", "lost")]
+    if deal.stage in ("won", "lost"):
+        return _back(deal_id, "Deal is already closed", ok=False)
+    if deal.stage == "received":
+        if outcome not in ("won", "lost"):
+            return _back(deal_id, "Choose Won or Lost", ok=False)
+        new = outcome
+        deal.win_loss_reason = (win_loss_reason or "").strip() or deal.win_loss_reason
+    else:
+        cur = order.index(deal.stage) if deal.stage in order else 0
+        new = order[min(cur + 1, len(order) - 1)]
+    old = deal.stage
+    deal.stage = new
+    labels = dict(SOURCING_STAGES)
+    text = f"Stage moved to: {labels.get(new, new)}"
+    if new in ("won", "lost") and deal.win_loss_reason:
+        text += f" — {deal.win_loss_reason}"
+    db.add(_note(deal, current_user, text))
+    await audit(db, action="CRM_SOURCING_NEXT_STAGE", user=current_user,
+                table_name="crm_sourcing_deals", record_id=str(deal.id),
+                old_value={"stage": old}, new_value={"stage": new, "win_loss_reason": deal.win_loss_reason},
+                request=request)
+    await db.commit()
+    return _back(deal_id, f"Moved to {labels.get(new, new)}")
 
 
 # ── EDIT ─────────────────────────────────────────────────────────────────────

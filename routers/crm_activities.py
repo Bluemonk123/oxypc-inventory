@@ -62,6 +62,17 @@ async def log_activity(
         followup_done=False,
     )
     db.add(activity)
+    # Sourcing Deal (2026-10-27): logging a contact on a deal still at Lead
+    # Identified moves it to Contacted (system notes don't count).
+    if deal_type == "sourcing" and deal_id and activity_type != "note":
+        deal = (await db.execute(
+            select(CRMSourcingDeal).where(CRMSourcingDeal.id == deal_id))).scalar_one_or_none()
+        if deal and deal.stage == "lead":
+            deal.stage = "contacted"
+            db.add(CRMActivity(contact_id=deal.contact_id, deal_id=deal.id, deal_type="sourcing",
+                               activity_type="note", summary="Stage moved to: Contacted",
+                               performed_by=current_user.username, outcome="done",
+                               activity_date=app_now()))
     await db.commit()
 
     back = redirect_to or "/crm/"

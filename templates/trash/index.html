@@ -57,6 +57,19 @@
             {{ dup_kept }} duplicate(s) with a sale/return are kept
           </span>
           {% endif %}
+          {# Upload Tag + Bulk Restore (2026-10-27): Upload Tag ticks the
+             listed tags (any page); Bulk Restore restores every ticked tag. #}
+          {% if can(current_user, 'location_trash', 'edit') %}
+          <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#trashUploadTagModal">
+            <i class="bi bi-upload me-1"></i>Upload Tag
+          </button>
+          <form method="post" action="/trash/bulk/devices/restore" id="bulkRestoreForm" class="mb-0">
+            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+            <button type="button" id="bulkRestoreBtn" class="btn btn-sm btn-success text-nowrap" disabled>
+              <i class="bi bi-arrow-counterclockwise me-1"></i>Bulk Restore (<span id="bulkRestoreCount">0</span>)
+            </button>
+          </form>
+          {% endif %}
           {% if can(current_user, 'location_trash', 'delete') %}
           <button type="button" class="btn btn-sm btn-outline-danger text-nowrap" {{ 'disabled' if not dup_deletable }}
                   data-bs-toggle="modal" data-bs-target="#dupModal"
@@ -70,6 +83,7 @@
         <table id="trashTagsTable" class="table table-hover mb-0 small">
           <thead class="table-dark">
             <tr>
+              {% if can(current_user, 'location_trash', 'edit') %}<th class="ps-3"><input type="checkbox" id="trashSelectAll" class="form-check-input" title="Select all"></th>{% endif %}
               <th>Tag Number</th><th>Lot</th><th>Brand / Model</th>
               <th>Grade</th><th>Stage</th><th>Trashed On</th><th>Updated On</th><th>Action</th>
             </tr>
@@ -79,6 +93,7 @@
             {% set dev = row.Device %}
             {% set _sr = dev.id|string in sale_ret_ids %}
             <tr data-sr="{{ '1' if _sr else '0' }}">
+              {% if can(current_user, 'location_trash', 'edit') %}<td class="ps-3"><input type="checkbox" class="form-check-input trash-row-chk" value="{{ dev.barcode }}"></td>{% endif %}
               <td class="font-monospace"><code>{{ dev.barcode }}</code>
                 {% if _sr %}<span class="badge bg-danger-subtle text-danger border border-danger-subtle ms-1" title="This trashed tag still has a sale or return record">Sale/Return</span>{% endif %}
                 {% if dev.id|string in dup_ids %}<span class="badge bg-warning text-dark ms-1" title="A live tag with the same number in different capital/small letters exists">Duplicate</span>{% endif %}
@@ -175,6 +190,29 @@
 </div>
 
 <!-- Delete Duplicates confirmation — typed phrase, checked again server-side. -->
+<!-- Upload Tag (Trashed Tags): a CSV / text list of tag numbers ticks the
+     matching rows on every page, ready for Bulk Restore. -->
+<div class="modal fade" id="trashUploadTagModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-upload me-2"></i>Upload Tag</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold">Tag Numbers file (.csv or .txt)</label>
+        <input type="file" id="trashTagFile" class="form-control form-control-sm" accept=".csv,.txt">
+        <div class="form-text small">One tag per row in the first column; a <code>tag_number</code> / <code>barcode</code> header is fine. Matching ignores capital/small letters.</div>
+        <div id="trashTagStatus" class="small mt-2"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" id="trashTagSelectBtn" class="btn btn-sm btn-primary"><i class="bi bi-check2-square me-1"></i>Select Tags</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="dupModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <form method="post" action="/trash/duplicates/delete">
@@ -252,10 +290,68 @@
 {% block scripts %}
 <script>
 $(document).ready(function () {
+  var trashChk = !!document.getElementById('trashSelectAll');
   var dtTags = initGlobalTable('#trashTagsTable', {
-    order: [[5, 'desc']],
-    columnDefs: [{ orderable: false, targets: -1 }],
+    order: [[trashChk ? 6 : 5, 'desc']],
+    columnDefs: [{ orderable: false, targets: trashChk ? [0, -1] : [-1] }],
     language: { emptyTable: 'No trashed tags.' },
+  }, trashChk ? {
+    selectAll: { headerSelector: '#trashSelectAll', rowSelector: '.trash-row-chk',
+                 onChange: updateRestoreCount, scope: 'search' },
+  } : {});
+
+  // Bulk Restore: counts ticked rows on every page (not just the visible one).
+  function tickedTags() {
+    return $(dtTags.rows().nodes()).find('.trash-row-chk:checked').map(function () { return this.value; }).get();
+  }
+  function updateRestoreCount() {
+    var n = tickedTags().length;
+    $('#bulkRestoreCount').text(n);
+    $('#bulkRestoreBtn').prop('disabled', n === 0);
+  }
+  $('#bulkRestoreBtn').on('click', function () {
+    var tags = tickedTags();
+    if (!tags.length) return;
+    if (!confirm('Restore ' + tags.length + ' tag(s) from Trash?')) return;
+    var f = document.getElementById('bulkRestoreForm');
+    f.querySelectorAll('input[name="barcodes"]').forEach(function (i) { i.remove(); });
+    tags.forEach(function (t) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'barcodes'; inp.value = t;
+      f.appendChild(inp);
+    });
+    this.disabled = true;
+    f.submit();
+  });
+
+  // Upload Tag: tick every row whose tag is in the file, on any page.
+  $('#trashTagSelectBtn').on('click', function () {
+    var file = document.getElementById('trashTagFile').files[0];
+    var status = document.getElementById('trashTagStatus');
+    if (!file) { status.innerHTML = '<span class="text-danger">Choose a file first.</span>'; return; }
+    var reader = new FileReader();
+    reader.onload = function () {
+      var wanted = {};
+      String(reader.result).replace(/^\uFEFF/, '').split(/\r?\n/).forEach(function (line, i) {
+        var t = (line.split(/[,;\t]/)[0] || '').trim().replace(/^"|"$/g, '');
+        if (!t) return;
+        if (i === 0 && /^(tag[_ ]?number|tag|barcode)$/i.test(t)) return;
+        wanted[t.toUpperCase()] = t;
+      });
+      var found = {};
+      $(dtTags.rows().nodes()).find('.trash-row-chk').each(function () {
+        var k = this.value.toUpperCase();
+        if (wanted[k]) { this.checked = true; found[k] = true; }
+      });
+      var missing = Object.keys(wanted).filter(function (k) { return !found[k]; }).map(function (k) { return wanted[k]; });
+      var total = Object.keys(wanted).length;
+      status.innerHTML = '<span class="text-success fw-semibold">' + Object.keys(found).length + ' of ' + total + ' tag(s) selected.</span>' +
+        (missing.length ? '<div class="text-danger mt-1">Not in Trash (' + missing.length + '): ' +
+          $('<div>').text(missing.join(', ')).html() + '</div>' : '');
+      updateRestoreCount();
+      dtTags.draw(false);
+    };
+    reader.readAsText(file);
   });
   var dtLots = initGlobalTable('#trashLotsTable', {
     order: [[{{ 5 if can(current_user, 'location_trash', 'pricing') else 4 }}, 'desc']],

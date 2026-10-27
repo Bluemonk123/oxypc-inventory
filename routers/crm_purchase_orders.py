@@ -241,8 +241,8 @@ async def issue_po(
         if po.deal_id:
             dr = await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.id == po.deal_id))
             deal = dr.scalar_one_or_none()
-            if deal and deal.stage in ("agreed", "lead", "contacted", "quoted", "negotiation"):
-                deal.stage = "po_raised"
+            if deal and deal.stage in ("lead", "contacted", "inspection", "quote", "negotiation"):
+                deal.stage = "purchase_order"
         await db.commit()
         return RedirectResponse(url=f"/crm/purchase-orders/{po_id}?success=PO+issued", status_code=302)
     status_val = po.status if po else "unknown"

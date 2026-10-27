@@ -5,7 +5,7 @@
 
 {% set stage_colors = {
   'lead': 'secondary', 'contacted': 'info', 'inspection': 'warning',
-  'negotiation': 'warning', 'agreed': 'success', 'po_raised': 'primary',
+  'quote': 'warning', 'negotiation': 'warning', 'purchase_order': 'primary', 'payment': 'primary',
   'received': 'success', 'won': 'success', 'lost': 'danger'
 } %}
 {% set priority_colors = {'low':'secondary','medium':'info','high':'warning','urgent':'danger'} %}
@@ -15,9 +15,10 @@
   <!-- Left col: stage progress, linked lot, actions -->
   <div class="col-xl-4">
 
-    <!-- Stage Progress (2026-10-22): vertical steps on the left. Filled
-         circle — green = passed, blue = current, grey = upcoming. Only the
-         closing stage that applies is shown (Won, or Lost when lost). -->
+    <!-- Stage Progress (reworked 2026-10-27): "Done" on the right of each
+         finished stage; under the name, the stage's items — users / approvals
+         on the left, attached documents on the right (SOURCING_STAGE_STEPS,
+         stored in crm_sourcing_steps). Items show for done + current stages. -->
     <style>
       .sd-steps { list-style: none; margin: 0; padding: 0; }
       .sd-step { position: relative; display: flex; gap: .75rem; padding: .55rem .75rem .55rem .5rem; border-radius: .75rem; border: 1px solid transparent; }
@@ -30,10 +31,55 @@
       .sd-step.is-current { --sd-dot: var(--bs-primary); --sd-line: #ced4da; background: #fff; border-color: var(--bs-primary); box-shadow: 0 .4rem 1rem rgba(13,110,253,.12); }
       .sd-step.is-current::before { border-left-style: dashed; }
       .sd-step.is-upcoming { --sd-dot: #adb5bd; --sd-line: #ced4da; }
+      .sd-body { flex: 1 1 auto; min-width: 0; }
       .sd-title { font-weight: 600; line-height: 1.3; }
       .sd-step.is-upcoming .sd-title { color: #6c757d; font-weight: 500; }
-      .sd-status { font-size: .8rem; }
+      .sd-status { font-size: .75rem; font-weight: 600; white-space: nowrap; }
+      .sd-items { display: flex; gap: .75rem; margin-top: .3rem; font-size: .78rem; }
+      .sd-items > div { min-width: 0; }
+      .sd-item { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem; line-height: 1.5; }
+      .sd-icon-btn { border: 0; background: none; padding: 0 .15rem; color: var(--bs-primary); line-height: 1; }
+      .sd-icon-btn:hover { color: #0a58ca; }
+      .sd-remark { font-size: .72rem; color: #6c757d; font-style: italic; }
     </style>
+    {% set _sd_open = deal.stage not in ['won','lost'] %}
+    {% set _sd_edit = can(current_user, 'crm_sourcing', 'edit') and _sd_open %}
+    {% set _sd_upload = can(current_user, 'crm_sourcing', 'upload') and _sd_open %}
+    {% set _is_admin = current_user.role.value == 'admin' %}
+    {% macro sd_person(key, label, kind) -%}
+      {% set st = steps.get(key) %}
+      <div class="sd-item">
+        <span class="text-muted">{{ label }}{% if kind == 'approval' %} approval{% endif %}:</span>
+        {% if st and st.assigned_to %}
+          <span class="fw-semibold">{{ user_names.get(st.assigned_to, st.assigned_to) }}</span>
+          {% if kind == 'approval' %}
+            {% if st.status == 'approved' %}<span class="badge bg-success">Approved</span>
+            {% elif st.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>
+            {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
+          {% endif %}
+        {% else %}<span class="text-muted">—</span>{% endif %}
+        {% if _sd_edit %}<button type="button" class="sd-icon-btn sd-assign-btn" title="Assign user"
+            data-step="{{ key }}" data-label="{{ label }}{% if kind == 'approval' %} approval{% endif %}"
+            data-current="{{ st.assigned_to if st and st.assigned_to else '' }}"><i class="bi bi-person-plus"></i></button>{% endif %}
+        {% if kind == 'approval' and st and st.status == 'pending' and _sd_open and (st.assigned_to == current_user.username or _is_admin) %}
+          <button type="button" class="btn btn-success btn-sm py-0 px-1 sd-decide-btn" style="font-size:.7rem"
+                  data-step="{{ key }}" data-label="{{ label }}" data-decision="approved">Approve</button>
+          <button type="button" class="btn btn-outline-danger btn-sm py-0 px-1 sd-decide-btn" style="font-size:.7rem"
+                  data-step="{{ key }}" data-label="{{ label }}" data-decision="rejected">Reject</button>
+        {% endif %}
+      </div>
+      {% if st and st.note %}<div class="sd-remark">“{{ st.note }}”</div>{% endif %}
+    {%- endmacro %}
+    {% macro sd_file(key, label) -%}
+      {% set st = steps.get(key) %}
+      <div class="sd-item justify-content-end text-end">
+        {% if st and st.file_path %}
+          <a href="/uploads/crm/{{ st.file_path }}" target="_blank" class="text-decoration-none" title="Open {{ label }}"><i class="bi bi-paperclip"></i>{{ label }}</a>
+        {% else %}<span class="text-muted">{{ label }}: —</span>{% endif %}
+        {% if _sd_upload %}<button type="button" class="sd-icon-btn sd-attach-btn" title="Attach {{ label }}"
+            data-step="{{ key }}" data-label="{{ label }}"><i class="bi bi-upload"></i></button>{% endif %}
+      </div>
+    {%- endmacro %}
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-diagram-3 me-1 text-primary"></i>Stage Progress</div>
       <div class="card-body pt-1">
@@ -41,46 +87,66 @@
           {% for i, (val, label) in stage_list %}
           {% if not ((val == 'lost' and deal.stage != 'lost') or (val == 'won' and deal.stage == 'lost')) %}
           {% set _state = 'done' if i < current_idx else ('current' if i == current_idx else 'upcoming') %}
+          {% if val in ('won', 'lost') and deal.stage == val %}{% set _state = 'done' %}{% endif %}
           <li class="sd-step is-{{ _state }}">
             <span class="sd-dot" aria-hidden="true"></span>
-            <div>
-              <div class="sd-title">{{ label }}</div>
-              {% if _state == 'done' %}<div class="sd-status text-success">Completed</div>
-              {% elif _state == 'current' %}<div class="sd-status text-primary">Current stage</div>{% endif %}
+            <div class="sd-body">
+              <div class="d-flex justify-content-between align-items-start gap-2">
+                <div class="sd-title">{{ label }}</div>
+                {% if _state == 'done' %}<span class="sd-status text-success"><i class="bi bi-check-circle-fill me-1"></i>Done</span>
+                {% elif _state == 'current' %}<span class="sd-status text-primary">Current</span>{% endif %}
+              </div>
+              {% if _state != 'upcoming' %}
+                {% if val == 'lead' %}
+                <div class="sd-items"><div class="text-muted">Added {{ deal.created_at.strftime('%d-%m-%Y') if deal.created_at else '—' }}{% if deal.created_by %} by {{ user_names.get(deal.created_by, deal.created_by) }}{% endif %}</div></div>
+                {% elif val == 'contacted' %}
+                <div class="sd-items"><div>
+                  {% if last_contact %}
+                  <span class="text-muted">Outcome:</span>
+                  <span class="fw-semibold">{{ (last_contact.outcome or 'Logged') | replace('_',' ') | title }}</span>
+                  <span class="text-muted">· {{ last_contact.activity_date.strftime('%d-%m-%Y') }}</span>
+                  {% else %}<span class="text-muted">No call logged yet</span>{% endif %}
+                </div></div>
+                {% elif val in stage_steps %}
+                {% set _people = stage_steps[val] | selectattr(2, 'ne', 'file') | list %}
+                {% set _files = stage_steps[val] | selectattr(2, 'equalto', 'file') | list %}
+                <div class="sd-items justify-content-between">
+                  <div>{% for k, l, kind in _people %}{{ sd_person(k, l, kind) }}{% endfor %}</div>
+                  <div class="text-end">
+                    {% for k, l, kind in _files %}{{ sd_file(k, l) }}{% endfor %}
+                    {% if val == 'purchase_order' %}
+                    <div class="sd-item justify-content-end">
+                      {% if latest_po %}<a href="/crm/purchase-orders/{{ latest_po.id }}" class="text-decoration-none" title="Latest PO generated from this deal"><i class="bi bi-paperclip"></i>{{ latest_po.po_number }}</a>
+                      {% else %}<span class="text-muted">PO: —</span>{% endif %}
+                    </div>
+                    {% endif %}
+                  </div>
+                </div>
+                {% elif val in ('won', 'lost') and deal.win_loss_reason %}
+                <div class="sd-items"><div><span class="text-muted">{{ 'Win' if val == 'won' else 'Loss' }} Reason:</span> {{ deal.win_loss_reason }}</div></div>
+                {% endif %}
+              {% endif %}
             </div>
           </li>
           {% endif %}
           {% endfor %}
         </ol>
 
-        <!-- Stage Move Form -->
-        {% if deal.stage not in ['won','lost'] %}
+        {# Next Stage (2026-10-27): replaces Move to Stage / Final Price /
+           Win-Loss Reason. Never blocked by open items. From Stock Received
+           it asks Won / Lost and the Win/Loss Reason. #}
+        {% if _sd_open %}
         {% if can(current_user, 'crm_sourcing', 'edit') %}
-        <form method="post" action="/crm/sourcing/{{ deal.id }}/stage" class="row g-2 align-items-end">
-          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
-          <div class="col-12">
-            <label class="form-label small fw-semibold mb-1">Move to Stage</label>
-            <select name="new_stage" class="form-select form-select-sm">
-              {% for val, label in sourcing_stages %}
-              <option value="{{ val }}" {% if val==deal.stage %}selected{% endif %}>{{ label }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          {% if can(current_user, 'crm_sourcing', 'pricing') %}
-          <div class="col-12">
-            <label class="form-label small fw-semibold mb-1">Final Price / Unit (₹)</label>
-            <input type="number" name="final_price_unit" class="form-control form-control-sm" step="0.01" min="0"
-              value="{{ deal.final_price_unit or '' }}" placeholder="Optional">
-          </div>
-          {% endif %}
-          <div class="col-12">
-            <label class="form-label small fw-semibold mb-1">Win/Loss Reason</label>
-            <input type="text" name="win_loss_reason" class="form-control form-control-sm" placeholder="Optional">
-          </div>
-          <div class="col-12">
-            <button class="btn btn-sm btn-primary"><i class="bi bi-arrow-right-circle me-1"></i>Update Stage</button>
-          </div>
+        {% if deal.stage == 'received' %}
+        <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#sdCloseModal">
+          <i class="bi bi-arrow-right-circle me-1"></i>Next Stage</button>
+        {% elif next_stage %}
+        <form method="post" action="/crm/sourcing/{{ deal.id }}/next-stage" class="d-inline">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-arrow-right-circle me-1"></i>Next Stage
+            <span class="fw-normal opacity-75">({{ stage_labels.get(next_stage, next_stage) }})</span></button>
         </form>
+        {% endif %}
         {% endif %}
         {% else %}
         <div class="alert alert-{{ 'success' if deal.stage=='won' else 'danger' }} py-2 mb-0">
@@ -89,6 +155,97 @@
         {% endif %}
       </div>
     </div>
+
+    {# ── Stage Progress modals ── #}
+    <div class="modal fade" id="sdAssignModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm">
+        <form method="post" id="sdAssignForm" class="modal-content">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-person-plus me-1"></i><span id="sdAssignTitle">Assign</span></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <label class="form-label small fw-semibold mb-1">User</label>
+            <select name="username" id="sdAssignUser" class="form-select form-select-sm" required>
+              <option value="">— Select user —</option>
+              {% for u in staff %}<option value="{{ u.username }}">{{ u.full_name or u.username }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="modal-footer py-2"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary btn-sm">Assign</button></div>
+        </form>
+      </div>
+    </div>
+    <div class="modal fade" id="sdAttachModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm">
+        <form method="post" id="sdAttachForm" enctype="multipart/form-data" class="modal-content">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-upload me-1"></i>Attach <span id="sdAttachTitle"></span></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <input type="file" name="file" class="form-control form-control-sm" required accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.xlsx,.xls,.csv,.doc,.docx">
+            <div class="form-text small">PDF, image, Excel or Word — up to 20 MB.</div>
+          </div>
+          <div class="modal-footer py-2"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary btn-sm">Attach</button></div>
+        </form>
+      </div>
+    </div>
+    <div class="modal fade" id="sdDecideModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm">
+        <form method="post" id="sdDecideForm" class="modal-content">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <input type="hidden" name="decision" id="sdDecideValue">
+          <div class="modal-header py-2"><h6 class="modal-title" id="sdDecideTitle">Approve</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <label class="form-label small fw-semibold mb-1">Remark</label>
+            <textarea name="note" class="form-control form-control-sm" rows="2" maxlength="1000" placeholder="Optional"></textarea>
+          </div>
+          <div class="modal-footer py-2"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button><button class="btn btn-sm" id="sdDecideSubmit">Approve</button></div>
+        </form>
+      </div>
+    </div>
+    <div class="modal fade" id="sdCloseModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-sm">
+        <form method="post" action="/crm/sourcing/{{ deal.id }}/next-stage" class="modal-content">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-flag me-1"></i>Close Deal</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+          <div class="modal-body">
+            <div class="d-flex gap-3 mb-2">
+              <div class="form-check"><input class="form-check-input" type="radio" name="outcome" id="sdWon" value="won" required><label class="form-check-label" for="sdWon">Closed — Won</label></div>
+              <div class="form-check"><input class="form-check-input" type="radio" name="outcome" id="sdLost" value="lost"><label class="form-check-label" for="sdLost">Closed — Lost</label></div>
+            </div>
+            <label class="form-label small fw-semibold mb-1">Win/Loss Reason</label>
+            <input type="text" name="win_loss_reason" class="form-control form-control-sm" maxlength="500" placeholder="Optional">
+          </div>
+          <div class="modal-footer py-2"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary btn-sm">Close Deal</button></div>
+        </form>
+      </div>
+    </div>
+    <script>
+    (function () {
+      var base = '/crm/sourcing/{{ deal.id }}/steps/';
+      document.addEventListener('click', function (e) {
+        var a = e.target.closest('.sd-assign-btn'), f = e.target.closest('.sd-attach-btn'), d = e.target.closest('.sd-decide-btn');
+        if (a) {
+          document.getElementById('sdAssignForm').action = base + a.dataset.step + '/assign';
+          document.getElementById('sdAssignTitle').textContent = a.dataset.label;
+          document.getElementById('sdAssignUser').value = a.dataset.current || '';
+          bootstrap.Modal.getOrCreateInstance(document.getElementById('sdAssignModal')).show();
+        } else if (f) {
+          var fm = document.getElementById('sdAttachForm');
+          fm.action = base + f.dataset.step + '/attach'; fm.reset();
+          document.getElementById('sdAttachTitle').textContent = f.dataset.label;
+          bootstrap.Modal.getOrCreateInstance(document.getElementById('sdAttachModal')).show();
+        } else if (d) {
+          var ok = d.dataset.decision === 'approved';
+          var dm = document.getElementById('sdDecideForm');
+          dm.action = base + d.dataset.step + '/decide'; dm.reset();
+          document.getElementById('sdDecideValue').value = d.dataset.decision;
+          document.getElementById('sdDecideTitle').textContent = (ok ? 'Approve' : 'Reject') + ' — ' + d.dataset.label;
+          var b = document.getElementById('sdDecideSubmit');
+          b.textContent = ok ? 'Approve' : 'Reject';
+          b.className = 'btn btn-sm ' + (ok ? 'btn-success' : 'btn-danger');
+          bootstrap.Modal.getOrCreateInstance(document.getElementById('sdDecideModal')).show();
+        }
+      });
+    })();
+    </script>
 
     <!-- Lot Card -->
     {% if lot %}
@@ -263,19 +420,63 @@
             </div>
           </div>
           {% endif %}
+          {# Upload Documents (2026-10-27): moved into Deal Info as a fold-out. #}
+          {% if can(current_user, 'crm_sourcing', 'upload') %}
+          <div class="col-12">
+            <a class="small text-decoration-none sd-acc collapsed" data-bs-toggle="collapse" href="#uploadBody"
+               role="button" aria-expanded="false" aria-controls="uploadBody">
+              <i class="bi bi-cloud-upload me-1"></i>Upload Documents <i class="bi bi-chevron-down small sd-acc-chev"></i>
+            </a>
+            <div class="collapse mt-2" id="uploadBody">
+                <form method="post" action="/crm/sourcing/{{ deal.id }}/upload" enctype="multipart/form-data" class="row g-2 align-items-end">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">Purchase Invoice</label>
+            <input type="file" name="purchase_invoice" class="form-control form-control-sm">
+            {% if deal.purchase_invoice_path %}
+            <a href="/uploads/crm/{{ deal.purchase_invoice_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
+            {% endif %}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">Purchase Order</label>
+            <input type="file" name="purchase_order" class="form-control form-control-sm">
+            {% if deal.purchase_order_path %}
+            <a href="/uploads/crm/{{ deal.purchase_order_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
+            {% endif %}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">E-way Bill</label>
+            <input type="file" name="eway_bill" class="form-control form-control-sm">
+            {% if deal.eway_bill_path %}
+            <a href="/uploads/crm/{{ deal.eway_bill_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
+            {% endif %}
+          </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">Quote Received</label>
+            <input type="file" name="quote_received" class="form-control form-control-sm">
+            {% if deal.quote_received_path %}
+            <a href="/uploads/crm/{{ deal.quote_received_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
+            {% endif %}
+          </div>
+          <div class="col-12">
+            <button class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload me-1"></i>Upload</button>
+          </div>
+        </form>
+                    </div>
+          </div>
+          {% endif %}
         </div>
       </div>
     </div>
 
-    <!-- Profitability Calculator + Upload Documents: accordions under Deal
-         Info, both collapsed by default (2026-10-22). -->
+    <!-- Fold-out chevrons (Upload Documents in Deal Info). -->
     <style>
       .sd-acc-chev { transition: transform .15s; }
       .sd-acc:not(.collapsed) .sd-acc-chev { transform: rotate(180deg); }
     </style>
     <!-- ═══ Pricing / Profitability Calculator ═══ -->
-    {# Kept in the DOM (its script binds by id) but hidden without module pricing. #}
-    <div {% if not can(current_user, 'crm_sourcing', 'pricing') %}hidden {% endif %}class="card border-0 shadow-sm mb-3">
+    {# Hidden for everyone (2026-10-27) — kept in the DOM because its script binds by id. #}
+    <div hidden class="card border-0 shadow-sm mb-3">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center sd-acc collapsed"
            style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#calcBody"
            role="button" aria-expanded="false" aria-controls="calcBody">
@@ -368,56 +569,6 @@
       </div>
     </div>
 
-    <!-- Upload Documents -->
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center sd-acc collapsed"
-           style="cursor:pointer" data-bs-toggle="collapse" data-bs-target="#uploadBody"
-           role="button" aria-expanded="false" aria-controls="uploadBody">
-        <span class="fw-semibold"><i class="bi bi-cloud-upload me-1 text-primary"></i>Upload Documents</span>
-        <i class="bi bi-chevron-down text-muted small sd-acc-chev"></i>
-      </div>
-      <div class="collapse" id="uploadBody">
-      <div class="card-body">
-        {% if can(current_user, 'crm_sourcing', 'upload') %}
-        <form method="post" action="/crm/sourcing/{{ deal.id }}/upload" enctype="multipart/form-data" class="row g-2 align-items-end">
-          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">Purchase Invoice</label>
-            <input type="file" name="purchase_invoice" class="form-control form-control-sm">
-            {% if deal.purchase_invoice_path %}
-            <a href="/uploads/crm/{{ deal.purchase_invoice_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
-            {% endif %}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">Purchase Order</label>
-            <input type="file" name="purchase_order" class="form-control form-control-sm">
-            {% if deal.purchase_order_path %}
-            <a href="/uploads/crm/{{ deal.purchase_order_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
-            {% endif %}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">E-way Bill</label>
-            <input type="file" name="eway_bill" class="form-control form-control-sm">
-            {% if deal.eway_bill_path %}
-            <a href="/uploads/crm/{{ deal.eway_bill_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
-            {% endif %}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">Quote Received</label>
-            <input type="file" name="quote_received" class="form-control form-control-sm">
-            {% if deal.quote_received_path %}
-            <a href="/uploads/crm/{{ deal.quote_received_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
-            {% endif %}
-          </div>
-          <div class="col-12">
-            <button class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload me-1"></i>Upload</button>
-          </div>
-        </form>
-        {% endif %}
-      </div>
-      </div>
-    </div>
-
     <!-- ═══ PO Line Items ═══ -->
     {% set csrf = request.cookies.get('csrf_token', '') %}
     <div class="card border-0 shadow-sm mb-3">
@@ -474,6 +625,11 @@
             {% endif %}
           </table>
         </div>
+        {# Generated POs (Purchase Deals) at the bottom of PO Line Items (2026-10-27). #}
+        {% set po_perm_module = 'crm_sourcing' %}
+        {% set po_embed = True %}
+        {% set po_section_title = 'Generated POs' %}
+        {% include "crm/_purchase_deals_table.html" %}
       </div>
     </div>
 
@@ -584,9 +740,6 @@
       </div>
     </div>
 
-    <!-- Purchase Deals (POs raised from this deal) — below PO Line Items (2026-10-22) -->
-    {% set po_perm_module = 'crm_sourcing' %}
-    {% include "crm/_purchase_deals_table.html" %}
 
     <!-- Next Follow-up Alert -->
     {% if next_fu and not next_fu.followup_done %}
@@ -608,54 +761,40 @@
     </div>
     {% endif %}
 
-    <!-- Log Activity -->
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-plus-circle me-1 text-success"></i>Log Activity</div>
-      <div class="card-body">
-        <form method="post" action="/crm/activities/log" class="row g-2">
-          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+    <!-- Activity Timeline -->
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-clock-history me-1 text-muted"></i>Activity Log</div>
+      {# Log Activity (2026-10-27): inside Activity Log on one row — follow-up
+         date, type, outcome, summary, button. Follow-up goes to the current
+         user (hidden field). #}
+      {% if can(current_user, 'crm_sourcing', 'add') %}
+      <div class="px-3 pb-2">
+        <form method="post" action="/crm/activities/log" class="d-flex flex-wrap flex-md-nowrap gap-2 align-items-center">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
           <input type="hidden" name="contact_id" value="{{ contact.id if contact else '' }}">
           <input type="hidden" name="deal_id" value="{{ deal.id }}">
           <input type="hidden" name="deal_type" value="sourcing">
           <input type="hidden" name="redirect_to" value="/crm/sourcing/{{ deal.id }}">
-          <div class="col-md-3">
-            {% set activity_type_emoji = {'call': '📞', 'whatsapp': '💬', 'visit': '🤝', 'email': '📧', 'meeting': '👥', 'note': '📝'} %}
-            <select name="activity_type" class="form-select form-select-sm">
-              {% for t in master_options('crm_activity_type') %}
-              <option value="{{ t }}">{{ activity_type_emoji.get(t, '') }} {{ t | title }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="col-md-3">
-            <select name="outcome" class="form-select form-select-sm">
-              <option value="">Outcome…</option>
-              {% for o in master_options('crm_activity_outcome') %}
-              <option value="{{ o }}">{{ o | replace('_',' ') | title }}</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="col-md-6">
-            <input type="text" name="summary" class="form-control form-control-sm" placeholder="What was discussed? *" required>
-          </div>
-          <div class="col-md-4">
-            <input type="datetime-local" name="next_followup" class="form-control form-control-sm" title="Next follow-up">
-          </div>
-          <div class="col-md-4">
-            <input type="text" name="followup_assigned_to" class="form-control form-control-sm" placeholder="Follow-up assigned to" value="{{ current_user.username }}">
-          </div>
-          <div class="col-md-4">
-            {% if can(current_user, 'crm_sourcing', 'add') %}
-            <button class="btn btn-sm btn-success w-100"><i class="bi bi-check me-1"></i>Log Activity</button>
-            {% endif %}
-          </div>
+          <input type="hidden" name="followup_assigned_to" value="{{ current_user.username }}">
+          <input type="datetime-local" name="next_followup" class="form-control form-control-sm" style="max-width:190px" title="Next follow-up">
+          {% set activity_type_emoji = {'call': '📞', 'whatsapp': '💬', 'visit': '🤝', 'email': '📧', 'meeting': '👥', 'note': '📝'} %}
+          <select name="activity_type" class="form-select form-select-sm" style="max-width:140px" title="Type">
+            {% for t in master_options('crm_activity_type') %}
+            <option value="{{ t }}">{{ activity_type_emoji.get(t, '') }} {{ t | title }}</option>
+            {% endfor %}
+          </select>
+          <select name="outcome" class="form-select form-select-sm" style="max-width:160px" title="Outcome">
+            <option value="">Outcome…</option>
+            {% for o in master_options('crm_activity_outcome') %}
+            <option value="{{ o }}">{{ o | replace('_',' ') | title }}</option>
+            {% endfor %}
+          </select>
+          <input type="text" name="summary" class="form-control form-control-sm" placeholder="What was discussed? *" required>
+          <button class="btn btn-sm btn-success text-nowrap"><i class="bi bi-check me-1"></i>Log Activity</button>
         </form>
       </div>
-    </div>
-
-    <!-- Activity Timeline -->
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-clock-history me-1 text-muted"></i>Activity Log</div>
-      <div class="card-body p-0">
+      {% endif %}
+      <div class="card-body p-0 border-top">
         {% if activities %}
         <div class="list-group list-group-flush">
           {% for act in activities %}

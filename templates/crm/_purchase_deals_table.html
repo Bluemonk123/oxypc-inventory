@@ -7,8 +7,10 @@
   'draft': 'secondary', 'issued': 'primary', 'acknowledged': 'info',
   'received': 'success', 'cancelled': 'danger'
 } %}
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+{# po_embed (2026-10-27): rendered inside another card (Sourcing Deal's PO
+   Line Items) — no card shadow / margin of its own, just a top border. #}
+<div class="{{ 'border-top' if (po_embed is defined and po_embed) else 'card border-0 shadow-sm mb-3' }}">
+  <div class="{{ 'px-3 pt-2 pb-1' if (po_embed is defined and po_embed) else 'card-header bg-white border-0' }} d-flex justify-content-between align-items-center">
     <span class="fw-semibold"><i class="bi bi-receipt me-1 text-success"></i>{{ po_section_title|default('Purchase Deals', true) }} ({{ purchase_orders|length }})</span>
     {% if add_po_url is defined and add_po_url %}
     {% if can(current_user, _pm, 'add') %}

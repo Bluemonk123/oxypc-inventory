@@ -430,7 +430,11 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/sourcing/new'): ('crm_sourcing', 'add'),  # create_deal
     ('POST', '/crm/sourcing/{deal_id}/stage'): ('crm_sourcing', 'edit'),  # move_stage
     ('POST', '/crm/sourcing/{deal_id}/edit'): ('crm_sourcing', 'edit'),  # update_deal
-    ('POST', '/crm/sourcing/{deal_id}/upload'): ('crm_sourcing', 'edit'),  # upload_documents: attaches deal documents (not a bulk import)
+    ('POST', '/crm/sourcing/{deal_id}/upload'): ('crm_sourcing', 'upload'),  # upload_documents: Upload Documents in Deal Info (2026-10-27: was edit; its button is gated on upload)
+    ('POST', '/crm/sourcing/{deal_id}/steps/{step_key}/assign'): ('crm_sourcing', 'edit'),  # assign_step: Stage Progress user icon (user / approver)
+    ('POST', '/crm/sourcing/{deal_id}/steps/{step_key}/decide'): ('crm_sourcing', 'edit'),  # decide_step: Approve / Reject (assigned approver or admin)
+    ('POST', '/crm/sourcing/{deal_id}/steps/{step_key}/attach'): ('crm_sourcing', 'upload'),  # attach_step_file: Inspection Report / Quote / Updated Quote / Invoice
+    ('POST', '/crm/sourcing/{deal_id}/next-stage'): ('crm_sourcing', 'edit'),  # next_stage: Next Stage button (Won / Lost from Stock Received)
     ('POST', '/crm/sourcing/{deal_id}/link-lot'): ('crm_sourcing', 'edit'),  # link_lot
     ('POST', '/crm/sourcing/{deal_id}/po-items/add'): ('crm_sourcing', 'add'),  # add_deal_po_item
     ('POST', '/crm/sourcing/{deal_id}/po-items/{item_id}/delete'): ('crm_sourcing', 'delete'),  # delete_deal_po_item
@@ -516,6 +520,7 @@ ROUTE_ACTIONS = {
     ('POST', '/trash/bulk/devices'): ('devices', 'delete'),  # trash_devices_bulk: All Inventory bulk trash
     ('POST', '/trash/devices/{barcode}/delete'): ('location_trash', 'delete'),  # delete_device_forever: permanent
     ('POST', '/trash/devices/{barcode}/restore'): ('location_trash', 'edit'),  # restore_device: restore
+    ('POST', '/trash/bulk/devices/restore'): ('location_trash', 'edit'),  # restore_devices_bulk: Trash page Bulk Restore (2026-10-27)
     # ===== routers/notifications.py =====
     ('POST', '/notifications/{notif_id}/read'): None,  # mark_read: mark read
     # ===== routers/manuals.py =====
