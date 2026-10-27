@@ -26,7 +26,7 @@ from services.notifications import create_notification
 from services.location_defaults import ensure_stage_location
 from auth.dependencies import get_current_user, require_roles, verify_csrf, require_module_perm
 from models.work_order import WorkOrder
-from models.role_permissions import has_perm, is_narrowly_scoped_to
+from models.role_permissions import has_perm, is_narrowly_scoped_to, is_cosmetic_single_stage_role
 from models.cosmetic_flow import CosmeticFlowRow
 from models.cost_config import CostConfig
 from models.master import EXTERNAL_PARTNER_TEST_ENTITY
@@ -240,7 +240,9 @@ def _is_cosmetic_stage_role(role_val: str) -> bool:
     and unaffected by this fix."""
     if role_val in _COSMETIC_HUB_ROLES:
         return False
-    return is_narrowly_scoped_to(role_val, *(module for _, _, module in FLOW_STAGE_COLUMNS))
+    # 2026-10-27: a role explicitly given ALL six stages (e.g. trc_manager)
+    # is pipeline-wide, not single-stage — see is_cosmetic_single_stage_role.
+    return is_cosmetic_single_stage_role(role_val)
 
 
 async def _move_assignee_pool(db: AsyncSession, current_user: User) -> list:

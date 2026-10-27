@@ -300,6 +300,27 @@ def is_narrowly_scoped_to(role_name: str, *modules: str) -> bool:
     return any(has_perm(role_name, m, "enable") for m in modules)
 
 
+COSMETIC_STAGE_MODULES = ("cosmetic_cleaning", "cosmetic_putty", "cosmetic_dry_sanding",
+                          "cosmetic_masking", "cosmetic_painting", "cosmetic_water_sanding")
+
+
+def is_cosmetic_single_stage_role(role_name: str) -> bool:
+    """A genuine single-stage cosmetic worker role (e.g. "Cosmetic Cleaning"):
+    narrowly scoped to the cosmetic stage modules (is_narrowly_scoped_to) but
+    NOT explicitly enabled for all six of them.
+
+    Found 2026-10-27: a broad manager role (trc_manager — ~100 modules) with
+    all six stages ticked in the Permission Matrix hit is_narrowly_scoped_to's
+    "explicit enable row" case and was treated as a single-stage worker, so a
+    Group Config manager of the whole cosmetic team (surya_tandon) saw only
+    the tags assigned to them on Cosmetic & Paint, and lost the sidebar link.
+    A role holding every stage is a pipeline-wide role, not a single stage.
+    Used by routers/cosmetic.py and the base.html sidebar so both agree."""
+    if not is_narrowly_scoped_to(role_name, *COSMETIC_STAGE_MODULES):
+        return False
+    return not all(has_explicit_perm(role_name, m) for m in COSMETIC_STAGE_MODULES)
+
+
 def has_explicit_perm(role_name: str, module: str) -> bool:
     """True only when the matrix holds an explicit row ENABLING `module` for
     `role_name`.

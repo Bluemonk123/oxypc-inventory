@@ -246,7 +246,10 @@
          with ZERO matrix configuration anywhere as narrow by default,
          same as before — see models.role_permissions.is_narrowly_scoped_to. #}
       {% set has_stage_perm = narrowly_scoped_to(role,'cosmetic_cleaning','cosmetic_putty','cosmetic_dry_sanding','cosmetic_masking','cosmetic_painting','cosmetic_water_sanding') %}
-      {% set is_cosmetic_user_role = has_stage_perm and role not in ('admin','cosmetic_manager','qc_inspector','inventory_manager','sales_manager') %}
+      {# 2026-10-27: cosmetic_single_stage — a role with ALL six stages ticked
+         (e.g. trc_manager) is pipeline-wide, not a single-stage worker, so it
+         keeps the hub link (same rule as routers/cosmetic.py). #}
+      {% set is_cosmetic_user_role = cosmetic_single_stage(role) and role not in ('admin','cosmetic_manager','qc_inspector','inventory_manager','sales_manager') %}
       {% if not is_cosmetic_user_role and any_perm(role,'cosmetic_received','cosmetic_cleaning','cosmetic_putty','cosmetic_dry_sanding','cosmetic_masking','cosmetic_painting','cosmetic_water_sanding','cosmetic_completed') %}
       <li><a href="/cosmetic/cosmetic_received" class="nav-link {% if request.url.path.startswith('/cosmetic/') and request.url.path != '/cosmetic/final_qc' %}active{% endif %}">
         <i class="bi bi-droplet me-2"></i> {{ sidebar_label('cosmetic_received', 'Cosmetic & Paint') }}

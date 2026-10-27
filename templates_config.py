@@ -116,6 +116,7 @@ from models.role_permissions import (
     has_perm as _has_perm,
     has_explicit_perm as _has_explicit_perm_fn,
     is_narrowly_scoped_to as _is_narrowly_scoped_to_fn,
+    is_cosmetic_single_stage_role as _is_cosmetic_single_stage_role_fn,
     get_cached_sidebar_label as _sidebar_label,
     get_cached_page_title as _get_cached_page_title,
 )
@@ -147,6 +148,14 @@ def _can_set_price(current_user):
 
 def _any_perm(role, *modules):
     return any(_has_perm(role, m, "enable") for m in modules)
+
+
+def _cosmetic_single_stage(role):
+    """Template helper: models.role_permissions.is_cosmetic_single_stage_role
+    (2026-10-27) — the sidebar's "Cosmetic User" test, same rule as
+    routers/cosmetic.py _is_cosmetic_stage_role."""
+    role_val = getattr(role, "value", None) or str(role)
+    return _is_cosmetic_single_stage_role_fn(role_val)
 
 
 def _narrowly_scoped_to(role, *modules):
@@ -260,6 +269,7 @@ templates.env.globals["can"] = _can
 templates.env.globals["has_explicit_perm"] = _has_explicit_perm
 templates.env.globals["any_perm"] = _any_perm
 templates.env.globals["narrowly_scoped_to"] = _narrowly_scoped_to
+templates.env.globals["cosmetic_single_stage"] = _cosmetic_single_stage
 templates.env.globals["can_view_pricing"] = _can_view_pricing
 templates.env.globals["can_set_price"] = _can_set_price
 templates.env.globals["breadcrumb_enabled"] = _breadcrumb_enabled
