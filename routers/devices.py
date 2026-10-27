@@ -429,6 +429,7 @@ def _spec_search_clause(term: str, extra_cols=()):
                   else_="")
     cols = [Device.barcode, Device.serial_no, Device.brand, Device.model, Device.cpu,
             Device.device_type, Device.ram_summary, Device.hdd_summary, Device.storage_type,
+            Device.total_ram_size, Device.total_hdd_size,
             ram_txt, sto_txt, sto_tb, *extra_cols]
     clauses = []
     for w in words:
@@ -688,8 +689,11 @@ async def device_search_data(
                 "secondary" if g == "C" else "danger" if g in ("D", "scrap") else "light text-dark")
         stage_val = getattr(d.current_stage, "value", d.current_stage)
         stage_lbl = STAGE_LABELS.get(d.current_stage, stage_val)
-        ram = d.ram_summary or _gb_text(d.ram_gb) or "—"
-        storage = d.hdd_summary or (f"{_gb_text(d.storage_gb)} {d.storage_type or ''}".strip() if d.storage_gb else "—")
+        # Same value as the Export's RAM / Storage columns (2026-10-27): the
+        # table showed RAM Summary first while Export showed Total RAM Size
+        # first, so a tag whose two disagreed showed different RAM in each.
+        ram = ram_text(d) or "—"
+        storage = storage_text(d) or "—"
         cells = [
             f'<input type="checkbox" class="form-check-input rowChk" value="{esc(d.barcode)}">',
             (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="font-monospace fw-bold text-decoration-none">{esc(d.barcode)}</a>'

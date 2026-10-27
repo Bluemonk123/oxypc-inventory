@@ -418,6 +418,70 @@ async def size_space_fix_apply(request: Request, current_user: User = Depends(ad
                          "per_field": {f: len(v) for f, v in per_field.items()}})
 
 
+# ── RAM / Storage swapped or "0" (2026-10-27) ────────────────────────────────
+# Rules in utils/device_spec.spec_repair: "0" sizes cleared, RAM and Storage
+# swapped back (RAM over 128 GB with a 4–64 GB drive), a drive size sitting in
+# RAM moved to Storage, then blank fields filled from the rest of each set.
+# The page previews; POST applies and audits every tag's before / after.
+_REPAIR_COLS = ("ram_gb", "ram_summary", "total_ram_count", "total_ram_size",
+                "storage_gb", "hdd_summary", "total_hdd_count", "total_hdd_size")
+_REPAIR_KIND_LABELS = {
+    "swapped": "RAM and Storage swapped back",
+    "moved": "Drive size sitting in RAM moved to Storage",
+    "summary": "Drive size in RAM Summary moved to Storage",
+    "zero": '"0" size cleared',
+}
+
+
+async def _repair_changes(db):
+    """[(device_id, barcode, kinds, {field: (old, new)})]."""
+    from sqlalchemy import select
+    from models.device import Device
+    from utils.device_spec import spec_repair
+    cols = [getattr(Device, c) for c in _REPAIR_COLS + ("hdd_capacity_gb",)]
+    out = []
+    for r in (await db.execute(select(Device.id, Device.barcode, *cols))).all():
+        kinds, ch = spec_repair(r)
+        if ch:
+            out.append((r.id, r.barcode, kinds, {f: (getattr(r, f), v) for f, v in ch.items()}))
+    return out
+
+
+@router.post("/spec-repair")
+async def spec_repair_apply(request: Request, current_user: User = Depends(admin_only)):
+    from collections import defaultdict
+    from sqlalchemy import bindparam, update
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        changes = await _repair_changes(db)
+        groups = defaultdict(list)          # same set of fields -> one statement
+        for did, _tag, _k, ch in changes:
+            groups[tuple(sorted(ch))].append((did, ch))
+        conn = await db.connection()
+        for keys, items in groups.items():
+            stmt = (update(Device.__table__).where(Device.__table__.c.id == bindparam("b_id"))
+                    .values({k: bindparam("b_" + k) for k in keys}))
+            params = [{"b_id": did, **{"b_" + k: ch[k][1] for k in keys}} for did, ch in items]
+            for i in range(0, len(params), 2000):
+                await conn.execute(stmt, params[i:i + 2000])   # executemany
+        by_kind = {k: sum(1 for c in changes if k in c[2]) for k in _REPAIR_KIND_LABELS}
+        await audit(db, user=current_user, action="DEVICE_SPEC_REPAIR", table_name="devices",
+                    record_id=f"{len(changes)} tags",
+                    old_value={str(did): {f: v[0] for f, v in ch.items()} for did, _t, _k, ch in changes},
+                    new_value={"count": len(changes), "by_kind": by_kind,
+                               "after": {str(did): {f: v[1] for f, v in ch.items()} for did, _t, _k, ch in changes}},
+                    notes="RAM / Storage put right: swapped back, drive size moved out of RAM, "
+                          '"0" cleared, blanks filled. Reverse: set each listed field back to its old_value.',
+                    request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"RAM / Storage repair done: {len(changes):,} tags updated.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "updated": len(changes), "by_kind": by_kind})
+
+
 # ── Sub-Category fill from Device Type (2026-10-22) ──────────────────────────
 # The reverse of the Device Type backfill: Sub-Category blank, Device Type set.
 # Uses the same pairing as upload (utils/device_category): the Sub-Category
@@ -1172,6 +1236,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
     async with AsyncSessionLocal() as db:
         spec = await _spec_changes(db, with_rows=True)
         space = await _space_changes(db)
+        repair = await _repair_changes(db)
         subcat = await _subcat_changes(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
@@ -1204,6 +1269,11 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "space_total": len(space),
         "space_fields": {f: sum(1 for _d, _t, ch in space if f in ch) for f in _SPACE_FIELDS},
         "space_examples": [{"tag": t, "ch": ch} for _d, t, ch in space[:12]],
+        "repair_total": len(repair),
+        "repair_kinds": [(lbl, sum(1 for c in repair if k in c[2])) for k, lbl in _REPAIR_KIND_LABELS.items()],
+        "repair_examples": list({t: {"tag": t, "kinds": ", ".join(_REPAIR_KIND_LABELS[k] for k in ks), "ch": ch}
+                                 for k in _REPAIR_KIND_LABELS
+                                 for _d, t, ks, ch in [c for c in repair if k in c[2]][:4]}.values()),
         "subcat_total": len(subcat), "subcat_by": [{"dt": k[0], "sc": k[1], "n": n} for k, n in sorted(subcat_by.items(), key=lambda x: -x[1])],
         "issues": issues[:500], "issues_total": len(issues),
         "issue_counts": _issue_counts(issues),

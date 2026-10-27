@@ -13,7 +13,7 @@ from database import get_db
 from utils.csv_decode import decode_csv_bytes
 from utils.master_data import entity_values, master_values
 from utils.device_category import pair_type_and_category
-from utils.device_spec import upload_spec
+from utils.device_spec import upload_spec, looks_swapped, RAM_MAX_GB
 from utils.grades import parse_grade
 from models.user import User, UserRole
 from models.device import Device, DeviceStage, StageMovement, STAGE_LABELS
@@ -604,6 +604,20 @@ async def upload_devices(
                     continue
                 if grn_obj is not None and grn_obj.entity and not forced_entity_val:
                     entity_val = grn_obj.entity
+
+            # RAM / Storage swapped in the file (2026-10-27): RAM over 128 GB
+            # with a 4-64 GB drive means the two columns were typed into each
+            # other (whole lots of EliteBook "RAM 256GB, Storage 16GB" came in
+            # this way). Skipped with the reason, like a bad GRN, so the sheet
+            # is fixed rather than wrong specs saved.
+            _chk = upload_spec(_s(row, "RAM") or _s(row, "total_ram_size") or _s(row, "ram_gb"),
+                               _s(row, "Storage") or _s(row, "total_hdd_size") or _s(row, "storage_gb"))
+            if looks_swapped(_chk.get("ram_gb"), _chk.get("storage_gb")):
+                reason = (f"RAM {_chk.get('total_ram_size')} and Storage {_chk.get('total_hdd_size')} "
+                          f"look swapped (RAM over {RAM_MAX_GB} GB) — check the RAM / Storage columns")
+                grn_skipped.append([row.get(h) or "" for h in file_header] + [reason])
+                errors.append(f"Row {i}: {reason} — skipped")
+                continue
 
             lot_number = _s(row, "lot_number")
             lot_id = lot_map.get(lot_number)

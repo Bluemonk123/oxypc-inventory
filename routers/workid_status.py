@@ -204,12 +204,12 @@ def _fmt(dt, f="%d-%m-%Y %H:%M"):
     return dt.strftime(f) if dt else ""
 
 
-# Stage tiles / Stage & Staff Summary (2026-10-27): WorkIDs grouped by the
-# stage each WorkID was created for (_wid_stage_value — the WorkID's stage
-# code, or its L3L4-/STRS- prefix). Not the table's Stage column: that comes
-# from Asset History and, for an open WorkID, can show the stage the tag came
-# FROM. Stages outside these groups are left out of the tiles; the summary
-# sheets list them under "Other".
+# Stage tiles / Stage & Staff Summary (2026-10-27): distinct tags grouped by
+# the table's own Stage column (stage_value), so the tiles, the export
+# summaries and a Stage filter all describe the same rows. Stages outside
+# these groups are left out of the tiles; the summary sheets list them under
+# "Other". (When the table is capped, the tiles fall back to each WorkID's own
+# stage in SQL — see _sql_stage_tile_counts.)
 STAGE_GROUPS = [
     ("l1l2", "L1/L2", ("l1", "l2"), "#0d6efd", "bi-tools"),
     ("l3l4", "L3/L4", ("l3",), "#6f42c1", "bi-cpu"),
@@ -233,6 +233,91 @@ def _wid_stage_value(work_id, code, code_stage) -> str:
     return st.value if st else ""
 
 
+def _build_code_stage() -> dict:
+    """WorkOrder.stage code -> DeviceStage (the stage stored ON a WorkID)."""
+    from routers.cosmetic import MOVE_STAGE_CODE
+    code_stage = {}
+    for st in DeviceStage:
+        code_stage.setdefault(st.value[:5], st)
+    code_stage.update({code: st for st, code in MOVE_STAGE_CODE.items()})
+    code_stage.update({"l1": DeviceStage.l1, "l2": DeviceStage.l2, "l3": DeviceStage.l3})
+    # Stress Test WorkIDs (2026-10-27): "strs" (Stress Test page result,
+    # routers/stress_api.py) and "qc" (STRS- hand-off / bucket assignment)
+    # had no mapping, so they never matched Stress anywhere a WorkID's own
+    # stage was read (stage tiles, SQL Stage filter).
+    code_stage.update({"qc": DeviceStage.qc_check, "strs": DeviceStage.qc_check})
+    return code_stage
+
+
+# ── The table's Stage column, reproduced in SQL (2026-10-27) ────────────────
+# The Stage column is worked out per row in Python (see the items loop in
+# workid_status): a reassigned WorkID shows its own stage code, an L3L4- /
+# STRS- hand-off shows L3 / Stress, and every other WorkID shows the From
+# stage of the Asset History movement matched to it (nearest its completed_at,
+# else the device's latest). The Stage filter used to run on that column only
+# AFTER the MAIN_ROW_CAP cut, so a Stage-only view of a busy stage saw just the
+# Stage rows among the 3,000 most recent WorkIDs, while the tiles counted all
+# of them. The same three rules as SQL let the filter, the tiles and the export
+# all work on every matching WorkID.
+def _matched_from_stage_sq():
+    """Correlated scalar subquery: From stage of the movement the page matches
+    to this WorkOrder row (_movement_for_work_order), ignoring the L3/L4
+    request movement (_is_l3l4_request_movement)."""
+    from sqlalchemy import case, extract, or_
+    nearest = func.abs(extract("epoch", StageMovement.moved_at - WorkOrder.completed_at))
+    latest = -extract("epoch", StageMovement.moved_at)
+    order = case((WorkOrder.completed_at.isnot(None), nearest), else_=latest)
+    return (select(StageMovement.from_stage)
+            .where(StageMovement.device_id == WorkOrder.device_id,
+                   or_(StageMovement.notes.is_(None),
+                       ~StageMovement.notes.like("Requested to L3/L4%")))
+            .order_by(order.asc().nulls_last(), StageMovement.moved_at.asc())
+            .limit(1)
+            .correlate(WorkOrder)
+            .scalar_subquery())
+
+
+def _is_reassigned_row():
+    from sqlalchemy import and_
+    return and_(WorkOrder.status == "reassigned", WorkOrder.completed_at.isnot(None))
+
+
+def _displayed_stage_clause(stage_vals, code_stage):
+    """SQL WHERE: the row's Stage column is one of stage_vals."""
+    from sqlalchemy import and_, or_, not_, false
+    vals = set(stage_vals)
+    codes = [c for c, st in code_stage.items() if st.value in vals]
+    codes += [v for v in vals if v not in code_stage]      # unmapped code shown as-is
+    handoff = or_(WorkOrder.work_id.like("L3L4-%"), WorkOrder.work_id.like("STRS-%"))
+    handoff_match = []
+    if "l3" in vals:
+        handoff_match.append(WorkOrder.work_id.like("L3L4-%"))
+    if "qc_check" in vals:
+        handoff_match.append(and_(WorkOrder.work_id.like("STRS-%"),
+                                  not_(WorkOrder.work_id.like("L3L4-%"))))
+    enum_vals = [st for st in DeviceStage if st.value in vals]
+    not_reassigned = func.coalesce(not_(_is_reassigned_row()), True)
+    return or_(
+        and_(_is_reassigned_row(), WorkOrder.stage.in_(codes or ["__none__"])),
+        and_(not_reassigned, or_(*handoff_match) if handoff_match else false()),
+        and_(not_reassigned, not_(handoff),
+             _matched_from_stage_sq().in_(enum_vals) if enum_vals else false()),
+    )
+
+
+def _displayed_stage_value(status, completed_at, work_id, code, from_stage, code_stage) -> str:
+    """Python twin of _displayed_stage_clause for rows read back from SQL."""
+    if status == "reassigned" and completed_at:
+        st = code_stage.get((code or "").strip())
+        return st.value if st else (code or "")
+    wid = work_id or ""
+    if wid.startswith("L3L4-"):
+        return "l3"
+    if wid.startswith("STRS-"):
+        return "qc_check"
+    return getattr(from_stage, "value", from_stage) or ""
+
+
 def _stage_group(stage_value) -> str:
     return _GROUP_BY_STAGE.get(stage_value or "", "other")
 
@@ -246,23 +331,23 @@ def _is_open(status) -> bool:
 
 
 def _stage_tile_counts_from_items(items) -> dict:
-    """{group: {"total", "assigned", "completed"}} over the loaded rows.
-    Assigned = still open (pending / in progress); Completed = completed.
-    Reassigned WorkIDs (only present with Show Reassigned) count in neither."""
-    out = {key: {"total": 0, "assigned": 0, "completed": 0} for key, *_ in STAGE_GROUPS}
+    """{group: {"assigned", "completed"}} — distinct TAGS (2026-10-27, same
+    unit as the dark tiles and the export summaries), grouped by the table's
+    own Stage column (stage_value) so a Stage filter and these tiles always
+    describe the same rows. Assigned = every tag with a WorkID in that stage
+    (it was assigned, whatever its status now — every row has an Assigned
+    Date); Completed = the tags whose WorkID there is completed, so
+    Completed is always part of Assigned (2026-10-27, Pankaj)."""
+    sets = {key: {"assigned": set(), "completed": set()} for key, *_ in STAGE_GROUPS}
     for it in items:
-        g = out.get(_stage_group(it.get("wid_stage")))
-        if g is None:
+        g = sets.get(_stage_group(it.get("stage_value")))
+        tag = it.get("barcode")
+        if g is None or not tag or tag == "—":
             continue
-        st = it.get("wo_status")
-        if _is_open(st):
-            g["assigned"] += 1
-        elif _is_done(st):
-            g["completed"] += 1
-        else:
-            continue
-        g["total"] += 1
-    return out
+        g["assigned"].add(tag)              # every tag given out in this stage
+        if _is_done(it.get("wo_status")):
+            g["completed"].add(tag)
+    return {k: {"assigned": len(v["assigned"]), "completed": len(v["completed"])} for k, v in sets.items()}
 
 
 def _rows_json(items) -> str:
@@ -305,14 +390,12 @@ def _rows_json(items) -> str:
 
 def _sql_filtered(full_stmt, stage_vals, cf, ct, exclude_admin, code_stage):
     """full_stmt as (id, bc, did) rows with the Python-side filters re-applied
-    in SQL — Stage (stage code on the WorkID), exact Completed From/To
-    (completed WorkIDs only), Exclude Admin. Same rules as _sql_tile_counts."""
+    in SQL — exact Completed From/To (completed WorkIDs only), Exclude Admin.
+    The Stage filter is already part of full_stmt (_displayed_stage_clause,
+    applied before the row cap). Same rules as _sql_tile_counts."""
     q = full_stmt.with_only_columns(
         WorkOrder.id.label("id"), WorkOrder.barcode.label("bc"), WorkOrder.device_id.label("did"),
     ).order_by(None)
-    if stage_vals:
-        codes = [c for c, st in code_stage.items() if st.value in stage_vals]
-        q = q.where(WorkOrder.stage.in_(codes or ["__none__"]))
     if cf or ct:
         q = q.where(WorkOrder.status == "completed")
         if cf:
@@ -338,9 +421,7 @@ async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, 
         WorkOrder.barcode.label("bc"), WorkOrder.device_id.label("did"),
         Device.l1l2_status.label("l12"),
     ).order_by(None)
-    if stage_vals:
-        codes = [c for c, st in code_stage.items() if st.value in stage_vals]
-        q = q.where(WorkOrder.stage.in_(codes or ["__none__"]))
+    # Stage: already in full_stmt (applied before the row cap).
     if cf or ct:
         q = q.where(WorkOrder.status == "completed")
         if cf:
@@ -368,33 +449,29 @@ async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, 
 
 
 async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, code_stage) -> dict:
-    """Stage tiles over EVERY matching WorkID when the table is capped
-    (same filters as _sql_tile_counts), grouped by the stage code stored on
-    the WorkID."""
+    """Stage tiles over EVERY matching WorkID when the table is capped (more
+    than MAIN_ROW_CAP rows). Distinct tags, like the in-page count, grouped by
+    the table's own Stage column reproduced in SQL (_matched_from_stage_sq /
+    _displayed_stage_value), so a capped view counts exactly like the table
+    would if it held every row."""
     q = _sql_filtered(full_stmt, stage_vals, cf, ct, exclude_admin, code_stage).with_only_columns(
         WorkOrder.stage.label("sg"), WorkOrder.status.label("st"), WorkOrder.work_id.label("wid"),
-        Device.l1l2_status.label("l12"),
+        WorkOrder.barcode.label("bc"), WorkOrder.completed_at.isnot(None).label("done_at"),
+        _matched_from_stage_sq().label("fs"),
     )
     sub = q.subquery()
-    # The WorkID prefix (first 5 chars) marks the L3/L4 and Stress hand-off
-    # WorkIDs, whose stage the page reads from the prefix (see _HANDOFF_STAGE).
-    prefix = func.substr(sub.c.wid, 1, 5)
     rows = (await db.execute(
-        select(sub.c.sg, sub.c.st, prefix, func.count()).group_by(sub.c.sg, sub.c.st, prefix)
+        select(sub.c.sg, sub.c.st, sub.c.wid, sub.c.bc, sub.c.done_at, sub.c.fs)
     )).all()
-    out = {key: {"total": 0, "assigned": 0, "completed": 0} for key, *_ in STAGE_GROUPS}
-    for code, st, prefix, n in rows:
-        g = out.get(_stage_group(_wid_stage_value(prefix, code, code_stage)))
-        if g is None:
+    sets = {key: {"assigned": set(), "completed": set()} for key, *_ in STAGE_GROUPS}
+    for code, st, wid, bc, done_at, fs in rows:
+        g = sets.get(_stage_group(_displayed_stage_value(st, done_at, wid, code, fs, code_stage)))
+        if g is None or not bc:
             continue
-        if _is_open(st):
-            g["assigned"] += n
-        elif _is_done(st):
-            g["completed"] += n
-        else:
-            continue
-        g["total"] += n
-    return out
+        g["assigned"].add(bc)
+        if _is_done(st):
+            g["completed"].add(bc)
+    return {k: {"assigned": len(v["assigned"]), "completed": len(v["completed"])} for k, v in sets.items()}
 
 
 @router.get("/workid-status", response_class=HTMLResponse)
@@ -410,6 +487,21 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
                         show_reassigned: str = Query(default=""),
                         scrap_type: str = Query(default="none"),
                         highlight: str = Query(default="")):
+    return await _workid_status_page(
+        request=request, db=db, current_user=current_user, workid=workid, tag=tag,
+        engineer=engineer, completed_from=completed_from, completed_to=completed_to,
+        cosmetic_stage=cosmetic_stage, exclude_admin=exclude_admin,
+        show_reassigned=show_reassigned, scrap_type=scrap_type, highlight=highlight,
+        row_cap=MAIN_ROW_CAP)
+
+
+async def _workid_status_page(*, request, db, current_user, workid="", tag="", engineer="",
+                              completed_from="", completed_to="", cosmetic_stage="",
+                              exclude_admin="", show_reassigned="", scrap_type="none",
+                              highlight="", row_cap=MAIN_ROW_CAP):
+    """The page's data. row_cap=None loads every matching WorkID (Export,
+    2026-10-27 — the workbook covers all matching rows, not just the 3,000
+    the page table loads)."""
     # ── Base query: WorkOrders joined to their Device ──────────────────────────
     # stage="asgn" WorkOrders come from /transfers' "Assign To Employee" field
     # (routers/transfers.py) — plain assignment bookkeeping, not a repair/
@@ -464,6 +556,15 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
     if ct:
         stmt = stmt.where(WorkOrder.completed_at <= ct.replace(hour=23, minute=59, second=59) + timedelta(days=2))
 
+    # Stage filter in SQL, BEFORE the row cap (2026-10-27): same rule as the
+    # table's Stage column (_displayed_stage_clause), so a Stage-only view
+    # loads every row of that stage, not just those among the latest 3,000.
+    # The exact Python filter further down still runs and agrees with it.
+    _code_stage = _build_code_stage()
+    stage_vals = _multi(cosmetic_stage)
+    if stage_vals:
+        stmt = stmt.where(_displayed_stage_clause(stage_vals, _code_stage))
+
     is_admin = current_user.role.value == "admin"
 
     # ── Row visibility (item 33): admin sees everyone; a Group Config manager
@@ -492,9 +593,10 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
     main_total = (await db.execute(
         select(func.count()).select_from(stmt.subquery())
     )).scalar() or 0
-    main_truncated = main_total > MAIN_ROW_CAP
+    main_truncated = row_cap is not None and main_total > row_cap
     full_stmt = stmt            # every matching WorkID — the tiles count these (see below)
-    stmt = stmt.limit(MAIN_ROW_CAP)
+    if row_cap is not None:
+        stmt = stmt.limit(row_cap)
 
     rows = (await db.execute(stmt)).all()
     device_ids = [d.id for _, d in rows if d is not None]
@@ -595,13 +697,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
     # pick/move itself, which mislabelled e.g. a Masking WorkID "L1/L2
     # Repair"), no Completed Date, and who took it over: the WorkID opened
     # for the same tag within a minute, else the stage move at that moment.
-    from routers.cosmetic import MOVE_STAGE_CODE
-    _code_stage = {}
-    for _st in DeviceStage:
-        _code_stage.setdefault(_st.value[:5], _st)
-    _code_stage.update({code: st for st, code in MOVE_STAGE_CODE.items()})
-    _code_stage.update({"l1": DeviceStage.l1, "l2": DeviceStage.l2, "l3": DeviceStage.l3})
-
+    # (_code_stage is built above, before the row cap — _build_code_stage.)
     def _wo_stage(wo):
         st = _code_stage.get((wo.stage or "").strip())
         return (st.value, STAGE_LABELS.get(st, st.value)) if st else (wo.stage or "", (wo.stage or "—").upper())
@@ -735,11 +831,6 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
             "engineer": movement_engineer,
             "engineer_username": engineer_username,
         })
-
-    # Stage filter (applied below, after items are built) reads the same
-    # cosmetic_stage query param the removed backfill block used to also
-    # scope its own query by.
-    stage_vals = _multi(cosmetic_stage)
 
     # Lot Number (export column) — one lookup covering every device in
     # `items`, rather than joining Lot into the WorkOrder query above.
@@ -927,11 +1018,14 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
 
-    page = await workid_status(request=request, db=db, current_user=current_user,
-                               workid=workid, tag=tag, engineer=engineer,
-                               completed_from=completed_from, completed_to=completed_to,
-                               cosmetic_stage=cosmetic_stage, exclude_admin=exclude_admin,
-                               show_reassigned=show_reassigned, scrap_type=scrap_type, highlight="")
+    # row_cap=None: every matching WorkID, not only the 3,000 the page table
+    # loads (2026-10-27), so the summary sheets agree with the tiles.
+    page = await _workid_status_page(request=request, db=db, current_user=current_user,
+                                     workid=workid, tag=tag, engineer=engineer,
+                                     completed_from=completed_from, completed_to=completed_to,
+                                     cosmetic_stage=cosmetic_stage, exclude_admin=exclude_admin,
+                                     show_reassigned=show_reassigned, scrap_type=scrap_type,
+                                     highlight="", row_cap=None)
     items = page.context["items"]
 
     hdr_font = Font(bold=True, color="FFFFFF")
@@ -1006,7 +1100,7 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             b["pna"].add(tag)
         if st == "Completed" and it.get("days") is not None:
             b["days"].append(it["days"])
-        b["groups"].setdefault(_stage_group(it.get("wid_stage")), set()).add(tag)
+        b["groups"].setdefault(_stage_group(it.get("stage_value")), set()).add(tag)
 
     def _avg(days):
         return round(sum(days) / len(days), 1) if days else ""
@@ -1021,9 +1115,8 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     # ── Sheet 2: Stage Summary — one row per stage, grouped ──
     by_stage = {}
     for it in items:
-        _ws = it.get("wid_stage") or ""
-        _lbl = next((lb for st, lb in STAGE_LABELS.items() if st.value == _ws), _ws.upper() or "—")
-        key = (_stage_group(_ws), _lbl)
+        # Grouped by the table's Stage column (2026-10-27), same as the tiles.
+        key = (_stage_group(it.get("stage_value")), it.get("stage_label") or "—")
         _add(by_stage.setdefault(key, _bucket()), it)
     total_b = _bucket()
     for it in items:

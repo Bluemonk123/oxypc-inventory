@@ -320,6 +320,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/device-type-backfill'): None,  # device_type_backfill_apply: system health internals
     ('POST', '/admin/system/spec-fill'): None,  # spec_fill_apply: system health internals
     ('POST', '/admin/system/size-space-fix'): None,  # size_space_fix_apply: system health internals (admin-only)
+    ('POST', '/admin/system/spec-repair'): None,  # spec_repair_apply: system health internals (admin-only)
     ('POST', '/admin/system/subcategory-fill'): None,  # subcategory_fill_apply: system health internals
     ('POST', '/admin/system/reassign-fix'): None,  # reassign_fix_apply: system health internals
     ('POST', '/admin/system/audit-split-fix'): None,  # audit_split_apply: system health internals

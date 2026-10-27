@@ -67,7 +67,7 @@
 <div class="alert alert-info py-2 small mb-3">
   <i class="bi bi-info-circle me-1"></i>
   {{ ((main_total) | inr) }} WorkIDs match — showing the most recent {{ ((main_cap) | inr) }}.
-  Narrow with Search WorkID/Tag, Engineer, or a Completed date range to see the rest.
+  The tiles and Export cover all {{ ((main_total) | inr) }}; narrow with Search WorkID/Tag, Engineer, or a Completed date range to see the rest in the table.
 </div>
 {% endif %}
 
@@ -109,8 +109,9 @@
 </div>
 
 {# Stage tiles (2026-10-27): light tint tiles, one per stage group, from the
-   same filters as the table. Stage name, then Assigned (still open) and
-   Completed WorkID counts, each big. Built in routers/workid_status.py
+   same filters as the table. Stage name, then Assigned (every tag given a
+   WorkID there) and Completed (the part already done) tag counts, each big —
+   grouped by the table's Stage column. Built in routers/workid_status.py
    (stage_tiles; STAGE_GROUPS). #}
 <style>
   .wid-stage-name { font-size:.85rem; font-weight:700; color:var(--tc); position:relative; z-index:1;
@@ -127,10 +128,10 @@
        no total). #}
     <div class="lt-tile h-100" style="--tc:{{ color }}">
       <div class="wid-stage-name">{{ label }}</div>
-      <div class="wid-stage-line" title="Still with the engineer (not completed)">
+      <div class="wid-stage-line" title="Tags given a WorkID in this stage (open or completed)">
         <span class="lt-tile-count">{{ t.assigned }}</span><span class="wid-stage-sub">Assigned</span>
       </div>
-      <div class="wid-stage-line" title="Completed">
+      <div class="wid-stage-line" title="Tags with a completed WorkID">
         <span class="lt-tile-count">{{ t.completed }}</span><span class="wid-stage-sub">Completed</span>
       </div>
       <i class="bi {{ icon }} lt-tile-wm"></i>

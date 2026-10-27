@@ -117,6 +117,116 @@ def storage_text(d):
             or (getattr(d, "hdd_summary", None) or "").strip() or None)
 
 
+# ── RAM / Storage entered the wrong way round (2026-10-27) ──────────────────
+# No laptop / desktop here has more than 128 GB of RAM, and a drive of 4–64 GB
+# fits a RAM size. RAM over 128 GB together with such a drive means the two
+# were typed into each other's column (seen on whole lots: EliteBook x360 1030
+# G7 "RAM 256GB, Storage 16GB", Zbook "RAM 512GB, Storage 32GB"). Storage 1–3
+# is left alone: some tags carry SSD GB 1 / 2 meaning 1 TB / 2 TB.
+RAM_MAX_GB = 128
+_SWAP_STO_MIN, _SWAP_STO_MAX = 4, 64
+
+
+def looks_swapped(ram_gb, storage_gb) -> bool:
+    return bool(ram_gb and storage_gb and ram_gb > RAM_MAX_GB
+                and _SWAP_STO_MIN <= storage_gb <= _SWAP_STO_MAX)
+
+
+_RAM_SET = ("ram_gb", "ram_summary", "total_ram_count", "total_ram_size")
+_STO_SET = ("storage_gb", "hdd_summary", "total_hdd_count", "total_hdd_size")
+
+
+def space_size_text(v):
+    """"16GB" -> "16 GB", "256GB SSD" -> "256 GB SSD", "1tb" -> "1 TB".
+    Packed multi-stick / multi-drive summaries ("_" or ",") are left as typed."""
+    if not v or not isinstance(v, str) or "_" in v or "," in v:
+        return v
+    return re.sub(r"(?<![\d.])(\d+(?:\.\d+)?)\s*(GB|TB)\b",
+                  lambda m: f"{m.group(1)} {m.group(2).upper()}", v, flags=re.IGNORECASE)
+
+
+def _is_zero(v) -> bool:
+    """A stored size that means nothing: 0, "0", "0GB", "0 GB"."""
+    if v is None:
+        return False
+    if isinstance(v, (int, float)):
+        return v == 0
+    s = str(v).strip()
+    return bool(s) and size_to_gb(s) == 0
+
+
+def spec_repair(d):
+    """Changes that put a tag's RAM / Storage right, as (kinds, {field: new}).
+    Empty when nothing is wrong. Rules, in order:
+
+      zero      a "0" size (text or GB) is cleared, so it no longer hides the
+                real value in another field
+      swapped   RAM over 128 GB with a 4–64 GB drive: the whole RAM set and the
+                whole Storage set trade places
+      moved     RAM over 128 GB and no Storage at all: the RAM set is really
+                the drive, so it moves to Storage
+      summary   RAM Summary holds a drive size (over 128 GB, not the RAM size)
+                and Storage is empty: it moves to Storage
+    then any field left blank is filled from the others in its set
+    (fill_defaults — same rule as the RAM / Storage fill). A tag with a second
+    drive (HDD GB) is never swapped or moved — too ambiguous to guess."""
+    from types import SimpleNamespace
+    orig = {f: getattr(d, f, None) for f in _RAM_SET + _STO_SET + ("hdd_capacity_gb",)}
+    kinds = []
+
+    # Sizes worked out with "0" read as blank. A set that is ALL "0" is kept
+    # as it is (no RAM / no drive in the unit is a real value); a "0" is only
+    # cleared where it hides a real size in its own set, or where a drive
+    # size is moved into a Storage set that only had "0".
+    nz = {f: (None if _is_zero(v) else v) for f, v in orig.items()}
+    view = SimpleNamespace(**nz)
+    ram = size_to_gb(ram_text(view))
+    sto = size_to_gb(storage_text(view))
+    cur = dict(orig)
+
+    def _clear_zeros(fields):
+        hit = False
+        for f in fields:
+            if _is_zero(cur[f]):
+                cur[f], hit = None, True
+        if hit and "zero" not in kinds:
+            kinds.append("zero")
+
+    if ram:
+        _clear_zeros(_RAM_SET)
+    if sto:
+        _clear_zeros(_STO_SET)
+
+    plain = lambda t: not t or ("_" not in t and "," not in t)
+    second_drive = bool(cur["hdd_capacity_gb"])
+
+    if not second_drive and looks_swapped(ram, sto):
+        for a, b in zip(_RAM_SET, _STO_SET):
+            cur[a], cur[b] = cur[b], cur[a]
+        kinds.append("swapped")
+    elif not second_drive and ram and ram > RAM_MAX_GB and not sto:
+        _clear_zeros(_STO_SET)
+        for a, b in zip(_RAM_SET, _STO_SET):
+            cur[a], cur[b] = None, cur[a]
+        kinds.append("moved")
+    elif not sto and plain(cur["ram_summary"]):
+        rsum = size_to_gb(cur["ram_summary"])
+        rsize = size_to_gb(cur["total_ram_size"]) or cur["ram_gb"]
+        if rsum and rsum > RAM_MAX_GB and rsize and rsize != rsum and rsize <= RAM_MAX_GB:
+            _clear_zeros(_STO_SET)
+            cur["hdd_summary"], cur["ram_summary"] = cur["ram_summary"], None
+            kinds.append("summary")
+
+    if not kinds:
+        return [], {}
+    cur.update(fill_defaults(SimpleNamespace(**cur)))
+    for f in ("ram_summary", "total_ram_size", "hdd_summary", "total_hdd_size"):
+        if cur[f] != orig[f]:
+            cur[f] = space_size_text(cur[f])      # "16GB" -> "16 GB", as the edit modal saves
+    changes = {f: cur[f] for f in _RAM_SET + _STO_SET if cur[f] != orig[f]}
+    return (kinds, changes) if changes else ([], {})
+
+
 def upload_spec(ram_value, storage_value) -> dict:
     """Device fields from an upload's RAM / Storage cells. Only the fields
     the cell gives are returned, so a blank cell never wipes a value."""

@@ -36,7 +36,7 @@
         <div class="alert alert-warning">
           <i class="bi bi-exclamation-triangle me-2"></i><strong>{{ grn_skipped.rows|length }}</strong>
           row{{ 's' if grn_skipped.rows|length != 1 }} skipped — the GRN was not found, the Invoice Number
-          did not match that GRN's invoice, or the invoice is on more than one GRN. The reason is in the last column. Fix them in the file and upload just those rows again.
+          did not match that GRN's invoice, the invoice is on more than one GRN, or RAM and Storage look swapped. The reason is in the last column. Fix them in the file and upload just those rows again.
           <button type="button" class="btn btn-sm btn-outline-dark ms-2 py-0" id="grnSkippedDl">
             <i class="bi bi-file-earmark-arrow-down me-1"></i>Download skipped rows</button>
         </div>
@@ -48,7 +48,7 @@
             var csv = [data.header].concat(data.rows).map(function (r) { return r.map(esc).join(','); }).join('\r\n');
             var a = document.createElement('a');
             a.href = URL.createObjectURL(new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' }));
-            a.download = 'iqc_upload_skipped_grn_rows.csv';
+            a.download = 'iqc_upload_skipped_rows.csv';
             document.body.appendChild(a); a.click();
             setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
           });
