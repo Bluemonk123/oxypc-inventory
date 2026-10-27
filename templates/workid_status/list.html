@@ -91,7 +91,8 @@
      Customer Return added. Total Scrap ignores the Scrap Type filter. #}
   {# Each tile filters the table on click (2026-10-24); click again to clear. #}
   {# Order (2026-10-26): Assigned, Completed, Ongoing, Customer Return, Scrap, PNA. #}
-  {% for key, label, n, bg, icon in [('assigned', 'Assigned Tags', tile_counts.open_tags, '#0d6efd', 'bi-tag'),
+  {# Assigned = every tag with a WorkID in this view; Completed leaves out scrap; Total Scrap counts tags (2026-10-27). #}
+  {% for key, label, n, bg, icon in [('assigned', 'Assigned Tags', tile_counts.assigned_tags, '#0d6efd', 'bi-tag'),
       ('completed', 'Completed Tags', tile_counts.completed_tags, '#0F7A37', 'bi-check-circle'),
       ('ongoing', 'Ongoing Tags', tile_counts.ongoing_tags, '#f0ad00', 'bi-hourglass-split'),
       ('cr', 'Total Customer Return', tile_counts.total_cust_return, '#6c757d', 'bi-arrow-return-left'),
@@ -131,9 +132,15 @@
       <div class="wid-stage-line" title="Tags given a WorkID in this stage (open or completed)">
         <span class="lt-tile-count">{{ t.assigned }}</span><span class="wid-stage-sub">Assigned</span>
       </div>
-      <div class="wid-stage-line" title="Tags with a completed WorkID">
+      <div class="wid-stage-line" title="Tags with a completed WorkID (scrap decisions not included)">
         <span class="lt-tile-count">{{ t.completed }}</span><span class="wid-stage-sub">Completed</span>
       </div>
+      {% if key in ('l1l2', 'l3l4') %}
+      {# Scrap decisions, counted apart from Completed (2026-10-27). #}
+      <div class="wid-stage-line" title="Tags whose WorkID here was closed by a scrap step (L3/L4 scrap decision, or L1/L2 Back to Inventory)">
+        <span class="lt-tile-count">{{ t.scrap }}</span><span class="wid-stage-sub">Scrap</span>
+      </div>
+      {% endif %}
       <i class="bi {{ icon }} lt-tile-wm"></i>
     </div>
   </div>
@@ -269,9 +276,11 @@ $(document).ready(function(){
   var TILE_TEST = {
     scrap: function (r) { return !!r.x; },
     cr: function (r) { return !!r.cr; },
-    assigned: function (r) { return r.st === 'pending'; },
+    // Every tag given a WorkID in this view (2026-10-27), as the stage tiles count.
+    assigned: function (r) { return !!r.b && r.b !== '\u2014'; },
     ongoing: function (r) { return r.st === 'in_progress'; },
-    completed: function (r) { return r.st === 'completed'; },
+    // Scrap decisions are counted under Scrap, not Completed (2026-10-27).
+    completed: function (r) { return r.st === 'completed' && !r.x; },
     pna: function (r) { return !!r.p; },
   };
   var activeTile = '';

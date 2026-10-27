@@ -683,6 +683,12 @@ async def back_to_production(
                RepairJob.status == RepairStatus.in_progress)
         .values(status=RepairStatus.completed, completed_at=app_now())
     )
+    # The tag leaves L1/L2 here, so its open L1/L2 WorkID closes now
+    # (2026-10-27 — it used to stay open forever and kept counting as
+    # Assigned for that engineer). Stamped together with the "Back to
+    # Inventory — <scrap type>" movement below, which is how WorkID Status
+    # counts it under Scrap rather than Completed.
+    await _close_l1l2_work_orders(db, device.id)
     device.current_stage = DeviceStage.scrap_for_sale
     device.grade = DeviceGrade.scrap
     device.updated_at = app_now()

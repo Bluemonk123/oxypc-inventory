@@ -184,6 +184,48 @@
     </div>
   </div>
 
+  {# ── Scrapped tags whose L1/L2 WorkID is still open (2026-10-27) ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-recycle me-2"></i>Scrapped tags with an L1/L2 WorkID still open
+          <span class="badge {% if scrap_l12_total %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ "{:,}".format(scrap_l12_total) }}</span></span>
+        {% if scrap_l12_total %}
+        <form method="post" action="/admin/system/scrap-l12-close" class="df-confirm"
+              data-confirm="Click again to close {{ "{:,}".format(scrap_l12_total) }} WorkIDs">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Close {{ "{:,}".format(scrap_l12_total) }} WorkIDs</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not scrap_l12_total %}
+        <div class="text-muted">Nothing to fix — every tag sent Back to Inventory after a scrap decision has its L1/L2 WorkID closed.</div>
+        {% else %}
+        <p class="text-muted mb-2">These tags were sent to Tags Scrapped with "Back to Inventory" while their L1/L2 WorkID stayed open, so WorkID Status still counts them as Assigned. Each is closed at the time of that Back to Inventory step and then counts under <strong>Scrap</strong>, not Completed. Back to Inventory now does this itself.</p>
+        <div class="table-responsive" style="max-height:320px">
+        <table class="table table-sm table-bordered mb-0" style="font-size:.78rem">
+          <thead class="table-light"><tr><th>WorkID</th><th>Tag</th><th>Engineer</th><th>Back to Inventory</th><th>Note</th></tr></thead>
+          <tbody>
+            {% for r in scrap_l12 %}
+            <tr>
+              <td class="font-monospace">{{ r.work_id }}</td>
+              <td><a href="/devices/{{ r.barcode }}" target="_blank">{{ r.barcode }}</a></td>
+              <td>{{ r.assigned_name or '—' }}</td>
+              <td class="text-nowrap">{{ r.at.strftime('%d-%m-%Y %H:%M') if r.at else '—' }}</td>
+              <td>{{ r.note or '' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% if scrap_l12_total > scrap_l12|length %}<div class="text-muted mt-1">Showing {{ scrap_l12|length }} of {{ "{:,}".format(scrap_l12_total) }}.</div>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {# ── Past reassignments recorded as completed ── #}
   <div class="col-12">
     <div class="card border-0 shadow-sm">

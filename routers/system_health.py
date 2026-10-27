@@ -482,6 +482,69 @@ async def spec_repair_apply(request: Request, current_user: User = Depends(admin
     return JSONResponse({"ok": True, "updated": len(changes), "by_kind": by_kind})
 
 
+# ── Scrapped tags whose L1/L2 WorkID is still open (2026-10-27) ──────────────
+# "Back to Inventory" (routers/repair.py back_to_production) sent a scrapped
+# tag to Tags Scrapped without closing its L1/L2 WorkID, so it stayed open
+# and kept counting as Assigned on WorkID Status. Now it closes there; this
+# closes the ones left open before, stamped at that "Back to Inventory"
+# movement's time — so WorkID Status counts them under Scrap.
+async def _scrap_l12_open(db):
+    """[(work_order_id, work_id, barcode, assigned_name, moved_at, note)]."""
+    from sqlalchemy import and_, or_, not_, select, func
+    from models.device import Device, StageMovement
+    from models.work_order import WorkOrder
+    from services.work_order_close import wo_open
+    first_bti = (select(func.min(StageMovement.moved_at))
+                 .where(StageMovement.device_id == WorkOrder.device_id,
+                        StageMovement.notes.like("Back to Inventory \u2014 %"),
+                        StageMovement.moved_at >= func.coalesce(WorkOrder.assigned_at, WorkOrder.created_at))
+                 .correlate(WorkOrder).scalar_subquery())
+    note = (select(StageMovement.notes)
+            .where(StageMovement.device_id == WorkOrder.device_id, StageMovement.moved_at == first_bti,
+                   StageMovement.notes.like("Back to Inventory \u2014 %"))
+            .limit(1).correlate(WorkOrder).scalar_subquery())
+    q = (select(WorkOrder.id, WorkOrder.work_id, Device.barcode, WorkOrder.assigned_name,
+                first_bti.label("at"), note.label("note"))
+         .join(Device, Device.id == WorkOrder.device_id)
+         .where(or_(WorkOrder.work_id.like("L1L2-%"), WorkOrder.stage.in_(["l1", "l2"])),
+                not_(WorkOrder.work_id.like("L3L4-%")), not_(WorkOrder.work_id.like("STRS-%")),
+                wo_open(), first_bti.isnot(None))
+         .order_by(first_bti.desc()))
+    return (await db.execute(q)).all()
+
+
+@router.post("/scrap-l12-close")
+async def scrap_l12_close_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import bindparam, update
+    from database import AsyncSessionLocal
+    from models.work_order import WorkOrder
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        rows = await _scrap_l12_open(db)
+        if rows:
+            conn = await db.connection()
+            stmt = (update(WorkOrder.__table__).where(WorkOrder.__table__.c.id == bindparam("b_id"))
+                    .values(status="completed", completed_at=bindparam("b_at")))
+            params = [{"b_id": r.id, "b_at": r.at} for r in rows]
+            for i in range(0, len(params), 2000):
+                await conn.execute(stmt, params[i:i + 2000])
+        await audit(db, user=current_user, action="WORKID_SCRAP_L12_CLOSE", table_name="work_orders",
+                    record_id=f"{len(rows)} WorkIDs",
+                    new_value={"count": len(rows),
+                               "work_orders": {str(r.id): {"work_id": r.work_id, "tag": r.barcode,
+                                                           "completed_at": r.at.isoformat() if r.at else None}
+                                               for r in rows}},
+                    notes="Open L1/L2 WorkIDs of tags already sent Back to Inventory (scrap) closed at "
+                          "that movement's time. Reverse: set status back to 'pending' and completed_at "
+                          "NULL for the listed ids.",
+                    request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Scrap WorkIDs closed: {len(rows):,}.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "closed": len(rows)})
+
+
 # ── Sub-Category fill from Device Type (2026-10-22) ──────────────────────────
 # The reverse of the Device Type backfill: Sub-Category blank, Device Type set.
 # Uses the same pairing as upload (utils/device_category): the Sub-Category
@@ -1237,6 +1300,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         spec = await _spec_changes(db, with_rows=True)
         space = await _space_changes(db)
         repair = await _repair_changes(db)
+        scrap_l12 = await _scrap_l12_open(db)
         subcat = await _subcat_changes(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
@@ -1269,6 +1333,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "space_total": len(space),
         "space_fields": {f: sum(1 for _d, _t, ch in space if f in ch) for f in _SPACE_FIELDS},
         "space_examples": [{"tag": t, "ch": ch} for _d, t, ch in space[:12]],
+        "scrap_l12": scrap_l12[:200], "scrap_l12_total": len(scrap_l12),
         "repair_total": len(repair),
         "repair_kinds": [(lbl, sum(1 for c in repair if k in c[2])) for k, lbl in _REPAIR_KIND_LABELS.items()],
         "repair_examples": list({t: {"tag": t, "kinds": ", ".join(_REPAIR_KIND_LABELS[k] for k in ks), "ch": ch}
