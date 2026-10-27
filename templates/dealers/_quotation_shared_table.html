@@ -11,6 +11,13 @@
     <i class="bi bi-file-earmark-text text-info"></i>
     <span class="fw-semibold small">Quotation Shared</span>
     <span class="badge bg-secondary ms-1">{{ quotations|length }}</span>
+    {# Add Quote (2026-10-27): only where the page passes the dealer list
+       (Quotations page); opens the shared Create Quotation modal. #}
+    {% if qtn_dealers is defined and can(current_user, 'dealers', 'add') %}
+    <button type="button" class="btn btn-sm btn-primary ms-auto" onclick="openQuotationModalPickDealer()">
+      <i class="bi bi-plus-lg me-1"></i>Add Quote
+    </button>
+    {% endif %}
   </div>
   <div class="{{ 'card-body p-0' if qs_global_table else 'table-responsive' }}">
     <table class="table table-hover mb-0 small"{% if qs_global_table %} id="quotationSharedTable"{% endif %}>

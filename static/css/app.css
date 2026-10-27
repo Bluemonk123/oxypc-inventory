@@ -105,7 +105,8 @@ body {
   background: #fff;
   border-bottom: 1px solid #e5e7eb;
   height: var(--topbar-height);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  /* Darker shadow (2026-10-27, Pankaj; was 0 1px 3px rgba(0,0,0,.05)). */
+  box-shadow: 0 3px 12px rgba(0,0,0,0.25);
 }
 
 /* Back/forward history pill (topbar) — mirrors a native browser nav control */
@@ -902,3 +903,10 @@ table.gtable tbody td .gtable-clamp2 {
 #sidebar::-webkit-scrollbar { width: 6px; }
 #sidebar::-webkit-scrollbar-track { background: var(--sidebar-bg); }
 #sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.28); border-radius: 3px; }
+
+/* Small helper line inside a tile (Telecaller Board, 2026-10-27), under the
+   label — e.g. "1463 active". */
+.lt-tile-note{font-size:.72rem; margin-top:.35rem; position:relative; z-index:1; color:#6c757d}
+.lt-tiles-row.lt-dark .lt-tile-note{color:rgba(255,255,255,.8)}
+.lt-tiles-row a > .lt-tile{transition:transform .15s, box-shadow .15s}
+.lt-tiles-row a:hover > .lt-tile{transform:translateY(-2px)}

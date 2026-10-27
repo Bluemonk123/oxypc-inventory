@@ -4,24 +4,26 @@
 {% block content %}
 
 <!-- KPI Cards — counts match the Recent Calls table below -->
-<div class="row g-3 mb-1">
+<div class="lt-tiles-row lt-dark mb-1">
+  {# Dark tile cards (2026-10-27, .lt-tiles-row.lt-dark in app.css). #}
   {% set stats = [
-    ('Total Calls',    today_stats.get('total',0),          'primary',   'bi-telephone',      ''),
-    ('Interested',     today_stats.get('interested',0),     'success',   'bi-star-fill',      'outcome=interested'),
-    ('Callback',       today_stats.get('callback',0),       'warning',   'bi-arrow-repeat',   'outcome=callback'),
-    ('Not Interested', today_stats.get('not_interested',0), 'danger',    'bi-x-circle',       'outcome=not_interested'),
-    ('Not Connected',  today_stats.get('not_connected',0),  'secondary', 'bi-telephone-x',    'outcome=not_connected'),
-    ('Connected',      today_stats.get('connected',0),      'info',      'bi-telephone-fill', ''),
+    ('Total Calls',    today_stats.get('total',0),          '#0d6efd', 'bi-telephone',      ''),
+    ('Interested',     today_stats.get('interested',0),     '#0F7A37', 'bi-star-fill',      'outcome=interested'),
+    ('Callback',       today_stats.get('callback',0),       '#fd7e14', 'bi-arrow-repeat',   'outcome=callback'),
+    ('Not Interested', today_stats.get('not_interested',0), '#dc3545', 'bi-x-circle',       'outcome=not_interested'),
+    ('Not Connected',  today_stats.get('not_connected',0),  '#6c757d', 'bi-telephone-x',    'outcome=not_connected'),
+    ('Connected',      today_stats.get('connected',0),      '#0aa2c0', 'bi-telephone-fill', ''),
   ] %}
   {% for label, val, color, icon, filter_qs in stats %}
-  <div class="col-6 col-md-2">
+  <div>
     {% if filter_qs %}
     <a href="/telecalling?{{ filter_qs }}&date_from={{ date_from }}&date_to={{ date_to }}{% if assigned %}&assigned={{ assigned }}{% endif %}"
        class="text-decoration-none">
     {% endif %}
-    <div class="card border-0 shadow-sm text-center py-3 {% if filter_qs %}card-hover{% endif %}">
-      <div class="fs-3 fw-bold text-{{ color }}">{{ val }}</div>
-      <div class="small text-muted"><i class="bi {{ icon }} me-1"></i>{{ label }}</div>
+    <div class="lt-tile h-100" style="--tc:{{ color }}">
+      <div class="lt-tile-count">{{ val }}</div>
+      <div class="lt-tile-label">{{ label }}</div>
+      <i class="bi {{ icon }} lt-tile-wm"></i>
     </div>
     {% if filter_qs %}</a>{% endif %}
   </div>
@@ -267,10 +269,12 @@
           <tr>
             <td class="text-muted">{{ rec.call_date.strftime('%H:%M') }}</td>
             <td>
+              {# 2026-10-27 (Pankaj): company phone under the name; both bold, dark. #}
               {% if rec.dealer_id and rec.dealer %}
-              <a href="/dealers/{{ rec.dealer_id }}" class="fw-semibold text-decoration-none">
+              <a href="/dealers/{{ rec.dealer_id }}" class="fw-bold text-dark text-decoration-none">
                 {{ rec.dealer.business_name }}
               </a>
+              {% if rec.dealer.phone %}<div class="fw-bold text-dark">{{ rec.dealer.phone }}</div>{% endif %}
               {% else %}
               <span class="text-muted">—</span>
               {% endif %}

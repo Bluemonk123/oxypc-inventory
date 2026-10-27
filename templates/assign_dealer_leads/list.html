@@ -42,16 +42,19 @@
   </form>
 </div>
 
-<div class="row g-3 mb-3" id="assignDealerSummaryCards">
-  {% for count, label, color, cid in [
-       (active_count, 'Active Dealers', 'text-success', 'assignActiveCount'),
-       (inactive_count, 'Inactive Dealers', 'text-secondary', 'assignInactiveCount'),
-       (unassigned_count, 'Unassigned Dealers', 'text-warning', 'assignUnassignedCount'),
-       (assigned_count, 'Assigned Dealers', 'text-primary', 'assignAssignedCount')] %}
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold {{ color }}" id="{{ cid }}">{{ count }}</div>
-      <div class="small text-muted">{{ label }}</div>
+{# Dark tile cards (2026-10-27). The id stays: assigning dealers swaps this
+   block's innerHTML from the refreshed page (AJAX partial refresh). #}
+<div class="lt-tiles-row lt-dark mb-3" id="assignDealerSummaryCards">
+  {% for count, label, color, cid, icon in [
+       (active_count, 'Active Dealers', '#0F7A37', 'assignActiveCount', 'bi-check-circle'),
+       (inactive_count, 'Inactive Dealers', '#6c757d', 'assignInactiveCount', 'bi-pause-circle'),
+       (unassigned_count, 'Unassigned Dealers', '#fd7e14', 'assignUnassignedCount', 'bi-person-dash'),
+       (assigned_count, 'Assigned Dealers', '#0d6efd', 'assignAssignedCount', 'bi-person-check')] %}
+  <div>
+    <div class="lt-tile h-100" style="--tc:{{ color }}">
+      <div class="lt-tile-count" id="{{ cid }}">{{ count }}</div>
+      <div class="lt-tile-label">{{ label }}</div>
+      <i class="bi {{ icon }} lt-tile-wm"></i>
     </div>
   </div>
   {% endfor %}
@@ -116,7 +119,9 @@
           {% for d in dealers %}
           <tr data-assigned="{{ d.assigned_to or '' }}">
             <td><input type="checkbox" class="dealerChk" name="dealer_ids" value="{{ d.id }}"></td>
-            <td class="fw-semibold">{{ d.business_name }}</td>
+            {# Dealer name opens the dealer's page (2026-10-27); long names wrap
+               to 2 lines with "…" and show in full on hover, as on Dealers. #}
+            <td class="fw-semibold"><a href="/dealers/{{ d.id }}" class="text-decoration-none"{% if (d.business_name or '')|length >= 32 %} title="{{ d.business_name }}"><span class="gtable-clamp2">{{ d.business_name }}</span>{% else %}>{{ d.business_name }}{% endif %}</a></td>
             <td class="small">{{ d.preferred_categories or '—' }}</td>
             <td><span class="badge bg-secondary">{{ (d.dealer_type or '') if (d.dealer_type or '') != (d.dealer_type or '') | lower else (d.dealer_type or '') | title }}</span></td>
             <td class="small">{{ d.dealer_sub_category or '—' }}</td>

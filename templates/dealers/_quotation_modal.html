@@ -6,11 +6,26 @@
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <form id="quotationForm" method="post" class="modal-content">
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+      {% if qtn_dealers is defined %}<input type="hidden" name="return_to" value="/quotations">{% endif %}
       <div class="modal-header py-2">
         <h6 class="modal-title"><i class="bi bi-file-earmark-text me-2 text-info"></i>Create Quotation</h6>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
+        {# Dealer picker (2026-10-27): only on the Quotations page, which has
+           no dealer in context. Picking one fills Dealer Details and points
+           the form at that dealer. #}
+        {% if qtn_dealers is defined %}
+        <div class="mb-3">
+          <label class="form-label small fw-semibold mb-1">Dealer <span class="text-danger">*</span></label>
+          <input type="text" id="qtnDealerPick" class="form-control form-control-sm" list="qtnDealerList"
+                 placeholder="Type to search a dealer by name or phone…" autocomplete="off">
+          <datalist id="qtnDealerList">
+            {% for d in qtn_dealers %}<option value="{{ d.business_name }}{% if d.phone %} — {{ d.phone }}{% endif %}"></option>{% endfor %}
+          </datalist>
+          <div class="form-text small" id="qtnDealerPickHelp">Pick a dealer from the list.</div>
+        </div>
+        {% endif %}
         <div class="row g-3 mb-3">
           <div class="col-md-6">
             <div class="card border-0 bg-light h-100">
@@ -148,6 +163,42 @@ function qtnResetForm(dealerId){
   qtnAddRow();
 }
 
+{% if qtn_dealers is defined %}
+// Quotations page: open the modal with no dealer yet; the picker sets it.
+var QTN_DEALERS = {{ qtn_dealers | tojson }};
+function qtnDealerLabel(d){ return d.business_name + (d.phone ? ' — ' + d.phone : ''); }
+function qtnFillDealer(d){
+  ['Name','Type','Phone','Email','Address','Gstin'].forEach(function(k){
+    var v = d ? ({Name:d.business_name, Type:(d.dealer_type||'').toUpperCase(), Phone:d.phone, Email:d.email, Address:d.address, Gstin:d.gstin})[k] : '';
+    document.getElementById('qtnDealer' + k).textContent = v || '—';
+  });
+}
+function openQuotationModalPickDealer(){
+  qtnResetForm('');
+  document.getElementById('quotationForm').removeAttribute('action');
+  var pick = document.getElementById('qtnDealerPick');
+  pick.value = ''; pick.classList.remove('is-invalid'); qtnFillDealer(null);
+  new bootstrap.Modal(document.getElementById('quotationModal')).show();
+  setTimeout(function(){ pick.focus(); }, 300);
+}
+document.addEventListener('DOMContentLoaded', function(){
+  var pick = document.getElementById('qtnDealerPick'), form = document.getElementById('quotationForm');
+  if (!pick) return;
+  function match(){
+    var v = pick.value.trim();
+    return QTN_DEALERS.find(function(d){ return qtnDealerLabel(d) === v; })
+        || QTN_DEALERS.find(function(d){ return d.business_name === v; }) || null;
+  }
+  pick.addEventListener('input', function(){
+    var d = match(); qtnFillDealer(d);
+    if (d) { form.action = '/dealers/' + d.id + '/quotations'; pick.classList.remove('is-invalid'); }
+    else { form.removeAttribute('action'); }
+  });
+  form.addEventListener('submit', function(e){
+    if (!match()) { e.preventDefault(); pick.classList.add('is-invalid'); pick.focus(); }
+  });
+});
+{% endif %}
 function openQuotationModal(d){
   qtnResetForm(d.id);
   document.getElementById('qtnDealerName').textContent = d.business_name || '—';

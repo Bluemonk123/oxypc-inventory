@@ -99,56 +99,40 @@
 
 </div>
 
-<!-- Summary cards — top 4 -->
-<div class="row g-3 mb-2">
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold text-primary">{{ total_count }}</div>
-      <div class="small text-muted">Total Dealers</div>
+<!-- Summary tiles — top 4: dark tile cards (2026-10-27) -->
+<div class="lt-tiles-row lt-dark mb-1">
+  {% for val, label, color, icon, tip in [
+       (total_count, 'Total Dealers', '#0d6efd', 'bi-building', ''),
+       (active_count, 'Active', '#0F7A37', 'bi-check-circle', ''),
+       (followup_count, 'Follow-ups Due', '#fd7e14', 'bi-alarm', 'Dealers whose latest call status is Follow-up and follow-up date is today or past'),
+       ('₹' ~ outstanding, 'Outstanding', '#dc3545', 'bi-currency-rupee', '')] %}
+  <div>
+    <div class="lt-tile h-100" style="--tc:{{ color }}"{% if tip %} title="{{ tip }}"{% endif %}>
+      <div class="lt-tile-count">{{ val }}</div>
+      <div class="lt-tile-label">{{ label }}{% if tip %} <i class="bi bi-info-circle ms-1" style="font-size:0.7rem"></i>{% endif %}</div>
+      <i class="bi {{ icon }} lt-tile-wm"></i>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold text-success">{{ active_count }}</div>
-      <div class="small text-muted">Active</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-3"
-         title="Dealers whose latest call status is Follow-up and follow-up date is today or past">
-      <div class="fs-4 fw-bold text-warning">{{ followup_count }}</div>
-      <div class="small text-muted">
-        Follow-ups Due
-        <i class="bi bi-info-circle ms-1" style="font-size:0.7rem"></i>
-      </div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold text-danger">₹{{ outstanding }}</div>
-      <div class="small text-muted">Outstanding</div>
-    </div>
-  </div>
+  {% endfor %}
 </div>
 
-<!-- Call outcome cards — based on each dealer's LATEST call log status (matches table below) -->
-<div class="row g-2 mb-4">
+<!-- Call outcome tiles — light tint tile cards (2026-10-27); based on each
+     dealer's LATEST call log status (matches table below) -->
+<div class="lt-tiles-row mb-3">
   {% set base_qs = '?' ~ request.query_string.decode() %}
   {% for outcome_key, label, color, icon in [
-    ('interested',     'Interested',     'success',   'bi-hand-thumbs-up-fill'),
-    ('not_interested', 'Not Interested', 'danger',    'bi-hand-thumbs-down-fill'),
-    ('details_sent',   'Detail Sent',    'info',      'bi-send-fill'),
-    ('callback',       'Callback',       'warning',   'bi-arrow-repeat'),
-    ('not_connected',  'Not Connected',  'secondary', 'bi-telephone-x-fill'),
-    ('no_requirement', 'No Requirement', 'dark',      'bi-slash-circle')
+    ('interested',     'Interested',     '#0F7A37', 'bi-hand-thumbs-up-fill'),
+    ('not_interested', 'Not Interested', '#dc3545', 'bi-hand-thumbs-down-fill'),
+    ('details_sent',   'Detail Sent',    '#0aa2c0', 'bi-send-fill'),
+    ('callback',       'Callback',       '#fd7e14', 'bi-arrow-repeat'),
+    ('not_connected',  'Not Connected',  '#6c757d', 'bi-telephone-x-fill'),
+    ('no_requirement', 'No Requirement', '#343a40', 'bi-slash-circle')
   ] %}
-  <div class="col-6 col-sm-4 col-lg-2">
-    <div class="card border-0 shadow-sm text-center py-2 px-1 h-100"
-         title="Dealers whose latest call log outcome is: {{ label }}">
-      <div class="fs-4 fw-bold text-{{ color }}">{{ outcome_stats.get(outcome_key, 0) }}</div>
-      <div class="small text-muted" style="font-size:0.72rem">
-        <i class="bi {{ icon }} me-1"></i>{{ label }}
-      </div>
+  <div>
+    <div class="lt-tile h-100" style="--tc:{{ color }}" title="Dealers whose latest call log outcome is: {{ label }}">
+      <div class="lt-tile-count">{{ outcome_stats.get(outcome_key, 0) }}</div>
+      <div class="lt-tile-label">{{ label }}</div>
+      <i class="bi {{ icon }} lt-tile-wm"></i>
     </div>
   </div>
   {% endfor %}

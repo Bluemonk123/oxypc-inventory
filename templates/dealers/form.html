@@ -112,12 +112,13 @@
             </div>
             <div class="col-md-4">
               <label class="form-label">Assigned To (Sales Exec)</label>
-              <select name="assigned_to" class="form-select">
-                <option value="">Unassigned</option>
-                {% for u in sales_users %}
-                <option value="{{ u.username }}" {% if dealer and dealer.assigned_to==u.username %}selected{% endif %}>{{ u.full_name }} ({{ u.username }})</option>
-                {% endfor %}
+              {# 2026-10-27 (Pankaj): always the logged-in user, shown but not
+                 editable. A disabled field is not submitted, so the value goes
+                 in a hidden input; the route also sets it from the session. #}
+              <select class="form-select" disabled title="Assigned to you">
+                <option selected>{{ current_user.full_name }} ({{ current_user.username }})</option>
               </select>
+              <input type="hidden" name="assigned_to" value="{{ current_user.username }}">
             </div>
             <div class="col-md-4">
               <label class="form-label">Status</label>

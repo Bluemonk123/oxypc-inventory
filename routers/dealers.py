@@ -724,7 +724,13 @@ async def dealers_data(
         # Dealer ID column hidden by request (the code still shows in the View
         # popup); Status sits after Sub Category.
         row.extend([
-            f'<a href="/dealers/{d.id}" class="fw-semibold text-decoration-none">{esc(d.business_name or "")}</a>',
+            # Long names (32+ chars, the Global Table's own threshold) wrap to
+            # 2 lines with "…" and show in full on hover (2026-10-27). The
+            # table's automatic clamp skips cells with markup, like this link.
+            (f'<a href="/dealers/{d.id}" class="fw-semibold text-decoration-none" title="{esc(d.business_name)}">'
+             f'<span class="gtable-clamp2">{esc(d.business_name)}</span></a>'
+             if len(d.business_name or "") >= 32 else
+             f'<a href="/dealers/{d.id}" class="fw-semibold text-decoration-none">{esc(d.business_name or "")}</a>'),
             f'<span class="badge bg-secondary">{esc(dealer_type_label(d.dealer_type))}</span>',
             f'<span class="small">{esc(d.dealer_sub_category or "—")}</span>',
             status_cell,
@@ -2081,7 +2087,7 @@ async def create_dealer(
         google_cid=parse_google_cid(google_cid),
         preferred_categories=preferred_categories,
         credit_limit=credit_limit,
-        assigned_to=assigned_to or current_user.username,
+        assigned_to=current_user.username,  # 2026-10-27: always the logged-in user
         status=status,
         notes=notes,
         created_by=current_user.username,
@@ -2473,7 +2479,7 @@ async def update_dealer(
     dealer.pincode = pincode
     dealer.preferred_categories = preferred_categories
     dealer.credit_limit = credit_limit
-    dealer.assigned_to = assigned_to
+    dealer.assigned_to = current_user.username  # 2026-10-27: always the logged-in user
     dealer.status = status
     dealer.notes = notes
     await db.commit()
@@ -2735,7 +2741,7 @@ async def log_call(
         whom_to_sell=(whom_to_sell or "").strip() or None,
         deals_in=(deals_in or "").strip() or None,
         stock_type=(stock_type or "").strip() or None,
-        assigned_to=(assigned_to or "").strip() or None,
+        assigned_to=current_user.username,  # 2026-10-27: always the logged-in user
     )
     db.add(call)
 
@@ -2859,7 +2865,7 @@ async def update_call(
     call.whom_to_sell = (whom_to_sell or "").strip() or None
     call.deals_in = (deals_in or "").strip() or None
     call.stock_type = (stock_type or "").strip() or None
-    call.assigned_to = (assigned_to or "").strip() or None
+    call.assigned_to = current_user.username  # 2026-10-27: always the logged-in user
 
     await db.commit()
     return RedirectResponse(url=f"/dealers/{dealer_id}?success=Call+updated", status_code=302)

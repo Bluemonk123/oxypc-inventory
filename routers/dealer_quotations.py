@@ -48,13 +48,18 @@ async def create_dealer_quotation(
     po_category: list[str] = Form(default=[]),
     quantity: list[str] = Form(default=[]),
     unit_price: list[str] = Form(default=[]),
+    return_to: str = Form(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_sales),
     _perm: User = Depends(require_module_perm("dealers", "add")),
 ):
+    # 2026-10-27: the Quotations page's Add Quote opens this same modal and
+    # sends return_to=/quotations so the user lands back there. Only that one
+    # path is accepted (never an arbitrary URL).
+    back = "/quotations" if return_to == "/quotations" else f"/dealers/{dealer_id}"
     dealer = (await db.execute(select(Dealer).where(Dealer.id == dealer_id))).scalar_one_or_none()
     if not dealer:
-        return RedirectResponse(url="/dealers?error=Dealer+not+found", status_code=302)
+        return RedirectResponse(url=("/quotations" if back == "/quotations" else "/dealers") + "?error=Dealer+not+found", status_code=302)
 
     items = []
     total_quantity = 0
@@ -79,7 +84,7 @@ async def create_dealer_quotation(
         total_price += line_total
 
     if not items:
-        return RedirectResponse(url=f"/dealers/{dealer_id}?error=Add+at+least+one+line+item", status_code=302)
+        return RedirectResponse(url=f"{back}?error=Add+at+least+one+line+item", status_code=302)
 
     count_result = await db.execute(select(func.count(DealerQuotation.id)))
     seq = (count_result.scalar() or 0) + 1
@@ -121,7 +126,7 @@ async def create_dealer_quotation(
         request=request,
     )
     await db.commit()
-    return RedirectResponse(url=f"/dealers/{dealer_id}?success=Quotation+{quote_number}+created", status_code=302)
+    return RedirectResponse(url=f"{back}?success=Quotation+{quote_number}+created", status_code=302)
 
 
 @router.post("/dealer-quotations/{quotation_id}/confirm")
