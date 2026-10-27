@@ -14,6 +14,23 @@
 }
 
 /* Layout */
+/* Page scrollbar overlays the page (2026-10-27, Pankaj): the browser's own
+   page scrollbar is hidden, so it takes no space — nothing shifts left when a
+   page grows taller, and the top bar runs to the window's right edge. A slim
+   scrollbar drawn by base.html (#pageScrollThumb) floats over the right edge
+   instead. Wheel, keyboard and touch scrolling are untouched. Inner scroll
+   areas (tables, sidebar, modals) keep their own scrollbars. */
+html { scrollbar-width: none; }
+html::-webkit-scrollbar { width: 0; height: 0; }
+#pageScrollThumb { position: fixed; top: 0; right: 2px; width: 6px; min-height: 30px; border-radius: 4px;
+  background: rgba(33,37,41,.38); z-index: 2147483000; opacity: 0; transition: opacity .3s, width .15s;
+  cursor: pointer; touch-action: none; }
+#pageScrollThumb.show, #pageScrollThumb.drag { opacity: 1; }
+#pageScrollThumb:hover, #pageScrollThumb.drag { width: 9px; background: rgba(33,37,41,.55); }
+/* Above every overlay (the toast area sits over the top-right corner), but
+   hidden while a modal is open — the page cannot scroll then. The thumb is
+   appended after <body>, so it is body's later sibling. */
+body.modal-open ~ #pageScrollThumb { display: none !important; }
 body {
   font-family: 'Segoe UI', Arial, sans-serif;
   background: #f0f4f8;
@@ -742,6 +759,15 @@ fieldset:disabled .btn {
 table.gtable tbody tr:hover > td:first-child {
   box-shadow: inset 8px 0 0 #0377c2, inset 0 0 0 9999px var(--bs-table-bg-state, var(--bs-table-bg-type, var(--bs-table-accent-bg)));
 }
+/* Empty / "No data" / no-search-match row (DataTables' td.dataTables_empty,
+   2026-10-27): no hover at all — no tint, no lift shadow, no left accent.
+   Placed after the hover rules so it wins at equal specificity. */
+table.gtable tbody tr:hover > td.dataTables_empty,
+.gtable-cards table.gtable tbody tr:hover > td.dataTables_empty,
+.gtable-scroll-wrap tbody tr:hover > td.dataTables_empty {
+  background-color: #fff !important; box-shadow: none !important; cursor: default; }
+.gtable-cards table.gtable tbody tr:hover > td.dataTables_empty::before,
+.gtable-cards table.gtable tbody tr:hover > td.dataTables_empty::after { content: none !important; }
 
 /* Footer total row (any <tfoot> in a Global Table): the standard "disabled"
    grey (#e9ecef, Bootstrap's disabled-field colour) so it reads as a computed,
@@ -839,3 +865,40 @@ table.gtable tbody td .gtable-clamp2 {
   background-color: #0F7A37 !important; color: #fff !important;
 }
 /* Sidebar now uses the same success green (2026-10-18). */
+
+/* Light tint tile cards (2026-10-27): shared copy of the Spare Parts tiles
+   (Design System 05) for pages without their own inline copy — Sourcing
+   Deals, Buyer Deals. Set --tc on .lt-tile for the colour. */
+.lt-tiles-row{display:flex; flex-wrap:nowrap; gap:.75rem; overflow-x:auto; padding:4px 6px 10px; margin-bottom:1rem}
+.lt-tiles-row > div{flex:1 1 0; min-width:130px}
+.lt-tile{position:relative; overflow:hidden; border-radius:10px; padding:1.1rem 1rem; min-height:96px;
+         background:color-mix(in srgb, var(--tc) 8%, #fff) !important;
+         border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
+         box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
+.lt-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1; white-space:nowrap}
+.lt-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1; margin-top:.35rem}
+.lt-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
+            color:color-mix(in srgb, var(--tc) 8%, transparent); pointer-events:none}
+/* Dark variant (2026-10-27): solid tile colour, white count and label,
+   faint white watermark — same look as Product Master's tiles. */
+.lt-tiles-row.lt-dark .lt-tile{background:var(--tc) !important; border-color:var(--tc); box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.lt-tiles-row.lt-dark .lt-tile-count{color:#fff}
+.lt-tiles-row.lt-dark .lt-tile-label{color:rgba(255,255,255,.88)}
+.lt-tiles-row.lt-dark .lt-tile-wm{color:rgba(255,255,255,.22)}
+/* Extra line and View All button inside a tile (Procure Dashboard).
+   Spacing (2026-10-27): label sits just under the count as its caption;
+   the second value gets clear room above (.85rem) and at least 1rem below;
+   the button keeps mt-auto so all four buttons line up at the bottom. */
+.lt-tile-sub{font-size:1.6rem; font-weight:700; line-height:1.15; margin-top:.85rem; margin-bottom:1rem; position:relative; z-index:1; color:#495057}
+.lt-tile-btn{position:relative; z-index:1; align-self:flex-start; font-size:.72rem; padding:.1rem .5rem}
+.lt-tiles-row.lt-dark .lt-tile-sub{color:rgba(255,255,255,.85)}
+
+/* Sidebar scrollbar (2026-10-27): the browser's default light-grey 17px bar
+   showed as a pale strip between the dark sidebar and the top bar. Thin and
+   in the sidebar's own colours instead, so it blends in; still scrollable.
+   scrollbar-width/-color: Firefox and Chrome/Edge 121+; ::-webkit-scrollbar
+   rules: Safari and older Chrome/Edge. */
+#sidebar { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.28) var(--sidebar-bg); }
+#sidebar::-webkit-scrollbar { width: 6px; }
+#sidebar::-webkit-scrollbar-track { background: var(--sidebar-bg); }
+#sidebar::-webkit-scrollbar-thumb { background: rgba(255,255,255,.28); border-radius: 3px; }

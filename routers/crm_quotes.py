@@ -328,8 +328,8 @@ async def create_quote(
         opp = opp_r.scalar_one_or_none()
         if opp:
             opp.quote_id = quote.id
-            if opp.stage in ("lead", "contacted", "requirement", "availability"):
-                opp.stage = "quoted"
+            if opp.stage in ("lead", "contacted", "screening"):
+                opp.stage = "quote"
 
     await db.commit()
     return RedirectResponse(url=f"/crm/quotes/{quote.id}?success=Quote+created", status_code=302)
@@ -404,8 +404,8 @@ async def create_quote_from_lot(
 
     if opp:
         opp.quote_id = quote.id
-        if opp.stage in ("lead", "contacted", "requirement", "availability"):
-            opp.stage = "quoted"
+        if opp.stage in ("lead", "contacted", "screening"):
+            opp.stage = "quote"
 
     await db.commit()
     dest = return_to or f"/crm/quotes/{quote.id}"

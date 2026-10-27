@@ -443,6 +443,10 @@ ROUTE_ACTIONS = {
     # ===== routers/crm_sales.py =====
     ('POST', '/crm/sales/new'): ('crm_sales_opp', 'add'),  # create_opp
     ('POST', '/crm/sales/{opp_id}/stage'): ('crm_sales_opp', 'edit'),  # move_stage
+    ('POST', '/crm/sales/{opp_id}/next-stage'): ('crm_sales_opp', 'edit'),  # next_stage: Buyer Deal Next Stage (2026-10-27)
+    ('POST', '/crm/sales/{opp_id}/steps/{step_key}/assign'): ('crm_sales_opp', 'edit'),  # assign_step: Buyer Deal Stage Progress user icon
+    ('POST', '/crm/sales/{opp_id}/steps/{step_key}/decide'): ('crm_sales_opp', 'edit'),  # decide_step: Approve / Reject
+    ('POST', '/crm/sales/{opp_id}/steps/{step_key}/attach'): ('crm_sales_opp', 'upload'),  # attach_step_file: stage files + Deal Info Upload
     ('POST', '/crm/sales/{opp_id}/edit'): ('crm_sales_opp', 'edit'),  # update_opp
     ('POST', '/crm/sales/{opp_id}/link-sale'): ('crm_sales_opp', 'edit'),  # link_sale_submit
     # ===== routers/crm_quotes.py =====

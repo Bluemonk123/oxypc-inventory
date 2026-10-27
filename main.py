@@ -589,6 +589,7 @@ async def startup_event():
             await _backfill_export_perm_once(_sess)
             await _merge_pricing_visibility_once(_sess)
             await _migrate_sourcing_stages_once(_sess)
+            await _migrate_sales_stages_once(_sess)
             await load_all_permissions_to_cache(_sess)
         print("  [Perms] Role permission cache loaded")
     except Exception as _pe:
@@ -972,6 +973,30 @@ async def _migrate_sourcing_stages_once(sess) -> None:
         {"v": str(res.rowcount)})
     await sess.commit()
     print(f"  [CRM] Sourcing Deal stages mapped on {res.rowcount} deal(s)")
+
+
+async def _migrate_sales_stages_once(sess) -> None:
+    """One-time (2026-10-27): Buyer Deal (sales opportunity) stages reworked to
+    the Sourcing Deal style (models/crm.py SALES_STAGES). Old keys mapped:
+    requirement / availability -> screening, quoted -> quote,
+    confirmed / invoiced -> sales_order, delivered -> received.
+    Recorded in app_settings like the backfills above."""
+    from sqlalchemy import text as _t
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'sales_stages_v2'"))).first()
+    if done:
+        return
+    res = await sess.execute(_t(
+        "UPDATE crm_sales_opportunities SET stage = CASE stage "
+        "WHEN 'requirement' THEN 'screening' WHEN 'availability' THEN 'screening' "
+        "WHEN 'quoted' THEN 'quote' WHEN 'confirmed' THEN 'sales_order' "
+        "WHEN 'invoiced' THEN 'sales_order' WHEN 'delivered' THEN 'received' END "
+        "WHERE stage IN ('requirement', 'availability', 'quoted', 'confirmed', 'invoiced', 'delivered')"))
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('sales_stages_v2', :v, 'Buyer Deal stages mapped to the new list', 'system', now())"),
+        {"v": str(res.rowcount)})
+    await sess.commit()
+    print(f"  [CRM] Buyer Deal stages mapped on {res.rowcount} deal(s)")
 
 
 if __name__ == "__main__":

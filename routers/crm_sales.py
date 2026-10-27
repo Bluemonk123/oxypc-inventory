@@ -16,6 +16,7 @@ from models.user import User, UserRole
 from models.crm import (
     CRMContact, CRMSalesOpportunity, CRMActivity, CRMQuote,
     BUYER_TYPES, MATERIAL_TYPES, SALES_STAGES, PRIORITIES, GRADES,
+    CRMSalesStep, SALES_STAGE_STEPS, SALES_STEP_INDEX,
 )
 from models.sales import Sale
 from models.device import Device
@@ -269,6 +270,21 @@ async def opp_detail(
 
     stage_list = list(enumerate(SALES_STAGES))
     current_idx = next((i for i, (v, _) in stage_list if v == opp.stage), 0)
+    # Stage Progress (2026-10-27, same layout as Sourcing Deals): latest
+    # logged contact under Contacted, and the stage Next Stage moves to.
+    last_contact = next((a for a in activities if a.activity_type != "note"), None)
+    step_rows = (await db.execute(
+        select(CRMSalesStep).where(CRMSalesStep.deal_id == opp.id))).scalars().all()
+    steps = {r.step_key: r for r in step_rows}
+    latest_quote = deal_quotes[0] if deal_quotes else None
+    staff = (await db.execute(
+        select(User).where(User.status == True).order_by(User.full_name)  # noqa: E712
+    )).scalars().all()
+    user_names = {u.username: (u.full_name or u.username) for u in staff}
+    open_keys = [k for k, _ in SALES_STAGES if k not in ("won", "lost")]
+    next_stage = None
+    if opp.stage in open_keys and opp.stage != open_keys[-1]:
+        next_stage = open_keys[open_keys.index(opp.stage) + 1]
 
     return templates.TemplateResponse("crm/sales/detail.html", {
         "request": request, "current_user": current_user,
@@ -278,6 +294,10 @@ async def opp_detail(
         "companies": companies,
         "next_fu": next_fu,
         "sales_stages": SALES_STAGES, "stage_list": stage_list, "current_idx": current_idx,
+        "stage_labels": dict(SALES_STAGES), "last_contact": last_contact, "next_stage": next_stage,
+        "last_open_stage": open_keys[-1],
+        "stage_steps": SALES_STAGE_STEPS, "steps": steps, "latest_quote": latest_quote,
+        "staff": staff, "user_names": user_names,
         "buyer_map": dict(BUYER_TYPES), "material_map": dict(MATERIAL_TYPES),
         "now": app_now(),
     })
@@ -310,6 +330,208 @@ async def move_stage(
     db.add(activity)
     await db.commit()
     return RedirectResponse(url=f"/crm/sales/{opp_id}?success=Stage+updated", status_code=302)
+
+
+# ── STAGE PROGRESS ITEMS (2026-10-27, same as Sourcing Deals) ────────────────
+
+STEP_FILE_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".webp", ".gif",
+                  ".xlsx", ".xls", ".csv", ".doc", ".docx"}
+STEP_FILE_MAX_BYTES = 20 * 1024 * 1024
+
+
+def _back(opp_id, msg, ok=True):
+    from urllib.parse import quote_plus
+    return RedirectResponse(url=f"/crm/sales/{opp_id}?{'success' if ok else 'error'}={quote_plus(msg)}",
+                            status_code=302)
+
+
+async def _opp_and_step(db, opp_id: str, step_key: str):
+    opp = (await db.execute(
+        select(CRMSalesOpportunity).where(CRMSalesOpportunity.id == opp_id))).scalar_one_or_none()
+    if not opp or step_key not in SALES_STEP_INDEX:
+        return opp, None
+    step = (await db.execute(select(CRMSalesStep).where(
+        CRMSalesStep.deal_id == opp.id, CRMSalesStep.step_key == step_key))).scalar_one_or_none()
+    return opp, step
+
+
+def _stage_label(stage):
+    return "Documents" if stage == "documents" else dict(SALES_STAGES).get(stage, stage)
+
+
+def _note(opp, user, text):
+    return CRMActivity(contact_id=opp.contact_id, deal_id=opp.id, deal_type="sales",
+                       activity_type="note", summary=text, performed_by=user.username, outcome="done")
+
+
+@router.post("/{opp_id}/steps/{step_key}/assign")
+async def assign_step(
+    request: Request, opp_id: str, step_key: str,
+    username: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """User icon on a Stage Progress item: assign a user or an approver; the
+    assignee gets a bell notification."""
+    from services.audit_engine import audit
+    opp, step = await _opp_and_step(db, opp_id, step_key)
+    if not opp or step_key not in SALES_STEP_INDEX:
+        return _back(opp_id, "Step not found", ok=False)
+    stage, label, kind = SALES_STEP_INDEX[step_key]
+    if kind == "file":
+        return _back(opp_id, "This item takes a file, not a user", ok=False)
+    user = (await db.execute(select(User).where(User.username == username.strip(),
+                                                User.status == True))).scalar_one_or_none()  # noqa: E712
+    if not user:
+        return _back(opp_id, "Select an active user", ok=False)
+    old = {"assigned_to": step.assigned_to, "status": step.status} if step else None
+    if not step:
+        step = CRMSalesStep(deal_id=opp.id, stage=stage, step_key=step_key, created_by=current_user.username)
+        db.add(step)
+    step.assigned_to = user.username
+    step.status = "pending" if kind == "approval" else "done"
+    step.acted_by = None if kind == "approval" else current_user.username
+    step.acted_at = None if kind == "approval" else app_now()
+    step.note = None
+    who = user.full_name or user.username
+    db.add(_note(opp, current_user, f"{_stage_label(stage)} — {label}: assigned to {who}"))
+    await audit(db, action="CRM_SALES_STEP_ASSIGNED", user=current_user, table_name="crm_sales_steps",
+                record_id=str(opp.id), old_value=old,
+                new_value={"step": step_key, "assigned_to": user.username}, request=request)
+    await db.commit()
+    from services.notifications import create_notification
+    what = f"{label} approval" if kind == "approval" else label
+    await create_notification(
+        db, user_id=user.id, notification_type="info",
+        title=f"{opp.opp_number}: {_stage_label(stage)} — {what}",
+        message=f"{current_user.full_name or current_user.username} assigned you to {what} "
+                f"on Buyer Deal {opp.opp_number} ({opp.title[:80]}).")
+    return _back(opp_id, f"{label} assigned to {who}")
+
+
+@router.post("/{opp_id}/steps/{step_key}/decide")
+async def decide_step(
+    request: Request, opp_id: str, step_key: str,
+    decision: str = Form(...),
+    note: str = Form(default=""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Approve / Reject — only the assigned approver or an admin."""
+    from services.audit_engine import audit
+    opp, step = await _opp_and_step(db, opp_id, step_key)
+    if not opp or not step or SALES_STEP_INDEX[step_key][2] != "approval":
+        return _back(opp_id, "Approval not found", ok=False)
+    role = getattr(current_user.role, "value", current_user.role)
+    if step.assigned_to != current_user.username and role != "admin":
+        return _back(opp_id, "Only the assigned approver can approve or reject", ok=False)
+    if decision not in ("approved", "rejected"):
+        return _back(opp_id, "Choose Approve or Reject", ok=False)
+    old = {"status": step.status, "note": step.note}
+    step.status = decision
+    step.note = (note or "").strip() or None
+    step.acted_by = current_user.username
+    step.acted_at = app_now()
+    stage, label, _k = SALES_STEP_INDEX[step_key]
+    db.add(_note(opp, current_user, f"{_stage_label(stage)} — {label}: {decision.title()}"
+                                    + (f" — {step.note}" if step.note else "")))
+    await audit(db, action="CRM_SALES_STEP_DECIDED", user=current_user, table_name="crm_sales_steps",
+                record_id=str(opp.id), old_value=old,
+                new_value={"step": step_key, "status": decision, "note": step.note}, request=request)
+    await db.commit()
+    return _back(opp_id, f"{label} {decision}")
+
+
+@router.post("/{opp_id}/steps/{step_key}/attach")
+async def attach_step_file(
+    request: Request, opp_id: str, step_key: str,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Attach a document (stage files and the Deal Info Upload section). PDF /
+    image / Excel / Word, up to 20 MB; replaces the item's earlier file."""
+    from services.audit_engine import audit
+    opp, step = await _opp_and_step(db, opp_id, step_key)
+    if not opp or step_key not in SALES_STEP_INDEX or SALES_STEP_INDEX[step_key][2] != "file":
+        return _back(opp_id, "Document item not found", ok=False)
+    if not file or not file.filename:
+        return _back(opp_id, "No file selected", ok=False)
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in STEP_FILE_EXTS:
+        return _back(opp_id, "Allowed files: PDF, image, Excel or Word", ok=False)
+    content = await file.read()
+    if len(content) > STEP_FILE_MAX_BYTES:
+        return _back(opp_id, "File is larger than 20 MB", ok=False)
+    safe_name = f"{_uuid.uuid4().hex}{ext}"
+    uploads_dir = os.path.join(UPLOADS_DIR, "crm")
+    os.makedirs(uploads_dir, exist_ok=True)
+    with open(os.path.join(uploads_dir, safe_name), "wb") as f:
+        f.write(content)
+    stage, label, _k = SALES_STEP_INDEX[step_key]
+    old = {"file_path": step.file_path} if step else None
+    if not step:
+        step = CRMSalesStep(deal_id=opp.id, stage=stage, step_key=step_key, created_by=current_user.username)
+        db.add(step)
+    step.file_path = safe_name
+    step.status = "done"
+    step.acted_by = current_user.username
+    step.acted_at = app_now()
+    db.add(_note(opp, current_user, f"{_stage_label(stage)} — {label} attached ({file.filename[:120]})"))
+    await audit(db, action="CRM_SALES_STEP_FILE", user=current_user, table_name="crm_sales_steps",
+                record_id=str(opp.id), old_value=old,
+                new_value={"step": step_key, "file_path": safe_name, "original": file.filename[:200]},
+                request=request)
+    await db.commit()
+    return _back(opp_id, f"{label} attached")
+
+
+@router.post("/{opp_id}/next-stage")
+async def next_stage(
+    request: Request,
+    opp_id: str,
+    outcome: str = Form(default=""),
+    win_loss_reason: str = Form(default=""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Next Stage (2026-10-27, same as Sourcing Deals): one stage on, never
+    blocked. From the last open stage (Payment Received) it closes the deal
+    as Won or Lost with a reason. Audit-logged and noted in the Activity Log."""
+    from urllib.parse import quote_plus
+    from services.audit_engine import audit
+    opp = (await db.execute(
+        select(CRMSalesOpportunity).where(CRMSalesOpportunity.id == opp_id))).scalar_one_or_none()
+    if not opp:
+        return RedirectResponse(url="/crm/sales?error=Not+found", status_code=302)
+    back = lambda m, ok=True: RedirectResponse(
+        url=f"/crm/sales/{opp_id}?{'success' if ok else 'error'}={quote_plus(m)}", status_code=302)
+    order = [k for k, _ in SALES_STAGES if k not in ("won", "lost")]
+    if opp.stage in ("won", "lost"):
+        return back("Deal is already closed", ok=False)
+    if opp.stage == order[-1]:
+        if outcome not in ("won", "lost"):
+            return back("Choose Won or Lost", ok=False)
+        new = outcome
+        opp.win_loss_reason = (win_loss_reason or "").strip() or opp.win_loss_reason
+    else:
+        cur = order.index(opp.stage) if opp.stage in order else 0
+        new = order[cur + 1]
+    old = opp.stage
+    opp.stage = new
+    labels = dict(SALES_STAGES)
+    text = f"Stage moved to: {labels.get(new, new)}"
+    if new in ("won", "lost") and opp.win_loss_reason:
+        text += f" — {opp.win_loss_reason}"
+    db.add(CRMActivity(contact_id=opp.contact_id, deal_id=opp.id, deal_type="sales",
+                       activity_type="note", summary=text,
+                       performed_by=current_user.username, outcome="done"))
+    await audit(db, action="CRM_SALES_NEXT_STAGE", user=current_user,
+                table_name="crm_sales_opportunities", record_id=str(opp.id),
+                old_value={"stage": old}, new_value={"stage": new, "win_loss_reason": opp.win_loss_reason},
+                request=request)
+    await db.commit()
+    return back(f"Moved to {labels.get(new, new)}")
 
 
 # ── EDIT ─────────────────────────────────────────────────────────────────────
@@ -463,8 +685,10 @@ async def link_sale_submit(
     opp.linked_sale_ids = ",".join(merged)
 
     # auto-advance stage if still early
-    if opp.stage in ("lead", "contacted", "requirement", "availability", "quoted", "negotiation", "confirmed"):
-        opp.stage = "invoiced"
+    # 2026-10-27: new stage list — linking a sale moves an early deal to
+    # Invoice / Sales Order ("invoiced" no longer exists).
+    if opp.stage in ("lead", "contacted", "screening", "quote", "negotiation"):
+        opp.stage = "sales_order"
 
     activity = CRMActivity(
         contact_id=opp.contact_id, deal_id=opp.id, deal_type="sales",

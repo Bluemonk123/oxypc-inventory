@@ -73,6 +73,16 @@ async def log_activity(
                                activity_type="note", summary="Stage moved to: Contacted",
                                performed_by=current_user.username, outcome="done",
                                activity_date=app_now()))
+    # Buyer Deals too (2026-10-27): same rule.
+    if deal_type == "sales" and deal_id and activity_type != "note":
+        opp = (await db.execute(
+            select(CRMSalesOpportunity).where(CRMSalesOpportunity.id == deal_id))).scalar_one_or_none()
+        if opp and opp.stage == "lead":
+            opp.stage = "contacted"
+            db.add(CRMActivity(contact_id=opp.contact_id, deal_id=opp.id, deal_type="sales",
+                               activity_type="note", summary="Stage moved to: Contacted",
+                               performed_by=current_user.username, outcome="done",
+                               activity_date=app_now()))
     await db.commit()
 
     back = redirect_to or "/crm/"

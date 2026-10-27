@@ -15,10 +15,11 @@
   {% endif %}
 </div>
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent py-2 fw-semibold"><i class="bi bi-cart-check me-2"></i>Purchase Order Generated</div>
   <div class="card-body p-0">
-    <table class="table table-hover mb-0 small">
+    <table class="table table-hover mb-0 small" id="poListTable">
       <thead class="table-dark">
-        <tr><th>PO #</th><th>Supplier</th><th>Deal</th><th>Date</th><th>Delivery</th><th>Amount</th><th>Status</th><th>Download</th><th></th></tr>
+        <tr><th>PO #</th><th>Supplier</th><th>Deal</th><th>Date</th><th>Delivery</th><th>Amount</th><th>Status</th><th>Download</th><th>Action</th></tr>
       </thead>
       <tbody>
         {% for po in pos %}
@@ -41,11 +42,21 @@
             {% if can(current_user, 'crm_purchase_orders', 'export') %}<a href="/crm/purchase-orders/{{ po.id }}/print" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-printer"></i></a>{% endif %}
           </td>
         </tr>
-        {% else %}
-        <tr><td colspan="9" class="text-center text-muted py-4">No purchase orders yet.</td></tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+// Global Table (2026-10-27). No hand-written empty row: the shared empty
+// state comes from initGlobalTable's language.emptyTable.
+$(function () {
+  initGlobalTable('#poListTable', {
+    order: [],
+    language: { emptyTable: 'No purchase orders yet.' }
+  });
+});
+</script>
 {% endblock %}

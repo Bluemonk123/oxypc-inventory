@@ -89,21 +89,68 @@ SOURCING_STEP_INDEX = {key: (stage, label, kind)
                        for stage, steps in SOURCING_STAGE_STEPS.items()
                        for key, label, kind in steps}
 
-# ── SALES OPPORTUNITY STAGES ──────────────────────────────────────────────────
+# ── SALES OPPORTUNITY (BUYER DEAL) STAGES ──────────────────────────────────────
+# Reworked 2026-10-27 to the Sourcing Deal style. Old keys on existing deals
+# are mapped once at startup by main._migrate_sales_stages_once:
+# requirement / availability -> screening, quoted -> quote,
+# confirmed / invoiced -> sales_order, delivered -> received.
 SALES_STAGES = [
-    ("lead",         "Lead / Enquiry"),
-    ("contacted",    "Contacted"),
-    ("requirement",  "Requirement Understood"),
-    ("availability", "Availability Confirmed"),
-    ("quoted",       "Quote Sent"),
-    ("negotiation",  "Negotiation"),
-    ("confirmed",    "Order Confirmed"),
-    ("invoiced",     "Invoice Raised"),
-    ("delivered",    "Delivered"),
-    ("payment",      "Payment Received"),
-    ("won",          "Closed — Won"),
-    ("lost",         "Closed — Lost"),
+    ("lead",           "Lead / Enquiry"),
+    ("contacted",      "Contacted"),
+    ("screening",      "Screening"),
+    ("quote",          "Quote"),
+    ("negotiation",    "Negotiations"),
+    ("sales_order",    "Invoice / Sales Order"),
+    ("purchase_order", "Purchase Order"),
+    ("payment",        "Payment"),
+    ("received",       "Stock Received"),
+    ("won",            "Closed — Won"),
+    ("lost",           "Closed — Lost"),
 ]
+
+# Items under each Buyer Deal stage (stored in crm_sales_steps), same kinds as
+# SOURCING_STAGE_STEPS. Quote's document is the latest quote generated for the
+# deal — shown automatically. "documents" holds the Deal Info Upload section.
+SALES_STAGE_STEPS = {
+    "screening": [
+        ("screening_assign", "Assign to Inspection", "user"),
+        ("screening_report", "Inspection Report", "file"),
+    ],
+    "quote": [
+        ("quote_l1", "Level 1", "approval"),
+        ("quote_l2", "Level 2", "approval"),
+    ],
+    "negotiation": [
+        ("negotiation_l1", "Level 1", "approval"),
+        ("negotiation_quote", "Updated Quote", "file"),
+    ],
+    "sales_order": [
+        ("so_l1", "Level 1", "approval"),
+        ("so_l2", "Level 2", "approval"),
+        ("so_file", "PO", "file"),
+    ],
+    "purchase_order": [
+        ("po_l1", "Level 1", "approval"),
+        ("po_l2", "Level 2", "approval"),
+        ("po_file", "PO", "file"),
+    ],
+    "payment": [
+        ("payment_l1", "Level 1", "approval"),
+        ("payment_invoice", "Invoice", "file"),
+    ],
+    "received": [
+        ("received_assign", "Assign to Inventory", "user"),
+    ],
+    "documents": [
+        ("doc_sales_invoice", "Sales Invoice", "file"),
+        ("doc_purchase_order", "Purchase Order", "file"),
+        ("doc_eway_bill", "E-way Bill", "file"),
+        ("doc_quote", "Quote", "file"),
+    ],
+}
+SALES_STEP_INDEX = {key: (stage, label, kind)
+                    for stage, steps in SALES_STAGE_STEPS.items()
+                    for key, label, kind in steps}
 
 # ── MATERIAL TYPES ────────────────────────────────────────────────────────────
 MATERIAL_TYPES = [
@@ -320,6 +367,28 @@ class CRMSourcingStep(Base):
     acted_by    = Column(String(50),  nullable=True)    # who approved / rejected / attached
     acted_at    = Column(DateTime,    nullable=True)
     note        = Column(Text,        nullable=True)    # approval remark
+    created_by  = Column(String(50),  nullable=True)
+    created_at  = Column(DateTime,    default=app_now)
+    updated_at  = Column(DateTime,    default=app_now, onupdate=app_now)
+
+
+class CRMSalesStep(Base):
+    """One Stage Progress item on a Buyer Deal (2026-10-27) — an assigned user,
+    an approval or an attached document (SALES_STAGE_STEPS). Same shape as
+    crm_sourcing_steps. Approved on dbdiagram.io."""
+    __tablename__ = "crm_sales_steps"
+    __table_args__ = (UniqueConstraint("deal_id", "step_key", name="uq_crm_sales_steps_deal_step"),)
+
+    id          = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    deal_id     = Column(UUID(as_uuid=True), ForeignKey("crm_sales_opportunities.id"), nullable=False, index=True)
+    stage       = Column(String(30),  nullable=False)
+    step_key    = Column(String(40),  nullable=False)
+    assigned_to = Column(String(50),  nullable=True)
+    status      = Column(String(20),  nullable=False, default="pending")  # pending / approved / rejected / done
+    file_path   = Column(String(500), nullable=True)
+    acted_by    = Column(String(50),  nullable=True)
+    acted_at    = Column(DateTime,    nullable=True)
+    note        = Column(Text,        nullable=True)
     created_by  = Column(String(50),  nullable=True)
     created_at  = Column(DateTime,    default=app_now)
     updated_at  = Column(DateTime,    default=app_now, onupdate=app_now)

@@ -319,20 +319,15 @@
 
     <!-- Action Buttons -->
     <div class="d-flex gap-2 flex-wrap">
-      {% if can(current_user, 'crm_sourcing', 'edit') %}<a href="/crm/sourcing/{{ deal.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit Deal</a>{% endif %}
+      {% if can(current_user, 'crm_sourcing', 'edit') %}<a href="/crm/sourcing/{{ deal.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
+      {% if can(current_user, 'crm_sourcing', 'edit') %}<a href="/crm/purchase-orders" class="btn btn-sm btn-outline-primary"><i class="bi bi-link-45deg me-1"></i>Link PO</a>{% endif %}
       {% if deal.stage not in ['won','lost'] %}
-      {# Create Lot pre-fills with deal data and auto-marks deal as WON after creation #}
-      {% if can(current_user, 'crm_sourcing', 'edit') %}
-      <a href="/lots/new?from_deal={{ deal.id }}&prefill_supplier={{ (contact.company_name if contact else deal.title) | urlencode }}&prefill_qty={{ deal.est_quantity or '' }}&prefill_price={{ deal.final_price_total or deal.our_offer_total or '' }}&prefill_notes={{ deal.title | urlencode }}&prefill_po={{ deal.deal_number | urlencode }}"
-         class="btn btn-sm btn-success">
-        <i class="bi bi-boxes me-1"></i>Create Lot &amp; Mark WON
-      </a>
-      {% endif %}
+      {# Create Lot & Mark WON hidden here (2026-10-27, Pankaj); /lots/new?from_deal= still works. #}
       {% if can(current_user, 'crm_sourcing', 'edit') %}
       <form method="post" action="/crm/sourcing/{{ deal.id }}/stage" class="d-inline">
         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
         <input type="hidden" name="new_stage" value="won">
-        <button class="btn btn-sm btn-outline-success"><i class="bi bi-trophy me-1"></i>Mark WON (no lot)</button>
+        <button class="btn btn-sm btn-success"><i class="bi bi-trophy me-1"></i>Mark WON</button>
       </form>
       {% endif %}
       {% if can(current_user, 'crm_sourcing', 'edit') %}

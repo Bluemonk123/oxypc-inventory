@@ -88,7 +88,7 @@
         {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-sm btn-info text-white"><i class="bi bi-plus"></i> New Opp</a>{% endif %}
       </div>
       <div class="card-body py-2">
-        {% set sstages = [('lead','Lead'), ('contacted','Contacted'), ('quoted','Quoted'), ('negotiation','Negotiation'), ('confirmed','Confirmed'), ('invoiced','Invoiced')] %}
+        {% set sstages = [('lead','Lead'), ('contacted','Contacted'), ('screening','Screening'), ('quote','Quote'), ('negotiation','Negotiations'), ('sales_order','Invoice / SO'), ('purchase_order','Purchase Order'), ('payment','Payment'), ('received','Stock Received')] %}
         {% for key, label in sstages %}
         {% set cnt = sales_funnel.get(key, 0) %}
         <div class="d-flex align-items-center mb-2">

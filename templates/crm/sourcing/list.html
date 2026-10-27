@@ -32,35 +32,40 @@
   {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle me-1"></i>New Deal</a>{% endif %}
 </div>
 
-<!-- Summary cards -->
-<div class="row g-3 mb-4">
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold text-secondary">{{ deals | length }}</div>
-      <div class="small text-muted">Total Deals</div>
+<!-- Summary tiles: dark tile cards (2026-10-27, .lt-tiles-row.lt-dark in app.css) -->
+<div class="lt-tiles-row lt-dark">
+  <div>
+    <div class="lt-tile h-100" style="--tc:#0d6efd">
+      <div class="lt-tile-count">{{ deals | length }}</div>
+      <div class="lt-tile-label">Total Deals</div>
+      <i class="bi bi-briefcase lt-tile-wm"></i>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold text-primary">{{ deals | selectattr('stage', 'ne', 'won') | selectattr('stage', 'ne', 'lost') | list | length }}</div>
-      <div class="small text-muted">Open Deals</div>
+  <div>
+    <div class="lt-tile h-100" style="--tc:#0aa2c0">
+      <div class="lt-tile-count">{{ deals | selectattr('stage', 'ne', 'won') | selectattr('stage', 'ne', 'lost') | list | length }}</div>
+      <div class="lt-tile-label">Open Deals</div>
+      <i class="bi bi-hourglass-split lt-tile-wm"></i>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold text-success">₹{{ ((pipeline_value) | inr) }}</div>
-      <div class="small text-muted">Pipeline Value</div>
+  <div>
+    <div class="lt-tile h-100" style="--tc:#0F7A37">
+      <div class="lt-tile-count">₹{{ ((pipeline_value) | inr) }}</div>
+      <div class="lt-tile-label">Pipeline Value</div>
+      <i class="bi bi-currency-rupee lt-tile-wm"></i>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold {% if overdue_count > 0 %}text-danger{% else %}text-muted{% endif %}">{{ overdue_count }}</div>
-      <div class="small text-muted">Overdue Follow-ups</div>
+  <div>
+    <div class="lt-tile h-100" style="--tc:{{ '#dc3545' if overdue_count > 0 else '#0F7A37' }}">
+      <div class="lt-tile-count">{{ overdue_count }}</div>
+      <div class="lt-tile-label">Overdue Follow-ups</div>
+      <i class="bi bi-alarm lt-tile-wm"></i>
     </div>
   </div>
 </div>
 
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent py-2 fw-semibold"><i class="bi bi-box-arrow-in-down me-2"></i>Your Supplier Deals</div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0" id="sourcingTable">
@@ -152,8 +157,6 @@
               </div>
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="10" class="text-center text-muted py-4">No sourcing deals found. <a href="/crm/sourcing/new">Create your first deal</a></td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -162,5 +165,14 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>$(document).ready(function(){ if($('#sourcingTable tbody tr').length > 5){ $('#sourcingTable').DataTable({pageLength: 12, order:[[0,'desc']]}); } });</script>
+<script>
+// Global Table (2026-10-27).
+$(function () {
+  initGlobalTable('#sourcingTable', {
+    order: [[0, 'desc']],
+    columnDefs: [{ orderable: false, targets: [8] }],
+    language: { emptyTable: 'No sourcing deals found. Use New Deal above to create one.' }
+  });
+});
+</script>
 {% endblock %}

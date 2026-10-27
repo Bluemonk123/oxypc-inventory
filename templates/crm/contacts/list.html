@@ -71,13 +71,14 @@
   </form>
 </div>
 
-<!-- Summary cards -->
-<div class="row g-3 mb-4">
-  {% for label, val, color in [('Total', counts.total, 'secondary'), ('Suppliers', counts.suppliers, 'primary'), ('Buyers', counts.buyers, 'info'), ('Active', counts.active, 'success')] %}
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-3">
-      <div class="fs-4 fw-bold text-{{ color }}">{{ val }}</div>
-      <div class="small text-muted">{{ label }}</div>
+<!-- Summary tiles: dark tile cards (2026-10-27, .lt-tiles-row.lt-dark in app.css) -->
+<div class="lt-tiles-row lt-dark">
+  {% for label, val, color, icon in [('Total', counts.total, '#343a40', 'bi-people'), ('Suppliers', counts.suppliers, '#0d6efd', 'bi-box-arrow-in-down'), ('Buyers', counts.buyers, '#0aa2c0', 'bi-cart'), ('Active', counts.active, '#0F7A37', 'bi-check-circle')] %}
+  <div>
+    <div class="lt-tile h-100" style="--tc:{{ color }}">
+      <div class="lt-tile-count">{{ val }}</div>
+      <div class="lt-tile-label">{{ label }}</div>
+      <i class="bi {{ icon }} lt-tile-wm"></i>
     </div>
   </div>
   {% endfor %}

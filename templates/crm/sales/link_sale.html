@@ -9,7 +9,7 @@
   <div class="alert alert-info border-0 mb-3 py-2 small">
     <i class="bi bi-info-circle me-1"></i>
     Select the sale record(s) that fulfilled this opportunity. Multiple selections allowed.
-    After linking, the opportunity will advance to <strong>Invoiced</strong> stage.
+    After linking, an early-stage deal moves to <strong>Invoice / Sales Order</strong>.
   </div>
 
   <!-- Search bar -->
@@ -20,7 +20,7 @@
     {% if q %}<a href="/crm/sales/{{ opp.id }}/link-sale" class="btn btn-sm btn-outline-secondary">Clear</a>{% endif %}
   </form>
 
-  <form method="post" action="/crm/sales/{{ opp.id }}/link-sale">
+  <form method="post" action="/crm/sales/{{ opp.id }}/link-sale" id="linkSaleForm">
     <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-body p-0">
@@ -55,8 +55,6 @@
                 {% if can(current_user, 'crm_sales_opp', 'pricing') %}<td class="small fw-semibold">₹{{ ((s.sale_price) | inr) }}</td>{% endif %}
                 <td class="small text-muted">{{ s.sold_at.strftime('%d %b %Y') if s.sold_at else '—' }}</td>
               </tr>
-              {% else %}
-              <tr><td colspan="8" class="text-center text-muted py-4">No sales found{% if q %} for "{{ q }}"{% endif %}.</td></tr>
               {% endfor %}
             </tbody>
           </table>
@@ -77,13 +75,26 @@
 {% endblock %}
 {% block scripts %}
 <script>
-document.getElementById('selectAll').addEventListener('change', function() {
-  document.querySelectorAll('.sale-cb').forEach(cb => cb.checked = this.checked);
-});
-$(document).ready(function() {
-  if ($('#salesLinkTable tbody tr').length > 5) {
-    $('#salesLinkTable').DataTable({ pageLength: 12, order: [[{{ 7 if can(current_user, 'crm_sales_opp', 'pricing') else 6 }}, 'desc']] });
-  }
+// Global Table (2026-10-27) with select-all across every searched row.
+$(function () {
+  var dt = initGlobalTable('#salesLinkTable', {
+    order: [[{{ 7 if can(current_user, 'crm_sales_opp', 'pricing') else 6 }}, 'desc']],
+    columnDefs: [{ orderable: false, targets: [0] }],
+    language: { emptyTable: {{ ('No sales found' ~ ((' for "' ~ q ~ '"') if q else '') ~ '.') | tojson }} }
+  }, {
+    selectAll: { headerSelector: '#selectAll', rowSelector: '.sale-cb', scope: 'search' }
+  });
+  // Rows on other pages are not in the DOM, so their ticked boxes would not
+  // be submitted. Send every ticked row as a hidden field instead.
+  $('#linkSaleForm').on('submit', function () {
+    var $f = $(this);
+    $f.find('input.ls-hidden').remove();
+    var api = dt || $('#salesLinkTable').DataTable();
+    $(api.rows().nodes()).find('.sale-cb:checked').each(function () {
+      $('<input type="hidden" name="sale_ids" class="ls-hidden">').val(this.value).appendTo($f);
+    });
+    $(api.rows().nodes()).find('.sale-cb').prop('disabled', true);
+  });
 });
 </script>
 {% endblock %}

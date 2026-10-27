@@ -39,6 +39,24 @@
     #serverStatusBadge[data-state="up"] { background:#E8F5E6; border-color:#b9e2b4; }
     #serverStatusBadge[data-state="down"] { background:#fdeaea; border-color:#f1aeb5;
       box-shadow:0 0 0 3px rgba(220,53,69,.12); }
+    /* Disconnected animation (2026-10-27): soft red stripes drift across the
+       pill, a red ring pulses out from it, and the broken-cloud icon dims in
+       and out — hard to miss without being loud. Stripes kept very light
+       (.06, was .13) so the label stays easy to read. Off for users who ask their
+       system for reduced motion. */
+    #serverStatusBadge[data-state="down"] {
+      background-image:repeating-linear-gradient(-45deg, rgba(220,53,69,.06) 0 6px, rgba(220,53,69,0) 6px 12px);
+      background-size:16.97px 16.97px;
+      animation:srvStripes 1.2s linear infinite, srvPulse 1.8s ease-out infinite; }
+    #serverStatusBadge[data-state="down"] .srv-ico { animation:srvBlink 1.8s ease-in-out infinite; }
+    @keyframes srvStripes { from { background-position:0 0; } to { background-position:16.97px 0; } }
+    @keyframes srvPulse {
+      0%   { box-shadow:0 0 0 0 rgba(220,53,69,.45); }
+      70%  { box-shadow:0 0 0 7px rgba(220,53,69,0); }
+      100% { box-shadow:0 0 0 0 rgba(220,53,69,0); } }
+    @keyframes srvBlink { 0%,100% { opacity:1; } 50% { opacity:.45; } }
+    @media (prefers-reduced-motion: reduce) {
+      #serverStatusBadge[data-state="down"], #serverStatusBadge[data-state="down"] .srv-ico { animation:none; } }
     .srv-ico { width:1.35em; height:1.35em; margin-right:.3em; }
   </style>
   <link rel="icon" type="image/svg+xml" href="/static/img/oxypc-box-dark.svg">
@@ -347,7 +365,7 @@
       </a></li>
       {% endif %}
       {% if has_perm(role,'crm_sales_opp','enable') and not module_hidden('crm_sales_opp') %}
-      <li><a href="/crm/sales" class="nav-link {% if (request.url.path.startswith('/crm/sales') and not request.url.path.startswith('/crm/sales/')) or request.url.path == '/crm/sales' %}active{% endif %}">
+      <li><a href="/crm/sales" class="nav-link {% if request.url.path == '/crm/sales' or request.url.path.startswith('/crm/sales/') %}active{% endif %}">
         <i class="bi bi-graph-up-arrow me-2"></i> {{ sidebar_label('crm_sales_opp', 'Sales Opportunities') }}
       </a></li>
       {% endif %}
@@ -957,16 +975,20 @@
         <!-- Username + role, stacked (role badge below the name). Since
              2026-10-19 the name opens a menu with My Profile and Logout —
              Logout moved here from its own button in the header. -->
-        <div class="dropdown">
-          <a href="#" class="d-flex flex-column align-items-center lh-sm px-3 text-decoration-none dropdown-toggle"
-             id="userMenuToggle" data-bs-toggle="dropdown" aria-expanded="false" title="Account">
-            <span class="fw-bold text-dark text-uppercase" style="font-size:1rem">{{ current_user.full_name }}</span>
-            {# Role badge in the Design System's outline style (2026-10-19): colour
-               border + text on a 5% tint — the same treatment as outline buttons
-               (app.css .btn-outline-*). Bootstrap utilities only, so it needs no
-               new CSS class (no stale-cache risk). #}
-            <span class="badge border border-primary text-primary fw-semibold mt-1"
-                  style="background-color: rgba(var(--bs-primary-rgb), .05)">{{ role_display(role) }}</span>
+        {# User box (2026-10-27, Pankaj; light blue #e7f1ff, option 3): fills the top bar's full height and
+           sits flush on its right edge: height = top bar minus its 1px bottom
+           border, and margin-right -1rem cancels the bar's px-3 padding. Name and
+           role stack in an inner column; the dropdown caret sits to their
+           right. #}
+        <div class="dropdown d-flex" style="height:calc(var(--topbar-height) - 1px); margin-right:-1rem">
+          <a href="#" class="d-flex align-items-center gap-2 px-3 text-decoration-none dropdown-toggle"
+             id="userMenuToggle" data-bs-toggle="dropdown" aria-expanded="false" title="Account"
+             style="background-color:#e7f1ff">
+            <span class="d-flex flex-column align-items-center lh-1">
+              <span class="fw-bold text-dark text-uppercase" style="font-size:.95rem">{{ current_user.full_name }}</span>
+              {# Role (2026-10-27): plain coloured text — no badge border or background. #}
+              <span class="text-primary fw-semibold" style="font-size:.72rem; margin-top:.2rem">{{ role_display(role) }}</span>
+            </span>
           </a>
           <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="userMenuToggle">
             <li><a class="dropdown-item" href="/auth/profile"><i class="bi bi-person-circle me-2"></i>My Profile</a></li>
@@ -1768,6 +1790,53 @@ function closeNotifPanel() {
   document.getElementById('notifPanel').style.right = '-320px';
   document.getElementById('notifPanelBackdrop').classList.add('d-none');
 }
+</script>
+<!-- Overlay page scrollbar (2026-10-27): the native page scrollbar is hidden
+     in app.css, so this slim thumb floats over the right edge instead of
+     taking space. Shown while scrolling or when the pointer is near the right
+     edge; fades after 1.2s; draggable. Attached to <html>, not <body>, so the
+     body's zoom does not shrink or offset it. -->
+<script>
+(function () {
+  var root = document.documentElement, thumb = document.createElement('div'), hideT = null, drag = null;
+  thumb.id = 'pageScrollThumb';
+  thumb.setAttribute('aria-hidden', 'true');
+  root.appendChild(thumb);
+  function metrics() {
+    var view = window.innerHeight, total = Math.max(root.scrollHeight, view);
+    var h = Math.max(30, view * view / total);
+    return { view: view, total: total, h: h, maxTop: view - h, maxScroll: total - view };
+  }
+  function place() {
+    var m = metrics();
+    if (m.maxScroll <= 1) { thumb.style.display = 'none'; return; }
+    thumb.style.display = '';
+    thumb.style.height = m.h + 'px';
+    thumb.style.transform = 'translateY(' + (window.scrollY / m.maxScroll * m.maxTop) + 'px)';
+  }
+  function flash() {
+    place(); thumb.classList.add('show');
+    clearTimeout(hideT); hideT = setTimeout(function () { if (!drag) thumb.classList.remove('show'); }, 1200);
+  }
+  window.addEventListener('scroll', flash, { passive: true });
+  window.addEventListener('resize', place);
+  new ResizeObserver(place).observe(document.body);
+  document.addEventListener('mousemove', function (e) { if (window.innerWidth - e.clientX < 16) flash(); }, { passive: true });
+  thumb.addEventListener('pointerdown', function (e) {
+    var m = metrics();
+    drag = { y: e.clientY, s: window.scrollY, ratio: m.maxScroll / Math.max(1, m.maxTop) };
+    thumb.classList.add('drag'); thumb.setPointerCapture(e.pointerId); e.preventDefault();
+  });
+  thumb.addEventListener('pointermove', function (e) {
+    // behavior 'instant': Bootstrap sets scroll-behavior:smooth on :root,
+    // which would turn every drag step into a slow animation.
+    if (drag) window.scrollTo({ top: drag.s + (e.clientY - drag.y) * drag.ratio, behavior: 'instant' });
+  });
+  function end() { if (drag) { drag = null; thumb.classList.remove('drag'); flash(); } }
+  thumb.addEventListener('pointerup', end);
+  thumb.addEventListener('pointercancel', end);
+  place();
+})();
 </script>
 </body>
 </html>

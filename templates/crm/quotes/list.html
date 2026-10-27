@@ -9,6 +9,7 @@
 </div>
 
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent py-2 fw-semibold"><i class="bi bi-file-earmark-text me-2"></i>Quotes Generated</div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0" id="quotesTable">
@@ -44,7 +45,7 @@
               <a href="/crm/sales/{{ opp.id }}" class="text-decoration-none small">{{ opp.opp_number }}</a>
               {% else %}<span class="text-muted small">—</span>{% endif %}
             </td>
-            <td class="small">{{ qt.quote_date.strftime('%d %b %Y') if qt.quote_date else '—' }}</td>
+            <td class="small" data-order="{{ qt.quote_date.isoformat() if qt.quote_date else '' }}">{{ qt.quote_date.strftime('%d %b %Y') if qt.quote_date else '—' }}</td>
             <td class="small">
               {% if qt.valid_until %}
               <span class="{% if qt.valid_until < now.date() and qt.status not in ['accepted','rejected'] %}text-danger{% endif %}">
@@ -63,8 +64,6 @@
               </div>
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="8" class="text-center text-muted py-4">No quotes found. <a href="/crm/quotes/new">Create your first quote</a></td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -73,5 +72,13 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>$(document).ready(function(){ if($('#quotesTable tbody tr').length > 5){ $('#quotesTable').DataTable({pageLength: 12, order:[[3,'desc']]}); } });</script>
+<script>
+// Global Table (2026-10-27). Date column sorts by data-order (ISO date).
+$(function () {
+  initGlobalTable('#quotesTable', {
+    order: [[3, 'desc']],
+    language: { emptyTable: 'No quotes found. Use New Quote above to create one.' }
+  });
+});
+</script>
 {% endblock %}

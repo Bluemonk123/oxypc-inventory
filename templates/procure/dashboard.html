@@ -5,50 +5,42 @@
 
 {% if success %}<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>{% endif %}
 
-<!-- KPI Row -->
-<div class="row g-3 mb-4">
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-3">
-        <div class="fs-3 fw-bold text-primary">{{ open_sourcing_count }}</div>
-        <div class="small text-muted">Sourcing Deals Open</div>
-        <div class="small fw-semibold text-success mt-1">₹{{ ((sourcing_pipeline_value) | inr) }}</div>
-        <a href="/crm/sourcing" class="btn btn-sm btn-outline-primary mt-2 w-100">View All →</a>
-      </div>
+<!-- KPI Row: dark tile cards (2026-10-27, .lt-tiles-row.lt-dark in app.css) -->
+<div class="lt-tiles-row lt-dark">
+  <div>
+    <div class="lt-tile h-100 d-flex flex-column" style="--tc:#0d6efd">
+      <div class="lt-tile-count">{{ open_sourcing_count }}</div>
+      <div class="lt-tile-label">Supplier Deals Open</div>
+      <div class="lt-tile-sub">₹{{ ((sourcing_pipeline_value) | inr) }}</div>
+      <a href="/crm/sourcing" class="btn btn-sm btn-outline-light lt-tile-btn mt-auto">View All →</a>
+      <i class="bi bi-box-arrow-in-down lt-tile-wm"></i>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-3">
-        <div class="fs-3 fw-bold text-info">{{ open_sales_count }}</div>
-        <div class="small text-muted">Sales Opportunities Open</div>
-        <div class="small fw-semibold text-success mt-1">₹{{ ((sales_pipeline_value) | inr) }}</div>
-        <a href="/crm/sales" class="btn btn-sm btn-outline-info mt-2 w-100">View All →</a>
-      </div>
+  <div>
+    <div class="lt-tile h-100 d-flex flex-column" style="--tc:#0aa2c0">
+      <div class="lt-tile-count">{{ open_sales_count }}</div>
+      <div class="lt-tile-label">Customer Deals Open</div>
+      <div class="lt-tile-sub">₹{{ ((sales_pipeline_value) | inr) }}</div>
+      <a href="/crm/sales" class="btn btn-sm btn-outline-light lt-tile-btn mt-auto">View All →</a>
+      <i class="bi bi-graph-up lt-tile-wm"></i>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-3">
-        {% if overdue_count > 0 %}
-        <div class="fs-3 fw-bold text-danger">{{ overdue_count }}</div>
-        {% else %}
-        <div class="fs-3 fw-bold text-muted">0</div>
-        {% endif %}
-        <div class="small text-muted">Follow-ups Overdue</div>
-        <div class="small text-warning mt-1">{{ today_count }} due today</div>
-        <a href="/crm/activities/followups" class="btn btn-sm btn-outline-danger mt-2 w-100">View All →</a>
-      </div>
+  <div>
+    <div class="lt-tile h-100 d-flex flex-column" style="--tc:{{ '#dc3545' if overdue_count > 0 else '#0F7A37' }}">
+      <div class="lt-tile-count">{{ overdue_count }}</div>
+      <div class="lt-tile-label">Follow-ups Overdue</div>
+      <div class="lt-tile-sub">{{ today_count }} due today</div>
+      <a href="/crm/activities/followups" class="btn btn-sm btn-outline-light lt-tile-btn mt-auto">View All →</a>
+      <i class="bi bi-alarm lt-tile-wm"></i>
     </div>
   </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-3">
-        <div class="fs-3 fw-bold text-secondary">{{ contact_total }}</div>
-        <div class="small text-muted">Total Contacts</div>
-        <div class="small text-muted mt-1">{{ supplier_count }} suppliers · {{ buyer_count }} buyers</div>
-        <a href="/crm/contacts" class="btn btn-sm btn-outline-secondary mt-2 w-100">View All →</a>
-      </div>
+  <div>
+    <div class="lt-tile h-100 d-flex flex-column" style="--tc:#343a40">
+      <div class="lt-tile-count">{{ contact_total }}</div>
+      <div class="lt-tile-label">Total Contacts</div>
+      <div class="lt-tile-sub">{{ supplier_count }} suppliers · {{ buyer_count }} buyers</div>
+      <a href="/crm/contacts" class="btn btn-sm btn-outline-light lt-tile-btn mt-auto">View All →</a>
+      <i class="bi bi-people lt-tile-wm"></i>
     </div>
   </div>
 </div>
@@ -90,7 +82,7 @@
         {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-sm btn-info text-white"><i class="bi bi-plus"></i> New Opp</a>{% endif %}
       </div>
       <div class="card-body py-2">
-        {% set sstages = [('lead','Lead'), ('contacted','Contacted'), ('quoted','Quoted'), ('negotiation','Negotiation'), ('confirmed','Confirmed'), ('invoiced','Invoiced')] %}
+        {% set sstages = [('lead','Lead'), ('contacted','Contacted'), ('screening','Screening'), ('quote','Quote'), ('negotiation','Negotiations'), ('sales_order','Invoice / SO'), ('purchase_order','Purchase Order'), ('payment','Payment'), ('received','Stock Received')] %}
         {% for key, label in sstages %}
         {% set cnt = sales_funnel.get(key, 0) %}
         <div class="d-flex align-items-center mb-2">
@@ -160,9 +152,10 @@
   <div class="col-12">
     <div class="d-flex gap-2 flex-wrap">
       {% if can(current_user, 'crm_contacts', 'add') %}<a href="/crm/contacts/new" class="btn btn-outline-secondary btn-sm"><i class="bi bi-person-plus me-1"></i>Add Contact</a>{% endif %}
-      {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>New Sourcing Deal</a>{% endif %}
-      {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-outline-info btn-sm"><i class="bi bi-graph-up me-1"></i>New Sales Opportunity</a>{% endif %}
+      {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>New Supplier Deals</a>{% endif %}
+      {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-outline-info btn-sm"><i class="bi bi-graph-up me-1"></i>New Customer Deals</a>{% endif %}
       {% if can(current_user, 'crm_quotes', 'add') %}<a href="/crm/quotes/new" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-text me-1"></i>New Quote</a>{% endif %}
+      {% if can(current_user, 'crm_purchase_orders', 'add') %}<a href="/crm/purchase-orders/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-cart-plus me-1"></i>New Purchase Order</a>{% endif %}
       <a href="/crm/activities/followups" class="btn btn-outline-warning btn-sm"><i class="bi bi-bell me-1"></i>All Follow-ups</a>
     </div>
   </div>
