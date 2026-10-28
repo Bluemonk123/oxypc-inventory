@@ -11,13 +11,13 @@
       <div class="card-body">
         <div class="row g-3 mb-4">
           <div class="col-md-6">
-            <div class="alert alert-success mb-0">
+            <div class="alert alert-success mb-0 no-autohide">
               <i class="bi bi-check-circle me-2"></i>
               <strong>{{ inserted }}</strong> records inserted successfully
             </div>
           </div>
           <div class="col-md-6">
-            <div class="alert {{ 'alert-warning' if errors else 'alert-success' }} mb-0">
+            <div class="alert {{ 'alert-warning' if errors else 'alert-success' }} mb-0 no-autohide">
               <i class="bi bi-{{ 'exclamation-triangle' if errors else 'check-circle' }} me-2"></i>
               <strong>{{ errors|length }}</strong> row(s) with errors
             </div>
@@ -26,7 +26,7 @@
 
         {# Flow 1 GRN check (2026-10-21): rows that carried a GRN number. #}
         {% if to_stock_in is defined and to_stock_in %}
-        <div class="alert alert-info">
+        <div class="alert alert-info no-autohide">
           <i class="bi bi-box-arrow-in-down me-2"></i><strong>{{ to_stock_in }}</strong> tag{{ 's' if to_stock_in != 1 }}
           matched {{ 'their' if to_stock_in != 1 else 'its' }} GRN or Invoice Number and went straight to <strong>Stock In</strong>
           (GRN, Invoice Number, Location ID and Entity taken from the GRN).

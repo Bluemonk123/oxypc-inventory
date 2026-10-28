@@ -32,7 +32,7 @@
               </thead>
               <tbody>
                 {% for t in tag_duplicates %}
-                <tr data-tag="{{ t.tag_number }}" data-row="{{ t.row | tojson }}">
+                <tr data-tag="{{ t.tag_number }}" data-row='{{ t.row | tojson }}'>
                   <td class="small font-monospace">{{ t.tag_number }}</td>
                   <td class="small">{{ t.grade }}</td>
                   <td class="small dup-tag-current-stage">{{ t.current_stage_label }}{% if t.in_trash %} <span class="badge bg-danger ms-1" title="This tag is in Trash - restore it from the Trash page">In Trash</span>{% endif %}</td>
@@ -92,7 +92,11 @@
   </div>
 </div>
 <script>
-(function () {
+{# Runs after DOMContentLoaded: this include sits in the content block, above
+   base.html's bootstrap.bundle script, so `bootstrap` isn't defined yet when
+   the page is parsed (the modal never opened). data-row above is in single
+   quotes because tojson leaves double quotes in place (2026-10-28). #}
+document.addEventListener('DOMContentLoaded', function () {
   var csrf = {{ csrf | tojson }};
 
   document.querySelectorAll('.dup-approve-move-btn').forEach(function (btn) {
@@ -218,5 +222,5 @@
     var modal = new bootstrap.Modal(modalEl);
     modal.show();
   }
-})();
+});
 </script>
