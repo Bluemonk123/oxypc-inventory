@@ -21,7 +21,7 @@ import time
 import traceback
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import text
 
 from auth.dependencies import require_roles, verify_csrf
@@ -567,7 +567,10 @@ async def _rts_open(db):
                 WorkOrder.stage, start.label("start"), reached.label("at"), Device.current_stage)
          .join(Device, Device.id == WorkOrder.device_id)
          .where(wo_open(), Device.current_stage.in_([DeviceStage.ready_to_sale, DeviceStage.sold]),
-                Device.is_trashed.isnot(True))
+                Device.is_trashed.isnot(True),
+                # "asgn" = Inventory Request "Assign To Employee" bookkeeping —
+                # live work on Ready to Sale tags, never closed here (2026-10-28).
+                WorkOrder.stage != "asgn")
          .order_by(start.desc()))
     return (await db.execute(q)).all()       # at None = no Ready to Sale move recorded -> closed now
 
@@ -604,6 +607,116 @@ async def rts_wo_close_apply(request: Request, current_user: User = Depends(admi
     if back:
         return back
     return JSONResponse({"ok": True, "closed": len(rows)})
+
+
+# ── Undo for the above on "asgn" WorkIDs (2026-10-28) ────────────────────────
+# The first version of the card also closed Inventory Request "Assign To
+# Employee" WorkIDs (stage "asgn") — live assignments of Ready to Sale tags.
+# This reopens exactly those: listed in a WORKID_RTS_CLOSE audit, stage
+# "asgn", still completed at the very time that fix stamped. They were all
+# "pending" before (transfers.py creates them pending), so that is restored.
+async def _rts_asgn_closed(db):
+    """[(id, work_id, barcode, assigned_name, completed_at)]."""
+    import json
+    import uuid as _uuid
+    from sqlalchemy import select
+    from models.device import Device
+    from models.engines import AuditLog
+    from models.work_order import WorkOrder
+    stamped = {}
+    for (nv,) in (await db.execute(
+            select(AuditLog.new_value).where(AuditLog.action == "WORKID_RTS_CLOSE"))).all():
+        try:
+            data = json.loads(nv or "{}")
+        except ValueError:
+            continue
+        for wid_id, info in (data.get("work_orders") or {}).items():
+            stamped[wid_id] = (info or {}).get("completed_at")
+    if not stamped:
+        return []
+    ids = []
+    for k in stamped:
+        try:
+            ids.append(_uuid.UUID(k))
+        except ValueError:
+            pass
+    out = []
+    for i in range(0, len(ids), 5000):
+        rows = (await db.execute(
+            select(WorkOrder.id, WorkOrder.work_id, Device.barcode, WorkOrder.assigned_name,
+                   WorkOrder.completed_at)
+            .join(Device, Device.id == WorkOrder.device_id)
+            .where(WorkOrder.id.in_(ids[i:i + 5000]), WorkOrder.stage == "asgn",
+                   WorkOrder.status == "completed")
+        )).all()
+        for r in rows:
+            at = stamped.get(str(r.id))
+            if at and r.completed_at and r.completed_at.isoformat() == at:
+                out.append(r)
+    return sorted(out, key=lambda r: r.work_id or "")
+
+
+@router.post("/rts-asgn-reopen")
+async def rts_asgn_reopen_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import update
+    from database import AsyncSessionLocal
+    from models.work_order import WorkOrder
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        rows = await _rts_asgn_closed(db)
+        ids = [r.id for r in rows]
+        for i in range(0, len(ids), 5000):
+            await db.execute(update(WorkOrder).where(WorkOrder.id.in_(ids[i:i + 5000]))
+                             .values(status="pending", completed_at=None))
+        await audit(db, user=current_user, action="WORKID_RTS_ASGN_REOPEN", table_name="work_orders",
+                    record_id=f"{len(rows)} WorkIDs",
+                    new_value={"count": len(rows),
+                               "work_orders": {str(r.id): {"work_id": r.work_id, "tag": r.barcode,
+                                                           "was_completed_at": r.completed_at.isoformat()}
+                                               for r in rows}},
+                    notes="Inventory Request assignment (asgn) WorkIDs wrongly closed by the Ready to Sale "
+                          "WorkID fix reopened as pending.",
+                    request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Assignment WorkIDs reopened: {len(rows):,}.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "reopened": len(rows)})
+
+
+# ── Error log viewer (2026-10-28) ─────────────────────────────────────────────
+# Production has no terminal access from here; unhandled 500s are written to
+# errors.log next to main.py (main.py generic_exception_handler /
+# _log_unhandled). Admin-only, read-only: the newest entries first.
+@router.get("/error-log", response_class=HTMLResponse)
+async def error_log_page(request: Request, kb: int = 256, q: str = "",
+                         current_user: User = Depends(admin_only)):
+    import os
+    from html import escape
+    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "errors.log")
+    kb = max(16, min(kb, 4096))
+    text, size = "", 0
+    if os.path.exists(path):
+        size = os.path.getsize(path)
+        with open(path, "rb") as f:
+            f.seek(max(0, size - kb * 1024))
+            text = f.read().decode("utf-8", "replace")
+    # one entry per logged line that starts with a timestamp
+    import re
+    parts = re.split(r"(?m)^(?=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} \[)", text)
+    entries = [p.strip() for p in parts if p.strip()]
+    if q:
+        entries = [e for e in entries if q.lower() in e.lower()]
+    entries = entries[::-1][:200]
+    body = "".join(f'<pre class="border rounded bg-light p-2 small mb-3" style="white-space:pre-wrap">{escape(e)}</pre>'
+                   for e in entries) or '<div class="text-muted">No errors logged.</div>'
+    html = f"""<!doctype html><html><head><meta charset="utf-8"><title>Error Log — OxyPC</title>
+<link rel="stylesheet" href="/static/vendor/bootstrap/css/bootstrap.min.css"></head>
+<body class="p-3"><h5>Error Log <small class="text-muted">errors.log, {size/1024:,.0f} KB — newest first, last {kb} KB</small></h5>
+<form class="d-flex gap-2 mb-3" method="get"><input class="form-control form-control-sm" style="max-width:320px" name="q" value="{escape(q)}" placeholder="Filter, e.g. credit-note">
+<input type="hidden" name="kb" value="{kb}"><button class="btn btn-sm btn-primary">Filter</button>
+<a class="btn btn-sm btn-outline-secondary" href="?kb={min(kb * 4, 4096)}">Load more</a></form>{body}</body></html>"""
+    return HTMLResponse(html)
 
 
 # ── Stress WorkIDs left open after the tag left Stress (2026-10-27) ──────────
@@ -1533,6 +1646,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         stress_open = await _stress_open_left(db)
         cosm_open = await _cosmetic_open_left(db)
         rts_open = await _rts_open(db)
+        rts_asgn = await _rts_asgn_closed(db)
         subcat = await _subcat_changes(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
@@ -1570,6 +1684,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "stress_open": stress_open[:200], "stress_open_total": len(stress_open),
         "cosm_open": cosm_open[:200], "cosm_open_total": len(cosm_open),
         "rts_open": rts_open[:200], "rts_open_total": len(rts_open),
+        "rts_asgn": rts_asgn[:200], "rts_asgn_total": len(rts_asgn),
         "cosm_open_re": sum(1 for r in cosm_open if r[6] == "reassigned"),
         "stress_open_dup": sum(1 for r in stress_open if r[5] == "reassigned"),
         "repair_total": len(repair),

@@ -226,6 +226,41 @@
     </div>
   </div>
 
+  {# ── Undo: assignment WorkIDs closed by the Ready to Sale fix (2026-10-28) ── #}
+  {% if rts_asgn_total %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm border-start border-danger border-3">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold text-danger"><i class="bi bi-arrow-counterclockwise me-2"></i>Reopen Inventory Request assignments closed by mistake
+          <span class="badge bg-danger ms-1">{{ "{:,}".format(rts_asgn_total) }}</span></span>
+        <form method="post" action="/admin/system/rts-asgn-reopen" class="df-confirm"
+              data-confirm="Click again to reopen {{ "{:,}".format(rts_asgn_total) }} WorkIDs">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-danger"><i class="bi bi-arrow-counterclockwise me-1"></i>Reopen {{ "{:,}".format(rts_asgn_total) }} WorkIDs</button>
+        </form>
+      </div>
+      <div class="card-body small">
+        <p class="text-muted mb-2">The first version of the Ready to Sale card below also closed these <strong>Assign To Employee</strong> WorkIDs (Inventory Request), which are live assignments. Reopen puts each back to <strong>pending</strong>, exactly as before. Only WorkIDs still completed at the time that fix stamped are listed. Logged.</p>
+        <div class="table-responsive" style="max-height:320px">
+        <table class="table table-sm table-bordered mb-0" style="font-size:.78rem">
+          <thead class="table-light"><tr><th>WorkID</th><th>Tag</th><th>Assigned To</th><th>Closed by the fix at</th></tr></thead>
+          <tbody>
+            {% for r in rts_asgn %}
+            <tr><td class="font-monospace">{{ r.work_id }}</td>
+              <td><a href="/devices/{{ r.barcode }}" target="_blank">{{ r.barcode }}</a></td>
+              <td>{{ r.assigned_name or '—' }}</td>
+              <td class="text-nowrap">{{ r.completed_at.strftime('%d-%m-%Y %H:%M') if r.completed_at else '—' }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% if rts_asgn_total > rts_asgn|length %}<div class="text-muted mt-1">Showing {{ rts_asgn|length }} of {{ "{:,}".format(rts_asgn_total) }}.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {# ── WorkIDs still open on tags at Ready to Sale / Sold (2026-10-28) ── #}
   <div class="col-12">
     <div class="card border-0 shadow-sm">
