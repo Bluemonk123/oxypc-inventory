@@ -302,6 +302,23 @@ def _matched_from_stage_sq():
             .scalar_subquery())
 
 
+def _cosmetic_exit_sq(col):
+    """Correlated scalar subquery (to_stage or moved_at) of the first move
+    out of Cosmetic — to Final QC, or back to L1/L2 / L3/L4 — while this
+    WorkOrder was the tag's WorkID (Cosmetic Pass / Fail, 2026-10-28)."""
+    from sqlalchemy import text as _text
+    start = func.coalesce(WorkOrder.assigned_at, WorkOrder.created_at)
+    end = func.coalesce(WorkOrder.completed_at, func.now()) + _text("interval '10 minutes'")
+    c = StageMovement.to_stage if col == "to_stage" else StageMovement.moved_at
+    return (select(c)
+            .where(StageMovement.device_id == WorkOrder.device_id,
+                   StageMovement.from_stage.in_([DeviceStage(v) for v in _COSMETIC_VALUES]),
+                   StageMovement.to_stage.in_([DeviceStage(v) for v in _COSMETIC_EXIT_TO]),
+                   StageMovement.moved_at >= start, StageMovement.moved_at <= end)
+            .order_by(StageMovement.moved_at.asc()).limit(1)
+            .correlate(WorkOrder).scalar_subquery())
+
+
 def _qc_next_stage_sq(from_value):
     """Correlated scalar subquery: To stage of the move out of `from_value`
     (qc_check = Stress Test, final_qc = Final QC) closest to this WorkOrder's
@@ -403,6 +420,28 @@ def _qc_verdict(group, to_stage) -> str:
     return ""
 
 
+_COSMETIC_VALUES = ("cosmetic_received", "cleaning", "putty", "dry_sanding", "masking",
+                    "painting", "water_sanding", "cosmetic_completed")
+_COSMETIC_EXIT_TO = ("final_qc", "l1", "l2", "l3")
+
+
+def _cosmetic_result(wo, dev_movements, now):
+    """(result, at) for a Cosmetic WorkID (2026-10-28): the tag LEFT Cosmetic
+    while this WorkID was its WorkID — on to Final QC = "pass", back to L1/L2
+    or L3/L4 = "fail". Moves inside Cosmetic (Paint Fail back to Painting,
+    or any rework) are neither. ("", None) when the tag didn't leave."""
+    start = wo.assigned_at or wo.created_at
+    end = (wo.completed_at or now) + timedelta(minutes=10)
+    for m in dev_movements:                      # oldest first
+        if not m.moved_at or (start and m.moved_at < start) or m.moved_at > end:
+            continue
+        frm = getattr(m.from_stage, "value", m.from_stage)
+        to = getattr(m.to_stage, "value", m.to_stage)
+        if frm in _COSMETIC_VALUES and to in _COSMETIC_EXIT_TO:
+            return ("pass" if to == "final_qc" else "fail"), m.moved_at
+    return "", None
+
+
 def _qc_result(wo, dev_movements, group) -> str:
     """"pass" / "fail" for a completed Stress Test or Final QC WorkID
     (2026-10-28): where the tag went from that stage at the time the WorkID
@@ -444,8 +483,10 @@ def _stage_tile_counts_from_items(items) -> dict:
             g["scrap"].add(tag)             # scrap decision: counted apart from Completed
         elif _is_done(_count_status(it)):
             g["completed"].add(tag)
-            if it.get("qc_result") in ("pass", "fail"):
-                g[it["qc_result"]].add(tag)     # Stress / Final QC: Pass / Fail (2026-10-28)
+        # Stress / Final QC / Cosmetic: Pass / Fail (2026-10-28). Set only on
+        # rows that count (in the date range, when there is one).
+        if it.get("qc_result") in ("pass", "fail"):
+            g[it["qc_result"]].add(tag)
     return {k: {n: len(v[n]) for n in v} for k, v in sets.items()}
 
 
@@ -585,16 +626,18 @@ async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_a
         WorkOrder.completed_at.label("ca"),
         _qc_next_stage_sq("qc_check").label("nxt"),
         _qc_next_stage_sq("final_qc").label("nxf"),
+        _cosmetic_exit_sq("to_stage").label("cx"),
+        _cosmetic_exit_sq("moved_at").label("cx_at"),
     )
     sub = q.subquery()
     rows = (await db.execute(
         select(sub.c.sg, sub.c.st, sub.c.wid, sub.c.bc, sub.c.done_at, sub.c.fs, sub.c.scr, sub.c.au, sub.c.an,
-               sub.c.ca, sub.c.nxt, sub.c.nxf)
+               sub.c.ca, sub.c.nxt, sub.c.nxf, sub.c.cx, sub.c.cx_at)
     )).all()
     sets = {key: {"assigned": set(), "completed": set(), "scrap": set(), "waiting": set(),
                   "pass": set(), "fail": set()}
             for key, *_ in STAGE_GROUPS}
-    for code, st, wid, bc, done_at, fs, scr, au, an, ca, nxt, nxf in rows:
+    for code, st, wid, bc, done_at, fs, scr, au, an, ca, nxt, nxf, cx, cx_at in rows:
         g = sets.get(_stage_group(_displayed_stage_value(st, done_at, wid, code, fs, code_stage)))
         if g is None or not bc:
             continue
@@ -609,6 +652,9 @@ async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_a
                 g[_qc_verdict("stress", nxt)].add(bc)
             elif nxf is not None and g is sets.get("final_qc"):
                 g[_qc_verdict("final_qc", nxf)].add(bc)
+        if cx is not None and g is sets.get("cosmetic") and not (
+                w_range and not (cx_at and w_range[0] <= cx_at <= w_range[1])):
+            g["pass" if getattr(cx, "value", cx) == "final_qc" else "fail"].add(bc)
     return {k: {n: len(v[n]) for n in v} for k, v in sets.items()}
 
 
@@ -993,10 +1039,18 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                    and not (wo.assigned_username or "").strip())
         if waiting:
             movement_engineer, engineer_username = "Not picked", None
+        _grp = _stage_group(stage_value)
+        if _grp == "cosmetic":
+            qc_res, qc_at = _cosmetic_result(wo, movements_by_device.get(did, []), today)
+        elif wo.status == "completed":
+            qc_res = _qc_result(wo, movements_by_device.get(did, []), _grp)
+            qc_at = wo.completed_at if qc_res else None
+        else:
+            qc_res, qc_at = "", None
         items.append({
             "row_key": f"wo-{wo.work_id}",
-            "qc_result": (_qc_result(wo, movements_by_device.get(did, []), _stage_group(stage_value))
-                          if wo.status == "completed" else ""),
+            "qc_result": qc_res,
+            "qc_at": qc_at,
             "moved_at": wo.created_at,          # Movement Date: when the tag arrived / was handed over
             "waiting": waiting,
             "work_id": wo.work_id,
@@ -1075,6 +1129,8 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                 done_at = it.get("completed_at") or it.get("wo_completed_at")
                 if not (done_at and w_lo <= done_at <= w_hi):
                     it["count_status"] = "in_progress"
+            if it.get("qc_result") and not (it.get("qc_at") and w_lo <= it["qc_at"] <= w_hi):
+                it["qc_result"] = ""      # Pass / Fail happened outside the range
     if exclude_admin:
         admin_usernames = set((await db.execute(
             select(User.username).where(User.role == UserRole.admin)
@@ -1309,12 +1365,19 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
              if it.get("reassigned_at") else ("Scrap" if it.get("scrap")
                                               else "Completed" if it.get("completed_at") else "Open")),
             it.get("scrap") or "",
-            {"pass": "Pass", "fail": "Fail"}.get(it.get("qc_result") or "", ""),
+            # Stress Result / Final QC Result (2026-10-28): each filled only on
+            # its own stage's completed rows.
+            ({"pass": "Pass", "fail": "Fail"}.get(it.get("qc_result") or "", "")
+             if _stage_group(it.get("stage_value")) == "stress" else ""),
+            ({"pass": "Pass", "fail": "Fail"}.get(it.get("qc_result") or "", "")
+             if _stage_group(it.get("stage_value")) == "final_qc" else ""),
+            ({"pass": "Pass", "fail": "Fail"}.get(it.get("qc_result") or "", "")
+             if _stage_group(it.get("stage_value")) == "cosmetic" else ""),
             "Yes" if it.get("pna") else "No",
             it.get("pna_history_text") or "",
         ])
     _sheet(ws, ["Tag Number", "Lot Number", "Make", "Model", "Engineer Name", "Stage",
-                "Movement Date", "Assigned Date", "Completed Date", "Status", "Scrap", "QC Result", "PNA",
+                "Movement Date", "Assigned Date", "Completed Date", "Status", "Scrap", "Stress Result", "Final QC Result", "Cosmetic Result", "PNA",
                 "PNA History"], tag_rows)
     for row in ws.iter_rows(min_row=2, min_col=7, max_col=9):
         for c in row:
@@ -1327,7 +1390,8 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     def _bucket():
         return {"total": set(), "assigned": set(), "completed": set(), "reassigned": set(),
                 "scrap": set(), "pna": set(), "days": [], "groups": {},
-                "stress_pass": set(), "stress_fail": set(), "fqc_pass": set(), "fqc_fail": set()}
+                "stress_pass": set(), "stress_fail": set(), "fqc_pass": set(), "fqc_fail": set(),
+                "cos_pass": set(), "cos_fail": set()}
 
     def _add(b, it):
         tag = it.get("barcode")
@@ -1338,10 +1402,11 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
         b["assigned" if st == "Open" else st.lower()].add(tag)
         if it.get("pna"):
             b["pna"].add(tag)
-        if st == "Completed" and it.get("qc_result") in ("pass", "fail"):
+        if it.get("qc_result") in ("pass", "fail"):
             grp = _stage_group(it.get("stage_value"))
-            if grp in ("stress", "final_qc"):
-                b[("stress_" if grp == "stress" else "fqc_") + it["qc_result"]].add(tag)
+            pre = {"stress": "stress_", "final_qc": "fqc_", "cosmetic": "cos_"}.get(grp)
+            if pre:
+                b[pre + it["qc_result"]].add(tag)
         if st == "Completed" and it.get("days") is not None:
             b["days"].append(it["days"])
         b["groups"].setdefault(_stage_group(it.get("stage_value")), set()).add(tag)
@@ -1370,6 +1435,8 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             return [_n(b, "stress_pass"), _n(b, "stress_fail")]
         if g == "final_qc":
             return [_n(b, "fqc_pass"), _n(b, "fqc_fail")]
+        if g == "cosmetic":
+            return [_n(b, "cos_pass"), _n(b, "cos_fail")]
         return ["", ""]
 
     stage_rows = [[group_label[g], lbl, _n(b, "total"), _n(b, "assigned"), _n(b, "completed")]
@@ -1382,7 +1449,8 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             "Scrap Tags", "Reassigned Tags", "Tags with PNA", "Avg Days to Complete"],
            stage_rows,
            ["Total", "", _n(total_b, "total"), _n(total_b, "assigned"), _n(total_b, "completed"),
-            _n(total_b, "stress_pass") + _n(total_b, "fqc_pass"), _n(total_b, "stress_fail") + _n(total_b, "fqc_fail"),
+            _n(total_b, "stress_pass") + _n(total_b, "fqc_pass") + _n(total_b, "cos_pass"),
+            _n(total_b, "stress_fail") + _n(total_b, "fqc_fail") + _n(total_b, "cos_fail"),
             _n(total_b, "scrap"), _n(total_b, "reassigned"), _n(total_b, "pna"), _avg(total_b["days"])])
 
     # ── Sheet 3: Staff Summary — one row per engineer ──
@@ -1391,19 +1459,21 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
         _add(by_eng.setdefault(it.get("engineer") or "—", _bucket()), it)
     staff_rows = [[eng, _n(b, "total"), _n(b, "assigned"), _n(b, "completed"), _n(b, "scrap"), _n(b, "reassigned")]
                   + [len(b["groups"].get(g, ())) for g in group_order]
-                  + [_n(b, "stress_pass"), _n(b, "stress_fail"), _n(b, "fqc_pass"), _n(b, "fqc_fail")]
+                  + [_n(b, "stress_pass"), _n(b, "stress_fail"), _n(b, "cos_pass"), _n(b, "cos_fail"),
+                     _n(b, "fqc_pass"), _n(b, "fqc_fail")]
                   + [_n(b, "pna"), _avg(b["days"])]
                   for eng, b in sorted(by_eng.items(), key=lambda kv: (-len(kv[1]["total"]), kv[0].lower()))]
     _sheet(wb.create_sheet("Staff Summary"),
            ["Engineer", "Total Tags", "Assigned Tags (Open)", "Completed Tags", "Scrap Tags", "Reassigned Tags"]
            + [group_label[g] + " Tags" for g in group_order]
-           + ["Stress Pass", "Stress Fail", "Final QC Pass", "Final QC Fail"]
+           + ["Stress Pass", "Stress Fail", "Cosmetic Pass", "Cosmetic Fail", "Final QC Pass", "Final QC Fail"]
            + ["Tags with PNA", "Avg Days to Complete"],
            staff_rows,
            ["Total", _n(total_b, "total"), _n(total_b, "assigned"), _n(total_b, "completed"),
             _n(total_b, "scrap"), _n(total_b, "reassigned")]
            + [len(total_b["groups"].get(g, ())) for g in group_order]
-           + [_n(total_b, "stress_pass"), _n(total_b, "stress_fail"), _n(total_b, "fqc_pass"), _n(total_b, "fqc_fail")]
+           + [_n(total_b, "stress_pass"), _n(total_b, "stress_fail"), _n(total_b, "cos_pass"),
+              _n(total_b, "cos_fail"), _n(total_b, "fqc_pass"), _n(total_b, "fqc_fail")]
            + [_n(total_b, "pna"), _avg(total_b["days"])])
 
     out = _io.BytesIO()

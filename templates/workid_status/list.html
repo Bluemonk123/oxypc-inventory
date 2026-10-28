@@ -12,6 +12,18 @@
        (e.g. ?workid= from Data Fixes) still filter. #}
     {% if f_workid %}<input type="hidden" name="workid" value="{{ f_workid }}">{% endif %}
     {% if f_tag %}<input type="hidden" name="tag" value="{{ f_tag }}">{% endif %}
+    {# Order (2026-10-28): Date range → Stage → Engineer.
+       Work Date: completed in the range, or a PNA part marked
+       in the range while the WorkID was open — a day's full work. #}
+    <div>
+      <input type="date" name="work_from" value="{{ f_work_from }}" class="form-control form-control-sm"
+             title="From: WorkIDs completed, or with a PNA part marked, on or after this date">
+    </div>
+    <div>
+      <input type="date" name="work_to" value="{{ f_work_to }}" class="form-control form-control-sm"
+             title="To: WorkIDs completed, or with a PNA part marked, on or before this date">
+    </div>
+    {{ ms.multiselect('cosmetic_stage', 'Stage', cosmetic_stage_choices, f_cosmetic_stage, '') }}
     {# Shown whenever there is more than one engineer in view — an
        attendance-group manager needs it as much as an admin does. #}
     {% if engineers and engineers|length > 1 %}
@@ -24,17 +36,6 @@
       </select>
     </div>
     {% endif %}
-    {{ ms.multiselect('cosmetic_stage', 'Stage', cosmetic_stage_choices, f_cosmetic_stage, '') }}
-    {# Work Date (2026-10-28): completed in the range, or a PNA part marked
-       in the range while the WorkID was open — a day's full work. #}
-    <div>
-      <input type="date" name="work_from" value="{{ f_work_from }}" class="form-control form-control-sm"
-             title="From: WorkIDs completed, or with a PNA part marked, on or after this date">
-    </div>
-    <div>
-      <input type="date" name="work_to" value="{{ f_work_to }}" class="form-control form-control-sm"
-             title="To: WorkIDs completed, or with a PNA part marked, on or before this date">
-    </div>
     {# Completed From/To hidden (2026-10-28): Work Date above replaces it.
        Old links with completed_from/to still filter (kept as hidden fields). #}
     {% if f_completed_from %}<input type="hidden" name="completed_from" value="{{ f_completed_from }}">{% endif %}
@@ -135,17 +136,17 @@
     {# Stage name, then Assigned and Completed counts, stacked (2026-10-27;
        no total). #}
     <div class="lt-tile h-100" style="--tc:{{ color }}" data-group="{{ key }}" data-stages="{{ _stages | join(',') }}">
-      {# Waiting (2026-10-27): tags with a WorkID here nobody has picked yet. #}
-      <div class="wid-stage-name">{{ label }}<span class="fw-normal small wid-waiting" data-server="{{ t.waiting }}" title="Tags waiting to be picked">{% if t.waiting %} (Waiting - {{ t.waiting }}){% endif %}</span></div>
+      {# "(Waiting - N)" removed from the tiles (2026-10-28). #}
+      <div class="wid-stage-name">{{ label }}</div>
       <div class="wid-stage-line" title="Tags given a WorkID in this stage (open or completed)">
         <span class="lt-tile-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">Assigned</span>
       </div>
       <div class="wid-stage-line" title="Tags with a completed WorkID (scrap decisions not included)">
         <span class="lt-tile-count" data-k="completed" data-server="{{ t.completed }}">{{ t.completed }}</span><span class="wid-stage-sub">Completed</span>
       </div>
-      {% if key in ('stress', 'final_qc') %}
+      {% if key in ('stress', 'final_qc', 'cosmetic') %}
       {# Pass | Fail (2026-10-28): completed Stress / Final QC WorkIDs by where the tag went next. #}
-      <div class="wid-stage-line" title="{{ 'Completed Stress tests: Pass = sent on to Cosmetic; Fail = sent back to L1/L2 or L3/L4' if key == 'stress' else 'Completed Final QC: Pass = Final QC Pass Hold / Ready to Sale; Fail = Fail Hold or sent back' }}">
+      <div class="wid-stage-line" title="{{ 'Completed Stress tests: Pass = sent on to Cosmetic; Fail = sent back to L1/L2 or L3/L4' if key == 'stress' else ('Cosmetic: Pass = Cosmetic Completed to Final QC; Fail = sent back to L1/L2 or L3/L4 (Paint Fail inside Cosmetic not counted)' if key == 'cosmetic' else 'Completed Final QC: Pass = Final QC Pass Hold / Ready to Sale; Fail = Fail Hold or sent back') }}">
         <span class="lt-tile-count" data-k="pass" data-server="{{ t.pass }}">{{ t.pass }}</span><span class="wid-stage-sub">Pass</span>
         <span class="text-muted">|</span>
         <span class="lt-tile-count" data-k="fail" data-server="{{ t.fail }}">{{ t.fail }}</span><span class="wid-stage-sub">Fail</span>
@@ -343,14 +344,9 @@ $(document).ready(function(){
         if (useServer) { el.textContent = el.getAttribute('data-server'); return; }
         el.textContent = _tagSet(mine, k === 'scrap' ? function (r) { return !!r.x; }
                                     : k === 'completed' ? TILE_TEST.completed
-                                    : (k === 'pass' || k === 'fail') ? function (r) { return TILE_TEST.completed(r) && r.sr === k; }
+                                    : (k === 'pass' || k === 'fail') ? function (r) { return r.sr === k; }
                                     : function () { return true; });
       });
-      var w = g.querySelector('.wid-waiting');
-      if (w) {
-        var n = useServer ? parseInt(w.getAttribute('data-server') || '0', 10) : _tagSet(mine, TILE_TEST.waiting);
-        w.textContent = n ? ' (Waiting - ' + n + ')' : '';
-      }
     });
   }
   $.fn.dataTable.ext.search.push(function (settings, data, idx) {

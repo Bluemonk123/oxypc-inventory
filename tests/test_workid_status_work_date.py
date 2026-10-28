@@ -112,7 +112,10 @@ async def main():
                 ("{tp}", DeviceStage.qc_check, DeviceStage.cosmetic_received, "STRS-P{sfx}", "qc"),
                 ("{tf}", DeviceStage.qc_check, DeviceStage.l1, "STRS-F{sfx}", "qc"),
                 ("{tp}Q", DeviceStage.final_qc, DeviceStage.final_qc_pass_hold, "FQP{sfx}", "fqc"),
-                ("{tf}Q", DeviceStage.final_qc, DeviceStage.final_qc_fail_hold, "FQF{sfx}", "fqc")):
+                ("{tf}Q", DeviceStage.final_qc, DeviceStage.final_qc_fail_hold, "FQF{sfx}", "fqc"),
+                ("{tp}C", DeviceStage.cosmetic_completed, DeviceStage.final_qc, "CSP{sfx}", "comp"),
+                ("{tf}C", DeviceStage.cleaning, DeviceStage.l1, "CSF{sfx}", "clean"),
+                ("{tp}W", DeviceStage.water_sanding, DeviceStage.painting, "CSW{sfx}", "water")):
             d = Device(id=uuid.uuid4(), barcode=bc, lot_id=lot, current_stage=nxt)
             db.add(d); await db.flush()
             db.add(WorkOrder(work_id=wid, device_id=d.id, barcode=bc, stage=code, status="completed",
@@ -135,16 +138,24 @@ asyncio.run(main())
         fqc = html.split('data-group="final_qc"', 1)[1][:3000]
         got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="wid-stage-sub">(Pass|Fail)', fqc))
         assert got == {"Pass": "1", "Fail": "1"}, got
+        cos = html.split('data-group="cosmetic"', 1)[1].split('data-group="final_qc"', 1)[0]
+        got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="wid-stage-sub">(Pass|Fail)', cos))
+        assert got == {"Pass": "1", "Fail": "1"}, got          # Paint Fail (Water Sanding -> Painting) not counted
         assert 'name="workid"' not in html and 'name="tag"' not in html      # search boxes hidden
         from tests.workid_helpers import export_sheet
         x = app_client.get("/workid-status/export?engineer=sp_eng&work_from=2026-10-27&work_to=2026-10-27")
         tag_rows = export_sheet(x.content)
-        qi = tag_rows[0].index("QC Result")
-        assert sorted(r[qi] for r in tag_rows[1:]) == ["Fail", "Fail", "Pass", "Pass"]
+        si, fi = tag_rows[0].index("Stress Result"), tag_rows[0].index("Final QC Result")
+        by_tag = {r[0]: (r[si], r[fi]) for r in tag_rows[1:]}
+        assert by_tag["{tp}".format(tp=tp)] == ("Pass", None) and by_tag[tf] == ("Fail", None)
+        assert by_tag[tp + "Q"] == (None, "Pass") and by_tag[tf + "Q"] == (None, "Fail")
         staff = export_sheet(x.content, "Staff Summary")
         h = staff[0]
         row = [r for r in staff if r[0] == "sp_eng"][0]
-        assert [row[h.index(c)] for c in ("Stress Pass", "Stress Fail", "Final QC Pass", "Final QC Fail")] == [1, 1, 1, 1]
+        assert [row[h.index(c)] for c in ("Stress Pass", "Stress Fail", "Cosmetic Pass", "Cosmetic Fail",
+                                          "Final QC Pass", "Final QC Fail")] == [1, 1, 1, 1, 1, 1]
+        ci = tag_rows[0].index("Cosmetic Result")
+        assert {r[0]: r[ci] for r in tag_rows[1:]}[tp + "C"] == "Pass"
     finally:
         _run(f"""
 import asyncio, sys
@@ -153,11 +164,11 @@ from sqlalchemy import text
 from database import AsyncSessionLocal
 async def main():
     async with AsyncSessionLocal() as db:
-        ids = "select id from devices where barcode in (:a, :b, :c, :d)"
-        p = {{"a": "{tp}", "b": "{tf}", "c": "{tp}Q", "d": "{tf}Q"}}
+        ids = "select id from devices where barcode in (:a, :b, :c, :d, :e, :f, :g)"
+        p = {{"a": "{tp}", "b": "{tf}", "c": "{tp}Q", "d": "{tf}Q", "e": "{tp}C", "f": "{tf}C", "g": "{tp}W"}}
         await db.execute(text(f"delete from stage_movements where device_id in ({{ids}})"), p)
         await db.execute(text(f"delete from work_orders where device_id in ({{ids}})"), p)
-        await db.execute(text("delete from devices where barcode in (:a, :b, :c, :d)"), p)
+        await db.execute(text("delete from devices where barcode in (:a, :b, :c, :d, :e, :f, :g)"), p)
         await db.commit()
 asyncio.run(main())
 """)
