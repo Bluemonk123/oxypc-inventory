@@ -260,6 +260,7 @@ async def block_tags_data(
     role_val = getattr(current_user.role, "value", None) or str(current_user.role)
     can_sell = _has_perm(role_val, "sales", "add")
     can_edit_block = _has_perm(role_val, "block_tags", "edit")  # Permission Matrix tick (2026-10-25)
+    can_export_block = _has_perm(role_val, "block_tags", "export")  # Bulk QC zip (2026-10-28)
 
     data = []
     for rec in records:
@@ -269,7 +270,7 @@ async def block_tags_data(
         barcode_btn = (
             f'<a href="#" class="btn btn-primary btn-sm py-0 px-2 fw-semibold block-barcode-btn" '
             f'data-id="{rec.id}" data-blockid="{esc(rec.block_id)}" title="Preview / download barcode label">'
-            f'<i class="bi bi-download"></i> <i class="bi bi-upc-scan"></i> barcode</a>')
+            f'<i class="bi bi-download"></i></a>')            # icon only (2026-10-28)
         block_cell = (f'<div class="d-flex flex-nowrap text-nowrap align-items-center gap-2">'
                       f'<span class="fw-semibold">{esc(rec.block_id)}</span>{barcode_btn}</div>')
         # Box Number in its own column, as a high-contrast pill.
@@ -279,6 +280,13 @@ async def block_tags_data(
         tags_cell = (f'<a href="#" class="block-tags-link fw-semibold text-decoration-none text-nowrap" '
                      f'data-id="{rec.id}" data-blockid="{esc(rec.block_id)}" title="View tags in this block">'
                      f'<i class="bi bi-tags me-1"></i>{n_tags} tag{"s" if n_tags != 1 else ""}</a>')
+        if can_export_block and n_tags:
+            # Bulk QC (2026-10-28): every tag's latest QC report, one zip
+            tags_cell = (f'<div class="d-flex flex-nowrap align-items-center gap-2">{tags_cell}'
+                         f'<a href="#" class="btn btn-outline-primary btn-sm py-0 px-2 text-nowrap block-qc-btn" '
+                         f'data-id="{rec.id}" data-blockid="{esc(rec.block_id)}" '
+                         f'title="Download the QC report of every tag in this block (zip)">'
+                         f'<i class="bi bi-download me-1"></i>Bulk QC ({n_tags})</a></div>')
         models_cell = (f'<a href="#" class="block-models-link fw-semibold text-decoration-none text-nowrap" '
                        f'data-id="{rec.id}" data-blockid="{esc(rec.block_id)}" title="View model summary">'
                        f'<i class="bi bi-laptop me-1"></i>{n_models} model{"s" if n_models != 1 else ""}</a>')
@@ -333,6 +341,33 @@ async def block_tags_ids(
         .limit(MAX_SELECT_ALL)
     )).scalars().all()
     return JSONResponse({"ids": [str(i) for i in ids], "truncated": len(ids) == MAX_SELECT_ALL})
+
+
+@router.get("/{record_id}/qc-reports")
+async def block_qc_reports(record_id: str, db: AsyncSession = Depends(get_db),
+                           current_user: User = Depends(require_module_perm("block_tags", "export"))):
+    """Bulk QC (2026-10-28): latest Stress / QC report PDF of every tag still
+    blocked in this block, in one zip (services/qc_reports.py)."""
+    from services.qc_reports import build_qc_zip, zip_response
+    try:
+        rid = _uuid.UUID(record_id)
+    except ValueError:
+        return JSONResponse({"ok": False, "error": "Block not found."}, status_code=404)
+    record = (await db.execute(select(BlockRecord).where(BlockRecord.id == rid))).scalar_one_or_none()
+    if not record:
+        return JSONResponse({"ok": False, "error": "Block not found."}, status_code=404)
+    tags = (await db.execute(
+        select(BlockRecordItem.barcode)
+        .where(BlockRecordItem.block_record_id == rid, BlockRecordItem.status == BlockItemStatus.blocked)
+        .order_by(BlockRecordItem.barcode)
+    )).scalars().all()
+    if not tags:
+        return JSONResponse({"ok": False, "error": "No tags left in this block."}, status_code=404)
+    data, found, missing = await build_qc_zip(db, tags)
+    if not found:
+        return JSONResponse({"ok": False, "error": "None of this block's tags has a saved QC report."}, status_code=404)
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in record.block_id)
+    return zip_response(data, f"QC_Reports_{safe}.zip", len(found), len(missing))
 
 
 @router.get("/{record_id}/items")

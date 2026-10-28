@@ -2066,6 +2066,26 @@ async def bulk_delete_sales(
     return RedirectResponse(url="/sales" + ("?" + "&".join(qs) if qs else ""), status_code=302)
 
 
+@router.post("/sales/qc-reports")
+async def bulk_qc_reports(
+    barcodes: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module_perm("sales", "export")),
+):
+    """Bulk QC (2026-10-28): the ticked Ready for Sale tags' latest Stress / QC
+    report PDFs in one zip (services/qc_reports.py)."""
+    from services.qc_reports import MAX_TAGS, build_qc_zip, zip_response
+    tags = [b for b in re.split(r"[,\s]+", barcodes or "") if b]
+    if not tags:
+        return JSONResponse({"ok": False, "error": "Select at least one tag."}, status_code=400)
+    if len(tags) > MAX_TAGS:
+        return JSONResponse({"ok": False, "error": f"Select at most {MAX_TAGS:,} tags per download."}, status_code=400)
+    data, found, missing = await build_qc_zip(db, tags)
+    if not found:
+        return JSONResponse({"ok": False, "error": "None of the selected tags has a saved QC report."}, status_code=404)
+    return zip_response(data, f"QC_Reports_{len(found)}_tags_{app_now():%d%m%Y_%H%M}.zip", len(found), len(missing))
+
+
 @router.get("/sales/export-selected", response_class=HTMLResponse)
 async def export_selected_get(request: Request, current_user: User = Depends(allowed)):
     """Redirect GET to sales list (form should POST)."""

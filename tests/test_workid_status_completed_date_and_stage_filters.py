@@ -212,4 +212,6 @@ def test_stage_dropdown_includes_non_cosmetic_stages(app_client, make_user):  # 
     # deliberately left out of every stage dropdown since 2026-09-21
     # (models/device.py DROPDOWN_STAGES).
     assert 'value="ready_to_sale"' in html
-    assert 'value="iqc"' in html
+    assert 'value="l1"' in html
+    # Stages that never have WorkIDs are left out since 2026-10-28.
+    assert 'value="iqc"' not in html and 'value="on_rent"' not in html

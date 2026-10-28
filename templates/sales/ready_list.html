@@ -108,6 +108,11 @@
       <button type="button" id="multiRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Multi-Request with selected (<span id="readySelCount">0</span>)
       </button>
+      {# Bulk QC (2026-10-28): the ticked tags' QC reports in one zip #}
+      <button {% if not can(current_user, 'sales', 'export') %}hidden {% endif %}type="button" id="bulkQcBtn" class="btn btn-sm btn-outline-primary d-none" disabled
+              title="Download the QC report of every ticked tag (zip)">
+        <i class="bi bi-download me-1"></i>Bulk QC (<span id="readySelCount5">0</span>)
+      </button>
       <button {% if not can(current_user, 'sales', 'add') %}hidden {% endif %}type="button" id="multiSellBtn" class="btn btn-sm btn-outline-success d-none" disabled>
         <i class="bi bi-cart-plus me-1"></i>Multi-Sell (<span id="readySelCount2">0</span>)
       </button>
@@ -536,6 +541,8 @@ function updateReadySel(){
   $('#readySelCount2').text(n);
   $('#readySelCount3').text(n);
   $('#readySelCount4').text(n);
+  $('#readySelCount5').text(n);
+  $('#bulkQcBtn').prop('disabled', n === 0).toggleClass('d-none', n === 0);
   $('#newBulkSaleBtn').prop('disabled', n === 0);
   $('#multiRequestBtn').prop('disabled', n === 0);
   $('#multiSellBtn').prop('disabled', n === 0);
@@ -568,6 +575,46 @@ function sellBarcodesList(bcs){
   document.getElementById('multiSellQty').value = bcs.length;
   _submitShowingBar(document.getElementById('multiSellForm'));
 }
+// Bulk QC (2026-10-28): POST the ticked tags, save the returned zip.
+// fetch + blob (not a form submit) so the green processing bar isn't left
+// running and a "no reports" answer shows as a message.
+document.getElementById('bulkQcBtn').addEventListener('click', async function(){
+  var btn = this, bcs = selectedReadyBarcodes();
+  if (!bcs.length || btn.dataset.busy) return;
+  btn.dataset.busy = '1';
+  var html = btn.innerHTML;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Preparing ' + bcs.length + '…';
+  var m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/), tok = m ? decodeURIComponent(m[1]) : '';
+  try {
+    var fd = new FormData();
+    fd.append('csrf_token', tok);
+    fd.append('barcodes', bcs.join(','));
+    var r = await fetch('/sales/qc-reports', { method: 'POST', body: fd, credentials: 'same-origin',
+                                               headers: { 'X-CSRF-Token': tok } });
+    if (!r.ok) {
+      var d = await r.json().catch(function(){ return {}; });
+      throw new Error(d.error || d.detail || ('Could not download (HTTP ' + r.status + ')'));
+    }
+    var blob = await r.blob();
+    var cd = r.headers.get('Content-Disposition') || '';
+    var fm = cd.match(/filename="?([^";]+)"?/);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = fm ? fm[1] : 'QC_Reports.zip';
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    var miss = parseInt(r.headers.get('X-QC-Missing') || '0', 10);
+    var got = parseInt(r.headers.get('X-QC-Found') || '0', 10);
+    if (window.showTopToast) window.showTopToast(miss ? 'warning' : 'success',
+      'QC reports downloaded: ' + got + ' tag(s)' +
+      (miss ? '; ' + miss + ' without a report (listed in no_qc_report.txt in the zip).' : '.'));
+  } catch (err) {
+    if (window.showTopToast) window.showTopToast('danger', err.message); else alert(err.message);
+  } finally {
+    btn.innerHTML = html;
+    delete btn.dataset.busy;
+  }
+});
 document.getElementById('multiSellBtn').addEventListener('click', function(){
   sellBarcodesList(selectedReadyBarcodes());
 });

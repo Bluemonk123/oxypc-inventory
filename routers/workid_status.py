@@ -456,6 +456,7 @@ async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, 
         Device.l1l2_status.label("l12"),
         _scrap_exists(*SCRAP_TYPES.values()).label("scr"),
         WorkOrder.assigned_user_id.label("au"),
+        WorkOrder.assigned_username.label("an"),
     ).order_by(None)
     # Stage: already in full_stmt (applied before the row cap).
     if cf or ct:
@@ -481,7 +482,8 @@ async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, 
         func.count().filter(has_pna),
         func.count(distinct(sub.c.bc)),
         func.count(distinct(sub.c.bc)).filter(and_(sub.c.st.notin_(["completed", "reassigned"]),
-                                                   sub.c.au.is_(None))),
+                                                   sub.c.au.is_(None),
+                                                   func.coalesce(func.trim(sub.c.an), "") == "")),
     ))).one()
     return {"open_workids": r[0], "closed_workids": r[1], "reassigned_workids": r[2],
             "open_tags": r[3], "ongoing_tags": r[4], "completed_tags": r[5], "total_pna": r[6],
@@ -500,19 +502,20 @@ async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_a
         _matched_from_stage_sq().label("fs"),
         _scrap_exists(*SCRAP_TYPES.values()).label("scr"),
         WorkOrder.assigned_user_id.label("au"),
+        WorkOrder.assigned_username.label("an"),
     )
     sub = q.subquery()
     rows = (await db.execute(
-        select(sub.c.sg, sub.c.st, sub.c.wid, sub.c.bc, sub.c.done_at, sub.c.fs, sub.c.scr, sub.c.au)
+        select(sub.c.sg, sub.c.st, sub.c.wid, sub.c.bc, sub.c.done_at, sub.c.fs, sub.c.scr, sub.c.au, sub.c.an)
     )).all()
     sets = {key: {"assigned": set(), "completed": set(), "scrap": set(), "waiting": set()}
             for key, *_ in STAGE_GROUPS}
-    for code, st, wid, bc, done_at, fs, scr, au in rows:
+    for code, st, wid, bc, done_at, fs, scr, au, an in rows:
         g = sets.get(_stage_group(_displayed_stage_value(st, done_at, wid, code, fs, code_stage)))
         if g is None or not bc:
             continue
         g["assigned"].add(bc)
-        if au is None and st not in ("completed", "reassigned"):
+        if au is None and not (an or "").strip() and st not in ("completed", "reassigned"):
             g["waiting"].add(bc)
         if scr:
             g["scrap"].add(bc)              # scrap decision: counted apart from Completed
@@ -532,7 +535,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
                         cosmetic_stage: str = Query(default=""),
                         exclude_admin: str = Query(default=""),
                         show_reassigned: str = Query(default=""),
-                        scrap_type: str = Query(default="none"),
+                        scrap_type: str = Query(default="all"),
                         highlight: str = Query(default="")):
     return await _workid_status_page(
         request=request, db=db, current_user=current_user, workid=workid, tag=tag,
@@ -544,7 +547,7 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
 
 async def _workid_status_page(*, request, db, current_user, workid="", tag="", engineer="",
                               completed_from="", completed_to="", cosmetic_stage="",
-                              exclude_admin="", show_reassigned="", scrap_type="none",
+                              exclude_admin="", show_reassigned="", scrap_type="all",
                               highlight="", row_cap=MAIN_ROW_CAP):
     """The page's data. row_cap=None loads every matching WorkID (Export,
     2026-10-27 — the workbook covers all matching rows, not just the 3,000
@@ -566,11 +569,12 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     # A link to one WorkID (?highlight=) always finds it, reassigned or not.
     if not show_reassigned and not highlight:
         stmt = stmt.where(WorkOrder.status != "reassigned")
-    # Scrap Type filter (default "No Scrap"): in SQL before the row cap, so
-    # the tiles and Export follow it too. ?highlight= always finds its WorkID.
-    scrap_type = (scrap_type or "none").strip().lower()
+    # Scrap Type filter (default "All Scrap Types" since 2026-10-28; was
+    # "No Scrap"): in SQL before the row cap, so the tiles and Export follow
+    # it too. ?highlight= always finds its WorkID.
+    scrap_type = (scrap_type or "all").strip().lower()
     if scrap_type not in ("all", "none", *SCRAP_TYPES):
-        scrap_type = "none"
+        scrap_type = "all"
     scrap_clause = None
     if not highlight and scrap_type != "all":
         from sqlalchemy import not_
@@ -858,7 +862,9 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         # WorkID per visit: a tag arrives at L1/L2, L3/L4, Stress or Final QC
         # with a pending, unassigned WorkID). Shown as "Not picked", never
         # under the person who happened to move the tag.
-        waiting = wo.status not in ("completed", "reassigned") and wo.assigned_user_id is None
+        # Held = a user id OR a username (older WorkIDs carry only the name).
+        waiting = (wo.status not in ("completed", "reassigned") and wo.assigned_user_id is None
+                   and not (wo.assigned_username or "").strip())
         if waiting:
             movement_engineer, engineer_username = "Not picked", None
         items.append({
@@ -1047,7 +1053,13 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     # DeviceStage, not just the cosmetic-line subset — it filters against
     # Asset History's From value (stage_value above), which can be any stage
     # a tag has ever moved off of, not only a cosmetic one.
-    cosmetic_stage_choices = [(s.value, STAGE_LABELS.get(s, s.value)) for s in DROPDOWN_STAGES]
+    # Only stages a WorkID can show under (2026-10-28): no work is assigned
+    # at GRN, IQC, Returned, Scrap, Scrap for Sale or On Rent, so those
+    # choices always came back empty. Ready to Sale stays — WorkIDs left open
+    # when a tag moved on show there.
+    _no_workid = {"grn", "iqc", "returned", "scrapped", "scrap_for_sale", "on_rent"}
+    cosmetic_stage_choices = [(s.value, STAGE_LABELS.get(s, s.value)) for s in DROPDOWN_STAGES
+                              if s.value not in _no_workid]
 
     return templates.TemplateResponse("workid_status/list.html", {
         "request": request, "current_user": current_user,
@@ -1077,7 +1089,7 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
                                cosmetic_stage: str = Query(default=""),
                                exclude_admin: str = Query(default=""),
                                show_reassigned: str = Query(default=""),
-                               scrap_type: str = Query(default="none")):
+                               scrap_type: str = Query(default="all")):
     """Excel workbook of exactly the rows the page is showing (2026-10-27;
     was a single CSV): Tag Summary (the former CSV columns, one row per
     WorkID), Stage Summary and Staff Summary.

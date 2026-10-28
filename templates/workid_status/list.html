@@ -34,7 +34,7 @@
     </div>
     <div>
       {# Scrap Type (2026-10-23): the L3/L4 Normal / Replacement Scrap decision
-         taken on a WorkID. Default No Scrap. #}
+         taken on a WorkID. Default All Scrap Types (2026-10-28). #}
       <select name="scrap_type" class="form-select form-select-sm" title="Scrap Type">
         {% for v, lbl in [('all', 'All Scrap Types'), ('normal', 'Normal Scrap'), ('replacement', 'Replacement Scrap'), ('none', 'No Scrap')] %}
         <option value="{{ v }}" {% if f_scrap_type == v %}selected{% endif %}>{{ lbl }}</option>

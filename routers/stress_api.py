@@ -98,7 +98,9 @@ def _result_status_summary(entry) -> tuple[str, str]:
     if isinstance(entry, str):
         if entry.lower() == "na":
             return "N/A", "Not present on this device"
-        return entry.upper(), "Manually checked on the Stress Test page"
+        # Summary wording (2026-10-28): "System Diagnose - Pass" (- Fail for a
+        # failed item), was "Manually checked on the Stress Test page".
+        return entry.upper(), f"System Diagnose - {entry.strip().title()}"
     return "PENDING", "—"
 
 

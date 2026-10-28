@@ -117,6 +117,7 @@ ROUTE_ACTIONS = {
     ('POST', '/sales/new-tag-sale/tag-info'): None,  # sale_new_tag_info: read-only lookup
     ('POST', '/sales/new-tag-sale/prefill'): None,  # sale_new_tag_form_prefill: renders prefilled form (POST twin of GET)
     ('POST', '/sales/new/prefill'): None,  # sale_new_form_prefill: renders prefilled form (POST twin of GET)
+    ('POST', '/sales/qc-reports'): ('sales', 'export'),  # bulk_qc_reports: Bulk QC zip of ticked Ready for Sale tags (2026-10-28)
     ('POST', '/sales/new/block'): None,  # sale_new_from_block: renders prefilled New Sale form from a block; already gated sales/add; the real write is /sales/new
     ('POST', '/sales/new'): ('sales', 'add'),  # create_sale: create sale; existing code gates require_module_perm('sales','add') (path prefix would say sales_list)
     ('POST', '/sales/change-date'): ('sales_list', 'edit'),  # change_sale_date
@@ -374,6 +375,7 @@ ROUTE_ACTIONS = {
     # ===== routers/block_tags.py =====
     ('GET', '/block-tags/export/all'): ('block_tags', 'export'),  # export_all
     ('GET', '/block-tags/{record_id}/barcode'): ('block_tags', 'export'),  # download_barcode: block barcode PDF (missed by path regex)
+    ('GET', '/block-tags/{record_id}/qc-reports'): ('block_tags', 'export'),  # block_qc_reports: Bulk QC zip (2026-10-28)
     ('POST', '/block-tags/match-upload'): None,  # match_upload: read-only match of uploaded ids
     ('POST', '/block-tags/create'): ('block_tags', 'add'),  # create_block
     ('POST', '/block-tags/{record_id}/edit'): ('block_tags', 'edit'),  # edit_block

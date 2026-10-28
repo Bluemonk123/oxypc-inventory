@@ -166,8 +166,14 @@
   <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">Tags in <span class="btm-blockid"></span>
-          <span class="badge bg-primary ms-1 btm-count"></span></h5>
+        <h5 class="modal-title d-flex align-items-center flex-wrap gap-2">Tags in <span class="btm-blockid"></span>
+          <span class="badge bg-primary btm-count"></span>
+          {% if can(current_user, 'block_tags', 'export') %}
+          {# Bulk QC (2026-10-28): QC report of every tag in this block, one zip #}
+          <button type="button" class="btn btn-outline-primary btn-sm py-0 px-2 text-nowrap block-qc-btn d-none" id="btmQcBtn"
+                  title="Download the QC report of every tag in this block (zip)">
+            <i class="bi bi-download me-1"></i>Bulk QC (<span class="btm-qc-count">0</span>)</button>
+          {% endif %}</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
@@ -298,6 +304,44 @@
 {% block scripts %}
 <script>
 function blockCsrf() { return (document.cookie.match(/csrf_token=([^;]+)/) || [,''])[1]; }
+// ── Bulk QC (2026-10-28): latest QC report of every tag in a block, one zip.
+// fetch + blob rather than a link, so a block with no reports shows a
+// message instead of a blank error page.
+document.addEventListener('click', async function (e) {
+  var btn = e.target.closest && e.target.closest('.block-qc-btn');
+  if (!btn) return;
+  e.preventDefault(); e.stopPropagation();
+  if (btn.dataset.busy) return;
+  btn.dataset.busy = '1';
+  var html = btn.innerHTML;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Preparing…';
+  try {
+    var r = await fetch('/block-tags/' + btn.dataset.id + '/qc-reports', { credentials: 'same-origin' });
+    if (!r.ok) {
+      var d = await r.json().catch(function () { return {}; });
+      throw new Error(d.error || d.detail || ('Could not download (HTTP ' + r.status + ')'));
+    }
+    var blob = await r.blob();
+    var cd = r.headers.get('Content-Disposition') || '';
+    var m = cd.match(/filename="?([^";]+)"?/);
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = m ? m[1] : ('QC_Reports_' + (btn.dataset.blockid || 'block') + '.zip');
+    document.body.appendChild(a); a.click();
+    setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    var miss = parseInt(r.headers.get('X-QC-Missing') || '0', 10);
+    var got = parseInt(r.headers.get('X-QC-Found') || '0', 10);
+    var okMsg = 'QC reports downloaded: ' + got + ' tag(s)' +
+      (miss ? '; ' + miss + ' without a report (listed in no_qc_report.txt in the zip).' : '.');
+    if (window.showTopToast) window.showTopToast(miss ? 'warning' : 'success', okMsg); else showBlockAlert(okMsg);
+  } catch (err) {
+    if (window.showTopToast) window.showTopToast('danger', err.message); else showBlockError(err.message);
+  } finally {
+    btn.innerHTML = html;
+    delete btn.dataset.busy;
+  }
+});
+
 function showBlockAlert(msg) {
   var el = document.getElementById('blockAlert');
   el.textContent = msg; el.classList.remove('d-none');
@@ -752,6 +796,13 @@ async function openBlockTags(recordId) {
   var m = document.getElementById('blockTagsModal');
   m.querySelector('.btm-blockid').textContent = d.block_id + (d.box_number ? ' (Box ' + d.box_number + ')' : '');
   m.querySelector('.btm-count').textContent = d.items.length + ' tag' + (d.items.length === 1 ? '' : 's');
+  var qcBtn = document.getElementById('btmQcBtn');
+  if (qcBtn) {
+    qcBtn.dataset.id = recordId;
+    qcBtn.dataset.blockid = d.block_id;
+    qcBtn.querySelector('.btm-qc-count').textContent = d.items.length;
+    qcBtn.classList.toggle('d-none', !d.items.length);
+  }
   var body = document.getElementById('btmBody');
   body.innerHTML = '';
   if (!d.items.length) {
