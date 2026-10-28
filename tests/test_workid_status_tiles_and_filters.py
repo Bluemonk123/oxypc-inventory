@@ -101,7 +101,7 @@ def test_filter_row_labels_tiles_and_new_filters_render(app_client, make_user): 
     assert 'name="work_to"' in html
     assert 'name="cosmetic_stage"' in html
     # Tiles (renamed 2026-10-24 / 2026-10-26): tag counts.
-    for label in ("Assigned Tags", "Completed Tags", "Ongoing Tags",
+    for label in ("Assigned WorkIDs", "Completed WorkIDs", "Ongoing WorkIDs",
                   "Total Customer Return", "Total Scrap", "Total PNA"):
         assert label in html, label
     # Export link carries every filter param, including the 3 new ones.

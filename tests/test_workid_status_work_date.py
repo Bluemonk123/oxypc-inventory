@@ -69,7 +69,7 @@ asyncio.run(main())
         # Completed counts only what was completed on the day
         assert rows[done]["st"] == "completed" and rows[late]["st"] == "in_progress"
         import re
-        m = re.search(r'pm-tile-num"[^>]*>(\d+)</div>\s*<div class="pm-tile-lbl">Completed Tags', html)
+        m = re.search(r'pm-tile-num"[^>]*>(\d+)</div>\s*<div class="pm-tile-lbl">Completed WorkIDs', html)
         assert m and m.group(1) == "1"
         assert 'name="completed_from"' not in html          # old date range hidden
         assert rows[pna]["s"] == "L1/L2 Repair"          # open: its own stage, not "Stress Test"

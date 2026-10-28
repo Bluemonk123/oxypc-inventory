@@ -99,10 +99,11 @@
      Customer Return added. Total Scrap ignores the Scrap Type filter. #}
   {# Each tile filters the table on click (2026-10-24); click again to clear. #}
   {# Order (2026-10-26): Assigned, Completed, Ongoing, Customer Return, Scrap, PNA. #}
-  {# Assigned = every tag with a WorkID in this view; Completed leaves out scrap; Total Scrap counts tags (2026-10-27). #}
-  {% for key, label, n, bg, icon in [('assigned', 'Assigned Tags', tile_counts.assigned_tags, '#0d6efd', 'bi-tag'),
-      ('completed', 'Completed Tags', tile_counts.completed_tags, '#0F7A37', 'bi-check-circle'),
-      ('ongoing', 'Ongoing Tags', tile_counts.ongoing_tags, '#f0ad00', 'bi-hourglass-split'),
+  {# Every tile counts WorkIDs — the rows clicking it shows (2026-10-28; were distinct tags).
+     Assigned = Completed + Ongoing + Scrap (+ Reassigned when shown). #}
+  {% for key, label, n, bg, icon in [('assigned', 'Assigned WorkIDs', tile_counts.assigned_tags, '#0d6efd', 'bi-tag'),
+      ('completed', 'Completed WorkIDs', tile_counts.completed_tags, '#0F7A37', 'bi-check-circle'),
+      ('ongoing', 'Ongoing WorkIDs', tile_counts.ongoing_tags, '#f0ad00', 'bi-hourglass-split'),
       ('cr', 'Total Customer Return', tile_counts.total_cust_return, '#6c757d', 'bi-arrow-return-left'),
       ('scrap', 'Total Scrap', tile_counts.total_scrap, '#343a40', 'bi-recycle'),
       ('pna', 'Total PNA', tile_counts.total_pna, '#dc3545', 'bi-exclamation-triangle')] %}
@@ -138,10 +139,10 @@
     <div class="lt-tile h-100" style="--tc:{{ color }}" data-group="{{ key }}" data-stages="{{ _stages | join(',') }}">
       {# "(Waiting - N)" removed from the tiles (2026-10-28). #}
       <div class="wid-stage-name">{{ label }}</div>
-      <div class="wid-stage-line" title="Tags given a WorkID in this stage (open or completed)">
+      <div class="wid-stage-line" title="WorkIDs in this stage (open or completed)">
         <span class="lt-tile-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">Assigned</span>
       </div>
-      <div class="wid-stage-line" title="Tags with a completed WorkID (scrap decisions not included)">
+      <div class="wid-stage-line" title="Completed WorkIDs (scrap decisions not included)">
         <span class="lt-tile-count" data-k="completed" data-server="{{ t.completed }}">{{ t.completed }}</span><span class="wid-stage-sub">Completed</span>
       </div>
       {% if key in ('stress', 'final_qc', 'cosmetic') %}
@@ -154,7 +155,7 @@
       {% endif %}
       {% if key in ('l1l2', 'l3l4') %}
       {# Scrap decisions, counted apart from Completed (2026-10-27). #}
-      <div class="wid-stage-line" title="Tags whose WorkID here was closed by a scrap step (L3/L4 scrap decision, or L1/L2 Back to Inventory)">
+      <div class="wid-stage-line" title="WorkIDs here closed by a scrap step (L3/L4 scrap decision, or L1/L2 Back to Inventory)">
         <span class="lt-tile-count" data-k="scrap" data-server="{{ t.scrap }}">{{ t.scrap }}</span><span class="wid-stage-sub">Scrap</span>
       </div>
       {% endif %}
@@ -299,9 +300,10 @@ $(document).ready(function(){
   var TILE_TEST = {
     scrap: function (r) { return !!r.x; },
     cr: function (r) { return !!r.cr; },
-    // Every tag given a WorkID in this view (2026-10-27), as the stage tiles count.
-    assigned: function (r) { return !!r.b && r.b !== '\u2014'; },
-    ongoing: function (r) { return r.st === 'in_progress'; },
+    // Every WorkID in this view (2026-10-28: tiles count WorkIDs, not tags).
+    assigned: function () { return true; },
+    // Every open WorkID: not started, started or waiting on a PNA part.
+    ongoing: function (r) { return r.st !== 'completed' && r.st !== 'reassigned'; },
     waiting: function (r) { return !!r.wt; },
     // Scrap decisions are counted under Scrap, not Completed (2026-10-27).
     completed: function (r) { return r.st === 'completed' && !r.x; },
@@ -313,13 +315,11 @@ $(document).ready(function(){
   // The page's filters (engineer, dates, stage...) are applied by the server,
   // which also counts the tiles. Typing in the table's search box filters
   // only the loaded rows in the browser — the tiles are recounted from the
-  // rows that search leaves (distinct tags, same rules as the server). With
+  // rows that search leaves (WorkIDs, same rules as the server). With
   // the search box empty they go back to the server's counts (which also
   // cover rows beyond the loaded 3,000).
-  function _tagSet(list, test) {
-    var s = {};
-    list.forEach(function (r) { if (r.b && r.b !== '\u2014' && test(r)) s[r.b] = 1; });
-    return Object.keys(s).length;
+  function _tagSet(list, test) {      // WorkIDs (rows) matching test (2026-10-28)
+    return list.filter(test).length;
   }
   function refreshTiles() {
     if (!dt) return;
