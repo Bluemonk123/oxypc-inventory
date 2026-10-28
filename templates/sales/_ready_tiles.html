@@ -1,0 +1,86 @@
+{#- Ready for Sale tiles (2026-10-28), shared by Ready for Sale - Tags
+    (/sales/ready) and Ready for Sale - Lots (/sales/lots).
+
+    {% import "sales/_ready_tiles.html" as rt %}
+    {% call rt.tiles() %} ...tint tiles (rt.tint(...)) ... {% endcall %}
+    then {{ rt.script() }} once in the scripts block, and call
+    rfsSetTypes({laptop: n, ...}) / fill the data-* spans from the page's
+    own table.
+
+    Dark row: the six device types of the Dashboard / All Inventory tiles.
+    Medium size only (the size switch was removed 2026-10-28). -#}
+
+{% macro tiles(type_title='') %}
+{% set DARK_TYPES = [
+    ('laptop', 'Laptops', '#0d6efd', 'bi-laptop'),
+    ('desktop', 'Desktops', '#0F7A37', 'bi-pc-display'),
+    ('tft monitor', 'TFT Monitor', '#fd7e14', 'bi-display'),
+    ('tablet', 'Tablet', '#20c997', 'bi-tablet'),
+    ('mini pc', 'Mini PC', '#6f42c1', 'bi-cpu'),
+    ('server', 'Server', '#0aa2c0', 'bi-hdd-network')] %}
+<style>
+  .rfs-tile-head { font-size:.85rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
+                   color:var(--tc); position:relative; z-index:1; margin-top:.75rem; white-space:nowrap; }
+  .rfs-line { position:relative; z-index:1; white-space:nowrap; color:#343a40; }
+  .rfs-line b { color:var(--tc); }
+  .rfs-line + .rfs-line { margin-top:.2rem; }
+  a.rfs-link { color:inherit; text-decoration:none; display:block; height:100%; }
+  /* Hover shadow: global tile rule in static/css/app.css.
+     Space between the tint tiles and the tables below. */
+  #rfsTiles > .lt-tiles-row:last-child { margin-bottom:1.75rem; }
+  #rfsTiles .rfs-line { font-size:.84rem; }
+  .rfs-sep { margin:0 .6rem; color:#adb5bd; }
+  /* Counts in the tint tiles: bigger than the labels (2026-10-28). */
+  #rfsTiles .rfs-line b { font-size:1.2rem; font-weight:700; line-height:1.2; }
+  /* Dark tiles' names (Laptops, Desktops...): same size as the tint headings. */
+  #rfsTiles .lt-dark .lt-tile-label { font-size:.85rem; font-weight:700; }
+</style>
+<div id="rfsTiles">
+  <div class="lt-tiles-row lt-dark mb-2">
+    {% for key, label, bg, icon in DARK_TYPES %}
+    <div>
+      <div class="lt-tile h-100" style="--tc:{{ bg }}" title="{{ label }} {{ type_title }}">
+        <div class="lt-tile-count" data-rfs-type="{{ key }}">…</div>
+        <div class="lt-tile-label">{{ label }}</div>
+        <i class="bi {{ icon }} lt-tile-wm"></i>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  <div class="lt-tiles-row">
+    {{ caller() }}
+  </div>
+</div>
+{% endmacro %}
+
+{# One tint tile. lines: list of [(label, data-key), ...] per line, shown
+   "Label - N | Label - N"; each N is a <b data-rfs="key">. #}
+{% macro tint(head, color, icon, lines, href='', title='') %}
+<div>
+  {% if href %}<a href="{{ href }}" class="rfs-link" title="{{ title or head }}">{% endif %}
+  <div class="lt-tile h-100" style="--tc:{{ color }}"{% if title and not href %} title="{{ title }}"{% endif %}>
+    {% for line in lines %}
+    <div class="rfs-line">{% for label, key in line %}{% if not loop.first %}<span class="rfs-sep">|</span>{% endif %}{{ label }} - <b data-rfs="{{ key }}">…</b>{% endfor %}</div>
+    {% endfor %}
+    {# Heading under the counts (2026-10-28), like the dark tiles' names. #}
+    <div class="rfs-tile-head">{{ head }}</div>
+    <i class="bi {{ icon }} lt-tile-wm"></i>
+  </div>
+  {% if href %}</a>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro script() %}
+<script>
+// Fill the tiles: types = {laptop: n, ...} (lower-case device type), vals = {key: n}.
+function rfsFill(types, vals) {
+  var fmt = function (n) { return (n || 0).toLocaleString('en-IN'); };
+  document.querySelectorAll('#rfsTiles [data-rfs-type]').forEach(function (el) {
+    el.textContent = fmt((types || {})[el.getAttribute('data-rfs-type')]);
+  });
+  document.querySelectorAll('#rfsTiles [data-rfs]').forEach(function (el) {
+    el.textContent = fmt((vals || {})[el.getAttribute('data-rfs')]);
+  });
+}
+</script>
+{% endmacro %}

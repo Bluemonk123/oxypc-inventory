@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% import "_multiselect_filter.html" as ms %}
-{% from "sales/_ready_macros.html" import touch_select, model_summary_table with context %}
+{% import "sales/_ready_tiles.html" as rt %}
+{% from "sales/_ready_macros.html" import touch_select, avail_select, model_summary_table with context %}
 {% block title %}Ready for Sale - Lots — OxyPC{% endblock %}
 {% block page_title %}Ready for Sale - Lots{% endblock %}
 {% block content %}
@@ -31,6 +32,22 @@
   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
 </form>
 
+{# Tiles (2026-10-28) — sales/_ready_tiles.html: six device types (tags),
+   AS-IS STOCK (lots: Available = not assigned, Blocked = assigned) and
+   GRADES > AS-IS LOTS (the lots' tags by grade), all counted from the As-Is
+   Lot table below — its filters and its search box. #}
+{% call rt.tiles('tags in the As-Is Lot table') %}
+  {{ rt.tint('As-Is Stock', '#6f42c1', 'bi-boxes',
+             [[('Total Quantity', 'lots')], [('Available', 'open'), ('Blocked', 'blocked')]],
+             href='/sales/lots', title='Ready for Sale - As-Is Lots') }}
+  {{ rt.tint('Grades > As-Is Lots', '#fd7e14', 'bi-award',
+             [[('A', 'g_A'), ('B', 'g_B')], [('C', 'g_C'), ('D', 'g_D')]],
+             title="Grades of the tags in these As-Is lots") }}
+  {{ rt.tint('Touch Types', '#0aa2c0', 'bi-hand-index',
+             [[('Normal', 'non_touch')], [('Touch', 'touch')]],
+             title='Normal = non-touch tags in these lots; Touch = tags Final QC marked Touch') }}
+{% endcall %}
+
 <ul class="nav nav-tabs ready-tabs" id="asIsTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#asIsLotPane" type="button" role="tab">
@@ -49,9 +66,14 @@
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>As-Is Lot</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+      {# Same filters and order as Ready for Sale - Tags (2026-10-28):
+         Entity, Device Types, Grades, Touch Type, Availability. #}
       {{ ms.multiselect_inline('al_entity', 'Entity', entity_options, f.al_entity) }}
-      {{ touch_select('alTouch', f.al_touch) }}
       {{ ms.multiselect_inline('al_dtype', 'Device Types', device_type_options, f.al_dtype) }}
+      {{ ms.multiselect_inline('al_grade', 'Grades', summary_grade_options, f.al_grade) }}
+      {{ touch_select('alTouch', f.al_touch) }}
+      {{ avail_select('alAvail', f.al_avail) }}
+      {% if can(current_user, 'sales', 'export') %}<button type="button" id="alExportBtn" class="btn btn-primary btn-sm text-nowrap" title="Export the tags of the rows shown (filters and search) — All Inventory format"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>{% endif %}
       </div>
     </div>
     <div class="card-body px-0 pb-0">
@@ -71,7 +93,10 @@
       </thead>
       <tbody>
         {% for r in as_is_lots %}
-        <tr>
+        <tr data-rfs-dtypes='{{ r.device_type_breakdown | tojson }}' data-rfs-grades='{{ r.grade_counts | tojson }}'
+            data-rfs-assigned="{{ '1' if r.assigned_to_user_id else '' }}"
+            data-rfs-touch="{{ r.touch_count }}" data-rfs-nontouch="{{ r.non_touch_count }}"
+            data-barcodes='{{ r.barcodes | tojson }}'>
           <td class="font-monospace">{{ r.sub_lot_number }}</td>
           <td class="font-monospace">{{ r.lot_number or '—' }}</td>
           <td>
@@ -162,6 +187,7 @@
       {{ touch_select('amTouch', f.am_touch) }}
       {{ ms.multiselect_inline('am_grade', 'Grades', summary_grade_options, f.am_grade) }}
       {{ ms.multiselect_inline('am_dtype', 'Device Types', device_type_options, f.am_dtype) }}
+      {% if can(current_user, 'sales', 'export') %}<button type="button" id="amExportBtn" class="btn btn-primary btn-sm text-nowrap" title="Export the tags of the rows shown (filters and search) — All Inventory format"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>{% endif %}
       </div>
     </div>
     <div class="card-body px-0 pb-0">
@@ -332,6 +358,7 @@
 </form>
 {% endblock %}
 {% block scripts %}
+{{ rt.script() }}
 <script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
 <script>
 // requestSubmit() fires the submit event, so the global processing bar runs
@@ -362,6 +389,7 @@ function readyPageUrl(){
   function v(id){ return (document.getElementById(id) || {}).value || ''; }
   [['am_grade','ms_val_am_grade'],
    ['al_touch','alTouch'],['al_entity','ms_val_al_entity'],['al_dtype','ms_val_al_dtype'],
+   ['al_grade','ms_val_al_grade'],['al_avail','alAvail'],
    ['am_touch','amTouch'],['am_entity','ms_val_am_entity'],['am_dtype','ms_val_am_dtype']].forEach(function(x){
     if (v(x[1])) p.set(x[0], v(x[1]));
   });
@@ -393,10 +421,34 @@ function buildAsIsLotTable(){
       { visible: false, targets: [{% if can(current_user, 'sales', 'pricing') %}11, 12, 13, 14, 15, 16{% else %}10, 11, 12, 13, 14, 15{% endif %}] },
       {# Max Selling Price hidden (2026-10-27). #}
       { visible: false, targets: [{{ 8 if can(current_user, 'sales', 'pricing') else 7 }}] },
+      {# Total Quantities hidden (2026-10-28). #}
+      { visible: false, targets: [4] },
     ],
   });
   $(dtAsIsLot.table().container()).find('input[type="search"]')
     .attr('placeholder', 'Search Lot / Sub-Lot / Tag / Model / CPU / RAM / Storage…');
+  // Tiles (2026-10-28): recount from the rows the table shows (filters + search).
+  dtAsIsLot.on('draw', rfsLotTiles);
+  rfsLotTiles();
+}
+function rfsLotTiles() {
+  if (!dtAsIsLot || !window.rfsFill) return;
+  var types = {}, vals = { lots: 0, open: 0, blocked: 0, g_A: 0, g_B: 0, g_C: 0, g_D: 0, touch: 0, non_touch: 0 };
+  dtAsIsLot.rows({ search: 'applied' }).nodes().each(function (tr) {
+    vals.lots++;
+    vals[tr.getAttribute('data-rfs-assigned') ? 'blocked' : 'open']++;
+    vals.touch += +(tr.getAttribute('data-rfs-touch') || 0);
+    vals.non_touch += +(tr.getAttribute('data-rfs-nontouch') || 0);
+    try {
+      JSON.parse(tr.getAttribute('data-rfs-dtypes') || '[]').forEach(function (d) {
+        var k = String(d.name || '').trim().toLowerCase();
+        types[k] = (types[k] || 0) + (d.count || 0);
+      });
+      var gr = JSON.parse(tr.getAttribute('data-rfs-grades') || '{}');
+      ['A', 'B', 'C', 'D'].forEach(function (g) { vals['g_' + g] += gr[g] || 0; });
+    } catch (e) {}
+  });
+  rfsFill(types, vals);
 }
 function wireAsIsLotButtons(){
   document.querySelectorAll('.as-is-lot-edit-btn').forEach(function(btn){
@@ -619,7 +671,7 @@ function refreshSummaryTable(id, badgeId){
 }
 // Per-tab filters: re-fetch this page and swap that one table's rows.
 [['amTouch','ms_val_am_entity','ms_val_am_dtype', function(){ return refreshSummaryTable('asIsModelSummaryTable', 'amCountBadge'); }, 'ms_val_am_grade'],
- ['alTouch','ms_val_al_entity','ms_val_al_dtype', function(){ return refreshAsIsLotTable(); }]].forEach(function(x){
+ ['alTouch','ms_val_al_entity','ms_val_al_dtype', function(){ return refreshAsIsLotTable(); }, 'ms_val_al_grade']].forEach(function(x){
   var sel = document.getElementById(x[0]);
   if (sel) sel.addEventListener('change', x[3]);
   [x[1], x[2], x[4]].forEach(function(id){
@@ -627,6 +679,32 @@ function refreshSummaryTable(id, badgeId){
     if (el) el.addEventListener('ms:change', x[3]);
   });
 });
+// As-Is Lot Availability (2026-10-28): reloads the lot rows like the others.
+(function(){ var el = document.getElementById('alAvail');
+  if (el) el.addEventListener('change', function(){ return refreshAsIsLotTable(); }); })();
+// Export (2026-10-28), both tabs: the tags of every row the table shows
+// (its filters and search, all pages), in the All Inventory export format —
+// same as Ready for Sale - Tags' Export.
+function postTagExport(tags) {
+  if (!tags.length) { alert('No tags match the current filters.'); return; }
+  var f = document.getElementById('msExportForm');
+  $(f).find('input[name="barcodes"]').remove();
+  tags.forEach(function (bc) { $('<input>').attr({ type: 'hidden', name: 'barcodes', value: bc }).appendTo(f); });
+  f.submit();
+}
+function tableTags(selector, rowAttrSel) {
+  var tags = [], rows;
+  try { rows = $(selector).DataTable().rows({ search: 'applied' }).nodes(); }
+  catch (e) { rows = document.querySelectorAll(selector + ' tbody tr'); }
+  $(rows).each(function () {
+    var el = rowAttrSel ? $(this).find(rowAttrSel)[0] : this;
+    if (!el) return;
+    try { tags = tags.concat(JSON.parse(el.getAttribute('data-barcodes') || '[]')); } catch (e) {}
+  });
+  return Array.from(new Set(tags));
+}
+$(document).on('click', '#alExportBtn', function () { postTagExport(tableTags('#asIsLotTable')); });
+$(document).on('click', '#amExportBtn', function () { postTagExport(tableTags('#asIsModelSummaryTable', '.ms-export-btn')); });
 // Model Summary row export: that row's tags in the All Inventory export format.
 $(document).on('click', '.ms-export-btn', function () {
   var tags = [];

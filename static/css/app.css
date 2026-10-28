@@ -875,7 +875,9 @@ table.gtable tbody td .gtable-clamp2 {
 /* Light tint tile cards (2026-10-27): shared copy of the Spare Parts tiles
    (Design System 05) for pages without their own inline copy — Sourcing
    Deals, Buyer Deals. Set --tc on .lt-tile for the colour. */
-.lt-tiles-row{display:flex; flex-wrap:nowrap; gap:.75rem; overflow-x:auto; padding:4px 6px 10px; margin-bottom:1rem}
+/* Wraps instead of scrolling sideways (2026-10-28): a scrolling row clipped
+   the tiles' hover shadow. */
+.lt-tiles-row{display:flex; flex-wrap:wrap; gap:.75rem; overflow:visible; padding:4px 6px 10px; margin-bottom:1rem}
 .lt-tiles-row > div{flex:1 1 0; min-width:130px}
 .lt-tile{position:relative; overflow:hidden; border-radius:10px; padding:1.1rem 1rem; min-height:96px;
          background:color-mix(in srgb, var(--tc) 8%, #fff) !important;
@@ -913,5 +915,13 @@ table.gtable tbody td .gtable-clamp2 {
    label — e.g. "1463 active". */
 .lt-tile-note{font-size:.72rem; margin-top:.35rem; position:relative; z-index:1; color:#6c757d}
 .lt-tiles-row.lt-dark .lt-tile-note{color:rgba(255,255,255,.8)}
-.lt-tiles-row a > .lt-tile{transition:transform .15s, box-shadow .15s}
-.lt-tiles-row a:hover > .lt-tile{transform:translateY(-2px)}
+/* Tile hover (2026-10-28), every tile design — tint and dark lt-tile, and
+   the pages' own tiles (WorkID Status / Product Master pm-tile, Dashboard
+   dash-tile, Inventory Manager inv-tile, Production Manager prod-tile,
+   Hardware hw-tile): the tile lifts with a dark, wide shadow, and a 6px
+   bottom border appears inside the tile in the Design System's dark body
+   text colour (#212529, same as --sidebar-bg). Inset, so the tile's size
+   and the layout never move. */
+.lt-tile, .pm-tile, .dash-tile, .inv-tile, .prod-tile, .hw-tile{transition:transform .15s, box-shadow .15s}
+.lt-tile:hover, .pm-tile:hover, .dash-tile:hover, .inv-tile:hover, .prod-tile:hover, .hw-tile:hover{
+  box-shadow:0 10px 30px 4px rgba(0,0,0,.30), inset 0 -6px 0 #212529 !important; transform:translateY(-3px)}

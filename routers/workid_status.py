@@ -1340,6 +1340,17 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     else:
         stage_tiles = _stage_tile_counts_from_items(items)
 
+    # Repeat Tags (2026-10-28): Tag Numbers on more than one row (WorkID) of
+    # this view — over every matching WorkID when the table is capped.
+    if main_truncated:
+        rq = _sql_filtered(full_stmt, stage_vals, cf, ct, bool(exclude_admin), _code_stage).subquery()
+        rep = select(rq.c.bc).where(rq.c.bc.isnot(None)).group_by(rq.c.bc).having(func.count() > 1).subquery()
+        repeat_tags = (await db.execute(select(func.count()).select_from(rep))).scalar() or 0
+    else:
+        from collections import Counter
+        _bc = Counter(it["barcode"] for it in items if it.get("barcode") and it["barcode"] != "—")
+        repeat_tags = sum(1 for n in _bc.values() if n > 1)
+
     # Distinct engineers for the filter dropdown.
     #
     # Previously admin-only, which left an attendance-group manager — who can
@@ -1390,6 +1401,7 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         "f_scrap_type": scrap_type,
         "highlight": highlight,
         "main_truncated": main_truncated, "main_total": main_total,
+        "repeat_tags": repeat_tags,
         "main_cap": MAIN_ROW_CAP,
     })
 

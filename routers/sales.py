@@ -331,6 +331,27 @@ async def ready_list_data(
     else:
         filtered = total
 
+    # Tiles above the page (2026-10-28): the six device-type tiles,
+    # INVENTORY STOCK (total / available / blocked) and GRADES > TAGS, all
+    # counted from exactly the tags this table holds (filters + search).
+    held = or_(Device.is_blocked.is_(True), Device.assigned_to_user_id.isnot(None))
+    is_touch = func.coalesce(Device.touch_type == "touch", False)   # same rule as _touch_clause
+    tiles = {"types": {}, "total": 0, "open": 0, "blocked": 0, "grades": {}, "touch": 0, "non_touch": 0}
+    for dtype, is_held, grade, touch, n in (await db.execute(
+        select(_device_type_expr, held, Device.grade, is_touch, func.count())
+        .select_from(Device).join(Lot, Device.lot_id == Lot.id)
+        .where(Device.current_stage == DeviceStage.ready_to_sale, Device.is_trashed == False,
+               not_as_is, *entity_filter, *search_filters)
+        .group_by(_device_type_expr, held, Device.grade, is_touch)
+    )).all():
+        k = (dtype or "").strip().lower()
+        tiles["types"][k] = tiles["types"].get(k, 0) + n
+        tiles["total"] += n
+        tiles["blocked" if is_held else "open"] += n
+        g = getattr(grade, "value", grade) or ""
+        tiles["grades"][g] = tiles["grades"].get(g, 0) + n
+        tiles["touch" if touch else "non_touch"] += n       # TOUCH TYPES tile
+
     col_map = {1: Device.barcode, 2: Lot.lot_number, 4: Device.brand, 5: Device.model, 8: Device.grade}
     try:
         order_col = int(request.query_params.get("order[0][column]", 0))
@@ -517,7 +538,7 @@ async def ready_list_data(
         cells.append(f'<div class="d-flex gap-1 flex-nowrap text-nowrap">{action}</div>')
         data.append(cells)
 
-    return {"draw": draw, "recordsTotal": total, "recordsFiltered": filtered, "data": data}
+    return {"draw": draw, "recordsTotal": total, "recordsFiltered": filtered, "data": data, "tiles": tiles}
 
 
 @router.get("/sales/ready", response_class=HTMLResponse)
@@ -549,6 +570,10 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
     ms_dtypes = _entity_values(qp.get("ms_dtype", ""))
     ms_avail = qp.get("ms_avail", "")     # Availability: open / blocked (2026-10-22)
     al_dtypes = _entity_values(qp.get("al_dtype", ""))
+    # As-Is Lot Grades + Availability filters (2026-10-28) — same as the Tag
+    # table's: a lot shows only its tags that pass, like the other filters.
+    al_grades = set(_entity_values(qp.get("al_grade", "")))
+    al_avail = qp.get("al_avail", "")
     am_dtypes = _entity_values(qp.get("am_dtype", ""))
     result = await db.execute(
         select(Device, Lot.lot_number, Lot.buying_price, Lot.qty, Lot.selling_price)
@@ -703,9 +728,11 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
             continue
         if not _row_passes(device, al_touch, al_entities, al_dtypes):
             continue
+        if not _grade_passes(device, al_grades) or not _avail_passes(device, al_avail):
+            continue
         key = (device.lot_id, device.sub_lot_number)
         g = as_is_groups.setdefault(key, {
-            "lot_number": lot_number, "device_types": Counter(),
+            "lot_number": lot_number, "device_types": Counter(), "grades": Counter(), "touch": 0, "non_touch": 0,
             "models": Counter(), "model_configs": Counter(),
             "cpus": set(), "rams": set(), "storages": set(),
             "availability": 0, "barcodes": [], "unit_prices": [], "max_prices": [],
@@ -715,6 +742,8 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
         # "Desktop"/"TFT"/...) is populated far more often and means the same
         # thing — same fallback templates/sales/detail.html already uses.
         g["device_types"][device.device_type or device.sub_category or "—"] += 1
+        g["grades"][getattr(device.grade, "value", device.grade) or ""] += 1
+        g["touch" if device.touch_type == "touch" else "non_touch"] += 1
         if device.model:
             g["models"][device.model] += 1
         # Model Names popup: one line per configuration + grade.
@@ -795,6 +824,9 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
                 "lot_id": str(lot_id), "lot_number": g["lot_number"],
                 "sub_lot_number": sub_lot,
                 "device_type_breakdown": device_type_breakdown,
+                # Grade counts of the lot's ready tags — Lots page tiles (2026-10-28).
+                "grade_counts": dict(g["grades"]),
+                "touch_count": g["touch"], "non_touch_count": g["non_touch"],
                 "device_type_count": len(device_type_breakdown),
                 "model_breakdown": model_breakdown,
                 "model_details": model_details,
@@ -828,6 +860,7 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
         "model_summary_as_is": model_summary_as_is,
         "f": {"ms_touch": ms_touch, "ms_avail": ms_avail, "ms_entity": qp.get("ms_entity", ""),
               "al_touch": al_touch, "al_entity": qp.get("al_entity", ""),
+              "al_grade": qp.get("al_grade", ""), "al_avail": al_avail,
               "am_touch": am_touch, "am_entity": qp.get("am_entity", ""),
               "ms_dtype": qp.get("ms_dtype", ""), "al_dtype": qp.get("al_dtype", ""),
               "am_dtype": qp.get("am_dtype", ""),

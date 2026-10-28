@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_multiselect_filter.html" as ms %}
+{% import "sales/_ready_tiles.html" as rt %}
 {% block title %}Ready to Sale — OxyPC{% endblock %}
 {% block page_title %}Ready to Sale{% endblock %}
 {% block content %}
@@ -67,6 +68,21 @@
 <form id="msExportForm" method="post" action="/devices/export" class="d-none">
   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
 </form>
+{# ── Tiles (2026-10-28) ── sales/_ready_tiles.html. Six device types +
+   INVENTORY STOCK + GRADES > TAGS, counted from the Tag table below (its
+   filters and search), refreshed on every draw from /sales/ready/data
+   "tiles". AS-IS STOCK / GRADES > AS-IS LOTS live on Ready for Sale - Lots. #}
+{% call rt.tiles('in the Ready for Sale Tags table') %}
+  {{ rt.tint('Inventory Stock', '#0d6efd', 'bi-box-seam',
+             [[('Total Quantity', 'total')], [('Available', 'open'), ('Blocked', 'blocked')]],
+             href='/sales/ready', title='Ready for Sale - Tags') }}
+  {{ rt.tint('Grades > Tags', '#0F7A37', 'bi-award',
+             [[('A', 'g_A'), ('B', 'g_B')], [('C', 'g_C'), ('D', 'g_D')]]) }}
+  {{ rt.tint('Touch Types', '#0aa2c0', 'bi-hand-index',
+             [[('Normal', 'non_touch')], [('Touch', 'touch')]],
+             title='Normal = non-touch tags; Touch = tags Final QC marked Touch') }}
+{% endcall %}
+
 <ul class="nav nav-tabs ready-tabs" id="readyTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#readyTagsPane" type="button" role="tab">
@@ -373,6 +389,7 @@
 {% block scripts %}
 <script src="/static/js/tag-scan-autocheck.js?v={{ ASSET_VERSION }}"></script>
 <script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
+{{ rt.script() }}
 <script>
 var readyDt;
 // Selected barcodes persist here rather than being read off checkbox state in
@@ -382,6 +399,15 @@ var readyDt;
 // Request reach devices on pages the user never viewed. A Set survives every
 // page change and redraw; drawCallback re-checks boxes against it below.
 var readySelected = new Set();
+
+// Tiles (2026-10-28): filled from the Tag table's own feed on every draw, so
+// they always count the tags the table holds (filters + search).
+function rfsTiles(t) {
+  if (!t || !window.rfsFill) return;
+  var vals = { total: t.total, open: t.open, blocked: t.blocked, touch: t.touch, non_touch: t.non_touch };
+  ['A', 'B', 'C', 'D'].forEach(function (g) { vals['g_' + g] = (t.grades || {})[g]; });
+  rfsFill(t.types, vals);
+}
 
 $(document).ready(function(){
   // Global Table (static/js/global-table.js): standard toolbar, pager,
@@ -402,7 +428,7 @@ $(document).ready(function(){
         d.availability = (document.getElementById('readyAvail') || {}).value || '';
         d.grade = (document.getElementById('ms_val_grade') || {}).value || '';
       },
-      dataSrc: function (json) { return json.data; },
+      dataSrc: function (json) { rfsTiles(json.tiles); return json.data; },
     },
     // Warranty column index shifts by 1 depending on whether Unit Cost
     // (pricing-gated) rendered before it — computed server-side since Jinja

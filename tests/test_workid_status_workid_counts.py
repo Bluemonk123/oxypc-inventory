@@ -91,3 +91,17 @@ def test_default_is_today_and_cleared_dates_mean_all(app_client, make_user):  # 
     assert 'name="work_from" value=""' in html
     html = app_client.get("/workid-status?highlight=NOPE").text              # a link to one WorkID
     assert 'name="work_from" value=""' in html
+
+
+def test_repeat_tags_count(app_client, make_user):  # noqa: F811
+    """Repeat Tags (2026-10-28): Tag Numbers on more than one row."""
+    from collections import Counter
+    username, password = make_user("admin")
+    _login(app_client, username, password)
+    html = app_client.get("/workid-status?work_from=&work_to=").text
+    rep = int(re.search(r"var REPEAT_TAGS = (\d+);", html).group(1))
+    assert "Repeat Tags - " in html and "wid-repeat-badge" in html
+    if "alert-info" not in html:
+        rows = json.loads(re.search(r'id="workidRows">(.*?)</script>', html, re.S).group(1))
+        c = Counter(r["b"] for r in rows if r["b"] and r["b"] != "—")
+        assert rep == sum(1 for n in c.values() if n > 1)

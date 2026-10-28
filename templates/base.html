@@ -159,14 +159,6 @@
         <i class="bi bi-archive me-2"></i> {{ sidebar_label('stock', 'Stock Inwards') }}
       </a></li>
       {% endif %}
-      {# Product Scrapped sits directly under Inventory Manager (the 'stock'
-         page) per the requested nav order, followed by Inventory Request and
-         Model Requested. #}
-      {% if has_perm(role,'scrap_products','enable') and not module_hidden('scrap_products') %}
-      <li><a href="/scrap-products" class="nav-link {% if '/scrap-products' in request.url.path %}active{% endif %}">
-        <i class="bi bi-trash3 me-2"></i> {{ sidebar_label('scrap_products', 'Scrap Products') }}
-      </a></li>
-      {% endif %}
       {% if has_perm(role,'inventory_requests','enable') and not module_hidden('inventory_requests') %}
       <li><a href="/inventory-requests" class="nav-link {% if '/inventory-requests' in request.url.path %}active{% endif %}">
         <i class="bi bi-inboxes me-2"></i> {{ sidebar_label('inventory_requests', 'Inventory Request') }}
@@ -190,6 +182,12 @@
       {% if has_perm(role,'part_estimation','enable') and not module_hidden('part_estimation') %}
       <li><a href="/part-estimation" class="nav-link {% if '/part-estimation' in request.url.path %}active{% endif %}">
         <i class="bi bi-calculator me-2"></i> {{ sidebar_label('part_estimation', 'Part Estimation') }}
+      </a></li>
+      {% endif %}
+      {# Tags Scrapped sits directly above Floor Movement (Move Device) — 2026-10-28. #}
+      {% if has_perm(role,'scrap_products','enable') and not module_hidden('scrap_products') %}
+      <li><a href="/scrap-products" class="nav-link {% if '/scrap-products' in request.url.path %}active{% endif %}">
+        <i class="bi bi-trash3 me-2"></i> {{ sidebar_label('scrap_products', 'Scrap Products') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'transfers','enable') and not module_hidden('transfers') %}
@@ -572,15 +570,15 @@
         <i class="bi bi-lock me-2"></i> {{ sidebar_label('block_tags', 'Block Tags') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'credit_note','enable') and not module_hidden('credit_note') %}
-      <li><a href="/credit-note" class="nav-link {% if '/credit-note' in request.url.path %}active{% endif %}">
-        <i class="bi bi-receipt-cutoff me-2"></i> {{ sidebar_label('credit_note', 'Credit Note') }}
-      </a></li>
-      {% endif %}
-      {# Rentals (moved here 2026-10-24: just before Return from Customer); off by default for every role. #}
+      {# Create Rentals sits directly above Credit Note (2026-10-28); off by default for every role. #}
       {% if has_perm(role,'rentals','enable') and not module_hidden('rentals') %}
       <li><a href="/rentals" class="nav-link {% if request.url.path.startswith('/rentals') %}active{% endif %}">
         <i class="bi bi-calendar2-range me-2"></i> {{ sidebar_label('rentals', 'Rentals') }}
+      </a></li>
+      {% endif %}
+      {% if has_perm(role,'credit_note','enable') and not module_hidden('credit_note') %}
+      <li><a href="/credit-note" class="nav-link {% if '/credit-note' in request.url.path %}active{% endif %}">
+        <i class="bi bi-receipt-cutoff me-2"></i> {{ sidebar_label('credit_note', 'Credit Note') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'returns','enable') and not module_hidden('returns') %}

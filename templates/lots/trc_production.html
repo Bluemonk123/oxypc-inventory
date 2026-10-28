@@ -7,7 +7,7 @@
    Dashboard's Stage Pipeline row, scaled down for card content instead of
    pipeline tiles. #}
 <style>
-  .prod-tiles-row{flex-wrap:nowrap; overflow-x:auto; padding:4px 6px 10px}
+  .prod-tiles-row{flex-wrap:wrap; overflow:visible; padding:4px 6px 10px}  /* wrap, not scroll: a scrolling row clipped the hover shadow (2026-10-28) */
   .prod-tiles-row > div{min-width:118px}
   /* Summary tiles (option B): very light tint of the tile colour, number in
      that colour, faint matching watermark icon. --tc is set per tile. */

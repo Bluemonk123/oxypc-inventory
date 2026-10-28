@@ -204,6 +204,21 @@ $(document).ready(function(){
   var rows = JSON.parse(document.getElementById('workidRows').textContent || '[]');
   var HL = {{ highlight | tojson }};
   var MAIN_TOTAL = {{ (main_total if main_truncated else 0) | tojson }};
+  var REPEAT_TAGS = {{ (repeat_tags | default(0)) | tojson }};
+  var repeatOnly = false;
+  function repeatCount(list) {
+    var c = {}, n = 0;
+    list.forEach(function (r) { if (r.b && r.b !== '\u2014') c[r.b] = (c[r.b] || 0) + 1; });
+    for (var k in c) if (c[k] > 1) n++;
+    return n;
+  }
+  // Tag Numbers on more than one LOADED row — for the Repeat Tags filter.
+  var repeatSet = (function () {
+    var c = {}, s = {};
+    rows.forEach(function (r) { if (r.b && r.b !== '\u2014') c[r.b] = (c[r.b] || 0) + 1; });
+    for (var k in c) if (c[k] > 1) s[k] = 1;
+    return s;
+  })();
   function esc(v) {
     return v == null ? '' : String(v).replace(/[&<>"']/g, function (c) {
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
@@ -300,10 +315,18 @@ $(document).ready(function(){
     // the Assigned WorkIDs tile) instead of the loaded 3,000. A table search
     // or tile click shows the count of the rows it leaves, as before.
     infoCallback: function (settings, start, end, max, total) {
-      var n = (MAIN_TOTAL && total === max) ? MAIN_TOTAL : total;
-      var tip = (MAIN_TOTAL && total === max)
-        ? ' title="' + MAIN_TOTAL.toLocaleString('en-IN') + ' WorkIDs match — the table holds the latest ' + max.toLocaleString('en-IN') + '"' : '';
-      return '<span class="badge text-bg-warning gtable-count-badge"' + tip + '>' + n.toLocaleString('en-IN') + '</span>';
+      var full = MAIN_TOTAL && total === max;
+      var n = full ? MAIN_TOTAL : total;
+      var tip = full
+        ? ' title="' + MAIN_TOTAL.toLocaleString('en-IN') + ' WorkIDs match \u2014 the table holds the latest ' + max.toLocaleString('en-IN') + '"' : '';
+      // Repeat Tags (2026-10-28): Tag Numbers on more than one row. The
+      // server's count (all matching WorkIDs) with no table search / tile;
+      // otherwise counted from the rows left. Click: show only those rows.
+      var rep = (total === max) ? REPEAT_TAGS : repeatCount(new $.fn.dataTable.Api(settings).rows({ search: 'applied' }).data().toArray());
+      return '<span class="badge text-bg-warning gtable-count-badge"' + tip + '>' + n.toLocaleString('en-IN') + '</span>' +
+             ' <span class="badge ' + (repeatOnly ? 'text-bg-danger' : 'text-bg-light border text-danger') + ' wid-repeat-badge" role="button" ' +
+             'title="Tag Numbers with more than one WorkID here \u2014 click to show only their rows (click again to clear)">' +
+             'Repeat Tags - ' + rep.toLocaleString('en-IN') + '</span>';
     }
   });
 
@@ -361,9 +384,10 @@ $(document).ready(function(){
     });
   }
   $.fn.dataTable.ext.search.push(function (settings, data, idx) {
-    if (settings.nTable.id !== 'workidTable' || !activeTile) return true;
+    if (settings.nTable.id !== 'workidTable') return true;
     var r = settings.aoData[idx]._aData;
-    return TILE_TEST[activeTile](r);
+    if (repeatOnly && !repeatSet[r.b]) return false;
+    return !activeTile || TILE_TEST[activeTile](r);
   });
   function setTile(key) {
     activeTile = key;
@@ -393,6 +417,10 @@ $(document).ready(function(){
     });
   });
   if (dt) dt.on('search.dt', function () { setTimeout(refreshTiles, 0); });
+  $(document).on('click', '.wid-repeat-badge', function () {
+    repeatOnly = !repeatOnly;
+    if (dt) dt.draw();
+  });
   var startTile = new URLSearchParams(window.location.search).get('tile');
   if (startTile && TILE_TEST[startTile]) setTile(startTile);
 
