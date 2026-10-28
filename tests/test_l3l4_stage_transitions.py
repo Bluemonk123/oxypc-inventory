@@ -172,17 +172,64 @@ def test_l3l4_scrap_moves_device_back_to_l1_so_back_to_inventory_shows(app_clien
         })
         assert _device_stage(device_id) == "l3"
 
+        # Scrap Reason (2026-10-28) is required and must be a Master Data
+        # "repair_scrap_reason" value; Notes are optional.
+        reason = f"IT Reason {suffix}"
+        _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from database import AsyncSessionLocal
+from models.master import MasterData
+async def main():
+    async with AsyncSessionLocal() as db:
+        db.add(MasterData(category="repair_scrap_reason", value="{reason}", display_order=999))
+        await db.commit()
+asyncio.run(main())
+""")
+        html = app_client.get("/repair/l3l4", follow_redirects=True).text
+        assert 'name="scrap_reason"' in html and 'name="scrap_notes"' in html
+
         r = app_client.post("/repair/l3l4-scrap", data={
             "csrf_token": csrf, "device_id": device_id, "scrap_type": "Normal Scrap",
         }, follow_redirects=False)
+        assert r.status_code == 302 and "error=" in r.headers["location"]
+        assert _device_stage(device_id) == "l3"            # nothing done without a reason
+
+        r = app_client.post("/repair/l3l4-scrap", data={
+            "csrf_token": csrf, "device_id": device_id, "scrap_type": "Normal Scrap",
+            "scrap_reason": reason, "scrap_notes": "board  cracked",
+        }, follow_redirects=False)
         assert r.status_code == 302, r.text
+        assert "error=" not in r.headers["location"]
 
         assert _device_stage(device_id) == "l1"
         html = app_client.get("/repair/l1", follow_redirects=True).text
         row = html.split(f'data-device-id="{device_id}"')[1].split("</tr>")[0]
         assert "Back to Inventory" in row
+        note = _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        print((await db.execute(text("select notes from stage_movements where device_id = :d and notes like 'L3/L4 Normal Scrap%'"), {{"d": "{device_id}"}})).scalar())
+asyncio.run(main())
+""")
+        assert note == f"L3/L4 Normal Scrap — returned to L1/L2 — Reason: {reason} — Notes: board cracked"
     finally:
         _cleanup(barcode)
+        _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("delete from master_data where category = 'repair_scrap_reason' and value like 'IT Reason %'"))
+        await db.commit()
+asyncio.run(main())
+""")
 
 
 def test_request_l3l4_writes_stage_movement_visible_in_asset_history(app_client, make_user):  # noqa: F811

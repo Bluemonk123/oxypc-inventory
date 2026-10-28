@@ -991,15 +991,26 @@ async def l3l4_scrap(
     request: Request,
     device_id: str = Form(...),
     scrap_type: str = Form(...),
+    scrap_reason: str = Form(""),
+    scrap_notes: str = Form(""),
     csrf_token: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     if scrap_type not in ("Normal Scrap", "Replacement Scrap"):
         raise HTTPException(400, "Invalid scrap type")
+    # Scrap Reason (2026-10-28): from Master Data "Repair L3: Scrap Reason"
+    # (repair_scrap_reason), required; Notes optional. Kept in the Asset
+    # History note and the audit log (no new column).
+    from utils.master_data import master_values
+    scrap_reason = (scrap_reason or "").strip()
+    scrap_notes = " ".join((scrap_notes or "").split())[:500]
+    if scrap_reason not in await master_values(db, "repair_scrap_reason"):
+        return RedirectResponse(url="/repair/l3l4?error=Choose+a+Scrap+Reason", status_code=302)
     device = (await db.execute(select(Device).where(Device.id == device_id))).scalar_one_or_none()
     if not device:
         raise HTTPException(404, "Device not found")
+    detail = f" — Reason: {scrap_reason}" + (f" — Notes: {scrap_notes}" if scrap_notes else "")
     from sqlalchemy import update as sa_update
     await db.execute(
         sa_update(WorkOrder)
@@ -1017,7 +1028,8 @@ async def l3l4_scrap(
     device.current_stage = DeviceStage.l1
     db.add(StageMovement(device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.l1,
                          moved_by=current_user.username,
-                         notes=f"L3/L4 {scrap_type} — returned to L1/L2"))
+                         # Starts "L3/L4 <type>" — WorkID Status matches that prefix.
+                         notes=f"L3/L4 {scrap_type} — returned to L1/L2{detail}"))
     # Back at L1/L2: its L1/L2 WorkID normally stayed open while the tag was
     # away; if there is none (e.g. it reached L3/L4 by a Customise move), a
     # pending one opens so it can be picked (2026-10-27).
@@ -1025,7 +1037,7 @@ async def l3l4_scrap(
     await _open_for_stage(db, device, DeviceStage.l1, created_by=current_user.username)
     await audit(db, user=current_user, action="L3L4_SCRAP",
                 table_name="devices", record_id=str(device.id),
-                notes=f"{scrap_type} on {device.barcode}", request=request)
+                notes=f"{scrap_type} on {device.barcode}{detail}", request=request)
     await db.commit()
     return RedirectResponse(url="/repair/l3l4?success=Scrap+recorded", status_code=302)
 

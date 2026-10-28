@@ -78,3 +78,16 @@ def test_tiles_and_export_add_up_to_rows(app_client, make_user):  # noqa: F811
         parts = sum(last[hdr.index(k)] for k in ("Open WorkIDs", "Completed WorkIDs",
                                                  "Scrap WorkIDs", "Reassigned WorkIDs"))
         assert parts == n_tag_rows
+
+
+def test_default_is_today_and_cleared_dates_mean_all(app_client, make_user):  # noqa: F811
+    from utils.timezone import app_now
+    username, password = make_user("admin")
+    _login(app_client, username, password)
+    today = app_now().date().isoformat()
+    html = app_client.get("/workid-status").text
+    assert f'name="work_from" value="{today}"' in html and f'name="work_to" value="{today}"' in html
+    html = app_client.get("/workid-status?work_from=&work_to=").text      # cleared + Search
+    assert 'name="work_from" value=""' in html
+    html = app_client.get("/workid-status?highlight=NOPE").text              # a link to one WorkID
+    assert 'name="work_from" value=""' in html

@@ -181,6 +181,20 @@
           <input class="form-check-input" type="radio" name="scrap_type" value="Replacement Scrap" id="sc_repl">
           <label class="form-check-label" for="sc_repl">Replacement Scrap</label>
         </div>
+        {# Scrap Reason + Notes (2026-10-28): the reasons are Master Data >
+           Dropdown Configuration > Repair & QC > "Repair L3: Scrap Reason". #}
+        <div class="mt-3">
+          <label class="form-label small fw-semibold mb-1" for="sc_reason">Scrap Reason <span class="text-danger">*</span></label>
+          <select class="form-select form-select-sm" name="scrap_reason" id="sc_reason" required>
+            <option value="">Select reason…</option>
+            {% for s in master_options('repair_scrap_reason') %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="mt-2">
+          <label class="form-label small fw-semibold mb-1" for="sc_notes">Notes</label>
+          <textarea class="form-control form-control-sm" name="scrap_notes" id="sc_notes" rows="2" maxlength="500"
+                    placeholder="Optional"></textarea>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -296,6 +310,9 @@ $(document).ready(function(){
   $(document).on('click', '.scrap-btn', function(){
     document.getElementById('sc_device').value = this.dataset.device;
     document.getElementById('sc_barcode').textContent = this.dataset.barcode;
+    document.getElementById('sc_reason').value = '';      // fresh for each tag
+    document.getElementById('sc_notes').value = '';
+    document.getElementById('sc_normal').checked = true;
     scModal.show();
   });
 })();

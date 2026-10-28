@@ -48,6 +48,7 @@ was narrowed to exactly Tag Number / Lot Number / Make / Model / Engineer
 Name / Stage / Assigned Date / Completed Date; Lot Number is looked up once
 across every device appearing in `items`.
 """
+from bisect import bisect_left
 from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Request, Query
 from fastapi.responses import HTMLResponse, StreamingResponse, Response
@@ -623,38 +624,119 @@ async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, 
             "assigned_tags": r[7], "waiting_tags": r[8]}
 
 
+def _mv_from_stage_py(dev, completed_at):
+    """Python twin of _matched_from_stage_sq: From stage of the movement
+    nearest completed_at (ties: the earlier one), else the latest; L3/L4
+    request rows ignored. `dev` = _dev_moves(...) for the tag."""
+    times, mvs, undated = dev
+    if not times:
+        return undated[0].from_stage if undated else None
+    if completed_at is None:
+        return mvs[-1].from_stage
+    i = bisect_left(times, completed_at)
+    if i == 0:
+        return mvs[0].from_stage
+    if i == len(times):
+        return mvs[-1].from_stage
+    before, after = completed_at - times[i - 1], times[i] - completed_at
+    return (mvs[i - 1] if before <= after else mvs[i]).from_stage
+
+
+def _dev_moves(mvs):
+    """(sorted moved_at list, matching movements, undated movements) of one
+    tag's movements, without the L3/L4 request rows — for _mv_from_stage_py."""
+    dated = [m for m in mvs if m.moved_at is not None
+             and not (m.notes and m.notes.startswith("Requested to L3/L4"))]
+    dated.sort(key=lambda m: m.moved_at)
+    undated = [m for m in mvs if m.moved_at is None
+               and not (m.notes and m.notes.startswith("Requested to L3/L4"))]
+    return [m.moved_at for m in dated], dated, undated
+
+
+def _qc_next_stage_py(mvs, completed_at, from_value):
+    """Python twin of _qc_next_stage_sq."""
+    if completed_at is None:
+        return None
+    best, best_d = None, None
+    for m in mvs:
+        if m.moved_at is None or _sv(m.from_stage) != from_value or _sv(m.to_stage) == from_value:
+            continue
+        d = abs((m.moved_at - completed_at).total_seconds())
+        if d <= 600 and (best_d is None or d < best_d):
+            best, best_d = m, d
+    return best.to_stage if best is not None else None
+
+
+def _sv(stage):
+    return getattr(stage, "value", stage)
+
+
 async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, code_stage,
                                  w_range=None) -> dict:
     """Stage tiles over EVERY matching WorkID when the table is capped (more
-    than MAIN_ROW_CAP rows). Distinct tags, like the in-page count, grouped by
-    the table's own Stage column reproduced in SQL (_matched_from_stage_sq /
-    _displayed_stage_value), so a capped view counts exactly like the table
-    would if it held every row."""
+    than MAIN_ROW_CAP rows), grouped by the table's own Stage column.
+
+    Speed (2026-10-28): the WorkIDs come from SQL, but the per-WorkID Asset
+    History look-ups (matched From stage, Stress / Final QC next stage,
+    Cosmetic exit) run in Python over one load of the movements — the same
+    rules as _matched_from_stage_sq / _qc_next_stage_sq / _cosmetic_exit_sq.
+    As six correlated subqueries per WorkID they took ~45 s of a ~50 s page
+    over every WorkID."""
     q = _sql_filtered(full_stmt, stage_vals, cf, ct, exclude_admin, code_stage).with_only_columns(
         WorkOrder.stage.label("sg"), WorkOrder.status.label("st"), WorkOrder.work_id.label("wid"),
-        WorkOrder.barcode.label("bc"), WorkOrder.completed_at.isnot(None).label("done_at"),
-        _matched_from_stage_sq().label("fs"),
+        WorkOrder.barcode.label("bc"), WorkOrder.completed_at.label("ca"),
         _scrap_exists(*SCRAP_TYPES.values()).label("scr"),
         WorkOrder.assigned_user_id.label("au"),
         WorkOrder.assigned_username.label("an"),
-        WorkOrder.completed_at.label("ca"),
-        _qc_next_stage_sq("qc_check").label("nxt"),
-        _qc_next_stage_sq("final_qc").label("nxf"),
-        _cosmetic_exit_sq("to_stage").label("cx"),
-        _cosmetic_exit_sq("moved_at").label("cx_at"),
+        WorkOrder.device_id.label("did"),
+        func.coalesce(WorkOrder.assigned_at, WorkOrder.created_at).label("start"),
     )
     sub = q.subquery()
     rows = (await db.execute(
-        select(sub.c.sg, sub.c.st, sub.c.wid, sub.c.bc, sub.c.done_at, sub.c.fs, sub.c.scr, sub.c.au, sub.c.an,
-               sub.c.ca, sub.c.nxt, sub.c.nxf, sub.c.cx, sub.c.cx_at)
+        select(sub.c.sg, sub.c.st, sub.c.wid, sub.c.bc, sub.c.ca, sub.c.scr, sub.c.au, sub.c.an,
+               sub.c.did, sub.c.start)
     )).all()
+    mv_by_dev = {}
+    dev_ids = select(sub.c.did).distinct().scalar_subquery()
+    for m in (await db.execute(
+        select(StageMovement.device_id, StageMovement.from_stage, StageMovement.to_stage,
+               StageMovement.moved_at, StageMovement.notes)
+        .where(StageMovement.device_id.in_(dev_ids))
+        .order_by(StageMovement.moved_at.asc())
+    )).all():
+        mv_by_dev.setdefault(m.device_id, []).append(m)
+
+    now = app_now()
+    exit_end = timedelta(minutes=10)
     # WorkIDs, not distinct tags (2026-10-28) — same as _stage_tile_counts_from_items.
     counts = {key: {"assigned": 0, "completed": 0, "scrap": 0, "waiting": 0, "pass": 0, "fail": 0}
               for key, *_ in STAGE_GROUPS}
-    rows = [(r, _stage_group(_displayed_stage_value(r[1], r[4], r[2], r[0], r[5], code_stage))) for r in rows]
-    keep = _cosmetic_exit_owners((i, r[3], r[13], r[9]) for i, (r, grp) in enumerate(rows)
-                                 if grp == "cosmetic" and r[12] is not None and r[13] is not None)
-    for i, ((code, st, wid, bc, done_at, fs, scr, au, an, ca, nxt, nxf, cx, cx_at), grp) in enumerate(rows):
+    enriched = []
+    dev_cache = {}
+    for code, st, wid, bc, ca, scr, au, an, did, start in rows:
+        mvs = mv_by_dev.get(did, ())
+        # The From stage is only read when the row's Stage comes from it.
+        fs = None
+        if not (st == "reassigned" and ca) and not (
+                st not in ("completed", "reassigned") and (code or "").strip() in code_stage) and not (
+                (wid or "").startswith(("L3L4-", "STRS-"))):
+            dm = dev_cache.get(did)
+            if dm is None:
+                dm = dev_cache[did] = _dev_moves(mvs)
+            fs = _mv_from_stage_py(dm, ca)
+        grp = _stage_group(_displayed_stage_value(st, ca is not None, wid, code, fs, code_stage))
+        cx = cx_at = None
+        if grp == "cosmetic":
+            end = (ca or now) + exit_end
+            for m in mvs:                           # oldest first: the first exit
+                if (m.moved_at and (start is None or m.moved_at >= start) and m.moved_at <= end
+                        and _sv(m.from_stage) in _COSMETIC_VALUES and _sv(m.to_stage) in _COSMETIC_EXIT_TO):
+                    cx, cx_at = m.to_stage, m.moved_at
+                    break
+        enriched.append((code, st, wid, bc, ca, scr, au, an, mvs, grp, cx, cx_at))
+    keep = _cosmetic_exit_owners((i, r[3], r[11], r[4]) for i, r in enumerate(enriched)
+                                 if r[9] == "cosmetic" and r[10] is not None and r[11] is not None)
+    for i, (code, st, wid, bc, ca, scr, au, an, mvs, grp, cx, cx_at) in enumerate(enriched):
         g = counts.get(grp)
         if g is None:
             continue
@@ -665,13 +747,13 @@ async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_a
             g["scrap"] += 1                 # scrap decision: counted apart from Completed
         elif _is_done(st) and not (w_range and not (ca and w_range[0] <= ca <= w_range[1])):
             g["completed"] += 1
-            if nxt is not None and grp == "stress":
-                g[_qc_verdict("stress", nxt)] += 1
-            elif nxf is not None and grp == "final_qc":
-                g[_qc_verdict("final_qc", nxf)] += 1
+            if grp in ("stress", "final_qc"):
+                nxt = _qc_next_stage_py(mvs, ca, _QC_GROUP_FROM[grp])
+                if nxt is not None:
+                    g[_qc_verdict(grp, nxt)] += 1
         if cx is not None and grp == "cosmetic" and i in keep and not (
                 w_range and not (cx_at and w_range[0] <= cx_at <= w_range[1])):
-            g["pass" if getattr(cx, "value", cx) == "final_qc" else "fail"] += 1
+            g["pass" if _sv(cx) == "final_qc" else "fail"] += 1
     return counts
 
 
@@ -690,6 +772,16 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
                         show_reassigned: str = Query(default=""),
                         scrap_type: str = Query(default="all"),
                         highlight: str = Query(default="")):
+    # Default to today (2026-10-28, Pankaj — page load): opening the page with
+    # no Work Date in the address shows today's work. Every WorkID ever made
+    # took ~30 s to count; a day takes ~2 s. Clearing both dates and pressing
+    # Search sends them empty, which still means "all dates". Links to one
+    # WorkID / tag (?highlight=, ?workid=, ?tag=) or an old Completed range
+    # are left as they are.
+    qp = request.query_params
+    if not any(k in qp for k in ("work_from", "work_to", "completed_from", "completed_to",
+                                 "workid", "tag", "highlight")):
+        work_from = work_to = app_now().date().isoformat()
     return await _workid_status_page(
         request=request, db=db, current_user=current_user, workid=workid, tag=tag,
         engineer=engineer, completed_from=completed_from, completed_to=completed_to,

@@ -203,6 +203,7 @@
 $(document).ready(function(){
   var rows = JSON.parse(document.getElementById('workidRows').textContent || '[]');
   var HL = {{ highlight | tojson }};
+  var MAIN_TOTAL = {{ (main_total if main_truncated else 0) | tojson }};
   function esc(v) {
     return v == null ? '' : String(v).replace(/[&<>"']/g, function (c) {
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
@@ -293,7 +294,17 @@ $(document).ready(function(){
       tr.id = r.k;
       if (HL && r.w === HL) tr.classList.add('table-warning');
     },
-    language: { emptyTable: 'No WorkIDs found.' }
+    language: { emptyTable: 'No WorkIDs found.' },
+    // Count badge (2026-10-28): when the table holds only the latest
+    // MAIN_ROW_CAP WorkIDs, the badge shows the full matching count (same as
+    // the Assigned WorkIDs tile) instead of the loaded 3,000. A table search
+    // or tile click shows the count of the rows it leaves, as before.
+    infoCallback: function (settings, start, end, max, total) {
+      var n = (MAIN_TOTAL && total === max) ? MAIN_TOTAL : total;
+      var tip = (MAIN_TOTAL && total === max)
+        ? ' title="' + MAIN_TOTAL.toLocaleString('en-IN') + ' WorkIDs match — the table holds the latest ' + max.toLocaleString('en-IN') + '"' : '';
+      return '<span class="badge text-bg-warning gtable-count-badge"' + tip + '>' + n.toLocaleString('en-IN') + '</span>';
+    }
   });
 
   // ── Tile filters (2026-10-24) ─────────────────────────────────────────
