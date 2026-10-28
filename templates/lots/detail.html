@@ -278,14 +278,14 @@
               </td>
               <td class="small">
                 {% if item.ram_gb %}
-                  <span class="badge bg-info bg-opacity-10 text-info border border-info-subtle me-1">{{ item.ram_gb }}GB RAM</span>
+                  <span class="badge bg-info bg-opacity-10 text-info border border-info-subtle me-1">{{ item.ram_gb }} GB RAM</span>
                 {% elif item.has_ram == false %}
                   <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary-subtle me-1">No RAM</span>
                 {% endif %}
                 {% if item.storage_gb and item.storage_type %}
-                  <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle me-1">{{ item.storage_gb }}GB {{ item.storage_type }}</span>
+                  <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle me-1">{{ item.storage_gb }} GB {{ item.storage_type }}</span>
                 {% elif item.storage_gb %}
-                  <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle me-1">{{ item.storage_gb }}GB</span>
+                  <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle me-1">{{ item.storage_gb }} GB</span>
                 {% elif item.has_storage == false %}
                   <span class="badge bg-warning bg-opacity-10 text-warning border border-warning-subtle me-1">No HDD/SSD</span>
                 {% endif %}
@@ -677,10 +677,10 @@ function getLineItemPayload() {
 function updateLiPreview() {
   const p = getLineItemPayload();
   const specs = [];
-  if (p.ram_gb) specs.push(`${p.ram_gb}GB RAM`);
+  if (p.ram_gb) specs.push(`${p.ram_gb} GB RAM`);
   else if (!p.has_ram) specs.push('No RAM');
-  if (p.storage_gb && p.storage_type) specs.push(`${p.storage_gb}GB ${p.storage_type}`);
-  else if (p.storage_gb) specs.push(`${p.storage_gb}GB`);
+  if (p.storage_gb && p.storage_type) specs.push(`${p.storage_gb} GB ${p.storage_type}`);
+  else if (p.storage_gb) specs.push(`${p.storage_gb} GB`);
   else if (!p.has_storage) specs.push('No HDD/SSD');
   const label = [p.sub_category, p.brand, p.model, specs.length ? `[${specs.join(', ')}]` : ''].filter(Boolean).join(' — ');
   const total = (p.unit_price * p.qty).toLocaleString('en-IN', {style:'currency', currency:'INR', maximumFractionDigits:0});

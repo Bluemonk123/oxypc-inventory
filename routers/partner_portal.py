@@ -327,10 +327,10 @@ async def catalog(
                 "cpu": _v(dev.cpu),
                 "cpu_make": _v(dev.cpu_make),
                 "generation": _v(dev.generation),
-                "ram": f"{dev.ram_gb}GB" if dev.ram_gb else "—",
+                "ram": f"{dev.ram_gb} GB" if dev.ram_gb else "—",
                 "ram_type": _v(dev.ram_type),
                 "total_ram_size": _v(dev.total_ram_size),
-                "storage": (f"{dev.storage_gb}GB {dev.storage_type or ''}".strip()
+                "storage": (f"{dev.storage_gb} GB {dev.storage_type or ''}".strip()
                             if dev.storage_gb else "—"),
                 "total_hdd_size": _v(dev.total_hdd_size),
                 "screen_size": _v(dev.screen_size),
@@ -743,8 +743,8 @@ async def lot_model_summary(
         "qty": r.qty,
         "cpu": r.cpu or "—",
         "generation": r.generation or "—",
-        "ram": f"{r.ram_gb}GB" if r.ram_gb else "—",
-        "storage": (f"{r.storage_gb}GB {r.storage_type or ''}".strip()
+        "ram": f"{r.ram_gb} GB" if r.ram_gb else "—",
+        "storage": (f"{r.storage_gb} GB {r.storage_type or ''}".strip()
                     if r.storage_gb else "—"),
         "grade": _grade(r.grade),
     } for r in rows]

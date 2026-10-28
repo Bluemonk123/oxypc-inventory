@@ -399,7 +399,7 @@ def spec_cell(data: dict, device_id, key: str, text_html: str) -> str:
 def _gb_text(gb: int | None) -> str:
     if not gb:
         return ""
-    return f"{gb // 1024}TB" if gb >= 1024 and gb % 1024 == 0 else f"{gb}GB"
+    return f"{gb // 1024} TB" if gb >= 1024 and gb % 1024 == 0 else f"{gb} GB"
 
 
 def _ram_text(device) -> str:

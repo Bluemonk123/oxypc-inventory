@@ -129,7 +129,7 @@ def test_opening_closing_sold_and_grn_rules_on_real_rows():
     body = {(r[1], r[3].split("-")[-1]): r for r in rows[1:]}
     assert set(body) == {("Opening", "B"), ("Opening", "C"), ("Closing", "C")}
     for r in body.values():
-        assert r[4:8] == ["Laptop", "Lenovo", "T490", "i5-8350U"] and r[8:10] == ["8GB", "256GB SSD"]
+        assert r[4:8] == ["Laptop", "Lenovo", "T490", "i5-8350U"] and r[8:10] == ["8 GB", "256 GB SSD"]
         assert r[10] == "" and r[11] == r[3].rsplit("-", 1)[0]       # grade not set; entity = the test entity
 
 

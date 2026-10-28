@@ -93,7 +93,7 @@
             <td>
               <div class="fw-semibold">{{ r.sub_category or 'Any' }} — {{ r.brand or '' }} {{ r.model or '' }}</div>
               <div class="text-muted" style="font-size:0.72rem">
-                {{ r.cpu or '' }}{% if r.ram_gb %} · {{ r.ram_gb }}GB RAM{% endif %}{% if r.storage_gb %} · {{ r.storage_gb }}GB {{ r.storage_type or '' }}{% endif %}{% if r.screen_size %} · {{ r.screen_size }}{% endif %}
+                {{ r.cpu or '' }}{% if r.ram_gb %} · {{ r.ram_gb }} GB RAM{% endif %}{% if r.storage_gb %} · {{ r.storage_gb }} GB {{ r.storage_type or '' }}{% endif %}{% if r.screen_size %} · {{ r.screen_size }}{% endif %}
               </div>
             </td>
             <td><span class="badge bg-secondary">{{ r.grade or 'Any' }}</span></td>

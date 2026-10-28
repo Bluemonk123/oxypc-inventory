@@ -34,7 +34,7 @@ from auth.dependencies import get_current_user, require_roles, verify_csrf, requ
 from utils.warranty import effective_warranty_for_sale, warranty_status_for_sale
 from utils.master_data import master_values, entity_values
 
-from utils.device_spec import gb_text as _gb_text  # whole TB shown as TB (2026-10-22)
+from utils.device_spec import gb_text_spaced as _gb_text  # "16 GB", whole TB as "1 TB" (2026-10-28)
 from services.work_order_close import wo_open  # open = not completed / reassigned
 
 router = APIRouter(prefix="/devices", tags=["devices"], dependencies=[Depends(verify_csrf)])
@@ -1149,12 +1149,12 @@ def entity_abbr(name: str | None) -> str:
 
 def _ms_ram_text(ram_summary, ram_gb) -> str:
     # Same rule as the Tag table's RAM cell.
-    return ram_summary or (f"{ram_gb}GB" if ram_gb else MS_NONE)
+    return ram_summary or (f"{ram_gb} GB" if ram_gb else MS_NONE)
 
 
 def _ms_storage_text(hdd_summary, storage_gb, storage_type) -> str:
     # Same rule as the Tag table's Storage cell.
-    return hdd_summary or (f"{storage_gb}GB {storage_type or ''}".strip() if storage_gb else MS_NONE)
+    return hdd_summary or (f"{storage_gb} GB {storage_type or ''}".strip() if storage_gb else MS_NONE)
 
 
 def _ms_is_touch(touch_type) -> bool:

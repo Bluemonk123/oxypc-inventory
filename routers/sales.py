@@ -38,6 +38,7 @@ from services.cost_engine import (
     check_below_cost_warning, get_or_create_costings, below_cost_warning_for,
 )
 from services.audit_engine import audit
+from utils.device_spec import gb_text_spaced
 from services.parts_changed import parts_badge_map, parts_display_map, spec_cell
 from services.ready_pricing import (
     load_ready_rates, unit_price, tag_min_price, lot_price, as_is_min_price,
@@ -446,8 +447,9 @@ async def ready_list_data(
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),
             f'<span class="font-monospace">{esc(loc_name)}</span>' if loc_name else '<span class="text-muted">—</span>',
             esc(d.brand or "—"), esc(d.model or "—"),
-            spec_cell(parts_data, d.id, "RAM", f"{d.ram_gb}GB" if d.ram_gb else "—"),
-            spec_cell(parts_data, d.id, "Hard Drive", f"{d.storage_gb}GB" if d.storage_gb else "—"),
+            # "16 GB" / "256 GB" / "1 TB" — spaced, as everywhere else (2026-10-28)
+            spec_cell(parts_data, d.id, "RAM", gb_text_spaced(d.ram_gb) or "—"),
+            spec_cell(parts_data, d.id, "Hard Drive", gb_text_spaced(d.storage_gb) or "—"),
             f'<span class="badge bg-{gcls}">{esc(gv) or "—"}</span>',
         ]
         if show_pricing:

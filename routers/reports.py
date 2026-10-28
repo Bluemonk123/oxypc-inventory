@@ -345,9 +345,9 @@ async def _stock_tags_as_of(db: AsyncSession, as_of: datetime, exclude_admin: bo
         SELECT latest.to_stage, d.barcode,
                COALESCE(d.device_type, d.sub_category) AS category,
                d.brand, d.model, d.cpu,
-               CASE WHEN d.ram_gb IS NOT NULL THEN d.ram_gb || 'GB' END AS ram,
+               CASE WHEN d.ram_gb IS NOT NULL THEN d.ram_gb || ' GB' END AS ram,
                CASE WHEN d.storage_gb IS NOT NULL
-                    THEN d.storage_gb || 'GB' || COALESCE(' ' || d.storage_type, '') END AS storage,
+                    THEN d.storage_gb || ' GB' || COALESCE(' ' || d.storage_type, '') END AS storage,
                d.grade::text AS grade, d.entity
         FROM ({_stock_reconstruction_sql(exclude_admin)}) latest
         JOIN devices d ON d.id = latest.device_id
@@ -956,10 +956,10 @@ async def _tag_export_csv(db: AsyncSession, rows, filename: str) -> StreamingRes
     for d, lot_number, sale_price in rows:
         li = loc.get(str(d.id)) or fallback.get(d.location_id) or {}
         if d.ram_gb:
-            ram = f"{d.ram_gb}GB" + (f" {d.ram_type}" if d.ram_type else "")
+            ram = f"{d.ram_gb} GB" + (f" {d.ram_type}" if d.ram_type else "")
         else:
             ram = d.total_ram_size or ""
-        storage = (f"{d.storage_gb}GB" + (f" {d.storage_type}" if d.storage_type else "")) if d.storage_gb else (d.total_hdd_size or "")
+        storage = (f"{d.storage_gb} GB" + (f" {d.storage_type}" if d.storage_type else "")) if d.storage_gb else (d.total_hdd_size or "")
         w.writerow([
             d.entity or "", d.barcode, lot_number or "",
             " ".join(x for x in (d.brand, d.model) if x),

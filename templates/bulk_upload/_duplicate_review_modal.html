@@ -13,6 +13,10 @@
           <button type="button" class="btn btn-sm btn-primary py-0 px-2" id="dupUpdateAllBtn">
             <i class="bi bi-arrow-repeat me-1"></i>Update All
           </button>
+          <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" id="dupMoveAllBtn"
+                  title="Approve Move for every tag in the list — each goes to its Stage in File">
+            <i class="bi bi-arrow-right-circle me-1"></i>All Approve Move
+          </button>
           <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" id="dupSkipSubmitBtn" data-bs-dismiss="modal">
             <i class="bi bi-check2-circle me-1"></i>Skip and Submit
           </button>
@@ -28,22 +32,27 @@
           <div class="table-responsive">
             <table class="table table-sm table-bordered mb-0" id="dupTagTable">
               <thead class="table-light">
-                <tr><th>Tag Number</th><th>Grade</th><th>Stage in System</th><th>Stage in File</th><th style="width:230px">Action</th></tr>
+                <tr><th>Tag Number</th><th>Grade</th><th>Model</th><th>CPU</th><th>RAM</th><th>Storage</th><th>Stage in System</th><th>Stage in File</th><th style="width:230px">Action</th></tr>
               </thead>
               <tbody>
                 {% for t in tag_duplicates %}
                 <tr data-tag="{{ t.tag_number }}" data-row='{{ t.row | tojson }}'>
                   <td class="small font-monospace">{{ t.tag_number }}</td>
                   <td class="small">{{ t.grade }}</td>
+                  {# Value in the system; the file's value in orange below it
+                     when the file gives a different one (Update writes it). #}
+                  {% for k in ('model', 'cpu', 'ram', 'storage') %}{% set sp = (t.specs or {}).get(k) %}
+                  <td class="small">{{ sp.cur if sp else '—' }}{% if sp and sp.new %}<br><span class="fw-semibold text-nowrap" style="color:#fd7e14" title="Value in the file — Update / Update All writes it">→ {{ sp.new }}</span>{% endif %}</td>
+                  {% endfor %}
                   <td class="small dup-tag-current-stage">{{ t.current_stage_label }}{% if t.in_trash %} <span class="badge bg-danger ms-1" title="This tag is in Trash - restore it from the Trash page">In Trash</span>{% endif %}</td>
                   <td class="small">{{ t.file_stage_label }}</td>
                   <td class="d-flex gap-1">
-                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 dup-approve-move-btn"
+                    <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 text-nowrap dup-approve-move-btn"
                             data-tag="{{ t.tag_number }}" data-to-stage="{{ t.file_stage }}"
                             data-to-stage-label="{{ t.file_stage_label }}">
                       <i class="bi bi-arrow-right-circle me-1"></i>Approve Move
                     </button>
-                    <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2 dup-update-btn"
+                    <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2 text-nowrap dup-update-btn"
                             data-tag="{{ t.tag_number }}" title="Apply this row's uploaded values to the existing device">
                       <i class="bi bi-pencil-square me-1"></i>Update
                     </button>
@@ -214,6 +223,60 @@ document.addEventListener('DOMContentLoaded', function () {
           updateAllBtn.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Update All';
           alert(err.message || 'Could not update all tags.');
         });
+    });
+  }
+
+  // All Approve Move (2026-10-28): Approve Move for every row not moved yet,
+  // one tag at a time through the same endpoint, so each move is checked and
+  // audited exactly like a single click. Failures are listed at the end.
+  var moveAllBtn = document.getElementById('dupMoveAllBtn');
+  if (moveAllBtn) {
+    moveAllBtn.addEventListener('click', function () {
+      var btns = Array.prototype.filter.call(document.querySelectorAll('.dup-approve-move-btn'),
+        function (b) { return !b.classList.contains('disabled'); });
+      if (!btns.length) return;
+      var stages = {};
+      btns.forEach(function (b) { stages[b.getAttribute('data-to-stage-label')] = 1; });
+      if (!confirm('Move ' + btns.length + ' tag(s) to ' + Object.keys(stages).join(' / ') +
+                   '? Each tag leaves its current stage.')) return;
+      moveAllBtn.disabled = true;
+      var done = 0, failed = [];
+      function next(i) {
+        if (i >= btns.length) {
+          moveAllBtn.innerHTML = '<i class="bi bi-check-lg me-1"></i>' +
+            (failed.length ? done + ' Moved, ' + failed.length + ' failed' : 'All Moved');
+          if (failed.length) {
+            moveAllBtn.disabled = false;
+            alert('Not moved:\n' + failed.slice(0, 30).join('\n') + (failed.length > 30 ? '\n…' : ''));
+          }
+          return;
+        }
+        var b = btns[i], tag = b.getAttribute('data-tag');
+        moveAllBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Moving ' + (i + 1) + ' / ' + btns.length;
+        var body = new URLSearchParams();
+        body.set('tag_number', tag);
+        body.set('to_stage', b.getAttribute('data-to-stage'));
+        fetch('/bulk-upload/duplicates/approve-move', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrf },
+          body: body.toString(),
+        })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+          .then(function (res) {
+            if (!res.ok || !res.data.success) throw new Error(res.data.error || 'Move failed');
+            var row = b.closest('tr');
+            if (row) row.querySelector('.dup-tag-current-stage').textContent =
+              res.data.new_stage_label || b.getAttribute('data-to-stage-label');
+            b.innerHTML = '<i class="bi bi-check-lg me-1"></i>Moved';
+            b.classList.remove('btn-outline-primary');
+            b.classList.add('btn-success', 'disabled');
+            b.disabled = true;
+            done++;
+          })
+          .catch(function (err) { failed.push(tag + ': ' + (err.message || 'failed')); })
+          .then(function () { next(i + 1); });
+      }
+      next(0);
     });
   }
 

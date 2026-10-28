@@ -426,12 +426,12 @@ def _detect_host_hardware():
         f["total_ram_count"] = str(len(ram_sticks))
     if ram_dimms:
         _rg = sum(int(s["capacityGB"]) for s in ram_dimms)
-        ram_plain = f"{round(_rg / 1000)}TB" if _rg >= 1000 else f"{_rg}GB"
+        ram_plain = f"{round(_rg / 1000)} TB" if _rg >= 1000 else f"{_rg} GB"
     elif info.get("ram_gb"):
         _rg = int(info["ram_gb"])
-        ram_plain = f"{round(_rg / 1000)}TB" if _rg >= 1000 else f"{_rg}GB"
+        ram_plain = f"{round(_rg / 1000)} TB" if _rg >= 1000 else f"{_rg} GB"
     if not ram_summary and info.get("ram_gb"):
-        ram_summary = f"{int(info['ram_gb'])}GB"
+        ram_summary = f"{int(info['ram_gb'])} GB"
     # Swapped per spec: "Total RAM Size" holds the combined string,
     # "RAM" (ram_summary) holds the plain summed size.
     if ram_summary:
@@ -457,7 +457,7 @@ def _detect_host_hardware():
     if hdd_disks:
         f["total_hdd_count"] = str(len(hdd_disks))
         tot_gb = sum(int(d["sizeGB"]) for d in hdd_disks)
-        hdd_plain = f"{round(tot_gb / 1000)}TB" if tot_gb >= 1000 else f"{tot_gb}GB"
+        hdd_plain = f"{round(tot_gb / 1000)} TB" if tot_gb >= 1000 else f"{tot_gb} GB"
     # Swapped per spec: "Total Hard Drive Size" holds the combined string,
     # "Hard Drive" (hdd_summary) holds the plain summed size.
     if hdd_summary:
@@ -477,7 +477,7 @@ def _detect_host_hardware():
         diag.append(f"RAM: {info['ram_gb']} GB.")
     if disks:
         diag.append("Storage: " + ", ".join(
-            (f"{d.get('sizeGB', '?')}GB {d.get('type', '')}").strip() for d in disks) + ".")
+            (f"{d.get('sizeGB', '?')} GB {d.get('type', '')}").strip() for d in disks) + ".")
     if info.get("gpu"):
         diag.append(f"GPU: {info['gpu']}.")
     if info.get("has_battery"):
@@ -732,8 +732,8 @@ async def iqc_list_data(
         stage_val = getattr(d.current_stage, "value", d.current_stage)
         g = getattr(d.grade, "value", d.grade) if d.grade else None
         gcls = "success" if g == "A" else "warning" if g == "B" else "danger"
-        ram = d.ram_summary or (f"{d.ram_gb}GB" if d.ram_gb else "—")
-        storage = d.hdd_summary or (f"{d.storage_gb}GB {d.storage_type or ''}" if d.storage_gb else "—")
+        ram = d.ram_summary or (f"{d.ram_gb} GB" if d.ram_gb else "—")
+        storage = d.hdd_summary or (f"{d.storage_gb} GB {d.storage_type or ''}" if d.storage_gb else "—")
         data.append([
             f'<input type="checkbox" class="form-check-input iqcRowChk" value="{esc(d.barcode)}">',
             f'<span class="font-monospace small">{esc(d.serial_no or "—")}</span>',

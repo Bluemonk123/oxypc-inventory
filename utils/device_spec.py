@@ -30,8 +30,8 @@ def normalize_size(value):
     if _NUM_ONLY.match(v):
         n = v.strip()
         n = n[:-2] if n.endswith(".0") else n
-        return f"{n}GB"
-    return v
+        return f"{n} GB"
+    return space_size_text(v)
 
 
 def _part_sizes(value):
@@ -103,18 +103,19 @@ _gb_text = gb_text
 
 
 def ram_text(d):
-    """RAM as shown in Export: Total RAM Size, else RAM GB, else the summary."""
-    return ((getattr(d, "total_ram_size", None) or "").strip()
-            or _gb_text(getattr(d, "ram_gb", None))
-            or (getattr(d, "ram_summary", None) or "").strip() or None)
+    """RAM as shown in Export: Total RAM Size, else RAM GB, else the summary.
+    Sizes come out spaced, "16 GB" (2026-10-28)."""
+    return space_size_text((getattr(d, "total_ram_size", None) or "").strip()
+                           or gb_text_spaced(getattr(d, "ram_gb", None))
+                           or (getattr(d, "ram_summary", None) or "").strip() or None)
 
 
 def storage_text(d):
     """Storage as shown in Export: Total Hard Drive Size, else Hard Drive GB
     (old HDD GB column as a fallback), else the summary."""
-    return ((getattr(d, "total_hdd_size", None) or "").strip()
-            or _gb_text(getattr(d, "storage_gb", None) or getattr(d, "hdd_capacity_gb", None))
-            or (getattr(d, "hdd_summary", None) or "").strip() or None)
+    return space_size_text((getattr(d, "total_hdd_size", None) or "").strip()
+                           or gb_text_spaced(getattr(d, "storage_gb", None) or getattr(d, "hdd_capacity_gb", None))
+                           or (getattr(d, "hdd_summary", None) or "").strip() or None)
 
 
 # ── RAM / Storage entered the wrong way round (2026-10-27) ──────────────────
@@ -235,12 +236,12 @@ def upload_spec(ram_value, storage_value) -> dict:
     if ram:
         g = size_to_gb(ram)
         out.update(total_ram_size=ram[:50], ram_gb=g, total_ram_count=str(max(part_count(ram), 1)),
-                   ram_summary=(gb_text(g) or ram)[:255])
+                   ram_summary=(gb_text_spaced(g) or ram)[:255])
     sto = normalize_size(storage_value)
     if sto:
         g = size_to_gb(sto)
         out.update(total_hdd_size=sto[:50], storage_gb=g, total_hdd_count=str(max(part_count(sto), 1)),
-                   hdd_summary=(gb_text(g) or sto)[:255])
+                   hdd_summary=(gb_text_spaced(g) or sto)[:255])
     return out
 
 

@@ -57,7 +57,7 @@
     <tbody>
       <tr>
         <td>1</td>
-        <td>{{ device.brand }} {{ device.model }}{% if device.ram_gb %} | {{ device.ram_gb }}GB{% endif %}{% if device.storage_gb %} | {{ device.storage_gb }}GB {{ device.storage_type }}{% endif %}</td>
+        <td>{{ device.brand }} {{ device.model }}{% if device.ram_gb %} | {{ device.ram_gb }} GB{% endif %}{% if device.storage_gb %} | {{ device.storage_gb }} GB {{ device.storage_type }}{% endif %}</td>
         <td>{{ device.barcode }}{% if device.serial_no %} / {{ device.serial_no }}{% endif %}</td>
         <td>1</td>
         <td>Grade: {{ device.grade | upper if device.grade else '—' }}</td>

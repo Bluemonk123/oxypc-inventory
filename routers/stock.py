@@ -2398,13 +2398,13 @@ def _line_item_label(item) -> str:
     if item.model:   parts.append(item.model)
     spec = []
     if item.ram_gb:
-        spec.append(f"{item.ram_gb}GB RAM")
+        spec.append(f"{item.ram_gb} GB RAM")
     elif item.has_ram is False:
         spec.append("No RAM")
     if item.storage_gb and item.storage_type:
-        spec.append(f"{item.storage_gb}GB {item.storage_type}")
+        spec.append(f"{item.storage_gb} GB {item.storage_type}")
     elif item.storage_gb:
-        spec.append(f"{item.storage_gb}GB Storage")
+        spec.append(f"{item.storage_gb} GB Storage")
     elif item.has_storage is False:
         spec.append("No HDD/SSD")
     if spec:

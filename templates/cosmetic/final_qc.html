@@ -88,10 +88,6 @@
         {% set fwo = fqc_wo_map.get(device.id|string) %}
         {% set fmine = fwo and fwo.user_id == current_user.id|string %}
         <span class="small text-muted text-nowrap">QC by: <span class="fw-semibold text-body" {% if fwo %}title="WorkID {{ fwo.work_id }}"{% endif %}>{{ 'You' if fmine else ((fwo.name if fwo and fwo.name) or 'Not picked') }}</span></span>
-        {% if can(current_user, 'cosmetic_finalqc', 'edit') and not fmine %}
-        <button type="button" class="btn btn-sm btn-outline-primary py-0 fqc-pick-btn" data-barcode="{{ device.barcode }}"
-                title="Assign this tag's Final QC WorkID to yourself">Pick This</button>
-        {% endif %}
         <span class="ms-auto text-muted small">L1/L2 Engineer: <span class="fw-semibold text-body">{{ l1l2_engineer_map.get(device.id|string, '—') }}</span></span>
         {% set sr = stress_map.get(device.barcode) %}
         {% if sr %}
@@ -105,6 +101,11 @@
         {% else %}
         <span class="fqc-report-pill" data-state="none" title="No stress test report saved for this tag yet">
           <i class="bi bi-file-earmark-x"></i>No Stress/QC Report</span>
+        {% endif %}
+        {# Pick This after the Stress/QC Report button, primary (2026-10-28) #}
+        {% if can(current_user, 'cosmetic_finalqc', 'edit') and not fmine %}
+        <button type="button" class="btn btn-sm btn-primary py-0 text-nowrap fqc-pick-btn" data-barcode="{{ device.barcode }}"
+                title="Assign this tag's Final QC WorkID to yourself">Pick This</button>
         {% endif %}
       </div>
 

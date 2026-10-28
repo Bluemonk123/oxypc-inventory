@@ -65,8 +65,8 @@
         <td>
           {{ device.brand }} {{ device.model }}
           {% if device.cpu %} | {{ device.cpu }}{% endif %}
-          {% if device.ram_gb %} | {{ device.ram_gb }}GB RAM{% endif %}
-          {% if device.storage_gb %} | {{ device.storage_gb }}GB {{ device.storage_type }}{% endif %}
+          {% if device.ram_gb %} | {{ device.ram_gb }} GB RAM{% endif %}
+          {% if device.storage_gb %} | {{ device.storage_gb }} GB {{ device.storage_type }}{% endif %}
           <br><small style="color:#666">Tag Number: {{ device.barcode }}{% if device.serial_no %} | SN: {{ device.serial_no }}{% endif %}</small>
         </td>
         <td>8471</td><td>1</td>

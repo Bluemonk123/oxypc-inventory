@@ -32,9 +32,9 @@ def _config_label(r: ModelRequest) -> str:
     if r.cpu:
         spec.append(r.cpu)
     if r.ram_gb:
-        spec.append(f"{r.ram_gb}GB")
+        spec.append(f"{r.ram_gb} GB")
     if r.storage_gb:
-        spec.append(f"{r.storage_gb}GB {r.storage_type or ''}".strip())
+        spec.append(f"{r.storage_gb} GB {r.storage_type or ''}".strip())
     if r.screen_size:
         spec.append(str(r.screen_size))
     label = " ".join(parts) if parts else "(unspecified)"

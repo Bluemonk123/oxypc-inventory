@@ -126,7 +126,7 @@
               <input type="text" name="generation" maxlength="50" class="form-control form-control-sm" value="{{ device.generation or '' }}" placeholder="e.g. 8th Gen">
             </div>
             {# GB number as text, whole TB in TB (1024/1000 -> 1TB) — utils/device_spec.gb_text #}
-            {% macro _gbtb(n) %}{% if n %}{% if n >= 1024 and n % 1024 == 0 %}{{ n // 1024 }}TB{% elif n >= 1000 and n % 1000 == 0 %}{{ n // 1000 }}TB{% else %}{{ n }}GB{% endif %}{% endif %}{% endmacro %}
+            {% macro _gbtb(n) %}{% if n %}{% if n >= 1024 and n % 1024 == 0 %}{{ n // 1024 }} TB{% elif n >= 1000 and n % 1000 == 0 %}{{ n // 1000 }} TB{% else %}{{ n }} GB{% endif %}{% endif %}{% endmacro %}
             {# RAM / Hard Drive (2026-10-22): the eight spec fields only. Storage
                Type and HDD Capacity are no longer shown (values are kept). #}
             <div class="col-md-3">

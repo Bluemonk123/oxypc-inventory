@@ -31,9 +31,9 @@
         <table id="qcTable" class="table table-hover mb-0 small">
           <thead class="table-dark">
             <tr>
-              <th>Tag Number</th><th>Lot</th><th>L1/L2 Engineer</th><th>Brand</th><th>Model</th>
+              <th>Tag Number</th><th>Lot</th><th>Actions</th><th>L1/L2 Engineer</th><th>Brand</th><th>Model</th>
               <th class="d-none">CPU</th><th class="d-none">RAM</th><th class="d-none">Storage</th><th>Grade</th>
-              <th class="d-none">Location</th><th>Report</th><th>Actions</th>
+              <th class="d-none">Location</th><th>Report</th>
             </tr>
           </thead>
           <tbody>
@@ -49,6 +49,33 @@
                    title="{{ device.fqc_final_notes or 'No fail note recorded' }}"></i></span>{% endif %}
               </td>
               <td><span class="badge bg-info text-dark">{{ lot_number }}</span></td>
+              {# Actions right after Lot, one line (2026-10-28) #}
+              <td class="text-nowrap">
+                <div class="d-flex gap-2 flex-nowrap align-items-center">
+                  {# Pick This (2026-10-27): one Stress WorkID per visit — the
+                     tag arrives with a pending WorkID; picking puts your name
+                     on it (or takes it from whoever holds it). #}
+                  {% set swo = stress_wo_map.get(device.id|string) %}
+                  {% set mine = swo and swo.user_id == current_user.id|string %}
+                  {% if swo and swo.name %}<span class="small text-muted text-nowrap" title="WorkID {{ swo.work_id }}">{{ 'Assigned to you' if mine else swo.name }}</span>{% endif %}
+                  {% if can(current_user, 'qc_check', 'edit') and not mine %}
+                  <button type="button" class="btn btn-sm btn-primary py-0 text-nowrap stress-pick-btn"
+                          data-barcode="{{ device.barcode }}" title="Assign this tag's Stress WorkID to yourself">Pick This</button>
+                  {% endif %}
+                  {% if can(current_user, 'qc_check', 'edit') %}
+                  <button type="button"
+                    class="btn btn-sm btn-outline-primary py-0 text-nowrap start-test-btn"
+                    data-barcode="{{ device.barcode }}"
+                    data-brand="{{ device.brand or '' }}"
+                    data-model="{{ device.model or '' }}"
+                    data-touch="{{ device.touch_type or '' }}"
+                    onclick="activateStressTest(this)"
+                    title="Start Stress Test for this device">
+                    <i class="bi bi-lightning-charge-fill me-1"></i>Stress
+                  </button>
+                  {% endif %}
+                </div>
+              </td>
               <td class="text-muted small">{{ l1l2_engineer_map.get(device.id|string, '—') }}</td>
               <td>{{ device.brand or '—' }}</td>
               <td>{{ device.model or '—' }}</td>
@@ -75,32 +102,6 @@
                   <span class="text-muted small">—</span>
                 {% endif %}
               </td>
-              <td>
-                <div class="d-flex gap-1 flex-wrap align-items-center">
-                  {# Pick This (2026-10-27): one Stress WorkID per visit — the
-                     tag arrives with a pending WorkID; picking puts your name
-                     on it (or takes it from whoever holds it). #}
-                  {% set swo = stress_wo_map.get(device.id|string) %}
-                  {% set mine = swo and swo.user_id == current_user.id|string %}
-                  {% if swo and swo.name %}<span class="small text-muted text-nowrap" title="WorkID {{ swo.work_id }}">{{ 'You' if mine else swo.name }}</span>{% endif %}
-                  {% if can(current_user, 'qc_check', 'edit') and not mine %}
-                  <button type="button" class="btn btn-sm btn-outline-primary py-0 stress-pick-btn"
-                          data-barcode="{{ device.barcode }}" title="Assign this tag's Stress WorkID to yourself">Pick This</button>
-                  {% endif %}
-                  {% if can(current_user, 'qc_check', 'edit') %}
-                  <button type="button"
-                    class="btn btn-sm btn-outline-warning py-0 start-test-btn"
-                    data-barcode="{{ device.barcode }}"
-                    data-brand="{{ device.brand or '' }}"
-                    data-model="{{ device.model or '' }}"
-                    data-touch="{{ device.touch_type or '' }}"
-                    onclick="activateStressTest(this)"
-                    title="Start Stress Test for this device">
-                    <i class="bi bi-lightning-charge-fill me-1"></i>Stress
-                  </button>
-                  {% endif %}
-                </div>
-              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -125,7 +126,7 @@
         <div id="stressIdleMsg" class="text-center py-5 text-muted">
           <i class="bi bi-lightning display-4 d-block mb-3 text-secondary opacity-50"></i>
           <p class="small mb-1 fw-semibold">No Stress Test started on any of listed Product Tag Numbers.</p>
-          <p class="small text-muted">Click <strong class="text-warning"><i class="bi bi-lightning-charge-fill me-1"></i>Stress</strong> on a device row to begin.</p>
+          <p class="small text-muted">Click <strong class="text-primary"><i class="bi bi-lightning-charge-fill me-1"></i>Stress</strong> on a device row to begin.</p>
         </div>
 
         {# ── Active area ── #}
@@ -509,9 +510,9 @@ $(document).ready(function(){
     // without this, DataTables defaults to sorting by the first visible
     // column (Tag Number), silently undoing it.
     order: [],
-    // CPU/RAM/Storage (5,6,7) hidden per request; Location (9) was already
-    // hidden. Report/Actions (10,-1) aren't sortable columns.
-    columnDefs: [{ visible: false, targets: [5, 6, 7, 9] }, { orderable: false, targets: [10, -1] }],
+    // Actions moved after Lot (2026-10-28): CPU/RAM/Storage (6,7,8) and
+    // Location (10) hidden; Actions (2) and Report (11) aren't sortable.
+    columnDefs: [{ visible: false, targets: [6, 7, 8, 10] }, { orderable: false, targets: [2, 11] }],
   });
   $('#qcFailedFqcFilter').on('change', function() { dt.draw(); });
 

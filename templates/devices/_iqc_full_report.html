@@ -82,7 +82,7 @@
         <tr><th class="ps-3 text-muted small">CPU / Processor</th><td>{{ device.cpu or '—' }}</td></tr>
         <tr><th class="ps-3 text-muted small">Generation</th><td>{{ device.generation or '—' }}</td></tr>
         {# GB number as text, whole TB in TB (1024/1000 -> 1TB) — utils/device_spec.gb_text #}
-        {% macro _gbtb(n) %}{% if n %}{% if n >= 1024 and n % 1024 == 0 %}{{ n // 1024 }}TB{% elif n >= 1000 and n % 1000 == 0 %}{{ n // 1000 }}TB{% else %}{{ n }}GB{% endif %}{% endif %}{% endmacro %}
+        {% macro _gbtb(n) %}{% if n %}{% if n >= 1024 and n % 1024 == 0 %}{{ n // 1024 }} TB{% elif n >= 1000 and n % 1000 == 0 %}{{ n // 1000 }} TB{% else %}{{ n }} GB{% endif %}{% endif %}{% endmacro %}
         {# RAM / Hard Drive — the eight spec fields (2026-10-22). #}
         <tr><th class="ps-3 text-muted small">RAM</th><td>{% call _cell(_cp, 'RAM', True) %}{{ _gbtb(device.ram_gb) if device.ram_gb else (device.total_ram_size or '—') }}{% endcall %}</td></tr>
         <tr><th class="ps-3 text-muted small">Total RAM Size</th><td>{{ device.total_ram_size or '—' }}</td></tr>

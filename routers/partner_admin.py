@@ -2035,8 +2035,8 @@ async def generate_bid_po(
         )).scalars().all():
             desc = " | ".join(x for x in [
                 " ".join(y for y in [li.cpu, li.generation] if y),
-                f"{li.ram_gb}GB RAM" if li.ram_gb else None,
-                (f"{li.storage_gb}GB {li.storage_type or ''}".strip()
+                f"{li.ram_gb} GB RAM" if li.ram_gb else None,
+                (f"{li.storage_gb} GB {li.storage_type or ''}".strip()
                  if li.storage_gb else None),
             ] if x)
             items.append(_Item(li.model or li.sub_category or "Item", desc, li.qty or 0))

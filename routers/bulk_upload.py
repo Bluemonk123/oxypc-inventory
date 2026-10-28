@@ -13,7 +13,7 @@ from database import get_db
 from utils.csv_decode import decode_csv_bytes
 from utils.master_data import entity_values, master_values
 from utils.device_category import pair_type_and_category
-from utils.device_spec import upload_spec, looks_swapped, RAM_MAX_GB
+from utils.device_spec import upload_spec, looks_swapped, RAM_MAX_GB, ram_text, storage_text, size_to_gb
 from utils.grades import parse_grade
 from models.user import User, UserRole
 from models.device import Device, DeviceStage, StageMovement, STAGE_LABELS
@@ -103,6 +103,38 @@ DEVICE_CSV_HEADERS_TEST_PARTNER = (
 # template ships "Tag No" but hand-built CSVs from other systems commonly
 # use one of these instead.
 _TAG_HEADER_ALIASES = ["Tag No", "Tag Number", "barcode", "tag_number"]
+
+
+def _dup_specs(device, row: dict) -> dict:
+    """Model / CPU / RAM / Storage for the duplicate-review table (2026-10-28):
+    the tag's value in the system, plus the file's value when the file gives
+    one that differs ("new"). RAM / Storage are compared by size in GB, so
+    "16GB" and "16 GB" count as the same."""
+    def cell(key):
+        return (_row_get(row, key) or "").strip()
+    file_vals = {
+        "model": cell("model"),
+        "cpu": cell("cpu"),
+        "ram": cell("RAM") or cell("total_ram_size") or cell("ram_summary") or cell("ram_gb"),
+        "storage": cell("Storage") or cell("total_hdd_size") or cell("hdd_summary") or cell("storage_gb"),
+    }
+    sys_vals = {
+        "model": (device.model or "") if device else "",
+        "cpu": (device.cpu or "") if device else "",
+        "ram": (ram_text(device) or "") if device else "",
+        "storage": (storage_text(device) or "") if device else "",
+    }
+    out = {}
+    for k, cur in sys_vals.items():
+        new = file_vals[k]
+        if k in ("ram", "storage"):
+            if new and new.replace(".", "", 1).isdigit():
+                new = f"{new} GB"
+            same = bool(new) and size_to_gb(new) == size_to_gb(cur)
+        else:
+            same = new.lower() == cur.lower()
+        out[k] = {"cur": cur or "—", "new": new if new and not same else ""}
+    return out
 
 
 def _resolve_tag_header(row: dict) -> str | None:
@@ -552,6 +584,7 @@ async def upload_devices(
                     "in_trash": bool(ed and ed.is_trashed),
                     "file_stage": DeviceStage.iqc.value,
                     "file_stage_label": STAGE_LABELS.get(DeviceStage.iqc, "IQC"),
+                    "specs": _dup_specs(ed, row),
                     # Full CSV row, round-tripped through the modal so "Update"/
                     # "Update All" can apply this row's values without needing
                     # the original file re-uploaded.

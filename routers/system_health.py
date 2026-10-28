@@ -1474,7 +1474,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         subcat = await _subcat_changes(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
-        reassign_c = await _reassign_candidates(db)
+        # "Reassigned but marked Completed" card removed (2026-10-28): since
+        # 2026-10-27 a reassignment closes the old WorkID as Completed on purpose.
         audit_split = await _audit_split_preview_rows(db, await _audit_split_candidates(db))
         audit_scrap = await _audit_scrap_preview(db, await _audit_scrap_candidates(db))
         audit_pna = await _audit_pna_preview(db, await _audit_pna_candidates(db))
@@ -1518,7 +1519,6 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "issue_counts": _issue_counts(issues),
         # Only numbers with 2+ copies NOT in Trash need a decision; the rest
         # (one copy already trashed) are counted, not listed.
-        "reassign_c": reassign_c[:300], "reassign_total": len(reassign_c),
         "audit_split": audit_split, "audit_scrap": audit_scrap, "audit_pna": audit_pna, "hold_rel": hold_rel[:300], "hold_rel_total": len(hold_rel),
         "missing_tags": missing_tags, "miss_list": miss_list, "miss_found": miss_found,
         "miss_not_found": [t for t in miss_list
