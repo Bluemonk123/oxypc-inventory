@@ -98,11 +98,13 @@ def test_stage_completed_date_and_engineer_come_from_asset_history(app_client, m
         _login(app_client, admin_username, admin_password)
         html = app_client.get(f"/workid-status?workid={work_id}", follow_redirects=True).text
 
-        # Stage = "From" of the StageMovement (iqc), NOT the device's live
-        # current_stage (cleaning) and NOT the WorkOrder's own assigned role.
+        # A still-OPEN WorkID shows the stage stored on it (2026-10-28):
+        # WorkIDs open when the tag arrives, so the latest movement's From
+        # stage (iqc here) is where the tag came from, not where the work is.
+        # (Completed WorkIDs still take the From stage of their closing move.)
         row = rows_by_workid(html)[work_id]
-        assert "IQC" in row["s"].upper()
-        assert "Cleaning" not in row["s"]
+        assert "Cleaning" in row["s"]
+        assert "IQC" not in row["s"].upper()
 
         # Assigned Engineer = the user the WorkID was ASSIGNED TO ("Someone Else"),
         # NOT the movement's "By" (the mover is whoever clicked the move, e.g. an

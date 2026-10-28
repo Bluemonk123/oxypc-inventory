@@ -26,6 +26,13 @@
     </div>
     {% endif %}
     {{ ms.multiselect('cosmetic_stage', 'Stage', cosmetic_stage_choices, f_cosmetic_stage, '') }}
+    {# Work Date (2026-10-28): completed in the range, or a PNA part marked
+       in the range while the WorkID was open — a day's full work. #}
+    <div class="input-group input-group-sm" style="width:auto" title="Work Date: WorkIDs completed, or with a PNA part marked, in this range">
+      <span class="input-group-text">Work Date</span>
+      <input type="date" name="work_from" value="{{ f_work_from }}" class="form-control form-control-sm" title="Work Date From">
+      <input type="date" name="work_to" value="{{ f_work_to }}" class="form-control form-control-sm" title="Work Date To">
+    </div>
     <div>
       <input type="date" name="completed_from" value="{{ f_completed_from }}" class="form-control form-control-sm" title="Completed From">
     </div>
@@ -158,7 +165,7 @@
     {# Carries the current filters, so Export always matches the table —
        with a filter applied or without one. #}
     {% if can(current_user, 'workid_status', 'export') %}<a class="btn btn-outline-success btn-sm text-nowrap"
-       href="/workid-status/export?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&show_reassigned={{ f_show_reassigned | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}">
+       href="/workid-status/export?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&work_from={{ f_work_from | urlencode }}&work_to={{ f_work_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&show_reassigned={{ f_show_reassigned | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}">
       <i class="bi bi-download me-1"></i>Export
     </a>{% endif %}
   </div>

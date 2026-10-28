@@ -322,8 +322,14 @@ def _displayed_stage_clause(stage_vals, code_stage):
                                   not_(WorkOrder.work_id.like("L3L4-%"))))
     enum_vals = [st for st in DeviceStage if st.value in vals]
     not_reassigned = func.coalesce(not_(_is_reassigned_row()), True)
+    # Reassigned and still-open rows show the stage stored on the WorkID
+    # (open ones since 2026-10-28 — see the items loop).
+    known = list(code_stage)
+    own_stage_row = or_(_is_reassigned_row(),
+                        and_(WorkOrder.status.notin_(["completed", "reassigned"]), WorkOrder.stage.in_(known)))
+    not_reassigned = not_(own_stage_row)
     return or_(
-        and_(_is_reassigned_row(), WorkOrder.stage.in_(codes or ["__none__"])),
+        and_(own_stage_row, WorkOrder.stage.in_(codes or ["__none__"])),
         and_(not_reassigned, or_(*handoff_match) if handoff_match else false()),
         and_(not_reassigned, not_(handoff),
              _matched_from_stage_sq().in_(enum_vals) if enum_vals else false()),
@@ -335,6 +341,8 @@ def _displayed_stage_value(status, completed_at, work_id, code, from_stage, code
     if status == "reassigned" and completed_at:
         st = code_stage.get((code or "").strip())
         return st.value if st else (code or "")
+    if status not in ("completed", "reassigned") and (code or "").strip() in code_stage:
+        return code_stage[(code or "").strip()].value       # open: its own stage (2026-10-28)
     wid = work_id or ""
     if wid.startswith("L3L4-"):
         return "l3"
@@ -532,6 +540,8 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
                         engineer: str = Query(default=""),
                         completed_from: str = Query(default=""),
                         completed_to: str = Query(default=""),
+                        work_from: str = Query(default=""),
+                        work_to: str = Query(default=""),
                         cosmetic_stage: str = Query(default=""),
                         exclude_admin: str = Query(default=""),
                         show_reassigned: str = Query(default=""),
@@ -540,13 +550,15 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
     return await _workid_status_page(
         request=request, db=db, current_user=current_user, workid=workid, tag=tag,
         engineer=engineer, completed_from=completed_from, completed_to=completed_to,
+        work_from=work_from, work_to=work_to,
         cosmetic_stage=cosmetic_stage, exclude_admin=exclude_admin,
         show_reassigned=show_reassigned, scrap_type=scrap_type, highlight=highlight,
         row_cap=MAIN_ROW_CAP)
 
 
 async def _workid_status_page(*, request, db, current_user, workid="", tag="", engineer="",
-                              completed_from="", completed_to="", cosmetic_stage="",
+                              completed_from="", completed_to="", work_from="", work_to="",
+                              cosmetic_stage="",
                               exclude_admin="", show_reassigned="", scrap_type="all",
                               highlight="", row_cap=MAIN_ROW_CAP):
     """The page's data. row_cap=None loads every matching WorkID (Export,
@@ -606,6 +618,31 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         stmt = stmt.where(WorkOrder.completed_at >= cf - timedelta(days=1))
     if ct:
         stmt = stmt.where(WorkOrder.completed_at <= ct.replace(hour=23, minute=59, second=59) + timedelta(days=2))
+
+    # Work Date From/To (2026-10-28): a day's work = WorkIDs COMPLETED in the
+    # range, plus WorkIDs on which their engineer marked a PNA part in the
+    # range while the WorkID was open (assigned .. completed) — so an engineer's "worked on"
+    # tags include the ones still waiting for parts. In SQL before the row
+    # cap, so the table, tiles and Export all follow it.
+    wf, wt = _parse_date(work_from), _parse_date(work_to)
+    if wf or wt:
+        from sqlalchemy import and_, exists, or_
+        from models.pna_part import DevicePNAPart
+        w_end = wt.replace(hour=23, minute=59, second=59) if wt else None
+        done_in = [WorkOrder.status == "completed", WorkOrder.completed_at.isnot(None)]
+        pna_in = [DevicePNAPart.device_id == WorkOrder.device_id,
+                  DevicePNAPart.marked_by == WorkOrder.assigned_username,   # marked by that WorkID's engineer
+                  DevicePNAPart.marked_at >= func.coalesce(WorkOrder.assigned_at, WorkOrder.created_at)
+                  - timedelta(minutes=1),
+                  or_(WorkOrder.completed_at.is_(None),
+                      DevicePNAPart.marked_at <= WorkOrder.completed_at + timedelta(minutes=1))]
+        if wf:
+            done_in.append(WorkOrder.completed_at >= wf)
+            pna_in.append(DevicePNAPart.marked_at >= wf)
+        if w_end:
+            done_in.append(WorkOrder.completed_at <= w_end)
+            pna_in.append(DevicePNAPart.marked_at <= w_end)
+        stmt = stmt.where(or_(and_(*done_in), exists().where(*pna_in)))
 
     # Stage filter in SQL, BEFORE the row cap (2026-10-27): same rule as the
     # table's Stage column (_displayed_stage_clause), so a Stage-only view
@@ -825,7 +862,16 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
             engineer_username = wo.assigned_username
         else:
             mv = _movement_for_work_order(wo, movements_by_device.get(did, []))
-            if mv:
+            own = _code_stage.get((wo.stage or "").strip()) if _is_open(wo.status) else None
+            if own is not None:
+                # Still-open WorkID (2026-10-28): the work is at the stage stored
+                # ON it. Since WorkIDs open when a tag ARRIVES, the device's
+                # latest movement is that arrival, whose From stage is the stage
+                # it came from (an L1/L2 WorkID after a Stress Fail showed
+                # "Stress Test").
+                stage_value, stage_label = own.value, STAGE_LABELS.get(own, own.value)
+                movement_engineer, engineer_username = "—", wo.assigned_username
+            elif mv:
                 stage_value = mv.from_stage.value if mv.from_stage else ""
                 stage_label = STAGE_LABELS.get(mv.from_stage, mv.from_stage.value if mv.from_stage else "—")
                 movement_engineer = (display_name_by_username.get(mv.moved_by) or mv.moved_by) if mv.moved_by else "—"
@@ -1069,6 +1115,7 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         "stage_tiles": stage_tiles, "stage_groups": STAGE_GROUPS,
         "f_workid": workid, "f_tag": tag, "f_engineer": engineer,
         "f_completed_from": completed_from, "f_completed_to": completed_to,
+        "f_work_from": work_from, "f_work_to": work_to,
         "f_cosmetic_stage": cosmetic_stage, "f_exclude_admin": exclude_admin,
         "f_show_reassigned": show_reassigned,
         "f_scrap_type": scrap_type,
@@ -1086,6 +1133,8 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
                                engineer: str = Query(default=""),
                                completed_from: str = Query(default=""),
                                completed_to: str = Query(default=""),
+                               work_from: str = Query(default=""),
+                               work_to: str = Query(default=""),
                                cosmetic_stage: str = Query(default=""),
                                exclude_admin: str = Query(default=""),
                                show_reassigned: str = Query(default=""),
@@ -1110,6 +1159,7 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     page = await _workid_status_page(request=request, db=db, current_user=current_user,
                                      workid=workid, tag=tag, engineer=engineer,
                                      completed_from=completed_from, completed_to=completed_to,
+                                     work_from=work_from, work_to=work_to,
                                      cosmetic_stage=cosmetic_stage, exclude_admin=exclude_admin,
                                      show_reassigned=show_reassigned, scrap_type=scrap_type,
                                      highlight="", row_cap=None)
