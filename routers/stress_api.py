@@ -619,24 +619,17 @@ async def stress_fail_assign(
     # their own completed "strs" WorkID for it, visible on /workid-status —
     # distinct from the "l1" WorkOrder below, which tracks the downstream
     # engineer assignment rather than who ran the test.
-    role_val = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-    strs_work_id = await _gen_work_id(db)
-    db.add(WorkOrder(
-        work_id=strs_work_id, device_id=device.id, barcode=device.barcode,
-        stage="strs", assigned_role=role_val,
-        assigned_user_id=current_user.id, assigned_username=current_user.username,
-        assigned_name=current_user.full_name, status="completed",
-        completed_at=app_now(), created_by=current_user.username,
-    ))
+    # One Stress WorkID per visit (2026-10-27, services/stage_work_orders):
+    # the tag's open Stress WorkID closes now as completed. Unpicked, it is
+    # credited to whoever submitted the result; picked, it stays with that
+    # engineer. With none open, a completed one is recorded for the submitter.
+    from services.stage_work_orders import finish as _finish_stage
+    await _finish_stage(db, device, DeviceStage.qc_check, current_user)
 
-    work_id = await _gen_work_id(db)
-    db.add(WorkOrder(
-        work_id=work_id, device_id=device.id, barcode=device.barcode,
-        stage=target_stage_str, assigned_role=engineer.role.value,
-        assigned_user_id=engineer.id, assigned_username=engineer.username,
-        assigned_name=engineer.full_name, status="pending",
-        created_by=current_user.username,
-    ))
+    # Back at L1/L2 for the chosen engineer: one pending WorkID for this visit.
+    from services.stage_work_orders import open_for_stage as _open_for_stage
+    work_id = (await _open_for_stage(db, device, DeviceStage.l1, assignee=engineer,
+                                     created_by=current_user.username)).work_id
 
     await create_notification(
         db, user_id=engineer.id, title="Device Assigned to You",
@@ -657,6 +650,43 @@ async def stress_fail_assign(
     return RedirectResponse(url="/qc?success=Device+failed+%26+assigned+to+" +
                              (engineer.full_name or engineer.username).replace(" ", "+"),
                              status_code=302)
+
+
+@router.post("/{barcode}/pick")
+async def stress_pick(
+    barcode: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pick This on the Stress Test queue (2026-10-27): the clicking user
+    takes the tag's Stress WorkID — the pending one it arrived with is
+    claimed (assigned date = now, movement date kept); one held by someone
+    else closes as completed and a new one opens for the picker."""
+    from services.stage_work_orders import pick as _pick
+    device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
+    if not device:
+        return JSONResponse({"ok": False, "error": f"Tag {barcode} not found"}, status_code=404)
+    if device.current_stage != DeviceStage.qc_check:
+        return JSONResponse({"ok": False, "error": "This tag is no longer in Stress Test."}, status_code=400)
+    wo, previous = await _pick(db, device, DeviceStage.qc_check, current_user)
+    if wo is None:
+        return JSONResponse({"ok": True, "already_yours": True})
+    picker = current_user.full_name or current_user.username
+    for _w, uid, _n in previous:
+        if uid and uid != current_user.id:
+            await create_notification(
+                db, user_id=uid, title="Tag picked by another engineer",
+                message=f"{device.barcode} was picked by {picker} (Stress WorkID: {wo.work_id}).",
+                notification_type="info", barcode=device.barcode,
+                brand=device.brand, model=device.model, stage="qc_check",
+            )
+    await audit(db, user=current_user, action="STRESS_PICKED", table_name="devices",
+                record_id=str(device.id),
+                notes=f"{device.barcode} picked by {picker} (WorkID: {wo.work_id})"
+                      + (", closed " + ", ".join(f"{w} ({n})" for w, _u, n in previous) if previous else ""),
+                request=None)
+    await db.commit()
+    return JSONResponse({"ok": True, "work_id": wo.work_id})
 
 
 @router.post("/{barcode}/complete-to-paint")
@@ -729,15 +759,12 @@ async def stress_complete_to_paint(
     # their own completed "strs" WorkID for it, visible on /workid-status —
     # distinct from the "recv" WorkOrder below, which tracks the downstream
     # engineer assignment rather than who ran the test.
-    role_val = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
-    strs_work_id = await _gen_work_id(db)
-    db.add(WorkOrder(
-        work_id=strs_work_id, device_id=device.id, barcode=device.barcode,
-        stage="strs", assigned_role=role_val,
-        assigned_user_id=current_user.id, assigned_username=current_user.username,
-        assigned_name=current_user.full_name, status="completed",
-        completed_at=app_now(), created_by=current_user.username,
-    ))
+    # One Stress WorkID per visit (2026-10-27, services/stage_work_orders):
+    # the tag's open Stress WorkID closes now as completed. Unpicked, it is
+    # credited to whoever submitted the result; picked, it stays with that
+    # engineer. With none open, a completed one is recorded for the submitter.
+    from services.stage_work_orders import finish as _finish_stage
+    await _finish_stage(db, device, DeviceStage.qc_check, current_user)
 
     work_id = await _gen_work_id(db)
     db.add(WorkOrder(

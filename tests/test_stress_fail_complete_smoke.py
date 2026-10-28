@@ -36,6 +36,7 @@ from models.user import User, UserRole
 from models.device import Device, DeviceStage, StageMovement
 from models.lot import Lot
 from models.work_order import WorkOrder
+from services.stage_work_orders import stage_clause
 from models.stress import StressTestResult, STRESS_CHECKLIST_ITEMS
 
 
@@ -165,8 +166,11 @@ async def test_stress_fail_and_complete_assign():
                 assert wo.assigned_user_id == l1_engineer.id
 
                 strs_wo = (await db.execute(
+                    # One Stress WorkID per visit (2026-10-27): the result closes the
+                    # tag's Stress WorkID, or records one when none was open.
                     select(WorkOrder).where(WorkOrder.device_id == fail_device_id,
-                                             WorkOrder.stage == "strs")
+                                             stage_clause(DeviceStage.qc_check),
+                                             WorkOrder.status == "completed")
                 )).scalars().first()
                 assert strs_wo is not None, "No self-attributed WorkID created for the Fail submission"
                 assert strs_wo.status == "completed"
@@ -204,8 +208,11 @@ async def test_stress_fail_and_complete_assign():
                 assert wo2.assigned_user_id == paint_engineer.id
 
                 strs_wo2 = (await db.execute(
+                    # One Stress WorkID per visit (2026-10-27): the result closes the
+                    # tag's Stress WorkID, or records one when none was open.
                     select(WorkOrder).where(WorkOrder.device_id == complete_device_id,
-                                             WorkOrder.stage == "strs")
+                                             stage_clause(DeviceStage.qc_check),
+                                             WorkOrder.status == "completed")
                 )).scalars().first()
                 assert strs_wo2 is not None, "No self-attributed WorkID created for the Complete submission"
                 assert strs_wo2.status == "completed"
@@ -221,7 +228,8 @@ async def test_stress_fail_and_complete_assign():
                 )).scalars().first()
                 assert sr_row2 is not None, "No StressTestResult recorded for the completed checklist"
                 assert sr_row2.overall_status == "PASS"
-                assert all(v == "pass" for v in sr_row2.results_json.values())
+                # Keys starting with "_" are metadata (e.g. "_visit"), not checklist items.
+                assert all(v == "pass" for k, v in sr_row2.results_json.items() if not k.startswith("_"))
 
     finally:
         # ── Cleanup: remove everything this test created ────────────────────

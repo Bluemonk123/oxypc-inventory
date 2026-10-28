@@ -21,6 +21,7 @@ import sys
 import uuid
 
 from tests.test_iqc_new_user import _login, make_user  # noqa: F401  (fixture)
+from tests.workid_helpers import export_sheet, page_rows, rows_by_workid  # noqa: F401
 
 ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
 
@@ -95,16 +96,15 @@ def test_filter_row_labels_tiles_and_new_filters_render(app_client, make_user): 
     assert ">Assigned To<" not in html
     assert 'name="date_from"' not in html
     assert 'name="date_to"' not in html
-    assert ">Completed From<" in html
-    assert ">Completed To<" in html
+    assert 'title="Completed From"' in html
+    assert 'title="Completed To"' in html
     assert 'name="completed_from"' in html
     assert 'name="completed_to"' in html
     assert 'name="cosmetic_stage"' in html
-    assert ">Total WorkIDs<" in html
-    assert ">Total Tags<" in html
-    assert ">Total Ongoing<" in html
-    assert ">Total Assigned<" in html
-    assert ">Total Completed<" in html
+    # Tiles (renamed 2026-10-24 / 2026-10-26): tag counts.
+    for label in ("Assigned Tags", "Completed Tags", "Ongoing Tags",
+                  "Total Customer Return", "Total Scrap", "Total PNA"):
+        assert label in html, label
     # Export link carries every filter param, including the 3 new ones.
     assert "/workid-status/export?" in html
     assert "completed_from=" in html
@@ -140,7 +140,7 @@ def test_export_columns_dropped_and_added(app_client, make_user):  # noqa: F811
     _login(app_client, username, password)
     r = app_client.get("/workid-status/export", follow_redirects=True)
     assert r.status_code == 200
-    header = r.text.split("\n")[0]
+    header = export_sheet(r.content)[0]
     assert "Parts Required" not in header
     assert "Parts Requested" not in header
     assert "WorkID" not in header
@@ -158,8 +158,8 @@ def test_completed_date_filter_and_export_column_populated(app_client, make_user
         _login(app_client, username, password)
         r = app_client.get(f"/workid-status/export?tag={barcode}", follow_redirects=True)
         assert r.status_code == 200
-        lines = [ln for ln in r.text.splitlines() if ln.strip()]
-        assert len(lines) == 2
-        assert "ITestMakeXYZ" in lines[1]
+        rows = export_sheet(r.content)
+        assert len(rows) == 2                           # header + this one WorkID
+        assert "ITestMakeXYZ" in rows[1]
     finally:
         _cleanup_device(barcode)

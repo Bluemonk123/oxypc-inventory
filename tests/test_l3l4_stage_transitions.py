@@ -252,6 +252,8 @@ async def main():
 
 asyncio.run(main())
 """)
-        assert wo_status == "completed"
+        # A manual move takes the tag off its L3/L4 engineer: closed as
+        # "reassigned" since 2026-10-23 (not counted as their finished work).
+        assert wo_status == "reassigned"
     finally:
         _cleanup(barcode)

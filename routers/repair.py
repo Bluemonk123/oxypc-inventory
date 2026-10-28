@@ -246,31 +246,19 @@ async def l1_pick(
     if device.current_stage != DeviceStage.l1:
         raise HTTPException(400, "Tag is not in the L1/L2 queue")
 
-    open_wos = (await db.execute(
-        select(WorkOrder).where(
-            WorkOrder.device_id == device.id,
-            WorkOrder.stage == "l1",
-            wo_open(),
-        ).order_by(WorkOrder.assigned_at.desc(), WorkOrder.created_at.desc())
-    )).scalars().all()
-    if open_wos and open_wos[0].assigned_user_id == current_user.id:
+    # One WorkID per visit (2026-10-27, services/stage_work_orders.py): an
+    # unpicked pending WorkID is claimed (assigned date = now, movement date
+    # kept); one held by someone else closes as completed and a new one opens
+    # for the picker. Picking your own tag is a no-op.
+    from services.stage_work_orders import pick as _pick
+    wo, previous = await _pick(db, device, DeviceStage.l1, current_user)
+    if wo is None:
         return RedirectResponse(url="/repair/l1", status_code=302)
-    previous = [(w.work_id, w.assigned_user_id, w.assigned_name or w.assigned_username) for w in open_wos]
-
-    # Previous engineer's WorkID is REASSIGNED, not completed (2026-10-23).
-    await reassign_open_work_orders(db, device.id)
     await _close_open_movement(db, device)
     device.l1l2_status = "New"   # the picker hasn't started yet — Start Repair is theirs to click
 
-    work_id = await _gen_work_id(db)
+    work_id = wo.work_id
     picker = current_user.full_name or current_user.username
-    db.add(WorkOrder(
-        work_id=work_id, device_id=device.id, barcode=device.barcode,
-        stage="l1", assigned_role=current_user.role.value,
-        assigned_user_id=current_user.id, assigned_username=current_user.username,
-        assigned_name=current_user.full_name, status="pending",
-        created_by=current_user.username,
-    ))
     prev_txt = (", closed " + ", ".join(f"{w} ({n})" for w, _u, n in previous)) if previous else ""
     db.add(StageMovement(
         device_id=device.id, from_stage=DeviceStage.l1, to_stage=DeviceStage.l1,
@@ -797,8 +785,9 @@ async def l3l4_list(request: Request,
         aging = max(0, (today - wo.assigned_at.date()).days) if wo.assigned_at else 0
         items.append({
             "work_id": wo.work_id,
-            "assigned_name": wo.assigned_name or wo.assigned_username or "—",
-            "mine": wo.assigned_user_id == current_user.id,
+            "assigned_name": wo.assigned_name or wo.assigned_username or "Not picked",
+            "mine": wo.assigned_user_id is not None and wo.assigned_user_id == current_user.id,
+            "unpicked": wo.assigned_user_id is None and not wo.assigned_username,
             "assigned_date": wo.assigned_at,
             "device_id": str(dev.id),
             "barcode": dev.barcode,
@@ -904,31 +893,16 @@ async def l3l4_pick(
     if device.current_stage != DeviceStage.l3:
         raise HTTPException(400, "Tag is not in the L3/L4 queue")
 
-    open_wos = (await db.execute(
-        select(WorkOrder).where(
-            WorkOrder.device_id == device.id,
-            WorkOrder.work_id.like("L3L4-%"),
-            wo_open(),
-        ).order_by(WorkOrder.assigned_at.desc(), WorkOrder.created_at.desc())
-    )).scalars().all()
-    if open_wos and open_wos[0].assigned_user_id == current_user.id:
+    # One WorkID per visit (2026-10-27): claim the pending L3L4- WorkID, or
+    # take it from whoever holds it (theirs closes as completed). The tag's
+    # L1/L2 WorkID (still open while it is away at L3/L4) is left alone.
+    from services.stage_work_orders import pick as _pick
+    wo, previous = await _pick(db, device, DeviceStage.l3, current_user)
+    if wo is None:
         return RedirectResponse(url="/repair/l3l4", status_code=302)
-    previous = [(w.work_id, w.assigned_user_id, w.assigned_name or w.assigned_username) for w in open_wos]
-    requested_by = open_wos[0].requested_by_name if open_wos else None
-
-    # Previous engineer's WorkID is REASSIGNED, not completed (2026-10-23).
-    await reassign_open_work_orders(db, device.id)
     await _close_open_movement(db, device)
 
     picker = current_user.full_name or current_user.username
-    wo = await _create_work_order_with_unique_id(
-        db, "L3L4-", device_id=device.id, barcode=device.barcode,
-        stage="l3", assigned_role=current_user.role.value,
-        assigned_user_id=current_user.id, assigned_username=current_user.username,
-        assigned_name=current_user.full_name, status="pending",
-        requested_by_name=requested_by,
-        created_by=current_user.username,
-    )
     prev_txt = (", closed " + ", ".join(f"{w} ({n})" for w, _u, n in previous)) if previous else ""
     db.add(StageMovement(
         device_id=device.id, from_stage=DeviceStage.l3, to_stage=DeviceStage.l3,
@@ -990,6 +964,11 @@ async def l3l4_complete(
     db.add(StageMovement(device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.l1,
                          moved_by=current_user.username,
                          notes="L3/L4 completed — returned to L1/L2"))
+    # Back at L1/L2: its L1/L2 WorkID normally stayed open while the tag was
+    # away; if there is none (e.g. it reached L3/L4 by a Customise move), a
+    # pending one opens so it can be picked (2026-10-27).
+    from services.stage_work_orders import open_for_stage as _open_for_stage
+    await _open_for_stage(db, device, DeviceStage.l1, created_by=current_user.username)
     await audit(db, user=current_user, action="L3L4_COMPLETE",
                 table_name="devices", record_id=str(device.id),
                 notes=f"L3/L4 completed on {device.barcode}", request=request)
@@ -1029,6 +1008,11 @@ async def l3l4_scrap(
     db.add(StageMovement(device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.l1,
                          moved_by=current_user.username,
                          notes=f"L3/L4 {scrap_type} — returned to L1/L2"))
+    # Back at L1/L2: its L1/L2 WorkID normally stayed open while the tag was
+    # away; if there is none (e.g. it reached L3/L4 by a Customise move), a
+    # pending one opens so it can be picked (2026-10-27).
+    from services.stage_work_orders import open_for_stage as _open_for_stage
+    await _open_for_stage(db, device, DeviceStage.l1, created_by=current_user.username)
     await audit(db, user=current_user, action="L3L4_SCRAP",
                 table_name="devices", record_id=str(device.id),
                 notes=f"{scrap_type} on {device.barcode}", request=request)
@@ -1339,8 +1323,10 @@ async def repair_list(stage: str, request: Request,
             raw_days = (today - wo.assigned_at.date()).days if wo.assigned_at else 0
             work_map[did_str] = {
                 "work_id": wo.work_id,
-                "assigned_name": wo.assigned_name or wo.assigned_username or "—",
-                "mine": wo.assigned_user_id == current_user.id,
+                "assigned_name": wo.assigned_name or wo.assigned_username or "Not picked",
+                "mine": wo.assigned_user_id is not None and wo.assigned_user_id == current_user.id,
+                # Pending WorkID opened on arrival, nobody has picked it yet
+                "unpicked": wo.assigned_user_id is None and not wo.assigned_username,
                 "days_pending": max(0, raw_days - paused_days),
                 "paused": bool(wo.paused_since),
                 # Drives the Date Assigned column and the queue's default sort.
@@ -1718,6 +1704,9 @@ async def complete_repair(
                              to_stage=DeviceStage.qc_check,
                              moved_by=current_user.username,
                              notes=f"{job.stage} completed — moved to Stress Test"))
+        # Arrived at Stress Test: one pending Stress WorkID (2026-10-27).
+        from services.stage_work_orders import open_for_stage as _open_for_stage
+        await _open_for_stage(db, device, DeviceStage.qc_check, created_by=current_user.username)
         await create_notification(
             db, user_id=None, title="Device Stage Changed",
             message=(f"{device.barcode} moved from {current.value} to "
@@ -1766,6 +1755,10 @@ async def complete_repair(
             device.current_stage = next_s; device.updated_at = app_now()
             if current in (DeviceStage.l1, DeviceStage.l2):
                 await _close_l1l2_work_orders(db, device.id)
+            # Arrived at L1/L2, L3/L4, Stress or Final QC: one pending WorkID
+            # (2026-10-27); any other stage: nothing.
+            from services.stage_work_orders import open_for_stage as _open_for_stage
+            await _open_for_stage(db, device, next_s, created_by=current_user.username)
             # Keep the L1/L2 status column consistent when completing via the
             # side Complete-Job panel (the old path predates l1l2_status).
             if current in (DeviceStage.l1, DeviceStage.l2):
@@ -1903,6 +1896,10 @@ async def move_device(
     if prev != new_stage:
         from services.work_order_close import reassign_open_work_orders
         await reassign_open_work_orders(db, device.id)
+        # Arrived at L1/L2, L3/L4, Stress or Final QC: one pending WorkID to
+        # be picked (2026-10-27); any other stage: nothing.
+        from services.stage_work_orders import open_for_stage as _open_for_stage
+        await _open_for_stage(db, device, new_stage, created_by=current_user.username)
     db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=new_stage,
                          moved_by=current_user.username, notes=notes or "Manual move"))
     await audit(db, user=current_user, action="STAGE_MOVED",

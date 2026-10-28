@@ -16,6 +16,7 @@ import sys
 import uuid
 
 from tests.test_iqc_new_user import _login, make_user  # noqa: F401  (fixture)
+from tests.workid_helpers import export_sheet, page_rows, rows_by_workid  # noqa: F401
 
 ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
 
@@ -98,10 +99,11 @@ def test_l3l4_request_movement_does_not_leak_as_phantom_backfill_row(app_client,
         html = app_client.get(f"/workid-status?tag={barcode}", follow_redirects=True).text
 
         # The L3/L4-assigned WorkID must still show.
-        assert 'id="wo-L3L4-' in html
+        rows = page_rows(html)
+        assert any(r["w"].startswith("L3L4-") for r in rows)
 
         # No backfilled movement row for this device's synthetic
         # "Requested to L3/L4" movement.
-        assert 'id="mv-' not in html
+        assert not any(r["k"].startswith("mv-") for r in rows)
     finally:
         _cleanup(barcode)

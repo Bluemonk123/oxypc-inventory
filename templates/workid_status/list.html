@@ -128,7 +128,8 @@
     {# Stage name, then Assigned and Completed counts, stacked (2026-10-27;
        no total). #}
     <div class="lt-tile h-100" style="--tc:{{ color }}">
-      <div class="wid-stage-name">{{ label }}</div>
+      {# Waiting (2026-10-27): tags with a WorkID here nobody has picked yet. #}
+      <div class="wid-stage-name">{{ label }}{% if t.waiting %} <span class="fw-normal small" title="Tags waiting to be picked">(Waiting - {{ t.waiting }})</span>{% endif %}</div>
       <div class="wid-stage-line" title="Tags given a WorkID in this stage (open or completed)">
         <span class="lt-tile-count">{{ t.assigned }}</span><span class="wid-stage-sub">Assigned</span>
       </div>
@@ -166,7 +167,7 @@
         <thead class="table-dark">
           <tr>
             <th>Tag Number</th><th>WorkID</th><th>Assigned Engineer</th><th>Model</th><th>Stage</th>
-            <th>Aging</th><th>Assigned Date</th><th>Completed Date</th><th>Notes</th><th>Scrap</th><th>PNA</th><th>PNA History</th>
+            <th>Aging</th><th title="When the tag arrived / was handed over (the WorkID opened)">Movement Date</th><th title="When the engineer picked it up / was assigned">Assigned Date</th><th>Completed Date</th><th>Notes</th><th>Scrap</th><th>PNA</th><th>PNA History</th>
           </tr>
         </thead>
         {# Rows come from #workidRows below and are drawn by DataTables a page
@@ -209,7 +210,9 @@ $(document).ready(function(){
     { data: 'b', render: text(function (d) {
         return '<a href="/devices/' + encodeURIComponent(d) + '" class="font-monospace text-decoration-none">' + esc(d) + '</a>'; }) },
     { data: 'w', createdCell: cls('font-monospace fw-bold'), render: text(esc) },
-    { data: 'e', render: text(esc) },
+    { data: 'e', render: function (d, type, r) {
+        if (r.wt && type === 'display') return '<span class="text-muted fst-italic">Not picked</span>';
+        return text(esc)(d, type, r); } },
     { data: 'm', render: text(clamp) },
     { data: 's', render: text(function (d) { return '<span class="badge bg-secondary">' + esc(d) + '</span>'; }) },
     // Aging: Assigned -> Completed (or "ongoing") + day count badge.
@@ -228,7 +231,11 @@ $(document).ready(function(){
                (done ? '<span class="text-muted">' + r.cd + '</span>' : '<span class="text-muted fst-italic">ongoing</span>') +
                ' <span class="badge rounded-pill bg-' + cls + ' ms-1" title="' + tip + '">' + d + ' day' + (d !== 1 ? 's' : '') + '</span>';
       } },
+    // Movement Date (2026-10-27): when the WorkID opened — the tag's arrival.
+    { data: 'mv', createdCell: cls('text-nowrap text-muted'), render: function (d, type, r) {
+        return type === 'sort' ? r.ms : (type === 'display' ? (d || '\u2014') : d); } },
     { data: 'a', createdCell: cls('text-nowrap text-muted'), render: function (d, type, r) {
+        if (r.wt) return type === 'sort' ? '' : (type === 'display' ? '<span class="badge bg-warning text-dark" title="Waiting to be picked">Not picked</span>' : 'Not picked');
         return type === 'sort' ? r.as : (type === 'display' ? (d || '\u2014') : d); } },
     { data: 'c', createdCell: cls('text-nowrap text-muted'), render: function (d, type, r) {
         if (r.r) {   // closed as Reassigned, not completed
@@ -279,6 +286,7 @@ $(document).ready(function(){
     // Every tag given a WorkID in this view (2026-10-27), as the stage tiles count.
     assigned: function (r) { return !!r.b && r.b !== '\u2014'; },
     ongoing: function (r) { return r.st === 'in_progress'; },
+    waiting: function (r) { return !!r.wt; },
     // Scrap decisions are counted under Scrap, not Completed (2026-10-27).
     completed: function (r) { return r.st === 'completed' && !r.x; },
     pna: function (r) { return !!r.p; },

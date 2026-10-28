@@ -363,13 +363,16 @@ def _stage_tile_counts_from_items(items) -> dict:
     (it was assigned, whatever its status now — every row has an Assigned
     Date); Completed = the tags whose WorkID there is completed, so
     Completed is always part of Assigned (2026-10-27, Pankaj)."""
-    sets = {key: {"assigned": set(), "completed": set(), "scrap": set()} for key, *_ in STAGE_GROUPS}
+    sets = {key: {"assigned": set(), "completed": set(), "scrap": set(), "waiting": set()}
+            for key, *_ in STAGE_GROUPS}
     for it in items:
         g = sets.get(_stage_group(it.get("stage_value")))
         tag = it.get("barcode")
         if g is None or not tag or tag == "—":
             continue
         g["assigned"].add(tag)              # every tag given out in this stage
+        if it.get("waiting"):
+            g["waiting"].add(tag)           # arrived, not picked yet
         if it.get("scrap"):
             g["scrap"].add(tag)             # scrap decision: counted apart from Completed
         elif _is_done(it.get("wo_status")):
@@ -401,6 +404,10 @@ def _rows_json(items) -> str:
             "k": it["row_key"], "w": it["work_id"], "b": it.get("barcode") or "—",
             "m": it.get("model") or "—", "s": it.get("stage_label") or "—",
             "a": _fmt(a), "ad": _fmt(a, "%d-%m-%Y"), "as": _fmt(a, "%Y%m%d%H%M"),
+            # Movement Date (2026-10-27): when the WorkID was opened — the
+            # tag's arrival / hand-over. Assigned Date moves to the pick time.
+            "mv": _fmt(it.get("moved_at")), "ms": _fmt(it.get("moved_at"), "%Y%m%d%H%M"),
+            "wt": bool(it.get("waiting")),
             "c": _fmt(c), "cd": _fmt(c, "%d-%m-%Y"), "cs": _fmt(c, "%Y%m%d%H%M"),
             "d": it.get("days"), "n": it.get("notes") or "", "e": it.get("engineer") or "",
             "p": bool(it.get("pna")), "pt": pna_tip, "h": it.get("pna_history") or [],
@@ -448,6 +455,7 @@ async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, 
         WorkOrder.barcode.label("bc"), WorkOrder.device_id.label("did"),
         Device.l1l2_status.label("l12"),
         _scrap_exists(*SCRAP_TYPES.values()).label("scr"),
+        WorkOrder.assigned_user_id.label("au"),
     ).order_by(None)
     # Stage: already in full_stmt (applied before the row cap).
     if cf or ct:
@@ -472,10 +480,12 @@ async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, 
         func.count(distinct(sub.c.bc)).filter(and_(sub.c.st == "completed", ~func.coalesce(sub.c.scr, False))),
         func.count().filter(has_pna),
         func.count(distinct(sub.c.bc)),
+        func.count(distinct(sub.c.bc)).filter(and_(sub.c.st.notin_(["completed", "reassigned"]),
+                                                   sub.c.au.is_(None))),
     ))).one()
     return {"open_workids": r[0], "closed_workids": r[1], "reassigned_workids": r[2],
             "open_tags": r[3], "ongoing_tags": r[4], "completed_tags": r[5], "total_pna": r[6],
-            "assigned_tags": r[7]}
+            "assigned_tags": r[7], "waiting_tags": r[8]}
 
 
 async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, code_stage) -> dict:
@@ -489,17 +499,21 @@ async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_a
         WorkOrder.barcode.label("bc"), WorkOrder.completed_at.isnot(None).label("done_at"),
         _matched_from_stage_sq().label("fs"),
         _scrap_exists(*SCRAP_TYPES.values()).label("scr"),
+        WorkOrder.assigned_user_id.label("au"),
     )
     sub = q.subquery()
     rows = (await db.execute(
-        select(sub.c.sg, sub.c.st, sub.c.wid, sub.c.bc, sub.c.done_at, sub.c.fs, sub.c.scr)
+        select(sub.c.sg, sub.c.st, sub.c.wid, sub.c.bc, sub.c.done_at, sub.c.fs, sub.c.scr, sub.c.au)
     )).all()
-    sets = {key: {"assigned": set(), "completed": set(), "scrap": set()} for key, *_ in STAGE_GROUPS}
-    for code, st, wid, bc, done_at, fs, scr in rows:
+    sets = {key: {"assigned": set(), "completed": set(), "scrap": set(), "waiting": set()}
+            for key, *_ in STAGE_GROUPS}
+    for code, st, wid, bc, done_at, fs, scr, au in rows:
         g = sets.get(_stage_group(_displayed_stage_value(st, done_at, wid, code, fs, code_stage)))
         if g is None or not bc:
             continue
         g["assigned"].add(bc)
+        if au is None and st not in ("completed", "reassigned"):
+            g["waiting"].add(bc)
         if scr:
             g["scrap"].add(bc)              # scrap decision: counted apart from Completed
         elif _is_done(st):
@@ -840,8 +854,17 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         # Completed Date itself stays blank until then).
         aging_end = movement_completed_at or reassigned_at or today
         days = max(0, (aging_end.date() - start.date()).days) if start else None
+        # Waiting = an open WorkID nobody has picked yet (2026-10-27, one
+        # WorkID per visit: a tag arrives at L1/L2, L3/L4, Stress or Final QC
+        # with a pending, unassigned WorkID). Shown as "Not picked", never
+        # under the person who happened to move the tag.
+        waiting = wo.status not in ("completed", "reassigned") and wo.assigned_user_id is None
+        if waiting:
+            movement_engineer, engineer_username = "Not picked", None
         items.append({
             "row_key": f"wo-{wo.work_id}",
+            "moved_at": wo.created_at,          # Movement Date: when the tag arrived / was handed over
+            "waiting": waiting,
             "work_id": wo.work_id,
             "device_id": wo.device_id,
             "barcode": wo.barcode or (dev.barcode if dev else "—"),
@@ -973,6 +996,8 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         "closed_workids": sum(1 for it in items if it["wo_status"] in ("completed", "reassigned")),
         "reassigned_workids": sum(1 for it in items if it["wo_status"] == "reassigned"),
         "open_tags": _tags("pending"),
+        "waiting_tags": len({it["barcode"] for it in items
+                             if it.get("waiting") and it.get("barcode") and it["barcode"] != "—"}),
         # Assigned Tags tile (2026-10-27): every tag given a WorkID in this
         # view, whatever its status now — same rule as the stage tiles. It
         # used to count only not-yet-started ("pending") WorkIDs, which read
@@ -1118,8 +1143,10 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             it.get("model") or "",
             it.get("engineer") or "",
             it.get("stage_label") or "",
+            it.get("moved_at"),
             it.get("assigned_date"),
             it.get("completed_at"),
+            "Waiting (not picked)" if it.get("waiting") else
             (("Reassigned " + it["reassigned_at"].strftime("%Y-%m-%d %H:%M")
               + (f" ({it['reassigned_to']})" if it.get("reassigned_to") else ""))
              if it.get("reassigned_at") else ("Scrap" if it.get("scrap")
@@ -1129,8 +1156,9 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             it.get("pna_history_text") or "",
         ])
     _sheet(ws, ["Tag Number", "Lot Number", "Make", "Model", "Engineer Name", "Stage",
-                "Assigned Date", "Completed Date", "Status", "Scrap", "PNA", "PNA History"], tag_rows)
-    for row in ws.iter_rows(min_row=2, min_col=7, max_col=8):
+                "Movement Date", "Assigned Date", "Completed Date", "Status", "Scrap", "PNA",
+                "PNA History"], tag_rows)
+    for row in ws.iter_rows(min_row=2, min_col=7, max_col=9):
         for c in row:
             c.number_format = "yyyy-mm-dd hh:mm"
 

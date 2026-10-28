@@ -589,6 +589,9 @@ async def grn_bulk_move_to_trc(
         db.add(StageMovement(device_id=d.id, from_stage=prev, to_stage=target_stage,
                               moved_by=current_user.username,
                               notes=f"GRN Records — Pending for TRC bulk move ({label})"))
+        # Arrived at L1/L2, L3/L4, Stress or Final QC: one pending WorkID (2026-10-27).
+        from services.stage_work_orders import open_for_stage as _open_for_stage
+        await _open_for_stage(db, d, target_stage, created_by=current_user.username)
         moved += 1
 
     await audit(db, user=current_user, action="GRN_BULK_MOVE_TO_TRC",

@@ -27,13 +27,14 @@ def test_dashboard_pipeline_steps_and_entity_filter(app_client, make_user):  # n
 
     # Scope to the pipeline card — "IQC" and "Stock" legitimately appear in
     # other cards on this page, so a whole-page search would prove nothing.
-    card = html.split("Device Stage Pipeline", 1)[1].split("Returned:", 1)[0]
-    for label in ("GRN", "L1/L2", "L3/L4", "Stress/QC", "Cosmetic",
-                  "Final QC", "Ready to Sale", "Sold"):
+    card = html.split('<span class="fw-semibold">Device Stage Pipeline</span>', 1)[1]
+    card = card.split('class="d-flex pipeline-row', 1)[1].split("</div>\n  </div>\n</div>", 1)[0]
+    # Steps as redesigned (2026-10-15): IQC, Stock In and Production are back;
+    # GRN (not a stage a tag sits in) is gone from the pipeline row.
+    for label in ("IQC", "Stock In", "Production", "L1/L2", "L3/L4", "Stress/QC",
+                  "Cosmetic", "Final QC", "Ready to Sale", "Sold"):
         assert ">" + label + "<" in card, f"{label} missing from the pipeline"
-    # The old steps are gone from the pipeline itself.
-    assert ">IQC<" not in card
-    assert ">Stock<" not in card
+    assert ">GRN<" not in card
     assert 'id="ms_val_entity"' in html
 
 
@@ -78,9 +79,11 @@ def test_workid_status_filters_and_export(app_client, make_user):  # noqa: F811
 
     r = app_client.get("/workid-status/export", follow_redirects=True)
     assert r.status_code == 200, r.text[:800]
-    assert "text/csv" in r.headers.get("content-type", "")
+    # .xlsx workbook since 2026-10-27 (Tag Summary / Stage / Staff Summary).
+    assert "spreadsheetml" in r.headers.get("content-type", "")
+    from tests.workid_helpers import export_sheet
     # Export columns narrowed 2026-09-02 — WorkID is no longer one of them.
-    assert "Tag Number" in r.text.split("\n")[0]
+    assert "Tag Number" in export_sheet(r.content)[0]
 
 
 def test_workid_export_honours_a_filter(app_client, make_user):  # noqa: F811
@@ -88,5 +91,6 @@ def test_workid_export_honours_a_filter(app_client, make_user):  # noqa: F811
     _login(app_client, username, password)
     r = app_client.get("/workid-status/export?workid=ZZZNOSUCH", follow_redirects=True)
     assert r.status_code == 200
-    body = [ln for ln in r.text.splitlines() if ln.strip()]
+    from tests.workid_helpers import export_sheet
+    body = export_sheet(r.content)
     assert len(body) == 1, "a filter matching nothing must export only the header"

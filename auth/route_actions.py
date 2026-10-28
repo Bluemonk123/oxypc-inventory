@@ -193,6 +193,7 @@ ROUTE_ACTIONS = {
     ('POST', '/cosmetic/advance'): (('cosmetic_received', 'cosmetic_cleaning', 'cosmetic_putty', 'cosmetic_dry_sanding', 'cosmetic_masking', 'cosmetic_painting', 'cosmetic_water_sanding', 'cosmetic_completed', 'cosmetic_finalqc'), 'edit'),  # advance_stage: module = PERM_MODULE_BY_STAGE[device.current_stage], or cosmetic_finalqc when current_stage == final_qc
     ('POST', '/cosmetic/final-qc/move-failed'): ('cosmetic_finalqc', 'edit'),  # fqc_move_failed
     ('POST', '/cosmetic/final-qc/move-passed'): ('cosmetic_finalqc', 'edit'),  # fqc_move_passed
+    ('POST', '/cosmetic/final-qc/pick'): ('cosmetic_finalqc', 'edit'),  # fqc_pick: Pick This, takes the tag's Final QC WorkID
     ('POST', '/cosmetic/final-qc/edit/{barcode}'): ('cosmetic_finalqc', 'edit'),  # fqc_edit_revert: reverts device back to final_qc
     ('POST', '/cosmetic/send-to-cosmetic'): ('cosmetic_received', 'add'),  # send_to_cosmetic: already require_module_perm('cosmetic_received','add')
     ('POST', '/cosmetic/revalidate-iqc'): ('cosmetic_finalqc', 'edit'),  # revalidate_iqc: already require_module_perm('cosmetic_finalqc','edit')
@@ -322,6 +323,8 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/size-space-fix'): None,  # size_space_fix_apply: system health internals (admin-only)
     ('POST', '/admin/system/spec-repair'): None,  # spec_repair_apply: system health internals (admin-only)
     ('POST', '/admin/system/scrap-l12-close'): None,  # scrap_l12_close_apply: system health internals (admin-only)
+    ('POST', '/admin/system/stress-wo-close'): None,  # stress_wo_close_apply: system health internals (admin-only)
+    ('POST', '/admin/system/cosmetic-wo-close'): None,  # cosmetic_wo_close_apply: system health internals (admin-only)
     ('POST', '/admin/system/subcategory-fill'): None,  # subcategory_fill_apply: system health internals
     ('POST', '/admin/system/reassign-fix'): None,  # reassign_fix_apply: system health internals
     ('POST', '/admin/system/audit-split-fix'): None,  # audit_split_apply: system health internals
@@ -559,6 +562,7 @@ ROUTE_ACTIONS = {
     ('POST', '/stress/{barcode}/save-agent'): ('qc_check', 'add'),  # save_agent_results: stores agent StressTestResult
     ('POST', '/stress/{barcode}/fail'): ('qc_check', 'edit'),  # stress_fail_assign: fail + reassign to engineer
     ('POST', '/stress/{barcode}/complete-to-paint'): ('qc_check', 'edit'),  # stress_complete_to_paint: moves to cosmetic_received
+    ('POST', '/stress/{barcode}/pick'): ('qc_check', 'edit'),  # stress_pick: Pick This, takes the tag's Stress WorkID
     # ===== routers/buckets.py =====
     ('POST', '/buckets/create'): ('stock', 'add'),  # create_bucket: Stock Inwards page
     ('POST', '/buckets/{bucket_id}/edit'): ('stock', 'edit'),  # edit_bucket

@@ -1,0 +1,120 @@
+{# Shared by Ready for Sale - Tags (/sales/ready, ready_list.html) and
+   Ready for Sale - Lots (/sales/lots, ready_lots.html), 2026-10-27.
+   Import "with context": the macros use current_user / can(). #}
+{% macro touch_select(id, value='') %}
+<select id="{{ id }}" class="form-select form-select-sm ready-touch-filter" style="width:auto;min-width:170px" title="Touch Type">
+  <option value="" {{ 'selected' if not value }}>All Touch Types</option>
+  <option value="touch" {{ 'selected' if value == 'touch' }}>Touch (T)</option>
+  <option value="non_touch" {{ 'selected' if value == 'non_touch' }}>Non-Touch (NT)</option>
+</select>
+{% endmacro %}
+{# Entity is the first filter in all four tabs (2026-10-22). Availability filter (2026-10-22): Blocked = held by Block Tags OR assigned to a user; Open = neither. #}
+{% macro avail_select(id, value='') %}
+<select id="{{ id }}" class="form-select form-select-sm ready-avail-filter" style="width:auto;min-width:150px" title="Availability">
+  <option value="" {{ 'selected' if not value }}>All Availability</option>
+  <option value="open" {{ 'selected' if value == 'open' }}>Open</option>
+  <option value="blocked" {{ 'selected' if value == 'blocked' }}>Blocked</option>
+</select>
+{% endmacro %}
+{% macro model_summary_table(table_id, rows, selectable, empty_text) %}
+<table id="{{ table_id }}" class="table table-hover mb-0 small w-100">
+  <thead class="table-dark">
+    <tr>
+      {% if selectable %}<th><input type="checkbox" id="modelSumSelectAll"></th>{% endif %}
+      <th>Model</th><th>Make</th><th>Device Type</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th>
+      {# Total Purchase Price hidden by request (2026-10-13). #}
+      <th>Total Quantity</th><th>Grades</th>
+      <th title="Sum of each tag's Min Selling Price (saved Set price, else unit price + Other Rates + margin)">Min Selling Price</th>
+      <th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for g in rows %}
+    <tr data-qty="{{ g.total_count }}" data-min="{{ (g.min_total or 0) if can(current_user, 'sales', 'pricing') else 0 }}"
+        data-open="{{ g.open_count }}" data-blocked="{{ g.blocked_count }}">
+      {% if selectable %}
+      <td><input type="checkbox" class="modelSumChk" value="{{ loop.index0 }}"
+                 data-model="{{ g.model }}" data-make="{{ g.make }}"
+                 data-barcodes='{{ g.barcodes | tojson }}'></td>
+      {% endif %}
+      {# Model cell (2026-10-27): model name (semi-bold navy) on top; below it the
+         export icon, a separator, then tag counts per entity (forest green,
+         separated by thin lines): OXY = OxyPC Computers, RC = Renew Circuits,
+         DES = Deshwal, UN = none set. The icon exports this configuration's
+         tags in the All Inventory format. #}
+      {% set _can_exp = can(current_user, 'sales', 'export') %}
+      <td class="text-nowrap"><span class="fw-semibold" style="color:#0e3a7a">{{ g.model }}</span>
+        {% if _can_exp or g.entities %}<div class="d-flex flex-nowrap align-items-center mt-1 small fw-semibold" style="color:#129042">
+          {% if _can_exp %}<button type="button" class="btn btn-sm btn-link text-success p-0 lh-1 ms-export-btn"
+                  title="Export these {{ g.total_count }} tag(s) — All Inventory format"
+                  data-barcodes='{{ g.barcodes | tojson }}'><i class="bi bi-download"></i></button>{% if g.entities %}<span class="vr mx-2"></span>{% endif %}{% endif %}
+          {% for short, cnt, full in g.entities %}{% if not loop.first %}<span class="vr mx-2"></span>{% endif %}<span title="{{ full }}">{{ short }} - {{ cnt }}</span>{% endfor %}
+        </div>{% endif %}</td>
+      <td>{{ g.make }}</td>
+      <td>{{ g.device_type }}</td>
+      <td>{{ g.cpu }}</td>
+      <td class="text-nowrap">{{ g.gen }}</td>
+      <td class="text-nowrap">{{ g.ram }}</td>
+      <td class="text-nowrap">{{ g.storage }}</td>
+      <td class="text-nowrap" data-order="{{ g.total_count }}">
+        {# Total as a plain count (no border / background), then the Open and
+           Blocked pills, all on one line (2026-10-27). Blocked = Block Tags
+           hold or assigned to a user. #}
+        <div class="d-flex align-items-center gap-1 flex-nowrap">
+          <span class="fw-semibold" title="Total Quantity">{{ g.total_count }}</span>
+          {% if selectable %}
+          <span class="text-muted">-</span>
+          <span class="badge rounded-pill bg-success" title="Open (not blocked)">Open {{ g.open_count }}</span>
+          <span class="badge rounded-pill bg-danger" title="Blocked (Block Tags hold or assigned to a user)">Blocked {{ g.blocked_count }}</span>
+          {% endif %}
+        </div>
+      </td>
+      {# The same tags split by grade (A, B, C, D, E, NG). #}
+      <td class="text-nowrap">
+        {# Grades on one line (2026-10-27). #}
+        <div class="d-flex flex-nowrap gap-1">
+          {% for label, count, cls in g.grades %}
+          <span class="badge {{ cls }} ms-grade" data-grade="{{ label }}" data-count="{{ count }}" title="{{ 'No grade' if label == 'NG' else 'Grade ' ~ label }}">{{ label }} {{ count }}</span>
+          {% endfor %}
+        </div>
+      </td>
+      <td class="text-nowrap" data-order="{{ g.min_total if can(current_user, 'sales', 'pricing') else 0 }}">
+        {% if not can(current_user, 'sales', 'pricing') %}<span class="text-muted">—</span>
+        {% elif g.min_lo is not none %}
+          <span class="fw-semibold">₹{{ ((g.min_total) | inr) }}</span>
+          <div class="text-muted" style="font-size:.7rem">
+            {% if g.min_lo == g.min_hi %}₹{{ ((g.min_lo) | inr) }} / tag{% else %}₹{{ ((g.min_lo) | inr) }} – ₹{{ ((g.min_hi) | inr) }} / tag{% endif %}
+            {% if g.min_missing %}· {{ g.min_missing }} without price{% endif %}
+          </div>
+        {% else %}<span class="text-muted">—</span>{% endif %}
+      </td>
+      <td>
+        <div class="d-flex gap-1">
+          {% if selectable %}
+          <button type="button" class="btn btn-sm btn-outline-primary modelReqBtn d-none"
+                  data-model="{{ g.model }}" data-make="{{ g.make }}"
+                  data-barcodes='{{ g.barcodes | tojson }}' data-max="{{ g.total_count }}">Request</button>
+          {% endif %}
+          {% if g.barcodes %}
+          {% if can(current_user, 'sales', 'add') %}
+          <button type="button" class="btn btn-sm btn-outline-success py-0 model-sum-sell-btn"
+                  data-barcodes='{{ g.barcodes | tojson }}'>Sell</button>
+          {% endif %}
+          {% endif %}
+        </div>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+  {# Totals of the rows the table currently shows (page filters + search),
+     filled in by SUMMARY_OPTS' footerCallback. #}
+  <tfoot class="table-light fw-semibold">
+    <tr>
+      {% if selectable %}<td></td>{% endif %}
+      <td>Total</td><td></td><td></td><td></td><td></td><td></td><td></td>
+      <td class="ms-total-qty text-nowrap"></td><td class="ms-total-grades"></td>
+      <td class="ms-total-min text-nowrap"></td><td></td>
+    </tr>
+  </tfoot>
+</table>
+{% endmacro %}

@@ -101,9 +101,11 @@ def test_final_qc_page_has_scan_box_and_no_pick_button(app_client, make_user):  
         html = app_client.get("/cosmetic/final_qc", follow_redirects=True).text
         assert 'id="fqcScanSearch"' in html
         assert f'data-barcode="{barcode}"' in html
-        assert "fqc-pick-btn" not in html
-        assert "Pick This" not in html
-        assert "/cosmetic/final-qc/pick" not in html
+        # Pick This is back (2026-10-27, one Final QC WorkID per visit): it
+        # claims the pending WorkID the tag arrived with.
+        assert "fqc-pick-btn" in html
+        assert "Pick This" in html
+        assert "/cosmetic/final-qc/pick" in html
     finally:
         _cleanup_device(barcode)
 

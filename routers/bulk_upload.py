@@ -787,6 +787,9 @@ async def approve_duplicate_move(
     device.updated_at = app_now()
     db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=new_stage,
                           moved_by=current_user.username, notes="Bulk Upload — duplicate review, Approve Move"))
+    # Arrived at L1/L2, L3/L4, Stress or Final QC: one pending WorkID (2026-10-27).
+    from services.stage_work_orders import open_for_stage as _open_for_stage
+    await _open_for_stage(db, device, new_stage, created_by=current_user.username)
     await audit(db, action="STAGE_MOVED", user=current_user,
                 table_name="devices", record_id=str(device.id),
                 old_value={"stage": str(prev)}, new_value={"stage": to_stage}, request=request)

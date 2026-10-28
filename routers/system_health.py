@@ -545,6 +545,174 @@ async def scrap_l12_close_apply(request: Request, current_user: User = Depends(a
     return JSONResponse({"ok": True, "closed": len(rows)})
 
 
+# ── Stress WorkIDs left open after the tag left Stress (2026-10-27) ──────────
+# Submitting the Stress result added a separate completed "strs" WorkID and
+# never closed the tag's Stress WorkID (STRS- / bucket / Change Engineer), so
+# it stayed open forever. Now the result closes it (services/work_order_close
+# complete_open_stress_work_order); this closes the old ones, at the moment
+# the tag left Stress (its first Asset History move out of Stress Test after
+# the WorkID started). Where a "strs" result WorkID was recorded at that same
+# moment, the Stress step is already counted there, so the old one is closed
+# as "reassigned" (hidden by default, not counted as Completed) instead of
+# "completed" — no Stress visit is counted twice.
+_STRESS_DUP_WINDOW_SECONDS = 120
+
+
+async def _stress_open_left(db):
+    """[(wo_id, work_id, barcode, assigned_name, left_at, status_to_set)]."""
+    from sqlalchemy import select, func
+    from models.device import Device, DeviceStage, StageMovement
+    from models.work_order import WorkOrder
+    from services.work_order_close import wo_open, stress_step_clause
+    left_at = (select(func.min(StageMovement.moved_at))
+               .where(StageMovement.device_id == WorkOrder.device_id,
+                      StageMovement.from_stage == DeviceStage.qc_check,
+                      StageMovement.moved_at >= func.coalesce(WorkOrder.assigned_at, WorkOrder.created_at))
+               .correlate(WorkOrder).scalar_subquery())
+    rows = (await db.execute(
+        select(WorkOrder.id, WorkOrder.work_id, Device.barcode, WorkOrder.assigned_name,
+               WorkOrder.device_id, left_at.label("at"))
+        .join(Device, Device.id == WorkOrder.device_id)
+        .where(wo_open(), WorkOrder.stage != "asgn", stress_step_clause(), left_at.isnot(None))
+        .order_by(left_at.desc())
+    )).all()
+    if not rows:
+        return []
+    dev_ids = list({r.device_id for r in rows})
+    strs = {}
+    for i in range(0, len(dev_ids), 20000):
+        for did, done in (await db.execute(
+            select(WorkOrder.device_id, WorkOrder.completed_at)
+            .where(WorkOrder.device_id.in_(dev_ids[i:i + 20000]), WorkOrder.stage == "strs",
+                   WorkOrder.completed_at.isnot(None))
+        )).all():
+            strs.setdefault(did, []).append(done)
+    out = []
+    for r in rows:
+        dup = any(abs((d - r.at).total_seconds()) <= _STRESS_DUP_WINDOW_SECONDS for d in strs.get(r.device_id, ()))
+        out.append((r.id, r.work_id, r.barcode, r.assigned_name, r.at, "reassigned" if dup else "completed"))
+    return out
+
+
+@router.post("/stress-wo-close")
+async def stress_wo_close_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import bindparam, update
+    from database import AsyncSessionLocal
+    from models.work_order import WorkOrder
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        rows = await _stress_open_left(db)
+        if rows:
+            conn = await db.connection()
+            stmt = (update(WorkOrder.__table__).where(WorkOrder.__table__.c.id == bindparam("b_id"))
+                    .values(status=bindparam("b_st"), completed_at=bindparam("b_at")))
+            params = [{"b_id": r[0], "b_st": r[5], "b_at": r[4]} for r in rows]
+            for i in range(0, len(params), 2000):
+                await conn.execute(stmt, params[i:i + 2000])
+        await audit(db, user=current_user, action="WORKID_STRESS_CLOSE", table_name="work_orders",
+                    record_id=f"{len(rows)} WorkIDs",
+                    new_value={"count": len(rows),
+                               "completed": sum(1 for r in rows if r[5] == "completed"),
+                               "reassigned": sum(1 for r in rows if r[5] == "reassigned"),
+                               "work_orders": {str(r[0]): {"work_id": r[1], "tag": r[2], "status": r[5],
+                                                           "completed_at": r[4].isoformat()}
+                                               for r in rows}},
+                    notes="Open Stress WorkIDs of tags that had already left Stress Test closed at "
+                          "that move's time. Reverse: set status back to 'pending' and completed_at "
+                          "NULL for the listed ids.",
+                    request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Stress WorkIDs closed: {len(rows):,}.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "closed": len(rows)})
+
+
+# ── Cosmetic WorkIDs left open by bulk Assign (2026-10-27) ───────────────────
+# Cosmetic bulk Assign (routers/cosmetic.py bulk_assign) used to leave the
+# tag's WorkID for its stage open: moving a batch from Cosmetic Received to
+# Cleaning left the Cosmetic Received WorkID open forever, and reassigning
+# at Cleaning..Cosmetic Completed left the previous person's WorkID open next
+# to the new one. bulk Assign now closes them; this closes the old ones:
+#   - a newer WorkID for the same tag and stage exists -> "reassigned" at the
+#     moment the newer one was created (taken off that person);
+#   - otherwise, the tag has since left that stage -> "completed" at its
+#     first Asset History move out of the stage after the WorkID started.
+# A WorkID for the stage the tag is on now, with no newer one, stays open.
+async def _cosmetic_open_left(db):
+    """[(wo_id, work_id, barcode, assigned_name, stage_label, at, status_to_set)]."""
+    from sqlalchemy import select, func
+    from sqlalchemy.orm import aliased
+    from models.device import Device, StageMovement, STAGE_LABELS
+    from models.work_order import WorkOrder
+    from routers.cosmetic import MOVE_STAGE_CODE
+    from services.work_order_close import wo_open
+    from models.device import DeviceStage
+    code_stage = {c: st for st, c in MOVE_STAGE_CODE.items() if st != DeviceStage.final_qc}
+    out = []
+    newer = aliased(WorkOrder)
+    start = func.coalesce(WorkOrder.assigned_at, WorkOrder.created_at)
+    for code, stage in code_stage.items():
+        next_at = (select(func.min(newer.created_at))
+                   .where(newer.device_id == WorkOrder.device_id, newer.stage == code,
+                          newer.id != WorkOrder.id, newer.created_at > WorkOrder.created_at)
+                   .correlate(WorkOrder).scalar_subquery())
+        left_at = (select(func.min(StageMovement.moved_at))
+                   .where(StageMovement.device_id == WorkOrder.device_id,
+                          StageMovement.from_stage == stage, StageMovement.moved_at >= start)
+                   .correlate(WorkOrder).scalar_subquery())
+        rows = (await db.execute(
+            select(WorkOrder.id, WorkOrder.work_id, Device.barcode, WorkOrder.assigned_name,
+                   next_at.label("nx"), left_at.label("lf"))
+            .join(Device, Device.id == WorkOrder.device_id)
+            .where(WorkOrder.stage == code, wo_open())
+        )).all()
+        for r in rows:
+            # Whichever happened first: handed to someone else, or left the stage.
+            if r.nx is not None and (r.lf is None or r.nx <= r.lf):
+                out.append((r.id, r.work_id, r.barcode, r.assigned_name, STAGE_LABELS.get(stage, code),
+                            r.nx, "reassigned"))
+            elif r.lf is not None:
+                out.append((r.id, r.work_id, r.barcode, r.assigned_name, STAGE_LABELS.get(stage, code),
+                            r.lf, "completed"))
+    out.sort(key=lambda r: r[5], reverse=True)
+    return out
+
+
+@router.post("/cosmetic-wo-close")
+async def cosmetic_wo_close_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import bindparam, update
+    from database import AsyncSessionLocal
+    from models.work_order import WorkOrder
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        rows = await _cosmetic_open_left(db)
+        if rows:
+            conn = await db.connection()
+            stmt = (update(WorkOrder.__table__).where(WorkOrder.__table__.c.id == bindparam("b_id"))
+                    .values(status=bindparam("b_st"), completed_at=bindparam("b_at")))
+            params = [{"b_id": r[0], "b_st": r[6], "b_at": r[5]} for r in rows]
+            for i in range(0, len(params), 2000):
+                await conn.execute(stmt, params[i:i + 2000])
+        await audit(db, user=current_user, action="WORKID_COSMETIC_CLOSE", table_name="work_orders",
+                    record_id=f"{len(rows)} WorkIDs",
+                    new_value={"count": len(rows),
+                               "completed": sum(1 for r in rows if r[6] == "completed"),
+                               "reassigned": sum(1 for r in rows if r[6] == "reassigned"),
+                               "work_orders": {str(r[0]): {"work_id": r[1], "tag": r[2], "stage": r[4],
+                                                           "status": r[6], "completed_at": r[5].isoformat()}
+                                               for r in rows}},
+                    notes="Cosmetic WorkIDs left open by bulk Assign closed (reassigned when a newer "
+                          "WorkID took over, else completed when the tag left the stage). Reverse: set "
+                          "status back to 'pending' and completed_at NULL for the listed ids.",
+                    request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Cosmetic WorkIDs closed: {len(rows):,}.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "closed": len(rows)})
+
+
 # ── Sub-Category fill from Device Type (2026-10-22) ──────────────────────────
 # The reverse of the Device Type backfill: Sub-Category blank, Device Type set.
 # Uses the same pairing as upload (utils/device_category): the Sub-Category
@@ -1301,6 +1469,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         space = await _space_changes(db)
         repair = await _repair_changes(db)
         scrap_l12 = await _scrap_l12_open(db)
+        stress_open = await _stress_open_left(db)
+        cosm_open = await _cosmetic_open_left(db)
         subcat = await _subcat_changes(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
@@ -1334,6 +1504,10 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "space_fields": {f: sum(1 for _d, _t, ch in space if f in ch) for f in _SPACE_FIELDS},
         "space_examples": [{"tag": t, "ch": ch} for _d, t, ch in space[:12]],
         "scrap_l12": scrap_l12[:200], "scrap_l12_total": len(scrap_l12),
+        "stress_open": stress_open[:200], "stress_open_total": len(stress_open),
+        "cosm_open": cosm_open[:200], "cosm_open_total": len(cosm_open),
+        "cosm_open_re": sum(1 for r in cosm_open if r[6] == "reassigned"),
+        "stress_open_dup": sum(1 for r in stress_open if r[5] == "reassigned"),
         "repair_total": len(repair),
         "repair_kinds": [(lbl, sum(1 for c in repair if k in c[2])) for k, lbl in _REPAIR_KIND_LABELS.items()],
         "repair_examples": list({t: {"tag": t, "kinds": ", ".join(_REPAIR_KIND_LABELS[k] for k in ks), "ch": ch}

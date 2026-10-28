@@ -118,6 +118,9 @@ async def move_device_stage(
     from services.parts_changed import apply_spec_changes_if_past_final_qc
     await apply_spec_changes_if_past_final_qc(db, device, current, new_stage)
     device.current_stage = new_stage
+    # Arrived at L1/L2, L3/L4, Stress or Final QC: one pending WorkID (2026-10-27).
+    from services.stage_work_orders import open_for_stage as _open_for_stage
+    await _open_for_stage(db, device, new_stage, created_by=f"api_key:{api_key.name}")
     movement = StageMovement(
         device_id=device.id,
         from_stage=current,

@@ -1197,6 +1197,10 @@ async def iqc_bulk_apply_grade_type(
             if prev != new_stage:
                 from services.work_order_close import reassign_open_work_orders
                 await reassign_open_work_orders(db, device.id)
+                # Arrived at L1/L2, L3/L4, Stress or Final QC: one pending
+                # WorkID, to be picked (2026-10-27); other stages: nothing.
+                from services.stage_work_orders import open_for_stage
+                await open_for_stage(db, device, new_stage, created_by=current_user.username)
             db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=new_stage,
                                   moved_by=current_user.username, notes="Bulk Customise modal — bulk Move to Stage"))
             if new_stage == DeviceStage.sold:

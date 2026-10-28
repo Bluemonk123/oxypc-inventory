@@ -16,6 +16,7 @@ import sys
 import uuid
 
 from tests.test_iqc_new_user import _login, make_user  # noqa: F401  (fixture)
+from tests.workid_helpers import export_sheet, page_rows, rows_by_workid  # noqa: F401
 
 ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
 
@@ -45,7 +46,8 @@ def test_close_helper_updates_only_open_non_asgn_work_orders():
     sql = str(db.stmts[0].compile())
     assert sql.startswith("UPDATE work_orders SET")
     assert "status" in sql and "completed_at" in sql
-    assert "work_orders.status !=" in sql and "work_orders.stage !=" in sql
+    # "open" = status not in the closed set (completed / reassigned), via wo_open()
+    assert "work_orders.status NOT IN" in sql and "work_orders.stage !=" in sql
     assert "work_orders.device_id =" in sql
 
 
@@ -53,9 +55,13 @@ def test_every_reassignment_path_closes_the_previous_work_order_first():
     from routers import buckets, stock
     for fn in (buckets.assign_device, buckets.bulk_assign_devices_l1l2, stock.change_engineer):
         src = inspect.getsource(fn)
-        # (2026-10-17: may pass keep_id= for a reused STRS- WorkID)
-        assert "close_open_work_orders(db, device.id" in src, fn.__name__
-        assert src.index("close_open_work_orders") < src.index("WorkOrder("), fn.__name__
+        # (2026-10-17: may pass keep_id= for a reused STRS- WorkID. 2026-10-23:
+        # Change Engineer marks the old WorkID "reassigned" rather than
+        # completed, via reassign_open_work_orders.)
+        closer = ("close_open_work_orders" if "close_open_work_orders(db, device.id" in src
+                  else "reassign_open_work_orders")
+        assert f"{closer}(db, device.id" in src, fn.__name__
+        assert src.index(closer) < src.index("WorkOrder("), fn.__name__
     # bucket / Final-QC-fail assignment (shared helper)
     src = inspect.getsource(buckets)
     assert src.count("close_open_work_orders(db, device.id") >= 3
@@ -134,9 +140,9 @@ def test_page_shows_the_assignee_not_the_user_who_moved_the_tag(app_client, make
         admin, pw = make_user("admin")
         _login(app_client, admin, pw)
         html = app_client.get(f"/workid-status?workid={wid}", follow_redirects=True).text
-        row = html.split(f'id="wo-{wid}"', 1)[1].split("</tr>", 1)[0]
-        assert "Saroj Test" in row                      # assigned engineer, with a completed date
-        assert "03-01-2026" in row
+        row = rows_by_workid(html)[wid]
+        assert row["e"] == "Saroj Test"                 # assigned engineer, with a completed date
+        assert row["cd"] == "03-01-2026"
     finally:
         _cleanup(barcode)
 
@@ -157,7 +163,7 @@ def test_completed_date_filter_is_not_cut_off_by_the_row_cap(app_client, make_us
         _login(app_client, admin, pw)
         html = app_client.get(f"/workid-status?workid={prefix}&completed_from=2026-01-06&completed_to=2026-01-06",
                               follow_redirects=True).text
-        assert f'id="wo-{prefix}A"' in html             # was missing before the date window went into SQL
-        assert f'id="wo-{prefix}B"' not in html
+        assert f"{prefix}A" in rows_by_workid(html)             # was missing before the date window went into SQL
+        assert f"{prefix}B" not in rows_by_workid(html)
     finally:
         _cleanup(barcode)

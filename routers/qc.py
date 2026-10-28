@@ -139,8 +139,23 @@ async def qc_list(request: Request, db: AsyncSession = Depends(get_db),
         for u in paint_result.scalars().all()
     ]
 
+    # ── Open Stress WorkID per device (2026-10-27): who has picked it, for
+    # the Actions column's "Picked by" note and Pick This button. ──────────
+    stress_wo_map: dict[str, dict] = {}
+    if uuid_ids:
+        from services.stage_work_orders import stage_clause as _stage_clause
+        from services.work_order_close import wo_open as _wo_open
+        for did, wid, uid, name in (await db.execute(
+            select(WorkOrder.device_id, WorkOrder.work_id, WorkOrder.assigned_user_id, WorkOrder.assigned_name)
+            .where(WorkOrder.device_id.in_(uuid_ids), _wo_open(), _stage_clause(DeviceStage.qc_check))
+            .order_by(WorkOrder.created_at.desc())
+        )).all():
+            stress_wo_map.setdefault(str(did), {"work_id": wid, "user_id": str(uid) if uid else "",
+                                                "name": name or ""})
+
     return templates.TemplateResponse("qc/list.html", {
         "request": request, "devices": devices, "current_user": current_user,
+        "stress_wo_map": stress_wo_map,
         "parts_badges": await parts_badge_map(db, [d.id for d, *_ in devices]),
         "location_map": location_map, "stress_map": stress_map,
         "l1l2_engineer_map": l1l2_engineer_map,

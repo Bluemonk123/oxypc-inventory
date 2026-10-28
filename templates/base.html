@@ -536,6 +536,11 @@
       <li><a href="/sales/ready" class="nav-link {% if '/sales/ready' in request.url.path %}active{% endif %}">
         <i class="bi bi-check-circle me-2"></i> {{ sidebar_label('sales', 'Ready to Sale') }}
       </a></li>
+      {# Ready for Sale - Lots (2026-10-27): the As-Is Lot section on its own
+         page. Same "sales" permission as Ready to Sale (no separate matrix row). #}
+      <li><a href="/sales/lots" class="nav-link {% if '/sales/lots' in request.url.path %}active{% endif %}">
+        <i class="bi bi-box-seam me-2"></i> Ready for Sale - Lots
+      </a></li>
       {% endif %}
       {% if has_perm(role,'ready_to_sale_parts','enable') and not module_hidden('ready_to_sale_parts') %}
       <li><a href="/ready-to-sale-parts" class="nav-link {% if '/ready-to-sale-parts' in request.url.path %}active{% endif %}">

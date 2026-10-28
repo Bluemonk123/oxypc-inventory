@@ -521,6 +521,19 @@ async def ready_list_data(
 @router.get("/sales/ready", response_class=HTMLResponse)
 async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
                      current_user: User = Depends(ready_allowed)):
+    return await _ready_page(request, db, current_user, "sales/ready_list.html")
+
+
+@router.get("/sales/lots", response_class=HTMLResponse)
+async def ready_lots(request: Request, db: AsyncSession = Depends(get_db),
+                     current_user: User = Depends(ready_allowed)):
+    """Ready for Sale - Lots (2026-10-27): the As-Is Lot table and the As-Is
+    Model Summary, moved off /sales/ready onto their own page. Same data and
+    filters (al_* / am_* query params) as before."""
+    return await _ready_page(request, db, current_user, "sales/ready_lots.html")
+
+
+async def _ready_page(request: Request, db: AsyncSession, current_user: User, template: str):
     # Per-tab filters (Touch Type + Entity) for the three server-rendered tabs:
     # ms_* = Ready for Sale Model Summary, al_* = As-Is Lot, am_* = As-Is
     # Model Summary. The Tag table filters through /sales/ready/data instead.
@@ -805,7 +818,7 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
         as_is_lots.sort(key=lambda r: (r["lot_number"] or "", r["sub_lot_number"] or ""))
 
     from utils.master_data import entity_values
-    return templates.TemplateResponse("sales/ready_list.html", {
+    return templates.TemplateResponse(template, {
         "entity_options": await entity_values(db),
         "request": request, "devices": devices, "current_user": current_user,
         "interested_dealers": interested_dealers,
@@ -845,6 +858,7 @@ async def set_as_is_lot_price(
     sub_lot_number: str = Form(...),
     min_selling_price: str = Form(""),
     max_selling_price: str = Form(""),
+    back: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
@@ -855,20 +869,23 @@ async def set_as_is_lot_price(
     goes back to the formula. Deliberately not written to Device.min_selling_
     price: that column is per-tag, and a lot total there would become every
     tag's price once the lot is opened."""
+    # The As-Is Lot table lives on its own page, /sales/lots (2026-10-27):
+    # its modal posts back=lots so the redirect returns there.
+    page = "/sales/lots" if back == "lots" else "/sales/ready"
     if not _role_can_set_price(current_user):
-        return RedirectResponse(url="/sales/ready?error=Your+role+cannot+set+prices", status_code=302)
+        return RedirectResponse(url=f"{page}?error=Your+role+cannot+set+prices", status_code=302)
     try:
         lid = _uuid.UUID(lot_id)
     except ValueError:
-        return RedirectResponse(url="/sales/ready?error=Invalid+lot", status_code=302)
+        return RedirectResponse(url=f"{page}?error=Invalid+lot", status_code=302)
     sub_lot = sub_lot_number.strip()
     if not sub_lot:
-        return RedirectResponse(url="/sales/ready?error=Missing+Sub-Lot+Number", status_code=302)
+        return RedirectResponse(url=f"{page}?error=Missing+Sub-Lot+Number", status_code=302)
     try:
         min_val = Decimal(min_selling_price) if min_selling_price.strip() else None
         max_val = Decimal(max_selling_price) if max_selling_price.strip() else None
     except Exception:
-        return RedirectResponse(url="/sales/ready?error=Invalid+price", status_code=302)
+        return RedirectResponse(url=f"{page}?error=Invalid+price", status_code=302)
 
     existing = (await db.execute(
         select(AsIsLotPrice).where(AsIsLotPrice.lot_id == lid,
@@ -902,7 +919,7 @@ async def set_as_is_lot_price(
                            "max_selling_price": str(max_val) if max_val is not None else None},
                 request=request)
     await db.commit()
-    return RedirectResponse(url="/sales/ready?success=Selling+price+updated", status_code=302)
+    return RedirectResponse(url=f"{page}?success=Selling+price+updated", status_code=302)
 
 
 @router.post("/sales/ready/as-is-lot/edit")
@@ -1310,10 +1327,21 @@ def _parse_price_groups(raw: str):
     return out
 
 
+# Pages a New Sale / New Tag Sale "Cancel" may return to (2026-10-27): the
+# page the sale was started from. Fixed list, so it can never send a user to
+# an arbitrary URL.
+_SALE_BACK_PAGES = ("/sales/ready", "/sales/lots")
+
+
+def _sale_back(value) -> str | None:
+    v = (value or "").strip()
+    return v if v in _SALE_BACK_PAGES else None
+
+
 async def _sale_new_response(request: Request, barcode: str, barcodes: str, qty: int,
                              embed: int, db: AsyncSession, current_user: User,
                              template: str = "sales/new.html", block: dict | None = None,
-                             error: str | None = None):
+                             error: str | None = None, back: str | None = None):
     """Shared by GET /sales/new (a single Sell link, or a small ?barcodes=
     list — still fine in a query string) and POST /sales/new (Multi-Sell
     with a large selection, which a GET would otherwise cram into the URL
@@ -1376,17 +1404,17 @@ async def _sale_new_response(request: Request, barcode: str, barcodes: str, qty:
         "stock_price": stock_price, "prefill_barcode": prefill_barcode,
         "prefill_qty": prefill_qty, "multi_count": multi_count,
         "embed": bool(embed), "today": app_today().isoformat(),
-        "block": block,
+        "block": block, "back_url": _sale_back(back),
     } | ({"error": error} if error else {}))
 
 
 @router.get("/sales/new", response_class=HTMLResponse)
 async def sale_new_form(request: Request, barcode: str = None,
                         barcodes: str = None, qty: int = None,
-                        embed: int = 0,
+                        embed: int = 0, back: str = None,
                         db: AsyncSession = Depends(get_db),
                         current_user: User = Depends(allowed)):
-    return await _sale_new_response(request, barcode, barcodes, qty, embed, db, current_user)
+    return await _sale_new_response(request, barcode, barcodes, qty, embed, db, current_user, back=back)
 
 
 # No cap on how many tags New Tag Sale can look up (2026-10-19, was 10,000);
@@ -1431,28 +1459,29 @@ async def sale_new_tag_info(barcodes: str = Form(""),
 # create logic (the form posts sale_page=tag so a failure re-renders THIS page).
 @router.get("/sales/new-tag-sale", response_class=HTMLResponse)
 async def sale_new_tag_form(request: Request, barcode: str = None,
-                            barcodes: str = None, qty: int = None,
+                            barcodes: str = None, qty: int = None, back: str = None,
                             db: AsyncSession = Depends(get_db),
                             current_user: User = Depends(allowed)):
     return await _sale_new_response(request, barcode, barcodes, qty, 0, db, current_user,
-                                    template="sales/new_tag_sale.html")
+                                    template="sales/new_tag_sale.html", back=back)
 
 
 @router.post("/sales/new-tag-sale/prefill", response_class=HTMLResponse)
 async def sale_new_tag_form_prefill(request: Request, barcode: str = Form(default=None),
                                     barcodes: str = Form(default=None), qty: int = Form(default=None),
+                                    back: str = Form(default=""),
                                     db: AsyncSession = Depends(get_db),
                                     current_user: User = Depends(allowed)):
     """POST twin of GET /sales/new-tag-sale for a large tag selection (a bulk sale
     can be thousands of tags; a query string could not carry them)."""
     return await _sale_new_response(request, barcode, barcodes, qty, 0, db, current_user,
-                                    template="sales/new_tag_sale.html")
+                                    template="sales/new_tag_sale.html", back=back)
 
 
 @router.post("/sales/new/prefill", response_class=HTMLResponse)
 async def sale_new_form_prefill(request: Request, barcode: str = Form(default=None),
                                 barcodes: str = Form(default=None), qty: int = Form(default=None),
-                                embed: int = Form(default=0),
+                                embed: int = Form(default=0), back: str = Form(default=""),
                                 db: AsyncSession = Depends(get_db),
                                 current_user: User = Depends(allowed)):
     """POST twin of GET /sales/new, for Multi-Sell's (potentially large)
@@ -1460,7 +1489,7 @@ async def sale_new_form_prefill(request: Request, barcode: str = Form(default=No
     query string can trip a web server/proxy's max URI length (414 Request-
     URI Too Large); a POST body has no such limit. Renders the exact same
     prefilled New Sale page."""
-    return await _sale_new_response(request, barcode, barcodes, qty, embed, db, current_user)
+    return await _sale_new_response(request, barcode, barcodes, qty, embed, db, current_user, back=back)
 
 
 @router.post("/sales/new/block", response_class=HTMLResponse)
@@ -1506,6 +1535,7 @@ async def create_sale(
     warranty_type: str = Form("none"),
     sale_date: str = Form(""),
     block_record_id: str = Form(""),
+    back: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
     _perm: User = Depends(require_module_perm("sales", "add")),
@@ -1539,6 +1569,7 @@ async def create_sale(
             # New Tag Sale keeps the tags on the form after an error: re-picking
             # thousands of tags would be a punishing way to report "no price".
             "prefill_barcode": (barcode or None) if sale_page == "tag" else None,
+            "back_url": _sale_back(back),
         })
 
     # ── Multi-sale support: barcode field may be a comma-separated tag list ──

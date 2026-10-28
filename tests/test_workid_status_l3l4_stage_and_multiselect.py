@@ -25,6 +25,7 @@ import uuid
 from datetime import datetime
 
 from tests.test_iqc_new_user import _login, make_user  # noqa: F401  (fixture)
+from tests.workid_helpers import export_sheet, page_rows, rows_by_workid  # noqa: F401
 
 ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
 
@@ -115,9 +116,9 @@ def test_l3l4_workorder_shows_l3_repair_stage_not_stale_movement(app_client, mak
         # "trc_production" (the stale unrelated movement) instead.
         html = app_client.get(f"/workid-status?workid={work_id}&cosmetic_stage=l3",
                               follow_redirects=True).text
-        assert f'id="wo-{work_id}"' in html
-        assert "L3/L4 Repair" in html
-        assert "TRC Production" not in html.split(f'id="wo-{work_id}"')[1][:2000]
+        row = rows_by_workid(html)[work_id]
+        assert row["s"] == "L3/L4 Repair"
+        assert "TRC Production" not in row["s"]
     finally:
         _cleanup_device(barcode)
 
@@ -136,12 +137,12 @@ def test_l3l4_completed_date_reads_workorder_not_stale_movement(app_client, make
         html_in_range = app_client.get(
             f"/workid-status?workid={work_id}&completed_from=2026-09-01&completed_to=2026-09-30",
             follow_redirects=True).text
-        assert f'id="wo-{work_id}"' in html_in_range
+        assert work_id in rows_by_workid(html_in_range)
 
         html_out_of_range = app_client.get(
             f"/workid-status?workid={work_id}&completed_from=2020-01-01&completed_to=2020-01-31",
             follow_redirects=True).text
-        assert f'id="wo-{work_id}"' not in html_out_of_range
+        assert work_id not in rows_by_workid(html_out_of_range)
     finally:
         _cleanup_device(barcode)
 
@@ -158,12 +159,12 @@ def test_stage_multiselect_filter_ors_selected_stages(app_client, make_user):  #
         # Two stages selected, one of which (l3) matches — must still show.
         html = app_client.get(f"/workid-status?workid={work_id}&cosmetic_stage=iqc,l3",
                               follow_redirects=True).text
-        assert f'id="wo-{work_id}"' in html
+        assert work_id in rows_by_workid(html)
 
         # Neither selected stage matches — must not show.
         html_none = app_client.get(f"/workid-status?workid={work_id}&cosmetic_stage=iqc,sold",
                                    follow_redirects=True).text
-        assert f'id="wo-{work_id}"' not in html_none
+        assert work_id not in rows_by_workid(html_none)
     finally:
         _cleanup_device(barcode)
 
@@ -177,6 +178,8 @@ def test_stage_filter_is_a_multiselect_checkbox_dropdown():
 def test_main_query_has_a_row_cap_with_truncation_notice():
     src = (pathlib.Path(ROOT) / "routers" / "workid_status.py").read_text(encoding="utf-8")
     assert "MAIN_ROW_CAP" in src
-    assert "stmt = stmt.limit(MAIN_ROW_CAP)" in src
+    # The page passes row_cap=MAIN_ROW_CAP; Export passes None (every row).
+    assert "row_cap=MAIN_ROW_CAP" in src
+    assert "stmt = stmt.limit(row_cap)" in src
     html = (pathlib.Path(ROOT) / "templates" / "workid_status" / "list.html").read_text(encoding="utf-8")
     assert "main_truncated" in html

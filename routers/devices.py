@@ -159,9 +159,11 @@ async def search_tags(q: str = "", db: AsyncSession = Depends(get_db),
     )).all()
     results = []
     for device, lot_number in rows:
-        ram = _gb_text(device.ram_gb) or "—"
+        # "8 GB" / "256 GB SSD" with the space (2026-10-27), as the Basic Specs edit saves.
+        from utils.device_spec import gb_text_spaced
+        ram = gb_text_spaced(device.ram_gb) or "—"
         if device.storage_gb:
-            storage = _gb_text(device.storage_gb) + (f" {device.storage_type}" if device.storage_type else "")
+            storage = gb_text_spaced(device.storage_gb) + (f" {device.storage_type}" if device.storage_type else "")
         else:
             storage = "—"
         results.append({

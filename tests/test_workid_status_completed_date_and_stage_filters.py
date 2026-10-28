@@ -24,6 +24,7 @@ import uuid
 from datetime import timedelta
 
 from tests.test_iqc_new_user import _login, make_user  # noqa: F401  (fixture)
+from tests.workid_helpers import export_sheet, page_rows, rows_by_workid  # noqa: F401
 
 ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
 
@@ -124,7 +125,7 @@ def test_completed_date_filter_matches_the_displayed_column(app_client, make_use
         html_out = app_client.get(
             f"/workid-status?workid={work_id}&completed_from=2021-01-01&completed_to=2021-01-31",
             follow_redirects=True).text
-        assert f'id="wo-{work_id}"' not in html_out
+        assert work_id not in rows_by_workid(html_out)
     finally:
         _cleanup_device(barcode)
 
@@ -142,11 +143,11 @@ def test_stage_filter_matches_asset_history_from_value(app_client, make_user):  
 
         html_iqc = app_client.get(f"/workid-status?workid={work_id}&cosmetic_stage=iqc",
                                   follow_redirects=True).text
-        assert work_id in html_iqc
+        assert work_id in rows_by_workid(html_iqc)
 
         html_cleaning = app_client.get(f"/workid-status?workid={work_id}&cosmetic_stage=cleaning",
                                        follow_redirects=True).text
-        assert f'id="wo-{work_id}"' not in html_cleaning
+        assert work_id not in rows_by_workid(html_cleaning)
     finally:
         _cleanup_device(barcode)
 
@@ -165,16 +166,18 @@ def test_open_workorder_shows_blank_completed_date_but_running_aging(app_client,
         username, password = make_user("admin")
         _login(app_client, username, password)
         html = app_client.get(f"/workid-status?workid={work_id}", follow_redirects=True).text
-        row = html.split(f'id="wo-{work_id}"')[1].split("</tr>")[0]
+        row = rows_by_workid(html)[work_id]
 
-        # Aging: a running count, "ongoing" label, never blank.
-        assert "ongoing" in row
-        assert re.search(r'\d+ days?', row)
+        # Aging: a running count (the page labels it "ongoing" while no
+        # Completed Date is set), never blank.
+        assert row["c"] == "" and row["cd"] == ""
+        assert isinstance(row["d"], int) and row["d"] >= 0
 
         # Completed Date column itself stays blank -- the 2020 movement date
         # must not leak into the row at all (it previously did, via the
         # "device's latest movement as a best guess" fallback).
-        assert "2020" not in row
+        import json as _json
+        assert "2020" not in _json.dumps(row)
     finally:
         _cleanup_device(barcode)
 
@@ -194,7 +197,7 @@ def test_completed_date_filter_excludes_still_open_workorder(app_client, make_us
         html = app_client.get(
             f"/workid-status?workid={work_id}&completed_from=2020-01-01&completed_to=2020-01-31",
             follow_redirects=True).text
-        assert f'id="wo-{work_id}"' not in html
+        assert work_id not in rows_by_workid(html)
     finally:
         _cleanup_device(barcode)
 
@@ -205,7 +208,8 @@ def test_stage_dropdown_includes_non_cosmetic_stages(app_client, make_user):  # 
     html = app_client.get("/workid-status", follow_redirects=True).text
     assert ">Stage<" in html
     assert ">Cosmetic Stage<" not in html
-    # "sold" and "iqc" are not in the cosmetic-line pipeline — must now be
-    # offered as dropdown options.
-    assert 'value="sold"' in html
+    # Non-cosmetic stages ("iqc", "ready_to_sale") are offered too. "sold" is
+    # deliberately left out of every stage dropdown since 2026-09-21
+    # (models/device.py DROPDOWN_STAGES).
+    assert 'value="ready_to_sale"' in html
     assert 'value="iqc"' in html

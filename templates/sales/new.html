@@ -39,6 +39,7 @@
         <form action="/sales/new" method="post">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
           {% if block is defined and block %}<input type="hidden" name="block_record_id" value="{{ block.id }}">{% endif %}
+          {% if back_url is defined and back_url %}<input type="hidden" name="back" value="{{ back_url }}">{% endif %}
           <div class="mb-3">
             <label class="form-label fw-semibold">Device Tag Number <span class="text-danger">*</span>{% if multi_count is defined and multi_count and multi_count > 1 %} <span class="badge bg-primary">{{ multi_count }} tags selected</span>{% endif %}</label>
             <input type="text" name="barcode" id="barcode" class="form-control barcode-field font-monospace"
@@ -155,7 +156,8 @@
           <input type="hidden" name="invoice_file_path" id="invoiceFilePath" value="">
           <div class="mt-4 d-flex gap-2">
             <button type="submit" class="btn btn-success px-4"><i class="bi bi-check-circle me-2"></i>Record Sale</button>
-            <a href="{{ '/block-tags' if block is defined and block else '/sales/ready' }}" class="btn btn-outline-secondary">Cancel</a>
+            {# Cancel returns to the page the sale was started from (2026-10-27): Ready for Sale - Tags or - Lots. #}
+            <a href="{{ '/block-tags' if block is defined and block else (back_url if back_url is defined and back_url else '/sales/ready') }}" class="btn btn-outline-secondary">Cancel</a>
           </div>
         </form>
       </div>

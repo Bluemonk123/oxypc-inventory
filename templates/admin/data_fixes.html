@@ -226,6 +226,100 @@
     </div>
   </div>
 
+  {# ── Stress WorkIDs left open after the tag left Stress (2026-10-27) ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-speedometer2 me-2"></i>Stress WorkIDs still open after the tag left Stress
+          <span class="badge {% if stress_open_total %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ "{:,}".format(stress_open_total) }}</span></span>
+        {% if stress_open_total %}
+        <form method="post" action="/admin/system/stress-wo-close" class="df-confirm"
+              data-confirm="Click again to close {{ "{:,}".format(stress_open_total) }} WorkIDs">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Close {{ "{:,}".format(stress_open_total) }} WorkIDs</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not stress_open_total %}
+        <div class="text-muted">Nothing to fix — no Stress WorkID is open for a tag that has already left Stress Test.</div>
+        {% else %}
+        <p class="text-muted mb-2">The Stress result used to add its own completed WorkID and leave the tag's Stress WorkID
+          (STRS- or an assignment one) open forever, so Stress engineers kept these as open long after the tags moved on.
+          Each is closed at the moment its tag left Stress Test. {{ "{:,}".format(stress_open_dup) }} of them already have that
+          Stress result recorded as its own WorkID, so they close as <strong>Reassigned</strong> (hidden by default, not counted
+          again); the other {{ "{:,}".format(stress_open_total - stress_open_dup) }} close as <strong>Completed</strong>.
+          Submitting a Stress result now closes the Stress WorkID itself.</p>
+        <div class="table-responsive" style="max-height:320px">
+        <table class="table table-sm table-bordered mb-0" style="font-size:.78rem">
+          <thead class="table-light"><tr><th>WorkID</th><th>Tag</th><th>Engineer</th><th>Left Stress</th><th>Closes as</th></tr></thead>
+          <tbody>
+            {% for r in stress_open %}
+            <tr>
+              <td class="font-monospace">{{ r[1] }}</td>
+              <td><a href="/devices/{{ r[2] }}" target="_blank">{{ r[2] }}</a></td>
+              <td>{{ r[3] or '—' }}</td>
+              <td class="text-nowrap">{{ r[4].strftime('%d-%m-%Y %H:%M') if r[4] else '—' }}</td>
+              <td>{{ 'Reassigned' if r[5] == 'reassigned' else 'Completed' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% if stress_open_total > stress_open|length %}<div class="text-muted mt-1">Showing {{ stress_open|length }} of {{ "{:,}".format(stress_open_total) }}.</div>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Cosmetic WorkIDs left open by bulk Assign (2026-10-27) ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-droplet me-2"></i>Cosmetic WorkIDs left open by bulk Assign
+          <span class="badge {% if cosm_open_total %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ "{:,}".format(cosm_open_total) }}</span></span>
+        {% if cosm_open_total %}
+        <form method="post" action="/admin/system/cosmetic-wo-close" class="df-confirm"
+              data-confirm="Click again to close {{ "{:,}".format(cosm_open_total) }} WorkIDs">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Close {{ "{:,}".format(cosm_open_total) }} WorkIDs</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not cosm_open_total %}
+        <div class="text-muted">Nothing to fix — no Cosmetic WorkID is open after its tag was reassigned or moved on.</div>
+        {% else %}
+        <p class="text-muted mb-2">Bulk Assign on the Cosmetic pages used to leave the tag's WorkID open: moving to Cleaning left
+          the Cosmetic Received one open forever, and reassigning left the previous person's one open beside the new one.
+          {{ "{:,}".format(cosm_open_re) }} were taken over by a newer WorkID and close as <strong>Reassigned</strong> at that moment;
+          the other {{ "{:,}".format(cosm_open_total - cosm_open_re) }} close as <strong>Completed</strong> when the tag left that stage.
+          Bulk Assign now closes them itself.</p>
+        <div class="table-responsive" style="max-height:320px">
+        <table class="table table-sm table-bordered mb-0" style="font-size:.78rem">
+          <thead class="table-light"><tr><th>WorkID</th><th>Tag</th><th>Stage</th><th>Engineer</th><th>Closed at</th><th>Closes as</th></tr></thead>
+          <tbody>
+            {% for r in cosm_open %}
+            <tr>
+              <td class="font-monospace">{{ r[1] }}</td>
+              <td><a href="/devices/{{ r[2] }}" target="_blank">{{ r[2] }}</a></td>
+              <td>{{ r[4] }}</td>
+              <td>{{ r[3] or '—' }}</td>
+              <td class="text-nowrap">{{ r[5].strftime('%d-%m-%Y %H:%M') if r[5] else '—' }}</td>
+              <td>{{ 'Reassigned' if r[6] == 'reassigned' else 'Completed' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% if cosm_open_total > cosm_open|length %}<div class="text-muted mt-1">Showing {{ cosm_open|length }} of {{ "{:,}".format(cosm_open_total) }}.</div>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {# ── Past reassignments recorded as completed ── #}
   <div class="col-12">
     <div class="card border-0 shadow-sm">

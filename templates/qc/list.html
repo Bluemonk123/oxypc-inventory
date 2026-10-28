@@ -76,7 +76,17 @@
                 {% endif %}
               </td>
               <td>
-                <div class="d-flex gap-1 flex-wrap">
+                <div class="d-flex gap-1 flex-wrap align-items-center">
+                  {# Pick This (2026-10-27): one Stress WorkID per visit — the
+                     tag arrives with a pending WorkID; picking puts your name
+                     on it (or takes it from whoever holds it). #}
+                  {% set swo = stress_wo_map.get(device.id|string) %}
+                  {% set mine = swo and swo.user_id == current_user.id|string %}
+                  {% if swo and swo.name %}<span class="small text-muted text-nowrap" title="WorkID {{ swo.work_id }}">{{ 'You' if mine else swo.name }}</span>{% endif %}
+                  {% if can(current_user, 'qc_check', 'edit') and not mine %}
+                  <button type="button" class="btn btn-sm btn-outline-primary py-0 stress-pick-btn"
+                          data-barcode="{{ device.barcode }}" title="Assign this tag's Stress WorkID to yourself">Pick This</button>
+                  {% endif %}
                   {% if can(current_user, 'qc_check', 'edit') %}
                   <button type="button"
                     class="btn btn-sm btn-outline-warning py-0 start-test-btn"
@@ -315,6 +325,26 @@ function checklistBody() {
          '&na_items=' + encodeURIComponent(collectNaItems().join(','));
 }
 
+// Pick This (2026-10-27): delegated, so rows on every page of the table work.
+document.addEventListener('click', async function (e) {
+  const btn = e.target.closest && e.target.closest('.stress-pick-btn');
+  if (!btn) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/stress/' + encodeURIComponent(btn.dataset.barcode) + '/pick', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': CSRF_TOKEN_PICK() },
+      body: 'csrf_token=' + encodeURIComponent(CSRF_TOKEN_PICK()),
+    });
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok || !d.ok) { alert(d.error || d.detail || 'Could not pick this tag.'); btn.disabled = false; return; }
+    window.location.reload();
+  } catch (err) { alert('Network error: ' + err.message); btn.disabled = false; }
+});
+function CSRF_TOKEN_PICK() {
+  const m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/);
+  return m ? decodeURIComponent(m[1]) : '';
+}
 function activateStressTest(btn) {
   document.querySelectorAll('.start-test-btn').forEach(b => b.classList.remove('active-test'));
   btn.classList.add('active-test');

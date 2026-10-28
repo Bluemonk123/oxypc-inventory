@@ -238,7 +238,7 @@ asyncio.run(main())
         assert stage == "l1"
 
         html = app_client.get("/repair/l1", follow_redirects=True).text
-        row = html.split(barcode, 1)[1][:1500]
+        row = html.split(barcode, 1)[1][:4000]
         assert "Pick This" in row
     finally:
         _cleanup(barcode)
@@ -281,7 +281,7 @@ asyncio.run(main())
         assert r.status_code == 302
 
         html = app_client.get("/repair/l1", follow_redirects=True).text
-        row = html.split(barcode, 1)[1][:1500]
+        row = html.split(barcode, 1)[1][:4000]
         assert "Pick This" in row
         assert stale_work_id not in row
         assert "itest_stale_engineer" not in row and "Stale Engineer" not in row

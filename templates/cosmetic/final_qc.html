@@ -82,6 +82,16 @@
         <span class="small">Grade:
           {% if device.grade %}<span class="badge bg-info text-dark">{{ device.grade.value }}</span>{% else %}<span class="text-muted">—</span>{% endif %}
         </span>
+        {# Pick This (2026-10-27): one Final QC WorkID per visit — the tag
+           arrives with a pending WorkID; picking puts your name on it (or
+           takes it from whoever holds it). Pass / Fail closes it. #}
+        {% set fwo = fqc_wo_map.get(device.id|string) %}
+        {% set fmine = fwo and fwo.user_id == current_user.id|string %}
+        <span class="small text-muted text-nowrap">QC by: <span class="fw-semibold text-body" {% if fwo %}title="WorkID {{ fwo.work_id }}"{% endif %}>{{ 'You' if fmine else ((fwo.name if fwo and fwo.name) or 'Not picked') }}</span></span>
+        {% if can(current_user, 'cosmetic_finalqc', 'edit') and not fmine %}
+        <button type="button" class="btn btn-sm btn-outline-primary py-0 fqc-pick-btn" data-barcode="{{ device.barcode }}"
+                title="Assign this tag's Final QC WorkID to yourself">Pick This</button>
+        {% endif %}
         <span class="ms-auto text-muted small">L1/L2 Engineer: <span class="fw-semibold text-body">{{ l1l2_engineer_map.get(device.id|string, '—') }}</span></span>
         {% set sr = stress_map.get(device.barcode) %}
         {% if sr %}
@@ -490,6 +500,26 @@
 {% endblock %}
 {% block scripts %}
 <script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
+<script>
+// Pick This (2026-10-27): take this tag's Final QC WorkID.
+document.addEventListener('click', async function (e) {
+  var btn = e.target.closest && e.target.closest('.fqc-pick-btn');
+  if (!btn) return;
+  e.preventDefault();
+  btn.disabled = true;
+  var m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/), tok = m ? decodeURIComponent(m[1]) : '';
+  try {
+    var r = await fetch('/cosmetic/final-qc/pick', {
+      method: 'POST', credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': tok },
+      body: 'barcode=' + encodeURIComponent(btn.dataset.barcode) + '&csrf_token=' + encodeURIComponent(tok),
+    });
+    var d = await r.json().catch(function () { return {}; });
+    if (!r.ok || !d.ok) { alert(d.error || d.detail || 'Could not pick this tag.'); btn.disabled = false; return; }
+    window.location.reload();
+  } catch (err) { alert('Network error: ' + err.message); btn.disabled = false; }
+});
+</script>
 
 <script>
 // Must live in block scripts (renders after base.html's jQuery/global-table.js

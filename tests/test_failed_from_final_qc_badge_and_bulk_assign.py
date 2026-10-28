@@ -111,11 +111,13 @@ def test_l1_repair_shows_badge_and_filter_checkboxes_in_wrapper(app_client, make
         html = app_client.get("/repair/l1", follow_redirects=True).text
 
         assert 'data-fqc-fail="1"' in html
-        assert 'id="onlyPnaL1"' in html
-        assert 'id="onlyFqcFailL1"' in html
-        row = html.split(f'href="/devices/{barcode_failed}"', 1)[1][:300]
+        # Filters became dropdowns in the filter bar (PNA / Failed from Final QC).
+        assert 'id="l1PnaFilter"' in html
+        assert 'id="l1FailedFilter"' in html
+        # The badge sits in the tag cell, after the spec-edit / parts icons.
+        row = html.split(f'href="/devices/{barcode_failed}"', 1)[1].split("</td>", 1)[0]
         assert "Failed from Final QC" in row
-        row2 = html.split(f'href="/devices/{barcode_normal}"', 1)[1][:300]
+        row2 = html.split(f'href="/devices/{barcode_normal}"', 1)[1].split("</td>", 1)[0]
         assert "Failed from Final QC" not in row2
     finally:
         _cleanup_device(barcode_failed)
@@ -133,7 +135,7 @@ def test_stress_test_shows_badge_and_filter_checkbox(app_client, make_user):  # 
 
         assert 'data-failed-fqc="1"' in html
         assert 'id="qcFailedFqcFilter"' in html
-        row = html.split(f'href="/devices/{barcode}"', 1)[1][:300]
+        row = html.split(f'href="/devices/{barcode}"', 1)[1].split("</td>", 1)[0]
         assert "Failed from Final QC" in row
     finally:
         _cleanup_device(barcode)
@@ -150,7 +152,8 @@ def test_cosmetic_received_shows_badge_and_filter_checkbox(app_client, make_user
 
         assert 'data-failed-fqc="1"' in html
         assert 'id="cosmeticRecvFailedFqcFilter"' in html
-        row = html.split(f'href="/devices/{barcode}"', 1)[1][:300]
+        # Tag shown as <code>, not a link, on this page.
+        row = html.split(f'<code>{barcode}</code>', 1)[1].split("</td>", 1)[0]
         assert "Failed from Final QC" in row
     finally:
         _cleanup_device(barcode)

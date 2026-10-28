@@ -715,6 +715,12 @@ async def _apply_department_move(
             model=device.model,
             stage=new_stage.value if hasattr(new_stage, "value") else str(new_stage),
         )
+    else:
+        # No engineer named: the tag still arrives at its stage. At L1/L2,
+        # L3/L4, Stress or Final QC that means one pending WorkID, to be
+        # picked (2026-10-27); other stages: nothing.
+        from services.stage_work_orders import open_for_stage as _open_for_stage
+        await _open_for_stage(db, device, new_stage, created_by=current_user.username)
     return True
 
 
@@ -1089,6 +1095,9 @@ async def assign_bucket_to_engineer(
             moved_by=current_user.username,
             notes=f"Bucket {bucket.bucket_number} assigned to L1 Engineer by {current_user.username}",
         ))
+        # Arrived at L1/L2 with nobody named: one pending WorkID (2026-10-27).
+        from services.stage_work_orders import open_for_stage as _open_for_stage
+        await _open_for_stage(db, device, DeviceStage.l1, created_by=current_user.username)
 
     bucket.status = "validated"
     bucket.updated_at = app_now()

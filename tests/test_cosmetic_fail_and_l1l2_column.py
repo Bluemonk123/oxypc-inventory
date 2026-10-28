@@ -109,6 +109,7 @@ def test_fail_endpoint_assigns_engineer_and_moves_to_l1(app_client, make_user): 
         username, password = make_user("admin")
         _login(app_client, username, password)
         csrf = app_client.cookies.get("csrf_token") or "dummy"
+        make_user("l1_engineer")   # an active L1 engineer exists even on an empty DB
 
         eng_row = _run(f"""
 import asyncio, sys

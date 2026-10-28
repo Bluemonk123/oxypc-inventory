@@ -1656,6 +1656,9 @@ async def _move_device_to_l1l2(db: AsyncSession, device: Device, current_user: U
         device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.l1,
         moved_by=current_user.username, notes="Moved to L1/L2 Repair",
     ))
+    # Arrived at L1/L2 unassigned: one pending WorkID, to be picked (2026-10-27).
+    from services.stage_work_orders import open_for_stage as _open_for_stage
+    await _open_for_stage(db, device, DeviceStage.l1, created_by=current_user.username)
     return True
 
 
@@ -2190,8 +2193,14 @@ async def change_engineer(
     # open, unassigned STRS- WorkID from L1/L2 Mark Complete if there is one.
     reused_wo = await reuse_open_stress_work_order(
         db, device.id, new_stage, user, created_by=current_user.username)
-    # Previous engineer's WorkID is REASSIGNED, not completed (2026-10-23).
-    await reassign_open_work_orders(db, device.id, keep_id=reused_wo.id if reused_wo else None)
+    # Previous engineer's WorkID is REASSIGNED, not completed (2026-10-23) —
+    # except at L1/L2, L3/L4, Stress and Final QC, where a reassignment closes
+    # it as COMPLETED (2026-10-27, one WorkID per visit; reused_wo is set there).
+    if reused_wo:
+        from services.work_order_close import close_open_work_orders
+        await close_open_work_orders(db, device.id, keep_id=reused_wo.id)
+    else:
+        await reassign_open_work_orders(db, device.id)
     if reused_wo:
         work_id = reused_wo.work_id
     else:

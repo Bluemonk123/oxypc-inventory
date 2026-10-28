@@ -66,35 +66,65 @@ async def _close(db, device_id, status, at, keep_id) -> int:
 async def reuse_open_stress_work_order(db: AsyncSession, device_id: uuid.UUID, new_stage,
                                        user, created_by: str | None = None,
                                        source_transfer_id=None):
-    """One Stress Test step = one WorkID (2026-10-17).
+    """Assignment to a tag at L1/L2, L3/L4, Stress Test or Final QC (bucket
+    assign, single / bulk assign, Change Engineer) — one WorkID per visit
+    (2026-10-27, was Stress only since 2026-10-17). The stage's open pending
+    WorkID is given to `user` (assigned date = now, movement date kept); one
+    already held by someone else closes as completed and a new one opens for
+    `user` (services/stage_work_orders.open_for_stage). Returns that WorkID,
+    so the caller skips creating its own and closes the tag's OTHER open
+    WorkIDs with keep_id=it. Any other stage: None, as before."""
+    from models.device import Device
+    from services.stage_work_orders import open_for_stage, pick_stage_of
+    if user is None or pick_stage_of(new_stage) is None:
+        return None
+    device = await db.get(Device, device_id)
+    if device is None:
+        return None
+    return await open_for_stage(db, device, new_stage, assignee=user, created_by=created_by,
+                                source_transfer_id=source_transfer_id)
 
-    L1/L2 Mark Complete already raises an "STRS-" WorkOrder for the Stress
-    Test hand-off, usually with no engineer yet. Assigning a Stress Test
-    engineer afterwards (bucket assign, single/bulk assign, Change Engineer)
-    used to close that and raise a second, numeric WorkID for the same step —
-    two Stress IDs on one tag. When the tag is going to Stress Test and such
-    an open, still-UNASSIGNED STRS- row exists, this assigns it to `user` and
-    returns it so the caller skips creating a new one. An STRS- row already
-    held by an engineer is a real hand-over between two people, so it is not
-    reused (returns None and the caller proceeds as before)."""
-    from models.device import DeviceStage
-    if new_stage != DeviceStage.qc_check or user is None:
+
+# ── Stress Test result closes the Stress WorkID (2026-10-27) ────────────────
+# A tag's Stress-step WorkIDs: the "STRS-" one L1/L2 Mark Complete raises
+# (stage "qc"), a bucket assignment to Stress Test (stage "qc") and Change
+# Engineer to Stress Test (stage "qc_ch"). Submitting the Stress result (Pass
+# or Fail, routers/stress_api.py) used to add a separate, already-completed
+# "strs" WorkID for the submitter and leave these open forever — two Stress
+# WorkIDs per visit, one never closed, so the Stress engineer's open count
+# kept growing after the tags had moved on.
+STRESS_STEP_CODES = ("qc", "qc_ch")
+
+
+def stress_step_clause():
+    """SQL condition: a Stress-step WorkOrder (not the "strs" result record)."""
+    from sqlalchemy import or_
+    return or_(WorkOrder.work_id.like("STRS-%"), WorkOrder.stage.in_(STRESS_STEP_CODES))
+
+
+async def complete_open_stress_work_order(db: AsyncSession, device_id: uuid.UUID, user,
+                                          at=None) -> WorkOrder | None:
+    """The Stress result was submitted by `user`: close the tag's open Stress
+    WorkID as completed, credited to `user` (who ran the test), and return
+    it — one Stress WorkID per visit. Any older open Stress WorkIDs of the tag
+    are closed with it. None when the tag had no open Stress WorkID (the
+    caller then records a "strs" result WorkID as before)."""
+    at = at or app_now()
+    rows = (await db.execute(
+        select(WorkOrder).where(WorkOrder.device_id == device_id, wo_open(), stress_step_clause())
+        .order_by(WorkOrder.created_at.desc())
+    )).scalars().all()
+    if not rows:
         return None
-    wo = (await db.execute(
-        select(WorkOrder).where(
-            WorkOrder.device_id == device_id,
-            WorkOrder.work_id.like("STRS-%"),
-            wo_open(),
-            WorkOrder.assigned_user_id.is_(None),
-        ).order_by(WorkOrder.created_at.desc())
-    )).scalars().first()
-    if wo is None:
-        return None
-    # assigned_role stays as raised by Mark Complete ("qc_inspector").
-    wo.assigned_user_id = user.id
-    wo.assigned_username = user.username
-    wo.assigned_name = user.full_name
-    wo.assigned_at = app_now()
-    if source_transfer_id is not None:
-        wo.source_transfer_id = source_transfer_id
+    wo = rows[0]
+    if wo.assigned_user_id != user.id:
+        wo.assigned_user_id = user.id
+        wo.assigned_username = user.username
+        wo.assigned_name = user.full_name
+        wo.assigned_role = getattr(user.role, "value", user.role)
+        if wo.assigned_at is None:
+            wo.assigned_at = at
+    for w in rows:
+        w.status = "completed"
+        w.completed_at = at
     return wo

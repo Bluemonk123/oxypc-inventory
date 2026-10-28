@@ -18,18 +18,19 @@ def test_workid_table_uses_global_table():
     assert "initGlobalTable('#workidTable'" in src
 
 
-def test_workid_table_keeps_the_empty_table_guard():
-    # DataTables errors if initialized on a table with only the "No WorkIDs
-    # found." colspan row — this guard predates the Global Table move and
-    # must survive it unchanged.
+def test_workid_table_keeps_the_empty_table_message():
+    # Rows ship as JSON since 2026-10-15 (no server-rendered colspan
+    # "No WorkIDs found." row for DataTables to choke on), so the old
+    # tbody-length guard is gone; the empty message comes from
+    # DataTables' own language.emptyTable instead.
     src = _read()
-    assert "if ($('#workidTable tbody tr td').length > 1) {" in src
+    assert "emptyTable: 'No WorkIDs found.'" in src
 
 
 def test_workid_table_card_header_has_no_count_badge():
     src = _read()
-    header_start = src.index('class="card-header bg-transparent fw-semibold')
-    header_end = src.index('<div class="card-body p-0">')
+    header_start = src.index('class="card-header bg-transparent')
+    header_end = src.index('id="workidTable"')
     header_block = src[header_start:header_end]
     assert "Work ID Details" in header_block
     assert "WorkID(s)" not in header_block

@@ -17,6 +17,7 @@ import sys
 import uuid
 
 from tests.test_iqc_new_user import _login, make_user  # noqa: F401  (fixture)
+from tests.workid_helpers import export_sheet, page_rows, rows_by_workid  # noqa: F401
 
 ROOT = str(pathlib.Path(__file__).resolve().parent.parent)
 
@@ -99,9 +100,9 @@ def test_stage_completed_date_and_engineer_come_from_asset_history(app_client, m
 
         # Stage = "From" of the StageMovement (iqc), NOT the device's live
         # current_stage (cleaning) and NOT the WorkOrder's own assigned role.
-        row = html.split(f'id="wo-{work_id}"', 1)[1].split("</tr>", 1)[0]
-        assert "IQC" in row.upper()
-        assert "Cleaning" not in row
+        row = rows_by_workid(html)[work_id]
+        assert "IQC" in row["s"].upper()
+        assert "Cleaning" not in row["s"]
 
         # Assigned Engineer = the user the WorkID was ASSIGNED TO ("Someone Else"),
         # NOT the movement's "By" (the mover is whoever clicked the move, e.g. an
@@ -120,8 +121,8 @@ async def main():
 
 asyncio.run(main())
 """)
-        assert "Someone Else" in row
-        assert u_full_name not in row
+        assert row["e"] == "Someone Else"
+        assert u_full_name not in row["e"]
     finally:
         _cleanup_device(barcode)
 
@@ -146,7 +147,7 @@ def test_export_header_uses_stage_not_current_status(app_client, make_user):  # 
     _login(app_client, username, password)
     r = app_client.get("/workid-status/export", follow_redirects=True)
     assert r.status_code == 200
-    header = r.text.split("\n")[0]
+    header = export_sheet(r.content)[0]
     assert "Stage" in header
     assert "Current Status" not in header
 

@@ -770,8 +770,21 @@ async def cosmetic_stage_list(stage_name: str, request: Request, db: AsyncSessio
             for did, name, _ in l1l2_rows.all():
                 l1l2_engineer_map.setdefault(str(did), name)
 
+        # Open Final QC WorkID per device (2026-10-27): who has picked it.
+        fqc_wo_map: dict[str, dict] = {}
+        if device_ids:
+            from services.stage_work_orders import stage_clause as _stage_clause
+            from services.work_order_close import wo_open as _wo_open
+            for did, wid, uid, name in (await db.execute(
+                select(WorkOrder.device_id, WorkOrder.work_id, WorkOrder.assigned_user_id, WorkOrder.assigned_name)
+                .where(WorkOrder.device_id.in_(device_ids), _wo_open(), _stage_clause(DeviceStage.final_qc))
+                .order_by(WorkOrder.created_at.desc())
+            )).all():
+                fqc_wo_map.setdefault(str(did), {"work_id": wid, "user_id": str(uid) if uid else "",
+                                                 "name": name or ""})
+
         return templates.TemplateResponse("cosmetic/final_qc.html", {
-            "request": request, "current_user": current_user,
+            "request": request, "current_user": current_user, "fqc_wo_map": fqc_wo_map,
             "stage": stage, "stage_label": STAGE_LABELS[stage],
             "devices": devices, "iqc_map": iqc_map, "repairs_map": repairs_map,
             "parts_map": parts_map, "price_map": price_map,
@@ -930,20 +943,12 @@ async def advance_stage(
         # everyone, with no way to clear it short of that same exit path.
         # Any leftover pending pick from the old flow is still closed out
         # here for cleanliness. ──────────────────────────────────────────
-        await db.execute(
-            update(WorkOrder)
-            .where(WorkOrder.device_id == device.id, WorkOrder.stage == "fqc",
-                   WorkOrder.status == "pending")
-            .values(status="completed", completed_at=app_now())
-        )
-        fqc_work_id = await _gen_work_id(db)
-        db.add(WorkOrder(
-            work_id=fqc_work_id, device_id=device.id, barcode=device.barcode,
-            stage=MOVE_STAGE_CODE[DeviceStage.final_qc], assigned_role=role_val,
-            assigned_user_id=current_user.id, assigned_username=current_user.username,
-            assigned_name=current_user.full_name, status="completed",
-            completed_at=app_now(), created_by=current_user.username,
-        ))
+        # One Final QC WorkID per visit (2026-10-27, services/stage_work_
+        # orders): the pending WorkID the tag arrived with (picked or not)
+        # closes now, on Pass or Fail. Unpicked, it is credited to the
+        # person deciding; with none open, one is recorded for them.
+        from services.stage_work_orders import finish as _finish_stage
+        fqc_work_id = (await _finish_stage(db, device, DeviceStage.final_qc, current_user)).work_id
 
         # Bucket is a free-text Bucket Name here, not a dropdown of existing
         # buckets — typing a name that doesn't exist yet creates it. Before
@@ -1173,6 +1178,11 @@ async def advance_stage(
     db.add(movement)
 
     work_id = None
+    if next_stage == DeviceStage.final_qc:
+        # Arrived at Final QC: one pending WorkID, picked from the Final QC
+        # page (2026-10-27).
+        from services.stage_work_orders import open_for_stage as _open_for_stage
+        await _open_for_stage(db, device, DeviceStage.final_qc, created_by=current_user.username)
     if assigned_engineer:
         work_id = await _gen_work_id(db)
         eng_role_val = (assigned_engineer.role.value if hasattr(assigned_engineer.role, "value")
@@ -1208,6 +1218,46 @@ async def advance_stage(
 
     stage_name = next_stage.value
     return RedirectResponse(url=f"/cosmetic/{stage_name}?success=Device+{barcode}+moved+to+{stage_name.replace('_', '+')}", status_code=302)
+
+
+@router.post("/final-qc/pick")
+async def fqc_pick(
+    barcode: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pick This on Final QC (2026-10-27): the clicking user takes the tag's
+    Final QC WorkID — the pending one it arrived with is claimed (assigned
+    date = now, movement date kept); one held by someone else closes as
+    completed and a new one opens for the picker. Pass / Fail closes it."""
+    from services.stage_work_orders import pick as _pick
+    role_val = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if not has_perm(role_val, "cosmetic_finalqc", "edit"):
+        return JSONResponse({"ok": False, "error": "Your role cannot pick Final QC tags."}, status_code=403)
+    device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
+    if not device:
+        return JSONResponse({"ok": False, "error": f"Tag {barcode} not found"}, status_code=404)
+    if device.current_stage != DeviceStage.final_qc:
+        return JSONResponse({"ok": False, "error": "This tag is no longer in Final QC."}, status_code=400)
+    wo, previous = await _pick(db, device, DeviceStage.final_qc, current_user)
+    if wo is None:
+        return JSONResponse({"ok": True, "already_yours": True})
+    picker = current_user.full_name or current_user.username
+    for _w, uid, _n in previous:
+        if uid and uid != current_user.id:
+            await create_notification(
+                db, user_id=uid, title="Tag picked by another engineer",
+                message=f"{device.barcode} was picked by {picker} (Final QC WorkID: {wo.work_id}).",
+                notification_type="info", barcode=device.barcode,
+                brand=device.brand, model=device.model, stage="final_qc",
+            )
+    await audit(db, user=current_user, action="FINAL_QC_PICKED", table_name="devices",
+                record_id=str(device.id),
+                notes=f"{device.barcode} picked by {picker} (WorkID: {wo.work_id})"
+                      + (", closed " + ", ".join(f"{w} ({n})" for w, _u, n in previous) if previous else ""),
+                request=None)
+    await db.commit()
+    return JSONResponse({"ok": True, "work_id": wo.work_id})
 
 
 @router.post("/final-qc/move-failed")
@@ -1367,6 +1417,9 @@ async def fqc_edit_revert(
         device_id=device.id, from_stage=prev, to_stage=DeviceStage.final_qc,
         moved_by=current_user.username, notes="Final QC decision reverted via Edit — back to pending decision",
     ))
+    # Back at Final QC for a new decision: one pending WorkID (2026-10-27).
+    from services.stage_work_orders import open_for_stage as _open_for_stage
+    await _open_for_stage(db, device, DeviceStage.final_qc, created_by=current_user.username)
     await db.commit()
     return RedirectResponse(url=f"/cosmetic/final_qc?success={barcode}+returned+to+Final+QC", status_code=302)
 
@@ -1529,14 +1582,10 @@ async def cosmetic_fail_assign(
     db.add(StageMovement(device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.l1,
                          moved_by=current_user.username, notes=repair_note))
 
-    work_id = await _gen_work_id(db)
-    db.add(WorkOrder(
-        work_id=work_id, device_id=device.id, barcode=device.barcode,
-        stage="l1", assigned_role=engineer.role.value,
-        assigned_user_id=engineer.id, assigned_username=engineer.username,
-        assigned_name=engineer.full_name, status="pending",
-        created_by=current_user.username,
-    ))
+    # Back at L1/L2 for the chosen engineer: one pending WorkID (2026-10-27).
+    from services.stage_work_orders import open_for_stage as _open_for_stage
+    work_id = (await _open_for_stage(db, device, DeviceStage.l1, assignee=engineer,
+                                     created_by=current_user.username)).work_id
 
     await create_notification(
         db, user_id=engineer.id, title="Device Assigned to You",
@@ -1726,11 +1775,29 @@ async def bulk_assign(
 
     work_ids = []
     moved_to_cleaning = 0
+    already_theirs = 0
     for device in devices:
         if device.current_stage not in BULK_ASSIGN_STAGES:
             continue  # a tag that moved on since the checkbox was ticked — skip, don't fail the whole batch
 
         advance_to_cleaning = device.current_stage == DeviceStage.cosmetic_received
+        # Close the tag's open WorkID for the stage it is on (2026-10-27) —
+        # bulk Assign used to leave it open forever. Moving on to Cleaning
+        # completes the Cosmetic Received WorkID (same as the row's own "Move
+        # to Cleaning"); a pure reassignment at the same stage closes the
+        # previous person's WorkID as "reassigned" (taken off them before they
+        # finished — not their completed work), as Change Engineer does.
+        from services.work_order_close import wo_open
+        own_code = MOVE_STAGE_CODE[device.current_stage]
+        open_here = (await db.execute(
+            select(WorkOrder).where(WorkOrder.device_id == device.id, WorkOrder.stage == own_code, wo_open())
+        )).scalars().all()
+        if not advance_to_cleaning and any(w.assigned_user_id == engineer.id for w in open_here):
+            already_theirs += 1
+            continue  # already this person's at this stage — nothing to reassign
+        for w in open_here:
+            w.status = "completed" if advance_to_cleaning else "reassigned"
+            w.completed_at = app_now()
         if advance_to_cleaning:
             db.add(StageMovement(
                 device_id=device.id, from_stage=device.current_stage, to_stage=DeviceStage.cleaning,
@@ -1766,6 +1833,9 @@ async def bulk_assign(
         )
 
     if not work_ids:
+        if already_theirs:
+            return JSONResponse({"ok": True, "assigned": 0, "work_ids": [], "moved_to_cleaning": 0,
+                                 "already_assigned": already_theirs})
         raise HTTPException(400, "None of the selected tags are still on one of these stages")
 
     # record_id is String(50) — a batch of device UUIDs joined together
@@ -1782,4 +1852,4 @@ async def bulk_assign(
 
     await db.commit()
     return JSONResponse({"ok": True, "assigned": len(work_ids), "work_ids": work_ids,
-                          "moved_to_cleaning": moved_to_cleaning})
+                          "moved_to_cleaning": moved_to_cleaning, "already_assigned": already_theirs})
