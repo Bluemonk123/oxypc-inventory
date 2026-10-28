@@ -311,6 +311,7 @@ def _qc_next_stage_sq(from_value):
     return (select(StageMovement.to_stage)
             .where(StageMovement.device_id == WorkOrder.device_id,
                    StageMovement.from_stage == DeviceStage(from_value),
+                   StageMovement.to_stage != DeviceStage(from_value),
                    WorkOrder.completed_at.isnot(None), diff <= 600)
             .order_by(diff.asc()).limit(1)
             .correlate(WorkOrder).scalar_subquery())
@@ -409,8 +410,10 @@ def _qc_result(wo, dev_movements, group) -> str:
     src = _QC_GROUP_FROM.get(group)
     if not src or not wo.completed_at:
         return ""
+    # Same-stage rows (Final QC -> Final QC "price finalized") aren't a move out.
     outs = [m for m in dev_movements
             if getattr(m.from_stage, "value", m.from_stage) == src and m.moved_at
+            and getattr(m.to_stage, "value", m.to_stage) != src
             and abs((m.moved_at - wo.completed_at).total_seconds()) <= 600]
     if not outs:
         return ""

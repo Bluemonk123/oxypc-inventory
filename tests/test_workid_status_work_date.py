@@ -118,6 +118,8 @@ async def main():
             db.add(WorkOrder(work_id=wid, device_id=d.id, barcode=bc, stage=code, status="completed",
                              created_at=a, assigned_at=a, completed_at=c,
                              assigned_username="sp_eng", assigned_name="sp_eng"))
+            if frm == DeviceStage.final_qc:   # same-stage "price finalized" row at the same moment
+                db.add(StageMovement(device_id=d.id, from_stage=frm, to_stage=frm, moved_at=c, moved_by="t"))
             db.add(StageMovement(device_id=d.id, from_stage=frm, to_stage=nxt, moved_at=c, moved_by="t"))
         await db.commit()
 asyncio.run(main())
