@@ -96,10 +96,9 @@ def test_filter_row_labels_tiles_and_new_filters_render(app_client, make_user): 
     assert ">Assigned To<" not in html
     assert 'name="date_from"' not in html
     assert 'name="date_to"' not in html
-    assert 'title="Completed From"' in html
-    assert 'title="Completed To"' in html
-    assert 'name="completed_from"' in html
-    assert 'name="completed_to"' in html
+    # Completed From/To replaced by the Work Date range (2026-10-28)
+    assert 'name="work_from"' in html and 'name="completed_from"' not in html
+    assert 'name="work_to"' in html
     assert 'name="cosmetic_stage"' in html
     # Tiles (renamed 2026-10-24 / 2026-10-26): tag counts.
     for label in ("Assigned Tags", "Completed Tags", "Ongoing Tags",
@@ -107,8 +106,7 @@ def test_filter_row_labels_tiles_and_new_filters_render(app_client, make_user): 
         assert label in html, label
     # Export link carries every filter param, including the 3 new ones.
     assert "/workid-status/export?" in html
-    assert "completed_from=" in html
-    assert "completed_to=" in html
+    assert "work_from=" in html and "work_to=" in html
     assert "cosmetic_stage=" in html
 
 

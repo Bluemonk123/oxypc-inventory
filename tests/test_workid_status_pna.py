@@ -68,7 +68,7 @@ def test_export_pna_column(monkeypatch):
     rows = _export_rows([_item("TAG-PNA", [_part("Keyboard")]), _item("TAG-NONE")], monkeypatch)
     assert rows[0][-2:] == ["PNA", "PNA History"]
     assert rows[0][:-2] == ["Tag Number", "Lot Number", "Make", "Model", "Engineer Name",
-                            "Stage", "Movement Date", "Assigned Date", "Completed Date", "Status", "Scrap"]
+                            "Stage", "Movement Date", "Assigned Date", "Completed Date", "Status", "Scrap", "QC Result"]
     by_tag = {r[0]: r for r in rows[1:]}
     assert by_tag["TAG-PNA"][-2] == "Yes"
     # inactive parts are filtered out by active_pna_parts, so the tag gets no parts
