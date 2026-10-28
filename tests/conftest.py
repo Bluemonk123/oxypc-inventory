@@ -1,5 +1,10 @@
 # tests/conftest.py
 import asyncio
+import os
+
+# Before anything imports database.py: no connection pool under test (see
+# database.py) — pooled asyncpg connections can't cross event loops.
+os.environ.setdefault("OXYPC_DB_NULLPOOL", "1")
 import pytest
 import pytest_asyncio
 

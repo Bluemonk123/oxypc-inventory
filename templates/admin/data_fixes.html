@@ -226,6 +226,50 @@
     </div>
   </div>
 
+  {# ── WorkIDs still open on tags at Ready to Sale / Sold (2026-10-28) ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-hourglass-split me-2"></i>WorkIDs still open on tags already at Ready to Sale
+          <span class="badge {% if rts_open_total %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ "{:,}".format(rts_open_total) }}</span></span>
+        {% if rts_open_total %}
+        <form method="post" action="/admin/system/rts-wo-close" class="df-confirm"
+              data-confirm="Click again to close {{ "{:,}".format(rts_open_total) }} WorkIDs">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Close {{ "{:,}".format(rts_open_total) }} WorkIDs</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not rts_open_total %}
+        <div class="text-muted">Nothing to fix — no tag at Ready to Sale or Sold has an open WorkID.</div>
+        {% else %}
+        <p class="text-muted mb-2">These tags reached Ready to Sale (some are sold since) while a WorkID stayed open, so WorkID Status still shows them as <strong>ongoing</strong>. Each closes as <strong>Completed</strong> at the time the tag reached Ready to Sale. Logged; reversible.</p>
+        <div class="table-responsive" style="max-height:320px">
+        <table class="table table-sm table-bordered mb-0" style="font-size:.78rem">
+          <thead class="table-light"><tr><th>WorkID</th><th>Tag</th><th>Stage</th><th>Engineer</th><th>Assigned</th><th>Closed at</th><th>Tag now</th></tr></thead>
+          <tbody>
+            {% for r in rts_open %}
+            <tr>
+              <td class="font-monospace"><a href="/workid-status?highlight={{ r.work_id }}" target="_blank">{{ r.work_id }}</a></td>
+              <td><a href="/devices/{{ r.barcode }}" target="_blank">{{ r.barcode }}</a></td>
+              <td>{{ (r.stage or '') | upper }}</td>
+              <td>{{ r.assigned_name or '—' }}</td>
+              <td class="text-nowrap">{{ r.start.strftime('%d-%m-%Y %H:%M') if r.start else '—' }}</td>
+              <td class="text-nowrap">{{ r.at.strftime('%d-%m-%Y %H:%M') if r.at else '—' }}</td>
+              <td>{{ 'Sold' if (r.current_stage.value if r.current_stage.value is defined else r.current_stage) == 'sold' else 'Ready to Sale' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% if rts_open_total > rts_open|length %}<div class="text-muted mt-1">Showing {{ rts_open|length }} of {{ "{:,}".format(rts_open_total) }}.</div>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {# ── Stress WorkIDs left open after the tag left Stress (2026-10-27) ── #}
   <div class="col-12">
     <div class="card border-0 shadow-sm">

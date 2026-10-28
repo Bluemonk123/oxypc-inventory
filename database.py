@@ -12,13 +12,22 @@ from config import DATABASE_URL
 _POOL_SIZE = int(os.environ.get("OXYPC_DB_POOL_SIZE", "8"))
 _MAX_OVERFLOW = int(os.environ.get("OXYPC_DB_MAX_OVERFLOW", "4"))
 
-engine = create_async_engine(
-    DATABASE_URL,
-    pool_size=_POOL_SIZE,
-    max_overflow=_MAX_OVERFLOW,
-    pool_pre_ping=True,
-    echo=False,
-)
+# Tests (tests/conftest.py sets OXYPC_DB_NULLPOOL=1): no pooling. asyncpg
+# connections belong to the event loop that opened them, and the suite runs
+# TestClient (its own loop), asyncio.run() helpers and pytest-asyncio tests
+# in one process — a pooled connection handed to another loop fails with
+# "attached to a different loop". A fresh connection per session avoids it.
+if os.environ.get("OXYPC_DB_NULLPOOL") == "1":
+    from sqlalchemy.pool import NullPool
+    engine = create_async_engine(DATABASE_URL, poolclass=NullPool, echo=False)
+else:
+    engine = create_async_engine(
+        DATABASE_URL,
+        pool_size=_POOL_SIZE,
+        max_overflow=_MAX_OVERFLOW,
+        pool_pre_ping=True,
+        echo=False,
+    )
 
 AsyncSessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
 

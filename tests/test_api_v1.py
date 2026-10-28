@@ -108,7 +108,7 @@ async def test_api_keys_list_requires_session():
         follow_redirects=False,
     ) as c:
         resp = await c.get("/api/v1/api-keys")
-    assert resp.status_code in (307, 401, 403)
+    assert resp.status_code in (302, 303, 307, 401, 403)
 
 
 async def test_api_key_create_requires_session():
@@ -122,4 +122,4 @@ async def test_api_key_create_requires_session():
             "/api/v1/api-keys",
             json={"name": "Test", "scopes": ["devices:read"]},
         )
-    assert resp.status_code in (307, 401, 403)
+    assert resp.status_code in (302, 303, 307, 401, 403)

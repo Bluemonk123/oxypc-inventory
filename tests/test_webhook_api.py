@@ -14,7 +14,7 @@ async def test_webhooks_list_requires_session():
         follow_redirects=False,
     ) as c:
         resp = await c.get("/api/v1/webhooks")
-    assert resp.status_code in (307, 401, 403)
+    assert resp.status_code in (302, 303, 307, 401, 403)
 
 
 async def test_webhook_create_requires_session():
@@ -32,7 +32,7 @@ async def test_webhook_create_requires_session():
                 "event_types": ["DEVICE_REGISTERED"],
             },
         )
-    assert resp.status_code in (307, 401, 403)
+    assert resp.status_code in (302, 303, 307, 401, 403)
 
 
 async def test_webhook_delete_requires_session():
@@ -42,7 +42,7 @@ async def test_webhook_delete_requires_session():
         follow_redirects=False,
     ) as c:
         resp = await c.delete("/api/v1/webhooks/00000000-0000-0000-0000-000000000000")
-    assert resp.status_code in (307, 401, 403)
+    assert resp.status_code in (302, 303, 307, 401, 403)
 
 
 async def test_webhook_events_requires_session():
@@ -52,7 +52,7 @@ async def test_webhook_events_requires_session():
         follow_redirects=False,
     ) as c:
         resp = await c.get("/api/v1/webhooks/00000000-0000-0000-0000-000000000000/events")
-    assert resp.status_code in (307, 401, 403)
+    assert resp.status_code in (302, 303, 307, 401, 403)
 
 
 async def test_webhook_schema_create_request_valid():

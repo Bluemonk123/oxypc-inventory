@@ -545,6 +545,67 @@ async def scrap_l12_close_apply(request: Request, current_user: User = Depends(a
     return JSONResponse({"ok": True, "closed": len(rows)})
 
 
+# ── WorkIDs still open on tags already at Ready to Sale / Sold (2026-10-28) ──
+# Tags that reached Ready to Sale (and some later sold) with a WorkID never
+# closed — mostly old L1/L2 WorkIDs from before one-WorkID-per-visit. They
+# showed as "ongoing" on WorkID Status. Each closes as completed at the time
+# the tag first reached Ready to Sale after the WorkID started (now, if no
+# such move is recorded).
+async def _rts_open(db):
+    """[(id, work_id, barcode, assigned_name, stage, start, at, current_stage)]."""
+    from sqlalchemy import func, select
+    from models.device import Device, DeviceStage, StageMovement
+    from models.work_order import WorkOrder
+    from services.work_order_close import wo_open
+    start = func.coalesce(WorkOrder.assigned_at, WorkOrder.created_at)
+    reached = (select(func.min(StageMovement.moved_at))
+               .where(StageMovement.device_id == WorkOrder.device_id,
+                      StageMovement.to_stage == DeviceStage.ready_to_sale,
+                      StageMovement.moved_at >= start)
+               .correlate(WorkOrder).scalar_subquery())
+    q = (select(WorkOrder.id, WorkOrder.work_id, Device.barcode, WorkOrder.assigned_name,
+                WorkOrder.stage, start.label("start"), reached.label("at"), Device.current_stage)
+         .join(Device, Device.id == WorkOrder.device_id)
+         .where(wo_open(), Device.current_stage.in_([DeviceStage.ready_to_sale, DeviceStage.sold]),
+                Device.is_trashed.isnot(True))
+         .order_by(start.desc()))
+    return (await db.execute(q)).all()       # at None = no Ready to Sale move recorded -> closed now
+
+
+@router.post("/rts-wo-close")
+async def rts_wo_close_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import bindparam, update
+    from database import AsyncSessionLocal
+    from models.work_order import WorkOrder
+    from services.audit_engine import audit
+    from utils.timezone import app_now
+    async with AsyncSessionLocal() as db:
+        rows = await _rts_open(db)
+        now = app_now()
+        if rows:
+            conn = await db.connection()
+            stmt = (update(WorkOrder.__table__).where(WorkOrder.__table__.c.id == bindparam("b_id"))
+                    .values(status="completed", completed_at=bindparam("b_at")))
+            params = [{"b_id": r.id, "b_at": r.at or now} for r in rows]
+            for i in range(0, len(params), 2000):
+                await conn.execute(stmt, params[i:i + 2000])
+        await audit(db, user=current_user, action="WORKID_RTS_CLOSE", table_name="work_orders",
+                    record_id=f"{len(rows)} WorkIDs",
+                    new_value={"count": len(rows),
+                               "work_orders": {str(r.id): {"work_id": r.work_id, "tag": r.barcode,
+                                                           "completed_at": (r.at or now).isoformat()}
+                                               for r in rows}},
+                    notes="WorkIDs still open on tags already at Ready to Sale / Sold closed at the time the "
+                          "tag reached Ready to Sale. Reverse: set status back to 'pending' and completed_at "
+                          "NULL for the listed ids.",
+                    request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Ready to Sale WorkIDs closed: {len(rows):,}.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "closed": len(rows)})
+
+
 # ── Stress WorkIDs left open after the tag left Stress (2026-10-27) ──────────
 # Submitting the Stress result added a separate completed "strs" WorkID and
 # never closed the tag's Stress WorkID (STRS- / bucket / Change Engineer), so
@@ -1471,6 +1532,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         scrap_l12 = await _scrap_l12_open(db)
         stress_open = await _stress_open_left(db)
         cosm_open = await _cosmetic_open_left(db)
+        rts_open = await _rts_open(db)
         subcat = await _subcat_changes(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
@@ -1507,6 +1569,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "scrap_l12": scrap_l12[:200], "scrap_l12_total": len(scrap_l12),
         "stress_open": stress_open[:200], "stress_open_total": len(stress_open),
         "cosm_open": cosm_open[:200], "cosm_open_total": len(cosm_open),
+        "rts_open": rts_open[:200], "rts_open_total": len(rts_open),
         "cosm_open_re": sum(1 for r in cosm_open if r[6] == "reassigned"),
         "stress_open_dup": sum(1 for r in stress_open if r[5] == "reassigned"),
         "repair_total": len(repair),
