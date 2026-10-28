@@ -1,0 +1,92 @@
+{#- Pick This without a page reload (2026-10-28) — L1/L2 and L3/L4.
+
+    A form with class "ajax-pick-form" inside a table row whose <tr> carries
+    data-device-id is sent with fetch (X-Requested-With, the route answers
+    JSON); then this page is fetched again and only that row is swapped in.
+    The confirm() on a take-over still runs first (inline onsubmit). If the
+    row can't be found in the new page (the tag left the queue) the page
+    reloads, as before.
+
+    Include once per page:  {% include "_ajax_row_refresh.html" %} -#}
+<script>
+(function () {
+  if (window.__oxAjaxPick) return;
+  window.__oxAjaxPick = true;
+
+  function rowSel(id) { return 'tr[data-device-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]'; }
+
+  // Swap one row (by device id) with the same row from a fresh copy of this
+  // page. DataTables keeps hidden columns out of the DOM, so its row data is
+  // replaced as a whole and the row is not re-sorted.
+  window.oxRefreshRow = function (deviceId) {
+    var tr = document.querySelector(rowSel(deviceId));
+    if (!tr) return Promise.resolve(false);
+    return fetch(location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (html) {
+        if (!html) return false;
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var ntr = doc.querySelector(rowSel(deviceId));
+        if (!ntr) return false;
+        Array.prototype.forEach.call(ntr.attributes, function (a) {
+          if (a.name.indexOf('data-') === 0) tr.setAttribute(a.name, a.value);
+        });
+        var table = tr.closest('table');
+        if (window.jQuery && table && jQuery.fn.dataTable && jQuery.fn.dataTable.isDataTable(table)) {
+          var dt = jQuery(table).DataTable(), row = dt.row(tr), cur = row.data();
+          var cells = Array.prototype.map.call(ntr.cells, function (c) { return c.innerHTML; });
+          if (!Array.isArray(cur) || cur.length !== cells.length) return false;
+          row.data(cells);   // no draw(): the row stays where it is, not re-sorted away
+          var vis = dt.columns().visible().toArray(), k = 0;
+          for (var i = 0; i < vis.length; i++) {
+            if (!vis[i]) continue;
+            if (tr.cells[k]) tr.cells[k].className = ntr.cells[i].className;
+            k++;
+          }
+        } else {
+          if (tr.cells.length !== ntr.cells.length) return false;
+          for (var j = 0; j < tr.cells.length; j++) {
+            tr.cells[j].innerHTML = ntr.cells[j].innerHTML;
+            tr.cells[j].className = ntr.cells[j].className;
+          }
+        }
+        if (window.bootstrap) {
+          tr.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (t) { bootstrap.Tooltip.getOrCreateInstance(t); });
+        }
+        return true;
+      })
+      .catch(function () { return false; });
+  };
+
+  // Delegated: rows on every table page, and rows swapped in later.
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.classList || !form.classList.contains('ajax-pick-form')) return;
+    if (e.defaultPrevented) return;          // the take-over confirm() said no
+    if (!window.fetch) return;               // old browser: normal submit
+    e.preventDefault();
+    var btn = form.querySelector('button[type=submit]');
+    if (btn) btn.disabled = true;
+    var deviceId = (form.querySelector('input[name=device_id]') || {}).value;
+    fetch(form.action, {
+      method: 'POST', body: new FormData(form), credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+    })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; })
+        .then(function (d) { if (!r.ok && d.detail && !d.error) d.error = d.detail; return d; }); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Could not pick this tag.');
+        return window.oxRefreshRow(deviceId).then(function (ok) {
+          if (!ok) { location.reload(); return; }
+          if (window.showTopToast) {
+            window.showTopToast('success', 'Tag picked' + (d.work_id ? ' — WorkID ' + d.work_id : '') + '.');
+          }
+        });
+      })
+      .catch(function (err) {
+        if (btn) btn.disabled = false;
+        alert(err.message || 'Could not pick this tag.');
+      });
+  });
+})();
+</script>

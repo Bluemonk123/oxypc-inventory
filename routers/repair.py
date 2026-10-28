@@ -252,7 +252,10 @@ async def l1_pick(
     # for the picker. Picking your own tag is a no-op.
     from services.stage_work_orders import pick as _pick
     wo, previous = await _pick(db, device, DeviceStage.l1, current_user)
+    _ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"   # Pick This without reload (2026-10-28)
     if wo is None:
+        if _ajax:
+            return JSONResponse({"ok": True, "already_yours": True})
         return RedirectResponse(url="/repair/l1", status_code=302)
     await _close_open_movement(db, device)
     device.l1l2_status = "New"   # the picker hasn't started yet — Start Repair is theirs to click
@@ -279,6 +282,8 @@ async def l1_pick(
                 notes=f"{device.barcode} picked by {picker} (WorkID: {work_id}{prev_txt})",
                 request=request)
     await db.commit()
+    if _ajax:
+        return JSONResponse({"ok": True, "work_id": work_id})
     return RedirectResponse(url="/repair/l1?success=Tag+picked", status_code=302)
 
 
@@ -898,7 +903,10 @@ async def l3l4_pick(
     # L1/L2 WorkID (still open while it is away at L3/L4) is left alone.
     from services.stage_work_orders import pick as _pick
     wo, previous = await _pick(db, device, DeviceStage.l3, current_user)
+    _ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"   # Pick This without reload (2026-10-28)
     if wo is None:
+        if _ajax:
+            return JSONResponse({"ok": True, "already_yours": True})
         return RedirectResponse(url="/repair/l3l4", status_code=302)
     await _close_open_movement(db, device)
 
@@ -922,6 +930,8 @@ async def l3l4_pick(
                 notes=f"{device.barcode} picked by {picker} (WorkID: {wo.work_id}{prev_txt})",
                 request=request)
     await db.commit()
+    if _ajax:
+        return JSONResponse({"ok": True, "work_id": wo.work_id})
     return RedirectResponse(url="/repair/l3l4?success=Tag+picked", status_code=302)
 
 

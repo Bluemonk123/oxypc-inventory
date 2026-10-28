@@ -108,7 +108,7 @@
                 {# Pick This on every tag that isn't already yours (2026-10-19):
                    closes the tag's open WorkID(s) and opens a new one for you —
                    lets anyone take over an absent colleague's tag. #}
-                <td>{% if wo %}<span class="font-monospace fw-bold">{{ wo.work_id }}</span><br><small class="text-muted">{{ wo.assigned_name }}</small>{% endif %}{% if (not wo or not wo.mine) and has_perm(current_user.role.value, 'repair_l1', 'add') %}{% if wo %}<br>{% endif %}<form method="post" action="/repair/l1/pick" class="d-inline"{% if wo and not wo.unpicked %} onsubmit="return confirm('Take over this tag? Its current WorkID will be closed and a new WorkID opened for you.')"{% endif %}>
+                <td>{% if wo %}<span class="font-monospace fw-bold">{{ wo.work_id }}</span><br><small class="text-muted">{{ wo.assigned_name }}</small>{% endif %}{% if (not wo or not wo.mine) and has_perm(current_user.role.value, 'repair_l1', 'add') %}{% if wo %}<br>{% endif %}<form method="post" action="/repair/l1/pick" class="d-inline ajax-pick-form"{% if wo and not wo.unpicked %} onsubmit="return confirm('Take over this tag? Its current WorkID will be closed and a new WorkID opened for you.')"{% endif %}>
                   <input type="hidden" name="device_id" value="{{ device.id }}">
                   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                   <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2 text-nowrap{% if wo %} mt-1{% endif %}"><i class="bi bi-hand-index-thumb me-1"></i>Pick This</button>
@@ -787,4 +787,5 @@ function _openBulkPartRequest(requestType, partLabel, category, qty, requested) 
   });
 })();
 </script>
+{% include "_ajax_row_refresh.html" %}
 {% endblock %}

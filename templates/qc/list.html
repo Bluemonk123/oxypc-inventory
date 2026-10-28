@@ -90,7 +90,7 @@
                      on it (or takes it from whoever holds it). #}
                   {% set swo = stress_wo_map.get(device.id|string) %}
                   {% set mine = swo and swo.user_id == current_user.id|string %}
-                  {% if swo and swo.name %}<span class="small text-muted text-nowrap" title="WorkID {{ swo.work_id }}">{{ 'Assigned to you' if mine else swo.name }}</span>{% endif %}
+                  {% if swo and swo.name %}<span class="small text-muted text-nowrap stress-owner" title="WorkID {{ swo.work_id }}">{{ 'Assigned to you' if mine else swo.name }}</span>{% endif %}
                   {% if can(current_user, 'qc_check', 'edit') and not mine %}
                   <button type="button" class="btn btn-sm btn-primary py-0 text-nowrap stress-pick-btn"
                           data-barcode="{{ device.barcode }}" title="Assign this tag's Stress WorkID to yourself">Pick This</button>
@@ -124,7 +124,12 @@
 
       <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between py-2">
         <span class="fw-semibold small"><i class="bi bi-lightning-charge-fill me-2 text-warning"></i>Stress Test</span>
-        <span id="stressTagBadge" class="badge bg-secondary font-monospace">—</span>
+        {# Edit + Pick This for the tag on the panel (2026-10-28): copies of the
+           row's buttons, which stay hidden in the table. #}
+        <span class="d-flex align-items-center gap-2">
+          <span id="stressHeadActions" class="d-flex align-items-center gap-2"></span>
+          <span id="stressTagBadge" class="badge bg-secondary font-monospace">—</span>
+        </span>
       </div>
 
       <div class="card-body p-3" id="stressPanelBody">
@@ -227,6 +232,9 @@
 .c-check { display:flex; align-items:center; gap:3px; font-size:11px; }
 .c-row.c-fail { background:#fff5f5; }
 .c-row.c-na { opacity:.7; }
+/* Edit / Pick This live in the Stress Test panel header (2026-10-28); the
+   row keeps hidden copies as the data source. */
+#qcTable .spec-edit-btn, #qcTable .stress-pick-btn { display:none !important; }
 .start-test-btn.active-test { background:#0F7A37 !important; color:#fff !important; border-color:#0F7A37 !important; }
 #qcTable tbody tr.stress-active-row { background:#fff9db !important; }
 </style>
@@ -346,7 +354,25 @@ document.addEventListener('click', async function (e) {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok || !d.ok) { alert(d.error || d.detail || 'Could not pick this tag.'); btn.disabled = false; return; }
-    window.location.reload();
+    // No page reload (2026-10-28): the row shows "Assigned to you" in place
+    // (the button clicked may be the copy in the panel header).
+    const bc = btn.dataset.barcode;
+    const row = stressRowNode(bc);
+    const rowBtn = row && row.querySelector('.stress-pick-btn');
+    if (rowBtn) {
+      let owner = rowBtn.parentNode.querySelector('.stress-owner');
+      if (!owner) {
+        owner = document.createElement('span');
+        owner.className = 'small text-muted text-nowrap stress-owner';
+        rowBtn.parentNode.insertBefore(owner, rowBtn);
+      }
+      owner.textContent = 'Assigned to you';
+      if (d.work_id) owner.title = 'WorkID ' + d.work_id;
+      rowBtn.remove();
+    }
+    btn.remove();
+    if (bc === _barcode) renderHeadActions();
+    if (window.showTopToast) window.showTopToast('success', 'Tag ' + btn.dataset.barcode + ' assigned to you' + (d.work_id ? ' (' + d.work_id + ')' : '') + '.');
   } catch (err) { alert('Network error: ' + err.message); btn.disabled = false; }
 });
 function CSRF_TOKEN_PICK() {
@@ -375,8 +401,48 @@ function activateStressTest(btn) {
   document.getElementById('stressIdleMsg').classList.add('d-none');
   document.getElementById('stressActiveArea').classList.remove('d-none');
 
+  renderHeadActions();
   buildChecklist();
 }
+
+// Panel header: Edit (pencil) and Pick This for the tag on the panel,
+// copied from its row (2026-10-28). Click handlers are delegated, so the
+// copies work like the originals.
+function stressRowNode(bc) {
+  const dt = (window.jQuery && jQuery.fn.dataTable && jQuery.fn.dataTable.isDataTable('#qcTable')) ? jQuery('#qcTable').DataTable() : null;
+  if (dt) {
+    const n = dt.rows().nodes().toArray().find(r => r.id === 'row-' + bc);
+    if (n) return n;
+  }
+  return document.getElementById('row-' + bc);
+}
+function renderHeadActions() {
+  const box = document.getElementById('stressHeadActions');
+  box.innerHTML = '';
+  if (!_barcode) return;
+  const row = stressRowNode(_barcode);
+  if (!row) return;
+  const owner = row.querySelector('.stress-owner');
+  if (owner) {
+    const o = document.createElement('span');
+    o.className = 'small text-white-50 text-nowrap';
+    o.textContent = owner.textContent;
+    o.title = owner.title || '';
+    box.appendChild(o);
+  }
+  const pick = row.querySelector('.stress-pick-btn');
+  if (pick) box.appendChild(pick.cloneNode(true));
+  const edit = row.querySelector('.spec-edit-btn');
+  if (edit) {
+    // Same button (same data, same delegated handler) shown as an "Edit" label
+    const c = edit.cloneNode(false);
+    c.className = 'btn btn-sm btn-light py-0 text-nowrap spec-edit-btn';
+    c.removeAttribute('style');
+    c.textContent = 'Edit';
+    box.appendChild(c);
+  }
+}
+document.addEventListener('spec-edit:saved', e => { if (e.detail && e.detail.barcode === _barcode) renderHeadActions(); });
 
 function openFailModal() {
   if (!_barcode) return;
@@ -420,6 +486,7 @@ async function submitFail() {
     document.getElementById('stressActiveArea').classList.add('d-none');
     document.getElementById('stressTagBadge').textContent = '—';
     _barcode = null;
+    renderHeadActions();
   } catch (e) {
     alert('Network error: ' + e.message);
   } finally {
@@ -454,6 +521,7 @@ async function submitComplete() {
     document.getElementById('stressActiveArea').classList.add('d-none');
     document.getElementById('stressTagBadge').textContent = '—';
     _barcode = null;
+    renderHeadActions();
   } catch (e) {
     alert('Network error: ' + e.message);
   } finally {

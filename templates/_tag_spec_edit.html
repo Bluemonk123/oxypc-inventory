@@ -115,16 +115,119 @@
     .then(function (d) {
       if (!d || !d.ok) throw new Error((d && d.error) || 'Could not save');
       if (!d.changed) { bootstrap.Modal.getInstance(modalEl).hide(); if (window.showTopToast) window.showTopToast('primary', 'No changes to save.'); return; }
-      // Reload so every column on the page shows the new values; the toast and
-      // the selected tag (Final QC's card list) are restored after the reload.
-      try {
-        sessionStorage.setItem('specEditToast', 'Details updated for ' + barcode + '.');
-        sessionStorage.setItem('specEditFocus', barcode);
-      } catch (x) {}
-      location.reload();
+      // No page reload (2026-10-28): fetch this page again and swap in just
+      // this tag's row (L1/L2, Stress) or detail pane + list card (Final QC).
+      // Click handlers on the page are delegated, so nothing needs rebinding.
+      // Falls back to a reload when the tag can't be found in the new page.
+      return refreshTag(barcode).then(function (ok) {
+        bootstrap.Modal.getInstance(modalEl).hide();
+        if (!ok) {
+          try {
+            sessionStorage.setItem('specEditToast', 'Details updated for ' + barcode + '.');
+            sessionStorage.setItem('specEditFocus', barcode);
+          } catch (x) {}
+          location.reload();
+          return;
+        }
+        if (window.showTopToast) window.showTopToast('success', 'Details updated for ' + barcode + '.');
+        document.dispatchEvent(new CustomEvent('spec-edit:saved', { detail: { barcode: barcode } }));
+      });
     })
     .catch(function (x) { err.textContent = x.message; saveBtn.disabled = false; });
   });
+
+  function btnFor(root, tag) {
+    var sel = '.spec-edit-btn[data-barcode="' + (window.CSS && CSS.escape ? CSS.escape(tag) : tag) + '"]';
+    return root.querySelector(sel);
+  }
+  function initTips(el) {
+    if (!window.bootstrap) return;
+    el.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (t) { bootstrap.Tooltip.getOrCreateInstance(t); });
+  }
+  function refreshTag(tag) {
+    // A frozen-column copy of the table may hold a second pencil for the
+    // same tag; use the one in the real table row.
+    var all = document.querySelectorAll('.spec-edit-btn[data-barcode="' + (window.CSS && CSS.escape ? CSS.escape(tag) : tag) + '"]');
+    var curBtn = null;
+    // The tag's row in a DataTable first — also when it sits on another
+    // table page (not in the document then), e.g. when the pencil clicked
+    // was the copy in the Stress Test panel header.
+    if (window.jQuery && jQuery.fn.dataTable) {
+      jQuery.fn.dataTable.tables().forEach(function (tb) {
+        if (curBtn) return;
+        jQuery(tb).DataTable().rows().nodes().toArray().some(function (n) {
+          var b = n.querySelector('.spec-edit-btn[data-barcode="' + (window.CSS && CSS.escape ? CSS.escape(tag) : tag) + '"]');
+          if (b) { curBtn = b; return true; }
+          return false;
+        });
+      });
+    }
+    curBtn = curBtn || all[0];
+    if (!curBtn) return Promise.resolve(false);
+    return fetch(location.href, { headers: { 'X-Requested-With': 'XMLHttpRequest' }, credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.text() : null; })
+      .then(function (html) {
+        if (!html) return false;
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var newBtn = btnFor(doc, tag);
+        if (!newBtn) return false;
+        // Table row: same cells, swapped one by one, then DataTables told.
+        var tr = curBtn.closest('tr'), ntr = newBtn.closest('tr');
+        if (tr && ntr) {
+          Array.prototype.forEach.call(ntr.attributes, function (a) {
+            if (a.name.indexOf('data-') === 0) tr.setAttribute(a.name, a.value);
+          });
+          var table = tr.closest('table');
+          if (window.jQuery && table && jQuery.fn.dataTable && jQuery.fn.dataTable.isDataTable(table)) {
+            // DataTables drops hidden columns from the DOM, so the row's data
+            // (every column) is replaced instead of the visible cells.
+            var row = jQuery(table).DataTable().row(tr);
+            var cur = row.data();
+            var cells = Array.prototype.map.call(ntr.cells, function (c) { return c.innerHTML; });
+            if (!Array.isArray(cur) || cur.length !== cells.length) return false;
+            row.data(cells);   // no draw(): the row stays where it is, not re-sorted away
+            // keep each visible cell's classes (nowrap, centred, ...)
+            var vis = jQuery(table).DataTable().columns().visible().toArray();
+            var k = 0;
+            for (var i = 0; i < vis.length; i++) {
+              if (!vis[i]) continue;
+              if (tr.cells[k]) tr.cells[k].className = ntr.cells[i].className;
+              k++;
+            }
+          } else {
+            if (tr.cells.length !== ntr.cells.length) return false;
+            for (var j = 0; j < tr.cells.length; j++) {
+              tr.cells[j].innerHTML = ntr.cells[j].innerHTML;
+              tr.cells[j].className = ntr.cells[j].className;
+            }
+          }
+          initTips(tr);
+          return true;
+        }
+        // Final QC: the tag's detail pane and its card in the list.
+        var pane = curBtn.closest('.fqc-detail-pane'), npane = newBtn.closest('.fqc-detail-pane');
+        if (pane && npane) {
+          // Only the header line and the Full IQC tab — the Final QC decision
+          // form keeps its handlers and anything already typed into it.
+          var head = curBtn.parentNode, nhead = newBtn.parentNode;
+          head.innerHTML = nhead.innerHTML;
+          var iqc = pane.querySelector('[id^="fiqc-"]'), niqc = npane.querySelector('[id^="fiqc-"]');
+          if (iqc && niqc) iqc.innerHTML = niqc.innerHTML;
+          var card = document.querySelector('.fqc-card[data-target="' + pane.id + '"]');
+          var ncard = doc.querySelector('.fqc-card[data-target="' + pane.id + '"]');
+          if (card && ncard) {
+            card.innerHTML = ncard.innerHTML;
+            if (card.classList.contains('active')) {   // keep the selected card's light text
+              card.querySelectorAll('.small').forEach(function (el) { el.classList.replace('text-muted', 'text-white-50'); });
+            }
+          }
+          initTips(pane);
+          return true;
+        }
+        return false;
+      })
+      .catch(function () { return false; });
+  }
 
   // 'load', not DOMContentLoaded: the page's own card-click handlers must be
   // bound before the saved tag is re-selected.

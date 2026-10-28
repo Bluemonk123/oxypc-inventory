@@ -87,7 +87,7 @@
            takes it from whoever holds it). Pass / Fail closes it. #}
         {% set fwo = fqc_wo_map.get(device.id|string) %}
         {% set fmine = fwo and fwo.user_id == current_user.id|string %}
-        <span class="small text-muted text-nowrap">QC by: <span class="fw-semibold text-body" {% if fwo %}title="WorkID {{ fwo.work_id }}"{% endif %}>{{ 'You' if fmine else ((fwo.name if fwo and fwo.name) or 'Not picked') }}</span></span>
+        <span class="small text-muted text-nowrap">QC by: <span class="fw-semibold text-body fqc-owner" {% if fwo %}title="WorkID {{ fwo.work_id }}"{% endif %}>{{ 'You' if fmine else ((fwo.name if fwo and fwo.name) or 'Not picked') }}</span></span>
         <span class="ms-auto text-muted small">L1/L2 Engineer: <span class="fw-semibold text-body">{{ l1l2_engineer_map.get(device.id|string, '—') }}</span></span>
         {% set sr = stress_map.get(device.barcode) %}
         {% if sr %}
@@ -517,7 +517,11 @@ document.addEventListener('click', async function (e) {
     });
     var d = await r.json().catch(function () { return {}; });
     if (!r.ok || !d.ok) { alert(d.error || d.detail || 'Could not pick this tag.'); btn.disabled = false; return; }
-    window.location.reload();
+    // No page reload (2026-10-28): "QC by" shows You in place.
+    var owner = btn.parentNode.querySelector('.fqc-owner');
+    if (owner) { owner.textContent = 'You'; if (d.work_id) owner.title = 'WorkID ' + d.work_id; }
+    btn.remove();
+    if (window.showTopToast) window.showTopToast('success', 'Tag ' + btn.dataset.barcode + ' assigned to you' + (d.work_id ? ' (' + d.work_id + ')' : '') + '.');
   } catch (err) { alert('Network error: ' + err.message); btn.disabled = false; }
 });
 </script>
