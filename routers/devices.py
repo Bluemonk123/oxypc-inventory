@@ -2365,6 +2365,7 @@ async def device_specs_quick_save(
     model: str = Form(""),
     ram: str = Form(""),
     hard_drive: str = Form(""),
+    grade: str | None = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -2418,6 +2419,14 @@ async def device_specs_quick_save(
         new["total_hdd_size"] = gb_text_spaced(new_hdd)
         if _simple(device.hdd_summary):
             new["hdd_summary"] = respace_summary(device.hdd_summary, new_hdd)
+    # Grade (2026-10-28): only when the form has the Grade box (Stress Test
+    # page). Blank = no grade; an unreadable value is refused, never guessed.
+    if grade is not None:
+        from utils.grades import parse_grade
+        g = parse_grade(grade) if grade.strip() else None
+        if grade.strip() and g is None:
+            return JSONResponse({"ok": False, "error": f"Grade: '{grade}' is not a grade"}, status_code=400)
+        new["grade"] = g
     old = {k: getattr(device, k) for k in new}
     changed = {k: v for k, v in new.items() if v != old[k]}
     if not changed:
@@ -2426,8 +2435,8 @@ async def device_specs_quick_save(
         setattr(device, k, v)
     await audit(db, user=current_user, action="DEVICE_SPECS_QUICK_EDIT",
                 table_name="devices", record_id=str(device.id),
-                old_value={"barcode": device.barcode, **{k: old[k] for k in changed}},
-                new_value={"barcode": device.barcode, **changed},
+                old_value={"barcode": device.barcode, **{k: getattr(old[k], "value", old[k]) for k in changed}},
+                new_value={"barcode": device.barcode, **{k: getattr(v, "value", v) for k, v in changed.items()}},
                 request=request)
     await db.commit()
     return JSONResponse({"ok": True, "changed": len(changed)})

@@ -30,11 +30,13 @@
         data-make="{{ device.brand or '' }}"
         data-model="{{ device.model or '' }}"
         data-ram="{{ _gb(device.ram_gb) }}"
-        data-hdd="{{ _gb(device.storage_gb) }}"><i class="bi bi-pencil-fill"></i></button>
+        data-hdd="{{ _gb(device.storage_gb) }}"
+        data-grade="{{ (device.grade.value if device.grade.value is defined else device.grade) or '' }}"><i class="bi bi-pencil-fill"></i></button>
 {%- endif -%}
 {%- endmacro %}
 
-{% macro spec_edit_modal() %}
+{#- with_grade=True adds a Grade dropdown (Stress Test page, 2026-10-28). -#}
+{% macro spec_edit_modal(with_grade=False) %}
 <div class="modal fade" id="specEditModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <form class="modal-content" id="specEditForm" autocomplete="off">
@@ -58,6 +60,13 @@
             <input type="text" name="ram" class="form-control form-control-sm" placeholder="e.g. 16 GB"></div>
           <div class="col-6"><label class="form-label small fw-semibold mb-1">Hard Drive</label>
             <input type="text" name="hard_drive" class="form-control form-control-sm" placeholder="e.g. 512 GB or 1 TB"></div>
+          {% if with_grade %}
+          <div class="col-6"><label class="form-label small fw-semibold mb-1">Grade</label>
+            <select name="grade" class="form-select form-select-sm">
+              <option value="">— No grade —</option>
+              {% for v, lbl in grade_options() %}<option value="{{ v }}">{{ lbl }}</option>{% endfor %}
+            </select></div>
+          {% endif %}
         </div>
         <div class="form-text small">RAM / Hard Drive: 16, 16GB and 16 GB all save as 16 GB; 1TB = 1 TB.</div>
         <div id="specEditError" class="text-danger small mt-2"></div>
@@ -77,6 +86,7 @@
   var saveBtn = document.getElementById('specEditSave');
   var barcode = null;
   var FIELDS = { serial_no: 'serial', brand: 'make', model: 'model', cpu: 'cpu', generation: 'gen', ram: 'ram', hard_drive: 'hdd' };
+  if (form.elements.grade) FIELDS.grade = 'grade';
   function csrf() { var c = document.cookie.split('; ').find(function (x) { return x.indexOf('csrf_token=') === 0; }); return c ? c.split('=')[1] : ''; }
 
   // Delegated: works for rows DataTables draws later (paging) too.

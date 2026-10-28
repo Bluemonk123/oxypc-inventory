@@ -1,5 +1,8 @@
 {% extends "base.html" %}
 {% from "_tag_spec_edit.html" import spec_edit_btn, spec_edit_modal %}
+{% macro _qc_gb(n) -%}
+{%- if n -%}{%- if n >= 1024 and n % 1024 == 0 -%}{{ n // 1024 }} TB{%- elif n >= 1000 and n % 1000 == 0 -%}{{ n // 1000 }} TB{%- else -%}{{ n }} GB{%- endif -%}{%- endif -%}
+{%- endmacro %}
 {% block title %}Stress Test — OxyPC{% endblock %}
 {% block page_title %}Stress Test{% endblock %}
 {% block content %}
@@ -31,9 +34,9 @@
         <table id="qcTable" class="table table-hover mb-0 small">
           <thead class="table-dark">
             <tr>
-              <th>Tag Number</th><th>Lot</th><th>Actions</th><th>L1/L2 Engineer</th><th>Brand</th><th>Model</th>
-              <th class="d-none">CPU</th><th class="d-none">RAM</th><th class="d-none">Storage</th><th>Grade</th>
-              <th class="d-none">Location</th><th>Report</th>
+              <th>Tag Number</th><th class="d-none">Lot</th><th>L1/L2 Engineer</th><th>Brand</th><th>Model</th>
+              <th>CPU</th><th>CPU Gen</th><th>RAM</th><th>Storage</th><th>Grade</th>
+              <th class="d-none">Location</th><th>Report</th><th>Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -48,8 +51,38 @@
                    data-bs-toggle="tooltip" data-bs-placement="top"
                    title="{{ device.fqc_final_notes or 'No fail note recorded' }}"></i></span>{% endif %}
               </td>
-              <td><span class="badge bg-info text-dark">{{ lot_number }}</span></td>
-              {# Actions right after Lot, one line (2026-10-28) #}
+              <td class="d-none"><span class="badge bg-info text-dark">{{ lot_number }}</span></td>
+              <td class="text-muted small">{{ l1l2_engineer_map.get(device.id|string, '—') }}</td>
+              <td>{{ device.brand or '—' }}</td>
+              <td>{{ device.model or '—' }}</td>
+              {# CPU / CPU Gen / RAM / Storage shown (2026-10-28); sizes "16 GB", whole TB "1 TB" #}
+              <td class="text-nowrap">{{ device.cpu or '—' }}</td>
+              <td class="text-nowrap">{{ device.generation or '—' }}</td>
+              <td class="text-nowrap">{{ _qc_gb(device.ram_gb) or '—' }}</td>
+              <td class="text-nowrap">{{ (_qc_gb(device.storage_gb) ~ (' ' ~ device.storage_type if device.storage_type else '')) if device.storage_gb else '—' }}</td>
+              {# Grade badge, same colours as All Inventory #}
+              {% set gv = (device.grade.value if device.grade and device.grade.value is defined else device.grade) or '' %}
+              <td>{% if gv %}<span class="badge bg-{{ 'success' if gv == 'A' else 'warning text-dark' if gv == 'B' else 'secondary' if gv == 'C' else 'danger' if gv in ('D', 'scrap') else 'light text-dark' }}">{{ gv }}</span>{% else %}—{% endif %}</td>
+              <td class="d-none">
+                {% set loc = location_map.get(device.id | string) %}
+                {% if loc and loc.unit_id %}{{ loc.unit_id }}{% endif %}
+              </td>
+              <td class="text-center text-nowrap">
+                {% if sr %}
+                  {% set ov = sr.overall_status or '' %}
+                  {% if can(current_user, 'qc_check', 'export') %}<a href="/stress/{{ device.barcode }}/report?result_id={{ sr.result_id }}"
+                     class="btn btn-sm py-0 px-1 text-nowrap
+                     {% if ov == 'PASS' %}btn-outline-success
+                     {% elif ov == 'FAIL' %}btn-outline-danger
+                     {% else %}btn-outline-warning{% endif %}"
+                     title="Download Stress Report — {{ ov }} — {{ sr.run_at }}">
+                    <i class="bi bi-file-earmark-arrow-down me-1"></i>PDF
+                  </a>{% endif %}
+                {% else %}
+                  <span class="text-muted small">—</span>
+                {% endif %}
+              </td>
+              {# Actions last, one line (2026-10-28) #}
               <td class="text-nowrap">
                 <div class="d-flex gap-2 flex-nowrap align-items-center">
                   {# Pick This (2026-10-27): one Stress WorkID per visit — the
@@ -75,32 +108,6 @@
                   </button>
                   {% endif %}
                 </div>
-              </td>
-              <td class="text-muted small">{{ l1l2_engineer_map.get(device.id|string, '—') }}</td>
-              <td>{{ device.brand or '—' }}</td>
-              <td>{{ device.model or '—' }}</td>
-              <td class="d-none text-muted small">{{ device.cpu or '—' }}</td>
-              <td class="d-none">{{ (device.ram_gb|string ~ ' GB') if device.ram_gb else '—' }}</td>
-              <td class="d-none">{{ (device.storage_gb|string ~ ' GB') if device.storage_gb else '—' }}</td>
-              <td>{{ device.grade or '—' }}</td>
-              <td class="d-none">
-                {% set loc = location_map.get(device.id | string) %}
-                {% if loc and loc.unit_id %}{{ loc.unit_id }}{% endif %}
-              </td>
-              <td class="text-center text-nowrap">
-                {% if sr %}
-                  {% set ov = sr.overall_status or '' %}
-                  {% if can(current_user, 'qc_check', 'export') %}<a href="/stress/{{ device.barcode }}/report?result_id={{ sr.result_id }}"
-                     class="btn btn-sm py-0 px-1 text-nowrap
-                     {% if ov == 'PASS' %}btn-outline-success
-                     {% elif ov == 'FAIL' %}btn-outline-danger
-                     {% else %}btn-outline-warning{% endif %}"
-                     title="Download Stress Report — {{ ov }} — {{ sr.run_at }}">
-                    <i class="bi bi-file-earmark-arrow-down me-1"></i>PDF
-                  </a>{% endif %}
-                {% else %}
-                  <span class="text-muted small">—</span>
-                {% endif %}
               </td>
             </tr>
             {% endfor %}
@@ -202,7 +209,7 @@
 </div>
 
 {# Pencil next to the Tag Number: quick spec edit (2026-10-26). #}
-{{ spec_edit_modal() }}
+{{ spec_edit_modal(with_grade=True) }}
 {% include "_search_tags_modal.html" %}
 {% endblock %}
 {% block scripts %}
@@ -510,9 +517,9 @@ $(document).ready(function(){
     // without this, DataTables defaults to sorting by the first visible
     // column (Tag Number), silently undoing it.
     order: [],
-    // Actions moved after Lot (2026-10-28): CPU/RAM/Storage (6,7,8) and
-    // Location (10) hidden; Actions (2) and Report (11) aren't sortable.
-    columnDefs: [{ visible: false, targets: [6, 7, 8, 10] }, { orderable: false, targets: [2, 11] }],
+    // 2026-10-28: Lot (1) and Location (10) hidden; CPU / CPU Gen / RAM /
+    // Storage (5-8) shown; Report (11) and Actions (12, last) not sortable.
+    columnDefs: [{ visible: false, targets: [1, 10] }, { orderable: false, targets: [11, 12] }],
   });
   $('#qcFailedFqcFilter').on('change', function() { dt.draw(); });
 
