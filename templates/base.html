@@ -273,6 +273,12 @@
         <i class="bi bi-shield-check me-2"></i> {{ sidebar_label('cosmetic_finalqc', 'Final QC') }}
       </a></li>
       {% endif %}
+      {# Pre-Sale IQC (2026-10-29): OFF by default (DEFAULT_DISABLED_MODULES). #}
+      {% if has_perm(role,'pre_sale_iqc','enable') and not module_hidden('pre_sale_iqc') %}
+      <li><a href="/pre-sale-iqc" class="nav-link {% if request.url.path == '/pre-sale-iqc' %}active{% endif %}">
+        <i class="bi bi-clipboard2-check me-2"></i> {{ sidebar_label('pre_sale_iqc', 'Pre-Sale IQC') }}
+      </a></li>
+      {% endif %}
       {% if has_perm(role,'workid_status','enable') and not module_hidden('workid_status') %}
       <li><a href="/workid-status" class="nav-link {% if request.url.path == '/workid-status' %}active{% endif %}">
         <i class="bi bi-clipboard-check me-2"></i> {{ sidebar_label('workid_status', 'WorkID Status') }}

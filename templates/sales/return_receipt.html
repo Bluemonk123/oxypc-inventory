@@ -32,6 +32,10 @@
     <tr><td class="label">Model</td><td>{{ model or '—' }}</td></tr>
     <tr><td class="label">Quantity</td><td>1</td></tr>
     <tr><td class="label">Paid Repair</td><td>&#8377;{{ '%.2f'|format(ret.refund_amount) if ret.refund_amount is not none else '0.00' }}</td></tr>
+    {# Charge status (2026-10-29): same as Rental Return #}
+    {% if ret.charge_decision %}
+    <tr><td class="label">Charge</td><td>{% if ret.charge_decision == 'waive_off' %}Waived Off{% if ret.waiver_reason %} — {{ ret.waiver_reason }}{% endif %}{% elif ret.paid_at %}Paid ({{ ret.payment_reference }}, {{ ret.paid_at.strftime('%d-%m-%Y') }}){% else %}Payment Due{% endif %}</td></tr>
+    {% endif %}
   </table>
   <div class="actions">
     <button onclick="window.print()">Print / Save as PDF</button>

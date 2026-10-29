@@ -16,36 +16,107 @@
 {% set _floor_only = current_user.role.value in _floor_roles %}
 <div id="deviceDetail">
 <!-- Header row -->
-<div class="d-flex justify-content-between align-items-start mb-3">
-  <div>
-    <h4 class="mb-0 font-monospace fw-bold">{{ device.barcode }}<span class="fs-6 align-middle">{{ flag_badge(device) }}{{ parts_badge(parts_badges, device.id) }}</span></h4>
-    {% if device.flagged_at or device.flag_reason %}
-    <div class="alert alert-danger py-1 px-2 my-1 small d-inline-block">
-      <i class="bi bi-flag-fill me-1"></i><strong>Urgent at inventory</strong> —
-      Authorized by {{ device.flag_authorized_by or '—' }} ·
-      Requested {{ device.flag_request_date.strftime('%d-%m-%Y') if device.flag_request_date else '—' }} ·
-      Target {{ device.flag_target_date.strftime('%d-%m-%Y') if device.flag_target_date else '—' }} ·
-      Reason: {{ device.flag_reason or '—' }}
+{# Category circle (2026-10-29, option C): the device-type tiles' icon
+   (Dashboard / All Inventory / Ready for Sale), grey in an outlined circle
+   with the category name. Left of the three header lines: Tag Number, info
+   line, status row. #}
+{% set _cat = ((device.device_type or device.sub_category or '') | string | trim | lower) %}
+{% set _cat_icons = {
+    'laptop': ('bi-laptop', '#0d6efd'), 'desktop': ('bi-pc-display', '#0F7A37'),
+    'tft monitor': ('bi-display', '#fd7e14'), 'tft': ('bi-display', '#fd7e14'), 'monitor': ('bi-display', '#fd7e14'),
+    'tablet': ('bi-tablet', '#20c997'), 'mini pc': ('bi-cpu', '#6f42c1'), 'server': ('bi-hdd-network', '#0aa2c0'),
+    'printer': ('bi-printer', '#6c757d'), 'mobile': ('bi-phone', '#6c757d'), 'mobile phone': ('bi-phone', '#6c757d'),
+    'router': ('bi-router', '#6c757d'), 'switch': ('bi-diagram-3', '#6c757d'), 'workstation': ('bi-pc', '#6c757d')} %}
+{% set _ci = _cat_icons.get(_cat, ('bi-box-seam', '#6c757d')) %}
+<style>
+  .dd-head { display:flex; align-items:center; gap:1.1rem; }
+  /* Category circle (2026-10-29, option C): grey outlined circle, grey icon
+     with the category name under it. */
+  .dd-cat-icon { flex:0 0 auto; width:92px; height:92px; border-radius:50%; border:2px solid #ced4da;
+                 background:transparent; color:#6c757d; display:flex; flex-direction:column; align-items:center;
+                 justify-content:center; text-align:center; }
+  .dd-cat-icon .dd-cat-ic { font-size:2.2rem; line-height:1; }
+  .dd-cat-icon .dd-cat-name { font-size:.7rem; font-weight:700; margin-top:.15rem; max-width:80px;
+                              white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .dd-head-lines > * + * { margin-top:.6rem; }
+  .dd-status { display:flex; flex-wrap:wrap; align-items:center; gap:.5rem .75rem; }
+  .dd-sep { color:#adb5bd; margin:0 .6rem; }
+  .dd-header { margin:0 -.75rem 1.75rem; padding:.5rem .75rem 0; border-radius:10px 10px 0 0;
+               transition:box-shadow .2s ease; }
+  .dd-header:hover { box-shadow: inset 0 -22px 18px -14px rgba(33, 37, 41, .42); }
+  .dd-header-sep { margin:1.6rem 0 0; border-top:1px solid #ced4da; opacity:1; }
+  /* Card headers on this page (2026-10-29): the Global Table card-header
+     look (app.css .gtable-card / .hdr-card) and a little taller. */
+  #deviceDetail .card > .card-header { background:#d9ebf6 !important; color:#0e3a7a;
+                                       border-bottom:1px solid #c0ddf0; padding:.8rem 1rem; }
+  #deviceDetail .card > .card-header [class*="btn-outline-"]:not(:hover):not(:active):not(.active) { background-color:#fff; }
+  /* Card header on hover (2026-10-29): navy, white text + icon. */
+  #deviceDetail .card > .card-header { transition:background-color .15s ease, color .15s ease; }
+  #deviceDetail .card:hover > .card-header { background:#0e3a7a !important; color:#fff !important; border-bottom-color:#0e3a7a; }
+  #deviceDetail .card:hover > .card-header .bi, #deviceDetail .card:hover > .card-header > span,
+  #deviceDetail .card:hover > .card-header .fw-semibold { color:#fff !important; }
+  #deviceDetail .accordion-item:hover > .accordion-header .accordion-button { background:#0e3a7a; color:#fff; }
+  #deviceDetail .accordion-item:hover > .accordion-header .accordion-button::after { filter:brightness(0) invert(1); }
+  /* Cards below the Device Header: darker shadow on hover (2026-10-29). */
+  #deviceDetail .row.g-3 .card, #deviceDetail .row.g-3 .accordion-item { transition:box-shadow .15s ease; }
+  #deviceDetail .row.g-3 .card:hover, #deviceDetail .row.g-3 .accordion-item:hover {
+    box-shadow:0 .45rem 1.3rem rgba(33, 37, 41, .30) !important; }
+</style>
+{# Device Header (2026-10-29): hovering shows an inner shadow rising from
+   the separator line at its bottom. #}
+<div class="dd-header">
+<div class="d-flex justify-content-between align-items-start">
+  <div class="dd-head">
+    <div class="dd-cat-icon" title="{{ device.device_type or device.sub_category or 'Device' }}">
+      <i class="bi {{ _ci[0] }} dd-cat-ic"></i>
+      <div class="dd-cat-name">{{ device.device_type or device.sub_category or 'Device' }}</div>
     </div>
-    {% endif %}
-    {# Same source as the "Location ID" row further down in Identity &
-       Location (device.location_id) — kept identical so the two don't ever
-       disagree on the same page. #}
-    <small class="text-muted d-block">
-      Entity: {{ device.entity or '—' }} | Make: {{ device.brand or '' }} | Model: {{ device.model or '' }}{% if device.serial_no %} | S/N: {{ device.serial_no }}{% endif %} | Location:
-      {% if assigned_location %}
-      <span class="font-monospace">{{ assigned_location.unit_id }}</span> | Bin: {{ device.bin_location or assigned_location.slot or '—' }}
-      {% else %}
-      <a href="/locations/device/{{ device.id }}" class="btn btn-xs btn-outline-primary py-0 px-2 ms-1"
-         style="font-size:.75rem;" name="assign location">Assign Location</a>
-      {% if device.bin_location %} | Bin: {{ device.bin_location }}{% endif %}
+    <div class="dd-head-lines">
+      <h4 class="mb-0 font-monospace fw-bold">{{ device.barcode }}<span class="fs-6 align-middle">{{ flag_badge(device) }}{{ parts_badge(parts_badges, device.id) }}</span></h4>
+      {% if device.flagged_at or device.flag_reason %}
+      <div class="alert alert-danger py-1 px-2 my-1 small d-inline-block">
+        <i class="bi bi-flag-fill me-1"></i><strong>Urgent at inventory</strong> —
+        Authorized by {{ device.flag_authorized_by or '—' }} ·
+        Requested {{ device.flag_request_date.strftime('%d-%m-%Y') if device.flag_request_date else '—' }} ·
+        Target {{ device.flag_target_date.strftime('%d-%m-%Y') if device.flag_target_date else '—' }} ·
+        Reason: {{ device.flag_reason or '—' }}
+      </div>
       {% endif %}
-    </small>
+      {# Info line moved right under the Tag Number (2026-10-29). Location:
+         same source as the "Location ID" row in Identity & Location. #}
+      <small class="text-muted d-block" style="font-size:.95rem">
+        Make: {{ device.brand or '' }}<span class="dd-sep">|</span>Model: {{ device.model or '' }}{% if device.serial_no %}<span class="dd-sep">|</span>S/N: {{ device.serial_no }}{% endif %}<span class="dd-sep">|</span>Location:
+        {% if assigned_location %}
+        <span class="font-monospace">{{ assigned_location.unit_id }}</span><span class="dd-sep">|</span>Bin: {{ device.bin_location or assigned_location.slot or '—' }}
+        {% else %}
+        <a href="/locations/device/{{ device.id }}" class="btn btn-xs btn-outline-primary py-0 px-2 ms-1"
+           style="font-size:.75rem;" name="assign location">Assign Location</a>
+        {% if device.bin_location %}<span class="dd-sep">|</span>Bin: {{ device.bin_location }}{% endif %}
+        {% endif %}
+      </small>
+      {# Status row (2026-10-29): the former Current Stage card's values —
+         Entity first, Stage last — as badges. #}
+      <div class="dd-status">
+        {# No headings (2026-10-29): Entity, Grade, Lot, Final QC, Stage as
+           badges; Lot is not a link. #}
+        <span class="badge fs-6 bg-dark">{{ device.entity or '—' }}</span>
+        {% if device.grade %}
+        <span class="badge fs-6 bg-{{ 'success' if device.grade == 'A' else 'warning text-dark' if device.grade == 'B' else 'secondary' }}">Grade - {{ device.grade.value if device.grade.value is defined else device.grade }}</span>
+        {% endif %}
+        {% if device.lot_id and lot %}
+        <span class="badge fs-6 bg-info text-dark">Lot - {{ lot.lot_number }}</span>
+        {% endif %}
+        {% if device.final_qc_status %}
+        <span class="badge fs-6 bg-{{ 'success' if device.final_qc_status == 'pass' else 'danger' }}">Final QC - {{ device.final_qc_status | title }}</span>
+        {% endif %}
+        <span class="badge fs-6 bg-primary">Stage - {{ stage_labels.get(device.current_stage, device.current_stage.value) }}</span>
+      </div>
+    </div>
   </div>
   <div class="d-flex gap-2">
     {% if not _floor_only %}
     {% if can(current_user, 'devices', 'edit') %}
-    <a href="/devices/{{ device.barcode }}/edit" class="btn btn-sm btn-outline-warning">
+    <a href="/devices/{{ device.barcode }}/edit" class="btn btn-sm btn-primary">
       <i class="bi bi-pencil me-1"></i>Edit
     </a>
     {% endif %}
@@ -65,327 +136,15 @@
   </div>
 </div>
 
+{# Separator under the header's info line (2026-10-29), full width, with
+   space above and below. #}
+<hr class="dd-header-sep">
+</div>
 <div class="row g-3">
 
   {% if not _floor_only %}
-  <!-- ── Left column: Specs + P&L ── -->
-  <div class="col-lg-5">
-
-    <!-- Current Stage badge -->
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-body py-2 d-flex align-items-center gap-3">
-        <div>
-          <div class="small text-muted">Current Stage</div>
-          <span class="badge fs-6 bg-primary">{{ stage_labels.get(device.current_stage, device.current_stage.value) }}</span>
-        </div>
-        {% if device.grade %}
-        <div>
-          <div class="small text-muted">Grade</div>
-          <span class="badge fs-6 bg-{{ 'success' if device.grade == 'A' else 'warning text-dark' if device.grade == 'B' else 'secondary' }}">{{ device.grade }}</span>
-        </div>
-        {% endif %}
-        {% if device.lot_id and lot %}
-        <div>
-          <div class="small text-muted">Lot</div>
-          <a href="/lots/{{ lot.id }}" class="badge bg-info text-dark text-decoration-none fs-6">{{ lot.lot_number }}</a>
-        </div>
-        {% endif %}
-        {% if device.final_qc_status %}
-        <div>
-          <div class="small text-muted">Final QC Status</div>
-          <span class="badge fs-6 bg-{{ 'success' if device.final_qc_status == 'pass' else 'danger' }}">{{ device.final_qc_status | title }}</span>
-        </div>
-        {% endif %}
-      </div>
-    </div>
-
-    {# Field labels below mirror the IQC Entry form (templates/iqc/form.html)
-       exactly — it is the single source of truth for hardware and body-panel
-       naming, so the two pages cannot drift apart. #}
-    {% set iqc = iqc_inspection if iqc_inspection is defined else None %}
-
-    {% include "devices/_iqc_full_report.html" %}
-
-    <!-- Identity & Location -->
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-transparent fw-semibold small text-uppercase d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-geo-alt me-2"></i>Identity &amp; Location</span>
-        <a href="/locations/device/{{ device.id }}" class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size:.75rem;">
-          <i class="bi bi-geo-alt-fill me-1"></i>Manage Location
-        </a>
-      </div>
-      <div class="card-body p-0">
-        <!-- Current tracked location -->
-        {% if current_location %}
-          {% if current_location.action == 'picked_up' %}
-          <div class="alert alert-warning rounded-0 border-0 py-2 px-3 mb-0 small">
-            <i class="bi bi-hand-index me-1"></i>
-            <strong>In Hand</strong> — picked up by {{ current_location.actor_name or 'unknown' }}
-          </div>
-          {% elif current_location.unit_id %}
-          <div class="alert alert-success rounded-0 border-0 py-2 px-3 mb-0 small">
-            <i class="bi bi-geo-alt-fill me-1"></i>
-            <strong>{{ current_location.unit_id }}</strong>
-          </div>
-          {% endif %}
-        {% else %}
-          <div class="alert alert-secondary rounded-0 border-0 py-2 px-3 mb-0 small">
-            <i class="bi bi-question-circle me-1"></i>No location recorded —
-            <a href="/locations/device/{{ device.id }}">assign one</a>
-          </div>
-        {% endif %}
-        <table class="table table-sm mb-0">
-          <tbody>
-            <tr><th class="ps-3 text-muted small w-40">GRN Number</th><td>{% if device.grn_number %}<a href="/grn?highlight={{ device.grn_number|urlencode }}" class="text-decoration-none font-monospace" title="View in GRN Import">{{ device.grn_number }}</a>{% else %}—{% endif %}</td></tr>
-            {# The tag's own Invoice Number (set per tag via Customise / GRN mapping);
-   the Lot's invoice only when the tag has none of its own (2026-10-15 — this
-   showed the Lot's invoice even when the tag had a different one). #}
-            <tr><th class="ps-3 text-muted small">Invoice No.</th><td class="font-monospace small">{{ device.invoice_number or (lot.invoice_no if lot and lot.invoice_no else '—') }}</td></tr>
-            <tr><th class="ps-3 text-muted small">Serial No.</th><td class="font-monospace small">{{ device.serial_no or '—' }}</td></tr>
-            <tr><th class="ps-3 text-muted small">Location ID</th><td class="font-monospace small">{{ assigned_location.unit_id if assigned_location else '—' }}</td></tr>
-            <tr><th class="ps-3 text-muted small">Bin Location</th><td class="font-monospace small">{{ device.bin_location or (assigned_location.slot if assigned_location and assigned_location.slot else '—') }}</td></tr>
-            <tr><th class="ps-3 text-muted small">Location Type</th><td>{{ assigned_location.unit_type_label if assigned_location else '—' }}</td></tr>
-            <tr><th class="ps-3 text-muted small">Zone</th><td>{{ assigned_location.zone_label if assigned_location else '—' }}</td></tr>
-            <tr><th class="ps-3 text-muted small">Return Status</th>
-              <td><span class="badge bg-{{ 'warning text-dark' if device.return_status else 'secondary' }}">{{ 'Yes' if device.return_status else 'No' }}</span></td></tr>
-            <tr><th class="ps-3 text-muted small">Warranty Status</th>
-              <td>
-                {% if warranty_label == 'Within Warranty' %}
-                <span class="badge bg-success">Within Warranty</span>
-                {% elif warranty_label == 'Out of Warranty' %}
-                <span class="badge bg-danger">Out of Warranty</span>
-                {% else %}
-                <span class="badge bg-secondary">Not Sold Yet</span>
-                {% endif %}
-              </td></tr>
-            <tr><th class="ps-3 text-muted small">Replaced</th>
-              <td>{% if device.replaced %}<span class="font-monospace small">{{ device.replaced }}</span>{% else %}—{% endif %}</td></tr>
-            <tr><th class="ps-3 text-muted small">Repair Status</th>
-              <td>{% if repair_status %}<span class="badge bg-info text-dark">{{ repair_status }}</span>{% else %}—{% endif %}</td></tr>
-            <tr><th class="ps-3 text-muted small">Registered</th>
-              <td>{{ device.created_at.strftime('%d %b %Y %H:%M') if device.created_at else '—' }}</td></tr>
-            <tr><th class="ps-3 text-muted small">Last Updated</th>
-              <td>{{ device.updated_at.strftime('%d %b %Y %H:%M') if device.updated_at else '—' }}</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-    {% if device.notes %}
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-transparent fw-semibold small text-uppercase">
-        <i class="bi bi-card-text me-2"></i>Notes
-      </div>
-      <div class="card-body">
-        <p class="mb-0 small">{{ device.notes }}</p>
-      </div>
-    </div>
-    {% endif %}
-    {% if device.repair_notes %}
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-transparent fw-semibold small text-uppercase">
-        <i class="bi bi-tools me-2"></i>Repair Notes
-      </div>
-      <div class="card-body">
-        <p class="mb-0 small">{{ device.repair_notes }}</p>
-      </div>
-    </div>
-    {% endif %}
-
-  </div>
-  {% endif %}
-
-  <!-- ── Right column: Timeline, Repairs, QC, Parts ──
-       Full width for floor roles (Parts Consumption is the only section they
-       get), col-lg-7 alongside the left column for everyone else. ── -->
-  <div class="{{ 'col-12' if _floor_only else 'col-lg-7' }}">
-
-    <!-- Parts Consumption (#10): required parts (from IQC) + live stock + request action -->
-    {% if parts_consumption is defined %}
-    <div class="card border-0 shadow-sm mb-3" id="parts">
-      <div class="card-header bg-transparent fw-semibold small text-uppercase d-flex justify-content-between align-items-center">
-        <span><i class="bi bi-clipboard-plus me-2"></i>Parts Consumption</span>
-        <button type="button" id="pcMultiRequestBtn" class="btn btn-sm btn-primary py-0 px-2" disabled
-                style="text-transform:none" onclick="openMultiRequestModal()">
-          <i class="bi bi-bag-plus me-1"></i>Multi Request
-        </button>
-        {# Clears every PNA tick on this tag at once (2026-10-17); enabled
-           only while at least one PNA box is ticked. #}
-        <button type="button" id="pcRemoveAllPnaBtn" class="btn btn-sm btn-outline-danger bg-white py-0 px-2 ms-2"
-                style="text-transform:none" {{ '' if pna_parts else 'disabled' }}
-                title="Unselect every PNA part on this tag">
-          <i class="bi bi-x-circle me-1"></i>Remove All PNA
-        </button>
-      </div>
-      <div class="card-body p-0">
-        <table class="table table-sm mb-0 align-middle">
-          <thead class="table-light">
-            <tr><th class="ps-3"><input type="checkbox" id="pcSelectAll" title="Select all"></th>
-              <th>Part Name</th><th>Required</th><th>Stock Status</th><th>Mark As</th><th>Action</th></tr>
-          </thead>
-          <tbody>
-            {% set _eng = True %}{# Parts Consumption actions visible to all roles #}
-            {% set _ns = namespace(section='') %}
-            {% for p in parts_consumption %}
-            {# Section heading emitted on the first row of each group. The rows
-               arrive pre-sorted (MAIN then ADDITIONAL, asserted in
-               services/parts_required.py), so a change of section is always a
-               genuine boundary rather than an interleave. #}
-            {% if p.section and p.section != _ns.section %}
-            {% set _ns.section = p.section %}
-            <tr class="table-light">
-              <td colspan="6" class="ps-3 small fw-bold text-uppercase text-muted">{{ p.section }}</td>
-            </tr>
-            {% endif %}
-            <tr>
-              <td class="ps-3">
-                {% if not p.request %}
-                <input type="checkbox" class="pc-select-cb"
-                       data-part-name="{{ p.label | e }}"
-                       data-part-category="{{ p.category | e }}"
-                       data-part-id="{{ p.part_id or '' }}">
-                {% endif %}
-              </td>
-              <td class="small fw-semibold">{{ p.label }}</td>
-              <td>{% if p.required %}<span class="badge bg-warning text-dark">Yes</span>{% else %}<span class="badge bg-light text-muted border">No</span>{% endif %}</td>
-              <td>
-                {# No Part Master row for this name: stock is unknown, not zero.
-                   Rendering "Out of Stock" here would invite a purchase order
-                   against a part we simply have no record of. #}
-                {% if p.rolled_up %}
-                {# Category total, not this exact SKU. Labelled so nobody reads it
-                   as "we hold N of this precise part" — Part Master stocks SKUs
-                   ("HP UK Keyboard"), this row is a component type ("Keyboard"). #}
-                <span class="badge bg-info text-dark"
-                      title="Total across all {{ p.category }} parts in Part Master — this component has no single matching SKU">
-                  {{ p.stock_qty }} in {{ p.category }}
-                </span>
-                {% elif not p.matched %}<span class="badge bg-secondary" title="No Part Master entry with this name or category">&mdash; no match</span>
-                {% elif p.in_stock %}<span class="badge bg-success">In Stock &times;{{ p.stock_qty }}</span>
-                {% else %}<span class="badge bg-danger">Out of Stock</span>{% endif %}
-              </td>
-              {# PNA = Part Not Available. Marked per tag, independent of any
-                 request, because the usual case is a part nobody can source so
-                 no request was ever raised. Counted back on the L1/L2 and L3/L4
-                 queues. #}
-              <td>
-                <div class="form-check mb-0">
-                  <input class="form-check-input pna-cb" type="checkbox"
-                         id="pna_{{ loop.index }}"
-                         data-part-name="{{ p.label | e }}"
-                         data-part-category="{{ p.category | e }}"
-                         data-part-id="{{ p.part_id or '' }}"
-                         {% if p.label in pna_parts %}checked{% endif %}>
-                  <label class="form-check-label small" for="pna_{{ loop.index }}">PNA</label>
-                </div>
-              </td>
-              <td>
-                {% set r = p.request %}
-                {% if r %}
-                  {% if r.status == 'requested' and r.request_type == 'downgrade' %}<span class="badge bg-warning text-dark">Requested Downgrade</span>
-                  {% elif r.status == 'requested' %}<span class="badge bg-warning text-dark">Requested &times;{{ r.qty_requested }}</span>
-                  {% elif r.status == 'handed_over' %}
-                    <button type="button" id="verifyBtn_{{ r.id }}" class="btn btn-sm btn-outline-primary py-0 px-2"
-                            onclick="verifyPartReceived('{{ r.id }}')">
-                      <i class="bi bi-check2-circle"></i> Verify &times;{{ r.qty_handed_over }}
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 faulty-part-btn"
-                            data-label="{{ p.label | e }}" data-category="{{ p.category | e }}" data-part-id="{{ p.part_id }}">
-                      <i class="bi bi-exclamation-triangle"></i> Faulty</button>
-                    <span id="changedPill_{{ r.id }}" class="badge bg-primary d-none">Part Changed</span>
-                  {% elif r.status == 'received' %}<span class="badge bg-primary">Part Changed</span>
-                    {# Changed this visit, but the new part turned out bad (found at
-                       Stress Test / Cosmetic / Final QC fail): raise a Faulty request
-                       for it — the row goes back to Requested -> Handed Over ->
-                       Verify. The first change stays in the history. #}
-                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 faulty-part-btn"
-                            data-label="{{ p.label | e }}" data-category="{{ p.category | e }}" data-part-id="{{ p.part_id }}"
-                            title="The changed part is faulty — raise a Faulty request">
-                      <i class="bi bi-exclamation-triangle"></i> Faulty</button>
-                  {% elif r.status == 'not_in_stock' %}<span class="badge bg-danger">Not In Stock</span>
-                  {% elif r.status == 'procure' %}<span class="badge bg-info text-dark">Sent for Sourcing</span>
-                  {% else %}<span class="badge bg-secondary">{{ r.status }}</span>{% endif %}
-                {% elif _eng %}
-                {# Request actions are enabled for every part, not only those IQC
-                   flagged Required: an engineer routinely finds a fault at the
-                   bench that the inspection never recorded, and gating the
-                   buttons on `required` left them with no way to raise it. #}
-                <div class="d-flex align-items-center gap-1 flex-wrap" data-part-actions="{{ p.part_id }}">
-                  {% if p.prev_changed %}{% set pc = p.prev_changed %}
-                  <span class="badge bg-light text-muted border" style="cursor:help"
-                        title="Changed in an earlier visit ({{ (pc.actioned_at or pc.created_at).strftime('%d %b %Y') if (pc.actioned_at or pc.created_at) else '' }}) — before the last Final QC pass. Raise a new request if it needs changing again.">
-                    <i class="bi bi-clock-history me-1"></i>Changed earlier</span>
-                  {% endif %}
-                  <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
-                          onclick="openPartRequestModal('new', 1, '{{ p.category | e }}', '{{ p.part_id }}', '{{ p.label | e }}')">
-                    <i class="bi bi-bag-plus"></i> New Request</button>
-                  <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
-                          onmouseenter="if(!this.disabled)this.classList.replace('btn-outline-secondary','btn-outline-warning')"
-                          onmouseleave="this.classList.replace('btn-outline-warning','btn-outline-secondary')"
-                          onclick="openPartRequestModal('replace', 1, '{{ p.category | e }}', '{{ p.part_id }}', '{{ p.label | e }}')">
-                    <i class="bi bi-arrow-repeat"></i> Replace Request</button>
-                  {% if p.label in ('RAM', 'Hard Drive') %}
-                  <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2"
-                          onclick="openDowngradeModal('{{ p.label | e }}')">
-                    <i class="bi bi-arrow-down-circle"></i> Downgrade</button>
-                  {% endif %}
-                </div>
-                {% else %}<span class="text-muted">—</span>{% endif %}
-              </td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    <form method="post" action="/part-requests/multi-create" id="multiPartRequestForm" style="display:none">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-      <input type="hidden" name="barcode" value="{{ device.barcode }}">
-      <input type="hidden" name="request_type" id="mpr_request_type" value="new">
-      <input type="hidden" name="from_page" value="{{ request.query_params.get('from', '') }}">
-      <input type="hidden" name="parts_json" id="mpr_parts_json" value="">
-    </form>
-
-    <!-- Multi Request modal — New Request / Replace Request tabs, one row per
-         checked Parts Consumption row (Part Name pre-filled from the checkbox,
-         Make/Model/Quantity picked here). Only the active tab's rows are
-         submitted, tagged with that tab's request_type. -->
-    <div class="modal fade" id="multiRequestModal" tabindex="-1" aria-hidden="true">
-      <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h6 class="modal-title fw-semibold"><i class="bi bi-bag-plus me-2"></i>Multi Request</h6>
-            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-          </div>
-          <div class="modal-body">
-            <ul class="nav nav-tabs" id="mrTabs" role="tablist">
-              <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="mr-tab-new-btn" data-bs-toggle="tab"
-                        data-bs-target="#mr-tab-new" type="button" role="tab">New Request</button>
-              </li>
-              <li class="nav-item" role="presentation">
-                <button class="nav-link" id="mr-tab-replace-btn" data-bs-toggle="tab"
-                        data-bs-target="#mr-tab-replace" type="button" role="tab">Replace Request</button>
-              </li>
-            </ul>
-            <div class="tab-content border border-top-0 rounded-bottom p-3" id="mrTabContent">
-              <div class="tab-pane fade show active" id="mr-tab-new" role="tabpanel">
-                <div id="mr_rows_new"></div>
-              </div>
-              <div class="tab-pane fade" id="mr-tab-replace" role="tabpanel">
-                <div id="mr_rows_replace"></div>
-              </div>
-            </div>
-            <div class="form-text mt-2">Only the tab you submit from is raised — pick New Request or Replace Request, then Submit.</div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-sm btn-success" onclick="mrSubmit()"><i class="bi bi-check-lg me-1"></i>Submit Request</button>
-          </div>
-        </div>
-      </div>
-    </div>
-    {% endif %}
-
+  {# All Notes, rendered once and placed below (2026-10-29). #}
+  {% set _all_notes_html %}
     <!-- All Notes (#L1/L2, L3/L4, Stress, Final QC) — a single consolidated
          view of every note captured on this device across the repair/QC
          pipeline. Each source already has its own card/table elsewhere on
@@ -462,6 +221,369 @@
 
       </div>
     </div>
+  {% endset %}
+  <!-- ── Left column: Specs + P&L ── -->
+  <div class="col-lg-5">
+
+    {# Current Stage card removed (2026-10-29): its values are in the status
+       strip under the Tag Number. #}
+
+    {# Field labels below mirror the IQC Entry form (templates/iqc/form.html)
+       exactly — it is the single source of truth for hardware and body-panel
+       naming, so the two pages cannot drift apart. #}
+    {% set iqc = iqc_inspection if iqc_inspection is defined else None %}
+
+    {% include "devices/_iqc_full_report.html" %}
+
+    <!-- Identity & Location -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent fw-semibold small text-uppercase d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-geo-alt me-2"></i>Identity &amp; Location</span>
+        <a href="/locations/device/{{ device.id }}" class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size:.75rem;">
+          <i class="bi bi-geo-alt-fill me-1"></i>Manage Location
+        </a>
+      </div>
+      <div class="card-body p-0">
+        <!-- Current tracked location -->
+        {% if current_location %}
+          {% if current_location.action == 'picked_up' %}
+          <div class="alert alert-warning rounded-0 border-0 py-2 px-3 mb-0 small">
+            <i class="bi bi-hand-index me-1"></i>
+            <strong>In Hand</strong> — picked up by {{ current_location.actor_name or 'unknown' }}
+          </div>
+          {% elif current_location.unit_id %}
+          <div class="alert alert-success rounded-0 border-0 py-2 px-3 mb-0 small">
+            <i class="bi bi-geo-alt-fill me-1"></i>
+            <strong>{{ current_location.unit_id }}</strong>
+          </div>
+          {% endif %}
+        {% else %}
+          <div class="alert alert-secondary rounded-0 border-0 py-2 px-3 mb-0 small">
+            <i class="bi bi-question-circle me-1"></i>No location recorded —
+            <a href="/locations/device/{{ device.id }}">assign one</a>
+          </div>
+        {% endif %}
+        <table class="table table-sm mb-0">
+          <tbody>
+            <tr><th class="ps-3 text-muted small w-40">GRN Number</th><td>{% if device.grn_number %}<a href="/grn?highlight={{ device.grn_number|urlencode }}" class="text-decoration-none font-monospace" title="View in GRN Import">{{ device.grn_number }}</a>{% else %}—{% endif %}</td></tr>
+            {# The tag's own Invoice Number (set per tag via Customise / GRN mapping);
+   the Lot's invoice only when the tag has none of its own (2026-10-15 — this
+   showed the Lot's invoice even when the tag had a different one). #}
+            <tr><th class="ps-3 text-muted small">Invoice No.</th><td class="font-monospace small">{{ device.invoice_number or (lot.invoice_no if lot and lot.invoice_no else '—') }}</td></tr>
+            <tr><th class="ps-3 text-muted small">Serial No.</th><td class="font-monospace small">{{ device.serial_no or '—' }}</td></tr>
+            <tr><th class="ps-3 text-muted small">Location ID</th><td class="font-monospace small">{{ assigned_location.unit_id if assigned_location else '—' }}</td></tr>
+            <tr><th class="ps-3 text-muted small">Bin Location</th><td class="font-monospace small">{{ device.bin_location or (assigned_location.slot if assigned_location and assigned_location.slot else '—') }}</td></tr>
+            <tr><th class="ps-3 text-muted small">Location Type</th><td>{{ assigned_location.unit_type_label if assigned_location else '—' }}</td></tr>
+            <tr><th class="ps-3 text-muted small">Zone</th><td>{{ assigned_location.zone_label if assigned_location else '—' }}</td></tr>
+            <tr><th class="ps-3 text-muted small">Return Status</th>
+              <td><span class="badge bg-{{ 'warning text-dark' if device.return_status else 'secondary' }}">{{ 'Yes' if device.return_status else 'No' }}</span></td></tr>
+            <tr><th class="ps-3 text-muted small">Warranty Status</th>
+              <td>
+                {% if warranty_label == 'Within Warranty' %}
+                <span class="badge bg-success">Within Warranty</span>
+                {% elif warranty_label == 'Out of Warranty' %}
+                <span class="badge bg-danger">Out of Warranty</span>
+                {% else %}
+                <span class="badge bg-secondary">Not Sold Yet</span>
+                {% endif %}
+              </td></tr>
+            <tr><th class="ps-3 text-muted small">Replaced</th>
+              <td>{% if device.replaced %}<span class="font-monospace small">{{ device.replaced }}</span>{% else %}—{% endif %}</td></tr>
+            <tr><th class="ps-3 text-muted small">Repair Status</th>
+              <td>{% if repair_status %}<span class="badge bg-info text-dark">{{ repair_status }}</span>{% else %}—{% endif %}</td></tr>
+            <tr><th class="ps-3 text-muted small">Registered</th>
+              <td>{{ device.created_at.strftime('%d %b %Y %H:%M') if device.created_at else '—' }}</td></tr>
+            <tr><th class="ps-3 text-muted small">Last Updated</th>
+              <td>{{ device.updated_at.strftime('%d %b %Y %H:%M') if device.updated_at else '—' }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {# All Notes + Repair History below Identity & Location (2026-10-29). #}
+    {{ _all_notes_html }}
+    <!-- Repair Jobs -->
+    <div class="accordion mb-3" id="repairHistoryAcc">
+      <div class="accordion-item border-0 shadow-sm">
+        <h2 class="accordion-header">
+          <button class="accordion-button collapsed fw-semibold small text-uppercase" type="button"
+                  data-bs-toggle="collapse" data-bs-target="#repairHistoryBody" aria-expanded="false">
+            <i class="bi bi-tools me-2"></i>Repair History
+          </button>
+        </h2>
+        <div id="repairHistoryBody" class="accordion-collapse collapse">
+          <div class="accordion-body p-0">
+        {% if repairs %}
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              <th class="ps-3">Level</th><th>Engineer</th><th>Status</th><th>Started</th><th>Issue</th><th>Resolution</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for rep in repairs %}
+            <tr>
+              <td class="ps-3">
+                <span class="badge bg-{{ 'warning text-dark' if rep.stage.value == 'l1' else 'orange' if rep.stage.value == 'l2' else 'danger' }}"
+                      style="{% if rep.stage.value == 'l2' %}background:#fd7e14{% endif %}">
+                  {{ rep.stage.value | upper }}
+                </span>
+              </td>
+              <td class="small">{{ rep.engineer_name or '—' }}</td>
+              <td>
+                {% if rep.completed_at %}
+                <span class="badge bg-success">Done</span>
+                {% else %}
+                <span class="badge bg-warning text-dark">In Progress</span>
+                {% endif %}
+              </td>
+              <td class="small text-muted">{{ rep.started_at.strftime('%d-%m-%Y') if rep.started_at else '—' }}</td>
+              <td class="small">{{ rep.issue_description or '—' }}</td>
+              <td class="small">{{ rep.resolution or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <div class="text-center text-muted py-3 small">No repair jobs recorded</div>
+        {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if device.notes %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent fw-semibold small text-uppercase">
+        <i class="bi bi-card-text me-2"></i>Notes
+      </div>
+      <div class="card-body">
+        <p class="mb-0 small">{{ device.notes }}</p>
+      </div>
+    </div>
+    {% endif %}
+    {% if device.repair_notes %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent fw-semibold small text-uppercase">
+        <i class="bi bi-tools me-2"></i>Repair Notes
+      </div>
+      <div class="card-body">
+        <p class="mb-0 small">{{ device.repair_notes }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+  {% endif %}
+
+  <!-- ── Right column: Timeline, Repairs, QC, Parts ──
+       Full width for floor roles (Parts Consumption is the only section they
+       get), col-lg-7 alongside the left column for everyone else. ── -->
+  <div class="{{ 'col-12' if _floor_only else 'col-lg-7' }}">
+
+    <!-- Parts Consumption (#10): required parts (from IQC) + live stock + request action -->
+    {% if parts_consumption is defined %}
+    <div class="card border-0 shadow-sm mb-3" id="parts">
+      {# 2026-10-29: Part Name on one line; padded PNA column; PNA boxes easier
+         to see (bigger, dark border, red when ticked). #}
+      <style>
+        #parts .pc-part-name { white-space: nowrap; }
+        #parts .pc-pna-cell { padding-left: 1rem; padding-right: 1rem; white-space: nowrap; }
+        #parts .pna-cb { width: 1.2em; height: 1.2em; margin-top: .1em; border: 2px solid #495057; cursor: pointer; }
+        #parts .pna-cb:checked { background-color: #dc3545; border-color: #dc3545; }
+        #parts .pna-cb:focus { box-shadow: 0 0 0 .2rem rgba(220, 53, 69, .25); }
+        #parts .pna-cb + .form-check-label { font-weight: 600; cursor: pointer; padding-left: .2rem; }
+        #parts .pna-cb:checked + .form-check-label { color: #dc3545; }
+      </style>
+      <div class="card-header bg-transparent fw-semibold small text-uppercase d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-clipboard-plus me-2"></i>Parts Consumption</span>
+        {# Multi Request + Remove All PNA together on the right (2026-10-29). #}
+        <div class="d-flex align-items-center gap-2">
+        <button type="button" id="pcMultiRequestBtn" class="btn btn-sm btn-primary py-0 px-2" disabled
+                style="text-transform:none" onclick="openMultiRequestModal()">
+          <i class="bi bi-bag-plus me-1"></i>Multi Request
+        </button>
+        {# Clears every PNA tick on this tag at once (2026-10-17); enabled
+           only while at least one PNA box is ticked. #}
+        <button type="button" id="pcRemoveAllPnaBtn" class="btn btn-sm btn-outline-danger bg-white py-0 px-2"
+                style="text-transform:none" {{ '' if pna_parts else 'disabled' }}
+                title="Unselect every PNA part on this tag">
+          <i class="bi bi-x-circle me-1"></i>Remove All PNA
+        </button>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr><th class="ps-3"><input type="checkbox" id="pcSelectAll" title="Select all"></th>
+              {# Required column hidden; Mark As -> Mark PNA, Action -> Raise Request (2026-10-29). #}
+              <th>Part Name</th><th>Stock Status</th><th class="pc-pna-cell">Mark PNA</th><th>Raise Request</th></tr>
+          </thead>
+          <tbody>
+            {% set _eng = True %}{# Parts Consumption actions visible to all roles #}
+            {% set _ns = namespace(section='') %}
+            {% for p in parts_consumption %}
+            {# Section heading emitted on the first row of each group. The rows
+               arrive pre-sorted (MAIN then ADDITIONAL, asserted in
+               services/parts_required.py), so a change of section is always a
+               genuine boundary rather than an interleave. #}
+            {% if p.section and p.section != _ns.section %}
+            {% set _ns.section = p.section %}
+            <tr class="table-light">
+              <td colspan="5" class="ps-3 small fw-bold text-uppercase text-muted">{{ p.section }}</td>
+            </tr>
+            {% endif %}
+            <tr>
+              <td class="ps-3">
+                {% if not p.request %}
+                <input type="checkbox" class="pc-select-cb"
+                       data-part-name="{{ p.label | e }}"
+                       data-part-category="{{ p.category | e }}"
+                       data-part-id="{{ p.part_id or '' }}">
+                {% endif %}
+              </td>
+              <td class="small fw-semibold pc-part-name">{{ p.label }}</td>
+              <td>
+                {# No Part Master row for this name: stock is unknown, not zero.
+                   Rendering "Out of Stock" here would invite a purchase order
+                   against a part we simply have no record of. #}
+                {% if p.rolled_up %}
+                {# Category total, not this exact SKU. Labelled so nobody reads it
+                   as "we hold N of this precise part" — Part Master stocks SKUs
+                   ("HP UK Keyboard"), this row is a component type ("Keyboard"). #}
+                <span class="badge bg-info text-dark"
+                      title="Total across all {{ p.category }} parts in Part Master — this component has no single matching SKU">
+                  {{ p.stock_qty }} in {{ p.category }}
+                </span>
+                {% elif not p.matched %}<span class="badge bg-secondary" title="No Part Master entry with this name or category">&mdash; no match</span>
+                {% elif p.in_stock %}<span class="badge bg-success">In Stock &times;{{ p.stock_qty }}</span>
+                {% else %}<span class="badge bg-danger">Out of Stock</span>{% endif %}
+              </td>
+              {# PNA = Part Not Available. Marked per tag, independent of any
+                 request, because the usual case is a part nobody can source so
+                 no request was ever raised. Counted back on the L1/L2 and L3/L4
+                 queues. #}
+              <td class="pc-pna-cell">
+                <div class="form-check mb-0">
+                  <input class="form-check-input pna-cb" type="checkbox"
+                         id="pna_{{ loop.index }}"
+                         data-part-name="{{ p.label | e }}"
+                         data-part-category="{{ p.category | e }}"
+                         data-part-id="{{ p.part_id or '' }}"
+                         {% if p.label in pna_parts %}checked{% endif %}>
+                  <label class="form-check-label small" for="pna_{{ loop.index }}">PNA</label>
+                </div>
+              </td>
+              <td>
+                {% set r = p.request %}
+                {% if r %}
+                  {% if r.status == 'requested' and r.request_type == 'downgrade' %}<span class="badge bg-warning text-dark">Requested Downgrade</span>
+                  {% elif r.status == 'requested' %}<span class="badge bg-warning text-dark">Requested &times;{{ r.qty_requested }}</span>
+                  {% elif r.status == 'handed_over' %}
+                    <button type="button" id="verifyBtn_{{ r.id }}" class="btn btn-sm btn-outline-primary py-0 px-2"
+                            onclick="verifyPartReceived('{{ r.id }}')">
+                      <i class="bi bi-check2-circle"></i> Verify &times;{{ r.qty_handed_over }}
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 faulty-part-btn"
+                            data-label="{{ p.label | e }}" data-category="{{ p.category | e }}" data-part-id="{{ p.part_id }}">
+                      <i class="bi bi-exclamation-triangle"></i> Faulty</button>
+                    <span id="changedPill_{{ r.id }}" class="badge bg-primary d-none">Part Changed</span>
+                  {% elif r.status == 'received' %}<span class="badge bg-primary">Part Changed</span>
+                    {# Changed this visit, but the new part turned out bad (found at
+                       Stress Test / Cosmetic / Final QC fail): raise a Faulty request
+                       for it — the row goes back to Requested -> Handed Over ->
+                       Verify. The first change stays in the history. #}
+                    <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 faulty-part-btn"
+                            data-label="{{ p.label | e }}" data-category="{{ p.category | e }}" data-part-id="{{ p.part_id }}"
+                            title="The changed part is faulty — raise a Faulty request">
+                      <i class="bi bi-exclamation-triangle"></i> Faulty</button>
+                  {% elif r.status == 'not_in_stock' %}<span class="badge bg-danger">Not In Stock</span>
+                  {% elif r.status == 'procure' %}<span class="badge bg-info text-dark">Sent for Sourcing</span>
+                  {% else %}<span class="badge bg-secondary">{{ r.status }}</span>{% endif %}
+                {% elif _eng %}
+                {# Request actions are enabled for every part, not only those IQC
+                   flagged Required: an engineer routinely finds a fault at the
+                   bench that the inspection never recorded, and gating the
+                   buttons on `required` left them with no way to raise it. #}
+                <div class="d-flex align-items-center gap-1 flex-wrap" data-part-actions="{{ p.part_id }}">
+                  {% if p.prev_changed %}{% set pc = p.prev_changed %}
+                  <span class="badge bg-light text-muted border" style="cursor:help"
+                        title="Changed in an earlier visit ({{ (pc.actioned_at or pc.created_at).strftime('%d %b %Y') if (pc.actioned_at or pc.created_at) else '' }}) — before the last Final QC pass. Raise a new request if it needs changing again.">
+                    <i class="bi bi-clock-history me-1"></i>Changed earlier</span>
+                  {% endif %}
+                  <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
+                          onclick="openPartRequestModal('new', 1, '{{ p.category | e }}', '{{ p.part_id }}', '{{ p.label | e }}')">
+                    <i class="bi bi-bag-plus"></i> New</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2"
+                          onmouseenter="if(!this.disabled)this.classList.replace('btn-outline-secondary','btn-outline-warning')"
+                          onmouseleave="this.classList.replace('btn-outline-warning','btn-outline-secondary')"
+                          onclick="openPartRequestModal('replace', 1, '{{ p.category | e }}', '{{ p.part_id }}', '{{ p.label | e }}')">
+                    <i class="bi bi-arrow-repeat"></i> Replace</button>
+                  {% if p.label in ('RAM', 'Hard Drive') %}
+                  <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2"
+                          onclick="openDowngradeModal('{{ p.label | e }}')">
+                    <i class="bi bi-arrow-down-circle"></i> Downgrade</button>
+                  {% endif %}
+                </div>
+                {% else %}<span class="text-muted">—</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <form method="post" action="/part-requests/multi-create" id="multiPartRequestForm" style="display:none">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <input type="hidden" name="barcode" value="{{ device.barcode }}">
+      <input type="hidden" name="request_type" id="mpr_request_type" value="new">
+      <input type="hidden" name="from_page" value="{{ request.query_params.get('from', '') }}">
+      <input type="hidden" name="parts_json" id="mpr_parts_json" value="">
+    </form>
+
+    <!-- Multi Request modal — New Request / Replace Request tabs, one row per
+         checked Parts Consumption row (Part Name pre-filled from the checkbox,
+         Make/Model/Quantity picked here). Only the active tab's rows are
+         submitted, tagged with that tab's request_type. -->
+    <div class="modal fade" id="multiRequestModal" tabindex="-1" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h6 class="modal-title fw-semibold"><i class="bi bi-bag-plus me-2"></i>Multi Request</h6>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <ul class="nav nav-tabs" id="mrTabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="mr-tab-new-btn" data-bs-toggle="tab"
+                        data-bs-target="#mr-tab-new" type="button" role="tab">New Request</button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="mr-tab-replace-btn" data-bs-toggle="tab"
+                        data-bs-target="#mr-tab-replace" type="button" role="tab">Replace Request</button>
+              </li>
+            </ul>
+            <div class="tab-content border border-top-0 rounded-bottom p-3" id="mrTabContent">
+              <div class="tab-pane fade show active" id="mr-tab-new" role="tabpanel">
+                <div id="mr_rows_new"></div>
+              </div>
+              <div class="tab-pane fade" id="mr-tab-replace" role="tabpanel">
+                <div id="mr_rows_replace"></div>
+              </div>
+            </div>
+            <div class="form-text mt-2">Only the tab you submit from is raised — pick New Request or Replace Request, then Submit.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-sm btn-success" onclick="mrSubmit()"><i class="bi bi-check-lg me-1"></i>Submit Request</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# All Notes moved to the left column under Identity & Location
+       (2026-10-29); floor roles (no left column) still get it here. #}
+    {% if _floor_only %}{{ _all_notes_html }}{% endif %}
 
     <!-- New Request / Replace modal — Part Category -> Part Name cascade -->
     {% if parts_consumption is defined %}
@@ -1223,7 +1345,8 @@
             {% for wo in (work_orders if work_orders is defined else []) %}
             <tr>
               <td class="ps-3 font-monospace fw-bold"><a href="/workid-status?highlight={{ wo.work_id }}" class="text-decoration-none" title="View in WorkID Status">{{ wo.work_id }}</a></td>
-              <td><span class="badge bg-dark text-uppercase">{{ wo.stage }}</span></td>
+              {# Full stage name, wrapping onto a second line when long (2026-10-29). #}
+              <td><span class="badge bg-dark text-wrap text-start lh-sm" style="max-width:120px">{{ (wo_stage_labels.get(wo.id) if wo_stage_labels is defined else None) or (wo.stage | upper) }}</span></td>
               <td>{{ wo.assigned_name or wo.assigned_username or '—' }}</td>
               <td>
                 {% if wo.status == 'completed' %}<span class="badge bg-success">Completed</span>
@@ -1263,7 +1386,7 @@
               <td class="small fw-semibold">
                 {{ stage_labels.get(mv.to_stage, mv.to_stage.value) if mv.to_stage else '—' }}
               </td>
-              <td class="small">{{ mv.moved_by or '—' }}</td>
+              <td class="small"{% if mv.moved_by %} title="{{ mv.moved_by }}"{% endif %}>{{ ((mover_names.get(mv.moved_by) if mover_names is defined else None) or mv.moved_by) or '—' }}</td>
               <td class="small text-muted">{{ mv.moved_at.strftime('%d-%m-%Y %H:%M') if mv.moved_at else '—' }}</td>
               <td class="small text-muted">{{ mv.notes or '' }}</td>
             </tr>
@@ -1273,56 +1396,6 @@
         {% else %}
         <div class="text-center text-muted py-3 small">No stage movements recorded</div>
         {% endif %}
-      </div>
-    </div>
-
-    <!-- Repair Jobs -->
-    <div class="accordion mb-3" id="repairHistoryAcc">
-      <div class="accordion-item border-0 shadow-sm">
-        <h2 class="accordion-header">
-          <button class="accordion-button collapsed fw-semibold small text-uppercase" type="button"
-                  data-bs-toggle="collapse" data-bs-target="#repairHistoryBody" aria-expanded="false">
-            <i class="bi bi-tools me-2"></i>Repair History
-          </button>
-        </h2>
-        <div id="repairHistoryBody" class="accordion-collapse collapse">
-          <div class="accordion-body p-0">
-        {% if repairs %}
-        <table class="table table-sm mb-0">
-          <thead class="table-light">
-            <tr>
-              <th class="ps-3">Level</th><th>Engineer</th><th>Status</th><th>Started</th><th>Issue</th><th>Resolution</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for rep in repairs %}
-            <tr>
-              <td class="ps-3">
-                <span class="badge bg-{{ 'warning text-dark' if rep.stage.value == 'l1' else 'orange' if rep.stage.value == 'l2' else 'danger' }}"
-                      style="{% if rep.stage.value == 'l2' %}background:#fd7e14{% endif %}">
-                  {{ rep.stage.value | upper }}
-                </span>
-              </td>
-              <td class="small">{{ rep.engineer_name or '—' }}</td>
-              <td>
-                {% if rep.completed_at %}
-                <span class="badge bg-success">Done</span>
-                {% else %}
-                <span class="badge bg-warning text-dark">In Progress</span>
-                {% endif %}
-              </td>
-              <td class="small text-muted">{{ rep.started_at.strftime('%d-%m-%Y') if rep.started_at else '—' }}</td>
-              <td class="small">{{ rep.issue_description or '—' }}</td>
-              <td class="small">{{ rep.resolution or '—' }}</td>
-            </tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <div class="text-center text-muted py-3 small">No repair jobs recorded</div>
-        {% endif %}
-          </div>
-        </div>
       </div>
     </div>
 

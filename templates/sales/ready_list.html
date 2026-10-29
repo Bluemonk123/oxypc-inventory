@@ -1,9 +1,13 @@
 {% extends "base.html" %}
 {% import "_multiselect_filter.html" as ms %}
 {% import "sales/_ready_tiles.html" as rt %}
-{% block title %}Ready to Sale — OxyPC{% endblock %}
-{% block page_title %}Ready to Sale{% endblock %}
+{% block title %}{{ 'Pre-Sale IQC' if psiqc is defined and psiqc else 'Ready to Sale' }} — OxyPC{% endblock %}
+{% block page_title %}{{ 'Pre-Sale IQC' if psiqc is defined and psiqc else 'Ready to Sale' }}{% endblock %}
 {% block content %}
+{# Pre-Sale IQC (/pre-sale-iqc, routers/pre_sale_iqc.py, 2026-10-29) renders this same page with
+   psiqc = True and pm = 'pre_sale_iqc': its own permission module, a Parts Requested column and
+   Start / Mark Complete / Request Part / Cancel actions instead of selling. #}
+{% set _ps = psiqc is defined and psiqc %}{% set _pm = pm if pm is defined else 'sales' %}
 <style>
   /* Tab sets on this page — same look as Final QC's Devices Passed/Failed
      tabs: tabs sit on the page, the active one joins a white bordered panel. */
@@ -29,7 +33,7 @@
 </div>
 #}
 
-{% if interested_dealers %}
+{% if interested_dealers and not _ps %}
 <div class="alert alert-warning alert-dismissible fade show mb-3" role="alert">
   <strong><i class="bi bi-person-fill-exclamation me-1"></i>{{ interested_dealers|length }} Interested Buyer(s)</strong> — active CRM opportunities matching your ready inventory:
   <div class="table-responsive mt-2">
@@ -72,18 +76,63 @@
    INVENTORY STOCK + GRADES > TAGS, counted from the Tag table below (its
    filters and search), refreshed on every draw from /sales/ready/data
    "tiles". AS-IS STOCK / GRADES > AS-IS LOTS live on Ready for Sale - Lots. #}
+{# Pre-Sale IQC shows no tiles (2026-10-29). #}
+{% if not _ps %}
 {% call rt.tiles('in the Ready for Sale Tags table') %}
   {{ rt.tint('Inventory Stock', '#0d6efd', 'bi-box-seam',
              [[('Total Quantity', 'total')], [('Available', 'open'), ('Blocked', 'blocked')]],
-             href='/sales/ready', title='Ready for Sale - Tags') }}
+             href=('/pre-sale-iqc' if _ps else '/sales/ready'), title='Ready for Sale - Tags') }}
   {{ rt.tint('Grades > Tags', '#0F7A37', 'bi-award',
              [[('A', 'g_A'), ('B', 'g_B')], [('C', 'g_C'), ('D', 'g_D')]]) }}
   {{ rt.tint('Touch Types', '#0aa2c0', 'bi-hand-index',
              [[('Normal', 'non_touch')], [('Touch', 'touch')]],
              title='Normal = non-touch tags; Touch = tags Final QC marked Touch') }}
 {% endcall %}
+{% else %}
+{# Pre-Sale IQC tiles (2026-10-29): medium dark tiles, counted from the
+   queued tags with the table's filters; clicking one filters the table
+   (click again to clear). Filled from /pre-sale-iqc/data "psiqc_tiles". #}
+<style>
+  #psiqcTiles .lt-tile { cursor:pointer; }
+  #psiqcTiles .lt-tile.active { box-shadow:0 0 0 3px #fff, 0 0 0 6px #212529 !important; }
+  #psiqcTiles.has-active .lt-tile:not(.active) { opacity:.55; }
+  #psiqcTiles .lt-tile-label { font-size:.85rem; font-weight:700; }
+</style>
+<div class="lt-tiles-row lt-dark mb-2" id="psiqcTiles">
+  {% for key, label, bg, icon, tip in [
+      ('assigned', 'Assigned', '#0d6efd', 'bi-inbox', 'Tags in the Pre-Sale IQC queue not completed yet (the Assigned tab)'),
+      ('requested', 'Part Requested', '#fd7e14', 'bi-bag', 'Assigned tab: tags with parts requested and not yet verified (Pending / Handed Over)'),
+      ('verified', 'Part Verified', '#6f42c1', 'bi-bag-check', 'Assigned tab: tags whose requested parts are all verified'),
+      ('completed', 'Completed', '#0F7A37', 'bi-check2-circle', 'Tags whose Pre-Sale IQC is completed (the Completed tab)')] %}
+  <div>
+    <div class="lt-tile h-100 psiqc-tile" data-tile="{{ key }}" role="button" tabindex="0" style="--tc:{{ bg }}"
+         title="{{ tip }} — click to show only these tags (click again to clear)">
+      <div class="lt-tile-count" data-psk="{{ key }}">…</div>
+      <div class="lt-tile-label">{{ label }}</div>
+      <i class="bi {{ icon }} lt-tile-wm"></i>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
-<ul class="nav nav-tabs ready-tabs" id="readyTabs" role="tablist">
+{# Pre-Sale IQC (2026-10-29): two tabs over the same table — Assigned (not
+   completed) and Completed. The Ready for Sale tab bar is hidden there. #}
+{% if _ps %}
+<ul class="nav nav-tabs ready-tabs" id="psiqcTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" type="button" data-view="assigned">
+      <i class="bi bi-inbox me-1"></i>Assigned <span class="badge rounded-pill bg-primary ms-1" data-psk="assigned">…</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" type="button" data-view="completed">
+      <i class="bi bi-check2-circle me-1"></i>Completed <span class="badge rounded-pill bg-success ms-1" data-psk="completed">…</span>
+    </button>
+  </li>
+</ul>
+{% endif %}
+<ul class="nav nav-tabs ready-tabs{{ ' d-none' if _ps else '' }}" id="readyTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#readyTagsPane" type="button" role="tab">
       <i class="bi bi-upc-scan me-1"></i>Ready for Sale - Tags <span class="badge rounded-pill bg-success ms-1">{{ ready_tag_count }}</span>
@@ -115,40 +164,51 @@
          table as soon as it changes. #}
       {# Export (2026-10-27): every tag matching the filters above, in the
          All Inventory export format. #}
-      {% if can(current_user, 'sales', 'export') %}<button type="button" id="readyExportBtn" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>{% endif %}
+      {% if can(current_user, _pm, 'export') %}<button type="button" id="readyExportBtn" class="btn btn-outline-primary btn-sm text-nowrap"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>{% endif %}
+      {# Upload Tags after Export, primary (2026-10-29). #}
+      <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
+        <i class="bi bi-upload me-1"></i>Upload Tags
+      </button>
       </div>
     </div>
     {# Bulk buttons: moved into the table toolbar, just before the search box,
        by the table's initComplete below (hidden until then). #}
     <div id="readyBulkBtns" class="d-none align-items-center flex-wrap gap-2">
+      {# Pre-Sale IQC bulk Complete (2026-10-29): shown once a tag is ticked;
+         same prompt and rules as the row's Mark Complete. #}
+      {% if _ps and can(current_user, _pm, 'edit') %}
+      <button type="button" id="psiqcBulkCompleteBtn" class="btn btn-sm btn-success d-none" disabled>
+        <i class="bi bi-check2-all me-1"></i>Complete (<span id="psiqcSelCount">0</span>)
+      </button>
+      {% endif %}
       <button type="button" id="multiRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Multi-Request with selected (<span id="readySelCount">0</span>)
       </button>
       {# Bulk QC (2026-10-28): the ticked tags' QC reports in one zip #}
-      <button {% if not can(current_user, 'sales', 'export') %}hidden {% endif %}type="button" id="bulkQcBtn" class="btn btn-sm btn-outline-primary d-none" disabled
+      <button {% if not can(current_user, _pm, 'export') %}hidden {% endif %}type="button" id="bulkQcBtn" class="btn btn-sm btn-outline-primary d-none" disabled
               title="Download the QC report of every ticked tag (zip)">
         <i class="bi bi-download me-1"></i>Bulk QC (<span id="readySelCount5">0</span>)
       </button>
-      <button {% if not can(current_user, 'sales', 'add') %}hidden {% endif %}type="button" id="multiSellBtn" class="btn btn-sm btn-outline-success d-none" disabled>
+      <button {% if _ps or not can(current_user, _pm, 'add') %}hidden {% endif %}type="button" id="multiSellBtn" class="btn btn-sm btn-outline-success d-none" disabled>
         <i class="bi bi-cart-plus me-1"></i>Multi-Sell (<span id="readySelCount2">0</span>)
       </button>
       {# New Bulk Sale: same selection as Multi-Sell, opens the separate New Tag Sale
          page (per-tag prices, no quantity cap). Multi-Sell above is unchanged. #}
-      <button {% if not can(current_user, 'sales', 'add') %}hidden {% endif %}type="button" id="newBulkSaleBtn" class="btn btn-sm btn-success d-none" disabled
+      <button {% if _ps or not can(current_user, _pm, 'add') %}hidden {% endif %}type="button" id="newBulkSaleBtn" class="btn btn-sm btn-success d-none" disabled
               title="Open the New Tag Sale page with the selected tags">
         <i class="bi bi-cart-plus me-1"></i>New Bulk Sale (<span id="readySelCount4">0</span>)
       </button>
-      <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
-        <i class="bi bi-upload me-1"></i>Upload Tags
+      {# Assign to Pre-Sale (2026-10-29): queues the ticked tags for Pre-Sale
+         IQC; nothing changes on this page. #}
+      {% if not _ps and can(current_user, 'pre_sale_iqc', 'add') %}
+      <button type="button" id="assignPsiqcBtn" class="btn btn-sm btn-outline-dark d-none" disabled
+              title="Move the ticked tags to the Pre-Sale IQC queue">
+        <i class="bi bi-clipboard2-check me-1"></i>Assign to Pre-Sale (<span id="readySelCount6">0</span>)
       </button>
-      {% if can(current_user, 'sales', 'pricing') %}
-      <button type="button" id="bulkSetPriceBtn" class="btn btn-sm btn-outline-dark d-none" disabled>
-        <i class="bi bi-tag me-1"></i>Set Price (<span id="readySelCount3">0</span>)
-      </button>
-      {% else %}
-      {# Hidden stand-in so the page script's getElementById('bulkSetPriceBtn') still finds an element. #}
-      <button type="button" id="bulkSetPriceBtn" class="d-none" hidden disabled><span id="readySelCount3">0</span></button>
       {% endif %}
+      {# Set Price hidden (2026-10-29): stand-in so the page script's
+         getElementById('bulkSetPriceBtn') still finds an element. #}
+      <button type="button" id="bulkSetPriceBtn" class="d-none" hidden disabled><span id="readySelCount3">0</span></button>
     </div>
   <div class="card-body px-0 pb-0">
     <table id="readyTable" class="table table-hover mb-0 small">
@@ -156,14 +216,16 @@
         <tr>
           <th><input type="checkbox" id="readySelectAll" class="form-check-input"></th>
           <th>Tag Number</th><th>Lot</th><th>Location ID</th><th>Brand</th><th>Model</th>
+          {% if _ps %}<th>CPU</th><th>CPU Gen</th>{% endif %}
           <th>RAM</th><th>Storage</th><th>Grade</th>
-          {% if can(current_user, 'sales', 'pricing') %}
+          {% if can(current_user, _pm, 'pricing') %}
           <th title="Device-specific price if set, otherwise Lot Buying Price ÷ Lot Qty">Unit Cost</th>
           {% endif %}
           <th>Warranty</th>
           <th>Assigned To</th>
           <th>Min Selling Price</th><th>Max Selling Price</th>
           <th>QC Report</th>
+          {% if _ps %}<th title="Parts requested during Pre-Sale IQC — click the count to list them">Parts Requested</th>{% endif %}
           <th>Action</th>
         </tr>
       </thead>
@@ -187,8 +249,8 @@
       {{ touch_select('msTouch', f.ms_touch) }}
       {{ avail_select('msAvail', f.ms_avail) }}
       {# Export (2026-10-27): the tags of every row the summary shows. #}
-      {% if can(current_user, 'sales', 'export') %}<button type="button" id="msExportAllBtn" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>{% endif %}
-      <button type="button" id="modelSumRequestBtn" class="btn btn-sm btn-outline-primary d-none" disabled>
+      {% if can(current_user, _pm, 'export') %}<button type="button" id="msExportAllBtn" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>{% endif %}
+      <button type="button" id="modelSumRequestBtn" class="btn btn-sm btn-outline-primary d-none" {% if _ps %}hidden {% endif %}disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Request Selected (<span id="modelSumSelCount">0</span>)
       </button>
       </div>
@@ -312,8 +374,8 @@
       <div class="modal-header py-2">
         <h6 class="modal-title"><i class="bi bi-file-earmark-pdf me-2 text-danger"></i>QC Report — <code id="qcr_tag"></code></h6>
         <div class="ms-auto d-flex gap-2 align-items-center">
-          <a {% if not can(current_user, 'sales', 'export') %}hidden {% endif %}id="qcr_download" class="btn btn-sm btn-success" href="#"><i class="bi bi-download me-1"></i>Download</a>
-          <button {% if not can(current_user, 'sales', 'export') %}hidden {% endif %}type="button" id="qcr_print" class="btn btn-sm btn-primary"><i class="bi bi-printer me-1"></i>Print</button>
+          <a {% if not can(current_user, _pm, 'export') %}hidden {% endif %}id="qcr_download" class="btn btn-sm btn-success" href="#"><i class="bi bi-download me-1"></i>Download</a>
+          <button {% if not can(current_user, _pm, 'export') %}hidden {% endif %}type="button" id="qcr_print" class="btn btn-sm btn-primary"><i class="bi bi-printer me-1"></i>Print</button>
           <button type="button" class="btn-close ms-2" data-bs-dismiss="modal" aria-label="Close"></button>
         </div>
       </div>
@@ -385,8 +447,45 @@
     </form>
   </div>
 </div>
+{% if _ps %}
+{# ── Pre-Sale IQC modals (2026-10-29) ── #}
+<div class="modal fade" id="psiqcPartsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-bag-check me-2"></i>Parts Requested — <code id="psp_tag"></code></h6>
+        <a id="psp_detail" href="#" class="btn btn-sm btn-outline-primary ms-auto me-2"><i class="bi bi-box-arrow-up-right me-1"></i>Open Device Detail</a>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <table class="table table-sm table-hover small mb-0">
+          <thead class="table-dark"><tr><th>Part Name</th><th>Make</th><th>Model</th><th>Type</th><th>Qty</th><th>Requested By</th><th>Requested On</th><th>Status</th></tr></thead>
+          <tbody id="psp_rows"></tbody>
+        </table>
+        <div class="form-text">Parts are requested and verified on the tag's Device Detail page, the same as from L1/L2.</div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal fade" id="psiqcConfirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="psc_title">Confirm</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body small" id="psc_body"></div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-sm btn-success" id="psc_ok">Confirm</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 {% block scripts %}
+{% set _ps = psiqc is defined and psiqc %}{% set _pm = pm if pm is defined else 'sales' %}
 <script src="/static/js/tag-scan-autocheck.js?v={{ ASSET_VERSION }}"></script>
 <script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
 {{ rt.script() }}
@@ -409,6 +508,55 @@ function rfsTiles(t) {
   rfsFill(t.types, vals);
 }
 
+{% if _ps %}
+// Pre-Sale IQC tiles (2026-10-29): counts from the feed; click filters the table.
+// Tabs (2026-10-29): Assigned / Completed views of the same table. Assigned,
+// Part Requested and Part Verified work on the Assigned tab (the part tiles
+// open it and filter it; click again to clear); Completed opens its tab.
+window.psiqcTile = '';
+window.psiqcView = 'assigned';
+function psiqcFill(t) {
+  document.querySelectorAll('#psiqcTiles [data-psk], #psiqcTabs [data-psk]').forEach(function (el) {
+    el.textContent = ((t || {})[el.getAttribute('data-psk')] || 0).toLocaleString('en-IN');
+  });
+}
+function psiqcMark() {
+  document.querySelectorAll('#psiqcTabs [data-view]').forEach(function (b) {
+    b.classList.toggle('active', b.getAttribute('data-view') === window.psiqcView);
+  });
+  document.querySelectorAll('#psiqcTiles .psiqc-tile').forEach(function (x) {
+    var k = x.getAttribute('data-tile');
+    x.classList.toggle('active', k === window.psiqcTile || (!window.psiqcTile && k === window.psiqcView));
+  });
+  document.getElementById('psiqcTiles').classList.toggle('has-active', !!window.psiqcTile);
+}
+function psiqcSetView(v) {
+  window.psiqcView = v;
+  if (v !== 'assigned') window.psiqcTile = '';      // part tiles only apply to Assigned
+  readySelected.clear();
+  var all = document.getElementById('readySelectAll'); if (all) all.checked = false;
+  psiqcMark();
+  if (window.readyDt) readyDt.ajax.reload(null, true);
+}
+document.addEventListener('DOMContentLoaded', function () {
+  document.querySelectorAll('#psiqcTabs [data-view]').forEach(function (b) {
+    b.addEventListener('click', function () { psiqcSetView(b.getAttribute('data-view')); });
+  });
+  psiqcMark();
+  document.querySelectorAll('#psiqcTiles .psiqc-tile').forEach(function (el) {
+    function go() {
+      var k = el.getAttribute('data-tile');
+      if (k === 'assigned' || k === 'completed') { window.psiqcTile = ''; psiqcSetView(k); return; }
+      window.psiqcTile = (window.psiqcTile === k) ? '' : k;
+      if (window.psiqcView !== 'assigned') { psiqcSetView('assigned'); return; }   // part tiles: Assigned tab only
+      psiqcMark();
+      if (window.readyDt) readyDt.ajax.reload(null, true);
+    }
+    el.addEventListener('click', go);
+    el.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+  });
+});
+{% endif %}
 $(document).ready(function(){
   // Global Table (static/js/global-table.js): standard toolbar, pager,
   // frozen first columns. Its own search box is the scan box (opts.scan):
@@ -420,27 +568,37 @@ $(document).ready(function(){
     order: [],
     searchDelay: 400,
     ajax: {
-      url: '/sales/ready/data',
+      url: '{{ '/pre-sale-iqc/data' if _ps else '/sales/ready/data' }}',
       data: function (d) {
         d.entity = (document.getElementById('ms_val_entity') || {}).value || '';
         d.touch = (document.getElementById('readyTouch') || {}).value || '';
         d.device_type = (document.getElementById('ms_val_device_type') || {}).value || '';
         d.availability = (document.getElementById('readyAvail') || {}).value || '';
         d.grade = (document.getElementById('ms_val_grade') || {}).value || '';
+        {% if _ps %}d.tile = window.psiqcTile || ''; d.view = window.psiqcView || 'assigned';{% endif %}
       },
-      dataSrc: function (json) { rfsTiles(json.tiles); return json.data; },
+      dataSrc: function (json) { rfsTiles(json.tiles); {% if _ps %}psiqcFill(json.psiqc_tiles);{% endif %} return json.data; },
     },
     // Warranty column index shifts by 1 depending on whether Unit Cost
     // (pricing-gated) rendered before it — computed server-side since Jinja
     // already knows can_view_pricing at render time.
     columnDefs: [
+      {% if _ps %}
+      {# Pre-Sale IQC (2026-10-29): CPU + CPU Gen after Model; shown = Tag, Brand,
+         Model, CPU, CPU Gen, RAM, Storage, Grade, Parts Requested, Action. Lot,
+         Location ID, Unit Cost, Warranty, Assigned To, Min / Max Selling Price and
+         QC Report hidden. #}
+      { orderable: false, targets: [0, -3, -2, -1] },
+      { visible: false, targets: [{{ '2, 3, 11, 12, 13, 14, 15, 16' if can(current_user, _pm, 'pricing') else '2, 3, 11, 12, 13, 14, 15' }}] },
+      {% else %}
       { orderable: false, targets: [0, -2, -1] },
-      { visible: false, targets: [{{ 10 if can(current_user, 'sales', 'pricing') else 9 }}] },
+      { visible: false, targets: [{{ 10 if can(current_user, _pm, 'pricing') else 9 }}] },
       {# Module-level pricing: /sales/ready/data still sends Unit Cost (when the role-wide flag is on) and
          Min/Max Selling Price, so those columns stay in the header and are hidden here instead. #}
-      {% if not can(current_user, 'sales', 'pricing') %}{ visible: false, targets: [{{ '9, 12, 13' if can(current_user, 'sales', 'pricing') else '11, 12' }}] },{% endif %}
+      {% if not can(current_user, _pm, 'pricing') %}{ visible: false, targets: [{{ '9, 12, 13' if can(current_user, _pm, 'pricing') else '11, 12' }}] },{% endif %}
       {# Max Selling Price hidden for everyone (2026-10-27). #}
-      { visible: false, targets: [{{ 13 if can(current_user, 'sales', 'pricing') else 12 }}] },
+      { visible: false, targets: [{{ 13 if can(current_user, _pm, 'pricing') else 12 }}] },
+      {% endif %}
     ],
     initComplete: function () {
       // Bulk buttons sit just before the table's search/scan box.
@@ -577,6 +735,10 @@ function updateReadySel(){
   // (2026-10-27). Buttons the user has no permission for stay hidden via
   // their own `hidden` attribute.
   $('#multiSellBtn, #newBulkSaleBtn, #bulkSetPriceBtn').toggleClass('d-none', n === 0);
+  $('#psiqcSelCount').text(n);
+  $('#readySelCount6').text(n);
+  $('#assignPsiqcBtn').prop('disabled', n === 0).toggleClass('d-none', n === 0);
+  $('#psiqcBulkCompleteBtn').prop('disabled', n === 0).toggleClass('d-none', n === 0);
 }
 
 // ── Selling — always goes to the full New Sale page ──
@@ -641,6 +803,35 @@ document.getElementById('bulkQcBtn').addEventListener('click', async function(){
     delete btn.dataset.busy;
   }
 });
+// Assign to Pre-Sale (2026-10-29): queue the ticked tags for Pre-Sale IQC.
+// Nothing changes on this page; a toast reports the result.
+(function () {
+  var b = document.getElementById('assignPsiqcBtn');
+  if (!b) return;
+  b.addEventListener('click', function () {
+    var bcs = selectedReadyBarcodes();
+    if (!bcs.length || b.dataset.busy) return;
+    b.dataset.busy = '1';
+    var m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/), tok = m ? decodeURIComponent(m[1]) : '';
+    var fd = new FormData(); fd.append('csrf_token', tok); fd.append('barcodes', bcs.join(','));
+    fetch('/pre-sale-iqc/assign', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': tok } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { if (window.showTopToast) window.showTopToast('danger', d.error || d.detail || 'Could not assign.'); return; }
+        var parts = [d.assigned + ' tag(s) moved to Pre-Sale IQC'];
+        if (d.already) parts.push(d.already + ' already in the queue');
+        if (d.not_ready) parts.push(d.not_ready + ' not in Ready for Sale');
+        if (d.not_found) parts.push(d.not_found + ' not found');
+        if (window.showTopToast) window.showTopToast(d.assigned ? 'success' : 'warning', parts.join('; ') + '.');
+        readySelected.clear();
+        var all = document.getElementById('readySelectAll'); if (all) all.checked = false;
+        document.querySelectorAll('#readyTable tbody .readyChk').forEach(function (c) { c.checked = false; });
+        updateReadySel();
+      })
+      .catch(function () { if (window.showTopToast) window.showTopToast('danger', 'Could not assign. Please try again.'); })
+      .finally(function () { delete b.dataset.busy; });
+  });
+})();
 document.getElementById('multiSellBtn').addEventListener('click', function(){
   sellBarcodesList(selectedReadyBarcodes());
 });
@@ -676,7 +867,9 @@ document.getElementById('readySelectAll').addEventListener('change', async funct
     var r = await fetch('/sales/ready/barcodes?entity=' + encodeURIComponent((document.getElementById('ms_val_entity') || {}).value || '')
       + '&touch=' + encodeURIComponent((document.getElementById('readyTouch') || {}).value || '')
       + '&device_type=' + encodeURIComponent((document.getElementById('ms_val_device_type') || {}).value || '')
-      + '&availability=' + encodeURIComponent((document.getElementById('readyAvail') || {}).value || ''));
+      + '&availability=' + encodeURIComponent((document.getElementById('readyAvail') || {}).value || '')
+      + '&grade=' + encodeURIComponent((document.getElementById('ms_val_grade') || {}).value || '')
+      {% if _ps %}+ '&psiqc=1&tile=' + encodeURIComponent(window.psiqcTile || '') + '&view=' + encodeURIComponent(window.psiqcView || 'assigned'){% endif %});
     var d = await r.json();
     (d.barcodes || []).forEach(function(bc){ readySelected.add(bc); });
   } else {
@@ -730,7 +923,7 @@ function summaryFooter() {
     SUMMARY_GRADE_ORDER.filter(function (g) { return grades[g]; }).map(function (g) {
       return '<span class="' + cls[g] + '">' + g + ' ' + grades[g] + '</span>';
     }).join('') + '</div>');
-  foot.find('.ms-total-min').text({% if can(current_user, 'sales', 'pricing') %}'₹' + Math.round(min).toLocaleString('en-IN'){% else %}'—'{% endif %});
+  foot.find('.ms-total-min').text({% if can(current_user, _pm, 'pricing') %}'₹' + Math.round(min).toLocaleString('en-IN'){% else %}'—'{% endif %});
 }
 function buildSummaryTable(id){
   if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();
@@ -797,6 +990,7 @@ $(document).on('click', '#readyExportBtn', function () {
   var btn = this, v = function (id) { return (document.getElementById(id) || {}).value || ''; };
   var qs = new URLSearchParams({ entity: v('ms_val_entity'), touch: v('readyTouch'), device_type: v('ms_val_device_type'),
                                  availability: v('readyAvail'), grade: v('ms_val_grade') });
+  {% if _ps %}qs.set('psiqc', '1'); qs.set('tile', window.psiqcTile || ''); qs.set('view', window.psiqcView || 'assigned');{% endif %}
   btn.disabled = true;
   fetch('/sales/ready/barcodes?' + qs.toString(), { credentials: 'same-origin' })
     .then(function (r) { return r.json(); })
@@ -967,4 +1161,145 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
   form.submit();
 });
 </script>
+{% if _ps %}
+<script>
+/* Pre-Sale IQC actions (2026-10-29, routers/pre_sale_iqc.py). Rows come
+   from the DataTables feed, so every handler is delegated. */
+(function () {
+  function tok() { var m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/); return m ? decodeURIComponent(m[1]) : ''; }
+  function toast(type, msg) { if (window.showTopToast) window.showTopToast(type, msg); }
+  function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; }
+  function post(url, bc, btn) {
+    var fd = new FormData(); fd.append('csrf_token', tok()); fd.append('barcode', bc);
+    if (btn) btn.disabled = true;
+    return fetch(url, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': tok() } })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; }); })
+      .then(function (d) {
+        if (!d.ok) { toast('danger', d.error || d.detail || 'Could not save.'); return d; }
+        readyDt.ajax.reload(null, false);
+        return d;
+      })
+      .catch(function () { toast('danger', 'Could not save. Please try again.'); })
+      .finally(function () { if (btn) btn.disabled = false; });
+  }
+  var cm = document.getElementById('psiqcConfirmModal'), okFn = null;
+  function confirmBox(title, html, okLabel, okCls, fn) {
+    document.getElementById('psc_title').textContent = title;
+    document.getElementById('psc_body').innerHTML = html;
+    var ok = document.getElementById('psc_ok');
+    ok.textContent = okLabel; ok.className = 'btn btn-sm ' + (okCls || 'btn-success'); ok.classList.toggle('d-none', !fn);
+    okFn = fn;
+    bootstrap.Modal.getOrCreateInstance(cm).show();
+  }
+  document.getElementById('psc_ok').addEventListener('click', function () {
+    var fn = okFn; okFn = null;
+    bootstrap.Modal.getOrCreateInstance(cm).hide();
+    if (fn) fn();
+  });
+  $('#readyTable').on('click', '.psiqc-start-btn', function () {
+    var bc = this.getAttribute('data-barcode');
+    post('/pre-sale-iqc/start', bc, this).then(function (d) { if (d && d.ok) toast('success', 'Pre-Sale IQC started on ' + bc + ' (' + d.work_id + ').'); });
+  });
+  // Mark Complete: same warning as L1/L2 — open PNA parts block it; parts
+  // handed over get verified, requests never handed over get cancelled.
+  $('#readyTable').on('click', '.psiqc-complete-btn', function () {
+    var bc = this.getAttribute('data-barcode'), btn = this;
+    fetch('/pre-sale-iqc/complete-precheck?barcode=' + encodeURIComponent(bc), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if ((d.pna || []).length) {
+          confirmBox('Mark Complete — ' + bc, 'This tag has open PNA parts: <b>' + d.pna.map(esc).join(', ') +
+            '</b>.<br>Remove them on the tag\'s detail page before Mark Complete.', '', '', null);
+          return;
+        }
+        var lines = [];
+        if ((d.to_verify || []).length) lines.push('Will be <b>verified</b> (handed over): ' + d.to_verify.map(function (p) { return esc(p.part_name) + ' ×' + p.qty; }).join(', '));
+        if ((d.to_cancel || []).length) lines.push('Will be <b>cancelled</b> (never handed over): ' + d.to_cancel.map(function (p) { return esc(p.part_name); }).join(', '));
+        confirmBox('Mark Complete — ' + bc,
+          (lines.length ? lines.join('<br>') : 'No open part requests.') + '<br><br>The tag stays in Ready for Sale.',
+          'Mark Complete', 'btn-success', function () {
+            post('/pre-sale-iqc/complete', bc, btn).then(function (r) { if (r && r.ok) toast('success', 'Pre-Sale IQC completed on ' + bc + '.'); });
+          });
+      })
+      .catch(function () { toast('danger', 'Could not check the tag\'s parts.'); });
+  });
+  // Bulk Complete (2026-10-29): same prompt as the row's Mark Complete, for
+  // every ticked tag; tags not started or with open PNA parts are skipped.
+  var bulkBtn = document.getElementById('psiqcBulkCompleteBtn');
+  if (bulkBtn) bulkBtn.addEventListener('click', function () {
+    var bcs = selectedReadyBarcodes();
+    if (!bcs.length) return;
+    var fd = new FormData(); fd.append('csrf_token', tok()); fd.append('barcodes', bcs.join(','));
+    bulkBtn.disabled = true;
+    fetch('/pre-sale-iqc/bulk-complete-precheck', { method: 'POST', body: fd, credentials: 'same-origin',
+                                                    headers: { 'X-CSRF-Token': tok() } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var ready = d.ready || [], html = [];
+        function tags(list) { return '<span class="font-monospace">' + list.map(esc).join(', ') + '</span>'; }
+        html.push('<b>' + ready.length + '</b> of ' + bcs.length + ' ticked tag(s) will be completed.');
+        var ver = ready.filter(function (t) { return t.to_verify.length; });
+        var can = ready.filter(function (t) { return t.to_cancel.length; });
+        if (ver.length) html.push('Will be <b>verified</b> (handed over):<br>' + ver.map(function (t) {
+          return '<span class="font-monospace">' + esc(t.barcode) + '</span>: ' + t.to_verify.map(esc).join(', '); }).join('<br>'));
+        if (can.length) html.push('Will be <b>cancelled</b> (never handed over):<br>' + can.map(function (t) {
+          return '<span class="font-monospace">' + esc(t.barcode) + '</span>: ' + t.to_cancel.map(esc).join(', '); }).join('<br>'));
+        if ((d.pna || []).length) html.push('<span class="text-danger">Skipped — open PNA parts (' + d.pna.length + '):</span> ' +
+          d.pna.map(function (t) { return '<span class="font-monospace">' + esc(t.barcode) + '</span> (' + t.parts.map(esc).join(', ') + ')'; }).join(', '));
+        if ((d.not_started || []).length) html.push('<span class="text-muted">Skipped — not started (' + d.not_started.length + '):</span> ' + tags(d.not_started));
+        if ((d.not_found || []).length) html.push('<span class="text-muted">Skipped — not found (' + d.not_found.length + '):</span> ' + tags(d.not_found));
+        html.push('The tags stay in Ready for Sale.');
+        confirmBox('Complete — ' + bcs.length + ' tag(s)', '<div style="max-height:50vh;overflow:auto">' + html.join('<br><br>') + '</div>',
+          'Complete ' + ready.length, 'btn-success', ready.length ? function () {
+            var f2 = new FormData(); f2.append('csrf_token', tok());
+            f2.append('barcodes', ready.map(function (t) { return t.barcode; }).join(','));
+            fetch('/pre-sale-iqc/bulk-complete', { method: 'POST', body: f2, credentials: 'same-origin',
+                                                   headers: { 'X-CSRF-Token': tok() } })
+              .then(function (r) { return r.json(); })
+              .then(function (x) {
+                if (!x.ok) { toast('danger', x.error || x.detail || 'Could not complete.'); return; }
+                toast('success', 'Pre-Sale IQC completed on ' + x.completed + ' tag(s)' +
+                  (x.verified ? '; ' + x.verified + ' part(s) verified' : '') +
+                  (x.cancelled ? '; ' + x.cancelled + ' request(s) cancelled' : '') + '.');
+                readySelected.clear();
+                var all = document.getElementById('readySelectAll'); if (all) all.checked = false;
+                readyDt.ajax.reload(null, false);
+              })
+              .catch(function () { toast('danger', 'Could not complete. Please try again.'); });
+          } : null);
+      })
+      .catch(function () { toast('danger', 'Could not check the ticked tags.'); })
+      .finally(function () { bulkBtn.disabled = readySelected.size === 0; });
+  });
+  $('#readyTable').on('click', '.psiqc-cancel-btn', function () {
+    var bc = this.getAttribute('data-barcode'), btn = this;
+    confirmBox('Cancel Pre-Sale IQC — ' + bc,
+      'Back to Start. Part requests on it that were never handed over are cancelled; parts already handed over stay as they are.',
+      'Cancel Pre-Sale IQC', 'btn-danger', function () {
+        post('/pre-sale-iqc/cancel', bc, btn).then(function (r) { if (r && r.ok) toast('success', 'Pre-Sale IQC cancelled on ' + bc + '.'); });
+      });
+  });
+  $('#readyTable').on('click', '.psiqc-parts-btn', function () {
+    var bc = this.getAttribute('data-barcode');
+    document.getElementById('psp_tag').textContent = bc;
+    document.getElementById('psp_detail').href = '/devices/' + encodeURIComponent(bc) + '#parts';
+    var tb = document.getElementById('psp_rows');
+    tb.innerHTML = '<tr><td colspan="8" class="text-muted">Loading…</td></tr>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('psiqcPartsModal')).show();
+    fetch('/pre-sale-iqc/parts?barcode=' + encodeURIComponent(bc), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var rows = d.parts || [];
+        tb.innerHTML = rows.length ? rows.map(function (p) {
+          return '<tr><td>' + esc(p.part_name) + '</td><td>' + (esc(p.make) || '—') + '</td><td>' + (esc(p.model) || '—') +
+            '</td><td>' + esc(p.type) + '</td><td>' + esc(p.qty) + '</td><td>' + esc(p.requested_by) + '</td><td class="text-nowrap">' +
+            esc(p.requested_at) + '</td><td><span class="badge bg-' + (p.verified ? 'success' : p.status === 'Handed Over' ? 'primary' : 'warning text-dark') + '">' +
+            esc(p.status) + '</span></td></tr>';
+        }).join('') : '<tr><td colspan="8" class="text-muted">No parts requested.</td></tr>';
+      })
+      .catch(function () { tb.innerHTML = '<tr><td colspan="8" class="text-danger">Could not load the parts.</td></tr>'; });
+  });
+})();
+</script>
+{% endif %}
 {% endblock %}

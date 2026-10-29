@@ -2,7 +2,7 @@
 Sales Router — sale block enforcement + return re-entry to IQC + audit
 """
 from templates_config import templates
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 import uuid as _uuid
 import os
 import re
@@ -207,6 +207,11 @@ def _grade_passes(device, grades: set) -> bool:
     return (g or "NG") in grades
 
 
+def _psiqc_queue():
+    from routers.pre_sale_iqc import queue_device_ids
+    return queue_device_ids()
+
+
 @router.get("/sales/ready/barcodes")
 async def ready_list_barcodes(
     entity: str = "",
@@ -214,6 +219,9 @@ async def ready_list_barcodes(
     device_type: str = "",
     availability: str = "",
     grade: str = "",
+    psiqc: str = "",
+    tile: str = "",
+    view: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(ready_allowed),
 ):
@@ -238,8 +246,19 @@ async def ready_list_barcodes(
             *([_device_type_expr.in_(_entity_values(device_type))] if _entity_values(device_type) else []),
             *([_avail_clause(availability)] if _avail_clause(availability) is not None else []),
             *([_grade_clause(grade)] if _grade_clause(grade) is not None else []),
+            # Pre-Sale IQC page (2026-10-29): only its queued tags
+            *([Device.id.in_(_psiqc_queue())] if psiqc == "1" else []),
         )
     )).scalars().all()
+    if psiqc == "1" and (tile or view):
+        from routers.pre_sale_iqc import tile_sets, TILES
+        rows = (await db.execute(select(Device.id, Device.barcode).where(Device.barcode.in_(barcodes)))).all()
+        _c, sets = await tile_sets(db, [r[0] for r in rows])
+        keep = {r[1] for r in rows}
+        for k in (view, tile):
+            if k in TILES:
+                keep &= {r[1] for r in rows if r[0] in sets[k]}
+        barcodes = [b for b in barcodes if b in keep]
     return {"barcodes": [b for b in barcodes if b]}
 
 
@@ -255,7 +274,17 @@ async def ready_list_data(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(ready_allowed),
 ):
-    """DataTables server-side feed for Ready to Sale.
+    return await ready_feed(request, draw, start, length, entity, touch, device_type, availability,
+                            grade, db, current_user)
+
+
+async def ready_feed(request, draw, start, length, entity, touch, device_type, availability, grade,
+                     db, current_user, psiqc=False, psiqc_tile="", psiqc_view=""):
+    """DataTables server-side feed for Ready to Sale. psiqc=True (Pre-Sale
+    IQC page, routers/pre_sale_iqc.py, 2026-10-29): same rows, filters and
+    tiles, with a Parts Requested column and the Start / Mark Complete /
+    Request Part / Cancel actions in place of Sell; pricing follows the
+    pre_sale_iqc module's Pricing tick.
 
     At ~4,500 ready-to-sale devices this table rendered every row into the
     HTML on every load. Rows now come a page at a time.
@@ -275,8 +304,9 @@ async def ready_list_data(
     role = getattr(current_user.role, "value", current_user.role)
     # Permission Matrix -> Ready to Sale -> Pricing: see AND set prices
     # (replaces the old Pricing Visibility tab, 2026-10-26).
-    show_pricing = _hp(role, "sales", "pricing")
-    show_set_price = show_pricing
+    show_pricing = _hp(role, "pre_sale_iqc" if psiqc else "sales", "pricing")
+    # Set price hidden on Ready for Sale (2026-10-29: row + bulk buttons).
+    show_set_price = False
     rates = await load_ready_rates(db)
 
     # As-Is sub-lot devices (non-empty sub_lot_number) are locked to the As-Is
@@ -295,6 +325,22 @@ async def ready_list_data(
         entity_filter.append(_avail_clause(availability))
     if _grade_clause(grade) is not None:                 # Grades (2026-10-27)
         entity_filter.append(_grade_clause(grade))
+
+    psiqc_counts = None
+    if psiqc:
+        # Pre-Sale IQC (2026-10-29): only tags in its queue; the four tiles
+        # count them (with the filters above), and a clicked tile narrows the
+        # table to its tags.
+        from routers.pre_sale_iqc import queue_device_ids, tile_sets
+        entity_filter.append(Device.id.in_(queue_device_ids()))
+        _ids = (await db.execute(
+            select(Device.id).join(Lot, Device.lot_id == Lot.id)
+            .where(Device.current_stage == DeviceStage.ready_to_sale, Device.is_trashed == False,  # noqa: E712
+                   not_as_is, *entity_filter))).scalars().all()
+        psiqc_counts, _sets = await tile_sets(db, _ids)
+        for _k in (psiqc_view, psiqc_tile):            # tab (Assigned / Completed), then tile
+            if _k:
+                entity_filter.append(Device.id.in_(list(_sets[_k]) or [None]))
 
     base = (
         select(Device, Lot.lot_number, Lot.buying_price, Lot.qty, Lot.selling_price)
@@ -353,6 +399,9 @@ async def ready_list_data(
         tiles["touch" if touch else "non_touch"] += n       # TOUCH TYPES tile
 
     col_map = {1: Device.barcode, 2: Lot.lot_number, 4: Device.brand, 5: Device.model, 8: Device.grade}
+    if psiqc:   # Pre-Sale IQC: CPU + CPU Gen after Model (2026-10-29)
+        col_map = {1: Device.barcode, 2: Lot.lot_number, 4: Device.brand, 5: Device.model,
+                   6: Device.cpu, 7: Device.generation, 10: Device.grade}
     try:
         order_col = int(request.query_params.get("order[0][column]", 0))
     except ValueError:
@@ -440,6 +489,11 @@ async def ready_list_data(
     _rr = await load_repair_rates(db)
     _worked, _l34 = await worked_and_l34_ids(db, device_ids)
 
+    if psiqc:
+        from routers.pre_sale_iqc import psiqc_state_map, psiqc_parts_cell, psiqc_action_cell
+        _ps_state, _ps_parts = await psiqc_state_map(db, device_ids)
+        _ps_edit = _hp(role, "pre_sale_iqc", "edit")
+
     data = []
     for d, lot_number, buying_price, lot_qty, selling_price in rows:
         did = str(d.id)
@@ -474,6 +528,10 @@ async def ready_list_data(
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),
             f'<span class="font-monospace">{esc(loc_name)}</span>' if loc_name else '<span class="text-muted">—</span>',
             esc(d.brand or "—"), esc(d.model or "—"),
+        ]
+        if psiqc:   # CPU + CPU Gen after Model (2026-10-29)
+            cells += [esc(d.cpu or "—"), esc(d.generation or "—")]
+        cells += [
             # "16 GB" / "256 GB" / "1 TB" — spaced, as everywhere else (2026-10-28)
             spec_cell(parts_data, d.id, "RAM", gb_text_spaced(d.ram_gb) or "—"),
             spec_cell(parts_data, d.id, "Hard Drive", gb_text_spaced(d.storage_gb) or "—"),
@@ -523,6 +581,11 @@ async def ready_list_data(
                 + (f'<br><span class="badge bg-{qcls}" style="font-size:.65rem">{esc(ov.replace("_", " "))}</span>' if ov else ''))
         else:
             cells.append('<span class="text-muted">—</span>')
+        if psiqc:
+            cells.append(psiqc_parts_cell(d.barcode, _ps_parts.get(d.id)))
+            cells.append(psiqc_action_cell(d.barcode, _ps_state.get(d.id), _ps_edit))
+            data.append(cells)
+            continue
         # Sell follows the Permission Matrix's Sales > Add tick (2026-10-25)
         action = (f'<a href="/sales/new?barcodes={esc(d.barcode)}&qty=1" class="btn btn-sm btn-success">Sell</a>'
                   if _can_sell_row else '')
@@ -544,7 +607,8 @@ async def ready_list_data(
         cells.append(f'<div class="d-flex gap-1 flex-nowrap text-nowrap">{action}</div>')
         data.append(cells)
 
-    return {"draw": draw, "recordsTotal": total, "recordsFiltered": filtered, "data": data, "tiles": tiles}
+    return {"draw": draw, "recordsTotal": total, "recordsFiltered": filtered, "data": data, "tiles": tiles,
+            **({"psiqc_tiles": psiqc_counts} if psiqc else {})}
 
 
 @router.get("/sales/ready", response_class=HTMLResponse)
@@ -562,7 +626,8 @@ async def ready_lots(request: Request, db: AsyncSession = Depends(get_db),
     return await _ready_page(request, db, current_user, "sales/ready_lots.html")
 
 
-async def _ready_page(request: Request, db: AsyncSession, current_user: User, template: str):
+async def _ready_page(request: Request, db: AsyncSession, current_user: User, template: str,
+                      extra: dict | None = None):
     # Per-tab filters (Touch Type + Entity) for the three server-rendered tabs:
     # ms_* = Ready for Sale Model Summary, al_* = As-Is Lot, am_* = As-Is
     # Model Summary. The Tag table filters through /sales/ready/data instead.
@@ -895,6 +960,7 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
         "as_is_assign_users": (await db.execute(
             select(User).where(User.status == True).order_by(User.full_name)  # noqa: E712
         )).scalars().all() if current_user.role == UserRole.admin else [],
+        **(extra or {}),
     })
 
 
@@ -2890,6 +2956,12 @@ async def _return_form_response(db: AsyncSession, ctx: dict):
     return templates.TemplateResponse("sales/return_form.html", ctx)
 
 
+def _current_received_by(user) -> str:
+    """Return Received By (2026-10-29): always the signed-in user's display
+    name — the field is shown disabled on every Return New tab."""
+    return ((getattr(user, "full_name", "") or "").strip() or getattr(user, "username", "") or "").strip()
+
+
 async def _valid_received_by(db: AsyncSession, value: str) -> str:
     """The submitted Return Received By name if it is an active user's display
     name (matched case-insensitively, returned in its stored spelling), else ""."""
@@ -2919,6 +2991,20 @@ async def return_form(request: Request, db: AsyncSession = Depends(get_db),
     })
 
 
+CHARGE_DECISIONS = ("payment_due", "waive_off")
+
+
+def _charge_fields(amount, decision, waiver_reason) -> dict:
+    """Paid Repair charge / waiver (2026-10-29) — same choice as Rental
+    Return: with a charge (> 0) the processor picks Payment Due or Waive Off
+    (optional reason); no charge -> no decision."""
+    if not amount or Decimal(amount) <= 0:
+        return {"charge_decision": None, "waiver_reason": None}
+    d = decision if decision in CHARGE_DECISIONS else "payment_due"
+    return {"charge_decision": d,
+            "waiver_reason": ((waiver_reason or "").strip() or None) if d == "waive_off" else None}
+
+
 @router.post("/returns/new")
 async def process_return(
     request: Request,
@@ -2933,6 +3019,8 @@ async def process_return(
     replace_tag: str = Form(""),
     complaint_text: str = Form(None),
     return_received_by: str = Form(""),
+    charge_decision: str = Form(""),
+    waiver_reason: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
     _perm: User = Depends(require_module_perm("returns", "add")),
@@ -3024,7 +3112,7 @@ async def process_return(
             "request": request, "current_user": current_user,
             "error": "Condition on Return is required.", "sale": sale,
         })
-    received_by = await _valid_received_by(db, return_received_by)
+    received_by = _current_received_by(current_user)   # always the signed-in user (2026-10-29)
     if not received_by:
         return await _return_form_response(db, {
             "request": request, "current_user": current_user,
@@ -3085,6 +3173,26 @@ async def process_return(
     rtype = return_type if return_type in ("customer", "dealer") else "customer"
     warranty_status = warranty_status_for_sale(sale)
 
+    # Paid Repair (2026-10-29): only an out-of-warranty return is charged —
+    # decided here on the server, never from a hidden form field (which used
+    # to save the default charge on in-warranty returns too). Same rule as
+    # the form's message (/devices/api/brief): out of warranty unless the
+    # sale's effective warranty is still active. Amount = Additional Rates ->
+    # Default Paid Repair Cost.
+    from utils.warranty import effective_warranty_for_sale
+    _w = effective_warranty_for_sale(sale)
+    paid_repair_amount = None
+    if not (_w and _w.get("status") == "active"):
+        try:
+            paid_repair_amount = Decimal(refund_amount) if refund_amount else None
+        except Exception:
+            paid_repair_amount = None
+        if paid_repair_amount is None:
+            from models.cost_config import CostConfig
+            _row = (await db.execute(select(CostConfig).where(CostConfig.key == "default_paid_repair"))).scalar_one_or_none()
+            paid_repair_amount = Decimal(str(_row.value)) if _row else Decimal("1500")
+    charge = _charge_fields(paid_repair_amount, charge_decision, waiver_reason)
+
     # Create return as PENDING — device stage unchanged until manager approves
     ret = Return(
         sale_id=sale.id, device_id=device.id,
@@ -3092,7 +3200,8 @@ async def process_return(
         action_taken=action_taken or None,
         reentered_stage=reentered_stage,
         processed_by=current_user.username,
-        refund_amount=Decimal(refund_amount) if refund_amount else None,
+        refund_amount=paid_repair_amount,
+        **charge,
         notes=notes or None,
         approval_status='pending',
         return_type=rtype,
@@ -3147,7 +3256,10 @@ async def process_return(
                            "action": action_taken, "approval_status": "pending",
                            "return_type": rtype, "warranty_status": warranty_status,
                            "complaint_text": complaint_text or None,
-                           "return_received_by": received_by},
+                           "return_received_by": received_by,
+                           "paid_repair": str(paid_repair_amount) if paid_repair_amount else None,
+                           "charge_decision": charge["charge_decision"],
+                           "waiver_reason": charge["waiver_reason"]},
                 request=request)
 
     if do_replace and replacement_device is not None:
@@ -3240,6 +3352,8 @@ async def process_external_return(
     paid_repair: str = Form("0"),
     notes: str = Form(""),
     return_received_by: str = Form(""),
+    charge_decision: str = Form(""),
+    waiver_reason: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
     _perm: User = Depends(require_module_perm("returns", "add")),
@@ -3267,7 +3381,7 @@ async def process_external_return(
             "request": request, "current_user": current_user, "sale": None,
             "active_tab": "external", "error": "Return Reason and Condition on Return are required.",
         })
-    received_by = await _valid_received_by(db, return_received_by)
+    received_by = _current_received_by(current_user)   # always the signed-in user (2026-10-29)
     if not received_by:
         return await _return_form_response(db, {
             "request": request, "current_user": current_user, "sale": None,
@@ -3312,6 +3426,7 @@ async def process_external_return(
         action_taken="restock", reentered_stage="iqc",
         processed_by=current_user.username,
         refund_amount=paid_repair_amount,
+        **_charge_fields(paid_repair_amount, charge_decision, waiver_reason),
         notes=(f"Qty: {qty}. {notes.strip()}" if notes.strip() else f"Qty: {qty}"),
         approval_status="pending", return_type="customer",
         serial_captured=serial_number.strip() or None,
@@ -3325,7 +3440,8 @@ async def process_external_return(
                 table_name="returns", record_id=str(device.id),
                 new_value={"tag_number": tag_number, "reason": reason, "quantity": qty,
                            "paid_repair": str(paid_repair_amount), "approval_status": "pending",
-                           "return_received_by": received_by},
+                           "return_received_by": received_by,
+                           "charge_decision": ret.charge_decision, "waiver_reason": ret.waiver_reason},
                 request=request)
     await db.commit()
     return RedirectResponse(url="/returns?success=External+return+submitted+for+manager+approval",
@@ -3403,7 +3519,7 @@ async def process_credit_note(
         return RedirectResponse(
             url="/returns/new?active_tab=credit&error=Select+at+least+one+Tag+Number+and+enter+a+Debit+Note+Number",
             status_code=302)
-    received_by = await _valid_received_by(db, return_received_by)
+    received_by = _current_received_by(current_user)   # always the signed-in user (2026-10-29)
     if not received_by:
         return RedirectResponse(
             url="/returns/new?active_tab=credit&error=Return+Received+By+is+required", status_code=302)
@@ -3898,6 +4014,33 @@ async def credit_note_export_selected(
 
 MANAGER_ROLES = (UserRole.admin, UserRole.sales_manager)
 
+
+
+@router.post("/returns/{return_id}/mark-paid")
+async def return_mark_paid(return_id: str, request: Request, payment_reference: str = Form(""),
+                           db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed),
+                           _perm: User = Depends(require_module_perm("returns", "edit"))):
+    """Payment Due Paid Repair -> Paid, with the Invoice / UTR number
+    (2026-10-29) — same as Rentals' Mark Paid."""
+    try:
+        rid = _uuid.UUID(return_id)
+    except ValueError:
+        raise HTTPException(404, "Return not found")
+    ret = (await db.execute(select(Return).where(Return.id == rid))).scalar_one_or_none()
+    if not ret:
+        raise HTTPException(404, "Return not found")
+    ref = (payment_reference or "").strip()
+    if ret.charge_decision != "payment_due" or ret.paid_at:
+        return RedirectResponse(url="/returns?error=" + quote("This return has no Payment Due to mark paid."),
+                                status_code=302)
+    if not ref:
+        return RedirectResponse(url="/returns?error=" + quote("Enter the Invoice / UTR number."), status_code=302)
+    ret.paid_at, ret.paid_by, ret.payment_reference = app_now(), current_user.username, ref[:100]
+    await audit(db, user=current_user, action="RETURN_MARK_PAID", table_name="returns",
+                record_id=str(ret.id), new_value={"payment_reference": ret.payment_reference,
+                                                  "amount": str(ret.refund_amount or 0)}, request=request)
+    await db.commit()
+    return RedirectResponse(url="/returns?success=" + quote("Paid Repair marked paid."), status_code=302)
 
 @router.get("/returns/pending", response_class=HTMLResponse)
 async def pending_returns(request: Request, db: AsyncSession = Depends(get_db),

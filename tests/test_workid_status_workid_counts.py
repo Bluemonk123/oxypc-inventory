@@ -53,7 +53,7 @@ def test_tiles_and_export_add_up_to_rows(app_client, make_user):  # noqa: F811
     def tile(key):
         return int(re.search(r'data-tile="%s".*?pm-tile-num" data-server="(\d+)"' % key, html, re.S).group(1))
 
-    if "alert-info" not in html:        # not capped: tiles count the loaded rows
+    if "widCapNote" not in html:        # not capped: tiles count the loaded rows
         assert tile("assigned") == len(rows)
         open_rows = sum(1 for r in rows if r["st"] not in ("completed", "reassigned"))
         assert tile("ongoing") == open_rows
@@ -101,7 +101,7 @@ def test_repeat_tags_count(app_client, make_user):  # noqa: F811
     html = app_client.get("/workid-status?work_from=&work_to=").text
     rep = int(re.search(r"var REPEAT_TAGS = (\d+);", html).group(1))
     assert "Repeat Tags - " in html and "wid-repeat-badge" in html
-    if "alert-info" not in html:
+    if "widCapNote" not in html:
         rows = json.loads(re.search(r'id="workidRows">(.*?)</script>', html, re.S).group(1))
         c = Counter(r["b"] for r in rows if r["b"] and r["b"] != "—")
         assert rep == sum(1 for n in c.values() if n > 1)

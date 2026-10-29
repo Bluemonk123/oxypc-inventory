@@ -49,7 +49,21 @@
           <td>{{ brand }} {{ model }}</td>
           <td><code>{{ sale_number }}</code></td>
           <td>{% if can(current_user, 'returns', 'pricing') %}&#8377;{{ ((sale_price) | inr) }}{% else %}—{% endif %}</td>
-          <td>{% if can(current_user, 'returns', 'pricing') %}{{ ('₹' ~ ((ret.refund_amount) | inr)) if ret.refund_amount else '—' }}{% else %}—{% endif %}</td>
+          <td>{% if can(current_user, 'returns', 'pricing') %}{{ ('₹' ~ ((ret.refund_amount) | inr)) if ret.refund_amount else '—' }}{% else %}—{% endif %}
+            {# Charge status (2026-10-29): Payment Due / Paid / Waived Off, same as Rental Return #}
+            {% if ret.charge_decision == 'waive_off' %}
+            <div><span class="badge bg-secondary"{% if ret.waiver_reason %} title="{{ ret.waiver_reason }}"{% endif %}>Waived Off</span></div>
+            {% if ret.waiver_reason %}<div class="text-muted" style="font-size:.72rem;max-width:180px">{{ ret.waiver_reason }}</div>{% endif %}
+            {% elif ret.charge_decision == 'payment_due' and ret.paid_at %}
+            <div><span class="badge bg-success" title="Paid {{ ret.paid_at.strftime('%d-%m-%Y') }} by {{ ret.paid_by }}">Paid</span></div>
+            <div class="text-muted" style="font-size:.72rem" title="Invoice / UTR">{{ ret.payment_reference }}</div>
+            {% elif ret.charge_decision == 'payment_due' %}
+            <div class="d-flex align-items-center gap-1 flex-nowrap"><span class="badge bg-danger">Payment Due</span>
+              {% if can(current_user, 'returns', 'edit') %}<button type="button" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:.7rem"
+                      data-bs-toggle="modal" data-bs-target="#returnPaidModal" data-id="{{ ret.id }}" data-tag="{{ barcode }}"
+                      data-amount="{{ ((ret.refund_amount or 0) | inr) }}">Mark Paid</button>{% endif %}</div>
+            {% endif %}
+          </td>
           <td>{{ ret.reason or '—' }}</td>
           <td>
             {% if ret.condition_on_return %}
@@ -84,7 +98,8 @@
                     data-serial-number="{{ ret.serial_captured or '—' }}"
                     data-make="{{ brand or '—' }}"
                     data-model="{{ model or '—' }}"
-                    data-paid-repair="{{ '%.2f'|format(ret.refund_amount) if ret.refund_amount is not none else '0.00' }}">
+                    data-paid-repair="{{ '%.2f'|format(ret.refund_amount) if ret.refund_amount is not none else '0.00' }}"
+                    data-charge="{% if ret.charge_decision == 'waive_off' %}Waived Off{% if ret.waiver_reason %} — {{ ret.waiver_reason }}{% endif %}{% elif ret.charge_decision == 'payment_due' and ret.paid_at %}Paid ({{ ret.payment_reference }}){% elif ret.charge_decision == 'payment_due' %}Payment Due{% else %}—{% endif %}">
               <i class="bi bi-receipt me-1"></i>Receipt
             </button>
           </td>
@@ -135,6 +150,7 @@
           <tr><td class="text-muted">Model</td><td id="rcpt_model">—</td></tr>
           <tr><td class="text-muted">Quantity</td><td>1</td></tr>
           <tr><td class="text-muted">Paid Repair</td><td>&#8377;<span id="rcpt_paid_repair">0.00</span></td></tr>
+          <tr><td class="text-muted">Charge</td><td id="rcpt_charge">—</td></tr>
         </table>
       </div>
       <div class="modal-footer">
@@ -147,6 +163,36 @@
   </div>
 </div>
 
+{# Mark Paid (2026-10-29): Payment Due Paid Repair -> Paid with the Invoice /
+   UTR number — same as Rentals' Mark Paid. #}
+<div class="modal fade" id="returnPaidModal" tabindex="-1">
+  <div class="modal-dialog">
+    <form method="post" class="modal-content" id="returnPaidForm">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <div class="modal-header">
+        <h6 class="modal-title"><i class="bi bi-cash-coin me-2"></i>Mark Paid — <code id="returnPaidTag"></code></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-2 small">Paid Repair due: <strong>₹<span id="returnPaidAmount"></span></strong></div>
+        <label class="form-label fw-semibold">Invoice or UTR Number <span class="text-danger">*</span></label>
+        <input type="text" name="payment_reference" class="form-control" maxlength="100" required>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-check2 me-1"></i>Submit</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+document.getElementById('returnPaidModal').addEventListener('show.bs.modal', function (e) {
+  var b = e.relatedTarget;
+  document.getElementById('returnPaidForm').action = '/returns/' + b.getAttribute('data-id') + '/mark-paid';
+  document.getElementById('returnPaidTag').textContent = b.getAttribute('data-tag');
+  document.getElementById('returnPaidAmount').textContent = b.getAttribute('data-amount');
+});
+</script>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -216,8 +262,9 @@ $(document).ready(function(){
   });
 });
 
-document.querySelectorAll('.view-receipt-btn').forEach(function(btn){
-  btn.addEventListener('click', function(){
+// Delegated (2026-10-29): the table rebuilds its rows after load, so
+// listeners bound to the original buttons never fired (blank receipt popup).
+$(document).on('click', '.view-receipt-btn', function(){
     var d = this.dataset;
     document.getElementById('rcpt_entity').textContent = d.entity;
     document.getElementById('rcpt_customer_name').textContent = d.customerName;
@@ -231,8 +278,8 @@ document.querySelectorAll('.view-receipt-btn').forEach(function(btn){
     document.getElementById('rcpt_make').textContent = d.make;
     document.getElementById('rcpt_model').textContent = d.model;
     document.getElementById('rcpt_paid_repair').textContent = d.paidRepair;
+    document.getElementById('rcpt_charge').textContent = d.charge || '—';
     document.getElementById('rcpt_download_link').href = '/returns/' + d.id + '/receipt';
-  });
 });
 </script>
 {% endblock %}

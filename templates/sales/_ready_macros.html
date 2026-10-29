@@ -1,6 +1,8 @@
 {# Shared by Ready for Sale - Tags (/sales/ready, ready_list.html) and
    Ready for Sale - Lots (/sales/lots, ready_lots.html), 2026-10-27.
-   Import "with context": the macros use current_user / can(). #}
+   Import "with context": the macros use current_user / can(). Pre-Sale IQC
+   (/pre-sale-iqc, 2026-10-29) renders ready_list.html with pm =
+   'pre_sale_iqc' (permission module) and psiqc = True (no Sell). #}
 {% macro touch_select(id, value='') %}
 <select id="{{ id }}" class="form-select form-select-sm ready-touch-filter" style="width:auto;min-width:170px" title="Touch Type">
   <option value="" {{ 'selected' if not value }}>All Touch Types</option>
@@ -30,7 +32,7 @@
   </thead>
   <tbody>
     {% for g in rows %}
-    <tr data-qty="{{ g.total_count }}" data-min="{{ (g.min_total or 0) if can(current_user, 'sales', 'pricing') else 0 }}"
+    <tr data-qty="{{ g.total_count }}" data-min="{{ (g.min_total or 0) if can(current_user, (pm if pm is defined else 'sales'), 'pricing') else 0 }}"
         data-open="{{ g.open_count }}" data-blocked="{{ g.blocked_count }}">
       {% if selectable %}
       <td><input type="checkbox" class="modelSumChk" value="{{ loop.index0 }}"
@@ -42,7 +44,7 @@
          separated by thin lines): OXY = OxyPC Computers, RC = Renew Circuits,
          DES = Deshwal, UN = none set. The icon exports this configuration's
          tags in the All Inventory format. #}
-      {% set _can_exp = can(current_user, 'sales', 'export') %}
+      {% set _can_exp = can(current_user, (pm if pm is defined else 'sales'), 'export') %}
       <td class="text-nowrap"><span class="fw-semibold" style="color:#0e3a7a">{{ g.model }}</span>
         {% if _can_exp or g.entities %}<div class="d-flex flex-nowrap align-items-center mt-1 small fw-semibold" style="color:#129042">
           {% if _can_exp %}<button type="button" class="btn btn-sm btn-link text-success p-0 lh-1 ms-export-btn"
@@ -78,8 +80,8 @@
           {% endfor %}
         </div>
       </td>
-      <td class="text-nowrap" data-order="{{ g.min_total if can(current_user, 'sales', 'pricing') else 0 }}">
-        {% if not can(current_user, 'sales', 'pricing') %}<span class="text-muted">—</span>
+      <td class="text-nowrap" data-order="{{ g.min_total if can(current_user, (pm if pm is defined else 'sales'), 'pricing') else 0 }}">
+        {% if not can(current_user, (pm if pm is defined else 'sales'), 'pricing') %}<span class="text-muted">—</span>
         {% elif g.min_lo is not none %}
           <span class="fw-semibold">₹{{ ((g.min_total) | inr) }}</span>
           <div class="text-muted" style="font-size:.7rem">
@@ -96,7 +98,7 @@
                   data-barcodes='{{ g.barcodes | tojson }}' data-max="{{ g.total_count }}">Request</button>
           {% endif %}
           {% if g.barcodes %}
-          {% if can(current_user, 'sales', 'add') %}
+          {% if can(current_user, (pm if pm is defined else 'sales'), 'add') and not (psiqc is defined and psiqc) %}
           <button type="button" class="btn btn-sm btn-outline-success py-0 model-sum-sell-btn"
                   data-barcodes='{{ g.barcodes | tojson }}'>Sell</button>
           {% endif %}

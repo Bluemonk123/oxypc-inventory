@@ -94,6 +94,10 @@
               {% if row.due %}<div class="text-danger fw-semibold" style="font-size:.75rem">Due ₹{{ row.due_total | inr(2) }}</div>{% endif %}
               {% if r.status in ('active', 'payment_due') and row.returns %}<div class="text-muted" style="font-size:.75rem">{{ row.out_count }} of {{ r.total_quantity }} still out</div>{% endif %}
               {% for ref in row.refs %}<div class="text-muted" style="font-size:.75rem" title="Invoice / UTR">Paid: {{ ref }}</div>{% endfor %}
+              {# Waived returns (2026-10-29): same label + optional reason as Customer / External returns #}
+              {% for x in row.returns if x.decision == 'waive_off' and x.outstanding_amount and x.outstanding_amount > 0 %}
+              <div style="font-size:.75rem"><span class="badge bg-secondary">Waived Off</span>{% if x.waiver_reason %} <span class="text-muted" title="Waiver reason">{{ x.waiver_reason }}</span>{% endif %}</div>
+              {% endfor %}
             </td>
             <td class="text-nowrap">
               {% if can(current_user, 'rentals', 'export') %}<div class="dropdown">

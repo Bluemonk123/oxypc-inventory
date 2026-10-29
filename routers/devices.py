@@ -1960,6 +1960,31 @@ async def device_detail(
         select(WorkOrder).where(WorkOrder.device_id == device.id)
         .order_by(WorkOrder.assigned_at.desc())
     )).scalars().all()
+    # Full stage name per WorkID (2026-10-29), same rules as WorkID Status:
+    # L3L4- / STRS- hand-offs, Pre-Sale IQC, else the stage code on the WorkID.
+    from routers.workid_status import _build_code_stage, PSIQC_CODE, PSIQC_LABEL
+    _code_stage = _build_code_stage()
+
+    def _wo_stage_label(wo):
+        wid, code = wo.work_id or "", (wo.stage or "").strip()
+        if code == PSIQC_CODE:
+            return PSIQC_LABEL
+        if wid.startswith("L3L4-"):
+            return STAGE_LABELS.get(DeviceStage.l3, "L3")
+        if wid.startswith("STRS-"):
+            return STAGE_LABELS.get(DeviceStage.qc_check, "Stress Test")
+        if code == "asgn":
+            return "Assigned to Employee"
+        st = _code_stage.get(code)
+        return STAGE_LABELS.get(st, st.value) if st else (code.upper() or "—")
+    wo_stage_labels = {wo.id: _wo_stage_label(wo) for wo in work_orders}
+
+    # Asset History "By" (2026-10-29): the user's display name, not username.
+    _movers = {m.moved_by for m in movements if m.moved_by}
+    mover_names = {}
+    if _movers:
+        mover_names = {u: (fn or u) for u, fn in (await db.execute(
+            select(User.username, User.full_name).where(User.username.in_(_movers)))).all()}
 
     # ── Warranty Status for device detail ────────────────────────────────────
     _sale_for_warranty = (await db.execute(
@@ -2011,6 +2036,8 @@ async def device_detail(
         "parts_badges": await parts_badge_map(db, [device.id]),
         "all_spare_parts": all_spare_parts,
         "work_orders": work_orders,
+        "wo_stage_labels": wo_stage_labels,
+        "mover_names": mover_names,
         "repair_status": repair_status,
     })
 

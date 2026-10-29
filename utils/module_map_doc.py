@@ -64,7 +64,7 @@ MODULE_GROUPS = [
                           "move_device_internal", "inventory_requests", "model_requested"]),
     ("Production & Repair", ["production_manager", "repair_l1", "repair_l2", "repair_l3",
                              "repair_l3l4", "qc_check", "cosmetic", "cosmetic_finalqc",
-                             "workid_status", "scrap_products"]),
+                             "pre_sale_iqc", "workid_status", "scrap_products"]),
     ("Spare Parts", ["parts_dashboard", "spare_parts", "spare_parts_purchase",
                      "parts_sale_request", "parts_tracking", "parts_consumption"]),
     ("Sales & Fulfilment", ["sales", "sales_list", "dispatch", "gate_pass", "returns",

@@ -221,6 +221,7 @@ DEFAULT_DISABLED_MODULES = frozenset({
     "pm_product_master", "pm_pricing_calculator", "pm_hardware", "pm_spare_parts", "pm_product_pricing",
     "scrap_sale_report",   # Scrap Sale Report page (2026-10-16)
     "rentals",             # Rentals (2026-10-22)
+    "pre_sale_iqc",        # Pre-Sale IQC (2026-10-29)
 })
 
 

@@ -10,6 +10,8 @@ keeps its history intact:
 
     pending  verified, no Final QC pass since          -> orange "Changed" badge
     passed   a Final QC pass happened after it          -> value in green
+             (or a Pre-Sale IQC Mark Complete — tags already in Ready for
+             Sale never reach Final QC again; 2026-10-29)
     sold     a sale happened after that pass            -> value in blue
 
 On Final QC pass, pending RAM / Hard Drive changes are written onto the
@@ -28,7 +30,7 @@ from __future__ import annotations
 import bisect
 import json
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 
 from sqlalchemy import select, or_, and_, not_
@@ -187,8 +189,28 @@ def classify(t: datetime | None, passes: list[datetime], sales: list[datetime]):
     return ("sold" if s else "passed"), p, s
 
 
+# Pre-Sale IQC Mark Complete times (2026-10-29) counted as "passes" are moved
+# this much later, so a part auto-verified BY that Mark Complete (same
+# timestamp) counts as passed by it — classify() wants a pass strictly after.
+_PSIQC_EPS = timedelta(microseconds=1)
+
+
+async def psiqc_completions(db: AsyncSession, ids) -> dict[str, list]:
+    """Per device: completed Pre-Sale IQC WorkIDs' times (+ _PSIQC_EPS)."""
+    from models.work_order import WorkOrder
+    out: dict[str, list] = {}
+    for did, at in (await db.execute(
+        select(WorkOrder.device_id, WorkOrder.completed_at)
+        .where(WorkOrder.device_id.in_(ids), WorkOrder.stage == "psiqc",
+               WorkOrder.status == "completed", WorkOrder.completed_at.isnot(None))
+    )).all():
+        out.setdefault(str(did), []).append(at + _PSIQC_EPS)
+    return out
+
+
 async def _events(db: AsyncSession, ids):
-    """Per device: sorted Final QC pass times and sale times."""
+    """Per device: sorted Final QC pass times (and Pre-Sale IQC Mark Complete
+    times, 2026-10-29) and sale times."""
     from models.device import StageMovement, DeviceStage
     from models.sales import Sale
 
@@ -213,6 +235,8 @@ async def _events(db: AsyncSession, ids):
                         not_(Sale.notes.ilike("%Credit Note%")))))
     )).all():
         sales.setdefault(str(did), []).append(at)
+    for did, times in (await psiqc_completions(db, ids)).items():
+        passes.setdefault(did, []).extend(times)
     for d in (passes, sales):
         for k in d:
             d[k].sort()
@@ -259,6 +283,7 @@ async def changed_parts_by_device(db: AsyncSession, device_ids) -> dict[str, dic
     if not rows:
         return out
     passes, sales = await _events(db, ids)
+    ps_done = {did: set(t) for did, t in (await psiqc_completions(db, ids)).items()}
     applied = await _applied(db, ids)
     sps = await spare_parts_for(db, rows)
     for r in rows:
@@ -293,9 +318,11 @@ async def changed_parts_by_device(db: AsyncSession, device_ids) -> dict[str, dic
             "applied": bool(ap),
             "old_value": ap["old"] if ap else None,
         }
+        by_psiqc = pass_at is not None and pass_at in ps_done.get(did, ())
+        item["pass_kind"] = "Pre-Sale IQC" if by_psiqc else "Final QC"
         status = {"pending": "Pending Final QC",
-                  "passed": (f"Final QC passed {item['pass_date']}" if pass_at
-                             else "Applied to spec"),
+                  "passed": (f"{item['pass_kind']} {'completed' if by_psiqc else 'passed'} {item['pass_date']}"
+                             if pass_at else "Applied to spec"),
                   "sold": f"Sold {item['sold_date']}"}[state]
         item["status_label"] = status
         item["tooltip"] = (

@@ -893,6 +893,17 @@ table.gtable tbody td .gtable-clamp2 {
 .lt-tiles-row.lt-dark .lt-tile-count{color:#fff}
 .lt-tiles-row.lt-dark .lt-tile-label{color:rgba(255,255,255,.88)}
 .lt-tiles-row.lt-dark .lt-tile-wm{color:rgba(255,255,255,.22)}
+/* Dark tile heading (2026-10-29): less space under the heading, more
+   between the count and the heading — the heading sits near the bottom.
+   Only where the heading is the tile's last line (not tiles with a sub /
+   note / button under it). Same on the WorkID Status / Product Master
+   dark tiles (.pm-tile). */
+.lt-tiles-row.lt-dark .lt-tile{display:flex; flex-direction:column; padding-bottom:.7rem}
+.lt-tiles-row.lt-dark .lt-tile-label:last-child,
+.lt-tiles-row.lt-dark .lt-tile-label:has(+ .lt-tile-wm:last-child){margin-top:auto; padding-top:.6rem}
+.pm-tile{display:flex; flex-direction:column}
+.pm-tile.p-3{padding-bottom:.7rem !important}
+.pm-tile-lbl:last-child, .pm-tile-lbl:has(+ .pm-tile-wm:last-child){margin-top:auto; padding-top:.6rem}
 /* Extra line and View All button inside a tile (Procure Dashboard).
    Spacing (2026-10-27): label sits just under the count as its caption;
    the second value gets clear room above (.85rem) and at least 1rem below;

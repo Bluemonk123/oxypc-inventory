@@ -105,6 +105,7 @@ class RentalReturn(Base):
     extra_days = Column(Integer, nullable=False, default=0)
     outstanding_amount = Column(Numeric(14, 2), nullable=False, default=0)
     decision = Column(String(20), nullable=False)            # payment_due | waive_off
+    waiver_reason = Column(Text, nullable=True)              # optional, when waive_off (2026-10-29, dbdiagram)
     notes = Column(Text, nullable=True)
     created_by = Column(String(50), nullable=True)
     created_at = Column(DateTime, nullable=False, default=app_now)

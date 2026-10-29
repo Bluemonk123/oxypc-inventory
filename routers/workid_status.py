@@ -244,6 +244,10 @@ def _fmt(dt, f="%d-%m-%Y %H:%M"):
 # these groups are left out of the tiles; the summary sheets list them under
 # "Other". (When the table is capped, the tiles fall back to each WorkID's own
 # stage in SQL — see _sql_stage_tile_counts.)
+PSIQC_CODE = "psiqc"                 # WorkOrder.stage of a Pre-Sale IQC WorkID
+PSIQC_STAGE = "pre_sale_iqc"         # its Stage column value (not a DeviceStage)
+PSIQC_LABEL = "Pre-Sale IQC"
+
 STAGE_GROUPS = [
     ("l1l2", "L1/L2", ("l1", "l2"), "#0d6efd", "bi-tools"),
     ("l3l4", "L3/L4", ("l3",), "#6f42c1", "bi-cpu"),
@@ -251,6 +255,10 @@ STAGE_GROUPS = [
     ("cosmetic", "Cosmetic", ("cosmetic_received", "cleaning", "putty", "dry_sanding", "masking",
                               "painting", "water_sanding", "cosmetic_completed"), "#0aa2c0", "bi-droplet"),
     ("final_qc", "Final QC", ("final_qc", "final_qc_pass_hold", "final_qc_fail_hold"), "#0F7A37", "bi-patch-check"),
+    # Pre-Sale IQC (2026-10-29, routers/pre_sale_iqc.py): WorkIDs with stage
+    # code "psiqc" — work on Ready for Sale tags, no stage movement of their
+    # own, so the Stage column always shows the WorkID's own stage.
+    ("pre_sale_iqc", "Pre-Sale IQC", (PSIQC_STAGE,), "#b02a37", "bi-clipboard2-check"),
 ]
 _GROUP_BY_STAGE = {sv: key for key, _l, svs, _c, _i in STAGE_GROUPS for sv in svs}
 
@@ -350,7 +358,7 @@ def _is_reassigned_row():
 
 def _displayed_stage_clause(stage_vals, code_stage):
     """SQL WHERE: the row's Stage column is one of stage_vals."""
-    from sqlalchemy import and_, or_, not_, false
+    from sqlalchemy import and_, or_, not_, false, true
     vals = set(stage_vals)
     codes = [c for c, st in code_stage.items() if st.value in vals]
     codes += [v for v in vals if v not in code_stage]      # unmapped code shown as-is
@@ -369,16 +377,21 @@ def _displayed_stage_clause(stage_vals, code_stage):
     own_stage_row = or_(_is_reassigned_row(),
                         and_(WorkOrder.status.notin_(["completed", "reassigned"]), WorkOrder.stage.in_(known)))
     not_reassigned = not_(own_stage_row)
+    # Pre-Sale IQC WorkIDs (2026-10-29) always show their own stage.
+    is_ps = WorkOrder.stage == PSIQC_CODE
     return or_(
-        and_(own_stage_row, WorkOrder.stage.in_(codes or ["__none__"])),
-        and_(not_reassigned, or_(*handoff_match) if handoff_match else false()),
-        and_(not_reassigned, not_(handoff),
+        and_(is_ps, true()) if PSIQC_STAGE in vals else false(),
+        and_(not_(is_ps), own_stage_row, WorkOrder.stage.in_(codes or ["__none__"])),
+        and_(not_(is_ps), not_reassigned, or_(*handoff_match) if handoff_match else false()),
+        and_(not_(is_ps), not_reassigned, not_(handoff),
              _matched_from_stage_sq().in_(enum_vals) if enum_vals else false()),
     )
 
 
 def _displayed_stage_value(status, completed_at, work_id, code, from_stage, code_stage) -> str:
     """Python twin of _displayed_stage_clause for rows read back from SQL."""
+    if (code or "").strip() == PSIQC_CODE:
+        return PSIQC_STAGE                                  # Pre-Sale IQC: always its own stage
     if status == "reassigned" and completed_at:
         st = code_stage.get((code or "").strip())
         return st.value if st else (code or "")
@@ -727,7 +740,7 @@ async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_a
         fs = None
         if not (st == "reassigned" and ca) and not (
                 st not in ("completed", "reassigned") and (code or "").strip() in code_stage) and not (
-                (wid or "").startswith(("L3L4-", "STRS-"))):
+                (wid or "").startswith(("L3L4-", "STRS-"))) and (code or "").strip() != PSIQC_CODE:
             dm = dev_cache.get(did)
             if dm is None:
                 dm = dev_cache[did] = _dev_moves(mvs)
@@ -763,6 +776,50 @@ async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_a
                 w_range and not (cx_at and w_range[0] <= cx_at <= w_range[1])):
             g["pass" if _sv(cx) == "final_qc" else "fail"] += 1
     return counts
+
+
+async def _ready_pass_map(db, current_user, *, work_from="", work_to="", workid="", tag="",
+                          engineer="") -> dict:
+    """Tags moved INTO Ready for Sale from production between work_from ..
+    work_to (2026-10-29): {device_id: (latest move, times, moved-from label)}.
+    Any production stage counts (Final QC / Pass Hold, and cosmetic stages,
+    L1, QC Check … bulk-moved straight there — chosen by Pankaj, it matches
+    the offline record); NOT counted: Stock In (stock uploads), Ready ->
+    Ready re-moves and returns from Sold. Counted by the movement, so a tag
+    sold or returned afterwards still counts. WorkID / Tag / Engineer search
+    and a non-admin's row visibility narrow it to tags with such a WorkID —
+    the same rules as the table. Used by the Final QC tile's
+    "(Ready for Sale - N)" and the Repair Summary export, so they agree."""
+    wf, wt = _parse_date(work_from), _parse_date(work_to)
+    q = (select(StageMovement.device_id, StageMovement.moved_at, StageMovement.from_stage)
+         .where(StageMovement.to_stage == DeviceStage.ready_to_sale,
+                StageMovement.from_stage.isnot(None),
+                StageMovement.from_stage.notin_([DeviceStage.stock_in, DeviceStage.ready_to_sale,
+                                                 DeviceStage.sold])))
+    if wf:
+        q = q.where(StageMovement.moved_at >= wf)
+    if wt:
+        q = q.where(StageMovement.moved_at <= wt.replace(hour=23, minute=59, second=59))
+    is_admin = current_user.role.value == "admin"
+    if not is_admin or workid or tag or engineer:
+        wo = select(WorkOrder.device_id).where(WorkOrder.stage != "asgn", WorkOrder.status != "reassigned")
+        if workid:
+            wo = wo.where(WorkOrder.work_id.ilike(f"%{workid.strip()}%"))
+        if tag:
+            wo = wo.where(WorkOrder.barcode.ilike(f"%{tag.strip()}%"))
+        if engineer:
+            wo = wo.where(WorkOrder.assigned_username == engineer)
+        if not is_admin:
+            team = await managed_usernames(db, current_user.username)
+            wo = wo.where(WorkOrder.assigned_username.in_(set(team) | {current_user.username}))
+        q = q.where(StageMovement.device_id.in_(wo))
+    out = {}
+    for did, at, frm in (await db.execute(q)).all():
+        last, n, lbl = out.get(did, (None, 0, ""))
+        if last is None or (at and at > last):
+            last, lbl = at, STAGE_LABELS.get(frm, getattr(frm, "value", frm) or "")
+        out[did] = (last, n + 1, lbl)
+    return out
 
 
 @router.get("/workid-status", response_class=HTMLResponse)
@@ -1100,7 +1157,15 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
 
         handoff_stage = _handoff_stage(wo)
         reassigned_at = wo.completed_at if wo.status == "reassigned" else None
-        if reassigned_at:
+        if (wo.stage or "").strip() == PSIQC_CODE:
+            # Pre-Sale IQC (2026-10-29): no stage movement — the WorkID's own
+            # stage, engineer and close time.
+            stage_value, stage_label = PSIQC_STAGE, PSIQC_LABEL
+            movement_completed_at = wo.completed_at if wo.status == "completed" else None
+            movement_engineer = (wo.assigned_name or display_name_by_username.get(wo.assigned_username)
+                                 or wo.assigned_username or "—")
+            engineer_username = wo.assigned_username
+        elif reassigned_at:
             stage_value, stage_label = _wo_stage(wo)
             movement_completed_at = None
             movement_engineer = (wo.assigned_name or display_name_by_username.get(wo.assigned_username)
@@ -1363,6 +1428,15 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     else:
         stage_tiles = _stage_tile_counts_from_items(items)
 
+    # Final QC tile "(Ready for Sale - N)" (2026-10-29): tags moved into
+    # Ready for Sale from production in the Work Date range — the same count
+    # as the Repair Summary export. Page view only (not the exports).
+    ready_pass_count = None
+    if row_cap is not None:
+        ready_pass_count = len(await _ready_pass_map(
+            db, current_user, work_from=work_from or completed_from, work_to=work_to or completed_to,
+            workid=workid, tag=tag, engineer=engineer))
+
     # Repeat Tags (2026-10-28): Tag Numbers on more than one row (WorkID) of
     # this view — over every matching WorkID when the table is capped.
     if main_truncated:
@@ -1409,6 +1483,7 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     _no_workid = {"grn", "iqc", "returned", "scrapped", "scrap_for_sale", "on_rent"}
     cosmetic_stage_choices = [(s.value, STAGE_LABELS.get(s, s.value)) for s in DROPDOWN_STAGES
                               if s.value not in _no_workid]
+    cosmetic_stage_choices.append((PSIQC_STAGE, PSIQC_LABEL))      # Pre-Sale IQC (2026-10-29)
 
     return templates.TemplateResponse("workid_status/list.html", {
         "request": request, "current_user": current_user,
@@ -1416,6 +1491,7 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         "engineers": engineers, "is_admin": is_admin,
         "tile_counts": tile_counts, "cosmetic_stage_choices": cosmetic_stage_choices,
         "stage_tiles": stage_tiles, "stage_groups": STAGE_GROUPS,
+        "ready_pass_count": ready_pass_count,
         "f_workid": workid, "f_tag": tag, "f_engineer": engineer,
         "f_completed_from": completed_from, "f_completed_to": completed_to,
         "f_work_from": work_from, "f_work_to": work_to,
@@ -1636,7 +1712,7 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
 
     out = _io.BytesIO()
     wb.save(out)
-    fname = f"workid_status_{_date.today().isoformat()}.xlsx"
+    fname = f"team_productivity_{_date.today().isoformat()}.xlsx"
     return Response(
         content=out.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1675,34 +1751,9 @@ async def workid_status_repair_summary(request: Request, db: AsyncSession = Depe
     from routers.spare_parts import _parts_consumption_rows, build_repair_summary_xlsx
     from services.audit_engine import audit
 
-    wf, wt = _parse_date(work_from or completed_from), _parse_date(work_to or completed_to)
-    q = (select(StageMovement.device_id, StageMovement.moved_at, StageMovement.from_stage)
-         .where(StageMovement.to_stage == DeviceStage.ready_to_sale,
-                StageMovement.from_stage.isnot(None),
-                StageMovement.from_stage.notin_([DeviceStage.stock_in, DeviceStage.ready_to_sale,
-                                                 DeviceStage.sold])))
-    if wf:
-        q = q.where(StageMovement.moved_at >= wf)
-    if wt:
-        q = q.where(StageMovement.moved_at <= wt.replace(hour=23, minute=59, second=59))
-    ready_pass = {}
-    for did, at, frm in (await db.execute(q)).all():
-        last, n, lbl = ready_pass.get(did, (None, 0, ""))
-        if last is None or (at and at > last):
-            last, lbl = at, STAGE_LABELS.get(frm, getattr(frm, "value", frm) or "")
-        ready_pass[did] = (last, n + 1, lbl)
-
-    # Restrict to the WorkIDs this user may see / has searched for: same
-    # page handler, without the date range (the pass date decides above).
-    if current_user.role.value != "admin" or workid or tag or engineer:
-        page = await _workid_status_page(request=request, db=db, current_user=current_user,
-                                         workid=workid, tag=tag, engineer=engineer,
-                                         completed_from="", completed_to="", work_from="", work_to="",
-                                         cosmetic_stage="", exclude_admin=exclude_admin,
-                                         show_reassigned="", scrap_type="all",
-                                         highlight="", row_cap=None)
-        allowed = {it["device_id"] for it in page.context["items"] if it.get("device_id")}
-        ready_pass = {d: v for d, v in ready_pass.items() if d in allowed}
+    ready_pass = await _ready_pass_map(db, current_user, work_from=work_from or completed_from,
+                                       work_to=work_to or completed_to,
+                                       workid=workid, tag=tag, engineer=engineer)
 
     barcodes = {}
     ids = list(ready_pass)

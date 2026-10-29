@@ -31,8 +31,9 @@
       {{ ms.multiselect('stage', 'Stage', stage_choices, stage) }}
       {{ ms.multiselect('device_type', 'Device Type', device_type_options, device_type) }}
       {{ ms.multiselect('grade', 'Grade', grade_options() + [('none', 'No Grade')], grade) }}
-      {{ ms.multiselect('lot', 'Lot', lot_choices, lot) }}
+      {# Stock Type before Lot (2026-10-29) #}
       {{ ms.multiselect('stock_type', 'Stock Type', stock_type_options, stock_type) }}
+      {{ ms.multiselect('lot', 'Lot', lot_choices, lot) }}
       {# PNA Check (2026-10-22): Yes = in the PNA summary (active PNA part, in
          L1/L2/L3) — same rule as the export's PNA column. #}
       <div>

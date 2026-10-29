@@ -184,6 +184,7 @@ from routers.grn import router as grn_router
 from routers.entity_movement import router as entity_movement_router
 from routers.part_estimation import router as part_estimation_router
 from routers.rentals import router as rentals_router
+from routers.pre_sale_iqc import router as pre_sale_iqc_router
 from routers.system_health import router as system_health_router, record_startup as _record_schema_startup
 from routers.extended_warranty import router as extended_warranty_router
 from routers.parts_grn import router as parts_grn_router
@@ -277,6 +278,7 @@ app.include_router(grn_router)
 app.include_router(entity_movement_router)
 app.include_router(part_estimation_router)
 app.include_router(rentals_router)
+app.include_router(pre_sale_iqc_router)
 app.include_router(system_health_router)   # /admin/system/health (2026-10-22)
 app.include_router(extended_warranty_router)
 app.include_router(parts_grn_router)

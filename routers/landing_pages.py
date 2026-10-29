@@ -102,6 +102,7 @@ NAV_PAGE_TITLES = [
     ("qc_check",             "Stress Test",                   "Stress Test",                   "/qc"),
     ("cosmetic",             "Cosmetic & Paint",              "Cosmetic & Paint",              "/cosmetic/cleaning"),
     ("cosmetic_finalqc",     "Final QC",                      "Final QC",                      "/cosmetic/final_qc"),
+    ("pre_sale_iqc",         "Pre-Sale IQC",                  "Pre-Sale IQC",                  "/pre-sale-iqc"),
     ("workid_status",        "WorkID Status",                 "WorkID Status",                 "/workid-status"),
     ("parts_dashboard",      "Parts Dashboard",               "Parts Dashboard",               "/parts-dashboard"),
     ("spare_parts",          "Parts Manager",                 "Parts Manager",                 "/spare-parts"),

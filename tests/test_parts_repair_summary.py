@@ -133,6 +133,9 @@ asyncio.run(main())
         assert wrows[t1]["Total Parts Cost"] == 2000
         _h, wrows = wexport(tag=t1, work_from=today, work_to=today)
         assert set(wrows) == {t1}
+        # Final QC tile heading shows the same count (2026-10-29)
+        page = app_client.get("/workid-status", params={"tag": t1, "work_from": today, "work_to": today}).text
+        assert "var READY_PASS = 1;" in page and "Moved to Ready - " in page
         old = (date.today() - timedelta(days=30)).isoformat()
         _h, wrows = wexport(tag=t1, work_from=old, work_to=old)
         assert wrows == {}                                       # passed outside the range

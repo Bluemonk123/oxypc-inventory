@@ -654,6 +654,7 @@ async def rental_return_submit(
     received_date: str = Form(""),
     decision: str = Form(""),
     notes: str = Form(""),
+    waiver_reason: str = Form(""),
     db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed),
 ):
     def back(msg):
@@ -699,6 +700,8 @@ async def rental_return_submit(
             return_number=await _next_return_number(db), rental_id=rental.id, received_date=received,
             stop_date=rental.end_date, rental_price=amt["rental_price"], daily_rate=amt["daily_rate"],
             extra_days=amt["extra_days"], outstanding_amount=amt["outstanding"], decision=decision,
+            # optional reason when waived (2026-10-29, same as Customer / External returns)
+            waiver_reason=(waiver_reason.strip() or None) if decision == "waive_off" else None,
             notes=notes.strip() or None, created_by=current_user.username)
         db.add(ret)
         try:
@@ -724,7 +727,8 @@ async def rental_return_submit(
                            "received_date": received.isoformat(), "stop_date": rental.end_date.isoformat(),
                            "rental_price": str(amt["rental_price"]), "daily_rate": str(amt["daily_rate"]),
                            "extra_days": amt["extra_days"], "outstanding": str(amt["outstanding"]),
-                           "decision": decision, "rental_status": rental.status},
+                           "decision": decision, "rental_status": rental.status,
+                           "waiver_reason": ret.waiver_reason},
                 request=request)
     await db.commit()
     tab = "payment_due" if rental.status == "payment_due" else ("complete" if rental.status == "complete" else "active")

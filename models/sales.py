@@ -143,6 +143,17 @@ class Return(Base):
     debit_note_number    = Column(String(50), nullable=True)
     debit_note_amount    = Column(Numeric(12, 2), nullable=True)
     payment_invoice      = Column(String(100), nullable=True)
+    # ── Paid Repair charge / waiver (2026-10-29, approved via dbdiagram) ───
+    # Same model as Rental Return: when there is a Paid Repair charge
+    # (out-of-warranty Customer Return, External Tag return) the processor
+    # picks Payment Due or Waive Off (optional reason); a Payment Due return
+    # is later Mark Paid with an Invoice / UTR number. refund_amount keeps
+    # the charge amount either way. NULL decision = nothing to charge.
+    charge_decision      = Column(String(20), nullable=True)    # payment_due | waive_off
+    waiver_reason        = Column(Text, nullable=True)
+    paid_at              = Column(DateTime, nullable=True)
+    paid_by              = Column(String(50), nullable=True)
+    payment_reference    = Column(String(100), nullable=True)   # Invoice / UTR number
 
     sale = relationship("Sale", back_populates="returns")
 

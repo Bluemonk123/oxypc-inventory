@@ -108,6 +108,7 @@
       <tr class="grand"><td>{{ 'Outstanding Due' if ret.decision == 'payment_due' else 'Outstanding (Waived Off)' }}</td>
         <td class="r">₹{{ ret.outstanding_amount | inr(2) }}</td></tr>
       {% if ret.paid_at %}<tr><td>Paid ({{ ret.payment_reference }})</td><td class="r">{{ ret.paid_at | ist_date }}</td></tr>{% endif %}
+      {% if ret.decision == 'waive_off' and ret.waiver_reason %}<tr><td>Waiver Reason</td><td class="r">{{ ret.waiver_reason }}</td></tr>{% endif %}
     </table>
   </div>
 

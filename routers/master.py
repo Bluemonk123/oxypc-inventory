@@ -154,6 +154,7 @@ PERM_MODULES = [
     ("cosmetic_water_sanding","Cosmetic - Water Sanding"),
     ("cosmetic_completed",    "Cosmetic Completed"),
     ("cosmetic_finalqc",     "Final QC"),
+    ("pre_sale_iqc",         "Pre-Sale IQC"),         # OFF by default (DEFAULT_DISABLED_MODULES), 2026-10-29
     ("workid_status",        "WorkID Status"),
     # ── STORE MANAGER ──────────────────────────────────────────────
     ("parts_dashboard",      "Parts Dashboard"),

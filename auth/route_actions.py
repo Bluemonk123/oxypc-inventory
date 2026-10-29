@@ -135,6 +135,7 @@ ROUTE_ACTIONS = {
     ('POST', '/credit-note/bulk-verify'): ('credit_note', 'edit'),  # credit_note_bulk_verify
     ('POST', '/credit-note/export'): ('credit_note', 'export'),  # credit_note_export_selected: export
     ('POST', '/returns/{return_id}/approve'): ('returns', 'edit'),  # approve_return
+    ('POST', '/returns/{return_id}/mark-paid'): ('returns', 'edit'),  # return_mark_paid: Payment Due Paid Repair -> Paid (Invoice / UTR), 2026-10-29
     ('POST', '/returns/{return_id}/reject'): ('returns', 'edit'),  # reject_return
     # ===== routers/spare_parts.py =====
     ('GET', '/spare-parts/bulk-template'): ('spare_parts', 'export'),  # download_bulk_template: Parts Manager bulk-upload template
@@ -643,6 +644,13 @@ ROUTE_ACTIONS = {
     ('POST', '/care-support/offers/{offer_id}/send'): ('care_support', 'edit'),  # send_offer
     # ===== routers/workid_status.py =====
     ('GET', '/workid-status/export'): ('workid_status', 'export'),  # workid_status_export
+    # ===== routers/pre_sale_iqc.py =====
+    ('POST', '/pre-sale-iqc/assign'): ('pre_sale_iqc', 'add'),  # Ready for Sale Tags bulk 'Assign to Pre-Sale': queues tags (pending PSQC WorkID)
+    ('POST', '/pre-sale-iqc/start'): ('pre_sale_iqc', 'edit'),  # pre_sale_iqc_start
+    ('POST', '/pre-sale-iqc/complete'): ('pre_sale_iqc', 'edit'),  # pre_sale_iqc_complete: same rules as L1/L2 Mark Complete
+    ('POST', '/pre-sale-iqc/cancel'): ('pre_sale_iqc', 'edit'),  # pre_sale_iqc_cancel: undo Start
+    ('POST', '/pre-sale-iqc/bulk-complete-precheck'): ('pre_sale_iqc', 'edit'),  # what bulk Complete will do (read only)
+    ('POST', '/pre-sale-iqc/bulk-complete'): ('pre_sale_iqc', 'edit'),  # bulk Complete of the ticked tags
     ('GET', '/workid-status/repair-summary'): ('workid_status', 'export'),  # workid_status_repair_summary
     # ===== routers/invoices.py =====
     ('GET', '/invoices/print/{sale_id}'): ('sales_list', 'export'),  # print_invoice: Sales detail Invoice PDF

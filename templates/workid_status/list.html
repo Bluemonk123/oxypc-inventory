@@ -5,7 +5,7 @@
 {% block content %}
 
 <!-- Filter bar -->
-<form method="get" action="/workid-status" class="filter-bar">
+<form method="get" action="/workid-status" class="filter-bar" id="widFilterForm">
   <div class="filter-bar-row">
     {# Search WorkID / Tag Number boxes hidden (2026-10-28) — the table's own
        search box finds both. Kept as hidden fields so links that carry them
@@ -64,19 +64,18 @@
         <label class="form-check-label small fw-semibold" for="showReassignedChk">Show Reassigned</label>
       </div>
     </div>
+    {# No Search button (2026-10-29): every filter applies as soon as it
+       changes (script at the bottom). #}
     <div>
-      <button type="submit" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
       <a href="/workid-status" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</a>
     </div>
   </div>
 </form>
 
+{# Row-cap note (2026-10-29): a top-right toast (window.showTopToast,
+   base.html) instead of a full-width alert banner. #}
 {% if main_truncated %}
-<div class="alert alert-info py-2 small mb-3">
-  <i class="bi bi-info-circle me-1"></i>
-  {{ ((main_total) | inr) }} WorkIDs match — showing the most recent {{ ((main_cap) | inr) }}.
-  The tiles and Export cover all {{ ((main_total) | inr) }}; narrow with Search WorkID/Tag, Engineer, or a Work Date range to see the rest in the table.
-</div>
+<script type="application/json" id="widCapNote">{{ ((main_total | inr) ~ " WorkIDs match — showing the most recent " ~ (main_cap | inr) ~ " in the table. The tiles and Team Productivity cover all " ~ (main_total | inr) ~ "; pick an Engineer or a Work Date range to see the rest.") | tojson }}</script>
 {% endif %}
 
 <!-- Card Count tiles — reflect the SAME filters as the table below (see
@@ -138,6 +137,8 @@
        no total). #}
     <div class="lt-tile h-100" style="--tc:{{ color }}" data-group="{{ key }}" data-stages="{{ _stages | join(',') }}">
       {# "(Waiting - N)" removed from the tiles (2026-10-28). #}
+      {# "Move to Ready" count moved off the Final QC tile to the table's
+         count line, next to Repeat Tags (2026-10-29). #}
       <div class="wid-stage-name">{{ label }}</div>
       <div class="wid-stage-line" title="WorkIDs in this stage (open or completed)">
         <span class="lt-tile-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">Assigned</span>
@@ -177,7 +178,7 @@
     <div class="d-flex gap-2">
     {% if can(current_user, 'workid_status', 'export') %}<a class="btn btn-outline-success btn-sm text-nowrap"
        href="/workid-status/export?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&work_from={{ f_work_from | urlencode }}&work_to={{ f_work_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&show_reassigned={{ f_show_reassigned | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}">
-      <i class="bi bi-download me-1"></i>Export
+      <i class="bi bi-download me-1"></i>Team Productivity
     </a>{% endif %}
     {# Repair Summary (2026-10-29): tags moved into Ready for Sale from
        production (not Stock In / returns) between the Work Date From/To
@@ -206,9 +207,40 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
+<script>document.addEventListener('DOMContentLoaded', function () {
+  if (window.flashAsToast) window.flashAsToast();  /* success message as a top-right toast (2026-10-19) */
+  var cap = document.getElementById('widCapNote');  /* row-cap note as a toast too (2026-10-29) */
+  if (cap && window.showTopToast) { try { window.showTopToast('primary', JSON.parse(cap.textContent)); } catch (e) {} }
+});</script>
 
 <script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
+<script>
+/* Filters apply on change (2026-10-29; Search button removed): selects and
+   checkboxes at once, dates once a full date is picked (short pause so typing
+   a year doesn't reload per digit), Stage when its dropdown closes. */
+(function () {
+  var f = document.getElementById('widFilterForm');
+  if (!f) return;
+  var timer = null, sent = false;
+  function go(delay) {
+    clearTimeout(timer);
+    timer = setTimeout(function () { if (!sent) { sent = true; f.requestSubmit ? f.requestSubmit() : f.submit(); } }, delay || 0);
+  }
+  f.querySelectorAll('select, input[type=checkbox]:not(.ms-opt)').forEach(function (el) {
+    el.addEventListener('change', function () { go(0); });
+  });
+  f.querySelectorAll('input[type=date]').forEach(function (el) {
+    el.addEventListener('change', function () {
+      if (!el.value || /^\d{4}-\d{2}-\d{2}$/.test(el.value)) go(700);
+    });
+  });
+  var msDirty = false;
+  f.addEventListener('ms:change', function () { msDirty = true; });
+  f.querySelectorAll('.ms-filter [data-bs-toggle="dropdown"]').forEach(function (t) {
+    t.addEventListener('hidden.bs.dropdown', function () { if (msDirty) go(0); });
+  });
+})();
+</script>
 <script type="application/json" id="workidRows">{{ rows_json | safe }}</script>
 <script>
 $(document).ready(function(){
@@ -216,6 +248,9 @@ $(document).ready(function(){
   var HL = {{ highlight | tojson }};
   var MAIN_TOTAL = {{ (main_total if main_truncated else 0) | tojson }};
   var REPEAT_TAGS = {{ (repeat_tags | default(0)) | tojson }};
+  // Tags moved into Ready for Sale from production in the Work Date range
+  // (same tags as Repair Summary), shown on the count line (2026-10-29).
+  var READY_PASS = {{ (ready_pass_count if ready_pass_count is defined else none) | tojson }};
   var repeatOnly = false;
   function repeatCount(list) {
     var c = {}, n = 0;
@@ -334,10 +369,16 @@ $(document).ready(function(){
       // server's count (all matching WorkIDs) with no table search / tile;
       // otherwise counted from the rows left. Click: show only those rows.
       var rep = (total === max) ? REPEAT_TAGS : repeatCount(new $.fn.dataTable.Api(settings).rows({ search: 'applied' }).data().toArray());
+      // Count badge | Repeat Tags | Moved to Ready (2026-10-29): plain text
+      // with spaced separators; Repeat Tags still filters on click (bold +
+      // underlined while on).
+      var sep = '<span class="text-muted mx-2" style="font-size:1rem">|</span>';
       return '<span class="badge text-bg-warning gtable-count-badge"' + tip + '>' + n.toLocaleString('en-IN') + '</span>' +
-             ' <span class="badge ' + (repeatOnly ? 'text-bg-danger' : 'text-bg-light border text-danger') + ' wid-repeat-badge" role="button" ' +
-             'title="Tag Numbers with more than one WorkID here \u2014 click to show only their rows (click again to clear)">' +
-             'Repeat Tags - ' + rep.toLocaleString('en-IN') + '</span>';
+             sep + '<span style="font-size:.95rem" class="text-danger wid-repeat-badge' + (repeatOnly ? ' fw-bold text-decoration-underline' : ' fw-semibold') +
+             '" role="button" title="Tag Numbers with more than one WorkID here \u2014 click to show only their rows (click again to clear)">' +
+             'Repeat Tags - ' + rep.toLocaleString('en-IN') + '</span>' +
+             (READY_PASS == null ? '' : sep + '<span style="font-size:.95rem" class="fw-semibold text-success" title="Tags moved into Ready for Sale between the Work Date From/To: TRC flow (Final QC Pass) + bypass (moved straight from other production stages). Sold since still counts; Stock In and returns not counted. Same tags as Repair Summary.">' +
+             'Moved to Ready - ' + READY_PASS.toLocaleString('en-IN') + '</span>');
     }
   });
 

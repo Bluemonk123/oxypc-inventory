@@ -67,7 +67,7 @@
           <span class="fw-semibold text-{{ p.color }}">{{ p.part_name }}</span>{% if p.details %} <span class="text-{{ p.color }}">→ {{ p.details }}</span>{% endif %}
           <div class="text-muted" style="font-size:.75rem">{{ p.request_type }} · {{ p.stage }} · {{ p.date }} · {{ p.by }}{% if p.qty and p.qty > 1 %} · qty {{ p.qty }}{% endif %}{% if p.old_value %} · was {{ p.old_value }}{% endif %}</div>
         </div>
-        <div class="text-nowrap">{% if p.state == 'pending' %}<span class="badge border border-orange text-orange">Pending Final QC</span>{% elif p.state == 'passed' %}<span class="badge bg-success">{{ ('QC Passed ' ~ p.pass_date) if p.pass_date != '—' else 'Applied to spec' }}</span>{% else %}<span class="badge bg-primary">Sold {{ p.sold_date }}</span>{% endif %}</div>
+        <div class="text-nowrap">{% if p.state == 'pending' %}<span class="badge border border-orange text-orange">Pending Final QC</span>{% elif p.state == 'passed' %}<span class="badge bg-success">{{ (('Pre-Sale IQC Done ' if p.pass_kind == 'Pre-Sale IQC' else 'QC Passed ') ~ p.pass_date) if p.pass_date != '—' else 'Applied to spec' }}</span>{% else %}<span class="badge bg-primary">Sold {{ p.sold_date }}</span>{% endif %}</div>
       </div>
       {% endfor %}
     </div>

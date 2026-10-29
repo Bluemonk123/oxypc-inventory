@@ -3,19 +3,50 @@
 {% block page_title %}Process Return{% endblock %}
 {% block content %}
 {% set active_tab = active_tab|default('internal') %}
+{# Paid Repair charge choice (2026-10-29): Payment Due / Waive Off with an
+   optional waiver reason — the same choice on Customer Return, External Tag
+   return and Rental Return. #}
+<style>
+  /* Same layout on every tab (2026-10-29): radios on one line, reason
+     box underneath at the same width. */
+  .charge-choice { margin-top:.6rem; }
+  .charge-choice .form-check-inline { margin-right:1.5rem; }
+  .charge-choice .waiver-reason { margin-top:.5rem; max-width:420px; }
+</style>
+{% macro charge_choice(prefix) %}
+<div class="charge-choice" data-prefix="{{ prefix }}">
+  <div class="form-check form-check-inline">
+    <input class="form-check-input" type="radio" name="charge_decision" id="{{ prefix }}Due" value="payment_due" checked>
+    <label class="form-check-label fw-semibold" for="{{ prefix }}Due">Payment Due</label>
+  </div>
+  <div class="form-check form-check-inline">
+    <input class="form-check-input" type="radio" name="charge_decision" id="{{ prefix }}Waive" value="waive_off">
+    <label class="form-check-label fw-semibold" for="{{ prefix }}Waive">Waive Off</label>
+  </div>
+  <div class="waiver-reason d-none">
+    <label class="form-label small mb-1">Waiver Reason <span class="text-muted">(optional)</span></label>
+    <input type="text" name="waiver_reason" class="form-control form-control-sm" maxlength="300"
+           placeholder="Why is the charge waived?">
+  </div>
+</div>
+{% endmacro %}
+{# Return Received By (2026-10-29): always the signed-in user, shown disabled
+   at the bottom of every tab; the server records the current user too. #}
 {% macro received_by_field(wrap_class='mb-3') %}
+{% set _me = (current_user.full_name or current_user.username) if current_user else '' %}
 <div class="{{ wrap_class }}">
-  <label class="form-label fw-semibold">Return Received By <span class="text-danger">*</span></label>
-  <select name="return_received_by" class="form-select" required>
-    <option value="">-- Select user --</option>
-    {% for n in return_received_by_options|default([]) %}
-    <option value="{{ n }}">{{ n }}</option>
-    {% endfor %}
-  </select>
+  <label class="form-label fw-semibold">Return Received By</label>
+  <select class="form-select" disabled><option>{{ _me }}</option></select>
+  <input type="hidden" name="return_received_by" value="{{ _me }}">
 </div>
 {% endmacro %}
 <div class="row justify-content-center">
-  <div class="col-lg-6">
+  {# Tabs on one line (2026-10-29); the form is never narrower than the tab
+     bar (min-content = the no-wrap tab row). #}
+  <style>
+    #returnTabs { flex-wrap:nowrap; white-space:nowrap; }
+  </style>
+  <div class="col-lg-6 return-new-col">
 
     <ul class="nav nav-tabs mb-3" id="returnTabs">
       <li class="nav-item">
@@ -145,13 +176,13 @@
               <input type="hidden" name="refund_amount"
                      value="{{ '%.2f'|format(default_paid_repair if default_paid_repair is defined else 1500) }}">
             </div>
-            <div class="form-text">Wired to Admin &rarr; Cost Config &rarr; Default Paid Repair Cost. Applies since this device is Out of Warranty.</div>
+            {{ charge_choice('ir') }}
           </div>
-          {{ received_by_field('mb-3') }}
           <div class="mb-3">
             <label class="form-label">Notes</label>
             <textarea name="notes" class="form-control" rows="2"></textarea>
           </div>
+          {{ received_by_field('mb-3') }}
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-warning px-4"><i class="bi bi-arrow-return-left me-2"></i>Process Return</button>
             <a href="/sales" class="btn btn-outline-secondary">Cancel</a>
@@ -241,15 +272,13 @@
                 <input type="number" step="0.01" name="paid_repair" class="form-control"
                        value="{{ '%.2f'|format(default_paid_repair if default_paid_repair is defined else 1500) }}">
               </div>
-              <div class="form-text">Defaults to Admin &rarr; Cost Config &rarr; Default Paid Repair Cost — an
-                external tag has no warranty on file here, so this is presumed out-of-warranty. Set to 0 if it
-                shouldn't be charged.</div>
             </div>
-            {{ received_by_field('col-md-6') }}
+            <div class="col-12 mt-0">{{ charge_choice('er') }}</div>
             <div class="col-12">
               <label class="form-label">Notes</label>
               <textarea name="notes" class="form-control" rows="2"></textarea>
             </div>
+            {{ received_by_field('col-12') }}
           </div>
           <div class="d-flex gap-2 mt-3">
             <button type="submit" class="btn btn-warning px-4"><i class="bi bi-box-arrow-in-down me-2"></i>Submit External Return</button>
@@ -291,7 +320,6 @@
             <label class="form-label fw-semibold">Debit Note Amount</label>
             <input type="number" step="0.01" min="0" name="debit_note_amount" class="form-control">
           </div>
-          {{ received_by_field('mb-3') }}
           <hr>
           <p class="text-muted small mb-2">Sender Details — shown on the Credit Note page as a contact badge.</p>
           <div class="mb-3">
@@ -306,6 +334,7 @@
             <label class="form-label">Sender Email</label>
             <input type="email" name="sender_email" class="form-control">
           </div>
+          {{ received_by_field('mb-3') }}
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-warning px-4" id="cnSubmitBtn" disabled>
               <i class="bi bi-receipt-cutoff me-2"></i>Submit (<span id="cnSelCount">0</span> tag(s))</button>
@@ -363,7 +392,7 @@
               <tr class="table-warning"><td class="fw-semibold">Outstanding Price</td><td class="text-end fw-bold" id="rrOutstanding">—</td></tr>
             </table>
 
-            <div class="mb-3">
+            <div class="mb-3 charge-choice">
               <div class="form-check form-check-inline">
                 <input class="form-check-input" type="radio" name="decision" id="rrDue" value="payment_due" checked>
                 <label class="form-check-label fw-semibold" for="rrDue">Payment Due</label>
@@ -372,11 +401,18 @@
                 <input class="form-check-input" type="radio" name="decision" id="rrWaive" value="waive_off">
                 <label class="form-check-label fw-semibold" for="rrWaive">Waive Off</label>
               </div>
+              {# Optional waiver reason (2026-10-29), same as Customer / External returns #}
+              <div class="waiver-reason d-none" id="rrWaiverReasonWrap">
+                <label class="form-label small mb-1">Waiver Reason <span class="text-muted">(optional)</span></label>
+                <input type="text" name="waiver_reason" class="form-control form-control-sm" maxlength="300"
+                       placeholder="Why is the charge waived?">
+              </div>
             </div>
             <div class="mb-3">
               <label class="form-label fw-semibold">Notes</label>
               <textarea name="notes" class="form-control" rows="2"></textarea>
             </div>
+            {{ received_by_field('mb-3') }}
             <div class="d-flex gap-2">
               <button type="submit" class="btn btn-primary px-4" id="rrSubmit"><i class="bi bi-receipt me-2"></i>Generate and Submit</button>
               <a href="/rentals" class="btn btn-outline-secondary">Cancel</a>
@@ -446,7 +482,7 @@
             msg.innerHTML = '<div class="alert alert-success py-2 px-3 small mb-0">Device is in warranty and will be repair without any extra cost.' + stageNote + '</div>';
             paidRepairRow.classList.add('d-none');
           } else if(ws === 'Out of Warranty'){
-            msg.innerHTML = '<div class="alert alert-warning py-2 px-3 small mb-0">Device is out warranty and will cost basic Rs1500 as repair cost excluding spare parts cost.' + stageNote + '</div>';
+            msg.innerHTML = '<div class="alert alert-warning py-2 px-3 small mb-0">Device is out of warranty and will cost the basic repair charge of Rs{{ '%.0f'|format(default_paid_repair if default_paid_repair is defined else 1500) }} (Default Paid Repair Cost), excluding spare parts cost — choose Payment Due or Waive Off below.' + stageNote + '</div>';
             paidRepairRow.classList.remove('d-none');
           } else {
             msg.innerHTML = '<div class="alert alert-info py-2 px-3 small mb-0">Device found.' + stageNote + '</div>';
@@ -719,6 +755,12 @@
   }
   document.getElementById('rrDue').addEventListener('change', syncBtn);
   document.getElementById('rrWaive').addEventListener('change', syncBtn);
+  // Optional waiver reason (2026-10-29)
+  function syncRrReason() {
+    document.getElementById('rrWaiverReasonWrap').classList.toggle('d-none', !document.getElementById('rrWaive').checked);
+  }
+  document.getElementById('rrWaive').addEventListener('change', syncRrReason);
+  document.getElementById('rrDue').addEventListener('change', syncRrReason);
   syncBtn();
   document.getElementById('rrForm').addEventListener('submit', function (e) {
     if (!tags.length) { e.preventDefault(); msg('Scan at least one Tag Number.'); return; }
@@ -736,6 +778,25 @@
         render();
       });
   }
+})();
+
+// Paid Repair Payment Due / Waive Off (2026-10-29): the reason box shows
+// only for Waive Off.
+document.querySelectorAll('.charge-choice').forEach(function (box) {
+  function sync() {
+    var w = box.querySelector('input[value="waive_off"]').checked;
+    box.querySelector('.waiver-reason').classList.toggle('d-none', !w);
+  }
+  box.querySelectorAll('input[name="charge_decision"]').forEach(function (r) { r.addEventListener('change', sync); });
+  sync();
+});
+
+// Tabs on one line (2026-10-29): the form column is never narrower than the
+// tab bar.
+(function () {
+  var t = document.getElementById('returnTabs'), col = t && t.closest('.return-new-col');
+  function fit() { if (col) col.style.minWidth = (t.scrollWidth + 2) + 'px'; }
+  fit(); window.addEventListener('resize', fit);
 })();
 </script>
 {% endblock %}

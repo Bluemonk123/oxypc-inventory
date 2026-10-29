@@ -570,7 +570,9 @@ async def _rts_open(db):
                 Device.is_trashed.isnot(True),
                 # "asgn" = Inventory Request "Assign To Employee" bookkeeping —
                 # live work on Ready to Sale tags, never closed here (2026-10-28).
-                WorkOrder.stage != "asgn")
+                # "psiqc" = Pre-Sale IQC (2026-10-29): work done ON Ready for
+                # Sale tags, open on purpose — not left over either.
+                WorkOrder.stage.notin_(["asgn", "psiqc"]))
          .order_by(start.desc()))
     return (await db.execute(q)).all()       # at None = no Ready to Sale move recorded -> closed now
 
