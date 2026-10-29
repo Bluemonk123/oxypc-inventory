@@ -179,6 +179,15 @@
        href="/workid-status/export?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&work_from={{ f_work_from | urlencode }}&work_to={{ f_work_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&show_reassigned={{ f_show_reassigned | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}">
       <i class="bi bi-download me-1"></i>Export
     </a>{% endif %}
+    {# Repair Summary (2026-10-29): tags moved into Ready for Sale from
+       production (not Stock In / returns) between the Work Date From/To
+       (sold later still counts), each with all its parts + Labour /
+       Packing / Freight. #}
+    {% if can(current_user, 'workid_status', 'export') %}<a class="btn btn-outline-primary btn-sm text-nowrap"
+       href="/workid-status/repair-summary?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&work_from={{ f_work_from | urlencode }}&work_to={{ f_work_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&show_reassigned={{ f_show_reassigned | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}"
+       title="Tags moved into Ready for Sale from production between the Work Date From/To (including ones sold since; not Stock In or returns): all parts changed on each, Labour, Packing, Freight and Grand Total">
+      <i class="bi bi-receipt me-1"></i>Repair Summary
+    </a>{% endif %}
     </div>
   </div>
   <div>

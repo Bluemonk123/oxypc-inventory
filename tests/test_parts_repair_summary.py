@@ -31,6 +31,7 @@ from database import AsyncSessionLocal
 from models.device import Device, DeviceStage, StageMovement
 from models.spare_parts import SparePart
 from models.part_request import PartRequest
+from models.work_order import WorkOrder
 from utils.timezone import app_now
 async def main():
     async with AsyncSessionLocal() as db:
@@ -48,8 +49,12 @@ async def main():
             db.add(d); devs[bc] = d
         await db.flush()
         db.add(StageMovement(device_id=devs["{t1}"].id, from_stage=DeviceStage.stock_in, to_stage=DeviceStage.l1, moved_by="t"))
+        db.add(StageMovement(device_id=devs["{t2}"].id, from_stage=DeviceStage.stock_in,
+                             to_stage=DeviceStage.ready_to_sale, moved_by="t"))
         db.add(StageMovement(device_id=devs["{t1}"].id, from_stage=DeviceStage.final_qc,
                              to_stage=DeviceStage.ready_to_sale, moved_by="t"))
+        db.add(WorkOrder(work_id="ITRSW{sfx}", device_id=devs["{t1}"].id, barcode="{t1}", stage="l1",
+                         status="completed", assigned_name="t", completed_at=app_now()))
         for bc, idx, qty in (("{t1}", 0, 1), ("{t1}", 1, 1), ("{t1}", 2, 2), ("{t2}", 0, 1)):
             sp = parts[idx]
             db.add(PartRequest(device_id=devs[bc].id, part_id=sp.id, part_name=sp.name, status="received",
@@ -106,8 +111,31 @@ asyncio.run(main())
         kb = ps[f"ITRS-Keyboard-{sfx}"]
         assert kb[1] == 2 and kb[2] == 2 and kb[-1] == 1000      # 2 used, on 2 tags, 2 x 500
 
-        # WorkID Status no longer has a Repair Summary (removed 2026-10-29)
-        assert "/workid-status/repair-summary" not in app_client.get("/workid-status").text
+        # WorkID Status Repair Summary (re-enabled 2026-10-29): tags from the
+        # page's filters, each with all its verified parts
+        assert "/workid-status/repair-summary" in app_client.get("/workid-status").text
+        # = tags moved into Ready for Sale from production in the Work Date
+        # range (Stock In / Sold / Ready re-moves are not counted)
+        from datetime import date, timedelta
+
+        def wexport(**params):
+            r = app_client.get("/workid-status/repair-summary", params=params)
+            assert r.status_code == 200, r.text[:300]
+            ws = load_workbook(io.BytesIO(r.content)).active
+            head = [c.value for c in ws[1]]
+            return head, {x[0]: dict(zip(head, x)) for x in ws.iter_rows(min_row=2, values_only=True)}
+
+        today = date.today().isoformat()
+        head, wrows = wexport(work_from=today, work_to=today)
+        assert t1 in wrows and t2 not in wrows                  # t2 never passed to Ready for Sale
+        assert "Passed to Ready for Sale" in head and wrows[t1]["Times Passed"] == 1
+        assert wrows[t1]["Moved From"] == "Final QC"
+        assert wrows[t1]["Total Parts Cost"] == 2000
+        _h, wrows = wexport(tag=t1, work_from=today, work_to=today)
+        assert set(wrows) == {t1}
+        old = (date.today() - timedelta(days=30)).isoformat()
+        _h, wrows = wexport(tag=t1, work_from=old, work_to=old)
+        assert wrows == {}                                       # passed outside the range
     finally:
         _run(f"""
 import asyncio, sys
@@ -118,6 +146,7 @@ async def main():
     async with AsyncSessionLocal() as db:
         ids = "(select id from devices where barcode like 'ITRS{sfx}%')"
         await db.execute(text(f"delete from part_requests where device_id in {{ids}}"))
+        await db.execute(text(f"delete from work_orders where device_id in {{ids}}"))
         await db.execute(text(f"delete from stage_movements where device_id in {{ids}}"))
         await db.execute(text("delete from devices where barcode like 'ITRS{sfx}%'"))
         await db.execute(text("delete from spare_parts where name like 'ITRS-%{sfx}'"))

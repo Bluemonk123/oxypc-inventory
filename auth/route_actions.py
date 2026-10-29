@@ -643,6 +643,7 @@ ROUTE_ACTIONS = {
     ('POST', '/care-support/offers/{offer_id}/send'): ('care_support', 'edit'),  # send_offer
     # ===== routers/workid_status.py =====
     ('GET', '/workid-status/export'): ('workid_status', 'export'),  # workid_status_export
+    ('GET', '/workid-status/repair-summary'): ('workid_status', 'export'),  # workid_status_repair_summary
     # ===== routers/invoices.py =====
     ('GET', '/invoices/print/{sale_id}'): ('sales_list', 'export'),  # print_invoice: Sales detail Invoice PDF
     ('GET', '/invoices/waybill/{sale_id}'): ('sales_list', 'export'),  # print_waybill: Sales detail Waybill

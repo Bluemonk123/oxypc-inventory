@@ -498,14 +498,16 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
     })
 
 
-async def build_repair_summary_xlsx(db, device_ids, parts_by_device) -> bytes:
+async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=None) -> bytes:
     """Repair Summary workbook (2026-10-29): one row per tag, in device_ids
     order — details, every changed part side by side (Part N Name / Part N
     Cost, as many pairs as the busiest tag needs), Total Parts Cost, Labour /
     Packing / Freight (Additional Rates, services/repair_cost.py), Grand
     Total. parts_by_device = {device_id: [Parts Consumption rows]} — a tag
     with no parts still gets its row. Used by Parts Manager (Parts
-    Consumption tab) and WorkID Status."""
+    Consumption tab) and WorkID Status. ready_pass = {device_id: (last pass
+    datetime, times, moved-from label)} adds "Passed to Ready for Sale" /
+    "Times Passed" / "Moved From" columns (WorkID Status, 2026-10-29)."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
@@ -550,6 +552,8 @@ async def build_repair_summary_xlsx(db, device_ids, parts_by_device) -> bytes:
     head = ["Tag Number", "GRN", "Invoice Number", "Entity", "Device Type", "Grade", "Make", "Model", "CPU",
             "CPU Gen", "RAM", "Storage", "Screen Size", "Location ID", "Engineer Name", "Status", "PNA",
             "GRN Date", "Final QC Pass Date"]
+    if ready_pass is not None:
+        head += ["Passed to Ready for Sale", "Times Passed", "Moved From"]
     for i in range(1, n_parts + 1):
         head += [f"Part {i} Name", f"Part {i} Cost"]
     head += ["Total Parts Cost", "Labour Cost", "Packing Cost", "Freight Cost", "Grand Total"]
@@ -580,6 +584,9 @@ async def build_repair_summary_xlsx(db, device_ids, parts_by_device) -> bytes:
                 d.screen_size or "", loc, ", ".join(engineers), stage,
                 "Yes" if pna.get(did) else "No",
                 grn_date.get(d.grn_number), fqc_pass.get(did)]
+        if ready_pass is not None:
+            rp_at, rp_n, rp_from = ready_pass.get(did, (None, 0, ""))
+            line += [rp_at, rp_n, rp_from]
         for p in parts:
             name = p["part_name"] + (f" x{p['total_qty']}" if (p.get("total_qty") or 0) > 1 else "")
             line += [name, round(float(p["total_price"]), 2)]
@@ -592,6 +599,8 @@ async def build_repair_summary_xlsx(db, device_ids, parts_by_device) -> bytes:
     for row in ws.iter_rows(min_row=2):
         row[gd_col - 1].number_format = "dd-mm-yyyy"
         row[fq_col - 1].number_format = "dd-mm-yyyy hh:mm"
+        if ready_pass is not None:
+            row[fq_col].number_format = "dd-mm-yyyy hh:mm"
     ws.freeze_panes = "B2"
     for i, col in enumerate(ws.iter_cols(min_row=1, max_row=min(ws.max_row, 300)), start=1):
         width = max((len(str(c.value)) for c in col if c.value is not None), default=8)

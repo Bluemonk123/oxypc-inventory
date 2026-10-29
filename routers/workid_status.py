@@ -1641,3 +1641,88 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
         content=out.getvalue(),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+@router.get("/workid-status/repair-summary")
+async def workid_status_repair_summary(request: Request, db: AsyncSession = Depends(get_db),
+                                       current_user: User = Depends(get_current_user),
+                                       workid: str = Query(default=""),
+                                       tag: str = Query(default=""),
+                                       engineer: str = Query(default=""),
+                                       completed_from: str = Query(default=""),
+                                       completed_to: str = Query(default=""),
+                                       work_from: str = Query(default=""),
+                                       work_to: str = Query(default=""),
+                                       cosmetic_stage: str = Query(default=""),
+                                       exclude_admin: str = Query(default=""),
+                                       show_reassigned: str = Query(default=""),
+                                       scrap_type: str = Query(default="all")):
+    """WorkID Status -> "Repair Summary" (2026-10-29): the tags that MOVED
+    into Ready for Sale from production between the page's Work Date
+    From/To — the team's output for the period. Any production stage counts
+    (Final QC / Pass Hold, and also cosmetic stages, L1, QC Check … that
+    were bulk-moved straight to Ready for Sale — chosen by Pankaj, it
+    matches the offline record); NOT counted: Stock In (stock uploads),
+    Ready for Sale -> Ready for Sale re-moves, and returns from Sold.
+    Counted by the movement, so a tag sold (or returned) afterwards is still
+    in; a tag that passed twice in the range is one row with Times Passed =
+    2 and Moved From = the stage of its latest pass. Each tag's parts =
+    every part verified as changed on it (any date), plus Labour / Packing /
+    Freight — its full repair cost.
+
+    Engineer / WorkID / Tag search narrow it to tags that have such a WorkID;
+    a non-admin only ever gets tags from WorkIDs the page would show them."""
+    from routers.spare_parts import _parts_consumption_rows, build_repair_summary_xlsx
+    from services.audit_engine import audit
+
+    wf, wt = _parse_date(work_from or completed_from), _parse_date(work_to or completed_to)
+    q = (select(StageMovement.device_id, StageMovement.moved_at, StageMovement.from_stage)
+         .where(StageMovement.to_stage == DeviceStage.ready_to_sale,
+                StageMovement.from_stage.isnot(None),
+                StageMovement.from_stage.notin_([DeviceStage.stock_in, DeviceStage.ready_to_sale,
+                                                 DeviceStage.sold])))
+    if wf:
+        q = q.where(StageMovement.moved_at >= wf)
+    if wt:
+        q = q.where(StageMovement.moved_at <= wt.replace(hour=23, minute=59, second=59))
+    ready_pass = {}
+    for did, at, frm in (await db.execute(q)).all():
+        last, n, lbl = ready_pass.get(did, (None, 0, ""))
+        if last is None or (at and at > last):
+            last, lbl = at, STAGE_LABELS.get(frm, getattr(frm, "value", frm) or "")
+        ready_pass[did] = (last, n + 1, lbl)
+
+    # Restrict to the WorkIDs this user may see / has searched for: same
+    # page handler, without the date range (the pass date decides above).
+    if current_user.role.value != "admin" or workid or tag or engineer:
+        page = await _workid_status_page(request=request, db=db, current_user=current_user,
+                                         workid=workid, tag=tag, engineer=engineer,
+                                         completed_from="", completed_to="", work_from="", work_to="",
+                                         cosmetic_stage="", exclude_admin=exclude_admin,
+                                         show_reassigned="", scrap_type="all",
+                                         highlight="", row_cap=None)
+        allowed = {it["device_id"] for it in page.context["items"] if it.get("device_id")}
+        ready_pass = {d: v for d, v in ready_pass.items() if d in allowed}
+
+    barcodes = {}
+    ids = list(ready_pass)
+    for i in range(0, len(ids), 10000):
+        for did, bc in (await db.execute(select(Device.id, Device.barcode)
+                                          .where(Device.id.in_(ids[i:i + 10000])))).all():
+            barcodes[did] = bc or ""
+    order = sorted(barcodes, key=lambda d: barcodes[d])
+    wanted = set(order)
+    parts_by_device: dict = {}
+    for r in await _parts_consumption_rows(db):
+        if r["device_id"] in wanted:
+            parts_by_device.setdefault(r["device_id"], []).append(r)
+    data = await build_repair_summary_xlsx(db, order, parts_by_device, ready_pass=ready_pass)
+    await audit(db, user=current_user, action="EXPORT_REPAIR_SUMMARY", table_name="stage_movements",
+                record_id=f"{len(order)} tags",
+                new_value={"tags": len(order), "from": "workid_status", "passed_from": work_from,
+                           "passed_to": work_to}, request=request)
+    await db.commit()
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="repair_summary_ready_{app_now().strftime("%Y-%m-%d")}.xlsx"'})
