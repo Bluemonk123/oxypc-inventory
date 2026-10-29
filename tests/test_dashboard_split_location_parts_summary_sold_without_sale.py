@@ -314,9 +314,10 @@ def test_parts_consumption_export_buttons_renamed_and_added(app_client, make_use
     username, password = make_user("admin")
     _login(app_client, username, password)
     html = app_client.get("/spare-parts", follow_redirects=True).text
-    assert "Tags Summary" in html
-    assert "Parts Summary" in html
-    assert 'id="pcExportPartsSummaryBtn"' in html
-    assert "spExportPartsSummary" in html
+    # 2026-10-29: Tags Summary + Parts Summary merged into one
+    # "Consumption Summary" export (two sheets), beside "Repair Summary".
+    assert "Consumption Summary" in html and "Repair Summary" in html
+    assert 'id="pcExportPartsSummaryBtn"' not in html
+    assert "/spare-parts/consumption-summary" in html
     # Old bare "Export" label for this specific button is gone.
     assert 'spExport(\'partsConsumptionTable\',false)">\n      <i class="bi bi-file-earmark-arrow-down me-1"></i>Export' not in html

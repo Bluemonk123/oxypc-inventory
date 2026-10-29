@@ -69,6 +69,14 @@ from auth.dependencies import get_current_user
 router = APIRouter(tags=["workid_status"])
 
 
+def _chunks(ids, n=10000):
+    """A query can carry at most 32,767 values: run big IN lists in batches
+    (2026-10-29 — Export with no date range covers every tag)."""
+    ids = list(ids)
+    for i in range(0, len(ids), n):
+        yield ids[i:i + n]
+
+
 def _parse_date(s):
     if not s:
         return None
@@ -935,12 +943,14 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     display_name_by_username = {}
     if device_ids:
         # Date each device was sent to Final QC (latest movement to final_qc)
-        fq_rows = (await db.execute(
-            select(StageMovement.device_id, func.max(StageMovement.moved_at))
-            .where(StageMovement.device_id.in_(device_ids),
-                   StageMovement.to_stage == DeviceStage.final_qc)
-            .group_by(StageMovement.device_id)
-        )).all()
+        fq_rows = []
+        for _c in _chunks(device_ids):
+            fq_rows += (await db.execute(
+                select(StageMovement.device_id, func.max(StageMovement.moved_at))
+                .where(StageMovement.device_id.in_(_c),
+                       StageMovement.to_stage == DeviceStage.final_qc)
+                .group_by(StageMovement.device_id)
+            )).all()
         for did, moved in fq_rows:
             finalqc_date_map[str(did)] = moved
 
@@ -950,12 +960,15 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         # heaviest step of the request. Plain rows keep the same attribute
         # names (mv.from_stage, mv.moved_at, mv.moved_by, mv.notes), so the
         # matching logic below is unchanged.
-        move_rows = (await db.execute(
-            select(StageMovement.device_id, StageMovement.from_stage, StageMovement.to_stage,
-                   StageMovement.moved_at, StageMovement.moved_by, StageMovement.notes)
-            .where(StageMovement.device_id.in_(device_ids))
-            .order_by(StageMovement.moved_at.asc())
-        )).all()
+        move_rows = []
+        for _c in _chunks(device_ids):
+            move_rows += (await db.execute(
+                select(StageMovement.device_id, StageMovement.from_stage, StageMovement.to_stage,
+                       StageMovement.moved_at, StageMovement.moved_by, StageMovement.notes)
+                .where(StageMovement.device_id.in_(_c))
+                .order_by(StageMovement.moved_at.asc())
+            )).all()
+        move_rows.sort(key=lambda m: (m.moved_at is None, m.moved_at or datetime.min))
         for mv in move_rows:
             if _is_l3l4_request_movement(mv):
                 continue
@@ -1028,11 +1041,13 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     successor_by_wo = {}
     _re_devs = {wo.device_id for wo, _d in rows if wo.status == "reassigned" and wo.completed_at}
     if _re_devs:
-        _others = (await db.execute(
-            select(WorkOrder.id, WorkOrder.device_id, WorkOrder.assigned_at,
-                   WorkOrder.assigned_name, WorkOrder.assigned_username)
-            .where(WorkOrder.device_id.in_(_re_devs), WorkOrder.stage != "asgn")
-        )).all()
+        _others = []
+        for _c in _chunks(_re_devs):
+            _others += (await db.execute(
+                select(WorkOrder.id, WorkOrder.device_id, WorkOrder.assigned_at,
+                       WorkOrder.assigned_name, WorkOrder.assigned_username)
+                .where(WorkOrder.device_id.in_(_c), WorkOrder.stage != "asgn")
+            )).all()
         for wo, _d in rows:
             if wo.status != "reassigned" or not wo.completed_at:
                 continue
@@ -1059,12 +1074,14 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     _closed += [(wo, _SCRAP_NOTE_L12) for wo, _d in rows if _is_l12_wo(wo) and wo.completed_at]
     if _closed:
         from sqlalchemy import or_ as _or
-        _notes = (await db.execute(
-            select(StageMovement.device_id, StageMovement.moved_at, StageMovement.notes)
-            .where(StageMovement.device_id.in_({wo.device_id for wo, _p in _closed}),
-                   _or(*[StageMovement.notes.like(p.format(lb) + "%")
-                         for p in (_SCRAP_NOTE_L34, _SCRAP_NOTE_L12) for lb in SCRAP_TYPES.values()]))
-        )).all()
+        _notes = []
+        for _c in _chunks({wo.device_id for wo, _p in _closed}):
+            _notes += (await db.execute(
+                select(StageMovement.device_id, StageMovement.moved_at, StageMovement.notes)
+                .where(StageMovement.device_id.in_(_c),
+                       _or(*[StageMovement.notes.like(p.format(lb) + "%")
+                             for p in (_SCRAP_NOTE_L34, _SCRAP_NOTE_L12) for lb in SCRAP_TYPES.values()]))
+            )).all()
         for wo, prefix in _closed:
             near = [n for n in _notes if n.device_id == wo.device_id and n.moved_at
                     and n.notes.startswith(prefix.format(""))
@@ -1208,18 +1225,22 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     all_device_ids = {it["device_id"] for it in items if it.get("device_id")}
     lot_number_by_device = {}
     if all_device_ids:
-        lot_rows = (await db.execute(
-            select(Device.id, Lot.lot_number)
-            .join(Lot, Device.lot_id == Lot.id)
-            .where(Device.id.in_(all_device_ids))
-        )).all()
+        lot_rows = []
+        for _c in _chunks(all_device_ids):
+            lot_rows += (await db.execute(
+                select(Device.id, Lot.lot_number)
+                .join(Lot, Device.lot_id == Lot.id)
+                .where(Device.id.in_(_c))
+            )).all()
         lot_number_by_device = {str(did): ln for did, ln in lot_rows}
     for it in items:
         it["lot_number"] = lot_number_by_device.get(str(it.get("device_id")), "—")
 
     # PNA (Part Not Available) — one lookup for every device in `items`.
-    pna_by_device = await active_pna_parts(db, all_device_ids) if all_device_ids else {}
-    pna_hist_by_device = await pna_history(db, all_device_ids) if all_device_ids else {}
+    pna_by_device, pna_hist_by_device = {}, {}
+    for _c in _chunks(all_device_ids):
+        pna_by_device.update(await active_pna_parts(db, set(_c)))
+        pna_hist_by_device.update(await pna_history(db, set(_c)))
     for it in items:
         it.update(_pna_fields(pna_by_device.get(it.get("device_id"), [])))
         it["pna_history"] = _pna_history_lines(
@@ -1302,8 +1323,10 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
             .select_from(cr_q).where(select(Return.id).where(Return.device_id == cr_q.c.did).exists())
         )).scalar() or 0
     _dids = {it["device_id"] for it in items if it.get("device_id")}
-    _ret = set((await db.execute(select(Return.device_id).where(Return.device_id.in_(_dids)).distinct())
-                ).scalars().all()) if _dids else set()
+    _ret = set()
+    for _c in _chunks(_dids):
+        _ret.update((await db.execute(select(Return.device_id).where(Return.device_id.in_(_c)).distinct())
+                     ).scalars().all())
     for it in items:
         it["cust_return"] = it.get("device_id") in _ret
     if not main_truncated:

@@ -1,7 +1,11 @@
 """Ready to Sale Min Selling Price formulas — computed server-side only.
 
-Tag table:      unit price + Other Rates + margin for each item
-As-Is Lot:      lot price  + margin for As-Is lot
+Tag table:      unit price + repair cost + margin for each item
+As-Is Lot:      lot price  + Packing/Freight of its tags (if ticked "On As-Is
+                Lot") + margin for As-Is lot
+Repair cost (2026-10-29): services/repair_cost.py — Labor Rate by device type
+(With L3/L4 when the tag had L3/L4; worked-on tags) + Packing + Freight. It
+replaced the flat "Other Rates per Device".
 Lot price:      sum of the available tags' unit prices (= availability x device
                 price when every tag carries the same price)
 
@@ -25,8 +29,9 @@ from models.cost_config import CostConfig
 _ZERO = Decimal("0")
 _PAISE = Decimal("0.01")
 
+# "cosmetic_rate" (Other Rates per Device) is no longer read (2026-10-29):
+# Packing / Freight / labour come from services/repair_cost.py.
 RATE_KEYS = (
-    "cosmetic_rate",
     "margin_item_amount", "margin_item_percent",
     "margin_asis_amount", "margin_asis_percent",
 )
@@ -47,7 +52,7 @@ async def load_ready_rates(db: AsyncSession) -> ReadyRates:
     )).all()
     vals = {k: Decimal(v) for k, v in rows if v is not None}
     return ReadyRates(
-        other_rate=vals.get("cosmetic_rate", _ZERO),
+        other_rate=_ZERO,
         margin_item_amount=vals.get("margin_item_amount", _ZERO),
         margin_item_percent=vals.get("margin_item_percent", _ZERO),
         margin_asis_amount=vals.get("margin_asis_amount", _ZERO),
@@ -81,10 +86,14 @@ def _money(v: Decimal) -> Decimal:
     return v.quantize(_PAISE, rounding=ROUND_HALF_UP)
 
 
-def tag_min_price(unit: Optional[Decimal], rates: ReadyRates) -> Optional[Decimal]:
+def tag_min_price(unit: Optional[Decimal], rates: ReadyRates,
+                  repair: Optional[Decimal] = None) -> Optional[Decimal]:
+    """repair = the tag's repair cost (services/repair_cost.py); callers pass
+    it. Without it, the old flat Other Rates is used (kept for safety)."""
     if unit is None:
         return None
-    return _money(unit + rates.other_rate
+    extra = Decimal(repair) if repair is not None else rates.other_rate
+    return _money(unit + extra
                   + margin_value(unit, rates.margin_item_amount, rates.margin_item_percent))
 
 
@@ -92,6 +101,8 @@ def lot_price(unit_prices: Iterable[Optional[Decimal]]) -> Decimal:
     return _money(sum((u for u in unit_prices if u is not None), _ZERO))
 
 
-def as_is_min_price(lot_total: Decimal, rates: ReadyRates) -> Decimal:
-    return _money(lot_total
+def as_is_min_price(lot_total: Decimal, rates: ReadyRates, extra: Decimal = _ZERO) -> Decimal:
+    """extra = Packing + Freight of the lot's tags when ticked "On As-Is Lot"
+    (2026-10-29). The margin stays on the lot price."""
+    return _money(lot_total + Decimal(extra or 0)
                   + margin_value(lot_total, rates.margin_asis_amount, rates.margin_asis_percent))

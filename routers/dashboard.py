@@ -791,11 +791,6 @@ async def dashboard(
             lots_result = await db.execute(select(Lot).order_by(Lot.created_at.desc()))
             lots = lots_result.scalars().all()
 
-            # Load cost config rates (fallbacks when actual costs not recorded)
-            _cfg_result = await db.execute(select(CostConfig))
-            _cfg = {r.key: float(r.value) for r in _cfg_result.scalars().all()}
-            repair_labour_rate = _cfg.get("repair_labour_rate", 150.0)
-            cosmetic_rate      = _cfg.get("cosmetic_rate", 50.0)
 
             # Batch 1: device count per lot (always the lot's full, all-time
             # device count — never date-scoped, it's descriptive of the lot
@@ -838,29 +833,13 @@ async def dashboard(
                 .group_by(Device.lot_id)
             )).fetchall())
 
-            # Batch 5: labour cost per lot (repair attempt costs via devices)
-            lot_labour_cost = dict((await db.execute(
-                select(Device.lot_id, func.coalesce(func.sum(RepairAttempt.cost), 0))
-                .join(RepairAttempt, RepairAttempt.device_id == Device.id)
-                .where(Device.is_trashed == False, *_completed_filter)
-                .group_by(Device.lot_id)
-            )).fetchall())
-
-            # Batch 6: repair attempt count per lot (for labour rate fallback)
-            lot_attempt_count = dict((await db.execute(
-                select(Device.lot_id, func.count(RepairAttempt.id))
-                .join(RepairAttempt, RepairAttempt.device_id == Device.id)
-                .where(Device.is_trashed == False, *_completed_filter)
-                .group_by(Device.lot_id)
-            )).fetchall())
-
-            # Batch 7: cosmetic rework count per lot (devices that entered cleaning stage)
-            lot_cosmetic_count = dict((await db.execute(
-                select(Device.lot_id, func.count(StageMovement.id))
-                .join(StageMovement, StageMovement.device_id == Device.id)
-                .where(Device.is_trashed == False, StageMovement.to_stage == DeviceStage.cleaning, *_completed_filter)
-                .group_by(Device.lot_id)
-            )).fetchall())
+            # Batch 5 (2026-10-29): repair cost per lot — Labour (Labor Rates by
+            # device type, With L3/L4 when the tag had L3/L4, worked-on tags)
+            # and Packing + Freight (sold tags, where they apply).
+            # services/repair_cost.py. Replaced repair-attempt cost / count ×
+            # Labour Rate and cleaning-stage count × Other Rates.
+            from services.repair_cost import lot_repair_costs
+            lot_repair = await lot_repair_costs(db, device_where=_completed_filter)
 
             # Batch 8: completed-device count per lot, for attributing each lot's
             # buying_price per-unit (buying_price / qty) only to the devices that
@@ -887,14 +866,11 @@ async def dashboard(
                 else:
                     buying = float(lot.buying_price or 0)
 
-                # Labour: use actual costs if recorded; otherwise rate × attempt count
-                labour_actual  = float(lot_labour_cost.get(lot.id, 0) or 0)
-                attempt_count  = int(lot_attempt_count.get(lot.id, 0) or 0)
-                labour_cost    = labour_actual if labour_actual > 0 else (attempt_count * repair_labour_rate)
-
-                # Cosmetic rework: count of cleaning-stage movements × rate
-                cosmetic_count = int(lot_cosmetic_count.get(lot.id, 0) or 0)
-                cosmetic_cost  = cosmetic_count * cosmetic_rate
+                # Repair cost (2026-10-29): Labour + Packing/Freight. The
+                # "cosmetic_cost" key now carries Packing + Freight.
+                _lab, _pf, _ = lot_repair.get(lot.id, (0, 0, 0))
+                labour_cost    = float(_lab)
+                cosmetic_cost  = float(_pf)
 
                 total_cost = buying + parts_cost + labour_cost + cosmetic_cost
                 profit     = revenue - total_cost

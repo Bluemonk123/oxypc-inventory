@@ -226,6 +226,54 @@
     </div>
   </div>
 
+  {# ── A size typed into Storage Type (2026-10-29) ── #}
+  {% if stype_total or stype_conf_total %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm border-start border-warning border-3">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-device-ssd me-2"></i>Storage size typed into Storage Type
+          <span class="badge bg-warning text-dark ms-1">{{ "{:,}".format(stype_total) }}</span></span>
+        {% if stype_total %}
+        <form method="post" action="/admin/system/storage-type-fix" class="df-confirm"
+              data-confirm="Click again to fix {{ "{:,}".format(stype_total) }} tags">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-warning"><i class="bi bi-magic me-1"></i>Fix {{ "{:,}".format(stype_total) }} tags</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        <p class="text-muted mb-2">Storage Type should hold SSD / HDD / NVMe, but these tags have a size in it ("256 GB", "0"), so summaries showed it twice ("256 GB 256 GB").
+          Fix: <strong>"0"</strong> is cleared; a size on a tag with <strong>no other storage</strong> moves into Storage GB / Total HDD Size / Hard Drive; when the <strong>same size</strong> is already there, Storage Type is just cleared.
+          No GB / TB correction. Every change is logged with its before value.</p>
+        {% if stype_examples %}
+        <div class="table-responsive" style="max-height:300px">
+        <table class="table table-sm table-bordered mb-2" style="font-size:.78rem">
+          <thead class="table-light"><tr><th>Tag</th><th>Changes (before → after)</th></tr></thead>
+          <tbody>
+            {% for e in stype_examples %}
+            <tr><td><a href="/devices/{{ e.tag }}" target="_blank">{{ e.tag }}</a></td>
+              <td>{% for f, v in e.ch.items() %}<span class="me-3"><span class="text-muted">{{ field_labels.get(f, 'Storage Type' if f == 'storage_type' else f) }}:</span> {{ v[0] if v[0] not in (None, '') else '—' }} → <strong>{{ v[1] if v[1] not in (None, '') else '(blank)' }}</strong></span>{% endfor %}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% if stype_total > stype_examples|length %}<div class="text-muted mb-2">Showing {{ stype_examples|length }} of {{ "{:,}".format(stype_total) }}.</div>{% endif %}
+        {% endif %}
+        {% if stype_conf_total %}
+        <div class="fw-semibold mt-2">Left alone — a different size is already in the storage fields ({{ stype_conf_total }})</div>
+        <div class="table-responsive" style="max-height:220px">
+        <table class="table table-sm table-bordered mb-0" style="font-size:.78rem">
+          <thead class="table-light"><tr><th>Tag</th><th>SSD GB</th><th>Total HDD Size</th><th>Storage Type</th></tr></thead>
+          <tbody>{% for c in stype_conf %}<tr><td><a href="/devices/{{ c[0] }}" target="_blank">{{ c[0] }}</a></td><td>{{ c[1] or '—' }}</td><td>{{ c[2] or '—' }}</td><td>{{ c[3] }}</td></tr>{% endfor %}</tbody>
+        </table>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {# ── Undo: assignment WorkIDs closed by the Ready to Sale fix (2026-10-28) ── #}
   {% if rts_asgn_total %}
   <div class="col-12">

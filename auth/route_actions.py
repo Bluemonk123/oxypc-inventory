@@ -138,6 +138,8 @@ ROUTE_ACTIONS = {
     ('POST', '/returns/{return_id}/reject'): ('returns', 'edit'),  # reject_return
     # ===== routers/spare_parts.py =====
     ('GET', '/spare-parts/bulk-template'): ('spare_parts', 'export'),  # download_bulk_template: Parts Manager bulk-upload template
+    ('POST', '/spare-parts/consumption-summary'): ('spare_parts', 'export'),  # parts_consumption_summary_export: Tags + Parts Summary in one xlsx (2026-10-29)
+    ('POST', '/spare-parts/repair-summary'): ('spare_parts', 'export'),  # parts_repair_summary_export: Parts Consumption > Repair Summary (2026-10-29)
     ('POST', '/spare-parts/new'): ('spare_parts', 'add'),  # create_part
     ('POST', '/spare-parts/{part_id}/edit'): ('spare_parts', 'edit'),  # update_part
     ('POST', '/spare-parts/{part_id}/set-type'): ('spare_parts', 'edit'),  # set_part_type
@@ -325,6 +327,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/spec-repair'): None,  # spec_repair_apply: system health internals (admin-only)
     ('POST', '/admin/system/scrap-l12-close'): None,  # scrap_l12_close_apply: system health internals (admin-only)
     ('POST', '/admin/system/rts-asgn-reopen'): None,  # rts_asgn_reopen_apply: system health internals (admin-only), 2026-10-28
+    ('POST', '/admin/system/storage-type-fix'): None,  # storage_type_fix_apply: system health data fix (admin-only), 2026-10-29
     ('POST', '/admin/system/rts-wo-close'): None,  # rts_wo_close_apply: system health internals (admin-only), 2026-10-28
     ('POST', '/admin/system/stress-wo-close'): None,  # stress_wo_close_apply: system health internals (admin-only)
     ('POST', '/admin/system/cosmetic-wo-close'): None,  # cosmetic_wo_close_apply: system health internals (admin-only)

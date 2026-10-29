@@ -23,6 +23,23 @@ LABOUR_STAGES = [DeviceStage.l1, DeviceStage.l2, DeviceStage.l3, DeviceStage.qc_
                  DeviceStage.final_qc, DeviceStage.final_qc_pass_hold, DeviceStage.final_qc_fail_hold]
 
 
+async def _repair_cost_by(db: AsyncSession, keyed_devices) -> dict:
+    """{key: repair cost} summed over (key, Device) pairs, each tag counted
+    once per key (services/repair_cost.py)."""
+    from services.repair_cost import load_repair_rates, worked_and_l34_ids
+    rates = await load_repair_rates(db)
+    seen, pairs = set(), []
+    for k, d in keyed_devices:
+        if (k, d.id) not in seen:
+            seen.add((k, d.id))
+            pairs.append((k, d))
+    worked, l34 = await worked_and_l34_ids(db, list({d.id for _k, d in pairs}))
+    out: dict = {}
+    for k, d in pairs:
+        out[k] = out.get(k, 0.0) + float(rates.cost(d, str(d.id) in worked, str(d.id) in l34))
+    return out
+
+
 async def compute_year_parts_labour_cogs(db: AsyncSession, year: int) -> tuple[list, list]:
     """Returns (monthly_parts_cogs, monthly_labour_cogs) — 12-element lists,
     Jan..Dec, for `year`, with any admin overrides (/reports/business-pl/override)
@@ -47,30 +64,18 @@ async def compute_year_parts_labour_cogs(db: AsyncSession, year: int) -> tuple[l
     parts_by_month = {int(r.month): float(r.parts_cost) for r in parts_result}
     monthly_parts_cogs = [parts_by_month.get(m, 0.0) for m in range(1, 13)]
 
-    # ── Labour Cost (2026-10-15): a flat per-tag labour charge — Cost Config's
-    # "Labour Rate per Repair Attempt" (repair_labour_rate) — for every sold
-    # tag that passed through L1/L2, L3/L4, Stress Test, any Cosmetic stage or
-    # any Final QC stage (a StageMovement into one of them). Tags that never
-    # entered any of those stages carry no labour cost.
-    rate_row = (await db.execute(
-        select(CostConfig.value).where(CostConfig.key == "repair_labour_rate")
-    )).scalar_one_or_none()
-    labour_rate = float(rate_row) if rate_row is not None else 150.0
-    worked_on = (
-        select(StageMovement.device_id)
-        .where(StageMovement.to_stage.in_(LABOUR_STAGES))
-        .distinct()
-    )
-    labour_result = await db.execute(
-        select(
-            extract("month", Sale.sold_at).label("month"),
-            func.count(func.distinct(Sale.device_id)).label("tags"),
-        )
-        .where(Sale.device_id.in_(worked_on))
+    # ── Labour Cost = repair cost (2026-10-29, services/repair_cost.py): for
+    # every tag sold that month, its device category's labour (With L3/L4 rate
+    # when it has L3/L4 history; only tags worked on in L1/L2, L3/L4, Stress,
+    # Cosmetic or Final QC) + Packing + Freight Charges where they apply. Was a
+    # flat "Labour Rate per Repair Attempt" per worked-on sold tag.
+    from models.device import Device
+    sold = (await db.execute(
+        select(extract("month", Sale.sold_at).label("month"), Device)
+        .join(Device, Sale.device_id == Device.id)
         .where(extract("year", Sale.sold_at) == year)
-        .group_by(extract("month", Sale.sold_at))
-    )
-    labour_by_month = {int(r.month): int(r.tags) * labour_rate for r in labour_result}
+    )).all()
+    labour_by_month = await _repair_cost_by(db, [(int(m), d) for m, d in sold])
     monthly_labour_cogs = [labour_by_month.get(m, 0.0) for m in range(1, 13)]
 
     overrides = {
@@ -199,15 +204,10 @@ async def compute_range_revenue_profit(db: AsyncSession, start=None, end=None, d
         .outerjoin(SparePart, PartRequest.part_id == SparePart.id)
         .where(PartRequest.status == "received", *sales_where)
     )).scalar() or 0
-    rate_row = (await db.execute(
-        select(CostConfig.value).where(CostConfig.key == "repair_labour_rate")
-    )).scalar_one_or_none()
-    labour_rate = float(rate_row) if rate_row is not None else 150.0
-    worked_on = select(StageMovement.device_id).where(StageMovement.to_stage.in_(LABOUR_STAGES)).distinct()
-    labour_tags = (await db.execute(
-        select(func.count(func.distinct(Sale.device_id)))
-        .select_from(Sale).join(Device, Sale.device_id == Device.id)
-        .where(Sale.device_id.in_(worked_on), *sales_where)
-    )).scalar() or 0
+    # Labour = repair cost per sold tag (2026-10-29), same as Business P&L.
+    sold = (await db.execute(
+        select(Device).select_from(Sale).join(Device, Sale.device_id == Device.id).where(*sales_where)
+    )).scalars().all()
+    labour = sum((await _repair_cost_by(db, [(0, d) for d in sold])).values())
     revenue = float(rev or 0)
-    return revenue, revenue - float(dev or 0) - float(parts) - labour_tags * labour_rate
+    return revenue, revenue - float(dev or 0) - float(parts) - labour

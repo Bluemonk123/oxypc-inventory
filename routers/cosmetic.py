@@ -702,9 +702,13 @@ async def cosmetic_stage_list(stage_name: str, request: Request, db: AsyncSessio
             # stay parts-cost-only as before. (The "Other Price" row that used
             # to sit beside it was removed 2026-10-07; Other Rates now feed the
             # Ready to Sale Min Selling Price instead — services/ready_pricing.py.)
-            _cfg_rows = (await db.execute(select(CostConfig))).scalars().all()
-            _cfg = {r.key: float(r.value) for r in _cfg_rows}
-            labour_rate = _cfg.get("repair_labour_rate", 150.0)
+            # Repair cost (2026-10-29, services/repair_cost.py) replaces the
+            # flat Labour Rate: Labor Rate by device type (With L3/L4 when the
+            # tag had L3/L4) + Packing + Freight where they apply. Still
+            # informational — not folded into After Repair / Updated Price.
+            from services.repair_cost import load_repair_rates, worked_and_l34_ids
+            _rr = await load_repair_rates(db)
+            _worked, _l34 = await worked_and_l34_ids(db, [d.id for d, _ in devices])
 
             for d, _ in devices:
                 if d.device_price is not None:
@@ -724,7 +728,10 @@ async def cosmetic_stage_list(stage_name: str, request: Request, db: AsyncSessio
                     "changed_parts_cost": changed_cost,
                     "after_repair_price": after_repair_price,
                     "updated_price": after_repair_price,
-                    "labour_price": labour_rate,
+                    # At Final QC a tag has been worked on by definition.
+                    **{"repair_" + k: float(v) for k, v in _rr.breakdown(
+                        d, True, str(d.id) in _l34).items()},
+                    "had_l34": str(d.id) in _l34,
                 }
 
         bucket_ids_for_page = {d.bucket_id for d, _ in devices if d.bucket_id}

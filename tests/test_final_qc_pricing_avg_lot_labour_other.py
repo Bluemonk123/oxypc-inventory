@@ -134,7 +134,7 @@ def test_labour_and_other_price_rows_read_cost_config(app_client, make_user):  #
     barcode = f"ITFQCCFG{suffix}"
     _seed(barcode, device_price=1000, lot_buying_price=2000, lot_qty=1)
     _set_cost_config("repair_labour_rate", "175.00")
-    _set_cost_config("cosmetic_rate", "65.00")
+    _set_cost_config("packing_rate", "65.00")
     try:
         username, password = make_user("admin")
         _login(app_client, username, password)
@@ -142,22 +142,24 @@ def test_labour_and_other_price_rows_read_cost_config(app_client, make_user):  #
         assert barcode in html
 
         row = html.split(f'href="/devices/{barcode}"', 1)[1][:20000]
-        assert "Labour Price" in row and "175.00" in row
-        # Other Price was removed from the Pricing section 2026-10-07 — Other
-        # Rates now feed Ready to Sale's Min Selling Price instead.
-        assert "Other Price" not in row
+        # 2026-10-29: "Labour Price" (flat Labour Rate) became "Repair Cost" —
+        # Labor Rate by device type + Packing (packing_rate, "On Tags" by
+        # default) + Freight. services/repair_cost.py
+        assert "Repair Cost" in row and "Packing ₹65" in row
+        assert "Labour Price" not in row and "Other Price" not in row
     finally:
         _cleanup(barcode)
         # Restore the seeded defaults so other tests/pages aren't affected.
         _set_cost_config("repair_labour_rate", "150.00")
-        _set_cost_config("cosmetic_rate", "50.00")
+        _set_cost_config("packing_rate", "0.00")
 
 
 def test_cost_config_page_shows_renamed_other_rates_label(app_client, make_user):  # noqa: F811
     username, password = make_user("admin")
     _login(app_client, username, password)
     html = app_client.get("/admin/cost-config", follow_redirects=True).text
-    assert "Other Rates" in html
+    # 2026-10-29: "Other Rates per Device" is now "Packing Charges".
+    assert "Packing Charges" in html and "Other Rates per Device" not in html
     assert "Cosmetic Rework" not in html
     # Underlying key is unchanged — every other CostConfig reader still works.
-    assert 'name="cosmetic_rate"' in html
+    assert 'name="packing_rate"' in html and 'name="cosmetic_rate"' not in html

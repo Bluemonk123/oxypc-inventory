@@ -118,6 +118,32 @@ def storage_text(d):
                            or (getattr(d, "hdd_summary", None) or "").strip() or None)
 
 
+def storage_type_label(t) -> str:
+    """Storage Type only when it really is a type (SSD, HDD, NVMe...). Some
+    uploads put a SIZE in it ("256 GB", "0") — that is not a type."""
+    t = (t or "").strip()
+    return "" if not t or any(ch.isdigit() for ch in t) else t
+
+
+def storage_display(d) -> str:
+    """Storage for a summary row (2026-10-29): the size (Total HDD Size, else
+    Storage GB, else Hard Drive summary; a zero never counts), then the
+    Storage Type when it is a real type. A size sitting in Storage Type is
+    used only when the tag has no other size — it used to be appended as the
+    type, showing "256 GB 256 GB"."""
+    size = ""
+    for v in ((getattr(d, "total_hdd_size", None) or "").strip(),
+              gb_text_spaced(getattr(d, "storage_gb", None) or getattr(d, "hdd_capacity_gb", None)),
+              (getattr(d, "hdd_summary", None) or "").strip()):
+        if v and not _is_zero(v):
+            size = space_size_text(v)
+            break
+    st = (getattr(d, "storage_type", None) or "").strip()
+    if not size and st and any(ch.isdigit() for ch in st) and not _is_zero(st):
+        size = space_size_text(st)
+    return " ".join(x for x in (size, storage_type_label(st)) if x)
+
+
 # ── RAM / Storage entered the wrong way round (2026-10-27) ──────────────────
 # No laptop / desktop here has more than 128 GB of RAM, and a drive of 4–64 GB
 # fits a RAM size. RAM over 128 GB together with such a drive means the two

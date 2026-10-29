@@ -64,6 +64,81 @@ async def _computed_stock(part_id, db: AsyncSession) -> int:
     return stock_in - stock_out
 
 
+async def _parts_consumption_rows(db, added_from="", added_to="", category="", part_name="", engineer=""):
+    """Parts Consumption tab rows — one per (tag, part) "Part Changed"
+    PartRequest roll-up, with the global filter bar applied. Shared by the
+    page and its Repair Summary export (2026-10-29)."""
+    from datetime import date
+    changed_rows = (await db.execute(
+        select(PartRequest, Device.barcode, Lot.lot_number, Device.brand, Device.model)
+        .join(Device, PartRequest.device_id == Device.id)
+        .outerjoin(Lot, Device.lot_id == Lot.id)
+        .where(PartRequest.status == "received")
+    )).all()
+    changed_part_ids = {r.part_id for r, _, _, _, _ in changed_rows if r.part_id}
+    changed_sp_by_id = {}
+    if changed_part_ids:
+        changed_sp_by_id = {
+            sp.id: sp for sp in (await db.execute(
+                select(SparePart).where(SparePart.id.in_(changed_part_ids))
+            )).scalars().all()
+        }
+
+    def _pc_in_date_range(actioned_at):
+        if added_from:
+            try:
+                f = date.fromisoformat(added_from)
+                if not actioned_at or actioned_at.date() < f:
+                    return False
+            except ValueError:
+                pass
+        if added_to:
+            try:
+                t = date.fromisoformat(added_to)
+                if not actioned_at or actioned_at.date() > t:
+                    return False
+            except ValueError:
+                pass
+        return True
+
+    tag_consumption = {}
+    for r, barcode, lot_number, tag_make, tag_model in changed_rows:
+        if not _pc_in_date_range(r.actioned_at):
+            continue
+        sp = changed_sp_by_id.get(r.part_id)
+        # Category / Part Name / Engineer apply here too (2026-10-19), so the
+        # global filter bar covers every tab. Date stays the Verify date above.
+        if category and ((sp.category if sp else r.part_category) or "").strip().lower() != category.strip().lower():
+            continue
+        if part_name and ((sp.name if sp else r.part_name) or "").strip().lower() != part_name.strip().lower():
+            continue
+        if engineer and (r.engineer_name or r.requested_by or "").strip().lower() != engineer.strip().lower():
+            continue
+        unit_price = float(sp.unit_price) if sp else 0.0
+        # NOT `part_name` — that's this route's own Part Name FILTER query
+        # param (see the function signature), and reusing the name here
+        # silently clobbered it with whichever row happened to be last in
+        # `changed_rows`, which is what the Part Name dropdown was echoing
+        # back as "selected" regardless of what was actually picked (or on
+        # a totally filter-less page load).
+        consumed_part_name = (sp.name if sp else r.part_name) or "—"
+        qty = r.qty_handed_over or 0
+        key = (barcode, r.part_id or consumed_part_name)
+        row = tag_consumption.setdefault(key, {
+            "tag_number": barcode, "lot_number": lot_number, "device_id": r.device_id, "engineers": set(),
+            "tag_make": tag_make or "—", "tag_model": tag_model or "—",
+            "part_name": consumed_part_name,
+            "unit_price": unit_price, "total_qty": 0, "total_price": 0.0, "date_added": None,
+        })
+        row["total_qty"] += qty
+        if (r.engineer_name or r.requested_by or "").strip():
+            row["engineers"].add((r.engineer_name or r.requested_by).strip())
+        row["total_price"] += unit_price * qty
+        if r.actioned_at and (row["date_added"] is None or r.actioned_at > row["date_added"]):
+            row["date_added"] = r.actioned_at
+    return sorted(tag_consumption.values(), key=lambda r: (r["tag_number"] or "", r["part_name"] or ""))
+
+
 @router.get("/spare-parts", response_class=HTMLResponse)
 async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
                      current_user: User = Depends(allowed),
@@ -239,73 +314,7 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
     # — the same global Added From/To filter now applies here too, against
     # that per-row timestamp (the MAX one contributing to a rolled-up row,
     # when several handovers of the same part landed on different dates).
-    changed_rows = (await db.execute(
-        select(PartRequest, Device.barcode, Lot.lot_number, Device.brand, Device.model)
-        .join(Device, PartRequest.device_id == Device.id)
-        .outerjoin(Lot, Device.lot_id == Lot.id)
-        .where(PartRequest.status == "received")
-    )).all()
-    changed_part_ids = {r.part_id for r, _, _, _, _ in changed_rows if r.part_id}
-    changed_sp_by_id = {}
-    if changed_part_ids:
-        changed_sp_by_id = {
-            sp.id: sp for sp in (await db.execute(
-                select(SparePart).where(SparePart.id.in_(changed_part_ids))
-            )).scalars().all()
-        }
-
-    def _pc_in_date_range(actioned_at):
-        if added_from:
-            try:
-                f = date.fromisoformat(added_from)
-                if not actioned_at or actioned_at.date() < f:
-                    return False
-            except ValueError:
-                pass
-        if added_to:
-            try:
-                t = date.fromisoformat(added_to)
-                if not actioned_at or actioned_at.date() > t:
-                    return False
-            except ValueError:
-                pass
-        return True
-
-    tag_consumption = {}
-    for r, barcode, lot_number, tag_make, tag_model in changed_rows:
-        if not _pc_in_date_range(r.actioned_at):
-            continue
-        sp = changed_sp_by_id.get(r.part_id)
-        # Category / Part Name / Engineer apply here too (2026-10-19), so the
-        # global filter bar covers every tab. Date stays the Verify date above.
-        if category and ((sp.category if sp else r.part_category) or "").strip().lower() != category.strip().lower():
-            continue
-        if part_name and ((sp.name if sp else r.part_name) or "").strip().lower() != part_name.strip().lower():
-            continue
-        if engineer and (r.engineer_name or r.requested_by or "").strip().lower() != engineer.strip().lower():
-            continue
-        unit_price = float(sp.unit_price) if sp else 0.0
-        # NOT `part_name` — that's this route's own Part Name FILTER query
-        # param (see the function signature), and reusing the name here
-        # silently clobbered it with whichever row happened to be last in
-        # `changed_rows`, which is what the Part Name dropdown was echoing
-        # back as "selected" regardless of what was actually picked (or on
-        # a totally filter-less page load).
-        consumed_part_name = (sp.name if sp else r.part_name) or "—"
-        qty = r.qty_handed_over or 0
-        key = (barcode, r.part_id or consumed_part_name)
-        row = tag_consumption.setdefault(key, {
-            "tag_number": barcode, "lot_number": lot_number,
-            "tag_make": tag_make or "—", "tag_model": tag_model or "—",
-            "part_name": consumed_part_name,
-            "unit_price": unit_price, "total_qty": 0, "total_price": 0.0, "date_added": None,
-        })
-        row["total_qty"] += qty
-        row["total_price"] += unit_price * qty
-        if r.actioned_at and (row["date_added"] is None or r.actioned_at > row["date_added"]):
-            row["date_added"] = r.actioned_at
-    tag_consumption_rows = sorted(tag_consumption.values(),
-                                  key=lambda r: (r["tag_number"] or "", r["part_name"] or ""))
+    tag_consumption_rows = await _parts_consumption_rows(db, added_from, added_to, category, part_name, engineer)
     tag_consumption_tag_count = len({r["tag_number"] for r in tag_consumption_rows})
 
     # Parts consumed this month (count)
@@ -487,6 +496,200 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
         "filter_category": category, "filter_part_name": part_name,
         "filter_engineer": engineer, "engineer_options": engineer_options,
     })
+
+
+async def build_repair_summary_xlsx(db, device_ids, parts_by_device) -> bytes:
+    """Repair Summary workbook (2026-10-29): one row per tag, in device_ids
+    order — details, every changed part side by side (Part N Name / Part N
+    Cost, as many pairs as the busiest tag needs), Total Parts Cost, Labour /
+    Packing / Freight (Additional Rates, services/repair_cost.py), Grand
+    Total. parts_by_device = {device_id: [Parts Consumption rows]} — a tag
+    with no parts still gets its row. Used by Parts Manager (Parts
+    Consumption tab) and WorkID Status."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill, Alignment
+    from openpyxl.utils import get_column_letter
+    from models.device import STAGE_LABELS, StageMovement, DeviceStage
+    from models.grn_import import GRNImport
+    from services.pna_lookup import active_pna_parts
+    from services.repair_cost import load_repair_rates, worked_and_l34_ids, device_category
+    from utils.device_spec import ram_text, storage_text
+    from routers.devices import _build_location_map
+
+    dev_ids = list(dict.fromkeys(d for d in device_ids if d))
+    devices = {}
+    for i in range(0, len(dev_ids), 5000):
+        for d in (await db.execute(select(Device).where(Device.id.in_(dev_ids[i:i + 5000])))).scalars().all():
+            devices[d.id] = d
+    grn_nums = {d.grn_number for d in devices.values() if d.grn_number}
+    grn_date = {}
+    if grn_nums:
+        for num, gd, ca in (await db.execute(
+            select(GRNImport.grn_number, GRNImport.grn_date, GRNImport.created_at)
+            .where(GRNImport.grn_number.in_(grn_nums)))).all():
+            grn_date[num] = gd or (ca.date() if ca else None)
+    fqc_pass = {}
+    for i in range(0, len(dev_ids), 5000):
+        for did, at in (await db.execute(
+            select(StageMovement.device_id, func.max(StageMovement.moved_at))
+            .where(StageMovement.device_id.in_(dev_ids[i:i + 5000]), StageMovement.from_stage == DeviceStage.final_qc,
+                   StageMovement.to_stage.in_([DeviceStage.final_qc_pass_hold, DeviceStage.ready_to_sale]))
+            .group_by(StageMovement.device_id))).all():
+            fqc_pass[did] = at
+    # In batches: one query can carry at most 32,767 values (WorkID Status
+    # with no date range covers every tag).
+    loc_map, pna = {}, {}
+    for i in range(0, len(dev_ids), 10000):
+        chunk = dev_ids[i:i + 10000]
+        loc_map.update(await _build_location_map(db, chunk))
+        pna.update(await active_pna_parts(db, set(chunk)))
+    rates = await load_repair_rates(db)
+    worked, l34 = await worked_and_l34_ids(db, dev_ids)
+
+    n_parts = max((len(parts_by_device.get(d, ())) for d in dev_ids), default=0)
+    head = ["Tag Number", "GRN", "Invoice Number", "Entity", "Device Type", "Grade", "Make", "Model", "CPU",
+            "CPU Gen", "RAM", "Storage", "Screen Size", "Location ID", "Engineer Name", "Status", "PNA",
+            "GRN Date", "Final QC Pass Date"]
+    for i in range(1, n_parts + 1):
+        head += [f"Part {i} Name", f"Part {i} Cost"]
+    head += ["Total Parts Cost", "Labour Cost", "Packing Cost", "Freight Cost", "Grand Total"]
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Repair Summary"
+    ws.append(head)
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="0E3A7A")
+        c.alignment = Alignment(vertical="center")
+
+    for did in dev_ids:
+        d = devices.get(did)
+        if d is None:
+            continue
+        parts = parts_by_device.get(did, [])
+        sid = str(did)
+        bd = rates.breakdown(d, sid in worked, sid in l34)
+        parts_total = round(sum(float(p["total_price"]) for p in parts), 2)
+        engineers = sorted({e for p in parts for e in p.get("engineers", ())})
+        loc = (loc_map.get(sid) or {}).get("unit_id") or ""
+        stage = STAGE_LABELS.get(d.current_stage, getattr(d.current_stage, "value", "") or "")
+        line = [d.barcode, d.grn_number or "", d.invoice_number or "", d.entity or "",
+                device_category(d), getattr(d.grade, "value", d.grade) or "", d.brand or "", d.model or "",
+                d.cpu or "", d.generation or "", ram_text(d) or "", storage_text(d) or "",
+                d.screen_size or "", loc, ", ".join(engineers), stage,
+                "Yes" if pna.get(did) else "No",
+                grn_date.get(d.grn_number), fqc_pass.get(did)]
+        for p in parts:
+            name = p["part_name"] + (f" x{p['total_qty']}" if (p.get("total_qty") or 0) > 1 else "")
+            line += [name, round(float(p["total_price"]), 2)]
+        line += ["", None] * (n_parts - len(parts))
+        grand = parts_total + float(bd["labour"]) + float(bd["packing"]) + float(bd["freight"])
+        line += [parts_total, float(bd["labour"]), float(bd["packing"]), float(bd["freight"]), round(grand, 2)]
+        ws.append(line)
+
+    gd_col, fq_col = head.index("GRN Date") + 1, head.index("Final QC Pass Date") + 1
+    for row in ws.iter_rows(min_row=2):
+        row[gd_col - 1].number_format = "dd-mm-yyyy"
+        row[fq_col - 1].number_format = "dd-mm-yyyy hh:mm"
+    ws.freeze_panes = "B2"
+    for i, col in enumerate(ws.iter_cols(min_row=1, max_row=min(ws.max_row, 300)), start=1):
+        width = max((len(str(c.value)) for c in col if c.value is not None), default=8)
+        ws.column_dimensions[get_column_letter(i)].width = min(max(width + 2, 10), 40)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def _xlsx_response(data: bytes, name: str):
+    return StreamingResponse(io.BytesIO(data),
+                             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                             headers={"Content-Disposition": f'attachment; filename="{name}"'})
+
+
+async def _consumption_rows_from_form(db, form):
+    """Parts Consumption rows for an export POST: the filter bar's fields, and
+    (tags_given=1) only the tags the table's own search still shows."""
+    rows = await _parts_consumption_rows(
+        db, form.get("added_from", ""), form.get("added_to", ""), form.get("category", ""),
+        form.get("part_name", ""), form.get("engineer", ""))
+    if form.get("tags_given") == "1":
+        only = {t.strip() for t in (form.get("tags") or "").split(",") if t.strip()}
+        rows = [r for r in rows if r["tag_number"] in only]
+    return rows
+
+
+@router.post("/spare-parts/repair-summary")
+async def parts_repair_summary_export(request: Request, db: AsyncSession = Depends(get_db),
+                                      current_user: User = Depends(allowed)):
+    """Parts Consumption tab -> "Repair Summary" (2026-10-29): the tags in the
+    table (its filter bar and search), one row each — build_repair_summary_xlsx."""
+    rows = await _consumption_rows_from_form(db, await request.form())
+    by_tag: dict = {}
+    for r in rows:
+        by_tag.setdefault(r["device_id"], []).append(r)
+    order = sorted(by_tag, key=lambda d: by_tag[d][0]["tag_number"] or "")
+    data = await build_repair_summary_xlsx(db, order, by_tag)
+    await audit(db, user=current_user, action="EXPORT_REPAIR_SUMMARY", table_name="part_requests",
+                record_id=f"{len(order)} tags", new_value={"tags": len(order), "from": "parts_consumption"},
+                request=request)
+    await db.commit()
+    return _xlsx_response(data, f"repair_summary_{app_now().strftime('%Y-%m-%d')}.xlsx")
+
+
+@router.post("/spare-parts/consumption-summary")
+async def parts_consumption_summary_export(request: Request, db: AsyncSession = Depends(get_db),
+                                           current_user: User = Depends(allowed)):
+    """Parts Consumption tab -> "Consumption Summary" (2026-10-29): the former
+    Tags Summary + Parts Summary in one workbook — sheet "Tag Summary" (the
+    table's rows) and sheet "Parts Summary" (one row per part name: count,
+    unit price, total). Same rows as the table (filter bar + search). Prices
+    only for roles with Parts Manager Pricing, as on the page."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    from models.role_permissions import has_perm
+    rows = await _consumption_rows_from_form(db, await request.form())
+    pricing = has_perm(getattr(current_user.role, "value", current_user.role), "spare_parts", "pricing")
+
+    wb = Workbook()
+
+    def sheet(ws, head, lines):
+        ws.append(head)
+        for c in ws[1]:
+            c.font = Font(bold=True, color="FFFFFF")
+            c.fill = PatternFill("solid", fgColor="0E3A7A")
+        for ln in lines:
+            ws.append(ln)
+        ws.freeze_panes = "A2"
+        for i, col in enumerate(ws.iter_cols(min_row=1, max_row=min(ws.max_row, 300)), start=1):
+            width = max((len(str(c.value)) for c in col if c.value is not None), default=8)
+            ws.column_dimensions[get_column_letter(i)].width = min(max(width + 2, 10), 40)
+
+    ws = wb.active
+    ws.title = "Tag Summary"
+    sheet(ws, ["Tag Number", "Tag Make", "Tag Model", "Lot Number", "Date Added", "Part Name Used",
+               "Total Part Changed"] + (["Unit Price", "Total Price"] if pricing else []),
+          [[r["tag_number"], r["tag_make"], r["tag_model"], r["lot_number"] or "",
+            r["date_added"].strftime("%d-%m-%Y") if r["date_added"] else "", r["part_name"], r["total_qty"]]
+           + ([round(r["unit_price"], 2), round(r["total_price"], 2)] if pricing else [])
+           for r in rows])
+    by_part: dict = {}
+    for r in rows:
+        p = by_part.setdefault(r["part_name"], {"qty": 0, "total": 0.0, "unit": r["unit_price"], "tags": set()})
+        p["qty"] += r["total_qty"] or 0
+        p["total"] += r["total_price"] or 0
+        p["tags"].add(r["tag_number"])
+    sheet(wb.create_sheet("Parts Summary"),
+          ["Part Name", "Part Count", "Tags"] + (["Unit Price", "Total Part Price"] if pricing else []),
+          [[name, p["qty"], len(p["tags"])] + ([round(p["unit"], 2), round(p["total"], 2)] if pricing else [])
+           for name, p in sorted(by_part.items(), key=lambda kv: (-kv[1]["qty"], kv[0]))])
+    buf = io.BytesIO()
+    wb.save(buf)
+    await audit(db, user=current_user, action="EXPORT_CONSUMPTION_SUMMARY", table_name="part_requests",
+                record_id=f"{len(rows)} rows", new_value={"rows": len(rows)}, request=request)
+    await db.commit()
+    return _xlsx_response(buf.getvalue(), f"consumption_summary_{app_now().strftime('%Y-%m-%d')}.xlsx")
 
 
 @router.get("/spare-parts/new", response_class=HTMLResponse)

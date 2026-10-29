@@ -686,10 +686,6 @@ async def lot_detail(lot_id: str, request: Request, db: AsyncSession = Depends(g
     line_items = li_result.scalars().all()
 
     # ── Profit calculation (same COGS formula as dashboard lot_pl) ──────────
-    _cfg_result = await db.execute(select(CostConfig))
-    _cfg = {r.key: float(r.value) for r in _cfg_result.scalars().all()}
-    repair_labour_rate = _cfg.get("repair_labour_rate", 150.0)
-    cosmetic_rate      = _cfg.get("cosmetic_rate", 50.0)
 
     revenue_result = await db.execute(
         select(func.coalesce(func.sum(Sale.sale_price), 0))
@@ -704,26 +700,13 @@ async def lot_detail(lot_id: str, request: Request, db: AsyncSession = Depends(g
     )
     parts_cost = float(parts_result.scalar() or 0)
 
-    labour_result = await db.execute(
-        select(
-            func.coalesce(func.sum(RepairAttempt.cost), 0),
-            func.count(RepairAttempt.id),
-        )
-        .join(Device, RepairAttempt.device_id == Device.id)
-        .where(Device.lot_id == lot.id)
-    )
-    labour_row = labour_result.one()
-    labour_actual = float(labour_row[0] or 0)
-    attempt_count = int(labour_row[1] or 0)
-    labour_cost = labour_actual if labour_actual > 0 else (attempt_count * repair_labour_rate)
-
-    cosmetic_result = await db.execute(
-        select(func.count(StageMovement.id))
-        .join(Device, StageMovement.device_id == Device.id)
-        .where(Device.lot_id == lot.id, StageMovement.to_stage == DeviceStage.cleaning)
-    )
-    cosmetic_count = int(cosmetic_result.scalar() or 0)
-    cosmetic_cost  = cosmetic_count * cosmetic_rate
+    # Repair cost (2026-10-29, services/repair_cost.py) — same as the
+    # Dashboard's Lot P&L: Labour of worked-on tags + Packing/Freight of sold
+    # tags. lot_cosmetic_cost now carries Packing + Freight.
+    from services.repair_cost import lot_repair_costs
+    _lab, _pf, _ = (await lot_repair_costs(db, lot_ids=[lot.id])).get(lot.id, (0, 0, 0))
+    labour_cost = float(_lab)
+    cosmetic_cost = float(_pf)
 
     buying     = float(lot.buying_price or 0)
     total_cost = buying + parts_cost + labour_cost + cosmetic_cost

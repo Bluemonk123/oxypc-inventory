@@ -946,6 +946,7 @@ async def iqc_bulk_apply_grade_type(
     total_hdd_size: str = Form(""),
     hdd_summary: str = Form(""),
     touch_type: str = Form(""),
+    screen_size: str = Form(""),
     stock_type: str = Form(""),
     sub_lot_number: str = Form(""),
     to_stage: str = Form(default=None),
@@ -1022,7 +1023,7 @@ async def iqc_bulk_apply_grade_type(
             and not total_ram_count.strip() and not total_ram_size.strip()
             and not total_hdd_count.strip() and not total_hdd_size.strip()
             and not hdd_summary.strip() and not touch_type.strip() and not to_stage
-            and not stock_type.strip() and not bin_location):
+            and not stock_type.strip() and not bin_location and not screen_size.strip()):
         return RedirectResponse(url=f"{return_to}?error=Select+a+field+to+apply", status_code=302)
 
     result = await db.execute(select(Device).where(Device.barcode.in_(barcodes)))
@@ -1151,10 +1152,25 @@ async def iqc_bulk_apply_grade_type(
             device.cpu_make = cpu_make.strip()
         if generation.strip():
             device.generation = generation.strip()
-        if ram_gb.strip() and ram_gb.strip().isdigit():
-            device.ram_gb = int(ram_gb.strip())
-        if storage_gb.strip() and storage_gb.strip().isdigit():
-            device.storage_gb = int(storage_gb.strip())
+        # RAM / Storage (fixed 2026-10-29): the tables show Total RAM Size /
+        # Total HDD Size first (utils/device_spec.ram_text / storage_text), so
+        # setting only ram_gb / storage_gb changed nothing visible on any tag
+        # that already had a size text. Same fields as an upload's RAM /
+        # Storage cells (upload_spec): GB number, size text and summary
+        # together. The stick / drive count is kept unless it was blank — one
+        # number here doesn't say how many sticks.
+        _ram = ram_gb.strip() if ram_gb.strip().isdigit() and int(ram_gb.strip()) > 0 else None
+        _sto = storage_gb.strip() if storage_gb.strip().isdigit() and int(storage_gb.strip()) > 0 else None
+        if _ram or _sto:
+            from utils.device_spec import upload_spec
+            for _k, _v in upload_spec(_ram, _sto).items():
+                if _k in ("total_ram_count", "total_hdd_count") and (getattr(device, _k, None) or "").strip():
+                    continue
+                setattr(device, _k, _v)
+        # Screen Size (2026-10-29): free text from the Customise modal
+        # (suggestions = Master Data "Screen Sizes"); column is 20 chars.
+        if screen_size.strip():
+            device.screen_size = screen_size.strip()[:20]
         if total_ram_count.strip():
             device.total_ram_count = total_ram_count.strip()
         if total_ram_size.strip():

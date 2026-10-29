@@ -99,13 +99,15 @@
             </div>
           </div>
           <div class="row g-2 mb-2">
+            {# Screen Size (2026-10-29): suggestions from Master Data "Screen Sizes";
+               any text up to 20 characters. Blank = leave unchanged. #}
             <div class="col-md-4">
-              <label class="form-label small">Touch Type</label>
-              <select name="touch_type" class="form-select form-select-sm">
-                <option value="">— Leave unchanged —</option>
-                <option value="touch">Touch (T)</option>
-                <option value="non_touch">Non-Touch (NT)</option>
-              </select>
+              <label class="form-label small">Screen Size</label>
+              <input type="text" name="screen_size" maxlength="20" list="customiseScreenSizes"
+                     class="form-control form-control-sm" placeholder="Leave blank to leave unchanged">
+              <datalist id="customiseScreenSizes">
+                {% for v in master_options('screen_size') %}<option value="{{ v }}">{% endfor %}
+              </datalist>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Device Price</label>
@@ -125,6 +127,15 @@
                beside it; Finish Good / In Progress clear it, and the tag then shows
                Finish Good or In Progress from its stage (Ready to Sale / Sold =
                Finish Good). Same rule as stock_type_key in routers/devices.py. #}
+            {# Touch Type moved before Stock Type (2026-10-29). #}
+            <div class="col-md-4">
+              <label class="form-label small">Touch Type</label>
+              <select name="touch_type" class="form-select form-select-sm">
+                <option value="">— Leave unchanged —</option>
+                <option value="touch">Touch (T)</option>
+                <option value="non_touch">Non-Touch (NT)</option>
+              </select>
+            </div>
             <div class="col-md-4">
               <label class="form-label small">Stock Type</label>
               <select name="stock_type" id="customiseStockType" class="form-select form-select-sm"

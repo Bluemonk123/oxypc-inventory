@@ -119,7 +119,7 @@
       <thead class="table-dark">
         <tr>
           <th>Month</th><th>Revenue</th>
-          <th>Device Cost</th><th title="Parts verified as changed on the tags sold that month (Parts Manager → Parts Consumption), qty × unit price">Parts Cost</th><th title="Labour Rate per Repair Attempt (Cost Config) × tags sold that month that went through L1/L2, L3/L4, Stress Test, Cosmetic or Final QC">Labour Cost</th><th>Total Cost</th>
+          <th>Device Cost</th><th title="Parts verified as changed on the tags sold that month (Parts Manager → Parts Consumption), qty × unit price">Parts Cost</th><th title="Repair cost of the tags sold that month (Additional Rates): Labor Rate by device type — With L3/L4 when the tag had L3/L4 — for tags worked on in L1/L2, L3/L4, Stress, Cosmetic or Final QC, + Packing + Freight Charges where they apply">Labour Cost</th><th>Total Cost</th>
           <th>Gross Profit</th><th>Margin %</th>
           {% if current_user.role.value == 'admin' %}<th>Action</th>{% endif %}
         </tr>

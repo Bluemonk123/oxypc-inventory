@@ -112,16 +112,14 @@ async def lot_pl_report(request: Request, db: AsyncSession = Depends(get_db), cu
         .where(live_dev, Device.current_stage == DeviceStage.sold)
         .group_by(Device.lot_id))}
 
-    # Labour per lot, and per sold device
-    labour_by_lot = {str(r.lot_id): float(r.labour) for r in await db.execute(
-        select(Device.lot_id, func.coalesce(func.sum(RepairAttempt.cost), 0).label("labour"))
-        .join(RepairAttempt, RepairAttempt.device_id == Device.id).where(live_dev)
-        .group_by(Device.lot_id))}
-    sold_labour_by_lot = {str(r.lot_id): float(r.labour) for r in await db.execute(
-        select(Device.lot_id, func.coalesce(func.sum(RepairAttempt.cost), 0).label("labour"))
-        .join(RepairAttempt, RepairAttempt.device_id == Device.id)
-        .where(live_dev, Device.current_stage == DeviceStage.sold)
-        .group_by(Device.lot_id))}
+    # Labour per lot = repair cost (2026-10-29, services/repair_cost.py):
+    # Labor Rates for worked-on tags + Packing/Freight on sold tags. "Sold"
+    # share = the sold tags' labour + their Packing/Freight. Was the
+    # engineers' RepairAttempt costs.
+    from services.repair_cost import lot_repair_costs
+    _rc = await lot_repair_costs(db)
+    labour_by_lot = {str(k): float(v[0] + v[1]) for k, v in _rc.items()}
+    sold_labour_by_lot = {str(k): float(v[2] + v[1]) for k, v in _rc.items()}
 
     # Device counts, sold counts, and buying cost of sold devices
     count_by_lot, sold_by_lot, sold_priced, sold_unpriced = {}, {}, {}, {}
@@ -859,11 +857,9 @@ async def _lot_pl_csv(db: AsyncSession, lot_ids=None) -> Response:
     )
     parts_by_lot = {str(r.lot_id): float(r.parts) for r in parts_rows}
 
-    labour_rows = await db.execute(
-        select(Device.lot_id, func.coalesce(func.sum(RepairAttempt.cost), 0).label("labour"))
-        .join(RepairAttempt, RepairAttempt.device_id == Device.id).group_by(Device.lot_id)
-    )
-    labour_by_lot = {str(r.lot_id): float(r.labour) for r in labour_rows}
+    # Labour = repair cost, same as the page (2026-10-29).
+    from services.repair_cost import lot_repair_costs
+    labour_by_lot = {str(k): float(v[0] + v[1]) for k, v in (await lot_repair_costs(db)).items()}
 
     output = io.StringIO()
     writer = csv.writer(output)

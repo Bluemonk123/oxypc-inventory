@@ -98,12 +98,17 @@ async def _ready_tags(db: AsyncSession, barcodes=None, q: str = "", limit: int =
             query.where(or_(Device.barcode.ilike(like), Device.serial_no.ilike(like),
                             Device.brand.ilike(like), Device.model.ilike(like)))
             .order_by(Device.barcode).limit(limit or 50))).all()
+    # Repair cost per tag (2026-10-29) — same Min Selling Price as Ready for Sale.
+    from services.repair_cost import load_repair_rates, worked_and_l34_ids
+    _rr = await load_repair_rates(db)
+    _worked, _l34 = await worked_and_l34_ids(db, [d.id for d, *_ in rows])
     out = []
     for d, buying, qty in rows:
         if d.min_selling_price is not None:
             mp = Decimal(d.min_selling_price)
         else:
-            mp = tag_min_price(unit_price(d, buying, qty), rates)
+            mp = tag_min_price(unit_price(d, buying, qty), rates,
+                               _rr.cost(d, str(d.id) in _worked, str(d.id) in _l34))
         out.append((d, mp))
     return out
 

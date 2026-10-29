@@ -482,11 +482,19 @@
       <strong class="small text-nowrap"><i class="bi bi-clipboard-data me-1"></i>Parts Consumption
         <span id="pcCounts" class="text-muted fw-normal ms-1">{{ tag_consumption_tag_count }} tag(s), {{ tag_consumption_rows|length }} part row(s)</span></strong>
       <div class="d-flex gap-2 flex-wrap align-items-center">
-        <button {% if not can(current_user, 'spare_parts', 'export') %}hidden {% endif %}id="pcExportBtn" type="button" class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExport('partsConsumptionTable',false)">
-          <i class="bi bi-file-earmark-arrow-down me-1"></i>Tags Summary
+        {# Consumption Summary (2026-10-29): the former Tags Summary + Parts
+           Summary in one xlsx (sheets "Tag Summary" and "Parts Summary"),
+           built on the server from the same filtered rows. #}
+        <button {% if not can(current_user, 'spare_parts', 'export') %}hidden {% endif %}id="pcExportBtn" type="button" class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spPostConsumptionExport('/spare-parts/consumption-summary')"
+                title="One file, two sheets: Tag Summary (the table's rows) and Parts Summary (one row per part name)">
+          <i class="bi bi-file-earmark-arrow-down me-1"></i>Consumption Summary
         </button>
-        <button {% if not can(current_user, 'spare_parts', 'export') %}hidden {% endif %}id="pcExportPartsSummaryBtn" type="button" class="btn btn-outline-secondary btn-sm text-nowrap" onclick="spExportPartsSummary()">
-          <i class="bi bi-file-earmark-arrow-down me-1"></i>Parts Summary
+        {# Repair Summary (2026-10-29): one row per tag, every changed part side by
+           side + Labour / Packing / Freight (Additional Rates) — xlsx built on the
+           server from the same filtered rows (POST /spare-parts/repair-summary). #}
+        <button {% if not can(current_user, 'spare_parts', 'export') %}hidden {% endif %}id="pcExportRepairSummaryBtn" type="button" class="btn btn-outline-primary btn-sm text-nowrap" onclick="spPostConsumptionExport('/spare-parts/repair-summary')"
+                title="One row per tag: details, each changed part's name and cost, Total Parts Cost, Labour, Packing, Freight and Grand Total">
+          <i class="bi bi-file-earmark-arrow-down me-1"></i>Repair Summary
         </button>
       </div>
     </div>
@@ -1108,34 +1116,28 @@ function spExport(tableId, selectedOnly) {
   });
   _downloadCsv(tableId + '.csv', headers, rows);
 }
-// Parts Summary — aggregates the Parts Consumption table (one row per
-// tag x part) into one row per distinct Part Name: total quantity consumed
-// across every tag it was used on, its unit price, and unit price x qty.
-function spExportPartsSummary() {
-  var all = _readAllTableRows('partsConsumptionTable');
-  var idx = {
-    part: all.headers.indexOf('Part Name Used'),
-    qty: all.headers.indexOf('Total Part Changed'),
-    unitPrice: all.headers.indexOf('Unit Price'),
-  };
-  if (idx.part < 0 || idx.qty < 0 || idx.unitPrice < 0) { alert('Parts Consumption table layout not recognized.'); return; }
-  function toNumber(s) { return parseFloat(String(s).replace(/[^0-9.\-]/g, '')) || 0; }
-  var byPart = {};
-  var order = [];
-  all.rows.forEach(function(cells) {
-    var name = cells[idx.part] || '—';
-    var qty = toNumber(cells[idx.qty]);
-    var unitPrice = toNumber(cells[idx.unitPrice]);
-    if (!byPart[name]) { byPart[name] = {qty: 0, unitPrice: unitPrice}; order.push(name); }
-    byPart[name].qty += qty;
-  });
-  var rows = order.map(function(name) {
-    var p = byPart[name];
-    var total = p.unitPrice * p.qty;
-    return [name, String(p.qty), '₹' + p.unitPrice.toFixed(2), '₹' + total.toFixed(2)];
-  });
-  _downloadCsv('parts_summary.csv',
-    ['Part Name', 'Part Count', 'Unit Price', 'Total Part Price'], rows);
+// Parts Consumption exports (2026-10-29) — Consumption Summary and Repair
+// Summary, both built on the server: the filter bar's values, plus — when the
+// table's own search box narrows it — the tags it still shows.
+function spPostConsumptionExport(url) {
+  var f = document.createElement('form');
+  f.method = 'post'; f.action = url; f.style.display = 'none';
+  function add(n, v) { var i = document.createElement('input'); i.type = 'hidden'; i.name = n; i.value = v; f.appendChild(i); }
+  add('csrf_token', "{{ request.cookies.get('csrf_token','') }}");
+  var p = new URLSearchParams(window.location.search);
+  ['added_from', 'added_to', 'category', 'part_name', 'engineer'].forEach(function (k) { add(k, p.get(k) || ''); });
+  try {
+    var dt = $('#partsConsumptionTable').DataTable();
+    if ((dt.search() || '').trim()) {
+      var tags = {};
+      dt.rows({ search: 'applied' }).nodes().each(function (tr) { var t = tr.getAttribute('data-tag'); if (t) tags[t] = 1; });
+      add('tags_given', '1');
+      add('tags', Object.keys(tags).join(','));
+    }
+  } catch (e) {}
+  document.body.appendChild(f);
+  f.submit();
+  setTimeout(function () { f.remove(); }, 1000);
 }
 
 // Sourcing Request Verify modal (#4)

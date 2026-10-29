@@ -38,7 +38,7 @@ from services.cost_engine import (
     check_below_cost_warning, get_or_create_costings, below_cost_warning_for,
 )
 from services.audit_engine import audit
-from utils.device_spec import gb_text_spaced
+from utils.device_spec import gb_text_spaced, storage_display
 from services.parts_changed import parts_badge_map, parts_display_map, spec_cell
 from services.ready_pricing import (
     load_ready_rates, unit_price, tag_min_price, lot_price, as_is_min_price,
@@ -434,6 +434,12 @@ async def ready_list_data(
     def esc(v):
         return escape(str(v)) if v is not None else ""
 
+    # Repair cost per tag (2026-10-29, services/repair_cost.py) for the Min
+    # Selling Price: Labor Rate by device type + Packing + Freight.
+    from services.repair_cost import load_repair_rates, worked_and_l34_ids
+    _rr = await load_repair_rates(db)
+    _worked, _l34 = await worked_and_l34_ids(db, device_ids)
+
     data = []
     for d, lot_number, buying_price, lot_qty, selling_price in rows:
         did = str(d.id)
@@ -442,10 +448,10 @@ async def ready_list_data(
             unit_cost, cost_source = 0.0, "none"
         else:
             unit_cost, cost_source = float(unit), ("device" if d.device_price else "lot")
-        # Min Selling Price = unit price + Other Rates + margin for each item
-        # (services/ready_pricing.py). A price saved via "Set price" is an
-        # explicit override and always wins over the formula.
-        auto_min = tag_min_price(unit, rates)
+        # Min Selling Price = unit price + repair cost + margin for each item
+        # (services/ready_pricing.py, services/repair_cost.py). A price saved
+        # via "Set price" is an explicit override and always wins.
+        auto_min = tag_min_price(unit, rates, _rr.cost(d, did in _worked, did in _l34))
         gv = getattr(d.grade, "value", d.grade) if d.grade else ""
         gcls = ("success" if gv == "A" else "warning text-dark" if gv == "B" else
                 "danger" if gv in ("C", "D", "scrap") else "secondary")
@@ -501,7 +507,7 @@ async def ready_list_data(
             cells.append(
                 f'₹{float(auto_min):,.0f}'
                 '<span class="text-muted ms-1" style="font-size:.7rem" '
-                'title="Calculated: unit price + Other Rates + margin. Use Set price to override.">auto</span>')
+                'title="Calculated: unit price + repair cost (labour + packing + freight) + margin. Use Set price to override.">auto</span>')
         else:
             cells.append('<span class="text-muted">—</span>')
         cells.append(f'₹{float(d.max_selling_price):,.0f}' if d.max_selling_price is not None
@@ -599,10 +605,17 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
     #                       "Set price" wins, else the same formula as the
     #                       Tag table: unit price + Other Rates + margin)
     summary_rates = await load_ready_rates(db)
+    # Repair cost per tag for the summaries' Min Selling Price (2026-10-29).
+    from services.repair_cost import load_repair_rates, worked_and_l34_ids
+    _rr = await load_repair_rates(db)
+    _worked, _l34 = await worked_and_l34_ids(db, [r[0].id for r in devices])
 
-    def _cfg_key(model, brand, cpu, ram_gb, storage_gb, storage_type, generation=None):
+    # Storage is one text (2026-10-29, utils/device_spec.storage_display): it
+    # was Storage GB + Storage Type, and a size typed into Storage Type showed
+    # twice ("256 GB 256 GB") and split one configuration into two rows.
+    def _cfg_key(model, brand, cpu, ram_gb, storage, generation=None):
         return ((model or "Unknown Model"), (brand or "Unknown Make"), (cpu or "").strip(),
-                ram_gb or 0, storage_gb or 0, (storage_type or "").strip(),
+                ram_gb or 0, storage or "", "",
                 (generation or "").strip())
 
     # Entity short names for the Model Summary entity pills (2026-10-27).
@@ -623,17 +636,21 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
             if device.min_selling_price is not None:
                 tag_min = float(device.min_selling_price)
             else:
-                _auto = tag_min_price(unit, summary_rates)
+                # As-Is tags (sub-lot) carry no labour — sold as-is, not repaired.
+                _did = str(device.id)
+                _auto = tag_min_price(unit, summary_rates,
+                                      _rr.cost(device, _did in _worked, _did in _l34,
+                                               labour_ok=not (device.sub_lot_number or "").strip()))
                 tag_min = float(_auto) if _auto is not None else None
             key = _cfg_key(device.model, device.brand, device.cpu, device.ram_gb,
-                           device.storage_gb, device.storage_type, device.generation)
+                           storage_display(device), device.generation)
             g = summary.setdefault(key, {
                 "key": key, "model": key[0], "make": key[1],
                 "device_type": device.device_type or device.sub_category or "—",
                 "cpu": key[2] or "—",
                 "gen": key[6] or "—",
                 "ram": f"{key[3]} GB" if key[3] else "—",
-                "storage": (f"{key[4]} GB" + (f" {key[5]}" if key[5] else "")) if key[4] else "—",
+                "storage": key[4] or "—",
                 "total_count": 0, "total_purchase_price": 0.0,
                 "min_total": 0.0, "min_units": [], "barcodes": [], "grade_counts": {},
                 "open_count": 0, "blocked_count": 0, "entity_counts": {},
@@ -753,17 +770,19 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
             device.device_type or device.sub_category or "—",
             (device.cpu or "").strip() or "—", (device.generation or "").strip() or "—",
             f"{device.ram_gb} GB" if device.ram_gb else "—",
-            (f"{device.storage_gb} GB" + (f" {device.storage_type}" if device.storage_type else ""))
-            if device.storage_gb else "—",
+            storage_display(device) or "—",
             "NG" if not _grade else ("Scrap" if _grade == "scrap" else _grade),
         )] += 1
         if device.cpu:
             g["cpus"].add(device.cpu)
         if device.ram_gb:
             g["rams"].add(f"{device.ram_gb} GB")
-        if device.storage_gb:
-            g["storages"].add(f"{device.storage_gb} GB" + (f" {device.storage_type}" if device.storage_type else ""))
+        if storage_display(device):
+            g["storages"].add(storage_display(device))
         g["availability"] += 1
+        # Packing / Freight ticked "On As-Is Lot" (2026-10-29): per tag, added
+        # to the lot's Min Selling Price. No labour on As-Is lots.
+        g["pf"] = g.get("pf", 0) + _rr.packing_for(device) + _rr.freight_for(device)
         g["barcodes"].append(device.barcode)
         g["unit_prices"].append(unit_price(device, buying_price, lot_qty))
         if device.max_selling_price is not None:
@@ -816,7 +835,7 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
             # unless "Set price" saved an explicit override for this lot.
             priced = [u for u in g["unit_prices"] if u is not None]
             lot_total = lot_price(priced) if priced else None
-            auto_min = as_is_min_price(lot_total, rates) if lot_total is not None else None
+            auto_min = as_is_min_price(lot_total, rates, g.get("pf", 0)) if lot_total is not None else None
             override = override_map.get((lot_id, sub_lot))
             override_min = override.min_selling_price if override else None
             override_max = override.max_selling_price if override else None
@@ -1238,10 +1257,7 @@ async def upload_ready_tags(
 
     def detail_row(d):
         stage = getattr(d.current_stage, "value", d.current_stage)
-        if d.storage_gb:
-            storage = f"{d.storage_gb} GB" + (f" {d.storage_type}" if d.storage_type else "")
-        else:
-            storage = ""
+        storage = storage_display(d)
         return [d.barcode or "", d.entity or "", d.serial_no or "", d.brand or "", d.model or "",
                 f"{d.ram_gb} GB" if d.ram_gb else "", storage,
                 getattr(d.grade, "value", d.grade) or "",

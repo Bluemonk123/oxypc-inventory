@@ -484,14 +484,15 @@ async def audit_log_view(
 # ── Cost Config ────────────────────────────────────────────────────────────
 
 COST_CONFIG_DEFS = [
-    ("repair_labour_rate", "Labour Rate per Repair Attempt (Rs)",
-     "Used when engineer leaves cost field blank. Default: Rs 150"),
-    # Label renamed 2026-09-14 (was "Cosmetic Rework Rate per Device (Rs)") —
-    # now also feeds Final QC's "Other Price" row (routers/cosmetic.py). Key
-    # stays cosmetic_rate: routers/dashboard.py, routers/stock.py and
-    # db_validator.py all still read it by this exact key.
-    ("cosmetic_rate", "Other Rates per Device (Rs)",
-     "Applied per device that passed through cleaning/rework/other stage. Default: Rs 50"),
+    # Repair cost (2026-10-29, services/repair_cost.py): the per-attempt
+    # "Labour Rate" field is replaced by the Labor Rates panel (per device
+    # category, Without / With L3/L4). Packing Charges has its own key
+    # (packing_rate, starts at 0 — Pankaj, 2026-10-29); the old "Other Rates
+    # per Device" (cosmetic_rate) is no longer shown or used. Freight is new.
+    ("packing_rate", "Packing Charges (Rs)",
+     "Added per tag to the repair cost, for the tags chosen below."),
+    ("freight_rate", "Freight Charges (Rs)",
+     "Added per tag to the repair cost, for the tags chosen below."),
     ("gst_rate_intra", "GST Rate — Intra-State (% total)",
      "CGST + SGST for same-state sales. Default: 18 (9+9). Enter total %, system splits equally."),
     ("gst_rate_inter", "GST Rate — Inter-State IGST (%)",
@@ -499,13 +500,16 @@ COST_CONFIG_DEFS = [
     ("default_paid_repair", "Default Paid Repair Cost (Rs)",
      "Shown on Process Return when the device's Warranty Status is Out of Warranty. Default: Rs 1500"),
 ]
+# Which tags Packing / Freight apply to (cost_config <key>: 0 none, 1 tags,
+# 2 As-Is lot, 3 both) — shown under each rate.
+APPLY_KEYS = {"packing_rate": "packing_apply", "freight_rate": "freight_apply"}
 
 # Ready to Sale margins (services/ready_pricing.py). Each is EITHER an Amount
 # or a Percentage, never both — stored as two cost_config keys
 # (<prefix>_amount / <prefix>_percent) with the unused one zeroed on save.
 MARGIN_DEFS = [
     ("margin_item", "Margin for Individual Item",
-     "Added to every Ready to Sale tag's Min Selling Price (Unit price + Other Rates + this margin). "
+     "Added to every Ready to Sale tag's Min Selling Price (Unit price + repair cost + this margin). "
      "A percentage is applied to the tag's unit price."),
     ("margin_asis", "Margin for As-Is Lot",
      "Added to every As-Is Lot's Min Selling Price (Lot Price + this margin). "
@@ -546,11 +550,21 @@ async def cost_config_view(
 ):
     result = await db.execute(select(CostConfig))
     rows = {r.key: r for r in result.scalars().all()}
+    from services.repair_cost import APPLY_CHOICES, labour_categories, load_repair_rates
+    from utils.master_data import master_values
+    rr = await load_repair_rates(db)
+    labour_rows = [{"label": lbl, "slug": sl,
+                    "wo": rr.labour.get(sl, (0, 0))[0], "w": rr.labour.get(sl, (0, 0))[1]}
+                   for lbl, sl, _wo, _w in labour_categories(await master_values(db, "device_type"))]
     return templates.TemplateResponse("admin/cost_config.html", {
         "request": request,
         "current_user": current_user,
         "defs": COST_CONFIG_DEFS,
         "rows": rows,
+        "apply_keys": APPLY_KEYS,
+        "apply_choices": APPLY_CHOICES,
+        "apply_vals": {"packing_rate": rr.packing_apply, "freight_rate": rr.freight_apply},
+        "labour_rows": labour_rows,
         "margin_defs": MARGIN_DEFS,
         "margins": {prefix: _margin_state(rows, prefix) for prefix, *_ in MARGIN_DEFS},
     })
@@ -577,6 +591,33 @@ async def cost_config_save(
         else:
             db.add(CostConfig(key=key, value=new_val, updated_by=current_user.username))
 
+    # Packing / Freight: which tags they apply to (2026-10-29).
+    audited_apply = {}
+    for rate_key, apply_key in APPLY_KEYS.items():
+        raw = (form.get(apply_key) or "").strip()
+        if raw in ("0", "1", "2", "3"):
+            await _upsert_cost_config(db, apply_key, Decimal(raw), current_user.username)
+            audited_apply[apply_key] = raw
+
+    # Labor Rates panel: one Without / With L3/L4 rate per device category.
+    from services.repair_cost import labour_categories
+    from utils.master_data import master_values
+    audited_labour = {}
+    for _lbl, slug, _wo, _w in labour_categories(await master_values(db, "device_type")):
+        for kind in ("wo", "w"):
+            key = f"labour_{kind}_{slug}"
+            raw = (form.get(key) or "").strip()
+            if raw == "":
+                continue
+            try:
+                val = Decimal(raw)
+            except Exception:
+                continue
+            if val < 0:
+                continue
+            await _upsert_cost_config(db, key[:50], val, current_user.username)
+            audited_labour[key] = str(val)
+
     audited_margins = {}
     for prefix, _label, _hint in MARGIN_DEFS:
         mtype = "percent" if form.get(f"{prefix}_type") == "percent" else "amount"
@@ -598,7 +639,7 @@ async def cost_config_save(
     await audit(db, action="COST_CONFIG_UPDATE", user=current_user,
                 table_name="cost_config",
                 new_value={**{k: form.get(k) for k, _, _ in COST_CONFIG_DEFS},
-                           **audited_margins},
+                           **audited_margins, **audited_apply, "labour_rates": audited_labour},
                 request=request)
     await db.commit()
     return RedirectResponse(url="/admin/cost-config?success=Rates+saved", status_code=302)

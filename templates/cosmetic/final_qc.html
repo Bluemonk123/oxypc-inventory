@@ -158,7 +158,8 @@
           <table class="table table-sm small mb-0" style="max-width:500px">
             <tbody>
               <tr><th class="text-muted fw-normal">Current Unit Price {% if price.current_price_is_avg_lot %}<small class="text-muted">(Avg Lot Price)</small>{% endif %}</th><td class="text-end">₹{{ "%.2f"|format(price.current_price) }}</td></tr>
-              <tr><th class="text-muted fw-normal">Labour Price</th><td class="text-end">₹{{ "%.2f"|format(price.labour_price) }}</td></tr>
+              {# Repair cost (2026-10-29): Labour by device type (With L3/L4 when the tag had L3/L4) + Packing + Freight — Additional Rates page. #}
+              <tr><th class="text-muted fw-normal" title="Labour ₹{{ '%.2f'|format(price.repair_labour) }}{{ ' (With L3/L4)' if price.had_l34 else ' (Without L3/L4)' }} + Packing ₹{{ '%.2f'|format(price.repair_packing) }} + Freight ₹{{ '%.2f'|format(price.repair_freight) }}">Repair Cost <small class="text-muted">(Labour{{ ' with L3/L4' if price.had_l34 }} ₹{{ '%.0f'|format(price.repair_labour) }}{% if price.repair_packing %} + Packing ₹{{ '%.0f'|format(price.repair_packing) }}{% endif %}{% if price.repair_freight %} + Freight ₹{{ '%.0f'|format(price.repair_freight) }}{% endif %})</small></th><td class="text-end">₹{{ "%.2f"|format(price.repair_total) }}</td></tr>
               {% if price.changed_parts %}
               {% for cp in price.changed_parts %}
               <tr>

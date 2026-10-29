@@ -684,6 +684,82 @@ async def rts_asgn_reopen_apply(request: Request, current_user: User = Depends(a
     return JSONResponse({"ok": True, "reopened": len(rows)})
 
 
+# ── A size typed into Storage Type (2026-10-29) ──────────────────────────────
+# Some uploads put the drive size ("256 GB", "512 GB", "0") into Storage Type,
+# which should only hold SSD / HDD / NVMe. Summaries showed it twice ("256 GB
+# 256 GB"). Rules: "0" -> cleared. A size and the tag has no other storage ->
+# the size moves into the storage fields (GB, size text, summary; count only
+# if blank), Storage Type cleared. Same size already in the storage fields ->
+# Storage Type cleared. A DIFFERENT size already there -> left alone, listed.
+# No GB / TB correction (Pankaj, 2026-10-29).
+_STYPE_COLS = ("storage_type", "storage_gb", "total_hdd_size", "hdd_summary", "total_hdd_count")
+
+
+async def _stype_changes(db):
+    """(changes, conflicts): changes = [(id, barcode, {field: (old, new)})],
+    conflicts = [(barcode, storage_gb, total_hdd_size, storage_type)]."""
+    from sqlalchemy import select
+    from models.device import Device
+    from utils.device_spec import _is_zero, size_to_gb, upload_spec
+    changes, conflicts = [], []
+    rows = (await db.execute(
+        select(Device.id, Device.barcode, *[getattr(Device, c) for c in _STYPE_COLS])
+        .where(Device.storage_type.op("~")("[0-9]"))
+    )).all()
+    for r in rows:
+        st = (r.storage_type or "").strip()
+        ch = {"storage_type": (r.storage_type, None)}
+        if not _is_zero(st):
+            have = 0
+            for v in (r.total_hdd_size, r.storage_gb, r.hdd_summary):
+                if v not in (None, "") and not _is_zero(v):
+                    have = size_to_gb(str(v)) if not isinstance(v, int) else v
+                    if have:
+                        break
+            want = size_to_gb(st)
+            if have and want and have != want:
+                conflicts.append((r.barcode, r.storage_gb, r.total_hdd_size, r.storage_type))
+                continue
+            if not have:
+                for f, v in upload_spec(None, st).items():
+                    old = getattr(r, f)
+                    if f == "total_hdd_count" and (old or "").strip() and not _is_zero(old):
+                        continue
+                    if old != v:
+                        ch[f] = (old, v)
+        changes.append((r.id, r.barcode, ch))
+    return changes, conflicts
+
+
+@router.post("/storage-type-fix")
+async def storage_type_fix_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import update
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        changes, conflicts = await _stype_changes(db)
+        for did, _tag, ch in changes:
+            await db.execute(update(Device).where(Device.id == did).values({f: v[1] for f, v in ch.items()}))
+        await audit(db, user=current_user, action="DEVICE_STORAGE_TYPE_FIX", table_name="devices",
+                    record_id=f"{len(changes)} tags",
+                    new_value={"count": len(changes),
+                               "before_after": {str(d): {f: [str(v[0]) if v[0] is not None else None,
+                                                             str(v[1]) if v[1] is not None else None]
+                                                         for f, v in ch.items()} for d, _t, ch in changes},
+                               "left_alone_different_size": [c[0] for c in conflicts]},
+                    notes="Sizes typed into Storage Type moved to the storage fields; Storage Type cleared. "
+                          "Reverse: put each field's 'before' value back for the listed ids.",
+                    request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(),
+                         f"Storage Type fixed on {len(changes):,} tags"
+                         + (f"; {len(conflicts)} with a different size left alone." if conflicts else "."))
+    if back:
+        return back
+    return JSONResponse({"ok": True, "updated": len(changes), "left_alone": len(conflicts)})
+
+
 # ── Error log viewer (2026-10-28) ─────────────────────────────────────────────
 # Production has no terminal access from here; unhandled 500s are written to
 # errors.log next to main.py (main.py generic_exception_handler /
@@ -1647,6 +1723,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         cosm_open = await _cosmetic_open_left(db)
         rts_open = await _rts_open(db)
         rts_asgn = await _rts_asgn_closed(db)
+        stype, stype_conf = await _stype_changes(db)
         subcat = await _subcat_changes(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
@@ -1685,6 +1762,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "cosm_open": cosm_open[:200], "cosm_open_total": len(cosm_open),
         "rts_open": rts_open[:200], "rts_open_total": len(rts_open),
         "rts_asgn": rts_asgn[:200], "rts_asgn_total": len(rts_asgn),
+        "stype_total": len(stype), "stype_examples": [{"tag": t, "ch": ch} for _d, t, ch in stype[:15]],
+        "stype_conf": stype_conf[:100], "stype_conf_total": len(stype_conf),
         "cosm_open_re": sum(1 for r in cosm_open if r[6] == "reassigned"),
         "stress_open_dup": sum(1 for r in stress_open if r[5] == "reassigned"),
         "repair_total": len(repair),
