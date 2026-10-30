@@ -1642,7 +1642,7 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             it.get("pna_history_text") or "",
         ])
     _sheet(ws, ["Tag Number", "Lot Number", "Make", "Model", "Engineer Name", "Stage",
-                "Movement Date", "Assigned Date", "Completed Date", "Status", "Scrap", "Stress Result", "Final QC Result", "Cosmetic Result", "PNA",
+                "Movement Date", "Start Date", "Completed Date", "Status", "Scrap", "Stress Result", "Final QC Result", "Cosmetic Result", "PNA",
                 "PNA History"], tag_rows)
     for row in ws.iter_rows(min_row=2, min_col=7, max_col=9):
         for c in row:

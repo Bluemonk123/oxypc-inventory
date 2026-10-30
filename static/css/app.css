@@ -92,6 +92,20 @@ body {
   padding: 0.75rem 0.75rem 0.25rem;
   list-style: none;
 }
+/* Light separator between sidebar sections (2026-10-30), inset to the
+   section text so it doesn't run past the menu items. */
+#sidebar .nav-section {
+  position: relative;
+  margin-top: 0.4rem;
+}
+#sidebar .nav-section::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0.75rem;
+  right: 0.75rem;
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
 
 .sidebar-footer {
   border-top: 1px solid rgba(255,255,255,0.15);
