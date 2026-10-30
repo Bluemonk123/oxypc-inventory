@@ -279,6 +279,7 @@ $(document).ready(function(){
     for (var k in c) if (c[k] > 1) s[k] = 1;
     return s;
   })();
+  var WID_ADMIN = {{ 'true' if is_admin else 'false' }};
   function esc(v) {
     return v == null ? '' : String(v).replace(/[&<>"']/g, function (c) {
       return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
@@ -302,7 +303,11 @@ $(document).ready(function(){
   var columns = [
     { data: 'b', render: text(function (d) {
         return '<a href="/devices/' + encodeURIComponent(d) + '" class="font-monospace text-decoration-none">' + esc(d) + '</a>'; }) },
-    { data: 'w', createdCell: cls('font-monospace fw-bold'), render: text(esc) },
+    { data: 'w', createdCell: cls('font-monospace fw-bold text-nowrap'), render: text(function (d) {
+        // Delete WorkID (2026-10-30): admin only (the route refuses anyone else).
+        return esc(d) + (WID_ADMIN && d && d !== '\u2014'
+          ? ' <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-danger wid-del-btn" data-w="' + esc(d) +
+            '" title="Delete this WorkID"><i class="bi bi-trash3"></i></button>' : ''); }) },
     { data: 'e', render: function (d, type, r) {
         if (r.wt && type === 'display') return '<span class="text-muted fst-italic">Not picked</span>';
         return text(esc)(d, type, r); } },
@@ -394,6 +399,28 @@ $(document).ready(function(){
              (READY_PASS == null ? '' : sep + '<span style="font-size:.95rem" class="fw-semibold text-success" title="Tags moved into Ready for Sale between the Work Date From/To: TRC flow (Final QC Pass) + bypass (moved straight from other production stages). Sold since still counts; Stock In and returns not counted. Same tags as Repair Summary.">' +
              'Moved to Ready - ' + READY_PASS.toLocaleString('en-IN') + '</span>');
     }
+  });
+
+  // ── Delete WorkID (admin, 2026-10-30) ─────────────────────────────────
+  $(document).on('click', '.wid-del-btn', function (e) {
+    e.preventDefault(); e.stopPropagation();
+    var btn = this, w = btn.getAttribute('data-w');
+    if (!w || btn.dataset.busy) return;
+    if (!confirm('Delete WorkID ' + w + ' permanently?\n\nIf it is still open, the tag leaves that engineer\'s queue. ' +
+                 'Part requests raised under it are kept (only unlinked). This cannot be undone.')) return;
+    btn.dataset.busy = '1';
+    var m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/), tok = m ? decodeURIComponent(m[1]) : '';
+    var fd = new FormData(); fd.append('csrf_token', tok); fd.append('work_id', w);
+    fetch('/workid-status/delete', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': tok } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        delete btn.dataset.busy;
+        if (!d || !d.ok) { if (window.showTopToast) window.showTopToast('danger', (d && d.error) || 'Delete failed'); return; }
+        if (dt) dt.rows(function (i, r) { return r.w === w; }).remove().draw(false);
+        if (window.showTopToast) window.showTopToast('success', 'WorkID ' + w + ' deleted' +
+          (d.unlinked ? ' (' + d.unlinked + ' part request(s) unlinked)' : ''));
+      })
+      .catch(function () { delete btn.dataset.busy; if (window.showTopToast) window.showTopToast('danger', 'Network error \u2014 please try again.'); });
   });
 
   // ── Tile filters (2026-10-24) ─────────────────────────────────────────

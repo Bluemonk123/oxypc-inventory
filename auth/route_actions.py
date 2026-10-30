@@ -644,6 +644,7 @@ ROUTE_ACTIONS = {
     ('POST', '/care-support/offers/{offer_id}/send'): ('care_support', 'edit'),  # send_offer
     # ===== routers/workid_status.py =====
     ('GET', '/workid-status/export'): ('workid_status', 'export'),  # workid_status_export
+    ('POST', '/workid-status/delete'): ('workid_status', 'delete'),  # workid_status_delete: trash icon on the WorkID column; admin only (route refuses everyone else)
     # ===== routers/pre_sale_iqc.py =====
     ('POST', '/pre-sale-iqc/assign'): None,  # Ready for Sale Tags bulk 'Assign to Pre-Sale': queues tags (pending PSQC WorkID); shown to every Ready for Sale user (2026-10-30), like the page itself
     ('POST', '/pre-sale-iqc/start'): ('pre_sale_iqc', 'edit'),  # pre_sale_iqc_start

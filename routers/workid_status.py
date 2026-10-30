@@ -50,7 +50,7 @@ across every device appearing in `items`.
 """
 from bisect import bisect_left
 from datetime import datetime, timedelta
-from fastapi import APIRouter, Depends, Request, Query
+from fastapi import APIRouter, Depends, Form, Request, Query
 from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -64,7 +64,7 @@ from models.work_order import WorkOrder
 from models.lot import Lot
 from utils.attendance_groups import managed_usernames
 from services.pna_lookup import active_pna_parts, pna_history
-from auth.dependencies import get_current_user
+from auth.dependencies import get_current_user, verify_csrf
 
 router = APIRouter(tags=["workid_status"])
 
@@ -1060,6 +1060,15 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
             )).all()
             display_name_by_username = {uname: full for uname, full in u_rows}
 
+    def _live_name(username, snapshot=None):
+        """Engineer shown for a WorkID (2026-10-30): the user's CURRENT Full
+        Name, so renaming someone in User Management updates every past
+        WorkID here and in the Team Productivity export (one Staff Summary
+        row per person). The name stored on the WorkID is only the fallback
+        for an account that no longer exists."""
+        live = (display_name_by_username.get(username) or "").strip() if username else ""
+        return live or (snapshot or "").strip() or username or "—"
+
     # L3/L4 repair and the Stress-Test hand-off (routers/repair.py:
     # request_l3l4 / l1l2_complete_to_stress) create an "L3L4-"/"STRS-"
     # WorkOrder to make the assignment visible here. request_l3l4 does now
@@ -1133,7 +1142,8 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                     and abs((o.assigned_at - wo.completed_at).total_seconds()) <= 60]
             if near:
                 o = min(near, key=lambda o: abs((o.assigned_at - wo.completed_at).total_seconds()))
-                successor_by_wo[wo.id] = "to " + (o.assigned_name or o.assigned_username or "unassigned")
+                successor_by_wo[wo.id] = "to " + (_live_name(o.assigned_username, o.assigned_name)
+                                                  if (o.assigned_username or o.assigned_name) else "unassigned")
             else:
                 mvs = [m for m in movements_by_device.get(str(wo.device_id), []) if m.moved_at
                        and abs((m.moved_at - wo.completed_at).total_seconds()) <= 60]
@@ -1183,20 +1193,18 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
             # stage, engineer and close time.
             stage_value, stage_label = PSIQC_STAGE, PSIQC_LABEL
             movement_completed_at = wo.completed_at if wo.status == "completed" else None
-            movement_engineer = (wo.assigned_name or display_name_by_username.get(wo.assigned_username)
-                                 or wo.assigned_username or "—")
+            movement_engineer = _live_name(wo.assigned_username, wo.assigned_name)
             engineer_username = wo.assigned_username
         elif reassigned_at:
             stage_value, stage_label = _wo_stage(wo)
             movement_completed_at = None
-            movement_engineer = (wo.assigned_name or display_name_by_username.get(wo.assigned_username)
-                                 or wo.assigned_username or "—")
+            movement_engineer = _live_name(wo.assigned_username, wo.assigned_name)
             engineer_username = wo.assigned_username
         elif handoff_stage:
             stage_value = handoff_stage.value
             stage_label = STAGE_LABELS.get(handoff_stage, handoff_stage.value)
             movement_completed_at = wo.completed_at
-            movement_engineer = wo.assigned_name or wo.assigned_username or "—"
+            movement_engineer = _live_name(wo.assigned_username, wo.assigned_name)
             engineer_username = wo.assigned_username
         else:
             mv = _movement_for_work_order(wo, movements_by_device.get(did, []))
@@ -1224,9 +1232,7 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
             # the tag). Falls back to the movement's user for WorkIDs with no
             # assignee (receiving / unassigned queue rows).
             if wo.assigned_username:
-                movement_engineer = (wo.assigned_name
-                                     or display_name_by_username.get(wo.assigned_username)
-                                     or wo.assigned_username)
+                movement_engineer = _live_name(wo.assigned_username, wo.assigned_name)
                 engineer_username = wo.assigned_username
             # Completed Date only reflects a genuine hand-off: the WorkOrder
             # itself must actually be completed (wo.completed_at set). A
@@ -1486,11 +1492,15 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     else:
         eng_rows = [(wo.assigned_username, wo.assigned_name)
                     for wo, _dev in rows if wo.assigned_username]
+    # Current Full Names (2026-10-30), same as the table, so a renamed
+    # engineer is listed once under the new name.
+    _cur = dict((await db.execute(select(User.username, User.full_name).where(
+        User.username.in_({u for u, _n in eng_rows if u})))).all()) if eng_rows else {}
     seen = set()
     for uname, name in eng_rows:
         if uname and uname not in seen:
             seen.add(uname)
-            engineers.append((uname, name or uname))
+            engineers.append((uname, (_cur.get(uname) or "").strip() or name or uname))
     engineers.sort(key=lambda kv: kv[1].lower())
 
     # "Stage" filter (renamed from "Cosmetic Stage") now offers every
@@ -1801,3 +1811,40 @@ async def workid_status_repair_summary(request: Request, db: AsyncSession = Depe
         content=data,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="repair_summary_ready_{app_now().strftime("%Y-%m-%d")}.xlsx"'})
+
+
+# ── Delete a WorkID (admin only, 2026-10-30) ─────────────────────────────────
+@router.post("/workid-status/delete", dependencies=[Depends(verify_csrf)])
+async def workid_status_delete(request: Request, work_id: str = Form(""),
+                               db: AsyncSession = Depends(get_db),
+                               current_user: User = Depends(get_current_user)):
+    """Trash icon on the WorkID column (admin only): permanently removes one
+    WorkID. Part requests raised under it keep their WorkID text but lose the
+    link (work_order_id -> NULL). Audit log written BEFORE the delete — the
+    row is gone after commit. Deleting an open WorkID takes the tag off that
+    engineer's queue; the confirm prompt says so."""
+    from fastapi.responses import JSONResponse
+    from sqlalchemy import update as _update
+    from models.part_request import PartRequest
+    from services.audit_engine import audit
+    if getattr(current_user.role, "value", current_user.role) != "admin":
+        return JSONResponse({"ok": False, "error": "Only admin can delete a WorkID"}, status_code=403)
+    wid = (work_id or "").strip()
+    wo = (await db.execute(select(WorkOrder).where(WorkOrder.work_id == wid))).scalars().first() if wid else None
+    if wo is None:
+        return JSONResponse({"ok": False, "error": f"WorkID {wid or '?'} not found"}, status_code=404)
+    unlinked = (await db.execute(
+        _update(PartRequest).where(PartRequest.work_order_id == wo.id).values(work_order_id=None)
+    )).rowcount or 0
+    await audit(db, user=current_user, action="WORKID_DELETED", table_name="work_orders",
+                record_id=str(wo.id),
+                old_value={"work_id": wo.work_id, "barcode": wo.barcode, "stage": wo.stage,
+                           "status": wo.status, "assigned_username": wo.assigned_username,
+                           "assigned_name": wo.assigned_name, "created_at": wo.created_at,
+                           "assigned_at": wo.assigned_at, "started_at": getattr(wo, "started_at", None),
+                           "completed_at": wo.completed_at, "created_by": wo.created_by},
+                notes=f"Deleted from WorkID Status; {unlinked} part request(s) unlinked",
+                request=request)
+    await db.delete(wo)
+    await db.commit()
+    return JSONResponse({"ok": True, "work_id": wid, "unlinked": unlinked})
