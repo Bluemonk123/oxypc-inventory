@@ -42,12 +42,21 @@ async def audit(
             request.client.host if request.client else None
         )
 
+    # audit_logs.record_id is VARCHAR(50). A bulk action that joins several
+    # ids (e.g. a Credit Note for 6 tags, 95 chars) made the INSERT fail and
+    # the whole request 500 (2026-10-30). Keep the first 50 characters there
+    # and the full value in notes, so nothing is lost.
+    record_id = str(record_id) if record_id else None
+    if record_id and len(record_id) > 50:
+        notes = (f"{notes} | " if notes else "") + f"record_id: {record_id}"
+        record_id = record_id[:50]
+
     log = AuditLog(
         user_id   = user.id if user else None,
         username  = user.username if user else "system",
         action    = action,
         table_name= table_name,
-        record_id = str(record_id) if record_id else None,
+        record_id = record_id,
         old_value = json.dumps(old_value, default=str) if old_value else None,
         new_value = json.dumps(new_value, default=str) if new_value else None,
         notes     = notes,
