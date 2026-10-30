@@ -96,7 +96,9 @@ asyncio.run(main())
         u, pw = make_user("inventory_manager")
         _login(app_client, u, pw)
         assert app_client.get("/pre-sale-iqc").status_code == 403
-        assert 'href="/pre-sale-iqc"' not in app_client.get("/sales/ready").text
+        ready = app_client.get("/sales/ready").text
+        assert 'href="/pre-sale-iqc"' not in ready
+        assert 'id="assignPsiqcBtn"' in ready          # Assign to Pre-Sale: every Ready for Sale user
 
         username, password = make_user("admin")
         _login(app_client, username, password)

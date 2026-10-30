@@ -199,8 +199,9 @@
         <i class="bi bi-cart-plus me-1"></i>New Bulk Sale (<span id="readySelCount4">0</span>)
       </button>
       {# Assign to Pre-Sale (2026-10-29): queues the ticked tags for Pre-Sale
-         IQC; nothing changes on this page. #}
-      {% if not _ps and can(current_user, 'pre_sale_iqc', 'add') %}
+         IQC; nothing changes on this page. Shown to everyone on Ready for
+         Sale (2026-10-30), not only Pre-Sale IQC roles. #}
+      {% if not _ps %}
       <button type="button" id="assignPsiqcBtn" class="btn btn-sm btn-outline-dark d-none" disabled
               title="Move the ticked tags to the Pre-Sale IQC queue">
         <i class="bi bi-clipboard2-check me-1"></i>Assign to Pre-Sale (<span id="readySelCount6">0</span>)

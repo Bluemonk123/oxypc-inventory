@@ -645,7 +645,7 @@ ROUTE_ACTIONS = {
     # ===== routers/workid_status.py =====
     ('GET', '/workid-status/export'): ('workid_status', 'export'),  # workid_status_export
     # ===== routers/pre_sale_iqc.py =====
-    ('POST', '/pre-sale-iqc/assign'): ('pre_sale_iqc', 'add'),  # Ready for Sale Tags bulk 'Assign to Pre-Sale': queues tags (pending PSQC WorkID)
+    ('POST', '/pre-sale-iqc/assign'): None,  # Ready for Sale Tags bulk 'Assign to Pre-Sale': queues tags (pending PSQC WorkID); shown to every Ready for Sale user (2026-10-30), like the page itself
     ('POST', '/pre-sale-iqc/start'): ('pre_sale_iqc', 'edit'),  # pre_sale_iqc_start
     ('POST', '/pre-sale-iqc/complete'): ('pre_sale_iqc', 'edit'),  # pre_sale_iqc_complete: same rules as L1/L2 Mark Complete
     ('POST', '/pre-sale-iqc/cancel'): ('pre_sale_iqc', 'edit'),  # pre_sale_iqc_cancel: undo Start

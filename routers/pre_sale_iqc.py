@@ -38,7 +38,7 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth.dependencies import require_module_perm, verify_csrf
+from auth.dependencies import get_current_user, require_module_perm, verify_csrf
 from database import get_db
 from models.device import Device, DeviceStage
 from models.part_request import PartRequest
@@ -56,7 +56,6 @@ LABEL = "Pre-Sale IQC"
 
 view_perm = require_module_perm(MODULE, "enable")
 edit_perm = require_module_perm(MODULE, "edit")
-add_perm = require_module_perm(MODULE, "add")
 
 # A tag is in the Pre-Sale IQC queue while it has a WorkID in one of these.
 QUEUE_STATUSES = ("pending", "in_progress", "completed")
@@ -237,8 +236,10 @@ async def pre_sale_iqc_data(request: Request, draw: int = 1, start: int = 0, len
 @router.post("/pre-sale-iqc/assign", dependencies=[Depends(verify_csrf)])
 async def pre_sale_iqc_assign(request: Request, barcodes: str = Form(""),
                               db: AsyncSession = Depends(get_db),
-                              current_user: User = Depends(add_perm)):
-    """Queue the ticked Ready for Sale tags for Pre-Sale IQC: one pending,
+                              current_user: User = Depends(get_current_user)):
+    """Open to everyone who can see Ready for Sale (2026-10-30 — that page
+    is itself any signed-in user), not only Pre-Sale IQC roles.
+    Queue the ticked Ready for Sale tags for Pre-Sale IQC: one pending,
     unassigned PSQC- WorkID each. Tags already queued (pending / in
     progress) are skipped; a tag whose last Pre-Sale IQC is completed gets
     a new WorkID — a fresh start (back in the Assigned tab, no old parts).
