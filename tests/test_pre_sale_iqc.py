@@ -149,6 +149,13 @@ asyncio.run(main())
         assert sorted(p["part_name"] for p in parts) == ["Battery", "RAM"]
         assert feed()["psiqc_tiles"]["requested"] == 1
         assert feed(tile="requested")["recordsFiltered"] == 1 and feed(tile="verified")["recordsFiltered"] == 0
+        # Parts Manager (2026-10-30): PSQC- requests sit in their own
+        # "Pre-Sale IQC Requests" tab, not in Part Requests
+        sp = app_client.get("/spare-parts").text
+        assert 'id="psiqcReqTab"' in sp
+        psq = sp.split('id="psiqcReqTableData">', 1)[1].split("</script>", 1)[0]
+        prq = sp.split('id="partReqTableData">', 1)[1].split("</script>", 1)[0]
+        assert bc in psq and bc not in prq
 
         # WorkID Status shows it as stage Pre-Sale IQC (and the Stage filter finds it)
         ws = app_client.get("/workid-status", params={"tag": bc, "work_from": "", "work_to": ""}).text
@@ -312,6 +319,51 @@ async def main():
             await db.execute(text(f"delete from part_requests where barcode = '{{bc}}'"))
             await db.execute(text(f"delete from work_orders where barcode = '{{bc}}'"))
             await db.execute(text(f"delete from devices where barcode = '{{bc}}'"))
+        await db.commit()
+asyncio.run(main())
+""")
+
+
+def test_pre_sale_iqc_user_gets_floor_device_detail(app_client, make_user):  # noqa: F811
+    """Device Detail (2026-10-30): a custom role with Pre-Sale IQC enabled and
+    no All Inventories Edit sees the L1/L2 floor view (Parts Consumption only,
+    full width); the same role WITH All Inventories Edit keeps the full page."""
+    from models.role_permissions import get_cached_perms, set_cached_perms
+    role = "itest_psiqc_" + uuid.uuid4().hex[:6]
+    bc = "ITPSF" + uuid.uuid4().hex[:8].upper()
+    _run(f"""
+import asyncio, sys, uuid
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+from models.device import Device, DeviceStage
+async def main():
+    async with AsyncSessionLocal() as db:
+        lot = (await db.execute(text("select id from lots limit 1"))).scalar()
+        db.add(Device(id=uuid.uuid4(), barcode="{bc}", lot_id=lot, current_stage=DeviceStage.ready_to_sale,
+                      device_type="Laptop", brand="Dell", model="Latitude 7490"))
+        await db.commit()
+asyncio.run(main())
+""")
+    try:
+        u, pw = make_user(role)
+        _login(app_client, u, pw)
+        set_cached_perms(role, {"pre_sale_iqc": {"enable": True}, "devices": {"enable": True, "edit": False}})
+        html = app_client.get(f"/devices/{bc}").text
+        assert 'class="col-12"' in html and 'class="col-lg-7"' not in html
+        set_cached_perms(role, {"pre_sale_iqc": {"enable": True}, "devices": {"enable": True, "edit": True}})
+        html = app_client.get(f"/devices/{bc}").text
+        assert 'class="col-lg-7"' in html
+    finally:
+        set_cached_perms(role, {})
+        _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("delete from devices where barcode = '{bc}'"))
         await db.commit()
 asyncio.run(main())
 """)

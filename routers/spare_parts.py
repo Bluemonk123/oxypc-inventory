@@ -359,7 +359,14 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
             r for r in all_part_reqs
             if (r.engineer_name or r.requested_by or "").strip().lower() == engineer.strip().lower()
         ]
-    part_reqs = [r for r in all_part_reqs if r.request_type != "faulty"]
+    # Pre-Sale IQC requests (2026-10-30) get their own tab: raised from Device
+    # Detail while a PSQC- WorkOrder is open, so create_part_request stamps
+    # stage="psiqc" and the PSQC- work_id. Kept out of Part Requests so the
+    # Parts Manager can tell pre-sale checks apart from repair-line requests.
+    def _is_psiqc(r):
+        return r.stage == "psiqc" or (r.work_id or "").startswith("PSQC-")
+    psiqc_reqs = [r for r in all_part_reqs if r.request_type != "faulty" and _is_psiqc(r)]
+    part_reqs = [r for r in all_part_reqs if r.request_type != "faulty" and not _is_psiqc(r)]
     faulty_reqs = [r for r in all_part_reqs if r.request_type == "faulty"]
     part_requested_count = sum(1 for r in all_part_reqs if r.status == "requested")
 
@@ -465,6 +472,7 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
     return templates.TemplateResponse("spare_parts/list.html", {
         "request": request, "parts": parts, "current_user": current_user,
         "purchases": purchases, "consumptions": consumptions,
+        "psiqc_reqs": psiqc_reqs,
         "stock_by_name": stock_by_name,
         "total_part_types": total_part_types,
         "total_qty": total_qty,

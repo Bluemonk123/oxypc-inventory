@@ -13,7 +13,14 @@
    context they don't need, so the page collapses to just that section, full
    width, for these roles. Everyone else keeps the full two-column page. #}
 {% set _floor_roles = ['l1_engineer', 'l2_engineer', 'l3_engineer', 'qc_inspector', 'cosmetic_manager'] %}
-{% set _floor_only = current_user.role.value in _floor_roles %}
+{# Pre-Sale IQC users (2026-10-30) get the same floor view: any non-admin
+   role with Pre-Sale IQC explicitly enabled in the Permission Matrix that
+   can't edit All Inventories — so a custom role (any name) set up for
+   Pre-Sale IQC lands on Parts Consumption like L1/L2, while managers who
+   also hold Pre-Sale IQC keep the full page. #}
+{% set _role_val = current_user.role.value if current_user.role.value is defined else current_user.role|string %}
+{% set _psiqc_floor = _role_val != 'admin' and has_explicit_perm(_role_val, 'pre_sale_iqc') and not can(current_user, 'devices', 'edit') %}
+{% set _floor_only = _role_val in _floor_roles or _psiqc_floor %}
 <div id="deviceDetail">
 <!-- Header row -->
 {# Category circle (2026-10-29, option C): the device-type tiles' icon
