@@ -140,8 +140,17 @@
       {# "Move to Ready" count moved off the Final QC tile to the table's
          count line, next to Repeat Tags (2026-10-29). #}
       <div class="wid-stage-name">{{ label }}</div>
+      {% if key == 'pre_sale_iqc' %}
+      {# Pre-Sale IQC (2026-10-30): "Moved" = tags in the Pre-Sale IQC page's
+         Assigned table now (not filtered by this page), then the WorkID count
+         labelled "Started" (Assigned elsewhere), then Completed. #}
+      {% set _mv = psiqc_moved if psiqc_moved is defined else 0 %}
+      <div class="wid-stage-line" title="Tags in the Pre-Sale IQC page's Assigned table right now (moved from Ready for Sale, not completed) — not affected by this page's filters">
+        <span class="lt-tile-count" data-k="moved" data-server="{{ _mv }}">{{ _mv }}</span><span class="wid-stage-sub">Moved</span>
+      </div>
+      {% endif %}
       <div class="wid-stage-line" title="WorkIDs in this stage (open or completed)">
-        <span class="lt-tile-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">Assigned</span>
+        <span class="lt-tile-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">{{ 'Started' if key == 'pre_sale_iqc' else 'Assigned' }}</span>
       </div>
       <div class="wid-stage-line" title="Completed WorkIDs (scrap decisions not included)">
         <span class="lt-tile-count" data-k="completed" data-server="{{ t.completed }}">{{ t.completed }}</span><span class="wid-stage-sub">Completed</span>
@@ -427,7 +436,7 @@ $(document).ready(function(){
       var mine = useServer ? [] : list.filter(function (r) { return stages.indexOf(r.sv) >= 0; });
       g.querySelectorAll('[data-k]').forEach(function (el) {
         var k = el.getAttribute('data-k');
-        if (useServer) { el.textContent = el.getAttribute('data-server'); return; }
+        if (useServer || k === 'moved') { el.textContent = el.getAttribute('data-server'); return; }   // Moved: never recounted
         el.textContent = _tagSet(mine, k === 'scrap' ? function (r) { return !!r.x; }
                                     : k === 'completed' ? TILE_TEST.completed
                                     : (k === 'pass' || k === 'fail') ? function (r) { return r.sr === k; }

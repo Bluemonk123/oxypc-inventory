@@ -248,6 +248,13 @@ PSIQC_CODE = "psiqc"                 # WorkOrder.stage of a Pre-Sale IQC WorkID
 PSIQC_STAGE = "pre_sale_iqc"         # its Stage column value (not a DeviceStage)
 PSIQC_LABEL = "Pre-Sale IQC"
 
+
+async def _psiqc_moved(db) -> int:
+    """Pre-Sale IQC tile "Moved" (2026-10-30): tags in the Pre-Sale IQC page's
+    Assigned table now — current state, not the page's date/engineer filters."""
+    from routers.pre_sale_iqc import assigned_tag_count
+    return await assigned_tag_count(db)
+
 STAGE_GROUPS = [
     ("l1l2", "L1/L2", ("l1", "l2"), "#0d6efd", "bi-tools"),
     ("l3l4", "L3/L4", ("l3",), "#6f42c1", "bi-cpu"),
@@ -1492,6 +1499,7 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         "tile_counts": tile_counts, "cosmetic_stage_choices": cosmetic_stage_choices,
         "stage_tiles": stage_tiles, "stage_groups": STAGE_GROUPS,
         "ready_pass_count": ready_pass_count,
+        "psiqc_moved": await _psiqc_moved(db),
         "f_workid": workid, "f_tag": tag, "f_engineer": engineer,
         "f_completed_from": completed_from, "f_completed_to": completed_to,
         "f_work_from": work_from, "f_work_to": work_to,

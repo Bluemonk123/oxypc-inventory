@@ -120,6 +120,16 @@ asyncio.run(main())
             assert r.status_code in (200, 400), r.text[:300]
             return r.json()
 
+        # WorkID Status, Pre-Sale IQC tile "Moved" (2026-10-30) = tags in the
+        # Assigned table; Assigned hidden on that tile
+        def moved():
+            ws = app_client.get("/workid-status").text
+            tile = ws.split('data-group="pre_sale_iqc"', 1)[1].split("lt-tile-wm", 1)[0]
+            assert tile.index(">Moved<") < tile.index(">Started<") < tile.index(">Completed<")
+            assert ">Assigned<" not in tile
+            return int(tile.split('data-k="moved" data-server="', 1)[1].split('"', 1)[0])
+        moved0 = moved()
+
         # Queue (2026-10-29): only tags assigned from Ready for Sale show here
         assert feed()["recordsFiltered"] == 0
         ready = app_client.get("/sales/ready").text
@@ -132,6 +142,7 @@ asyncio.run(main())
                             headers={"X-CSRF-Token": csrf}).json()
         assert r["assigned"] == 0 and r["already"] == 1                    # already queued
         assert _wo(bc).endswith("|pending")
+        assert moved() == moved0 + 1
         d = feed()
         assert d["psiqc_tiles"] == {"assigned": 1, "completed": 0, "requested": 0, "verified": 0}
         r = row()
@@ -184,6 +195,7 @@ asyncio.run(main())
         d = post("/pre-sale-iqc/complete")
         assert d["ok"] and d["verified"] == 2
         assert _wo(bc).split(";")[-1].endswith("|completed")
+        assert moved() == moved0                    # completed: out of Assigned
         assert _prs(bc) == "Battery|received;RAM|cancelled;Screen|received"
         # Part colours (2026-10-29): the Pre-Sale IQC Mark Complete counts as the
         # "pass" — the parts it verified turn green (passed), not orange.

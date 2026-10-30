@@ -20,6 +20,11 @@ from models.settings import AppSetting
 from models.role_permissions import set_cached_sidebar_label, _SIDEBAR_LABEL_CACHE
 from auth.dependencies import get_current_user, require_roles, verify_csrf
 from routers.master import PERM_MODULES
+
+# Sidebar defaults that differ from the Permission Matrix row label: the
+# matrix row "Parts GRN / Parts Purchased" (2026-10-30) is one key covering
+# two pages, but its own sidebar entry still reads "Parts Purchased".
+_SIDEBAR_DEFAULTS = {"spare_parts_purchase": "Parts Purchased"}
 from templates_config import templates
 
 router = APIRouter(
@@ -63,7 +68,8 @@ async def sidebar_config_list(
             "current_label": custom_labels.get(mod_key, default_label),
             "is_custom": mod_key in custom_labels,
         }
-        for mod_key, default_label in PERM_MODULES
+        for mod_key, default_label in (
+            (k, _SIDEBAR_DEFAULTS.get(k, lbl)) for k, lbl in PERM_MODULES)
     ]
 
     return templates.TemplateResponse("admin/sidebar_config.html", {

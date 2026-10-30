@@ -160,7 +160,7 @@ PERM_MODULES = [
     ("parts_dashboard",      "Parts Dashboard"),
     ("spare_parts",          "Parts Manager"),
     ("parts_sale_request",   "Parts Sale Request"),
-    ("spare_parts_purchase", "Parts Purchased"),
+    ("spare_parts_purchase", "Parts GRN / Parts Purchased"),  # 2026-10-30: one key gates both /parts-grn and /spare-parts/purchase
     ("parts_tracking",       "Parts Tracking"),
     ("parts_consumption",    "Parts Consumption"),
     # ── CRM ────────────────────────────────────────────────────────
