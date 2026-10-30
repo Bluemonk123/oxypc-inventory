@@ -64,6 +64,11 @@ asyncio.run(main())
         m = html.split('id="customiseForm"', 1)[1]
         assert m.index('name="screen_size"') < m.index('name="device_price"')
         assert m.index('name="touch_type"') < m.index('name="stock_type"')
+        # Screen Size (2026-10-30): a Master Data "Screen Sizes" dropdown
+        from utils.master_data import master_options
+        assert '<select name="screen_size"' in m
+        for v in master_options("screen_size")[:3]:
+            assert f'<option value="{v}">' in m.split('<select name="screen_size"', 1)[1].split("</select>", 1)[0]
     finally:
         _run(f"""
 import asyncio, sys

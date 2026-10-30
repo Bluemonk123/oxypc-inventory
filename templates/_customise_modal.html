@@ -99,15 +99,15 @@
             </div>
           </div>
           <div class="row g-2 mb-2">
-            {# Screen Size (2026-10-29): suggestions from Master Data "Screen Sizes";
-               any text up to 20 characters. Blank = leave unchanged. #}
+            {# Screen Size (2026-10-30): a dropdown of Master Data → Dropdown
+               Configuration "Screen Sizes" (was free text with suggestions).
+               Blank = leave unchanged. #}
             <div class="col-md-4">
               <label class="form-label small">Screen Size</label>
-              <input type="text" name="screen_size" maxlength="20" list="customiseScreenSizes"
-                     class="form-control form-control-sm" placeholder="Leave blank to leave unchanged">
-              <datalist id="customiseScreenSizes">
-                {% for v in master_options('screen_size') %}<option value="{{ v }}">{% endfor %}
-              </datalist>
+              <select name="screen_size" class="form-select form-select-sm">
+                <option value="">— Leave unchanged —</option>
+                {% for v in master_options('screen_size') %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+              </select>
             </div>
             <div class="col-md-4">
               <label class="form-label small">Device Price</label>
