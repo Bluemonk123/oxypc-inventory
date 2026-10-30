@@ -260,6 +260,24 @@ async def _applied(db: AsyncSession, ids) -> dict[str, dict]:
     return out
 
 
+async def _manual_spec_edits(db: AsyncSession, device_id) -> dict:
+    """{"RAM" / "Hard Drive": latest time it was saved from Edit Tag Details}
+    (DEVICE_SPECS_QUICK_EDIT audits — routers/devices.py device_specs_quick_save)."""
+    from models.engines import AuditLog
+    out: dict = {}
+    for ov, ts in (await db.execute(
+            select(AuditLog.old_value, AuditLog.timestamp)
+            .where(AuditLog.action == "DEVICE_SPECS_QUICK_EDIT", AuditLog.record_id == str(device_id)))).all():
+        try:
+            keys = json.loads(ov or "{}")
+        except ValueError:
+            continue
+        for key, label in (("ram_gb", "RAM"), ("storage_gb", "Hard Drive")):
+            if key in keys and ts and (label not in out or ts > out[label]):
+                out[label] = ts
+    return out
+
+
 async def _received(db: AsyncSession, ids):
     return (await db.execute(
         select(PartRequest)
@@ -522,7 +540,8 @@ async def apply_spec_changes_on_pass(db: AsyncSession, device, user=None, reques
     # capacity): changes already applied — at an earlier pass, on a move
     # past Final QC, or when verified on a tag already past it — are skipped.
     already = await _applied(db, [device.id])
-    applied = []
+    manual = await _manual_spec_edits(db, device.id)
+    applied, kept = [], []
     for r in rows:
         if str(r.id) in already:
             continue
@@ -530,18 +549,31 @@ async def apply_spec_changes_on_pass(db: AsyncSession, device, user=None, reques
         if last_pass is not None and when is not None and when <= last_pass:
             continue
         sp = sps.get(r.part_id)
+        # Edit Tag Details wins (2026-10-30): once RAM / Hard Drive was saved
+        # from the modal, a part requested BEFORE that save is already in the
+        # typed value — applying it again at the pass would overwrite (or, for
+        # a New part, add on top of) what the engineer saved.
+        _m = manual.get(effective_label(r, sp))
+        if _m is not None and r.created_at is not None and r.created_at <= _m:
+            # Recorded as applied (value unchanged) so the RAM / Storage cells
+            # show the saved value in green after the pass, not the part's.
+            cur = _ram_text(device) if effective_label(r, sp) == "RAM" else _hdd_text(device)
+            kept.append({"part_request_id": str(r.id), "part": effective_label(r, sp),
+                         "request_type": (r.request_type or "new").lower(),
+                         "old": cur, "new": cur, "kept_manual_edit": True})
+            continue
         res = apply_part_to_device(device, r, sp)
         if not res:
             continue
         applied.append({"part_request_id": str(r.id), "part": effective_label(r, sp),
                         "request_type": (r.request_type or "new").lower(),
                         "old": res[0], "new": res[1]})
-    if applied:
+    if applied or kept:
         await audit(db, user=user, action=AUDIT_ACTION, table_name="devices",
                     record_id=str(device.id),
                     old_value={"barcode": device.barcode,
-                               "values": {a["part"]: a["old"] for a in applied}},
-                    new_value={"barcode": device.barcode, "applied": applied},
+                               "values": {a["part"]: a["old"] for a in applied + kept}},
+                    new_value={"barcode": device.barcode, "applied": applied + kept},
                     notes=notes,
                     request=request)
     return applied

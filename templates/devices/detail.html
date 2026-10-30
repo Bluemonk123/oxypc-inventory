@@ -613,7 +613,7 @@
                 <div class="col-md-6">
                   <label class="form-label form-label-sm mb-1">Part Name</label>
                   <select name="part_name" id="pr_part_name" class="form-select form-select-sm" required
-                          onchange="prFillPartModels()">
+                          onchange="prFillPartMakes()">
                     <option value="">— Select —</option>
                   </select>
                 </div>
@@ -648,6 +648,32 @@
     </div>
     <script>
       const ALL_SPARE_PARTS = {{ all_spare_parts | tojson }};
+      // Tag Make / Model (2026-10-30): New / Replace / Downgrade / Multi
+      // Request pick the tag's own Make (brand) and Model in Part Make / Part
+      // Model when it is one of the options (ignoring case; Model also by whole
+      // word, see tagPick); otherwise the field keeps whatever it already shows.
+      const TAG_MAKE = {{ (device.brand or '') | tojson }};
+      const TAG_MODEL = {{ (device.model or '') | tojson }};
+      // Exact match first. For Model, Part Master often holds the short
+      // model ("T490", "E7420") while the tag has the full one ("ThinkPad
+      // T490", "Latitude E7420"), so an option found as a whole word inside
+      // the tag's Model also counts (longest wins).
+      function tagPick(sel, want) {
+        want = (want || '').trim().toLowerCase();
+        if (!sel || !want) return false;
+        var best = -1, bestLen = 0, words = ' ' + want.replace(/[^a-z0-9]+/g, ' ') + ' ';
+        for (var i = 0; i < sel.options.length; i++) {
+          var v = (sel.options[i].value || '').trim().toLowerCase();
+          if (!v) continue;
+          if (v === want) { sel.selectedIndex = i; return true; }
+          var vw = v.replace(/[^a-z0-9]+/g, ' ').trim();
+          if (sel.id.indexOf('model') >= 0 || sel.classList.contains('mr-model')) {
+            if (vw && words.indexOf(' ' + vw + ' ') >= 0 && vw.length > bestLen) { best = i; bestLen = vw.length; }
+          }
+        }
+        if (best >= 0) { sel.selectedIndex = best; return true; }
+        return false;
+      }
 
       function prFillPartNames() {
         var nameSel = document.getElementById('pr_part_name');
@@ -700,6 +726,7 @@
           var mk = (sp.make || '').replace(/"/g,'&quot;');
           return '<option value="' + mk + '">' + (sp.make || '— Not specified —') + '</option>';
         }).join('');
+        tagPick(makeSel, TAG_MAKE);
         prFillPartModels();
       }
 
@@ -733,6 +760,7 @@
         if (matches.length === 1) {
           modelSel.selectedIndex = 0;
         }
+        tagPick(modelSel, TAG_MODEL);
         prSelectModel();
       }
 
@@ -844,7 +872,8 @@
           var mk = (sp.make || '').replace(/"/g, '&quot;');
           return '<option value="' + mk + '">' + (sp.make || '— Not specified —') + '</option>';
         }).join('');
-        if (presetMake !== undefined && makes.some(function(sp) { return (sp.make || '') === presetMake; })) {
+        if (!tagPick(makeSel, TAG_MAKE) && presetMake !== undefined
+            && makes.some(function(sp) { return (sp.make || '') === presetMake; })) {
           makeSel.value = presetMake;
         }
         mrFillModels(rowEl);
@@ -875,6 +904,7 @@
             }).join('')
           : '<option value="">No parts</option>';
         if (matches.length === 1) modelSel.selectedIndex = 0;
+        tagPick(modelSel, TAG_MODEL);
       }
 
       // Builds one Multi Request row, Part Name pre-filled from the checked
@@ -899,7 +929,7 @@
 
         var matched = part.part_id ? ALL_SPARE_PARTS.filter(function(sp) { return sp.id === part.part_id; })[0] : null;
         mrFillNames(row, (matched && matched.name) || part.label);
-        if (matched) mrFillMakes(row, matched.make || '');
+        mrFillMakes(row, matched ? (matched.make || '') : undefined);   // tag Make/Model, else the row's part
         return row;
       }
 
@@ -1006,15 +1036,19 @@
 
           prFillPartMakes();
           var makeSel = document.getElementById('pr_part_make');
-          makeSel.value = matched.make || '';
+          // Tag's Make first (2026-10-30); else the row's part, as before.
+          if (!tagPick(makeSel, TAG_MAKE)) makeSel.value = matched.make || '';
 
           prFillPartModels();
           // Model options carry the model text as their value and the
-          // SparePart id on data-part-id, so select by the id.
+          // SparePart id on data-part-id, so select by the id — unless the
+          // tag's own Model was found among them (prFillPartModels).
           var modelSel = document.getElementById('pr_part_model');
-          Array.prototype.forEach.call(modelSel.options, function(o, i) {
-            if (o.getAttribute('data-part-id') === matched.id) modelSel.selectedIndex = i;
-          });
+          if (!tagPick(modelSel, TAG_MODEL)) {
+            Array.prototype.forEach.call(modelSel.options, function(o, i) {
+              if (o.getAttribute('data-part-id') === matched.id) modelSel.selectedIndex = i;
+            });
+          }
           prSelectModel();
         } else if (partLabel) {
           // No Part Master match at all — keep the label visible so the
@@ -1132,7 +1166,7 @@
               <div class="row g-3">
                 <div class="col-md-4">
                   <label class="form-label form-label-sm mb-1">Part Name</label>
-                  <select id="dg_part_name" class="form-select form-select-sm" required onchange="dgRefresh()">
+                  <select id="dg_part_name" class="form-select form-select-sm" required onchange="dgRefresh(true)">
                     <option value="">— Select —</option>
                   </select>
                 </div>
@@ -1231,14 +1265,16 @@
           values.map(function(v) { return '<option value="' + v.replace(/"/g,'&quot;') + '">' + v + '</option>'; }).join('');
         if (values.indexOf(cur) >= 0) sel.value = cur;
       }
-      function dgRefresh() {
+      function dgRefresh(useTag) {   // useTag: Part Name changed / modal opened -> tag Make/Model (2026-10-30)
         var nameSel = document.getElementById('dg_part_name');
         var makeSel = document.getElementById('dg_part_make');
         var modelSel = document.getElementById('dg_part_model');
         var byName = ALL_SPARE_PARTS.filter(function(sp) { return !nameSel.value || sp.name === nameSel.value; });
         dgFill(makeSel, dgUniq(byName.map(function(sp) { return sp.make; }).filter(Boolean)));
+        if (useTag) tagPick(makeSel, TAG_MAKE);
         var byMake = byName.filter(function(sp) { return !makeSel.value || sp.make === makeSel.value; });
         dgFill(modelSel, dgUniq(byMake.map(function(sp) { return sp.model; }).filter(Boolean)));
+        if (useTag) tagPick(modelSel, TAG_MODEL);
         var matches = byMake.filter(function(sp) { return !modelSel.value || sp.model === modelSel.value; });
         document.getElementById('dg_part_id').value = (matches.length === 1) ? matches[0].id : '';
       }
@@ -1250,7 +1286,7 @@
         var nameSel = document.getElementById('dg_part_name');
         dgFill(nameSel, dgUniq(ALL_SPARE_PARTS.map(function(sp) { return sp.name; })), '— Select —');
         nameSel.value = '';
-        dgRefresh();
+        dgRefresh(true);
         new bootstrap.Modal(document.getElementById('downgradePartModal')).show();
       }
       document.getElementById('downgradePartForm').addEventListener('submit', function() {

@@ -152,11 +152,12 @@ def test_return_stock_table_renders_row(app_client, make_user):  # noqa: F811
         assert "Not working" in html
         assert "Minor Damage" in html
         assert "Screen flicker" in html
-        # out_of_warranty with zero spare-part consumption -> Part Cost shows 0.00, not em-dash
+        # No Paid Repair Cost on this return (2026-10-30): nothing due, so no
+        # Verify Payment, Ready to Dispatch straight away, costs "—"
+        # (tests/test_return_stock_charges.py covers the payment-due flow).
         row = html.split(f'value="{barcode}"', 1)[1].split("</tr>", 1)[0]
-        assert "rs-verify-btn" in row
-        assert "rs-complete-btn" in row
-        assert ">0.00<" in row  # Part Cost cell: out_of_warranty + zero consumption
+        assert "rs-verify-btn" not in row
+        assert "rs-complete-btn" in row and "Ready to Dispatch" in row and "d-none" not in row
     finally:
         _cleanup_device(barcode)
 

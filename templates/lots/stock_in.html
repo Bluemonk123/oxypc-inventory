@@ -209,7 +209,18 @@
 <!-- Return Stock: customer-return tags back in the pipeline for repair/re-sale -->
 <div class="card border-0 shadow-sm mt-4 mb-3">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
-    <span class="fw-semibold"><i class="bi bi-arrow-return-left me-2"></i>Return Stock</span>
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <span class="fw-semibold"><i class="bi bi-arrow-return-left me-2"></i>Return Stock</span>
+      {# Received / Completed tabs (2026-10-30): Completed = Return Complete
+         (re-sold and exited at Gate Pass); everything else is Received. #}
+      {% set _rs_done = return_stock_rows | selectattr('status', 'equalto', 'Return Complete') | list | length %}
+      <ul class="nav nav-pills nav-sm" id="rsTabs" role="tablist">
+        <li class="nav-item"><button type="button" class="nav-link py-1 px-3 active" data-rs-tab="received">
+          Received <span class="badge bg-light text-dark ms-1">{{ return_stock_rows|length - _rs_done }}</span></button></li>
+        <li class="nav-item"><button type="button" class="nav-link py-1 px-3" data-rs-tab="completed">
+          Completed <span class="badge bg-light text-dark ms-1">{{ _rs_done }}</span></button></li>
+      </ul>
+    </div>
     <div class="d-flex align-items-center gap-2 flex-wrap">
       {# Search box is moved by JS into the table toolbar, before the pagination.
          The selected count now shows inside the Assign Bucket button. #}
@@ -227,15 +238,16 @@
           <tr>
             <th><input type="checkbox" id="rsSelectAll" class="form-check-input"></th>
             <th>Tag Number</th><th>Serial Number</th><th>Model</th><th>CPU</th><th>RAM</th><th>Storage</th>
-            <th>Current Stage</th><th>Reason</th><th>Condition</th><th>Complaint</th>
-            <th>Repair Cost</th><th>Labour Cost</th><th>Part Cost</th><th>Action</th>
+            <th>Reason</th><th>Condition</th><th>Complaint</th>
+            <th>Repair Cost</th><th>Labour Cost</th><th>Part Cost</th><th>Current Stage</th><th>Action</th>
           </tr>
         </thead>
         <tbody>
           {% for row in return_stock_rows %}
           {% set d = row.device %}{% set ret = row.ret %}
-          <tr data-rs-search="{{ (d.barcode or '') ~ ' ' ~ (d.serial_no or '') ~ ' ' ~ (d.model or '') }}">
-            <td><input type="checkbox" class="rs-row-check" value="{{ d.barcode }}"></td>
+          <tr data-rs-search="{{ (d.barcode or '') ~ ' ' ~ (d.serial_no or '') ~ ' ' ~ (d.model or '') }}"
+              data-rs-tab="{{ 'completed' if row.status == 'Return Complete' else 'received' }}">
+            <td>{% if not row.resold %}<input type="checkbox" class="rs-row-check" value="{{ d.barcode }}">{% endif %}</td>
             <td>
               <a href="/devices/{{ d.barcode }}" class="font-monospace text-decoration-none"><code>{{ d.barcode }}</code></a>
               {% if d.tag_return_status and d.tag_return_status.startswith('Replaced by ') %}
@@ -247,23 +259,46 @@
             <td>{{ d.cpu or '—' }}</td>
             <td>{{ (d.ram_gb ~ ' GB') if d.ram_gb else '—' }}</td>
             <td>{{ d.hdd_summary or '—' }}</td>
-            <td><span class="badge bg-secondary">{{ row.stage_label }}</span></td>
             <td>{{ ret.reason or '—' }}</td>
             <td>{{ ret.condition_on_return or '—' }}</td>
             <td>{{ ret.complaint_text or '—' }}</td>
-            <td class="rs-repair-cost">{% if can(current_user, 'stock', 'pricing') %}{{ '%.2f'|format(ret.repair_cost) if ret.repair_cost is not none else '—' }}{% else %}—{% endif %}</td>
-            <td class="rs-labour-cost">{% if can(current_user, 'stock', 'pricing') %}{{ '%.2f'|format(row.labour_cost) if row.labour_cost is not none else '—' }}{% else %}—{% endif %}</td>
-            <td>{% if can(current_user, 'stock', 'pricing') %}{{ '%.2f'|format(row.part_cost) if row.part_cost is not none else '—' }}{% else %}—{% endif %}</td>
-            <td class="text-nowrap">
-              {% if can(current_user, 'stock', 'pricing') %}
+            {# Charges (2026-10-30): for a payment-due return (Paid Repair Cost > 0,
+               not waived) Repair = that Paid Repair Cost, Labour = Additional
+               Rates labour (With / Without L3/L4, repair after the returned
+               sale only), Part = parts handed over since then — see
+               routers/stock.py _return_charge_defaults. #}
+            {# No value shows 0.00 (2026-10-30). #}
+            <td class="rs-repair-cost">{% if can(current_user, 'stock', 'pricing') %}{{ '%.2f'|format(row.repair_cost or 0) }}{% else %}—{% endif %}</td>
+            <td class="rs-labour-cost"{% if row.labour_basis %} title="{{ row.labour_basis }}"{% endif %}>{% if can(current_user, 'stock', 'pricing') %}{{ '%.2f'|format(row.labour_cost or 0) }}{% else %}—{% endif %}</td>
+            <td>{% if can(current_user, 'stock', 'pricing') %}{{ '%.2f'|format(row.part_cost or 0) }}{% else %}—{% endif %}</td>
+            {# Current Stage (2026-10-30): stage as an outline badge, return
+               status filled underneath; moved next to Action. #}
+            {% set _st_cls = {'Received': 'bg-secondary', 'Repair Pending': 'bg-warning text-dark',
+                              'Payment Pending': 'bg-danger', 'Dispatch Pending': 'bg-primary',
+                              'Return Complete': 'bg-success'} %}
+            <td class="text-nowrap rs-stage-cell">
+              <span class="badge bg-transparent border border-secondary text-secondary">{{ row.stage_label }}</span>
+              <div class="mt-1"><span class="badge rs-status {{ _st_cls.get(row.status, 'bg-secondary') }}">{{ row.status }}</span></div>
+            </td>
+            <td class="text-nowrap rs-action-cell">
+              {% if row.resold %}
+              <span class="text-muted small">{{ 'Exited' if row.status == 'Return Complete' else 'At Gate Pass' }}</span>
+              {% else %}
+              {# Verify Payment first (payment-due, not yet paid), then Ready to
+                 Dispatch (2026-10-30; were Charges / Complete). #}
+              {% set _need_pay = row.payment_due and not row.paid %}
+              {% if _need_pay and can(current_user, 'stock', 'pricing') %}
               <button type="button" class="btn btn-xs btn-outline-primary btn-sm py-0 px-2 me-1 rs-verify-btn"
                       data-barcode="{{ d.barcode }}"
-                      data-repair-cost="{{ ret.repair_cost if ret.repair_cost is not none else '' }}"
-                      data-labour-cost="{{ row.labour_cost if row.labour_cost is not none else '' }}">Charges</button>
+                      data-repair-cost="{{ row.repair_cost if row.repair_cost is not none else '' }}"
+                      data-labour-cost="{{ row.labour_cost if row.labour_cost is not none else '' }}"
+                      data-part-cost="{{ row.part_cost if row.part_cost is not none else '' }}"
+                      data-receipt="{{ ret.payment_reference or '' }}">Verify Payment</button>
               {% endif %}
               {% if can(current_user, 'stock', 'edit') %}
-              <button type="button" class="btn btn-xs btn-outline-success btn-sm py-0 px-2 rs-complete-btn"
-                      data-barcode="{{ d.barcode }}">Complete</button>
+              <button type="button" class="btn btn-xs btn-outline-success btn-sm py-0 px-2 rs-complete-btn{{ ' d-none' if _need_pay }}"
+                      data-barcode="{{ d.barcode }}">Ready to Dispatch</button>
+              {% endif %}
               {% endif %}
             </td>
           </tr>
@@ -344,7 +379,7 @@
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-clipboard-check me-2"></i>Verify Return</h5>
+        <h5 class="modal-title"><i class="bi bi-clipboard-check me-2"></i>Verify Payment</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
@@ -356,6 +391,15 @@
         <div class="mb-2">
           <label class="form-label fw-semibold">Labour Cost</label>
           <input type="number" step="0.01" min="0" id="rsVerifyLabourCost" class="form-control">
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-semibold">Part Cost</label>
+          <input type="number" id="rsVerifyPartCost" class="form-control" readonly
+                 title="Spare parts handed over on this tag since the returned sale (Part Master prices)">
+        </div>
+        <div class="mb-2">
+          <label class="form-label fw-semibold">Payment Receipt Number <span class="text-danger">*</span></label>
+          <input type="text" maxlength="100" id="rsVerifyReceipt" class="form-control" placeholder="Invoice / UTR / receipt no.">
         </div>
       </div>
       <div class="modal-footer">
@@ -1086,6 +1130,21 @@ var dtReturnStock = initGlobalTable('#returnStockTable', {
   },
 });
 $('#returnStockTable_filter').addClass('d-none');
+// Received / Completed tabs (2026-10-30) filter the same table.
+var rsTab = 'received';
+$.fn.dataTable.ext.search.push(function(settings, data, idx){
+  if(settings.nTable.id !== 'returnStockTable') return true;
+  var tr = settings.aoData[idx].nTr;
+  return !tr || (tr.getAttribute('data-rs-tab') || 'received') === rsTab;
+});
+document.querySelectorAll('#rsTabs [data-rs-tab]').forEach(function(b){
+  b.addEventListener('click', function(){
+    rsTab = b.getAttribute('data-rs-tab');
+    document.querySelectorAll('#rsTabs .nav-link').forEach(function(x){ x.classList.toggle('active', x === b); });
+    dtReturnStock.draw();
+  });
+});
+dtReturnStock.draw();
 // Search box sits in the toolbar's right group, before pagination.
 $('#returnStockTable_wrapper .dataTables_paginate').before($('#rsSearchBox'));
 function rsSelectedBarcodes(){
@@ -1135,17 +1194,24 @@ document.getElementById('returnStockTable').addEventListener('click', function(e
     document.getElementById('rsVerifyBarcode').value = vBtn.dataset.barcode;
     document.getElementById('rsVerifyRepairCost').value = vBtn.dataset.repairCost || '';
     document.getElementById('rsVerifyLabourCost').value = vBtn.dataset.labourCost || '';
+    document.getElementById('rsVerifyPartCost').value = vBtn.dataset.partCost || '';
+    document.getElementById('rsVerifyReceipt').value = vBtn.dataset.receipt || '';
     new bootstrap.Modal(document.getElementById('rsVerifyModal')).show();
     return;
   }
   var cBtn = e.target.closest('.rs-complete-btn');
   if(cBtn){
-    if(!confirm('Mark tag '+cBtn.dataset.barcode+' as sold, using the same customer details as its earlier sale?')) return;
+    if(!confirm('Ready to Dispatch: mark tag '+cBtn.dataset.barcode+' as sold again, using the same customer details as its earlier sale?')) return;
     var fd = new FormData(); fd.append('csrf_token', getCsrf());
     fetch('/stock/return-stock/'+cBtn.dataset.barcode+'/complete', {method:'POST', body:fd}).then(function(r){return r.json();}).then(function(d){
       if(d.ok){
-        alert('Sold as '+d.sale_number+'.');
-        dtReturnStock.row(cBtn.closest('tr')).remove().draw(false);
+        alert('Sold as '+d.sale_number+' \u2014 now at Gate Pass.');
+        // Stays in Received as Dispatch Pending until Gate Pass exit (2026-10-30)
+        var tr = cBtn.closest('tr');
+        var st = tr.querySelector('.rs-status');
+        if(st){ st.className = 'badge rs-status bg-primary'; st.textContent = 'Dispatch Pending'; }
+        var chk = tr.querySelector('.rs-row-check'); if(chk) chk.remove();
+        tr.querySelector('.rs-action-cell').innerHTML = '<span class="text-muted small">At Gate Pass</span>';
         rsUpdateSelectionUi();
       } else {
         alert(d.detail || 'Failed to complete sale.');
@@ -1159,6 +1225,9 @@ document.getElementById('rsVerifySubmit').addEventListener('click', function(){
   fd.append('csrf_token', getCsrf());
   fd.append('repair_cost', document.getElementById('rsVerifyRepairCost').value || '0');
   fd.append('labour_cost', document.getElementById('rsVerifyLabourCost').value || '0');
+  var receipt = document.getElementById('rsVerifyReceipt').value.trim();
+  if(!receipt){ alert('Enter the Payment Receipt Number.'); return; }
+  fd.append('payment_reference', receipt);
   fetch('/stock/return-stock/'+barcode+'/verify', {method:'POST', body:fd}).then(function(r){return r.json();}).then(function(d){
     if(d.ok){
       bootstrap.Modal.getInstance(document.getElementById('rsVerifyModal')).hide();
@@ -1168,6 +1237,12 @@ document.getElementById('rsVerifySubmit').addEventListener('click', function(){
       row.querySelector('.rs-labour-cost').textContent = parseFloat(d.labour_cost).toFixed(2);
       btn.dataset.repairCost = d.repair_cost;
       btn.dataset.labourCost = d.labour_cost;
+      if(d.paid){            // payment verified -> Ready to Dispatch (2026-10-30)
+        btn.remove();
+        var cb = row.querySelector('.rs-complete-btn'); if(cb) cb.classList.remove('d-none');
+        var st = row.querySelector('.rs-status');
+        if(st && st.textContent === 'Payment Pending'){ st.className = 'badge rs-status bg-primary'; st.textContent = 'Dispatch Pending'; }
+      }
     } else {
       alert(d.detail || 'Failed to save.');
     }

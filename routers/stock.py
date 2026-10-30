@@ -1217,33 +1217,65 @@ async def stock_in_list(
     for dev, lot_num, ret in return_join_rows:
         return_stock_by_device.setdefault(dev.id, (dev, lot_num, ret))
 
-    return_device_ids = list(return_stock_by_device.keys())
-    part_cost_map = {}
-    if return_device_ids:
-        part_cost_rows = (await db.execute(
-            select(SparePartConsumption.device_id,
-                   func.coalesce(func.sum(SparePartConsumption.total_cost), 0))
-            .where(SparePartConsumption.device_id.in_(return_device_ids))
-            .group_by(SparePartConsumption.device_id)
-        )).all()
-        part_cost_map = {did: cost for did, cost in part_cost_rows}
+    # Ready to Dispatch re-sales (2026-10-30): the tag leaves return_status
+    # but stays in Return Stock — Received tab as "Dispatch Pending" until
+    # Gate Pass Confirm Exit, then the Completed tab as "Return Complete".
+    # Linked by the re-sale's own note (return_stock_complete).
+    resale_by_return = {}
+    for sale in (await db.execute(
+            select(Sale).where(Sale.notes.like("Re-sale after customer return (Return %"))
+            .order_by(Sale.sold_at.asc()))).scalars().all():
+        rid = (sale.notes or "").split("(Return ", 1)[-1].split(")", 1)[0].strip()
+        resale_by_return[rid] = sale
+    if resale_by_return:
+        _rids = []
+        for rid in resale_by_return:
+            try:
+                _rids.append(uuid.UUID(rid))
+            except ValueError:
+                pass
+        for dev, lot_num, ret in (await db.execute(
+                select(Device, Lot.lot_number, Return)
+                .join(Lot, Device.lot_id == Lot.id).join(Return, Return.device_id == Device.id)
+                .where(Return.id.in_(_rids), Device.is_active == True)  # noqa: E712
+                .order_by(Return.return_date.desc()))).all():
+            cur = return_stock_by_device.get(dev.id)
+            if cur is None or (cur[2].return_date or datetime.min) < (ret.return_date or datetime.min):
+                return_stock_by_device[dev.id] = (dev, lot_num, ret)
 
     return_stock_rows = []
+    # Charges (2026-10-30): payment-due returns only — see _return_charge_defaults.
+    _pairs = [(d, r) for d, _l, r in return_stock_by_device.values()]
+    _charges = await _return_charge_defaults(db, _pairs)
+    _prog = await _return_progress(db, _pairs)
     for dev, lot_num, ret in return_stock_by_device.values():
-        # "Part Cost (if out of warranty then add value of Spare Part consumed
-        # in this tag)" — under-warranty returns don't bill the part back onto
-        # this cost line.
-        part_cost = part_cost_map.get(dev.id, 0) if ret.warranty_status == "out_of_warranty" else 0
-        # Labour Cost defaults to the Paid Repair amount captured on the
-        # Internal Tag tab (Return.refund_amount, only ever set when that
-        # form's "Paid Repair" row is shown — i.e. out-of-warranty) until
-        # someone Verifies it with an actual figure.
-        labour_cost = ret.labour_cost if ret.labour_cost is not None else (
-            ret.refund_amount if ret.warranty_status == "out_of_warranty" else None
-        )
+        ch = _charges.get(dev.id)
+        due = ch is not None
+        resale = resale_by_return.get(str(ret.id))
+        repair_cost = ret.repair_cost if ret.repair_cost is not None else (ch["repair"] if due else None)
+        labour_cost = ret.labour_cost if ret.labour_cost is not None else (ch["labour"] if due else None)
+        part_cost = ch["part"] if due else None
+        # Status (2026-10-30): Received -> Repair Pending (reached L1/L2 or
+        # L3/L4) -> Payment Pending (L1/L2 completed, payment due, not
+        # verified) -> Dispatch Pending (verified / nothing due; also after
+        # Ready to Dispatch until Gate Pass exit) -> Return Complete (exited).
+        _started, _done = _prog.get(dev.id, (False, False))
+        if resale is not None:
+            status = ("Return Complete" if resale.delivery_status in ("dispatched", "delivered")
+                      else "Dispatch Pending")
+        elif _done:
+            status = "Payment Pending" if (due and not ret.paid_at) else "Dispatch Pending"
+        elif _started:
+            status = "Repair Pending"
+        else:
+            status = "Received"
         return_stock_rows.append({
             "device": dev, "lot_number": lot_num, "ret": ret, "part_cost": part_cost,
-            "labour_cost": labour_cost,
+            "labour_cost": labour_cost, "repair_cost": repair_cost,
+            "payment_due": due, "paid": bool(ret.paid_at),
+            "resold": resale is not None, "status": status,
+            "labour_basis": (None if not due else ("With L3/L4" if ch["l34"] else
+                             ("Without L3/L4" if ch["l34"] is False else "Not repaired yet"))),
             "stage_label": STAGE_LABELS.get(dev.current_stage, dev.current_stage.value if dev.current_stage else "—"),
         })
     return_stock_rows.sort(key=lambda r: r["ret"].return_date or app_now(), reverse=True)
@@ -1288,6 +1320,118 @@ async def _latest_return_for_device(db: AsyncSession, device_id) -> "Return | No
         select(Return).where(Return.device_id == device_id)
         .order_by(Return.return_date.desc()).limit(1)
     )).scalars().first()
+
+
+# ── Return Stock charges (2026-10-30, Pankaj) ────────────────────────────────
+# A return whose Paid Repair Cost (/returns/new) is more than 0 and NOT waived
+# off is "payment due". For those the Return Stock table works out:
+#   Repair Cost = that Paid Repair Cost (Additional Rates -> Default Paid
+#                 Repair Cost unless typed on the form);
+#   Labour Cost = Additional Rates labour for the tag's category — "With
+#                 L3/L4" when the tag passed L3/L4, "Without L3/L4" when it
+#                 only completed L1/L2 — counting ONLY movements after the
+#                 sale it was returned from (older repair history ignored);
+#   Part Cost   = spare parts handed over / verified on the tag after that
+#                 sale, priced from Part Master (+ any legacy consumption rows).
+# Verify Payment saves Repair / Labour with the Payment Receipt Number (paid_at);
+# only then is "Ready to Dispatch" (re-sale) allowed.
+
+def _return_payment_due(ret) -> bool:
+    return bool(ret.refund_amount and ret.refund_amount > 0 and ret.charge_decision != "waive_off")
+
+
+async def _return_cutoffs(db: AsyncSession, pairs) -> dict:
+    """{device_id: datetime} — the sale each return came from (its sold_at),
+    else the return date. Repair before this belongs to the earlier sale."""
+    sale_ids = [r.sale_id for _d, r in pairs if r.sale_id]
+    sold_at = dict((await db.execute(select(Sale.id, Sale.sold_at).where(Sale.id.in_(sale_ids)))).all()) if sale_ids else {}
+    return {d.id: (sold_at.get(r.sale_id) or r.return_date or datetime.min) for d, r in pairs}
+
+
+async def _return_repair_moves(db: AsyncSession, cut: dict):
+    """(started, l12_done, l34_done) device-id sets from movements after each
+    device's cut-off: started = moved into L1/L2 or L3/L4; l12_done = left
+    L1/L2 for another stage; l34_done = left L3/L4 for another stage."""
+    started, l12, l34 = set(), set(), set()
+    ids = list(cut)
+    for i in range(0, len(ids), 5000):
+        for m in (await db.execute(
+                select(StageMovement.device_id, StageMovement.from_stage, StageMovement.to_stage,
+                       StageMovement.moved_at)
+                .where(StageMovement.device_id.in_(ids[i:i + 5000])))).all():
+            if not m.moved_at or m.moved_at < cut[m.device_id]:
+                continue
+            if m.to_stage in (DeviceStage.l1, DeviceStage.l2, DeviceStage.l3):
+                started.add(m.device_id)
+            if m.from_stage in (DeviceStage.l1, DeviceStage.l2) and m.to_stage not in (DeviceStage.l1, DeviceStage.l2):
+                l12.add(m.device_id)                      # completed L1/L2
+            if m.from_stage == DeviceStage.l3 and m.to_stage != DeviceStage.l3:
+                l34.add(m.device_id)                      # passed L3/L4
+    return started, l12, l34
+
+
+async def _return_progress(db: AsyncSession, pairs) -> dict:
+    """{device_id: (repair started, repair completed)} after the returned
+    sale — completed = left L1/L2 (or L3/L4) for another stage."""
+    if not pairs:
+        return {}
+    started, l12, l34 = await _return_repair_moves(db, await _return_cutoffs(db, pairs))
+    done = l12 | l34
+    return {d.id: (d.id in started or d.id in done, d.id in done) for d, _r in pairs}
+
+
+async def _return_charge_defaults(db: AsyncSession, pairs) -> dict:
+    """pairs = [(device, ret)] -> {device_id: {"repair", "labour", "part",
+    "l34": bool|None}} for the payment-due returns among them."""
+    from services.repair_cost import load_repair_rates
+    due = [(d, r) for d, r in pairs if _return_payment_due(r)]
+    if not due:
+        return {}
+    cut = await _return_cutoffs(db, due)
+    ids = list(cut)
+    _started, l12, l34 = await _return_repair_moves(db, cut)
+    prs = (await db.execute(
+        select(PartRequest.device_id, PartRequest.part_id, PartRequest.part_name, PartRequest.part_make,
+               PartRequest.part_model, PartRequest.qty_handed_over, PartRequest.created_at)
+        .where(PartRequest.device_id.in_(ids), PartRequest.status.in_(("handed_over", "received")),
+               PartRequest.qty_handed_over > 0))).all()
+    prs = [r for r in prs if r.created_at and r.created_at >= cut[r.device_id]]
+    by_id, by_name = {}, {}
+    if prs:
+        for sp in (await db.execute(select(SparePart.id, SparePart.name, SparePart.make, SparePart.model,
+                                           SparePart.unit_price, SparePart.is_trashed))).all():
+            by_id[sp.id] = sp.unit_price or 0
+            if sp.is_trashed:
+                continue
+            for k in ((sp.name or "").strip().lower(),
+                      "|".join(((sp.name or "").strip().lower(), (sp.make or "").strip().lower(),
+                                (sp.model or "").strip().lower()))):
+                by_name.setdefault(k, sp.unit_price or 0)
+    part = {}
+    for r in prs:
+        price = by_id.get(r.part_id) if r.part_id in by_id else None
+        if price is None:
+            nm = (r.part_name or "").strip().lower()
+            price = by_name.get("|".join((nm, (r.part_make or "").strip().lower(), (r.part_model or "").strip().lower())),
+                                by_name.get(nm, 0))
+        part[r.device_id] = part.get(r.device_id, Decimal("0")) + Decimal(str(price or 0)) * (r.qty_handed_over or 0)
+    for c in (await db.execute(
+            select(SparePartConsumption.device_id, SparePartConsumption.total_cost, SparePartConsumption.used_at)
+            .where(SparePartConsumption.device_id.in_(ids)))).all():
+        if c.used_at and c.used_at >= cut[c.device_id]:
+            part[c.device_id] = part.get(c.device_id, Decimal("0")) + Decimal(str(c.total_cost or 0))
+    rates = await load_repair_rates(db)
+    out = {}
+    for d, r in due:
+        if d.id in l34:
+            lab, had = rates.labour_for(d, True), True
+        elif d.id in l12:
+            lab, had = rates.labour_for(d, False), False
+        else:
+            lab, had = Decimal("0"), None
+        out[d.id] = {"repair": Decimal(str(r.refund_amount)), "labour": lab,
+                     "part": part.get(d.id, Decimal("0")), "l34": had}
+    return out
 
 
 @router.post("/stock/return-stock/assign-bucket")
@@ -1347,9 +1491,14 @@ async def return_stock_verify(
     barcode: str,
     repair_cost: str = Form("0"),
     labour_cost: str = Form("0"),
+    payment_reference: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
+    """Verify Payment (2026-10-30; was "Charges"): saves Repair / Labour Cost
+    and, for a payment-due return, the Payment Receipt Number — required —
+    marking the return paid (same paid_at / payment_reference as the Product
+    Return list's Mark Paid). Part Cost is worked out, not saved."""
     device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
     if not device:
         raise HTTPException(404, f"Device {barcode} not found")
@@ -1362,13 +1511,23 @@ async def return_stock_verify(
         ret.labour_cost = Decimal(labour_cost) if labour_cost.strip() else Decimal("0")
     except InvalidOperation:
         raise HTTPException(400, "Repair Cost and Labour Cost must be numbers")
+    ref = (payment_reference or "").strip()[:100]
+    due = _return_payment_due(ret)
+    if due and not ref:
+        return JSONResponse({"ok": False, "detail": "Payment Receipt Number is required"}, status_code=400)
+    if due:
+        ret.payment_reference = ref
+        if not ret.paid_at:
+            ret.paid_at, ret.paid_by = app_now(), current_user.username
 
     await audit(db, user=current_user, action="RETURN_STOCK_VERIFIED",
                 table_name="returns", record_id=str(ret.id),
-                new_value={"repair_cost": str(ret.repair_cost), "labour_cost": str(ret.labour_cost)},
+                new_value={"repair_cost": str(ret.repair_cost), "labour_cost": str(ret.labour_cost),
+                           "payment_reference": ret.payment_reference if due else None},
                 request=request)
     await db.commit()
-    return JSONResponse({"ok": True, "repair_cost": str(ret.repair_cost), "labour_cost": str(ret.labour_cost)})
+    return JSONResponse({"ok": True, "repair_cost": str(ret.repair_cost), "labour_cost": str(ret.labour_cost),
+                         "paid": bool(ret.paid_at), "payment_reference": ret.payment_reference or ""})
 
 
 @router.post("/stock/return-stock/{barcode}/complete")
@@ -1397,6 +1556,11 @@ async def return_stock_complete(
     ret = await _latest_return_for_device(db, device.id)
     if not ret:
         raise HTTPException(404, "No return found for this tag")
+    if not device.return_status:                          # already Ready to Dispatch-ed (2026-10-30)
+        return JSONResponse({"ok": False, "detail": "This return was already sent to dispatch"}, status_code=400)
+    if _return_payment_due(ret) and not ret.paid_at:      # Ready to Dispatch after Verify Payment (2026-10-30)
+        return JSONResponse({"ok": False, "detail": "Verify Payment first — this return has a Paid Repair Cost due"},
+                            status_code=400)
 
     orig_sale = (await db.execute(select(Sale).where(Sale.id == ret.sale_id))).scalar_one_or_none()
     if not orig_sale:

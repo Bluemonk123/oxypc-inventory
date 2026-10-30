@@ -169,7 +169,10 @@
                     {% endif %}
                     {% else %}
                     {% if can(current_user, 'repair_l1', 'edit') %}
-                    <form method="post" action="/repair/l1l2-complete-to-stress" class="d-inline mark-complete-form">
+                    {# Customer return (2026-10-30): Mark Complete moves it to Sold
+                       (no new sale) instead of Stress Test — confirmed in JS. #}
+                    <form method="post" action="/repair/l1l2-complete-to-stress" class="d-inline mark-complete-form"
+                          {% if device.return_status %}data-customer-return="{{ device.barcode }}"{% endif %}>
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ device.id }}">
                       <button type="submit" class="btn btn-sm btn-success mark-complete-btn">Mark Complete</button>
@@ -753,6 +756,9 @@ function _openBulkPartRequest(requestType, partLabel, category, qty, requested) 
   $(document).on('submit', '.mark-complete-form', function(e){
     var form = this;
     e.preventDefault();
+    var cr = form.getAttribute('data-customer-return');
+    if (cr && !confirm(cr + ' is a customer return.\n\nMark Complete will move it straight to Sold (no new sale, no Stress Test). ' +
+                       'Its dispatch is done from Inventory Manager \u2192 Return Stock. Continue?')) return;
     var deviceId = $(form).find('input[name="device_id"]').val();
     fetch('/repair/l1l2-complete-precheck?device_id=' + encodeURIComponent(deviceId))
       .then(function(r){ return r.ok ? r.json() : { to_verify: [], to_cancel: [] }; })

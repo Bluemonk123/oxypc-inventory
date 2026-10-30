@@ -209,8 +209,10 @@
       <table id="workidTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
-            <th>Tag Number</th><th>WorkID</th><th>Assigned Engineer</th><th>Model</th><th>Stage</th>
-            <th>Aging</th><th title="When the tag arrived / was handed over (the WorkID opened)">Movement Date</th><th title="When the engineer picked it up / was assigned">Assigned Date</th><th>Completed Date</th><th>Notes</th><th>Scrap</th><th>PNA</th><th>PNA History</th>
+            {# 2026-10-30: Stage before Assigned Engineer; Assigned Date renamed
+               Start Date; Notes / PNA History hidden (still searchable). #}
+            <th>Tag Number</th><th>WorkID</th><th>Stage</th><th>Assigned Engineer</th><th>Model</th>
+            <th>Aging</th><th title="When the tag arrived / was handed over (the WorkID opened)">Movement Date</th><th title="When the engineer picked it up / was assigned">Start Date</th><th>Completed Date</th><th>Notes</th><th>Scrap</th><th>PNA</th><th>PNA History</th>
           </tr>
         </thead>
         {# Rows come from #workidRows below and are drawn by DataTables a page
@@ -308,26 +310,24 @@ $(document).ready(function(){
         return esc(d) + (WID_ADMIN && d && d !== '\u2014'
           ? ' <button type="button" class="btn btn-link btn-sm p-0 ms-1 text-danger wid-del-btn" data-w="' + esc(d) +
             '" title="Delete this WorkID"><i class="bi bi-trash3"></i></button>' : ''); }) },
+    { data: 's', render: text(function (d) { return '<span class="badge bg-secondary">' + esc(d) + '</span>'; }) },
     { data: 'e', render: function (d, type, r) {
         if (r.wt && type === 'display') return '<span class="text-muted fst-italic">Not picked</span>';
         return text(esc)(d, type, r); } },
     { data: 'm', render: text(clamp) },
-    { data: 's', render: text(function (d) { return '<span class="badge bg-secondary">' + esc(d) + '</span>'; }) },
     // Aging: Assigned -> Completed (or "ongoing") + day count badge.
     { data: 'd', createdCell: cls('text-nowrap'), render: function (d, type, r) {
         if (type !== 'display') return d == null ? -1 : d;
         if (!r.ad) return '<span class="text-muted">\u2014</span>';
+        // Days badge only (2026-10-30); the dates are in its tooltip.
         if (r.rd) {   // reassigned: aging stopped when the tag was taken off this engineer
-          return '<span class="text-muted">' + r.ad + '</span><i class="bi bi-arrow-right mx-1 text-muted"></i>' +
-                 '<span class="text-muted">' + r.rd + '</span>' +
-                 ' <span class="badge rounded-pill bg-info text-dark ms-1" title="Days from Assigned to Reassigned">' + d + ' day' + (d !== 1 ? 's' : '') + '</span>';
+          return '<span class="badge rounded-pill bg-info text-dark" title="Days from Start (' + esc(r.ad) + ') to Reassigned (' +
+                 esc(r.rd) + ')">' + d + ' day' + (d !== 1 ? 's' : '') + '</span>';
         }
         var done = !!r.cd;
         var cls = done ? 'success' : (d >= 7 ? 'danger' : 'warning text-dark');
-        var tip = done ? 'Days from Assigned to Completed' : 'Days since Assigned (still ongoing)';
-        return '<span class="text-muted">' + r.ad + '</span><i class="bi bi-arrow-right mx-1 text-muted"></i>' +
-               (done ? '<span class="text-muted">' + r.cd + '</span>' : '<span class="text-muted fst-italic">ongoing</span>') +
-               ' <span class="badge rounded-pill bg-' + cls + ' ms-1" title="' + tip + '">' + d + ' day' + (d !== 1 ? 's' : '') + '</span>';
+        var tip = done ? 'Days from Start (' + r.ad + ') to Completed (' + r.cd + ')' : 'Days since Start (' + r.ad + ') \u2014 still ongoing';
+        return '<span class="badge rounded-pill bg-' + cls + '" title="' + esc(tip) + '">' + d + ' day' + (d !== 1 ? 's' : '') + '</span>';
       } },
     // Movement Date (2026-10-27): when the WorkID opened — the tag's arrival.
     { data: 'mv', createdCell: cls('text-nowrap text-muted'), render: function (d, type, r) {
@@ -344,7 +344,7 @@ $(document).ready(function(){
                  (r.rt ? '<div class="small text-muted text-wrap" style="max-width:180px">' + esc(r.rt) + '</div>' : '');
         }
         return type === 'sort' ? r.cs : (type === 'display' ? (d || '\u2014') : d); } },
-    { data: 'n', createdCell: cls('text-muted'), render: text(clamp) },
+    { data: 'n', visible: false, createdCell: cls('text-muted'), render: text(clamp) },   // Notes hidden (2026-10-30)
     // Scrap: the L3/L4 scrap decision taken on this WorkID.
     { data: 'x', createdCell: cls('text-nowrap'), render: function (d, type) {
         if (type !== 'display') return d || '';
@@ -355,7 +355,7 @@ $(document).ready(function(){
         if (type !== 'display') return d ? 'PNA' : '';
         return d ? '<span class="badge bg-danger" title="' + esc(r.pt) + '">PNA</span>' : '<span class="text-muted">\u2014</span>';
       } },
-    { data: 'h', createdCell: cls('small'), render: function (d, type) {
+    { data: 'h', visible: false, createdCell: cls('small'), render: function (d, type) {   // PNA History hidden (2026-10-30)
         if (type !== 'display') return historyText(d);
         if (!d || !d.length) return '<span class="text-muted">\u2014</span>';
         return d.map(function (h) {

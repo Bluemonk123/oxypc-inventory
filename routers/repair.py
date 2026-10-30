@@ -7,6 +7,7 @@ import uuid as uuid_module
 from datetime import datetime
 from utils.timezone import app_now
 from decimal import Decimal
+from urllib.parse import quote_plus
 from fastapi import APIRouter, Depends, Form, Request, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -614,6 +615,26 @@ async def l1l2_complete_to_stress(
                RepairJob.status == RepairStatus.in_progress)
         .values(status=RepairStatus.completed, completed_at=app_now())
     )
+    # Customer return (2026-10-30): a tag with Return Status = Yes goes from
+    # L1/L2 Mark Complete straight to Sold — stage only, NO new sale and no
+    # Stress Test WorkID. Its re-sale is created later by Inventory Manager's
+    # Return Stock "Ready to Dispatch" (after Verify Payment when a Paid
+    # Repair Cost is due). L3/L4 is unchanged: L3/L4 complete brings the tag
+    # back to L1/L2 as usual, and this Mark Complete then sends it to Sold.
+    if device.return_status:
+        device.current_stage = DeviceStage.sold
+        device.l1l2_status = "Completed"
+        device.updated_at = app_now()
+        db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=DeviceStage.sold,
+                             moved_by=current_user.username,
+                             notes="L1/L2 completed — customer return, moved to Sold (no new sale)"))
+        await audit(db, user=current_user, action="L1L2_COMPLETE_RETURN_TO_SOLD",
+                    table_name="devices", record_id=str(device.id),
+                    new_value={"barcode": device.barcode}, request=request)
+        await db.commit()
+        return RedirectResponse(url="/repair/l1?success=" + quote_plus(
+            f"{device.barcode} is a customer return — moved to Sold"), status_code=302)
+
     device.current_stage = DeviceStage.qc_check
     device.l1l2_status = "Completed"
     device.updated_at = app_now()
