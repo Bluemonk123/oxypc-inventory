@@ -122,13 +122,18 @@ asyncio.run(main())
 
         # WorkID Status, Pre-Sale IQC tile "Moved" (2026-10-30) = tags in the
         # Assigned table; Assigned hidden on that tile
-        def moved():
-            ws = app_client.get("/workid-status").text
+        def ps_tile(k, **params):          # Moved / Started follow Work Date (default: today)
+            ws = app_client.get("/workid-status", params=params).text
             tile = ws.split('data-group="pre_sale_iqc"', 1)[1].split("lt-tile-wm", 1)[0]
             assert tile.index(">Moved<") < tile.index(">Started<") < tile.index(">Completed<")
             assert ">Assigned<" not in tile
-            return int(tile.split('data-k="moved" data-server="', 1)[1].split('"', 1)[0])
-        moved0 = moved()
+            return int(tile.split(f'data-k="{k}" data-server="', 1)[1].split('"', 1)[0])
+
+        def moved():
+            return ps_tile("moved")
+        moved0, started0 = moved(), ps_tile("started")
+        old_range = {"work_from": "2020-01-01", "work_to": "2020-01-02"}
+        old_moved = ps_tile("moved", **old_range)
 
         # Queue (2026-10-29): only tags assigned from Ready for Sale show here
         assert feed()["recordsFiltered"] == 0
@@ -143,6 +148,7 @@ asyncio.run(main())
         assert r["assigned"] == 0 and r["already"] == 1                    # already queued
         assert _wo(bc).endswith("|pending")
         assert moved() == moved0 + 1
+        assert ps_tile("moved", **old_range) == old_moved         # moved today, not in 2020
         d = feed()
         assert d["psiqc_tiles"] == {"assigned": 1, "completed": 0, "requested": 0, "verified": 0}
         r = row()
@@ -151,6 +157,7 @@ asyncio.run(main())
         assert post("/pre-sale-iqc/start")["ok"]                          # double click: still one WorkID
         wos = _wo(bc).split(";")
         assert len(wos) == 1 and wos[0].startswith("PSQC-") and wos[0].endswith("|in_progress")
+        assert ps_tile("started") == started0 + 1
         r = row()
         assert "psiqc-complete-btn" in r[-1] and "psiqc-cancel-btn" in r[-1] and f'/devices/{bc}#parts' in r[-1]
 

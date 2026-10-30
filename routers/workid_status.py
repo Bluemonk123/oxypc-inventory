@@ -249,11 +249,25 @@ PSIQC_STAGE = "pre_sale_iqc"         # its Stage column value (not a DeviceStage
 PSIQC_LABEL = "Pre-Sale IQC"
 
 
-async def _psiqc_moved(db) -> int:
-    """Pre-Sale IQC tile "Moved" (2026-10-30): tags in the Pre-Sale IQC page's
-    Assigned table now — current state, not the page's date/engineer filters."""
+async def _psiqc_tile_counts(db, w_range, visible_usernames=None) -> dict:
+    """Pre-Sale IQC tile (2026-10-30), following the Work Date From/To:
+    moved   = tags in the Pre-Sale IQC page's Assigned table that were moved
+              there (PSQC WorkID created) in the range;
+    started = PSQC WorkIDs whose Start was pressed in the range (cancelled
+              starts drop out — Cancel clears started_at).
+    No range = all time. visible_usernames (non-admin) limits Started to the
+    viewer's team, like the table."""
     from routers.pre_sale_iqc import assigned_tag_count
-    return await assigned_tag_count(db)
+    lo, hi = w_range if w_range else (None, None)
+    q = select(func.count()).select_from(WorkOrder).where(
+        WorkOrder.stage == PSIQC_CODE, WorkOrder.started_at.isnot(None),
+        WorkOrder.status.in_(("in_progress", "completed")))
+    if lo is not None:
+        q = q.where(WorkOrder.started_at >= lo, WorkOrder.started_at <= hi)
+    if visible_usernames is not None:
+        q = q.where(WorkOrder.assigned_username.in_(visible_usernames))
+    return {"moved": await assigned_tag_count(db, lo, hi),
+            "started": (await db.execute(q)).scalar() or 0}
 
 STAGE_GROUPS = [
     ("l1l2", "L1/L2", ("l1", "l2"), "#0d6efd", "bi-tools"),
@@ -1499,7 +1513,9 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         "tile_counts": tile_counts, "cosmetic_stage_choices": cosmetic_stage_choices,
         "stage_tiles": stage_tiles, "stage_groups": STAGE_GROUPS,
         "ready_pass_count": ready_pass_count,
-        "psiqc_moved": await _psiqc_moved(db),
+        "psiqc": await _psiqc_tile_counts(
+            db, _w_range, None if is_admin else (set(await managed_usernames(db, current_user.username))
+                                                 | {current_user.username})),
         "f_workid": workid, "f_tag": tag, "f_engineer": engineer,
         "f_completed_from": completed_from, "f_completed_to": completed_to,
         "f_work_from": work_from, "f_work_to": work_to,

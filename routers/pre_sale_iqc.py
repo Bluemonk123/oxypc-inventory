@@ -31,6 +31,7 @@ them.
 Module key "pre_sale_iqc" — OFF by default for every role
 (models/role_permissions.py DEFAULT_DISABLED_MODULES).
 """
+from datetime import datetime
 from html import escape
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
@@ -106,11 +107,13 @@ async def tile_sets(db, device_ids):
     return {k: len(v) for k, v in sets.items()}, sets
 
 
-async def assigned_tag_count(db) -> int:
-    """Tags in the Pre-Sale IQC page's Assigned table right now (no page
-    filters): Ready for Sale, not trashed, not in an As-Is sub-lot, queued and
-    latest WorkID not completed — the same rows as ready_feed(psiqc=True).
-    WorkID Status's Pre-Sale IQC tile shows it as "Moved" (2026-10-30)."""
+async def assigned_tag_count(db, lo=None, hi=None) -> int:
+    """Tags in the Pre-Sale IQC page's Assigned table right now: Ready for
+    Sale, not trashed, not in an As-Is sub-lot, queued and latest WorkID not
+    completed — the same rows as ready_feed(psiqc=True). With lo/hi, only
+    tags whose current Pre-Sale IQC WorkID was created (moved from Ready for
+    Sale) in that window. WorkID Status's Pre-Sale IQC tile shows it as
+    "Moved" (2026-10-30)."""
     from sqlalchemy import or_
     from models.lot import Lot
     ids = (await db.execute(
@@ -118,8 +121,14 @@ async def assigned_tag_count(db) -> int:
         .where(Device.current_stage == DeviceStage.ready_to_sale, Device.is_trashed == False,  # noqa: E712
                or_(Device.sub_lot_number.is_(None), Device.sub_lot_number == ""),
                Device.id.in_(queue_device_ids())))).scalars().all()
-    counts, _sets = await tile_sets(db, ids)
-    return counts["assigned"]
+    _counts, sets = await tile_sets(db, ids)
+    if lo is None and hi is None:
+        return len(sets["assigned"])
+    state, _parts = await psiqc_state_map(db, list(sets["assigned"]))
+    lo, hi = lo or datetime.min, hi or datetime.max
+    return sum(1 for did in sets["assigned"]
+               if state.get(did) is not None and state[did].created_at
+               and lo <= state[did].created_at <= hi)
 
 
 def _esc(v):

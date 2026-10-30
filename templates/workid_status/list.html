@@ -144,14 +144,19 @@
       {# Pre-Sale IQC (2026-10-30): "Moved" = tags in the Pre-Sale IQC page's
          Assigned table now (not filtered by this page), then the WorkID count
          labelled "Started" (Assigned elsewhere), then Completed. #}
-      {% set _mv = psiqc_moved if psiqc_moved is defined else 0 %}
-      <div class="wid-stage-line" title="Tags in the Pre-Sale IQC page's Assigned table right now (moved from Ready for Sale, not completed) — not affected by this page's filters">
-        <span class="lt-tile-count" data-k="moved" data-server="{{ _mv }}">{{ _mv }}</span><span class="wid-stage-sub">Moved</span>
+      {# Both follow Work Date From/To (2026-10-30). #}
+      {% set _pc = psiqc if psiqc is defined else {'moved': 0, 'started': 0} %}
+      <div class="wid-stage-line" title="Tags in the Pre-Sale IQC page's Assigned table (not completed) that were moved there from Ready for Sale in the Work Date range">
+        <span class="lt-tile-count" data-k="moved" data-server="{{ _pc.moved }}">{{ _pc.moved }}</span><span class="wid-stage-sub">Moved</span>
+      </div>
+      <div class="wid-stage-line" title="Pre-Sale IQC WorkIDs started (Start pressed) in the Work Date range">
+        <span class="lt-tile-count" data-k="started" data-server="{{ _pc.started }}">{{ _pc.started }}</span><span class="wid-stage-sub">Started</span>
+      </div>
+      {% else %}
+      <div class="wid-stage-line" title="WorkIDs in this stage (open or completed)">
+        <span class="lt-tile-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">Assigned</span>
       </div>
       {% endif %}
-      <div class="wid-stage-line" title="WorkIDs in this stage (open or completed)">
-        <span class="lt-tile-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">{{ 'Started' if key == 'pre_sale_iqc' else 'Assigned' }}</span>
-      </div>
       <div class="wid-stage-line" title="Completed WorkIDs (scrap decisions not included)">
         <span class="lt-tile-count" data-k="completed" data-server="{{ t.completed }}">{{ t.completed }}</span><span class="wid-stage-sub">Completed</span>
       </div>
@@ -436,7 +441,7 @@ $(document).ready(function(){
       var mine = useServer ? [] : list.filter(function (r) { return stages.indexOf(r.sv) >= 0; });
       g.querySelectorAll('[data-k]').forEach(function (el) {
         var k = el.getAttribute('data-k');
-        if (useServer || k === 'moved') { el.textContent = el.getAttribute('data-server'); return; }   // Moved: never recounted
+        if (useServer || k === 'moved' || k === 'started') { el.textContent = el.getAttribute('data-server'); return; }   // Moved: never recounted
         el.textContent = _tagSet(mine, k === 'scrap' ? function (r) { return !!r.x; }
                                     : k === 'completed' ? TILE_TEST.completed
                                     : (k === 'pass' || k === 'fail') ? function (r) { return r.sr === k; }
