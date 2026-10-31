@@ -1905,8 +1905,9 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         pname = await _part_name_changes(db)
         from services.parts_stock import crate_fix_plan
         pcrate = await crate_fix_plan(db)
-        from services.parts_stock import cleanup_plan
+        from services.parts_stock import cleanup_plan, crates_with_several_parts
         pclean = await cleanup_plan(db)
+        pmulti = await crates_with_several_parts(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
         # "Reassigned but marked Completed" card removed (2026-10-28): since
@@ -1957,7 +1958,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "dt12_total": sum(c for _o, _n, c in dt12_tags), "dt12_master": dt12_master,
         "dt12_list": DEVICE_TYPES_12,
         "pname": [{"code": c, "old": o, "new": n, "m0": m0, "m1": m1} for _i, c, o, n, m0, m1 in pname],
-        "pcrate": pcrate, "pclean": pclean,
+        "pcrate": pcrate, "pclean": pclean, "pmulti": pmulti,
         "subcat_total": len(subcat), "subcat_by": [{"dt": k[0], "sc": k[1], "n": n} for k, n in sorted(subcat_by.items(), key=lambda x: -x[1])],
         "issues": issues[:500], "issues_total": len(issues),
         "issue_counts": _issue_counts(issues),

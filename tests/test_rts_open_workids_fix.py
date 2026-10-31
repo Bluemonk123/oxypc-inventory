@@ -112,8 +112,8 @@ asyncio.run(main())
         username, password = make_user("admin")
         _login(app_client, username, password)
         csrf = app_client.cookies.get("csrf_token") or "dummy"
-        page = app_client.get("/admin/system/data-fixes").text
-        assert w_closed in page and "Reopen Inventory Request assignments" in page
+        # 2026-10-31: the Reopen card was removed from Data Fixes (not wanted);
+        # the route itself still works.
         app_client.post("/admin/system/rts-wo-close", data={"csrf_token": csrf}, headers={"X-CSRF-Token": csrf})
         r = app_client.post("/admin/system/rts-asgn-reopen", data={"csrf_token": csrf}, headers={"X-CSRF-Token": csrf})
         assert r.json()["ok"] and r.json()["reopened"] >= 1

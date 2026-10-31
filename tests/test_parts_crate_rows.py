@@ -126,3 +126,54 @@ asyncio.run(main())
         _sql(f"delete from part_requests where barcode = '{bc}'")
         _sql(f"delete from devices where barcode = '{bc}'")
         _sql(f"update spare_parts set is_trashed = true where name = '{name}'")
+
+
+def test_one_crate_one_part(app_client, make_user):  # noqa: F811
+    """One crate = one part (2026-10-31): a second, different part cannot be
+    put into a crate (GRN, Add Harvest, Edit, crate-match says so); the same
+    part's Harvest row may share it; the Data Fixes card lists old offenders."""
+    a = "ITONEA" + uuid.uuid4().hex[:5].upper()
+    b = "ITONEB" + uuid.uuid4().hex[:5].upper()
+    crate = "CR" + uuid.uuid4().hex[:6].upper()
+    username, password = make_user("admin")
+    _login(app_client, username, password)
+    csrf = app_client.cookies.get("csrf_token") or "dummy"
+    H = {"X-CSRF-Token": csrf}
+    try:
+        line = lambda n: {"part_name": n, "part_brand": "Dell", "part_model": "E1", "crate_number": crate,
+                          "physical_qty": "2", "price": "10"}
+        r = app_client.post("/parts-grn/new", data={"csrf_token": csrf, "line_items_json": json.dumps([line(a)])},
+                            headers=H, follow_redirects=False)
+        assert r.status_code == 303 and "error" not in r.headers["location"]
+        # second part into the same crate: refused, nothing saved
+        r = app_client.post("/parts-grn/new", data={"csrf_token": csrf, "line_items_json": json.dumps([line(b)])},
+                            headers=H, follow_redirects=False)
+        assert "error=" in r.headers["location"] and "one+crate+holds+one+part" in r.headers["location"]
+        assert _sql(f"select count(*) from spare_parts where name = '{b}'") == "0"
+        # two parts, one crate, same GRN: refused
+        r = app_client.post("/parts-grn/new", data={"csrf_token": csrf, "line_items_json": json.dumps(
+            [line(b), dict(line(b + "X"))])}, headers=H, follow_redirects=False)
+        assert "error=" in r.headers["location"]
+        m = app_client.get("/spare-parts/crate-match", params=dict(name=b, make="Dell", model="E1", crate=crate)).json()
+        assert m.get("conflict") is True
+        j = app_client.post("/parts-grn/harvest", data={"csrf_token": csrf, "part_name": b, "part_brand": "Dell",
+                                                         "part_model": "E1", "crate_number": crate}, headers=H)
+        assert j.status_code == 400 and not j.json()["ok"]
+        # same part, Harvest: allowed in the same crate
+        j = app_client.post("/parts-grn/harvest", data={"csrf_token": csrf, "part_name": a, "part_brand": "Dell",
+                                                         "part_model": "E1", "crate_number": crate}, headers=H)
+        assert j.json()["ok"]
+        # Edit another part into the crate: refused
+        r = app_client.post("/parts-grn/new", data={"csrf_token": csrf, "line_items_json": json.dumps(
+            [dict(line(b), crate_number=crate + "Z")])}, headers=H, follow_redirects=False)
+        bid = _sql(f"select id from spare_parts where name = '{b}' and is_trashed is not true")
+        r = app_client.post(f"/spare-parts/{bid}/edit", data={"csrf_token": csrf, "name": b, "category": "X",
+                                                              "unit_price": "10", "make": "Dell", "model": "E1",
+                                                              "crate_number": crate}, headers=H, follow_redirects=False)
+        assert "error=" in r.headers["location"]
+        # an old offender shows on the Data Fixes card
+        _sql(f"update spare_parts set crate_number = '{crate}' where id = '{bid}'")
+        page = app_client.get("/admin/system/data-fixes").text
+        assert "Crates holding more than one part" in page and crate in page
+    finally:
+        _sql(f"update spare_parts set is_trashed = true where name in ('{a}', '{b}')")

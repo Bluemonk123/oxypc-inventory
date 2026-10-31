@@ -64,8 +64,7 @@ asyncio.run(main())
         html = app_client.get("/sales/ready").text
         assert "256 GB 256 GB" not in html
 
-        page = app_client.get("/admin/system/data-fixes").text
-        assert "Storage size typed into Storage Type" in page and diff in page   # listed, left alone
+        # 2026-10-31: the Data Fixes card was removed (fix done); the route stays.
         csrf = app_client.cookies.get("csrf_token") or "dummy"
         r = app_client.post("/admin/system/storage-type-fix", data={"csrf_token": csrf},
                             headers={"X-CSRF-Token": csrf})

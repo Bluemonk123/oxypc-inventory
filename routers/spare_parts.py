@@ -747,6 +747,13 @@ async def update_part(
     from services.parts_stock import find_row as _find_crate_row
     _dup = await _find_crate_row(db, name, make.strip() or None, model.strip() or None,
                                  part.source, crate_number.strip() or None)
+    from services.parts_stock import crate_conflict as _crate_conflict, conflict_text as _conflict_text
+    _other = await _crate_conflict(db, name, make.strip() or None, model.strip() or None,
+                                   crate_number.strip() or None, exclude_id=part.id)
+    if _other is not None:
+        from urllib.parse import quote_plus
+        return RedirectResponse(url="/spare-parts?error=" + quote_plus(
+            "Not saved: " + _conflict_text(crate_number.strip(), _other)), status_code=302)
     if _dup is not None and _dup.id != part.id:
         from urllib.parse import quote_plus
         return RedirectResponse(url="/spare-parts?error=" + quote_plus(
@@ -942,6 +949,7 @@ async def bulk_upload_parts(
     await db.flush()
 
     from services.parts_stock import find_row as _find_crate_row, live_map as _live_map
+    from services.parts_stock import crate_conflict as _crate_conflict, conflict_text as _conflict_text
     inserted, updated, errors = 0, 0, []
     for i, row in enumerate(rows, start=2):
         try:
@@ -986,6 +994,11 @@ async def bulk_upload_parts(
             # Stock to exactly the file's count; it never moves a part into
             # another crate (that used to make counts jump between crates).
             # No matching row -> a new crate row.
+            _other = await _crate_conflict(db, part_name, make, model, crate_number)
+            if _other is not None:
+                errors.append(f"Row {i}: " + _conflict_text(crate_number, _other))
+                db.expunge(_li)
+                continue
             existing_part = await _find_crate_row(db, part_name, make, model, source, crate_number)
             if existing_part:
                 _li.part_id = existing_part.part_code

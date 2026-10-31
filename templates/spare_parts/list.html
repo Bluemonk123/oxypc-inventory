@@ -1278,6 +1278,8 @@ function submitHarvestPart() {
       if (j.ok) {
         alert((j.matched ? 'Added to existing crate row. ' : 'Harvest part saved. ') + 'Part ID: ' + j.part_id);
         location.reload();
+      } else {
+        alert('Not saved: ' + (j.detail || 'error'));
       }
     })
     .catch(function() { alert('Error saving harvest part.'); });

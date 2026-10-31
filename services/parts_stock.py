@@ -138,11 +138,57 @@ async def apply_group_price(db: AsyncSession, name, make, model, price) -> int:
     return len(rows)
 
 
+async def crate_conflict(db: AsyncSession, name, make, model, crate, exclude_id=None):
+    """One crate = one part (2026-10-31): the live row already holding a
+    DIFFERENT Part Name + Make + Model in this crate, or None. The New and
+    Harvest rows of the same part may share a crate."""
+    c = norm(crate)
+    if not c:
+        return None
+    want = group_key(name, make, model)
+    for p in (await db.execute(select(SparePart).where(
+            SparePart.is_trashed.isnot(True),
+            func.lower(func.trim(SparePart.crate_number)) == c))).scalars().all():
+        if exclude_id is not None and str(p.id) == str(exclude_id):
+            continue
+        if group_key(p.name, p.make, p.model) != want:
+            return p
+    return None
+
+
+def conflict_text(crate, p) -> str:
+    return (f"Crate {crate} already holds {p.name} / {p.make or '-'} / {p.model or '-'} "
+            f"(part {p.part_code}) — one crate holds one part, use another crate")
+
+
+async def crates_with_several_parts(db: AsyncSession) -> list:
+    """Crates that break one crate = one part, for the Data Fixes card."""
+    rows = (await db.execute(select(SparePart).where(
+        SparePart.is_trashed.isnot(True), SparePart.crate_number.isnot(None)))).scalars().all()
+    by: dict = {}
+    for p in rows:
+        if norm(p.crate_number):
+            by.setdefault(norm(p.crate_number), []).append(p)
+    live = await live_map(db, rows)
+    out = []
+    for c, ps in sorted(by.items()):
+        if len({group_key(p.name, p.make, p.model) for p in ps}) > 1:
+            out.append({"crate": ps[0].crate_number, "rows": [
+                {"id": str(p.id), "code": p.part_code, "name": p.name, "make": p.make, "model": p.model,
+                 "type": "Harvest" if p.source == "harvest" else "New", "qty": live[str(p.id)]} for p in ps]})
+    return out
+
+
 async def match_info(db: AsyncSession, name, make, model, source, crate) -> dict:
     """Matched / Not-Matched answer for the crate fields (GRN line, Add
-    Harvest, Handover)."""
+    Harvest, Handover); "conflict" when the crate already holds another part."""
     if not norm(name) or not norm(crate):
         return {"matched": False, "ready": False}
+    other = await crate_conflict(db, name, make, model, crate)
+    if other is not None:
+        return {"matched": False, "ready": True, "conflict": True,
+                "conflict_part": f"{other.name} / {other.make or '—'} / {other.model or '—'}",
+                "crate": other.crate_number}
     p = await find_row(db, name, make, model, source, crate)
     if not p:
         return {"matched": False, "ready": True}

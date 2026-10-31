@@ -370,6 +370,17 @@ document.getElementById('addItemModal').addEventListener('show.bs.modal', functi
 });
 
 function addLineItem() {
+  if (LI_CRATE_BLOCK) { alert('This crate already holds another part — one crate holds one part. Use another crate.'); return; }
+  // Same crate on two lines for two different parts in this GRN.
+  var _cr = document.getElementById('li_crate_number').value.trim().toLowerCase();
+  var _gk = [document.getElementById('li_part_name').value, document.getElementById('li_part_brand').value,
+             document.getElementById('li_part_model').value].map(function (x) { return (x || '').trim().toLowerCase(); }).join('|');
+  if (_cr && lineItems.some(function (i) {
+        return (i.crate_number || '').trim().toLowerCase() === _cr &&
+               [i.part_name, i.part_brand, i.part_model].map(function (x) { return (x || '').trim().toLowerCase(); }).join('|') !== _gk; })) {
+    alert('Crate ' + _cr.toUpperCase() + ' is already used for a different part on this GRN — one crate holds one part.');
+    return;
+  }
   var item = {
     _idx: ++lineItemCounter,
     part_id: document.getElementById('li_part_id').value,
@@ -401,6 +412,7 @@ function addLineItem() {
     document.getElementById(id).value = '';
   });
   document.getElementById('li_crate_msg').innerHTML = '';
+  LI_CRATE_BLOCK = false;
   document.getElementById('li_min_stock_alert').value = '5';
   document.getElementById('li_category').value = '';
   bootstrap.Modal.getInstance(document.getElementById('addItemModal')).hide();
@@ -450,8 +462,10 @@ function liCrateCheck() {
              model: document.getElementById('li_part_model').value,
              source: 'new', crate: document.getElementById('li_crate_number').value };
   }, document.getElementById('li_crate_msg'), 'add',
-     document.getElementById('li_physical_qty').value || document.getElementById('li_invoice_qty').value);
+     document.getElementById('li_physical_qty').value || document.getElementById('li_invoice_qty').value,
+     function (ok, d) { LI_CRATE_BLOCK = !!(d && d.conflict); });
 }
+var LI_CRATE_BLOCK = false;   // crate already holds another part (one crate = one part)
 ['li_part_name', 'li_part_brand', 'li_part_model', 'li_crate_number', 'li_physical_qty', 'li_invoice_qty'].forEach(function (id) {
   var el = document.getElementById(id);
   el.addEventListener('input', liCrateCheck);

@@ -164,6 +164,30 @@ async def grn_create(
     vehicle_seal_file: UploadFile = File(default=None),
     vehicle_image_file: UploadFile = File(default=None),
 ):
+    # One crate = one part (2026-10-31): refuse the GRN before anything is
+    # saved when a line puts a part into a crate that holds another part
+    # (in Part Master, or on an earlier line of this same GRN).
+    from services.parts_stock import crate_conflict, conflict_text, group_key as _gk, norm as _norm
+    try:
+        _items = json.loads(line_items_json or "[]")
+    except json.JSONDecodeError:
+        _items = []
+    _seen: dict = {}
+    for _it in _items:
+        _nm = _f(_it.get("part_name")) or _f(_it.get("item_name")) or _f(_it.get("product_description")) or "GRN Part"
+        _cr = _f(_it.get("crate_number"))
+        if not _cr:
+            continue
+        _g = _gk(_nm, _f(_it.get("part_brand")), _f(_it.get("part_model")))
+        _other = await crate_conflict(db, _nm, _f(_it.get("part_brand")), _f(_it.get("part_model")), _cr)
+        _msg = conflict_text(_cr, _other) if _other is not None else None
+        if _msg is None and _seen.get(_norm(_cr), _g) != _g:
+            _msg = f"Crate {_cr} is used for two different parts in this GRN — one crate holds one part"
+        if _msg:
+            from urllib.parse import quote_plus
+            return RedirectResponse(url="/parts-grn/new?error=" + quote_plus("GRN not saved: " + _msg), status_code=303)
+        _seen[_norm(_cr)] = _g
+
     grn_number = await _next_grn_number(db)
     pfx = grn_number
 
@@ -328,7 +352,11 @@ async def harvest_part(
     min_stock_alert: str = Form(default="5"),
     crate_number: str = Form(default=""),
 ):
-    from services.parts_stock import find_row, latest_grn_price
+    from services.parts_stock import find_row, latest_grn_price, crate_conflict, conflict_text
+    _other = await crate_conflict(db, _f(part_name) or _f(product_description) or "Harvest Part",
+                                  _f(part_brand), _f(part_model), crate_number)
+    if _other is not None:
+        return JSONResponse({"ok": False, "detail": conflict_text(crate_number.strip(), _other)}, status_code=400)
     grn_number = await _next_grn_number(db)
     grn = PartsGRN(
         grn_number=grn_number,

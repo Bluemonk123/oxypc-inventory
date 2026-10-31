@@ -25,6 +25,13 @@
         .then(function (r) { return r.json(); })
         .then(function (d) {
           var add = parseInt(qty, 10) || 0, ok, html;
+          if (d.conflict) {
+            // One crate = one part (2026-10-31)
+            msgEl.innerHTML = '<span class="badge bg-danger">Crate in use</span> <span class="small text-danger">' + esc(d.crate) +
+                              ' already holds ' + esc(d.conflict_part) + ' — one crate holds one part, use another crate</span>';
+            if (onResult) onResult(false, d);
+            return;
+          }
           if (d.matched) {
             if (mode === 'take') {
               ok = d.qty >= add;
