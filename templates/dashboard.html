@@ -486,14 +486,16 @@
     <a href="{{ link }}" class="text-decoration-none">
       <div class="dash-tile cat-card p-3 h-100" style="background:{{ bg }}">
         <div class="dash-tile-lbl fw-semibold">{{ label }}</div>
-        {# Big number = all active devices of this category (leaves out GRN
-           Receipt, Sold, Returned, Scrapped, Scrap for Sale, trashed), split
-           below into In TRC (still being worked on) + In Ready (Ready to Sale).
-           `n` is the Ready to Sale count. #}
-        {% set _total = category_counts.get(cat, {}).get('total', 0) %}
-        <div class="dash-tile-num">{{ _total }}</div>
-        <div class="dash-tile-sub">In TRC: <strong>{{ [_total - n, 0] | max }}</strong></div>
-        <div class="dash-tile-sub">In Ready: <strong>{{ n }}</strong></div>
+        {# 2026-10-30: big number = this category from IQC to Ready to Sale
+           (IQC, Stock In, TRC Production, L1/L2, L3/L4, Stress, Cosmetic, Final
+           QC + Pass/Fail Hold, Ready to Sale). Lines, counted independently
+           (may overlap): In TRC = zone TRC Floor, In Showroom = zone
+           Showroom, In Ready = Ready to Sale (routers/dashboard.py cat_split). #}
+        {% set _cs = cat_split.get(cat, {}) %}
+        <div class="dash-tile-num">{{ _cs.get('total', 0) }}</div>
+        <div class="dash-tile-sub mt-2" title="Of these, currently in a TRC Floor location">In TRC: <strong>{{ _cs.get('trc', 0) }}</strong></div>
+        <div class="dash-tile-sub" title="Of these, currently in a Showroom location">In Showroom: <strong>{{ _cs.get('showroom', 0) }}</strong></div>
+        <div class="dash-tile-sub" title="Of these, at Ready to Sale">In Ready for Sale: <strong>{{ _cs.get('ready', 0) }}</strong></div>
         <i class="bi {{ icon }} dash-tile-wm"></i>
       </div>
     </a>
@@ -549,19 +551,25 @@
 {% endmacro %}
 
 {{ category_quick_view_cards() }}
-{{ summary_stat_cards() }}
+{# Admin only (2026-10-30): the four tint tiles (Total Inventory / In Repair /
+   Revenue / Profit) and the Financial Summary card. Without Financial
+   Summary the Stage Pipeline takes the full width. #}
+{% set _dash_admin = (current_user.role.value if current_user.role.value is defined else current_user.role|string) == 'admin' %}
+{% if _dash_admin %}{{ summary_stat_cards() }}{% endif %}
 
 <!-- 3/4 (Device Stage Pipeline) + 1/4 (Financial Summary), equal height —
      below the four tint tiles, above Analytics (2026-10-24, on request).
      The Location Gaps widget was removed from the dashboard (2026-10-15);
      the full list stays on /locations/gaps. -->
 <div class="row g-3 mb-4">
-  <div class="col-xl-9">
+  <div class="{{ 'col-xl-9' if _dash_admin else 'col-12' }}">
     {{ device_stage_pipeline_card() }}
   </div>
+  {% if _dash_admin %}
   <div class="col-xl-3">
     {{ financial_summary_card() }}
   </div>
+  {% endif %}
 </div>
 
 {% include "dashboard/_admin_analytics.html" %}

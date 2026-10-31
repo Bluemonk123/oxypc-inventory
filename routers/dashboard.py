@@ -1,4 +1,5 @@
 import logging
+import re
 import time as _time
 import uuid
 from templates_config import templates
@@ -109,6 +110,12 @@ async def dashboard(
     # Moved ahead of the stage/category aggregate so that block can decide
     # whether to serve the shared 30 s cache (no filters active — the common
     # case) or run a filtered query fresh (see _dash_filters_active below).
+    # Default Entity (2026-10-30): opening the Dashboard with no Entity in
+    # the URL selects OxyPC + Renew Circuits. Choosing "All" (empty) in the
+    # filter still shows every entity — the form always posts entity=.
+    if "entity" not in request.query_params:
+        from utils.master_data import default_entity_selection
+        entity = await default_entity_selection(db)
     entity_vals = [e.strip() for e in (entity or "").split(",") if e.strip()]
     # No explicit Entity filter -> exclude the External Partner test-data
     # entity by default (models/master.py EXTERNAL_PARTNER_TEST_ENTITY), so
@@ -164,6 +171,10 @@ async def dashboard(
     # see the EXTERNAL_PARTNER_TEST_ENTITY exclusion above), so the baseline
     # test-entity exclusion doesn't itself defeat the shared 30s cache.
     _dash_filters_active = bool(entity_vals or _dtype or _loc)
+    # Shared 30 s cache key (2026-10-30): the Entity selection alone is
+    # cacheable (the default OxyPC + Renew Circuits view is the common case
+    # now); Device Type / Zone filters are not cached.
+    _cache_key = None if (_dtype or _loc) else tuple(sorted(entity_vals))
 
     # ── P&L From/To — scoped by each device's own "stage completed" date ────
     # A device is "completed" once it reaches a terminal stage: Sold (its
@@ -237,7 +248,7 @@ async def dashboard(
     # active — that cache is keyed on nothing, so serving it under an active
     # filter would hand back another viewer's (unfiltered) numbers.
     _now = _time.monotonic()
-    if (not _dash_filters_active and _AGG_CACHE["ts"]
+    if (_cache_key is not None and _AGG_CACHE.get("stage_key") == _cache_key and _AGG_CACHE["ts"]
             and (_now - _AGG_CACHE["ts"]) < _AGG_TTL and _AGG_CACHE["stage"]):
         stage_counts = _AGG_CACHE["stage"]
         category_counts = _AGG_CACHE["cat"]
@@ -275,8 +286,9 @@ async def dashboard(
             _log.exception("category_counts failed")
             category_counts = {cat: {"total": 0} for cat in CATEGORIES}
 
-        if not _dash_filters_active:
-            _AGG_CACHE.update({"stage": stage_counts, "cat": category_counts, "ts": _now})
+        if _cache_key is not None:
+            _AGG_CACHE.update({"stage": stage_counts, "cat": category_counts, "ts": _now,
+                               "stage_key": _cache_key})
 
     _mark("stage counts")
     # ── Stage Pipeline ───────────────────────────────────────────────────────
@@ -427,7 +439,7 @@ async def dashboard(
     # Own timestamp (2026-10-16): this used to check the shared "ts", which
     # the stage-count block above refreshes first — so once filled, the
     # pipeline was never recomputed until a server restart (stale numbers).
-    if (not _dash_filters_active and _AGG_CACHE.get("pipeline")
+    if (_cache_key is not None and _AGG_CACHE.get("pipeline_key") == _cache_key and _AGG_CACHE.get("pipeline")
             and (_now - _AGG_CACHE.get("pipeline_ts", 0.0)) < _AGG_TTL):
         pipeline_counts, pipeline_by_entity, pipeline_by_location = _AGG_CACHE["pipeline"]
     else:
@@ -496,9 +508,10 @@ async def dashboard(
             pipeline_by_entity = {k: {} for k, _ in PIPELINE_STEPS}
             pipeline_by_location = {k: {} for k, _ in PIPELINE_STEPS}
 
-        if not _dash_filters_active:
+        if _cache_key is not None:
             _AGG_CACHE["pipeline"] = (pipeline_counts, pipeline_by_entity, pipeline_by_location)
             _AGG_CACHE["pipeline_ts"] = _now
+            _AGG_CACHE["pipeline_key"] = _cache_key
 
     entity_choices = await entity_values(db)
     device_type_choices = await master_values(db, "device_type")
@@ -528,6 +541,53 @@ async def dashboard(
     tablets_available = category_counts.get("Tablet", {}).get("ready_to_sale", 0)
     minipc_available = category_counts.get("Mini PC", {}).get("ready_to_sale", 0)
     server_available = category_counts.get("Server", {}).get("ready_to_sale", 0)
+
+    # ── Category tiles (2026-10-30, Pankaj) ──────────────────────────────────
+    # Big number = tags of that Sub Category from IQC to Ready to Sale (IQC,
+    # Stock In, TRC Production, L1/L2, L3/L4, Stress, Cosmetic, Final QC,
+    # Final QC Pass / Fail Hold, Ready to Sale) — no On Rent / GRN / Sold /
+    # Returned / Scrap. Lines underneath, counted independently (may overlap):
+    #   In TRC      = of those, current location zone = TRC Floor
+    #   In Showroom = of those, current location zone = Showroom
+    #   In Ready    = of those, stage = Ready to Sale
+    CAT_TILE_STAGES = ([DeviceStage.iqc, DeviceStage.stock_in, DeviceStage.trc_production,
+                        DeviceStage.l1, DeviceStage.l2, DeviceStage.l3, DeviceStage.qc_check]
+                       + list(COSMETIC_STAGES) + FINAL_QC_STAGES + [DeviceStage.ready_to_sale])
+    _TRC_ZONE, _SHOW_ZONE = ZoneType.workshop, ZoneType.showroom
+
+    def _blank_split():
+        return {cat: {"total": 0, "trc": 0, "showroom": 0, "ready": 0} for cat in CATEGORIES}
+    if (_cache_key is not None and _AGG_CACHE.get("catsplit_key") == _cache_key
+            and (_now - _AGG_CACHE.get("catsplit_ts", 0.0)) < _AGG_TTL and _AGG_CACHE.get("catsplit")):
+        cat_split = _AGG_CACHE["catsplit"]
+    else:
+        cat_split = _blank_split()
+        try:
+            _zone_of_loc = {str(i): z for i, z in (await db.execute(
+                select(StorageLocation.id, StorageLocation.zone))).all()}
+            for sub_cat, st, loc_id, n in (await db.execute(
+                select(Device.sub_category, Device.current_stage, _resolved_location_id, func.count(Device.id))
+                .select_from(Device)
+                .outerjoin(_loc_latest, _loc_latest.c.device_id == Device.id)
+                .where(Device.is_trashed == False, *_ent, *_dtype, *_loc,  # noqa: E712
+                       Device.current_stage.in_(CAT_TILE_STAGES))
+                .group_by(Device.sub_category, Device.current_stage, _resolved_location_id)
+            )).all():
+                c = cat_split.get(sub_cat)
+                if c is None:
+                    continue
+                c["total"] += n
+                z = _zone_of_loc.get(str(loc_id)) if loc_id else None
+                if z == _TRC_ZONE:
+                    c["trc"] += n
+                elif z == _SHOW_ZONE:
+                    c["showroom"] += n
+                if st == DeviceStage.ready_to_sale:
+                    c["ready"] += n
+        except Exception:
+            _log.exception("category tile split failed")
+        if _cache_key is not None:
+            _AGG_CACHE.update({"catsplit": cat_split, "catsplit_ts": _now, "catsplit_key": _cache_key})
 
     # ── From/To set: counts show tags MOVED in the range (2026-10-22) ───────
     # No dates: every count is live stock ("where tags are now") — unchanged.
@@ -616,6 +676,22 @@ async def dashboard(
             category_counts = {cat: {"total": sum(1 for v in _active.values() if v[2] == cat)}
                                for cat in CATEGORIES}
             _ready = {cat: sum(1 for v in _tags["ready_to_sale"].values() if v[2] == cat) for cat in CATEGORIES}
+            # Category tiles in range mode: moved into IQC..Ready to Sale
+            # (same steps as above minus GRN); zones by current location.
+            _cat_tags = {}
+            for k in ("iqc", "stock_in", "production", "l1l2", "l3l4", "qc_check", "cosmetic",
+                      "final_qc", "ready_to_sale"):
+                _cat_tags.update(_tags.get(k, {}))
+            cat_split = _blank_split()
+            _trc_lbl, _show_lbl = ZONE_LABELS.get(_TRC_ZONE), ZONE_LABELS.get(_SHOW_ZONE)
+            for did, (ent, zl, sc) in _cat_tags.items():
+                c = cat_split.get(sc)
+                if c is None:
+                    continue
+                c["total"] += 1
+                c["trc"] += zl == _trc_lbl
+                c["showroom"] += zl == _show_lbl
+                c["ready"] += did in _tags.get("ready_to_sale", {})
             laptops_available = _ready.get("Laptop", 0)
             desktops_available = _ready.get("Desktop", 0)
             tft_available = _ready.get("TFT Monitor", 0)
@@ -1023,7 +1099,8 @@ async def dashboard(
     # cycle as stage/category/pipeline above, since it's gated by the same
     # Entity/Device Type/Location filters (_dash_filters_active).
     # Own timestamp — same stale-forever issue as the pipeline cache above.
-    if (not _dash_filters_active and not _pl_active and _AGG_CACHE.get("admin_analytics") is not None
+    if (_cache_key is not None and not _pl_active and _AGG_CACHE.get("analytics_key") == _cache_key
+            and _AGG_CACHE.get("admin_analytics") is not None
             and (_now - _AGG_CACHE.get("analytics_ts", 0.0)) < _AGG_TTL):
         admin_analytics, admin_charts = _AGG_CACHE["admin_analytics"]
     else:
@@ -1146,9 +1223,10 @@ async def dashboard(
             admin_charts["seller_po_weekly"] = _weekly_series(seller_po_rows, lambda r: r[0], lambda r: float(r[1] or 0))
         except Exception:
             _log.exception("admin_analytics failed")
-        if not _dash_filters_active and not _pl_active:   # range counts are per-request
+        if _cache_key is not None and not _pl_active:   # range counts are per-request
             _AGG_CACHE["admin_analytics"] = (admin_analytics, admin_charts)
             _AGG_CACHE["analytics_ts"] = _now
+            _AGG_CACHE["analytics_key"] = _cache_key
 
     _mark("analytics")
     # ── Apply stage filter to stage_counts display ───────────────────────────
@@ -1262,6 +1340,7 @@ async def dashboard(
         "all_stages": DROPDOWN_STAGES,
         "stage_labels": STAGE_LABELS,
         "category_counts": category_counts,
+        "cat_split": cat_split,
         "total_devices": total_devices,
         "in_repair_count": in_repair_count,
         "laptops_available": laptops_available,

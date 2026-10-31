@@ -648,15 +648,19 @@ async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, 
     # table's rows. Ongoing = every open WorkID (not started, started, or
     # waiting on a PNA part) — it was "in_progress" only, so Assigned never
     # equalled Completed + Ongoing + Scrap.
+    # Assigned / Completed / Ongoing tiles count distinct TAGS (2026-10-30,
+    # Pankaj; were WorkIDs) — the table still lists WorkIDs.
+    from sqlalchemy import distinct
+    _tags = func.count(distinct(sub.c.bc))
     r = (await db.execute(select(
         func.count().filter(eff.notin_(["completed", "reassigned"])),
         func.count().filter(eff.in_(["completed", "reassigned"])),
         func.count().filter(sub.c.st == "reassigned"),
         func.count().filter(eff == "pending"),
-        func.count().filter(eff.notin_(["completed", "reassigned"])),
-        func.count().filter(and_(eff == "completed", ~func.coalesce(sub.c.scr, False))),
+        _tags.filter(eff.notin_(["completed", "reassigned"])),
+        _tags.filter(and_(eff == "completed", ~func.coalesce(sub.c.scr, False))),
         func.count().filter(has_pna),
-        func.count(),
+        _tags,
         func.count().filter(and_(sub.c.st.notin_(["completed", "reassigned"]),
                                  sub.c.au.is_(None),
                                  func.coalesce(func.trim(sub.c.an), "") == "")),
@@ -1434,12 +1438,17 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         # view, whatever its status now — same rule as the stage tiles. It
         # used to count only not-yet-started ("pending") WorkIDs, which read
         # 0 under a Completed date range while the stage tiles showed hundreds.
-        "assigned_tags": len(items),
+        "assigned_tags": len({it.get("barcode") for it in items}),
         # Ongoing = every open WorkID — not started, started or waiting on a
         # PNA part (2026-10-28; was "in_progress" only, which left the
         # not-started / PNA WorkIDs out of every tile).
-        "ongoing_tags": sum(1 for it in items if _count_status(it) not in ("completed", "reassigned")),
-        "completed_tags": _rows("completed"),
+        # Assigned / Completed / Ongoing count distinct TAGS (2026-10-30,
+        # Pankaj; were WorkIDs). A tag can be both Completed (one stage
+        # done) and Ongoing (open at the next stage).
+        "ongoing_tags": len({it.get("barcode") for it in items
+                             if _count_status(it) not in ("completed", "reassigned")}),
+        "completed_tags": len({it.get("barcode") for it in items
+                               if _count_status(it) == "completed" and not it.get("scrap")}),
         # Tags whose PNA column shows the PNA badge (active PNA part), after
         # the same filters as the table — tags, like every other tile
         # (2026-10-28; was rows, so it could exceed Assigned Tags).

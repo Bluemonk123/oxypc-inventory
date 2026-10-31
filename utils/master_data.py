@@ -45,6 +45,16 @@ async def entity_values(db: AsyncSession) -> list:
     return await master_values(db, "entity") or list(ENTITY_FALLBACK)
 
 
+async def default_entity_selection(db: AsyncSession) -> str:
+    """Entities pre-selected when the Dashboard / All Inventory open with no
+    Entity in the URL (2026-10-30): OxyPC + Renew Circuits, matched by name
+    (spaces / case ignored) so a Master Data spelling tweak still works.
+    Comma-separated, the filters' own convention."""
+    import re
+    return ",".join(e for e in await entity_values(db)
+                    if re.sub(r"[^a-z]", "", (e or "").lower()).startswith(("oxypc", "renewcircuit")))
+
+
 async def report_year_values(db: AsyncSession) -> list:
     """Active Year options for the Dashboard's Year filter and Business P&L's
     year tabs — single source so the two never disagree on which years are

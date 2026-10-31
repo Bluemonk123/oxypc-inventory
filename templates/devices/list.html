@@ -33,6 +33,15 @@
       {{ ms.multiselect('grade', 'Grade', grade_options() + [('none', 'No Grade')], grade) }}
       {# Stock Type before Lot (2026-10-29) #}
       {{ ms.multiselect('stock_type', 'Stock Type', stock_type_options, stock_type) }}
+      {# Zone (2026-10-30): the tag's current location's zone, before Lot. #}
+      <div>
+        <select name="zone" class="form-select form-select-sm" title="Zone">
+          <option value="">All Zones</option>
+          {% for z in zone_choices %}
+          <option value="{{ z.value }}" {% if zone == z.value %}selected{% endif %}>{{ zone_labels.get(z, z.value) }}</option>
+          {% endfor %}
+        </select>
+      </div>
       {{ ms.multiselect('lot', 'Lot', lot_choices, lot) }}
       {# PNA Check (2026-10-22): Yes = in the PNA summary (active PNA part, in
          L1/L2/L3) — same rule as the export's PNA column. #}
@@ -135,7 +144,7 @@
         <i class="bi bi-sliders me-1"></i>Customise (<span id="customiseCount">0</span>)
       </button>
       <a {% if not can(current_user, 'devices', 'export') %}hidden {% endif %}id="exportCsvLink"
-         href="/devices/export?q={{ q | urlencode }}&stage={{ stage | urlencode }}&lot={{ lot | urlencode }}&grade={{ grade | urlencode }}&category={{ category | urlencode }}&device_type={{ device_type | urlencode }}&entity={{ entity | urlencode }}&stock_type={{ stock_type | urlencode }}&pna={{ pna | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}&exclude_sold={{ '1' if exclude_sold else '' }}&fs=1"
+         href="/devices/export?q={{ q | urlencode }}&stage={{ stage | urlencode }}&lot={{ lot | urlencode }}&grade={{ grade | urlencode }}&category={{ category | urlencode }}&device_type={{ device_type | urlencode }}&entity={{ entity | urlencode }}&stock_type={{ stock_type | urlencode }}&pna={{ pna | urlencode }}&zone={{ zone | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}&exclude_sold={{ '1' if exclude_sold else '' }}&fs=1"
          class="btn btn-sm btn-outline-success" onclick="return submitExport(event)"
          title="Exports the selected Tag Numbers, or every filtered result if none are ticked">
         <i class="bi bi-download me-1"></i><span id="exportCsvLabel">Export CSV</span>
@@ -486,7 +495,7 @@ var devicesSelected = new Set();
 // posting thousands of Tag Numbers.
 var devicesSelecting = false;
 var selectAllSize = -1;
-var DEVICE_FILTER_KEYS = ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'pna', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs'];
+var DEVICE_FILTER_KEYS = ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'pna', 'zone', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs'];
 function filterParams() {
   var p = new URLSearchParams(window.location.search), out = new URLSearchParams();
   DEVICE_FILTER_KEYS.forEach(function (k) { out.set(k, p.get(k) || ''); });
@@ -521,7 +530,7 @@ $(document).ready(function() {
       url: '/devices/data',
       data: function (d) {
         var p = new URLSearchParams(window.location.search);
-        ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'pna', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
+        ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'pna', 'zone', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
           .forEach(function (k) { d[k] = p.get(k) || ''; });
       },
       dataSrc: function (json) { return json.data; },
@@ -736,7 +745,7 @@ $(document).ready(function() {
   function msParams() {
     var p = new URLSearchParams(window.location.search);
     var params = new URLSearchParams();
-    ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'pna', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
+    ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'pna', 'zone', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
       .forEach(function (k) { params.set(k, p.get(k) || ''); });
     params.set('tsearch', MS.tsearch || '');
     ['s_entity', 's_make', 's_device_type', 's_touch', 's_stock', 's_grade'].forEach(function (k) {

@@ -53,14 +53,10 @@ def test_tiles_and_export_add_up_to_rows(app_client, make_user):  # noqa: F811
     def tile(key):
         return int(re.search(r'data-tile="%s".*?pm-tile-num" data-server="(\d+)"' % key, html, re.S).group(1))
 
-    if "widCapNote" not in html:        # not capped: tiles count the loaded rows
-        assert tile("assigned") == len(rows)
-        open_rows = sum(1 for r in rows if r["st"] not in ("completed", "reassigned"))
-        assert tile("ongoing") == open_rows
-        assert tile("completed") == sum(1 for r in rows if r["st"] == "completed" and not r["x"])
-        scrap_rows = sum(1 for r in rows if r["x"] and r["st"] == "completed")
-        reassigned = sum(1 for r in rows if r["st"] == "reassigned")
-        assert tile("assigned") == tile("completed") + tile("ongoing") + scrap_rows + reassigned
+    if "widCapNote" not in html:        # not capped: tiles count the loaded rows' TAGS (2026-10-30)
+        assert tile("assigned") == len({r["b"] for r in rows})
+        assert tile("ongoing") == len({r["b"] for r in rows if r["st"] not in ("completed", "reassigned")})
+        assert tile("completed") == len({r["b"] for r in rows if r["st"] == "completed" and not r["x"]})
 
     r = app_client.get("/workid-status/export")
     assert r.status_code == 200

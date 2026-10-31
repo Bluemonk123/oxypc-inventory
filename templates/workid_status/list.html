@@ -100,9 +100,11 @@
   {# Order (2026-10-26): Assigned, Completed, Ongoing, Customer Return, Scrap, PNA. #}
   {# Every tile counts WorkIDs — the rows clicking it shows (2026-10-28; were distinct tags).
      Assigned = Completed + Ongoing + Scrap (+ Reassigned when shown). #}
-  {% for key, label, n, bg, icon in [('assigned', 'Assigned WorkIDs', tile_counts.assigned_tags, '#0d6efd', 'bi-tag'),
-      ('completed', 'Completed WorkIDs', tile_counts.completed_tags, '#0F7A37', 'bi-check-circle'),
-      ('ongoing', 'Ongoing WorkIDs', tile_counts.ongoing_tags, '#f0ad00', 'bi-hourglass-split'),
+  {# Assigned / Completed / Ongoing count distinct tags (2026-10-30); a tag
+     can be both Completed and Ongoing. Clicking still shows their WorkID rows. #}
+  {% for key, label, n, bg, icon in [('assigned', 'Assigned Tags', tile_counts.assigned_tags, '#0d6efd', 'bi-tag'),
+      ('completed', 'Completed Tags', tile_counts.completed_tags, '#0F7A37', 'bi-check-circle'),
+      ('ongoing', 'Ongoing Tags', tile_counts.ongoing_tags, '#f0ad00', 'bi-hourglass-split'),
       ('cr', 'Total Customer Return', tile_counts.total_cust_return, '#6c757d', 'bi-arrow-return-left'),
       ('scrap', 'Total Scrap', tile_counts.total_scrap, '#343a40', 'bi-recycle'),
       ('pna', 'Total PNA', tile_counts.total_pna, '#dc3545', 'bi-exclamation-triangle')] %}
@@ -461,7 +463,9 @@ $(document).ready(function(){
       var key = t.getAttribute('data-tile'), num = t.querySelector('.pm-tile-num');
       if (!num) return;
       if (useServer || !TILE_TEST[key]) { num.textContent = num.getAttribute('data-server'); return; }
-      num.textContent = _tagSet(list, TILE_TEST[key]);
+      num.textContent = (key === 'assigned' || key === 'completed' || key === 'ongoing')   // distinct tags (2026-10-30)
+        ? new Set(list.filter(TILE_TEST[key]).map(function (r) { return r.b; })).size
+        : _tagSet(list, TILE_TEST[key]);
     });
     document.querySelectorAll('#widStageTiles [data-group]').forEach(function (g) {
       var stages = (g.getAttribute('data-stages') || '').split(',');

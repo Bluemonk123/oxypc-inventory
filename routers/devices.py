@@ -22,7 +22,7 @@ from models.lot import Lot
 from models.repair import RepairJob, RepairStatus
 from models.qc import QCCheck
 from models.spare_parts import SparePartConsumption, SparePart
-from models.location import DeviceLocationLog, StorageLocation, LocationAction, UNIT_TYPE_LABELS, ZONE_LABELS
+from models.location import DeviceLocationLog, StorageLocation, LocationAction, UNIT_TYPE_LABELS, ZONE_LABELS, ZoneType
 from models.iqc_inspection import IQCInspection
 from models.part_request import PartRequest
 from models.pna_part import DevicePNAPart
@@ -441,7 +441,7 @@ def _spec_search_clause(term: str, extra_cols=()):
 
 
 def _device_search_filters(q, stage, lot, grade, category, device_type, date_from, date_to, entity="", exclude_sold=False,
-                           stock_type="", pna=""):
+                           stock_type="", pna="", zone=""):
     """Filter clauses shared by the Inventory Search page and its data endpoint.
 
     `employee` is deliberately NOT handled here — Device has no direct
@@ -545,6 +545,25 @@ def _device_search_filters(q, stage, lot, grade, category, device_type, date_fro
     date_filter = _current_stage_date_filter(date_from, date_to)
     if date_filter is not None:
         w.append(date_filter)
+    # Zone (2026-10-30): the tag's current location — latest DeviceLocationLog,
+    # else Device.location_id — sits in a StorageLocation of this zone. Same
+    # resolution as the Dashboard's Zone filter and the Location ID column.
+    if zone:
+        from models.location import ZoneType
+        try:
+            _z = ZoneType(zone)
+        except ValueError:
+            _z = None
+        if _z is not None:
+            _zl = select(StorageLocation.id).where(StorageLocation.zone == _z)
+            _latest = (select(DeviceLocationLog.device_id, DeviceLocationLog.location_id)
+                       .distinct(DeviceLocationLog.device_id)
+                       .order_by(DeviceLocationLog.device_id, DeviceLocationLog.logged_at.desc())
+                       .subquery())
+            w.append(or_(
+                Device.id.in_(select(_latest.c.device_id).where(_latest.c.location_id.in_(_zl))),
+                and_(~Device.id.in_(select(_latest.c.device_id)), Device.location_id.in_(_zl)),
+            ))
     return w
 
 
@@ -573,7 +592,7 @@ async def device_search_data(
     draw: int = 1, start: int = 0, length: int = 25,
     q: str = "", stage: str = "", lot: str = "", grade: str = "",
     category: str = "", device_type: str = "", date_from: str = "", date_to: str = "",
-    employee: str = "", entity: str = "", exclude_sold: str = "", fs: str = "", stock_type: str = "", pna: str = "",
+    employee: str = "", entity: str = "", exclude_sold: str = "", fs: str = "", stock_type: str = "", pna: str = "", zone: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(view_allowed),
 ):
@@ -594,7 +613,7 @@ async def device_search_data(
 
     page_filters = _device_search_filters(q, stage, lot, grade, category, device_type, date_from, date_to,
                                      entity=entity, exclude_sold=_exclude_sold(exclude_sold, fs),
-                                     stock_type=stock_type, pna=pna)
+                                     stock_type=stock_type, pna=pna, zone=zone)
     if employee:
         page_filters.append(await _employee_device_id_filter(db, employee))
     base = select(Device, Lot.lot_number).join(Lot, Device.lot_id == Lot.id).where(Device.is_trashed == False)
@@ -749,7 +768,7 @@ async def device_search_data(
 async def device_barcodes(
     q: str = "", stage: str = "", lot: str = "", grade: str = "",
     category: str = "", device_type: str = "", date_from: str = "", date_to: str = "",
-    employee: str = "", entity: str = "", exclude_sold: str = "", fs: str = "", stock_type: str = "", pna: str = "",
+    employee: str = "", entity: str = "", exclude_sold: str = "", fs: str = "", stock_type: str = "", pna: str = "", zone: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(view_allowed),
 ):
@@ -759,7 +778,7 @@ async def device_barcodes(
     rendered page."""
     page_filters = _device_search_filters(q, stage, lot, grade, category, device_type, date_from, date_to,
                                      entity=entity, exclude_sold=_exclude_sold(exclude_sold, fs),
-                                     stock_type=stock_type, pna=pna)
+                                     stock_type=stock_type, pna=pna, zone=zone)
     if employee:
         page_filters.append(await _employee_device_id_filter(db, employee))
     barcodes = (await db.execute(
@@ -866,6 +885,7 @@ async def device_search(
     fs: str = "",
     stock_type: str = "",
     pna: str = "",
+    zone: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(view_allowed),
 ):
@@ -879,9 +899,18 @@ async def device_search(
     so fetching the full result set here would cost real query time and memory
     for output nothing on the page uses.
     """
+    # Default Entity (2026-10-30): no Entity in the URL -> reopen with OxyPC +
+    # Renew Circuits selected. A redirect (not just a default here) so the
+    # table feed, Select All and Export — which read the URL — match the
+    # filter shown. "All" in the filter posts entity= and is kept.
+    if "entity" not in request.query_params:
+        from urllib.parse import urlencode
+        from utils.master_data import default_entity_selection
+        qp = list(request.query_params.multi_items()) + [("entity", await default_entity_selection(db))]
+        return RedirectResponse(url="/devices?" + urlencode(qp), status_code=302)
     filters = _device_search_filters(q, stage, lot, grade, category, device_type, date_from, date_to,
                                      entity=entity, exclude_sold=_exclude_sold(exclude_sold, fs),
-                                     stock_type=stock_type, pna=pna)
+                                     stock_type=stock_type, pna=pna, zone=zone)
     # The Employee filter was removed from this page (2026-10-13); an old
     # link's ?employee= is ignored here and in the table feed's JS params.
 
@@ -940,6 +969,7 @@ async def device_search(
         "lot_choices": [l.lot_number for l in lots if l.lot_number],
         "q": q, "stage": stage, "lot": lot, "grade": grade, "category": category,
         "device_type": device_type, "entity": entity, "stock_type": stock_type, "pna": pna,
+        "zone": zone, "zone_choices": list(ZoneType), "zone_labels": ZONE_LABELS,
         "stock_type_options": [("finish_good", "Finish Good"), ("as_is", "As-Is"),
                                ("in_progress", "In Progress")],
         "exclude_sold": _exclude_sold(exclude_sold, fs),
@@ -1228,11 +1258,11 @@ def _ms_own_filters(s_entity="", s_make="", s_device_type="", s_touch="", s_stoc
 
 
 async def _ms_page_scope(db, q, stage, lot, grade, category, device_type, date_from, date_to,
-                         employee, entity, exclude_sold, fs, tsearch, stock_type="", pna="") -> list:
+                         employee, entity, exclude_sold, fs, tsearch, stock_type="", pna="", zone="") -> list:
     """Exactly the devices the Tag table shows (its feed: /devices/data)."""
     f = _device_search_filters(q, stage, lot, grade, category, device_type, date_from, date_to,
                                entity=entity, exclude_sold=_exclude_sold(exclude_sold, fs),
-                                     stock_type=stock_type, pna=pna)
+                                     stock_type=stock_type, pna=pna, zone=zone)
     if employee:
         f.append(await _employee_device_id_filter(db, employee))
     t = _spec_search_clause(tsearch, extra_cols=(Lot.lot_number,))
@@ -1251,7 +1281,7 @@ def _ms_key(model, brand, device_type, cpu, ram_summary, ram_gb, hdd_summary, st
 async def model_summary_data(
     q: str = "", stage: str = "", lot: str = "", grade: str = "", category: str = "",
     device_type: str = "", date_from: str = "", date_to: str = "", employee: str = "",
-    entity: str = "", exclude_sold: str = "", fs: str = "", tsearch: str = "", stock_type: str = "", pna: str = "",
+    entity: str = "", exclude_sold: str = "", fs: str = "", tsearch: str = "", stock_type: str = "", pna: str = "", zone: str = "",
     s_entity: str = "", s_make: str = "", s_device_type: str = "",
     s_touch: str = "", s_stock: str = "", s_grade: str = "",
     db: AsyncSession = Depends(get_db),
@@ -1265,7 +1295,7 @@ async def model_summary_data(
     show_pricing = _hp(getattr(current_user.role, "value", current_user.role), "devices", "pricing")
 
     page_scope = await _ms_page_scope(db, q, stage, lot, grade, category, device_type, date_from,
-                                      date_to, employee, entity, exclude_sold, fs, tsearch, stock_type, pna)
+                                      date_to, employee, entity, exclude_sold, fs, tsearch, stock_type, pna, zone)
     scope = [Device.is_trashed == False, *page_scope]  # noqa: E712
     own = _ms_own_filters(s_entity, s_make, s_device_type, s_touch, s_stock, s_grade)
 
@@ -1347,7 +1377,7 @@ async def model_summary_tags(
     m_ram: str = "", m_storage: str = "",
     q: str = "", stage: str = "", lot: str = "", grade: str = "", category: str = "",
     device_type: str = "", date_from: str = "", date_to: str = "", employee: str = "",
-    entity: str = "", exclude_sold: str = "", fs: str = "", tsearch: str = "", stock_type: str = "", pna: str = "",
+    entity: str = "", exclude_sold: str = "", fs: str = "", tsearch: str = "", stock_type: str = "", pna: str = "", zone: str = "",
     s_entity: str = "", s_make: str = "", s_device_type: str = "",
     s_touch: str = "", s_stock: str = "", s_grade: str = "",
     db: AsyncSession = Depends(get_db),
@@ -1357,7 +1387,7 @@ async def model_summary_tags(
     Same scope as the row (page filters + Tag table search + summary filters),
     matched on all six grouping fields."""
     page_scope = await _ms_page_scope(db, q, stage, lot, grade, category, device_type, date_from,
-                                      date_to, employee, entity, exclude_sold, fs, tsearch, stock_type, pna)
+                                      date_to, employee, entity, exclude_sold, fs, tsearch, stock_type, pna, zone)
     own = _ms_own_filters(s_entity, s_make, s_device_type, s_touch, s_stock, s_grade)
 
     def _match(col, value, unknown_label):
@@ -1612,6 +1642,7 @@ async def export_devices(
     entity: str = "",
     stock_type: str = "",
     pna: str = "",
+    zone: str = "",
     exclude_sold: str = "",
     fs: str = "",
     db: AsyncSession = Depends(get_db),
@@ -1636,7 +1667,7 @@ async def export_devices(
         .outerjoin(Lot, Device.lot_id == Lot.id)
         .where(Device.is_trashed == False,
               *_device_search_filters(q, stage, lot, grade, category, device_type,
-                                      date_from, date_to, entity=entity, stock_type=stock_type, pna=pna,
+                                      date_from, date_to, entity=entity, stock_type=stock_type, pna=pna, zone=zone,
                                       exclude_sold=_exclude_sold(exclude_sold, fs)))
         .order_by(Device.updated_at.desc())
     )
