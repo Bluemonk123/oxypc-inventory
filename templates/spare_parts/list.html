@@ -245,8 +245,10 @@
         <thead class="table-dark">
           <tr>
             <th><input type="checkbox" class="form-check-input sp-sa" data-tbl="partsTable"></th>
-            <th>Code</th><th>GRN</th><th>Added As</th><th>Category</th>
-            <th>Crate Number</th><th>Name</th><th>Make</th><th>Model</th>
+            {# 2026-10-31: Code column hidden (kept as data-code on the row);
+               Crate Number and GRN swapped. #}
+            <th>Crate Number</th><th>Added As</th><th>Category</th>
+            <th>GRN</th><th>Name</th><th>Make</th><th>Model</th>
             <th>Min Alert</th><th>In Stock</th><th>Consumed</th><th>Sold</th>
             {% if can(current_user, 'spare_parts', 'pricing') %}<th>Unit Price</th>
             <th>Stock Value</th>{% endif %}
@@ -276,9 +278,17 @@
               data-grp="{{ ((part.name or '')|trim|lower) ~ '|' ~ ((part.make or '')|trim|lower) ~ '|' ~ ((part.model or '')|trim|lower) }}"
               data-grplabel="{{ (part.name or '—') ~ ' / ' ~ (part.make or '—') ~ ' / ' ~ (part.model or '—') }}"
               data-grpnew="{{ _g.get('new', 0) }}" data-grpharvest="{{ _g.get('harvest', 0) }}"
-              data-grpcrates="{{ (_g.get('crates') or [])|length }}" data-grprows="{{ _g.get('rows', 1) }}">
+              data-grpcrates="{{ (_g.get('crates') or [])|length }}" data-grprows="{{ _g.get('rows', 1) }}" data-code="{{ part.part_code }}">
             <td><input type="checkbox" class="form-check-input sp-cb" data-tbl="partsTable" value="{{ part.id }}"></td>
-            <td><code>{{ part.part_code }}</code></td>
+            <td>{{ part.crate_number or '—' }}</td>
+            <td>
+              {% if part.source == 'harvest' %}
+              <span class="badge bg-warning text-dark">Harvest</span>
+              {% else %}
+              <span class="badge bg-success">New</span>
+              {% endif %}
+            </td>
+            <td><span class="badge bg-secondary">{{ part.category }}</span></td>
             <td>
               {% set grn = grn_by_part_code.get(part.part_code, {}) %}
               {% if part.source == 'harvest' or grn.get('is_harvest') %}
@@ -289,15 +299,6 @@
               <span class="text-muted">—</span>
               {% endif %}
             </td>
-            <td>
-              {% if part.source == 'harvest' %}
-              <span class="badge bg-warning text-dark">Harvest</span>
-              {% else %}
-              <span class="badge bg-success">New</span>
-              {% endif %}
-            </td>
-            <td><span class="badge bg-secondary">{{ part.category }}</span></td>
-            <td>{{ part.crate_number or '—' }}</td>
             <td class="fw-semibold">{{ part.name }}</td>
             <td>{{ part.make or '—' }}</td>
             <td>{{ part.model or '—' }}</td>
@@ -1036,11 +1037,11 @@ function spReqTableOptions(tbl, emptyText) {
            createdRow: function (tr, r) { tr.setAttribute('data-addedas', r.a); } };
 }
 var spTables = {
-  {# Name is column 6 (after Category, Crate Number) — the default sort. #}
+  {# Name is column 5 (Crate Number, Added As, Category, GRN before it) — the default sort. #}
   {# Grouped (2026-10-31): sorted Name, Make, Model, Added As, Crate, with a
      header row per Part Name + Make + Model that has 2+ crate rows, showing
      its New / Harvest totals across crates; click to collapse its rows. #}
-  partsTable: function () { return [{ order: [[6, 'asc'], [7, 'asc'], [8, 'asc'], [3, 'asc'], [5, 'asc']], columnDefs: [cdNone],
+  partsTable: function () { return [{ order: [[5, 'asc'], [6, 'asc'], [7, 'asc'], [2, 'asc'], [1, 'asc']], columnDefs: [cdNone],
                                       language: { emptyTable: 'No parts registered.' }, drawCallback: spPartGroups }, {}]; },
   consumptionTable: function () { return [{ order: [[9, 'desc']], columnDefs: [cdNone], language: { emptyTable: 'No consumptions recorded.' } }, {}]; },
   partReqTable: function () { return [spReqTableOptions('partReqTable', 'No part requests.'), { clamp: false }]; },
@@ -1055,7 +1056,7 @@ function spPartGroups(settings) {
   var tbody = $(api.table().body());
   tbody.find('tr.sp-grp').remove();
   var ord = api.order();
-  if (!ord.length || ord[0][0] !== 6) return;          // only when sorted by Name
+  if (!ord.length || ord[0][0] !== 5) return;          // only when sorted by Name
   var ncol = api.columns(':visible').count(), last = null;
   api.rows({ page: 'current' }).nodes().each(function (tr) {
     var g = tr.getAttribute('data-grp');
