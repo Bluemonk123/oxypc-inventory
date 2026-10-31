@@ -226,6 +226,30 @@
     </div>
   </div>
 
+  {# ── Part Names = Parts Consumption names (2026-10-31) ── #}
+  {% if pname %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm border-start border-warning border-3">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-gear me-2"></i>Part Name — Parts Consumption names
+          <span class="badge bg-warning text-dark ms-1">{{ pname | length }}</span></span>
+        <form method="post" action="/admin/system/part-name-fix" class="df-confirm" data-confirm="Click again to fix {{ pname | length }} part(s)">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-warning"><i class="bi bi-magic me-1"></i>Fix {{ pname | length }} part(s)</button>
+        </form>
+      </div>
+      <div class="card-body small">
+        <p class="text-muted mb-2">The Part Name is shown as the part's category in the app, so it should be one of the Device Detail Parts Consumption names.
+          RAM described in the name becomes <strong>RAM</strong>, with the description moved into Model (when Model is blank) so the capacity is kept. "Battery" is left as it is; Admin Part Category is not changed.</p>
+        <table class="table table-sm mb-0 w-auto"><thead><tr><th>Part Code</th><th>Name now</th><th>Becomes</th><th>Model now</th><th>Model after</th></tr></thead><tbody>
+          {% for r in pname %}<tr><td class="font-monospace">{{ r.code or '—' }}</td><td>{{ r.old }}</td><td>{{ r.new }}</td><td>{{ r.m0 or '—' }}</td><td>{{ r.m1 or '—' }}</td></tr>{% endfor %}
+        </tbody></table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {# ── Device Type: the 12 categories (2026-10-30) ── #}
   {% set _dt12_m = dt12_master or {} %}
   {% if dt12_total or _dt12_m.get('add') or _dt12_m.get('turn_on') or _dt12_m.get('turn_off') %}

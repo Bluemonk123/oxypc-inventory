@@ -811,6 +811,70 @@ async def device_type_12_fix(request: Request, current_user: User = Depends(admi
     return back or JSONResponse({"ok": True, "updated": total, "master": master})
 
 
+# ── Part Names: the Parts Consumption names (2026-10-31, Pankaj) ─────────────
+# The Part Name is what the app shows as a part's category, so it should be
+# one of the Device Detail Parts Consumption names (services/parts_required
+# PARTS_MATRIX). Fixes: other case of one of those names -> the exact name;
+# RAM described in the name ("DDR4 8GB", "8gb ddr4 ram") -> "RAM" with the
+# description moved into Model (when Model is blank) so the capacity is kept.
+# "Battery" is left as it is (Pankaj). Admin Part Category is not touched.
+_PART_NAME_KEEP = {"battery"}
+
+
+def _part_name_target(name):
+    import re
+    from services.parts_required import PARTS_MATRIX
+    v = (name or "").strip()
+    if not v or v.lower() in _PART_NAME_KEEP:
+        return None
+    labels = {row[0].lower(): row[0] for row in PARTS_MATRIX}
+    if v.lower() in labels:
+        return labels[v.lower()] if v != labels[v.lower()] else None
+    if re.search(r"\bddr\d?\b|\bddr\d", v, re.I) or re.search(r"\b\d+\s*gb\b.*\bram\b|\bram\b.*\b\d+\s*gb\b", v, re.I):
+        return "RAM"
+    return None
+
+
+async def _part_name_changes(db):
+    """[(id, part_code, old name, new name, model now, model after)]."""
+    import re
+    from sqlalchemy import select
+    from models.spare_parts import SparePart
+    out = []
+    for sp in (await db.execute(select(SparePart).where(SparePart.is_trashed.isnot(True)))).scalars().all():
+        tgt = _part_name_target(sp.name)
+        if not tgt:
+            continue
+        model = sp.model
+        if tgt == "RAM" and not (sp.model or "").strip():
+            model = re.sub(r"\s*\bram\b\s*", " ", sp.name, flags=re.I).strip().upper()
+        out.append((sp.id, sp.part_code, sp.name, tgt, sp.model, model))
+    return out
+
+
+@router.post("/part-name-fix")
+async def part_name_fix(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import update
+    from database import AsyncSessionLocal
+    from models.spare_parts import SparePart
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        changes = await _part_name_changes(db)
+        for sid, _code, _old, new, _m0, m1 in changes:
+            await db.execute(update(SparePart).where(SparePart.id == sid).values(name=new, model=m1))
+        await audit(db, user=current_user, action="PART_NAME_FIX", table_name="spare_parts",
+                    record_id=f"{len(changes)} parts",
+                    new_value={"count": len(changes),
+                               "before_after": {str(sid): {"name": [old, new], "model": [m0, m1]}
+                                                for sid, _c, old, new, m0, m1 in changes}},
+                    notes="Part Name set to the Parts Consumption name (RAM description moved to Model). "
+                          "Reverse: put each 'before' name / model back for the listed ids.",
+                    request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Part Name fixed on {len(changes)} part(s).")
+    return back or JSONResponse({"ok": True, "updated": len(changes)})
+
+
 @router.post("/storage-type-fix")
 async def storage_type_fix_apply(request: Request, current_user: User = Depends(admin_only)):
     from sqlalchemy import update
@@ -1806,6 +1870,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         stype, stype_conf = await _stype_changes(db)
         subcat = await _subcat_changes(db)
         dt12_tags, dt12_master = await _dt12_changes(db)
+        pname = await _part_name_changes(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
         # "Reassigned but marked Completed" card removed (2026-10-28): since
@@ -1855,6 +1920,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "dt12_tags": [{"old": o, "new": n, "count": c} for o, n, c in dt12_tags],
         "dt12_total": sum(c for _o, _n, c in dt12_tags), "dt12_master": dt12_master,
         "dt12_list": DEVICE_TYPES_12,
+        "pname": [{"code": c, "old": o, "new": n, "m0": m0, "m1": m1} for _i, c, o, n, m0, m1 in pname],
         "subcat_total": len(subcat), "subcat_by": [{"dt": k[0], "sc": k[1], "n": n} for k, n in sorted(subcat_by.items(), key=lambda x: -x[1])],
         "issues": issues[:500], "issues_total": len(issues),
         "issue_counts": _issue_counts(issues),
