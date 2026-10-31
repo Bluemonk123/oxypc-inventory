@@ -884,17 +884,15 @@
       </li>
       {% endif %}
 
-      {# ── NOTIFICATIONS — visible to all roles ────────────────────────── #}
-      <li class="nav-section">NOTIFICATIONS</li>
+      {# ── SUPPORT — visible to all roles. Alerts sits first, before
+         Tickets Raised (2026-10-31; it had its own NOTIFICATIONS section). ── #}
+      <li class="nav-section">SUPPORT</li>
       <li>
         <a href="/notifications/alerts" class="nav-link {% if '/notifications/alerts' in request.url.path %}active{% endif %} d-flex align-items-center">
           <i class="bi bi-bell me-2"></i> Alerts
           <span id="sidebarNotifBadge" class="badge rounded-pill bg-danger ms-auto d-none" style="font-size:0.65rem">0</span>
         </a>
       </li>
-
-      {# ── SUPPORT — visible to all roles ──────────────────────────────── #}
-      <li class="nav-section">SUPPORT</li>
       <li>
         <a href="/tickets" class="nav-link {% if request.url.path.startswith('/tickets') %}active{% endif %}">
           <i class="bi bi-ticket-detailed me-2"></i> Tickets Raised
