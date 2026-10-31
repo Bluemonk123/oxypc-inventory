@@ -593,6 +593,65 @@ async def dashboard(
         if _cache_key is not None:
             _AGG_CACHE.update({"catsplit": cat_split, "catsplit_ts": _now, "catsplit_key": _cache_key})
 
+    # ── Total Inventory card (2026-10-31): live stock, page filters applied.
+    #    Total = every stage except Sold / On Rent / GRN Receipt (same as the
+    #    Stage Pipeline's Total Inventory); In TRC / In Showroom = of those,
+    #    current zone TRC Floor / Showroom; In Ready for Sale = Ready to Sale;
+    #    In Scrapped = Scrapped + Scrap for Sale; In Returned = Returned.
+    #    Excluded: In Rent (On Rent), In Sold (Sold).
+    if (_cache_key is not None and _AGG_CACHE.get("invcard_key") == _cache_key
+            and (_now - _AGG_CACHE.get("invcard_ts", 0.0)) < _AGG_TTL and _AGG_CACHE.get("invcard")):
+        inv_card = _AGG_CACHE["invcard"]
+    else:
+        inv_card = {k: 0 for k in ("total", "trc", "showroom", "ready", "scrapped", "returned", "rent", "sold")}
+        try:
+            _zone_of_loc2 = {str(i): z for i, z in (await db.execute(
+                select(StorageLocation.id, StorageLocation.zone))).all()}
+            _out = {DeviceStage.sold, DeviceStage.on_rent, DeviceStage.grn}
+            for st, loc_id, n in (await db.execute(
+                select(Device.current_stage, _resolved_location_id, func.count(Device.id))
+                .select_from(Device)
+                .outerjoin(_loc_latest, _loc_latest.c.device_id == Device.id)
+                .where(Device.is_trashed == False, *_ent, *_dtype, *_loc)  # noqa: E712
+                .group_by(Device.current_stage, _resolved_location_id)
+            )).all():
+                if st == DeviceStage.sold:
+                    inv_card["sold"] += n
+                elif st == DeviceStage.on_rent:
+                    inv_card["rent"] += n
+                if st in _out or st is None:
+                    continue
+                inv_card["total"] += n
+                z = _zone_of_loc2.get(str(loc_id)) if loc_id else None
+                if z == _TRC_ZONE:
+                    inv_card["trc"] += n
+                elif z == _SHOW_ZONE:
+                    inv_card["showroom"] += n
+                if st == DeviceStage.ready_to_sale:
+                    inv_card["ready"] += n
+                elif st in (DeviceStage.scrapped, DeviceStage.scrap_for_sale):
+                    inv_card["scrapped"] += n
+                elif st == DeviceStage.returned:
+                    inv_card["returned"] += n
+        except Exception:
+            _log.exception("total inventory card failed")
+        if _cache_key is not None:
+            _AGG_CACHE.update({"invcard": inv_card, "invcard_ts": _now, "invcard_key": _cache_key})
+
+    # Total Spare Parts card (2026-10-31): not entity-scoped; same live stock
+    # as the Parts Manager page (services/parts_stock.py). Cached 30 s.
+    if (_AGG_CACHE.get("parts_card") is not None
+            and (_now - _AGG_CACHE.get("parts_card_ts", 0.0)) < _AGG_TTL):
+        parts_card = _AGG_CACHE["parts_card"]
+    else:
+        parts_card = None
+        try:
+            from services.parts_stock import parts_stock_summary
+            parts_card = await parts_stock_summary(db)
+            _AGG_CACHE.update({"parts_card": parts_card, "parts_card_ts": _now})
+        except Exception:
+            _log.exception("spare parts card failed")
+
     # ── From/To set: counts show tags MOVED in the range (2026-10-22) ───────
     # No dates: every count is live stock ("where tags are now") — unchanged.
     # Dates set (user's choice, "moved in range"): every count is the tags that
@@ -1350,6 +1409,7 @@ async def dashboard(
         "stage_labels": STAGE_LABELS,
         "category_counts": category_counts,
         "cat_split": cat_split,
+        "inv_card": inv_card, "parts_card": parts_card,
         "total_devices": total_devices,
         "in_repair_count": in_repair_count,
         "laptops_available": laptops_available,

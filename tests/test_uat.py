@@ -143,9 +143,12 @@ class TestUAT02Dashboard:
         assert exists("templates/dashboard.html"), "templates/dashboard.html not found"
 
     def test_stage_counts_in_template(self):
-        """UAT-02-03: stage_counts variable referenced in dashboard template."""
+        """UAT-02-03: stage counts referenced in dashboard template.
+        2026-10-31: the pipeline renders pipeline_counts / side_counts (both
+        built from the stage counts); its Total Inventory uses total_devices."""
         content = src("templates/dashboard.html")
-        assert "stage_counts" in content, "stage_counts not referenced in dashboard.html"
+        assert "pipeline_counts" in content and "side_counts" in content, \
+            "stage counts not referenced in dashboard.html"
 
     def test_user_queue_in_template(self):
         """UAT-02-04: user_queue variable referenced in dashboard template (role-specific banners)."""

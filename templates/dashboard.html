@@ -250,12 +250,10 @@
     <span class="badge bg-warning text-dark ms-auto" title="Each count = tags that moved into that stage between the dates (Sold = sale date in the range). Clear the dates to see live stock.">
       <i class="bi bi-calendar-range me-1"></i>Moved {{ tile_period }}</span>
     {% else %}
-    {# Total Inventory (2026-10-30): every stage except Sold and On Rent
-       (GRN Receipt left out too — not yet through IQC), with the page's
-       Entity / Device Type / Zone filters. #}
-    {% set _inv = namespace(n=0) %}
-    {% for _s, _c in stage_counts.items() if _s not in ('sold', 'on_rent', 'grn') %}{% set _inv.n = _inv.n + _c %}{% endfor %}
-    <span class="ms-auto fw-semibold" title="All tags in stock: every stage except Sold, On Rent and GRN Receipt (Returned / Scrapped / Scrap for Sale included). Follows the Entity / Device Type / Zone filters.">Total Inventory - {{ "{:,}".format(_inv.n) }}</span>
+    {# Total Inventory (2026-10-31): the same count as the Total Inventory
+       tint tile — every stage from IQC to Ready to Sale plus On Rent; GRN
+       Receipt, Sold, Returned, Scrapped, Scrap for Sale left out. #}
+    <span class="ms-auto fw-semibold" title="All tags in stock (same as the Total Inventory tile): every stage from IQC to Ready to Sale, plus On Rent. Excluded: GRN Receipt, Sold, Returned, Scrapped, Scrap for Sale, Trash. Follows the Entity / Device Type / Zone filters.">Total Inventory - {{ "{:,}".format(total_devices) }}</span>
     {% endif %}
   </div>
   <div class="card-body py-3 d-flex flex-column">
@@ -477,10 +475,78 @@
 </div>
 {% endmacro %}
 
+{% macro sum_row(icon, label, value, color) -%}
+<div class="d-flex align-items-center py-1 border-bottom sum-row">
+  <span class="sum-ic" style="background:{{ color }}1a;color:{{ color }}"><i class="bi {{ icon }}"></i></span>
+  <span class="ms-2 text-nowrap">{{ label }}</span><b class="ms-auto ps-2">{{ "{:,}".format(value or 0) }}</b>
+</div>
+{%- endmacro %}
+
+{% macro spare_parts_cards() %}
+{# Total Spare Parts (2026-10-31): live stock as on the Parts Manager page
+   (services/parts_stock.py) — all 34 Parts Consumption names, count only,
+   7 per row, highest stock first; zero-stock names faded; tint tiles. #}
+{% set pc = parts_card %}
+{% set _pal = ['#0d6efd','#0F7A37','#fd7e14','#0b5ed7','#6f42c1','#0aa2c0','#d63384','#495057','#198754','#b8860b','#20c997','#6610f2'] %}
+<div class="row g-3 dash-section">
+  <div class="col-xl-2 col-lg-3">
+    <div class="card border-0 shadow-sm h-100 sum-card">
+      <div class="card-body d-flex flex-column p-3">
+        <div class="sum-title">Total Parts in Stock</div>
+        <div class="sum-big" title="Part Master stock minus handed-over and approved part-sale quantities — same as Parts Manager">{{ "{:,}".format(pc.total) }}</div>
+        <div class="mt-2">
+          {{ sum_row('bi-box-seam', 'New', pc.new, '#0d6efd') }}
+          {{ sum_row('bi-recycle', 'Harvest', pc.harvest, '#198754') }}
+          {{ sum_row('bi-upc-scan', 'Part SKUs', pc.skus, '#6f42c1') }}
+          {{ sum_row('bi-exclamation-triangle', 'Low Stock SKUs', pc.low, '#dc3545') }}
+          {{ sum_row('bi-hourglass-split', 'Requested (open)', pc.requested, '#fd7e14') }}
+        </div>
+        <div class="mt-auto pt-2">
+          <div class="sum-sub">Excluded</div>
+          <span class="sum-chip me-1" title="Handed over to engineers, not yet verified">Handed <b>{{ "{:,}".format(pc.handed) }}</b></span><span class="sum-chip" title="Trashed Part Master rows">Trashed <b>{{ "{:,}".format(pc.trashed) }}</b></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-10 col-lg-9">
+    <div class="row gx-2 gy-3 parts-grid">
+      {% for name, qty in pc.tiles %}
+      <div><a href="/spare-parts?part_name={{ name | urlencode }}" class="text-decoration-none">
+        {% set _c = _pal[loop.index0 % 12] %}
+        <div class="part-tile{{ ' zero' if not qty }}" style="--pc:{{ _c }};background:#fff linear-gradient({{ _c }}17, {{ _c }}17);border-left:4px solid {{ _c }}" title="{{ name }}: {{ qty }}">
+          <div class="part-lbl">{{ name }}</div><div class="part-num">{{ "{:,}".format(qty) }}</div>
+        </div></a></div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
 {% macro category_quick_view_cards() %}
-{# Solid colour tiles with a large faint white watermark icon — same design
-   as the Product Master count tiles. #}
-<div class="row g-3 mb-4">
+{# Total Inventory card (2026-10-31, Version B) on the left of the 12 Device
+   Type tiles (two rows of six). Live stock with the page filters. #}
+<div class="row g-3 dash-section">
+  <div class="col-xl-2 col-lg-3">
+    {% set ic = inv_card or {} %}
+    <div class="card border-0 shadow-sm h-100 sum-card">
+      <div class="card-body d-flex flex-column p-3">
+        <div class="sum-title">Total Inventory</div>
+        <div class="sum-big" title="Every stage except Sold, On Rent and GRN Receipt (Returned / Scrapped included), with the Entity / Device Type / Zone filters{% if pl_active %} — live stock, not the P&amp;L dates{% endif %}">{{ "{:,}".format(ic.get('total', 0)) }}</div>
+        <div class="mt-2">
+          {{ sum_row('bi-tools', 'In TRC', ic.get('trc'), '#0d6efd') }}
+          {{ sum_row('bi-shop', 'In Showroom', ic.get('showroom'), '#6f42c1') }}
+          {{ sum_row('bi-check2-circle', 'In Ready for Sale', ic.get('ready'), '#198754') }}
+          {{ sum_row('bi-recycle', 'In Scrapped', ic.get('scrapped'), '#dc3545') }}
+          {{ sum_row('bi-arrow-return-left', 'In Returned', ic.get('returned'), '#fd7e14') }}
+        </div>
+        <div class="mt-auto pt-2">
+          <div class="sum-sub">Excluded</div>
+          <span class="sum-chip me-1">In Rent <b>{{ "{:,}".format(ic.get('rent', 0)) }}</b></span><span class="sum-chip">In Sold <b>{{ "{:,}".format(ic.get('sold', 0)) }}</b></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-10 col-lg-9"><div class="row g-3">
   {# 12 categories by Device Type (2026-10-30), two rows of six. #}
   {% for label, cat, bg, icon in [
       ('Laptop',      'Laptop',      '#0d6efd', 'bi-laptop'),
@@ -497,7 +563,7 @@
       ('Mobile',      'Mobile',      '#6610f2', 'bi-phone'),
   ] %}
   {% set link = '/devices?device_type=' ~ (cat | urlencode) %}
-  <div class="col-6 col-xl-2">
+  <div class="col-6 col-md-4 col-xl-2">
     <a href="{{ link }}" class="text-decoration-none">
       <div class="dash-tile cat-card p-3 h-100" style="background:{{ bg }}">
         <div class="dash-tile-lbl fw-semibold">{{ label }}</div>
@@ -507,22 +573,23 @@
            (may overlap): In TRC = zone TRC Floor, In Showroom = zone
            Showroom, In Ready = Ready to Sale (routers/dashboard.py cat_split). #}
         {% set _cs = cat_split.get(cat, {}) %}
-        <div class="dash-tile-num">{{ _cs.get('total', 0) }}</div>
-        <div class="dash-tile-sub mt-2" title="Of these, currently in a TRC Floor location">In TRC: <strong>{{ _cs.get('trc', 0) }}</strong></div>
-        <div class="dash-tile-sub" title="Of these, currently in a Showroom location">In Showroom: <strong>{{ _cs.get('showroom', 0) }}</strong></div>
-        <div class="dash-tile-sub" title="Of these, at Ready to Sale">In Ready for Sale: <strong>{{ _cs.get('ready', 0) }}</strong></div>
+        <div class="dash-tile-num">{{ "{:,}".format(_cs.get('total', 0)) }}</div>
+        <div class="dash-tile-sub mt-2" title="Of these, currently in a TRC Floor location">In TRC: <strong>{{ "{:,}".format(_cs.get('trc', 0)) }}</strong></div>
+        <div class="dash-tile-sub" title="Of these, currently in a Showroom location">In Showroom: <strong>{{ "{:,}".format(_cs.get('showroom', 0)) }}</strong></div>
+        <div class="dash-tile-sub" title="Of these, at Ready to Sale">In Ready for Sale: <strong>{{ "{:,}".format(_cs.get('ready', 0)) }}</strong></div>
         <i class="bi {{ icon }} dash-tile-wm"></i>
       </div>
     </a>
   </div>
   {% endfor %}
+  </div></div>
 </div>
 {% endmacro %}
 
 {% macro summary_stat_cards() %}
-<div class="row g-3 mb-4">
+<div class="row g-3 dash-section">
   <div class="col-sm-6 col-xl-3">
-    <div class="card border-0 shadow-sm stat-card stat-primary"><div class="card-body d-flex align-items-center gap-3">
+    <div class="card border-0 shadow-none stat-card stat-primary"><div class="card-body d-flex align-items-center gap-3">
       <div class="rounded-3 p-3 bg-white text-primary"><i class="bi bi-box-seam fs-3"></i></div>
       <div><div class="text-muted small">Total Inventory
         {% if pl_active %}
@@ -535,13 +602,13 @@
     </div></div>
   </div>
   <div class="col-sm-6 col-xl-3">
-    <div class="card border-0 shadow-sm stat-card stat-warning"><div class="card-body d-flex align-items-center gap-3">
+    <div class="card border-0 shadow-none stat-card stat-warning"><div class="card-body d-flex align-items-center gap-3">
       <div class="rounded-3 p-3 bg-white text-warning"><i class="bi bi-tools fs-3"></i></div>
       <div><div class="text-muted small">In Repair</div><div class="fs-3 fw-bold">{{ in_repair_count }}</div></div>
     </div></div>
   </div>
   <div class="col-sm-6 col-xl-3">
-    <div class="card border-0 shadow-sm stat-card stat-success"><div class="card-body d-flex align-items-center gap-3">
+    <div class="card border-0 shadow-none stat-card stat-success"><div class="card-body d-flex align-items-center gap-3">
       <div class="rounded-3 p-3 bg-white text-success"><i class="bi bi-currency-rupee fs-3"></i></div>
       <div><div class="text-muted small">Revenue {{ tile_period }}</div><div class="fs-3 fw-bold">{% if can(current_user, 'dashboard', 'pricing') %}₹{{ tile_revenue | inr }}{% else %}—{% endif %}</div></div>
     </div></div>
@@ -550,7 +617,7 @@
     {# Profit This Month = Business P&L's Gross Profit for the current month
        (Revenue − Device − Parts − Labour). Replaced the all-time "Overall
        Profit", which subtracted the cost of unsold stock (2026-10-15). #}
-    <div class="card border-0 shadow-sm stat-card {% if tile_profit >= 0 %}stat-success{% else %}stat-danger{% endif %}"><div class="card-body d-flex align-items-center gap-3">
+    <div class="card border-0 shadow-none stat-card {% if tile_profit >= 0 %}stat-success{% else %}stat-danger{% endif %}"><div class="card-body d-flex align-items-center gap-3">
       <div class="rounded-3 p-3 bg-white {% if tile_profit >= 0 %}text-success{% else %}text-danger{% endif %}"><i class="bi bi-graph-up-arrow fs-3"></i></div>
       <div><div class="text-muted small" title="Revenue − Device Cost − Parts − Labour for sales in this period — same as Business P&amp;L's Gross Profit">Profit {{ tile_period }}</div><div class="fs-3 fw-bold {% if tile_profit >= 0 %}text-success{% else %}text-danger{% endif %}">{% if can(current_user, 'dashboard', 'pricing') %}₹{{ tile_profit | inr }}{% else %}—{% endif %}</div></div>
     </div></div>
@@ -576,7 +643,7 @@
      below the four tint tiles, above Analytics (2026-10-24, on request).
      The Location Gaps widget was removed from the dashboard (2026-10-15);
      the full list stays on /locations/gaps. -->
-<div class="row g-3 mb-4">
+<div class="row g-3 dash-section">
   <div class="{{ 'col-xl-9' if _dash_admin else 'col-12' }}">
     {{ device_stage_pipeline_card() }}
   </div>
@@ -586,6 +653,9 @@
   </div>
   {% endif %}
 </div>
+
+{# Total Spare Parts below the tint tiles + Stage Pipeline (2026-10-31). #}
+{% if parts_card and has_perm(current_user.role.value if current_user.role.value is defined else current_user.role|string, 'spare_parts', 'enable') %}{{ spare_parts_cards() }}{% endif %}
 
 {% include "dashboard/_admin_analytics.html" %}
 
@@ -632,6 +702,36 @@
 .cat-card { transition: transform .15s ease, box-shadow .15s ease; cursor: pointer; }
 /* Hover: the global tile design (static/css/app.css — shadow + 6px dark bottom border), 2026-10-28. */
 /* Category tiles: solid colour + faint white watermark (Product Master style) */
+/* Dashboard spacing (2026-10-31): more room under the filter bar's line
+   and between the card sections. */
+.filter-bar { margin-bottom: 1.75rem; }
+.dash-section { margin-bottom: 2rem; }
+/* Four tint stat tiles: no shadow (2026-10-31). */
+.stat-card { box-shadow: none !important; }
+/* Total Inventory / Total Spare Parts cards (2026-10-31) */
+.sum-card { border-left: 5px solid #0e3a7a !important; }
+.sum-card .card-body { font-size: .85rem; }
+.sum-title { white-space: nowrap; font-size: .72rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #6c757d; }
+.sum-big { font-size: 2.3rem; font-weight: 700; color: #0e3a7a; line-height: 1.1; }
+.sum-ic { width: 24px; height: 24px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center; font-size: .8rem; flex-shrink: 0; }
+.sum-sub { font-size: .7rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #6c757d; margin-bottom: .25rem; }
+.sum-chip { display: inline-block; background: #e9ecef; color: #495057; border-radius: 999px; padding: .15rem .6rem; font-size: .78rem; }
+.parts-grid > div { flex: 0 0 14.2857%; max-width: 14.2857%; }
+/* Tint tiles (2026-10-31): light wash of the colour + coloured edge and
+   number, so 34 tiles don't overload the page with solid colour. */
+.part-tile { color: #343a40; border-radius: .5rem; padding: .6rem .75rem; height: 100%; }
+.part-tile.zero { opacity: .5; }
+.part-tile.zero .part-num { color: #adb5bd; }
+.part-lbl { font-weight: 600; font-size: .8rem; color: #495057; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.part-num { font-weight: 700; font-size: 1.5rem; line-height: 1.15; color: var(--pc); }
+.dash-tile-sub { white-space: nowrap; }
+@media (max-width: 1440px) {
+  .dash-tile-sub { font-size: .72rem !important; } .dash-tile-num { font-size: 1.9rem !important; }
+  .sum-card .card-body { font-size: .76rem; padding: .75rem !important; } .sum-ic { width: 18px; height: 18px; font-size: .65rem; }
+  .sum-row .ms-2 { margin-left: .35rem !important; } .sum-title { font-size: .64rem; letter-spacing: .5px; }
+  .sum-big { font-size: 2rem; }
+}
+@media (max-width: 991px) { .parts-grid > div { flex: 0 0 33.333%; max-width: 33.333%; } }
 .dash-tile { position: relative; overflow: hidden; border-radius: 10px; color: #fff; min-height: 120px;
              box-shadow: 0 1px 3px rgba(0,0,0,.08); }
 .dash-tile-lbl, .dash-tile-num, .dash-tile-sub { position: relative; z-index: 1; }
@@ -641,11 +741,11 @@
 .dash-tile-wm { position: absolute; right: -6px; bottom: -14px; font-size: 5rem; line-height: 1;
                 color: rgba(255,255,255,.22); pointer-events: none; }
 /* Summary stat cards: light colour background with a coloured left edge */
-.stat-card { border-left: 4px solid transparent !important; }
-.stat-primary { background: #e7f0ff; border-left-color: #0d6efd !important; }
-.stat-warning { background: #fff6dd; border-left-color: #f0ad00 !important; }
-.stat-success { background: #E8F5E6; border-left-color: #0F7A37 !important; }
-.stat-danger  { background: #fdeaea; border-left-color: #dc3545 !important; }
+.stat-card { border: 1.5px solid transparent !important; }
+.stat-primary { background: #e7f0ff; border-color: #0d6efd !important; }
+.stat-warning { background: #fff6dd; border-color: #f0ad00 !important; }
+.stat-success { background: #E8F5E6; border-color: #0F7A37 !important; }
+.stat-danger  { background: #fdeaea; border-color: #dc3545 !important; }
 .cat-laptop { border-top: 4px solid #0d6efd !important; }
 .cat-desktop{ border-top: 4px solid #0F7A37 !important; }
 .cat-tft    { border-top: 4px solid #fd7e14 !important; }
