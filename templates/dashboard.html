@@ -36,16 +36,17 @@
      while split is on so "OxyPC Computers" has room, instead of shrinking
      text further or letting it wrap to a second line. */
   .split-entity-detail{font-size:12px; line-height:1.35}
+  /* Short entity names (2026-10-30): OxyPC / Renew / Deshwal fit on one line. */
   .split-entity-detail div{white-space:nowrap}
   .split-location-detail{font-size:12px; line-height:1.35}
   .split-location-detail div{white-space:nowrap}
-  .pipeline-row.split-active .pipeline-tile{min-width:118px}
+  .pipeline-row.split-active .pipeline-tile{min-width:100px}
   /* Each tile sits inside a link, and the LINK is the row's flex item — so
      the minimum width has to be on the link, or the row squeezes it below
      the tile's own min-width (2026-10-15: 80px tiles rendered at 72px). */
   .pipeline-row > a{flex:1 1 0; min-width:80px}
   .pipeline-row > a > .pipeline-tile{width:100%}
-  .pipeline-row.split-active > a{min-width:118px}
+  .pipeline-row.split-active > a{min-width:100px}
 </style>
 {% endblock %}
 {% block content %}
@@ -249,7 +250,12 @@
     <span class="badge bg-warning text-dark ms-auto" title="Each count = tags that moved into that stage between the dates (Sold = sale date in the range). Clear the dates to see live stock.">
       <i class="bi bi-calendar-range me-1"></i>Moved {{ tile_period }}</span>
     {% else %}
-    <span class="text-muted small ms-auto">Live counts — click to filter devices</span>
+    {# Total Inventory (2026-10-30): every stage except Sold and On Rent
+       (GRN Receipt left out too — not yet through IQC), with the page's
+       Entity / Device Type / Zone filters. #}
+    {% set _inv = namespace(n=0) %}
+    {% for _s, _c in stage_counts.items() if _s not in ('sold', 'on_rent', 'grn') %}{% set _inv.n = _inv.n + _c %}{% endfor %}
+    <span class="ms-auto fw-semibold" title="All tags in stock: every stage except Sold, On Rent and GRN Receipt (Returned / Scrapped / Scrap for Sale included). Follows the Entity / Device Type / Zone filters.">Total Inventory - {{ "{:,}".format(_inv.n) }}</span>
     {% endif %}
   </div>
   <div class="card-body py-3 d-flex flex-column">
@@ -280,10 +286,11 @@
           {% set by_ent = pipeline_by_entity.get(key, {}) %}
           {% if by_ent %}
           <div class="split-entity-detail d-none small text-muted mt-1 text-start">
-            {# Long names cut to 8 characters + ".." ("OxyPC Co..") so tiles stay
-               narrow; full name on hover. #}
+            {# Short entity names (2026-10-30): OxyPC / Renew / Deshwal; any
+               other entity as stored. Full name on hover. #}
+            {% set _short = {'OxyPC Computers': 'OxyPC', 'OxyPC Computer': 'OxyPC', 'Renew Circuits': 'Renew', 'Deshwal': 'Deshwal'} %}
             {% for ent, cnt in by_ent.items() %}
-            <div class="text-nowrap" title="{{ ent }}: {{ cnt }}">{{ ent if ent|length <= 10 else ent[:8] ~ '..' }}: <strong>{{ cnt }}</strong></div>
+            <div class="split-entity-line" title="{{ ent }}: {{ cnt }}">{{ _short.get(ent, ent) }}: <strong>{{ cnt }}</strong></div>
             {% endfor %}
           </div>
           {% endif %}
@@ -474,14 +481,22 @@
 {# Solid colour tiles with a large faint white watermark icon — same design
    as the Product Master count tiles. #}
 <div class="row g-3 mb-4">
-  {% for label, link, n, cat, bg, icon in [
-      ('Laptops',     '/devices?category=Laptop',      laptops_available, 'Laptop',      '#0d6efd', 'bi-laptop'),
-      ('Desktops',    '/devices?category=Desktop',     desktops_available, 'Desktop',    '#0F7A37', 'bi-pc-display'),
-      ('TFT Monitor', '/devices?category=TFT%20Monitor', tft_available,   'TFT Monitor', '#fd7e14', 'bi-display'),
-      ('Tablet',      '/devices?category=Tablet',      tablets_available, 'Tablet',      '#20c997', 'bi-tablet'),
-      ('Mini PC',     '/devices?category=Mini%20PC',   minipc_available,  'Mini PC',     '#6f42c1', 'bi-cpu'),
-      ('Server',      '/devices?category=Server',      server_available,  'Server',      '#0aa2c0', 'bi-hdd-network'),
+  {# 12 categories by Device Type (2026-10-30), two rows of six. #}
+  {% for label, cat, bg, icon in [
+      ('Laptop',      'Laptop',      '#0d6efd', 'bi-laptop'),
+      ('Desktop',     'Desktop',     '#0F7A37', 'bi-pc-display'),
+      ('TFT Monitor', 'TFT Monitor', '#fd7e14', 'bi-display'),
+      ('All-in-One',  'All-in-One',  '#0b5ed7', 'bi-display-fill'),
+      ('Mini PC',     'Mini PC',     '#6f42c1', 'bi-cpu'),
+      ('Server',      'Server',      '#0aa2c0', 'bi-hdd-network'),
+      ('Router',      'Router',      '#d63384', 'bi-router'),
+      ('Printer',     'Printer',     '#495057', 'bi-printer'),
+      ('Switch',      'Switch',      '#198754', 'bi-diagram-3'),
+      ('Projector',   'Projector',   '#b8860b', 'bi-projector'),
+      ('Tablet',      'Tablet',      '#20c997', 'bi-tablet'),
+      ('Mobile',      'Mobile',      '#6610f2', 'bi-phone'),
   ] %}
+  {% set link = '/devices?device_type=' ~ (cat | urlencode) %}
   <div class="col-6 col-xl-2">
     <a href="{{ link }}" class="text-decoration-none">
       <div class="dash-tile cat-card p-3 h-100" style="background:{{ bg }}">

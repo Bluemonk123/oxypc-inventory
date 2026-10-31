@@ -127,13 +127,15 @@ def test_split_entity_breakdown_uses_fixed_display_order(app_client, make_user):
     try:
         username, password = make_user("admin")
         _login(app_client, username, password)
-        html = app_client.get("/dashboard", follow_redirects=True).text
+        # entity= (All): the default view is OxyPC + Renew Circuits only
+        # (2026-10-30), which would leave Deshwal out of the breakdown.
+        html = app_client.get("/dashboard?entity=", follow_redirects=True).text
         # Scope to the "Sold" tile's own split-entity-detail block.
         sold_idx = html.index(">Sold<")
         block = html[sold_idx:sold_idx + 2000]
-        i_oxy = block.index("OxyPC Computers")
-        i_rc = block.index("Renew Circuits")
-        i_dw = block.index("Deshwal")
+        i_oxy = block.index(">OxyPC:")              # short names (2026-10-30)
+        i_rc = block.index(">Renew:")
+        i_dw = block.index(">Deshwal:")
         assert i_oxy < i_rc < i_dw, "entity breakdown not in OxyPC Computers, Renew Circuits, Deshwal order"
     finally:
         for b in (barcode_oxy, barcode_rc, barcode_dw):

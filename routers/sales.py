@@ -578,7 +578,10 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
                 f'<button type="button" class="btn btn-sm btn-outline-primary py-0 qc-report-btn text-nowrap" '
                 f'data-barcode="{esc(d.barcode)}" data-result="{qc[0]}" title="Preview QC Report">'
                 f'<i class="bi bi-file-earmark-pdf me-1"></i>View</button>'
-                + (f'<br><span class="badge bg-{qcls}" style="font-size:.65rem">{esc(ov.replace("_", " "))}</span>' if ov else ''))
+                # No "Pass" label (2026-10-30): a tag only reaches Ready for
+                # Sale after passing, so only an unexpected result is shown.
+                + (f'<br><span class="badge bg-{qcls}" style="font-size:.65rem">{esc(ov.replace("_", " "))}</span>'
+                   if ov and ov != "PASS" else ''))
         else:
             cells.append('<span class="text-muted">—</span>')
         if psiqc:
@@ -3398,6 +3401,26 @@ async def process_external_return(
         db.add(device)
         await db.flush()
         await ensure_stage_location(db, device, DeviceStage.iqc, current_user)
+    elif device.current_stage != DeviceStage.stock_in:
+        # A tag already in the system comes back to Stock In (2026-10-30),
+        # same as a Customer / Internal Tag return (process_return) — it
+        # used to keep its stage (often Sold) though it is physically back.
+        prev_stage = device.current_stage
+        prev_mv = (await db.execute(
+            select(StageMovement)
+            .where(StageMovement.device_id == device.id,
+                   StageMovement.to_stage == prev_stage,
+                   StageMovement.exited_at == None)  # noqa: E711
+            .order_by(StageMovement.moved_at.desc())
+        )).scalars().first()
+        if prev_mv:
+            prev_mv.exited_at = app_now()
+        device.current_stage = DeviceStage.stock_in
+        device.updated_at = app_now()
+        db.add(StageMovement(device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.stock_in,
+                             moved_by=current_user.username,
+                             notes="External Tag return submitted — back in Stock In"))
+        await ensure_stage_location(db, device, DeviceStage.stock_in, current_user)
 
     try:
         qty = max(1, int(quantity))

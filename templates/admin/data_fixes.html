@@ -226,6 +226,35 @@
     </div>
   </div>
 
+  {# ── Device Type: the 12 categories (2026-10-30) ── #}
+  {% set _dt12_m = dt12_master or {} %}
+  {% if dt12_total or _dt12_m.get('add') or _dt12_m.get('turn_on') or _dt12_m.get('turn_off') %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm border-start border-warning border-3">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Device Type — the 12 categories
+          <span class="badge bg-warning text-dark ms-1">{{ "{:,}".format(dt12_total) }}</span></span>
+        <form method="post" action="/admin/system/device-type-12-fix" class="df-confirm"
+              data-confirm="Click again to apply">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-warning"><i class="bi bi-magic me-1"></i>Apply ({{ "{:,}".format(dt12_total) }} tags)</button>
+        </form>
+      </div>
+      <div class="card-body small">
+        <p class="text-muted mb-2">Device Type should be one of: <strong>{{ dt12_list | join(', ') }}</strong>.
+          Other spellings become the exact name, <strong>Tiny / Thinclient → Mini PC</strong>, <strong>Mobile Phone → Mobile</strong>.
+          Master Data → Device Form Factors gets the 12 switched on{% if _dt12_m.get('add') %}, <strong>{{ _dt12_m.add | join(', ') }}</strong> added{% endif %}{% if _dt12_m.get('turn_off') %}, <strong>{{ _dt12_m.turn_off | join(', ') }}</strong> switched off{% endif %}.</p>
+        {% if dt12_tags %}
+        <table class="table table-sm mb-0 w-auto"><thead><tr><th>Now</th><th>Becomes</th><th class="text-end">Tags</th></tr></thead><tbody>
+          {% for r in dt12_tags %}<tr><td>{{ r.old }}</td><td>{{ r.new }}</td><td class="text-end">{{ "{:,}".format(r.count) }}</td></tr>{% endfor %}
+        </tbody></table>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {# ── A size typed into Storage Type (2026-10-29) ── #}
   {% if stype_total or stype_conf_total %}
   <div class="col-12">

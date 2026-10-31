@@ -98,6 +98,11 @@
             <span class="badge {% if cnt > 0 %}bg-success{% else %}bg-secondary{% endif %}">
               {{ cnt }}
             </span>
+            {# Export (2026-10-30): the Tag Numbers counted here. #}
+            {% if cnt > 0 and can(current_user, 'location_master', 'export') %}
+            <a href="/locations/master/{{ loc.id }}/devices.csv" class="ms-1 text-decoration-none"
+               title="Download the {{ cnt }} Tag Number(s) in {{ loc.unit_id }}"><i class="bi bi-download"></i></a>
+            {% endif %}
           </td>
           <td class="text-muted small">{{ loc.description or "—" }}</td>
           <td>

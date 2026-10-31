@@ -222,6 +222,49 @@ async def location_master(
     })
 
 
+@router.get("/master/{loc_id}/devices.csv")
+async def location_devices_export(
+    loc_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.admin, UserRole.inventory_manager)),
+):
+    """Tags currently in this location (2026-10-30) — the same rule as the
+    Location Master's device count: the tag's latest location log is this
+    location with action assigned / placed back / moved."""
+    import csv, io, uuid as _uuid
+    from models.device import Device, STAGE_LABELS
+    try:
+        lid = _uuid.UUID(loc_id)
+    except ValueError:
+        return Response("Location not found", status_code=404)
+    loc = (await db.execute(select(StorageLocation).where(StorageLocation.id == lid))).scalar_one_or_none()
+    if not loc:
+        return Response("Location not found", status_code=404)
+    latest_sub = (
+        select(DeviceLocationLog.device_id, func.max(DeviceLocationLog.logged_at).label("latest"))
+        .group_by(DeviceLocationLog.device_id).subquery()
+    )
+    rows = (await db.execute(
+        select(Device.barcode, Device.brand, Device.model, Device.current_stage, Device.entity)
+        .join(DeviceLocationLog, DeviceLocationLog.device_id == Device.id)
+        .join(latest_sub, and_(DeviceLocationLog.device_id == latest_sub.c.device_id,
+                               DeviceLocationLog.logged_at == latest_sub.c.latest))
+        .where(DeviceLocationLog.location_id == lid,
+               DeviceLocationLog.action.in_([LocationAction.assigned, LocationAction.placed_back,
+                                             LocationAction.moved]))
+        .order_by(Device.barcode)
+    )).all()
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["Tag Number", "Make", "Model", "Current Stage", "Entity", "Location"])
+    for bc, brand, model, stage, entity in rows:
+        w.writerow([bc, brand or "", model or "", STAGE_LABELS.get(stage, getattr(stage, "value", "")) if stage else "",
+                    entity or "", loc.unit_id])
+    safe = "".join(ch if ch.isalnum() or ch in "-_" else "_" for ch in (loc.unit_id or "location"))
+    return Response(content=out.getvalue().encode("utf-8-sig"), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{safe}_tags.csv"'})
+
+
 @router.get("/master/bulk-template")
 async def location_bulk_template(
     current_user: User = Depends(require_roles(UserRole.admin, UserRole.inventory_manager)),

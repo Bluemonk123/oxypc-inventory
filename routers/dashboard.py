@@ -555,8 +555,12 @@ async def dashboard(
                        + list(COSMETIC_STAGES) + FINAL_QC_STAGES + [DeviceStage.ready_to_sale])
     _TRC_ZONE, _SHOW_ZONE = ZoneType.workshop, ZoneType.showroom
 
+    # By Device Type, the 12 categories (2026-10-30; was Sub Category, 6
+    # tiles) — other spellings fold in (utils/device_types.py).
+    from utils.device_types import DEVICE_TYPES_12, canonical_device_type
+
     def _blank_split():
-        return {cat: {"total": 0, "trc": 0, "showroom": 0, "ready": 0} for cat in CATEGORIES}
+        return {cat: {"total": 0, "trc": 0, "showroom": 0, "ready": 0} for cat in DEVICE_TYPES_12}
     if (_cache_key is not None and _AGG_CACHE.get("catsplit_key") == _cache_key
             and (_now - _AGG_CACHE.get("catsplit_ts", 0.0)) < _AGG_TTL and _AGG_CACHE.get("catsplit")):
         cat_split = _AGG_CACHE["catsplit"]
@@ -565,15 +569,15 @@ async def dashboard(
         try:
             _zone_of_loc = {str(i): z for i, z in (await db.execute(
                 select(StorageLocation.id, StorageLocation.zone))).all()}
-            for sub_cat, st, loc_id, n in (await db.execute(
-                select(Device.sub_category, Device.current_stage, _resolved_location_id, func.count(Device.id))
+            for dtype, st, loc_id, n in (await db.execute(
+                select(Device.device_type, Device.current_stage, _resolved_location_id, func.count(Device.id))
                 .select_from(Device)
                 .outerjoin(_loc_latest, _loc_latest.c.device_id == Device.id)
                 .where(Device.is_trashed == False, *_ent, *_dtype, *_loc,  # noqa: E712
                        Device.current_stage.in_(CAT_TILE_STAGES))
-                .group_by(Device.sub_category, Device.current_stage, _resolved_location_id)
+                .group_by(Device.device_type, Device.current_stage, _resolved_location_id)
             )).all():
-                c = cat_split.get(sub_cat)
+                c = cat_split.get(canonical_device_type(dtype))
                 if c is None:
                     continue
                 c["total"] += n
@@ -684,8 +688,13 @@ async def dashboard(
                 _cat_tags.update(_tags.get(k, {}))
             cat_split = _blank_split()
             _trc_lbl, _show_lbl = ZONE_LABELS.get(_TRC_ZONE), ZONE_LABELS.get(_SHOW_ZONE)
+            _dt_of = {}
+            _ids = list(_cat_tags)
+            for i in range(0, len(_ids), 5000):
+                _dt_of.update(dict((await db.execute(
+                    select(Device.id, Device.device_type).where(Device.id.in_(_ids[i:i + 5000])))).all()))
             for did, (ent, zl, sc) in _cat_tags.items():
-                c = cat_split.get(sc)
+                c = cat_split.get(canonical_device_type(_dt_of.get(did)))
                 if c is None:
                     continue
                 c["total"] += 1

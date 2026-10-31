@@ -329,6 +329,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/scrap-l12-close'): None,  # scrap_l12_close_apply: system health internals (admin-only)
     ('POST', '/admin/system/rts-asgn-reopen'): None,  # rts_asgn_reopen_apply: system health internals (admin-only), 2026-10-28
     ('POST', '/admin/system/storage-type-fix'): None,  # storage_type_fix_apply: system health data fix (admin-only), 2026-10-29
+    ('POST', '/admin/system/device-type-12-fix'): None,  # device_type_12_fix: system health data fix (admin-only) — Device Type to the 12 categories, 2026-10-30
     ('POST', '/admin/system/rts-wo-close'): None,  # rts_wo_close_apply: system health internals (admin-only), 2026-10-28
     ('POST', '/admin/system/stress-wo-close'): None,  # stress_wo_close_apply: system health internals (admin-only)
     ('POST', '/admin/system/cosmetic-wo-close'): None,  # cosmetic_wo_close_apply: system health internals (admin-only)
@@ -358,6 +359,7 @@ ROUTE_ACTIONS = {
     ('POST', '/market/link-dealer'): ('market', 'edit'),  # link_group_dealer
     # ===== routers/inventory_location.py =====
     ('GET', '/locations/master/bulk-template'): ('location_master', 'export'),  # location_bulk_template
+    ('GET', '/locations/master/{loc_id}/devices.csv'): ('location_master', 'export'),  # location_devices_export: Tag Numbers in one location (2026-10-30)
     ('POST', '/locations/master/bulk-upload'): ('location_master', 'upload'),  # location_bulk_upload
     ('POST', '/locations/master/create'): ('location_master', 'add'),  # create_location
     ('POST', '/locations/master/{loc_id}/edit'): ('location_master', 'edit'),  # edit_location

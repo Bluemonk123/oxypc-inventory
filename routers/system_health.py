@@ -733,6 +733,84 @@ async def _stype_changes(db):
     return changes, conflicts
 
 
+# ── Device Type: the 12 categories (2026-10-30, Pankaj) ──────────────────────
+# Laptop, Desktop, TFT Monitor, Tablet, Mini PC, Server, Router, Printer,
+# Switch, Projector, All-in-One, Mobile. Tags: other spellings / case of these
+# become the exact name; Tiny and Thinclient become Mini PC; Mobile Phone
+# becomes Mobile. Master Data "Device Form Factors": Projector added (and any
+# missing one of the 12), Workstation switched off, the 12 switched on.
+from utils.device_types import DEVICE_TYPES_12, canonical_device_type
+_DT_OFF = ("Workstation",)
+
+
+def _dt12_target(value):
+    """New Device Type for a tag value, or None when it is already exact /
+    not one of the 12."""
+    target = canonical_device_type(value)
+    return target if target and value != target else None
+
+
+async def _dt12_changes(db):
+    """([(old value, new value, tag count)], master-list changes) — preview."""
+    from sqlalchemy import func, select
+    from models.device import Device
+    from models.master import MasterData
+    rows = (await db.execute(select(Device.device_type, func.count()).where(Device.device_type.isnot(None))
+                             .group_by(Device.device_type))).all()
+    tags = sorted(((old, _dt12_target(old), n) for old, n in rows if _dt12_target(old)), key=lambda x: -x[2])
+    master = {m.value: m for m in (await db.execute(
+        select(MasterData).where(MasterData.category == "device_type"))).scalars().all()}
+    low = {k.lower(): k for k in master}
+    add = [n for n in DEVICE_TYPES_12 if n.lower() not in low]
+    turn_on = [low[n.lower()] for n in DEVICE_TYPES_12 if n.lower() in low and master[low[n.lower()]].is_active is False]
+    turn_off = [k for k in master if k in _DT_OFF and master[k].is_active is not False]
+    return tags, {"add": add, "turn_on": turn_on, "turn_off": turn_off}
+
+
+@router.post("/device-type-12-fix")
+async def device_type_12_fix(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import select, update
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from models.master import MasterData
+    from services.audit_engine import audit
+    from utils.master_data import refresh_master_cache
+    from utils.timezone import app_now
+    async with AsyncSessionLocal() as db:
+        tags, master = await _dt12_changes(db)
+        now, ids_by = app_now(), {}
+        for old, new, _n in tags:
+            ids = (await db.execute(select(Device.id).where(Device.device_type == old))).scalars().all()
+            ids_by[f"{old} -> {new}"] = [str(i) for i in ids]
+            await db.execute(update(Device).where(Device.device_type == old)
+                             .values(device_type=new, updated_at=now).execution_options(synchronize_session=False))
+        order = max([m.display_order or 0 for m in (await db.execute(
+            select(MasterData).where(MasterData.category == "device_type"))).scalars().all()] or [0])
+        for name in master["add"]:
+            order += 1
+            db.add(MasterData(category="device_type", value=name, display_order=order, is_active=True))
+        if master["turn_on"]:
+            await db.execute(update(MasterData).where(MasterData.category == "device_type",
+                                                      MasterData.value.in_(master["turn_on"])).values(is_active=True))
+        if master["turn_off"]:
+            await db.execute(update(MasterData).where(MasterData.category == "device_type",
+                                                      MasterData.value.in_(master["turn_off"])).values(is_active=False))
+        total = sum(n for _o, _n2, n in tags)
+        await audit(db, user=current_user, action="DEVICE_TYPE_12_FIX", table_name="devices",
+                    record_id=f"{total} tags",
+                    new_value={"count": total, "device_ids": ids_by, "master": master},
+                    notes="Device Type set to the 12 categories (spelling / Tiny / Thinclient / Mobile Phone). "
+                          "Reverse: put each group's old value back for the listed ids.",
+                    request=request)
+        await db.commit()
+        await refresh_master_cache(db)
+    msg = (f"Device Type tidied on {total:,} tags"
+           + (f"; added {', '.join(master['add'])}" if master["add"] else "")
+           + (f"; switched off {', '.join(master['turn_off'])}" if master["turn_off"] else "") + ".")
+    back = _back_to_page(await request.form(), msg)
+    return back or JSONResponse({"ok": True, "updated": total, "master": master})
+
+
 @router.post("/storage-type-fix")
 async def storage_type_fix_apply(request: Request, current_user: User = Depends(admin_only)):
     from sqlalchemy import update
@@ -1727,6 +1805,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         rts_asgn = await _rts_asgn_closed(db)
         stype, stype_conf = await _stype_changes(db)
         subcat = await _subcat_changes(db)
+        dt12_tags, dt12_master = await _dt12_changes(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
         # "Reassigned but marked Completed" card removed (2026-10-28): since
@@ -1773,6 +1852,9 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "repair_examples": list({t: {"tag": t, "kinds": ", ".join(_REPAIR_KIND_LABELS[k] for k in ks), "ch": ch}
                                  for k in _REPAIR_KIND_LABELS
                                  for _d, t, ks, ch in [c for c in repair if k in c[2]][:4]}.values()),
+        "dt12_tags": [{"old": o, "new": n, "count": c} for o, n, c in dt12_tags],
+        "dt12_total": sum(c for _o, _n, c in dt12_tags), "dt12_master": dt12_master,
+        "dt12_list": DEVICE_TYPES_12,
         "subcat_total": len(subcat), "subcat_by": [{"dt": k[0], "sc": k[1], "n": n} for k, n in sorted(subcat_by.items(), key=lambda x: -x[1])],
         "issues": issues[:500], "issues_total": len(issues),
         "issue_counts": _issue_counts(issues),
