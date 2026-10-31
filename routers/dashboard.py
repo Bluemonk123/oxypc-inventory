@@ -53,6 +53,33 @@ _OUTSTANDING_STATUSES = ("pending", "confirmed", "delivered")
 # on every page refresh.
 _AGG_CACHE: dict = {"stage": None, "cat": None, "pipeline": None, "lot_pl": None, "admin_analytics": None, "ts": 0.0, "lot_pl_ts": 0.0}
 _AGG_TTL = 30  # seconds
+_REFRESHING: set = set()   # cache keys being refreshed in the background
+
+
+_SWR_SLOTS = {"pipeline": ("pipeline", "pipeline_ts", "pipeline_key"),
+              "analytics": ("admin_analytics", "analytics_ts", "analytics_key")}
+
+
+def _swr_refresh(name, compute, cache_key):
+    """Recompute one Dashboard section in the background on its own DB
+    session and store it under the same cache key (2026-10-31)."""
+    import asyncio
+    _REFRESHING.add(name)
+    val_k, ts_k, key_k = _SWR_SLOTS[name]
+
+    async def _run():
+        try:
+            from database import AsyncSessionLocal
+            async with AsyncSessionLocal() as _s:
+                v = await compute(_s)
+            if _AGG_CACHE.get(key_k) == cache_key:
+                _AGG_CACHE[val_k] = v
+                _AGG_CACHE[ts_k] = _time.monotonic()
+        except Exception:
+            _log.exception("background %s refresh failed", name)
+        finally:
+            _REFRESHING.discard(name)
+    asyncio.create_task(_run())
 
 
 async def _count(db: AsyncSession, *filters) -> int:
@@ -439,10 +466,7 @@ async def dashboard(
     # Own timestamp (2026-10-16): this used to check the shared "ts", which
     # the stage-count block above refreshes first — so once filled, the
     # pipeline was never recomputed until a server restart (stale numbers).
-    if (_cache_key is not None and _AGG_CACHE.get("pipeline_key") == _cache_key and _AGG_CACHE.get("pipeline")
-            and (_now - _AGG_CACHE.get("pipeline_ts", 0.0)) < _AGG_TTL):
-        pipeline_counts, pipeline_by_entity, pipeline_by_location = _AGG_CACHE["pipeline"]
-    else:
+    async def _compute_pipeline(db=db):
         try:
             # Maps a resolved location id -> its ZoneType, for the Split Zone
             # breakdown in _pipe_count_by_location above.
@@ -507,7 +531,17 @@ async def dashboard(
             pipeline_counts = {k: 0 for k, _ in PIPELINE_STEPS}
             pipeline_by_entity = {k: {} for k, _ in PIPELINE_STEPS}
             pipeline_by_location = {k: {} for k, _ in PIPELINE_STEPS}
+        return pipeline_counts, pipeline_by_entity, pipeline_by_location
 
+    # Stale-while-revalidate (2026-10-31): show the last counts at once and
+    # refresh them in the background once older than the 30 s TTL.
+    _pc = _AGG_CACHE.get("pipeline")
+    if _cache_key is not None and _AGG_CACHE.get("pipeline_key") == _cache_key and _pc:
+        pipeline_counts, pipeline_by_entity, pipeline_by_location = _pc
+        if (_now - _AGG_CACHE.get("pipeline_ts", 0.0)) >= _AGG_TTL and "pipeline" not in _REFRESHING:
+            _swr_refresh("pipeline", _compute_pipeline, _cache_key)
+    else:
+        pipeline_counts, pipeline_by_entity, pipeline_by_location = await _compute_pipeline()
         if _cache_key is not None:
             _AGG_CACHE["pipeline"] = (pipeline_counts, pipeline_by_entity, pipeline_by_location)
             _AGG_CACHE["pipeline_ts"] = _now
@@ -637,6 +671,12 @@ async def dashboard(
             _log.exception("total inventory card failed")
         if _cache_key is not None:
             _AGG_CACHE.update({"invcard": inv_card, "invcard_ts": _now, "invcard_key": _cache_key})
+    # One Total Inventory (2026-10-31): the tint tile and the Stage Pipeline's
+    # "Total Inventory -" show the Total Inventory card's number — every stage
+    # except Sold, On Rent and GRN Receipt (Returned / Scrapped / Scrap for
+    # Sale included). With From/To dates the tile keeps its moved-in-range
+    # count (set further down).
+    total_devices = inv_card["total"]
 
     # Total Spare Parts card (2026-10-31): not entity-scoped; same live stock
     # as the Parts Manager page (services/parts_stock.py). Cached 30 s.
@@ -929,7 +969,7 @@ async def dashboard(
 
     # ── Lot P&L (10 queries; cached 30 s when no P&L From/To filter is
     # active — the common case, and identical for every viewer) ───────────────
-    async def _compute_lot_pl():
+    async def _compute_lot_pl(db=db):
         lot_pl: list = []
         try:
             lots_result = await db.execute(select(Lot).order_by(Lot.created_at.desc()))
@@ -1048,9 +1088,25 @@ async def dashboard(
 
     _mark("user queue")
     _lot_pl_now = _time.monotonic()
-    if (not _pl_active and _AGG_CACHE["lot_pl"] is not None
-            and (_lot_pl_now - _AGG_CACHE["lot_pl_ts"]) < _AGG_TTL):
+    if not _pl_active and _AGG_CACHE["lot_pl"] is not None:
+        # Stale-while-revalidate (2026-10-31), same as the financials below.
         lot_pl = _AGG_CACHE["lot_pl"]
+        if (_lot_pl_now - _AGG_CACHE["lot_pl_ts"]) >= _AGG_TTL and "lot_pl" not in _REFRESHING:
+            _REFRESHING.add("lot_pl")
+
+            async def _bg_lot_pl():
+                try:
+                    from database import AsyncSessionLocal
+                    async with AsyncSessionLocal() as _s:
+                        _v = await _compute_lot_pl(_s)
+                    _AGG_CACHE["lot_pl"] = _v
+                    _AGG_CACHE["lot_pl_ts"] = _time.monotonic()
+                except Exception:
+                    _log.exception("background lot P&L refresh failed")
+                finally:
+                    _REFRESHING.discard("lot_pl")
+            import asyncio as _asyncio
+            _asyncio.create_task(_bg_lot_pl())
     else:
         lot_pl = await _compute_lot_pl()
         if not _pl_active:
@@ -1072,7 +1128,7 @@ async def dashboard(
     month_profit = 0.0
     _mark("lot P&L")
 
-    async def _compute_financials():
+    async def _compute_financials(db=db):
         """(month_revenue, total_revenue, total_investment, total_parts_cost,
         total_labour_cost, yearly_parts_cost, yearly_labour_cost)."""
         month_revenue = float((await db.execute(
@@ -1135,13 +1191,32 @@ async def dashboard(
         # while a P&L From/To range is set.
         _fin_key = ("fin", fy)
         _fin = _AGG_CACHE.get("fin")
-        if (not _pl_active and _fin and _fin[0] == _fin_key
-                and (_time.monotonic() - _fin[1]) < _AGG_TTL):
+        if _pl_active:
+            fin_vals = await _compute_financials()
+        elif _fin and _fin[0] == _fin_key:
+            # Stale-while-revalidate (2026-10-31): these FY sums take ~4 s.
+            # Serve the last result straight away; once it is older than
+            # the 30 s TTL, refresh it in the background on its own DB
+            # session so nobody waits for it.
             fin_vals = _fin[2]
+            if (_time.monotonic() - _fin[1]) >= _AGG_TTL and "fin" not in _REFRESHING:
+                _REFRESHING.add("fin")
+
+                async def _bg_fin(_key=_fin_key):
+                    try:
+                        from database import AsyncSessionLocal
+                        async with AsyncSessionLocal() as _s:
+                            _vals = await _compute_financials(_s)
+                        _AGG_CACHE["fin"] = (_key, _time.monotonic(), _vals)
+                    except Exception:
+                        _log.exception("background financials refresh failed")
+                    finally:
+                        _REFRESHING.discard("fin")
+                import asyncio as _asyncio
+                _asyncio.create_task(_bg_fin())
         else:
             fin_vals = await _compute_financials()
-            if not _pl_active:
-                _AGG_CACHE["fin"] = (_fin_key, _time.monotonic(), fin_vals)
+            _AGG_CACHE["fin"] = (_fin_key, _time.monotonic(), fin_vals)
         (month_revenue, total_revenue, total_investment, total_parts_cost,
          total_labour_cost, yearly_parts_cost, yearly_labour_cost,
          yearly_device_cost, fy_revenue, month_profit) = fin_vals
@@ -1167,11 +1242,9 @@ async def dashboard(
     # cycle as stage/category/pipeline above, since it's gated by the same
     # Entity/Device Type/Location filters (_dash_filters_active).
     # Own timestamp — same stale-forever issue as the pipeline cache above.
-    if (_cache_key is not None and not _pl_active and _AGG_CACHE.get("analytics_key") == _cache_key
-            and _AGG_CACHE.get("admin_analytics") is not None
-            and (_now - _AGG_CACHE.get("analytics_ts", 0.0)) < _AGG_TTL):
-        admin_analytics, admin_charts = _AGG_CACHE["admin_analytics"]
-    else:
+    async def _compute_analytics(db=db):
+        admin_analytics: dict = {}
+        admin_charts: dict = {}
         try:
             def _week_key(dt):
                 # ISO 8601 week (isocalendar()) already runs Monday-Sunday, so
@@ -1291,6 +1364,17 @@ async def dashboard(
             admin_charts["seller_po_weekly"] = _weekly_series(seller_po_rows, lambda r: r[0], lambda r: float(r[1] or 0))
         except Exception:
             _log.exception("admin_analytics failed")
+        return admin_analytics, admin_charts
+
+    # Stale-while-revalidate (2026-10-31), same as the pipeline above.
+    _aa = _AGG_CACHE.get("admin_analytics")
+    if (_cache_key is not None and not _pl_active and _AGG_CACHE.get("analytics_key") == _cache_key
+            and _aa is not None):
+        admin_analytics, admin_charts = _aa
+        if (_now - _AGG_CACHE.get("analytics_ts", 0.0)) >= _AGG_TTL and "analytics" not in _REFRESHING:
+            _swr_refresh("analytics", _compute_analytics, _cache_key)
+    else:
+        admin_analytics, admin_charts = await _compute_analytics()
         if _cache_key is not None and not _pl_active:   # range counts are per-request
             _AGG_CACHE["admin_analytics"] = (admin_analytics, admin_charts)
             _AGG_CACHE["analytics_ts"] = _now

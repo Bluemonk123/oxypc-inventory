@@ -76,12 +76,7 @@
   </div>
 </form>
 
-{% if request.query_params.get('success') %}
-<div class="alert alert-success alert-dismissible fade show">
-  <i class="bi bi-check-circle me-2"></i>{{ request.query_params.get('success') }}
-  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
+{# Success message: the top-right toast for every page (static/js/toast.js, 2026-10-31). #}
 
 <!-- ── Summary Cards (counts reflect all tables across all tabs) ── -->
 {# Light tile design (Design System "A · Light-tint tile", 2026-10-19), same as

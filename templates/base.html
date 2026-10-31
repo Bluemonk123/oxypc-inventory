@@ -956,8 +956,8 @@
         <div id="tbSearchWrap">
           <i class="bi bi-upc-scan tbs-ico"></i>
           <input type="search" id="tbSearch" class="form-control form-control-sm font-monospace"
-                 placeholder="Search / Scan Tag Number" autocomplete="off" spellcheck="false"
-                 aria-label="Search or scan a Tag Number">
+                 placeholder="Search - Tag or Serial" autocomplete="off" spellcheck="false"
+                 aria-label="Search a Tag Number or Serial Number">
         </div>
         <!-- Server connection status — real /health polling, see watchdog
              script near the closing </body>. Not a decorative indicator. -->
@@ -1104,6 +1104,7 @@ $.extend(true, $.fn.dataTable.defaults, {
        '<"d-flex justify-content-end align-items-center flex-wrap gap-3 mt-3"<"small text-muted"i>p>',
 });
 </script>
+<script src="/static/js/toast.js?v={{ ASSET_VERSION }}"></script>
 <script src="/static/js/app.js"></script>
 <script src="/static/js/barcode.js"></script>
 <!-- Form draft auto-save: persists in-progress form entry to the browser so a
@@ -1216,13 +1217,8 @@ $.extend(true, $.fn.dataTable.defaults, {
       var data = await resp.json();
       if (resp.ok && data.ok) {
         bootstrap.Modal.getInstance(document.getElementById('raiseTicketModal'))?.hide();
-        // Show a brief success toast
-        var toast = document.createElement('div');
-        toast.className = 'position-fixed bottom-0 end-0 m-3 toast align-items-center text-bg-success border-0 show';
-        toast.setAttribute('role', 'alert');
-        toast.innerHTML = '<div class="d-flex"><div class="toast-body"><i class="bi bi-check-circle me-2"></i>Ticket <strong>' + data.ticket_id + '</strong> raised successfully.</div><button type="button" class="btn-close btn-close-white me-2 m-auto" onclick="this.closest(\'.toast\').remove()"></button></div>';
-        document.body.appendChild(toast);
-        setTimeout(function(){ toast.remove(); }, 4000);
+        // Success: the shared top-right toast (static/js/toast.js, 2026-10-31).
+        window.showTopToast('success', 'Ticket ' + data.ticket_id + ' raised successfully.');
       } else {
         errEl.textContent = data.error || 'Failed to submit ticket. Please try again.';
       }
@@ -1433,41 +1429,9 @@ $.extend(true, $.fn.dataTable.defaults, {
      notifications, closable, app-wide (this block lives in base.html). -->
 <div id="notifToastContainer" class="position-fixed top-0 end-0 p-3" style="z-index:2080; max-width:360px;"></div>
 <script>
-/* window.showTopToast(type, message, title): a toast in the same top-right
-   stack and style as the live notifications. type = success | danger |
-   warning | primary. Text only (no HTML). Auto-closes after 6s.
-   window.flashAsToast(): moves this page's ?success= banner into that stack
-   instead of the full-width alert under the topbar — opt-in per page
-   (L1/L2 and L3/L4 call it, 2026-10-17). Errors/warnings stay as banners. */
-window.showTopToast = function (type, message, title) {
-  var box = document.getElementById('notifToastContainer');
-  if (!box || !message) return;
-  var el = document.createElement('div');
-  el.className = 'toast align-items-center text-bg-' + (type || 'primary') + ' border-0 show shadow mb-2';
-  el.setAttribute('role', 'alert');
-  var wrap = document.createElement('div'); wrap.className = 'd-flex';
-  var body = document.createElement('div'); body.className = 'toast-body';
-  if (title) { var t = document.createElement('div'); t.className = 'fw-semibold small'; t.textContent = title; body.appendChild(t); }
-  var m = document.createElement('div'); m.className = 'small';
-  var ic = document.createElement('i');
-  ic.className = 'bi ' + ({ success: 'bi-check-circle', danger: 'bi-exclamation-circle', warning: 'bi-exclamation-triangle' }[type] || 'bi-info-circle') + ' me-2';
-  m.appendChild(ic); m.appendChild(document.createTextNode(message)); body.appendChild(m);
-  var btn = document.createElement('button');
-  btn.type = 'button'; btn.className = 'btn-close btn-close-white me-2 m-auto'; btn.setAttribute('aria-label', 'Close');
-  btn.addEventListener('click', function () { el.remove(); });
-  wrap.appendChild(body); wrap.appendChild(btn); el.appendChild(wrap);
-  box.appendChild(el);
-  setTimeout(function () { if (el.parentNode) el.remove(); }, 6000);
-};
-window.flashAsToast = function () {
-  var flash = document.getElementById('flashMessages');
-  if (!flash) return;
-  flash.querySelectorAll('.alert-success').forEach(function (a) {
-    var text = (a.textContent || '').replace(/\s+/g, ' ').trim();
-    a.remove();
-    window.showTopToast('success', text);
-  });
-};
+/* window.showTopToast / window.flashAsToast live in static/js/toast.js
+   (2026-10-31), loaded on every page; every page's ?success= message now
+   shows as a top-right toast. */
 </script>
 <script>
 (function pollNotificationToasts() {

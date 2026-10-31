@@ -46,6 +46,14 @@
      the tile's own min-width (2026-10-15: 80px tiles rendered at 72px). */
   .pipeline-row > a{flex:1 1 0; min-width:80px}
   .pipeline-row > a > .pipeline-tile{width:100%}
+  /* Fill the card (2026-10-31): the stage tiles grow to the card's height,
+     keeping a gap above the Returned / Scrapped / … footer; the number sits
+     in the middle of the tile below its strip. */
+  .pipeline-row{flex:1 1 auto; align-items:stretch; margin-bottom:.9rem}
+  .pipeline-row > a{display:flex}
+  .pipeline-row > a > .pipeline-tile{display:flex; flex-direction:column; height:100%}
+  .pipeline-tile .pipeline-count{flex:1 1 auto; display:flex; align-items:center; justify-content:center; font-size:1.5rem}
+  .pipeline-row .pipeline-chevron{align-self:flex-start}
   .pipeline-row.split-active > a{min-width:100px}
 </style>
 {% endblock %}
@@ -240,21 +248,22 @@
   <div class="card-header bg-transparent d-flex align-items-center gap-2">
     <i class="bi bi-diagram-3 text-primary"></i>
     <span class="fw-semibold">Device Stage Pipeline</span>
-    <button type="button" id="splitEntityToggle" class="btn btn-sm btn-outline-secondary">
+    {# 2026-10-31: the live / moved label sits next to the heading; the
+       Split buttons on the right. "Total Inventory - N" removed (the Total
+       Inventory card shows it). #}
+    {% if pl_active %}
+    <span class="badge bg-warning text-dark" title="Each count = tags that moved into that stage between the dates (Sold = sale date in the range). Clear the dates to see live stock.">
+      <i class="bi bi-calendar-range me-1"></i>Moved {{ tile_period }}</span>
+    {% else %}
+    <span class="badge rounded-pill text-bg-light border fw-semibold" title="Live counts: where tags are right now. Set From / To dates to see tags moved in a period.">
+      <i class="bi bi-broadcast me-1 text-success"></i>Live Stock Status</span>
+    {% endif %}
+    <button type="button" id="splitEntityToggle" class="btn btn-sm btn-outline-secondary ms-auto">
       <i class="bi bi-diagram-2 me-1"></i>Split Entity
     </button>
     <button type="button" id="splitLocationToggle" class="btn btn-sm btn-outline-secondary">
       <i class="bi bi-geo-alt me-1"></i>Split Zone
     </button>
-    {% if pl_active %}
-    <span class="badge bg-warning text-dark ms-auto" title="Each count = tags that moved into that stage between the dates (Sold = sale date in the range). Clear the dates to see live stock.">
-      <i class="bi bi-calendar-range me-1"></i>Moved {{ tile_period }}</span>
-    {% else %}
-    {# Total Inventory (2026-10-31): the same count as the Total Inventory
-       tint tile — every stage from IQC to Ready to Sale plus On Rent; GRN
-       Receipt, Sold, Returned, Scrapped, Scrap for Sale left out. #}
-    <span class="ms-auto fw-semibold" title="All tags in stock (same as the Total Inventory tile): every stage from IQC to Ready to Sale, plus On Rent. Excluded: GRN Receipt, Sold, Returned, Scrapped, Scrap for Sale, Trash. Follows the Entity / Device Type / Zone filters.">Total Inventory - {{ "{:,}".format(total_devices) }}</span>
-    {% endif %}
   </div>
   <div class="card-body py-3 d-flex flex-column">
     {# Each step carries the link that reproduces its own count on All
@@ -262,7 +271,7 @@
        stage a device sits in, and L3/L4 is a status inside L1. Order follows
        DeviceStage's own declaration order (grn, iqc, ..., l3, trc_production,
        qc_check, ...) — IQC and Production slot into that same sequence. #}
-    <div class="d-flex pipeline-row align-items-start gap-1">
+    <div class="d-flex pipeline-row gap-1">
       {% for key, label, color, link in [
           ('iqc',           'IQC',           'secondary', '/devices?stage=iqc'),
           ('stock_in',      'Stock In',      'secondary', '/devices?stage=stock_in'),
@@ -370,11 +379,12 @@
 
 {% macro financial_summary_card() %}
 <div class="card border-0 shadow-sm h-100 gtable-card">
-  <div class="card-header bg-transparent fw-semibold">
-    <i class="bi bi-wallet2 me-2"></i>Financial Summary
+  <div class="card-header bg-transparent fw-semibold d-flex align-items-center gap-2">
+    <span><i class="bi bi-wallet2 me-2"></i>Financial Summary</span>
     {# Financial Year (Apr–Mar) for Total Investment / Parts Spent / Labour
-       Spent. Re-submits the dashboard with every other filter kept. #}
-    <form method="get" action="/dashboard" class="d-inline-block ms-1 align-middle">
+       Spent. Re-submits the dashboard with every other filter kept.
+       Right-aligned (2026-10-31). #}
+    <form method="get" action="/dashboard" class="ms-auto mb-0">
       {% for k, v in request.query_params.multi_items() if k != 'fy' %}
       <input type="hidden" name="{{ k }}" value="{{ v }}">
       {% endfor %}
@@ -597,8 +607,8 @@
            title="Tags that moved into any active stage (IQC, Stock In, Production, L1/L2, L3/L4, Stress/QC, Cosmetic, Final QC, Ready to Sale) between the dates.&#10;&#10;Not counted: Sold, Returned, Scrapped, Scrap for Sale, On Rent, GRN Receipt, and tags in Trash."></i>
         {% else %}
         <i class="bi bi-info-circle ms-1" style="cursor:help"
-           title="All tags in stock right now.&#10;&#10;Excluded: GRN Receipt (not yet through IQC), Sold, Returned, Scrapped, Scrap for Sale, and tags in Trash.&#10;Included: every stage from IQC to Ready to Sale, plus On Rent."></i>
-        {% endif %}</div><div class="fs-3 fw-bold">{{ total_devices }}</div></div>
+           title="All tags in stock right now — same as the Total Inventory card.&#10;&#10;Excluded: Sold, On Rent, GRN Receipt (not yet through IQC), and tags in Trash.&#10;Included: every stage from IQC to Ready to Sale, plus Returned, Scrapped and Scrap for Sale."></i>
+        {% endif %}</div><div class="fs-3 fw-bold">{{ "{:,}".format(total_devices) }}</div></div>
     </div></div>
   </div>
   <div class="col-sm-6 col-xl-3">

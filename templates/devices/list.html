@@ -52,8 +52,8 @@
           <option value="no" {% if pna == 'no' %}selected{% endif %}>PNA Check: No</option>
         </select>
       </div>
-      {# Date From/To filter on the date the tag reached its current stage. #}
-      {% include "_date_range_fields.html" %}
+      {# Date From/To filter hidden (2026-10-31, Pankaj). Links that carry
+         date_from / date_to still filter (e.g. from the Dashboard). #}
       <div class="filter-bar-check">
         <div class="form-check mb-0">
           <input class="form-check-input" type="checkbox" name="exclude_sold" value="1"
