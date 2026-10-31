@@ -24,21 +24,20 @@ def test_consumed_counts_every_handover_not_just_handed_over_status():
     """A row that moves on to 'received' still shows its Qty Handover, so it
     must still count as Consumed — the status filter dropped it and inflated
     In Stock by the same amount."""
+    # 2026-10-31: the netting lives in services/parts_stock (legacy mode).
     import inspect
-    from routers import spare_parts as sp
+    from services import parts_stock as ps
 
-    src = inspect.getsource(sp.parts_list)
-    consumed_block = src.split("consumed_rows", 1)[1].split(")).all()", 1)[0]
+    consumed_block = inspect.getsource(ps.legacy_consumed_by_group)
     assert 'PartRequest.status == "handed_over"' not in consumed_block
     assert "PartRequest.qty_handed_over" in consumed_block
 
 
 def test_sold_comes_from_approved_sale_requests():
     import inspect
-    from routers import spare_parts as sp
+    from services import parts_stock as ps
 
-    src = inspect.getsource(sp.parts_list)
-    sold_block = src.split("sold_rows", 1)[1].split(")).all()", 1)[0]
+    sold_block = inspect.getsource(ps.sold_by_part)
     assert "PartSaleRequest.qty_requested" in sold_block
     assert '"approved"' in sold_block
 
@@ -46,7 +45,13 @@ def test_sold_comes_from_approved_sale_requests():
 def test_in_stock_deducts_both_consumed_and_sold():
     import io as _io
     html = _io.open("templates/spare_parts/list.html", encoding="utf-8").read()
-    assert "{% set live_stock = part.qty_in_stock - consumed - sold %}" in html
+    # 2026-10-31: In Stock = services/parts_stock.live_map (qty - consumed - sold
+    # in legacy mode; crate row count - sold after the Parts Data Fix).
+    assert "{% set live_stock = live_by_part.get(part.id|string, 0) %}" in html
+    import inspect
+    from services import parts_stock as ps
+    src = inspect.getsource(ps.live_map)
+    assert "cons.get" in src and "sold.get" in src
     # Sold must read the new map, not the stale column.
     assert "sold_by_part.get(part.id|string, 0)" in html
     assert "part.sold_qty" not in html
@@ -92,8 +97,7 @@ def test_tiles_use_one_live_definition_deducting_both():
 
     src = inspect.getsource(sp.parts_list)
     live = src.split("def _live(p):", 1)[1].split("\n\n", 1)[0]
-    assert "consumed_by_part" in live
-    assert "sold_by_part" in live, "Total Quantities must deduct sold too"
+    assert "live_by_part" in live          # services/parts_stock.live_map: consumed + sold
     # Out of Stock must not carry its own private subtraction any more.
     assert "out_of_stock_count = sum(1 for p in parts if _live(p) <= 0)" in src
 

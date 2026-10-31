@@ -202,8 +202,27 @@ async def grn_create(
     except json.JSONDecodeError:
         items = []
 
+    from services.parts_stock import find_row, apply_group_price, latest_grn_price
     for item in items:
-        part_id = item.get("part_id") or _new_part_id()
+        # Crate rows (2026-10-31): the received Physical Qty goes into the Part
+        # Master row for Part Name + Make + Model + New + this Crate — added to
+        # it when it exists (Matched), a new row otherwise (Not-Matched). The
+        # line's unit price then becomes the price of every crate row of that
+        # Part Name + Make + Model, New and Harvest.
+        sp_name = _f(item.get("part_name")) or _f(item.get("item_name")) or _f(item.get("product_description")) or "GRN Part"
+        sp_make = _f(item.get("part_brand"))
+        sp_model = _f(item.get("part_model"))
+        sp_crate = _f(item.get("crate_number"))
+        sp_qty = _i(item.get("physical_qty")) or _i(item.get("invoice_qty")) or 0
+        sp_price = _d(item.get("price"))
+        sp_min_alert = _i(item.get("min_stock_alert"))
+        row = await find_row(db, sp_name, sp_make, sp_model, "new", sp_crate)
+        if row is not None:
+            part_id = row.part_code
+        else:
+            part_id = item.get("part_id") or _new_part_id()
+            while (await db.execute(select(SparePart.id).where(SparePart.part_code == part_id))).first():
+                part_id = _new_part_id()
         db.add(PartsGRNLineItem(
             grn_id=grn.id,
             part_id=part_id,
@@ -214,62 +233,44 @@ async def grn_create(
             invoice_number=_f(item.get("invoice_number")) or grn.invoice_number,
             product_description=_f(item.get("product_description")),
             item_name=_f(item.get("item_name")),
-            part_brand=_f(item.get("part_brand")),
-            part_model=_f(item.get("part_model")),
+            part_brand=sp_make,
+            part_model=sp_model,
             part_name=_f(item.get("part_name")),
             invoice_qty=_i(item.get("invoice_qty")),
             physical_qty=_i(item.get("physical_qty")),
-            price=_d(item.get("price")),
+            price=sp_price,
             main_category=_f(item.get("main_category")),
             category=_f(item.get("category")),
             vehicle_number=_f(item.get("vehicle_number")) or grn.vehicle_number,
             invoice_ref=_f(item.get("invoice_ref")),
             remarks=_f(item.get("remarks")),
             is_harvest=False,
+            crate_number=sp_crate,
         ))
-
-        # Mirror into Part Master so GRN line items appear on the Parts Dashboard
-        # (Added As "New"), matching the existing Harvest-part mirror below.
-        # Upsert by part_code (rather than a blind insert) so a code collision
-        # never raises a UNIQUE-constraint error that would abort the whole
-        # GRN transaction — instead it just restocks the existing part.
-        sp_qty = _i(item.get("physical_qty")) or _i(item.get("invoice_qty")) or 0
-        sp_price = _d(item.get("price"))
-        existing_part = (await db.execute(
-            select(SparePart).where(SparePart.part_code == part_id)
-        )).scalar_one_or_none()
-        sp_min_alert = _i(item.get("min_stock_alert"))
-        sp_make = _f(item.get("part_brand"))
-        sp_model = _f(item.get("part_model"))
-        if existing_part:
-            existing_part.qty_in_stock = int(existing_part.qty_in_stock or 0) + sp_qty
-            if sp_price is not None:
-                existing_part.unit_price = float(sp_price)
+        if row is not None:
+            row.qty_in_stock = int(row.qty_in_stock or 0) + sp_qty
             if sp_min_alert is not None:
-                existing_part.min_stock_alert = sp_min_alert
-            # Only overwrite when this line item actually carries a value —
-            # a restock line that leaves Make/Model blank must not blank out
-            # what an earlier GRN already recorded for this same part_code.
-            if sp_make:
-                existing_part.make = sp_make
-            if sp_model:
-                existing_part.model = sp_model
-            existing_part.is_trashed = False
-            existing_part.trashed_at = None
+                row.min_stock_alert = sp_min_alert
         else:
+            # A line with no price: the new crate row takes the part's latest GRN price.
+            _p = sp_price if (sp_price is not None and sp_price > 0) else await latest_grn_price(db, sp_name, sp_make, sp_model)
             db.add(SparePart(
                 part_code=part_id,
-                name=_f(item.get("part_name")) or _f(item.get("item_name")) or _f(item.get("product_description")) or "GRN Part",
+                name=sp_name,
                 category=_f(item.get("category")) or "Other",
-                unit_price=float(sp_price) if sp_price is not None else 0.0,
+                unit_price=float(_p) if _p is not None else 0.0,
                 qty_in_stock=sp_qty,
-                min_stock_alert=sp_min_alert or 5,
+                min_stock_alert=sp_min_alert if sp_min_alert is not None else 5,
                 supplier=_f(item.get("vendor_name")) or grn.vendor_name,
                 notes=_f(item.get("product_description")),
                 source="new",
                 make=sp_make,
                 model=sp_model,
+                crate_number=sp_crate,
             ))
+        await db.flush()
+        if sp_price is not None:
+            await apply_group_price(db, sp_name, sp_make, sp_model, sp_price)
 
     await db.commit()
     await audit(db, action="PARTS_GRN_CREATE", user=current_user,
@@ -325,7 +326,9 @@ async def harvest_part(
     invoice_ref: str = Form(default=""),
     remarks: str = Form(default=""),
     min_stock_alert: str = Form(default="5"),
+    crate_number: str = Form(default=""),
 ):
+    from services.parts_stock import find_row, latest_grn_price
     grn_number = await _next_grn_number(db)
     grn = PartsGRN(
         grn_number=grn_number,
@@ -337,8 +340,17 @@ async def harvest_part(
     db.add(grn)
     await db.flush()
 
-    part_id = _new_part_id()
     qty = _i(physical_qty) or 1
+    sp_name = _f(part_name) or _f(product_description) or "Harvest Part"
+    sp_crate = _f(crate_number)
+    # Crate rows (2026-10-31): add to the Harvest row for Part Name + Make +
+    # Model + this Crate when it exists, else create it. Price follows the
+    # latest Parts GRN unit price of the same Part Name + Make + Model; the
+    # entered price is used only when that part has never come in on a GRN.
+    row = await find_row(db, sp_name, _f(part_brand), _f(part_model), "harvest", sp_crate)
+    grn_price = await latest_grn_price(db, sp_name, _f(part_brand), _f(part_model))
+    sp_price = grn_price if grn_price is not None else _d(price)
+    part_id = row.part_code if row is not None else _new_part_id()
     db.add(PartsGRNLineItem(
         grn_id=grn.id,
         part_id=part_id,
@@ -360,25 +372,29 @@ async def harvest_part(
         invoice_ref=_f(invoice_ref),
         remarks=_f(remarks),
         is_harvest=True,
+        crate_number=sp_crate,
     ))
-    # Mirror into Part Master so harvest parts appear in Parts Dashboard
-    sp_name = _f(part_name) or _f(product_description) or "Harvest Part"
-    sp_cat = _f(category) if _f(category) else "Other"
-    sp_price = _d(price)
-    db.add(SparePart(
-        part_code=part_id,
-        name=sp_name,
-        category=sp_cat,
-        unit_price=float(sp_price) if sp_price is not None else 0.0,
-        qty_in_stock=qty,
-        min_stock_alert=_i(min_stock_alert) or 5,
-        supplier="Internal",
-        notes=_f(product_description),
-        source="harvest",
-        make=_f(part_brand),
-        model=_f(part_model),
-    ))
+    if row is not None:
+        row.qty_in_stock = int(row.qty_in_stock or 0) + qty
+        if sp_price is not None:
+            row.unit_price = float(sp_price)
+    else:
+        db.add(SparePart(
+            part_code=part_id,
+            name=sp_name,
+            category=_f(category) if _f(category) else "Other",
+            unit_price=float(sp_price) if sp_price is not None else 0.0,
+            qty_in_stock=qty,
+            min_stock_alert=_i(min_stock_alert) or 5,
+            supplier="Internal",
+            notes=_f(product_description),
+            source="harvest",
+            make=_f(part_brand),
+            model=_f(part_model),
+            crate_number=sp_crate,
+        ))
     await db.commit()
     await audit(db, action="HARVEST_PART_ADD", user=current_user,
                 table_name="parts_grn_line_items", record_id=part_id)
-    return JSONResponse({"ok": True, "part_id": part_id, "grn_number": grn_number})
+    return JSONResponse({"ok": True, "part_id": part_id, "grn_number": grn_number,
+                         "matched": row is not None})

@@ -11,7 +11,7 @@ from utils.timezone import app_now
 from fastapi import APIRouter, Depends, Form, Request, HTTPException
 from fastapi.responses import RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import select, or_, func
 
 from database import get_db
 from models.user import User, UserRole
@@ -225,22 +225,97 @@ async def create_part_requests_batch(
         status_code=302)
 
 
+async def _handover_options(db, reqs) -> list:
+    """Per request: the Part Master crate rows it can be handed over from —
+    every live row with the request's Part Name (New and Harvest, any
+    Make / Model), each with its live count."""
+    from services.parts_stock import live_map, norm
+    names = {norm(r.part_name) for r in reqs if norm(r.part_name)}
+    rows = []
+    if names:
+        rows = (await db.execute(select(SparePart).where(
+            SparePart.is_trashed.isnot(True),
+            func.lower(func.trim(SparePart.name)).in_(names)))).scalars().all()
+    live = await live_map(db, rows)
+    out = []
+    for r in reqs:
+        mine = [p for p in rows if norm(p.name) == norm(r.part_name)]
+        mine.sort(key=lambda p: (-live[str(p.id)], norm(p.crate_number)))
+        out.append({
+            "id": str(r.id), "part": r.part_name, "eng": r.engineer_name or r.requested_by or "",
+            "qty": int(r.qty_requested or 0), "status": r.status, "barcode": r.barcode or "",
+            "rows": [{"id": str(p.id), "crate": p.crate_number or "", "make": p.make or "",
+                      "model": p.model or "", "source": "harvest" if p.source == "harvest" else "new",
+                      "qty": live[str(p.id)]} for p in mine],
+        })
+    return out
+
+
+@router.get("/part-requests/handover-options")
+async def handover_options(request: Request, db: AsyncSession = Depends(get_db),
+                           current_user: User = Depends(spm_allowed)):
+    """Feeds the Handover modal (row button and Handover Selected alike)."""
+    ids = [u for u in (_as_uuid(v) for v in request.query_params.getlist("ids")) if u]
+    reqs = (await db.execute(select(PartRequest).where(PartRequest.id.in_(ids)))).scalars().all() if ids else []
+    order = {u: i for i, u in enumerate(ids)}
+    reqs.sort(key=lambda r: order.get(r.id, 0))
+    return JSONResponse({"requests": await _handover_options(db, reqs)})
+
+
+async def _do_handover(db, pr, row_id, current_user, request):
+    """Hand one request over from one crate row (2026-10-31). Returns an
+    error string, or None when done. Quantity always equals what was
+    requested. In row stock mode the crate row's count is decremented here;
+    in legacy mode (Parts Data Fix not yet applied) live stock still nets
+    handovers by group, so the row is only linked."""
+    from services.parts_stock import live_map, norm, row_mode
+    if pr.status != "requested":
+        return "already actioned"
+    qty = max(0, int(pr.qty_requested or 0))
+    row = None
+    if row_id:
+        row = (await db.execute(select(SparePart).where(
+            SparePart.id == _as_uuid(row_id), SparePart.is_trashed.isnot(True)))).scalar_one_or_none()
+        if row is None:
+            return "crate row not found"
+        if norm(row.name) != norm(pr.part_name):
+            return f"crate row is {row.name}, request is {pr.part_name}"
+    rowmode = await row_mode(db)
+    if row is None:
+        if rowmode:
+            return "choose New / Harvest and a crate"
+    else:
+        avail = (await live_map(db, [row]))[str(row.id)]
+        if avail < qty:
+            return f"crate {row.crate_number or '—'} has only {avail}"
+        if rowmode:
+            row.qty_in_stock = int(row.qty_in_stock or 0) - qty
+        pr.part_id = row.id
+    pr.qty_handed_over = qty
+    pr.status = "handed_over"
+    pr.actioned_at = app_now()
+    pr.actioned_by = current_user.username
+    nv = {"qty_handed_over": qty}
+    if row is not None:
+        nv.update({"part_code": row.part_code, "type": "Harvest" if row.source == "harvest" else "New",
+                   "crate": row.crate_number, "make": row.make, "model": row.model,
+                   "unit_price": str(row.unit_price or 0), "stock_mode": "row" if rowmode else "legacy"})
+    await audit(db, user=current_user, action="PART_HANDOVER", table_name="part_requests",
+                record_id=str(pr.id), new_value=nv, request=request)
+    return None
+
+
 @router.post("/part-requests/{req_id}/handover")
 async def handover_part(req_id: str, request: Request,
+                        part_row_id: str = Form(""),
                         db: AsyncSession = Depends(get_db), current_user: User = Depends(spm_allowed)):
     pr = (await db.execute(select(PartRequest).where(PartRequest.id == _as_uuid(req_id)))).scalar_one_or_none()
     if not pr:
         raise HTTPException(404, "Part request not found")
-    # Handover quantity is not user-editable — it always equals what was
-    # requested, so the server is authoritative rather than trusting a
-    # posted qty field (the form field itself is read-only display-only).
-    qty = pr.qty_requested
-    pr.qty_handed_over = max(0, qty)
-    pr.status = "handed_over"
-    pr.actioned_at = app_now()
-    pr.actioned_by = current_user.username
-    await audit(db, user=current_user, action="PART_HANDOVER", table_name="part_requests",
-                record_id=str(pr.id), new_value={"qty_handed_over": qty}, request=request)
+    err = await _do_handover(db, pr, part_row_id, current_user, request)
+    if err:
+        from urllib.parse import quote_plus
+        return RedirectResponse(url="/spare-parts?error=" + quote_plus("Handover not done: " + err), status_code=302)
     await db.commit()
     return RedirectResponse(url="/spare-parts?success=Part+handed+over", status_code=302)
 
@@ -515,6 +590,7 @@ async def bulk_request_action(
     request: Request,
     action: str = Form(...),
     ids: list[str] = Form(default=[]),
+    part_row_ids: list[str] = Form(default=[]),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(spm_allowed),
 ):
@@ -546,14 +622,19 @@ async def bulk_request_action(
     )).scalars().all()
 
     processed, skipped = 0, 0
+    reasons: list = []
+    # Handover modal sends one crate row per request, in the same order.
+    row_for = {str(_as_uuid(i)): r for i, r in zip(ids, part_row_ids)} if part_row_ids else {}
     now = app_now()
     for pr in rows:
         if action == "handover":
-            if pr.status != "requested":
+            err = await _do_handover(db, pr, row_for.get(str(pr.id), ""), current_user, request)
+            if err:
                 skipped += 1
+                reasons.append(err)
                 continue
-            pr.qty_handed_over = max(0, pr.qty_requested)
-            pr.status = "handed_over"
+            processed += 1
+            continue
         else:
             if pr.status in ("handed_over", "received"):
                 skipped += 1          # already fulfilled — cancelling would lose the record
@@ -572,7 +653,7 @@ async def bulk_request_action(
     await db.commit()
     return JSONResponse({
         "ok": True, "processed": processed, "skipped": skipped,
-        "reason": "already actioned" if skipped else None,
+        "reason": "; ".join(sorted(set(reasons))) if reasons else ("already actioned" if skipped else None),
     })
 
 

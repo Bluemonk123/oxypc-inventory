@@ -61,6 +61,11 @@ async def _consumed_map(db: AsyncSession) -> dict:
     parts_list for the full reasoning, including why the join to SparePart
     is an outer join. Keyed by part_id for the caller's convenience, same as
     spare_parts.py's own consumed_by_part."""
+    # Row stock mode (Parts Data Fix applied): handovers already came off the
+    # crate row, so nothing is netted here any more.
+    from services.parts_stock import row_mode
+    if await row_mode(db):
+        return {}
     rows = (await db.execute(
         select(PartRequest.part_name, SparePart.make, SparePart.model,
                func.coalesce(func.sum(PartRequest.qty_handed_over), 0))

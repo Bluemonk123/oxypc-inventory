@@ -79,6 +79,9 @@ class PartsGRNLineItem(Base):
     invoice_ref = Column(String(255), nullable=True)
     remarks = Column(Text, nullable=True)
     is_harvest = Column(Boolean, default=False, nullable=False)
+    # Crate the received qty was put in (2026-10-31): posting adds to the
+    # Part Master row for Part Name + Make + Model + Type + this crate.
+    crate_number = Column(String(50), nullable=True)
 
     created_at = Column(DateTime, default=app_now)
 

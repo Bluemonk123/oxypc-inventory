@@ -261,7 +261,10 @@
              commits the stock, so it comes off In Stock at approval rather than
              when the sale is finally raised. #}
           {% set sold = sold_by_part.get(part.id|string, 0) %}
-          {% set live_stock = part.qty_in_stock - consumed - sold %}
+          {# In Stock (2026-10-31) = services/parts_stock.live_map — this crate
+             row's own count once the Parts Data Fix is applied. #}
+          {% set live_stock = live_by_part.get(part.id|string, 0) %}
+          {% set _g = part_group.get(part.id|string, {}) %}
           {# Filter keys live on the row, not in the cells: cell text carries
              badges and formatting, so scraping it would break the moment a
              label changes. #}
@@ -269,7 +272,11 @@
               data-added="{{ part.created_at.strftime('%Y-%m-%d') if part.created_at else '' }}"
               data-category="{{ part.category or '' }}"
               data-addedas="{{ 'Harvest' if part.source == 'harvest' else 'New' }}"
-              data-partname="{{ part.name or '' }}">
+              data-partname="{{ part.name or '' }}"
+              data-grp="{{ ((part.name or '')|trim|lower) ~ '|' ~ ((part.make or '')|trim|lower) ~ '|' ~ ((part.model or '')|trim|lower) }}"
+              data-grplabel="{{ (part.name or '—') ~ ' / ' ~ (part.make or '—') ~ ' / ' ~ (part.model or '—') }}"
+              data-grpnew="{{ _g.get('new', 0) }}" data-grpharvest="{{ _g.get('harvest', 0) }}"
+              data-grpcrates="{{ (_g.get('crates') or [])|length }}" data-grprows="{{ _g.get('rows', 1) }}">
             <td><input type="checkbox" class="form-check-input sp-cb" data-tbl="partsTable" value="{{ part.id }}"></td>
             <td><code>{{ part.part_code }}</code></td>
             <td>
@@ -316,6 +323,10 @@
                 {% if can(current_user, 'spare_parts', 'edit') %}
                 <a href="/spare-parts/{{ part.id }}/edit"
                    class="btn btn-xs btn-outline-primary btn-sm py-0 px-2">Edit</a>
+                <button type="button" class="btn btn-xs btn-outline-success btn-sm py-0 px-2 text-nowrap"
+                        title="Set this crate's count after a physical count"
+                        onclick="spUpdateCount('{{ part.id }}', {{ live_stock }}, this)"
+                        data-label="{{ part.name }} · {{ part.make or '—' }} / {{ part.model or '—' }} · {{ 'Harvest' if part.source == 'harvest' else 'New' }} · Crate {{ part.crate_number or '—' }}">Update Count</button>
                 {% endif %}
                 {% if can(current_user, 'spare_parts', 'edit') %}
                 <form method="post" action="/spare-parts/{{ part.id }}/procure" class="d-inline">
@@ -436,7 +447,7 @@
       {# Rows as plain values, not <tr>s (2026-10-19): with ~10,000 requests
          the HTML rows took the browser close to a minute to build. The cells
          are drawn in JS (spReqColumns) for the page being viewed only. #}
-      <script type="application/json" id="partReqTableData">[{% for r in part_reqs %}{% set _m = part_meta.get(r.part_id|string, {}) %}{% set _s = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}{{ {"id": r.id|string, "a": (r.request_type or 'new')|capitalize, "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _m.get("crate") or "", "mk": _m.get("make") or "", "md": _m.get("model") or "", "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if (r.part_id and _s > 0) else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
+      <script type="application/json" id="partReqTableData">[{% for r in part_reqs %}{% set _m = part_meta.get(r.part_id|string, {}) %}{% set _s = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}{{ {"id": r.id|string, "a": (r.request_type or 'new')|capitalize, "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _m.get("crate") or "", "mk": _m.get("make") or "", "md": _m.get("model") or "", "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if _s > 0 else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
   </div>
   </div>
 
@@ -472,7 +483,7 @@
         </tr></thead>
         <tbody></tbody>{# rows come from #psiqcReqTableData below #}
       </table>
-      <script type="application/json" id="psiqcReqTableData">[{% for r in psiqc_reqs %}{% set _m = part_meta.get(r.part_id|string, {}) %}{% set _s = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}{{ {"id": r.id|string, "a": (r.request_type or 'new')|capitalize, "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _m.get("crate") or "", "mk": _m.get("make") or "", "md": _m.get("model") or "", "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if (r.part_id and _s > 0) else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
+      <script type="application/json" id="psiqcReqTableData">[{% for r in psiqc_reqs %}{% set _m = part_meta.get(r.part_id|string, {}) %}{% set _s = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}{{ {"id": r.id|string, "a": (r.request_type or 'new')|capitalize, "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _m.get("crate") or "", "mk": _m.get("make") or "", "md": _m.get("model") or "", "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if _s > 0 else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
   </div>
   </div>
 
@@ -513,7 +524,7 @@
       {# Rows as plain values, not <tr>s (2026-10-19): with ~10,000 requests
          the HTML rows took the browser close to a minute to build. The cells
          are drawn in JS (spReqColumns) for the page being viewed only. #}
-      <script type="application/json" id="faultyReqTableData">[{% for r in faulty_reqs %}{% set _m = part_meta.get(r.part_id|string, {}) %}{% set _s = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}{{ {"id": r.id|string, "a": 'Faulty', "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _m.get("crate") or "", "mk": _m.get("make") or "", "md": _m.get("model") or "", "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if (r.part_id and _s > 0) else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
+      <script type="application/json" id="faultyReqTableData">[{% for r in faulty_reqs %}{% set _m = part_meta.get(r.part_id|string, {}) %}{% set _s = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}{{ {"id": r.id|string, "a": 'Faulty', "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _m.get("crate") or "", "mk": _m.get("make") or "", "md": _m.get("model") or "", "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if _s > 0 else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
   </div>
   </div>
 
@@ -732,26 +743,25 @@
   </div>
 </div>
 
-<!-- Handover modal (#12) -->
+<!-- Handover modal (#12; crate rows 2026-10-31) — one flow for the row
+     Handover button and Handover Selected. Per request: New / Harvest, then
+     the crate it is taken from (typed, Matched / Not-Matched). -->
 <div class="modal fade" id="handoverModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form method="post" id="handoverForm" class="modal-content">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-box-arrow-up me-2"></i>Handover Part</h5>
+        <h5 class="modal-title"><i class="bi bi-box-arrow-up me-2"></i>Handover Part<span id="ho_count"></span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <div class="mb-2"><span class="text-muted small">Part:</span> <strong id="ho_part">—</strong></div>
-        <div class="mb-3"><span class="text-muted small">Engineer:</span> <strong id="ho_eng">—</strong></div>
-        <label class="form-label fw-semibold">Quantity to Hand Over</label>
-        <input type="number" id="ho_qty" name="qty" class="form-control" readonly tabindex="-1">
+        <div id="ho_note" class="small text-muted mb-2"></div>
+        <div id="ho_list"><div class="text-muted small">Loading…</div></div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Confirm Handover</button>
+        <button type="button" id="ho_confirm" class="btn btn-success" disabled onclick="hoSubmit()"><i class="bi bi-check-lg me-1"></i>Confirm Handover</button>
       </div>
-    </form>
+    </div>
   </div>
 </div>
 
@@ -888,6 +898,12 @@
               <label class="form-label small fw-semibold">Low Stock Alert</label>
               <input type="number" name="min_stock_alert" class="form-control form-control-sm" min="0" value="5">
             </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-semibold">Crate Number</label>
+              <input type="text" name="crate_number" id="hv_crate" class="form-control form-control-sm" placeholder="e.g. C-12" autocomplete="off">
+              {# Matched = added to the Harvest row of this crate; Not-Matched = new row. #}
+              <div id="hv_crate_msg" class="mt-1" style="min-height:1.25rem"></div>
+            </div>
             <div class="col-md-12">
               <label class="form-label small fw-semibold">Product Description</label>
               <input type="text" name="product_description" class="form-control form-control-sm">
@@ -912,6 +928,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/crate_match.js"></script>
 <script>
 // ── Global Tables (2026-10-19) — one per tab. A tab's table is built the
 // first time that tab is shown, not all at page load. Part Requests and
@@ -954,9 +971,8 @@ function spStatusCell(r) {
 function spActionCell(r, faulty) {
   var h = '';
   if (r.st === 'requested') {
-{% if can(current_user, 'spare_parts', 'edit') %}    h += '<button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#handoverModal"' +
-         ' data-req="' + spEsc(r.id) + '" data-part="' + spEsc(r.n) + '" data-eng="' + spEsc(r.e) + '"' +
-         ' data-qty="' + spEsc(r.q) + '"' + (r.av ? '' : ' disabled') + '>Handover</button>';{% endif %}
+{% if can(current_user, 'spare_parts', 'edit') %}    h += '<button class="btn btn-sm btn-success py-0 px-2" onclick="hoOpen([\'' + spEsc(r.id) + '\'])"' +
+         (r.av ? '' : ' disabled') + '>Handover</button>';{% endif %}
   } else if (r.st === 'handed_over') h += '<span class="badge bg-success">Handed Over &times;' + spEsc(r.h) + '</span>';
   else if (r.st === 'not_in_stock') h += '<span class="badge bg-danger">Not In Stock</span>';
   else if (r.st === 'procure') h += '<span class="badge bg-info text-dark">Sent for Sourcing</span>';
@@ -1021,7 +1037,11 @@ function spReqTableOptions(tbl, emptyText) {
 }
 var spTables = {
   {# Name is column 6 (after Category, Crate Number) — the default sort. #}
-  partsTable: function () { return [{ order: [[6, 'asc']], columnDefs: [cdNone], language: { emptyTable: 'No parts registered.' } }, {}]; },
+  {# Grouped (2026-10-31): sorted Name, Make, Model, Added As, Crate, with a
+     header row per Part Name + Make + Model that has 2+ crate rows, showing
+     its New / Harvest totals across crates; click to collapse its rows. #}
+  partsTable: function () { return [{ order: [[6, 'asc'], [7, 'asc'], [8, 'asc'], [3, 'asc'], [5, 'asc']], columnDefs: [cdNone],
+                                      language: { emptyTable: 'No parts registered.' }, drawCallback: spPartGroups }, {}]; },
   consumptionTable: function () { return [{ order: [[9, 'desc']], columnDefs: [cdNone], language: { emptyTable: 'No consumptions recorded.' } }, {}]; },
   partReqTable: function () { return [spReqTableOptions('partReqTable', 'No part requests.'), { clamp: false }]; },
   psiqcReqTable: function () { return [spReqTableOptions('psiqcReqTable', 'No Pre-Sale IQC part requests.'), { clamp: false }]; },
@@ -1029,6 +1049,59 @@ var spTables = {
   partsConsumptionTable: function () { return [{ order: [], language: { emptyTable: 'No parts consumed yet.' } }, { clamp: false }]; },
   sourcingTable: function () { return [{ order: [], columnDefs: [cdNone], language: { emptyTable: 'No sourcing requests.' } }, {}]; },
 };
+var SP_COLLAPSED = {};
+function spPartGroups(settings) {
+  var api = new $.fn.dataTable.Api(settings);
+  var tbody = $(api.table().body());
+  tbody.find('tr.sp-grp').remove();
+  var ord = api.order();
+  if (!ord.length || ord[0][0] !== 6) return;          // only when sorted by Name
+  var ncol = api.columns(':visible').count(), last = null;
+  api.rows({ page: 'current' }).nodes().each(function (tr) {
+    var g = tr.getAttribute('data-grp');
+    if (!g) return;
+    if (g !== last && +tr.getAttribute('data-grprows') < 2) { last = g; tr.style.display = ''; return; }   // one row: no header
+    if (g !== last) {
+      var n = tr.getAttribute('data-grpnew'), h = tr.getAttribute('data-grpharvest'), c = tr.getAttribute('data-grpcrates');
+      var open = !SP_COLLAPSED[g];
+      $(tr).before('<tr class="sp-grp table-light" data-grp="' + spEsc(g) + '" style="cursor:pointer" title="Click to show / hide crates">' +
+        '<td colspan="' + ncol + '" class="py-1 text-start ps-3"><i class="bi bi-chevron-' + (open ? 'down' : 'right') + ' me-1"></i>' +
+        '<strong>' + spEsc(tr.getAttribute('data-grplabel')) + '</strong>' +
+        '<span class="ms-3 badge bg-success">New ' + n + '</span>' +
+        '<span class="ms-1 badge bg-warning text-dark">Harvest ' + h + '</span>' +
+        '<span class="ms-2 text-muted small">' + c + ' crate' + (c == 1 ? '' : 's') + '</span></td></tr>');
+      last = g;
+    }
+    tr.style.display = SP_COLLAPSED[g] ? 'none' : '';
+  });
+}
+$(document).on('click', '#partsTable tr.sp-grp', function () {
+  var g = this.getAttribute('data-grp');
+  SP_COLLAPSED[g] = !SP_COLLAPSED[g];
+  $('#partsTable').DataTable().draw(false);
+});
+
+// Update Count (2026-10-31): physical count of one crate row.
+function spUpdateCount(id, shown, btn) {
+  var label = btn.getAttribute('data-label') || '';
+  var v = prompt('Update Count\n' + label + '\n\nSystem shows ' + shown + '. Enter the counted quantity:', shown);
+  if (v === null) return;
+  v = String(v).trim();
+  if (!/^\d+$/.test(v)) { alert('Enter a whole number (0 or more).'); return; }
+  var reason = prompt('Reason / note (optional):', 'Stock-take') || '';
+  var body = new URLSearchParams();
+  body.append('csrf_token', "{{ request.cookies.get('csrf_token','') }}");
+  body.append('count', v); body.append('reason', reason);
+  fetch('/spare-parts/' + id + '/update-count', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d && d.ok) location.href = '/spare-parts?success=' + encodeURIComponent('Count updated: ' + d.old + ' → ' + d.new);
+      else alert('Update failed: ' + ((d && d.detail) || 'Unknown error'));
+    })
+    .catch(function () { alert('Network error — please try again.'); });
+}
+
 function spInitPane(pane) {
   if (!pane) return;
   pane.querySelectorAll('table[id]').forEach(function (t) {
@@ -1042,22 +1115,159 @@ $('#sparePartsTabs button[data-bs-toggle="tab"]').on('shown.bs.tab', function ()
   spInitPane(document.querySelector(this.getAttribute('data-bs-target')));
 });
 
-// Handover modal — populate from the clicked button's data-* attributes
-var _hm = document.getElementById('handoverModal');
-if (_hm) {
-  _hm.addEventListener('show.bs.modal', function (e) {
-    var b = e.relatedTarget;
-    document.getElementById('handoverForm').action = '/part-requests/' + b.getAttribute('data-req') + '/handover';
-    document.getElementById('ho_part').textContent = b.getAttribute('data-part') || '—';
-    document.getElementById('ho_eng').textContent = b.getAttribute('data-eng') || '—';
-    document.getElementById('ho_qty').value = b.getAttribute('data-qty') || '';
+// ── Handover modal (2026-10-31) ──────────────────────────────────────────
+// Same modal for one request or Handover Selected. Each request picks New or
+// Harvest, then types the crate: Matched = that crate holds this part (and
+// enough of it); Not-Matched blocks. Confirm sends one crate row per request.
+var HO = { reqs: [] };
+function hoNorm(v) { return (v || '').trim().toLowerCase(); }
+function hoOpen(ids) {
+  if (!ids || !ids.length) return;
+  document.getElementById('ho_list').innerHTML = '<div class="text-muted small">Loading…</div>';
+  document.getElementById('ho_confirm').disabled = true;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('handoverModal')).show();
+  fetch('/part-requests/handover-options?' + ids.map(function (i) { return 'ids=' + encodeURIComponent(i); }).join('&'),
+        { credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      var all = d.requests || [];
+      HO.reqs = all.filter(function (r) { return r.status === 'requested'; });
+      var skip = all.length - HO.reqs.length;
+      document.getElementById('ho_count').textContent = HO.reqs.length > 1 ? ' — ' + HO.reqs.length + ' requests' : '';
+      document.getElementById('ho_note').textContent = skip ? skip + ' selected request(s) already actioned — left out.' : '';
+      hoRender();
+    })
+    .catch(function () { document.getElementById('ho_list').innerHTML = '<div class="text-danger small">Could not load stock. Try again.</div>'; });
+}
+function hoTotals(r) {
+  var t = { 'new': 0, harvest: 0 };
+  r.rows.forEach(function (x) { t[x.source] += x.qty; });
+  return t;
+}
+function hoRender() {
+  var box = document.getElementById('ho_list');
+  if (!HO.reqs.length) { box.innerHTML = '<div class="text-muted small">Nothing to hand over.</div>'; hoUpdate(); return; }
+  box.innerHTML = HO.reqs.map(function (r, i) {
+    var t = hoTotals(r);
+    var def = t['new'] >= r.qty ? 'new' : (t.harvest >= r.qty ? 'harvest' : '');
+    r._src = def; r._row = '';
+    function radio(src, label) {
+      var dis = t[src] < r.qty;
+      return '<div class="form-check form-check-inline mb-0' + (dis ? ' opacity-50' : '') + '">' +
+             '<input type="radio" class="form-check-input" name="ho_src_' + i + '" id="ho_' + src + '_' + i + '" value="' + src + '"' +
+             (def === src ? ' checked' : '') + (dis ? ' disabled' : '') + ' onchange="hoSrc(' + i + ',this.value)">' +
+             '<label class="form-check-label fw-semibold" for="ho_' + src + '_' + i + '">' + label +
+             ' <span class="badge ' + (src === 'new' ? 'bg-success' : 'bg-warning text-dark') + ' ms-1">' + t[src] + ' available</span></label></div>';
+    }
+    return '<div class="ho-line border rounded p-2 mb-2" data-i="' + i + '">' +
+      '<div class="d-flex justify-content-between flex-wrap gap-2 small">' +
+        '<div><strong>' + spEsc(r.part) + '</strong>' + (r.barcode ? ' · <span class="font-monospace">' + spEsc(r.barcode) + '</span>' : '') +
+        ' · <span class="text-muted">Engineer:</span> ' + spEsc(r.eng || '—') + '</div>' +
+        '<div><span class="text-muted">Qty:</span> <strong>' + r.qty + '</strong></div></div>' +
+      '<div class="d-flex flex-wrap gap-2 align-items-center mt-2">' +
+        '<div class="d-flex align-items-center">' + radio('new', 'New') + radio('harvest', 'Harvest') + '</div>' +
+        '<input type="text" class="form-control form-control-sm ho-crate" style="max-width:170px" placeholder="Crate Number" autocomplete="off" oninput="hoEval(' + i + ')">' +
+        '<select class="form-select form-select-sm ho-pick d-none" style="max-width:260px" onchange="hoEval(' + i + ')"></select>' +
+      '</div>' +
+      '<div class="ho-msg mt-1" style="min-height:1.25rem"></div>' +
+      '<div class="ho-crates small text-muted"></div>' +
+    '</div>';
+  }).join('');
+  HO.reqs.forEach(function (r, i) { hoChips(i); });
+  hoUpdate();
+}
+function hoLine(i) { return document.querySelector('.ho-line[data-i="' + i + '"]'); }
+function hoSrc(i, src) { HO.reqs[i]._src = src; hoChips(i); hoEval(i); }
+function hoChips(i) {
+  var r = HO.reqs[i], el = hoLine(i).querySelector('.ho-crates');
+  var rows = r.rows.filter(function (x) { return x.source === r._src && x.qty > 0; });
+  if (!r._src) { el.innerHTML = '<span class="text-danger">Not enough New or Harvest stock for this request.</span>'; return; }
+  if (!rows.length) { el.innerHTML = ''; return; }
+  el.innerHTML = 'In stock: ' + rows.slice(0, 10).map(function (x) {
+    return '<a href="#" class="me-2 text-decoration-none" onclick="hoFill(' + i + ',this.dataset.c);return false" data-c="' + spEsc(x.crate) + '">' +
+           (x.crate ? spEsc(x.crate) : '<i>no crate</i>') + ' (' + x.qty + ')</a>';
+  }).join('') + (rows.length > 10 ? '…' : '');
+}
+function hoFill(i, c) { var inp = hoLine(i).querySelector('.ho-crate'); inp.value = c; hoEval(i); }
+function hoEval(i) {
+  var r = HO.reqs[i], line = hoLine(i);
+  var typed = line.querySelector('.ho-crate').value, pick = line.querySelector('.ho-pick'), msg = line.querySelector('.ho-msg');
+  r._row = '';
+  if (!r._src || !typed.trim()) { msg.innerHTML = ''; pick.classList.add('d-none'); hoUpdate(); return; }
+  var hits = r.rows.filter(function (x) { return x.source === r._src && hoNorm(x.crate) === hoNorm(typed); });
+  var hit = null;
+  if (hits.length > 1) {
+    var keep = pick.value;
+    pick.innerHTML = hits.map(function (x) {
+      return '<option value="' + x.id + '">' + spEsc((x.make || '—') + ' / ' + (x.model || '—')) + ' (' + x.qty + ')</option>';
+    }).join('');
+    if (keep && hits.some(function (x) { return x.id === keep; })) pick.value = keep;
+    pick.classList.remove('d-none');
+    hit = hits.filter(function (x) { return x.id === pick.value; })[0];
+  } else {
+    pick.classList.add('d-none');
+    hit = hits[0];
+  }
+  var lbl = r._src === 'harvest' ? 'Harvest' : 'New';
+  if (!hit) {
+    msg.innerHTML = '<span class="badge bg-danger">Not-Matched</span> <span class="small text-danger">no ' + lbl + ' ' + spEsc(r.part) + ' in crate ' + spEsc(typed) + '</span>';
+  } else if (hit.qty < r.qty) {
+    msg.innerHTML = '<span class="badge bg-warning text-dark">Matched</span> <span class="small text-danger">crate ' + spEsc(hit.crate) + ' has only <b>' + hit.qty + '</b> — need ' + r.qty + '</span>';
+  } else {
+    r._row = hit.id;
+    msg.innerHTML = '<span class="badge bg-success">Matched</span> <span class="small">crate ' + spEsc(hit.crate) + ' · ' + lbl +
+      ((hit.make || hit.model) ? ' · ' + spEsc((hit.make || '—') + ' / ' + (hit.model || '—')) : '') +
+      ' · <b>' + hit.qty + '</b> available → ' + (hit.qty - r.qty) + ' left</span>';
+  }
+  hoUpdate();
+}
+function hoUpdate() {
+  // Two requests from the same crate row must fit together.
+  var need = {};
+  HO.reqs.forEach(function (r) { if (r._row) need[r._row] = (need[r._row] || 0) + r.qty; });
+  var ok = HO.reqs.length > 0 && HO.reqs.every(function (r) {
+    if (!r._row) return false;
+    var row = r.rows.filter(function (x) { return x.id === r._row; })[0];
+    return row && need[r._row] <= row.qty;
   });
+  document.getElementById('ho_confirm').disabled = !ok;
+}
+function hoSubmit() {
+  var btn = document.getElementById('ho_confirm');
+  btn.disabled = true;
+  var body = new URLSearchParams();
+  body.append('csrf_token', "{{ request.cookies.get('csrf_token','') }}");
+  body.append('action', 'handover');
+  HO.reqs.forEach(function (r) { body.append('ids', r.id); body.append('part_row_ids', r._row); });
+  fetch('/spare-parts/requests/bulk-action', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d && d.ok) {
+        if (d.skipped) alert(d.processed + ' handed over, ' + d.skipped + ' not done (' + (d.reason || 'not eligible') + ').');
+        location.href = '/spare-parts?success=' + encodeURIComponent(d.processed + ' part request(s) handed over');
+      } else { alert('Handover failed: ' + ((d && (d.error || d.detail)) || 'Unknown error')); btn.disabled = false; }
+    })
+    .catch(function () { alert('Network error — please try again.'); btn.disabled = false; });
 }
 
 // Harvest modal — generate Part ID on open
 document.getElementById('harvestModal').addEventListener('show.bs.modal', function() {
   document.getElementById('hv_part_id').value = String(Math.floor(Math.random() * 90000000) + 10000000);
 });
+// Crate Matched / Not-Matched on Add Harvest Part (2026-10-31)
+function hvCrateCheck() {
+  var f = document.getElementById('harvestForm');
+  crateMatch(function () {
+    return { name: f.part_name.value, make: f.part_brand.value, model: f.part_model.value,
+             source: 'harvest', crate: f.crate_number.value };
+  }, document.getElementById('hv_crate_msg'), 'add', f.physical_qty.value);
+}
+['part_name', 'part_brand', 'part_model', 'crate_number', 'physical_qty'].forEach(function (n) {
+  var el = document.getElementById('harvestForm').elements[n];
+  if (el) { el.addEventListener('input', hvCrateCheck); el.addEventListener('change', hvCrateCheck); }
+});
+
 function submitHarvestPart() {
   var form = document.getElementById('harvestForm');
   var data = new FormData(form);
@@ -1065,7 +1275,7 @@ function submitHarvestPart() {
     .then(function(r) { return r.json(); })
     .then(function(j) {
       if (j.ok) {
-        alert('Harvest part saved. Part ID: ' + j.part_id);
+        alert((j.matched ? 'Added to existing crate row. ' : 'Harvest part saved. ') + 'Part ID: ' + j.part_id);
         location.reload();
       }
     })
@@ -1318,6 +1528,7 @@ function spBulkRequestAction(tbl, action) {
     function(c) { return c.value; }
   ).filter(Boolean);
   if (!ids.length) return;
+  if (action === 'handover') { hoOpen(ids); return; }   // same modal as the row button
   var verb = action === 'handover' ? 'Hand over' : 'Delete';
   if (!confirm(verb + ' ' + ids.length + ' selected request(s)?')) return;
 

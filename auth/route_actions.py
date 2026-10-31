@@ -144,6 +144,7 @@ ROUTE_ACTIONS = {
     ('POST', '/spare-parts/new'): ('spare_parts', 'add'),  # create_part
     ('POST', '/spare-parts/{part_id}/edit'): ('spare_parts', 'edit'),  # update_part
     ('POST', '/spare-parts/{part_id}/set-type'): ('spare_parts', 'edit'),  # set_part_type
+    ('POST', '/spare-parts/{part_id}/update-count'): ('spare_parts', 'edit'),  # update_count: crate stock-take (2026-10-31)
     ('POST', '/spare-parts/{part_id}/delete'): ('spare_parts', 'delete'),  # delete_part
     ('POST', '/spare-parts/bulk-delete'): ('spare_parts', 'delete'),  # bulk_delete_parts
     ('POST', '/spare-parts/bulk-upload'): ('spare_parts', 'upload'),  # bulk_upload_parts
@@ -330,6 +331,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/rts-asgn-reopen'): None,  # rts_asgn_reopen_apply: system health internals (admin-only), 2026-10-28
     ('POST', '/admin/system/storage-type-fix'): None,  # storage_type_fix_apply: system health data fix (admin-only), 2026-10-29
     ('POST', '/admin/system/part-name-fix'): None,  # part_name_fix: system health data fix (admin-only) — Part Name to the Parts Consumption names, 2026-10-31
+    ('POST', '/admin/system/parts-crate-fix'): None,  # parts_crate_fix: system health data fix (admin-only) — spare parts crate rows, 2026-10-31
     ('POST', '/admin/system/device-type-12-fix'): None,  # device_type_12_fix: system health data fix (admin-only) — Device Type to the 12 categories, 2026-10-30
     ('POST', '/admin/system/rts-wo-close'): None,  # rts_wo_close_apply: system health internals (admin-only), 2026-10-28
     ('POST', '/admin/system/stress-wo-close'): None,  # stress_wo_close_apply: system health internals (admin-only)

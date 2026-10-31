@@ -875,6 +875,19 @@ async def part_name_fix(request: Request, current_user: User = Depends(admin_onl
     return back or JSONResponse({"ok": True, "updated": len(changes)})
 
 
+@router.post("/parts-crate-fix")
+async def parts_crate_fix(request: Request, current_user: User = Depends(admin_only)):
+    """Parts Data Fix (2026-10-31): see services/parts_stock.crate_fix_plan."""
+    from database import AsyncSessionLocal
+    from services.parts_stock import crate_fix_apply
+    async with AsyncSessionLocal() as db:
+        res = await crate_fix_apply(db, current_user, request)
+    msg = (f"Parts stock fixed: {res['merged']} duplicate row(s) merged, {res['prices']} price(s) updated, "
+           f"Parts in stock {res['total_before']:,} -> {res['total_after']:,}.") if res.get("ok") else "Parts Data Fix already applied."
+    back = _back_to_page(await request.form(), msg)
+    return back or JSONResponse(res)
+
+
 @router.post("/storage-type-fix")
 async def storage_type_fix_apply(request: Request, current_user: User = Depends(admin_only)):
     from sqlalchemy import update
@@ -1871,6 +1884,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         subcat = await _subcat_changes(db)
         dt12_tags, dt12_master = await _dt12_changes(db)
         pname = await _part_name_changes(db)
+        from services.parts_stock import crate_fix_plan
+        pcrate = await crate_fix_plan(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
         # "Reassigned but marked Completed" card removed (2026-10-28): since
@@ -1921,6 +1936,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "dt12_total": sum(c for _o, _n, c in dt12_tags), "dt12_master": dt12_master,
         "dt12_list": DEVICE_TYPES_12,
         "pname": [{"code": c, "old": o, "new": n, "m0": m0, "m1": m1} for _i, c, o, n, m0, m1 in pname],
+        "pcrate": pcrate,
         "subcat_total": len(subcat), "subcat_by": [{"dt": k[0], "sc": k[1], "n": n} for k, n in sorted(subcat_by.items(), key=lambda x: -x[1])],
         "issues": issues[:500], "issues_total": len(issues),
         "issue_counts": _issue_counts(issues),

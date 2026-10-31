@@ -1,9 +1,9 @@
-"""Part Master's Consumed column/tile pools by part NAME, matching Qty
-Available's existing resolution — not by part_id, which only ever shows one
-duplicate-named row its own slice of handovers.
+"""Part Master Consumed column (crate rows, 2026-10-31).
 
-Repro from production: part_code 42241858 ("RAM") showed Consumed=1 (its own
-PartRequest row) when the true total across every "RAM"-named row was 3.
+Each Part Master row is one crate's stock, so Consumed is what was handed
+over FROM that row (requests linked to it), not the pooled name total. In
+legacy stock mode (Parts Data Fix not applied — the test DB) In Stock still
+nets the pooled name+make+model handover total, exactly as before.
 """
 import pathlib
 import subprocess
@@ -90,10 +90,12 @@ def test_consumed_column_pools_duplicate_named_parts(app_client, make_user):  # 
         _login(app_client, username, password)
         html = app_client.get("/spare-parts", follow_redirects=True).text
 
-        # Both duplicate-named rows should show the pooled total (1+0+1+1=3),
-        # not their own individual slice (1 for code1, 2 for code2).
-        for code in (code1, code2):
+        # Consumed = handed over from that crate row: code1 1, code2 1+1 = 2.
+        # In Stock (legacy mode) = qty - pooled handovers 3: code1 4-3=1, code2 10-3=7.
+        for code, consumed, stock in ((code1, 1, 1), (code2, 2, 7)):
             row = html.split(code, 1)[1].split("</tr>", 1)[0]
-            assert ">3<" in row, f"{code}'s Consumed cell should show the pooled total 3, row: {row[:400]}"
+            cells = [c.split(">")[-1].strip() for c in row.split("</span>")]
+            assert f">{stock}" in row.replace("\n", "").replace(" ", ""), f"{code} In Stock should be {stock}: {row[:600]}"
+            assert f">{consumed}<" in row.replace("\n", "").replace(" ", ""), f"{code} Consumed should be {consumed}: {row[:600]}"
     finally:
         _run(_CLEANUP_SRC.format(root=ROOT, code1=code1, code2=code2, name=name))

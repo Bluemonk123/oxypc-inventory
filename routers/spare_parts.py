@@ -192,83 +192,40 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
                 (p.make or "").strip().lower(),
                 (p.model or "").strip().lower())
 
-    # "Consumed" per part — the same Qty Handover figure the Part Requests and
-    # Faulty Request tables below print, summed per name+make+model group
-    # rather than per part_id. Part Master accumulates several rows sharing
-    # one name across repeated harvest/bulk uploads (e.g. four separate "RAM"
-    # rows, each its own part_code), and a request is only ever tied to
-    # whichever specific row happened to be picked at handover time — so
-    # grouping by part_id showed each duplicate row only its own slice instead
-    # of the true total for that part. Pooling by name ALONE over-corrected
-    # this: a "RAM" row for one Make/Model was picking up handovers booked
-    # against a completely different Make/Model's "RAM" row. Joining each
-    # request's resolved part_id back to its SparePart (routers/part_requests.py
-    # resolves a real part_id at request-creation time — see "BUG 3" there)
-    # gives the make/model actually consumed against; requests whose part_id
-    # never resolved to a live SparePart (deleted since, or predate that fix)
-    # fall back to a blank-make/model bucket of their own rather than being
-    # dropped or wrongly merged into a named group.
-    #
-    # Deliberately NOT filtered on status == "handed_over". Once an engineer
-    # confirms receipt the row moves to "received" while still showing its
-    # handover quantity, so the old filter dropped those from Consumed the
-    # moment they were acknowledged — 9 units on live today — and silently
-    # inflated In Stock by the same amount. Both request types are included
-    # because faulty requests are the same table under request_type="faulty".
-    consumed_rows = (await db.execute(
-        select(PartRequest.part_name, SparePart.make, SparePart.model,
-               func.sum(PartRequest.qty_handed_over))
-        .outerjoin(SparePart, PartRequest.part_id == SparePart.id)
-        .group_by(PartRequest.part_name, SparePart.make, SparePart.model)
-    )).all()
-    consumed_by_group: dict = {}
-    for name, make, model, total in consumed_rows:
-        key = ((name or "").strip().lower(),
-               (make or "").strip().lower(),
-               (model or "").strip().lower())
-        consumed_by_group[key] = consumed_by_group.get(key, 0) + int(total or 0)
-    consumed_by_part = {
-        str(p.id): consumed_by_group.get(_group_key(p), 0) for p in all_parts
-    }
-    # Sum of every distinct name+make+model group's consumed total among the
-    # FILTERED parts — not sum(consumed_by_part.values()) (would count a
-    # group's total once per duplicate Part Master row sharing it), and not
-    # every group in consumed_by_group (would ignore the current filter).
-    _filtered_groups = {_group_key(p) for p in parts}
-    total_consumed = sum(consumed_by_group.get(g, 0) for g in _filtered_groups)
+    # Stock (2026-10-31): one definition shared with the Dashboard and Device
+    # Detail — services/parts_stock.live_map. Each Part Master row is one
+    # crate's stock (Part Name + Make + Model + New/Harvest + Crate). Until
+    # the Parts Data Fix is applied ("legacy" mode) live stock still nets
+    # handovers by name+make+model group; afterwards it is the row's own count
+    # (handover decrements the crate row) minus approved part-sale qty.
+    from services.parts_stock import live_map as _live_map, sold_by_part as _sold_map, row_mode as _row_mode
+    live_by_part = await _live_map(db, all_parts)
+    sold_by_part = await _sold_map(db)
+    stock_row_mode = await _row_mode(db)
+    # Consumed column = handed over FROM this crate row (requests linked to it).
+    consumed_by_part = {str(pid): int(n or 0) for pid, n in (await db.execute(
+        select(PartRequest.part_id, func.sum(PartRequest.qty_handed_over))
+        .where(PartRequest.part_id.isnot(None)).group_by(PartRequest.part_id))).all()}
+    _ids = {str(p.id) for p in parts}
+    total_consumed = sum(v for k, v in consumed_by_part.items() if k in _ids)
 
-    # "Sold" per part — Requested Quantity on every APPROVED row of Parts Sale
-    # Request. Approval is what commits the stock, so it reserves the quantity
-    # straight away rather than waiting for the sale to be raised against it.
-    # This replaces spare_parts.sold_qty, which only moved once a sale was
-    # actually completed and so left approved-but-unsold stock looking available.
-    sold_rows = (await db.execute(
-        select(PartSaleRequest.part_id, func.sum(PartSaleRequest.qty_requested))
-        .where(PartSaleRequest.status == "approved",
-               PartSaleRequest.part_id.isnot(None))
-        .group_by(PartSaleRequest.part_id)
-    )).all()
-    sold_by_part = {str(pid): int(total or 0) for pid, total in sold_rows}
-
-    # Live availability for one part — the single definition this page uses for
-    # its tiles, its group/name stock rollups and the request tables' QTY
-    # Available column, so none of them can disagree with the In Stock column
-    # in the table, which computes the same subtraction in the template.
-    #
-    # Deducts BOTH consumed and sold: stock handed to an engineer and stock
-    # committed by an approved sale request have equally left the shelf, and a
-    # tile that counts either as available is telling Stores it can promise
-    # something twice.
     def _live(p):
-        return max(0, int(p.qty_in_stock or 0)
-                   - consumed_by_part.get(str(p.id), 0)
-                   - sold_by_part.get(str(p.id), 0))
+        return live_by_part.get(str(p.id), 0)
+
+    # Part totals per name+make+model for the grouped Part Master view.
+    group_totals: dict = {}
+    for p in all_parts:
+        g = group_totals.setdefault(_group_key(p), {"new": 0, "harvest": 0, "crates": set(), "rows": 0})
+        g["harvest" if p.source == "harvest" else "new"] += _live(p)
+        g["rows"] += 1
+        g["crates"].add((p.crate_number or "").strip().lower())
+    part_group = {str(p.id): group_totals[_group_key(p)] for p in all_parts}
 
     # Summary stats
     total_part_types = len(parts)
-    below_min_count  = sum(1 for p in parts if p.qty_in_stock <= p.min_stock_alert)
+    below_min_count  = sum(1 for p in parts if _live(p) <= p.min_stock_alert)
     out_of_stock_count = sum(1 for p in parts if _live(p) <= 0)
-    total_stock_value = sum(float(p.unit_price or 0) * int(p.qty_in_stock or 0) for p in parts)
+    total_stock_value = sum(float(p.unit_price or 0) * _live(p) for p in parts)
 
     total_qty = sum(_live(p) for p in parts)
     total_new = sum(1 for p in parts if (p.source or "new") != "harvest")
@@ -489,6 +446,8 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
         "tag_consumption_tag_count": tag_consumption_tag_count,
         "consumed_by_part": consumed_by_part,
         "sold_by_part": sold_by_part,
+        "live_by_part": live_by_part, "part_group": part_group,
+        "stock_row_mode": stock_row_mode,
         "part_reqs": part_reqs, "faulty_reqs": faulty_reqs, "part_stock": part_stock,
         "part_meta": part_meta, "sourcing": sourcing,
         "deal_map": deal_map, "estimates_by_batch": estimates_by_batch,
@@ -783,6 +742,16 @@ async def update_part(
     part = result.scalar_one_or_none()
     if not part:
         raise HTTPException(404, "Part not found")
+    # One row per Part Name + Make + Model + New/Harvest + Crate (2026-10-31):
+    # an edit that would make this row a second copy of another is refused.
+    from services.parts_stock import find_row as _find_crate_row
+    _dup = await _find_crate_row(db, name, make.strip() or None, model.strip() or None,
+                                 part.source, crate_number.strip() or None)
+    if _dup is not None and _dup.id != part.id:
+        from urllib.parse import quote_plus
+        return RedirectResponse(url="/spare-parts?error=" + quote_plus(
+            f"Not saved: part {_dup.part_code} already holds {name} / {make or '-'} / {model or '-'} in crate "
+            f"{crate_number or '-'} — use Update Count on that row instead"), status_code=302)
     part.name = name; part.category = category; part.unit_price = float(unit_price)
     part.min_stock_alert = min_stock_alert; part.supplier = supplier or None; part.notes = notes or None
     # Lot/make/model are optional and blank-means-clear, so an operator can
@@ -818,6 +787,50 @@ async def update_part(
         part.qty_in_stock = new_qty
     await db.commit()
     return RedirectResponse(url="/spare-parts?success=Part+updated", status_code=302)
+
+
+@router.get("/spare-parts/crate-match")
+async def crate_match(request: Request, name: str = "", make: str = "", model: str = "",
+                      source: str = "new", crate: str = "",
+                      db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Matched / Not-Matched for a Crate Number field (Parts GRN line, Add
+    Harvest, Handover): is there a Part Master row for Part Name + Make +
+    Model + Type + Crate, and how many are in it."""
+    from services.parts_stock import match_info
+    return JSONResponse(await match_info(db, name, make, model, source, crate))
+
+
+@router.post("/spare-parts/{part_id}/update-count")
+async def update_count(part_id: str, request: Request,
+                       count: int = Form(...), reason: str = Form(""),
+                       db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed)):
+    """Update Count (2026-10-31): the Parts Manager counted this crate; In
+    Stock becomes exactly that number. Moves qty_in_stock by the difference
+    between the counted and the shown (live) figure, so it is right in both
+    stock modes. Logged old -> new with the reason."""
+    from services.parts_stock import live_map
+    part = (await db.execute(select(SparePart).where(
+        SparePart.id == part_id, SparePart.is_trashed.isnot(True)))).scalar_one_or_none()
+    if not part:
+        return JSONResponse({"ok": False, "detail": "Part not found"}, status_code=404)
+    if count < 0:
+        return JSONResponse({"ok": False, "detail": "Count cannot be negative"}, status_code=400)
+    shown = (await live_map(db, [part]))[str(part.id)]
+    delta = int(count) - shown
+    if delta:
+        part.qty_in_stock = int(part.qty_in_stock or 0) + delta
+        db.add(SparePartsLedger(
+            part_id=part.id, entry_type="IN" if delta > 0 else "OUT", qty=abs(delta),
+            cost_per_unit=float(part.unit_price or 0), total_cost=abs(delta) * float(part.unit_price or 0),
+            reference_type="adjustment", reference_id=None, created_by=current_user.username,
+            notes=f"Update Count crate {part.crate_number or '-'}: {shown} -> {count}",
+        ))
+    await audit(db, action="PART_COUNT_UPDATED", user=current_user, table_name="spare_parts",
+                record_id=str(part.id), old_value={"in_stock": shown},
+                new_value={"in_stock": int(count), "crate": part.crate_number, "part_code": part.part_code},
+                notes=(reason or "").strip()[:500] or None, request=request)
+    await db.commit()
+    return JSONResponse({"ok": True, "old": shown, "new": int(count)})
 
 
 @router.post("/spare-parts/{part_id}/set-type")
@@ -928,7 +941,8 @@ async def bulk_upload_parts(
     db.add(grn)
     await db.flush()
 
-    inserted, errors = 0, []
+    from services.parts_stock import find_row as _find_crate_row, live_map as _live_map
+    inserted, updated, errors = 0, 0, []
     for i, row in enumerate(rows, start=2):
         try:
             part_name = (row.get("part_name") or "").strip()
@@ -948,7 +962,7 @@ async def bulk_upload_parts(
             model = (row.get("part_model") or "").strip() or None
             crate_number = (row.get("crate_number") or "").strip() or None
 
-            db.add(PartsGRNLineItem(
+            _li = PartsGRNLineItem(
                 grn_id=grn.id,
                 part_id=part_id,
                 grn_number=row_grn_number,
@@ -963,32 +977,23 @@ async def bulk_upload_parts(
                 price=price,
                 category=category,
                 is_harvest=(source == "harvest"),
-            ))
-
-            match_q = select(SparePart).where(
-                func.lower(SparePart.name) == part_name.lower()
+                crate_number=crate_number,
             )
-            if make:
-                match_q = match_q.where(func.lower(SparePart.make) == make.lower())
-            else:
-                match_q = match_q.where(SparePart.make.is_(None))
-            if model:
-                match_q = match_q.where(func.lower(SparePart.model) == model.lower())
-            else:
-                match_q = match_q.where(SparePart.model.is_(None))
-            existing_part = (await db.execute(match_q)).scalars().first()
+            db.add(_li)
+
+            # Crate rows (2026-10-31): a file row updates the Part Master row
+            # for Part Name + Make + Model + New/Harvest + Crate, setting In
+            # Stock to exactly the file's count; it never moves a part into
+            # another crate (that used to make counts jump between crates).
+            # No matching row -> a new crate row.
+            existing_part = await _find_crate_row(db, part_name, make, model, source, crate_number)
             if existing_part:
-                # Part Master bulk upload is a master-data load, not a goods
-                # receipt: In Stock is set to exactly what the file says. It
-                # previously accumulated (+= qty), so re-uploading the same
-                # file multiplied stock by the number of uploads.
-                existing_part.qty_in_stock = qty
-                if crate_number:
-                    existing_part.crate_number = crate_number
+                _li.part_id = existing_part.part_code
+                shown = (await _live_map(db, [existing_part]))[str(existing_part.id)]
+                existing_part.qty_in_stock = int(existing_part.qty_in_stock or 0) + (qty - shown)
                 if price_raw:
                     existing_part.unit_price = price
-                existing_part.is_trashed = False
-                existing_part.trashed_at = None
+                updated += 1
             else:
                 db.add(SparePart(
                     part_code=part_id, name=part_name, category=category,
@@ -996,13 +1001,15 @@ async def bulk_upload_parts(
                     supplier=vendor_name, source=source,
                     make=make, model=model, crate_number=crate_number,
                 ))
+                await db.flush()
             inserted += 1
         except Exception as e:
             errors.append(f"Row {i}: {str(e)}")
 
     await audit(db, action="PART_MASTER_BULK_UPLOAD", user=current_user,
                 table_name="spare_parts", record_id=str(grn.id),
-                new_value={"source": source, "inserted": inserted, "errors": len(errors)})
+                new_value={"source": source, "inserted": inserted, "updated_crate_rows": updated,
+                           "errors": len(errors)})
     await db.commit()
     return templates.TemplateResponse("bulk_upload/result.html", {
         "request": request, "current_user": current_user,

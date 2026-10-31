@@ -197,7 +197,7 @@
           <tr>
             <th>Part ID</th><th>GRN No</th><th>Lot No</th><th>Vendor</th>
             <th>Invoice No</th><th>Category</th><th>Part Name</th><th>Brand</th><th>Model</th>
-            <th>Inv Qty</th><th>Phys Qty</th><th>Price</th>
+            <th>Crate</th><th>Inv Qty</th><th>Phys Qty</th><th>Price</th>
             <th>Vehicle</th><th>Remarks</th>
             {% if not ro %}<th>Action</th>{% endif %}
           </tr>
@@ -214,6 +214,7 @@
             <td>{{ li.part_name or '—' }}</td>
             <td>{{ li.part_brand or '—' }}</td>
             <td>{{ li.part_model or '—' }}</td>
+            <td>{{ li.crate_number or '—' }}</td>
             <td>{{ li.invoice_qty or '—' }}</td>
             <td>{{ li.physical_qty or '—' }}</td>
             <td>{% if can(current_user, 'spare_parts', 'pricing') %}{% if li.price %}₹{{ ((li.price) | inr(2)) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
@@ -303,6 +304,13 @@
             <label class="form-label small fw-semibold">Part Model</label>
             <input type="text" id="li_part_model" class="form-control form-control-sm">
           </div>
+          <div class="col-md-3">
+            <label class="form-label small fw-semibold">Crate Number</label>
+            <input type="text" id="li_crate_number" class="form-control form-control-sm" placeholder="e.g. C-12" autocomplete="off">
+            {# Matched = a New row for Part Name + Brand + Model + this crate
+               exists and the qty is added to it; Not-Matched = a new row. #}
+            <div id="li_crate_msg" class="mt-1" style="min-height:1.25rem"></div>
+          </div>
           <div class="col-md-2">
             <label class="form-label small fw-semibold">Low Stock Alert</label>
             <input type="number" id="li_min_stock_alert" class="form-control form-control-sm" min="0" value="5">
@@ -339,6 +347,7 @@
   </div>
 </div>
 
+<script src="/static/js/crate_match.js"></script>
 <script>
 var lineItems = [];
 var lineItemCounter = 0;
@@ -373,6 +382,7 @@ function addLineItem() {
     part_name: document.getElementById('li_part_name').value,
     part_brand: document.getElementById('li_part_brand').value,
     part_model: document.getElementById('li_part_model').value,
+    crate_number: document.getElementById('li_crate_number').value.trim(),
     min_stock_alert: document.getElementById('li_min_stock_alert').value,
     invoice_qty: document.getElementById('li_invoice_qty').value,
     physical_qty: document.getElementById('li_physical_qty').value,
@@ -387,9 +397,10 @@ function addLineItem() {
   // reset fields
   ['li_lot_number','li_product_description','li_part_name',
    'li_part_brand','li_part_model','li_invoice_qty','li_physical_qty',
-   'li_price','li_remarks'].forEach(function(id) {
+   'li_price','li_remarks','li_crate_number'].forEach(function(id) {
     document.getElementById(id).value = '';
   });
+  document.getElementById('li_crate_msg').innerHTML = '';
   document.getElementById('li_min_stock_alert').value = '5';
   document.getElementById('li_category').value = '';
   bootstrap.Modal.getInstance(document.getElementById('addItemModal')).hide();
@@ -404,7 +415,7 @@ function removeLineItem(idx) {
 function renderLineItems() {
   var tbody = document.getElementById('lineItemsTbody');
   if (lineItems.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="15" class="text-center text-muted py-3">No items added yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="16" class="text-center text-muted py-3">No items added yet.</td></tr>';
     return;
   }
   tbody.innerHTML = lineItems.map(function(item) {
@@ -418,6 +429,7 @@ function renderLineItems() {
       '<td>' + (item.part_name || '—') + '</td>' +
       '<td>' + (item.part_brand || '—') + '</td>' +
       '<td>' + (item.part_model || '—') + '</td>' +
+      '<td>' + (item.crate_number ? spEscG(item.crate_number) : '—') + '</td>' +
       '<td>' + (item.invoice_qty || '—') + '</td>' +
       '<td>' + (item.physical_qty || '—') + '</td>' +
       '<td>' + (item.price ? '₹' + parseFloat(item.price).toLocaleString('en-IN', {minimumFractionDigits:2}) : '—') + '</td>' +
@@ -427,6 +439,24 @@ function renderLineItems() {
       '</tr>';
   }).join('');
 }
+
+function spEscG(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+// Crate Matched / Not-Matched (2026-10-31) — static/js/crate_match.js
+function liCrateCheck() {
+  crateMatch(function () {
+    return { name: document.getElementById('li_part_name').value,
+             make: document.getElementById('li_part_brand').value,
+             model: document.getElementById('li_part_model').value,
+             source: 'new', crate: document.getElementById('li_crate_number').value };
+  }, document.getElementById('li_crate_msg'), 'add',
+     document.getElementById('li_physical_qty').value || document.getElementById('li_invoice_qty').value);
+}
+['li_part_name', 'li_part_brand', 'li_part_model', 'li_crate_number', 'li_physical_qty', 'li_invoice_qty'].forEach(function (id) {
+  var el = document.getElementById(id);
+  el.addEventListener('input', liCrateCheck);
+  el.addEventListener('change', liCrateCheck);
+});
 
 function updateHiddenJson() {
   document.getElementById('lineItemsJson').value = JSON.stringify(lineItems);

@@ -1879,6 +1879,9 @@ async def device_detail(
         .group_by(PartRequest.part_id)
     )).all()
     consumed_by_part = {str(pid): int(total or 0) for pid, total in consumed_rows}
+    from services.parts_stock import row_mode as _parts_row_mode
+    if await _parts_row_mode(db):
+        consumed_by_part = {}      # handovers already came off the crate row (2026-10-31)
 
     # Resolve every Parts Consumption row to its Part Master row by NAME in a
     # single query. Two reasons this is one query and not one-per-row: the DB
