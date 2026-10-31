@@ -158,6 +158,7 @@ from routers.reports import router as reports_router
 from routers.master import router as master_router
 import models.role_permissions  # ensures tables are in Base.metadata for db_validator
 import models.ticket  # ensures tickets table is created on startup
+import services.repair_location  # noqa: F401  repair stages -> TRC Floor location (2026-10-31)
 from routers.bulk_upload import router as bulk_upload_router
 from routers.cosmetic import router as cosmetic_router
 from routers.workid_status import router as workid_status_router

@@ -106,6 +106,14 @@ async def get_current_user(request: Request, db: AsyncSession = Depends(get_db))
     user = result.scalar_one_or_none()
     if not user or not user.status:
         raise HTTPException(status_code=302, headers={"Location": "/auth/login"})
+    # Who is acting, for automatic log rows written at flush time
+    # (services/repair_location.py — repair stages -> TRC Floor).
+    try:
+        from services.repair_location import current_user_id, current_user_name
+        current_user_id.set(user.id)
+        current_user_name.set(user.full_name or user.username)
+    except Exception:
+        pass
     return user
 
 
