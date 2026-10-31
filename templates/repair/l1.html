@@ -172,7 +172,7 @@
                     {# Customer return (2026-10-30): Mark Complete moves it to Sold
                        (no new sale) instead of Stress Test — confirmed in JS. #}
                     <form method="post" action="/repair/l1l2-complete-to-stress" class="d-inline mark-complete-form"
-                          {% if device.return_status %}data-customer-return="{{ device.barcode }}"{% endif %}>
+                          {% if device.return_status and not (device.tag_return_status or '').startswith('Replaced by') and device.tag_return_status != 'Return for Credit Note' %}data-customer-return="{{ device.barcode }}"{% endif %}>
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ device.id }}">
                       <button type="submit" class="btn btn-sm btn-success mark-complete-btn">Mark Complete</button>

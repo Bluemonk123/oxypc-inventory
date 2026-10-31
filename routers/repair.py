@@ -621,7 +621,15 @@ async def l1l2_complete_to_stress(
     # Return Stock "Ready to Dispatch" (after Verify Payment when a Paid
     # Repair Cost is due). L3/L4 is unchanged: L3/L4 complete brings the tag
     # back to L1/L2 as usual, and this Mark Complete then sends it to Sold.
-    if device.return_status:
+    # Replaced / Credit Note (2026-10-31): when the customer was given
+    # another laptop (Replace Now -> Tag Return Status "Replaced by <tag>")
+    # or was refunded by Credit Note ("Return for Credit Note"), this tag is
+    # our stock again, so it follows the usual process (Stress / QC Check).
+    # Only a return the customer gets back (Return for Repair, External Tag
+    # return) goes straight to Sold.
+    _trs = (device.tag_return_status or "")
+    _our_stock = _trs.startswith("Replaced by") or _trs == "Return for Credit Note"
+    if device.return_status and not _our_stock:
         device.current_stage = DeviceStage.sold
         device.l1l2_status = "Completed"
         device.updated_at = app_now()
