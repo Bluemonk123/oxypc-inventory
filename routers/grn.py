@@ -23,7 +23,7 @@ from models.grn_import import GRNImport, GRNLot
 from models.location import StorageLocation
 from services.invoice_parser import extract_invoice_fields
 from services.audit_engine import audit
-from utils.master_data import entity_values
+from utils.master_data import entity_values, master_values
 from services.location_defaults import ensure_stage_location
 from config import UPLOADS_DIR
 from auth.dependencies import get_current_user, require_roles, verify_csrf, require_additional_perm
@@ -336,6 +336,8 @@ async def grn_post_iqc(request: Request, db: AsyncSession = Depends(get_db),
         "highlight_tag": highlight_tag,
         "device_type_options": ["Laptop", "Desktop", "AIO", "Workstation", "Mini PC", "Server", "Tablet"],
         "entity_options": await entity_values(db),
+        "state_options": await master_values(db, "dealer_state"),
+        "gst_cfg": await _gst_cfg(db),
         "lots_by_grn": lots_by_grn,
         "lots_json": lots_json,
         "location_options": _locs,
@@ -668,6 +670,46 @@ async def grn_upload(
     return RedirectResponse(url=f"{base}?success=GRN+{grn_number}+created", status_code=302)
 
 
+_DOC_COLS = {"po": "po_file", "eway": "eway_bill_file", "vehicle": "vehicle_image_file"}
+
+
+async def _save_grn_doc(upload, grn_number: str, kind: str):
+    """Store an Add / Edit GRN document (PO, E-Way Bill, Vehicle Image) next
+    to the invoice PDFs. Returns the path, or None when nothing was attached."""
+    if upload is None:
+        return None
+    data = await upload.read()
+    if not data:
+        return None
+    os.makedirs(GRN_UPLOAD_DIR, exist_ok=True)
+    name = (upload.filename or kind).replace("/", "_").replace("\\", "_")
+    path = os.path.join(GRN_UPLOAD_DIR, f"{grn_number}_{kind}_{name}")
+    with open(path, "wb") as f:
+        f.write(data)
+    return path
+
+
+@router.get("/download/{grn_id}/{kind}")
+async def grn_download_doc(grn_id: str, kind: str, db: AsyncSession = Depends(get_db),
+                           current_user: User = Depends(allowed)):
+    """PO / E-Way Bill / Vehicle Image attached on Add / Edit GRN (2026-10-31)."""
+    import uuid as _u
+    col = _DOC_COLS.get(kind)
+    try:
+        gid = _u.UUID(grn_id)
+    except ValueError:
+        raise HTTPException(404)
+    g = (await db.execute(select(GRNImport).where(GRNImport.id == gid))).scalar_one_or_none()
+    path = getattr(g, col, None) if (g and col) else None
+    if not path:
+        raise HTTPException(404, "No file")
+    resolved = os.path.realpath(path)
+    if not resolved.startswith(os.path.realpath(GRN_UPLOAD_DIR)) or not os.path.isfile(resolved):
+        raise HTTPException(404, "File missing")
+    fname = os.path.basename(resolved).split("_", 2)[-1]
+    return FileResponse(resolved, filename=fname, content_disposition_type="inline")
+
+
 @router.get("/download/{grn_id}")
 async def grn_download(grn_id: str, db: AsyncSession = Depends(get_db),
                        current_user: User = Depends(allowed)):
@@ -793,6 +835,14 @@ async def grn_delete(
                 request=request)
     await db.commit()
     return RedirectResponse(url=f"{base}?success=GRN+{g.grn_number}+deleted", status_code=302)
+
+
+async def _gst_cfg(db) -> dict:
+    """For the Add / Edit GRN modal's live Tax / Taxable figures (the server
+    recomputes on save — services/grn_tax.py)."""
+    from services.grn_tax import gst_rates, company_states
+    intra, inter = await gst_rates(db)
+    return {"intra": float(intra), "inter": float(inter), "states": await company_states(db)}
 
 
 async def _location_options(db) -> list:
@@ -946,6 +996,26 @@ async def _lots_by_grn(db: AsyncSession, grns) -> dict:
     return by_grn
 
 
+# Add / Edit GRN required fields (2026-10-31): everything except the uploads
+# and Notes. (label, form field)
+_GRN_REQUIRED = [
+    ("Lot Number(s)", "lot_numbers"), ("GRN Date", "grn_date"), ("Location ID", "location_id"),
+    ("Vendor Name", "sender_name"), ("Vendor State", "vendor_state"),
+    ("PO Number", "po_number"), ("PO Date", "purchase_date"),
+    ("Invoice Number", "invoice_number"), ("Invoice Date", "invoice_date"),
+    ("E-Way Bill Number", "e_way_bill"), ("E-Way Bill Date", "eway_bill_date"),
+    ("Vehicle Number", "vehicle_number"), ("Invoice Price", "amount"),
+    ("PO Quantity", "po_quantity"), ("Invoice Quantity", "quantity"), ("Physical Quantity", "physical_quantity"),
+]
+
+
+def _missing_required(values: dict) -> list:
+    """Labels of required fields that are blank. A field the form didn't
+    send at all (None) is not checked — older forms / other pages."""
+    return [label for label, key in _GRN_REQUIRED
+            if values.get(key) is not None and not str(values.get(key)).strip()]
+
+
 @router.post("/create-manual")
 async def grn_create_manual(
     request: Request,
@@ -963,6 +1033,14 @@ async def grn_create_manual(
     # posts an UploadFile with a blank filename, so presence is decided by
     # reading the bytes, not by the object being non-None.
     invoice: UploadFile | None = File(None),
+    # 2026-10-31: PO Upload, E-Way Bill Date / Upload, Vehicle Image (PO Date = purchase_date).
+    eway_bill_date: str = Form(""),
+    po_file: UploadFile | None = File(None), eway_bill_file: UploadFile | None = File(None),
+    vehicle_image: UploadFile | None = File(None),
+    # Vendor State + PO / Physical Quantity (2026-10-31). None = the form has
+    # no such field (other pages posting here) — then nothing is required.
+    vendor_state: str | None = Form(None), po_quantity: str | None = Form(None),
+    physical_quantity: str | None = Form(None),
     db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed),
     _perm: User = Depends(require_additional_perm("add_grn")),
 ):
@@ -996,7 +1074,25 @@ async def grn_create_manual(
                     f"Invoice number {inv_no} already exists as GRN {same_grn}."),
                 status_code=302)
 
+    # Required fields (2026-10-31) — only for the new Add GRN form, which
+    # sends vendor_state; other callers of this route are unchanged.
+    if vendor_state is not None:
+        _miss = _missing_required({
+            "lot_numbers": lot_numbers, "grn_date": grn_date, "location_id": location_id,
+            "sender_name": sender_name, "vendor_state": vendor_state, "po_number": po_number,
+            "purchase_date": purchase_date, "invoice_number": invoice_number, "invoice_date": invoice_date,
+            "e_way_bill": e_way_bill, "eway_bill_date": eway_bill_date, "vehicle_number": vehicle_number,
+            "amount": amount, "po_quantity": po_quantity, "quantity": quantity,
+            "physical_quantity": physical_quantity})
+        if _miss:
+            return RedirectResponse(url=f"{base}?error=" + quote("GRN not saved — fill in: " + ", ".join(_miss)),
+                                    status_code=302)
+
     entity = (entity or "").strip()
+    # Entity comes from the signed-in user's own Entity (2026-10-31) — the
+    # Add GRN field is locked to it; only a user with no Entity picks one.
+    if (getattr(current_user, "entity", None) or "").strip():
+        entity = current_user.entity.strip()
     if entity and entity not in await entity_values(db):
         return RedirectResponse(url=f"{base}?error=" + quote(f"Unknown entity '{entity}'."),
                                 status_code=302)
@@ -1055,10 +1151,19 @@ async def grn_create_manual(
         po_number=po_number or None,
         vehicle_number=vehicle_number or None,
         e_way_bill=e_way_bill or None,
+        eway_bill_date=_date_or_none(eway_bill_date),
+        vendor_state=(vendor_state or "").strip() or None,
+        po_quantity=_int(po_quantity or ""), physical_quantity=_int(physical_quantity or ""),
+        po_file=await _save_grn_doc(po_file, grn_number, "po"),
+        eway_bill_file=await _save_grn_doc(eway_bill_file, grn_number, "eway"),
+        vehicle_image_file=await _save_grn_doc(vehicle_image, grn_number, "vehicle"),
         notes=notes or None,
         source=(source if source in ("post_iqc", EXTERNAL_PARTNER_TEST_GRN_SOURCE) else "invoice"),
         created_by=current_user.username,
     )
+    from services.grn_tax import compute_grn_tax
+    g.gst_type, g.gst_rate, g.tax_amount, g.taxable_amount = await compute_grn_tax(
+        db, g.entity, g.vendor_state, g.amount)
     db.add(g)
     await db.flush()
     linked, created, refused = await _map_lots_to_grn(
@@ -1102,6 +1207,12 @@ async def grn_edit(
     lot_numbers: str | None = Form(None),
     invoice: UploadFile | None = File(None),
     source: str = Form(""),
+    # 2026-10-31: None = the form has no such field (keeps the stored value).
+    vendor_state: str | None = Form(None), po_quantity: str | None = Form(None),
+    physical_quantity: str | None = Form(None),
+    eway_bill_date: str | None = Form(None),
+    po_file: UploadFile | None = File(None), eway_bill_file: UploadFile | None = File(None),
+    vehicle_image: UploadFile | None = File(None),
     db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed),
     _perm: User = Depends(require_additional_perm("edit_grn")),
 ):
@@ -1130,6 +1241,17 @@ async def grn_edit(
                                     status_code=302)
         if source == "post_iqc" and not entity.strip():
             return RedirectResponse(url=f"{_base}?error=" + _q("Select the GRN's Entity."),
+                                    status_code=302)
+    if vendor_state is not None:
+        _miss = _missing_required({
+            "lot_numbers": lot_numbers, "grn_date": grn_date, "location_id": location_id,
+            "sender_name": sender_name, "vendor_state": vendor_state, "po_number": po_number,
+            "purchase_date": purchase_date, "invoice_number": invoice_number, "invoice_date": invoice_date,
+            "e_way_bill": e_way_bill, "eway_bill_date": eway_bill_date, "vehicle_number": vehicle_number,
+            "amount": amount, "po_quantity": po_quantity, "quantity": quantity,
+            "physical_quantity": physical_quantity})
+        if _miss:
+            return RedirectResponse(url=f"{_base}?error=" + _q("GRN not saved — fill in: " + ", ".join(_miss)),
                                     status_code=302)
     old = {"invoice_number": g.invoice_number, "entity": g.entity, "sender_name": g.sender_name,
            "location_id": str(g.location_id) if g.location_id else None,
@@ -1161,6 +1283,24 @@ async def grn_edit(
     g.notes = notes or None
     if entity is not None:
         g.entity = entity.strip() or None
+    if eway_bill_date is not None:
+        g.eway_bill_date = _date.fromisoformat(eway_bill_date) if eway_bill_date else None
+    if vendor_state is not None:
+        g.vendor_state = vendor_state.strip() or None
+    for _v, _col in ((po_quantity, "po_quantity"), (physical_quantity, "physical_quantity")):
+        if _v is not None:
+            try:
+                setattr(g, _col, int(_v) if _v.strip() else None)
+            except ValueError:
+                pass
+    from services.grn_tax import compute_grn_tax
+    g.gst_type, g.gst_rate, g.tax_amount, g.taxable_amount = await compute_grn_tax(
+        db, g.entity, g.vendor_state, g.amount)
+    for _up, _col, _kind in ((po_file, "po_file", "po"), (eway_bill_file, "eway_bill_file", "eway"),
+                             (vehicle_image, "vehicle_image_file", "vehicle")):
+        _path = await _save_grn_doc(_up, g.grn_number, _kind)
+        if _path:
+            setattr(g, _col, _path)
 
     # Invoice PDF: attach, or replace the current one — stored exactly as Add
     # GRN stores it, so the existing download link serves it. The previous
@@ -1261,6 +1401,118 @@ async def grn_edit(
     if refused:
         msg += f". Not mapped (lot is in Trash): {', '.join(refused)}"
     return RedirectResponse(url=f"{base}?success=" + _q(msg), status_code=302)
+
+
+async def _grn_tabs_ctx(db, g, current_user) -> dict:
+    """Device Tags + Model Summary for one GRN — the tags behind its Stocked
+    count (services/grn_stocked.py, add-only), shared by GRN Detail and the
+    Stocked popup on GRN Post IQC."""
+    from models.engines import RepairAttempt, DeviceCosting
+    from models.qc import QCCheck
+    from models.iqc_inspection import IQCInspection
+    from models.sales import Sale
+    from routers.devices import (_device_price_expr, _ms_key, _ms_is_touch, entity_abbr,
+                                 stock_type_key, STOCK_TYPE_LABELS, MS_GRADE_ORDER)
+    from models.role_permissions import has_perm as _hp
+    from services.grn_stocked import stocked_device_ids
+    ids = await stocked_device_ids(db, g.id)
+    devices = (await db.execute(select(Device).where(Device.id.in_(ids)).order_by(Device.created_at))
+               ).scalars().all() if ids else []
+    repair_map, qc_map, iqc_set, sold_set = {}, {}, set(), set()
+    if ids:
+        repair_map = {str(a): n for a, n in (await db.execute(
+            select(RepairAttempt.device_id, func.count(RepairAttempt.id))
+            .where(RepairAttempt.device_id.in_(ids)).group_by(RepairAttempt.device_id))).all()}
+        qc_map = {str(a): n for a, n in (await db.execute(
+            select(QCCheck.device_id, func.count(QCCheck.id))
+            .where(QCCheck.device_id.in_(ids)).group_by(QCCheck.device_id))).all()}
+        iqc_set = {str(a) for (a,) in (await db.execute(
+            select(IQCInspection.device_id).where(IQCInspection.device_id.in_(ids)).distinct())).all()}
+        sold_set = {str(a) for (a,) in (await db.execute(
+            select(Sale.device_id).where(Sale.device_id.in_(ids)))).all()}
+    show_pricing = _hp(getattr(current_user.role, "value", current_user.role), "devices", "pricing")
+    costing = (select(DeviceCosting.device_id.label("device_id"),
+                      func.max(DeviceCosting.total_cost).label("total_cost"))
+               .group_by(DeviceCosting.device_id).subquery())
+    cols = (Device.model, Device.brand, Device.device_type, Device.cpu, Device.ram_summary,
+            Device.ram_gb, Device.hdd_summary, Device.storage_gb, Device.storage_type,
+            Device.entity, Device.touch_type, Device.grade, Device.sub_lot_number, Device.current_stage)
+    groups: dict = {}
+    if ids:
+        for r in (await db.execute(
+                select(*cols, func.count(Device.id).label("n"), func.sum(_device_price_expr(costing)).label("price"))
+                .select_from(Device).join(Lot, Device.lot_id == Lot.id, isouter=True)
+                .outerjoin(costing, costing.c.device_id == Device.id)
+                .where(Device.id.in_(ids)).group_by(*cols))).all():
+            key = _ms_key(r.model, r.brand, r.device_type, r.cpu, r.ram_summary, r.ram_gb,
+                          r.hdd_summary, r.storage_gb, r.storage_type)
+            m = groups.setdefault(key, {"model": key[0], "make": key[1], "device_type": key[2], "cpu": key[3],
+                                        "ram": key[4], "storage": key[5], "total": 0, "price": 0.0,
+                                        "entity": {}, "touch": {}, "stock": {}, "grade": {}})
+            n = r.n or 0
+            m["total"] += n
+            m["price"] += float(r.price or 0)
+            ent = (r.entity or "").strip() or "Unassigned"
+            m["entity"][ent] = m["entity"].get(ent, 0) + n
+            t = "T" if _ms_is_touch(r.touch_type) else "NT"
+            m["touch"][t] = m["touch"].get(t, 0) + n
+            st = STOCK_TYPE_LABELS[stock_type_key(r.current_stage, r.sub_lot_number)]
+            m["stock"][st] = m["stock"].get(st, 0) + n
+            gr = getattr(r.grade, "value", r.grade) or "NA"
+            m["grade"][gr] = m["grade"].get(gr, 0) + n
+    models_rows = sorted(groups.values(), key=lambda x: x["total"], reverse=True)
+    for m in models_rows:
+        m["grade"] = sorted(m["grade"].items(), key=lambda kv: MS_GRADE_ORDER.index(kv[0]) if kv[0] in MS_GRADE_ORDER else 99)
+    return {"devices": devices, "repair_map": repair_map, "qc_map": qc_map, "iqc_set": iqc_set,
+            "sold_set": sold_set, "models_rows": models_rows, "show_pricing": show_pricing,
+            "entity_abbr": entity_abbr}
+
+
+async def _grn_or_404(db, grn_id):
+    import uuid as _u
+    try:
+        gid = _u.UUID(grn_id)
+    except ValueError:
+        raise HTTPException(404)
+    g = (await db.execute(select(GRNImport).where(GRNImport.id == gid, GRNImport.is_deleted == False))  # noqa: E712
+         ).scalar_one_or_none()
+    if not g:
+        raise HTTPException(404, "GRN not found")
+    return g
+
+
+@router.get("/view/{grn_id}", response_class=HTMLResponse)
+async def grn_detail(grn_id: str, request: Request, db: AsyncSession = Depends(get_db),
+                     current_user: User = Depends(allowed)):
+    """GRN Detail (2026-10-31): read-only, like Lot Detail without Lot P&L —
+    GRN / Invoice details + documents, Financial Breakdown, and two tabs:
+    Device Tags (the GRN's Stocked tags, Lot Detail columns) and Model
+    Summary (All Inventory's grouping). Opened from the GRN number on GRN
+    Post IQC. No edit / add / validate buttons here."""
+    g = await _grn_or_404(db, grn_id)
+    lots = (await _lots_by_grn(db, [g])).get(g.grn_number, [])
+    location = None
+    if g.location_id:
+        from models.location import StorageLocation
+        location = (await db.execute(select(StorageLocation).where(StorageLocation.id == g.location_id))).scalar_one_or_none()
+    added_by = None
+    if g.created_by:
+        added_by = (await db.execute(select(User.full_name).where(
+            func.lower(User.username) == g.created_by.lower()))).scalar() or g.created_by
+    ctx = await _grn_tabs_ctx(db, g, current_user)
+    return templates.TemplateResponse("grn/detail.html", {
+        "request": request, "current_user": current_user, "g": g, "lots": lots,
+        "location": location, "added_by": added_by, **ctx})
+
+
+@router.get("/view/{grn_id}/tabs", response_class=HTMLResponse)
+async def grn_tabs_fragment(grn_id: str, request: Request, db: AsyncSession = Depends(get_db),
+                            current_user: User = Depends(allowed)):
+    """Device Tags / Model Summary tabs only — the Stocked popup on GRN Post IQC."""
+    g = await _grn_or_404(db, grn_id)
+    ctx = await _grn_tabs_ctx(db, g, current_user)
+    return templates.TemplateResponse("grn/_tabs.html", {
+        "request": request, "current_user": current_user, "g": g, "tab_prefix": "pop", **ctx})
 
 
 @router.get("/lots/check")

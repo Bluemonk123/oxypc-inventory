@@ -1,0 +1,106 @@
+{# Device Tags / Model Summary tabs (2026-10-31) — GRN Detail and the
+   Stocked popup on GRN Post IQC. tab_prefix keeps element ids unique.
+   grnTabsInit(root) (below) sets up the two tables. #}
+<ul class="nav nav-tabs mb-0" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#{{ tab_prefix }}TagsTab" type="button" role="tab">
+    <i class="bi bi-laptop me-1"></i>Device Tags <span class="badge bg-secondary ms-1">{{ devices | length }}</span></button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#{{ tab_prefix }}ModelsTab" type="button" role="tab">
+    <i class="bi bi-grid-3x3-gap me-1"></i>Model Summary <span class="badge bg-secondary ms-1">{{ models_rows | length }}</span></button></li>
+</ul>
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="{{ tab_prefix }}TagsTab" role="tabpanel">
+    <div class="card border-0 shadow-sm border-top-0">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table id="{{ tab_prefix }}DeviceTable" class="table table-hover mb-0 small grn-dev-table">
+            <thead class="table-dark">
+              <tr>
+                <th>Tag Number</th><th>Device Type</th><th>Brand</th><th>Model</th><th>CPU</th><th>RAM</th>
+                <th>Storage</th><th>Grade</th><th>Stage</th><th>Floor</th>
+                <th class="text-center" title="IQC done">IQC</th>
+                <th class="text-center" title="Repair attempts">Repairs</th>
+                <th class="text-center" title="QC checks">QC</th>
+                <th class="text-center">Status</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for d in devices %}
+              {% set did = d.id | string %}
+              <tr>
+                <td><a href="/devices/{{ d.barcode }}" class="font-monospace text-decoration-none fw-semibold">{{ d.barcode }}</a>
+                  <div style="color:#999;font-size:12px">{{ d.entity or '—' }}</div></td>
+                <td>{{ d.device_type or '—' }}</td>
+                <td>{{ d.brand or '—' }}</td>
+                <td>{{ d.model or '—' }}</td>
+                <td>{{ d.cpu or '—' }}</td>
+                <td>{{ (d.ram_gb|string ~ ' GB') if d.ram_gb else '—' }}</td>
+                <td>{{ (d.storage_gb|string ~ ' GB ' ~ (d.storage_type or '')) if d.storage_gb else '—' }}</td>
+                <td>{{ (d.grade.value if d.grade else '') or '—' }}</td>
+                <td><span class="badge bg-{{ d.stage_color }}">{{ d.stage_label }}</span></td>
+                <td>{{ d.floor or '—' }}</td>
+                <td class="text-center">{% if did in iqc_set %}<span class="badge bg-success"><i class="bi bi-check-circle"></i></span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-center">{% set rc = repair_map.get(did, 0) %}{% if rc %}<span class="badge bg-info text-dark">{{ rc }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-center">{% set qc = qc_map.get(did, 0) %}{% if qc %}<span class="badge" style="background:#6f42c1">{{ qc }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-center">{% if did in sold_set %}<span class="badge bg-success">Sold</span>{% else %}<span class="badge bg-secondary">Available</span>{% endif %}</td>
+                <td><a href="/devices/{{ d.barcode }}" class="btn btn-sm btn-outline-primary py-0">View</a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="{{ tab_prefix }}ModelsTab" role="tabpanel">
+    <div class="card border-0 shadow-sm border-top-0">
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table id="{{ tab_prefix }}ModelTable" class="table table-hover mb-0 small grn-model-table">
+            <thead class="table-dark">
+              <tr>
+                <th>Model</th><th>Make</th><th>Device Type</th><th>CPU</th><th>RAM</th><th>Storage</th>
+                <th>Entity</th><th>Touch</th><th>Stock</th><th>Grade</th>
+                <th class="text-end">Total</th>
+                {% if show_pricing %}<th class="text-end">Price</th>{% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for m in models_rows %}
+              <tr>
+                <td class="fw-semibold">{{ m.model }}</td><td>{{ m.make }}</td><td>{{ m.device_type }}</td>
+                <td>{{ m.cpu }}</td><td>{{ m.ram }}</td><td>{{ m.storage }}</td>
+                <td>{% for e, n in m.entity.items() %}<span class="badge bg-light text-dark border me-1" title="{{ e }}">{{ entity_abbr(e) }} {{ n }}</span>{% endfor %}</td>
+                <td>{% for t, n in m.touch.items() %}<span class="badge bg-secondary me-1">{{ t }} {{ n }}</span>{% endfor %}</td>
+                <td>{% for st, n in m.stock.items() %}<span class="badge bg-light text-dark border me-1">{{ st }} {{ n }}</span>{% endfor %}</td>
+                <td>{% for gr, n in m.grade %}<span class="badge bg-warning text-dark me-1">{{ gr }} {{ n }}</span>{% endfor %}</td>
+                <td class="text-end fw-semibold">{{ m.total }}</td>
+                {% if show_pricing %}<td class="text-end">{{ m.price | inr }}</td>{% endif %}
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+window.grnTabsInit = window.grnTabsInit || function (root) {
+  root.querySelectorAll('table.grn-dev-table').forEach(function (t) {
+    if (!$.fn.dataTable.isDataTable(t)) $(t).DataTable({ pageLength: 12, order: [[0, 'asc']] });
+  });
+  root.querySelectorAll('button[data-bs-toggle="tab"]').forEach(function (b) {
+    b.addEventListener('shown.bs.tab', function () {
+      var pane = document.querySelector(b.getAttribute('data-bs-target'));
+      if (!pane) return;
+      pane.querySelectorAll('table.grn-model-table').forEach(function (t) {
+        if (!$.fn.dataTable.isDataTable(t)) $(t).DataTable({ pageLength: 25, order: [[10, 'desc']] });
+        else $(t).DataTable().columns.adjust();
+      });
+      pane.querySelectorAll('table.grn-dev-table').forEach(function (t) { if ($.fn.dataTable.isDataTable(t)) $(t).DataTable().columns.adjust(); });
+    });
+  });
+};
+</script>

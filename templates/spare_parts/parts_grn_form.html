@@ -25,151 +25,130 @@
   </div>
   <div class="card-body">
 
-    <!-- Row 1: PO -->
+    {# Section 1 (2026-10-31): same structure as Add / Edit GRN — red star =
+       required (uploads optional); Tax / Taxable auto from the GST-inclusive
+       Invoice Price (services/grn_tax.py), split CGST+SGST / GST by Vendor
+       State. #}
     <div class="row g-3 mb-3">
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold">PO Number</label>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">GRN Date{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
+        {% if ro %}<p class="form-control-plaintext">{{ grn.date_received.strftime('%d-%m-%Y') if grn.date_received else '—' }}</p>
+        {% else %}<input type="date" name="date_received" class="form-control form-control-sm" required>{% endif %}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Vendor Name{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
+        {% if ro %}<p class="form-control-plaintext">{{ grn.vendor_name or '—' }}</p>
+        {% else %}<input type="text" name="vendor_name" class="form-control form-control-sm" id="hdrVendor" required>{% endif %}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Vendor State{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
+        {% if ro %}<p class="form-control-plaintext">{{ grn.vendor_state or '—' }}</p>
+        {% else %}<select name="vendor_state" id="hdrVendorState" class="form-select form-select-sm pg-tax-in" required>
+          <option value="">— Select —</option>
+          {% for st in (state_options if state_options is defined else []) %}<option value="{{ st }}">{{ st }}</option>{% endfor %}
+        </select>{% endif %}
+      </div>
+    </div>
+    <div class="row g-3 mb-3">
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">PO Number{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
         {% if ro %}<p class="form-control-plaintext">{{ grn.po_number or '—' }}</p>
-        {% else %}<input type="text" name="po_number" class="form-control form-control-sm" id="hdrPO">{% endif %}
+        {% else %}<input type="text" name="po_number" class="form-control form-control-sm" id="hdrPO" required>{% endif %}
       </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold">PO Date</label>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">PO Date{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
         {% if ro %}<p class="form-control-plaintext">{{ grn.po_date.strftime('%d-%m-%Y') if grn.po_date else '—' }}</p>
-        {% else %}<input type="date" name="po_date" class="form-control form-control-sm">{% endif %}
+        {% else %}<input type="date" name="po_date" class="form-control form-control-sm" required>{% endif %}
       </div>
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold">PO Upload</label>
-        {% if ro %}
-          {% if grn.po_file %}<a href="/uploads/parts_grn/{{ grn.po_file }}" target="_blank" class="btn btn-xs btn-outline-primary btn-sm py-0"><i class="bi bi-file-earmark me-1"></i>View</a>{% else %}<span class="text-muted">—</span>{% endif %}
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">PO Upload{% if not ro %}{% endif %}</label>
+        {% if ro %}{% if grn.po_file %}<a href="/uploads/parts_grn/{{ grn.po_file }}" target="_blank" class="btn btn-xs btn-outline-primary btn-sm py-0"><i class="bi bi-file-earmark me-1"></i>View</a>{% else %}<span class="text-muted">—</span>{% endif %}
         {% else %}<input type="file" name="po_file" class="form-control form-control-sm">{% endif %}
       </div>
     </div>
-
-    <!-- Row 2: Invoice -->
     <div class="row g-3 mb-3">
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold">Invoice Number</label>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Invoice Number{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
         {% if ro %}<p class="form-control-plaintext">{{ grn.invoice_number or '—' }}</p>
-        {% else %}<input type="text" name="invoice_number" class="form-control form-control-sm" id="hdrInv">{% endif %}
+        {% else %}<input type="text" name="invoice_number" class="form-control form-control-sm" id="hdrInv" required>{% endif %}
       </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold">Invoice Date</label>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Invoice Date{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
         {% if ro %}<p class="form-control-plaintext">{{ grn.invoice_date.strftime('%d-%m-%Y') if grn.invoice_date else '—' }}</p>
-        {% else %}<input type="date" name="invoice_date" class="form-control form-control-sm">{% endif %}
+        {% else %}<input type="date" name="invoice_date" class="form-control form-control-sm" required>{% endif %}
       </div>
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold">Invoice Upload</label>
-        {% if ro %}
-          {% if grn.invoice_file %}<a href="/uploads/parts_grn/{{ grn.invoice_file }}" target="_blank" class="btn btn-xs btn-outline-primary btn-sm py-0"><i class="bi bi-file-earmark me-1"></i>View</a>{% else %}<span class="text-muted">—</span>{% endif %}
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Invoice Upload{% if not ro %}{% endif %}</label>
+        {% if ro %}{% if grn.invoice_file %}<a href="/uploads/parts_grn/{{ grn.invoice_file }}" target="_blank" class="btn btn-xs btn-outline-primary btn-sm py-0"><i class="bi bi-file-earmark me-1"></i>View</a>{% else %}<span class="text-muted">—</span>{% endif %}
         {% else %}<input type="file" name="invoice_file" class="form-control form-control-sm">{% endif %}
       </div>
     </div>
-
-    <!-- Row 3: E-way Bill -->
     <div class="row g-3 mb-3">
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold">E-way Bill Number</label>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">E-Way Bill Number{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
         {% if ro %}<p class="form-control-plaintext">{{ grn.eway_bill_number or '—' }}</p>
-        {% else %}<input type="text" name="eway_bill_number" class="form-control form-control-sm">{% endif %}
+        {% else %}<input type="text" name="eway_bill_number" class="form-control form-control-sm" required>{% endif %}
       </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold">E-way Bill Date</label>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">E-Way Bill Date{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
         {% if ro %}<p class="form-control-plaintext">{{ grn.eway_bill_date.strftime('%d-%m-%Y') if grn.eway_bill_date else '—' }}</p>
-        {% else %}<input type="date" name="eway_bill_date" class="form-control form-control-sm">{% endif %}
+        {% else %}<input type="date" name="eway_bill_date" class="form-control form-control-sm" required>{% endif %}
       </div>
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold">E-way Bill Upload</label>
-        {% if ro %}
-          {% if grn.eway_bill_file %}<a href="/uploads/parts_grn/{{ grn.eway_bill_file }}" target="_blank" class="btn btn-xs btn-outline-primary btn-sm py-0"><i class="bi bi-file-earmark me-1"></i>View</a>{% else %}<span class="text-muted">—</span>{% endif %}
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">E-Way Bill Upload{% if not ro %}{% endif %}</label>
+        {% if ro %}{% if grn.eway_bill_file %}<a href="/uploads/parts_grn/{{ grn.eway_bill_file }}" target="_blank" class="btn btn-xs btn-outline-primary btn-sm py-0"><i class="bi bi-file-earmark me-1"></i>View</a>{% else %}<span class="text-muted">—</span>{% endif %}
         {% else %}<input type="file" name="eway_bill_file" class="form-control form-control-sm">{% endif %}
       </div>
     </div>
-
-    <!-- Row 4: Vehicle -->
     <div class="row g-3 mb-3">
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold">Vehicle Number</label>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Vehicle Number{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
         {% if ro %}<p class="form-control-plaintext">{{ grn.vehicle_number or '—' }}</p>
-        {% else %}<input type="text" name="vehicle_number" class="form-control form-control-sm" id="hdrVeh">{% endif %}
+        {% else %}<input type="text" name="vehicle_number" class="form-control form-control-sm" id="hdrVeh" required>{% endif %}
       </div>
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold">Vehicle Seal Upload</label>
-        {% if ro %}
-          {% if grn.vehicle_seal_file %}<a href="/uploads/parts_grn/{{ grn.vehicle_seal_file }}" target="_blank" class="btn btn-xs btn-outline-primary btn-sm py-0"><i class="bi bi-file-earmark me-1"></i>View</a>{% else %}<span class="text-muted">—</span>{% endif %}
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Vehicle Seal Upload{% if not ro %}{% endif %}</label>
+        {% if ro %}{% if grn.vehicle_seal_file %}<a href="/uploads/parts_grn/{{ grn.vehicle_seal_file }}" target="_blank" class="btn btn-xs btn-outline-primary btn-sm py-0"><i class="bi bi-file-earmark me-1"></i>View</a>{% else %}<span class="text-muted">—</span>{% endif %}
         {% else %}<input type="file" name="vehicle_seal_file" class="form-control form-control-sm">{% endif %}
       </div>
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold">Vehicle Image</label>
-        {% if ro %}
-          {% if grn.vehicle_image_file %}<a href="/uploads/parts_grn/{{ grn.vehicle_image_file }}" target="_blank" class="btn btn-xs btn-outline-primary btn-sm py-0"><i class="bi bi-image me-1"></i>View</a>{% else %}<span class="text-muted">—</span>{% endif %}
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Vehicle Image Upload{% if not ro %}{% endif %}</label>
+        {% if ro %}{% if grn.vehicle_image_file %}<a href="/uploads/parts_grn/{{ grn.vehicle_image_file }}" target="_blank" class="btn btn-xs btn-outline-primary btn-sm py-0"><i class="bi bi-image me-1"></i>View</a>{% else %}<span class="text-muted">—</span>{% endif %}
         {% else %}<input type="file" name="vehicle_image_file" class="form-control form-control-sm">{% endif %}
       </div>
     </div>
-
-    <!-- Row 5: Date & Vendor -->
     <div class="row g-3 mb-3">
-      <div class="col-md-3">
-        <label class="form-label small fw-semibold">Date of Material Received</label>
-        {% if ro %}<p class="form-control-plaintext">{{ grn.date_received.strftime('%d-%m-%Y') if grn.date_received else '—' }}</p>
-        {% else %}<input type="date" name="date_received" class="form-control form-control-sm">{% endif %}
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Invoice Price (₹){% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
+        {% if ro %}<p class="form-control-plaintext">{% if grn.invoice_value %}{{ grn.invoice_value | inr(2) }}{% else %}—{% endif %}</p>
+        {% else %}<input type="number" name="invoice_value" id="hdrInvValue" step="0.01" class="form-control form-control-sm pg-tax-in" required>{% endif %}
       </div>
       <div class="col-md-4">
-        <label class="form-label small fw-semibold">Vendor Name (PO)</label>
-        {% if ro %}<p class="form-control-plaintext">{{ grn.vendor_name or '—' }}</p>
-        {% else %}<input type="text" name="vendor_name" class="form-control form-control-sm" id="hdrVendor">{% endif %}
+        <label class="form-label small fw-semibold">Tax Amount (₹) {% if not ro %}<span class="badge text-bg-light border fw-normal" id="pgGstLbl"></span>{% endif %}</label>
+        {% if ro %}{% set _ig = grn.igst %}<p class="form-control-plaintext">{% if grn.tax_amount is not none %}{{ grn.tax_amount | inr(2) }} <span class="badge text-bg-light border fw-normal">{{ 'GST' if grn.igst else 'CGST+SGST' }}</span>{% else %}—{% endif %}</p>
+        {% else %}<input type="text" id="pgTax" class="form-control form-control-sm bg-light" readonly tabindex="-1">{% endif %}
+      </div>
+      <div class="col-md-4">
+        <label class="form-label small fw-semibold">Taxable Amount (₹)</label>
+        {% if ro %}<p class="form-control-plaintext">{% if grn.invoice_value is not none and grn.tax_amount is not none %}{{ (grn.invoice_value - grn.tax_amount) | inr(2) }}{% else %}—{% endif %}</p>
+        {% else %}<input type="text" id="pgTaxable" class="form-control form-control-sm bg-light" readonly tabindex="-1">{% endif %}
       </div>
     </div>
-
-    <!-- Row 6: Tax Summary -->
-    <div class="row g-3 mb-3">
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold">Invoice Value (₹)</label>
-        {% if ro %}<p class="form-control-plaintext">{% if grn.invoice_value %}{{ ((grn.invoice_value) | inr(2)) }}{% else %}—{% endif %}</p>
-        {% else %}<input type="number" name="invoice_value" step="0.01" class="form-control form-control-sm">{% endif %}
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold">SGST (₹)</label>
-        {% if ro %}<p class="form-control-plaintext">{{ grn.sgst or '—' }}</p>
-        {% else %}<input type="number" name="sgst" step="0.01" class="form-control form-control-sm">{% endif %}
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold">CGST (₹)</label>
-        {% if ro %}<p class="form-control-plaintext">{{ grn.cgst or '—' }}</p>
-        {% else %}<input type="number" name="cgst" step="0.01" class="form-control form-control-sm">{% endif %}
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold">IGST (₹)</label>
-        {% if ro %}<p class="form-control-plaintext">{{ grn.igst or '—' }}</p>
-        {% else %}<input type="number" name="igst" step="0.01" class="form-control form-control-sm">{% endif %}
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold">Tax Amount (₹)</label>
-        {% if ro %}<p class="form-control-plaintext">{{ grn.tax_amount or '—' }}</p>
-        {% else %}<input type="number" name="tax_amount" step="0.01" class="form-control form-control-sm">{% endif %}
-      </div>
-    </div>
-
-    <!-- Row 7: Qty Totals -->
     <div class="row g-3">
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold">Total PO Qty</label>
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold">PO Quantity{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
         {% if ro %}<p class="form-control-plaintext">{{ grn.total_po_qty or '—' }}</p>
-        {% else %}<input type="number" name="total_po_qty" class="form-control form-control-sm">{% endif %}
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold">Total Invoice Qty</label>
-        {% if ro %}<p class="form-control-plaintext">{{ grn.total_invoice_qty or '—' }}</p>
-        {% else %}<input type="number" name="total_invoice_qty" class="form-control form-control-sm">{% endif %}
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small fw-semibold">Total Physical Qty</label>
-        {% if ro %}<p class="form-control-plaintext">{{ grn.total_physical_qty or '—' }}</p>
-        {% else %}<input type="number" name="total_physical_qty" class="form-control form-control-sm">{% endif %}
+        {% else %}<input type="number" name="total_po_qty" class="form-control form-control-sm" min="0" required>{% endif %}
       </div>
       <div class="col-md-3">
-        <label class="form-label small fw-semibold">Total Amount Invoice (₹)</label>
-        {% if ro %}<p class="form-control-plaintext">{% if grn.total_amount_invoice %}{{ ((grn.total_amount_invoice) | inr(2)) }}{% else %}—{% endif %}</p>
-        {% else %}<input type="number" name="total_amount_invoice" step="0.01" class="form-control form-control-sm">{% endif %}
+        <label class="form-label small fw-semibold">Invoice Quantity{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
+        {% if ro %}<p class="form-control-plaintext">{{ grn.total_invoice_qty or '—' }}</p>
+        {% else %}<input type="number" name="total_invoice_qty" class="form-control form-control-sm" min="0" required>{% endif %}
+      </div>
+      <div class="col-md-3">
+        <label class="form-label small fw-semibold">Physical Quantity{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
+        {% if ro %}<p class="form-control-plaintext">{{ grn.total_physical_qty or '—' }}</p>
+        {% else %}<input type="number" name="total_physical_qty" class="form-control form-control-sm" min="0" required>{% endif %}
       </div>
       <div class="col-md-3">
         <label class="form-label small fw-semibold">GRN Number</label>
@@ -348,6 +327,25 @@
 </div>
 
 <script src="/static/js/crate_match.js"></script>
+<script>
+// Section 1 Tax / Taxable (2026-10-31) — live preview; the server recomputes
+// on save. Invoice Price includes GST: Taxable = Price / (1 + GST%).
+var PG_GST = {{ (gst_cfg if gst_cfg is defined else {"intra": 18, "inter": 18, "states": {}}) | tojson }};
+var PG_ENTITY = {{ (current_user.entity or '') | tojson }};
+function pgTax() {
+  var v = document.getElementById('hdrInvValue'), st = document.getElementById('hdrVendorState');
+  if (!v || !st) return;
+  var price = parseFloat(v.value), state = (st.value || '').trim().toLowerCase();
+  var home = (PG_GST.states[PG_ENTITY] || PG_GST.states[''] || '').trim().toLowerCase();
+  var tax = document.getElementById('pgTax'), txb = document.getElementById('pgTaxable'), lbl = document.getElementById('pgGstLbl');
+  if (isNaN(price) || !state) { tax.value = ''; txb.value = ''; lbl.textContent = ''; return; }
+  var intra = home && home === state, rate = intra ? PG_GST.intra : PG_GST.inter;
+  var taxable = Math.round(price / (1 + rate / 100) * 100) / 100, t = Math.round((price - taxable) * 100) / 100;
+  var f = function (x) { return x.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  tax.value = f(t); txb.value = f(taxable); lbl.textContent = (intra ? 'CGST+SGST ' : 'GST ') + rate + '%';
+}
+document.querySelectorAll('.pg-tax-in').forEach(function (el) { el.addEventListener('input', pgTax); el.addEventListener('change', pgTax); });
+</script>
 <script>
 var lineItems = [];
 var lineItemCounter = 0;

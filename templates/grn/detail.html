@@ -1,0 +1,125 @@
+{% extends "base.html" %}
+{% block title %}GRN {{ g.grn_number }} — OxyPC{% endblock %}
+{% block page_title %}GRN: {{ g.grn_number }}{% endblock %}
+{% block content %}
+{# GRN Detail (2026-10-31): read-only — same layout as Lot Detail without
+   the Lot P&L section and without edit / add / validate buttons. Tags and
+   models in two tabs. #}
+{% set _pricing = can(current_user, 'grn_post_iqc', 'pricing') %}
+
+<div class="mb-3">
+  <a href="/grn/post-iqc" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to GRN</a>
+</div>
+
+<!-- ── Top KPI Cards ── -->
+<div class="row g-3 mb-4">
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">Vendor</div><div class="fw-semibold small">{{ g.sender_name or '—' }}</div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">Entity</div><div class="fw-semibold small">{{ g.entity or '—' }}</div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">Invoice Qty / Tags Received</div>
+    <div class="fw-semibold">{{ g.quantity if g.quantity is not none else '—' }} / {{ devices | length }}</div></div></div>
+  {% if _pricing %}
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">Invoice Price</div>
+    <div class="fw-semibold">{% if g.amount is not none %}₹{{ g.amount | inr }}{% else %}—{% endif %}</div></div></div>
+  {% endif %}
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">GRN Date</div>
+    <div class="fw-semibold">{{ g.grn_date.strftime('%d-%m-%Y') if g.grn_date else '—' }}</div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">PO Date</div>
+    <div class="fw-semibold">{{ g.purchase_date.strftime('%d-%m-%Y') if g.purchase_date else '—' }}</div></div></div>
+</div>
+
+{% macro doc_link(url, has) -%}
+{% if has %}<a href="{{ url }}" target="_blank" class="ms-2 small text-decoration-none"><i class="bi bi-paperclip"></i> View</a>{% endif %}
+{%- endmacro %}
+
+<div class="row g-4 mb-4">
+  <!-- ── GRN / Invoice Details ── -->
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-receipt me-2"></i>GRN &amp; Invoice Details</div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            <tr><th class="text-muted w-40">GRN Number</th><td class="font-monospace">{{ g.grn_number }}</td></tr>
+            <tr><th class="text-muted">GRN Date</th><td>{{ g.grn_date.strftime('%d-%m-%Y') if g.grn_date else '—' }}</td></tr>
+            <tr><th class="text-muted">Location ID</th><td>{{ location.unit_id if location else '—' }}</td></tr>
+            <tr><th class="text-muted">Vendor Name</th><td>{{ g.sender_name or '—' }}</td></tr>
+            <tr><th class="text-muted">Vendor State</th><td>{{ g.vendor_state or '—' }}</td></tr>
+            <tr><th class="text-muted">Lot Number(s)</th><td>
+              {% for l in lots %}<a href="/lots/{{ l.id }}" class="font-monospace text-decoration-none me-2">{{ l.lot_number }}</a>{% else %}—{% endfor %}</td></tr>
+            <tr><th class="text-muted">PO Number</th><td><span class="font-monospace">{{ g.po_number or '—' }}</span>
+              {% if g.purchase_date %}<span class="text-muted small ms-2">{{ g.purchase_date.strftime('%d-%m-%Y') }}</span>{% endif %}
+              {{ doc_link('/grn/download/' ~ g.id ~ '/po', g.po_file) }}</td></tr>
+            <tr><th class="text-muted">Invoice No.</th><td><span class="font-monospace">{{ g.invoice_number or '—' }}</span>
+              {% if g.invoice_date %}<span class="text-muted small ms-2">{{ g.invoice_date }}</span>{% endif %}
+              {{ doc_link('/grn/download/' ~ g.id, g.file_path) }}</td></tr>
+            <tr><th class="text-muted">E-Way Bill</th><td><span class="font-monospace">{{ g.e_way_bill or '—' }}</span>
+              {% if g.eway_bill_date %}<span class="text-muted small ms-2">{{ g.eway_bill_date.strftime('%d-%m-%Y') }}</span>{% endif %}
+              {{ doc_link('/grn/download/' ~ g.id ~ '/eway', g.eway_bill_file) }}</td></tr>
+            <tr><th class="text-muted">Vehicle No.</th><td>{{ g.vehicle_number or '—' }}
+              {{ doc_link('/grn/download/' ~ g.id ~ '/vehicle', g.vehicle_image_file) }}</td></tr>
+            <tr><th class="text-muted">Added By</th><td>{{ added_by or '—' }}{% if g.created_at %} <span class="text-muted small">· {{ g.created_at | ist_date }}</span>{% endif %}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Financial Breakdown (2026-10-31) ── -->
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-currency-rupee me-2"></i>Financial Breakdown</div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            {% if _pricing %}
+            {% set _half = ((g.tax_amount or 0) / 2) if g.gst_type == 'intra' else 0 %}
+            <tr><th class="text-muted w-40">Invoice Price</th>
+                <td class="fw-semibold">{% if g.amount is not none %}₹{{ g.amount | inr(2) }}{% else %}—{% endif %}</td></tr>
+            <tr><th class="text-muted">GST</th>
+                <td>{% if g.gst_type %}{{ 'Intra-State (CGST + SGST)' if g.gst_type == 'intra' else 'Inter-State (IGST)' }} · {{ '%g' % g.gst_rate }}%{% else %}—{% endif %}</td></tr>
+            <tr><td colspan="2"><hr class="my-1"></td></tr>
+            {% if g.gst_type == 'intra' %}
+            <tr><th class="text-muted">CGST ({{ '%g' % (g.gst_rate / 2) }}%)</th><td>₹{{ _half | inr(2) }}</td></tr>
+            <tr><th class="text-muted">SGST ({{ '%g' % (g.gst_rate / 2) }}%)</th><td>₹{{ ((g.tax_amount or 0) - _half) | inr(2) }}</td></tr>
+            {% elif g.gst_type == 'inter' %}
+            <tr><th class="text-muted">IGST ({{ '%g' % g.gst_rate }}%)</th><td>₹{{ (g.tax_amount or 0) | inr(2) }}</td></tr>
+            {% endif %}
+            <tr class="table-warning"><th>Tax Amount</th>
+                <td class="fw-bold">{% if g.tax_amount is not none %}₹{{ g.tax_amount | inr(2) }}{% else %}—{% endif %}</td></tr>
+            <tr class="table-primary"><th>Taxable Amount</th>
+                <td class="fw-bold">{% if g.taxable_amount is not none %}₹{{ g.taxable_amount | inr(2) }}{% else %}—{% endif %}</td></tr>
+            <tr><td colspan="2"><hr class="my-1"></td></tr>
+            {% endif %}
+            <tr><th class="text-muted w-40">PO Quantity</th><td>{{ g.po_quantity if g.po_quantity is not none else '—' }}</td></tr>
+            <tr><th class="text-muted">Invoice Quantity</th><td>{{ g.quantity if g.quantity is not none else '—' }}</td></tr>
+            <tr><th class="text-muted">Physical Quantity</th><td>{{ g.physical_quantity if g.physical_quantity is not none else '—' }}</td></tr>
+            <tr><th class="text-muted">Tags Received</th><td>{{ devices | length }}</td></tr>
+            <tr><td colspan="2"><hr class="my-1"></td></tr>
+            <tr><th class="text-muted">Validated</th><td>{% if g.validated %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td></tr>
+            {% if g.validation_ref %}<tr><th class="text-muted">Validation Ref.</th><td>{{ g.validation_ref }}</td></tr>{% endif %}
+            {% if g.validation_notes %}<tr><th class="text-muted">Validation Notes</th><td>{{ g.validation_notes }}</td></tr>{% endif %}
+          </tbody>
+        </table>
+        {% if g.notes %}
+        <div class="alert alert-light mt-3 mb-0 py-2 small no-autohide"><i class="bi bi-info-circle me-1"></i>{{ g.notes }}</div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Tabs: Device Tags / Model Summary (shared with the Stocked popup) ── -->
+{% set tab_prefix = 'grn' %}
+{% include "grn/_tabs.html" %}
+{% endblock %}
+{% block scripts %}
+<script>
+$(function () { grnTabsInit(document); });
+</script>
+{% endblock %}

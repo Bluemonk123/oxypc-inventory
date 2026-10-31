@@ -33,6 +33,9 @@ class PartsGRN(Base):
 
     date_received = Column(DateTime, nullable=True)
     vendor_name = Column(String(150), nullable=True)
+    # Vendor State (2026-10-31, approved): picks Intra-State (CGST+SGST) vs
+    # Inter-State GST for the auto Tax Amount — services/grn_tax.py.
+    vendor_state = Column(String(100), nullable=True)
 
     invoice_value = Column(Numeric(12, 2), nullable=True)
     sgst = Column(Numeric(10, 2), nullable=True)

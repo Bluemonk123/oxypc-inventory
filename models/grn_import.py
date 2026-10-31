@@ -34,6 +34,26 @@ class GRNImport(Base):
     po_number = Column(String(50), nullable=True)
     vehicle_number = Column(String(50), nullable=True)
     e_way_bill = Column(String(50), nullable=True)
+    # Add / Edit GRN documents (2026-10-31, approved): PO file, E-Way Bill
+    # Date + file, Vehicle Image. Files stored under GRN_UPLOAD_DIR like the
+    # invoice; served by GET /grn/download/{id}/{po|eway|vehicle}. The PO
+    # Date is the existing purchase_date (labelled "PO Date" in the UI).
+    po_file = Column(String(500), nullable=True)
+    eway_bill_date = Column(Date, nullable=True)
+    # Vendor State + quantities + GST (2026-10-31, approved). Tax / Taxable
+    # are computed on the server from Invoice Price (GST-inclusive) with the
+    # GST rate of the day — Intra-State (CGST+SGST) when Vendor State = the
+    # entity's company state, else Inter-State (IGST), Cost Config "Additional
+    # Rates" — and snapshotted so a later rate change doesn't rewrite them.
+    vendor_state = Column(String(100), nullable=True)
+    po_quantity = Column(Integer, nullable=True)
+    physical_quantity = Column(Integer, nullable=True)
+    gst_type = Column(String(10), nullable=True)          # 'intra' (CGST+SGST) | 'inter' (IGST)
+    gst_rate = Column(Numeric(5, 2), nullable=True)       # total GST %
+    tax_amount = Column(Numeric(14, 2), nullable=True)
+    taxable_amount = Column(Numeric(14, 2), nullable=True)
+    eway_bill_file = Column(String(500), nullable=True)
+    vehicle_image_file = Column(String(500), nullable=True)
     notes = Column(Text, nullable=True)
     validated = Column(Boolean, default=False, nullable=True)   # set via Validate GRN modal
     received_qty = Column(Integer, nullable=True)               # actual count entered at validation

@@ -288,6 +288,7 @@ ROUTE_ACTIONS = {
     ('POST', '/telecalling/add'): ('telecalling', 'add'),  # add_record
     # ===== routers/grn.py =====
     ('GET', '/grn/download/{grn_id}'): (('grn', 'grn_post_iqc'), 'export'),  # grn_download: GRN document; GRN with Invoice and GRN post IQC
+    ('GET', '/grn/download/{grn_id}/{kind}'): (('grn', 'grn_post_iqc'), 'export'),  # grn_download_doc: PO / E-Way Bill / Vehicle Image (2026-10-31)
     ('POST', '/grn/post-iqc/export'): ('grn_post_iqc', 'export'),  # grn_post_iqc_export: export
     ('POST', '/grn/map'): ('grn_post_iqc', 'edit'),  # grn_map: only on GRN post-IQC page
     ('POST', '/grn/records/bulk-move-to-trc'): ('grn_records', 'edit'),  # grn_bulk_move_to_trc

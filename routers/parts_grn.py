@@ -131,7 +131,15 @@ async def grn_new_form(request: Request, db: AsyncSession = Depends(get_db),
         "main_categories": MAIN_CATEGORIES, "categories": await master_values(db, "iqc_part_category"),
         "part_names": await master_values(db, "part_category"),
         "part_brands": await master_values(db, "spare_part_brand"),
+        "state_options": await master_values(db, "dealer_state"),
+        "gst_cfg": await _gst_cfg_parts(db),
     })
+
+
+async def _gst_cfg_parts(db) -> dict:
+    from services.grn_tax import gst_rates, company_states
+    intra, inter = await gst_rates(db)
+    return {"intra": float(intra), "inter": float(inter), "states": await company_states(db)}
 
 
 @router.post("/new", response_class=HTMLResponse)
@@ -157,6 +165,7 @@ async def grn_create(
     total_invoice_qty: str = Form(default=""),
     total_physical_qty: str = Form(default=""),
     total_amount_invoice: str = Form(default=""),
+    vendor_state: str | None = Form(default=None),
     line_items_json: str = Form(default="[]"),
     po_file: UploadFile = File(default=None),
     invoice_file: UploadFile = File(default=None),
@@ -188,6 +197,33 @@ async def grn_create(
             return RedirectResponse(url="/parts-grn/new?error=" + quote_plus("GRN not saved: " + _msg), status_code=303)
         _seen[_norm(_cr)] = _g
 
+    # New Section 1 (2026-10-31, sends vendor_state): required fields, and
+    # Tax / Taxable computed here from the GST-inclusive Invoice Price — the
+    # posted CGST / SGST / IGST / Tax are ignored. Total Amount Invoice =
+    # Invoice Price (one amount).
+    _tax_fields = None
+    if vendor_state is not None:
+        _req = [("GRN Date", date_received), ("Vendor Name", vendor_name), ("Vendor State", vendor_state),
+                ("PO Number", po_number), ("PO Date", po_date), ("Invoice Number", invoice_number),
+                ("Invoice Date", invoice_date), ("E-Way Bill Number", eway_bill_number),
+                ("E-Way Bill Date", eway_bill_date), ("Vehicle Number", vehicle_number),
+                ("Invoice Price", invoice_value), ("PO Quantity", total_po_qty),
+                ("Invoice Quantity", total_invoice_qty), ("Physical Quantity", total_physical_qty)]
+        _miss = [lbl for lbl, v in _req if not (v or "").strip()]
+        if _miss:
+            from urllib.parse import quote_plus
+            return RedirectResponse(url="/parts-grn/new?error=" + quote_plus("GRN not saved — fill in: " + ", ".join(_miss)),
+                                    status_code=303)
+        from services.grn_tax import compute_grn_tax
+        _gt, _rate, _tax, _taxable = await compute_grn_tax(
+            db, getattr(current_user, "entity", None), vendor_state, _d(invoice_value))
+        if _tax is not None:
+            _half = (_tax / 2).quantize(Decimal("0.01"))
+            _tax_fields = {"tax_amount": _tax,
+                           "cgst": _half if _gt == "intra" else None,
+                           "sgst": (_tax - _half) if _gt == "intra" else None,
+                           "igst": _tax if _gt == "inter" else None}
+
     grn_number = await _next_grn_number(db)
     pfx = grn_number
 
@@ -218,6 +254,12 @@ async def grn_create(
         total_amount_invoice=_d(total_amount_invoice),
         created_by=current_user.username,
     )
+    if vendor_state is not None:
+        grn.vendor_state = vendor_state.strip() or None
+        grn.total_amount_invoice = _d(invoice_value)
+        if _tax_fields:
+            for _k, _v in _tax_fields.items():
+                setattr(grn, _k, _v)
     db.add(grn)
     await db.flush()
 

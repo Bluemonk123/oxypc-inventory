@@ -160,3 +160,14 @@ async def stocked_counts(db, grns) -> dict:
         GROUP BY s.grn_id
     """).bindparams(bindparam("ids", expanding=True))
     return {by_id[gid]: c for gid, c in (await db.execute(stmt, {"ids": list(by_id)})).all()}
+
+
+async def stocked_device_ids(db, grn_id) -> list:
+    """Device ids counted as Stocked for one GRN (live tags only) — the tags
+    behind the Stocked number, used by GRN Detail and the Stocked popup."""
+    await remember_tags(db)
+    rows = (await db.execute(text(f"""
+        SELECT d.id FROM grn_stocked_tags s JOIN devices d ON d.id = s.device_id
+        WHERE s.grn_id = :gid AND {_LIVE_TAG}
+    """), {"gid": grn_id})).all()
+    return [r[0] for r in rows]
