@@ -888,6 +888,25 @@ async def parts_crate_fix(request: Request, current_user: User = Depends(admin_o
     return back or JSONResponse(res)
 
 
+@router.post("/parts-cleanup")
+async def parts_cleanup(request: Request, current_user: User = Depends(admin_only)):
+    """Parts cleanup (2026-10-31): see services/parts_stock.cleanup_plan."""
+    from database import AsyncSessionLocal
+    from services.parts_stock import cleanup_apply
+    form = await request.form()
+    typo = []
+    for k, v in form.multi_items():
+        if k.startswith("typo_") and v and "|" in v:
+            keep, dup = v.split("|", 1)
+            typo.append((keep, dup))
+    async with AsyncSessionLocal() as db:
+        res = await cleanup_apply(db, current_user, request, typo)
+    msg = (f"Parts cleanup: {res['prices']} price(s) aligned, {res['merges']} row(s) merged."
+           if res.get("ok") else f"Parts cleanup not applied: {res.get('detail')}")
+    back = _back_to_page(form, msg)
+    return back or JSONResponse(res)
+
+
 @router.post("/storage-type-fix")
 async def storage_type_fix_apply(request: Request, current_user: User = Depends(admin_only)):
     from sqlalchemy import update
@@ -1886,6 +1905,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         pname = await _part_name_changes(db)
         from services.parts_stock import crate_fix_plan
         pcrate = await crate_fix_plan(db)
+        from services.parts_stock import cleanup_plan
+        pclean = await cleanup_plan(db)
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
         # "Reassigned but marked Completed" card removed (2026-10-28): since
@@ -1936,7 +1957,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "dt12_total": sum(c for _o, _n, c in dt12_tags), "dt12_master": dt12_master,
         "dt12_list": DEVICE_TYPES_12,
         "pname": [{"code": c, "old": o, "new": n, "m0": m0, "m1": m1} for _i, c, o, n, m0, m1 in pname],
-        "pcrate": pcrate,
+        "pcrate": pcrate, "pclean": pclean,
         "subcat_total": len(subcat), "subcat_by": [{"dt": k[0], "sc": k[1], "n": n} for k, n in sorted(subcat_by.items(), key=lambda x: -x[1])],
         "issues": issues[:500], "issues_total": len(issues),
         "issue_counts": _issue_counts(issues),

@@ -357,3 +357,130 @@ async def crate_fix_apply(db: AsyncSession, user=None, request=None) -> dict:
     await db.commit()
     return {"ok": True, "merged": len(plan["keep_of"]), "prices": len(plan["prices"]),
             "total_before": plan["total_before"], "total_after": plan["total_after"]}
+
+
+# ── Parts cleanup: one price per part, blank crates (2026-10-31) ────────────
+async def _repoint_part(db: AsyncSession, dup, keep):
+    """Move every reference from crate row `dup` to `keep`, then trash dup."""
+    import uuid as _uuid
+    from sqlalchemy import text, update
+    from models.parts_grn import PartsGRNLineItem
+    from utils.timezone import app_now
+    fks = (await db.execute(text(
+        "SELECT c.conrelid::regclass::text, a.attname FROM pg_constraint c "
+        "JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = ANY(c.conkey) "
+        "WHERE c.contype = 'f' AND c.confrelid = 'spare_parts'::regclass"))).all()
+    for tbl, col in fks:
+        await db.execute(text(f'UPDATE {tbl} SET "{col}" = :k WHERE "{col}" = :d'),
+                         {"k": _uuid.UUID(str(keep.id)), "d": _uuid.UUID(str(dup.id))})
+    await db.execute(update(PartsGRNLineItem).where(PartsGRNLineItem.part_id == dup.part_code)
+                     .values(part_id=keep.part_code))
+    dup.qty_in_stock = 0
+    dup.is_trashed = True
+    dup.trashed_at = app_now()
+    dup.notes = ((dup.notes or "") + f" [Merged into {keep.part_code} by Parts cleanup]").strip()
+
+
+def _one_char_apart(a, b):
+    a, b = norm(a), norm(b)
+    if a == b or abs(len(a) - len(b)) > 1:
+        return False
+    if len(a) == len(b):
+        return sum(x != y for x, y in zip(a, b)) == 1
+    s, l = (a, b) if len(a) < len(b) else (b, a)
+    return any(l[:i] + l[i + 1:] == s for i in range(len(l)))
+
+
+async def cleanup_plan(db: AsyncSession) -> dict:
+    """For each Part Name + Make + Model:
+    1. Unit Price = the highest price among its rows (all crates, New and
+       Harvest).
+    2. A row with no crate is merged into the row of the same Type that has a
+       crate, when there is exactly one such crate: stock added, references
+       moved, the blank row trashed. Past handovers are already in each row's
+       count, so nothing is subtracted again.
+    Blank rows with no / several filled crates of their Type are listed, and
+    so are crates one character apart (possible typo) — not changed."""
+    rows = (await db.execute(select(SparePart).where(SparePart.is_trashed.isnot(True))
+                             .order_by(SparePart.created_at))).scalars().all()
+    groups: dict = {}
+    for p in rows:
+        groups.setdefault(group_key(p.name, p.make, p.model), []).append(p)
+    prices, merges, unresolved, typos = [], [], [], []
+    for g, grp in groups.items():
+        if len(grp) < 2:
+            continue
+        label = f"{grp[0].name} / {grp[0].make or '—'} / {grp[0].model or '—'}"
+        top = max(Decimal(str(p.unit_price or 0)) for p in grp)
+        for p in grp:
+            if Decimal(str(p.unit_price or 0)) != top:
+                prices.append({"id": str(p.id), "part": label, "crate": p.crate_number,
+                               "type": "Harvest" if p.source == "harvest" else "New",
+                               "old": str(p.unit_price or 0), "new": str(top)})
+        for src in ("new", "harvest"):
+            same = [p for p in grp if ("harvest" if p.source == "harvest" else "new") == src]
+            filled = [p for p in same if norm(p.crate_number)]
+            blank = [p for p in same if not norm(p.crate_number)]
+            crates = {norm(p.crate_number) for p in filled}
+            tlabel = "Harvest" if src == "harvest" else "New"
+            for b in blank:
+                if len(crates) == 1:
+                    k = filled[0]
+                    merges.append({"keep": str(k.id), "dup": str(b.id), "part": label, "type": tlabel,
+                                   "crate": k.crate_number, "keep_qty": int(k.qty_in_stock or 0),
+                                   "dup_qty": int(b.qty_in_stock or 0),
+                                   "after": int(k.qty_in_stock or 0) + int(b.qty_in_stock or 0)})
+                else:
+                    unresolved.append({"part": label, "type": tlabel, "code": b.part_code,
+                                       "qty": int(b.qty_in_stock or 0),
+                                       "why": "no crate of this type" if not crates else f"{len(crates)} crates"})
+            fl = sorted(filled, key=lambda p: norm(p.crate_number))
+            for i, a in enumerate(fl):
+                for c in fl[i + 1:]:
+                    if _one_char_apart(a.crate_number, c.crate_number):
+                        typos.append({"part": label, "type": tlabel, "a": a.crate_number, "b": c.crate_number,
+                                      "a_id": str(a.id), "b_id": str(c.id),
+                                      "a_qty": int(a.qty_in_stock or 0), "b_qty": int(c.qty_in_stock or 0)})
+    return {"row_mode": await row_mode(db), "prices": prices, "merges": merges,
+            "unresolved": unresolved, "typos": typos}
+
+
+async def cleanup_apply(db: AsyncSession, user=None, request=None, typo_merges=None) -> dict:
+    """typo_merges: [(keep_id, dup_id)] the admin ticked for crates one
+    character apart (same crate typed two ways)."""
+    from services.audit_engine import audit
+    if not await row_mode(db):
+        return {"ok": False, "detail": "apply the Spare Parts — crate rows fix first"}
+    plan = await cleanup_plan(db)
+    rows = {str(p.id): p for p in (await db.execute(
+        select(SparePart).where(SparePart.is_trashed.isnot(True)))).scalars().all()}
+    for pr in plan["prices"]:
+        if pr["id"] in rows:
+            rows[pr["id"]].unit_price = Decimal(pr["new"])
+    for m in plan["merges"]:
+        k, d = rows.get(m["keep"]), rows.get(m["dup"])
+        if k is None or d is None:
+            continue
+        k.qty_in_stock = int(k.qty_in_stock or 0) + int(d.qty_in_stock or 0)
+        await _repoint_part(db, d, k)
+    allowed = {frozenset((t["a_id"], t["b_id"])) for t in plan["typos"]}
+    done_typos = []
+    for keep_id, dup_id in (typo_merges or []):
+        if frozenset((keep_id, dup_id)) not in allowed:
+            continue
+        k, d = rows.get(keep_id), rows.get(dup_id)
+        if k is None or d is None or d.is_trashed:
+            continue
+        done_typos.append({"keep": keep_id, "keep_crate": k.crate_number, "dup": dup_id, "dup_crate": d.crate_number,
+                           "keep_qty": int(k.qty_in_stock or 0), "dup_qty": int(d.qty_in_stock or 0)})
+        k.qty_in_stock = int(k.qty_in_stock or 0) + int(d.qty_in_stock or 0)
+        await _repoint_part(db, d, k)
+    await audit(db, user=user, action="PARTS_CLEANUP", table_name="spare_parts",
+                record_id=f"{len(plan['prices'])} prices, {len(plan['merges'])} merges",
+                new_value={"prices": plan["prices"], "merges": plan["merges"], "crate_typo_merges": done_typos},
+                notes="Parts cleanup: one (highest) price per Part Name + Make + Model; blank-crate rows merged "
+                      "into the single filled crate of the same type (stock added, references moved, blank row "
+                      "trashed). Reverse: restore 'old' prices, untrash 'dup' ids and take 'dup_qty' back off 'keep'.",
+                request=request)
+    await db.commit()
+    return {"ok": True, "prices": len(plan["prices"]), "merges": len(plan["merges"]) + len(done_typos)}

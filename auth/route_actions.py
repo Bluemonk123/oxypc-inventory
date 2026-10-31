@@ -332,6 +332,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/storage-type-fix'): None,  # storage_type_fix_apply: system health data fix (admin-only), 2026-10-29
     ('POST', '/admin/system/part-name-fix'): None,  # part_name_fix: system health data fix (admin-only) — Part Name to the Parts Consumption names, 2026-10-31
     ('POST', '/admin/system/parts-crate-fix'): None,  # parts_crate_fix: system health data fix (admin-only) — spare parts crate rows, 2026-10-31
+    ('POST', '/admin/system/parts-cleanup'): None,  # parts_cleanup: system health data fix (admin-only) — one price per part + blank-crate merges, 2026-10-31
     ('POST', '/admin/system/device-type-12-fix'): None,  # device_type_12_fix: system health data fix (admin-only) — Device Type to the 12 categories, 2026-10-30
     ('POST', '/admin/system/rts-wo-close'): None,  # rts_wo_close_apply: system health internals (admin-only), 2026-10-28
     ('POST', '/admin/system/stress-wo-close'): None,  # stress_wo_close_apply: system health internals (admin-only)

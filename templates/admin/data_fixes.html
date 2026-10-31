@@ -284,6 +284,60 @@
   </div>
   {% endif %}
 
+  {# ── Spare parts cleanup: one price per part, blank crates (2026-10-31) ── #}
+  {% if pclean and pclean.row_mode and (pclean.prices or pclean.merges or pclean.unresolved or pclean.typos) %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm border-start border-warning border-3">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Spare Parts — one price per part, blank crates
+          <span class="badge bg-warning text-dark ms-1">{{ pclean.prices | length }} prices · {{ pclean.merges | length }} merges</span></span>
+        {% if pclean.prices or pclean.merges or pclean.typos %}
+        <button type="submit" form="pcleanForm" class="btn btn-sm btn-warning" onclick="if(!this.dataset.ok){this.dataset.ok=1;this.innerHTML='Click again to apply';return false;}"><i class="bi bi-magic me-1"></i>Apply</button>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        <p class="text-muted mb-2">For each Part Name + Make + Model: every row (all crates, New and Harvest) gets the <strong>highest Unit Price</strong> among them.
+          A row with <strong>no crate</strong> is merged into the row of the same type (New / Harvest) that has a crate, when there is exactly one such crate —
+          stock added, its requests / sales / history moved, the blank row goes to Trash. Past handovers are already in each row's count, so nothing is subtracted again.</p>
+        {% if pclean.merges %}
+        <details open class="mb-2"><summary class="fw-semibold">Merges ({{ pclean.merges | length }})</summary>
+        <table class="table table-sm mb-0 w-auto"><thead><tr><th>Part / Make / Model</th><th>Type</th><th>Into crate</th><th class="text-end">Crate stock</th><th class="text-end">+ No-crate stock</th><th class="text-end">After</th></tr></thead><tbody>
+          {% for m in pclean.merges %}<tr><td>{{ m.part }}</td><td>{{ m.type }}</td><td>{{ m.crate }}</td><td class="text-end">{{ m.keep_qty }}</td><td class="text-end">{{ m.dup_qty }}</td><td class="text-end fw-semibold">{{ m.after }}</td></tr>{% endfor %}
+        </tbody></table></details>
+        {% endif %}
+        {% if pclean.prices %}
+        <details open class="mb-2"><summary class="fw-semibold">Price changes ({{ pclean.prices | length }})</summary>
+        <table class="table table-sm mb-0 w-auto"><thead><tr><th>Part / Make / Model</th><th>Type</th><th>Crate</th><th class="text-end">Now</th><th class="text-end">Becomes</th></tr></thead><tbody>
+          {% for r in pclean.prices %}<tr><td>{{ r.part }}</td><td>{{ r.type }}</td><td>{{ r.crate or '—' }}</td><td class="text-end">{{ r.old }}</td><td class="text-end fw-semibold">{{ r.new }}</td></tr>{% endfor %}
+        </tbody></table></details>
+        {% endif %}
+        {% if pclean.unresolved %}
+        <details class="mb-2"><summary class="fw-semibold">No crate — left for you ({{ pclean.unresolved | length }})</summary>
+        <table class="table table-sm mb-0 w-auto"><thead><tr><th>Part Code</th><th>Part / Make / Model</th><th>Type</th><th class="text-end">Qty</th><th>Why</th></tr></thead><tbody>
+          {% for r in pclean.unresolved %}<tr><td class="font-monospace">{{ r.code }}</td><td>{{ r.part }}</td><td>{{ r.type }}</td><td class="text-end">{{ r.qty }}</td><td>{{ r.why }}</td></tr>{% endfor %}
+        </tbody></table></details>
+        {% endif %}
+        <form id="pcleanForm" method="post" action="/admin/system/parts-cleanup">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+        {% if pclean.typos %}
+        <div class="fw-semibold mt-2">Possible crate typo — one character apart (merged only if you choose):</div>
+        <table class="table table-sm mb-0 w-auto"><thead><tr><th>Part / Make / Model</th><th>Type</th><th>Crate A</th><th>Crate B</th><th>Same crate?</th></tr></thead><tbody>
+          {% for t in pclean.typos %}<tr><td>{{ t.part }}</td><td>{{ t.type }}</td>
+            <td><strong>{{ t.a }}</strong> ({{ t.a_qty }})</td><td><strong>{{ t.b }}</strong> ({{ t.b_qty }})</td>
+            <td><select name="typo_{{ loop.index }}" class="form-select form-select-sm">
+              <option value="">Different crates — leave</option>
+              <option value="{{ t.a_id }}|{{ t.b_id }}">Same — keep {{ t.a }} ({{ t.a_qty + t.b_qty }})</option>
+              <option value="{{ t.b_id }}|{{ t.a_id }}">Same — keep {{ t.b }} ({{ t.a_qty + t.b_qty }})</option>
+            </select></td></tr>{% endfor %}
+        </tbody></table>
+        {% endif %}
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {# ── Part Names = Parts Consumption names (2026-10-31) ── #}
   {% if pname %}
   <div class="col-12">
