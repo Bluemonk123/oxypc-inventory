@@ -207,6 +207,7 @@ from routers.crm_contacts import router as crm_contacts_router
 from routers.crm_sourcing import router as crm_sourcing_router
 from routers.crm_sales import router as crm_sales_router
 from routers.crm_quotes import router as crm_quotes_router
+from routers.crm_sales_orders import router as crm_sales_orders_router
 from routers.crm_activities import router as crm_activities_router
 from routers.crm_price_matrix import router as crm_price_matrix_router
 from routers.invoices import router as invoices_router
@@ -296,6 +297,7 @@ app.include_router(crm_contacts_router)
 app.include_router(crm_sourcing_router)
 app.include_router(crm_sales_router)
 app.include_router(crm_quotes_router)
+app.include_router(crm_sales_orders_router)
 app.include_router(crm_activities_router)
 app.include_router(crm_price_matrix_router)
 app.include_router(invoices_router)
@@ -592,7 +594,10 @@ async def startup_event():
             await _backfill_export_perm_once(_sess)
             await _merge_pricing_visibility_once(_sess)
             await _migrate_sourcing_stages_once(_sess)
+            await _apply_account_status_once(_sess)
             await _migrate_sales_stages_once(_sess)
+            await _drop_buyer_po_stage_once(_sess)
+            await _backfill_quote_opportunity_once(_sess)
             await load_all_permissions_to_cache(_sess)
         print("  [Perms] Role permission cache loaded")
     except Exception as _pe:
@@ -956,6 +961,25 @@ async def _merge_pricing_visibility_once(sess) -> None:
     print(f"  [Perms] Pricing Visibility merged into the matrix — {note}")
 
 
+async def _apply_account_status_once(sess) -> None:
+    """One-time (2026-11-01): Account Active only when KYC + Credit verified.
+    Credit is new (pending for all), so non-blacklisted accounts become inactive."""
+    from sqlalchemy import text as _t
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'account_status_kyc_credit_v1'"))).first()
+    if done:
+        return
+    res = await sess.execute(_t(
+        "UPDATE crm_contacts SET status = CASE WHEN kyc_verified AND credit_verified "
+        "THEN 'active' ELSE 'inactive' END "
+        "WHERE COALESCE(status,'') <> 'blacklisted'"))
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('account_status_kyc_credit_v1', :v, 'Account status set from KYC + Credit verification', 'system', now())"),
+        {"v": str(res.rowcount)})
+    await sess.commit()
+    print(f"  [CRM] Account status recalculated on {res.rowcount} account(s)")
+
+
 async def _migrate_sourcing_stages_once(sess) -> None:
     """One-time (2026-10-27): Sourcing Deal stages reworked (models/crm.py
     SOURCING_STAGES). Old keys on existing deals are mapped:
@@ -976,6 +1000,41 @@ async def _migrate_sourcing_stages_once(sess) -> None:
         {"v": str(res.rowcount)})
     await sess.commit()
     print(f"  [CRM] Sourcing Deal stages mapped on {res.rowcount} deal(s)")
+
+
+async def _backfill_quote_opportunity_once(sess) -> None:
+    """One-time (2026-11-01): crm_quotes.opportunity_id filled from each Buyer
+    Deal's current quote, so existing links survive the multi-quote change."""
+    from sqlalchemy import text as _t
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'quote_opportunity_backfill_v1'"))).first()
+    if done:
+        return
+    res = await sess.execute(_t(
+        "UPDATE crm_quotes q SET opportunity_id = o.id FROM crm_sales_opportunities o "
+        "WHERE o.quote_id = q.id AND q.opportunity_id IS NULL"))
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('quote_opportunity_backfill_v1', :v, 'Quotes linked to their Buyer Deal', 'system', now())"),
+        {"v": str(res.rowcount)})
+    await sess.commit()
+    print(f"  [CRM] {res.rowcount} quote(s) linked to their Buyer Deal")
+
+
+async def _drop_buyer_po_stage_once(sess) -> None:
+    """One-time (2026-11-01): Purchase Order stage removed from Buyer Deals.
+    Deals sitting on it move on to Payment. Old po_* step rows are left as history."""
+    from sqlalchemy import text as _t
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'buyer_po_stage_dropped_v1'"))).first()
+    if done:
+        return
+    res = await sess.execute(_t(
+        "UPDATE crm_sales_opportunities SET stage = 'payment' WHERE stage = 'purchase_order'"))
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('buyer_po_stage_dropped_v1', :v, 'Buyer Deal Purchase Order stage removed', 'system', now())"),
+        {"v": str(res.rowcount)})
+    await sess.commit()
+    print(f"  [CRM] Buyer Deal PO stage removed — {res.rowcount} deal(s) moved to Payment")
 
 
 async def _migrate_sales_stages_once(sess) -> None:

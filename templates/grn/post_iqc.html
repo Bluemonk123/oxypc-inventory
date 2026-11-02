@@ -202,8 +202,8 @@
       <table id="grnTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
-            <th class="ps-3">GRN</th><th>Added By</th><th>LOT</th><th>Invoice Number</th><th>Date of Invoice</th>
-            <th>Vendor Name</th><th>Quantity</th><th>Stocked</th><th>Amount</th><th>As-Is Lot</th><th>Download</th><th>Action</th>
+            <th class="ps-3">GRN</th><th>LOT</th><th>Invoice Number</th><th>Date of Invoice</th>
+            <th>Vendor Name</th><th>Quantity</th><th>Stocked</th><th>Amount</th><th>As-Is Lot</th><th>Download</th><th>Added By</th><th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -224,8 +224,6 @@
               {% if g.entity %}<div class="small text-muted text-nowrap">{{ g.entity }}</div>{% endif %}
               {% set _gl = location_by_id.get(g.location_id|string) if (location_by_id is defined and g.location_id) else None %}
               {% if _gl %}<div class="small text-muted text-nowrap"><i class="bi bi-geo-alt"></i> {{ _gl.unit_id }}</div>{% endif %}</td>
-            {# Added By: display name of the user who created this GRN (created_by holds the username). #}
-            <td class="text-nowrap">{{ (user_names.get(g.created_by) if user_names is defined else None) or g.created_by or '—' }}</td>
             <td>
               {% if _lots %}
               <button type="button" class="btn btn-sm btn-link p-0 fw-semibold text-decoration-none lot-count-btn"
@@ -268,6 +266,8 @@
               {% if can(current_user, 'grn_post_iqc', 'export') %}<a href="/grn/download/{{ g.id }}" class="btn btn-sm btn-outline-secondary py-0 px-2"><i class="bi bi-download"></i></a>{% endif %}
               {% else %}—{% endif %}
             </td>
+            {# Added By (moved before Action 2026-11-02): display name of the user who created this GRN (created_by holds the username). #}
+            <td class="text-nowrap">{{ (user_names.get(g.created_by) if user_names is defined else None) or g.created_by or '—' }}</td>
             <td class="text-nowrap">
               {% if can(current_user, 'grn_post_iqc', 'edit') %}
               <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
@@ -564,15 +564,15 @@ $(document).ready(function(){
       var from = document.getElementById('fFrom').value;
       var to   = document.getElementById('fTo').value;
       if (!from && !to) return true;
-      var d = (data[4] || '').trim();  // Date of Invoice — column 4 (GRN, Added By, Lot, Invoice before it)
+      var d = (data[3] || '').trim();  // Date of Invoice — column 3 (GRN, Lot, Invoice before it)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
       if (from && d < from) return false;
       if (to && d > to) return false;
       return true;
     });
     document.getElementById('fGrn').addEventListener('input', function(){ dt.column(0).search(this.value).draw(); });
-    document.getElementById('fInvoice').addEventListener('input', function(){ dt.column(3).search(this.value).draw(); });
-    document.getElementById('fVendor').addEventListener('input', function(){ dt.column(5).search(this.value).draw(); });
+    document.getElementById('fInvoice').addEventListener('input', function(){ dt.column(2).search(this.value).draw(); });
+    document.getElementById('fVendor').addEventListener('input', function(){ dt.column(4).search(this.value).draw(); });
     // Entity filter: the GRN row's own Entity ("Not set" = empty).
     $.fn.dataTable.ext.search.push(function(settings, data, idx){
       if (settings.nTable.id !== 'grnTable') return true;
@@ -613,7 +613,7 @@ $(document).ready(function(){
     document.getElementById('fTo').addEventListener('change', function(){ dt.draw(); });
     document.getElementById('fReset').addEventListener('click', function(){
       ['fGrn','fInvoice','fVendor','fFrom','fTo','fEntity'].forEach(function(id){ document.getElementById(id).value=''; });
-      dt.column(0).search('').column(3).search('').column(5).search('').draw();
+      dt.column(0).search('').column(2).search('').column(4).search('').draw();
     });
   }
   // Server-side: the Invoice/PO/Device Type filters used to run as a

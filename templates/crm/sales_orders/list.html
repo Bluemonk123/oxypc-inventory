@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Sales Orders — OxyPC{% endblock %}
+{% block page_title %}Sales Orders{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+  <div class="text-muted small">{{ orders | length }} sales order(s) · created when a Buyer Deal's quotation passes Level 2 approval</div>
+</div>
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent py-2 fw-semibold"><i class="bi bi-receipt me-2"></i>Sales Orders</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0" id="soTable">
+        <thead class="table-light">
+          <tr><th>SO #</th><th>Buyer</th><th>Quote</th><th>Buyer Deal</th><th>Date</th><th>Total Amount</th><th>Accounts</th><th>Status</th><th>Actions</th></tr>
+        </thead>
+        <tbody>
+          {% for so in orders %}
+          <tr>
+            <td><a href="/crm/sales-orders/{{ so.id }}" class="fw-semibold text-decoration-none"><code>{{ so.so_number }}</code></a></td>
+            <td>{% if so.contact %}<a href="/crm/contacts/{{ so.contact.id }}" class="text-decoration-none small">{{ so.contact.company_name }}</a>{% else %}—{% endif %}</td>
+            <td>{% if so.quote %}<a href="/crm/quotes/{{ so.quote.id }}" class="text-decoration-none small">{{ so.quote.quote_number }}</a>{% else %}—{% endif %}</td>
+            <td>{% if so.deal %}<a href="/crm/sales/{{ so.deal.id }}" class="text-decoration-none small">{{ so.deal.opp_number }}</a>{% else %}—{% endif %}</td>
+            <td class="small" data-order="{{ so.so_date.isoformat() if so.so_date else '' }}">{{ so.so_date.strftime('%d %b %Y') if so.so_date else '—' }}</td>
+            <td class="small fw-semibold">{% if can(current_user, 'crm_quotes', 'pricing') %}₹{{ (so.total_amount or 0) | inr }}{% else %}—{% endif %}</td>
+            <td>{% if so.verified %}<span class="badge bg-success" title="Verified by {{ so.verified_by or '—' }}">Verified</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
+            <td><span class="badge bg-{{ 'secondary' if so.status == 'cancelled' else 'primary' }}">{{ so.status | title }}</span></td>
+            <td><a href="/crm/sales-orders/{{ so.id }}" class="btn btn-sm btn-outline-primary" title="View"><i class="bi bi-eye"></i></a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+$(function () {
+  initGlobalTable('#soTable', {
+    order: [[4, 'desc']],
+    language: { emptyTable: 'No sales orders yet. They appear when a Buyer Deal quotation is approved at Level 2.' }
+  });
+});
+</script>
+{% endblock %}

@@ -33,6 +33,7 @@
           <td>
             {% set sc = {'draft':'secondary','issued':'primary','acknowledged':'info','received':'success','cancelled':'danger'} %}
             <span class="badge bg-{{ sc.get(po.status,'secondary') }}">{{ po.status|capitalize }}</span>
+            <div class="mt-1">{% if po.verified %}<span class="badge bg-success" title="Verified by Accounts{{ ' — ' ~ po.verified_by if po.verified_by }}"><i class="bi bi-patch-check me-1"></i>Accounts Verified</span>{% else %}<span class="badge bg-warning text-dark" title="Awaiting Accounts verification">Accounts Pending</span>{% endif %}</div>
           </td>
           <td>
             {% if can(current_user, 'crm_purchase_orders', 'export') %}<a href="/crm/purchase-orders/{{ po.id }}/print" target="_blank" class="btn btn-sm btn-success"><i class="bi bi-download me-1"></i>Generate PO</a>{% endif %}

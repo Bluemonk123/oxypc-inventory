@@ -60,3 +60,53 @@ asyncio.run(main())
     if out == "SKIP":
         return
     assert out == "2 True 2 2 True", out
+
+
+def test_data_fix_moves_existing_repair_tags_to_trc_floor():
+    """Data Fix: a tag already in a repair stage but located in the Showroom
+    is listed, and Apply logs it Moved -> TRC Floor."""
+    bc = "ITRF" + uuid.uuid4().hex[:8].upper()
+    r = subprocess.run([sys.executable, "-c", f"""
+import asyncio, sys, uuid
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text, select
+from database import AsyncSessionLocal
+from models.device import Device, DeviceStage
+from models.user import User
+from models.location import DeviceLocationLog, LocationAction, StorageLocation, ZoneType, UnitType
+from services.repair_location import trc_floor_plan, trc_floor_apply
+async def main():
+    async with AsyncSessionLocal() as db:
+        made = []
+        for uid_, z in (("TRC-FLOOR", ZoneType.workshop), ("IT-SHOWROOM-F", ZoneType.showroom)):
+            if not (await db.execute(select(StorageLocation.id).where(StorageLocation.unit_id == uid_))).scalar():
+                db.add(StorageLocation(zone=z, unit_type=UnitType.floor, unit_id=uid_)); made.append(uid_)
+        await db.commit()
+        trc = (await db.execute(select(StorageLocation.id).where(StorageLocation.unit_id == 'TRC-FLOOR'))).scalar()
+        show = (await db.execute(select(StorageLocation.id).where(StorageLocation.zone == ZoneType.showroom))).scalars().first()
+        user = (await db.execute(select(User).limit(1))).scalar()
+        lot = (await db.execute(text("select id from lots limit 1"))).scalar()
+        d = Device(id=uuid.uuid4(), barcode="{bc}", lot_id=lot, current_stage=DeviceStage.stock_in, device_type="Laptop")
+        db.add(d); await db.flush()
+        db.add(DeviceLocationLog(device_id=d.id, location_id=show, action=LocationAction.assigned, actor_id=user.id))
+        await db.commit()
+        # put it in L1/L2 without the hook (as tags were before 2026-10-31)
+        await db.execute(text("update devices set current_stage = 'l2' where id = :d"), {{"d": d.id}})
+        await db.commit()
+        before = "{bc}" in [x["tag"] for x in (await trc_floor_plan(db))["rows"]]
+        res = await trc_floor_apply(db, user)
+        after = "{bc}" in [x["tag"] for x in (await trc_floor_plan(db))["rows"]]
+        last = (await db.execute(text("select location_id from device_location_logs where device_id = :d order by logged_at desc limit 1"), {{"d": d.id}})).scalar()
+        loc = (await db.execute(text("select location_id from devices where id = :d"), {{"d": d.id}})).scalar()
+        print(before, res["ok"], res["moved"] >= 1, after, str(last) == str(trc), str(loc) == str(trc))
+        await db.execute(text("delete from device_location_logs where device_id = :d"), {{"d": d.id}})
+        await db.execute(text("delete from devices where id = :d"), {{"d": d.id}})
+        for uid_ in made:
+            await db.execute(text("update devices set location_id = null where location_id in (select id from storage_locations where unit_id = :u)"), {{"u": uid_}})
+            await db.execute(text("delete from device_location_logs where location_id in (select id from storage_locations where unit_id = :u)"), {{"u": uid_}})
+            await db.execute(text("delete from storage_locations where unit_id = :u"), {{"u": uid_}})
+        await db.commit()
+asyncio.run(main())
+"""], capture_output=True, text=True, cwd=ROOT, timeout=120)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert r.stdout.strip() == "True True True False True True", r.stdout

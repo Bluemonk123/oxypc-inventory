@@ -116,10 +116,23 @@
                     {% for k, l, kind in _files %}{{ sd_file(k, l) }}{% endfor %}
                     {% if val == 'purchase_order' %}
                     <div class="sd-item justify-content-end">
-                      {% if latest_po %}<a href="/crm/purchase-orders/{{ latest_po.id }}" class="text-decoration-none" title="Latest PO generated from this deal"><i class="bi bi-paperclip"></i>{{ latest_po.po_number }}</a>
+                      {% if latest_po %}<a href="/crm/purchase-orders/{{ latest_po.id }}" class="text-decoration-none" title="Latest PO generated from this deal"><i class="bi bi-paperclip"></i>{{ latest_po.po_number }}</a>{% if latest_po.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ latest_po.verified_by if latest_po.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
                       {% else %}<span class="text-muted">PO: —</span>{% endif %}
                     </div>
                     {% endif %}
+                    {% if val == 'payment' %}
+                    {% for pm in deal_payments %}
+                    <div class="sd-item justify-content-end" title="Supplier payment {{ pm.created_at.strftime('%d-%m-%Y') if pm.created_at else '' }}">
+                      {% if pm.invoice_path %}<a href="/uploads/accounts/{{ pm.invoice_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Invoice</a>{% endif %}
+                      {% if pm.payment_photo_path %}<a href="/uploads/accounts/{{ pm.payment_photo_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Payment Proof</a>{% endif %}
+                      {% if not pm.invoice_path and not pm.payment_photo_path %}<span class="text-muted">Supplier payment (no document)</span>{% endif %}
+                      {% if pm.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ pm.verified_by if pm.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
+                    </div>
+                    {% else %}
+                    <div class="sd-item justify-content-end"><span class="text-muted">Supplier payment: —</span></div>
+                    {% endfor %}
+                    {% endif %}
+
                   </div>
                 </div>
                 {% elif val in ('won', 'lost') and deal.win_loss_reason %}
@@ -366,7 +379,7 @@
           <div class="col-6 col-md-3">
             <div class="small text-muted">Contact</div>
             {% if contact %}
-            <a href="/crm/contacts/{{ contact.id }}" class="text-decoration-none">{{ contact.company_name }}</a>
+            <a href="/crm/contacts/{{ contact.id }}" class="text-decoration-none">{{ contact.company_name }}</a>{% if contact.kyc_verified %}<span class="badge bg-success ms-1" title="KYC verified">KYC Verified</span>{% else %}<span class="badge bg-warning text-dark ms-1" title="KYC pending (Finance)">KYC Pending</span>{% endif %}
             {% if contact.contact_person %}<div class="small text-muted">{{ contact.contact_person }}</div>{% endif %}
             {% else %}—{% endif %}
           </div>
@@ -735,6 +748,18 @@
       </div>
     </div>
 
+
+    {# Quotes Generated — same shared section as the Buyer Deal page (2026-11-01).
+       Supplier quotes: Direct Deal only (no won lot on a sourcing deal). #}
+    {% set nq_direct_url = '/crm/quotes/new?sourcing_deal_id=' ~ deal.id ~ '&direct=1' %}
+    {% set nq_contact_id = deal.contact_id or '' %}
+    {% set nq_opp_id = '' %}
+    {% set nq_return_to = '/crm/sourcing/' ~ deal.id %}
+    {% set nq_perm_module = 'crm_sourcing' %}
+    {% set nq_hide_bid_won = true %}
+    {% set show_opp_column = false %}
+    {% set qg_hdr_card = true %}
+    {% include "crm/_quotes_generated.html" %}
 
     <!-- Next Follow-up Alert -->
     {% if next_fu and not next_fu.followup_done %}

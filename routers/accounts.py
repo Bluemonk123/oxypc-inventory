@@ -21,8 +21,9 @@ from services.audit_engine import audit
 from models.user import User, UserRole
 from models.crm import (
     SupplierPayment, CustomerReceipt, CRMContact,
-    CRMSourcingDeal, CRMSalesOpportunity, CRMPurchaseOrder, CRMQuote,
+    CRMSourcingDeal, CRMSalesOpportunity, CRMPurchaseOrder, CRMQuote, CRMSalesOrder,
 )
+from utils.timezone import app_now
 from models.dealers import Dealer, DealerOrder
 from models.lot import Lot
 
@@ -80,8 +81,43 @@ async def accounts_index(
         .options(selectinload(CustomerReceipt.contact))
         .order_by(CustomerReceipt.created_at.desc()).limit(10)
     )).scalars().all()
+    # ── Pending lists (2026-11-01) ─────────────────────────────────────────
+    pend_kyc = (await db.execute(
+        select(CRMContact)
+        .where(CRMContact.kyc_verified.isnot(True), CRMContact.is_trashed.isnot(True),
+               func.coalesce(CRMContact.status, "") != "blacklisted")
+        .order_by(CRMContact.created_at.desc())
+    )).scalars().all()
+    pend_po = (await db.execute(
+        select(CRMPurchaseOrder)
+        .where(CRMPurchaseOrder.verified.isnot(True),
+               func.coalesce(CRMPurchaseOrder.status, "") != "cancelled")
+        .order_by(CRMPurchaseOrder.created_at.desc())
+    )).scalars().all()
+    pend_so = (await db.execute(
+        select(CRMSalesOrder).options(selectinload(CRMSalesOrder.contact))
+        .where(CRMSalesOrder.verified.isnot(True), CRMSalesOrder.status != "cancelled")
+        .order_by(CRMSalesOrder.created_at.desc())
+    )).scalars().all()
+    pend_sp = (await db.execute(
+        select(SupplierPayment)
+        .options(selectinload(SupplierPayment.contact), selectinload(SupplierPayment.po))
+        .where(SupplierPayment.verified.isnot(True))
+        .order_by(SupplierPayment.created_at.desc())
+    )).scalars().all()
+    pend_cr = (await db.execute(
+        select(CustomerReceipt)
+        .options(selectinload(CustomerReceipt.contact), selectinload(CustomerReceipt.dealer),
+                 selectinload(CustomerReceipt.sales_order), selectinload(CustomerReceipt.opportunity))
+        .where(CustomerReceipt.verified.isnot(True))
+        .order_by(CustomerReceipt.created_at.desc())
+    )).scalars().all()
+    user_names = {u.username: (u.full_name or u.username)
+                  for u in (await db.execute(select(User))).scalars().all()}
     return templates.TemplateResponse("accounts/index.html", {
         "request": request, "current_user": current_user,
+        "pend_kyc": pend_kyc, "pend_po": pend_po, "pend_so": pend_so,
+        "pend_sp": pend_sp, "pend_cr": pend_cr, "user_names": user_names,
         "sp_total": float(sp_total or 0),
         "cr_total": float(cr_total or 0),
         "recent_payments": recent_payments,
@@ -179,6 +215,8 @@ async def supplier_payments_data(
             f'<span class="fw-semibold text-danger">₹{p.amount:,.0f}</span>',
             (f'<div class="text-nowrap">{"".join(doc_links)}</div>' if doc_links else "—"),
             esc(p.created_by or "—"),
+            ('<span class="badge bg-success" title="Verified by ' + esc(p.verified_by or "—") + (" on " + p.verified_at.strftime("%d-%m-%Y") if p.verified_at else "") + '">Verified</span>'
+             if p.verified else '<span class="badge bg-warning text-dark">Pending</span>'),
         ])
 
     return JSONResponse({
@@ -329,6 +367,8 @@ async def customer_receipts_data(
             f'<span class="fw-semibold text-success">₹{r.amount:,.0f}</span>',
             (f'<div class="text-nowrap">{"".join(doc_links)}</div>' if doc_links else "—"),
             esc(r.created_by or "—"),
+            ('<span class="badge bg-success" title="Verified by ' + esc(r.verified_by or "—") + (" on " + r.verified_at.strftime("%d-%m-%Y") if r.verified_at else "") + '">Verified</span>'
+             if r.verified else '<span class="badge bg-warning text-dark">Pending</span>'),
         ])
 
     return JSONResponse({
@@ -380,6 +420,16 @@ async def create_customer_receipt(
         payment_photo_path=await _save_upload(payment_photo),
         created_by=current_user.username,
     )
+    # Link the Buyer Deal's open Sales Order, if any (2026-11-01)
+    if opportunity_id:
+        try:
+            rec.so_id = (await db.execute(
+                select(CRMSalesOrder.id)
+                .where(CRMSalesOrder.deal_id == UUID(str(opportunity_id)), CRMSalesOrder.status != "cancelled")
+                .order_by(CRMSalesOrder.created_at.desc()).limit(1)
+            )).scalar_one_or_none()
+        except ValueError:
+            pass
     db.add(rec)
     # Auto-reconcile against dealer order if linked
     from decimal import Decimal
@@ -628,3 +678,61 @@ async def upload_quote_invoice(
     quote.invoice_path = name
     await db.commit()
     return RedirectResponse(url="/accounts/customer-receipts?success=Invoice+uploaded", status_code=302)
+
+
+# ── VERIFY (Accounts Dashboard pending lists, 2026-11-01) ─────────────────────
+
+_VERIFY_KINDS = {
+    "po":       (CRMPurchaseOrder, "Purchase Order", "ACCOUNTS_PO_VERIFIED",       "crm_purchase_orders"),
+    "so":       (CRMSalesOrder,    "Sales Order",    "ACCOUNTS_SO_VERIFIED",       "crm_sales_orders"),
+    "supplier": (SupplierPayment,  "Supplier payment", "ACCOUNTS_SUPPLIER_PAYMENT_VERIFIED", "supplier_payments"),
+    "customer": (CustomerReceipt,  "Customer payment", "ACCOUNTS_CUSTOMER_PAYMENT_VERIFIED", "customer_receipts"),
+}
+
+
+@router.post("/verify/{kind}/{record_id}", dependencies=[Depends(verify_csrf)])
+async def accounts_verify(
+    request: Request, kind: str, record_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if kind not in _VERIFY_KINDS:
+        return RedirectResponse(url="/accounts?error=Unknown+item", status_code=302)
+    model, label, action, table = _VERIFY_KINDS[kind]
+    try:
+        rec = (await db.execute(select(model).where(model.id == UUID(record_id)))).scalar_one_or_none()
+    except ValueError:
+        rec = None
+    if not rec:
+        return RedirectResponse(url="/accounts?error=Not+found", status_code=302)
+    if not rec.verified:
+        rec.verified = True
+        rec.verified_by = current_user.username
+        rec.verified_at = app_now()
+        await audit(db, user=current_user, action=action, table_name=table,
+                    record_id=str(rec.id), new_value={"verified": True}, request=request)
+        await db.commit()
+    return RedirectResponse(url=f"/accounts?success={label.replace(' ', '+')}+verified", status_code=302)
+
+
+@router.post("/verify-kyc/{contact_id}", dependencies=[Depends(verify_csrf)])
+async def accounts_verify_kyc(
+    request: Request, contact_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        c = (await db.execute(select(CRMContact).where(CRMContact.id == UUID(contact_id)))).scalar_one_or_none()
+    except ValueError:
+        c = None
+    if not c:
+        return RedirectResponse(url="/accounts?error=Not+found", status_code=302)
+    if not c.kyc_verified:
+        c.kyc_verified = True
+        c.kyc_verified_by = current_user.username
+        c.kyc_verified_at = app_now()
+        c.apply_account_status()
+        await audit(db, user=current_user, action="ACCOUNT_KYC_VERIFIED",
+                    table_name="crm_contacts", record_id=str(c.id), request=request)
+        await db.commit()
+    return RedirectResponse(url="/accounts?success=KYC+verified", status_code=302)

@@ -335,6 +335,14 @@ async def deal_detail(
     last_contact = next((a for a in activities if a.activity_type != "note"), None)
     # Purchase Order: the latest PO generated from this deal is its document.
     latest_po = purchase_orders[0] if purchase_orders else None
+    # Payment documents recorded in Accounts for this deal / its POs (2026-11-01)
+    from models.crm import SupplierPayment as _SP
+    from sqlalchemy import or_ as _or
+    _po_ids = [p.id for p in purchase_orders]
+    _conds = [_SP.sourcing_deal_id == deal.id] + ([_SP.po_id.in_(_po_ids)] if _po_ids else [])
+    deal_payments = (await db.execute(
+        select(_SP).where(_or(*_conds)).order_by(_SP.created_at.desc())
+    )).scalars().all()
     staff = (await db.execute(
         select(User).where(User.status == True).order_by(User.full_name)  # noqa: E712
     )).scalars().all()
@@ -350,6 +358,13 @@ async def deal_detail(
     )).scalars().all()
     from routers.crm_quotes import active_terms_by_type
     terms_by_type = await active_terms_by_type(db)
+    # Supplier quotes raised from this deal (2026-11-01)
+    from routers.crm_quotes import quote_summary_rows
+    from models.crm import CRMQuote as _CQ
+    sd_quotes = (await db.execute(
+        select(_CQ).where(_CQ.sourcing_deal_id == deal.id).order_by(_CQ.created_at.desc())
+    )).scalars().all()
+    quote_rows = await quote_summary_rows(db, sd_quotes)
 
     return templates.TemplateResponse("crm/sourcing/detail.html", {
         "request": request, "current_user": current_user,
@@ -358,7 +373,8 @@ async def deal_detail(
         "deal_po_items": deal_po_items,
         "deal_po_items_total": deal_po_items_total,
         "deal_po_items_offer_total": deal_po_items_offer_total,
-        "companies": companies, "terms_by_type": terms_by_type,
+        "companies": companies, "terms_by_type": terms_by_type, "quote_rows": quote_rows,
+        "deal_payments": deal_payments,
         "next_fu": next_fu, "lot": lot,
         "lot_registered": lot_registered,
         "lot_sold": lot_sold,

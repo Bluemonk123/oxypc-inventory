@@ -56,7 +56,7 @@
         {% if contact.kyc_verified %}
         <span class="badge bg-success">Verified</span>
         {% else %}
-        <span class="badge bg-warning text-dark">Not Verified</span>
+        <span class="badge bg-warning text-dark">Pending</span>
         {% endif %}
       </div>
       <div class="card-body">
@@ -66,6 +66,29 @@
         {% if can(current_user, 'crm_contacts', 'edit') %}
         <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#verifyKycModal">
           <i class="bi bi-check-circle me-1"></i>Verify KYC
+        </button>
+        {% endif %}
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Credit (Management) -->
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-cash-coin me-1 text-primary"></i>Credit</span>
+        {% if contact.credit_verified %}
+        <span class="badge bg-success">Verified</span>
+        {% else %}
+        <span class="badge bg-warning text-dark">Pending</span>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if contact.credit_verified %}
+        <div class="small text-muted">Verified by {{ contact.credit_verified_by or '—' }}{% if contact.credit_verified_at %} on {{ contact.credit_verified_at.strftime('%d-%m-%Y %H:%M') }}{% endif %}</div>
+        {% else %}
+        {% if can(current_user, 'crm_contacts', 'edit') %}
+        <button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#verifyCreditModal">
+          <i class="bi bi-check-circle me-1"></i>Verify Credit
         </button>
         {% endif %}
         {% endif %}
@@ -326,6 +349,25 @@
       </div>
       <div class="modal-body">
         <p class="mb-0">Are You Sure? This marks {{ contact.company_name }}'s KYC as verified.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+<!-- Verify Credit confirmation modal -->
+<div class="modal fade" id="verifyCreditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" action="/crm/contacts/{{ contact.id }}/verify-credit" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-patch-check me-2"></i>Verify Credit</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-0">Are You Sure? This marks {{ contact.company_name }}'s Credit as verified.</p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>

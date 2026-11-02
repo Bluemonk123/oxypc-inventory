@@ -739,9 +739,9 @@
   </div>
 </div>
 
-<!-- Handover modal (#12; crate rows 2026-10-31) — one flow for the row
-     Handover button and Handover Selected. Per request: New / Harvest, then
-     the crate it is taken from (typed, Matched / Not-Matched). -->
+<!-- Handover modal (#12; crate rows 2026-10-31; 2026-11-02 no crate typing) —
+     one flow for the row Handover button and Handover Selected. Per request:
+     New / Harvest; stock comes off the Type + Name + Make + Model row. -->
 <div class="modal fade" id="handoverModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg modal-dialog-scrollable">
     <div class="modal-content">
@@ -1113,8 +1113,9 @@ $('#sparePartsTabs button[data-bs-toggle="tab"]').on('shown.bs.tab', function ()
 
 // ── Handover modal (2026-10-31) ──────────────────────────────────────────
 // Same modal for one request or Handover Selected. Each request picks New or
-// Harvest, then types the crate: Matched = that crate holds this part (and
-// enough of it); Not-Matched blocks. Confirm sends one crate row per request.
+// Harvest (2026-11-02: no crate typing) — stock is taken from the row with
+// that Type + Part Name + Make + Model; its crate is shown. When the part sits
+// in more than one crate a dropdown picks which (largest stock first).
 var HO = { reqs: [] };
 function hoNorm(v) { return (v || '').trim().toLowerCase(); }
 function hoOpen(ids) {
@@ -1155,65 +1156,49 @@ function hoRender() {
              '<label class="form-check-label fw-semibold" for="ho_' + src + '_' + i + '">' + label +
              ' <span class="badge ' + (src === 'new' ? 'bg-success' : 'bg-warning text-dark') + ' ms-1">' + t[src] + ' available</span></label></div>';
     }
-    return '<div class="ho-line border rounded p-2 mb-2" data-i="' + i + '">' +
+    return '<div class="ho-line border rounded px-3 py-3 mb-3" data-i="' + i + '">' +
       '<div class="d-flex justify-content-between flex-wrap gap-2 small">' +
-        '<div><strong>' + spEsc(r.part) + '</strong>' + (r.barcode ? ' · <span class="font-monospace">' + spEsc(r.barcode) + '</span>' : '') +
+        '<div><strong>' + spEsc(r.part) + '</strong>' + ((r.make || r.model) ? ' <span class="text-muted">' + spEsc((r.make || '—') + ' / ' + (r.model || '—')) + '</span>' : '') + (r.barcode ? ' · <span class="font-monospace">' + spEsc(r.barcode) + '</span>' : '') +
         ' · <span class="text-muted">Engineer:</span> ' + spEsc(r.eng || '—') + '</div>' +
         '<div><span class="text-muted">Qty:</span> <strong>' + r.qty + '</strong></div></div>' +
-      '<div class="d-flex flex-wrap gap-2 align-items-center mt-2">' +
+      '<div class="d-flex flex-wrap gap-2 align-items-center mt-3 px-3 py-2 rounded border" style="background:#f3f7fc;box-shadow:0 .25rem .6rem rgba(0,0,0,.35)">' +
         '<div class="d-flex align-items-center">' + radio('new', 'New') + radio('harvest', 'Harvest') + '</div>' +
-        '<input type="text" class="form-control form-control-sm ho-crate" style="max-width:170px" placeholder="Crate Number" autocomplete="off" oninput="hoEval(' + i + ')">' +
-        '<select class="form-select form-select-sm ho-pick d-none" style="max-width:260px" onchange="hoEval(' + i + ')"></select>' +
+        '<select class="form-select form-select-sm ho-pick d-none" style="max-width:300px" onchange="hoEval(' + i + ')"></select>' +
       '</div>' +
-      '<div class="ho-msg mt-1" style="min-height:1.25rem"></div>' +
-      '<div class="ho-crates small text-muted"></div>' +
+      '<div class="ho-msg mt-3" style="min-height:1.25rem"></div>' +
     '</div>';
   }).join('');
-  HO.reqs.forEach(function (r, i) { hoChips(i); });
+  HO.reqs.forEach(function (r, i) { hoEval(i); });
   hoUpdate();
 }
 function hoLine(i) { return document.querySelector('.ho-line[data-i="' + i + '"]'); }
-function hoSrc(i, src) { HO.reqs[i]._src = src; hoChips(i); hoEval(i); }
-function hoChips(i) {
-  var r = HO.reqs[i], el = hoLine(i).querySelector('.ho-crates');
-  var rows = r.rows.filter(function (x) { return x.source === r._src && x.qty > 0; });
-  if (!r._src) { el.innerHTML = '<span class="text-danger">Not enough New or Harvest stock for this request.</span>'; return; }
-  if (!rows.length) { el.innerHTML = ''; return; }
-  el.innerHTML = 'In stock: ' + rows.slice(0, 10).map(function (x) {
-    return '<a href="#" class="me-2 text-decoration-none" onclick="hoFill(' + i + ',this.dataset.c);return false" data-c="' + spEsc(x.crate) + '">' +
-           (x.crate ? spEsc(x.crate) : '<i>no crate</i>') + ' (' + x.qty + ')</a>';
-  }).join('') + (rows.length > 10 ? '…' : '');
-}
-function hoFill(i, c) { var inp = hoLine(i).querySelector('.ho-crate'); inp.value = c; hoEval(i); }
+function hoSrc(i, src) { HO.reqs[i]._src = src; hoEval(i); }
 function hoEval(i) {
   var r = HO.reqs[i], line = hoLine(i);
-  var typed = line.querySelector('.ho-crate').value, pick = line.querySelector('.ho-pick'), msg = line.querySelector('.ho-msg');
+  var pick = line.querySelector('.ho-pick'), msg = line.querySelector('.ho-msg');
   r._row = '';
-  if (!r._src || !typed.trim()) { msg.innerHTML = ''; pick.classList.add('d-none'); hoUpdate(); return; }
-  var hits = r.rows.filter(function (x) { return x.source === r._src && hoNorm(x.crate) === hoNorm(typed); });
-  var hit = null;
+  var lbl = r._src === 'harvest' ? 'Harvest' : 'New';
+  if (!r._src) { pick.classList.add('d-none');
+    msg.innerHTML = '<span class="small text-danger">Not enough New or Harvest stock for this request.</span>'; hoUpdate(); return; }
+  var hits = r.rows.filter(function (x) { return x.source === r._src && x.qty > 0; });
+  if (!hits.length) { pick.classList.add('d-none');
+    msg.innerHTML = '<span class="badge bg-danger">No stock</span> <span class="small text-danger">no ' + lbl + ' ' + spEsc(r.part) + ' in stock</span>'; hoUpdate(); return; }
+  var hit = hits[0];
   if (hits.length > 1) {
     var keep = pick.value;
     pick.innerHTML = hits.map(function (x) {
-      return '<option value="' + x.id + '">' + spEsc((x.make || '—') + ' / ' + (x.model || '—')) + ' (' + x.qty + ')</option>';
+      return '<option value="' + x.id + '">Crate ' + spEsc(x.crate || '—') + ' · ' + spEsc((x.make || '—') + ' / ' + (x.model || '—')) + ' (' + x.qty + ')</option>';
     }).join('');
     if (keep && hits.some(function (x) { return x.id === keep; })) pick.value = keep;
     pick.classList.remove('d-none');
-    hit = hits.filter(function (x) { return x.id === pick.value; })[0];
-  } else {
-    pick.classList.add('d-none');
-    hit = hits[0];
-  }
-  var lbl = r._src === 'harvest' ? 'Harvest' : 'New';
-  if (!hit) {
-    msg.innerHTML = '<span class="badge bg-danger">Not-Matched</span> <span class="small text-danger">no ' + lbl + ' ' + spEsc(r.part) + ' in crate ' + spEsc(typed) + '</span>';
-  } else if (hit.qty < r.qty) {
-    msg.innerHTML = '<span class="badge bg-warning text-dark">Matched</span> <span class="small text-danger">crate ' + spEsc(hit.crate) + ' has only <b>' + hit.qty + '</b> — need ' + r.qty + '</span>';
+    hit = hits.filter(function (x) { return x.id === pick.value; })[0] || hits[0];
+  } else { pick.classList.add('d-none'); }
+  var where = 'crate ' + spEsc(hit.crate || '—') + ' · ' + lbl + ((hit.make || hit.model) ? ' · ' + spEsc((hit.make || '—') + ' / ' + (hit.model || '—')) : '');
+  if (hit.qty < r.qty) {
+    msg.innerHTML = '<span class="badge bg-warning text-dark">Short</span> <span class="small text-danger">' + where + ' has only <b>' + hit.qty + '</b> — need ' + r.qty + '</span>';
   } else {
     r._row = hit.id;
-    msg.innerHTML = '<span class="badge bg-success">Matched</span> <span class="small">crate ' + spEsc(hit.crate) + ' · ' + lbl +
-      ((hit.make || hit.model) ? ' · ' + spEsc((hit.make || '—') + ' / ' + (hit.model || '—')) : '') +
-      ' · <b>' + hit.qty + '</b> available → ' + (hit.qty - r.qty) + ' left</span>';
+    msg.innerHTML = '<span class="badge bg-success">Ready</span> <span class="small">' + where + ' · <b>' + hit.qty + '</b> available → ' + (hit.qty - r.qty) + ' left</span>';
   }
   hoUpdate();
 }

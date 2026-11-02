@@ -19,7 +19,7 @@
         <option value="both"     {% if contact_type=='both'     %}selected{% endif %}>Both</option>
       </select>
     </div>
-    <div class="col-auto">
+    <div class="col-auto" id="fSourceTypeWrap">
       <label class="form-label small fw-semibold mb-1">Source Type</label>
       <select name="source_type" class="form-select form-select-sm" style="width:150px">
         <option value="">All Source Types</option>
@@ -28,7 +28,7 @@
         {% endfor %}
       </select>
     </div>
-    <div class="col-auto">
+    <div class="col-auto" id="fBuyerTypeWrap">
       <label class="form-label small fw-semibold mb-1">Buyer Type</label>
       <select name="buyer_type" class="form-select form-select-sm" style="width:150px">
         <option value="">All Buyer Types</option>
@@ -37,7 +37,8 @@
         {% endfor %}
       </select>
     </div>
-    <div class="col-auto">
+    {# Contacted filter hidden 2026-11-01 (still honoured if passed in the URL) #}
+    <div class="col-auto d-none">
       <label class="form-label small fw-semibold mb-1">Contacted</label>
       <select name="contacted" class="form-select form-select-sm" style="width:135px">
         <option value="">All Contacts</option>
@@ -132,19 +133,19 @@
         'neutral':        'secondary',
         'pending':        'warning',
       } %}
-      {# Column order (when edit perm grants the checkbox column): Checkbox | Company | Type | Category | Locations | Contacts | KYC | Team | Notes (hidden) | Created By | Status | Actions #}
+      {# Column order (when edit perm grants the checkbox column): Checkbox | Account Name (+Type, Sub-Type) | GST No. | KYC | Credit | Place | Person | Team | Notes (hidden) | Created By | Status | Actions #}
       <table class="table table-hover mb-0 small" id="contactsTable">
         <thead class="table-light">
           <tr>
             {% if has_perm(current_user.role.value, 'crm_contacts', 'edit') %}
             <th class="ps-3"><input type="checkbox" id="teamSelectAll" class="form-check-input"></th>
             {% endif %}
-            <th>Company</th>
-            <th>Type</th>
-            <th>Category</th>
-            <th>Locations</th>
-            <th>Contacts</th>
+            <th>Account Name</th>
+            <th>GST No.</th>
             <th>KYC</th>
+            <th>Credit</th>
+            <th>Place</th>
+            <th>Person</th>
             <th>Team</th>
             <th class="d-none">Notes</th>
             <th>Created By</th>
@@ -169,11 +170,20 @@
                  title="{{ c.company_name }}">
                 {{ c.company_name[:50] }}{% if c.company_name | length > 50 %}…{% endif %}
               </a>
-              <div class="mt-1">
-                {% if c.gstin %}
-                <span class="badge bg-light text-dark border font-monospace" title="GSTIN">{{ c.gstin }}</span>
-                {% endif %}
-              </div>
+              {# Type + Sub-Type on one line under the name (2026-11-01) #}
+              <div class="mt-1 d-flex flex-wrap gap-1 align-items-center">
+              {% if c.contact_type == 'supplier' %}
+                <span class="badge bg-primary">Supplier</span>
+              {% elif c.contact_type == 'buyer' %}
+                <span class="badge bg-info text-white">Buyer</span>
+              {% else %}
+                <span class="badge bg-success">Both</span>
+              {% endif %}
+            
+              {% if c.source_type %}<span class="badge bg-light text-dark border me-1">{{ source_labels.get(c.source_type, c.source_type | replace('_',' ') | title) }}</span>{% endif %}
+              {% if c.buyer_type %}<span class="badge bg-light text-dark border">{{ buyer_labels.get(c.buyer_type, c.buyer_type | replace('_',' ') | title) }}</span>{% endif %}
+              
+            </div>
               <div class="mt-1 d-none">
                 {% if contacted %}
                 <span class="badge bg-success bg-opacity-75" title="At least one log activity exists">
@@ -186,27 +196,25 @@
                 {% endif %}
               </div>
             </td>
-            {# 2. Type #}
+            {# GST number #}
+            <td class="small">{% if c.gstin %}<span class="font-monospace">{{ c.gstin }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            {# KYC — Finance verifies on Account Detail #}
             <td>
-              {% if c.contact_type == 'supplier' %}
-                <span class="badge bg-primary">Supplier</span>
-              {% elif c.contact_type == 'buyer' %}
-                <span class="badge bg-info text-white">Buyer</span>
+              {% if c.kyc_verified %}
+              <span class="badge bg-success" title="Verified by {{ c.kyc_verified_by or '—' }}{% if c.kyc_verified_at %} on {{ c.kyc_verified_at.strftime('%d-%m-%Y') }}{% endif %}">Verified</span>
               {% else %}
-                <span class="badge bg-success">Both</span>
+              <span class="badge bg-warning text-dark">Pending</span>
               {% endif %}
+              <div class="small text-muted">Finance</div>
             </td>
-            {# 3. Category (Source / Buyer type) #}
+            {# Credit — Management verifies on Account Detail #}
             <td>
-              {% if c.source_type %}
-                {% if c.source_type == 'endcust' %}
-                <span class="badge bg-light text-dark border me-1">Corporate</span>
-                {% else %}
-                <span class="badge bg-light text-dark border me-1">{{ c.source_type | title }}</span>
-                {% endif %}
+              {% if c.credit_verified %}
+              <span class="badge bg-success" title="Verified by {{ c.credit_verified_by or '—' }}{% if c.credit_verified_at %} on {{ c.credit_verified_at.strftime('%d-%m-%Y') }}{% endif %}">Verified</span>
+              {% else %}
+              <span class="badge bg-warning text-dark">Pending</span>
               {% endif %}
-              {% if c.buyer_type %}<span class="badge bg-light text-dark border">{{ c.buyer_type | replace('_',' ') | title }}</span>{% endif %}
-              {% if not c.source_type and not c.buyer_type %}<span class="text-muted">—</span>{% endif %}
+              <div class="small text-muted">Management</div>
             </td>
             {# 4. Locations count — click to open details modal #}
             <td>
@@ -233,14 +241,6 @@
               </button>
               {% else %}
               <span class="text-muted">0</span>
-              {% endif %}
-            </td>
-            {# 9b. KYC — based on the Verify KYC action taken on Account Detail #}
-            <td>
-              {% if c.kyc_verified %}
-              <span class="badge bg-success" title="Verified by {{ c.kyc_verified_by or '—' }}{% if c.kyc_verified_at %} on {{ c.kyc_verified_at.strftime('%d-%m-%Y') }}{% endif %}">Verified</span>
-              {% else %}
-              <span class="badge bg-warning text-dark">Not Verified</span>
               {% endif %}
             </td>
             {# 5b. Team — mapped account team by seniority bucket #}
@@ -280,12 +280,13 @@
             </td>
             {# 6. Status — renamed from "Last Outcome", shows latest call/activity outcome badge #}
             <td>
-              {% if last_outcome %}
+              {% if c.status == 'active' %}<span class="badge bg-success">Active</span>
+              {% elif c.status == 'blacklisted' %}<span class="badge bg-dark">Blacklisted</span>
+              {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+              {% if last_outcome %}<br>
               <span class="badge bg-{{ oc_colors.get(last_outcome, 'secondary') }}">
                 {{ last_outcome | replace('_',' ') | title }}
               </span>
-              {% else %}
-              <span class="text-muted">—</span>
               {% endif %}
             </td>
             {# 11. Actions #}
@@ -534,8 +535,27 @@
 })();
 </script>
 <script>
-// col index (edit perm): 0=Checkbox,1=Company,2=Type,3=Category,4=Locations,5=Contacts,6=KYC,7=Team,8=Notes(hidden),9=Created By,10=Status,11=Actions
-// col index (no edit perm, no checkbox column): 0=Company,1=Type,2=Category,3=Locations,4=Contacts,5=KYC,6=Team,7=Notes(hidden),8=Created By,9=Status,10=Actions
+// Source Type only for Supplier/Both, Buyer Type only for Buyer/Both (2026-11-01)
+(function () {
+  var ct = document.querySelector('select[name="contact_type"]');
+  if (!ct) return;
+  function apply() {
+    var v = ct.value;
+    [['fSourceTypeWrap', v === 'supplier' || v === 'both'],
+     ['fBuyerTypeWrap',  v === 'buyer'    || v === 'both']].forEach(function (p) {
+      var w = document.getElementById(p[0]); if (!w) return;
+      var sel = w.querySelector('select');
+      w.classList.toggle('d-none', !p[1]);
+      if (!p[1] && sel) sel.value = '';
+    });
+  }
+  ct.addEventListener('change', apply);
+  apply();
+})();
+</script>
+<script>
+// col index (edit perm): 0=Checkbox,1=Account Name,2=GST No.,3=KYC,4=Credit,5=Place,6=Person,7=Team,8=Notes(hidden),9=Created By,10=Status,11=Actions
+// col index (no edit perm, no checkbox column): 0=Account Name,1=GST No.,2=KYC,3=Credit,4=Place,5=Person,6=Team,7=Notes(hidden),8=Created By,9=Status,10=Actions
 $(document).ready(function(){
   // Global Table module (static/js/global-table.js) — always initialized,
   // even with zero rows: DataTables reads its columns from <thead>, not from
@@ -548,7 +568,7 @@ $(document).ready(function(){
   var off = hasCheckboxCol ? 1 : 0;
   initGlobalTable('#contactsTable', {
     order: [[0 + off, 'asc']],  // default sort by Company
-    columnDefs: [{ orderable: false, targets: hasCheckboxCol ? [0, 4, 5, 7, 11] : [3, 4, 6, 10] }],
+    columnDefs: [{ orderable: false, targets: hasCheckboxCol ? [0, 5, 6, 7, 11] : [4, 5, 6, 10] }],
     language: { emptyTable: 'No contacts found. Use the Add Account button above to create one.' }
   });
   // DataTables' initial draw (applying the sort above + odd/even striping)

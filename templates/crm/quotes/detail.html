@@ -149,9 +149,19 @@
       #}
       {% if opp %}
       <a href="/crm/sales/{{ opp.id }}" class="btn btn-sm btn-outline-info">
-        <i class="bi bi-arrow-left me-1"></i>Back to Opportunity
+        <i class="bi bi-arrow-left me-1"></i>Buyer Deal {{ opp.opp_number }}
+      </a>
+      {% elif sdeal %}
+      <a href="/crm/sourcing/{{ sdeal.id }}" class="btn btn-sm btn-outline-info">
+        <i class="bi bi-arrow-left me-1"></i>Sourcing Deal {{ sdeal.deal_number }}
       </a>
       {% else %}
+      <span class="badge bg-secondary">Not linked</span>
+      {% if can(current_user, 'crm_quotes', 'edit') %}
+      <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#linkDealModal">
+        <i class="bi bi-link-45deg me-1"></i>Link to Deal
+      </button>
+      {% endif %}
       <a href="/crm/quotes" class="btn btn-sm btn-outline-secondary">
         <i class="bi bi-arrow-left me-1"></i>All Quotes
       </a>
@@ -210,4 +220,25 @@ OxyPC Team</textarea>
 </div>
 #}
 
+{% if not opp and not sdeal %}
+<!-- Link to Deal (2026-11-01) -->
+<div class="modal fade" id="linkDealModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form method="post" action="/crm/quotes/{{ quote.id }}/link-deal" class="modal-content">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+  <input type="hidden" name="deal_kind" value="{{ link_kind }}">
+  <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-link-45deg me-1"></i>Link to {{ 'Sourcing' if link_kind == 'supplier' else 'Buyer' }} Deal</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    {% if link_deals %}
+    <label class="form-label small fw-semibold">Open {{ 'Sourcing' if link_kind == 'supplier' else 'Buyer' }} Deals for {{ contact.company_name if contact else 'this account' }}</label>
+    <select name="deal_id" class="form-select form-select-sm" required>
+      <option value="">— Select Deal —</option>
+      {% for dl in link_deals %}<option value="{{ dl.id }}">{{ dl.deal_number if link_kind == 'supplier' else dl.opp_number }} — {{ dl.title }}</option>{% endfor %}
+    </select>
+    <div class="form-text">A deal still before the Quote stage moves to Quote.</div>
+    {% else %}
+    <div class="text-muted small">This account has no open {{ 'Sourcing' if link_kind == 'supplier' else 'Buyer' }} Deal.</div>
+    {% endif %}
+  </div>
+  <div class="modal-footer py-2"><button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary btn-sm" {% if not link_deals %}disabled{% endif %}>Link</button></div>
+</form></div></div>
+{% endif %}
 {% endblock %}

@@ -308,6 +308,7 @@ async def list_contacts(
         "crm_users": crm_users,
         "added_by": added_by,
         "source_types": SOURCE_TYPES, "buyer_types": BUYER_TYPES,
+        "source_labels": dict(SOURCE_TYPES), "buyer_labels": dict(BUYER_TYPES),
     })
 
 
@@ -504,6 +505,7 @@ async def upload_contacts_csv(
                         status=status,
                         created_by=current_user.username,
                     )
+                    contact.apply_account_status()
                     db.add(contact)
                     await db.flush()
                     if gstin_val:
@@ -1171,7 +1173,7 @@ async def account_calls_bulk_upload(
                     contact_code=f"CRM{code_base + new_seq - 1:04d}",
                     company_name=name or phone,
                     contact_type=(row.get("contact_type", "") or "buyer"),
-                    status="active",
+                    status="inactive",
                     created_by=current_user.username,
                 )
                 for col, attr in _ACCOUNT_COLS.items():
@@ -1337,6 +1339,7 @@ async def create_contact(
             director2_doc_path=await _save_kyc_upload(director2_doc),
             created_by=current_user.username,
         )
+        contact.apply_account_status()
         db.add(contact)
         try:
             await db.flush()   # assigns contact.id; raises on duplicate code
@@ -1606,6 +1609,7 @@ async def update_contact(
     contact.tags = tags or None
     contact.notes = notes or None
     contact.status = status
+    contact.apply_account_status()
     contact.assigned_to = assigned_to
     contact.bank_cheque_number = bank_cheque_number or None
     contact.msme_number = msme_number or None
@@ -1679,10 +1683,31 @@ async def verify_kyc(
     contact.kyc_verified = True
     contact.kyc_verified_by = current_user.username
     contact.kyc_verified_at = app_now()
+    contact.apply_account_status()
     await audit(db, user=current_user, action="ACCOUNT_KYC_VERIFIED",
                 table_name="crm_contacts", record_id=str(contact.id), request=request)
     await db.commit()
     return RedirectResponse(url=f"/crm/contacts/{contact_id}?success=KYC+verified", status_code=302)
+
+
+@router.post("/{contact_id}/verify-credit")
+async def verify_credit(
+    contact_id: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    contact = (await db.execute(select(CRMContact).where(CRMContact.id == contact_id))).scalar_one_or_none()
+    if not contact:
+        return RedirectResponse(url="/crm/contacts?error=Not+found", status_code=302)
+    contact.credit_verified = True
+    contact.credit_verified_by = current_user.username
+    contact.credit_verified_at = app_now()
+    contact.apply_account_status()
+    await audit(db, user=current_user, action="ACCOUNT_CREDIT_VERIFIED",
+                table_name="crm_contacts", record_id=str(contact.id), request=request)
+    await db.commit()
+    return RedirectResponse(url=f"/crm/contacts/{contact_id}?success=Credit+verified", status_code=302)
 
 
 # ── TRASH / RESTORE ───────────────────────────────────────────────────────────

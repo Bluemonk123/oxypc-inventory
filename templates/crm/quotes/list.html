@@ -32,7 +32,7 @@
             'accepted': 'success', 'rejected': 'danger', 'expired': 'secondary'
           } %}
           <tr>
-            <td><a href="/crm/quotes/{{ qt.id }}" class="fw-semibold text-decoration-none"><code>{{ qt.quote_number }}</code></a></td>
+            <td><a href="/crm/quotes/{{ qt.id }}" class="fw-semibold text-decoration-none"><code>{{ qt.quote_number }}</code></a>{% if qt.sourcing_deal_id %} <a href="/crm/sourcing/{{ qt.sourcing_deal_id }}" class="badge bg-info text-dark text-decoration-none" title="Supplier quote from a Sourcing Deal">Supplier</a>{% elif not opps_map.get(qt.id|string) %} <span class="badge bg-secondary" title="Not linked to any deal">Not linked</span>{% endif %}</td>
             <td>
               {% set contact = contacts_map.get(qt.contact_id|string) %}
               {% if contact %}

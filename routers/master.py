@@ -389,7 +389,7 @@ CATEGORIES = [
     ("iqc_part_category",   "Parts: Part Category",         "repair"),
     # ── Inventory / Logistics ─────────────────────────────────────
     ("floor",               "Floors / Locations",           "inventory"),
-    ("warehouse",           "Warehouses / Zones",           "inventory"),
+    ("warehouse",           "Warehouses",                   "inventory"),
     ("location_zone",       "Storage Locations: Zone",      "inventory"),
     ("location_unit_type",  "Storage Locations: Unit Type", "inventory"),
     ("supplier",            "Suppliers",                    "inventory"),

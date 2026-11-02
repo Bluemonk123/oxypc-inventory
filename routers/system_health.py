@@ -907,6 +907,32 @@ async def parts_cleanup(request: Request, current_user: User = Depends(admin_onl
     return back or JSONResponse(res)
 
 
+@router.post("/grn-tax-fix")
+async def grn_tax_fix(request: Request, current_user: User = Depends(admin_only)):
+    """Data Fix (2026-11-02): see services/grn_tax.tax_backfill_rows."""
+    from database import AsyncSessionLocal
+    from services.grn_tax import tax_backfill_apply
+    form = await request.form()
+    picks = {k[3:]: v for k, v in form.multi_items() if k.startswith("st_") and (v or "").strip()}
+    async with AsyncSessionLocal() as db:
+        res = await tax_backfill_apply(db, current_user, picks, request)
+    back = _back_to_page(form, f"Tax worked out on {res['updated']} old GRN(s).")
+    return back or JSONResponse(res)
+
+
+@router.post("/repair-trc-floor-fix")
+async def repair_trc_floor_fix(request: Request, current_user: User = Depends(admin_only)):
+    """Data Fix (2026-10-31): see services/repair_location.trc_floor_plan."""
+    from database import AsyncSessionLocal
+    from services.repair_location import trc_floor_apply
+    async with AsyncSessionLocal() as db:
+        res = await trc_floor_apply(db, current_user, request)
+    msg = (f"Moved {res['moved']:,} repair-stage tag(s) to TRC Floor." if res.get("ok")
+           else f"Not applied: {res.get('detail')}")
+    back = _back_to_page(await request.form(), msg)
+    return back or JSONResponse(res)
+
+
 @router.post("/storage-type-fix")
 async def storage_type_fix_apply(request: Request, current_user: User = Depends(admin_only)):
     from sqlalchemy import update
@@ -1908,6 +1934,13 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         from services.parts_stock import cleanup_plan, crates_with_several_parts
         pclean = await cleanup_plan(db)
         pmulti = await crates_with_several_parts(db)
+        from services.repair_location import trc_floor_plan
+        trcfix = await trc_floor_plan(db)
+        from services.grn_tax import tax_backfill_rows, gst_rates
+        from utils.master_data import master_values
+        grntax = await tax_backfill_rows(db)
+        grntax_rates = await gst_rates(db)
+        state_options = await master_values(db, "dealer_state")
         issues = await _spec_issues(db)
         case_dupes = await _case_duplicates(db)
         # "Reassigned but marked Completed" card removed (2026-10-28): since
@@ -1959,6 +1992,11 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "dt12_list": DEVICE_TYPES_12,
         "pname": [{"code": c, "old": o, "new": n, "m0": m0, "m1": m1} for _i, c, o, n, m0, m1 in pname],
         "pcrate": pcrate, "pclean": pclean, "pmulti": pmulti,
+        "grntax": grntax, "grntax_total": len(grntax["device"]) + len(grntax["parts"]),
+        "grntax_rates": grntax_rates, "state_options": state_options,
+        "trcfix_total": len(trcfix["rows"]), "trcfix_rows": trcfix["rows"][:300], "trcfix_has_trc": trcfix["trc"],
+        "trcfix_by": sorted({r["stage"]: sum(1 for x in trcfix["rows"] if x["stage"] == r["stage"])
+                             for r in trcfix["rows"]}.items(), key=lambda x: -x[1]),
         "subcat_total": len(subcat), "subcat_by": [{"dt": k[0], "sc": k[1], "n": n} for k, n in sorted(subcat_by.items(), key=lambda x: -x[1])],
         "issues": issues[:500], "issues_total": len(issues),
         "issue_counts": _issue_counts(issues),

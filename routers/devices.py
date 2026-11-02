@@ -23,6 +23,7 @@ from models.repair import RepairJob, RepairStatus
 from models.qc import QCCheck
 from models.spare_parts import SparePartConsumption, SparePart
 from models.location import DeviceLocationLog, StorageLocation, LocationAction, UNIT_TYPE_LABELS, ZONE_LABELS, ZoneType
+from routers.inventory_location import _zone_dropdown_options
 from models.iqc_inspection import IQCInspection
 from models.part_request import PartRequest
 from models.pna_part import DevicePNAPart
@@ -969,7 +970,7 @@ async def device_search(
         "lot_choices": [l.lot_number for l in lots if l.lot_number],
         "q": q, "stage": stage, "lot": lot, "grade": grade, "category": category,
         "device_type": device_type, "entity": entity, "stock_type": stock_type, "pna": pna,
-        "zone": zone, "zone_choices": list(ZoneType), "zone_labels": ZONE_LABELS,
+        "zone": zone, "zone_choices": await _zone_dropdown_options(db), "zone_labels": ZONE_LABELS,
         "stock_type_options": [("finish_good", "Finish Good"), ("as_is", "As-Is"),
                                ("in_progress", "In Progress")],
         "exclude_sold": _exclude_sold(exclude_sold, fs),

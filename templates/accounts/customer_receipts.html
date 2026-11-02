@@ -148,11 +148,11 @@
   </div>
   <div class="card-body p-0">
     <table class="table table-hover mb-0 small" id="receiptsTable">
-      <thead class="table-dark"><tr><th>Date</th><th>Contact</th><th>Dealer</th><th>Mode</th><th>Ref</th><th>Amount</th><th>Document</th><th>By</th></tr></thead>
+      <thead class="table-dark"><tr><th>Date</th><th>Contact</th><th>Dealer</th><th>Mode</th><th>Ref</th><th>Amount</th><th>Document</th><th>By</th><th>Accounts</th></tr></thead>
       <!-- rows come from /accounts/customer-receipts/data via DataTables serverSide -->
       <tbody></tbody>
       <tfoot class="table-light">
-        <tr><td colspan="5" class="text-end fw-bold">Total:</td><td class="fw-bold text-success">&#8377;{{ ((total) | inr) }}</td><td colspan="2"></td></tr>
+        <tr><td colspan="5" class="text-end fw-bold">Total:</td><td class="fw-bold text-success">&#8377;{{ ((total) | inr) }}</td><td colspan="3"></td></tr>
       </tfoot>
     </table>
   </div>
@@ -211,7 +211,7 @@ $('#receiptsTable').DataTable({
   order: [],
   searchDelay: 400,
   ajax: { url: '/accounts/customer-receipts/data' + window.location.search },
-  columnDefs: [{ orderable: false, targets: [5, 6] }],
+  columnDefs: [{ orderable: false, targets: [5, 6, 8] }],
 });
 // Quotes list is capped at 100 rows server-side already — plain client-side
 // paging is enough, just needs the same Show Entries values as every other

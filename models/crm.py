@@ -19,7 +19,7 @@ from database import Base
 SOURCE_TYPES = [
     ("recycler",  "Recycler"),
     ("refurb",    "Refurbisher"),
-    ("endcust",   "End Customer (Corporate)"),
+    ("endcust",   "Corporate Supplier"),
     ("trader",    "Trader / Broker"),
     ("indiv",     "Individual"),
     ("online",    "Online Source"),
@@ -101,7 +101,7 @@ SALES_STAGES = [
     ("quote",          "Quote"),
     ("negotiation",    "Negotiations"),
     ("sales_order",    "Invoice / Sales Order"),
-    ("purchase_order", "Purchase Order"),
+    # "purchase_order" removed 2026-11-01 — customer PO stage dropped from Buyer Deals
     ("payment",        "Payment"),
     ("received",       "Stock Received"),
     ("won",            "Closed — Won"),
@@ -128,11 +128,6 @@ SALES_STAGE_STEPS = {
         ("so_l1", "Level 1", "approval"),
         ("so_l2", "Level 2", "approval"),
         ("so_file", "PO", "file"),
-    ],
-    "purchase_order": [
-        ("po_l1", "Level 1", "approval"),
-        ("po_l2", "Level 2", "approval"),
-        ("po_file", "PO", "file"),
     ],
     "payment": [
         ("payment_l1", "Level 1", "approval"),
@@ -196,7 +191,7 @@ class CRMContact(Base):
     outstanding      = Column(Numeric(14, 2), default=0)
     tags             = Column(String(300), nullable=True)   # comma-separated
     notes            = Column(Text,        nullable=True)
-    status           = Column(String(20),  default="active")   # active/inactive/blacklisted
+    status           = Column(String(20),  default="inactive")   # active/inactive/blacklisted — Active only when KYC + Credit verified
     assigned_to      = Column(String(50),  nullable=True)
     created_by       = Column(String(50),  nullable=True)
     created_at       = Column(DateTime,    default=app_now)
@@ -227,6 +222,16 @@ class CRMContact(Base):
     kyc_verified    = Column(Boolean,  nullable=False, default=False, server_default="false")
     kyc_verified_by = Column(String(50), nullable=True)
     kyc_verified_at = Column(DateTime, nullable=True)
+    # Credit verification (Management) — 2026-11-01
+    credit_verified    = Column(Boolean,  nullable=False, default=False, server_default="false")
+    credit_verified_by = Column(String(50), nullable=True)
+    credit_verified_at = Column(DateTime, nullable=True)
+
+    def apply_account_status(self) -> None:
+        """Active only when both KYC and Credit are verified; blacklisted stays."""
+        if self.status == "blacklisted":
+            return
+        self.status = "active" if (self.kyc_verified and self.credit_verified) else "inactive"
 
     sourcing_deals   = relationship("CRMSourcingDeal",    back_populates="contact", lazy="select")
     sales_opps       = relationship("CRMSalesOpportunity", back_populates="contact", lazy="select")
@@ -439,6 +444,11 @@ class CRMQuote(Base):
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     quote_number    = Column(String(30), unique=True, nullable=False, index=True)  # QT-2025-0001
     contact_id      = Column(UUID(as_uuid=True), ForeignKey("crm_contacts.id"), nullable=True, index=True)
+    # Supplier quote raised from a Sourcing Deal (2026-11-01); null = buyer quote
+    sourcing_deal_id = Column(UUID(as_uuid=True), ForeignKey("crm_sourcing_deals.id"), nullable=True, index=True)
+    # Buyer Deal this quote belongs to (2026-11-01) — a deal can hold several;
+    # CRMSalesOpportunity.quote_id stays the deal's latest/current quote.
+    opportunity_id  = Column(UUID(as_uuid=True), ForeignKey("crm_sales_opportunities.id"), nullable=True, index=True)
     quote_date      = Column(Date,        default=app_now)
     valid_until     = Column(Date,        nullable=True)
     payment_terms   = Column(String(200), nullable=True)
@@ -563,6 +573,10 @@ class CRMPurchaseOrder(Base):
     utr_number            = Column(String(100),  nullable=True)
     payment_snapshot_path = Column(String(255),  nullable=True)
     invoice_path          = Column(String(255),  nullable=True)
+    # Accounts verification (Accounts Dashboard Verify) — 2026-11-01
+    verified      = Column(Boolean, nullable=False, default=False, server_default="false")
+    verified_by   = Column(String(50), nullable=True)
+    verified_at   = Column(DateTime, nullable=True)
 
     contact    = relationship("CRMContact",       foreign_keys=[contact_id])
     deal       = relationship("CRMSourcingDeal",  foreign_keys=[deal_id])
@@ -631,9 +645,14 @@ class SupplierPayment(Base):
     payment_photo_path = Column(String(255), nullable=True)
     created_by    = Column(String(50), nullable=True)
     created_at    = Column(DateTime, default=app_now)
+    # Accounts verification (Accounts Dashboard Verify) — 2026-11-01
+    verified      = Column(Boolean, nullable=False, default=False, server_default="false")
+    verified_by   = Column(String(50), nullable=True)
+    verified_at   = Column(DateTime, nullable=True)
 
     contact = relationship("CRMContact", foreign_keys=[contact_id])
     lot     = relationship("Lot",        foreign_keys=[lot_id])
+    po      = relationship("CRMPurchaseOrder", foreign_keys=[po_id])
     sourcing_deal = relationship("CRMSourcingDeal", foreign_keys=[sourcing_deal_id])
 
 
@@ -656,10 +675,63 @@ class CustomerReceipt(Base):
     payment_photo_path = Column(String(255), nullable=True)
     created_by       = Column(String(50), nullable=True)
     created_at       = Column(DateTime, default=app_now)
+    so_id            = Column(UUID(as_uuid=True), ForeignKey("crm_sales_orders.id"), nullable=True)
+    # Accounts verification (Accounts Dashboard Verify) — 2026-11-01
+    verified      = Column(Boolean, nullable=False, default=False, server_default="false")
+    verified_by   = Column(String(50), nullable=True)
+    verified_at   = Column(DateTime, nullable=True)
 
     contact = relationship("CRMContact", foreign_keys=[contact_id])
     dealer  = relationship("Dealer",     foreign_keys=[dealer_id])
     opportunity = relationship("CRMSalesOpportunity", foreign_keys=[opportunity_id])
+    sales_order = relationship("CRMSalesOrder", foreign_keys=[so_id])
+
+
+class CRMSalesOrder(Base):
+    """Sales Order — created when a Buyer Deal's quotation passes its final
+    (Level 2) approval. Header + items are a snapshot of the quote at that
+    moment, so later quote edits never change an issued SO."""
+    __tablename__ = "crm_sales_orders"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    so_number     = Column(String(30), unique=True, nullable=False, index=True)  # SO-2026-0001
+    quote_id      = Column(UUID(as_uuid=True), ForeignKey("crm_quotes.id"), nullable=False, index=True)
+    deal_id       = Column(UUID(as_uuid=True), ForeignKey("crm_sales_opportunities.id"), nullable=True, index=True)
+    contact_id    = Column(UUID(as_uuid=True), ForeignKey("crm_contacts.id"), nullable=True, index=True)
+    so_date       = Column(Date, default=app_now)
+    payment_terms = Column(String(200), nullable=True)
+    total_amount  = Column(Numeric(14, 2), default=0)
+    status        = Column(String(20), nullable=False, default="open", server_default="open")  # open / cancelled
+    verified      = Column(Boolean, nullable=False, default=False, server_default="false")
+    verified_by   = Column(String(50), nullable=True)
+    verified_at   = Column(DateTime, nullable=True)
+    created_by    = Column(String(50), nullable=True)
+    created_at    = Column(DateTime, default=app_now)
+
+    contact = relationship("CRMContact",          foreign_keys=[contact_id])
+    quote   = relationship("CRMQuote",            foreign_keys=[quote_id])
+    deal    = relationship("CRMSalesOpportunity", foreign_keys=[deal_id])
+    items   = relationship("CRMSalesOrderItem", back_populates="sales_order",
+                           cascade="all, delete-orphan", order_by="CRMSalesOrderItem.line_number")
+
+
+class CRMSalesOrderItem(Base):
+    """Sales Order line — copied from crm_quote_items at approval."""
+    __tablename__ = "crm_sales_order_items"
+
+    id            = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    so_id         = Column(UUID(as_uuid=True), ForeignKey("crm_sales_orders.id"), nullable=False, index=True)
+    line_number   = Column(Integer, nullable=False, default=1)
+    device_type   = Column(String(100), nullable=False)
+    material_type = Column(String(30), nullable=True)
+    grade         = Column(String(10), nullable=True)
+    po_category   = Column(String(100), nullable=True)
+    quantity      = Column(Integer, nullable=False, default=1)
+    unit_price    = Column(Numeric(10, 2), nullable=False)
+    total_price   = Column(Numeric(14, 2), nullable=False)
+    specs_note    = Column(Text, nullable=True)
+
+    sales_order = relationship("CRMSalesOrder", back_populates="items")
 
 
 # ── ASSIGN LEADS MODULE ───────────────────────────────────────────────────────

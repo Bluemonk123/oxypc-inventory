@@ -46,6 +46,16 @@ _DEFAULT_ZONE_DROPDOWN_OPTIONS = [
 ]
 
 
+_LEGACY_ZONE_NAMES = {
+    "workshop": ZoneType.workshop, "warehouse": ZoneType.warehouse,
+    "holding zone": ZoneType.holding, "holding": ZoneType.holding,
+    "dispatch area": ZoneType.dispatch, "dispatch": ZoneType.dispatch,
+    "ground floor": ZoneType.ground_floor, "1st floor": ZoneType.first_floor,
+    "first floor": ZoneType.first_floor, "2nd floor": ZoneType.second_floor,
+    "second floor": ZoneType.second_floor, "plant floor": ZoneType.warehouse,
+}
+
+
 async def _zone_dropdown_options(db: AsyncSession) -> list:
     """Zones offered in the Add/Edit Location modal — sourced from the
     admin-editable Master Data "location_zone" category (Admin > Master Data
@@ -68,12 +78,18 @@ async def _zone_dropdown_options(db: AsyncSession) -> list:
         .where(MasterData.category == "location_zone", MasterData.is_active == True)
         .order_by(MasterData.display_order, MasterData.created_at)
     )).scalars().all()
+    # Accept either the zone code ("workshop") or its display name
+    # ("TRC Floor") / an older seed name ("Workshop", "Holding Zone"), so the
+    # admin can type what they see. 2026-11-01: this list now drives every
+    # Zone dropdown/filter in the app, not just Add/Edit Location.
+    by_name = {lbl.strip().lower(): z for z, lbl in ZONE_LABELS.items()}
+    by_name.update({z.value: z for z in ZoneType})
+    by_name.update(_LEGACY_ZONE_NAMES)
     options = []
     for raw in rows:
-        try:
-            options.append(ZoneType(raw))
-        except ValueError:
-            continue
+        z = by_name.get((raw or "").strip().lower().replace(" ", "_")) or by_name.get((raw or "").strip().lower())
+        if z and z not in options:
+            options.append(z)
     return options or _DEFAULT_ZONE_DROPDOWN_OPTIONS
 
 router = APIRouter(prefix="/locations", tags=["locations"], dependencies=[Depends(verify_csrf)])
@@ -214,7 +230,7 @@ async def location_master(
         "current_user": current_user,
         "locations": locations,
         "loc_counts": loc_counts,
-        "zone_types": list(ZoneType),
+        "zone_types": await _zone_dropdown_options(db),
         "unit_types": list(UnitType),
         "zone_labels": ZONE_LABELS,
         "unit_type_labels": UNIT_TYPE_LABELS,
@@ -556,7 +572,7 @@ async def location_dashboard(
         "locations": locations,
         "loc_map": loc_map,
         "in_hand_detail": in_hand_detail,
-        "zone_types": list(ZoneType),
+        "zone_types": await _zone_dropdown_options(db),
         "zone_labels": ZONE_LABELS,
         "selected_zone": zone,
         "unit_types": list(UnitType),
@@ -787,7 +803,7 @@ async def audit_list(
         "current_user": current_user,
         "audits": audits,
         "zone_labels": ZONE_LABELS,
-        "zone_types": list(ZoneType),
+        "zone_types": await _zone_dropdown_options(db),
     })
 
 

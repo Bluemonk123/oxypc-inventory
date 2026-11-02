@@ -93,3 +93,72 @@ def _log_trc_floor(session, flush_context, instances):
                 actor_name=current_user_name.get() or "System",
                 notes=f"Auto: entered {(_norm_stage(d.current_stage) or d.current_stage).value} — moved to TRC Floor"))
             d.location_id = trc_id
+
+
+# ── Data Fix (2026-10-31): repair-stage tags not on TRC Floor ────────────────
+# The hook above only works from now on. Tags already in a repair stage keep
+# the location they had (often Showroom). The Data Fixes page lists them and
+# moves them to TRC Floor the same way the hook does.
+
+async def trc_floor_plan(db):
+    """{"trc": bool, "rows": [{id, tag, stage, location, zone}]} — tags (not
+    Trashed) in a repair stage whose current location is not on TRC Floor
+    (workshop zone). Current location = latest location log, else
+    Device.location_id; no location at all counts as not on TRC Floor."""
+    from sqlalchemy import func
+    from models.device import STAGE_LABELS
+    from models.location import DeviceLocationLog, StorageLocation, ZoneType
+    trc_id = (await db.execute(select(StorageLocation.id).where(
+        StorageLocation.unit_id == TRC_UNIT_ID))).scalar()
+    rn = func.row_number().over(partition_by=DeviceLocationLog.device_id,
+                                order_by=DeviceLocationLog.logged_at.desc()).label("rn")
+    latest = select(DeviceLocationLog.device_id, DeviceLocationLog.location_id, rn).subquery()
+    last = select(latest.c.device_id, latest.c.location_id).where(latest.c.rn == 1).subquery()
+    loc_id = func.coalesce(last.c.location_id, Device.location_id)
+    q = (select(Device.id, Device.barcode, Device.current_stage, StorageLocation.unit_id, StorageLocation.zone)
+         .outerjoin(last, last.c.device_id == Device.id)
+         .outerjoin(StorageLocation, StorageLocation.id == loc_id)
+         .where(Device.current_stage.in_(list(REPAIR_STAGES)), Device.is_trashed.isnot(True))
+         .order_by(Device.current_stage, Device.barcode))
+    rows = []
+    for did, tag, st, unit, zone in (await db.execute(q)).all():
+        if zone == ZoneType.workshop:
+            continue
+        rows.append({"id": did, "tag": tag, "stage": STAGE_LABELS.get(st, getattr(st, "value", st)),
+                     "location": unit or "—",
+                     "zone": getattr(zone, "value", zone) or "—"})
+    return {"trc": trc_id is not None, "rows": rows}
+
+
+async def trc_floor_apply(db, user, request=None):
+    """Logs each listed tag "moved" to TRC Floor and sets its location_id;
+    one audit row with every tag's previous location."""
+    from datetime import datetime
+    from sqlalchemy import update
+    from models.location import DeviceLocationLog, LocationAction, StorageLocation
+    from services.audit_engine import audit
+    trc_id = (await db.execute(select(StorageLocation.id).where(
+        StorageLocation.unit_id == TRC_UNIT_ID))).scalar()
+    if trc_id is None:
+        return {"ok": False, "detail": "No TRC-FLOOR location exists"}
+    plan = await trc_floor_plan(db)
+    rows = plan["rows"]
+    if not rows:
+        return {"ok": True, "moved": 0}
+    name = getattr(user, "full_name", None) or getattr(user, "username", None) or "Admin"
+    for r in rows:
+        db.add(DeviceLocationLog(device_id=r["id"], location_id=trc_id, action=LocationAction.moved,
+                                 actor_id=user.id, actor_name=name,
+                                 notes=f"Data Fix: in {r['stage']} but at {r['location']} — moved to TRC Floor"))
+    ids = [r["id"] for r in rows]
+    for i in range(0, len(ids), 1000):
+        await db.execute(update(Device).where(Device.id.in_(ids[i:i + 1000])).values(location_id=trc_id))
+    await audit(db, user=user, action="DEVICE_REPAIR_TO_TRC_FLOOR_FIX", table_name="devices",
+                record_id=f"{len(rows)} tags",
+                new_value={"count": len(rows),
+                           "before": {r["tag"]: {"stage": r["stage"], "location": r["location"]} for r in rows}},
+                notes="Tags in a repair stage moved to TRC Floor (location log 'moved' + location_id). "
+                      "Previous location of each tag is listed in 'before'.",
+                request=request)
+    await db.commit()
+    return {"ok": True, "moved": len(rows)}

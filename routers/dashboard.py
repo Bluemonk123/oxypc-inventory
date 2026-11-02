@@ -22,6 +22,7 @@ from models.spare_parts import SparePart, SparePartConsumption
 from models.dealers import Dealer, DealerOrder, DealerCreditNote, DealerCall
 from models.crm import CRMActivity, CRMContact, CRMPurchaseOrder, CRMSourcingDeal
 from models.location import StorageLocation, ZoneType, ZONE_LABELS, DeviceLocationLog
+from routers.inventory_location import _zone_dropdown_options
 from models.parts_grn import PartsGRN, PartsGRNLineItem
 from models.part_request import PartSourcingRequest
 from models.cost_config import CostConfig
@@ -1483,7 +1484,7 @@ async def dashboard(
         "device_type_choices": device_type_choices,
         "f_device_type": device_type,
         "storage_locations": storage_locations,
-        "zone_choices": list(ZoneType),
+        "zone_choices": await _zone_dropdown_options(db),
         "zone_labels": ZONE_LABELS,
         "f_zone": zone,
         "stage_filter": stage_filter,

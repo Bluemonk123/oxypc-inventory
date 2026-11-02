@@ -147,11 +147,11 @@
   </div>
   <div class="card-body p-0">
     <table class="table table-hover mb-0 small" id="paymentsTable">
-      <thead class="table-dark"><tr><th>Date</th><th>Supplier</th><th>Lot</th><th>Mode</th><th>Ref</th><th>Advance</th><th>Amount</th><th>Document</th><th>By</th></tr></thead>
+      <thead class="table-dark"><tr><th>Date</th><th>Supplier</th><th>Lot</th><th>Mode</th><th>Ref</th><th>Advance</th><th>Amount</th><th>Document</th><th>By</th><th>Accounts</th></tr></thead>
       <!-- rows come from /accounts/supplier-payments/data via DataTables serverSide -->
       <tbody></tbody>
       <tfoot class="table-light">
-        <tr><td colspan="6" class="text-end fw-bold">Total:</td><td class="fw-bold text-danger">&#8377;{{ ((total) | inr) }}</td><td colspan="2"></td></tr>
+        <tr><td colspan="6" class="text-end fw-bold">Total:</td><td class="fw-bold text-danger">&#8377;{{ ((total) | inr) }}</td><td colspan="3"></td></tr>
       </tfoot>
     </table>
   </div>
@@ -210,7 +210,7 @@ $('#paymentsTable').DataTable({
   order: [],
   searchDelay: 400,
   ajax: { url: '/accounts/supplier-payments/data' + window.location.search },
-  columnDefs: [{ orderable: false, targets: [5, 7] }],
+  columnDefs: [{ orderable: false, targets: [5, 7, 9] }],
 });
 // PO list is capped at 100 rows server-side already — plain client-side
 // paging is enough, just needs the same Show Entries values as every other

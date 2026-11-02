@@ -13,18 +13,28 @@
       id="quoteForm" autocomplete="off" data-no-autosave>
         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
 {% if opp_id %}<input type="hidden" name="opp_id" value="{{ opp_id }}">{% endif %}
+{% if sourcing_deal_id %}<input type="hidden" name="sourcing_deal_id" value="{{ sourcing_deal_id }}">{% endif %}
+<input type="hidden" name="create_deal" id="qCreateDeal" value="">
 
 <!-- Header Details -->
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-file-earmark-text me-2 text-success"></i>Quote Details</div>
   <div class="card-body">
     <div class="row g-3">
+      {# Row 1: Contact Type + Account Name (2026-11-01) #}
       <div class="col-md-4">
-        <label class="form-label fw-semibold">Contact (Buyer) <span class="text-danger">*</span></label>
-        <select name="contact_id" class="form-select" required>
-          <option value="">— Select Contact —</option>
+        <label class="form-label fw-semibold">Contact Type <span class="text-danger">*</span></label>
+        <select id="qContactType" name="quote_kind" class="form-select" required>
+          <option value="buyer" {% if not sourcing_deal_id %}selected{% endif %}>Buyer</option>
+          <option value="supplier" {% if sourcing_deal_id %}selected{% endif %}>Supplier</option>
+        </select>
+      </div>
+      <div class="col-md-8">
+        <label class="form-label fw-semibold">Account Name <span class="text-danger">*</span></label>
+        <select name="contact_id" id="qAccount" class="form-select" required>
+          <option value="">— Select Account —</option>
           {% for c in contacts %}
-          <option value="{{ c.id }}"
+          <option value="{{ c.id }}" data-type="{{ c.contact_type or '' }}"
             {% if quote and quote.contact_id==c.id %}selected
             {% elif preselect and preselect|string==c.id|string %}selected
             {% endif %}>
@@ -33,17 +43,18 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-3">
+      {# Row 2 #}
+      <div class="col-md-4">
         <label class="form-label fw-semibold">Quote Date <span class="text-danger">*</span></label>
         <input type="date" name="quote_date" class="form-control" required
           value="{{ quote.quote_date.strftime('%Y-%m-%d') if quote and quote.quote_date else today }}">
       </div>
-      <div class="col-md-3">
+      <div class="col-md-4">
         <label class="form-label fw-semibold">Valid Until</label>
         <input type="date" name="valid_until" class="form-control"
           value="{{ quote.valid_until.strftime('%Y-%m-%d') if quote and quote.valid_until else '' }}">
       </div>
-      <div class="col-md-2">
+      <div class="col-md-4">
         <label class="form-label fw-semibold">Payment Terms</label>
         <input type="text" name="payment_terms" class="form-control"
           value="{{ quote.payment_terms or '' if quote else '' }}" placeholder="e.g. 50% advance">
@@ -210,6 +221,61 @@
 </template>
 {% endblock %}
 {% block scripts %}
+{% if not opp_id and not sourcing_deal_id %}
+<div class="modal fade" id="askDealModal" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-briefcase me-1"></i>Create Deal</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body"><p class="mb-1">Do you want to create a Deal now?</p>
+    <div class="small text-muted">A new <span id="askDealKind">Buyer</span> Deal will start at the Quote stage with this quote linked. Choose Later to link it to a deal from the quote page.</div></div>
+  <div class="modal-footer py-2">
+    <button type="button" class="btn btn-outline-secondary btn-sm" data-choice="later">Create Deal Later</button>
+    <button type="button" class="btn btn-primary btn-sm" data-choice="now"><i class="bi bi-plus-lg me-1"></i>Create Deal Now</button>
+  </div>
+</div></div></div>
+<script>
+(function () {
+  var cd = document.getElementById('qCreateDeal');
+  var form = cd.form, m = document.getElementById('askDealModal');
+  form.addEventListener('submit', function (e) {
+    if (cd.value) return;                       // already answered
+    if (!form.checkValidity()) return;          // let the browser show field errors
+    e.preventDefault();
+    var t = document.getElementById('qContactType');
+    document.getElementById('askDealKind').textContent = (t && t.value === 'supplier') ? 'Sourcing' : 'Buyer';
+    bootstrap.Modal.getOrCreateInstance(m).show();
+  });
+  m.querySelectorAll('[data-choice]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      cd.value = b.dataset.choice;
+      bootstrap.Modal.getInstance(m).hide();
+      form.requestSubmit ? form.requestSubmit() : form.submit();
+    });
+  });
+})();
+</script>
+{% endif %}
+<script>
+// Contact Type filters Account Name; "both" accounts appear under either (2026-11-01)
+(function () {
+  var t = document.getElementById('qContactType'), a = document.getElementById('qAccount');
+  if (!t || !a) return;
+  var sel = a.options[a.selectedIndex];
+  if (sel && sel.value) {
+    var st = sel.dataset.type;
+    if (st === 'supplier' || st === 'buyer') t.value = st;
+  }
+  function apply() {
+    var v = t.value;
+    Array.prototype.forEach.call(a.options, function (o) {
+      if (!o.value) return;
+      var ok = o.dataset.type === v || o.dataset.type === 'both';
+      o.hidden = !ok; o.disabled = !ok;
+      if (!ok && o.selected) a.value = '';
+    });
+  }
+  t.addEventListener('change', apply);
+  apply();
+})();
+</script>
 <script>
 function calcRow(input) {
   var row   = input.closest('tr');

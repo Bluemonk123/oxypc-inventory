@@ -23,6 +23,22 @@ from models.crm import (
 router = APIRouter(prefix="/crm/quotes", tags=["crm-quotes"], dependencies=[Depends(verify_csrf)])
 
 
+async def link_quote_to_deal(db, quote, kind: str, deal) -> None:
+    """Link a quote to a Buyer Deal ("buyer") or Sourcing Deal ("supplier").
+    A deal still before the Quote stage moves to Quote (2026-11-01)."""
+    if kind == "buyer":
+        quote.opportunity_id = deal.id
+        quote.sourcing_deal_id = None
+        deal.quote_id = quote.id          # latest quote = the one an SO is made from
+        if deal.stage in ("lead", "contacted", "screening"):
+            deal.stage = "quote"
+    else:
+        quote.sourcing_deal_id = deal.id
+        quote.opportunity_id = None
+        if deal.stage in ("lead", "contacted", "inspection"):
+            deal.stage = "quote"
+
+
 async def _next_quote_number(db: AsyncSession) -> str:
     result = await db.execute(select(func.count(CRMQuote.id)))
     n = (result.scalar() or 0) + 1
@@ -62,6 +78,13 @@ async def list_quotes(
         )
         for opp in or_result.scalars().all():
             opps_map[str(opp.quote_id)] = opp
+    _oids = list({qt.opportunity_id for qt in quotes if qt.opportunity_id})
+    if _oids:
+        for opp in (await db.execute(select(CRMSalesOpportunity).where(
+                CRMSalesOpportunity.id.in_(_oids)))).scalars().all():
+            for qt in quotes:
+                if qt.opportunity_id == opp.id:
+                    opps_map[str(qt.id)] = opp
 
     if q:
         quotes = [qt for qt in quotes
@@ -84,18 +107,39 @@ async def new_quote_form(
     request: Request,
     contact_id: str = Query(default=""),
     opp_id: str = Query(default=""),
+    sourcing_deal_id: str = Query(default=""),
     # "Quote for Direct Deal" — the operator is writing the lines themselves,
     # so suppress lot autofill even when the deal has a lot behind it.
     direct: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # All accounts (any type) — the form filters them by Contact Type (2026-11-01).
     contacts_r = await db.execute(
         select(CRMContact)
-        .where(CRMContact.status == "active", CRMContact.contact_type.in_(["buyer", "both"]))
+        .where(CRMContact.is_trashed.isnot(True),
+               func.coalesce(CRMContact.status, "") != "blacklisted")
         .order_by(CRMContact.company_name)
     )
     contacts = contacts_r.scalars().all()
+
+    # Supplier quote from a Sourcing Deal (2026-11-01): list suppliers and
+    # preselect the deal's supplier (shown even if the account is inactive).
+    sd_id = None
+    if sourcing_deal_id and sourcing_deal_id.strip():
+        from models.crm import CRMSourcingDeal
+        try:
+            sd = (await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.id == sourcing_deal_id))).scalar_one_or_none()
+        except Exception:
+            sd = None
+        if sd:
+            sd_id = str(sd.id)
+            if sd.contact_id and all(c.id != sd.contact_id for c in contacts):
+                dc = (await db.execute(select(CRMContact).where(CRMContact.id == sd.contact_id))).scalar_one_or_none()
+                if dc:
+                    contacts = [dc] + list(contacts)
+            if sd.contact_id and not contact_id:
+                contact_id = str(sd.contact_id)
 
     # ── Prefill from the Buyer Deal's lot ────────────────────────────────────
     # Opened via "Create Quote" on a Buyer Deal. The opportunity has no lot FK —
@@ -124,7 +168,7 @@ async def new_quote_form(
     return templates.TemplateResponse("crm/quotes/form.html", {
         "request": request, "current_user": current_user,
         "quote": None, "contacts": contacts,
-        "preselect": preselect, "opp_id": opp_id,
+        "preselect": preselect, "opp_id": opp_id, "sourcing_deal_id": sd_id,
         # from_opp + source_lot let the form say WHERE its lines came from, and
         # render no rows at all when a deal has no lot — a lone blank row there
         # is what browser autofill latches onto and fills with unrelated data.
@@ -169,6 +213,14 @@ async def quote_summary_rows(db: AsyncSession, quotes: list) -> list[dict]:
             select(CRMSalesOpportunity).where(CRMSalesOpportunity.quote_id.in_(qids))
         )).scalars().all()
     }
+    # Quotes carrying their own Buyer Deal link (multi-quote deals, 2026-11-01)
+    _oids = list({q.opportunity_id for q in quotes if getattr(q, "opportunity_id", None)})
+    if _oids:
+        _om = {o.id: o for o in (await db.execute(
+            select(CRMSalesOpportunity).where(CRMSalesOpportunity.id.in_(_oids)))).scalars().all()}
+        for q in quotes:
+            if q.opportunity_id in _om:
+                opp_by_quote[str(q.id)] = _om[q.opportunity_id]
     items_by_quote: dict = {}
     for it in (await db.execute(
         select(CRMQuoteItem).where(CRMQuoteItem.quote_id.in_(qids))
@@ -264,6 +316,9 @@ async def create_quote(
     request: Request,
     contact_id:         str = Form(default=None),
     opp_id:             str = Form(default=None),
+    sourcing_deal_id:   str = Form(default=None),
+    quote_kind:         str = Form(default="buyer"),   # buyer / supplier (Contact Type)
+    create_deal:        str = Form(default=""),        # "now" / "later" (asked on the Quotes page)
     quote_date:         str = Form(default=None),
     valid_until:        str = Form(default=None),
     payment_terms:      str = Form(default=None),
@@ -294,6 +349,12 @@ async def create_quote(
         status="draft",
         created_by=current_user.username,
     )
+    if sourcing_deal_id and sourcing_deal_id.strip():
+        try:
+            from uuid import UUID as _U
+            quote.sourcing_deal_id = _U(sourcing_deal_id.strip())
+        except ValueError:
+            pass
     db.add(quote)
     await db.flush()  # get quote.id
 
@@ -327,11 +388,34 @@ async def create_quote(
         opp_r = await db.execute(select(CRMSalesOpportunity).where(CRMSalesOpportunity.id == opp_id))
         opp = opp_r.scalar_one_or_none()
         if opp:
-            opp.quote_id = quote.id
-            if opp.stage in ("lead", "contacted", "screening"):
-                opp.stage = "quote"
+            await link_quote_to_deal(db, quote, "buyer", opp)
+
+    # "Create Deal Now" from the Quotes page (2026-11-01): new deal at Quote stage
+    if (create_deal or "").strip() == "now" and not quote.opportunity_id and not quote.sourcing_deal_id:
+        contact = (await db.execute(select(CRMContact).where(CRMContact.id == quote.contact_id))).scalar_one_or_none() if quote.contact_id else None
+        title = f"{contact.company_name if contact else 'Deal'} — {quote_number}"
+        if (quote_kind or "buyer") == "supplier":
+            from models.crm import CRMSourcingDeal
+            from routers.crm_sourcing import _next_deal_number
+            deal = CRMSourcingDeal(deal_number=await _next_deal_number(db), contact_id=quote.contact_id,
+                                   title=title, stage="quote", created_by=current_user.username,
+                                   assigned_to=current_user.username)
+            db.add(deal); await db.flush()
+            await link_quote_to_deal(db, quote, "supplier", deal)
+            await db.commit()
+            return RedirectResponse(url=f"/crm/sourcing/{deal.id}?success=Sourcing+Deal+{deal.deal_number}+created+with+quote+{quote_number}", status_code=302)
+        from routers.crm_sales import _next_opp_number
+        opp = CRMSalesOpportunity(opp_number=await _next_opp_number(db), contact_id=quote.contact_id,
+                                  title=title, stage="quote", created_by=current_user.username,
+                                  assigned_to=current_user.username)
+        db.add(opp); await db.flush()
+        await link_quote_to_deal(db, quote, "buyer", opp)
+        await db.commit()
+        return RedirectResponse(url=f"/crm/sales/{opp.id}?success=Buyer+Deal+{opp.opp_number}+created+with+quote+{quote_number}", status_code=302)
 
     await db.commit()
+    if quote.sourcing_deal_id:
+        return RedirectResponse(url=f"/crm/sourcing/{quote.sourcing_deal_id}?success=Quote+{quote_number}+created", status_code=302)
     return RedirectResponse(url=f"/crm/quotes/{quote.id}?success=Quote+created", status_code=302)
 
 
@@ -403,9 +487,7 @@ async def create_quote_from_lot(
     quote.total_amount = round(grand_total, 2)
 
     if opp:
-        opp.quote_id = quote.id
-        if opp.stage in ("lead", "contacted", "screening"):
-            opp.stage = "quote"
+        await link_quote_to_deal(db, quote, "buyer", opp)
 
     await db.commit()
     dest = return_to or f"/crm/quotes/{quote.id}"
@@ -441,10 +523,29 @@ async def quote_detail(
         contact = cr.scalar_one_or_none()
 
     opp = None
-    opp_r = await db.execute(
-        select(CRMSalesOpportunity).where(CRMSalesOpportunity.quote_id == quote.id)
-    )
-    opp = opp_r.scalar_one_or_none()
+    if quote.opportunity_id:
+        opp = (await db.execute(select(CRMSalesOpportunity).where(
+            CRMSalesOpportunity.id == quote.opportunity_id))).scalar_one_or_none()
+    if not opp:
+        opp = (await db.execute(select(CRMSalesOpportunity).where(
+            CRMSalesOpportunity.quote_id == quote.id))).scalars().first()
+
+    # Supplier quote's Sourcing Deal, and — for an unlinked quote — the open
+    # deals of the matching type for this account to Link to (2026-11-01).
+    from models.crm import CRMSourcingDeal
+    sdeal = None
+    if quote.sourcing_deal_id:
+        sdeal = (await db.execute(select(CRMSourcingDeal).where(
+            CRMSourcingDeal.id == quote.sourcing_deal_id))).scalar_one_or_none()
+    link_kind, link_deals = None, []
+    if not opp and not sdeal:
+        ctype = (contact.contact_type if contact else "") or "buyer"
+        link_kind = "supplier" if ctype == "supplier" else "buyer"
+        model = CRMSourcingDeal if link_kind == "supplier" else CRMSalesOpportunity
+        dq = select(model).where(model.stage.notin_(("won", "lost")))
+        if quote.contact_id:
+            dq = dq.where(model.contact_id == quote.contact_id)
+        link_deals = (await db.execute(dq.order_by(model.created_at.desc()))).scalars().all()
 
     material_map = dict(MATERIAL_TYPES)
     today = date.today()
@@ -455,6 +556,7 @@ async def quote_detail(
         "request": request, "current_user": current_user,
         "quote": quote, "items": items, "contact": contact, "opp": opp,
         "material_map": material_map, "is_expired": is_expired, "today": today,
+        "sdeal": sdeal, "link_kind": link_kind, "link_deals": link_deals,
     })
 
 
@@ -660,3 +762,35 @@ async def update_status(
         quote.sent_at = app_now()
     await db.commit()
     return RedirectResponse(url=f"/crm/quotes/{quote_id}?success=Status+updated+to+{new_status}", status_code=302)
+
+
+# ── LINK TO DEAL (quotes saved with "Create Deal Later", 2026-11-01) ──────────
+
+@router.post("/{quote_id}/link-deal")
+async def link_deal(
+    request: Request, quote_id: str,
+    deal_kind: str = Form(...),
+    deal_id: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from uuid import UUID as _U
+    from services.audit_engine import audit
+    from models.crm import CRMSourcingDeal
+    try:
+        quote = (await db.execute(select(CRMQuote).where(CRMQuote.id == _U(quote_id)))).scalar_one_or_none()
+        did = _U(deal_id)
+    except ValueError:
+        quote = None
+    if not quote:
+        return RedirectResponse(url="/crm/quotes?error=Quote+not+found", status_code=302)
+    model = CRMSourcingDeal if deal_kind == "supplier" else CRMSalesOpportunity
+    deal = (await db.execute(select(model).where(model.id == did))).scalar_one_or_none()
+    if not deal:
+        return RedirectResponse(url=f"/crm/quotes/{quote_id}?error=Deal+not+found", status_code=302)
+    await link_quote_to_deal(db, quote, "supplier" if deal_kind == "supplier" else "buyer", deal)
+    num = getattr(deal, "deal_number", None) or getattr(deal, "opp_number", "")
+    await audit(db, action="CRM_QUOTE_LINKED_TO_DEAL", user=current_user, table_name="crm_quotes",
+                record_id=str(quote.id), new_value={"deal": num, "kind": deal_kind}, request=request)
+    await db.commit()
+    return RedirectResponse(url=f"/crm/quotes/{quote_id}?success=Linked+to+{num}", status_code=302)

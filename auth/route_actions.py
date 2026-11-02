@@ -333,6 +333,8 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/storage-type-fix'): None,  # storage_type_fix_apply: system health data fix (admin-only), 2026-10-29
     ('POST', '/admin/system/part-name-fix'): None,  # part_name_fix: system health data fix (admin-only) — Part Name to the Parts Consumption names, 2026-10-31
     ('POST', '/admin/system/parts-crate-fix'): None,  # parts_crate_fix: system health data fix (admin-only) — spare parts crate rows, 2026-10-31
+    ('POST', '/admin/system/grn-tax-fix'): None,  # grn_tax_fix: system health data fix (admin-only) — tax on old GRNs from a picked Vendor State, 2026-11-02
+    ('POST', '/admin/system/repair-trc-floor-fix'): None,  # repair_trc_floor_fix: system health data fix (admin-only) — repair-stage tags moved to TRC Floor, 2026-10-31
     ('POST', '/admin/system/parts-cleanup'): None,  # parts_cleanup: system health data fix (admin-only) — one price per part + blank-crate merges, 2026-10-31
     ('POST', '/admin/system/device-type-12-fix'): None,  # device_type_12_fix: system health data fix (admin-only) — Device Type to the 12 categories, 2026-10-30
     ('POST', '/admin/system/rts-wo-close'): None,  # rts_wo_close_apply: system health internals (admin-only), 2026-10-28
@@ -444,6 +446,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/contacts/new'): ('crm_contacts', 'add'),  # create_contact
     ('POST', '/crm/contacts/{contact_id}/edit'): ('crm_contacts', 'edit'),  # update_contact
     ('POST', '/crm/contacts/{contact_id}/verify-kyc'): ('crm_contacts', 'edit'),  # verify_kyc
+    ('POST', '/crm/contacts/{contact_id}/verify-credit'): ('crm_contacts', 'edit'),  # verify_credit
     ('POST', '/crm/contacts/{contact_id}/trash'): ('crm_contacts', 'delete'),  # trash_contact: soft delete
     ('POST', '/crm/contacts/{contact_id}/restore'): ('crm_contacts', 'edit'),  # restore_contact: restore from trash
     # ===== routers/crm_sourcing.py =====
@@ -477,6 +480,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/quotes/from-lot'): ('crm_quotes', 'add'),  # create_quote_from_lot: Quotes row in the matrix
     ('POST', '/crm/quotes/{quote_id}/generate'): (('crm_quotes', 'crm_sales_opp', 'crm_contacts'), 'export'),  # generate_quote_doc: generate + download document
     ('POST', '/crm/quotes/{quote_id}/status'): ('crm_quotes', 'edit'),  # update_status: Quotes row in the matrix
+    ('POST', '/crm/quotes/{quote_id}/link-deal'): ('crm_quotes', 'edit'),  # link_deal: link a standalone quote to a deal
     # ===== routers/crm_activities.py =====
     ('POST', '/crm/activities/log'): ('crm_dashboard', 'add'),  # log_activity: activity log; path resolves to crm_dashboard (/crm/)
     ('POST', '/crm/activities/{activity_id}/done'): ('crm_dashboard', 'edit'),  # mark_done
@@ -515,6 +519,8 @@ ROUTE_ACTIONS = {
     ('POST', '/accounts/customer-receipts/new'): ('finance_customer', 'add'),  # create_customer_receipt
     ('POST', '/accounts/customer-receipts/bulk-upload'): ('finance_customer', 'upload'),  # receipt_bulk_upload
     ('POST', '/accounts/po/{po_id}/complete-payment'): ('finance', 'edit'),  # complete_po_payment
+    ('POST', '/accounts/verify/{kind}/{record_id}'): ('finance', 'edit'),  # accounts_verify
+    ('POST', '/accounts/verify-kyc/{contact_id}'): ('crm_contacts', 'edit'),  # accounts_verify_kyc
     ('POST', '/accounts/po/{po_id}/upload-invoice'): ('finance', 'edit'),  # upload_po_invoice: single invoice attachment
     ('POST', '/accounts/quote/{quote_id}/complete-payment'): ('finance', 'edit'),  # complete_quote_payment
     ('POST', '/accounts/quote/{quote_id}/upload-invoice'): ('finance', 'edit'),  # upload_quote_invoice: single invoice attachment

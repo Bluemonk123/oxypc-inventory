@@ -389,6 +389,9 @@
       <li><a href="/crm/quotes" class="nav-link {% if request.url.path.startswith('/crm/quotes') %}active{% endif %}">
         <i class="bi bi-file-earmark-ruled me-2"></i> {{ sidebar_label('crm_quotes', 'Quotes') }}
       </a></li>
+      <li><a href="/crm/sales-orders" class="nav-link {% if request.url.path.startswith('/crm/sales-orders') %}active{% endif %}">
+        <i class="bi bi-receipt me-2"></i> {{ sidebar_label('crm_sales_orders', 'Sales Orders') }}
+      </a></li>
       {% endif %}
       {% if has_perm(role,'crm_purchase_orders','enable') and not module_hidden('crm_purchase_orders') %}
       <li><a href="/crm/purchase-orders" class="nav-link {% if request.url.path.startswith('/crm/purchase-orders') %}active{% endif %}">

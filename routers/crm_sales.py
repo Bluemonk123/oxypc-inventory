@@ -246,13 +246,27 @@ async def opp_detail(
     # opportunity, plus this deal's own quote_id, so a quote linked before the
     # opportunity_id was recorded still shows up.
     from routers.crm_quotes import quote_summary_rows, active_terms_by_type
+    from sqlalchemy import or_ as _orq
+    _qc = [CRMQuote.opportunity_id == opp.id] + ([CRMQuote.id == opp.quote_id] if opp.quote_id else [])
     deal_quotes = (await db.execute(
-        select(CRMQuote)
-        .join(CRMSalesOpportunity, CRMSalesOpportunity.quote_id == CRMQuote.id)
-        .where(CRMSalesOpportunity.id == opp.id)
-        .order_by(CRMQuote.created_at.desc())
+        select(CRMQuote).where(_orq(*_qc)).order_by(CRMQuote.created_at.desc())
     )).scalars().all()
     quote_rows = await quote_summary_rows(db, deal_quotes)
+    # Sales Orders raised from this deal's approved quotations (2026-11-01)
+    from models.crm import CRMSalesOrder
+    from sqlalchemy.orm import selectinload as _sil
+    deal_sales_orders = (await db.execute(
+        select(CRMSalesOrder).options(_sil(CRMSalesOrder.quote), _sil(CRMSalesOrder.items))
+        .where(CRMSalesOrder.deal_id == opp.id)
+        .order_by(CRMSalesOrder.created_at.desc())
+    )).scalars().all()
+    from models.crm import CustomerReceipt as _CR
+    from sqlalchemy import or_ as _or
+    _so_ids = [s.id for s in deal_sales_orders]
+    _conds = [_CR.opportunity_id == opp.id] + ([_CR.so_id.in_(_so_ids)] if _so_ids else [])
+    deal_receipts = (await db.execute(
+        select(_CR).where(_or(*_conds)).order_by(_CR.created_at.desc())
+    )).scalars().all()
     terms_by_type = await active_terms_by_type(db)
     from models.company import Company
     companies = (await db.execute(
@@ -291,6 +305,8 @@ async def opp_detail(
         "opp": opp, "contact": contact, "quote": quote, "activities": activities,
         "lot": lot,
         "quote_rows": quote_rows, "terms_by_type": terms_by_type,
+        "deal_sales_orders": deal_sales_orders,
+        "deal_receipts": deal_receipts,
         "companies": companies,
         "next_fu": next_fu,
         "sales_stages": SALES_STAGES, "stage_list": stage_list, "current_idx": current_idx,
@@ -438,8 +454,14 @@ async def decide_step(
     await audit(db, action="CRM_SALES_STEP_DECIDED", user=current_user, table_name="crm_sales_steps",
                 record_id=str(opp.id), old_value=old,
                 new_value={"step": step_key, "status": decision, "note": step.note}, request=request)
+    so_msg = ""
+    if step_key == "quote_l2" and decision == "approved":
+        from services.sales_orders import create_sales_order_from_deal
+        so = await create_sales_order_from_deal(db, opp, current_user, request)
+        if so:
+            so_msg = f" — Sales Order {so.so_number} created"
     await db.commit()
-    return _back(opp_id, f"{label} {decision}")
+    return _back(opp_id, f"{label} {decision}{so_msg}")
 
 
 @router.post("/{opp_id}/steps/{step_key}/attach")

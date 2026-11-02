@@ -120,6 +120,26 @@
                       {% else %}<span class="text-muted">Quote: —</span>{% endif %}
                     </div>
                     {% endif %}
+                    {% if val == 'sales_order' %}
+                    {% set latest_so = deal_sales_orders[0] if deal_sales_orders else none %}
+                    <div class="sd-item justify-content-end">
+                      {% if latest_so %}<a href="/crm/sales-orders/{{ latest_so.id }}" class="text-decoration-none" title="Sales Order raised from this deal"><i class="bi bi-paperclip"></i>{{ latest_so.so_number }}</a>{% if latest_so.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ latest_so.verified_by if latest_so.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
+                      {% else %}<span class="text-muted">SO: —</span>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if val == 'payment' %}
+                    {% for pm in deal_receipts %}
+                    <div class="sd-item justify-content-end" title="Customer payment {{ pm.created_at.strftime('%d-%m-%Y') if pm.created_at else '' }}">
+                      {% if pm.invoice_path %}<a href="/uploads/accounts/{{ pm.invoice_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Invoice</a>{% endif %}
+                      {% if pm.payment_photo_path %}<a href="/uploads/accounts/{{ pm.payment_photo_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Payment Proof</a>{% endif %}
+                      {% if not pm.invoice_path and not pm.payment_photo_path %}<span class="text-muted">Customer payment (no document)</span>{% endif %}
+                      {% if pm.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ pm.verified_by if pm.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
+                    </div>
+                    {% else %}
+                    <div class="sd-item justify-content-end"><span class="text-muted">Customer payment: —</span></div>
+                    {% endfor %}
+                    {% endif %}
+
                   </div>
                 </div>
                 {% elif val in ('won', 'lost') and opp.win_loss_reason %}
@@ -310,7 +330,7 @@
           <div class="col-6 col-md-3"><div class="small text-muted">Opp Number</div><code>{{ opp.opp_number }}</code></div>
           <div class="col-6 col-md-3"><div class="small text-muted">Title</div><div class="fw-semibold">{{ opp.title }}</div></div>
           <div class="col-6 col-md-3"><div class="small text-muted">Buyer</div>
-            {% if contact %}<a href="/crm/contacts/{{ contact.id }}" class="text-decoration-none">{{ contact.company_name }}</a>
+            {% if contact %}<a href="/crm/contacts/{{ contact.id }}" class="text-decoration-none">{{ contact.company_name }}</a>{% if contact.kyc_verified %}<span class="badge bg-success ms-1" title="KYC verified">KYC Verified</span>{% else %}<span class="badge bg-warning text-dark ms-1" title="KYC pending (Finance)">KYC Pending</span>{% endif %}
             {% if contact.contact_person %}<div class="small text-muted">{{ contact.contact_person }}</div>{% endif %}{% else %}—{% endif %}</div>
           <div class="col-6 col-md-3"><div class="small text-muted">Lot Number</div>
             {# Present only when this deal came from a won bid. #}
@@ -376,6 +396,39 @@
       .sd-acc-chev { transition: transform .15s; }
       .sd-acc:not(.collapsed) .sd-acc-chev { transform: rotate(180deg); }
     </style>
+
+    {# Sales Orders — raised when this deal's quotation passes Level 2 (2026-11-01) #}
+    <div class="card border-0 shadow-sm mb-3 hdr-card">
+      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-receipt me-1 text-primary"></i>Sales Orders ({{ deal_sales_orders|length }})</span>
+      </div>
+      <div class="card-body p-0">
+        {% if deal_sales_orders %}
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0">
+            <thead class="table-light"><tr><th>SO ID</th><th>Quote</th><th class="text-end">Total Models</th><th class="text-end">Total Quantity</th><th class="text-end">Total Price</th><th>Date</th><th class="text-center">Accounts</th><th class="text-center">Action</th></tr></thead>
+            <tbody>
+              {% for so in deal_sales_orders %}
+              <tr>
+                <td class="small"><a href="/crm/sales-orders/{{ so.id }}" class="fw-semibold text-decoration-none">{{ so.so_number }}</a>
+                  {% if so.status == 'cancelled' %}<span class="badge bg-secondary ms-1">Cancelled</span>{% endif %}</td>
+                <td class="small font-monospace">{% if so.quote %}<a href="/crm/quotes/{{ so.quote.id }}" class="text-decoration-none">{{ so.quote.quote_number }}</a>{% else %}—{% endif %}</td>
+                <td class="small text-end">{{ so.items|length }}</td>
+                <td class="small text-end">{{ so.items|sum(attribute='quantity') }}</td>
+                <td class="small text-end">{% if can(current_user, 'crm_sales_opp', 'pricing') %}₹{{ (so.total_amount or 0) | inr }}{% else %}—{% endif %}</td>
+                <td class="small">{{ so.so_date.strftime('%d-%m-%Y') if so.so_date else '—' }}</td>
+                <td class="text-center">{% if so.verified %}<span class="badge bg-success">Verified</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
+                <td class="text-center"><a href="/crm/sales-orders/{{ so.id }}" class="btn btn-sm btn-outline-primary py-0 px-2" title="View"><i class="bi bi-eye"></i></a></td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div class="p-3 text-muted small">No sales order yet — one is created when the quotation is approved at Level 2.</div>
+        {% endif %}
+      </div>
+    </div>
 
     {# Quotes Generated — same section as the Account page, shared partial.
        Bid Won needs no lot picker here: Opportunity Info already fixes the lot,

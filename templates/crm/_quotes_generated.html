@@ -97,11 +97,13 @@
             <strong>Quote for Direct Deal</strong>
             <div class="small text-muted">Build the line items by hand.</div>
           </a>
+          {% if not nq_hide_bid_won|default(false) %}
           <button type="button" class="btn btn-outline-success text-start" id="bidWonBtn">
             <i class="bi bi-trophy me-2"></i>
             <strong>Quote for Bid Won</strong>
             <div class="small text-muted">Pull the model summary straight from the won lot.</div>
           </button>
+          {% endif %}
         </div>
       </div>
     </div>

@@ -226,9 +226,9 @@ async def create_part_requests_batch(
 
 
 async def _handover_options(db, reqs) -> list:
-    """Per request: the Part Master crate rows it can be handed over from —
-    every live row with the request's Part Name (New and Harvest, any
-    Make / Model), each with its live count."""
+    """Per request: the Part Master rows it can be handed over from — live
+    rows with the request's Part Name (+ its Make / Model when the request
+    has them), New and Harvest, each with its live count."""
     from services.parts_stock import live_map, norm
     names = {norm(r.part_name) for r in reqs if norm(r.part_name)}
     rows = []
@@ -240,9 +240,16 @@ async def _handover_options(db, reqs) -> list:
     out = []
     for r in reqs:
         mine = [p for p in rows if norm(p.name) == norm(r.part_name)]
+        # 2026-11-02: deduct by Type + Name + Make + Model — when the request
+        # carries a Make / Model, only rows of that Make / Model qualify.
+        if norm(r.part_make):
+            mine = [p for p in mine if norm(p.make) == norm(r.part_make)]
+        if norm(r.part_model):
+            mine = [p for p in mine if norm(p.model) == norm(r.part_model)]
         mine.sort(key=lambda p: (-live[str(p.id)], norm(p.crate_number)))
         out.append({
             "id": str(r.id), "part": r.part_name, "eng": r.engineer_name or r.requested_by or "",
+            "make": r.part_make or "", "model": r.part_model or "",
             "qty": int(r.qty_requested or 0), "status": r.status, "barcode": r.barcode or "",
             "rows": [{"id": str(p.id), "crate": p.crate_number or "", "make": p.make or "",
                       "model": p.model or "", "source": "harvest" if p.source == "harvest" else "new",
