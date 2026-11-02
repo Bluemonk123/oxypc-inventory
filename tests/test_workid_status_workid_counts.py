@@ -38,7 +38,8 @@ def test_stage_tiles_count_workids():
         {"stage_value": "l3", "barcode": "T3", "wo_status": "completed", "scrap": "Normal Scrap", "qc_result": ""},
     ]
     t = _stage_tile_counts_from_items(items)
-    assert t["cosmetic"]["assigned"] == 3 and t["cosmetic"]["completed"] == 3 and t["cosmetic"]["pass"] == 1
+    # Cosmetic counts TAGS (2026-11-02): T1's three sub-stage WorkIDs = 1 tag
+    assert t["cosmetic"]["assigned"] == 1 and t["cosmetic"]["completed"] == 1 and t["cosmetic"]["pass"] == 1
     assert t["l1l2"]["assigned"] == 1 and t["l1l2"]["completed"] == 0
     assert t["l3l4"]["scrap"] == 1 and t["l3l4"]["completed"] == 0
 

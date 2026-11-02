@@ -525,10 +525,19 @@ def _stage_tile_counts_from_items(items) -> dict:
     (scrap decisions apart), so Assigned = Completed + open + Scrap."""
     counts = {key: {"assigned": 0, "completed": 0, "scrap": 0, "waiting": 0, "pass": 0, "fail": 0}
               for key, *_ in STAGE_GROUPS}
+    cos_tags: dict = {}      # Cosmetic tile counts TAGS (2026-11-02): tag -> [has open, has done]
     for it in items:
-        g = counts.get(_stage_group(it.get("stage_value")))
+        grp = _stage_group(it.get("stage_value"))
+        g = counts.get(grp)
         if g is None:
             continue
+        if grp == "cosmetic":
+            t = cos_tags.setdefault(it.get("barcode"), [False, False])
+            _cs = _count_status(it)
+            if _is_done(_cs):
+                t[1] = True
+            elif _cs != "reassigned":       # reassigned = closed, neither open nor done
+                t[0] = True
         g["assigned"] += 1
         if it.get("waiting"):
             g["waiting"] += 1
@@ -540,7 +549,20 @@ def _stage_tile_counts_from_items(items) -> dict:
         # rows that count (in the date range, when there is one).
         if it.get("qc_result") in ("pass", "fail"):
             g[it["qc_result"]] += 1
+    _cosmetic_as_tags(counts, cos_tags)
     return counts
+
+
+def _cosmetic_as_tags(counts, cos_tags):
+    """Cosmetic tile in TAGS, not WorkIDs (2026-11-02, Pankaj): every Cosmetic
+    sub-stage (Cleaning, Putty, Painting, Water Sanding...) opens its own
+    WorkID, so one tag added 4+ to the tile. Assigned = distinct tags with a
+    Cosmetic WorkID in this view; Completed = those with no Cosmetic WorkID
+    still open. Pass / Fail already count one exit per tag. The table still
+    lists every sub-stage WorkID."""
+    if "cosmetic" in counts:
+        counts["cosmetic"]["assigned"] = len(cos_tags)
+        counts["cosmetic"]["completed"] = sum(1 for o, d in cos_tags.values() if d and not o)
 
 
 def _rows_json(items) -> str:
@@ -782,10 +804,17 @@ async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_a
         enriched.append((code, st, wid, bc, ca, scr, au, an, mvs, grp, cx, cx_at))
     keep = _cosmetic_exit_owners((i, r[3], r[11], r[4]) for i, r in enumerate(enriched)
                                  if r[9] == "cosmetic" and r[10] is not None and r[11] is not None)
+    cos_tags: dict = {}
     for i, (code, st, wid, bc, ca, scr, au, an, mvs, grp, cx, cx_at) in enumerate(enriched):
         g = counts.get(grp)
         if g is None:
             continue
+        if grp == "cosmetic":
+            t = cos_tags.setdefault(bc, [False, False])
+            if _is_done(st) and not (w_range and not (ca and w_range[0] <= ca <= w_range[1])):
+                t[1] = True
+            elif not _is_done(st) and st != "reassigned":
+                t[0] = True
         g["assigned"] += 1
         if au is None and not (an or "").strip() and st not in ("completed", "reassigned"):
             g["waiting"] += 1
@@ -800,6 +829,7 @@ async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_a
         if cx is not None and grp == "cosmetic" and i in keep and not (
                 w_range and not (cx_at and w_range[0] <= cx_at <= w_range[1])):
             g["pass" if _sv(cx) == "final_qc" else "fail"] += 1
+    _cosmetic_as_tags(counts, cos_tags)
     return counts
 
 
@@ -1499,8 +1529,14 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
             .distinct()
         )).all()
     else:
-        eng_rows = [(wo.assigned_username, wo.assigned_name)
-                    for wo, _dev in rows if wo.assigned_username]
+        # Every engineer this user can see (2026-11-02) — not just the loaded
+        # rows: after filtering by one engineer the rows held only that one,
+        # so the dropdown (shown only with 2+ names) disappeared until Reset.
+        eng_rows = (await db.execute(
+            select(WorkOrder.assigned_username, WorkOrder.assigned_name)
+            .where(WorkOrder.assigned_username.in_(visible_usernames))
+            .distinct()
+        )).all()
     # Current Full Names (2026-10-30), same as the table, so a renamed
     # engineer is listed once under the new name.
     _cur = dict((await db.execute(select(User.username, User.full_name).where(
@@ -1665,7 +1701,7 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
 
     def _bucket():
         b = {k: 0 for k in _KEYS}
-        b.update({"tags": set(), "days": [], "groups": {}})
+        b.update({"tags": set(), "days": [], "groups": {}, "cos_tags": set()})
         return b
 
     def _add(b, it):
@@ -1684,6 +1720,8 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
         if st == "Completed" and it.get("days") is not None:
             b["days"].append(it["days"])
         b["groups"][grp] = b["groups"].get(grp, 0) + 1
+        if grp == "cosmetic" and it.get("barcode") and it["barcode"] != "—":
+            b["cos_tags"].add(it["barcode"])      # Cosmetic Tags (2026-11-02), like the page tile
 
     def _avg(days):
         return round(sum(days) / len(days), 1) if days else ""
@@ -1714,10 +1752,24 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             return [_n(b, "cos_pass"), _n(b, "cos_fail")]
         return ["", ""]
 
-    stage_rows = [[group_label[g], lbl, _n(b, "total"), _n(b, "tags"), _n(b, "assigned"), _n(b, "completed")]
-                  + _pf(b, g) + [_n(b, "scrap"), _n(b, "reassigned"), _n(b, "pna"), _avg(b["days"])]
-                  for (g, lbl), b in sorted(by_stage.items(),
-                                             key=lambda kv: (group_order.index(kv[0][0]), kv[0][1]))]
+    def _stage_row(g, lbl, b):
+        return ([group_label[g], lbl, _n(b, "total"), _n(b, "tags"), _n(b, "assigned"), _n(b, "completed")]
+                + _pf(b, g) + [_n(b, "scrap"), _n(b, "reassigned"), _n(b, "pna"), _avg(b["days"])])
+    stage_rows = []
+    _ordered = sorted(by_stage.items(), key=lambda kv: (group_order.index(kv[0][0]), kv[0][1]))
+    for gi, g in enumerate(group_order):
+        part = [(lbl, b) for (gg, lbl), b in _ordered if gg == g]
+        for lbl, b in part:
+            stage_rows.append(_stage_row(g, lbl, b))
+        # A group spread over several stages (Cosmetic: Cleaning, Putty,
+        # Painting...) gets an "All stages" row (2026-11-02): its WorkIDs, and
+        # its distinct Tags — the number the page's Cosmetic tile shows.
+        if len(part) > 1:
+            gb = _bucket()
+            for it in items:
+                if _stage_group(it.get("stage_value")) == g:
+                    _add(gb, it)
+            stage_rows.append(_stage_row(g, f"All {group_label[g]} stages", gb))
     _sheet(wb.create_sheet("Stage Summary"),
            ["Stage Group", "Stage", "Total WorkIDs", "Tags", "Open WorkIDs", "Completed WorkIDs",
             "Pass", "Fail",
@@ -1734,7 +1786,7 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
         _add(by_eng.setdefault(it.get("engineer") or "—", _bucket()), it)
     staff_rows = [[eng, _n(b, "total"), _n(b, "tags"), _n(b, "assigned"), _n(b, "completed"), _n(b, "scrap"),
                    _n(b, "reassigned")]
-                  + [b["groups"].get(g, 0) for g in group_order]
+                  + [b["groups"].get(g, 0) for g in group_order] + [len(b["cos_tags"])]
                   + [_n(b, "stress_pass"), _n(b, "stress_fail"), _n(b, "cos_pass"), _n(b, "cos_fail"),
                      _n(b, "fqc_pass"), _n(b, "fqc_fail")]
                   + [_n(b, "pna"), _avg(b["days"])]
@@ -1742,13 +1794,13 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     _sheet(wb.create_sheet("Staff Summary"),
            ["Engineer", "Total WorkIDs", "Tags", "Open WorkIDs", "Completed WorkIDs", "Scrap WorkIDs",
             "Reassigned WorkIDs"]
-           + [group_label[g] + " WorkIDs" for g in group_order]
+           + [group_label[g] + " WorkIDs" for g in group_order] + ["Cosmetic Tags"]
            + ["Stress Pass", "Stress Fail", "Cosmetic Pass", "Cosmetic Fail", "Final QC Pass", "Final QC Fail"]
            + ["WorkIDs with PNA", "Avg Days to Complete"],
            staff_rows,
            ["Total", _n(total_b, "total"), _n(total_b, "tags"), _n(total_b, "assigned"), _n(total_b, "completed"),
             _n(total_b, "scrap"), _n(total_b, "reassigned")]
-           + [total_b["groups"].get(g, 0) for g in group_order]
+           + [total_b["groups"].get(g, 0) for g in group_order] + [len(total_b["cos_tags"])]
            + [_n(total_b, "stress_pass"), _n(total_b, "stress_fail"), _n(total_b, "cos_pass"),
               _n(total_b, "cos_fail"), _n(total_b, "fqc_pass"), _n(total_b, "fqc_fail")]
            + [_n(total_b, "pna"), _avg(total_b["days"])])

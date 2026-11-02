@@ -907,6 +907,19 @@ async def parts_cleanup(request: Request, current_user: User = Depends(admin_onl
     return back or JSONResponse(res)
 
 
+@router.post("/harvest-rename-fix")
+async def harvest_rename_fix(request: Request, current_user: User = Depends(admin_only)):
+    """Data Fix (2026-11-02): see services/parts_stock.harvest_unmatched_plan."""
+    from database import AsyncSessionLocal
+    from services.parts_stock import harvest_rename_apply
+    form = await request.form()
+    picks = {k[3:]: v for k, v in form.multi_items() if k.startswith("hv_") and "|||" in (v or "")}
+    async with AsyncSessionLocal() as db:
+        res = await harvest_rename_apply(db, current_user, picks, request)
+    back = _back_to_page(form, f"Harvest parts renamed: {res['renamed']} (merged into an existing row: {res['merged']}).")
+    return back or JSONResponse(res)
+
+
 @router.post("/grn-tax-fix")
 async def grn_tax_fix(request: Request, current_user: User = Depends(admin_only)):
     """Data Fix (2026-11-02): see services/grn_tax.tax_backfill_rows."""
@@ -1936,6 +1949,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         pmulti = await crates_with_several_parts(db)
         from services.repair_location import trc_floor_plan
         trcfix = await trc_floor_plan(db)
+        from services.parts_stock import harvest_unmatched_plan
+        hvmatch = await harvest_unmatched_plan(db)
         from services.grn_tax import tax_backfill_rows, gst_rates
         from utils.master_data import master_values
         grntax = await tax_backfill_rows(db)
@@ -1992,6 +2007,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "dt12_list": DEVICE_TYPES_12,
         "pname": [{"code": c, "old": o, "new": n, "m0": m0, "m1": m1} for _i, c, o, n, m0, m1 in pname],
         "pcrate": pcrate, "pclean": pclean, "pmulti": pmulti,
+        "hvmatch": hvmatch,
         "grntax": grntax, "grntax_total": len(grntax["device"]) + len(grntax["parts"]),
         "grntax_rates": grntax_rates, "state_options": state_options,
         "trcfix_total": len(trcfix["rows"]), "trcfix_rows": trcfix["rows"][:300], "trcfix_has_trc": trcfix["trc"],

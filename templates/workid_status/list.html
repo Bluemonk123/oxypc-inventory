@@ -26,7 +26,7 @@
     {{ ms.multiselect('cosmetic_stage', 'Stage', cosmetic_stage_choices, f_cosmetic_stage, '') }}
     {# Shown whenever there is more than one engineer in view — an
        attendance-group manager needs it as much as an admin does. #}
-    {% if engineers and engineers|length > 1 %}
+    {% if (engineers and engineers|length > 1) or f_engineer %}   {# stays while filtered (2026-11-02) #}
     <div>
       <select name="engineer" class="form-select form-select-sm" title="Engineer">
         <option value="">All Engineers</option>
@@ -155,12 +155,12 @@
         <span class="lt-tile-count" data-k="started" data-server="{{ _pc.started }}">{{ _pc.started }}</span><span class="wid-stage-sub">Started</span>
       </div>
       {% else %}
-      <div class="wid-stage-line" title="WorkIDs in this stage (open or completed)">
-        <span class="lt-tile-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">Assigned</span>
+      <div class="wid-stage-line" title="{{ 'Tags with a Cosmetic WorkID in this view (each Cosmetic sub-stage has its own WorkID; the table lists them all)' if key == 'cosmetic' else 'WorkIDs in this stage (open or completed)' }}">
+        <span class="lt-tile-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">{{ 'Tags Assigned' if key == 'cosmetic' else 'Assigned' }}</span>
       </div>
       {% endif %}
-      <div class="wid-stage-line" title="Completed WorkIDs (scrap decisions not included)">
-        <span class="lt-tile-count" data-k="completed" data-server="{{ t.completed }}">{{ t.completed }}</span><span class="wid-stage-sub">Completed</span>
+      <div class="wid-stage-line" title="{{ 'Tags whose Cosmetic WorkIDs are all completed (none still open)' if key == 'cosmetic' else 'Completed WorkIDs (scrap decisions not included)' }}">
+        <span class="lt-tile-count" data-k="completed" data-server="{{ t.completed }}">{{ t.completed }}</span><span class="wid-stage-sub">{{ 'Tags Completed' if key == 'cosmetic' else 'Completed' }}</span>
       </div>
       {% if key in ('stress', 'final_qc', 'cosmetic') %}
       {# Pass | Fail (2026-10-28): completed Stress / Final QC WorkIDs by where the tag went next. #}
@@ -470,9 +470,19 @@ $(document).ready(function(){
     document.querySelectorAll('#widStageTiles [data-group]').forEach(function (g) {
       var stages = (g.getAttribute('data-stages') || '').split(',');
       var mine = useServer ? [] : list.filter(function (r) { return stages.indexOf(r.sv) >= 0; });
+      var isCos = g.getAttribute('data-group') === 'cosmetic';
       g.querySelectorAll('[data-k]').forEach(function (el) {
         var k = el.getAttribute('data-k');
         if (useServer || k === 'moved' || k === 'started') { el.textContent = el.getAttribute('data-server'); return; }   // Moved: never recounted
+        if (isCos && (k === 'assigned' || k === 'completed')) {      // Cosmetic counts TAGS (2026-11-02)
+          var byTag = {};
+          mine.forEach(function (r) { var t = byTag[r.b] = byTag[r.b] || [false, false];
+            if (r.st === 'completed') t[1] = true; else if (r.st !== 'reassigned') t[0] = true; });
+          var keys = Object.keys(byTag);
+          el.textContent = k === 'assigned' ? keys.length
+            : keys.filter(function (b) { return byTag[b][1] && !byTag[b][0]; }).length;
+          return;
+        }
         el.textContent = _tagSet(mine, k === 'scrap' ? function (r) { return !!r.x; }
                                     : k === 'completed' ? TILE_TEST.completed
                                     : (k === 'pass' || k === 'fail') ? function (r) { return r.sr === k; }

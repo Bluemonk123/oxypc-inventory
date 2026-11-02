@@ -569,3 +569,102 @@ async def cleanup_apply(db: AsyncSession, user=None, request=None, typo_merges=N
                 request=request)
     await db.commit()
     return {"ok": True, "prices": len(plan["prices"]), "merges": len(plan["merges"]) + len(done_typos)}
+
+
+# ── Data Fix (2026-11-02): Harvest rows whose Make / Model match no New part ──
+# A Harvest upload with model names typed differently from the New parts
+# ("E3420" vs "Latitude E3420", "Dell" vs "DELL INC") makes a separate part:
+# its own price, its own QTY Available. This lists every live Harvest row
+# whose Part Name + Make + Model has no New row, suggests the closest New
+# Make / Model of the same Part Name, and on Apply renames the row to it
+# (merging into an existing Harvest row of that part in the same crate).
+
+def _squash(v) -> str:
+    import re
+    return re.sub(r"[^0-9a-z]", "", norm(v))
+
+
+def _similarity(a_make, a_model, b_make, b_model) -> float:
+    from difflib import SequenceMatcher
+    am, bm = _squash(a_model), _squash(b_model)
+    ak, bk = _squash(a_make), _squash(b_make)
+    if am and bm and (am in bm or bm in am):
+        mscore = 0.9 + 0.1 * min(len(am), len(bm)) / max(len(am), len(bm))
+    else:
+        mscore = SequenceMatcher(None, am, bm).ratio() if (am or bm) else 1.0
+    kscore = 1.0 if (ak == bk or (ak and bk and (ak in bk or bk in ak))) else SequenceMatcher(None, ak, bk).ratio()
+    return round(0.75 * mscore + 0.25 * kscore, 3)
+
+
+async def harvest_unmatched_plan(db: AsyncSession) -> list:
+    rows = (await db.execute(select(SparePart).where(SparePart.is_trashed.isnot(True)))).scalars().all()
+    new_groups: dict = {}
+    for p in rows:
+        if p.source != "harvest":
+            new_groups.setdefault(norm(p.name), {}).setdefault(group_key(p.name, p.make, p.model), (p.make, p.model))
+    live = await live_map(db, rows)
+    out = []
+    for p in rows:
+        if p.source != "harvest":
+            continue
+        g = group_key(p.name, p.make, p.model)
+        cands = new_groups.get(norm(p.name), {})
+        if g in cands:
+            continue
+        sugg = sorted(({"make": mk or "", "model": md or "", "score": _similarity(p.make, p.model, mk, md)}
+                       for mk, md in cands.values()), key=lambda c: -c["score"])
+        out.append({"id": str(p.id), "code": p.part_code, "name": p.name, "make": p.make or "",
+                    "model": p.model or "", "crate": p.crate_number or "", "qty": live[str(p.id)],
+                    "best": sugg[0] if sugg and sugg[0]["score"] >= 0.9 else None,   # pre-select only near-certain matches
+                    "options": sugg[:8]})
+    out.sort(key=lambda r: (norm(r["name"]), -(r["best"]["score"] if r["best"] else 0)))
+    return out
+
+
+async def harvest_rename_apply(db: AsyncSession, user, picks: dict, request=None) -> dict:
+    """picks = {harvest row id: "make|||model"} — rename each to that New
+    part's Make / Model; merge into an existing Harvest row of the same part
+    and crate; then the Harvest price = the part's lowest GRN price."""
+    from services.audit_engine import audit
+    plan = {r["id"]: r for r in await harvest_unmatched_plan(db)}
+    done, merged, log = 0, 0, []
+    touched = set()
+    for rid, val in picks.items():
+        r = plan.get(rid)
+        if not r or "|||" not in (val or ""):
+            continue
+        mk, md = val.split("|||", 1)
+        if group_key(r["name"], mk, md) not in {group_key(r["name"], o["make"], o["model"]) for o in r["options"]}:
+            continue
+        row = await db.get(SparePart, __import__("uuid").UUID(rid))
+        if row is None or row.is_trashed:
+            continue
+        entry = {"id": rid, "code": row.part_code, "name": row.name, "crate": row.crate_number,
+                 "from": [row.make, row.model], "to": [mk or None, md or None]}
+        same = await find_row(db, row.name, mk, md, "harvest", row.crate_number)
+        if same is not None and str(same.id) != rid:
+            entry["merged_into"] = same.part_code
+            entry["qty_added"] = int(row.qty_in_stock or 0)
+            same.qty_in_stock = int(same.qty_in_stock or 0) + int(row.qty_in_stock or 0)
+            await _repoint_part(db, row, same)
+            merged += 1
+        else:
+            row.make, row.model = (mk or None), (md or None)
+        touched.add(group_key(row.name, mk, md) + (row.name,))
+        log.append(entry)
+        done += 1
+    for name_n, mk_n, md_n, name in touched:
+        low = await lowest_grn_price(db, name, mk_n, md_n)
+        if low is not None:
+            for p in await group_rows(db, name, mk_n, md_n):
+                if p.source == "harvest":
+                    p.unit_price = Decimal(str(low))
+    if done:
+        await audit(db, user=user, action="PARTS_HARVEST_RENAME", table_name="spare_parts",
+                    record_id=f"{done} harvest rows", new_value={"renamed": log},
+                    notes="Harvest rows renamed to the matching New part's Make / Model (merged into the "
+                          "existing Harvest row of that part + crate when there was one); Harvest price = "
+                          "lowest GRN price. Reverse: set 'from' back / untrash merged ids.",
+                    request=request)
+        await db.commit()
+    return {"ok": True, "renamed": done, "merged": merged}

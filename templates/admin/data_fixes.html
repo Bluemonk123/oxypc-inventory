@@ -284,6 +284,47 @@
   </div>
   {% endif %}
 
+  {# ── Harvest rows with no matching New part (2026-11-02) ── #}
+  {% if hvmatch %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm border-start border-warning border-3">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="fw-semibold"><i class="bi bi-recycle me-2"></i>Harvest parts whose Make / Model match no New part
+          <span class="badge bg-warning text-dark ms-1">{{ hvmatch | length }}</span></span>
+        <button type="submit" form="hvRenameForm" class="btn btn-sm btn-warning"
+                onclick="if(!this.dataset.ok){this.dataset.ok=1;this.innerHTML='Click again to rename';return false;}"><i class="bi bi-magic me-1"></i>Rename picked</button>
+      </div>
+      <div class="card-body small">
+        <p class="text-muted mb-2">These Harvest rows were added with a Make / Model typed differently from the New part (e.g. "E3420" vs "Latitude E3420"),
+          so they count as a separate part with their own price and QTY Available. Pick the New part each one really is
+          (the closest match is pre-selected when it is a strong match) and click <strong>Rename picked</strong>: the row takes that Make / Model
+          (merged into the existing Harvest row of that part in the same crate, if any) and its price becomes the part's lowest GRN price.
+          Rows left on "— keep as is —" are not changed.</p>
+        <form id="hvRenameForm" method="post" action="/admin/system/harvest-rename-fix">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <table class="table table-sm align-middle mb-0 w-auto">
+            <thead><tr><th>Part Code</th><th>Part Name</th><th>Harvest Make / Model</th><th>Crate</th><th class="text-end">Qty</th><th>Rename to (New part)</th></tr></thead>
+            <tbody>
+              {% for r in hvmatch %}<tr>
+                <td class="font-monospace">{{ r.code }}</td>
+                <td>{{ r.name }}</td>
+                <td class="fw-semibold">{{ r.make or '—' }} / {{ r.model or '—' }}</td>
+                <td>{{ r.crate or '—' }}</td>
+                <td class="text-end">{{ r.qty }}</td>
+                <td>{% if r.options %}<select name="hv_{{ r.id }}" class="form-select form-select-sm" style="min-width:260px">
+                    <option value="">— keep as is —</option>
+                    {% for o in r.options %}<option value="{{ o.make }}|||{{ o.model }}" {{ 'selected' if r.best and o.make == r.best.make and o.model == r.best.model }}>{{ o.make or '—' }} / {{ o.model or '—' }} ({{ (o.score * 100) | round | int }}% match)</option>{% endfor %}
+                  </select>{% else %}<span class="text-muted">No New part named "{{ r.name }}"</span>{% endif %}</td>
+              </tr>{% endfor %}
+            </tbody>
+          </table>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {# ── Old GRNs: Tax from a picked Vendor State (2026-11-02) ── #}
   {% if grntax_total %}
   <div class="col-12">

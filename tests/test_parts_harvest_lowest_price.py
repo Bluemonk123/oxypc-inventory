@@ -91,3 +91,39 @@ def test_upload_price_rules(app_client, make_user):  # noqa: F811
                     f"and is_trashed is not true") == "700.00"
     finally:
         _sql(f"update spare_parts set is_trashed = true where name = '{name}'")
+
+
+def test_harvest_unmatched_rename():
+    """Data Fix (2026-11-02): a Harvest row typed "DELL / E3420" when the New
+    part is "Dell / Latitude E3420" is listed with that New part suggested,
+    and Apply renames it (merging into a same-crate Harvest row)."""
+    nm = "ITHvRen" + uuid.uuid4().hex[:6]
+    r = subprocess.run([sys.executable, "-c", f"""
+import asyncio, sys, uuid
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import select
+from database import AsyncSessionLocal
+from models.spare_parts import SparePart
+from models.user import User
+from services.parts_stock import harvest_unmatched_plan, harvest_rename_apply
+async def main():
+    async with AsyncSessionLocal() as db:
+        mk = lambda **k: SparePart(part_code=uuid.uuid4().hex[:8], name="{nm}", category="Other", unit_price=1, **k)
+        new = mk(make="Dell", model="Latitude E3420", source="new", qty_in_stock=5, crate_number="R1")
+        h_ok = mk(make="Dell", model="Latitude E3420", source="harvest", qty_in_stock=2, crate_number="R1")
+        h_bad = mk(make="DELL", model="E3420", source="harvest", qty_in_stock=3, crate_number="R1")
+        db.add_all([new, h_ok, h_bad]); await db.commit()
+        plan = [p for p in await harvest_unmatched_plan(db) if p["name"] == "{nm}"]
+        best = plan[0]["best"] if plan else None
+        user = (await db.execute(select(User).limit(1))).scalar()
+        res = await harvest_rename_apply(db, user, {{str(h_bad.id): "Dell|||Latitude E3420"}})
+        await db.refresh(h_ok); await db.refresh(h_bad)
+        left = [p for p in await harvest_unmatched_plan(db) if p["name"] == "{nm}"]
+        print(len(plan), best["model"] if best else None, res["renamed"], res["merged"], h_ok.qty_in_stock, h_bad.is_trashed, len(left))
+        for p in (new, h_ok, h_bad):
+            await db.delete(p)
+        await db.commit()
+asyncio.run(main())
+"""], capture_output=True, text=True, cwd=ROOT, timeout=120)
+    assert r.returncode == 0, r.stderr[-2000:]
+    assert r.stdout.split() == ["1", "Latitude", "E3420", "1", "1", "5", "True", "0"], r.stdout

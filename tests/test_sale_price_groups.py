@@ -50,11 +50,15 @@ def test_new_sale_page_defaults_state_to_haryana_and_has_group_ui(monkeypatch):
     assert '<option value="Haryana" selected>' in html
     assert 'Delhi (default)' not in html
     assert 'name="price_groups"' in html
-    assert 'id="tagTableBox"' in html and 'id="ttApply"' in html and 'id="ttTarget"' in html
+    assert 'id="tagTableBox"' in html and 'id="ttApply"' in html
+    assert 'id="ttTarget"' not in html            # Apply to dropdown removed (2026-11-02)
+    assert 'Invoice Date' in html and 'Invoice Quantity' in html and 'Total Invoice Price' in html
     assert 'addGroupBtn' not in html
     assert 'New Tag Sale' in html and 'name="sale_page" value="tag"' in html
     assert 'max="500"' not in html            # the 500-unit Quantity cap is gone
-    assert '<th>Model</th>' not in html and 'Sale Price (&#8377;)</th>' in html
+    assert '<th>Model</th>' not in html and 'Unit Price (&#8377;)</th>' in html   # renamed 2026-11-02
+    # Model Based tab (2026-11-02): Category, Model Name, Quantity, Unit Price
+    assert 'id="ttModelPane"' in html and 'id="tmBody"' in html and '<th>Model Name</th>' in html
     # Reset is an icon button (no "Clear tag prices" text); Upload Tags ticks rows from a file
     assert 'Clear tag prices</button>' not in html
     assert 'id="ttClear"' in html and 'bi-arrow-counterclockwise' in html
