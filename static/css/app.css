@@ -659,6 +659,29 @@ fieldset:disabled .btn {
   border-color: #ced4da !important;
 }
 
+/* ── Global: dark shadow on a field on hover / focus / typing (2026-11-02) ──
+   Every text box, select, textarea and multi-select button app-wide. Fields
+   inside an input-group shadow the whole group instead, so the icon/addon and
+   the box read as one. Disabled fields stay flat. */
+.form-control, .form-select, .ms-filter .btn, .input-group {
+  transition: box-shadow .15s ease, border-color .15s ease;
+}
+.form-control:not(:disabled):hover, .form-select:not(:disabled):hover,
+.ms-filter .btn:hover, .input-group:hover {
+  box-shadow: 0 .2rem .5rem rgba(0, 0, 0, .25) !important;
+}
+.form-control:not(:disabled):focus, .form-select:not(:disabled):focus,
+.ms-filter .btn:focus, .ms-filter .btn.show, .input-group:focus-within {
+  box-shadow: 0 .25rem .65rem rgba(0, 0, 0, .4) !important;
+  border-color: #86a8d6;
+}
+.input-group > .form-control:hover, .input-group > .form-select:hover,
+.input-group > .form-control:focus, .input-group > .form-select:focus {
+  box-shadow: none !important;
+}
+.input-group { border-radius: var(--bs-border-radius); }
+.input-group-sm { border-radius: var(--bs-border-radius-sm); }
+
 /* Autosave "Restore / Close" banner (static/js/form-autosave.js): fixed just
    under the top header, centred, as wide as its content — not a full-width
    strip pushing the form down (2026-10-15). */
