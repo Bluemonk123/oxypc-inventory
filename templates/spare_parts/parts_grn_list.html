@@ -43,7 +43,7 @@
         <tbody>
           {% for g in grns %}
           <tr>
-            <td><code>{{ g.grn_number }}</code></td>
+            <td><a href="/parts-grn/{{ g.id }}" class="font-monospace fw-bold text-decoration-none" title="Open Parts GRN details">{{ g.grn_number }}</a></td>
             <td>{{ g.po_number or '—' }}</td>
             <td>{{ g.vendor_name or '—' }}</td>
             <td>{{ g.invoice_number or '—' }}</td>

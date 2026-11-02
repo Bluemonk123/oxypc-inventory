@@ -3,7 +3,7 @@
 A Part Master row = Part Name + Make + Model + New/Harvest + Crate.
 - Parts GRN adds the Physical Qty to the matching New crate row (Matched) or
   creates one (Not-Matched); its price goes to every row of the part.
-- Add Harvest adds to the Harvest crate row; price follows the latest GRN.
+- Add Harvest adds to the Harvest crate row; price = the lowest GRN price (2026-11-02).
 - Crate Matched / Not-Matched answer for the crate fields.
 - Update Count sets a crate row's count (audited).
 - Row stock mode: handover takes qty off the chosen crate row only, and is
@@ -79,7 +79,7 @@ def test_crate_rows_grn_harvest_count_handover(app_client, make_user):  # noqa: 
             assert j["ok"]
         hv = _sql(f"select qty_in_stock, unit_price from spare_parts where name = '{name}' "
                   f"and source = 'harvest' and is_trashed is not true")
-        assert hv == "5|120.00", hv                      # one row, price = latest GRN
+        assert hv == "5|100.00", hv                      # one row, Harvest price = LOWEST GRN (2026-11-02)
 
         rid = _sql(f"select id from spare_parts where name = '{name}' and crate_number = 'C-1' and source = 'new'")
         j = app_client.post(f"/spare-parts/{rid}/update-count", data={"csrf_token": csrf, "count": "6",

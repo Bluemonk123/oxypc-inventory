@@ -361,6 +361,16 @@ async def grn_detail(grn_id: str, request: Request, db: AsyncSession = Depends(g
         .order_by(PartsGRNLineItem.created_at)
     )
     line_items = items_res.scalars().all()
+    # Parts GRN Detail page (2026-11-02): read-only, laid out like the device
+    # GRN Detail page, with a Parts tab. ?form=1 keeps the old form view.
+    if request.query_params.get("form") != "1":
+        from models.user import User as _U
+        added_by = (await db.execute(select(_U.full_name).where(_U.username == grn.created_by))).scalar() \
+            if grn.created_by else None
+        return templates.TemplateResponse("spare_parts/parts_grn_detail.html", {
+            "request": request, "current_user": current_user, "grn": grn,
+            "line_items": line_items, "added_by": added_by,
+        })
     return templates.TemplateResponse("spare_parts/parts_grn_form.html", {
         "request": request, "current_user": current_user,
         "grn": grn, "grn_number": grn.grn_number, "line_items": line_items,
@@ -394,7 +404,7 @@ async def harvest_part(
     min_stock_alert: str = Form(default="5"),
     crate_number: str = Form(default=""),
 ):
-    from services.parts_stock import find_row, latest_grn_price, crate_conflict, conflict_text
+    from services.parts_stock import find_row, lowest_grn_price, crate_conflict, conflict_text
     _other = await crate_conflict(db, _f(part_name) or _f(product_description) or "Harvest Part",
                                   _f(part_brand), _f(part_model), crate_number)
     if _other is not None:
@@ -414,11 +424,12 @@ async def harvest_part(
     sp_name = _f(part_name) or _f(product_description) or "Harvest Part"
     sp_crate = _f(crate_number)
     # Crate rows (2026-10-31): add to the Harvest row for Part Name + Make +
-    # Model + this Crate when it exists, else create it. Price follows the
-    # latest Parts GRN unit price of the same Part Name + Make + Model; the
-    # entered price is used only when that part has never come in on a GRN.
+    # Model + this Crate when it exists, else create it. Harvest price = the
+    # LOWEST Parts GRN unit price of the same Part Name + Make + Model
+    # (2026-11-02; was the latest); the entered price is used only when that
+    # part has never come in on a GRN.
     row = await find_row(db, sp_name, _f(part_brand), _f(part_model), "harvest", sp_crate)
-    grn_price = await latest_grn_price(db, sp_name, _f(part_brand), _f(part_model))
+    grn_price = await lowest_grn_price(db, sp_name, _f(part_brand), _f(part_model))
     sp_price = grn_price if grn_price is not None else _d(price)
     part_id = row.part_code if row is not None else _new_part_id()
     db.add(PartsGRNLineItem(

@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Parts GRN {{ grn.grn_number }} — OxyPC{% endblock %}
+{% block page_title %}Parts GRN: {{ grn.grn_number }}{% endblock %}
+{% block content %}
+{# Parts GRN Detail (2026-11-02): read-only, same layout as the (device) GRN
+   Detail page — KPI cards, GRN & Invoice Details, Financial Breakdown — with
+   a Parts tab listing the GRN's line items instead of Device Tags / Models. #}
+{% set _pricing = can(current_user, 'spare_parts', 'pricing') %}
+{% set ns = namespace(phys=0) %}{% for li in line_items %}{% set ns.phys = ns.phys + (li.physical_qty or 0) %}{% endfor %}{% set _phys = ns.phys %}
+
+<div class="mb-3 d-flex gap-2">
+  <a href="/spare-parts" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Back to Parts Manager</a>
+  <a href="/parts-grn" class="btn btn-sm btn-outline-secondary"><i class="bi bi-list-ul me-1"></i>All Parts GRNs</a>
+</div>
+
+<!-- ── Top KPI Cards ── -->
+<div class="row g-3 mb-4">
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">Vendor</div><div class="fw-semibold small">{{ grn.vendor_name or '—' }}</div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">Vendor State</div><div class="fw-semibold small">{{ grn.vendor_state or '—' }}</div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">Invoice Qty / Parts Received</div>
+    <div class="fw-semibold">{{ grn.total_invoice_qty if grn.total_invoice_qty is not none else '—' }} / {{ _phys or 0 }}</div></div></div>
+  {% if _pricing %}
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">Invoice Price</div>
+    <div class="fw-semibold">{% if grn.invoice_value is not none %}₹{{ grn.invoice_value | inr }}{% else %}—{% endif %}</div></div></div>
+  {% endif %}
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">GRN Date</div>
+    <div class="fw-semibold">{{ grn.date_received.strftime('%d-%m-%Y') if grn.date_received else '—' }}</div></div></div>
+  <div class="col-md-2"><div class="card border-0 shadow-sm text-center p-3 h-100">
+    <div class="text-muted small mb-1">PO Date</div>
+    <div class="fw-semibold">{{ grn.po_date.strftime('%d-%m-%Y') if grn.po_date else '—' }}</div></div></div>
+</div>
+
+{% macro doc_link(file) -%}
+{% if file %}<a href="/uploads/parts_grn/{{ file }}" target="_blank" class="ms-2 small text-decoration-none"><i class="bi bi-paperclip"></i> View</a>{% endif %}
+{%- endmacro %}
+
+<div class="row g-4 mb-4">
+  <!-- ── GRN / Invoice Details ── -->
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-receipt me-2"></i>GRN &amp; Invoice Details</div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            <tr><th class="text-muted w-40">GRN Number</th><td class="font-monospace">{{ grn.grn_number }}</td></tr>
+            <tr><th class="text-muted">GRN Date</th><td>{{ grn.date_received.strftime('%d-%m-%Y') if grn.date_received else '—' }}</td></tr>
+            <tr><th class="text-muted">Vendor Name</th><td>{{ grn.vendor_name or '—' }}</td></tr>
+            <tr><th class="text-muted">Vendor State</th><td>{{ grn.vendor_state or '—' }}</td></tr>
+            <tr><th class="text-muted">PO Number</th><td><span class="font-monospace">{{ grn.po_number or '—' }}</span>
+              {% if grn.po_date %}<span class="text-muted small ms-2">{{ grn.po_date.strftime('%d-%m-%Y') }}</span>{% endif %}
+              {{ doc_link(grn.po_file) }}</td></tr>
+            <tr><th class="text-muted">Invoice No.</th><td><span class="font-monospace">{{ grn.invoice_number or '—' }}</span>
+              {% if grn.invoice_date %}<span class="text-muted small ms-2">{{ grn.invoice_date.strftime('%d-%m-%Y') }}</span>{% endif %}
+              {{ doc_link(grn.invoice_file) }}</td></tr>
+            <tr><th class="text-muted">E-Way Bill</th><td><span class="font-monospace">{{ grn.eway_bill_number or '—' }}</span>
+              {% if grn.eway_bill_date %}<span class="text-muted small ms-2">{{ grn.eway_bill_date.strftime('%d-%m-%Y') }}</span>{% endif %}
+              {{ doc_link(grn.eway_bill_file) }}</td></tr>
+            <tr><th class="text-muted">Vehicle No.</th><td>{{ grn.vehicle_number or '—' }}
+              {% if grn.vehicle_seal_file %}<a href="/uploads/parts_grn/{{ grn.vehicle_seal_file }}" target="_blank" class="ms-2 small text-decoration-none"><i class="bi bi-paperclip"></i> Seal</a>{% endif %}
+              {% if grn.vehicle_image_file %}<a href="/uploads/parts_grn/{{ grn.vehicle_image_file }}" target="_blank" class="ms-2 small text-decoration-none"><i class="bi bi-image"></i> Vehicle</a>{% endif %}</td></tr>
+            <tr><th class="text-muted">Added By</th><td>{{ added_by or grn.created_by or '—' }}{% if grn.created_at %} <span class="text-muted small">· {{ grn.created_at | ist_date }}</span>{% endif %}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Financial Breakdown ── -->
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-currency-rupee me-2"></i>Financial Breakdown</div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tbody>
+            {% if _pricing %}
+            {% set _intra = grn.cgst is not none or grn.sgst is not none %}
+            {% set _taxable = (grn.invoice_value - (grn.tax_amount or 0)) if grn.invoice_value is not none else none %}
+            <tr><th class="text-muted w-40">Invoice Price</th>
+                <td class="fw-semibold">{% if grn.invoice_value is not none %}₹{{ grn.invoice_value | inr(2) }}{% else %}—{% endif %}</td></tr>
+            <tr><th class="text-muted">GST</th>
+                <td>{% if grn.tax_amount %}{{ 'Intra-State (CGST + SGST)' if _intra else 'Inter-State (IGST)' }}{% else %}—{% endif %}</td></tr>
+            <tr><td colspan="2"><hr class="my-1"></td></tr>
+            {% if _intra %}
+            <tr><th class="text-muted">CGST</th><td>₹{{ (grn.cgst or 0) | inr(2) }}</td></tr>
+            <tr><th class="text-muted">SGST</th><td>₹{{ (grn.sgst or 0) | inr(2) }}</td></tr>
+            {% elif grn.igst is not none %}
+            <tr><th class="text-muted">IGST</th><td>₹{{ grn.igst | inr(2) }}</td></tr>
+            {% endif %}
+            <tr class="table-warning"><th>Tax Amount</th>
+                <td class="fw-bold">{% if grn.tax_amount is not none %}₹{{ grn.tax_amount | inr(2) }}{% else %}—{% endif %}</td></tr>
+            <tr class="table-primary"><th>Taxable Amount</th>
+                <td class="fw-bold">{% if _taxable is not none and grn.tax_amount is not none %}₹{{ _taxable | inr(2) }}{% else %}—{% endif %}</td></tr>
+            <tr><td colspan="2"><hr class="my-1"></td></tr>
+            {% endif %}
+            <tr><th class="text-muted w-40">PO Quantity</th><td>{{ grn.total_po_qty if grn.total_po_qty is not none else '—' }}</td></tr>
+            <tr><th class="text-muted">Invoice Quantity</th><td>{{ grn.total_invoice_qty if grn.total_invoice_qty is not none else '—' }}</td></tr>
+            <tr><th class="text-muted">Physical Quantity</th><td>{{ grn.total_physical_qty if grn.total_physical_qty is not none else '—' }}</td></tr>
+            <tr><th class="text-muted">Parts Received</th><td>{{ _phys or 0 }} <span class="text-muted small">({{ line_items | length }} line{{ 's' if line_items | length != 1 }})</span></td></tr>
+            <tr><td colspan="2"><hr class="my-1"></td></tr>
+            {% set _match = grn.total_physical_qty is not none and grn.total_physical_qty == _phys %}
+            <tr><th class="text-muted">Validated</th><td>{% if _match %}<span class="badge bg-success">Yes</span> <span class="small text-muted ms-1">Parts Received = Physical Quantity</span>{% else %}<span class="badge bg-secondary">No</span>{% if grn.total_physical_qty is not none %} <span class="small text-muted ms-1">Parts Received {{ _phys or 0 }} ≠ Physical Quantity {{ grn.total_physical_qty }}</span>{% endif %}{% endif %}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Parts (the GRN's line items) ── -->
+<ul class="nav nav-tabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#pgPartsPane" type="button" role="tab">
+      <i class="bi bi-box-seam me-1"></i>Parts <span class="badge bg-secondary ms-1">{{ line_items | length }}</span></button>
+  </li>
+</ul>
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="pgPartsPane" role="tabpanel">
+    <div class="card border-0 shadow-sm border-top-0 rounded-top-0">
+      <div class="card-body p-0">
+        <table id="pgPartsTable" class="table table-hover table-sm mb-0 align-middle small">
+          <thead class="table-dark"><tr>
+            <th class="ps-3">Part Code</th><th>Part Name</th><th>Make</th><th>Model</th><th>Category</th>
+            <th>Type</th><th>Crate Number</th><th class="text-end">Invoice Qty</th><th class="text-end">Physical Qty</th>
+            {% if _pricing %}<th class="text-end">Unit Price</th><th class="text-end">Line Total</th>{% endif %}
+            <th>Remarks</th>
+          </tr></thead>
+          <tbody>
+            {% for li in line_items %}
+            <tr>
+              <td class="ps-3 font-monospace">{{ li.part_id }}</td>
+              <td class="fw-semibold">{{ li.part_name or li.item_name or li.product_description or '—' }}</td>
+              <td>{{ li.part_brand or '—' }}</td>
+              <td>{{ li.part_model or '—' }}</td>
+              <td>{{ li.category or '—' }}</td>
+              <td>{% if li.is_harvest %}<span class="badge bg-warning text-dark">Harvest</span>{% else %}<span class="badge bg-success">New</span>{% endif %}</td>
+              <td>{{ li.crate_number or '—' }}</td>
+              <td class="text-end">{{ li.invoice_qty if li.invoice_qty is not none else '—' }}</td>
+              <td class="text-end">{{ li.physical_qty if li.physical_qty is not none else '—' }}</td>
+              {% if _pricing %}
+              <td class="text-end">{% if li.price is not none %}₹{{ li.price | inr(2) }}{% else %}—{% endif %}</td>
+              <td class="text-end">{% if li.price is not none and li.physical_qty %}₹{{ (li.price * li.physical_qty) | inr(2) }}{% else %}—{% endif %}</td>
+              {% endif %}
+              <td>{{ li.remarks or '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+$(function () {
+  if (window.initGlobalTable) initGlobalTable('#pgPartsTable', { order: [], language: { emptyTable: 'No parts on this GRN.' } });
+});
+</script>
+{% endblock %}

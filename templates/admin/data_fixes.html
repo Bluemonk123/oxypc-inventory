@@ -243,7 +243,7 @@
         <p class="text-muted mb-2">Each Part Master row becomes one crate's real count (Part Name + Make + Model + New/Harvest + Crate).
           <strong>1.</strong> Past handovers come off stock once — from the crate row they were handed over from, otherwise from that part's best-stocked rows (today each handover is subtracted from <em>every</em> crate row of the part).
           <strong>2.</strong> Rows with the same five values are merged into the oldest; their requests, sales and GRN lines move with them (merged rows go to Trash).
-          <strong>3.</strong> Unit Price follows the latest Parts GRN price of the part.
+          <strong>3.</strong> Unit Price: New rows = latest Parts GRN price of the part, Harvest rows = lowest Parts GRN price.
           After this, Handover takes stock off the chosen crate row and Update Count sets a crate's count.</p>
         <div class="mb-2"><strong>Parts in stock:</strong> {{ "{:,}".format(pcrate.total_before) }} shown today → <strong>{{ "{:,}".format(pcrate.total_after) }}</strong> after
           · <strong>{{ pcrate.merges | length }}</strong> merge group(s) · <strong>{{ pcrate.prices | length }}</strong> price change(s)
@@ -264,7 +264,7 @@
         {% endif %}
         {% if pcrate.prices %}
         <details class="mb-2"><summary class="fw-semibold">Price changes ({{ pcrate.prices | length }})</summary>
-        <table class="table table-sm mb-0 w-auto"><thead><tr><th>Part Code</th><th>Name</th><th>Crate</th><th class="text-end">Now</th><th class="text-end">Latest GRN</th></tr></thead><tbody>
+        <table class="table table-sm mb-0 w-auto"><thead><tr><th>Part Code</th><th>Name</th><th>Crate</th><th class="text-end">Now</th><th class="text-end">GRN price</th></tr></thead><tbody>
           {% for r in pcrate.prices[:200] %}<tr><td class="font-monospace">{{ r.code }}</td><td>{{ r.name }}</td><td>{{ r.crate or '—' }}</td><td class="text-end">{{ r.old }}</td><td class="text-end">{{ r.new }}</td></tr>{% endfor %}
         </tbody></table></details>
         {% endif %}

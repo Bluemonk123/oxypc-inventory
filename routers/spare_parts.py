@@ -979,6 +979,7 @@ async def bulk_upload_parts(
 
     from services.parts_stock import find_row as _find_crate_row, live_map as _live_map
     from services.parts_stock import crate_conflict as _crate_conflict, conflict_text as _conflict_text
+    from services.parts_stock import price_for as _price_for
     inserted, updated, errors = 0, 0, []
     for i, row in enumerate(rows, start=2):
         try:
@@ -1028,18 +1029,28 @@ async def bulk_upload_parts(
                 errors.append(f"Row {i}: " + _conflict_text(crate_number, _other))
                 db.expunge(_li)
                 continue
+            # Price (2026-11-02): a price in the file overwrites THIS row only
+            # (like Edit Part). Blank price -> the formula: New = latest Parts
+            # GRN price, Harvest = lowest Parts GRN price of the same Part Name
+            # + Make + Model. Upload prices are not GRN prices: BULK- uploads
+            # are left out of that formula (services/parts_stock).
+            row_price, set_price = price, bool(price_raw)
+            if not price_raw:
+                _f_price = await _price_for(db, part_name, make, model, source)
+                if _f_price is not None:
+                    row_price, set_price = float(_f_price), True
             existing_part = await _find_crate_row(db, part_name, make, model, source, crate_number)
             if existing_part:
                 _li.part_id = existing_part.part_code
                 shown = (await _live_map(db, [existing_part]))[str(existing_part.id)]
                 existing_part.qty_in_stock = int(existing_part.qty_in_stock or 0) + (qty - shown)
-                if price_raw:
-                    existing_part.unit_price = price
+                if set_price:
+                    existing_part.unit_price = row_price
                 updated += 1
             else:
                 db.add(SparePart(
                     part_code=part_id, name=part_name, category=category,
-                    unit_price=price, qty_in_stock=qty, min_stock_alert=0,
+                    unit_price=row_price, qty_in_stock=qty, min_stock_alert=0,
                     supplier=vendor_name, source=source,
                     make=make, model=model, crate_number=crate_number,
                 ))

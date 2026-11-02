@@ -111,7 +111,9 @@ async def group_rows(db: AsyncSession, name, make, model):
 
 
 async def latest_grn_price(db: AsyncSession, name, make, model):
-    """Unit price of the latest New Parts GRN line (price above 0) for this name+make+model."""
+    """Unit price of the latest New Parts GRN line (price above 0) for this
+    name+make+model. Upload New / Upload Harvest batches (BULK- GRNs) do not
+    count (2026-11-02)."""
     from models.parts_grn import PartsGRN, PartsGRNLineItem
     want = group_key(name, make, model)
     rows = (await db.execute(
@@ -119,6 +121,7 @@ async def latest_grn_price(db: AsyncSession, name, make, model):
                PartsGRNLineItem.price)
         .join(PartsGRN, PartsGRNLineItem.grn_id == PartsGRN.id)
         .where(PartsGRNLineItem.is_harvest.isnot(True), PartsGRNLineItem.price > 0,
+               ~func.coalesce(PartsGRN.grn_number, "").like("BULK-%"),   # uploads are not GRN prices (2026-11-02)
                func.lower(func.trim(PartsGRNLineItem.part_name)) == want[0])
         .order_by(PartsGRNLineItem.created_at.desc()))).all()
     for n, mk, md, price in rows:
@@ -127,14 +130,48 @@ async def latest_grn_price(db: AsyncSession, name, make, model):
     return None
 
 
+async def lowest_grn_price(db: AsyncSession, name, make, model):
+    """Lowest unit price (above 0) on any New Parts GRN line for this
+    name+make+model — the Harvest price (2026-11-02)."""
+    from models.parts_grn import PartsGRN, PartsGRNLineItem
+    want = group_key(name, make, model)
+    rows = (await db.execute(
+        select(PartsGRNLineItem.part_name, PartsGRNLineItem.part_brand, PartsGRNLineItem.part_model,
+               PartsGRNLineItem.price)
+        .join(PartsGRN, PartsGRNLineItem.grn_id == PartsGRN.id)
+        .where(PartsGRNLineItem.is_harvest.isnot(True), PartsGRNLineItem.price > 0,
+               ~func.coalesce(PartsGRN.grn_number, "").like("BULK-%"),   # uploads are not GRN prices (2026-11-02)
+               func.lower(func.trim(PartsGRNLineItem.part_name)) == want[0]))).all()
+    prices = [price for n, mk, md, price in rows if group_key(n, mk, md) == want]
+    return min(prices) if prices else None
+
+
+async def price_for(db: AsyncSession, name, make, model, source):
+    """The price rule (2026-11-02): New = latest Parts GRN unit price,
+    Harvest = lowest Parts GRN unit price, of the same Name + Make + Model."""
+    if source == "harvest":
+        return await lowest_grn_price(db, name, make, model)
+    return await latest_grn_price(db, name, make, model)
+
+
 async def apply_group_price(db: AsyncSession, name, make, model, price) -> int:
-    """Write the latest GRN unit price to every crate row of the part (a
-    blank / zero price on a line changes nothing)."""
+    """After a Parts GRN line: every New crate row of the part gets this
+    (latest) unit price; every Harvest crate row gets the part's lowest GRN
+    unit price (2026-11-02; was the same latest price on every row). A blank
+    / zero price on the line changes nothing."""
     if price is None or Decimal(str(price)) <= 0:
         return 0
     rows = await group_rows(db, name, make, model)
+    low = None
+    if any(p.source == "harvest" for p in rows):
+        await db.flush()
+        low = await lowest_grn_price(db, name, make, model)
     for p in rows:
-        p.unit_price = Decimal(str(price))
+        if p.source == "harvest":
+            if low is not None:
+                p.unit_price = Decimal(str(low))
+        else:
+            p.unit_price = Decimal(str(price))
     return len(rows)
 
 
@@ -316,11 +353,13 @@ async def crate_fix_plan(db: AsyncSession) -> dict:
     # 3. prices
     prices = []
     for g, grp in groups.items():
-        pr = await latest_grn_price(db, *g)
-        if pr is None:
-            continue
+        pr_new = await latest_grn_price(db, *g)
+        pr_hv = await lowest_grn_price(db, *g)
         for p in grp:
             if str(p.id) in keep_of:
+                continue
+            pr = pr_hv if p.source == "harvest" else pr_new
+            if pr is None:
                 continue
             if Decimal(str(p.unit_price or 0)) != Decimal(str(pr)):
                 prices.append({"id": str(p.id), "code": p.part_code, "name": p.name, "crate": p.crate_number,
