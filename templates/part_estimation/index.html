@@ -105,7 +105,7 @@
             {# Free-form parts x models grid — every cell is typed by hand,
                nothing derived from IQC. #}
             {% if can(current_user, 'part_estimation', 'add') %}
-            <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2"
+            <button type="button" class="btn btn-sm btn-primary py-0 px-2"
                     onclick="openOpenEstimateModal('{{ r.lot.id }}', '{{ r.lot.lot_number }}')"
                     {% if not r.total_products %}disabled title="This lot has no tags"{% endif %}>
               <i class="bi bi-grid-3x3 me-1"></i>Open Estimate
@@ -287,11 +287,20 @@
 #oe_table .oe-cell .form-control { width: 100%; min-width: 74px; }
 #oe_table th:first-child, #oe_table td:first-child {
   position: sticky; left: 0; z-index: 2;
-  width: 170px; min-width: 170px; max-width: 170px;
+  width: 1%; white-space: nowrap;  /* 2026-11-02: as wide as the longest part name, no more */
   background: #fff; box-shadow: 2px 0 3px -2px rgba(0,0,0,.25);
 }
 #oe_table thead th:first-child { z-index: 3; background: #f8f9fa; }
 #oe_table tfoot td:first-child { background: #e2e3e5; }
+/* 2026-11-02: design-system look — brand-blue header with light text, the
+   Part column on the light-blue tint, side padding in every cell. */
+#oe_table thead th, #oe_table thead th:first-child {
+  background: var(--brand-blue, #0e3a7a) !important; color: #f0f4f8 !important;
+  border-color: #2a5694; vertical-align: middle;
+}
+#oe_table tbody td:first-child { background: #e8f2fa !important; color: #0e3a7a; font-weight: 500; }
+#oe_table th, #oe_table td { padding-left: .75rem !important; padding-right: .75rem !important; }
+#oe_table thead th { padding-top: .55rem !important; padding-bottom: .55rem !important; }
 </style>
 <div class="modal fade" id="checklistEstimateModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-fullscreen modal-dialog-scrollable">

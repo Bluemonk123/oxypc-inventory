@@ -2264,18 +2264,24 @@ async def change_engineer_users(stage: str = "", db: AsyncSession = Depends(get_
     )).scalars().all()
     if stage:
         rows = [u for u in rows if _ce_user_eligible(u, stage)]
-    return JSONResponse([{"id": str(u.id), "name": u.full_name or u.username} for u in rows])
+    # role / role_label (2026-11-02): the modal's Role dropdown filters on these
+    return JSONResponse([{"id": str(u.id), "name": u.full_name or u.username,
+                          "role": u.role.value if hasattr(u.role, "value") else str(u.role),
+                          "role_label": u.role_label} for u in rows])
 
 
 @router.post("/devices/change-engineer")
 async def change_engineer(
     barcode: str = Form(...),
-    assigned_user_id: str = Form(...),
+    assigned_user_id: str = Form(default=""),
     target_stage: str = Form(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
-    """Production Manager's Change Engineer modal — search a tag from ANY
+    """Production Manager's Move to Stage modal (was Change Engineer; since
+    2026-11-02 the modal sends no user: the tag moves to the stage UNASSIGNED
+    and the engineer takes it with Pick This, like any other arrival — see the
+    no-user branch below). With assigned_user_id the old behaviour stays: — search a tag from ANY
     stage (reuses /devices/api/search-tags, the same system-wide lookup the
     Search Tags modal uses), pick a user + target stage (default L1), and on
     submit: move the device to that stage, create a WorkOrder assigning it to
@@ -2289,6 +2295,9 @@ async def change_engineer(
     )).scalar_one_or_none()
     if not device:
         raise HTTPException(404, "Tag not found")
+
+    if not (assigned_user_id or "").strip():
+        return await _move_to_stage_unassigned(db, device, target_stage, current_user)
 
     try:
         user_uid = uuid.UUID(assigned_user_id)
@@ -2379,6 +2388,50 @@ async def change_engineer(
 
     await db.commit()
     return JSONResponse({"ok": True, "work_id": work_id})
+
+
+async def _move_to_stage_unassigned(db, device, target_stage: str, current_user):
+    """Move to Stage (2026-11-02): the tag goes to the stage with no engineer.
+    The previous engineer's open WorkID closes as "reassigned" (same as a
+    Customise / manual move); at L1/L2, L3/L4, Stress and Final QC one pending,
+    unassigned WorkID opens for the visit, to be taken with Pick This."""
+    from services.stage_work_orders import open_for_stage
+    new_stage = next((st for st, _ in CHANGE_ENGINEER_STAGES if st.value == target_stage), None)
+    if not new_stage:
+        raise HTTPException(400, "Invalid target stage")
+    prev_stage = device.current_stage
+    if prev_stage == new_stage:
+        return JSONResponse({"ok": False, "error": "The tag is already in that stage."}, status_code=400)
+    prev_mv = (await db.execute(
+        select(StageMovement).where(
+            StageMovement.device_id == device.id,
+            StageMovement.to_stage == prev_stage,
+            StageMovement.exited_at == None,
+        ).order_by(StageMovement.moved_at.desc())
+    )).scalars().first()
+    if prev_mv:
+        prev_mv.exited_at = app_now()
+    device.current_stage = new_stage
+    reset_repair_cycle_on_entry(device, prev_stage, new_stage)
+    if new_stage == DeviceStage.l1:
+        device.l1l2_status = "New"
+    device.updated_at = app_now()
+    label = dict(CHANGE_ENGINEER_STAGES).get(new_stage, new_stage.value)
+    db.add(StageMovement(
+        device_id=device.id, from_stage=prev_stage, to_stage=new_stage,
+        moved_by=current_user.username,
+        notes=f"Moved to {label} via Production Manager (unassigned — to be picked)",
+    ))
+    wo = await open_for_stage(db, device, new_stage, created_by=current_user.username)
+    await db.flush()  # the new WorkID needs its id before the keep_id below
+    await reassign_open_work_orders(db, device.id, keep_id=wo.id if wo else None)
+    await audit(db, action="move_to_stage", user=current_user, table_name="devices",
+                record_id=str(device.id),
+                old_value={"stage": prev_stage.value if prev_stage else None},
+                new_value={"stage": new_stage.value, "assigned_to": None,
+                           "work_id": wo.work_id if wo else None})
+    await db.commit()
+    return JSONResponse({"ok": True, "work_id": wo.work_id if wo else None, "stage": label})
 
 
 @router.post("/scrap-products/{barcode}/move-to-inventory")

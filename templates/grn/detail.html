@@ -101,7 +101,9 @@
             <tr><th class="text-muted">Physical Quantity</th><td>{{ g.physical_quantity if g.physical_quantity is not none else '—' }}</td></tr>
             <tr><th class="text-muted">Tags Received</th><td>{{ devices | length }}</td></tr>
             <tr><td colspan="2"><hr class="my-1"></td></tr>
-            <tr><th class="text-muted">Validated</th><td>{% if g.validated %}<span class="badge bg-success">Yes</span>{% else %}<span class="badge bg-secondary">No</span>{% endif %}</td></tr>
+            {# Validated (2026-11-02): Yes when Tags Received matches the Physical Quantity (or the GRN was validated by hand) #}
+            {% set _qty_match = g.physical_quantity is not none and g.physical_quantity == (devices | length) %}
+            <tr><th class="text-muted">Validated</th><td>{% if g.validated or _qty_match %}<span class="badge bg-success">Yes</span>{% if _qty_match and not g.validated %} <span class="small text-muted ms-1">Tags Received = Physical Quantity</span>{% endif %}{% else %}<span class="badge bg-secondary">No</span>{% if g.physical_quantity is not none %} <span class="small text-muted ms-1">Tags Received {{ devices | length }} ≠ Physical Quantity {{ g.physical_quantity }}</span>{% endif %}{% endif %}</td></tr>
             {% if g.validation_ref %}<tr><th class="text-muted">Validation Ref.</th><td>{{ g.validation_ref }}</td></tr>{% endif %}
             {% if g.validation_notes %}<tr><th class="text-muted">Validation Notes</th><td>{{ g.validation_notes }}</td></tr>{% endif %}
           </tbody>

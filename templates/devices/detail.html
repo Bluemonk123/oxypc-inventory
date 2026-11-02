@@ -524,7 +524,7 @@
                           onmouseenter="if(!this.disabled)this.classList.replace('btn-outline-secondary','btn-outline-warning')"
                           onmouseleave="this.classList.replace('btn-outline-warning','btn-outline-secondary')"
                           onclick="openPartRequestModal('replace', 1, '{{ p.category | e }}', '{{ p.part_id }}', '{{ p.label | e }}')">
-                    <i class="bi bi-arrow-repeat"></i> Replace</button>
+                    <i class="bi bi-arrow-repeat"></i> {{ 'Replace / Upgrade' if p.label in ('RAM', 'Hard Drive') else 'Replace' }}</button>
                   {% if p.label in ('RAM', 'Hard Drive') %}
                   <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2"
                           onclick="openDowngradeModal('{{ p.label | e }}')">

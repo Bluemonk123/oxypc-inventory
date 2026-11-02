@@ -140,8 +140,8 @@
 
 <div class="d-flex justify-content-end gap-2 mb-2">
   {% if can(current_user, 'production_manager', 'edit') %}
-  <button type="button" class="btn btn-sm btn-outline-primary" onclick="openChangeEngineerModal()">
-    <i class="bi bi-person-gear me-1"></i>Change Engineer</button>
+  <button type="button" class="btn btn-sm btn-primary" onclick="openChangeEngineerModal()">
+    <i class="bi bi-signpost-split me-1"></i>Change/Move to Stage</button>
   {% endif %}
   <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
     <i class="bi bi-clock-history me-1"></i>Search Tags</button>
@@ -534,7 +534,7 @@
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-person-gear me-2"></i>Change Engineer</h5>
+        <h5 class="modal-title"><i class="bi bi-signpost-split me-2"></i>Change/Move to Stage</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
@@ -557,20 +557,19 @@
             </thead>
             <tbody id="ceModal_history"></tbody>
           </table>
+          {# Move to Stage (2026-11-02): only the Stage is picked — the tag arrives
+             there unassigned and the engineer takes it with Pick This. #}
           <div class="row g-2">
             <div class="col-md-6">
-              <label class="form-label fw-semibold">User Display Name</label>
-              <select id="ceModal_user" class="form-select">
-                <option value="">— Select User —</option>
-              </select>
-            </div>
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">Stage</label>
+              <label class="form-label fw-semibold">Move to Stage</label>
               <select id="ceModal_stage" class="form-select">
                 {% for value, label in change_engineer_stages %}
                 <option value="{{ value }}" {% if value == 'l1' %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
               </select>
+            </div>
+            <div class="col-md-6 d-flex align-items-end">
+              <div class="small text-muted">The tag moves unassigned; the engineer of that stage picks it with <strong>Pick This</strong>. The previous engineer's WorkID closes as Reassigned.</div>
             </div>
           </div>
         </div>
@@ -579,7 +578,7 @@
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" id="ceModal_submit" class="btn btn-primary" disabled>
-          <i class="bi bi-check-lg me-1"></i>Assign &amp; Move</button>
+          <i class="bi bi-check-lg me-1"></i>Move</button>
       </div>
     </div>
   </div>
@@ -892,24 +891,8 @@ document.getElementById('asgDevSubmit').addEventListener('click', function(){
 // Users are listed per target stage (2026-10-23): only those who can work
 // the chosen stage. Reloaded whenever the Stage changes; a selection that is
 // still eligible is kept.
-var _ceUsers = [];
-function loadCeUsers() {
-  var sel = document.getElementById('ceModal_user');
-  var stage = (document.getElementById('ceModal_stage') || {}).value || '';
-  var keep = sel.value;
-  fetch('/api/change-engineer-users?stage=' + encodeURIComponent(stage))
-    .then(function(r){return r.json();}).then(function(list){
-      _ceUsers = list;
-      while (sel.options.length > 1) sel.remove(1);
-      list.forEach(function(u){ sel.add(new Option(u.name, u.id)); });
-      sel.value = list.some(function(u){ return u.id === keep; }) ? keep : '';
-      if (typeof updateCeSubmitState === 'function') updateCeSubmitState();
-    });
-}
-loadCeUsers();
-document.getElementById('ceModal_stage') &&
-  document.getElementById('ceModal_stage').addEventListener('change', loadCeUsers);
-
+// Move to Stage (2026-11-02): no user / role pick — the tag moves to the
+// chosen stage unassigned (routers/stock.py _move_to_stage_unassigned).
 var ceSelectedBarcode = null;
 
 function openChangeEngineerModal() {
@@ -918,7 +901,6 @@ function openChangeEngineerModal() {
   document.getElementById('ceModal_results').innerHTML = '';
   document.getElementById('ceModal_selected').classList.add('d-none');
   document.getElementById('ceModal_history').innerHTML = '';
-  document.getElementById('ceModal_user').value = '';
   document.getElementById('ceModal_msg').innerHTML = '';
   document.getElementById('ceModal_submit').disabled = true;
   new bootstrap.Modal(document.getElementById('changeEngineerModal')).show();
@@ -1009,16 +991,12 @@ function openChangeEngineerModal() {
 })();
 
 function updateCeSubmitState() {
-  var userId = document.getElementById('ceModal_user').value;
-  document.getElementById('ceModal_submit').disabled = !(ceSelectedBarcode && userId);
+  document.getElementById('ceModal_submit').disabled = !ceSelectedBarcode;
 }
-document.getElementById('ceModal_user').addEventListener('change', updateCeSubmitState);
 
 document.getElementById('ceModal_submit').addEventListener('click', function(){
   if (!ceSelectedBarcode) return;
-  var userId = document.getElementById('ceModal_user').value;
   var stage = document.getElementById('ceModal_stage').value;
-  if (!userId) { alert('Please select a user.'); return; }
   var btn = this;
   var msg = document.getElementById('ceModal_msg');
   msg.innerHTML = '';
@@ -1026,7 +1004,6 @@ document.getElementById('ceModal_submit').addEventListener('click', function(){
   var fd = new FormData();
   fd.append('csrf_token', getCsrf());
   fd.append('barcode', ceSelectedBarcode);
-  fd.append('assigned_user_id', userId);
   fd.append('target_stage', stage);
   fetch('/devices/change-engineer', {method:'POST', body:fd}).then(function(r){
     if (!r.ok) return r.text().then(function(t){
@@ -1037,7 +1014,7 @@ document.getElementById('ceModal_submit').addEventListener('click', function(){
   }).then(function(d){
     if (d.ok) {
       bootstrap.Modal.getInstance(document.getElementById('changeEngineerModal')).hide();
-      alert('Assigned ' + ceSelectedBarcode + ' (WorkID: ' + d.work_id + ').');
+      alert('Moved ' + ceSelectedBarcode + ' to ' + (d.stage || 'the stage') + ' — unassigned, ready for Pick This' + (d.work_id ? ' (WorkID: ' + d.work_id + ')' : '') + '.');
       window.location.reload();
     }
   }).catch(function(e){

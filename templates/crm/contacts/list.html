@@ -147,9 +147,10 @@
             <th>Place</th>
             <th>Person</th>
             <th>Team</th>
+            <th>Last Activity</th>
             <th class="d-none">Notes</th>
-            <th>Created By</th>
             <th>Status</th>
+            <th>Created By</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -257,6 +258,11 @@
               <span class="text-muted">0</span>
               {% endif %}
             </td>
+            {# Last Activity (2026-11-02) — outcome of the latest call / activity, its own column #}
+            <td>
+              {% if last_outcome %}<span class="badge bg-{{ oc_colors.get(last_outcome, 'secondary') }}">{{ last_outcome | replace('_',' ') | title }}</span>
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
             {# 10. Notes (hidden) #}
             <td class="d-none" style="max-width:160px">
               {% if c.notes %}
@@ -267,6 +273,12 @@
               <span class="text-muted">—</span>
               {% endif %}
             </td>
+            {# Status — account status only (Active only when KYC + Credit verified) #}
+            <td>
+              {% if c.status == 'active' %}<span class="badge bg-success">Active</span>
+              {% elif c.status == 'blacklisted' %}<span class="badge bg-dark">Blacklisted</span>
+              {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
+            </td>
             {# 10b. Created By — who created it, or ran the bulk upload it came
                in on; reports_to badge sourced from Admin > User Management #}
             <td class="small">
@@ -276,17 +288,6 @@
               {% if ab.reports_to %}<span class="badge bg-light text-dark border">Reports to: {{ ab.reports_to }}</span>{% endif %}
               {% else %}
               <span class="text-muted">{{ c.created_by or '—' }}</span>
-              {% endif %}
-            </td>
-            {# 6. Status — renamed from "Last Outcome", shows latest call/activity outcome badge #}
-            <td>
-              {% if c.status == 'active' %}<span class="badge bg-success">Active</span>
-              {% elif c.status == 'blacklisted' %}<span class="badge bg-dark">Blacklisted</span>
-              {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
-              {% if last_outcome %}<br>
-              <span class="badge bg-{{ oc_colors.get(last_outcome, 'secondary') }}">
-                {{ last_outcome | replace('_',' ') | title }}
-              </span>
               {% endif %}
             </td>
             {# 11. Actions #}
@@ -554,8 +555,8 @@
 })();
 </script>
 <script>
-// col index (edit perm): 0=Checkbox,1=Account Name,2=GST No.,3=KYC,4=Credit,5=Place,6=Person,7=Team,8=Notes(hidden),9=Created By,10=Status,11=Actions
-// col index (no edit perm, no checkbox column): 0=Account Name,1=GST No.,2=KYC,3=Credit,4=Place,5=Person,6=Team,7=Notes(hidden),8=Created By,9=Status,10=Actions
+// col index (edit perm): 0=Checkbox,1=Account Name,2=GST No.,3=KYC,4=Credit,5=Place,6=Person,7=Team,8=Last Activity,9=Notes(hidden),10=Status,11=Created By,12=Actions
+// col index (no edit perm, no checkbox column): 0=Account Name,1=GST No.,2=KYC,3=Credit,4=Place,5=Person,6=Team,7=Last Activity,8=Notes(hidden),9=Status,10=Created By,11=Actions
 $(document).ready(function(){
   // Global Table module (static/js/global-table.js) — always initialized,
   // even with zero rows: DataTables reads its columns from <thead>, not from
@@ -568,7 +569,7 @@ $(document).ready(function(){
   var off = hasCheckboxCol ? 1 : 0;
   initGlobalTable('#contactsTable', {
     order: [[0 + off, 'asc']],  // default sort by Company
-    columnDefs: [{ orderable: false, targets: hasCheckboxCol ? [0, 5, 6, 7, 11] : [4, 5, 6, 10] }],
+    columnDefs: [{ orderable: false, targets: hasCheckboxCol ? [0, 5, 6, 7, 12] : [4, 5, 6, 11] }],
     language: { emptyTable: 'No contacts found. Use the Add Account button above to create one.' }
   });
   // DataTables' initial draw (applying the sort above + odd/even striping)

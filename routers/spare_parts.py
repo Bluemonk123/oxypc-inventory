@@ -360,6 +360,35 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
         for p in all_parts
     }
 
+    # Qty Available per request (2026-11-02): the same match the Handover
+    # modal uses — Part Name + the request's own Make / Model (name only when
+    # the request has neither), summed over every crate, New + Harvest. The
+    # old name-only total added up every make / model of e.g. "Internal
+    # Battery"; Make / Model / Crate columns came from a stale part_id.
+    def _n(v):
+        return (v or "").strip().lower()
+    rows_by_name: dict = {}
+    for p in all_parts:
+        if _n(p.name):
+            rows_by_name.setdefault(_n(p.name), []).append(p)
+    req_stock: dict = {}
+    for r in all_part_reqs:
+        mine = rows_by_name.get(_n(r.part_name), [])
+        if _n(r.part_make):
+            mine = [p for p in mine if _n(p.make) == _n(r.part_make)]
+        if _n(r.part_model):
+            mine = [p for p in mine if _n(p.model) == _n(r.part_model)]
+        new_q = sum(_live(p) for p in mine if p.source != "harvest")
+        hv_q = sum(_live(p) for p in mine if p.source == "harvest")
+        crates = sorted({p.crate_number for p in mine if p.crate_number and _live(p) > 0})
+        meta = part_meta.get(str(r.part_id), {})
+        req_stock[str(r.id)] = {
+            "s": new_q + hv_q, "new": new_q, "harvest": hv_q,
+            "crate": ", ".join(crates) or meta.get("crate") or "",
+            "make": r.part_make or meta.get("make") or "",
+            "model": r.part_model or meta.get("model") or "",
+        }
+
     # ── Pending part-sourcing requests, mirrored read-only from CRM (#15) ────
     sourcing = (await db.execute(
         select(PartSourcingRequest).order_by(PartSourcingRequest.created_at.desc())
@@ -449,7 +478,7 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
         "live_by_part": live_by_part, "part_group": part_group,
         "stock_row_mode": stock_row_mode,
         "part_reqs": part_reqs, "faulty_reqs": faulty_reqs, "part_stock": part_stock,
-        "part_meta": part_meta, "sourcing": sourcing,
+        "part_meta": part_meta, "req_stock": req_stock, "sourcing": sourcing,
         "deal_map": deal_map, "estimates_by_batch": estimates_by_batch,
         "grn_docs": {},
         "grn_by_part_code": grn_by_part_code,

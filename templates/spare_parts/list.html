@@ -435,7 +435,7 @@
         <thead class="table-dark"><tr>
           <th><input type="checkbox" class="form-check-input sp-sa" data-tbl="partReqTable"></th>
           <th>WorkID</th><th>Tag Number</th><th>Engineer</th><th>Added On</th><th>Part Name</th><th>Part Category</th>
-          <th>Crate Number</th><th>Make</th><th>Model</th>
+          <th>Make</th><th>Model</th>
           <th>Qty Requested</th><th>Qty Handover</th><th>QTY Available</th><th>Status</th><th>Action</th>
         </tr></thead>
         <tbody></tbody>{# rows come from #partReqTableData below #}
@@ -443,7 +443,7 @@
       {# Rows as plain values, not <tr>s (2026-10-19): with ~10,000 requests
          the HTML rows took the browser close to a minute to build. The cells
          are drawn in JS (spReqColumns) for the page being viewed only. #}
-      <script type="application/json" id="partReqTableData">[{% for r in part_reqs %}{% set _m = part_meta.get(r.part_id|string, {}) %}{% set _s = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}{{ {"id": r.id|string, "a": (r.request_type or 'new')|capitalize, "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _m.get("crate") or "", "mk": _m.get("make") or "", "md": _m.get("model") or "", "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if _s > 0 else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
+      <script type="application/json" id="partReqTableData">[{% for r in part_reqs %}{% set _q = req_stock.get(r.id|string, {}) %}{% set _s = _q.get('s', 0) %}{{ {"id": r.id|string, "a": (r.request_type or 'new')|capitalize, "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _q.get("crate") or "", "mk": _q.get("make") or "", "md": _q.get("model") or "", "sn": _q.get("new", 0), "sh": _q.get("harvest", 0), "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if _s > 0 else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
   </div>
   </div>
 
@@ -474,12 +474,12 @@
         <thead class="table-dark"><tr>
           <th><input type="checkbox" class="form-check-input sp-sa" data-tbl="psiqcReqTable"></th>
           <th>WorkID</th><th>Tag Number</th><th>Engineer</th><th>Added On</th><th>Part Name</th><th>Part Category</th>
-          <th>Crate Number</th><th>Make</th><th>Model</th>
+          <th>Make</th><th>Model</th>
           <th>Qty Requested</th><th>Qty Handover</th><th>QTY Available</th><th>Status</th><th>Action</th>
         </tr></thead>
         <tbody></tbody>{# rows come from #psiqcReqTableData below #}
       </table>
-      <script type="application/json" id="psiqcReqTableData">[{% for r in psiqc_reqs %}{% set _m = part_meta.get(r.part_id|string, {}) %}{% set _s = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}{{ {"id": r.id|string, "a": (r.request_type or 'new')|capitalize, "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _m.get("crate") or "", "mk": _m.get("make") or "", "md": _m.get("model") or "", "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if _s > 0 else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
+      <script type="application/json" id="psiqcReqTableData">[{% for r in psiqc_reqs %}{% set _q = req_stock.get(r.id|string, {}) %}{% set _s = _q.get('s', 0) %}{{ {"id": r.id|string, "a": (r.request_type or 'new')|capitalize, "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _q.get("crate") or "", "mk": _q.get("make") or "", "md": _q.get("model") or "", "sn": _q.get("new", 0), "sh": _q.get("harvest", 0), "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if _s > 0 else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
   </div>
   </div>
 
@@ -512,7 +512,7 @@
         <thead class="table-dark"><tr>
           <th><input type="checkbox" class="form-check-input sp-sa" data-tbl="faultyReqTable"></th>
           <th>WorkID</th><th>Tag Number</th><th>Engineer</th><th>Added On</th><th>Part Name</th><th>Part Category</th>
-          <th>Crate Number</th><th>Make</th><th>Model</th>
+          <th>Make</th><th>Model</th>
           <th>Qty Requested</th><th>Qty Handover</th><th>QTY Available</th><th>Status</th><th>Action</th>
         </tr></thead>
         <tbody></tbody>{# rows come from #faultyReqTableData below #}
@@ -520,7 +520,7 @@
       {# Rows as plain values, not <tr>s (2026-10-19): with ~10,000 requests
          the HTML rows took the browser close to a minute to build. The cells
          are drawn in JS (spReqColumns) for the page being viewed only. #}
-      <script type="application/json" id="faultyReqTableData">[{% for r in faulty_reqs %}{% set _m = part_meta.get(r.part_id|string, {}) %}{% set _s = stock_by_name.get((r.part_name or '')|lower|trim, part_stock.get(r.part_id|string, 0)) %}{{ {"id": r.id|string, "a": 'Faulty', "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _m.get("crate") or "", "mk": _m.get("make") or "", "md": _m.get("model") or "", "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if _s > 0 else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
+      <script type="application/json" id="faultyReqTableData">[{% for r in faulty_reqs %}{% set _q = req_stock.get(r.id|string, {}) %}{% set _s = _q.get('s', 0) %}{{ {"id": r.id|string, "a": 'Faulty', "w": r.work_id or "", "t": r.request_type or "", "dg": r.downgrade_type or "", "b": r.barcode or "", "e": r.engineer_name or r.requested_by or "", "d": (r.created_at|ist_date)|string if r.created_at else "", "ds": r.created_at.strftime("%Y%m%d%H%M%S") if r.created_at else "", "n": r.part_name or "", "c": r.part_category or "", "cr": _q.get("crate") or "", "mk": _q.get("make") or "", "md": _q.get("model") or "", "sn": _q.get("new", 0), "sh": _q.get("harvest", 0), "q": r.qty_requested, "h": r.qty_handed_over or 0, "s": _s, "av": true if _s > 0 else false, "st": r.status or ""}|tojson }}{% if not loop.last %},{% endif %}{% endfor %}]</script>
   </div>
   </div>
 
@@ -1013,13 +1013,15 @@ function spReqColumns(tbl, faulty) {
         return type === 'sort' || type === 'type' ? r.ds : (type === 'display' ? spEsc(dash(r.d)) : r.d); } },
     col(function (r) { return r.n; }, function (r) { return spEsc(r.n); }, { className: 'fw-semibold' }),
     col(function (r) { return r.c; }, function (r) { return spEsc(dash(r.c)); }),
-    col(function (r) { return r.cr; }, function (r) { return spEsc(dash(r.cr)); }),
+    {# Crate Number column removed (2026-11-02): QTY Available is the Name + Make + Model total;
+       the crates are shown under New / Harvest in the Handover modal. #}
     col(function (r) { return r.mk; }, function (r) { return spEsc(dash(r.mk)); }),
     col(function (r) { return r.md; }, function (r) { return spEsc(dash(r.md)); }),
     { data: 'q', render: function (d, type) { return type === 'display' ? spEsc(d) : d; } },
     { data: 'h', render: function (d, type) { return type === 'display' ? spEsc(dash(d)) : d; } },
     { data: 's', render: function (d, type, r) {
-        return type === 'display' ? '<span class="badge ' + (r.av ? 'bg-success' : 'bg-danger') + '">' + spEsc(d) + '</span>' : d; } },
+        return type === 'display' ? '<span class="badge ' + (r.av ? 'bg-success' : 'bg-danger') + '">' + spEsc(d) + '</span>' +
+          '<div class="small text-muted text-nowrap mt-1">New - ' + (r.sn || 0) + ' | Harvest - ' + (r.sh || 0) + '</div>' : d; } },
     col(function (r) { return _cellText(spStatusCell(r)); }, spStatusCell),
     col(function () { return ''; }, function (r) { return spActionCell(r, faulty); }, { orderable: false }),
   ];
@@ -1150,19 +1152,24 @@ function hoRender() {
     r._src = def; r._row = '';
     function radio(src, label) {
       var dis = t[src] < r.qty;
-      return '<div class="form-check form-check-inline mb-0' + (dis ? ' opacity-50' : '') + '">' +
+      // Crates holding this part (same Name + Make + Model) for this type (2026-11-02)
+      var crates = r.rows.filter(function (x) { return x.source === src && x.qty > 0; })
+        .map(function (x) { return spEsc(x.crate || 'no crate') + ' (' + x.qty + ')'; });
+      return '<div class="py-1"' + (dis ? ' style="opacity:.7"' : '') + '>' +
+             '<div class="form-check mb-0">' +
              '<input type="radio" class="form-check-input" name="ho_src_' + i + '" id="ho_' + src + '_' + i + '" value="' + src + '"' +
              (def === src ? ' checked' : '') + (dis ? ' disabled' : '') + ' onchange="hoSrc(' + i + ',this.value)">' +
              '<label class="form-check-label fw-semibold" for="ho_' + src + '_' + i + '">' + label +
-             ' <span class="badge ' + (src === 'new' ? 'bg-success' : 'bg-warning text-dark') + ' ms-1">' + t[src] + ' available</span></label></div>';
+             ' <span class="badge ' + (src === 'new' ? 'bg-success' : 'bg-warning text-dark') + ' ms-1">' + t[src] + ' available</span></label></div>' +
+             '<div class="ms-4 mt-2" style="font-size:.9rem;color:#212529"><i class="bi bi-box-seam me-1" style="color:#0e3a7a"></i>Crate: <span class="fw-semibold" style="color:#0e3a7a">' + (crates.length ? crates.join(', ') : '—') + '</span></div></div>';
     }
     return '<div class="ho-line border rounded px-3 py-3 mb-3" data-i="' + i + '">' +
       '<div class="d-flex justify-content-between flex-wrap gap-2 small">' +
         '<div><strong>' + spEsc(r.part) + '</strong>' + ((r.make || r.model) ? ' <span class="text-muted">' + spEsc((r.make || '—') + ' / ' + (r.model || '—')) + '</span>' : '') + (r.barcode ? ' · <span class="font-monospace">' + spEsc(r.barcode) + '</span>' : '') +
         ' · <span class="text-muted">Engineer:</span> ' + spEsc(r.eng || '—') + '</div>' +
         '<div><span class="text-muted">Qty:</span> <strong>' + r.qty + '</strong></div></div>' +
-      '<div class="d-flex flex-wrap gap-2 align-items-center mt-3 px-3 py-2 rounded border" style="background:#f3f7fc;box-shadow:0 .25rem .6rem rgba(0,0,0,.35)">' +
-        '<div class="d-flex align-items-center">' + radio('new', 'New') + radio('harvest', 'Harvest') + '</div>' +
+      '<div class="d-flex flex-wrap gap-3 align-items-center mt-3 p-3 rounded border" style="background:#f3f7fc;box-shadow:0 .25rem .6rem rgba(0,0,0,.35)">' +
+        '<div class="d-flex align-items-start flex-wrap" style="column-gap:3rem;row-gap:.75rem">' + radio('new', 'New') + radio('harvest', 'Harvest') + '</div>' +
         '<select class="form-select form-select-sm ho-pick d-none" style="max-width:300px" onchange="hoEval(' + i + ')"></select>' +
       '</div>' +
       '<div class="ho-msg mt-3" style="min-height:1.25rem"></div>' +

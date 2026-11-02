@@ -116,8 +116,9 @@ def test_change_engineer_button_and_modal_present(app_client, make_user):  # noq
     username, password = make_user("admin")
     _login(app_client, username, password)
     html = app_client.get("/trc-production", follow_redirects=True).text
-    assert "Change Engineer" in html
+    assert "Move to Stage" in html   # renamed from Change Engineer (2026-11-02)
     assert 'id="changeEngineerModal"' in html
+    assert 'id="ceModal_user"' not in html   # no user pick any more
     assert 'id="ceModal_stage"' in html
     # Default target stage is L1 per spec.
     assert '<option value="l1" selected>' in html
@@ -193,6 +194,64 @@ asyncio.run(main())
         wid_html = app_client.get(f"/workid-status?workid={work_id}", follow_redirects=True).text
         assert work_id in wid_html
         assert barcode in wid_html
+    finally:
+        _cleanup(barcode, bucket_number)
+
+
+def test_move_to_stage_unassigned_opens_pickable_workid(app_client, make_user):  # noqa: F811
+    """Move to Stage (2026-11-02): no user — the tag moves, one pending
+    unassigned WorkID opens for the visit (to be picked), and the previous
+    open WorkID closes as reassigned."""
+    suffix = uuid.uuid4().hex[:6]
+    barcode = f"ITMTS{suffix}"
+    bucket_number = f"ITBKTMS{suffix}"
+    _seed_device_in_bucket(barcode, bucket_number, "ITest MTS Bucket", stage="l1")
+    try:
+        admin_username, admin_password = make_user("admin")
+        eng_username, _p = make_user("l1_engineer")
+        _login(app_client, admin_username, admin_password)
+        csrf = app_client.cookies.get("csrf_token") or "dummy"
+        eng_id = _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import select
+from database import AsyncSessionLocal
+from models.user import User
+async def main():
+    async with AsyncSessionLocal() as db:
+        print((await db.execute(select(User.id).where(User.username == "{eng_username}"))).scalar_one())
+asyncio.run(main())
+""")
+        # first hand it to an engineer at L1/L2 (old path), then Move to L3/L4 unassigned
+        r = app_client.post("/devices/change-engineer", data={
+            "csrf_token": csrf, "barcode": barcode, "assigned_user_id": eng_id, "target_stage": "l3"})
+        assert r.status_code == 200, r.text
+        r = app_client.post("/devices/change-engineer", data={
+            "csrf_token": csrf, "barcode": barcode, "target_stage": "l1"})
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["ok"] is True and body["work_id"]
+        out = _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import select
+from database import AsyncSessionLocal
+from models.device import Device
+from models.work_order import WorkOrder
+async def main():
+    async with AsyncSessionLocal() as db:
+        dev = (await db.execute(select(Device).where(Device.barcode == "{barcode}"))).scalar_one()
+        wos = (await db.execute(select(WorkOrder).where(WorkOrder.device_id == dev.id))).scalars().all()
+        new = [w for w in wos if w.work_id == "{body['work_id']}"][0]
+        old_open = [w for w in wos if w.work_id != new.work_id and w.status not in ("completed", "reassigned")]
+        print(dev.current_stage.value, new.status, new.assigned_user_id is None, len(old_open))
+asyncio.run(main())
+""")
+        assert out == "l1 pending True 0", out
+        # moving again to the same stage is refused
+        r = app_client.post("/devices/change-engineer", data={
+            "csrf_token": csrf, "barcode": barcode, "target_stage": "l1"})
+        assert r.status_code == 400
     finally:
         _cleanup(barcode, bucket_number)
 
