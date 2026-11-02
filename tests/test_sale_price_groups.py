@@ -106,13 +106,17 @@ def test_original_new_sale_page_is_untouched():
 def test_ready_to_sale_has_new_buttons_and_old_ones_remain():
     from templates_config import templates
     src = open(templates.env.get_template("sales/ready_list.html").filename, encoding="utf-8").read()
+    # The As-Is lot Sell / New Sell buttons live on Ready for Sale - Lots
+    # since 2026-10-28 (sales/ready_lots.html), not on the Tags page.
+    lots = open(templates.env.get_template("sales/ready_lots.html").filename, encoding="utf-8").read()
     # new
     assert 'id="newBulkSaleBtn"' in src and "New Bulk Sale (" in src
-    assert "as-is-lot-newsell-btn" in src and ">New Sell</button>" in src
     assert 'action="/sales/new-tag-sale/prefill"' in src
+    assert "as-is-lot-newsell-btn" in lots and ">New Sell</button>" in lots
+    assert 'action="/sales/new-tag-sale/prefill"' in lots
     # existing, untouched
     assert 'id="multiSellBtn"' in src and 'action="/sales/new/prefill"' in src
-    assert "as-is-lot-sell-btn" in src and ">Sell</button>" in src
+    assert "as-is-lot-sell-btn" in lots and ">Sell</button>" in lots and 'action="/sales/new/prefill"' in lots
 
 
 def test_new_tag_sale_routes_registered_and_tag_info_is_post():

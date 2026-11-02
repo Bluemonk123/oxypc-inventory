@@ -50,9 +50,10 @@
              without its own price uses the Unit Price below (moved under Tag Number 2026-11-02). On submit the rows are
              grouped by price into one JSON field, price_groups; everything else on
              the form (invoice, customer, state, warranty...) is shared. #}
-          <div class="border rounded p-3 mb-3 bg-body-tertiary d-none" id="tagTableBox">
-            <div class="fw-semibold small mb-1"><i class="bi bi-tags me-1"></i>Price each tag <span class="badge bg-secondary" id="ttCount"></span></div>
-            <div class="form-text small mb-2">Different prices in one invoice? Tags without their own price use the Unit Price below. Price by <strong>Model</strong> (one price per Category + Model) or tag by tag &mdash; all are recorded under this one invoice.</div>
+          {# Card with header + dark shadow (2026-11-02): "Variation in Prices". #}
+          <div class="card mb-3 d-none" id="tagTableBox" style="box-shadow:0 .25rem .6rem rgba(0,0,0,.35)">
+            <div class="card-header bg-body-tertiary fw-semibold small d-flex align-items-center gap-2"><i class="bi bi-tags"></i>Variation in Prices <span class="badge bg-secondary" id="ttCount"></span></div>
+            <div class="card-body p-3">
             {# Two ways to price (2026-11-02): Tag Based (the original table) and
                Model Based (one row per Category + Model: Quantity + Unit Price,
                which sets every tag of that model). Both edit the same prices. #}
@@ -65,17 +66,17 @@
             {# Toolbar (2026-11-02): Upload Tags, Price per unit, Apply, Reset. No
                "Apply to" dropdown: Apply prices the ticked tags (tick by hand or
                with Upload Tags), or every tag when none is ticked. #}
-            <div class="row g-2 align-items-end mb-2">
-              <div class="col-md-3">
+            {# Same column widths in both tabs (2026-11-02): 5 + 4 + 3 (Apply + reset icon). #}
+            <div class="row g-2 align-items-center mb-2">
+              <div class="col-md-5">
                 <button type="button" class="btn btn-sm btn-outline-primary w-100" id="ttUploadBtn" title="Upload a CSV of tag numbers &mdash; the matching rows are ticked for you"><i class="bi bi-upload me-1"></i>Upload Tags</button>
               </div>
               <div class="col-md-4">
-                <label class="form-label small mb-0">Price per unit (&#8377;)</label>
-                <input type="number" id="ttPrice" class="form-control form-control-sm" min="0" step="0.01" placeholder="0">
+                <input type="number" id="ttPrice" class="form-control form-control-sm" min="0" step="0.01" placeholder="Price per unit (&#8377;)" aria-label="Price per unit">
               </div>
-              <div class="col-md-3"><button type="button" class="btn btn-sm btn-primary w-100" id="ttApply" title="Price the ticked tags (all tags when none is ticked)">Apply</button></div>
-              <div class="col-md-2">
-                <button type="button" class="btn btn-sm btn-outline-secondary w-100" id="ttClear" title="Reset: clear all tag prices" aria-label="Reset tag prices"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset</button>
+              <div class="col-md-3 d-flex gap-2">
+                <button type="button" class="btn btn-sm btn-primary flex-grow-1" id="ttApply" title="Price the ticked tags (all tags when none is ticked)">Apply</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="ttClear" title="Reset: clear all tag prices" aria-label="Reset tag prices"><i class="bi bi-arrow-counterclockwise"></i></button>
               </div>
               <input type="file" id="ttUploadFile" accept=".csv,.txt,text/csv,text/plain" class="d-none">
             </div>
@@ -94,17 +95,20 @@
               {# Search (2026-11-02): one model saved under slightly different names
                  ("HP 1030 G7", "EliteBook x360 1030 G7") — search "1030" to see them
                  together and price all shown rows in one go. #}
-              <div class="row g-2 align-items-end mb-2">
+              <div class="row g-2 align-items-center mb-2">
                 <div class="col-md-5">
                   <div class="input-group input-group-sm">
                     <span class="input-group-text"><i class="bi bi-search"></i></span>
                     <input type="search" id="tmSearch" class="form-control" placeholder="Search Category or Model (e.g. 1030)" autocomplete="off">
                   </div>
                 </div>
-                <div class="col-md-3">
-                  <input type="number" id="tmPrice" class="form-control form-control-sm" min="0" step="0.01" placeholder="Unit Price for shown models">
+                <div class="col-md-4">
+                  <input type="number" id="tmPrice" class="form-control form-control-sm" min="0" step="0.01" placeholder="Price per unit (&#8377;)" aria-label="Price per unit for shown models">
                 </div>
-                <div class="col-md-3"><button type="button" class="btn btn-sm btn-primary w-100" id="tmApply" title="Set this price on every model row shown below">Apply to shown <span id="tmShown"></span></button></div>
+                <div class="col-md-3 d-flex gap-2">
+                  <button type="button" class="btn btn-sm btn-primary flex-grow-1" id="tmApply" title="Set this price on every model row shown below">Apply <span id="tmShown"></span></button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary" id="tmReset" title="Reset: clear the search, the price and every model price" aria-label="Reset model prices"><i class="bi bi-arrow-counterclockwise"></i></button>
+                </div>
               </div>
               <div id="tmScroll" style="overflow-y:auto;max-height:340px" class="border rounded bg-body">
                 <table class="table table-sm align-middle mb-0 small">
@@ -119,6 +123,7 @@
             </div>
             </div>
             <div class="small mt-2" id="ttSummary"></div>
+            </div>
           </div>
           {% if device %}
           <div class="alert alert-success py-2 mb-3 small">
@@ -392,6 +397,15 @@ function tmFilter(){
   return shown;
 }
 document.getElementById('tmSearch').addEventListener('input', tmFilter);
+// Reset (2026-11-02): clear the search, the price box and every model price
+// (a model price is its tags' prices, so the Tag Based prices clear too).
+document.getElementById('tmReset').addEventListener('click', function(){
+  document.getElementById('tmSearch').value = '';
+  document.getElementById('tmPrice').value = '';
+  TT.price = {};
+  _syncPriceInputs();
+  tmFilter();
+});
 document.getElementById('tmApply').addEventListener('click', function(){
   var v = document.getElementById('tmPrice').value;
   if (v === '' || isNaN(parseFloat(v)) || parseFloat(v) < 0) { alert('Enter a Unit Price to apply.'); return; }

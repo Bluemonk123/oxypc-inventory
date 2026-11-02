@@ -164,7 +164,7 @@
       </div>
       {% if key in ('stress', 'final_qc', 'cosmetic') %}
       {# Pass | Fail (2026-10-28): completed Stress / Final QC WorkIDs by where the tag went next. #}
-      <div class="wid-stage-line" title="{{ 'Completed Stress tests: Pass = sent on to Cosmetic; Fail = sent back to L1/L2 or L3/L4' if key == 'stress' else ('Cosmetic: Pass = Cosmetic Completed to Final QC; Fail = sent back to L1/L2 or L3/L4 (Paint Fail inside Cosmetic not counted)' if key == 'cosmetic' else 'Completed Final QC: Pass = Final QC Pass Hold / Ready to Sale; Fail = Fail Hold or sent back') }}">
+      <div class="wid-stage-line" title="{{ 'Completed Stress tests: Pass = sent on to Cosmetic; Fail = sent back to L1/L2 or L3/L4' if key == 'stress' else ('Cosmetic, tags moved in the Work Date range: Pass = from Cosmetic to Final QC; Fail = from Cosmetic back to L1/L2 or L3/L4 (Paint Fail inside Cosmetic not counted)' if key == 'cosmetic' else 'Completed Final QC: Pass = Final QC Pass Hold / Ready to Sale; Fail = Fail Hold or sent back') }}">
         <span class="lt-tile-count" data-k="pass" data-server="{{ t.pass }}">{{ t.pass }}</span><span class="wid-stage-sub">Pass</span>
         <span class="text-muted">|</span>
         <span class="lt-tile-count" data-k="fail" data-server="{{ t.fail }}">{{ t.fail }}</span><span class="wid-stage-sub">Fail</span>
@@ -474,6 +474,7 @@ $(document).ready(function(){
       g.querySelectorAll('[data-k]').forEach(function (el) {
         var k = el.getAttribute('data-k');
         if (useServer || k === 'moved' || k === 'started') { el.textContent = el.getAttribute('data-server'); return; }   // Moved: never recounted
+        if (isCos && (k === 'pass' || k === 'fail')) { el.textContent = el.getAttribute('data-server'); return; }   // from the moves, server-side (2026-11-02)
         if (isCos && (k === 'assigned' || k === 'completed')) {      // Cosmetic counts TAGS (2026-11-02)
           var byTag = {};
           mine.forEach(function (r) { var t = byTag[r.b] = byTag[r.b] || [false, false];

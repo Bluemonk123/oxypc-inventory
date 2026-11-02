@@ -1494,6 +1494,65 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     else:
         stage_tiles = _stage_tile_counts_from_items(items)
 
+    # Cosmetic Pass / Fail from the moves themselves (2026-11-02): distinct
+    # tags moved out of any Cosmetic stage in the Work Date range — to Final
+    # QC = Pass, back to L1/L2 / L3/L4 = Fail. It used to need a Cosmetic
+    # WorkID still open at that moment, but the last one (Water Sanding)
+    # closes when the tag reaches Cosmetic Completed and the tag often waits
+    # there before Final QC, so most passes were missed. Engineer / Tag /
+    # WorkID / Stage filters and a non-admin's visibility narrow it to the
+    # tags of this view.
+    if _w_range and "cosmetic" in stage_tiles:
+        from sqlalchemy import distinct as _distinct
+        mq = (select(StageMovement.to_stage, func.count(_distinct(StageMovement.device_id)))
+              .where(StageMovement.from_stage.in_([DeviceStage(v) for v in _COSMETIC_VALUES]),
+                     StageMovement.to_stage.in_([DeviceStage(v) for v in _COSMETIC_EXIT_TO]),
+                     StageMovement.moved_at >= _w_range[0], StageMovement.moved_at <= _w_range[1])
+              .group_by(StageMovement.to_stage))
+        if (not is_admin) or engineer or tag or workid or stage_vals:
+            if main_truncated:
+                mq = mq.where(StageMovement.device_id.in_(
+                    full_stmt.with_only_columns(WorkOrder.device_id).scalar_subquery()))
+            else:
+                _vis = [it["device_id"] for it in items if it.get("device_id")]
+                mq = mq.where(StageMovement.device_id.in_(_vis or [None]))
+        _pf = {getattr(k, "value", k): n for k, n in (await db.execute(mq)).all()}
+        stage_tiles["cosmetic"]["pass"] = _pf.get("final_qc", 0)
+        stage_tiles["cosmetic"]["fail"] = sum(n for k, n in _pf.items() if k != "final_qc")
+        # Per engineer (Team Productivity's Staff Summary): credited to the
+        # engineer of the tag's last Cosmetic WorkID before the move — the
+        # move itself is mostly made by a supervisor. Falls back to the
+        # person who moved it when the tag had no Cosmetic WorkID.
+        by_mover: dict = {}
+        mq2 = mq.with_only_columns(StageMovement.device_id, StageMovement.moved_by,
+                                   StageMovement.to_stage, StageMovement.moved_at
+                                   ).group_by(None)
+        _mv = (await db.execute(mq2)).all()
+        _cos_codes = [c for c, st in _code_stage.items()
+                      if getattr(st, "value", st) in _COSMETIC_VALUES]
+        _wos: dict = {}
+        _dids = list({r[0] for r in _mv})
+        for i in range(0, len(_dids), 2000):
+            for did, uname, cat in (await db.execute(
+                    select(WorkOrder.device_id, WorkOrder.assigned_username, WorkOrder.created_at)
+                    .where(WorkOrder.device_id.in_(_dids[i:i + 2000]),
+                           WorkOrder.stage.in_(_cos_codes),
+                           WorkOrder.assigned_username.isnot(None)))).all():
+                _wos.setdefault(did, []).append((cat, uname))
+        # One credit per tag and verdict (its latest such move), so the
+        # engineer rows add up to the tile / Total.
+        _last: dict = {}
+        for did, mover, to, at in _mv:
+            v = "pass" if getattr(to, "value", to) == "final_qc" else "fail"
+            to_v = getattr(to, "value", to)
+            if (did, to_v) not in _last or at > _last[(did, to_v)][0]:
+                _last[(did, to_v)] = (at, mover, v)
+        for (did, _to), (at, mover, v) in _last.items():
+            prior = [w for w in _wos.get(did, ()) if w[0] and w[0] <= at]
+            who = max(prior)[1] if prior else (mover or "—")
+            by_mover.setdefault(who, {"pass": 0, "fail": 0})[v] += 1
+        stage_tiles["cosmetic"]["by_mover"] = by_mover
+
     # Final QC tile "(Ready for Sale - N)" (2026-10-29): tags moved into
     # Ready for Sale from production in the Work Date range — the same count
     # as the Repair Summary export. Page view only (not the exports).
@@ -1623,6 +1682,21 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
                                      show_reassigned=show_reassigned, scrap_type=scrap_type,
                                      highlight="", row_cap=None)
     items = page.context["items"]
+    # Cosmetic Pass / Fail = the moves out of Cosmetic in the Work Date range
+    # (2026-11-02), the same numbers as the page's Cosmetic tile; per engineer
+    # by who made the move. None when no Work Date range is set (old rule).
+    _cos = (page.context.get("stage_tiles") or {}).get("cosmetic") or {}
+    cos_moves = _cos if "by_mover" in _cos else None
+    if cos_moves is not None:
+        _unames = [u for u in cos_moves["by_mover"] if u and u != "—"]
+        _disp = dict((await db.execute(select(User.username, User.full_name)
+                                       .where(User.username.in_(_unames)))).all()) if _unames else {}
+        cos_by_eng: dict = {}
+        for u, v in cos_moves["by_mover"].items():
+            k = (_disp.get(u) or "").strip() or u
+            b = cos_by_eng.setdefault(k, {"pass": 0, "fail": 0})
+            b["pass"] += v["pass"]
+            b["fail"] += v["fail"]
 
     hdr_font = Font(bold=True, color="FFFFFF")
     hdr_fill = PatternFill("solid", fgColor="0E3A7A")
@@ -1743,18 +1817,20 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     for it in items:
         _add(total_b, it)
 
-    def _pf(b, g):
+    def _pf(b, g, group_row=False):
         if g == "stress":
             return [_n(b, "stress_pass"), _n(b, "stress_fail")]
         if g == "final_qc":
             return [_n(b, "fqc_pass"), _n(b, "fqc_fail")]
         if g == "cosmetic":
+            if cos_moves is not None:      # moves out of Cosmetic: one figure for the group
+                return [cos_moves["pass"], cos_moves["fail"]] if group_row else ["", ""]
             return [_n(b, "cos_pass"), _n(b, "cos_fail")]
         return ["", ""]
 
-    def _stage_row(g, lbl, b):
+    def _stage_row(g, lbl, b, group_row=False):
         return ([group_label[g], lbl, _n(b, "total"), _n(b, "tags"), _n(b, "assigned"), _n(b, "completed")]
-                + _pf(b, g) + [_n(b, "scrap"), _n(b, "reassigned"), _n(b, "pna"), _avg(b["days"])])
+                + _pf(b, g, group_row) + [_n(b, "scrap"), _n(b, "reassigned"), _n(b, "pna"), _avg(b["days"])])
     stage_rows = []
     _ordered = sorted(by_stage.items(), key=lambda kv: (group_order.index(kv[0][0]), kv[0][1]))
     for gi, g in enumerate(group_order):
@@ -1769,15 +1845,19 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             for it in items:
                 if _stage_group(it.get("stage_value")) == g:
                     _add(gb, it)
-            stage_rows.append(_stage_row(g, f"All {group_label[g]} stages", gb))
+            stage_rows.append(_stage_row(g, f"All {group_label[g]} stages", gb, group_row=True))
+        elif len(part) == 1 and g == "cosmetic" and cos_moves is not None:
+            stage_rows[-1] = _stage_row(g, part[0][0], part[0][1], group_row=True)
     _sheet(wb.create_sheet("Stage Summary"),
            ["Stage Group", "Stage", "Total WorkIDs", "Tags", "Open WorkIDs", "Completed WorkIDs",
             "Pass", "Fail",
             "Scrap WorkIDs", "Reassigned WorkIDs", "WorkIDs with PNA", "Avg Days to Complete"],
            stage_rows,
            ["Total", "", _n(total_b, "total"), _n(total_b, "tags"), _n(total_b, "assigned"), _n(total_b, "completed"),
-            _n(total_b, "stress_pass") + _n(total_b, "fqc_pass") + _n(total_b, "cos_pass"),
-            _n(total_b, "stress_fail") + _n(total_b, "fqc_fail") + _n(total_b, "cos_fail"),
+            _n(total_b, "stress_pass") + _n(total_b, "fqc_pass")
+            + (cos_moves["pass"] if cos_moves is not None else _n(total_b, "cos_pass")),
+            _n(total_b, "stress_fail") + _n(total_b, "fqc_fail")
+            + (cos_moves["fail"] if cos_moves is not None else _n(total_b, "cos_fail")),
             _n(total_b, "scrap"), _n(total_b, "reassigned"), _n(total_b, "pna"), _avg(total_b["days"])])
 
     # ── Sheet 3: Staff Summary — one row per engineer ──
@@ -1787,10 +1867,19 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     staff_rows = [[eng, _n(b, "total"), _n(b, "tags"), _n(b, "assigned"), _n(b, "completed"), _n(b, "scrap"),
                    _n(b, "reassigned")]
                   + [b["groups"].get(g, 0) for g in group_order] + [len(b["cos_tags"])]
-                  + [_n(b, "stress_pass"), _n(b, "stress_fail"), _n(b, "cos_pass"), _n(b, "cos_fail"),
-                     _n(b, "fqc_pass"), _n(b, "fqc_fail")]
+                  + [_n(b, "stress_pass"), _n(b, "stress_fail")]
+                  + ([cos_by_eng.get(eng, {}).get("pass", 0), cos_by_eng.get(eng, {}).get("fail", 0)]
+                     if cos_moves is not None else [_n(b, "cos_pass"), _n(b, "cos_fail")])
+                  + [_n(b, "fqc_pass"), _n(b, "fqc_fail")]
                   + [_n(b, "pna"), _avg(b["days"])]
                   for eng, b in sorted(by_eng.items(), key=lambda kv: (-kv[1]["total"], kv[0].lower()))]
+    # Someone who moved tags out of Cosmetic but has no WorkID in this view
+    # still gets a row, so the Cosmetic Pass / Fail rows add up to the Total.
+    if cos_moves is not None:
+        for eng, v in sorted(cos_by_eng.items()):
+            if eng not in by_eng and (v["pass"] or v["fail"]):
+                staff_rows.append([eng, 0, 0, 0, 0, 0, 0] + [0 for _g in group_order] + [0]
+                                  + [0, 0, v["pass"], v["fail"], 0, 0] + [0, ""])
     _sheet(wb.create_sheet("Staff Summary"),
            ["Engineer", "Total WorkIDs", "Tags", "Open WorkIDs", "Completed WorkIDs", "Scrap WorkIDs",
             "Reassigned WorkIDs"]
@@ -1801,8 +1890,10 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
            ["Total", _n(total_b, "total"), _n(total_b, "tags"), _n(total_b, "assigned"), _n(total_b, "completed"),
             _n(total_b, "scrap"), _n(total_b, "reassigned")]
            + [total_b["groups"].get(g, 0) for g in group_order] + [len(total_b["cos_tags"])]
-           + [_n(total_b, "stress_pass"), _n(total_b, "stress_fail"), _n(total_b, "cos_pass"),
-              _n(total_b, "cos_fail"), _n(total_b, "fqc_pass"), _n(total_b, "fqc_fail")]
+           + [_n(total_b, "stress_pass"), _n(total_b, "stress_fail")]
+           + ([cos_moves["pass"], cos_moves["fail"]] if cos_moves is not None
+              else [_n(total_b, "cos_pass"), _n(total_b, "cos_fail")])
+           + [_n(total_b, "fqc_pass"), _n(total_b, "fqc_fail")]
            + [_n(total_b, "pna"), _avg(total_b["days"])])
 
     out = _io.BytesIO()
