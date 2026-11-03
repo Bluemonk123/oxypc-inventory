@@ -85,14 +85,14 @@
     </div>
     <div class="row g-3 mb-3">
       <div class="col-md-4">
-        <label class="form-label small fw-semibold">E-Way Bill Number{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
+        <label class="form-label small fw-semibold">E-Way Bill Number{% if not ro %} <span class="text-danger eway-star d-none">*</span>{% endif %}</label>
         {% if ro %}<p class="form-control-plaintext">{{ grn.eway_bill_number or '—' }}</p>
-        {% else %}<input type="text" name="eway_bill_number" class="form-control form-control-sm" required>{% endif %}
+        {% else %}<input type="text" name="eway_bill_number" id="hdrEwayNo" class="form-control form-control-sm">{% endif %}
       </div>
       <div class="col-md-4">
-        <label class="form-label small fw-semibold">E-Way Bill Date{% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
+        <label class="form-label small fw-semibold">E-Way Bill Date{% if not ro %} <span class="text-danger eway-star d-none">*</span>{% endif %}</label>
         {% if ro %}<p class="form-control-plaintext">{{ grn.eway_bill_date.strftime('%d-%m-%Y') if grn.eway_bill_date else '—' }}</p>
-        {% else %}<input type="date" name="eway_bill_date" class="form-control form-control-sm" required>{% endif %}
+        {% else %}<input type="date" name="eway_bill_date" id="hdrEwayDate" class="form-control form-control-sm">{% endif %}
       </div>
       <div class="col-md-4">
         <label class="form-label small fw-semibold">E-Way Bill Upload{% if not ro %}{% endif %}</label>
@@ -345,6 +345,21 @@ function pgTax() {
   tax.value = f(t); txb.value = f(taxable); lbl.textContent = (intra ? 'CGST+SGST ' : 'GST ') + rate + '%';
 }
 document.querySelectorAll('.pg-tax-in').forEach(function (el) { el.addEventListener('input', pgTax); el.addEventListener('change', pgTax); });
+// E-Way Bill Number / Date required only above 50,000 Invoice Price (2026-11-03).
+function pgEwayReq() {
+  var a = document.getElementById('hdrInvValue');
+  if (!a) return;
+  var need = (parseFloat(a.value) || 0) > 50000;
+  ['hdrEwayNo', 'hdrEwayDate'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.required = need;
+    var star = el.parentElement.querySelector('.eway-star');
+    if (star) star.classList.toggle('d-none', !need);
+  });
+}
+(function () { var a = document.getElementById('hdrInvValue');
+  if (a) { a.addEventListener('input', pgEwayReq); a.addEventListener('change', pgEwayReq); pgEwayReq(); } })();
 </script>
 <script>
 var lineItems = [];

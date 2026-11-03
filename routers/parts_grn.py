@@ -205,11 +205,13 @@ async def grn_create(
     if vendor_state is not None:
         _req = [("GRN Date", date_received), ("Vendor Name", vendor_name), ("Vendor State", vendor_state),
                 ("PO Number", po_number), ("PO Date", po_date), ("Invoice Number", invoice_number),
-                ("Invoice Date", invoice_date), ("E-Way Bill Number", eway_bill_number),
-                ("E-Way Bill Date", eway_bill_date), ("Vehicle Number", vehicle_number),
+                ("Invoice Date", invoice_date),   # E-Way Bill Number / Date optional (2026-11-03)
+                ("Vehicle Number", vehicle_number),
                 ("Invoice Price", invoice_value), ("PO Quantity", total_po_qty),
                 ("Invoice Quantity", total_invoice_qty), ("Physical Quantity", total_physical_qty)]
-        _miss = [lbl for lbl, v in _req if not (v or "").strip()]
+        from routers.grn import eway_missing
+        _miss = [lbl for lbl, v in _req if not (v or "").strip()] + eway_missing(
+            invoice_value, eway_bill_number, eway_bill_date)
         if _miss:
             from urllib.parse import quote_plus
             return RedirectResponse(url="/parts-grn/new?error=" + quote_plus("GRN not saved — fill in: " + ", ".join(_miss)),

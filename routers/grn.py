@@ -1003,10 +1003,26 @@ _GRN_REQUIRED = [
     ("Vendor Name", "sender_name"), ("Vendor State", "vendor_state"),
     ("PO Number", "po_number"), ("PO Date", "purchase_date"),
     ("Invoice Number", "invoice_number"), ("Invoice Date", "invoice_date"),
-    ("E-Way Bill Number", "e_way_bill"), ("E-Way Bill Date", "eway_bill_date"),
-    ("Vehicle Number", "vehicle_number"), ("Invoice Price", "amount"),
+    ("Vehicle Number", "vehicle_number"),   # E-Way Bill Number / Date optional (2026-11-03) ("Invoice Price", "amount"),
     ("PO Quantity", "po_quantity"), ("Invoice Quantity", "quantity"), ("Physical Quantity", "physical_quantity"),
 ]
+
+
+EWAY_REQUIRED_ABOVE = 50000   # Invoice Price above this needs an E-Way Bill (2026-11-03)
+
+
+def eway_missing(invoice_price, eway_number, eway_date) -> list:
+    """E-Way Bill Number / Date are required only when the Invoice Price is
+    above EWAY_REQUIRED_ABOVE (2026-11-03); otherwise optional. Labels of the
+    blank ones, [] when fine. A field the form didn't send (None) is skipped."""
+    try:
+        amt = float(str(invoice_price or "").replace(",", "").replace("\u20b9", "").strip() or 0)
+    except ValueError:
+        return []
+    if amt <= EWAY_REQUIRED_ABOVE:
+        return []
+    return [lbl for lbl, v in (("E-Way Bill Number", eway_number), ("E-Way Bill Date", eway_date))
+            if v is not None and not str(v).strip()]
 
 
 def _missing_required(values: dict) -> list:
@@ -1083,7 +1099,7 @@ async def grn_create_manual(
             "purchase_date": purchase_date, "invoice_number": invoice_number, "invoice_date": invoice_date,
             "e_way_bill": e_way_bill, "eway_bill_date": eway_bill_date, "vehicle_number": vehicle_number,
             "amount": amount, "po_quantity": po_quantity, "quantity": quantity,
-            "physical_quantity": physical_quantity})
+            "physical_quantity": physical_quantity}) + eway_missing(amount, e_way_bill, eway_bill_date)
         if _miss:
             return RedirectResponse(url=f"{base}?error=" + quote("GRN not saved — fill in: " + ", ".join(_miss)),
                                     status_code=302)
@@ -1249,7 +1265,7 @@ async def grn_edit(
             "purchase_date": purchase_date, "invoice_number": invoice_number, "invoice_date": invoice_date,
             "e_way_bill": e_way_bill, "eway_bill_date": eway_bill_date, "vehicle_number": vehicle_number,
             "amount": amount, "po_quantity": po_quantity, "quantity": quantity,
-            "physical_quantity": physical_quantity})
+            "physical_quantity": physical_quantity}) + eway_missing(amount, e_way_bill, eway_bill_date)
         if _miss:
             return RedirectResponse(url=f"{_base}?error=" + _q("GRN not saved — fill in: " + ", ".join(_miss)),
                                     status_code=302)

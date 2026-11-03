@@ -74,10 +74,12 @@
     <div class="small text-muted" id="{{ p }}file_hint"></div></div>
 </div>
 <div class="row g-2 mt-1">
-  <div class="col-md-4"><label class="form-label fw-semibold">E-Way Bill Number {{ R | safe }}</label>
-    <input type="text" name="e_way_bill" id="{{ p }}eway" class="form-control" {{ req }}></div>
-  <div class="col-md-4"><label class="form-label fw-semibold">E-Way Bill Date {{ R | safe }}</label>
-    <input type="date" name="eway_bill_date" id="{{ p }}eway_date" class="form-control" {{ req }}></div>
+  {# E-Way Bill Number / Date (2026-11-03): required only when the Invoice
+     Price is above 50,000 (the * appears then), otherwise optional. #}
+  <div class="col-md-4"><label class="form-label fw-semibold">E-Way Bill Number <span class="text-danger eway-star d-none">*</span></label>
+    <input type="text" name="e_way_bill" id="{{ p }}eway" class="form-control eway-in"></div>
+  <div class="col-md-4"><label class="form-label fw-semibold">E-Way Bill Date <span class="text-danger eway-star d-none">*</span></label>
+    <input type="date" name="eway_bill_date" id="{{ p }}eway_date" class="form-control eway-in"></div>
   <div class="col-md-4"><label class="form-label fw-semibold">E-Way Bill Upload</label>
     <input type="file" name="eway_bill_file" accept="application/pdf,.pdf,image/*" class="form-control">
     <div class="small text-muted" id="{{ p }}eway_hint"></div></div>
@@ -790,6 +792,25 @@ function grnTax(p) {
   tax.value = f(t); txb.value = f(taxable);
   lbl.textContent = (intra ? 'CGST+SGST ' : 'GST ') + rate + '%';
 }
+// E-Way Bill required above 50,000 Invoice Price (2026-11-03), per form (prefix).
+function grnEwayReq(p) {
+  var a = document.getElementById(p + 'amount');
+  if (!a) return;
+  var amt = parseFloat(String(a.value || '').replace(/[,\u20b9\s]/g, '')) || 0;
+  var need = amt > 50000;
+  [p + 'eway', p + 'eway_date'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.required = need;
+    var star = el.parentElement.querySelector('.eway-star');
+    if (star) star.classList.toggle('d-none', !need);
+  });
+}
+document.querySelectorAll('input[name="amount"].grn-tax-in').forEach(function (el) {
+  var p = el.getAttribute('data-p') || '';
+  ['input', 'change'].forEach(function (ev) { el.addEventListener(ev, function () { grnEwayReq(p); }); });
+  grnEwayReq(p);
+});
 document.querySelectorAll('.grn-tax-in').forEach(function (el) {
   ['input', 'change'].forEach(function (ev) { el.addEventListener(ev, function () { grnTax(el.dataset.p); }); });
 });
