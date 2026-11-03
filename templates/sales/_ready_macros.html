@@ -18,12 +18,12 @@
   <option value="blocked" {{ 'selected' if value == 'blocked' }}>Blocked</option>
 </select>
 {% endmacro %}
-{% macro model_summary_table(table_id, rows, selectable, empty_text) %}
+{% macro model_summary_table(table_id, rows, selectable, empty_text, show_location=false) %}
 <table id="{{ table_id }}" class="table table-hover mb-0 small w-100">
   <thead class="table-dark">
     <tr>
       {% if selectable %}<th><input type="checkbox" id="modelSumSelectAll"></th>{% endif %}
-      <th>Model</th><th>Make</th><th>Device Type</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th>
+      <th>Model</th>{% if show_location %}<th>Location</th>{% endif %}<th>Make</th><th>Device Type</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th>
       {# Total Purchase Price hidden by request (2026-10-13). #}
       <th>Total Quantity</th><th>Grades</th>
       <th title="Sum of each tag's Min Selling Price (saved Set price, else unit price + repair cost + margin)">Min Selling Price</th>
@@ -33,7 +33,7 @@
   <tbody>
     {% for g in rows %}
     <tr data-qty="{{ g.total_count }}" data-min="{{ (g.min_total or 0) if can(current_user, (pm if pm is defined else 'sales'), 'pricing') else 0 }}"
-        data-open="{{ g.open_count }}" data-blocked="{{ g.blocked_count }}">
+        data-open="{{ g.open_count }}" data-blocked="{{ g.blocked_count }}"{% if show_location %} data-zones='{{ g.zones | tojson }}'{% endif %}>
       {% if selectable %}
       <td><input type="checkbox" class="modelSumChk" value="{{ loop.index0 }}"
                  data-model="{{ g.model }}" data-make="{{ g.make }}"
@@ -52,6 +52,9 @@
                   data-barcodes='{{ g.barcodes | tojson }}'><i class="bi bi-download"></i></button>{% if g.entities %}<span class="vr mx-2"></span>{% endif %}{% endif %}
           {% for short, cnt, full in g.entities %}{% if not loop.first %}<span class="vr mx-2"></span>{% endif %}<span title="{{ full }}">{{ short }} - {{ cnt }}</span>{% endfor %}
         </div>{% endif %}</td>
+      {# Location (2026-11-03): tags per location zone, one per line as plain
+         text — Showroom and TRC Floor always, then any other zone. #}
+      {% if show_location %}<td class="text-nowrap small">{% for z, n in g.zones %}<div{% if loop.index > 2 %} class="text-muted"{% endif %}>{{ z }} - {{ n }}</div>{% endfor %}</td>{% endif %}
       <td>{{ g.make }}</td>
       <td>{{ g.device_type }}</td>
       <td>{{ g.cpu }}</td>
@@ -113,7 +116,7 @@
   <tfoot class="table-light fw-semibold">
     <tr>
       {% if selectable %}<td></td>{% endif %}
-      <td>Total</td><td></td><td></td><td></td><td></td><td></td><td></td>
+      <td>Total</td>{% if show_location %}<td class="ms-total-loc text-nowrap small"></td>{% endif %}<td></td><td></td><td></td><td></td><td></td><td></td>
       <td class="ms-total-qty text-nowrap"></td><td class="ms-total-grades"></td>
       <td class="ms-total-min text-nowrap"></td><td></td>
     </tr>

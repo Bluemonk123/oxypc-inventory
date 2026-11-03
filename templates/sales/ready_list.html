@@ -257,7 +257,7 @@
       </div>
     </div>
     <div class="card-body px-0 pb-0">
-    {{ model_summary_table('readyModelSummaryTable', model_summary_ready, true, 'No Ready for Sale tags.') }}
+    {{ model_summary_table('readyModelSummaryTable', model_summary_ready, true, 'No Ready for Sale tags.', true) }}
     </div>
   </div>{# /card #}
   </div>
@@ -894,7 +894,8 @@ document.getElementById('multiRequestBtn').addEventListener('click', function(){
 
 // ── Model Summary: checkboxes + per-row Request modal + Request Selected ──
 var SUMMARY_OPTS = {
-  readyModelSummaryTable: {pageLength:12, order:[[8,'desc']], language:{emptyTable:'No Ready for Sale tags.', searchPlaceholder:'Model/Make/Type/CPU/RAM/Storage'}, columnDefs:[{orderable:false, targets:[0,9,11]}, {visible:false, targets:[0]}]},
+  // Location column (2026-11-03) after Model shifts the rest +1.
+  readyModelSummaryTable: {pageLength:12, order:[[9,'desc']], language:{emptyTable:'No Ready for Sale tags.', searchPlaceholder:'Model/Make/Type/CPU/RAM/Storage'}, columnDefs:[{orderable:false, targets:[0,2,10,12]}, {visible:false, targets:[0]}]},
 };
 // Total row: sums Total Quantity, each Grade and Min Selling Price over every
 // row that passes the current filters and search (all pages, not just the
@@ -903,7 +904,12 @@ var SUMMARY_GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'NG'];
 function summaryFooter() {
   var api = this.api(), qty = 0, min = 0, grades = {}, cls = {}, open = 0, blocked = 0;
   var split = api.table().node().id === 'readyModelSummaryTable';
+  var zones = {}, zoneOrder = [];
   api.rows({ search: 'applied' }).nodes().each(function (tr) {
+    try { JSON.parse(tr.getAttribute('data-zones') || '[]').forEach(function (z) {
+      if (!(z[0] in zones)) { zones[z[0]] = 0; zoneOrder.push(z[0]); }
+      zones[z[0]] += Number(z[1]) || 0;
+    }); } catch (e) {}
     qty += Number(tr.getAttribute('data-qty')) || 0;
     open += Number(tr.getAttribute('data-open')) || 0;
     blocked += Number(tr.getAttribute('data-blocked')) || 0;
@@ -924,6 +930,10 @@ function summaryFooter() {
     SUMMARY_GRADE_ORDER.filter(function (g) { return grades[g]; }).map(function (g) {
       return '<span class="' + cls[g] + '">' + g + ' ' + grades[g] + '</span>';
     }).join('') + '</div>');
+  var zmain = zoneOrder.slice(0, 2), zrest = zoneOrder.slice(2).filter(function (z) { return zones[z]; }).sort(function (a, b) { return (a === 'No Location') - (b === 'No Location') || a.localeCompare(b); });
+  foot.find('.ms-total-loc').html(zmain.concat(zrest).map(function (z, i) {
+    return '<div' + (i > 1 ? ' class="text-muted"' : '') + '>' + $('<span>').text(z).html() + ' - ' + zones[z] + '</div>';
+  }).join(''));
   foot.find('.ms-total-min').text({% if can(current_user, _pm, 'pricing') %}'₹' + Math.round(min).toLocaleString('en-IN'){% else %}'—'{% endif %});
 }
 function buildSummaryTable(id){

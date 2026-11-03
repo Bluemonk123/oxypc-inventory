@@ -696,6 +696,16 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
             return "UN"                       # no entity set = Unassigned
         return _ENTITY_SHORT.get(n.lower()) or n[:3].upper()
 
+    # Location zone per tag for the Model Summary "Location" column
+    # (2026-11-03): Showroom / TRC Floor counts, any other zone below them.
+    from models.location import ZONE_LABELS, ZoneType
+    _zone_by_dev = dict((await db.execute(
+        select(Device.id, StorageLocation.zone)
+        .join(StorageLocation, Device.location_id == StorageLocation.id)
+        .where(Device.current_stage == DeviceStage.ready_to_sale, Device.is_trashed == False)
+    )).all())
+    _ZONE_MAIN = [ZONE_LABELS[ZoneType.showroom], ZONE_LABELS[ZoneType.workshop]]
+
     def _build_model_summary(rows):
         summary: dict = {}
         for device, lot_number, buying_price, lot_qty, selling_price in rows:
@@ -722,7 +732,11 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
                 "total_count": 0, "total_purchase_price": 0.0,
                 "min_total": 0.0, "min_units": [], "barcodes": [], "grade_counts": {},
                 "open_count": 0, "blocked_count": 0, "entity_counts": {},
+                "zone_counts": {},
             })
+            _z = _zone_by_dev.get(device.id)
+            _zl = ZONE_LABELS.get(_z, getattr(_z, "value", _z)) if _z else "No Location"
+            g["zone_counts"][_zl] = g["zone_counts"].get(_zl, 0) + 1
             g["total_count"] += 1
             g["blocked_count" if _is_held(device) else "open_count"] += 1
             grade = getattr(device.grade, "value", device.grade) if device.grade else ""
@@ -748,6 +762,11 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
             g["entities"] = sorted(
                 ((k, v[0], v[1]) for k, v in ecs.items()),
                 key=lambda e: (_ENTITY_ORDER.index(e[0]) if e[0] in _ENTITY_ORDER else 99, e[0]))
+            # Showroom and TRC Floor always (0 when none), then any other zone.
+            zc = g.pop("zone_counts")
+            g["zones"] = [(z, zc.get(z, 0)) for z in _ZONE_MAIN] + sorted(
+                ((z, n) for z, n in zc.items() if z not in _ZONE_MAIN),
+                key=lambda e: (e[0] == "No Location", e[0]))
             gc = g.pop("grade_counts")
             g["grades"] = [
                 (label, gc[code], cls) for code, label, cls in _SUMMARY_GRADES if gc.get(code)
@@ -2244,7 +2263,7 @@ async def export_selected_sales(
         writer.writerow([
             s.sale_number,
             s.invoice_no or "",
-            s.sold_at.strftime("%d-%m-%Y"),
+            s.sold_at.strftime("%Y-%m-%d"),
             row.barcode, row.brand, row.model, row.lot_number,
             row.grade.value if row.grade else "",
             float(s.sale_price or 0),
@@ -2653,7 +2672,7 @@ async def export_sales_filtered(
         s = row.Sale
         transfer_type = stage_by_device.get(row.device_id)
         writer.writerow([
-            s.sale_number, s.invoice_no or "", s.sold_at.strftime("%d-%m-%Y") if s.sold_at else "",
+            s.sale_number, s.invoice_no or "", s.sold_at.strftime("%Y-%m-%d") if s.sold_at else "",
             row.barcode, row.brand, row.model, row.lot_number,
             row.grade.value if row.grade else "",
             float(s.sale_price or 0),
@@ -4022,7 +4041,7 @@ async def credit_note_export_selected(
         w.writerow([
             device.barcode, device.tag_return_status or "", lot_num or "", device.sub_lot_number or "",
             f"{device.device_price:.2f}" if device.device_price is not None else "",
-            sold_at.strftime("%d-%m-%Y") if sold_at else "",
+            sold_at.strftime("%Y-%m-%d") if sold_at else "",
             f"{ret.debit_note_amount:,.0f}" if ret.debit_note_amount is not None else "",
             ret.debit_note_number or "", sale_num or "", ret.payment_invoice or "",
             ret.customer_name or "", ret.customer_phone or "", ret.customer_email or "",

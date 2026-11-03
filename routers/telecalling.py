@@ -309,7 +309,7 @@ async def export_calls_csv(
         d = call.dealer
         writer.writerow([
             # Call log
-            call.call_date.strftime("%d-%m-%Y") if call.call_date else "",
+            call.call_date.strftime("%Y-%m-%d") if call.call_date else "",
             call.call_date.strftime("%H:%M") if call.call_date else "",
             call.call_type or "",
             call.call_mode or "",
@@ -317,7 +317,7 @@ async def export_calls_csv(
             (call.call_outcome or "").replace("_", " ").title(),
             call.items_discussed or "",
             float(call.quote_given) if call.quote_given else "",
-            call.next_followup_date.strftime("%d-%m-%Y") if call.next_followup_date else "",
+            call.next_followup_date.strftime("%Y-%m-%d") if call.next_followup_date else "",
             "Yes" if call.whatsapp_sent else "No",
             call.notes or "",
             call.called_by or "",

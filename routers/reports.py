@@ -1477,8 +1477,8 @@ async def receivables_report(
                 w.writerow([
                     dealer_name,
                     r["order"].order_number,
-                    r["order"].order_date.strftime("%d-%m-%Y"),
-                    r["order"].payment_due_date.strftime("%d-%m-%Y") if r["order"].payment_due_date else "",
+                    r["order"].order_date.strftime("%Y-%m-%d"),
+                    r["order"].payment_due_date.strftime("%Y-%m-%d") if r["order"].payment_due_date else "",
                     r["bucket"],
                     float(r["due"]),
                 ])

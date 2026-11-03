@@ -1509,21 +1509,28 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                      StageMovement.to_stage.in_([DeviceStage(v) for v in _COSMETIC_EXIT_TO]),
                      StageMovement.moved_at >= _w_range[0], StageMovement.moved_at <= _w_range[1])
               .group_by(StageMovement.to_stage))
-        if (not is_admin) or engineer or tag or workid or stage_vals:
+        # Engineer filter and a non-admin's team are applied to the CREDIT
+        # below (2026-11-03): the tag's last Cosmetic WorkID may have closed
+        # before the Work Date range (it waits in Cosmetic Completed), so
+        # "tags in this view" missed passes a manager's team had earned.
+        # Tag / WorkID match the tag directly (its WorkIDs may all have closed
+        # before the range); the Stage filter uses the tags of this view.
+        if tag:
+            mq = mq.where(StageMovement.device_id.in_(
+                select(WorkOrder.device_id).where(WorkOrder.barcode.ilike(f"%{tag.strip()}%"))))
+        if workid:
+            mq = mq.where(StageMovement.device_id.in_(
+                select(WorkOrder.device_id).where(WorkOrder.work_id.ilike(f"%{workid.strip()}%"))))
+        if stage_vals:
             if main_truncated:
                 mq = mq.where(StageMovement.device_id.in_(
                     full_stmt.with_only_columns(WorkOrder.device_id).scalar_subquery()))
             else:
                 _vis = [it["device_id"] for it in items if it.get("device_id")]
                 mq = mq.where(StageMovement.device_id.in_(_vis or [None]))
-        _pf = {getattr(k, "value", k): n for k, n in (await db.execute(mq)).all()}
-        stage_tiles["cosmetic"]["pass"] = _pf.get("final_qc", 0)
-        stage_tiles["cosmetic"]["fail"] = sum(n for k, n in _pf.items() if k != "final_qc")
-        # Per engineer (Team Productivity's Staff Summary): credited to the
-        # engineer of the tag's last Cosmetic WorkID before the move — the
-        # move itself is mostly made by a supervisor. Falls back to the
-        # person who moved it when the tag had no Cosmetic WorkID.
-        by_mover: dict = {}
+        # Credited to the engineer of the tag's last Cosmetic WorkID before
+        # the move — the move itself is mostly made by a supervisor. Falls
+        # back to the person who moved it when the tag had no Cosmetic WorkID.
         mq2 = mq.with_only_columns(StageMovement.device_id, StageMovement.moved_by,
                                    StageMovement.to_stage, StageMovement.moved_at
                                    ).group_by(None)
@@ -1533,25 +1540,44 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         _wos: dict = {}
         _dids = list({r[0] for r in _mv})
         for i in range(0, len(_dids), 2000):
-            for did, uname, cat in (await db.execute(
-                    select(WorkOrder.device_id, WorkOrder.assigned_username, WorkOrder.created_at)
+            for did, uname, cat, wid in (await db.execute(
+                    select(WorkOrder.device_id, WorkOrder.assigned_username, WorkOrder.created_at,
+                           WorkOrder.work_id)
                     .where(WorkOrder.device_id.in_(_dids[i:i + 2000]),
                            WorkOrder.stage.in_(_cos_codes),
                            WorkOrder.assigned_username.isnot(None)))).all():
-                _wos.setdefault(did, []).append((cat, uname))
-        # One credit per tag and verdict (its latest such move), so the
-        # engineer rows add up to the tile / Total.
+                _wos.setdefault(did, []).append((cat, uname, wid))
+        # One credit per tag and verdict (its latest such move): distinct
+        # tags moved to Final QC = Pass, back to L1/L2 / L3/L4 = Fail.
         _last: dict = {}
         for did, mover, to, at in _mv:
-            v = "pass" if getattr(to, "value", to) == "final_qc" else "fail"
             to_v = getattr(to, "value", to)
             if (did, to_v) not in _last or at > _last[(did, to_v)][0]:
-                _last[(did, to_v)] = (at, mover, v)
+                _last[(did, to_v)] = (at, mover, "pass" if to_v == "final_qc" else "fail")
+        _allowed = {engineer} if engineer else (None if is_admin else visible_usernames)
+        by_mover: dict = {}
+        credit: dict = {}          # work_id (or "dev:<id>") -> verdict, for the Tag Summary
+        credit_nowid: dict = {}    # device_id -> (verdict, mover, moved_at): no Cosmetic WorkID
+        _pass = _fail = 0
         for (did, _to), (at, mover, v) in _last.items():
             prior = [w for w in _wos.get(did, ()) if w[0] and w[0] <= at]
-            who = max(prior)[1] if prior else (mover or "—")
+            top = max(prior, key=lambda w: w[0]) if prior else None
+            who = top[1] if top else (mover or "—")
+            if _allowed is not None and who not in _allowed:
+                continue
             by_mover.setdefault(who, {"pass": 0, "fail": 0})[v] += 1
+            credit[top[2] if top else f"dev:{did}"] = v
+            if not top:
+                credit_nowid[did] = (v, who, at)
+            if v == "pass":
+                _pass += 1
+            else:
+                _fail += 1
+        stage_tiles["cosmetic"]["pass"] = _pass
+        stage_tiles["cosmetic"]["fail"] = _fail
         stage_tiles["cosmetic"]["by_mover"] = by_mover
+        stage_tiles["cosmetic"]["credit"] = credit
+        stage_tiles["cosmetic"]["credit_nowid"] = credit_nowid
 
     # Final QC tile "(Ready for Sale - N)" (2026-10-29): tags moved into
     # Ready for Sale from production in the Work Date range — the same count
@@ -1684,7 +1710,8 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     items = page.context["items"]
     # Cosmetic Pass / Fail = the moves out of Cosmetic in the Work Date range
     # (2026-11-02), the same numbers as the page's Cosmetic tile; per engineer
-    # by who made the move. None when no Work Date range is set (old rule).
+    # credited to the engineer of the tag's last Cosmetic WorkID. None when no
+    # Work Date range is set (old rule).
     _cos = (page.context.get("stage_tiles") or {}).get("cosmetic") or {}
     cos_moves = _cos if "by_mover" in _cos else None
     if cos_moves is not None:
@@ -1697,6 +1724,16 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             b = cos_by_eng.setdefault(k, {"pass": 0, "fail": 0})
             b["pass"] += v["pass"]
             b["fail"] += v["fail"]
+
+    cos_credit = (cos_moves or {}).get("credit") or {}
+    _code_stage = _build_code_stage()
+
+    def _cos_result(it):
+        if _stage_group(it.get("stage_value")) != "cosmetic":
+            return ""
+        if cos_moves is not None:
+            return {"pass": "Pass", "fail": "Fail"}.get(cos_credit.get(it.get("work_id")) or "", "")
+        return {"pass": "Pass", "fail": "Fail"}.get(it.get("qc_result") or "", "")
 
     hdr_font = Font(bold=True, color="FFFFFF")
     hdr_fill = PatternFill("solid", fgColor="0E3A7A")
@@ -1755,11 +1792,57 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
              if _stage_group(it.get("stage_value")) == "stress" else ""),
             ({"pass": "Pass", "fail": "Fail"}.get(it.get("qc_result") or "", "")
              if _stage_group(it.get("stage_value")) == "final_qc" else ""),
-            ({"pass": "Pass", "fail": "Fail"}.get(it.get("qc_result") or "", "")
-             if _stage_group(it.get("stage_value")) == "cosmetic" else ""),
+            _cos_result(it),
             "Yes" if it.get("pna") else "No",
             it.get("pna_history_text") or "",
         ])
+    # Cosmetic Result (2026-11-03): with a Work Date range, Pass / Fail sits on
+    # the WorkID credited for the move out of Cosmetic (the tag's last Cosmetic
+    # WorkID) — the same tags as the Cosmetic tile and Staff Summary. When that
+    # WorkID closed before the range (the tag waited in Cosmetic Completed) it
+    # is not among the rows above, so it is added here.
+    if cos_credit:
+        _shown = {it.get("work_id") for it in items}
+        _extra = [w for w in cos_credit if not w.startswith("dev:") and w not in _shown]
+        if _extra:
+            from models.lot import Lot as _Lot
+            _names = {}
+            _ex = (await db.execute(
+                select(WorkOrder, Device.barcode, Device.brand, Device.model, _Lot.lot_number)
+                .join(Device, WorkOrder.device_id == Device.id)
+                .outerjoin(_Lot, Device.lot_id == _Lot.id)
+                .where(WorkOrder.work_id.in_(_extra)))).all()
+            _un = {r[0].assigned_username for r in _ex if r[0].assigned_username}
+            if _un:
+                _names = dict((await db.execute(select(User.username, User.full_name)
+                                                .where(User.username.in_(_un)))).all())
+            for wo, bc, br, mdl, lotno in sorted(_ex, key=lambda r: r[0].completed_at or r[0].created_at):
+                st = _code_stage.get(wo.stage)
+                tag_rows.append([
+                    bc or wo.barcode or "", lotno or "", br or "", mdl or br or "",
+                    _names.get(wo.assigned_username) or wo.assigned_name or wo.assigned_username or "",
+                    STAGE_LABELS.get(st, getattr(st, "value", wo.stage or "")) if st else (wo.stage or ""),
+                    wo.created_at, wo.assigned_at or wo.created_at, wo.completed_at,
+                    "Completed (before date range)" if wo.status == "completed" else (wo.status or "").title(),
+                    "", "", "", {"pass": "Pass", "fail": "Fail"}[cos_credit[wo.work_id]], "No", "",
+                ])
+        # Tags that left Cosmetic without any Cosmetic WorkID: one row each,
+        # under the person who moved them (same as the Staff Summary).
+        _nw = (cos_moves or {}).get("credit_nowid") or {}
+        if _nw:
+            _devs = {d.id: (d, ln) for d, ln in (await db.execute(
+                select(Device, Lot.lot_number).outerjoin(Lot, Device.lot_id == Lot.id)
+                .where(Device.id.in_(list(_nw))))).all()}
+            _mn = dict((await db.execute(select(User.username, User.full_name).where(
+                User.username.in_({w for _v, w, _a in _nw.values() if w})))).all())
+            for did, (v, who, at) in sorted(_nw.items(), key=lambda e: e[1][2]):
+                d, ln = _devs.get(did, (None, None))
+                tag_rows.append([
+                    d.barcode if d else "", ln or "", (d.brand if d else "") or "",
+                    ((d.model or d.brand) if d else "") or "", _mn.get(who) or who or "",
+                    "Cosmetic (no WorkID)", at, None, None, "Moved out of Cosmetic",
+                    "", "", "", {"pass": "Pass", "fail": "Fail"}[v], "No", "",
+                ])
     _sheet(ws, ["Tag Number", "Lot Number", "Make", "Model", "Engineer Name", "Stage",
                 "Movement Date", "Start Date", "Completed Date", "Status", "Scrap", "Stress Result", "Final QC Result", "Cosmetic Result", "PNA",
                 "PNA History"], tag_rows)

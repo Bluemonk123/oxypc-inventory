@@ -911,13 +911,13 @@ async def dealer_export_response(db: AsyncSession, dealer_ids: list, filename_pr
             OUTCOME_LABELS.get(outcome, (outcome or "").replace("_", " ").title()),
             d.contact_person, d.phone, d.email, d.address, d.city, d.state, d.pincode,
             d.website, d.google_cid, d.gstin,
-            fmt(rc.get("call_date"), "%d-%m-%Y %H:%M"), rc.get("qty"), rc.get("items_text", ""),
+            fmt(rc.get("call_date"), "%Y-%m-%d %H:%M"), rc.get("qty"), rc.get("items_text", ""),
             rc.get("calling_remark", ""), rc.get("notes", ""),
             rc.get("purchase_quantity"), rc.get("sale_quantity"),
             rc.get("deals_in", ""), rc.get("whom_to_sell", ""),
-            fmt(rc.get("next_followup_date"), "%d-%m-%Y"),
+            fmt(rc.get("next_followup_date"), "%Y-%m-%d"),
             (names.get(d.assigned_to) or d.assigned_to) if d.assigned_to else "Unassigned",
-            d.source, fmt(d.created_at, "%d-%m-%Y %H:%M"),
+            d.source, fmt(d.created_at, "%Y-%m-%d %H:%M"),
         )])
     filename = f"{filename_prefix}_{app_now().strftime('%Y%m%d_%H%M')}.csv"
     return StreamingResponse(
@@ -2387,7 +2387,7 @@ async def dealer_statement_csv(
     writer.writerow(["ACCOUNT STATEMENT"])
     writer.writerow(["Dealer", dealer.business_name])
     writer.writerow(["Code", dealer.dealer_code])
-    writer.writerow(["Generated", app_now().strftime("%d-%m-%Y %H:%M UTC")])
+    writer.writerow(["Generated", app_now().strftime("%Y-%m-%d %H:%M UTC")])
     writer.writerow([])
 
     # Orders section
@@ -2405,7 +2405,7 @@ async def dealer_statement_csv(
         total_due_orders  += due_val
         writer.writerow([
             o.order_number,
-            o.order_date.strftime("%d-%m-%Y"),
+            o.order_date.strftime("%Y-%m-%d"),
             f"{total_val:.2f}",
             f"{paid_val:.2f}",
             f"{due_val:.2f}",
@@ -2423,7 +2423,7 @@ async def dealer_statement_csv(
         total_credits += cn_val
         writer.writerow([
             cn.credit_number,
-            cn.credit_date.strftime("%d-%m-%Y"),
+            cn.credit_date.strftime("%Y-%m-%d"),
             f"{cn_val:.2f}",
             (cn.reason or "").replace("_", " ").title(),
             cn.items_description or "",
@@ -2439,7 +2439,7 @@ async def dealer_statement_csv(
         r_val = float(r.amount or 0)
         total_receipts += r_val
         writer.writerow([
-            r.receipt_date.strftime("%d-%m-%Y"),
+            r.receipt_date.strftime("%Y-%m-%d"),
             f"{r_val:.2f}",
             r.payment_mode or "",
             r.reference_no or "",

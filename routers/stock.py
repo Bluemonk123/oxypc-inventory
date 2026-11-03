@@ -256,9 +256,9 @@ async def export_all_lots_csv(
             lot.lot_number,
             grn,
             lot.supplier_name or "",
-            lot.created_at.strftime("%d-%m-%Y %H:%M") if lot.created_at else "",
-            lot.purchase_date.strftime("%d-%m-%Y") if lot.purchase_date else "",
-            lot.grn_date.strftime("%d-%m-%Y") if lot.grn_date else "",
+            lot.created_at.strftime("%Y-%m-%d %H:%M") if lot.created_at else "",
+            lot.purchase_date.strftime("%Y-%m-%d") if lot.purchase_date else "",
+            lot.grn_date.strftime("%Y-%m-%d") if lot.grn_date else "",
             lot.invoice_no or "",
             float(lot.invoice_value or 0) or "",
             float(lot.sgst or 0) or "",
@@ -2145,7 +2145,7 @@ async def trc_production_tile_summary(
         row = [
             barcode or "", brand or "", model or "", lot_number or "",
             STAGE_LABELS.get(stage, stage.value if stage else ""),
-            updated_at.strftime("%d-%m-%Y %H:%M") if updated_at else "",
+            updated_at.strftime("%Y-%m-%d %H:%M") if updated_at else "",
         ]
         if is_returned:
             row.append(return_status or "")
@@ -2190,7 +2190,7 @@ async def trc_production_pna_summary(
             barcode or pna.barcode or "", brand or "", model or "", lot_number or "",
             STAGE_LABELS.get(stage, stage.value if stage else ""),
             pna.part_name, pna.part_category or "",
-            pna.marked_by or "", pna.marked_at.strftime("%d-%m-%Y %H:%M") if pna.marked_at else "",
+            pna.marked_by or "", pna.marked_at.strftime("%Y-%m-%d %H:%M") if pna.marked_at else "",
         ])
     output.seek(0)
     return Response(
