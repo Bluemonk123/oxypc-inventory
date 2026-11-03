@@ -1514,56 +1514,58 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         # before the Work Date range (it waits in Cosmetic Completed), so
         # "tags in this view" missed passes a manager's team had earned.
         # Tag / WorkID match the tag directly (its WorkIDs may all have closed
-        # before the range); the Stage filter uses the tags of this view.
+        # before the range). The Stage filter is applied to the credited
+        # WorkID's stage below (2026-11-03), for the same reason — it used
+        # "tags in this view" and dropped passes whose last WorkID closed
+        # before the range (85 Pass without the filter, 77 with it).
         if tag:
             mq = mq.where(StageMovement.device_id.in_(
                 select(WorkOrder.device_id).where(WorkOrder.barcode.ilike(f"%{tag.strip()}%"))))
         if workid:
             mq = mq.where(StageMovement.device_id.in_(
                 select(WorkOrder.device_id).where(WorkOrder.work_id.ilike(f"%{workid.strip()}%"))))
-        if stage_vals:
-            if main_truncated:
-                mq = mq.where(StageMovement.device_id.in_(
-                    full_stmt.with_only_columns(WorkOrder.device_id).scalar_subquery()))
-            else:
-                _vis = [it["device_id"] for it in items if it.get("device_id")]
-                mq = mq.where(StageMovement.device_id.in_(_vis or [None]))
         # Credited to the engineer of the tag's last Cosmetic WorkID before
         # the move — the move itself is mostly made by a supervisor. Falls
         # back to the person who moved it when the tag had no Cosmetic WorkID.
         mq2 = mq.with_only_columns(StageMovement.device_id, StageMovement.moved_by,
-                                   StageMovement.to_stage, StageMovement.moved_at
-                                   ).group_by(None)
+                                   StageMovement.to_stage, StageMovement.moved_at,
+                                   StageMovement.from_stage).group_by(None)
         _mv = (await db.execute(mq2)).all()
         _cos_codes = [c for c, st in _code_stage.items()
                       if getattr(st, "value", st) in _COSMETIC_VALUES]
         _wos: dict = {}
         _dids = list({r[0] for r in _mv})
         for i in range(0, len(_dids), 2000):
-            for did, uname, cat, wid in (await db.execute(
+            for did, uname, cat, wid, wst in (await db.execute(
                     select(WorkOrder.device_id, WorkOrder.assigned_username, WorkOrder.created_at,
-                           WorkOrder.work_id)
+                           WorkOrder.work_id, WorkOrder.stage)
                     .where(WorkOrder.device_id.in_(_dids[i:i + 2000]),
                            WorkOrder.stage.in_(_cos_codes),
                            WorkOrder.assigned_username.isnot(None)))).all():
-                _wos.setdefault(did, []).append((cat, uname, wid))
+                _st = _code_stage.get(wst)
+                _wos.setdefault(did, []).append((cat, uname, wid, getattr(_st, "value", _st)))
         # One credit per tag and verdict (its latest such move): distinct
         # tags moved to Final QC = Pass, back to L1/L2 / L3/L4 = Fail.
         _last: dict = {}
-        for did, mover, to, at in _mv:
+        for did, mover, to, at, frm in _mv:
             to_v = getattr(to, "value", to)
             if (did, to_v) not in _last or at > _last[(did, to_v)][0]:
-                _last[(did, to_v)] = (at, mover, "pass" if to_v == "final_qc" else "fail")
+                _last[(did, to_v)] = (at, mover, "pass" if to_v == "final_qc" else "fail",
+                                      getattr(frm, "value", frm))
         _allowed = {engineer} if engineer else (None if is_admin else visible_usernames)
         by_mover: dict = {}
         credit: dict = {}          # work_id (or "dev:<id>") -> verdict, for the Tag Summary
         credit_nowid: dict = {}    # device_id -> (verdict, mover, moved_at): no Cosmetic WorkID
         _pass = _fail = 0
-        for (did, _to), (at, mover, v) in _last.items():
+        for (did, _to), (at, mover, v, frm_v) in _last.items():
             prior = [w for w in _wos.get(did, ()) if w[0] and w[0] <= at]
             top = max(prior, key=lambda w: w[0]) if prior else None
             who = top[1] if top else (mover or "—")
             if _allowed is not None and who not in _allowed:
+                continue
+            # Stage filter: the credited WorkID's stage (no WorkID: the stage
+            # the tag left Cosmetic from).
+            if stage_vals and (top[3] if top else frm_v) not in stage_vals:
                 continue
             by_mover.setdefault(who, {"pass": 0, "fail": 0})[v] += 1
             credit[top[2] if top else f"dev:{did}"] = v
