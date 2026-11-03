@@ -85,7 +85,7 @@
               {% for col, label in part_fields %}<td>{{ money(p.parts[col]) }}</td>{% endfor %}
               <td class="pm-base">{{ money(p.base_price) }}</td>
               <td><div class="d-flex align-items-center gap-2">
-                <select class="form-select form-select-sm pm-discount" style="width:72px;padding-right:1.6rem;background-position:right .4rem center" data-id="{{ p.id }}">
+                <select class="form-select form-select-sm pm-discount" style="width:72px;padding-right:1.6rem;background-position:right .4rem center" data-id="{{ p.id }}"{% if not can(current_user, 'pm_product_master', 'pricing_add') %} disabled title="Needs Pricing Add"{% endif %}>
                   <option value="">—</option>
                   {% for d in dropdowns['discount_pct'] %}
                   <option value="{{ d.value }}" {% if p.discount_pct is not none and p.discount_pct == d.value|float %}selected{% endif %}>{{ d.value }}%</option>
@@ -200,7 +200,7 @@
               {% for key, label in comp_methods %}
               <div class="form-check mb-2">
                 <input class="form-check-input pm-comp-method" type="radio" name="pm_comp_method" id="pmMethod_{{ key }}"
-                       value="{{ key }}" {% if comp_method == key %}checked{% endif %}>
+                       value="{{ key }}" {% if comp_method == key %}checked{% endif %}{% if not can(current_user, 'pm_product_master', 'pricing_add') %} disabled{% endif %}>
                 <label class="form-check-label" for="pmMethod_{{ key }}">{{ label }}</label>
               </div>
               {% endfor %}

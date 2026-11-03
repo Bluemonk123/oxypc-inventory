@@ -266,8 +266,32 @@ async def _psiqc_tile_counts(db, w_range, visible_usernames=None) -> dict:
         q = q.where(WorkOrder.started_at >= lo, WorkOrder.started_at <= hi)
     if visible_usernames is not None:
         q = q.where(WorkOrder.assigned_username.in_(visible_usernames))
+    # Pass / Fail (2026-11-03): Mark Complete's result, saved on the
+    # PRE_SALE_IQC_COMPLETED audit entry, for completions in the range — by
+    # the person who completed it for a non-admin's team.
+    import json as _json
+    from models.engines import AuditLog
+    aq = select(AuditLog.new_value, AuditLog.username).where(AuditLog.action == "PRE_SALE_IQC_COMPLETED")
+    if lo is not None:
+        aq = aq.where(AuditLog.timestamp >= lo, AuditLog.timestamp <= hi)
+    if visible_usernames is not None:
+        aq = aq.where(AuditLog.username.in_(visible_usernames))
+    passed = failed = 0
+    for nv, _u in (await db.execute(aq)).all():
+        try:
+            r = (_json.loads(nv or "{}") or {}).get("result")
+        except (TypeError, ValueError):
+            r = None
+        if r == "pass":
+            passed += 1
+        elif r == "fail":
+            failed += 1
     return {"moved": await assigned_tag_count(db, lo, hi),
-            "started": (await db.execute(q)).scalar() or 0}
+            "started": (await db.execute(q)).scalar() or 0,
+            "pass": passed, "fail": failed,
+            # Pending (2026-11-03): tags in the Pre-Sale QC page's Assigned
+            # table right now — a live count, not the Work Date range.
+            "pending": await assigned_tag_count(db)}
 
 STAGE_GROUPS = [
     ("l1l2", "L1/L2", ("l1", "l2"), "#0d6efd", "bi-tools"),
@@ -2105,7 +2129,9 @@ async def workid_status_repair_summary(request: Request, db: AsyncSession = Depe
     for r in await _parts_consumption_rows(db):
         if r["device_id"] in wanted:
             parts_by_device.setdefault(r["device_id"], []).append(r)
-    data = await build_repair_summary_xlsx(db, order, parts_by_device, ready_pass=ready_pass)
+    from utils.price_export import can_export_prices
+    data = await build_repair_summary_xlsx(db, order, parts_by_device, ready_pass=ready_pass,
+                                           include_prices=can_export_prices(current_user, "workid_status"))
     await audit(db, user=current_user, action="EXPORT_REPAIR_SUMMARY", table_name="stage_movements",
                 record_id=f"{len(order)} tags",
                 new_value={"tags": len(order), "from": "workid_status", "passed_from": work_from,

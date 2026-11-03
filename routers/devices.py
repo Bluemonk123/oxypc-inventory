@@ -2,6 +2,7 @@
 Device Management — Search, Detail, Edit
 Provides a global inventory browser and per-device history view.
 """
+from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
 from services.parts_changed import changed_parts_by_device, parts_badge_map, parts_display_map, spec_cell
 from templates_config import templates
 import csv, io, re, uuid as uuid_module
@@ -1676,6 +1677,7 @@ async def export_devices(
     t0 = _time.perf_counter()
     rows = (await db.execute(query)).all()
     resp = await _export_rows(db, rows)
+    resp = await _strip_prices(resp, current_user, "devices", ["Device Price"])   # Pricing Export (2026-11-03)
     resp.headers["Server-Timing"] = (f"total;dur={(_time.perf_counter() - t0) * 1000:.0f}, "
                                      + resp.headers.get("Server-Timing", ""))
     return resp
@@ -1705,7 +1707,7 @@ async def export_devices_selected(
             .order_by(Device.updated_at.desc())
         )
         rows.extend((await db.execute(chunk_query)).all())
-    return await _export_rows(db, rows)
+    return await _strip_prices(await _export_rows(db, rows), current_user, "devices", ["Device Price"])
 
 
 # ── 2. DEVICE DETAIL ─────────────────────────────────────────────────────────

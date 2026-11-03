@@ -115,8 +115,8 @@ asyncio.run(main())
             assert d["recordsFiltered"] == 1, d
             return d["data"][0]
 
-        def post(path):
-            r = app_client.post(path, data={"csrf_token": csrf, "barcode": bc}, headers={"X-CSRF-Token": csrf})
+        def post(path, **extra):
+            r = app_client.post(path, data={"csrf_token": csrf, "barcode": bc, **extra}, headers={"X-CSRF-Token": csrf})
             assert r.status_code in (200, 400), r.text[:300]
             return r.json()
 
@@ -125,15 +125,13 @@ asyncio.run(main())
         def ps_tile(k, **params):          # Moved / Started follow Work Date (default: today)
             ws = app_client.get("/workid-status", params=params).text
             tile = ws.split('data-group="pre_sale_iqc"', 1)[1].split("lt-tile-wm", 1)[0]
-            assert tile.index(">Moved<") < tile.index(">Started<") < tile.index(">Completed<")
+            # Moved hidden, Pass | Fail added (2026-11-03)
+            assert ">Moved<" not in tile and ">Completed<" not in tile
+            assert tile.index(">Received<") < tile.index(">Started<") < tile.index(">Pending<") < tile.index(">Pass<")
             assert ">Assigned<" not in tile
             return int(tile.split(f'data-k="{k}" data-server="', 1)[1].split('"', 1)[0])
 
-        def moved():
-            return ps_tile("moved")
-        moved0, started0 = moved(), ps_tile("started")
-        old_range = {"work_from": "2020-01-01", "work_to": "2020-01-02"}
-        old_moved = ps_tile("moved", **old_range)
+        started0, pass0, pend0 = ps_tile("started"), ps_tile("ps_pass"), ps_tile("ps_pending")
 
         # Queue (2026-10-29): only tags assigned from Ready for Sale show here
         assert feed()["recordsFiltered"] == 0
@@ -147,10 +145,9 @@ asyncio.run(main())
                             headers={"X-CSRF-Token": csrf}).json()
         assert r["assigned"] == 0 and r["already"] == 1                    # already queued
         assert _wo(bc).endswith("|pending")
-        assert moved() == moved0 + 1
-        assert ps_tile("moved", **old_range) == old_moved         # moved today, not in 2020
         d = feed()
         assert d["psiqc_tiles"] == {"assigned": 1, "completed": 0, "requested": 0, "verified": 0}
+        assert ps_tile("ps_pending") == pend0 + 1           # Pending = in the Assigned table now
         r = row()
         assert "psiqc-start-btn" in r[-1] and r[-2].endswith("—</span>")
         assert post("/pre-sale-iqc/start")["ok"]
@@ -199,10 +196,17 @@ asyncio.run(main())
         _add_requests(bc, [("Screen", "handed_over", 1)])
         pre = app_client.get("/pre-sale-iqc/complete-precheck", params={"barcode": bc}).json()
         assert {p["part_name"] for p in pre["to_verify"]} == {"Battery", "Screen"} and pre["pna"] == []
-        d = post("/pre-sale-iqc/complete")
-        assert d["ok"] and d["verified"] == 2
+        # Pass / Fail required (2026-11-03); Fail needs a reason
+        assert post("/pre-sale-iqc/complete")["error"] == "Pick Pass or Fail."
+        assert post("/pre-sale-iqc/complete", result="fail")["error"] == "Enter the Fail reason."
+        d = post("/pre-sale-iqc/complete", result="pass")
+        assert d["ok"] and d["verified"] == 2 and d["result"] == "pass"
         assert _wo(bc).split(";")[-1].endswith("|completed")
-        assert moved() == moved0                    # completed: out of Assigned
+        assert ps_tile("ps_pass") == pass0 + 1 and ps_tile("ps_pending") == pend0
+        done = feed(view="completed")                       # Completed tab: Status after Tag
+        assert done["recordsFiltered"] == 1 and "bg-success\">Pass<" in done["data"][0][2], done["data"][0][:3]
+        ready_html = app_client.get("/pre-sale-iqc").text
+        assert 'name="psqc_result" value="pass"' in ready_html and "psqc_reason" in ready_html
         assert _prs(bc) == "Battery|received;RAM|cancelled;Screen|received"
         # Part colours (2026-10-29): the Pre-Sale IQC Mark Complete counts as the
         # "pass" — the parts it verified turn green (passed), not orange.
@@ -310,9 +314,17 @@ asyncio.run(main())
         assert [t["barcode"] for t in pre["ready"]] == [a]
         assert sorted(pre["ready"][0]["to_verify"]) == ["Keyboard ×1", "RAM ×1"]
         assert pre["not_started"] == [b] and pre["not_found"] == [f"NOSUCHTAG{a}"] and pre["pna"] == []
+        # Pass / Fail required on Bulk Complete too (2026-11-03)
         d = app_client.post("/pre-sale-iqc/bulk-complete", data={"csrf_token": csrf, "barcodes": both},
                             headers={"X-CSRF-Token": csrf}).json()
-        assert d["ok"] and d["completed"] == 1 and d["verified"] == 2 and d["not_started"] == 1
+        assert not d["ok"] and d["error"] == "Pick Pass or Fail."
+        d = app_client.post("/pre-sale-iqc/bulk-complete", data={"csrf_token": csrf, "barcodes": both, "result": "fail"},
+                            headers={"X-CSRF-Token": csrf}).json()
+        assert not d["ok"] and d["error"] == "Enter the Fail reason."
+        d = app_client.post("/pre-sale-iqc/bulk-complete",
+                            data={"csrf_token": csrf, "barcodes": both, "result": "fail", "reason": "Dent on lid"},
+                            headers={"X-CSRF-Token": csrf}).json()
+        assert d["ok"] and d["result"] == "fail" and d["completed"] == 1 and d["verified"] == 2 and d["not_started"] == 1
         assert _wo(a).endswith("|completed") and _wo(b).endswith("|pending")
         assert _prs(a) == "Keyboard|received;RAM|received"
         # verified RAM written onto the tag's spec (no Final QC pass is coming)

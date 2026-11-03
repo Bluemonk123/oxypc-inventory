@@ -260,6 +260,85 @@ PERM_MODULES = [
     ("pm_product_pricing",   "Product Pricing"),
 ]
 
+# ── Permission Matrix module names (2026-11-03): "<Sidebar section> - <Sidebar
+# name>", e.g. "Intake - Lot Overview". The section comes from where the
+# module's link sits in templates/base.html; the name is its CURRENT sidebar
+# label (Sidebar Config), so renaming a sidebar item renames it here too.
+# Modules with no sidebar link of their own borrow the section of the page
+# they live on; links above the first section show the name alone.
+_SECTION_FROM = {
+    "repair_l2": "repair_l1", "repair_l3": "repair_l1",
+    "cosmetic_cleaning": "cosmetic_received", "cosmetic_putty": "cosmetic_received",
+    "cosmetic_dry_sanding": "cosmetic_received", "cosmetic_masking": "cosmetic_received",
+    "cosmetic_painting": "cosmetic_received", "cosmetic_water_sanding": "cosmetic_received",
+    "cosmetic_completed": "cosmetic_received", "company_settings": "admin_users",
+}
+_KEEP_UPPER = {"CRM", "QC", "IQC", "TRC", "GRN", "P&L", "WA", "QA", "PNA"}
+_SIDEBAR_SECTIONS_CACHE: dict | None = None
+_SIDEBAR_ORDER: dict = {}
+
+
+def _section_title(sec: str) -> str:
+    return " ".join(w if w.upper() in _KEEP_UPPER else w.capitalize() for w in (sec or "").split())
+
+
+def _sidebar_sections() -> dict:
+    """{module_key: (section or None, default sidebar label)} parsed from base.html."""
+    global _SIDEBAR_SECTIONS_CACHE
+    if _SIDEBAR_SECTIONS_CACHE is None:
+        import os
+        import re
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "base.html")
+        out, sec = {}, None
+        try:
+            for line in open(path, encoding="utf-8"):
+                m = re.search(r'<li class="nav-section">([^<]+)</li>', line)
+                if m:
+                    sec = m.group(1).strip()
+                for k, d in re.findall(r"sidebar_label\('([a-z0-9_]+)',\s*'([^']*)'\)", line):
+                    if k not in out:
+                        _SIDEBAR_ORDER[k] = len(_SIDEBAR_ORDER)   # position in the sidebar
+                    out.setdefault(k, (sec, d))
+        except OSError:
+            pass
+        _SIDEBAR_SECTIONS_CACHE = out
+    return _SIDEBAR_SECTIONS_CACHE
+
+
+def perm_modules_in_sidebar_order() -> list:
+    """PERM_MODULES sorted the way the sidebar lists them (2026-11-03), so a
+    section's items sit together in the matrix. A module with no sidebar link
+    of its own sits right after the page it lives on (_SECTION_FROM); any
+    other comes last, in its PERM_MODULES order."""
+    _sidebar_sections()
+    big = len(_SIDEBAR_ORDER) + 1
+
+    def pos(item):
+        i, (key, _label) = item
+        if key in _SIDEBAR_ORDER:
+            return (_SIDEBAR_ORDER[key], 0, i)
+        host = _SECTION_FROM.get(key)
+        if host in _SIDEBAR_ORDER:
+            return (_SIDEBAR_ORDER[host], 1, i)
+        return (big, 0, i)
+    return [m for _i, m in sorted(enumerate(PERM_MODULES), key=pos)]
+
+
+def perm_module_display_names() -> dict:
+    """{module_key: "Section - Current sidebar name"} for the Permission Matrix."""
+    from models.role_permissions import get_cached_sidebar_label
+    sb = _sidebar_sections()
+    names = {}
+    for key, label in PERM_MODULES:
+        sec, default = sb.get(key, (None, None))
+        if key not in sb and key in _SECTION_FROM:
+            sec = sb.get(_SECTION_FROM[key], (None, None))[0]
+        name = get_cached_sidebar_label(key, default or label)
+        sec_t = _section_title(sec) if sec else ""
+        names[key] = f"{sec_t} - {name}" if sec_t and not name.lower().startswith(sec_t.lower()) else name
+    return names
+
+
 # ── Sub Admin Role tab (item 7) ───────────────────────────────────────────────
 # 'admin_settings' is a SYNTHETIC master switch — not a real navigable page, so
 # it stays out of PERM_MODULES (would render nonsensically on the Sidebar
@@ -304,7 +383,9 @@ async def load_module_visibility_to_cache(db: AsyncSession) -> None:
 
 PERM_ACTIONS = [
     ("can_enable", "Enable"),
-    ("can_pricing", "Pricing"),
+    ("can_pricing", "Pricing View"),          # see prices (was "Pricing")
+    ("can_pricing_add", "Pricing Add"),       # set / change prices (2026-11-03)
+    ("can_pricing_export", "Pricing Export"), # price columns in exports (2026-11-03)
     ("can_add", "Add"),
     ("can_edit", "Edit"),
     ("can_delete", "Delete"),
@@ -560,7 +641,8 @@ async def master_list(
         "selected_role": selected_role,
         "perm_rows": perm_rows,
         "default_disabled_modules": DEFAULT_DISABLED_MODULES,
-        "perm_modules": PERM_MODULES,
+        "perm_modules": perm_modules_in_sidebar_order(),
+        "perm_module_names": perm_module_display_names(),
         "perm_actions": PERM_ACTIONS,
         "module_actions": module_action_map(),
         "custom_roles_list": custom_roles_list,
@@ -834,7 +916,8 @@ async def permissions_matrix(
         "selected_role": selected_role,
         "perm_rows": perm_rows,
         "default_disabled_modules": DEFAULT_DISABLED_MODULES,
-        "perm_modules": PERM_MODULES,
+        "perm_modules": perm_modules_in_sidebar_order(),
+        "perm_module_names": perm_module_display_names(),
         "perm_actions": PERM_ACTIONS,
         "module_actions": module_action_map(),
         "custom_roles_list": custom_roles_list,
@@ -859,6 +942,11 @@ async def load_role_permissions(
             "can_upload": r.can_upload,
             "can_delete": True if r.can_delete is None else r.can_delete,
             "can_pricing": True if r.can_pricing is None else r.can_pricing,
+            # Not set yet -> follows Pricing View (2026-11-03)
+            "can_pricing_add": (True if r.can_pricing is None else r.can_pricing)
+                               if r.can_pricing_add is None else r.can_pricing_add,
+            "can_pricing_export": (True if r.can_pricing is None else r.can_pricing)
+                                  if r.can_pricing_export is None else r.can_pricing_export,
             "can_export": True if r.can_export is None else r.can_export,
         }
         for r in rows
@@ -895,6 +983,8 @@ async def save_role_permissions(
         can_upload = f"perm_{mod_key}_can_upload" in form
         can_delete  = f"perm_{mod_key}_can_delete"  in form
         can_pricing = f"perm_{mod_key}_can_pricing" in form
+        can_pricing_add = f"perm_{mod_key}_can_pricing_add" in form
+        can_pricing_export = f"perm_{mod_key}_can_pricing_export" in form
         can_export  = f"perm_{mod_key}_can_export"  in form
         db.add(RoleModulePermission(
             role_name  = role_name,
@@ -905,6 +995,8 @@ async def save_role_permissions(
             can_upload = can_upload,
             can_delete  = can_delete,
             can_pricing = can_pricing,
+            can_pricing_add = can_pricing_add,
+            can_pricing_export = can_pricing_export,
             can_export  = can_export,
             updated_by = current_user.username,
         ))
@@ -912,6 +1004,7 @@ async def save_role_permissions(
             "enable": can_enable, "add": can_add,
             "edit":   can_edit,   "upload": can_upload,
             "delete": can_delete, "pricing": can_pricing,
+            "pricing_add": can_pricing_add, "pricing_export": can_pricing_export,
             "export": can_export,
         }
 
@@ -1009,6 +1102,8 @@ async def save_sub_admin_permissions(
             can_upload = can_enable,
             can_delete  = can_enable,
             can_pricing = can_enable,
+            can_pricing_add = can_enable,
+            can_pricing_export = can_enable,
             can_export  = can_enable,
             updated_by = current_user.username,
         ))
@@ -1016,6 +1111,7 @@ async def save_sub_admin_permissions(
             "enable": can_enable, "add": can_enable,
             "edit":   can_enable, "upload": can_enable,
             "delete": can_enable, "pricing": can_enable,
+            "pricing_add": can_enable, "pricing_export": can_enable,
             "export": can_enable,
         }
 
@@ -1118,6 +1214,7 @@ async def load_all_permissions_to_cache(db: AsyncSession) -> None:
             "enable": r.can_enable, "add": r.can_add,
             "edit":   r.can_edit,   "upload": r.can_upload,
             "delete": r.can_delete, "pricing": r.can_pricing,
+            "pricing_add": r.can_pricing_add, "pricing_export": r.can_pricing_export,
             "export": r.can_export,
         }
     _PERM_CACHE.clear()

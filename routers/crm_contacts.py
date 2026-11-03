@@ -1,4 +1,5 @@
 """CRM Contacts router — unified buyer/supplier registry."""
+from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
 import csv
 import io
 import json
@@ -979,11 +980,11 @@ async def export_contacts_csv(
     csv_bytes = output.getvalue().encode("utf-8-sig")
     from utils.timezone import app_now
     filename = f"crm-contacts-{app_now().strftime('%Y%m%d-%H%M')}.csv"
-    return StreamingResponse(
+    return await _strip_prices(StreamingResponse(
         iter([csv_bytes]),
         media_type="text/csv; charset=utf-8-sig",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
+    ), current_user, 'crm_contacts', ['Credit Limit', 'Outstanding'])
 
 
 # ── ACCOUNTS BULK UPLOAD (accounts + call records in one sheet) ───────────────

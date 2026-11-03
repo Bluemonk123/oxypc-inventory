@@ -174,25 +174,8 @@
 
 <div class="row g-4">
 
-  {# ── Left panel: role selector + add role ─────────────────────────── #}
+  {# ── Left panel: add role (Select Role moved into the matrix, 2026-11-03) ── #}
   <div class="col-lg-3">
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-transparent fw-semibold small text-uppercase">
-        <i class="bi bi-person-badge me-1"></i>Select Role
-      </div>
-      <div class="card-body">
-        <select id="roleSelector" class="form-select form-select-sm mb-2"
-                onchange="location.href='/admin/master?main_tab=permissions&role='+this.value">
-          {% for rval, rlabel in all_roles %}
-          <option value="{{ rval }}" {{ 'selected' if rval == sel_role else '' }}>{{ rlabel }}</option>
-          {% endfor %}
-        </select>
-        <div class="small text-muted">
-          Editing permissions for:
-          <strong>{{ sel_role or '—' }}</strong>
-        </div>
-      </div>
-    </div>
 
     {# Add new custom role #}
     <div class="card border-0 shadow-sm mb-3">
@@ -302,6 +285,17 @@
         {% endif %}
       </div>
       <div class="card-body p-0">
+        {# Select Role inside the matrix, above the table (2026-11-03) #}
+        <div class="d-flex flex-wrap align-items-center gap-2 px-3 py-2 border-bottom">
+          <label for="roleSelector" class="fw-semibold small mb-0"><i class="bi bi-person-badge me-1"></i>Select Role</label>
+          <select id="roleSelector" class="form-select form-select-sm" style="max-width:280px"
+                  onchange="location.href='/admin/master?main_tab=permissions&role='+this.value">
+            {% for rval, rlabel in all_roles %}
+            <option value="{{ rval }}" {{ 'selected' if rval == sel_role else '' }}>{{ rlabel }}</option>
+            {% endfor %}
+          </select>
+          <span class="small text-muted">Editing permissions for: <strong>{{ sel_role or '—' }}</strong></span>
+        </div>
 
         {% if sel_role == 'admin' %}
         <div class="alert alert-info m-3 mb-0">
@@ -311,7 +305,7 @@
         {% elif not sel_role %}
         <div class="text-center text-muted py-5">
           <i class="bi bi-arrow-left-circle fs-3 d-block mb-2"></i>
-          Select a role from the left panel to configure permissions.
+          Select a role above to configure permissions.
         </div>
         {% else %}
 
@@ -333,13 +327,16 @@
                 {% for mod_key, mod_label in perm_modules %}
                 {% set row = perm_rows.get(mod_key) if perm_rows is defined else none %}
                 <tr>
-                  <td class="fw-semibold small">{{ sidebar_label(mod_key, mod_label) }}</td>
+                  {# "<Sidebar section> - <current sidebar name>" (2026-11-03) #}
+                  <td class="fw-semibold small">{{ (perm_module_names or {}).get(mod_key) or sidebar_label(mod_key, mod_label) }}</td>
                   {% set _mod_default_on = mod_key not in (default_disabled_modules|default([])) %}
                   {% set _acts = module_actions.get(mod_key, []) if module_actions is defined else [] %}
                   {% for action_key, action_label in perm_actions %}
                   {% set _act = action_key[4:] %}
                   {% if row %}
                     {% set _val = row[action_key] %}
+                    {# Pricing Add / Export not set yet: follow Pricing View (2026-11-03) #}
+                    {% if _val is none and _act in ('pricing_add', 'pricing_export') %}{% set _val = row['can_pricing'] %}{% endif %}
                     {# A row saved before a tick existed counts as allowed #}
                     {% set checked = true if _val is none else _val %}
                   {% else %}
@@ -347,7 +344,7 @@
                        Enable (modules that start OFF start fully unticked) #}
                     {% set checked = _mod_default_on %}
                   {% endif %}
-                  {% if action_key == 'can_enable' or _act == 'pricing' or _act in _acts %}
+                  {% if action_key == 'can_enable' or _act in ('pricing', 'pricing_add', 'pricing_export') or _act in _acts %}
                   <td class="text-center">
                     <div class="form-check d-flex justify-content-center">
                       <input class="form-check-input perm-cb{% if action_key != 'can_enable' %} perm-act{% endif %}" type="checkbox"

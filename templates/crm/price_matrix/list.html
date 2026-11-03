@@ -29,7 +29,7 @@
       <i class="bi bi-cloud-upload me-1"></i>Upload CSV/XLSX
     </button>
     {% endif %}
-    {% if can(current_user, 'crm_price_matrix', 'add') %}<a href="/crm/price-matrix/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle me-1"></i>Add Row</a>{% endif %}
+    {% if can(current_user, 'crm_price_matrix', 'add') and can(current_user, 'crm_price_matrix', 'pricing_add') %}<a href="/crm/price-matrix/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle me-1"></i>Add Row</a>{% endif %}
   </div>
   {% endif %}
 </div>
@@ -84,7 +84,7 @@
             {% if can_edit %}
             <td>
               <div class="btn-group btn-group-sm">
-                {% if can(current_user, 'crm_price_matrix', 'edit') %}<a href="/crm/price-matrix/{{ row.id }}/edit" class="btn btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>{% endif %}
+                {% if can(current_user, 'crm_price_matrix', 'edit') and can(current_user, 'crm_price_matrix', 'pricing_add') %}<a href="/crm/price-matrix/{{ row.id }}/edit" class="btn btn-outline-secondary" title="Edit"><i class="bi bi-pencil"></i></a>{% endif %}
                 {% if can(current_user, 'crm_price_matrix', 'delete') %}
                 <form method="post" action="/crm/price-matrix/{{ row.id }}/delete" class="d-inline"
                       onsubmit="return confirm('Delete this row?')">

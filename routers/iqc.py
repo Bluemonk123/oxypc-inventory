@@ -1,4 +1,5 @@
 from templates_config import templates
+from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
 import csv
 import io
 from datetime import datetime as _dtnow
@@ -1330,11 +1331,11 @@ async def iqc_export_csv(
         )
     suffix = "selected" if picked else "all"
     filename = f"iqc-{suffix}-{app_now().strftime('%Y%m%d-%H%M')}.csv"
-    return StreamingResponse(
+    return await _strip_prices(StreamingResponse(
         iter([output.getvalue().encode("utf-8-sig")]),
         media_type="text/csv; charset=utf-8-sig",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+    ), current_user, 'iqc', ['device_price'])
 
 
 @router.get("/new", response_class=HTMLResponse)

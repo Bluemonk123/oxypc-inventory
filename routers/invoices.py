@@ -1,5 +1,6 @@
 # routers/invoices.py
 """Sale Invoice — printable HTML with GST breakdown."""
+from utils.price_export import price_export_block as _price_block   # Pricing Export (2026-11-03)
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy import select
@@ -104,6 +105,9 @@ async def print_invoice(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _blk = _price_block(current_user, 'sales_list', f"/sales/{sale_id}")   # Pricing Export (2026-11-03)
+    if _blk is not None:
+        return _blk
     result = await db.execute(
         select(Sale, Device, Lot)
         .join(Device, Sale.device_id == Device.id)

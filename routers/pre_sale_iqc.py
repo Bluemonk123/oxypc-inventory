@@ -135,6 +135,32 @@ def _esc(v):
     return escape(str(v)) if v is not None else ""
 
 
+async def psiqc_result_map(db, state: dict) -> dict:
+    """{device_id: "pass" | "fail"} for tags whose latest Pre-Sale QC WorkID
+    is completed with a result picked in Mark Complete (2026-11-03) — read
+    from that WorkID's PRE_SALE_IQC_COMPLETED audit entry. Completions before
+    the Pass / Fail choice (or by Bulk Complete) have none."""
+    import json as _json
+    from models.engines import AuditLog
+    done = {str(did): wo.work_id for did, wo in state.items() if wo is not None and wo.status == "completed"}
+    out: dict = {}
+    if not done:
+        return out
+    keys = list(done)
+    for i in range(0, len(keys), 2000):
+        for rid, nv in (await db.execute(
+                select(AuditLog.record_id, AuditLog.new_value)
+                .where(AuditLog.action == "PRE_SALE_IQC_COMPLETED", AuditLog.record_id.in_(keys[i:i + 2000]))
+                .order_by(AuditLog.timestamp.asc()))).all():
+            try:
+                v = _json.loads(nv or "{}") or {}
+            except (TypeError, ValueError):
+                continue
+            if v.get("work_id") == done.get(rid) and v.get("result") in ("pass", "fail"):
+                out[rid] = v["result"]
+    return out
+
+
 async def psiqc_state_map(db: AsyncSession, device_ids):
     """({device_id: latest Pre-Sale IQC WorkOrder or None},
         {device_id: [PartRequests on that latest WorkID, not cancelled]}).
@@ -382,7 +408,8 @@ async def pre_sale_iqc_precheck(barcode: str = Query(...), db: AsyncSession = De
     })
 
 
-async def _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, now):
+async def _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, now,
+                        result=None, reason=None):
     """Close one tag's Pre-Sale IQC (no commit): verify handed-over parts,
     cancel never-handed-over requests, complete the WorkID, audit."""
     for pr in to_verify:
@@ -406,12 +433,17 @@ async def _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, 
     wo.status, wo.completed_at = "completed", now
     await audit(db, user=current_user, action="PRE_SALE_IQC_COMPLETED", table_name="work_orders",
                 record_id=str(d.id), new_value={"barcode": d.barcode, "work_id": wo.work_id,
-                                                "verified": len(to_verify), "cancelled": len(to_cancel)},
+                                                "verified": len(to_verify), "cancelled": len(to_cancel),
+                                                # Pre-Sale QC result (2026-11-03): Pass / Fail picked
+                                                # in Mark Complete, and the reason when Fail.
+                                                **({"result": result} if result else {}),
+                                                **({"reason": reason} if reason else {})},
                 request=request)
 
 
 @router.post("/pre-sale-iqc/complete", dependencies=[Depends(verify_csrf)])
 async def pre_sale_iqc_complete(request: Request, barcode: str = Form(...),
+                                result: str = Form(default=""), reason: str = Form(default=""),
                                 db: AsyncSession = Depends(get_db),
                                 current_user: User = Depends(edit_perm)):
     """Same rules as L1/L2 Mark Complete (routers/repair.py
@@ -420,6 +452,14 @@ async def pre_sale_iqc_complete(request: Request, barcode: str = Form(...),
     for Sale; only the Pre-Sale IQC WorkID completes."""
     from models.pna_part import DevicePNAPart
     from routers.repair import _mark_complete_open_parts
+    # Pass / Fail is required (2026-11-03); Fail needs a reason. The tag stays
+    # in Ready for Sale either way; the result goes on the audit entry.
+    result = (result or "").strip().lower()
+    reason = (reason or "").strip()
+    if result not in ("pass", "fail"):
+        return JSONResponse({"ok": False, "error": "Pick Pass or Fail."}, status_code=400)
+    if result == "fail" and not reason:
+        return JSONResponse({"ok": False, "error": "Enter the Fail reason."}, status_code=400)
     d = await _device(db, barcode)
     wo = await _open_wo(db, d.id)
     if wo is None:
@@ -431,9 +471,10 @@ async def pre_sale_iqc_complete(request: Request, barcode: str = Form(...),
             f"{d.barcode} has open PNA parts ({', '.join(sorted(pna))}) — remove them on the tag's "
             "detail page before Mark Complete.")}, status_code=400)
     to_verify, to_cancel = await _mark_complete_open_parts(db, d.id)
-    await _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, app_now())
+    await _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, app_now(),
+                        result=result, reason=reason[:500] if result == "fail" else None)
     await db.commit()
-    return JSONResponse({"ok": True, "verified": len(to_verify), "cancelled": len(to_cancel)})
+    return JSONResponse({"ok": True, "result": result, "verified": len(to_verify), "cancelled": len(to_cancel)})
 
 
 # ── Bulk Complete (2026-10-29): the ticked tags, same rules and prompt ─────
@@ -495,20 +536,29 @@ async def pre_sale_iqc_bulk_precheck(barcodes: str = Form(""), db: AsyncSession 
 
 @router.post("/pre-sale-iqc/bulk-complete", dependencies=[Depends(verify_csrf)])
 async def pre_sale_iqc_bulk_complete(request: Request, barcodes: str = Form(""),
+                                     result: str = Form(default=""), reason: str = Form(default=""),
                                      db: AsyncSession = Depends(get_db),
                                      current_user: User = Depends(edit_perm)):
     """Complete every ticked tag that is started and has no open PNA part —
     the same rules as the row's Mark Complete. Others are skipped and
-    listed."""
+    listed. Pass / Fail (2026-11-03) is required and applies to every tag
+    completed; Fail needs a reason."""
+    result = (result or "").strip().lower()
+    reason = (reason or "").strip()
+    if result not in ("pass", "fail"):
+        return JSONResponse({"ok": False, "error": "Pick Pass or Fail."}, status_code=400)
+    if result == "fail" and not reason:
+        return JSONResponse({"ok": False, "error": "Enter the Fail reason."}, status_code=400)
     plan = await _bulk_plan(db, _barcode_list(barcodes))
     now = app_now()
     verified = cancelled = 0
     for d, wo, to_verify, to_cancel in plan["ready"]:
-        await _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, now)
+        await _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, now,
+                            result=result, reason=reason[:500] if result == "fail" else None)
         verified += len(to_verify)
         cancelled += len(to_cancel)
     await db.commit()
-    return JSONResponse({"ok": True, "completed": len(plan["ready"]), "verified": verified,
+    return JSONResponse({"ok": True, "result": result, "completed": len(plan["ready"]), "verified": verified,
                          "cancelled": cancelled, "not_started": len(plan["not_started"]),
                          "pna": len(plan["pna"]), "not_found": len(plan["not_found"])})
 

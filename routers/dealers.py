@@ -1,6 +1,7 @@
 from templates_config import templates
 from datetime import datetime, date
 from utils.timezone import app_now
+from utils.price_export import price_export_block as _price_block   # Pricing Export (2026-11-03)
 import csv
 import io
 import json
@@ -1386,6 +1387,9 @@ async def dealer_ageing(
     }
 
     if export == "csv":
+        _blk = _price_block(current_user, "dealers", "/dealers/ageing")   # Pricing Export (2026-11-03)
+        if _blk is not None:
+            return _blk
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(["Dealer", "Current", "1-30 Days", "31-60 Days", "61-90 Days", "90+ Days", "Total"])
@@ -2354,6 +2358,9 @@ async def dealer_statement_csv(
     current_user: User = Depends(require_sales),
 ):
     """Download a complete account statement for a dealer as CSV."""
+    _blk = _price_block(current_user, 'dealers', f"/dealers/{dealer_id}")   # Pricing Export (2026-11-03)
+    if _blk is not None:
+        return _blk
     result = await db.execute(select(Dealer).where(Dealer.id == dealer_id))
     dealer = result.scalar_one_or_none()
     if not dealer:

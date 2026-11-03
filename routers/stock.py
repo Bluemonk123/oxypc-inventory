@@ -1,4 +1,5 @@
 from templates_config import templates
+from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
 import logging
 import uuid
 from services.parts_changed import parts_badge_map
@@ -273,11 +274,11 @@ async def export_all_lots_csv(
     from datetime import datetime as _dtnow
     suffix = f"-{q}" if q else ""
     filename = f"lots-export{suffix}-{_dtnow.utcnow().strftime('%Y%m%d')}.csv"
-    return StreamingResponse(
+    return await _strip_prices(StreamingResponse(
         iter([output.getvalue().encode("utf-8-sig")]),
         media_type="text/csv; charset=utf-8-sig",
         headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+    ), current_user, ["lots", "stock"], ["Invoice Value", "SGST", "CGST", "IGST", "Buying Price (₹)"])
 
 
 @router.post("/lots/export-csv")
@@ -2517,11 +2518,11 @@ async def export_line_items_csv(
         ])
     out.seek(0)
     fname = f"line_items_{lot.lot_number if lot else lot_id}.csv"
-    return SR(
+    return await _strip_prices(SR(
         _io.BytesIO(out.getvalue().encode("utf-8-sig")),
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename={fname}"}
-    )
+    ), current_user, 'lots', ['unit_price'])
 
 
 @router.get("/lots/{lot_id}/next-tag", response_class=JSONResponse)

@@ -1,5 +1,6 @@
 # routers/crm_purchase_orders.py
 """CRM Purchase Orders — formal PO to supplier, linked from sourcing deal."""
+from utils.price_export import price_export_block as _price_block   # Pricing Export (2026-11-03)
 import json
 from datetime import datetime, date
 from utils.timezone import app_now
@@ -256,6 +257,9 @@ async def print_po(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _blk = _price_block(current_user, 'crm_purchase_orders', f"/crm/purchase-orders/{po_id}")   # Pricing Export (2026-11-03)
+    if _blk is not None:
+        return _blk
     r = await db.execute(
         select(CRMPurchaseOrder)
         .options(

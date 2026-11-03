@@ -36,7 +36,7 @@
 </style>
 {% endblock %}
 {% block content %}
-{% set can_price = can(current_user, 'pm_hardware', 'pricing') %}
+{% set can_price = can(current_user, 'pm_hardware', 'pricing_add') %}{# Pricing Add: set prices (2026-11-03) #}
 {% set can_delete = can(current_user, 'pm_hardware', 'delete') %}
 
 {# ── Tiles (Option B) ── #}
@@ -99,7 +99,7 @@
 <script>
 (function () {
   // Checked here: variables set in the content block are not visible in this block.
-  var CAN_PRICE = {{ 'true' if can(current_user, 'pm_hardware', 'pricing') else 'false' }},
+  var CAN_PRICE = {{ 'true' if can(current_user, 'pm_hardware', 'pricing_add') else 'false' }},
       CAN_DELETE = {{ 'true' if can(current_user, 'pm_hardware', 'delete') else 'false' }};
   var LABELS = {{ product_labels | tojson }};
   var DATA = { ram: {{ ram_rows | tojson }}, storage: {{ storage_rows | tojson }} };
@@ -230,10 +230,15 @@
       refresh(); showFlash('success', 'Price removed for ' + name.replace('/', ' / ') + '.');
     });
   });
+  // Price column only with Pricing Export (2026-11-03).
+  var CAN_EXPORT_PRICE = {{ 'true' if can(current_user, 'pm_hardware', 'pricing_export') else 'false' }};
   $('#g_export').on('click', function () {
-    var lines = [['Type', 'Size', NAME[gKind] + ' Price', 'Products using it', 'Products waiting', 'Updated On', 'Updated By']];
+    var hdr = ['Type', 'Size'].concat(CAN_EXPORT_PRICE ? [NAME[gKind] + ' Price'] : [])
+      .concat(['Products using it', 'Products waiting', 'Updated On', 'Updated By']);
+    var lines = [hdr];
     DATA[gKind].forEach(function (r) {
-      lines.push([r.category, r.capacity, r.price != null ? r.price : '', r.using.length, r.waiting.length, r.updated_on || '', r.updated_by || '']);
+      lines.push([r.category, r.capacity].concat(CAN_EXPORT_PRICE ? [r.price != null ? r.price : ''] : [])
+        .concat([r.using.length, r.waiting.length, r.updated_on || '', r.updated_by || '']));
     });
     var csv = lines.map(function (l) { return l.map(function (x) { x = String(x); return /[",\n]/.test(x) ? '"' + x.replace(/"/g, '""') + '"' : x; }).join(','); }).join('\n');
     var a = document.createElement('a');

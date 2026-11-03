@@ -1,6 +1,7 @@
 from templates_config import templates
 import csv
 import io
+from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
 from collections import defaultdict
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
@@ -884,7 +885,7 @@ async def _lot_pl_csv(db: AsyncSession, lot_ids=None) -> Response:
 
 @router.get("/export/lot-pl")
 async def export_lot_pl(db: AsyncSession = Depends(get_db), current_user: User = Depends(_require_financials)):
-    return await _lot_pl_csv(db)
+    return await _strip_prices(await _lot_pl_csv(db), current_user, "reports", ["Buying Price", "Parts Cost", "Labour Cost", "Total Cost", "Revenue", "Profit", "Margin%"])
 
 
 @router.post("/export/lot-pl")
@@ -902,7 +903,7 @@ async def export_lot_pl_selected(
             lot_ids.append(_uuid.UUID(part.strip()))
         except ValueError:
             continue
-    return await _lot_pl_csv(db, lot_ids or None)
+    return await _strip_prices(await _lot_pl_csv(db, lot_ids or None), current_user, "reports", ["Buying Price", "Parts Cost", "Labour Cost", "Total Cost", "Revenue", "Profit", "Margin%"])
 
 
 # ── Tag-level exports (2026-10-16) ─────────────────────────────────────────
@@ -988,7 +989,8 @@ async def business_pl_export_month(
         .order_by(Sale.sold_at, Device.barcode)
     )).all()
     names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    return await _tag_export_csv(db, rows, f"business_pl_{names[month - 1]}_{year}_tags.csv")
+    return await _strip_prices(await _tag_export_csv(db, rows, f"business_pl_{names[month - 1]}_{year}_tags.csv"),
+                               current_user, "report_bizpl", ["Device Price", "Sale Price"])
 
 
 @router.get("/business-pl/export-fy")
@@ -1006,7 +1008,8 @@ async def business_pl_export_fy(
         .where(Sale.sold_at >= datetime(fy, 4, 1), Sale.sold_at < datetime(fy + 1, 4, 1))
         .order_by(Sale.sold_at, Device.barcode)
     )).all()
-    return await _tag_export_csv(db, rows, f"business_pl_FY_{fy}-{str(fy + 1)[-2:]}_tags.csv")
+    return await _strip_prices(await _tag_export_csv(db, rows, f"business_pl_FY_{fy}-{str(fy + 1)[-2:]}_tags.csv"),
+                               current_user, "report_bizpl", ["Device Price", "Sale Price"])
 
 
 @router.get("/lot-pl/{lot_id}/export")
@@ -1040,7 +1043,8 @@ async def lot_pl_export_lot(
             latest_sale.setdefault(did, price)
     rows = [(d, lot.lot_number, latest_sale.get(d.id)) for d in devices]
     safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in (lot.lot_number or "lot"))
-    return await _tag_export_csv(db, rows, f"lot_pl_{safe}_tags.csv")
+    return await _strip_prices(await _tag_export_csv(db, rows, f"lot_pl_{safe}_tags.csv"),
+                               current_user, "reports", ["Device Price", "Sale Price"])
 
 
 def _parse_range(from_date: str, to_date: str):
@@ -1058,7 +1062,8 @@ async def export_sales(from_date: str = Query(default=""), to_date: str = Query(
                        db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
     """Sales Report CSV. With from_date/to_date (what the page's Export button
     sends, 2026-10-21): exactly the page's rows; without: all time."""
-    return await _sales_csv(db, *_parse_range(from_date, to_date))
+    return await _strip_prices(await _sales_csv(db, *_parse_range(from_date, to_date)), current_user,
+                               ["report_sales", "sales_list"], ["Price"])
 
 
 @router.post("/export/sales")
@@ -1069,7 +1074,8 @@ async def export_sales_selected(from_date: str = Form(default=""), to_date: str 
                                 _csrf=Depends(verify_csrf)):
     """The rows ticked on the Sales Report (Tags P&L) page, by tag number."""
     wanted = {t.strip().upper() for t in tags.split(",") if t.strip()} or None
-    return await _sales_csv(db, *_parse_range(from_date, to_date), tags=wanted)
+    return await _strip_prices(await _sales_csv(db, *_parse_range(from_date, to_date), tags=wanted), current_user,
+                               ["report_sales", "sales_list"], ["Price"])
 
 
 async def _sales_csv(db: AsyncSession, from_dt=None, to_dt=None, tags=None) -> Response:
@@ -1483,11 +1489,11 @@ async def receivables_report(
                     float(r["due"]),
                 ])
             yield buf.getvalue().encode("utf-8-sig")
-        return StreamingResponse(
+        return await _strip_prices(StreamingResponse(
             _gen(),
             media_type="text/csv; charset=utf-8-sig",
             headers={"Content-Disposition": f"attachment; filename=receivables_{now.strftime('%Y%m%d')}.csv"},
-        )
+        ), current_user, "report_receivables", ["Due Amount"])
 
     return templates.TemplateResponse("reports/receivables.html", {
         "request": request,

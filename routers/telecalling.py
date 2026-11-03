@@ -1,6 +1,7 @@
 from templates_config import templates
 from datetime import datetime, date
 from utils.timezone import app_now
+from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
 import csv
 import io
 from fastapi import APIRouter, Depends, Form, Request, Query
@@ -342,11 +343,11 @@ async def export_calls_csv(
 
     from datetime import datetime as _dt
     fname = f"telecalling-calls-{date_from}-to-{date_to}.csv"
-    return StreamingResponse(
+    return await _strip_prices(StreamingResponse(
         iter([output.getvalue().encode("utf-8-sig")]),
         media_type="text/csv; charset=utf-8-sig",
         headers={"Content-Disposition": f"attachment; filename={fname}"},
-    )
+    ), current_user, "telecalling", ["Quote Given (₹)", "Credit Limit (₹)", "Outstanding (₹)", "Total Purchases (₹)"])
 
 
 @router.get("/add", response_class=HTMLResponse)

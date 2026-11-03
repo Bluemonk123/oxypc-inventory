@@ -592,7 +592,9 @@ async def startup_event():
         async with _ASL() as _sess:
             await _backfill_action_perms_once(_sess)
             await _backfill_export_perm_once(_sess)
+            await _add_pricing_split_cols(_sess)
             await _merge_pricing_visibility_once(_sess)
+            await _pricing_lockdown_once(_sess)
             await _migrate_sourcing_stages_once(_sess)
             await _apply_account_status_once(_sess)
             await _migrate_sales_stages_once(_sess)
@@ -897,6 +899,17 @@ async def _backfill_action_perms_once(sess) -> None:
     print(f"  [Perms] Action ticks backfilled on {res.rowcount} enabled matrix row(s)")
 
 
+async def _add_pricing_split_cols(sess) -> None:
+    """Pricing split in three (2026-11-03): Pricing Add / Pricing Export ticks.
+    Added NULL — NULL follows the existing Pricing tick (now "Pricing View"),
+    so nobody's access changes until an admin sets them. Safe to run on every
+    start."""
+    from sqlalchemy import text as _t
+    await sess.execute(_t("ALTER TABLE role_module_permissions ADD COLUMN IF NOT EXISTS can_pricing_add BOOLEAN"))
+    await sess.execute(_t("ALTER TABLE role_module_permissions ADD COLUMN IF NOT EXISTS can_pricing_export BOOLEAN"))
+    await sess.commit()
+
+
 async def _backfill_export_perm_once(sess) -> None:
     """One-time (2026-10-26): new Download / Export tick. Every ENABLED
     matrix row gets it ticked so nobody loses access; admin unticks to
@@ -959,6 +972,51 @@ async def _merge_pricing_visibility_once(sess) -> None:
         "'system', now())"), {"v": note[:500]})
     await sess.commit()
     print(f"  [Perms] Pricing Visibility merged into the matrix — {note}")
+
+
+async def _pricing_lockdown_once(sess) -> None:
+    """One-time (2026-11-03, Pankaj): Pricing View / Add / Export unticked on
+    every module for every role except admin; then Pricing Add ticked on every
+    module for spare_parts_manager, inventory_manager and counter_sales.
+    A role with no row for a module gets one (Enable as the default, other
+    ticks on) — no row means "allowed", so it must exist to switch pricing off.
+    Later changes in the Permission Matrix are kept (recorded in app_settings)."""
+    from sqlalchemy import text as _t
+    import uuid as _uuid
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'pricing_lockdown_v1'"))).first()
+    if done:
+        return
+    from routers.admin import _role_data
+    from routers.master import PERM_MODULES
+    from models.role_permissions import DEFAULT_DISABLED_MODULES
+    add_roles = {"spare_parts_manager", "inventory_manager", "counter_sales"}
+    modules = [m[0] for m in PERM_MODULES]
+    roles = {r for r, _ in (await _role_data(sess))[0]} | add_roles
+    roles |= {r for (r,) in (await sess.execute(_t("SELECT DISTINCT role_name FROM role_module_permissions"))).all()}
+    roles.discard("admin")
+    added = 0
+    for role in sorted(roles):
+        have = {m for (m,) in (await sess.execute(_t(
+            "SELECT module FROM role_module_permissions WHERE role_name = :r"), {"r": role})).all()}
+        for m in modules:
+            if m not in have:
+                await sess.execute(_t(
+                    "INSERT INTO role_module_permissions (id, role_name, module, can_enable, can_add, can_edit, "
+                    "can_upload, can_delete, can_pricing, can_export, updated_at, updated_by) VALUES "
+                    "(:id, :r, :m, :en, TRUE, TRUE, TRUE, TRUE, FALSE, TRUE, now(), 'system')"),
+                    {"id": str(_uuid.uuid4()), "r": role, "m": m, "en": m not in DEFAULT_DISABLED_MODULES})
+                added += 1
+        await sess.execute(_t(
+            "UPDATE role_module_permissions SET can_pricing = FALSE, can_pricing_add = :pa, "
+            "can_pricing_export = FALSE, updated_at = now(), updated_by = 'system' WHERE role_name = :r"),
+            {"r": role, "pa": role in add_roles})
+    note = f"roles: {len(roles)}; pricing add kept for: {','.join(sorted(add_roles))}; rows added: {added}"
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('pricing_lockdown_v1', :v, 'Pricing View/Add/Export off for all roles except admin', "
+        "'system', now())"), {"v": note[:500]})
+    await sess.commit()
+    print(f"  [Perms] Pricing lockdown applied — {note}")
 
 
 async def _apply_account_status_once(sess) -> None:

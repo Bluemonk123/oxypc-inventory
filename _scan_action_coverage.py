@@ -15,7 +15,7 @@ from auth.route_actions import ROUTE_ACTIONS
 from routers.master import PERM_MODULES
 
 VALID_MODULES = {k for k, _ in PERM_MODULES}
-VALID_ACTIONS = {"add", "upload", "edit", "delete", "pricing", "export"}
+VALID_ACTIONS = {"add", "upload", "edit", "delete", "pricing", "pricing_add", "pricing_export", "export"}
 
 import re
 # GET routes that look like exports / downloads must be mapped too (2026-10-26)

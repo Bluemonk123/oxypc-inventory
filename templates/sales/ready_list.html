@@ -216,7 +216,7 @@
       <thead class="table-dark">
         <tr>
           <th><input type="checkbox" id="readySelectAll" class="form-check-input"></th>
-          <th>Tag Number</th><th>Lot</th><th>Location ID</th><th>Brand</th><th>Model</th>
+          <th>Tag Number</th>{% if _ps %}<th title="Pre-Sale QC result picked in Mark Complete">Status</th>{% endif %}<th>Lot</th><th>Location ID</th><th>Brand</th><th>Model</th>
           {% if _ps %}<th>CPU</th><th>CPU Gen</th>{% endif %}
           <th>RAM</th><th>Storage</th><th>Grade</th>
           {% if can(current_user, _pm, 'pricing') %}
@@ -468,6 +468,23 @@
     </div>
   </div>
 </div>
+<style>
+  /* Pre-Sale QC Mark Complete: Pass / Fail cards (2026-11-03). */
+  .psqc-res { position:relative; border:2px solid #dee2e6; border-radius:.6rem; padding:.9rem .75rem; text-align:center;
+              cursor:pointer; background:#fff; box-shadow:0 .15rem .4rem rgba(0,0,0,.08); transition:all .15s ease; }
+  .psqc-res:hover { box-shadow:0 .3rem .7rem rgba(0,0,0,.18); }
+  .psqc-res .bi { font-size:1.6rem; }
+  .psqc-res .ttl { font-weight:700; margin-top:.2rem; font-size:.95rem; }
+  .psqc-res .sub { font-size:.72rem; color:#6c757d; }
+  .psqc-res .form-check-input { position:absolute; top:.55rem; left:.6rem; margin:0; }
+  .psqc-res.pass .bi { color:#198754; } .psqc-res.fail .bi { color:#dc3545; }
+  .psqc-res.pass.sel { border-color:#146c43; background:#198754; box-shadow:0 .35rem .9rem rgba(25,135,84,.45); }
+  .psqc-res.fail.sel { border-color:#b02a37; background:#dc3545; box-shadow:0 .35rem .9rem rgba(220,53,69,.45); }
+  .psqc-res.sel .bi, .psqc-res.sel .ttl, .psqc-res.sel .sub { color:#fff !important; }
+  .psqc-res.sel .form-check-input { background-color:#fff; border-color:#fff;
+              background-image:radial-gradient(circle, #343a40 35%, #fff 40%); }
+  .psqc-parts { background:#f8f9fa; border-radius:.5rem; padding:.6rem .75rem; }
+</style>
 <div class="modal fade" id="psiqcConfirmModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <div class="modal-content">
@@ -537,6 +554,7 @@ function psiqcSetView(v) {
   readySelected.clear();
   var all = document.getElementById('readySelectAll'); if (all) all.checked = false;
   psiqcMark();
+  if (window.readyDt) readyDt.column(2).visible(v === 'completed', false);   // Status: Completed tab only
   if (window.readyDt) readyDt.ajax.reload(null, true);
 }
 document.addEventListener('DOMContentLoaded', function () {
@@ -589,8 +607,9 @@ $(document).ready(function(){
          Model, CPU, CPU Gen, RAM, Storage, Grade, Parts Requested, Action. Lot,
          Location ID, Unit Cost, Warranty, Assigned To, Min / Max Selling Price and
          QC Report hidden. #}
-      { orderable: false, targets: [0, -3, -2, -1] },
-      { visible: false, targets: [{{ '2, 3, 11, 12, 13, 14, 15, 16' if can(current_user, _pm, 'pricing') else '2, 3, 11, 12, 13, 14, 15' }}] },
+      {# Status (col 2, 2026-11-03) shows on the Completed tab only (psiqcSetView). #}
+      { orderable: false, targets: [0, 2, -3, -2, -1] },
+      { visible: false, targets: [{{ '2, 3, 4, 12, 13, 14, 15, 16, 17' if can(current_user, _pm, 'pricing') else '2, 3, 4, 12, 13, 14, 15, 16' }}] },
       {% else %}
       { orderable: false, targets: [0, -2, -1] },
       { visible: false, targets: [{{ 10 if can(current_user, _pm, 'pricing') else 9 }}] },
@@ -1180,8 +1199,9 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
   function tok() { var m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/); return m ? decodeURIComponent(m[1]) : ''; }
   function toast(type, msg) { if (window.showTopToast) window.showTopToast(type, msg); }
   function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; }
-  function post(url, bc, btn) {
+  function post(url, bc, btn, extra) {
     var fd = new FormData(); fd.append('csrf_token', tok()); fd.append('barcode', bc);
+    Object.keys(extra || {}).forEach(function (k) { fd.append(k, extra[k]); });
     if (btn) btn.disabled = true;
     return fetch(url, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': tok() } })
       .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'HTTP ' + r.status }; }); })
@@ -1199,10 +1219,41 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
     document.getElementById('psc_body').innerHTML = html;
     var ok = document.getElementById('psc_ok');
     ok.textContent = okLabel; ok.className = 'btn btn-sm ' + (okCls || 'btn-success'); ok.classList.toggle('d-none', !fn);
+    ok.disabled = false; ok.setAttribute('data-base', okLabel || '');
     okFn = fn;
     bootstrap.Modal.getOrCreateInstance(cm).show();
   }
+  // Pre-Sale QC result cards (2026-11-03): Mark Complete stays disabled until
+  // Pass, or Fail with a reason, is filled in.
+  function psqcCardsHtml(passSub, failSub) {
+    return '<div class="fw-semibold mb-2">Pre-Sale QC result <span class="text-danger">*</span></div>' +
+      '<div class="row g-3 mb-3">' +
+      '<div class="col-6"><label class="psqc-res pass w-100"><input class="form-check-input" type="radio" name="psqc_result" value="pass">' +
+      '<i class="bi bi-check-circle-fill"></i><div class="ttl">Pass</div><div class="sub">' + passSub + '</div></label></div>' +
+      '<div class="col-6"><label class="psqc-res fail w-100"><input class="form-check-input" type="radio" name="psqc_result" value="fail">' +
+      '<i class="bi bi-x-circle-fill"></i><div class="ttl">Fail</div><div class="sub">' + failSub + '</div></label></div>' +
+      '</div>' +
+      '<div id="psqc_reason_wrap" class="mb-3 d-none"><label class="form-label fw-semibold mb-1" for="psqc_reason">Fail reason <span class="text-danger">*</span></label>' +
+      '<textarea id="psqc_reason" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="What is wrong with the tag?"></textarea></div>';
+  }
+  function psqcResultSync() {
+    if (!document.querySelector('input[name="psqc_result"]')) return;
+    var pick = document.querySelector('input[name="psqc_result"]:checked');
+    var ok = document.getElementById('psc_ok');
+    document.querySelectorAll('.psqc-res').forEach(function (c) { c.classList.toggle('sel', !!c.querySelector('input:checked')); });
+    var fail = !!pick && pick.value === 'fail';
+    var wrap = document.getElementById('psqc_reason_wrap');
+    if (wrap) wrap.classList.toggle('d-none', !fail);
+    var reason = ((document.getElementById('psqc_reason') || {}).value || '').trim();
+    ok.disabled = !pick || (fail && !reason);
+    ok.className = 'btn btn-sm ' + (fail ? 'btn-danger' : 'btn-success');
+    var base = ok.getAttribute('data-base') || 'Mark Complete';
+    ok.textContent = fail ? base + ' — Fail' : base;
+  }
+  document.getElementById('psc_body').addEventListener('change', psqcResultSync);
+  document.getElementById('psc_body').addEventListener('input', psqcResultSync);
   document.getElementById('psc_ok').addEventListener('click', function () {
+    if (this.disabled) return;
     var fn = okFn; okFn = null;
     bootstrap.Modal.getOrCreateInstance(cm).hide();
     if (fn) fn();
@@ -1226,11 +1277,18 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
         var lines = [];
         if ((d.to_verify || []).length) lines.push('Will be <b>verified</b> (handed over): ' + d.to_verify.map(function (p) { return esc(p.part_name) + ' ×' + p.qty; }).join(', '));
         if ((d.to_cancel || []).length) lines.push('Will be <b>cancelled</b> (never handed over): ' + d.to_cancel.map(function (p) { return esc(p.part_name); }).join(', '));
-        confirmBox('Mark Complete — ' + bc,
-          (lines.length ? lines.join('<br>') : 'No open part requests.') + '<br><br>The tag stays in Ready for Sale.',
-          'Mark Complete', 'btn-success', function () {
-            post('/pre-sale-iqc/complete', bc, btn).then(function (r) { if (r && r.ok) toast('success', 'Pre-Sale IQC completed on ' + bc + '.'); });
-          });
+        // Pass / Fail cards (2026-11-03): one must be picked; Fail needs a
+        // reason. The picked card fills dark green / dark red.
+        var html = psqcCardsHtml('Tag is fine to sell', 'Tag has an issue') +
+          '<div class="psqc-parts">' + (lines.length ? lines.join('<br>') : 'No open part requests.') + '</div>' +
+          '<div class="text-muted mt-2">The tag stays in Ready for Sale.</div>';
+        confirmBox('Mark Complete — ' + bc, html, 'Mark Complete', 'btn-success', function () {
+          var pick = document.querySelector('input[name="psqc_result"]:checked');
+          var reason = ((document.getElementById('psqc_reason') || {}).value || '').trim();
+          post('/pre-sale-iqc/complete', bc, btn, { result: pick ? pick.value : '', reason: reason })
+            .then(function (r) { if (r && r.ok) toast('success', 'Pre-Sale QC ' + (r.result === 'fail' ? 'failed' : 'passed') + ' on ' + bc + '.'); });
+        });
+        psqcResultSync();
       })
       .catch(function () { toast('danger', 'Could not check the tag\'s parts.'); });
   });
@@ -1260,16 +1318,22 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
         if ((d.not_started || []).length) html.push('<span class="text-muted">Skipped — not started (' + d.not_started.length + '):</span> ' + tags(d.not_started));
         if ((d.not_found || []).length) html.push('<span class="text-muted">Skipped — not found (' + d.not_found.length + '):</span> ' + tags(d.not_found));
         html.push('The tags stay in Ready for Sale.');
-        confirmBox('Complete — ' + bcs.length + ' tag(s)', '<div style="max-height:50vh;overflow:auto">' + html.join('<br><br>') + '</div>',
+        // Pass / Fail for all of them (2026-11-03), same cards as Mark Complete.
+        confirmBox('Complete — ' + bcs.length + ' tag(s)',
+          (ready.length ? psqcCardsHtml('All ' + ready.length + ' tag(s) fine to sell', 'All ' + ready.length + ' tag(s) have an issue') : '') +
+          '<div style="max-height:40vh;overflow:auto">' + html.join('<br><br>') + '</div>',
           'Complete ' + ready.length, 'btn-success', ready.length ? function () {
+            var pick = document.querySelector('input[name="psqc_result"]:checked');
             var f2 = new FormData(); f2.append('csrf_token', tok());
             f2.append('barcodes', ready.map(function (t) { return t.barcode; }).join(','));
+            f2.append('result', pick ? pick.value : '');
+            f2.append('reason', ((document.getElementById('psqc_reason') || {}).value || '').trim());
             fetch('/pre-sale-iqc/bulk-complete', { method: 'POST', body: f2, credentials: 'same-origin',
                                                    headers: { 'X-CSRF-Token': tok() } })
               .then(function (r) { return r.json(); })
               .then(function (x) {
                 if (!x.ok) { toast('danger', x.error || x.detail || 'Could not complete.'); return; }
-                toast('success', 'Pre-Sale IQC completed on ' + x.completed + ' tag(s)' +
+                toast('success', 'Pre-Sale QC ' + (x.result === 'fail' ? 'failed' : 'passed') + ' on ' + x.completed + ' tag(s)' +
                   (x.verified ? '; ' + x.verified + ' part(s) verified' : '') +
                   (x.cancelled ? '; ' + x.cancelled + ' request(s) cancelled' : '') + '.');
                 readySelected.clear();
@@ -1278,6 +1342,7 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
               })
               .catch(function () { toast('danger', 'Could not complete. Please try again.'); });
           } : null);
+        psqcResultSync();      // Complete stays disabled until Pass / Fail is picked
       })
       .catch(function () { toast('danger', 'Could not check the ticked tags.'); })
       .finally(function () { bulkBtn.disabled = readySelected.size === 0; });

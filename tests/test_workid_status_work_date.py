@@ -135,7 +135,7 @@ asyncio.run(main())
         import re
         got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="wid-stage-sub">(Pass|Fail)', stress))
         assert got == {"Pass": "1", "Fail": "1"}, got
-        fqc = html.split('data-group="final_qc"', 1)[1][:3000]
+        fqc = html.split('data-group="final_qc"', 1)[1].split('data-group="pre_sale_iqc"', 1)[0]
         got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="wid-stage-sub">(Pass|Fail)', fqc))
         assert got == {"Pass": "1", "Fail": "1"}, got
         cos = html.split('data-group="cosmetic"', 1)[1].split('data-group="final_qc"', 1)[0]

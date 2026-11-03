@@ -6,6 +6,7 @@ per part comes from IQC, unit cost is entered by the user); Download & Attach
 Estimate writes an Excel workbook, attaches it to the lot row, and raises a
 PartSourcingRequest so the request lands on Part Master -> Sourcing Requests.
 """
+from utils.price_export import price_export_block as _price_block   # Pricing Export (2026-11-03)
 import io
 import os
 import uuid
@@ -1448,6 +1449,9 @@ async def download_estimate(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
+    _blk = _price_block(current_user, 'part_estimation', "/part-estimation")   # Pricing Export (2026-11-03)
+    if _blk is not None:
+        return _blk
     from fastapi.responses import FileResponse
 
     est = (await db.execute(

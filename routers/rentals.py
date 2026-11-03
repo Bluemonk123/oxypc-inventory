@@ -14,10 +14,12 @@ are recomputed from the tags on submit (client totals ignored); the rental
 number is generated here; Billing Entity details are copied onto the record.
 Module key "rentals" — off by default in the permission matrix.
 """
+from utils.price_export import price_export_block as _price_block   # Pricing Export (2026-11-03)
 import calendar
 import csv
 import io
 import uuid as _uuid
+from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
 from datetime import date, timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote
@@ -816,6 +818,9 @@ async def rental_view(request: Request, rental_id: str, db: AsyncSession = Depen
 async def rental_print(request: Request, rental_id: str, db: AsyncSession = Depends(get_db),
                        current_user: User = Depends(allowed)):
     """Printable rental summary — the browser's Print / Save as PDF."""
+    _blk = _price_block(current_user, 'rentals', f"/rentals/{rental_id}")   # Pricing Export (2026-11-03)
+    if _blk is not None:
+        return _blk
     r = await _get_rental(db, rental_id)
     its = (await _items_of(db, [r.id])).get(r.id, [])
     company = (await _companies_by_id(db, [r])).get(r.billing_company_id)
@@ -860,6 +865,7 @@ async def rental_tags_csv(rental_id: str, db: AsyncSession = Depends(get_db),
             select(Device, Lot.lot_number).outerjoin(Lot, Device.lot_id == Lot.id)
             .where(Device.id.in_(ids[i:i + 20000])).order_by(Device.barcode))).all()
     resp = await _export_rows(db, rows)
+    resp = await _strip_prices(resp, current_user, "rentals", ["Device Price"])   # Pricing Export (2026-11-03)
     resp.headers["Content-Disposition"] = f"attachment; filename={r.rental_number}_tags.csv"
     return resp
 

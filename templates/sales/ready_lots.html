@@ -136,7 +136,7 @@
               <i class="bi bi-pencil"></i>
             </button>
             {% endif %}
-            {% if can(current_user, 'sales', 'pricing') %}
+            {% if can(current_user, 'sales', 'pricing_add') %}{# Pricing Add (2026-11-03) #}
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 as-is-lot-edit-btn"
                     data-lot-id="{{ r.lot_id }}" data-sub-lot="{{ r.sub_lot_number }}"
                     data-lot-number="{{ r.lot_number or '' }}"

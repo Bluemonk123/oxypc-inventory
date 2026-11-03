@@ -494,7 +494,8 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
     })
 
 
-async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=None) -> bytes:
+async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=None,
+                                   include_prices: bool = True) -> bytes:
     """Repair Summary workbook (2026-10-29): one row per tag, in device_ids
     order — details, every changed part side by side (Part N Name / Part N
     Cost, as many pairs as the busiest tag needs), Total Parts Cost, Labour /
@@ -591,6 +592,12 @@ async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=
         line += [parts_total, float(bd["labour"]), float(bd["packing"]), float(bd["freight"]), round(grand, 2)]
         ws.append(line)
 
+    # Pricing Export (2026-11-03): without it the cost columns are removed.
+    if not include_prices:
+        for idx in sorted((i + 1 for i, h in enumerate(head)
+                           if h.endswith(" Cost") or h == "Grand Total"), reverse=True):
+            ws.delete_cols(idx)
+        head = [h for h in head if not (h.endswith(" Cost") or h == "Grand Total")]
     gd_col, fq_col = head.index("GRN Date") + 1, head.index("Final QC Pass Date") + 1
     for row in ws.iter_rows(min_row=2):
         row[gd_col - 1].number_format = "dd-mm-yyyy"
@@ -634,7 +641,9 @@ async def parts_repair_summary_export(request: Request, db: AsyncSession = Depen
     for r in rows:
         by_tag.setdefault(r["device_id"], []).append(r)
     order = sorted(by_tag, key=lambda d: by_tag[d][0]["tag_number"] or "")
-    data = await build_repair_summary_xlsx(db, order, by_tag)
+    from utils.price_export import can_export_prices
+    data = await build_repair_summary_xlsx(db, order, by_tag,
+                                           include_prices=can_export_prices(current_user, "spare_parts"))
     await audit(db, user=current_user, action="EXPORT_REPAIR_SUMMARY", table_name="part_requests",
                 record_id=f"{len(order)} tags", new_value={"tags": len(order), "from": "parts_consumption"},
                 request=request)
@@ -655,7 +664,8 @@ async def parts_consumption_summary_export(request: Request, db: AsyncSession = 
     from openpyxl.utils import get_column_letter
     from models.role_permissions import has_perm
     rows = await _consumption_rows_from_form(db, await request.form())
-    pricing = has_perm(getattr(current_user.role, "value", current_user.role), "spare_parts", "pricing")
+    # Pricing Export (2026-11-03; was Pricing View) decides the price columns.
+    pricing = has_perm(getattr(current_user.role, "value", current_user.role), "spare_parts", "pricing_export")
 
     wb = Workbook()
 
@@ -926,6 +936,66 @@ async def bulk_delete_parts(request: Request, ids: list[str] = Form([]),
                     notes=f"Bulk soft-deleted {deleted} part(s): {', '.join(ids)}")
         await db.commit()
     return {"deleted": deleted}
+
+
+@router.post("/spare-parts/bulk-edit")
+async def bulk_edit_parts(request: Request, ids: list[str] = Form([]),
+                          make: str = Form(""), category: str = Form(""), unit_price: str = Form(""),
+                          db: AsyncSession = Depends(get_db),
+                          current_user: User = Depends(allowed)):
+    """Part Master Bulk Edit (2026-11-03): set Part Make, Part Category and/or
+    Part Unit Price on the ticked rows. A blank field is left as it is. The
+    price needs Pricing Add on Parts Manager. A row whose new Make would
+    duplicate another row (same Name + Make + Model + New/Harvest + Crate) or
+    clash with a different part in its crate is skipped and listed."""
+    from models.role_permissions import has_perm as _hp
+    from services.parts_stock import find_row as _find_crate_row, crate_conflict as _crate_conflict
+    role = getattr(current_user.role, "value", current_user.role)
+    make, category, unit_price = (make or "").strip(), (category or "").strip(), (unit_price or "").strip()
+    if not (make or category or unit_price):
+        return JSONResponse({"ok": False, "error": "Fill in at least one field."}, status_code=400)
+    price = None
+    if unit_price:
+        if not _hp(role, "spare_parts", "pricing_add"):
+            return JSONResponse({"ok": False, "error": "Your role cannot change prices (Pricing Add)."}, status_code=403)
+        try:
+            price = float(unit_price.replace(",", ""))
+        except ValueError:
+            return JSONResponse({"ok": False, "error": "Part Unit Price must be a number."}, status_code=400)
+        if price < 0:
+            return JSONResponse({"ok": False, "error": "Part Unit Price cannot be negative."}, status_code=400)
+    parts = []
+    for i in range(0, len(ids), 2000):
+        parts += (await db.execute(select(SparePart).where(
+            SparePart.id.in_(ids[i:i + 2000]), SparePart.is_trashed.isnot(True)))).scalars().all()
+    updated, skipped, changes = 0, [], {}
+    for part in parts:
+        if make and make != (part.make or ""):
+            dup = await _find_crate_row(db, part.name, make, part.model, part.source, part.crate_number)
+            other = await _crate_conflict(db, part.name, make, part.model, part.crate_number, exclude_id=part.id)
+            if (dup is not None and dup.id != part.id) or other is not None:
+                skipped.append(f"{part.part_code} ({part.name}, crate {part.crate_number or '-'})")
+                continue
+        before = {"make": part.make, "category": part.category, "unit_price": float(part.unit_price or 0)}
+        if make:
+            part.make = make
+        if category:
+            part.category = category
+        if price is not None:
+            part.unit_price = price
+        after = {"make": part.make, "category": part.category, "unit_price": float(part.unit_price or 0)}
+        if after != before:
+            changes[str(part.id)] = {"code": part.part_code, "before": before, "after": after}
+            updated += 1
+    if updated:
+        await audit(db, action="PART_MASTER_BULK_EDIT", user=current_user, table_name="spare_parts",
+                    record_id=f"bulk:{updated}",
+                    new_value={"set": {k: v for k, v in (("make", make), ("category", category),
+                                                         ("unit_price", price)) if v not in ("", None)},
+                               "rows": changes if len(changes) <= 2000 else None},
+                    notes="Reverse: put each row's 'before' values back.", request=request)
+    await db.commit()
+    return JSONResponse({"ok": True, "updated": updated, "skipped": skipped})
 
 
 @router.get("/spare-parts/bulk-template")

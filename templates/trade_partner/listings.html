@@ -100,7 +100,7 @@
                 </form>
                 {% endif %}
                 {% endif %}
-                {% if can(current_user, 'trade_partner_listings', 'pricing') %}
+                {% if can(current_user, 'trade_partner_listings', 'pricing_add') %}{# Pricing Add (2026-11-03) #}
                 <button class="btn btn-outline-secondary" title="Reprice / review price" data-bs-toggle="modal" data-bs-target="#repriceModal{{ loop.index }}">
                   <i class="bi bi-currency-rupee"></i>
                 </button>

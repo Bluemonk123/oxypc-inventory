@@ -48,7 +48,7 @@
             </div>
           </td>
           <td class="pp-status">{% if p.pricing_done %}<span class="badge bg-success">Pricing Done</span>{% else %}<span class="badge bg-warning text-dark">Pricing Pending</span>{% endif %}</td>
-          <td>{% if can(current_user, 'pm_product_pricing', 'pricing') %}<button type="button" class="btn btn-sm btn-primary pp-save" disabled><i class="bi bi-save me-1"></i>Save</button>{% endif %}</td>
+          <td>{% if can(current_user, 'pm_product_pricing', 'pricing_add') %}<button type="button" class="btn btn-sm btn-primary pp-save" disabled><i class="bi bi-save me-1"></i>Save</button>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>

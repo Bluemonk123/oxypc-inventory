@@ -50,7 +50,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/users/{user_id}/delete'): ('admin_users', 'delete'),  # delete_user
     ('POST', '/admin/users/{user_id}/reset-password'): ('admin_users', 'edit'),  # reset_password
     ('POST', '/admin/users/{user_id}/permissions'): None,  # save_permissions: per-user permission grants: admin-only permission page (privilege escalation risk)
-    ('POST', '/admin/cost-config'): ('cost_config', 'pricing'),  # cost_config_save: cost config prices; already require_module_perm('cost_config','edit')
+    ('POST', '/admin/cost-config'): ('cost_config', 'pricing_add'),  # cost_config_save: cost config prices; already require_module_perm('cost_config','edit')
     ('POST', '/admin/backup-delete/{filename}'): None,  # backup_delete: DB backup file delete, system internal admin-only
     ('POST', '/admin/backup-now'): None,  # backup_now: DB backup, system internal admin-only
     # ===== routers/iqc.py =====
@@ -108,11 +108,11 @@ ROUTE_ACTIONS = {
     ('GET', '/sales/export-selected'): ('sales_list', 'export'),  # export_selected_get: Sales List export selected
     ('GET', '/sales/export'): ('sales_list', 'export'),  # export_sales_filtered: Sales List Export
     ('GET', '/returns/{return_id}/receipt'): ('returns', 'export'),  # return_receipt: return receipt document
-    ('POST', '/sales/ready/as-is-lot/price'): ('sales', 'pricing'),  # set_as_is_lot_price
+    ('POST', '/sales/ready/as-is-lot/price'): ('sales', 'pricing_add'),  # set_as_is_lot_price
     ('POST', '/sales/ready/as-is-lot/edit'): ('sales', 'edit'),  # edit_as_is_lot
     ('POST', '/sales/ready/as-is-lot/open'): ('sales', 'edit'),  # open_as_is_lot: releases sub-lot (clears Device.sub_lot_number)
-    ('POST', '/sales/ready/set-price'): ('sales', 'pricing'),  # set_ready_tag_price
-    ('POST', '/sales/ready/bulk-set-price'): ('sales', 'pricing'),  # bulk_set_ready_tag_price
+    ('POST', '/sales/ready/set-price'): ('sales', 'pricing_add'),  # set_ready_tag_price
+    ('POST', '/sales/ready/bulk-set-price'): ('sales', 'pricing_add'),  # bulk_set_ready_tag_price
     ('POST', '/sales/ready/upload-tags'): None,  # upload_ready_tags: read-only tag lookup to tick rows
     ('POST', '/sales/new-tag-sale/tag-info'): None,  # sale_new_tag_info: read-only lookup
     ('POST', '/sales/new-tag-sale/prefill'): None,  # sale_new_tag_form_prefill: renders prefilled form (POST twin of GET)
@@ -147,6 +147,7 @@ ROUTE_ACTIONS = {
     ('POST', '/spare-parts/{part_id}/update-count'): ('spare_parts', 'edit'),  # update_count: crate stock-take (2026-10-31)
     ('POST', '/spare-parts/{part_id}/delete'): ('spare_parts', 'delete'),  # delete_part
     ('POST', '/spare-parts/bulk-delete'): ('spare_parts', 'delete'),  # bulk_delete_parts
+    ('POST', '/spare-parts/bulk-edit'): ('spare_parts', 'edit'),  # bulk_edit_parts: Make / Category / Unit Price on ticked rows (price also needs pricing_add), 2026-11-03
     ('POST', '/spare-parts/bulk-upload'): ('spare_parts', 'upload'),  # bulk_upload_parts
     ('POST', '/spare-parts/purchase'): ('spare_parts_purchase', 'add'),  # record_purchase
     ('POST', '/spare-parts/consume'): ('parts_consumption', 'add'),  # record_consumption
@@ -211,7 +212,7 @@ ROUTE_ACTIONS = {
     ('POST', '/scrap-products/{barcode}/set-replacement'): ('scrap_products', 'edit'),  # set_scrap_replacement
     # ===== routers/scrap_for_sale.py =====
     ('POST', '/scrap-for-sale/custom-sale'): ('scrap_for_sale', 'add'),  # create_custom_scrap_sale
-    ('POST', '/scrap-for-sale/{scrap_id}/price'): ('scrap_for_sale', 'pricing'),  # set_scrap_for_sale_price
+    ('POST', '/scrap-for-sale/{scrap_id}/price'): ('scrap_for_sale', 'pricing_add'),  # set_scrap_for_sale_price
     ('POST', '/scrap-for-sale/{scrap_id}/sell'): ('scrap_for_sale', 'add'),  # sell_scrap_for_sale: creates the scrap sale
     ('POST', '/scrap-for-sale/{scrap_id}/delete'): ('scrap_for_sale', 'delete'),  # delete_scrap_for_sale
     # ===== routers/devices.py =====
@@ -405,16 +406,16 @@ ROUTE_ACTIONS = {
     ('POST', '/product-master/dropdown/{item_id}/delete'): ('pm_product_master', 'delete'),  # dropdown_delete
     ('POST', '/product-master/products/save'): ('pm_product_master', 'edit'),  # product_save: add when product_id blank, else edit
     ('POST', '/product-master/products/{product_id}/delete'): ('pm_product_master', 'delete'),  # product_delete
-    ('POST', '/product-master/products/{product_id}/discount'): ('pm_product_master', 'pricing'),  # product_discount: discount_pct
+    ('POST', '/product-master/products/{product_id}/discount'): ('pm_product_master', 'pricing_add'),  # product_discount: discount_pct
     ('POST', '/product-master/competitive/save'): ('pm_product_master', 'edit'),  # competitive_save: competitive list add/edit (add when item_id blank)
     ('POST', '/product-master/competitive/{item_id}/delete'): ('pm_product_master', 'delete'),  # competitive_delete
-    ('POST', '/product-master/competitive/method'): ('pm_product_master', 'pricing'),  # competitive_set_method: changes avg/max/min method used to recompute sell prices
-    ('POST', '/product-master/hardware/{kind}/save'): ('pm_hardware', 'pricing'),  # hardware_save: RAM/Storage capacity + price row (add when item_id blank)
+    ('POST', '/product-master/competitive/method'): ('pm_product_master', 'pricing_add'),  # competitive_set_method: changes avg/max/min method used to recompute sell prices
+    ('POST', '/product-master/hardware/{kind}/save'): ('pm_hardware', 'pricing_add'),  # hardware_save: RAM/Storage capacity + price row (add when item_id blank)
     ('POST', '/product-master/hardware/{kind}/{item_id}/delete'): ('pm_hardware', 'delete'),  # hardware_delete
     ('POST', '/product-master/pricing-calculator/rows/delete'): ('pm_pricing_calculator', 'delete'),  # pricing_calculator_rows_delete
     ('POST', '/product-master/pricing-calculator/upload'): ('pm_pricing_calculator', 'upload'),  # pricing_calculator_upload
-    ('POST', '/product-master/pricing/{product_id}/save'): ('pm_product_pricing', 'pricing'),  # pricing_save
-    ('POST', '/product-master/spare-parts/{product_id}/save'): ('pm_spare_parts', 'pricing'),  # spare_parts_save: sets part prices for a product
+    ('POST', '/product-master/pricing/{product_id}/save'): ('pm_product_pricing', 'pricing_add'),  # pricing_save
+    ('POST', '/product-master/spare-parts/{product_id}/save'): ('pm_spare_parts', 'pricing_add'),  # spare_parts_save: sets part prices for a product
     # ===== routers/iqc_api.py =====
     ('POST', '/iqc/api/submit'): None,  # submit_iqc: OxyQC EXE API (X-OxyQC-Key), not session UI
     # ===== routers/qa_uat.py =====
@@ -464,7 +465,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/sourcing/{deal_id}/link-lot'): ('crm_sourcing', 'edit'),  # link_lot
     ('POST', '/crm/sourcing/{deal_id}/po-items/add'): ('crm_sourcing', 'add'),  # add_deal_po_item
     ('POST', '/crm/sourcing/{deal_id}/po-items/{item_id}/delete'): ('crm_sourcing', 'delete'),  # delete_deal_po_item
-    ('POST', '/crm/sourcing/{deal_id}/po-items/{item_id}/offer'): ('crm_sourcing', 'pricing'),  # set_deal_po_item_offer: offer price
+    ('POST', '/crm/sourcing/{deal_id}/po-items/{item_id}/offer'): ('crm_sourcing', 'pricing_add'),  # set_deal_po_item_offer: offer price
     ('POST', '/crm/sourcing/{deal_id}/generate-po'): ('crm_sourcing', 'add'),  # generate_po_from_deal: creates CRMPurchaseOrder
     # ===== routers/crm_sales.py =====
     ('POST', '/crm/sales/new'): ('crm_sales_opp', 'add'),  # create_opp
@@ -487,8 +488,8 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/activities/log'): ('crm_dashboard', 'add'),  # log_activity: activity log; path resolves to crm_dashboard (/crm/)
     ('POST', '/crm/activities/{activity_id}/done'): ('crm_dashboard', 'edit'),  # mark_done
     # ===== routers/crm_price_matrix.py =====
-    ('POST', '/crm/price-matrix/new'): ('crm_price_matrix', 'pricing'),  # create_matrix_row: price matrix row
-    ('POST', '/crm/price-matrix/{row_id}/edit'): ('crm_price_matrix', 'pricing'),  # update_matrix_row
+    ('POST', '/crm/price-matrix/new'): ('crm_price_matrix', 'pricing_add'),  # create_matrix_row: price matrix row
+    ('POST', '/crm/price-matrix/{row_id}/edit'): ('crm_price_matrix', 'pricing_add'),  # update_matrix_row
     ('POST', '/crm/price-matrix/{row_id}/delete'): ('crm_price_matrix', 'delete'),  # delete_matrix_row
     ('POST', '/crm/price-matrix/upload'): ('crm_price_matrix', 'upload'),  # upload_matrix: bulk price import (consider also requiring pricing)
     # ===== routers/gate_pass.py =====
@@ -621,13 +622,13 @@ ROUTE_ACTIONS = {
     ('POST', '/trade-partner/listings/create'): ('trade_partner_listings', 'add'),  # create_listing
     ('POST', '/trade-partner/listings/{listing_id}/publish'): ('trade_partner_listings', 'edit'),  # publish_listing
     ('POST', '/trade-partner/listings/{listing_id}/pause'): ('trade_partner_listings', 'edit'),  # pause_listing
-    ('POST', '/trade-partner/listings/{listing_id}/reprice'): ('trade_partner_listings', 'pricing'),  # reprice_listing
+    ('POST', '/trade-partner/listings/{listing_id}/reprice'): ('trade_partner_listings', 'pricing_add'),  # reprice_listing
     ('POST', '/trade-partner/bookings/{booking_id}/verify'): ('trade_partner_bookings', 'edit'),  # verify_token_proof
     ('POST', '/trade-partner/bookings/{booking_id}/reject'): ('trade_partner_bookings', 'edit'),  # reject_booking
     ('POST', '/trade-partner/bookings/{booking_id}/balance-verify'): ('trade_partner_bookings', 'edit'),  # verify_balance
     ('POST', '/trade-partner/bookings/{booking_id}/dispatched'): ('trade_partner_bookings', 'edit'),  # mark_dispatched
     ('POST', '/trade-partner/bookings/{booking_id}/extend'): ('trade_partner_bookings', 'edit'),  # extend_booking
-    ('POST', '/trade-partner/floors/create'): ('trade_partner_floors', 'pricing'),  # create_floor: margin floor; also _is_floor_approver check
+    ('POST', '/trade-partner/floors/create'): ('trade_partner_floors', 'pricing_add'),  # create_floor: margin floor; also _is_floor_approver check
     ('POST', '/trade-partner/settings'): ('trade_partner_settings', 'edit'),  # settings_save
     ('POST', '/trade-partner/manage-lots/map-grn'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_map_grn
     ('POST', '/trade-partner/manage-lots/move-ready-for-sale'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_move_ready_for_sale

@@ -27,7 +27,8 @@ from models.role_permissions import has_any_perm
 
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 ACTION_LABELS = {"add": "Add", "upload": "Upload", "edit": "Edit",
-                 "delete": "Delete", "pricing": "Pricing", "export": "Export"}
+                 "delete": "Delete", "pricing": "Pricing View", "pricing_add": "Pricing Add",
+                 "pricing_export": "Pricing Export", "export": "Export"}
 
 _ROLE_CACHE: dict = {}          # username -> (role_name, expires_at)
 _ROLE_TTL = 60                  # seconds; role changes apply within a minute

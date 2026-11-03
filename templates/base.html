@@ -152,7 +152,7 @@
       {% endif %}
 
       {# ── INVENTORY ───────────────────────────────────────────────────── #}
-      {% if any_perm(role,'stock','production_manager','extended_warranty','part_estimation','credit_note','transfers','inventory_requests','model_requested') %}
+      {% if any_perm(role,'stock','production_manager','extended_warranty','part_estimation','credit_note','transfers','inventory_requests','model_requested','physical_audits','scrap_products') %}
       <li class="nav-section">INVENTORY</li>
       {% if has_perm(role,'stock','enable') and not module_hidden('stock') %}
       <li><a href="/stock" class="nav-link {% if request.url.path == '/stock' %}active{% endif %}">
@@ -188,6 +188,13 @@
       {% if has_perm(role,'scrap_products','enable') and not module_hidden('scrap_products') %}
       <li><a href="/scrap-products" class="nav-link {% if '/scrap-products' in request.url.path %}active{% endif %}">
         <i class="bi bi-trash3 me-2"></i> {{ sidebar_label('scrap_products', 'Scrap Products') }}
+      </a></li>
+      {% endif %}
+      {# Physical Audits moved here, directly above Floor Movement (Move Device),
+         out of the Inventory Locations sub-menu — 2026-11-03. #}
+      {% if has_perm(role,'physical_audits','enable') and not module_hidden('physical_audits') %}
+      <li><a href="/audits" class="nav-link {% if request.url.path.startswith('/audits') %}active{% endif %}">
+        <i class="bi bi-clipboard2-check me-2"></i> {{ sidebar_label('physical_audits', 'Physical Audits') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'transfers','enable') and not module_hidden('transfers') %}
@@ -307,8 +314,8 @@
       {% endif %}
 
       {# ── INVENTORY LOCATIONS ──────────────────────────────────────────── #}
-      {% set inv_loc_active = '/locations/' in request.url.path or request.url.path.startswith('/trash') or request.url.path.startswith('/audits') %}
-      {% if has_perm(role,'locations','enable') and not module_hidden('locations') or has_perm(role,'physical_audits','enable') and not module_hidden('physical_audits') or has_perm(role,'location_gaps','enable') and not module_hidden('location_gaps') or has_perm(role,'location_audit','enable') and not module_hidden('location_audit') or has_perm(role,'location_master','enable') and not module_hidden('location_master') or has_perm(role,'location_trash','enable') and not module_hidden('location_trash') %}
+      {% set inv_loc_active = '/locations/' in request.url.path or request.url.path.startswith('/trash') %}
+      {% if has_perm(role,'locations','enable') and not module_hidden('locations') or has_perm(role,'location_gaps','enable') and not module_hidden('location_gaps') or has_perm(role,'location_audit','enable') and not module_hidden('location_audit') or has_perm(role,'location_master','enable') and not module_hidden('location_master') or has_perm(role,'location_trash','enable') and not module_hidden('location_trash') %}
       <li class="nav-item">
         <a href="#invLocCollapse" class="nav-link d-flex align-items-center {% if inv_loc_active %}active{% endif %}"
            data-bs-toggle="collapse" role="button"
@@ -321,11 +328,6 @@
             {% if has_perm(role,'locations','enable') and not module_hidden('locations') %}
             <li><a href="/locations/dashboard" class="nav-link py-1 small {% if '/locations/dashboard' in request.url.path %}active{% endif %}">
               <i class="bi bi-boxes me-2"></i> {{ sidebar_label('locations', 'Location Map') }}
-            </a></li>
-            {% endif %}
-            {% if has_perm(role,'physical_audits','enable') and not module_hidden('physical_audits') %}
-            <li><a href="/audits" class="nav-link py-1 small {% if request.url.path.startswith('/audits') %}active{% endif %}">
-              <i class="bi bi-clipboard2-check me-2"></i> {{ sidebar_label('physical_audits', 'Physical Audits') }}
             </a></li>
             {% endif %}
             {% if has_perm(role,'location_gaps','enable') and not module_hidden('location_gaps') %}

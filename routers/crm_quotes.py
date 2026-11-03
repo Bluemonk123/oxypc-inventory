@@ -1,4 +1,5 @@
 """CRM Quotes router — quote builder with line items and print view."""
+from utils.price_export import price_export_block as _price_block   # Pricing Export (2026-11-03)
 import os
 from datetime import datetime, date, timedelta
 from utils.timezone import app_now
@@ -569,6 +570,9 @@ async def quote_print(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    _blk = _price_block(current_user, 'crm_quotes', f"/crm/quotes/{quote_id}")   # Pricing Export (2026-11-03)
+    if _blk is not None:
+        return _blk
     result = await db.execute(select(CRMQuote).where(CRMQuote.id == quote_id))
     quote = result.scalar_one_or_none()
     if not quote:
@@ -730,6 +734,9 @@ async def download_quote_doc(
 ):
     """Serve the document produced by Generate — the stored attachment, not a
     fresh render, so what is downloaded is what was generated."""
+    _blk = _price_block(current_user, 'crm_quotes', f"/crm/quotes/{quote_id}")   # Pricing Export (2026-11-03)
+    if _blk is not None:
+        return _blk
     quote = (await db.execute(select(CRMQuote).where(CRMQuote.id == quote_id))).scalar_one_or_none()
     if not quote:
         return RedirectResponse(url="/crm/quotes?error=Quote+not+found", status_code=302)

@@ -27,7 +27,7 @@
                      name="{{ col }}" placeholder="₹" value="{{ '%g'|format(p.parts[col]) if p.parts[col] is not none else '' }}"></td>
           {% endfor %}
           <td class="sp-status">{% if p.parts_done %}<span class="badge bg-success">Pricing Done</span>{% else %}<span class="badge bg-warning text-dark">Pricing Pending</span>{% endif %}</td>
-          <td>{% if can(current_user, 'pm_spare_parts', 'pricing') %}<button type="button" class="btn btn-sm btn-primary sp-save" disabled><i class="bi bi-save me-1"></i>Save</button>{% endif %}</td>
+          <td>{% if can(current_user, 'pm_spare_parts', 'pricing_add') %}<button type="button" class="btn btn-sm btn-primary sp-save" disabled><i class="bi bi-save me-1"></i>Save</button>{% endif %}</td>
         </tr>
       {% endfor %}
       </tbody>

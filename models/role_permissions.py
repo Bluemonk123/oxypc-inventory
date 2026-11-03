@@ -31,6 +31,12 @@ class RoleModulePermission(Base):
     can_delete  = Column(Boolean, nullable=True, default=True, server_default="true")
     can_pricing = Column(Boolean, nullable=True, default=True, server_default="true")  # see + change prices
     can_export  = Column(Boolean, nullable=True, default=True, server_default="true")  # Download / Export (2026-10-26)
+    # Pricing split in three (2026-11-03): can_pricing = Pricing View (see
+    # prices), plus Pricing Add (set / change prices) and Pricing Export
+    # (price columns in exports). NULL = not set yet -> follows can_pricing,
+    # so nobody's access changed when these were added.
+    can_pricing_add    = Column(Boolean, nullable=True)
+    can_pricing_export = Column(Boolean, nullable=True)
     updated_at = Column(DateTime, default=app_now, onupdate=app_now)
     updated_by = Column(String(50), nullable=True)
 
@@ -225,7 +231,7 @@ DEFAULT_DISABLED_MODULES = frozenset({
 })
 
 
-PERM_ACTIONS = ("add", "upload", "edit", "delete", "pricing", "export")
+PERM_ACTIONS = ("add", "upload", "edit", "delete", "pricing", "pricing_add", "pricing_export", "export")
 
 
 def has_perm(role_name: str, module: str, action: str = "enable") -> bool:
@@ -255,6 +261,8 @@ def has_perm(role_name: str, module: str, action: str = "enable") -> bool:
     if action == "enable":
         return True
     val = mod_perms.get(action)
+    if val is None and action in ("pricing_add", "pricing_export"):
+        val = mod_perms.get("pricing")      # not set yet: follows Pricing View (2026-11-03)
     return True if val is None else bool(val)
 
 

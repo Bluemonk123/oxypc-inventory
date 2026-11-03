@@ -61,7 +61,7 @@
           <td>{% if can(current_user, 'scrap_for_sale', 'pricing') %}{% if r.max_price is not none %}₹{{ ((r.max_price) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
           <td>{{ r.assigned_to_name }}</td>
           <td class="text-nowrap">
-            {% if can(current_user, 'scrap_for_sale', 'pricing') %}
+            {% if can(current_user, 'scrap_for_sale', 'pricing_add') %}{# Pricing Add (2026-11-03) #}
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 scrap-edit-btn"
                     data-id="{{ r.id }}" data-scrap-id="{{ r.scrap_id }}"
                     data-min="{{ r.min_price if r.min_price is not none else '' }}"

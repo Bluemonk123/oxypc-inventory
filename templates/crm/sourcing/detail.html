@@ -603,13 +603,16 @@
                   {% if not can(current_user, 'crm_sourcing', 'pricing') %}—
                   {% elif li.offer_price %}
                   <span class="text-primary fw-semibold">₹{{ ((li.offer_price) | inr(2)) }}</span>
+                  {% if can(current_user, 'crm_sourcing', 'pricing_add') %}{# Pricing Add (2026-11-03) #}
                   <button type="button" class="btn btn-sm btn-link py-0 px-1 offer-price-btn"
                           data-item-id="{{ li.id }}" data-total-price="{{ li.total_price or 0 }}"
                           data-offer-price="{{ li.offer_price }}">Edit</button>
-                  {% else %}
+                  {% endif %}
+                  {% elif can(current_user, 'crm_sourcing', 'pricing_add') %}
                   <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 offer-price-btn"
                           data-item-id="{{ li.id }}" data-total-price="{{ li.total_price or 0 }}"
                           data-offer-price="">Offer Price</button>
+                  {% else %}—
                   {% endif %}
                 </td>
                 <td>

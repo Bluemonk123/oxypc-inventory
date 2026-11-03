@@ -27,7 +27,7 @@ def test_dashboard_pipeline_steps_and_entity_filter(app_client, make_user):  # n
 
     # Scope to the pipeline card — "IQC" and "Stock" legitimately appear in
     # other cards on this page, so a whole-page search would prove nothing.
-    card = html.split('<span class="fw-semibold">Device Stage Pipeline</span>', 1)[1]
+    card = html.split('>Live Stage Pipeline</span>', 1)[1]
     card = card.split('class="d-flex pipeline-row', 1)[1].split("</div>\n  </div>\n</div>", 1)[0]
     # Steps as redesigned (2026-10-15): IQC, Stock In and Production are back;
     # GRN (not a stage a tag sits in) is gone from the pipeline row.

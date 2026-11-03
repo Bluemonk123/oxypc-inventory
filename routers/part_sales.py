@@ -11,6 +11,7 @@ Pages:
 Sell is gated on an APPROVED, not-yet-consumed PartSaleRequest, so one
 approval authorises exactly one sale.
 """
+from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
 import csv
 import io
 from collections import defaultdict
@@ -547,11 +548,11 @@ async def export_part_sales_filtered(
         writer.writerow(["# TRUNCATED", f"Export capped at {MAX_EXPORT_ROWS} rows",
                          "", "", "", "", "", "", "", "", ""])
     output.seek(0)
-    return Response(
+    return await _strip_prices(Response(
         content=output.getvalue().encode(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=part_sales_filtered.csv"},
-    )
+    ), current_user, "part_sales", ["Stock Unit Price", "Sale Unit Price", "Margin"])
 
 
 # ── Parts Dashboard ───────────────────────────────────────────────────────────

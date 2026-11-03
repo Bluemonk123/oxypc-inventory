@@ -3,6 +3,7 @@ Sales Router — sale block enforcement + return re-entry to IQC + audit
 """
 from templates_config import templates
 from urllib.parse import quote, quote_plus
+from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
 import uuid as _uuid
 import os
 import re
@@ -400,8 +401,9 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
 
     col_map = {1: Device.barcode, 2: Lot.lot_number, 4: Device.brand, 5: Device.model, 8: Device.grade}
     if psiqc:   # Pre-Sale IQC: CPU + CPU Gen after Model (2026-10-29)
-        col_map = {1: Device.barcode, 2: Lot.lot_number, 4: Device.brand, 5: Device.model,
-                   6: Device.cpu, 7: Device.generation, 10: Device.grade}
+        # Status column after Tag (2026-11-03) shifts the rest by one.
+        col_map = {1: Device.barcode, 3: Lot.lot_number, 5: Device.brand, 6: Device.model,
+                   7: Device.cpu, 8: Device.generation, 11: Device.grade}
     try:
         order_col = int(request.query_params.get("order[0][column]", 0))
     except ValueError:
@@ -490,8 +492,9 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
     _worked, _l34 = await worked_and_l34_ids(db, device_ids)
 
     if psiqc:
-        from routers.pre_sale_iqc import psiqc_state_map, psiqc_parts_cell, psiqc_action_cell
+        from routers.pre_sale_iqc import psiqc_state_map, psiqc_parts_cell, psiqc_action_cell, psiqc_result_map
         _ps_state, _ps_parts = await psiqc_state_map(db, device_ids)
+        _ps_result = await psiqc_result_map(db, _ps_state)
         _ps_edit = _hp(role, "pre_sale_iqc", "edit")
 
     data = []
@@ -529,6 +532,11 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
             f'<span class="font-monospace">{esc(loc_name)}</span>' if loc_name else '<span class="text-muted">—</span>',
             esc(d.brand or "—"), esc(d.model or "—"),
         ]
+        if psiqc:   # Status after Tag (2026-11-03): Mark Complete's Pass / Fail
+            _r = _ps_result.get(did)
+            cells.insert(2, '<span class="badge bg-success">Pass</span>' if _r == "pass"
+                         else '<span class="badge bg-danger">Fail</span>' if _r == "fail"
+                         else '<span class="text-muted">—</span>')
         if psiqc:   # CPU + CPU Gen after Model (2026-10-29)
             cells += [esc(d.cpu or "—"), esc(d.generation or "—")]
         cells += [
@@ -559,7 +567,11 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
             (esc(assigned_name) if assigned_name else '<span class="text-muted">—</span>')
             + f'<br>{assign_badge}'
         )
-        if d.min_selling_price is not None:
+        # Pricing View (2026-11-03): no price in the data at all without it
+        # (the columns were only hidden in the browser before).
+        if not show_pricing:
+            cells.append('<span class="text-muted">—</span>')
+        elif d.min_selling_price is not None:
             cells.append(f'₹{float(d.min_selling_price):,.0f}')
         elif auto_min is not None:
             cells.append(
@@ -568,7 +580,7 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
                 'title="Calculated: unit price + repair cost (labour + packing + freight) + margin. Use Set price to override.">auto</span>')
         else:
             cells.append('<span class="text-muted">—</span>')
-        cells.append(f'₹{float(d.max_selling_price):,.0f}' if d.max_selling_price is not None
+        cells.append(f'₹{float(d.max_selling_price):,.0f}' if (show_pricing and d.max_selling_price is not None)
                     else '<span class="text-muted">—</span>')
         qc = qc_map.get(d.barcode)
         if qc:
@@ -990,7 +1002,7 @@ def _role_can_set_price(user) -> bool:
     """Master Data → Pricing Visibility → Set Price, enforced on the server too
     so a hidden button can't be bypassed with a direct request."""
     from models.role_permissions import has_perm as _hp
-    return _hp(getattr(user.role, "value", user.role), "sales", "pricing")
+    return _hp(getattr(user.role, "value", user.role), "sales", "pricing_add")   # Pricing Add (2026-11-03)
 
 
 @router.post("/sales/ready/as-is-lot/price")
@@ -2272,11 +2284,11 @@ async def export_selected_sales(
             (transfer_type or "").replace("_", " ").title(), s.notes or "",
         ])
     output.seek(0)
-    return Response(
+    return await _strip_prices(Response(
         content=output.getvalue().encode(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=sales_selected.csv"},
-    )
+    ), current_user, "sales_list", ["Price"])
 
 
 @router.post("/sales/parse-invoice-pdf")
@@ -2621,7 +2633,7 @@ async def sales_list_data(
         "data": data,
         # Revenue for everything the filters match, not just this page — the
         # footer total would otherwise only add up the 25 rows on screen.
-        "revenueFiltered": revenue,
+        "revenueFiltered": revenue if show_pricing else None,   # Pricing View (2026-11-03)
         "showPricing": show_pricing,
     })
 
@@ -2684,11 +2696,11 @@ async def export_sales_filtered(
         writer.writerow(["# TRUNCATED", f"Export capped at {MAX_EXPORT_ROWS} rows",
                          "", "", "", "", "", "", "", "", "", "", "", "", "", ""])
     output.seek(0)
-    return Response(
+    return await _strip_prices(Response(
         content=output.getvalue().encode(),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=sales_filtered.csv"},
-    )
+    ), current_user, "sales_list", ["Price"])
 
 
 # NOTE: /sales/ids MUST also stay above /sales/{sale_id}, same reason as
@@ -4048,8 +4060,9 @@ async def credit_note_export_selected(
             ret.cn_stage,
         ])
     buf.seek(0)
-    return Response(content=buf.getvalue().encode(), media_type="text/csv",
-                             headers={"Content-Disposition": "attachment; filename=credit_note_selected.csv"})
+    return await _strip_prices(Response(content=buf.getvalue().encode(), media_type="text/csv",
+                             headers={"Content-Disposition": "attachment; filename=credit_note_selected.csv"}),
+                               current_user, "credit_note", ["Device Price", "Debit Amount"])
 
 
 # ── Manager: pending returns list ─────────────────────────────────────────────

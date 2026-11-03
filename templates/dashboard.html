@@ -30,7 +30,7 @@
   .pipeline-tile .pipeline-label{font-size:.75rem; white-space:nowrap}
   .pipeline-tile .pipeline-count{font-size:1.25rem}
   /* Filled success-green arrow between stages (2026-10-15; was a light chevron). */
-  .pipeline-chevron{flex-shrink:0; font-size:.85rem}
+  .pipeline-chevron{flex-shrink:0; font-size:1.35rem; line-height:1}   /* bigger arrow (2026-11-03) */
   /* Split Entity: each entity line must fit on one line at a small size
      (12px) rather than wrapping inside the tile — widen the tile itself
      while split is on so "OxyPC Computers" has room, instead of shrinking
@@ -245,23 +245,37 @@
 {# .gtable-card: same light-blue header as every Global Table card (app.css).
    .dash-wm-card + .dash-wm: faint watermark icon, bottom-right (2026-10-15). #}
 <div class="card border-0 shadow-sm h-100 gtable-card dash-wm-card">
-  <div class="card-header bg-transparent d-flex align-items-center gap-2">
-    <i class="bi bi-diagram-3 text-primary"></i>
-    <span class="fw-semibold">Device Stage Pipeline</span>
+  <div class="card-header bg-transparent d-flex flex-wrap align-items-center gap-2">
+    {# Broadcast icon + "Live Stage Pipeline" (2026-11-03; was Device Stage
+       Pipeline with a "Live Stock Status" badge, now removed). #}
+    <i class="bi bi-broadcast text-success"></i>
+    <span class="fw-semibold text-nowrap">Live Stage Pipeline</span>
     {# 2026-10-31: the live / moved label sits next to the heading; the
        Split buttons on the right. "Total Inventory - N" removed (the Total
        Inventory card shows it). #}
     {% if pl_active %}
     <span class="badge bg-warning text-dark" title="Each count = tags that moved into that stage between the dates (Sold = sale date in the range). Clear the dates to see live stock.">
       <i class="bi bi-calendar-range me-1"></i>Moved {{ tile_period }}</span>
-    {% else %}
-    <span class="badge rounded-pill text-bg-light border fw-semibold" title="Live counts: where tags are right now. Set From / To dates to see tags moved in a period.">
-      <i class="bi bi-broadcast me-1 text-success"></i>Live Stock Status</span>
     {% endif %}
-    <button type="button" id="splitEntityToggle" class="btn btn-sm btn-outline-secondary ms-auto">
+    {# Returned / Scrapped / Scrap for Sale / On Rent (2026-11-03): moved from
+       the bottom of the card into the header, before Split Entity; still
+       links to All Inventories, separated by lines. Not pipeline steps and
+       not in any total on this page. #}
+    <div class="pipeline-side-stats ms-auto d-flex align-items-center small text-muted">
+      {% for key, label in [('returned', 'Returned'), ('scrapped', 'Scrapped'),
+                             ('scrap_for_sale', 'Scrap for Sale'), ('on_rent', 'On Rent')] %}
+      <a href="/devices?stage={{ key }}{% if f_entity %}&entity={{ f_entity | urlencode }}{% endif %}"
+         class="text-decoration-none text-muted text-nowrap px-2{% if not loop.first %} border-start{% endif %}"
+         title="Open All Inventories filtered to {{ label }}">
+        {{ label }}: <strong class="text-body">{{ side_counts.get(key, 0) }}</strong>
+      </a>
+      {% endfor %}
+      <span class="vr mx-2"></span>
+    </div>
+    <button type="button" id="splitEntityToggle" class="btn btn-sm btn-outline-secondary text-nowrap">
       <i class="bi bi-diagram-2 me-1"></i>Split Entity
     </button>
-    <button type="button" id="splitLocationToggle" class="btn btn-sm btn-outline-secondary">
+    <button type="button" id="splitLocationToggle" class="btn btn-sm btn-outline-secondary text-nowrap">
       <i class="bi bi-geo-alt me-1"></i>Split Zone
     </button>
   </div>
@@ -312,22 +326,8 @@
         </div>
       </a>
       {% if not loop.last %}
-      <i class="bi bi-caret-right-fill pipeline-chevron text-success mt-2"></i>
+      <i class="bi bi-caret-right-fill pipeline-chevron text-success mt-1"></i>
       {% endif %}
-      {% endfor %}
-    </div>
-    {# Returned/Scrapped/Scrap for Sale are excluded from every total on this
-       page (Total Devices, category cards) — this is their own callout, not a
-       total. On Rent added 2026-10-22. Pinned to the bottom of the card, four
-       equal columns, centred, separated by lines. #}
-    <div class="pipeline-side-stats mt-auto pt-2 border-top d-flex small text-muted text-center">
-      {% for key, label in [('returned', 'Returned'), ('scrapped', 'Scrapped'),
-                             ('scrap_for_sale', 'Scrap for Sale'), ('on_rent', 'On Rent')] %}
-      <a href="/devices?stage={{ key }}{% if f_entity %}&entity={{ f_entity | urlencode }}{% endif %}"
-         class="flex-fill text-decoration-none text-muted px-2{% if not loop.first %} border-start{% endif %}"
-         style="flex-basis:0">
-        {{ label }}: <strong class="text-body">{{ side_counts.get(key, 0) }}</strong>
-      </a>
       {% endfor %}
     </div>
   </div>

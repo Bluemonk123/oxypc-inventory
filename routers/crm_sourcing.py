@@ -1,4 +1,5 @@
 """CRM Sourcing Deals router — purchase pipeline from lead to lot creation."""
+from utils.price_export import price_export_block as _price_block   # Pricing Export (2026-11-03)
 import os
 import uuid as _uuid
 from datetime import datetime
@@ -1014,6 +1015,9 @@ async def download_deal_po(
     """Re-download the most recently generated PO for this deal (Download
     column on the Buyer Deals list) by rebuilding the PDF from the PO's own
     stored line items — the deal's draft line items may have changed since."""
+    _blk = _price_block(current_user, 'crm_sourcing', f"/crm/sourcing/{deal_id}")   # Pricing Export (2026-11-03)
+    if _blk is not None:
+        return _blk
     deal = (await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.id == deal_id))).scalar_one_or_none()
     if not deal:
         return RedirectResponse(url="/crm/sourcing?error=Deal+not+found", status_code=302)
