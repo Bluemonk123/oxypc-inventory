@@ -636,6 +636,29 @@ fieldset:disabled .btn {
 .nav-tabs .nav-link.active,
 .nav-tabs .nav-item.show .nav-link { background-color: #0e3a7a; border-color: #0e3a7a; color: #fff; }
 .nav-tabs .nav-link.active i, .nav-tabs .nav-link.active .bi { color: #fff; }
+
+/* ── Global tab design (2026-11-03), as /spare-parts ─────────────────────
+   Every tab bar spans the full width; the tabs share the row (each grows
+   from its label width) with centred labels.
+   - Main tabs (page level, card header): FILLED — active tab navy with
+     white text (rule above).
+   - Sub-tabs (a tab bar inside an element: card body, tab pane, modal,
+     accordion): OUTLINE — active tab white with a navy border and navy text.
+   Opt-outs: .main-tabs forces filled (page tabs that sit in a card body),
+   .sub-tabs forces outline. */
+.nav-tabs { display: flex; flex-wrap: wrap; }
+.nav-tabs > .nav-item, .nav-tabs > .nav-link { flex: 1 1 auto; text-align: center; }
+.nav-tabs > .nav-item > .nav-link { width: 100%; }
+:is(.card-body, .tab-pane, .modal-body, .accordion-body) .nav-tabs:not(.main-tabs) .nav-link.active,
+:is(.card-body, .tab-pane, .modal-body, .accordion-body) .nav-tabs:not(.main-tabs) .nav-item.show .nav-link,
+.nav-tabs.sub-tabs .nav-link.active, .nav-tabs.sub-tabs .nav-item.show .nav-link {
+  background-color: #fff; color: #0e3a7a; font-weight: 600;
+  border: 1.5px solid #0e3a7a; border-bottom-color: #fff;
+}
+:is(.card-body, .tab-pane, .modal-body, .accordion-body) .nav-tabs:not(.main-tabs) .nav-link.active .bi,
+.nav-tabs.sub-tabs .nav-link.active .bi { color: #0e3a7a; }
+:is(.card-body, .tab-pane, .modal-body, .accordion-body) .nav-tabs:not(.main-tabs),
+.nav-tabs.sub-tabs { border-bottom: 1.5px solid #0e3a7a; }
 .dataTables_wrapper.gtable-tab-wrap { padding: 1rem; }
 
 /* ── Global: every field has a white background (2026-10-15) ─────────────

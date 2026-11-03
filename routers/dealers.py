@@ -253,6 +253,7 @@ def _dealer_base_query(
     filter_whom_to_sell: str = "", filter_deals_in: str = "",
     followup_from: str = "", followup_to: str = "",
     dealer_type: str = "", sub_category: str = "",
+    assign_from: str = "", assign_to: str = "", not_contacted: str = "",
 ):
     """Builds the filtered Dealer select — shared by the page (for its count
     cards) and /dealers/data (for the paginated rows), so the two can never
@@ -338,7 +339,53 @@ def _dealer_base_query(
                 pass
         base_query = base_query.where(Dealer.id.in_(fu_subq))
 
+    # Assign Date filter (2026-11-03): on the "Assigned On" date shown in the
+    # table (see _assigned_on_expr).
+    if assign_from or assign_to:
+        aon = _assigned_on_expr()
+        try:
+            if assign_from:
+                base_query = base_query.where(aon >= datetime.strptime(assign_from, "%Y-%m-%d"))
+            if assign_to:
+                base_query = base_query.where(
+                    aon <= datetime.strptime(assign_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59))
+        except ValueError:
+            pass
+
+    # "Not Contacted Yet" (2026-11-03): the table's Status column is empty —
+    # no call yet, or the latest call has no outcome (Status shows "—").
+    if not_contacted in ("1", "true", "on"):
+        rn = func.row_number().over(partition_by=DealerCall.dealer_id,
+                                    order_by=DealerCall.call_date.desc()).label("rn")
+        latest = select(DealerCall.dealer_id, DealerCall.call_outcome, rn).subquery()
+        with_status = select(latest.c.dealer_id).where(
+            latest.c.rn == 1, latest.c.call_outcome.isnot(None),
+            func.trim(latest.c.call_outcome) != "")
+        base_query = base_query.where(Dealer.id.notin_(with_status))
+
     return base_query
+
+
+def _assigned_on_expr():
+    """When the dealer was given to its current assignee (2026-11-03): the
+    latest dealer_assignments row for that user, else the date the dealer was
+    added (uploads / new dealers are assigned as they are added). NULL when
+    unassigned."""
+    from sqlalchemy import case
+    latest = (select(func.max(DealerAssignment.assigned_at))
+              .where(DealerAssignment.dealer_id == Dealer.id,
+                     DealerAssignment.assigned_to == Dealer.assigned_to)
+              .correlate(Dealer).scalar_subquery())
+    return case((Dealer.assigned_to.is_(None), None),
+                else_=func.coalesce(latest, Dealer.created_at))
+
+
+def record_dealer_assignment(db, dealer, new_owner, by_username):
+    """Log an assignment change in dealer_assignments, so the "Assigned On"
+    column / Assign Date filter know when the dealer reached its assignee."""
+    if new_owner and new_owner != dealer.assigned_to:
+        db.add(DealerAssignment(dealer_id=dealer.id, assigned_to=new_owner,
+                                assigned_by=by_username or "system", assigned_at=app_now()))
 
 
 async def _recent_call_map(db: AsyncSession, dealer_ids: list) -> dict:
@@ -433,6 +480,8 @@ async def list_dealers(
     followup_to: str = Query(default=""),
     dealer_type: str = Query(default=""),
     sub_category: str = Query(default=""),
+    assign_from: str = Query(default=""), assign_to: str = Query(default=""),
+    not_contacted: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_sales),
 ):
@@ -440,6 +489,7 @@ async def list_dealers(
         current_user, q, status, assigned, city, calling_date_from, calling_date_to,
         filter_qty, filter_purchase_qty, filter_sale_qty, filter_whom_to_sell,
         filter_deals_in, followup_from, followup_to, dealer_type, sub_category,
+        assign_from=assign_from, assign_to=assign_to, not_contacted=not_contacted,
     )
 
     # Total count
@@ -569,6 +619,8 @@ async def list_dealers(
         "followup_to": followup_to,
         "dealer_type": dealer_type,
         "sub_category": sub_category,
+        "assign_from": assign_from,
+        "assign_to": assign_to,
         "dealer_type_options": await master_values(db, "dealer_dealer_type"),
         "total_count": total_count,
         "active_count": active_count,
@@ -615,6 +667,8 @@ async def dealers_data(
     followup_from: str = Query(default=""), followup_to: str = Query(default=""),
     dealer_type: str = Query(default=""), sub_category: str = Query(default=""),
     search_value: str = Query(default="", alias="search[value]"),
+    assign_from: str = Query(default=""), assign_to: str = Query(default=""),
+    not_contacted: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_sales),
 ):
@@ -625,6 +679,7 @@ async def dealers_data(
         current_user, q, status, assigned, city, calling_date_from, calling_date_to,
         filter_qty, filter_purchase_qty, filter_sale_qty, filter_whom_to_sell,
         filter_deals_in, followup_from, followup_to, dealer_type, sub_category,
+        assign_from=assign_from, assign_to=assign_to, not_contacted=not_contacted,
     )
     # The table's own search box narrows the page's filtered set further.
     base_query = _dealer_text_search(base_query, search_value)
@@ -655,6 +710,10 @@ async def dealers_data(
 
     recent_call_map = await _recent_call_map(db, dealer_ids)
     assignee_name_map = await _assignee_name_map(db, dealers)
+    assigned_on_map = {}
+    if dealer_ids:
+        assigned_on_map = dict((await db.execute(
+            select(Dealer.id, _assigned_on_expr()).where(Dealer.id.in_(dealer_ids)))).all())
     can_manage_dealers = await _can_manage_dealers(db, current_user, "/dealers")
     today = app_now().date()
 
@@ -750,6 +809,7 @@ async def dealers_data(
             f'<span class="small">{esc(rc.get("deals_in") or "—")}</span>',
             f'<span class="small">{esc(rc.get("whom_to_sell") or "—")}</span>',
             f'<span class="small">{fu_cell}</span>',
+            f'<span class="small">{assigned_on_map[d.id].strftime("%d-%m-%Y") if assigned_on_map.get(d.id) else "—"}</span>',
             f'<span class="small">{assigned_cell}</span>',
             actions,
         ])
@@ -771,6 +831,8 @@ async def dealers_ids(
     followup_from: str = Query(default=""), followup_to: str = Query(default=""),
     dealer_type: str = Query(default=""), sub_category: str = Query(default=""),
     search_value: str = Query(default="", alias="search[value]"),
+    assign_from: str = Query(default=""), assign_to: str = Query(default=""),
+    not_contacted: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_sales),
 ):
@@ -781,6 +843,7 @@ async def dealers_ids(
         current_user, q, status, assigned, city, calling_date_from, calling_date_to,
         filter_qty, filter_purchase_qty, filter_sale_qty, filter_whom_to_sell,
         filter_deals_in, followup_from, followup_to, dealer_type, sub_category,
+        assign_from=assign_from, assign_to=assign_to, not_contacted=not_contacted,
     )
     base_query = _dealer_text_search(base_query, search_value)
     sub = base_query.subquery()
@@ -2479,6 +2542,7 @@ async def update_dealer(
     dealer.pincode = pincode
     dealer.preferred_categories = preferred_categories
     dealer.credit_limit = credit_limit
+    record_dealer_assignment(db, dealer, current_user.username, current_user.username)
     dealer.assigned_to = current_user.username  # 2026-10-27: always the logged-in user
     dealer.status = status
     dealer.notes = notes

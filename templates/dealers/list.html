@@ -7,6 +7,8 @@
    including the Filter/Clear buttons — fits on one line. Fixed pixel widths
    were what pushed it onto a second row. Wraps only below 1200px. #}
 <style>
+  /* Business Name at most 200px wide; longer names wrap (2026-11-03). */
+  #dealersTable th.dl-biz, #dealersTable td.dl-biz { max-width: 200px; white-space: normal !important; overflow-wrap: anywhere; }
   #dealerFilterForm { flex-wrap: nowrap; }
   #dealerFilterForm .flt { flex: 1 1 0; min-width: 0; }
   #dealerFilterForm .flt-sm { flex: 0 1 92px; min-width: 0; }
@@ -65,6 +67,17 @@
     {% set wrapper_class = 'flt' %}
     {% include "dealers/_type_subcat_filters.html" %}
 
+    {# Assign Date filter (2026-11-03): on the table's "Assigned On" date. #}
+    <div class="flt">
+      <label class="form-label form-label-sm mb-1 text-muted small">Assign From</label>
+      <input type="date" name="assign_from" class="form-control form-control-sm"
+             value="{{ assign_from }}">
+    </div>
+    <div class="flt">
+      <label class="form-label form-label-sm mb-1 text-muted small">Assign To</label>
+      <input type="date" name="assign_to" class="form-control form-control-sm"
+             value="{{ assign_to }}">
+    </div>
     <div class="flt">
       <label class="form-label form-label-sm mb-1 text-muted small">Calling From</label>
       <input type="date" name="calling_date_from" class="form-control form-control-sm"
@@ -206,6 +219,7 @@
             <th>Indian/Imported</th>
             <th>Whom to Sale</th>
             <th>Next Followup</th>
+            <th>Assigned On</th>
             <th>Assigned</th>
             <th>Action</th>
           </tr>
@@ -428,11 +442,36 @@ var dealersDt = initGlobalTable('#dealersTable', {
   processing: true,
   order: [],
   searchDelay: 400,
-  ajax: { url: '/dealers/data' + window.location.search },
+  // "Not Contacted Yet" checkbox (next to the search box) adds not_contacted=1.
+  ajax: { url: '/dealers/data' + window.location.search,
+          data: function (d) { if (dealerNotContacted()) d.not_contacted = 1; } },
   // With the select column present every index shifts +1 (checkbox col 0
-  // non-orderable, Assigned col 21); without it, Assigned stays at 20.
-  columnDefs: [{ orderable: false, targets: {{ '[0, 21]' if _has_chk else '[20]' }} }],
+  // non-orderable, Assigned On col 21, Assigned col 22); without it, 20 / 21.
+  // Business Name (col 1 / 0) is at most 200px wide (2026-11-03).
+  columnDefs: [{ orderable: false, targets: {{ '[0, 21, 22]' if _has_chk else '[20, 21]' }} },
+               { className: 'dl-biz', targets: {{ 1 if _has_chk else 0 }} }],
 });
+
+// "Not Contacted Yet" (2026-11-03): placed before the table's search box;
+// shows only dealers whose Status column is empty ("—").
+function dealerNotContacted() { var c = document.getElementById('dlNotContacted'); return !!(c && c.checked); }
+(function () {
+  var f = $(dealersDt.table().container()).find('.dataTables_filter').first();
+  var wrap = $('<div class="form-check form-check-inline mb-0 me-2 align-middle">' +
+    '<input class="form-check-input" type="checkbox" id="dlNotContacted">' +
+    '<label class="form-check-label small" for="dlNotContacted">Not Contacted Yet</label></div>');
+  if (f.length) { f.css('display', 'flex').css('align-items', 'center'); f.prepend(wrap); }
+  $(document).on('change', '#dlNotContacted', function () {
+    if (typeof dealerSel !== 'undefined' && dealerSel) dealerSel.clear();   // selection follows the shown set
+    dealersDt.ajax.reload();
+  });
+})();
+function dealerIdsParams() {
+  var params = new URLSearchParams(window.location.search);
+  params.set('search[value]', dealersDt.search());
+  if (dealerNotContacted()) params.set('not_contacted', '1');
+  return params;
+}
 
 // Export — the selected dealers, or (nothing selected) every dealer matching
 // the page filters + the table's search box, on all pages (ids from
@@ -445,8 +484,7 @@ function exportDealers() {
   if (chosen.length) {
     idsPromise = Promise.resolve(chosen);
   } else {
-    var params = new URLSearchParams(window.location.search);
-    params.set('search[value]', dealersDt.search());
+    var params = dealerIdsParams();
     idsPromise = fetch('/dealers/ids?' + params.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
       .then(function (r) { if (!r.ok) throw new Error('Could not load the dealers to export (' + r.status + ')'); return r.json(); })
       .then(function (d) { return d.ids; });
@@ -500,8 +538,7 @@ function dealerSyncChecks() {
 $dealerContainer.on('change', '#dealerCheckAll', function () {
   var hdr = this;
   if (!hdr.checked) { dealerSel.clear(); dealerSyncChecks(); return; }
-  var params = new URLSearchParams(window.location.search);
-  params.set('search[value]', dealersDt.search());
+  var params = dealerIdsParams();
   dealerSelLoading = true; hdr.disabled = true; dealerSyncSelCount();
   fetch('/dealers/ids?' + params.toString(), { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
     .then(function (r) { if (!r.ok) throw new Error('Could not load the matching dealers (' + r.status + ')'); return r.json(); })

@@ -389,6 +389,33 @@
   </script>
   {% endif %}
 
+  {# ── Dealer "Assigned On" dates from the audit log (2026-11-03) ── #}
+  {% if dlassign_total %}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm border-start border-warning border-3">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-person-check me-2"></i>Dealers without an "Assigned On" date
+          <span class="badge bg-warning text-dark ms-1">{{ "{:,}".format(dlassign_total) }}</span></span>
+        <form method="post" action="/admin/system/dealer-assigned-on-fix" class="df-confirm"
+              data-confirm="Click again to add {{ "{:,}".format(dlassign_total) }} dates">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-warning"><i class="bi bi-play-fill me-1"></i>Add {{ "{:,}".format(dlassign_total) }} Assigned On dates</button>
+        </form>
+      </div>
+      <div class="card-body small">
+        <p class="text-muted mb-2">Assignment dates were not saved before 3 Nov, so the Dealers table's <strong>Assigned On</strong> column shows the date the dealer was added.
+          These dealers were bulk-assigned to their current assignee (Assign Dealer Leads), and the audit log has when: Apply saves that date for each one.
+          Dealers not listed keep the date they were added.</p>
+        <details><summary class="fw-semibold">Dealers{% if dlassign_total > 300 %} (first 300){% endif %}</summary>
+        <table class="table table-sm mb-0 w-auto"><thead><tr><th>Business Name</th><th>Assigned To</th><th>Assigned On</th><th>Assigned By</th></tr></thead><tbody>
+          {% for r in dlassign_rows %}<tr><td>{{ r.name }}</td><td>{{ r.to }}</td><td class="text-nowrap">{{ r.at.strftime('%d-%m-%Y %H:%M') }}</td><td>{{ r.by }}</td></tr>{% endfor %}
+        </tbody></table></details>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {# ── Repair-stage tags not on TRC Floor (2026-10-31) ── #}
   {% if trcfix_total %}
   <div class="col-12">

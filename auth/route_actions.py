@@ -335,6 +335,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/parts-crate-fix'): None,  # parts_crate_fix: system health data fix (admin-only) — spare parts crate rows, 2026-10-31
     ('POST', '/admin/system/harvest-rename-fix'): None,  # harvest_rename_fix: system health data fix (admin-only) — Harvest rows renamed to the matching New Make / Model, 2026-11-02
     ('POST', '/admin/system/grn-tax-fix'): None,  # grn_tax_fix: system health data fix (admin-only) — tax on old GRNs from a picked Vendor State, 2026-11-02
+    ('POST', '/admin/system/dealer-assigned-on-fix'): None,  # dealer_assigned_on_fix: system health data fix (admin-only) — past dealer Assigned On dates from the audit log, 2026-11-03
     ('POST', '/admin/system/repair-trc-floor-fix'): None,  # repair_trc_floor_fix: system health data fix (admin-only) — repair-stage tags moved to TRC Floor, 2026-10-31
     ('POST', '/admin/system/parts-cleanup'): None,  # parts_cleanup: system health data fix (admin-only) — one price per part + blank-crate merges, 2026-10-31
     ('POST', '/admin/system/device-type-12-fix'): None,  # device_type_12_fix: system health data fix (admin-only) — Device Type to the 12 categories, 2026-10-30

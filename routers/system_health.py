@@ -933,6 +933,17 @@ async def grn_tax_fix(request: Request, current_user: User = Depends(admin_only)
     return back or JSONResponse(res)
 
 
+@router.post("/dealer-assigned-on-fix")
+async def dealer_assigned_on_fix(request: Request, current_user: User = Depends(admin_only)):
+    """Data Fix (2026-11-03): see services/dealer_assign_backfill."""
+    from database import AsyncSessionLocal
+    from services.dealer_assign_backfill import assign_backfill_apply
+    async with AsyncSessionLocal() as db:
+        res = await assign_backfill_apply(db, current_user, request)
+    back = _back_to_page(await request.form(), f"Assigned On date added for {res['added']:,} dealer(s).")
+    return back or JSONResponse(res)
+
+
 @router.post("/repair-trc-floor-fix")
 async def repair_trc_floor_fix(request: Request, current_user: User = Depends(admin_only)):
     """Data Fix (2026-10-31): see services/repair_location.trc_floor_plan."""
@@ -1951,6 +1962,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         trcfix = await trc_floor_plan(db)
         from services.parts_stock import harvest_unmatched_plan
         hvmatch = await harvest_unmatched_plan(db)
+        from services.dealer_assign_backfill import assign_backfill_plan
+        dlassign = await assign_backfill_plan(db)
         from services.grn_tax import tax_backfill_rows, gst_rates
         from utils.master_data import master_values
         grntax = await tax_backfill_rows(db)
@@ -2008,6 +2021,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "pname": [{"code": c, "old": o, "new": n, "m0": m0, "m1": m1} for _i, c, o, n, m0, m1 in pname],
         "pcrate": pcrate, "pclean": pclean, "pmulti": pmulti,
         "hvmatch": hvmatch,
+        "dlassign_total": len(dlassign),
+        "dlassign_rows": [{"name": n, "to": o, "at": a, "by": b} for _d, n, o, a, b in dlassign[:300]],
         "grntax": grntax, "grntax_total": len(grntax["device"]) + len(grntax["parts"]),
         "grntax_rates": grntax_rates, "state_options": state_options,
         "trcfix_total": len(trcfix["rows"]), "trcfix_rows": trcfix["rows"][:300], "trcfix_has_trc": trcfix["trc"],

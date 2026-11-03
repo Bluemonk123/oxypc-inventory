@@ -21,7 +21,7 @@
   </div>
   <div class="card-body">
     {# Tabs (2026-10-24): Active / Complete / Cancelled / Payment Due. #}
-    <ul class="nav nav-tabs mb-3">
+    <ul class="nav nav-tabs main-tabs mb-3">
       {% for key, label, _st in tabs %}
       <li class="nav-item">
         <a class="nav-link {{ 'active' if tab == key else '' }}" href="/rentals?tab={{ key }}">

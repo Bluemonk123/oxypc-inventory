@@ -136,7 +136,9 @@ async def bulk_assign_dealers(
     unassign = assigned_to == UNASSIGNED
     new_owner = None if unassign else assigned_to
     old_owners = {str(d.id): d.assigned_to for d in dealers}
+    from routers.dealers import record_dealer_assignment
     for dealer in dealers:
+        record_dealer_assignment(db, dealer, new_owner, current_user.username)   # "Assigned On" (2026-11-03)
         dealer.assigned_to = new_owner
 
     await audit(
