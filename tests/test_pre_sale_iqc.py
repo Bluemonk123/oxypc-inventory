@@ -180,7 +180,7 @@ asyncio.run(main())
         # WorkID Status shows it as stage Pre-Sale IQC (and the Stage filter finds it)
         ws = app_client.get("/workid-status", params={"tag": bc, "work_from": "", "work_to": ""}).text
         rows = json.loads(ws.split('id="workidRows">', 1)[1].split("</script>", 1)[0])
-        assert [x["s"] for x in rows] == ["Pre-Sale IQC"]
+        assert [x["s"] for x in rows] == ["Pre-Sale QC"]
         ws = app_client.get("/workid-status", params={"tag": bc, "work_from": "", "work_to": "",
                                                      "cosmetic_stage": "pre_sale_iqc"}).text
         assert len(json.loads(ws.split('id="workidRows">', 1)[1].split("</script>", 1)[0])) == 1

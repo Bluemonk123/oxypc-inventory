@@ -246,7 +246,7 @@ def _fmt(dt, f="%d-%m-%Y %H:%M"):
 # stage in SQL — see _sql_stage_tile_counts.)
 PSIQC_CODE = "psiqc"                 # WorkOrder.stage of a Pre-Sale IQC WorkID
 PSIQC_STAGE = "pre_sale_iqc"         # its Stage column value (not a DeviceStage)
-PSIQC_LABEL = "Pre-Sale IQC"
+PSIQC_LABEL = "Pre-Sale QC"   # was "Pre-Sale IQC" (renamed 2026-11-03)
 
 
 async def _psiqc_tile_counts(db, w_range, visible_usernames=None) -> dict:
@@ -279,7 +279,7 @@ STAGE_GROUPS = [
     # Pre-Sale IQC (2026-10-29, routers/pre_sale_iqc.py): WorkIDs with stage
     # code "psiqc" — work on Ready for Sale tags, no stage movement of their
     # own, so the Stage column always shows the WorkID's own stage.
-    ("pre_sale_iqc", "Pre-Sale IQC", (PSIQC_STAGE,), "#b02a37", "bi-clipboard2-check"),
+    ("pre_sale_iqc", "Pre-Sale QC", (PSIQC_STAGE,), "#b02a37", "bi-clipboard2-check"),
 ]
 _GROUP_BY_STAGE = {sv: key for key, _l, svs, _c, _i in STAGE_GROUPS for sv in svs}
 
@@ -1502,6 +1502,16 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     # there before Final QC, so most passes were missed. Engineer / Tag /
     # WorkID / Stage filters and a non-admin's visibility narrow it to the
     # tags of this view.
+    # Cosmetic "Pending" (2026-11-03): tags in Cosmetic right now — anywhere
+    # from Cosmetic Received to Cosmetic Completed, the same set as the
+    # Cosmetic All Tags page. A live count: not filtered by this page.
+    if "cosmetic" in stage_tiles:
+        from routers.cosmetic import COSMETIC_NAV_STAGES
+        stage_tiles["cosmetic"]["completed"] = (await db.execute(
+            select(func.count(Device.id)).join(Lot, Device.lot_id == Lot.id)
+            .where(Device.current_stage.in_(COSMETIC_NAV_STAGES)))).scalar() or 0
+        stage_tiles["cosmetic"]["pending_now"] = True
+
     if _w_range and "cosmetic" in stage_tiles:
         from sqlalchemy import distinct as _distinct
         mq = (select(StageMovement.to_stage, func.count(_distinct(StageMovement.device_id)))
@@ -1630,7 +1640,7 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                 n += 1
             return n
         stage_tiles["cosmetic"]["assigned"] = _flow_count(_arr, True, "cosmetic_received")
-        stage_tiles["cosmetic"]["completed"] = _flow_count(_fin, False, "cosmetic_completed")
+        stage_tiles["cosmetic"]["finished"] = _flow_count(_fin, False, "cosmetic_completed")
         stage_tiles["cosmetic"]["moves"] = True
         stage_tiles["cosmetic"]["pass"] = _pass
         stage_tiles["cosmetic"]["fail"] = _fail
