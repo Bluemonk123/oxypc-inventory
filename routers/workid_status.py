@@ -1575,6 +1575,63 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                 _pass += 1
             else:
                 _fail += 1
+        # Tags Assigned / Tags Completed (2026-11-03): tags that ARRIVED in
+        # Cosmetic (moved into Cosmetic Received) and tags that FINISHED it
+        # (moved into Cosmetic Completed) in the Work Date range, one per tag.
+        # Assigned is credited to the tag's first Cosmetic WorkID after it
+        # arrived, Completed to its last one before it finished (else the
+        # person who moved it) — Engineer / team / Stage filters as for Pass.
+        # Before, both counted tags with any Cosmetic WorkID finished in the
+        # range, so they were always equal.
+        def _into(to_stage):
+            q = (select(StageMovement.device_id, StageMovement.moved_by, StageMovement.moved_at)
+                 .where(StageMovement.to_stage == to_stage, StageMovement.from_stage != to_stage,
+                        StageMovement.moved_at >= _w_range[0], StageMovement.moved_at <= _w_range[1]))
+            if tag:
+                q = q.where(StageMovement.device_id.in_(
+                    select(WorkOrder.device_id).where(WorkOrder.barcode.ilike(f"%{tag.strip()}%"))))
+            if workid:
+                q = q.where(StageMovement.device_id.in_(
+                    select(WorkOrder.device_id).where(WorkOrder.work_id.ilike(f"%{workid.strip()}%"))))
+            return q
+        _arr = (await db.execute(_into(DeviceStage.cosmetic_received))).all()
+        _fin = (await db.execute(_into(DeviceStage.cosmetic_completed))).all()
+        _more = list({r[0] for r in _arr + _fin} - set(_wos))
+        for i in range(0, len(_more), 2000):
+            for did, uname, cat, wid, wst in (await db.execute(
+                    select(WorkOrder.device_id, WorkOrder.assigned_username, WorkOrder.created_at,
+                           WorkOrder.work_id, WorkOrder.stage)
+                    .where(WorkOrder.device_id.in_(_more[i:i + 2000]),
+                           WorkOrder.stage.in_(_cos_codes),
+                           WorkOrder.assigned_username.isnot(None)))).all():
+                _st = _code_stage.get(wst)
+                _wos.setdefault(did, []).append((cat, uname, wid, getattr(_st, "value", _st)))
+
+        def _flow_count(rows, first_after, stage_if_none):
+            n, seen = 0, set()
+            for did, mover, at in rows:
+                if did in seen:
+                    continue
+                ws = [w for w in _wos.get(did, ()) if w[0]]
+                if first_after:
+                    cand = [w for w in ws if w[0] >= at]
+                    top = min(cand, key=lambda w: w[0]) if cand else None
+                else:
+                    cand = [w for w in ws if w[0] <= at]
+                    top = max(cand, key=lambda w: w[0]) if cand else None
+                who = top[1] if top else (mover or "—")
+                # Not picked by a cosmetic engineer yet: counts for a manager's
+                # team view (it is their intake), not for one engineer's.
+                if _allowed is not None and who not in _allowed and (top or engineer):
+                    continue
+                if stage_vals and (top[3] if top else stage_if_none) not in stage_vals:
+                    continue
+                seen.add(did)
+                n += 1
+            return n
+        stage_tiles["cosmetic"]["assigned"] = _flow_count(_arr, True, "cosmetic_received")
+        stage_tiles["cosmetic"]["completed"] = _flow_count(_fin, False, "cosmetic_completed")
+        stage_tiles["cosmetic"]["moves"] = True
         stage_tiles["cosmetic"]["pass"] = _pass
         stage_tiles["cosmetic"]["fail"] = _fail
         stage_tiles["cosmetic"]["by_mover"] = by_mover

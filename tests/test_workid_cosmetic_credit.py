@@ -40,6 +40,8 @@ async def main():
                          created_at=datetime(2026, 10, 26, 9, 0), assigned_at=datetime(2026, 10, 26, 9, 0),
                          completed_at=datetime(2026, 10, 26, 11, 0),
                          assigned_username="ccr_eng", assigned_name="ccr_eng"))
+        db.add(StageMovement(device_id=d.id, from_stage=DeviceStage.qc_check,
+                             to_stage=DeviceStage.cosmetic_received, moved_at=datetime(2026, 10, 25, 10, 0), moved_by="ccr_qc"))
         db.add(StageMovement(device_id=d.id, from_stage=DeviceStage.water_sanding,
                              to_stage=DeviceStage.cosmetic_completed, moved_at=datetime(2026, 10, 26, 11, 0), moved_by="ccr_eng"))
         db.add(StageMovement(device_id=d.id, from_stage=DeviceStage.cosmetic_completed,
@@ -55,6 +57,17 @@ asyncio.run(main())
         cos = html.split('data-group="cosmetic"', 1)[1].split('data-group="final_qc"', 1)[0]
         got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="wid-stage-sub">(Pass|Fail)', cos))
         assert got == {"Pass": "1", "Fail": "0"}, got
+        def lines(day):
+            h = app_client.get(f"/workid-status?tag={tag}&work_from={day}&work_to={day}").text
+            c = h.split('data-group="cosmetic"', 1)[1].split('data-group="final_qc"', 1)[0]
+            return dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="wid-stage-sub">([^<]+)', c))
+        # Tags Assigned = arrived in Cosmetic Received, Tags Completed = moved
+        # into Cosmetic Completed, in the range (2026-11-03).
+        assert lines("2026-10-25")["Received"] == "1" and lines("2026-10-25")["Tags Completed"] == "0"
+        d26 = lines("2026-10-26")
+        assert d26["Received"] == "0" and d26["Tags Completed"] == "1", d26
+        d27 = lines("2026-10-27")
+        assert d27["Received"] == "0" and d27["Tags Completed"] == "0" and d27["Pass"] == "1", d27
         from tests.workid_helpers import export_sheet
         x = app_client.get("/workid-status/export?engineer=ccr_eng&work_from=2026-10-27&work_to=2026-10-27")
         rows = export_sheet(x.content)
