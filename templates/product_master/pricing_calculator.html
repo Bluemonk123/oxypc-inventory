@@ -33,11 +33,18 @@
 {% macro money(v) %}{% if v is none %}<span class="badge bg-warning text-dark">Pending</span>{% else %}₹{{ ((v) | inr(2)).rstrip('0').rstrip('.') }}{% endif %}{% endmacro %}
 
 
+{# Info line above the card (2026-11-04) #}
+<div class="small text-muted mb-3">
+  <div><i class="bi bi-info-circle me-1"></i>Selling Price = ((Base + RAM + Storage) − (Spare Parts)) · Base = Product Master Base Price − Discount (when a Discount % is set)</div>
+  <div><i class="bi bi-info-circle me-1"></i>Spare Parts values OK / Okay / Blank (any case) will deduct nothing. · Each upload replaces the table.</div>
+</div>
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span style="flex:1 1 auto;min-width:0"><span class="fw-semibold text-nowrap"><i class="bi bi-calculator me-2"></i>Pricing Calculator</span>
 </span>
     <div class="d-flex align-items-center gap-2 flex-shrink-0">
+      {# Clear Table (2026-11-04): removes every row (uploads replace the table anyway) #}
+      {% if can(current_user, 'pm_pricing_calculator', 'delete') %}<button type="button" class="btn btn-sm btn-outline-danger" id="pcClear" {% if not view.rows %}disabled{% endif %}><i class="bi bi-eraser me-1"></i>Clear Table</button>{% endif %}
       <button {% if not can(current_user, 'pm_pricing_calculator', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success" id="pcExport"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
       {% if can(current_user, 'pm_pricing_calculator', 'upload') %}<button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#pcUploadModal"><i class="bi bi-upload me-1"></i>Upload File</button>{% endif %}
     </div>
@@ -193,10 +200,14 @@ document.addEventListener('DOMContentLoaded', function () { if (window.flashAsTo
     language: { emptyTable: 'No file uploaded yet. Use Upload File to add one.' } });
   // Price rule on one line next to the count badge (2026-11-04); the search
   // box shrinks to share the row.
-  var pcRule = 'Selling Price = ((Base + RAM + Storage) − (Spare Parts)) · Base = Product Master Base Price − Discount (when a Discount % is set) · Spare Parts values OK / Okay / Blank (any case) will deduct nothing.';
   $('#pcTable_wrapper .gtable-top').addClass('pc-top');
-  $('<span class="pc-rule small text-muted"><i class="bi bi-info-circle me-1"></i></span>').append(document.createTextNode(pcRule))
-    .attr('title', pcRule).insertAfter('#pcTable_info');
+  $('#pcClear').on('click', function () {
+    if (!confirm('Clear the whole Pricing Calculator table? Every uploaded row is removed. You can upload a file again any time.')) return;
+    var b = this; b.disabled = true;
+    pmPost('/product-master/pricing-calculator/clear', {}).then(function (j) {
+      if (j.ok) location.reload(); else { b.disabled = false; showFlash('danger', j.error || 'Could not clear'); }
+    });
+  });
   $('#pcExport').on('click', function () { pmExportCsv(dt, 'pricing_calculator', { prepend: [{ head: 'SKU', text: true, get: function (tr) { return tr.attr('data-sku'); } }] }); });
   // Edit one row (2026-11-04)
   $(document).on('click', '.pc-edit', function () {
@@ -254,11 +265,11 @@ document.addEventListener('DOMContentLoaded', function () { if (window.flashAsTo
         bootstrap.Modal.getInstance(document.getElementById('pcUploadModal')).hide();
         form.reset();
         var url = '/product-master/pricing-calculator' + (j.added ? '?success=' +
-          encodeURIComponent(j.added + ' row(s) added.') : '');
+          encodeURIComponent(j.added + ' row(s) loaded' + (j.replaced ? ' — the previous ' + j.replaced + ' row(s) were cleared.' : '.')) : '');
         if (!j.missing_rows && !j.mismatch_rows) { location.href = url; return; }
         reloadTo = j.added ? url : null;
         var left = j.missing_rows + j.mismatch_rows;
-        $('#pcMissingInfo').text((j.added ? j.added + ' row(s) were added. ' : 'No rows were added. ') +
+        $('#pcMissingInfo').text((j.added ? j.added + ' row(s) were loaded' + (j.replaced ? ' (the previous table was cleared). ' : '. ') : 'No rows were added, so the table was left as it was. ') +
           left + ' row(s) were left out.');
         function fileLink(id, nameId, b64, fname) {
           var bin = atob(b64), bytes = new Uint8Array(bin.length);

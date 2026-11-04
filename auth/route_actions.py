@@ -415,6 +415,7 @@ ROUTE_ACTIONS = {
     ('POST', '/product-master/hardware/{kind}/save'): ('pm_hardware', 'pricing_add'),  # hardware_save: RAM/Storage capacity + price row (add when item_id blank)
     ('POST', '/product-master/hardware/{kind}/{item_id}/delete'): ('pm_hardware', 'delete'),  # hardware_delete
     ('POST', '/product-master/pricing-calculator/rows/delete'): ('pm_pricing_calculator', 'delete'),  # pricing_calculator_rows_delete
+    ('POST', '/product-master/pricing-calculator/clear'): ('pm_pricing_calculator', 'delete'),  # pricing_calculator_clear: Clear Table (2026-11-04)
     ('POST', '/product-master/pricing-calculator/rows/edit'): ('pm_pricing_calculator', 'edit'),  # pricing_calculator_row_edit: RAM / Storage / damaged parts of one row
     ('POST', '/product-master/pricing-calculator/upload'): ('pm_pricing_calculator', 'upload'),  # pricing_calculator_upload
     ('POST', '/product-master/pricing/{product_id}/save'): ('pm_product_pricing', 'pricing_add'),  # pricing_save

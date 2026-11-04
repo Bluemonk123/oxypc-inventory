@@ -51,6 +51,10 @@
   .dd-header { margin:0 -.75rem 1.75rem; padding:.5rem .75rem 0; border-radius:10px 10px 0 0;
                transition:box-shadow .2s ease; }
   .dd-header:hover { box-shadow: inset 0 -22px 18px -14px rgba(33, 37, 41, .42); }
+  /* Hovering the header (2026-11-04): category circle goes dark — tint-blue
+     fill, navy border, navy icon and name. */
+  .dd-cat-icon { transition:background-color .2s ease, border-color .2s ease, color .2s ease; }
+  .dd-header:hover .dd-cat-icon { background:#d9ebf6; border-color:#0e3a7a; color:#0e3a7a; }
   .dd-header-sep { margin:1.6rem 0 0; border-top:1px solid #ced4da; opacity:1; }
   /* Card headers on this page (2026-10-29): the Global Table card-header
      look (app.css .gtable-card / .hdr-card) and a little taller. */

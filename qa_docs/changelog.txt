@@ -1,4 +1,5 @@
-4a78679|2026-11-04|QA Workflow tabs with PDFs and Figma upload, spare parts split cell, sidebar order
+9b4d884|2026-11-04|Pricing Calculator: uploads replace the table, Clear Table, info above card; Device Detail hover
+1ab1d86|2026-11-04|QA Workflow tabs with PDFs and Figma upload, spare parts split cell, sidebar order
 83af71b|2026-11-04|QA workflow diagrams, Hardware page Design 1 only, calculator columns centred
 5bc41a6|2026-11-04|New Tag Sale tidy-up, ticket file attachments, competitor website prices
 6ec60d2|2026-11-04|Customise Model Name, Ready to Sale default entities, Trash Trashed By

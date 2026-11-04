@@ -952,6 +952,32 @@ async def pricing_calculator_row_edit(request: Request, row_id: str = Form(""),
     return JSONResponse({"ok": True})
 
 
+async def _clear_calc(db, current_user, request, why: str) -> int:
+    """Remove every Pricing Calculator row and upload (2026-11-04). Audited first
+    with what was there — the rows are gone after commit. Returns rows removed."""
+    from sqlalchemy import delete as sa_delete
+    ups = (await db.execute(select(PMCalcUpload))).scalars().all()
+    n = (await db.execute(select(func.count(PMCalcRow.id)))).scalar() or 0
+    if not ups and not n:
+        return 0
+    await audit(db, action="PM_CALC_TABLE_CLEARED", user=current_user, table_name="pm_calc_uploads",
+                record_id=f"{n} rows", old_value={"rows": n, "uploads": [
+                    {"id": str(u.id), "file": u.file_name, "rows": u.row_count, "by": u.uploaded_by,
+                     "at": u.uploaded_at.strftime("%d-%m-%Y %H:%M") if u.uploaded_at else None} for u in ups]},
+                notes=why, request=request)
+    await db.execute(sa_delete(PMCalcRow))
+    await db.execute(sa_delete(PMCalcUpload))
+    return n
+
+
+@router.post("/pricing-calculator/clear")
+async def pricing_calculator_clear(request: Request, db: AsyncSession = Depends(get_db),
+                                   current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
+    n = await _clear_calc(db, current_user, request, "Clear Table button")
+    await db.commit()
+    return JSONResponse({"ok": True, "deleted": n})
+
+
 @router.post("/pricing-calculator/rows/delete")
 async def pricing_calculator_rows_delete(request: Request, row_ids: str = Form(""),
                                          db: AsyncSession = Depends(get_db),
@@ -1183,7 +1209,11 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
                 blank += 1
 
     up = None
+    replaced = 0
     if good:
+        # Each upload replaces the table (2026-11-04). Only when the new file has
+        # rows to add — a file with nothing usable leaves the current table alone.
+        replaced = await _clear_calc(db, current_user, request, f"Replaced by upload {name}")
         up = PMCalcUpload(file_name=name, uploaded_by=current_user.username, row_count=len(good))
         db.add(up)
         await db.flush()
@@ -1202,7 +1232,7 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
                     request=request)
         await db.commit()
 
-    out = {"ok": True, "added": len(good), "upload_id": str(up.id) if up else None,
+    out = {"ok": True, "added": len(good), "replaced": replaced, "upload_id": str(up.id) if up else None,
            "missing_rows": len(missing_rows), "missing_skus": len(missing_skus), "blank_skus": blank,
            "mismatch_rows": len(mismatch_rows), "mismatch_skus": len(mismatch_skus),
            "problems": problems[:200], "problems_total": len(problems)}

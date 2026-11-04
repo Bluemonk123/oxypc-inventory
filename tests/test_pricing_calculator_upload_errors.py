@@ -105,3 +105,43 @@ def test_part_deducted_unless_ok():
         assert not _is_damaged(v), v
     for v in ("Damaged", "Not Working", "Missing", "Scratch", "Broken"):
         assert _is_damaged(v), v
+
+
+def test_upload_replaces_table_and_clear_button(app_client, make_user):  # noqa: F811
+    """2026-11-04: every upload clears the previous rows and loads the new file;
+    a file with no usable rows leaves the table alone; Clear Table empties it."""
+    from sqlalchemy import func, select
+    from database import AsyncSessionLocal
+    from models.product_master import PMCalcRow
+
+    def count():
+        async def go():
+            async with AsyncSessionLocal() as s:
+                return (await s.execute(select(func.count(PMCalcRow.id)))).scalar()
+        return asyncio.run(go())
+    try:
+        pid, sku, model = _make_product()
+    except Exception:
+        import pytest
+        pytest.skip("could not create a Product Master row")
+    u, pw = make_user("admin")
+    _login(app_client, u, pw)
+    head = "SKU,Make,Model,CPU,CPU Gen,Ram Type,Ram Size,Storage Type,Storage Size,Bazel\r\n"
+    row = f"{sku},HP,{model},i5,8th,DDR4,8 GB,SSD,256 GB,Ok\r\n"
+    csrf = app_client.cookies.get("csrf_token", "")
+    up = lambda body: app_client.post("/product-master/pricing-calculator/upload", data={"csrf_token": csrf},  # noqa: E731
+                                      files={"file": ("calc.csv", (head + body).encode(), "text/csv")}).json()
+    try:
+        assert up(row * 3)["added"] == 3 and count() == 3
+        j = up(row * 2)
+        assert j["added"] == 2 and j["replaced"] == 3 and count() == 2          # old 3 gone
+        j = up("99999999,HP,X,i5,8th,DDR4,8 GB,SSD,256 GB,Ok\r\n")                # nothing usable
+        assert j["added"] == 0 and count() == 2                                   # table kept
+        html = app_client.get("/product-master/pricing-calculator").text
+        assert 'id="pcClear"' in html and html.index('id="pcClear"') < html.index('id="pcExport"')
+        assert html.index("bi-info-circle") < html.index('id="pcTable"')
+        r = app_client.post("/product-master/pricing-calculator/clear", data={"csrf_token": csrf},
+                            headers={"X-CSRF-Token": csrf})
+        assert r.json() == {"ok": True, "deleted": 2} and count() == 0
+    finally:
+        _drop_product(pid)
