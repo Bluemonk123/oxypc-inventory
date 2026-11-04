@@ -706,9 +706,13 @@ async def parts_consumption_summary_export(request: Request, db: AsyncSession = 
     sheet(ws, ["Tag Number", "Tag Make", "Tag Model", "Lot Number", "Date Added", "Part Name Used",
                "Total Part Changed"] + (["Unit Price", "Total Price"] if pricing else []),
           [[r["tag_number"], r["tag_make"], r["tag_model"], r["lot_number"] or "",
-            r["date_added"].strftime("%d-%m-%Y") if r["date_added"] else "", r["part_name"], r["total_qty"]]
+            (r["date_added"].date() if hasattr(r["date_added"], "date") else r["date_added"]) if r["date_added"] else None,
+            r["part_name"], r["total_qty"]]
            + ([round(r["unit_price"], 2), round(r["total_price"], 2)] if pricing else [])
            for r in rows])
+    # Date Added as a real Excel date (2026-11-04) so Excel's date filter groups it by year / month.
+    for (c,) in ws.iter_rows(min_row=2, min_col=5, max_col=5):
+        c.number_format = "yyyy-mm-dd"
     by_part: dict = {}
     for r in rows:
         p = by_part.setdefault(r["part_name"], {"qty": 0, "total": 0.0, "unit": r["unit_price"], "tags": set()})

@@ -1458,10 +1458,21 @@ function spExport(tableId, selectedOnly) {
   var skipLast = (lastTxt === 'action' || lastTxt === 'actions');
   var endIdx = skipLast ? all.headers.length - 1 : all.headers.length;
   var headers = all.headers.slice(startIdx, endIdx);
+  // Amount columns go out as plain numbers (2026-11-04): Excel reads Indian
+  // grouping like "1,17,900" as text, so SUM skipped every amount of 1 lakh+.
+  var money = headers.map(function (h) { return /price|value|amount|cost/i.test(h); });
   var rows = [];
   all.rows.forEach(function(cells, i) {
     if (selectedOnly && !all.selected[i]) return;
-    rows.push(cells.slice(startIdx, endIdx));
+    rows.push(cells.slice(startIdx, endIdx).map(function (c, j) {
+      // Dates go out as YYYY-MM-DD: Excel reads DD-MM-YYYY as text (day > 12)
+      // or as the wrong month (day <= 12), which broke its date filter.
+      var dm = /^(\d{2})[-\/](\d{2})[-\/](\d{4})(.*)$/.exec(String(c));
+      if (dm) return dm[3] + '-' + dm[2] + '-' + dm[1] + dm[4];
+      if (!money[j]) return c;
+      var t = String(c).replace(/[\u20B9,\s]/g, '');
+      return /^-?\d+(\.\d+)?$/.test(t) ? t : c;
+    }));
   });
   _downloadCsv(tableId + '.csv', headers, rows);
 }
