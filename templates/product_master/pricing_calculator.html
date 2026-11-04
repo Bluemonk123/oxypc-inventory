@@ -172,7 +172,10 @@
 document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });
 (function () {
   // SKU column kept for Export but hidden on screen (2026-10-18)
-  var dt = initGlobalTable('#pcTable', { order: [[1, 'asc']], columnDefs: [{ targets: 0, visible: false }],
+  var dt = initGlobalTable('#pcTable', { order: [[1, 'asc']], columnDefs: [{ targets: 0, visible: false },
+      // Avg Price/Quantity hidden with Quantity (2026-11-04): one line = one device, so it equals Selling Price.
+      // Kept in the markup to bring back together with a Quantity column.
+      { targets: 10, visible: false }],
     language: { emptyTable: 'No file uploaded yet. Use Upload File to add one.' } });
   // Price rule on one line next to the count badge (2026-11-04); the search
   // box shrinks to share the row.

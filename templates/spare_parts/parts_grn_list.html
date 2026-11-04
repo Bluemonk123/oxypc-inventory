@@ -14,29 +14,47 @@
   <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
 </div>
 {% endif %}
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <h5 class="mb-0 fw-bold">Parts GRN</h5>
-  {% if can(current_user, 'spare_parts', 'add') %}
-  <a href="/parts-grn/new" class="btn btn-primary btn-sm">
-    <i class="bi bi-plus-circle me-1"></i>New GRN
-  </a>
-  {% endif %}
-</div>
-
+{% set _px = can(current_user, ['spare_parts_purchase', 'spare_parts'], 'pricing') %}
+<style>
+/* Header controls: same height, contents centred (2026-11-04) */
+.pg-tools .form-control, .pg-tools .btn{height:32px;line-height:1}
+.pg-tools .btn{display:inline-flex;align-items:center;justify-content:center;gap:4px;padding-top:0;padding-bottom:0}
+.pg-tools .btn .bi{line-height:1;display:inline-flex;align-items:center}
+.pg-tools .btn .bi::before{vertical-align:0}
+#grnDateClear{width:32px;padding:0}
+</style>
 <div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table id="grnTable" class="table table-hover mb-0 small">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Parts GRN</span>
+    <div class="d-flex align-items-center flex-wrap gap-2 pg-tools">
+      {# Date Range on Added On (2026-11-04) #}
+      <span class="small text-muted">Added On</span>
+      <input type="date" id="grnFrom" class="form-control form-control-sm" style="width:145px" title="Added On from">
+      <span class="small text-muted">to</span>
+      <input type="date" id="grnTo" class="form-control form-control-sm" style="width:145px" title="Added On to">
+      <button type="button" class="btn btn-sm btn-outline-secondary" id="grnDateClear" title="Reset dates"><i class="bi bi-arrow-counterclockwise"></i></button>
+      {% if can(current_user, ['spare_parts_purchase', 'spare_parts'], 'export') %}
+      <button type="button" class="btn btn-sm btn-outline-success" id="grnExport"><i class="bi bi-file-earmark-arrow-down"></i>Export GRN Summary</button>
+      {% endif %}
+      {% if can(current_user, 'spare_parts', 'add') %}
+      <a href="/parts-grn/new" class="btn btn-primary btn-sm"><i class="bi bi-plus-circle"></i>New GRN</a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body">
+    <div>
+      <table id="grnTable" class="table table-hover mb-0 small" style="width:100%">
         <thead class="table-dark">
           <tr>
             <th>GRN Number</th>
             <th>PO Number</th>
             <th>Vendor</th>
             <th>Invoice No</th>
-            <th>Date Received</th>
-            <th>Total Phys Qty</th>
-            <th>Invoice Value</th>
-            <th>Created By</th>
+            <th>Invoice Qty</th>
+            <th>Physical Qty</th>
+            <th>Received On</th>
+            <th>Added On</th>
+            <th>Added By</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -47,10 +65,11 @@
             <td>{{ g.po_number or '—' }}</td>
             <td>{{ g.vendor_name or '—' }}</td>
             <td>{{ g.invoice_number or '—' }}</td>
-            <td>{{ g.date_received.strftime('%d-%m-%Y') if g.date_received else '—' }}</td>
-            <td>{{ g.total_physical_qty or '—' }}</td>
-            <td>{% if can(current_user, 'spare_parts', 'pricing') %}{% if g.invoice_value %}₹{{ ((g.invoice_value) | inr(2)) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
-            <td class="text-muted">{{ g.created_by or '—' }}</td>
+            <td>{{ g.total_invoice_qty if g.total_invoice_qty is not none else '—' }}</td>
+            <td>{{ g.total_physical_qty if g.total_physical_qty is not none else '—' }}</td>
+            <td data-order="{{ g.date_received.strftime('%Y-%m-%d') if g.date_received else '' }}">{{ g.date_received.strftime('%d-%m-%Y') if g.date_received else '—' }}</td>
+            <td data-order="{{ g.created_at.strftime('%Y-%m-%d %H:%M') if g.created_at else '' }}" data-day="{{ g.created_at.strftime('%Y-%m-%d') if g.created_at else '' }}">{{ g.created_at | ist_date if g.created_at else '—' }}</td>
+            <td>{{ (added_by.get(g.created_by) or {}).get('name') or g.created_by or '—' }}</td>
             <td class="text-nowrap">
               <a href="/parts-grn/{{ g.id }}" class="btn btn-xs btn-outline-primary btn-sm py-0 px-2">View</a>
               {% if can(current_user, 'spare_parts', 'delete') %}
@@ -65,8 +84,6 @@
               </form>
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="9" class="text-center text-muted py-4">No GRN records yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -82,9 +99,42 @@
 {% block scripts %}
 <script>
 $(document).ready(function () {
-  if ($('#grnTable tbody tr').length > 1) {
-    $('#grnTable').DataTable({ pageLength: 12, order: [[0, 'desc']] });
-  }
+  // Global table (2026-11-04): same look, paging, search and count badge as other pages.
+  var dt = initGlobalTable('#grnTable', { order: [[7, 'desc']],
+    language: { emptyTable: 'No GRN records yet.' } });
+  // Date Added range
+  $.fn.dataTable.ext.search.push(function (settings, data, idx) {
+    if (settings.nTable.id !== 'grnTable') return true;
+    var f = $('#grnFrom').val(), t = $('#grnTo').val();
+    if (!f && !t) return true;
+    var d = $(dt.row(idx).node()).children('td').eq(7).attr('data-day') || '';
+    if (!d) return false;
+    return (!f || d >= f) && (!t || d <= t);
+  });
+  $('#grnFrom, #grnTo').on('change', function () { dt.draw(); });
+  $('#grnDateClear').on('click', function () { $('#grnFrom, #grnTo').val(''); dt.draw(); });
+  // Export the rows shown (filters + search applied). Invoice Value only with Pricing Export.
+  var PX_EXPORT = {{ 'true' if can(current_user, ['spare_parts_purchase', 'spare_parts'], 'pricing_export') else 'false' }};
+  $('#grnExport').on('click', function () {
+    var heads = [], keep = [];
+    $(dt.table().header()).find('th').each(function (i) {
+      var h = $.trim($(this).text());
+      var ok = !/^actions?$/i.test(h) && (PX_EXPORT || !/invoice value/i.test(h));
+      keep.push(ok); if (ok) heads.push(h);
+    });
+    var esc = function (v) { v = String(v == null ? '' : v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var lines = [heads.map(esc).join(',')];
+    dt.rows({ search: 'applied', order: 'applied' }).nodes().each(function (tr) {
+      var cells = [];
+      $(tr).children('td').each(function (i) { if (keep[i]) cells.push(esc($.trim($(this).text()).replace(/\s+/g, ' '))); });
+      lines.push(cells.join(','));
+    });
+    var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv' });
+    var a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+    var d = new Date(), pad = function (n) { return ('0' + n).slice(-2); };
+    a.download = 'parts_grn_summary_' + d.getFullYear() + pad(d.getMonth() + 1) + pad(d.getDate()) + '.csv';
+    document.body.appendChild(a); a.click(); a.remove();
+  });
 });
 </script>
 {% endblock %}

@@ -356,6 +356,8 @@ ROUTE_ACTIONS = {
     # ===== routers/parts_grn.py =====
     ('POST', '/parts-grn/{grn_id}/delete'): ('spare_parts_purchase', 'delete'),  # grn_delete: alias parts-grn -> spare_parts/spare_parts_purchase
     ('POST', '/parts-grn/new'): ('spare_parts_purchase', 'add'),  # grn_create
+    ('POST', '/parts-grn/{grn_id}/edit'): ('spare_parts_purchase', 'edit'),  # grn_edit: GRN details from the Detail page
+    ('POST', '/parts-grn/{grn_id}/items/{item_id}/edit'): ('spare_parts_purchase', 'edit'),  # grn_item_edit: one part line; stock follows
     ('POST', '/parts-grn/harvest'): ('spare_parts', 'add'),  # harvest_part: harvest part from device into stock (Parts Manager list)
     # ===== routers/stage_control.py =====
     ('POST', '/stage-control/transition/add'): ('stage_control', 'add'),  # add_transition
