@@ -44,10 +44,12 @@
               <label class="form-label">Qty Required</label>
               <input type="number" name="quantity_required" class="form-control" min="0">
             </div>
+            {% if can(current_user, 'telecalling', 'pricing_add') %}
             <div class="col-md-3">
               <label class="form-label">Budget (₹)</label>
               <input type="number" name="budget" class="form-control" step="0.01" min="0">
             </div>
+            {% endif %}
             <div class="col-md-6">
               <label class="form-label">Next Follow-up</label>
               <input type="date" name="next_followup" class="form-control">

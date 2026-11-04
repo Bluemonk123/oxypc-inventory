@@ -118,7 +118,7 @@
        (total_count, 'Total Dealers', '#0d6efd', 'bi-building', ''),
        (active_count, 'Active', '#0F7A37', 'bi-check-circle', ''),
        (followup_count, 'Follow-ups Due', '#fd7e14', 'bi-alarm', 'Dealers whose latest call status is Follow-up and follow-up date is today or past'),
-       ('₹' ~ outstanding, 'Outstanding', '#dc3545', 'bi-currency-rupee', '')] %}
+       (('₹' ~ outstanding) if can(current_user, 'dealers', 'pricing') else '—', 'Outstanding', '#dc3545', 'bi-currency-rupee', '')] %}
   <div>
     <div class="lt-tile h-100" style="--tc:{{ color }}"{% if tip %} title="{{ tip }}"{% endif %}>
       <div class="lt-tile-count">{{ val }}</div>

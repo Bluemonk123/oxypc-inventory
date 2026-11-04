@@ -341,11 +341,11 @@
               <input type="number" name="qty" class="form-control" min="1"
                      value="{{ device.qty or 1 }}" placeholder="1">
             </div>
-            {% if can(current_user, 'devices', 'pricing') %}
+            {% if price_field_shown(current_user, 'devices') %}
             <div class="col-md-3">
               <label class="form-label">Unit Price inclusive taxes (₹)</label>
               <input type="number" name="device_price_input" class="form-control" step="0.01" min="0"
-                     value="{{ device.device_price or '' }}" placeholder="e.g. 4500.00">
+                     {{ price_input_attrs(current_user, 'devices', device.device_price or '', 'e.g. 4500.00') }}>
             </div>
             {% endif %}
             <div class="col-md-3">
@@ -365,21 +365,21 @@
                 <label class="form-check-label" for="biosPwd">BIOS Password Set?</label>
               </div>
             </div>
-            {% if can(current_user, 'devices', 'pricing') %}
+            {% if price_field_shown(current_user, 'devices') %}
             <div class="col-md-3">
               <label class="form-label">Min Selling Price (₹)</label>
               <input type="number" name="min_selling_price_input" class="form-control" step="0.01" min="0"
-                     value="{{ device.min_selling_price or '' }}" placeholder="e.g. 5000.00">
+                     {{ price_input_attrs(current_user, 'devices', device.min_selling_price or '', 'e.g. 5000.00') }}>
             </div>
             <div class="col-md-3">
               <label class="form-label">Max Selling Price (₹)</label>
               <input type="number" name="max_selling_price_input" class="form-control" step="0.01" min="0"
-                     value="{{ device.max_selling_price or '' }}" placeholder="e.g. 6500.00">
+                     {{ price_input_attrs(current_user, 'devices', device.max_selling_price or '', 'e.g. 6500.00') }}>
             </div>
             {% else %}
-            {# Not allowed to see/set pricing: carry the current values through so saving the form does not clear them. #}
-            <input type="hidden" name="min_selling_price_input" value="{{ device.min_selling_price or '' }}">
-            <input type="hidden" name="max_selling_price_input" value="{{ device.max_selling_price or '' }}">
+            {# No Pricing View/Add: nothing sent — the server keeps the stored prices (2026-11-03). #}
+            <input type="hidden" name="min_selling_price_input" value="">
+            <input type="hidden" name="max_selling_price_input" value="">
             {% endif %}
 
             <!-- Tracked storage location (new system) -->

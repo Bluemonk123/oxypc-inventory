@@ -13,7 +13,7 @@
   <div class="{{ 'px-3 pt-2 pb-1' if (po_embed is defined and po_embed) else 'card-header bg-white border-0' }} d-flex justify-content-between align-items-center">
     <span class="fw-semibold"><i class="bi bi-receipt me-1 text-success"></i>{{ po_section_title|default('Purchase Deals', true) }} ({{ purchase_orders|length }})</span>
     {% if add_po_url is defined and add_po_url %}
-    {% if can(current_user, _pm, 'add') %}
+    {% if can(current_user, _pm, 'add') and can(current_user, 'crm_purchase_orders', 'pricing_add') %}
     <a href="{{ add_po_url }}" class="btn btn-sm btn-outline-primary">
       <i class="bi bi-plus-lg me-1"></i>Add
     </a>

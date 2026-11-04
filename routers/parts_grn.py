@@ -176,6 +176,12 @@ async def grn_create(
     # One crate = one part (2026-10-31): refuse the GRN before anything is
     # saved when a line puts a part into a crate that holds another part
     # (in Part Master, or on an earlier line of this same GRN).
+    # Pricing Add (2026-11-03): invoice amounts and line prices are ignored for a
+    # role that may not set prices (Invoice Price is then not required either).
+    from utils.price_export import can_add_prices as _cap
+    _px = _cap(current_user, "spare_parts_purchase")
+    if not _px:
+        invoice_value = sgst = cgst = igst = tax_amount = total_amount_invoice = ""
     from services.parts_stock import crate_conflict, conflict_text, group_key as _gk, norm as _norm
     try:
         _items = json.loads(line_items_json or "[]")
@@ -207,7 +213,7 @@ async def grn_create(
                 ("PO Number", po_number), ("PO Date", po_date), ("Invoice Number", invoice_number),
                 ("Invoice Date", invoice_date),   # E-Way Bill Number / Date optional (2026-11-03)
                 ("Vehicle Number", vehicle_number),
-                ("Invoice Price", invoice_value), ("PO Quantity", total_po_qty),
+                *([("Invoice Price", invoice_value)] if _px else []), ("PO Quantity", total_po_qty),
                 ("Invoice Quantity", total_invoice_qty), ("Physical Quantity", total_physical_qty)]
         from routers.grn import eway_missing
         _miss = [lbl for lbl, v in _req if not (v or "").strip()] + eway_missing(
@@ -282,7 +288,7 @@ async def grn_create(
         sp_model = _f(item.get("part_model"))
         sp_crate = _f(item.get("crate_number"))
         sp_qty = _i(item.get("physical_qty")) or _i(item.get("invoice_qty")) or 0
-        sp_price = _d(item.get("price"))
+        sp_price = _d(item.get("price")) if _px else None   # Pricing Add (2026-11-03)
         sp_min_alert = _i(item.get("min_stock_alert"))
         row = await find_row(db, sp_name, sp_make, sp_model, "new", sp_crate)
         if row is not None:
@@ -406,6 +412,10 @@ async def harvest_part(
     min_stock_alert: str = Form(default="5"),
     crate_number: str = Form(default=""),
 ):
+    # Pricing Add (2026-11-03): entered price ignored without it (GRN price still applies).
+    from utils.price_export import can_add_prices as _cap
+    if not _cap(current_user, "spare_parts"):
+        price = ""
     from services.parts_stock import find_row, lowest_grn_price, crate_conflict, conflict_text
     _other = await crate_conflict(db, _f(part_name) or _f(product_description) or "Harvest Part",
                                   _f(part_brand), _f(part_model), crate_number)

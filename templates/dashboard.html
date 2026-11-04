@@ -671,12 +671,14 @@
 
 <!-- Weekly Sourcing Price + Weekly Sales Price (Sales Price is pricing-gated) -->
 <div class="row g-3 mb-4">
+  {% if can(current_user, 'dashboard', 'pricing') %}{# Pricing View (2026-11-03) #}
   <div class="col-xl-6">
     <div class="card gtable-card border-0 shadow-sm h-100 chart-card">
       <div class="card-header bg-transparent fw-semibold small">Weekly Sourcing Price — Buyer PO / Seller PO</div>
       <div class="card-body"><div class="chart-box"><canvas id="chartSourcingPriceWeekly"></canvas></div></div>
     </div>
   </div>
+  {% endif %}
   {% if can(current_user, 'dashboard', 'pricing') %}
   <div class="col-xl-6">
     <div class="card gtable-card border-0 shadow-sm h-100 chart-card">
@@ -853,20 +855,20 @@
       labels: weekLabels,
       datasets: [
         { label: 'Ready to Sale (count)', data: {{ ac.get('ready_to_sale_weekly', []) | tojson }}, backgroundColor: 'rgba(15,122,55,.55)', yAxisID: 'y1' },
-        { label: 'Product Sold (₹)',      data: {{ ac.get('product_sold_price_weekly', []) | tojson }}, backgroundColor: 'rgba(13,110,253,.75)', yAxisID: 'y' },
+        { label: 'Product Sold (₹)',      data: {{ (ac.get('product_sold_price_weekly', []) if can(current_user, 'dashboard', 'pricing') else []) | tojson }}, backgroundColor: 'rgba(13,110,253,.75)', yAxisID: 'y' },
       ]
     },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } },
       scales: { y: { beginAtZero: true, position: 'left' }, y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } } } }
   });
 
-  new Chart(document.getElementById('chartSourcingPriceWeekly'), {
+  if (document.getElementById('chartSourcingPriceWeekly')) new Chart(document.getElementById('chartSourcingPriceWeekly'), {
     type: 'bar',
     data: {
       labels: weekLabels,
       datasets: [
-        { label: 'Buyer PO (₹)',  data: {{ ac.get('buyer_po_weekly', []) | tojson }},  backgroundColor: 'rgba(15,122,55,.75)' },
-        { label: 'Seller PO (₹)', data: {{ ac.get('seller_po_weekly', []) | tojson }}, backgroundColor: 'rgba(253,126,20,.75)' },
+        { label: 'Buyer PO (₹)',  data: {{ (ac.get('buyer_po_weekly', []) if can(current_user, 'dashboard', 'pricing') else []) | tojson }},  backgroundColor: 'rgba(15,122,55,.75)' },
+        { label: 'Seller PO (₹)', data: {{ (ac.get('seller_po_weekly', []) if can(current_user, 'dashboard', 'pricing') else []) | tojson }}, backgroundColor: 'rgba(253,126,20,.75)' },
       ]
     },
     options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }

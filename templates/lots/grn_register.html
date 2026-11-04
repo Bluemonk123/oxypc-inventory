@@ -115,7 +115,7 @@
               <option value="Other">Other</option>
             </select>
           </div>
-          <div class="col-6{% if not '+P+' %} d-none{% endif %}">
+          <div class="col-6{% if not can(current_user, 'lots', 'pricing_add') %} d-none{% endif %}">
             <label class="form-label small fw-semibold">Price (₹)</label>
             <input type="number" id="priceInput" class="form-control form-control-sm" placeholder="Optional">
           </div>
@@ -184,7 +184,7 @@
         <table class="table table-sm mb-0">
           <tr><td class="text-muted">Invoice No</td><td class="fw-semibold">{{ lot.invoice_no or '—' }}</td></tr>
           <tr><td class="text-muted">Invoice Date</td><td>{{ lot.invoice_date.strftime('%d-%m-%Y') if lot.invoice_date else '—' }}</td></tr>
-          <tr><td class="text-muted">Invoice Value</td><td>₹{{ ((lot.invoice_value) | inr(2)) if lot.invoice_value else '—' }}</td></tr>
+          <tr><td class="text-muted">Invoice Value</td><td>{% if can(current_user, 'lots', 'pricing') %}₹{{ ((lot.invoice_value) | inr(2)) if lot.invoice_value else '—' }}{% else %}—{% endif %}</td></tr>
           <tr><td class="text-muted">PO Number</td><td>{{ lot.po_number or '—' }}</td></tr>
           <tr><td class="text-muted">Vendor</td><td>{{ lot.vendor_name or lot.supplier_name }}</td></tr>
           <tr><td class="text-muted">GRN Date</td><td>{{ lot.grn_date.strftime('%d-%m-%Y') if lot.grn_date else '—' }}</td></tr>
@@ -448,7 +448,7 @@ async function loadLineItems() {
     data.items.forEach(item => {
       const opt = document.createElement('option');
       opt.value = JSON.stringify(item);
-      opt.textContent = `${item.label} — ₹${item.unit_price.toLocaleString('en-IN')} × ${item.qty}`;
+      opt.textContent = item.unit_price == null ? `${item.label} × ${item.qty}` : `${item.label} — ₹${item.unit_price.toLocaleString('en-IN')} × ${item.qty}`;
       sel.appendChild(opt);
     });
     document.getElementById('lineItemPickerHint').textContent = `${data.items.length} line item(s) available`;
@@ -473,7 +473,7 @@ function applyLineItem(val) {
       if (el && value) el.value = value;
     });
     document.getElementById('lineItemPickerHint').textContent =
-      `Applied: ₹${item.unit_price.toLocaleString('en-IN')} from invoice line item`;
+      item.unit_price == null ? 'Applied from invoice line item' : `Applied: ₹${item.unit_price.toLocaleString('en-IN')} from invoice line item`;
   } catch(e) {}
 }
 

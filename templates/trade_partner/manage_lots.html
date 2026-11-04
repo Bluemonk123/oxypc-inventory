@@ -112,7 +112,7 @@
                         data-lot-number="{{ _lots | map(attribute='lot_number') | join(', ') }}"
                         data-inv="{{ g.invoice_number or '' }}" data-date="{{ g.invoice_date or '' }}"
                         data-sender="{{ g.sender_name or '' }}" data-qty="{{ g.quantity if g.quantity is not none else '' }}"
-                        data-amount="{{ g.amount if g.amount is not none else '' }}"
+                        data-amount="{{ g.amount if (g.amount is not none and can(current_user, ['grn', 'grn_post_iqc', 'trade_partner_manage_lots'], 'pricing')) else '' }}"
                         data-purchase-date="{{ g.purchase_date.isoformat() if g.purchase_date else '' }}"
                         data-grn-date="{{ g.grn_date.isoformat() if g.grn_date else '' }}"
                         data-po="{{ g.po_number or '' }}" data-vehicle="{{ g.vehicle_number or '' }}"
@@ -323,7 +323,7 @@
           <div class="col-md-4"><label class="form-label fw-semibold">Invoice Number</label>
             <input type="text" name="invoice_number" class="form-control"></div>
           <div class="col-md-4"><label class="form-label fw-semibold">Invoice Price</label>
-            <input type="text" name="amount" class="form-control"></div>
+            <input type="text" name="amount" class="form-control" {% if not can(current_user, ['grn', 'grn_post_iqc', 'trade_partner_manage_lots'], 'pricing_add') %}disabled placeholder="No Pricing Add permission" title="Your role cannot set prices (Pricing Add)"{% endif %}></div>
           <div class="col-md-4"><label class="form-label fw-semibold">Invoice Quantity</label>
             <input type="number" name="quantity" class="form-control" min="0"></div>
         </div>
@@ -383,7 +383,7 @@
           <div class="col-md-4"><label class="form-label fw-semibold">Invoice Number</label>
             <input type="text" name="invoice_number" id="e_inv" class="form-control"></div>
           <div class="col-md-4"><label class="form-label fw-semibold">Invoice Price</label>
-            <input type="text" name="amount" id="e_amount" class="form-control"></div>
+            <input type="text" name="amount" id="e_amount" class="form-control" {% if not can(current_user, ['grn', 'grn_post_iqc', 'trade_partner_manage_lots'], 'pricing_add') %}disabled placeholder="No Pricing Add permission" title="Your role cannot set prices (Pricing Add)"{% endif %}></div>
           <div class="col-md-4"><label class="form-label fw-semibold">Invoice Quantity</label>
             <input type="number" name="quantity" id="e_qty" class="form-control" min="0"></div>
         </div>

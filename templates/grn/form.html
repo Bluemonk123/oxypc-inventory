@@ -34,7 +34,7 @@ const _lotData = {
   "{{ lot.id }}": {
     supplier: {{ lot.supplier_name | tojson }},
     qty: {{ lot.qty or 0 }},
-    price: "{{ lot.buying_price or '' }}",
+    price: "{{ (lot.buying_price or '') if can(current_user, 'grn', 'pricing') else '' }}",
     date: "{{ lot.purchase_date.strftime('%d %b %Y') if lot.purchase_date else '' }}"
   }{% if not loop.last %},{% endif %}
   {% endfor %}
@@ -44,7 +44,7 @@ document.querySelector('select[name="lot_id"]').addEventListener('change', funct
   const text = document.getElementById('lot-preview-text');
   const d = _lotData[this.value];
   if (d) {
-    text.textContent = d.supplier + ' | Qty: ' + d.qty + ' | Buying: ₹' + d.price + ' | Date: ' + d.date;
+    text.textContent = d.supplier + ' | Qty: ' + d.qty + (d.price ? ' | Buying: ₹' + d.price : '') + ' | Date: ' + d.date;
     preview.classList.remove('d-none');
   } else {
     preview.classList.add('d-none');

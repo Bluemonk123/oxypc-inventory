@@ -1,3 +1,4 @@
+from utils.price_export import blank_prices as _blank_prices   # Pricing View (2026-11-03)
 """
 JSON API endpoints for Smart UX auto-fill and async lookups.
 All routes require an authenticated session.
@@ -32,7 +33,7 @@ async def get_lot_line_item(
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(status_code=404, detail="Line item not found")
-    return JSONResponse({
+    return JSONResponse(_blank_prices(current_user, 'lots', {
         "brand": item.brand or "",
         "model": item.model or "",
         "cpu": item.cpu or "",
@@ -41,7 +42,7 @@ async def get_lot_line_item(
         "storage_gb": str(item.storage_gb or ""),
         "storage_type": item.storage_type or "",
         "unit_price": str(item.unit_price or ""),
-    })
+    }, ['unit_price']))
 
 
 @router.get("/lot-line-items-by-lot/{lot_id}")
@@ -55,13 +56,13 @@ async def get_lot_line_items(
         select(LotLineItem).where(LotLineItem.lot_id == lot_id).order_by(LotLineItem.sub_category)
     )
     items = result.scalars().all()
-    return JSONResponse([{
+    return JSONResponse(_blank_prices(current_user, 'lots', [{
         "id": str(i.id),
         "sub_category": i.sub_category or "",
         "brand": i.brand or "",
         "model": i.model or "",
         "unit_price": str(i.unit_price or "0"),
-    } for i in items])
+    } for i in items], ['unit_price']))
 
 
 @router.get("/lot-meta")

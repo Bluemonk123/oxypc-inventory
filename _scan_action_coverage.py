@@ -42,8 +42,9 @@ for key, entry in ROUTE_ACTIONS.items():
     for m in ((mods,) if isinstance(mods, str) else mods):
         if m not in VALID_MODULES:
             bad.append((key, f"unknown module {m}"))
-    if action not in VALID_ACTIONS:
-        bad.append((key, f"unknown action {action}"))
+    for a in (action if isinstance(action, tuple) else (action,)):   # several ticks may be required
+        if a not in VALID_ACTIONS:
+            bad.append((key, f"unknown action {a}"))
 
 for k in unmapped: print("UNMAPPED", *k)
 for k in stale:    print("STALE   ", *k)

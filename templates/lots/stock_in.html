@@ -290,9 +290,9 @@
               {% if _need_pay and can(current_user, 'stock', 'pricing') %}
               <button type="button" class="btn btn-xs btn-outline-primary btn-sm py-0 px-2 me-1 rs-verify-btn"
                       data-barcode="{{ d.barcode }}"
-                      data-repair-cost="{{ row.repair_cost if row.repair_cost is not none else '' }}"
-                      data-labour-cost="{{ row.labour_cost if row.labour_cost is not none else '' }}"
-                      data-part-cost="{{ row.part_cost if row.part_cost is not none else '' }}"
+                      data-repair-cost="{{ row.repair_cost if (row.repair_cost is not none and can(current_user, 'stock', 'pricing')) else '' }}"
+                      data-labour-cost="{{ row.labour_cost if (row.labour_cost is not none and can(current_user, 'stock', 'pricing')) else '' }}"
+                      data-part-cost="{{ row.part_cost if (row.part_cost is not none and can(current_user, 'stock', 'pricing')) else '' }}"
                       data-receipt="{{ ret.payment_reference or '' }}">Verify Payment</button>
               {% endif %}
               {% if can(current_user, 'stock', 'edit') %}
@@ -386,11 +386,11 @@
         <input type="hidden" id="rsVerifyBarcode">
         <div class="mb-2">
           <label class="form-label fw-semibold">Repair Cost</label>
-          <input type="number" step="0.01" min="0" id="rsVerifyRepairCost" class="form-control">
+          <input type="number" step="0.01" min="0" id="rsVerifyRepairCost" class="form-control" {% if not can(current_user, 'stock', 'pricing_add') %}disabled placeholder="No Pricing Add"{% endif %}>
         </div>
         <div class="mb-2">
           <label class="form-label fw-semibold">Labour Cost</label>
-          <input type="number" step="0.01" min="0" id="rsVerifyLabourCost" class="form-control">
+          <input type="number" step="0.01" min="0" id="rsVerifyLabourCost" class="form-control" {% if not can(current_user, 'stock', 'pricing_add') %}disabled placeholder="No Pricing Add"{% endif %}>
         </div>
         <div class="mb-2">
           <label class="form-label fw-semibold">Part Cost</label>
@@ -1223,8 +1223,8 @@ document.getElementById('rsVerifySubmit').addEventListener('click', function(){
   var barcode = document.getElementById('rsVerifyBarcode').value;
   var fd = new FormData();
   fd.append('csrf_token', getCsrf());
-  fd.append('repair_cost', document.getElementById('rsVerifyRepairCost').value || '0');
-  fd.append('labour_cost', document.getElementById('rsVerifyLabourCost').value || '0');
+  fd.append('repair_cost', document.getElementById('rsVerifyRepairCost').value || '');
+  fd.append('labour_cost', document.getElementById('rsVerifyLabourCost').value || '');
   var receipt = document.getElementById('rsVerifyReceipt').value.trim();
   if(!receipt){ alert('Enter the Payment Receipt Number.'); return; }
   fd.append('payment_reference', receipt);

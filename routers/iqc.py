@@ -833,6 +833,10 @@ async def iqc_create_lot_from_selection(
 ):
     """Create a new Lot from a set of Tag Numbers selected on the IQC Line
     Item table, and re-assign those devices to the new lot."""
+    # Pricing Add (2026-11-03): lot prices left empty without it.
+    from utils.price_export import can_add_prices as _cap
+    if not _cap(current_user, "iqc"):
+        buying_price, selling_price = "0", ""
     barcodes = [b.strip() for b in barcodes if b and b.strip()]
     if not barcodes:
         return RedirectResponse(url="/iqc?error=No+devices+selected", status_code=302)
@@ -978,6 +982,12 @@ async def iqc_bulk_apply_grade_type(
     `bin_location` (2026-10-16) is free text saved as each selected tag's own
     Bin Location (Device.bin_location), shown under Location ID. It does not
     need or change the Location ID."""
+    # Pricing Add (2026-11-03): price fields ignored without it (blank = no change).
+    from utils.price_export import price_unchanged as _pu
+    if _pu(current_user, ("iqc", "devices", "stock"), device_price):
+        device_price = ""
+    if _pu(current_user, ("iqc", "devices", "stock"), min_selling_price):
+        min_selling_price = ""
     return_to = return_to if return_to in _CUSTOMISE_RETURN_PATHS else "/iqc"
 
     barcode_set = {b.strip() for b in barcodes if b and b.strip()}
@@ -1491,6 +1501,10 @@ async def iqc_create(
     # as a second, fully independent device for the same physical unit. The
     # barcode column's UNIQUE constraint is case-sensitive at the database
     # level, so nothing there caught it either.
+    # Pricing Add (2026-11-03): manual price override ignored without it (price comes from the lot).
+    from utils.price_export import price_unchanged as _pu
+    if _pu(current_user, "iqc", device_price_input):
+        device_price_input = ""
     existing = await db.execute(select(Device).where(func.upper(Device.barcode) == barcode.upper()))
     if existing.scalar_one_or_none():
         lots_result = await db.execute(select(Lot).order_by(Lot.lot_number))

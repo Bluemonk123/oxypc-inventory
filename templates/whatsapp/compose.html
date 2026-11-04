@@ -40,7 +40,7 @@
             </div>
             <div class="col-sm-6">
               <span class="text-muted small">Amount Due</span>
-              <div class="fw-bold text-danger">&#8377;{{ ((order.due_amount) | inr) }}</div>
+              <div class="fw-bold text-danger">{% if can(current_user, 'dealers', 'pricing') %}&#8377;{{ ((order.due_amount) | inr) }}{% else %}—{% endif %}</div>
             </div>
           </div>
         </div>

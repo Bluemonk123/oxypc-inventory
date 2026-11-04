@@ -105,6 +105,11 @@ async def print_invoice(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "sales_list", "/sales")
+    if _pvblk is not None:
+        return _pvblk
     _blk = _price_block(current_user, 'sales_list', f"/sales/{sale_id}")   # Pricing Export (2026-11-03)
     if _blk is not None:
         return _blk

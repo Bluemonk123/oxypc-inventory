@@ -167,10 +167,12 @@
   <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-sliders me-2 text-primary"></i>CRM Settings</div>
   <div class="card-body">
     <div class="row g-3">
+      {% if price_field_shown(current_user, 'crm_contacts') %}
       <div class="col-md-4">
         <label class="form-label fw-semibold">Credit Limit (₹)</label>
-        <input type="number" name="credit_limit" class="form-control" step="1000" min="0" value="{{ contact.credit_limit or 0 if contact else 0 }}">
+        <input type="number" name="credit_limit" class="form-control" step="1000" min="0" {{ price_input_attrs(current_user, 'crm_contacts', contact.credit_limit or 0 if contact else 0) }}>
       </div>
+      {% endif %}
       <div class="col-md-4">
         <label class="form-label fw-semibold">Assigned To</label>
         <select name="assigned_to" class="form-select">

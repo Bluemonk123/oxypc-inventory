@@ -1,3 +1,4 @@
+from utils.price_export import blank_prices as _blank_prices   # Pricing View (2026-11-03)
 """
 Market Intelligence Router
 ----------------------------
@@ -180,6 +181,10 @@ async def edit_entry_form(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from utils.price_export import price_add_block   # market entries are prices (2026-11-03)
+    _blk = price_add_block(current_user, "market", "/market")
+    if _blk is not None:
+        return _blk
     entry = (await db.execute(select(MarketAvailability).where(MarketAvailability.id == entry_id))).scalar_one_or_none()
     if not entry:
         return RedirectResponse(url="/market?error=Entry+not+found", status_code=302)
@@ -288,7 +293,7 @@ async def market_api_search(
 
     result = await db.execute(query.order_by(MarketAvailability.posted_date.desc()).limit(limit))
     entries = result.scalars().all()
-    return JSONResponse([{
+    return JSONResponse(_blank_prices(current_user, 'market', [{
         "id":           str(e.id),
         "brand":        e.brand,
         "model":        e.model,
@@ -302,7 +307,7 @@ async def market_api_search(
         "dealer_name":  e.dealer_name,
         "group_name":   e.group_name,
         "posted_date":  e.posted_date.strftime("%d-%m-%Y") if e.posted_date else None,
-    } for e in entries])
+    } for e in entries], ['price']))
 
 
 # ── Create entry from a WA group message ──────────────────────────────────

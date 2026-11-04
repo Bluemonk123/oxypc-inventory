@@ -77,24 +77,24 @@
       <div class="col">
         <label class="form-label fw-semibold">Asking Price / Unit (₹)</label>
         <input type="number" name="asking_price_unit" id="asking_unit" class="form-control" step="0.01" min="0"
-          value="{{ deal.asking_price_unit or '' if deal else '' }}" placeholder="0.00"
+          {{ price_input_attrs(current_user, 'crm_sourcing', deal.asking_price_unit or '' if deal else '', '0.00') }}
           onblur="calcTotal('asking_unit','est_quantity','asking_total')">
       </div>
       <div class="col">
         <label class="form-label fw-semibold">Asking Price Total (₹)</label>
         <input type="number" name="asking_price_total" id="asking_total" class="form-control" step="0.01" min="0"
-          value="{{ deal.asking_price_total or '' if deal else '' }}" placeholder="Auto-calculated" readonly>
+          {{ price_input_attrs(current_user, 'crm_sourcing', deal.asking_price_total or '' if deal else '', 'Auto-calculated') }} readonly>
       </div>
       <div class="col">
         <label class="form-label fw-semibold">Our Offer / Unit (₹)</label>
         <input type="number" name="our_offer_unit" id="offer_unit" class="form-control" step="0.01" min="0"
-          value="{{ deal.our_offer_unit or '' if deal else '' }}" placeholder="0.00"
+          {{ price_input_attrs(current_user, 'crm_sourcing', deal.our_offer_unit or '' if deal else '', '0.00') }}
           onblur="calcTotal('offer_unit','est_quantity','offer_total')">
       </div>
       <div class="col">
         <label class="form-label fw-semibold">Our Offer Total (₹)</label>
         <input type="number" name="our_offer_total" id="offer_total" class="form-control" step="0.01" min="0"
-          value="{{ deal.our_offer_total or '' if deal else '' }}" placeholder="Auto-calculated" readonly>
+          {{ price_input_attrs(current_user, 'crm_sourcing', deal.our_offer_total or '' if deal else '', 'Auto-calculated') }} readonly>
       </div>
       <div class="col">
         <label class="form-label fw-semibold">Payment Advance %</label>

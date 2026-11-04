@@ -106,7 +106,7 @@ document.querySelectorAll('.verify-btn').forEach(function(b){
             <tr><th class="text-muted" style="width:45%">Payment Date</th><td>${esc(d.payment_date)}</td></tr>
             <tr><th class="text-muted">Payment Mode</th><td>${esc(d.payment_mode)}</td></tr>
             <tr><th class="text-muted">UTR / Reference</th><td class="font-monospace">${esc(d.payment_utr)}</td></tr>
-            <tr><th class="text-muted">Amount</th><td class="fw-bold">₹${Number(d.payment_amount||0).toLocaleString('en-IN')}</td></tr>
+            <tr><th class="text-muted">Amount</th><td class="fw-bold">${d.payment_amount == null ? '—' : '₹' + Number(d.payment_amount||0).toLocaleString('en-IN')}</td></tr>
             <tr><th class="text-muted">Submitted By</th><td>${esc(d.submitted_by)} · ${esc(d.submitted_at)}</td></tr>
           </table>
           <label class="form-label small fw-semibold">Verification Note (optional)</label>

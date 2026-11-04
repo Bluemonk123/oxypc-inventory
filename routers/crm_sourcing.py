@@ -205,6 +205,9 @@ async def create_deal(
             saved_filename = safe_name
 
     deal_number = await _next_deal_number(db)
+    from utils.price_export import can_add_prices as _cap   # Pricing Add (2026-11-03)
+    if not _cap(current_user, 'crm_sourcing'):
+        asking_price_unit = asking_price_total = our_offer_unit = None
     aq_unit  = _n(asking_price_unit)
     aq_total = _n(asking_price_total)
     qty      = _i(est_quantity)
@@ -412,6 +415,9 @@ async def move_stage(
     deal.stage = new_stage
     if win_loss_reason:
         deal.win_loss_reason = win_loss_reason
+    from utils.price_export import can_add_prices as _cap   # Pricing Add (2026-11-03)
+    if not _cap(current_user, 'crm_sourcing'):
+        final_price_unit = final_price_total = None
     if final_price_unit and final_price_unit.strip():
         try:
             deal.final_price_unit = float(final_price_unit)
@@ -713,10 +719,15 @@ async def update_deal(
     deal.device_type = device_type or None
     deal.est_quantity = _i(est_quantity)
     deal.material_type = material_type or None
-    deal.asking_price_unit = _n(asking_price_unit)
-    deal.asking_price_total = _n(asking_price_total)
-    deal.our_offer_unit = _n(our_offer_unit)
-    deal.our_offer_total = _n(our_offer_total)
+    from utils.price_export import price_unchanged as _pu   # Pricing Add (2026-11-03)
+    if not _pu(current_user, 'crm_sourcing', asking_price_unit):
+        deal.asking_price_unit = _n(asking_price_unit)
+    if not _pu(current_user, 'crm_sourcing', asking_price_total):
+        deal.asking_price_total = _n(asking_price_total)
+    if not _pu(current_user, 'crm_sourcing', our_offer_unit):
+        deal.our_offer_unit = _n(our_offer_unit)
+    if not _pu(current_user, 'crm_sourcing', our_offer_total):
+        deal.our_offer_total = _n(our_offer_total)
     deal.payment_advance_pct = _i(payment_advance_pct) or 0
     deal.payment_terms = payment_terms or None
     deal.priority = priority

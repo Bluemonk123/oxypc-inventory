@@ -406,7 +406,7 @@ def module_action_map() -> dict:
             continue
         mods, action = entry
         for m in ((mods,) if isinstance(mods, str) else mods):
-            out.setdefault(m, set()).add(action)
+            out.setdefault(m, set()).update(action if isinstance(action, tuple) else (action,))
     return out
 
 # ── Role Additional Permissions — cross-cutting, not tied to any one module ──

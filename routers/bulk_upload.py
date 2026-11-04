@@ -1,3 +1,4 @@
+from utils.price_export import strip_price_keys as _strip_price_keys
 import csv
 import io
 import re
@@ -396,6 +397,7 @@ async def upload_lots(
             return default
 
     for i, row in enumerate(reader, start=2):
+        row = _strip_price_keys(row, current_user, "lots")   # Pricing Add (2026-11-03)
         try:
             lot_number = row.get("lot_number", "").strip()
             if not lot_number:
@@ -557,6 +559,7 @@ async def upload_devices(
     now = app_now()
 
     for i, row in enumerate(reader, start=2):
+        row = _strip_price_keys(row, current_user, "iqc")   # Pricing Add (2026-11-03)
         try:
             barcode = _resolve_tag_header(row)
             if not barcode:
@@ -1024,6 +1027,7 @@ async def upload_spare_parts(
     inserted, errors = 0, []
 
     for i, row in enumerate(reader, start=2):
+        row = _strip_price_keys(row, current_user, "spare_parts")   # Pricing Add (2026-11-03)
         try:
             part_code = row.get("part_code", "").strip()
             name = row.get("name", "").strip()
@@ -1074,6 +1078,7 @@ async def upload_leads(
     VALID_CUST_TYPES = {"end_customer", "corporate", "individual", "dealer", "reseller", ""}
 
     for i, row in enumerate(reader, start=2):
+        row = _strip_price_keys(row, current_user, "telecalling")   # Pricing Add (2026-11-03)
         try:
             phone = row.get("phone", "").strip().replace(" ", "").replace("-", "")
             if not phone:

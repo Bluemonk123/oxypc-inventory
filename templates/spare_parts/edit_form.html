@@ -70,17 +70,17 @@
                 {% endif %}
               </select>
             </div>
-            {% if can(current_user, 'spare_parts', 'pricing') %}
+            {% if price_field_shown(current_user, 'spare_parts') %}
             <div class="col-md-4">
               <label class="form-label fw-semibold">Unit Price (₹)</label>
               <div class="input-group">
                 <span class="input-group-text">₹</span>
-                <input type="number" name="unit_price" class="form-control" value="{{ part.unit_price }}" min="0" step="0.01">
+                <input type="number" name="unit_price" class="form-control" {{ price_input_attrs(current_user, 'spare_parts', part.unit_price) }} min="0" step="0.01">
               </div>
             </div>
             {% else %}
-            {# Not allowed to see/set pricing: carry the current price so saving does not reset it to 0. #}
-            <input type="hidden" name="unit_price" value="{{ part.unit_price }}">
+            {# No Pricing View/Add: no price sent; the server keeps it. #}
+            <input type="hidden" name="unit_price" value="">{# server keeps the stored price (2026-11-03) #}
             {% endif %}
             <div class="col-md-4">
               <label class="form-label fw-semibold">In Stock (qty)</label>

@@ -106,10 +106,12 @@
               <label class="form-label">Preferred Categories</label>
               <input type="text" name="preferred_categories" class="form-control" placeholder="Laptop, Desktop, TFT" value="{{ dealer.preferred_categories if dealer else '' }}">
             </div>
+            {% if price_field_shown(current_user, 'dealers') %}
             <div class="col-md-4">
               <label class="form-label">Credit Limit (₹)</label>
-              <input type="number" name="credit_limit" class="form-control" value="{{ dealer.credit_limit if dealer else 0 }}" step="0.01" min="0">
+              <input type="number" name="credit_limit" class="form-control" {{ price_input_attrs(current_user, 'dealers', dealer.credit_limit if dealer else 0) }} step="0.01" min="0">
             </div>
+            {% endif %}
             <div class="col-md-4">
               <label class="form-label">Assigned To (Sales Exec)</label>
               {# 2026-10-27 (Pankaj): always the logged-in user, shown but not

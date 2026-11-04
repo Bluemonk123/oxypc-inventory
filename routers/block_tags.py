@@ -258,7 +258,7 @@ async def block_tags_data(
     # POST enforce the same check server-side).
     from models.role_permissions import has_perm as _has_perm
     role_val = getattr(current_user.role, "value", None) or str(current_user.role)
-    can_sell = _has_perm(role_val, "sales", "add")
+    can_sell = _has_perm(role_val, "sales", "add") and _has_perm(role_val, "sales", "pricing_add")   # a sale sets prices (2026-11-03)
     can_edit_block = _has_perm(role_val, "block_tags", "edit")  # Permission Matrix tick (2026-10-25)
     can_export_block = _has_perm(role_val, "block_tags", "export")  # Bulk QC zip (2026-10-28)
 

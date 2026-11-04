@@ -91,7 +91,7 @@
             <td class="text-end text-nowrap" data-order="{{ r.total_price if can(current_user, 'rentals', 'pricing') else 0 }}">{% if can(current_user, 'rentals', 'pricing') %}₹{{ r.total_price | inr }}{% else %}—{% endif %}</td>
             <td>
               <span class="badge bg-{{ status_badge.get(r.status, 'secondary') }}">{{ status_labels.get(r.status, r.status) }}</span>
-              {% if row.due %}<div class="text-danger fw-semibold" style="font-size:.75rem">Due ₹{{ row.due_total | inr(2) }}</div>{% endif %}
+              {% if row.due %}<div class="text-danger fw-semibold" style="font-size:.75rem">Due{% if can(current_user, 'rentals', 'pricing') %} ₹{{ row.due_total | inr(2) }}{% endif %}</div>{% endif %}
               {% if r.status in ('active', 'payment_due') and row.returns %}<div class="text-muted" style="font-size:.75rem">{{ row.out_count }} of {{ r.total_quantity }} still out</div>{% endif %}
               {% for ref in row.refs %}<div class="text-muted" style="font-size:.75rem" title="Invoice / UTR">Paid: {{ ref }}</div>{% endfor %}
               {# Waived returns (2026-10-29): same label + optional reason as Customer / External returns #}
@@ -129,7 +129,7 @@
               <button type="button" class="btn btn-sm btn-success" title="Mark Paid"
                       data-bs-toggle="modal" data-bs-target="#rentalPaidModal"
                       data-action="/rentals/{{ r.id }}/paid" data-number="{{ r.rental_number }}"
-                      data-amount="{{ row.due_total | inr(2) }}"><i class="bi bi-cash-coin me-1"></i>Mark Paid</button>
+                      data-amount="{{ row.due_total | inr(2) if can(current_user, 'rentals', 'pricing') else '—' }}"><i class="bi bi-cash-coin me-1"></i>Mark Paid</button>
               {% endif %}
               {% endif %}
               {% if r.status == 'active' and not row.returns %}

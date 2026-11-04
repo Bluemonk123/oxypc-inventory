@@ -50,7 +50,7 @@
             <td class="text-nowrap">
               {% if can(current_user, 'trade_partner_bids', 'edit') %}
               <form method="post" action="/trade-partner/bids/{{ s.top_bid.id }}/mark-won"
-                    onsubmit="return confirm('Mark the highest bid (₹{{ ((s.highest) | inr) }} by {{ s.account_name }}) as won for lot {{ s.lot_number }}?\n\nAll other live bids on this lot become lost.');">
+                    onsubmit="return confirm('Mark the highest bid ({% if can(current_user, 'trade_partner_bids', 'pricing') %}₹{{ ((s.highest) | inr) }}{% else %}—{% endif %} by {{ s.account_name }}) as won for lot {{ s.lot_number }}?\n\nAll other live bids on this lot become lost.');">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
                 <button class="btn btn-sm btn-success py-0 px-2"><i class="bi bi-trophy me-1"></i>Mark Won</button>
               </form>
@@ -377,7 +377,7 @@
 <script>
 function esc(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
   return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
-function inr(n){ return '₹' + Number(n || 0).toLocaleString('en-IN', {maximumFractionDigits:0}); }
+function inr(n){ return n == null ? '—' : '₹' + Number(n || 0).toLocaleString('en-IN', {maximumFractionDigits:0}); }   // null = no Pricing View
 
 document.getElementById('uploadDocModal').addEventListener('show.bs.modal', function(ev){
   var btn = ev.relatedTarget;

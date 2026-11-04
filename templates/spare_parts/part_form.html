@@ -24,7 +24,7 @@
               <label class="form-label fw-semibold">Part Name</label>
               <input type="text" name="name" class="form-control" placeholder="e.g. DDR4 8GB RAM" required>
             </div>
-            {% if can(current_user, 'spare_parts', 'pricing') %}
+            {% if can(current_user, 'spare_parts', 'pricing_add') %}
             <div class="col-md-6">
               <label class="form-label fw-semibold">Unit Price (₹)</label>
               <div class="input-group">

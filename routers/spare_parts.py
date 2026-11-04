@@ -731,6 +731,10 @@ async def create_part(
     current_user: User = Depends(allowed),
     _perm: User = Depends(require_module_perm("spare_parts", "add")),
 ):
+    # Pricing Add (2026-11-03): price 0 when the role may not set prices.
+    from utils.price_export import can_add_prices as _cap
+    if not _cap(current_user, "spare_parts"):
+        unit_price = "0"
     part = SparePart(part_code=part_code, name=name, category=category,
                      unit_price=float(unit_price), min_stock_alert=min_stock_alert,
                      supplier=supplier or None, notes=notes or None, source='new')
@@ -798,6 +802,9 @@ async def update_part(
         return RedirectResponse(url="/spare-parts?error=" + quote_plus(
             f"Not saved: part {_dup.part_code} already holds {name} / {make or '-'} / {model or '-'} in crate "
             f"{crate_number or '-'} — use Update Count on that row instead"), status_code=302)
+    from utils.price_export import price_unchanged as _pu   # Pricing Add (2026-11-03)
+    if _pu(current_user, "spare_parts", unit_price):
+        unit_price = str(part.unit_price or 0)
     part.name = name; part.category = category; part.unit_price = float(unit_price)
     part.min_stock_alert = min_stock_alert; part.supplier = supplier or None; part.notes = notes or None
     # Lot/make/model are optional and blank-means-clear, so an operator can
@@ -1025,6 +1032,9 @@ async def bulk_upload_parts(
     Item' flow: creates a PartsGRN header for the batch, a PartsGRNLineItem
     per row, and upserts the row into SparePart with the given source
     ('new' or 'harvest')."""
+    # Pricing Add (2026-11-03): file prices ignored without it (the GRN price formula applies).
+    from utils.price_export import can_add_prices as _cap
+    _px_up = _cap(current_user, "spare_parts")
     if source not in ("new", "harvest"):
         raise HTTPException(400, "Invalid source")
 
@@ -1059,7 +1069,7 @@ async def bulk_upload_parts(
                 continue
             part_id = _new_bulk_part_id()
             qty = int((row.get("physical_qty") or "0").strip() or 0)
-            price_raw = (row.get("price") or "").strip()
+            price_raw = (row.get("price") or "").strip() if _px_up else ""   # Pricing Add (2026-11-03)
             price = float(price_raw) if price_raw else 0.0
             category = (row.get("category") or "Other").strip() or "Other"
             invoice_number = (row.get("invoice_number") or "Internal").strip() or "Internal"

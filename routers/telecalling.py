@@ -395,6 +395,9 @@ async def add_record(
             pass
 
     _qty = int(quantity_required) if quantity_required and quantity_required.strip() else None
+    from utils.price_export import can_add_prices as _cap   # Pricing Add (2026-11-03)
+    if not _cap(current_user, 'telecalling'):
+        budget = None
     _budget = float(budget) if budget and budget.strip() else None
 
     rec = TelecallingRecord(

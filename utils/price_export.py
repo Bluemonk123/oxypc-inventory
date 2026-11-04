@@ -73,3 +73,120 @@ def price_export_block(user, module, back_url: str):
     return RedirectResponse(url=f"{back_url}{sep}error=" + quote_plus(
         "Your role cannot export prices (Pricing Export), so this priced file is not available."),
         status_code=302)
+
+
+# ── Pricing Add / Pricing View helpers (2026-11-03) ──────────────────────────
+def can_add_prices(user, module) -> bool:
+    """Pricing Add tick on `module` (or any of several). Admin always True."""
+    from models.role_permissions import has_perm
+    mods = (module,) if isinstance(module, str) else tuple(module)
+    return any(has_perm(_role(user), m, "pricing_add") for m in mods)
+
+
+def can_view_prices(user, module) -> bool:
+    """Pricing View tick on `module` (or any of several). Admin always True."""
+    from models.role_permissions import has_perm
+    mods = (module,) if isinstance(module, str) else tuple(module)
+    return any(has_perm(_role(user), m, "pricing") for m in mods)
+
+
+def keep_price(user, module, new, old):
+    """For records where a price is one field among many (device, lot, GRN,
+    part, contact...): without Pricing Add the submitted value is ignored and
+    the stored one kept (None on a new record). The rest of the form saves."""
+    return new if can_add_prices(user, module) else old
+
+
+def price_add_block(user, module, back_url: str):
+    """For pages whose whole purpose is entering a price/amount (New Sale, New
+    Parts Sale, New Rental, New Quote, New PO...): None when the user has Pricing
+    Add on `module`, else a redirect back with a red notice. The matching POST
+    is refused by the action guard as well (route_actions: ('add','pricing_add'))."""
+    from urllib.parse import quote_plus
+    from fastapi.responses import RedirectResponse
+    if can_add_prices(user, module):
+        return None
+    sep = "&" if "?" in back_url else "?"
+    return RedirectResponse(url=f"{back_url}{sep}error=" + quote_plus(
+        "Your role does not have Pricing Add permission here. Ask an admin to tick Pricing Add in the Permission Matrix."),
+        status_code=302)
+
+
+def price_unchanged(user, module, raw) -> bool:
+    """True when a submitted price field must NOT be applied (2026-11-03):
+    no Pricing Add, or the field came back blank from a role that cannot see
+    the current price (Add-only roles get an empty input; blank = keep)."""
+    if not can_add_prices(user, module):
+        return True
+    blank = raw is None or str(raw).strip() == ""
+    return blank and not can_view_prices(user, module)
+
+
+def _num(raw, default=0.0):
+    try:
+        return float(str(raw).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def credit_new(user, module, raw):
+    """Credit limit on a new contact/dealer: 0 without Pricing Add."""
+    return _num(raw) if can_add_prices(user, module) else 0.0
+
+
+def credit_edit(user, module, raw, current):
+    """Credit limit on an edit: stored value kept without Pricing Add (or when an
+    Add-only role leaves the hidden-value field blank)."""
+    if price_unchanged(user, module, raw):
+        return current
+    return _num(raw)
+
+
+_PRICE_KEY_WORDS = ("price", "amount", "cost", "invoice_value", "quote_given", "budget", "credit_limit", "outstanding")
+_PRICE_KEYS_EXACT = {"sgst", "cgst", "igst", "value"}
+
+
+def strip_price_keys(row: dict, user, module) -> dict:
+    """Bulk uploads (2026-11-03): without Pricing Add, a row's price/amount
+    columns are dropped before it is processed (the rest imports as usual)."""
+    if can_add_prices(user, module):
+        return row
+    def _is_price(k):
+        k = (k or "").strip().lower().replace(" ", "_")
+        return k in _PRICE_KEYS_EXACT or any(w in k for w in _PRICE_KEY_WORDS)
+    return {k: v for k, v in row.items() if not _is_price(k)}
+
+
+def price_view_block(user, module, back_url: str = "/"):
+    """Pages that are nothing but amounts (ageing, ledger, receivables, payments,
+    printed invoices / receipts...): None with Pricing View on `module`, else a
+    redirect back with a red notice instead of a page of blanks (2026-11-03)."""
+    from urllib.parse import quote_plus
+    from fastapi.responses import RedirectResponse
+    if can_view_prices(user, module):
+        return None
+    sep = "&" if "?" in back_url else "?"
+    return RedirectResponse(url=f"{back_url}{sep}error=" + quote_plus(
+        "Your role cannot view prices here (Pricing View), so this page is not available."),
+        status_code=302)
+
+
+def blank_prices(user, module, obj, keys):
+    """JSON feeds (2026-11-03): without Pricing View on `module`, the given keys
+    are set to None everywhere in `obj` (dicts / lists, nested). Returns obj."""
+    if can_view_prices(user, module):
+        return obj
+    want = set(keys)
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k in list(o):
+                if k in want:
+                    o[k] = None
+                else:
+                    walk(o[k])
+        elif isinstance(o, list):
+            for x in o:
+                walk(x)
+    walk(obj)
+    return obj

@@ -1110,7 +1110,7 @@ document.getElementById('lot_id').addEventListener('change', async function() {
     items.forEach(item => {
       const opt = document.createElement('option');
       opt.value = item.id;
-      opt.textContent = `${item.brand || ''} ${item.model || ''} — ₹${item.unit_price}`;
+      opt.textContent = `${item.brand || ''} ${item.model || ''}` + (item.unit_price == null ? '' : ` — ₹${item.unit_price}`);
       sel.appendChild(opt);
     });
   } catch(e) {}

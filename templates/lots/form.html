@@ -109,7 +109,7 @@
             </div>
           </div>
 
-          {% if can(current_user, 'lots', 'pricing') %}
+          {% if price_field_shown(current_user, 'lots') %}
           <!-- ════════════════ SECTION 3: Financial & GST ════════════════ -->
           <div class="bg-light rounded p-3 mb-4">
             <h6 class="fw-bold text-primary mb-3"><i class="bi bi-currency-rupee me-2"></i>Financial & GST</h6>
@@ -122,8 +122,8 @@
                 <div class="input-group">
                   <span class="input-group-text">₹</span>
                   <input type="number" name="buying_price" class="form-control"
-                         placeholder="0.00 (default 0)" min="0" step="0.01"
-                         value="{{ lot.buying_price if lot else (prefill.price if prefill else '') }}">
+                         min="0" step="0.01"
+                         {{ price_input_attrs(current_user, 'lots', (lot.buying_price if lot else (prefill.price if prefill else '')), '0.00 (default 0)') }}>
                 </div>
                 <div class="form-text">Shown to dealers as Base Price — bids start here.</div>
               </div>
@@ -132,8 +132,8 @@
                 <div class="input-group">
                   <span class="input-group-text">₹</span>
                   <input type="number" name="selling_price" class="form-control"
-                         placeholder="What we aim to realise" min="0" step="0.01"
-                         value="{{ lot.selling_price or '' if lot else '' }}">
+                         min="0" step="0.01"
+                         {{ price_input_attrs(current_user, 'lots', (lot.selling_price or '' if lot else ''), 'What we aim to realise') }}>
                 </div>
                 <div class="form-text">Internal target — never shown in the partner portal.</div>
               </div>
@@ -142,8 +142,8 @@
                 <div class="input-group">
                   <span class="input-group-text">₹</span>
                   <input type="number" name="invoice_value" class="form-control"
-                         placeholder="Total invoice value" min="0" step="0.01"
-                         value="{{ lot.invoice_value or '' if lot else '' }}">
+                         min="0" step="0.01"
+                         {{ price_input_attrs(current_user, 'lots', (lot.invoice_value or '' if lot else ''), 'Total invoice value') }}>
                 </div>
               </div>
             </div>
@@ -154,8 +154,8 @@
                 <div class="input-group">
                   <span class="input-group-text">₹</span>
                   <input type="number" name="taxable_amount" class="form-control"
-                         placeholder="Pre-tax amount" min="0" step="0.01"
-                         value="{{ lot.taxable_amount or '' if lot else '' }}">
+                         min="0" step="0.01"
+                         {{ price_input_attrs(current_user, 'lots', (lot.taxable_amount or '' if lot else ''), 'Pre-tax amount') }}>
                 </div>
               </div>
               <div class="col-md-3">
@@ -163,8 +163,8 @@
                 <div class="input-group">
                   <span class="input-group-text">₹</span>
                   <input type="number" name="sgst" class="form-control"
-                         placeholder="State GST amount" min="0" step="0.01"
-                         value="{{ lot.sgst or '' if lot else '' }}">
+                         min="0" step="0.01"
+                         {{ price_input_attrs(current_user, 'lots', (lot.sgst or '' if lot else ''), 'State GST amount') }}>
                 </div>
               </div>
               <div class="col-md-3">
@@ -172,8 +172,8 @@
                 <div class="input-group">
                   <span class="input-group-text">₹</span>
                   <input type="number" name="cgst" class="form-control"
-                         placeholder="Central GST amount" min="0" step="0.01"
-                         value="{{ lot.cgst or '' if lot else '' }}">
+                         min="0" step="0.01"
+                         {{ price_input_attrs(current_user, 'lots', (lot.cgst or '' if lot else ''), 'Central GST amount') }}>
                 </div>
               </div>
               <div class="col-md-3">
@@ -181,21 +181,21 @@
                 <div class="input-group">
                   <span class="input-group-text">₹</span>
                   <input type="number" name="igst" class="form-control"
-                         placeholder="Integrated GST amount" min="0" step="0.01"
-                         value="{{ lot.igst or '' if lot else '' }}">
+                         min="0" step="0.01"
+                         {{ price_input_attrs(current_user, 'lots', (lot.igst or '' if lot else ''), 'Integrated GST amount') }}>
                 </div>
               </div>
             </div>
           </div>
           {% else %}
-          {# Not allowed to see/set pricing: carry current values through so an edit does not clear them. #}
-          <input type="hidden" name="buying_price" value="{{ lot.buying_price if lot else '' }}">
-          <input type="hidden" name="selling_price" value="{{ lot.selling_price or '' if lot else '' }}">
-          <input type="hidden" name="invoice_value" value="{{ lot.invoice_value or '' if lot else '' }}">
-          <input type="hidden" name="taxable_amount" value="{{ lot.taxable_amount or '' if lot else '' }}">
-          <input type="hidden" name="sgst" value="{{ lot.sgst or '' if lot else '' }}">
-          <input type="hidden" name="cgst" value="{{ lot.cgst or '' if lot else '' }}">
-          <input type="hidden" name="igst" value="{{ lot.igst or '' if lot else '' }}">
+          {# No Pricing View/Add: empty fields — the server keeps the stored prices (2026-11-03). #}
+          <input type="hidden" name="buying_price" value="">
+          <input type="hidden" name="selling_price" value="">
+          <input type="hidden" name="invoice_value" value="">
+          <input type="hidden" name="taxable_amount" value="">
+          <input type="hidden" name="sgst" value="">
+          <input type="hidden" name="cgst" value="">
+          <input type="hidden" name="igst" value="">
           {% endif %}
 
           <!-- ════════════════ SECTION 4: Notes ════════════════ -->

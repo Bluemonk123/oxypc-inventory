@@ -1,3 +1,4 @@
+from utils.price_export import blank_prices as _blank_prices   # Pricing View (2026-11-03)
 """
 Device Management — Search, Detail, Edit
 Provides a global inventory browser and per-device history view.
@@ -151,7 +152,7 @@ async def search_tags(q: str = "", db: AsyncSession = Depends(get_db),
     Hard Drive, Grade, Device Price)."""
     q = (q or "").strip()
     if len(q) < 2:
-        return JSONResponse({"results": []})
+        return JSONResponse(_blank_prices(current_user, 'devices', {"results": []}, ['device_price']))
     rows = (await db.execute(
         select(Device, Lot.lot_number)
         .join(Lot, Device.lot_id == Lot.id, isouter=True)
@@ -180,7 +181,7 @@ async def search_tags(q: str = "", db: AsyncSession = Depends(get_db),
             "grade": device.grade.value if device.grade else "—",
             "device_price": f"{device.device_price:.2f}" if device.device_price is not None else None,
         })
-    return JSONResponse({"results": results})
+    return JSONResponse(_blank_prices(current_user, 'devices', {"results": results}, ['device_price']))
 
 
 @router.get("/api/quick-search")
@@ -2239,6 +2240,13 @@ async def device_edit_save(
     current_user: User = Depends(edit_allowed),
     _perm: User = Depends(require_additional_perm("edit_devices")),
 ):
+    # Pricing Add (2026-11-03): without it the price fields are ignored (old values kept).
+    from utils.price_export import can_add_prices as _cap
+    from utils.price_export import price_unchanged as _pu
+    if _pu(current_user, "devices", device_price_input):
+        device_price_input = ""
+    _keep_min = _pu(current_user, "devices", min_selling_price_input)
+    _keep_max = _pu(current_user, "devices", max_selling_price_input)
     device = await _get_device_or_404(barcode, db)
 
     # ── Editable Tag Number (up to 100 chars). Check uniqueness BEFORE mutating
@@ -2347,14 +2355,18 @@ async def device_edit_save(
             device.device_price = float(device_price_input)
         except ValueError:
             pass
-    if min_selling_price_input.strip():
+    if _keep_min:
+        pass   # no Pricing Add (or blank from an Add-only role): keep stored value
+    elif min_selling_price_input.strip():
         try:
             device.min_selling_price = float(min_selling_price_input)
         except ValueError:
             pass
     else:
         device.min_selling_price = None
-    if max_selling_price_input.strip():
+    if _keep_max:
+        pass   # no Pricing Add (or blank from an Add-only role): keep stored value
+    elif max_selling_price_input.strip():
         try:
             device.max_selling_price = float(max_selling_price_input)
         except ValueError:

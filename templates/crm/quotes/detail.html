@@ -199,9 +199,9 @@ Date: {{ quote.quote_date.strftime('%d %b %Y') if quote.quote_date else '' }}
 Valid Until: {{ quote.valid_until.strftime('%d %b %Y') if quote.valid_until else 'On Request' }}
 
 Items:
-{% for item in items %}{{ loop.index }}. {{ item.device_type }}{% if item.grade %} (Grade {{ item.grade }}){% endif %} — Qty: {{ item.quantity }} x Rs.{{ ((item.unit_price) | inr) }} = Rs.{{ ((item.total_price) | inr) }}
+{% for item in items %}{{ loop.index }}. {{ item.device_type }}{% if item.grade %} (Grade {{ item.grade }}){% endif %} — Qty: {{ item.quantity }} x {% if can(current_user, 'crm_quotes', 'pricing') %}Rs.{{ ((item.unit_price) | inr) }}{% else %}—{% endif %} = {% if can(current_user, 'crm_quotes', 'pricing') %}Rs.{{ ((item.total_price) | inr) }}{% else %}—{% endif %}
 {% endfor %}
-Total: Rs.{{ ((quote.total_amount) | inr) }}
+Total: {% if can(current_user, 'crm_quotes', 'pricing') %}Rs.{{ ((quote.total_amount) | inr) }}{% else %}—{% endif %}
 {% if quote.payment_terms %}
 Payment Terms: {{ quote.payment_terms }}{% endif %}
 

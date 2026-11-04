@@ -292,14 +292,14 @@
                 {% if item.screen_size %}<span class="badge bg-light text-dark border me-1">{{ item.screen_size }}"</span>{% endif %}
               </td>
               <td>{% if item.grade %}<span class="badge bg-dark bg-opacity-10 text-dark border">{{ item.grade }}</span>{% else %}—{% endif %}</td>
-              <td class="text-end fw-semibold">₹{{ ((item.unit_price) | inr) }}</td>
+              <td class="text-end fw-semibold">{% if can(current_user, 'lots', 'pricing') %}₹{{ ((item.unit_price) | inr) }}{% else %}—{% endif %}</td>
               <td class="text-center">{{ item.qty }}</td>
-              <td class="text-end fw-bold text-success">₹{{ ((item.unit_price * item.qty) | inr) }}</td>
+              <td class="text-end fw-bold text-success">{% if can(current_user, 'lots', 'pricing') %}₹{{ ((item.unit_price * item.qty) | inr) }}{% else %}—{% endif %}</td>
               <td class="text-muted small">{{ item.notes or '' }}</td>
               <td class="text-nowrap">
                 {% if can(current_user, 'lots', 'edit') %}
                 <button class="btn btn-xs btn-outline-secondary py-0 px-1 me-1"
-                        onclick='editLineItem({{ {'id': item.id|string, 'sub_category': item.sub_category, 'brand': item.brand or '', 'model': item.model or '', 'cpu': item.cpu or '', 'generation': item.generation or '', 'ram_gb': item.ram_gb, 'has_ram': item.has_ram, 'storage_gb': item.storage_gb, 'storage_type': item.storage_type or '', 'has_storage': item.has_storage, 'screen_size': item.screen_size or '', 'grade': item.grade or '', 'unit_price': item.unit_price|string, 'qty': item.qty, 'notes': item.notes or ''} | tojson }})' title="Edit">
+                        onclick='editLineItem({{ {'id': item.id|string, 'sub_category': item.sub_category, 'brand': item.brand or '', 'model': item.model or '', 'cpu': item.cpu or '', 'generation': item.generation or '', 'ram_gb': item.ram_gb, 'has_ram': item.has_ram, 'storage_gb': item.storage_gb, 'storage_type': item.storage_type or '', 'has_storage': item.has_storage, 'screen_size': item.screen_size or '', 'grade': item.grade or '', 'unit_price': (item.unit_price|string) if can(current_user, 'lots', 'pricing') else '', 'qty': item.qty, 'notes': item.notes or ''} | tojson }})' title="Edit">
                   <i class="bi bi-pencil" style="font-size:.7rem;"></i>
                 </button>
                 {% endif %}
@@ -317,7 +317,7 @@
             <tr>
               <td colspan="6" class="text-end fw-bold">Grand Total</td>
               <td class="text-center fw-bold" id="footerQty">{{ ns.grand_qty }}</td>
-              <td class="text-end fw-bold text-warning" id="footerTotal">₹{{ ((ns.grand_total) | inr) }}</td>
+              <td class="text-end fw-bold text-warning" id="footerTotal">{% if can(current_user, 'lots', 'pricing') %}₹{{ ((ns.grand_total) | inr) }}{% else %}—{% endif %}</td>
               <td colspan="2"></td>
             </tr>
           </tfoot>
@@ -454,10 +454,15 @@
               <option value="Scrap">Scrap</option>
             </select>
           </div>
+          {% if can(current_user, 'lots', 'pricing_add') %}
           <div class="col-md-3">
-            <label class="form-label fw-semibold">Unit Price (₹) <span class="text-danger">*</span></label>
-            <input type="number" id="liUnitPrice" class="form-control form-control-sm" placeholder="3500" min="0" step="0.01" required>
+            <label class="form-label fw-semibold">Unit Price (₹){% if can(current_user, 'lots', 'pricing') %} <span class="text-danger">*</span>{% endif %}</label>
+            <input type="number" id="liUnitPrice" class="form-control form-control-sm" min="0" step="0.01"
+                   placeholder="{{ '3500' if can(current_user, 'lots', 'pricing') else 'Hidden — type to change' }}">
           </div>
+          {% else %}{# Pricing Add off (2026-11-03): no price field; the server keeps / zeroes it #}
+          <input type="hidden" id="liUnitPrice" value="">
+          {% endif %}
           <div class="col-md-2">
             <label class="form-label fw-semibold">Qty <span class="text-danger">*</span></label>
             <input type="number" id="liQty" class="form-control form-control-sm" value="1" min="1" required>
@@ -647,7 +652,7 @@ function editLineItem(item) {
   document.getElementById('liStorageType').value = item.storage_type || '';
   document.getElementById('liHasStorage').checked = item.has_storage !== false;
   document.getElementById('liGrade').value    = item.grade || '';
-  document.getElementById('liUnitPrice').value = item.unit_price || '';
+  document.getElementById('liUnitPrice').value = LI_CAN_VIEW_PRICE ? (item.unit_price || '') : '';
   document.getElementById('liQty').value      = item.qty || 1;
   document.getElementById('liNotes').value    = item.notes || '';
   updateLiPreview();
@@ -668,7 +673,7 @@ function getLineItemPayload() {
     storage_type: document.getElementById('liStorageType').value,
     has_storage:  document.getElementById('liHasStorage').checked,
     grade:        document.getElementById('liGrade').value,
-    unit_price:   parseFloat(document.getElementById('liUnitPrice').value) || 0,
+    unit_price:   document.getElementById('liUnitPrice').value === '' ? null : (parseFloat(document.getElementById('liUnitPrice').value) || 0),
     qty:          parseInt(document.getElementById('liQty').value) || 1,
     notes:        document.getElementById('liNotes').value,
   };
@@ -683,8 +688,8 @@ function updateLiPreview() {
   else if (p.storage_gb) specs.push(`${p.storage_gb} GB`);
   else if (!p.has_storage) specs.push('No HDD/SSD');
   const label = [p.sub_category, p.brand, p.model, specs.length ? `[${specs.join(', ')}]` : ''].filter(Boolean).join(' — ');
-  const total = (p.unit_price * p.qty).toLocaleString('en-IN', {style:'currency', currency:'INR', maximumFractionDigits:0});
-  document.getElementById('liPreview').innerHTML = `<strong>${label}</strong> &nbsp;·&nbsp; ₹${p.unit_price.toLocaleString('en-IN')} × ${p.qty} = <strong>${total}</strong>`;
+  const total = ((p.unit_price || 0) * p.qty).toLocaleString('en-IN', {style:'currency', currency:'INR', maximumFractionDigits:0});
+  document.getElementById('liPreview').innerHTML = `<strong>${label}</strong> &nbsp;·&nbsp; ₹${(p.unit_price || 0).toLocaleString('en-IN')} × ${p.qty} = <strong>${total}</strong>`;
 }
 
 ['liSubCat','liBrand','liModel','liCpu','liGen','liScreen','liRam','liHasRam','liStorageGb','liStorageType','liHasStorage','liGrade','liUnitPrice','liQty','liNotes'].forEach(id => {
@@ -692,10 +697,12 @@ function updateLiPreview() {
   if (el) el.addEventListener('input', updateLiPreview), el.addEventListener('change', updateLiPreview);
 });
 
+const LI_CAN_VIEW_PRICE = {{ 'true' if can(current_user, 'lots', 'pricing') else 'false' }};
+const LI_CAN_ADD_PRICE = {{ 'true' if can(current_user, 'lots', 'pricing_add') else 'false' }};
 async function saveLineItem() {
   const editId = document.getElementById('liEditId').value;
   const payload = getLineItemPayload();
-  if (!payload.unit_price) { alert('Unit price is required'); return; }
+  if (!payload.unit_price && LI_CAN_VIEW_PRICE && LI_CAN_ADD_PRICE) { alert('Unit price is required'); return; }
 
   const url = editId
     ? `/lots/${LOT_ID}/line-items/${editId}`

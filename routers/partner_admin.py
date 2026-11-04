@@ -1,3 +1,4 @@
+from utils.price_export import blank_prices as _blank_prices   # Pricing View (2026-11-03)
 """External Partner — internal admin screens (/trade-partner).
 
 Staff-facing: partner account provisioning, listings manager, bookings queue,
@@ -1871,12 +1872,12 @@ async def lot_captured_bids(
     )).scalars().all())
     rows = [r for r in rows if r["lot_number"] == lot_number]
     from fastapi.responses import JSONResponse
-    return JSONResponse({"lot_number": lot_number, "bids": [{
+    return JSONResponse(_blank_prices(current_user, 'trade_partner_bids', {"lot_number": lot_number, "bids": [{
         "bid_id": str(r["bid"].id), "bid_number": r["bid"].bid_number,
         "amount": float(r["bid"].bid_amount),
         "account_name": r["account_name"], "manager_name": r["manager_name"],
         "account_contact": r["account_contact"],
-    } for r in rows]})
+    } for r in rows]}, ['amount']))
 
 
 async def _lot_model_summary(db: AsyncSession, lot_id) -> list[dict]:
@@ -1965,7 +1966,7 @@ async def po_preview(
                     "device_type": li.sub_category or "-",
                     "qty": li.qty or 0,
                 })
-    return JSONResponse({
+    return JSONResponse(_blank_prices(current_user, 'trade_partner_bids', {
         "bid_number": bid.bid_number,
         "lot_number": r["lot_number"],
         "account_name": r["account_name"],
@@ -1973,7 +1974,7 @@ async def po_preview(
         "manager_name": r["manager_name"],
         "total": float(bid.bid_amount),
         "items": items,
-    })
+    }, ['total', 'amount', 'unit_price', 'price']))
 
 
 @router.post("/bids/{bid_id}/generate-po")
@@ -2097,9 +2098,9 @@ async def bid_payment_details(
         .order_by(PartnerBidPayment.submitted_at.desc())
     )).scalars().first()
     if not pay:
-        return JSONResponse({"bid_number": bid.bid_number, "has_payment": False,
-                             "message": "Payment not received yet."})
-    return JSONResponse({
+        return JSONResponse(_blank_prices(current_user, 'trade_partner_bids', {"bid_number": bid.bid_number, "has_payment": False,
+                             "message": "Payment not received yet."}, ['payment_amount', 'amount', 'bid_amount', 'total', 'price']))
+    return JSONResponse(_blank_prices(current_user, 'trade_partner_bids', {
         "bid_number": bid.bid_number, "has_payment": True,
         "payment_date": pay.payment_date.strftime("%d-%b-%Y") if pay.payment_date else "-",
         "payment_mode": (pay.payment_mode or "-").replace("_", " ").title(),
@@ -2111,7 +2112,7 @@ async def bid_payment_details(
                         else "Verification Pending at Finance team"),
         "verified_by": pay.verified_by or "",
         "verified_at": pay.verified_at.strftime("%d-%b-%Y %H:%M") if pay.verified_at else "",
-    })
+    }, ['payment_amount', 'amount', 'bid_amount', 'total', 'price']))
 
 
 @router.post("/bids/{bid_id}/mark-won")

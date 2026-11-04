@@ -185,6 +185,9 @@ async def create_opp(
             saved_filename = safe_name
 
     qty = _i(required_qty)
+    from utils.price_export import can_add_prices as _cap   # Pricing Add (2026-11-03)
+    if not _cap(current_user, 'crm_sales_opp'):
+        budget_per_unit = estimated_value = None
     bpu = _n(budget_per_unit)
     est = _n(estimated_value) or (round(qty * bpu, 2) if qty and bpu else None)
 
@@ -638,8 +641,11 @@ async def update_opp(
     opp.required_qty = _i(required_qty)
     opp.material_type = material_type or None
     opp.grade_required = grade_required or None
-    opp.budget_per_unit = _n(budget_per_unit)
-    opp.estimated_value = _n(estimated_value)
+    from utils.price_export import price_unchanged as _pu   # Pricing Add (2026-11-03)
+    if not _pu(current_user, 'crm_sales_opp', budget_per_unit):
+        opp.budget_per_unit = _n(budget_per_unit)
+    if not _pu(current_user, 'crm_sales_opp', estimated_value):
+        opp.estimated_value = _n(estimated_value)
     opp.expected_close_date = _d(expected_close_date)
     opp.priority = priority
     opp.assigned_to = assigned_to

@@ -102,11 +102,11 @@
 
   <div class="totals">
     <table>
-      <tr><td>Rental Price ({{ lines | length }} tag(s))</td><td class="r">₹{{ ret.rental_price | inr(2) }}</td></tr>
-      <tr><td>Daily Rate (per tag, {{ rental_days }} day(s))</td><td class="r">₹{{ ret.daily_rate | inr(2) }}</td></tr>
+      <tr><td>Rental Price ({{ lines | length }} tag(s))</td><td class="r">{% if can(current_user, 'rentals', 'pricing') %}₹{{ ret.rental_price | inr(2) }}{% else %}—{% endif %}</td></tr>
+      <tr><td>Daily Rate (per tag, {{ rental_days }} day(s))</td><td class="r">{% if can(current_user, 'rentals', 'pricing') %}₹{{ ret.daily_rate | inr(2) }}{% else %}—{% endif %}</td></tr>
       <tr><td>Extra Days</td><td class="r">{{ ret.extra_days }}</td></tr>
       <tr class="grand"><td>{{ 'Outstanding Due' if ret.decision == 'payment_due' else 'Outstanding (Waived Off)' }}</td>
-        <td class="r">₹{{ ret.outstanding_amount | inr(2) }}</td></tr>
+        <td class="r">{% if can(current_user, 'rentals', 'pricing') %}₹{{ ret.outstanding_amount | inr(2) }}{% else %}—{% endif %}</td></tr>
       {% if ret.paid_at %}<tr><td>Paid ({{ ret.payment_reference }})</td><td class="r">{{ ret.paid_at | ist_date }}</td></tr>{% endif %}
       {% if ret.decision == 'waive_off' and ret.waiver_reason %}<tr><td>Waiver Reason</td><td class="r">{{ ret.waiver_reason }}</td></tr>{% endif %}
     </table>

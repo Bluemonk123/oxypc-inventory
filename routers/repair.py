@@ -1157,10 +1157,14 @@ async def repair_list(stage: str, request: Request,
             if (costing.expected_sale_value and costing.total_cost and
                     costing.total_cost >= costing.expected_sale_value * SCRAP_WARNING_RATIO):
                 pct = int(costing.total_cost / costing.expected_sale_value * 100)
-                scrap_warning_map[str(costing.device_id)] = (
-                    f"Cost ₹{costing.total_cost:,.0f} is {pct}% of "
-                    f"expected sale ₹{costing.expected_sale_value:,.0f} — consider scrapping"
-                )
+                from utils.price_export import can_view_prices as _cvp   # Pricing View (2026-11-03)
+                if _cvp(current_user, ("repair_l1", "repair_l2", "repair_l3")):
+                    scrap_warning_map[str(costing.device_id)] = (
+                        f"Cost ₹{costing.total_cost:,.0f} is {pct}% of "
+                        f"expected sale ₹{costing.expected_sale_value:,.0f} — consider scrapping"
+                    )
+                else:
+                    scrap_warning_map[str(costing.device_id)] = f"Repair cost is {pct}% of expected sale — consider scrapping"
 
         open_device_ids = {str(j.device_id) for j, *_ in open_jobs}
         suggest_qc_ids = {str(did) for did in device_ids} - open_device_ids
@@ -1605,6 +1609,9 @@ async def complete_repair(
         select(RepairAttempt).where(RepairAttempt.device_id == device.id, RepairAttempt.level == level)
     )).scalars().all()
     attempt_no  = len(prev_att) + 1
+    from utils.price_export import can_add_prices as _cap   # Pricing Add (2026-11-03)
+    if not _cap(current_user, ("repair_l1", "repair_l2", "repair_l3")):
+        cost = "0"
     repair_cost = Decimal(cost) if cost and cost.strip() else Decimal("0")
     time_mins   = int(time_spent) if time_spent and time_spent.strip() else None
     outcome     = ("scrapped" if final_status == "Scrap" else

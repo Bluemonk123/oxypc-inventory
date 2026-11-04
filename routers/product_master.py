@@ -562,6 +562,8 @@ async def hardware_page(request: Request, db: AsyncSession = Depends(get_db),
         "pending": (len(ram_rows) - priced(ram_rows)) + (len(sto_rows) - priced(sto_rows)),
         "waiting_products": len(waiting_products),
     }
+    from utils.price_export import blank_prices as _bp   # Pricing View (2026-11-03)
+    _bp(current_user, "pm_hardware", ram_rows, ["price"]); _bp(current_user, "pm_hardware", sto_rows, ["price"])
     return templates.TemplateResponse("product_master/hardware.html", {
         "request": request, "current_user": current_user,
         "ram_rows": ram_rows, "storage_rows": sto_rows, "stats": stats,
@@ -813,6 +815,11 @@ async def _calc_view(db) -> dict:
 @router.get("/pricing-calculator", response_class=HTMLResponse)
 async def pricing_calculator_page(request: Request, db: AsyncSession = Depends(get_db),
                                   current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "pm_pricing_calculator", "/dashboard")
+    if _pvblk is not None:
+        return _pvblk
     return templates.TemplateResponse("product_master/pricing_calculator.html", {
         "request": request, "current_user": current_user,
         "view": await _calc_view(db), "columns": CALC_COLUMNS,
@@ -1034,6 +1041,11 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
 @router.get("/pricing", response_class=HTMLResponse)
 async def pricing_page(request: Request, db: AsyncSession = Depends(get_db),
                        current_user: User = Depends(require_module_perm(PERM_PRICING))):
+    # Pricing View (2026-11-03): this page is all prices — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "pm_product_pricing", "/dashboard")
+    if _pvblk is not None:
+        return _pvblk
     return templates.TemplateResponse("product_master/pricing.html", {
         "request": request, "current_user": current_user, "products": await _product_rows(db),
         "dropdowns": await _dropdowns(db), "comp_lists": await _comp_lists(db),
@@ -1119,6 +1131,11 @@ async def pricing_save(product_id: str, request: Request,
 @router.get("/spare-parts", response_class=HTMLResponse)
 async def spare_parts_page(request: Request, db: AsyncSession = Depends(get_db),
                            current_user: User = Depends(require_module_perm(PERM_SPARE))):
+    # Pricing View (2026-11-03): this page is all prices — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "pm_spare_parts", "/dashboard")
+    if _pvblk is not None:
+        return _pvblk
     return templates.TemplateResponse("product_master/spare_parts.html", {
         "request": request, "current_user": current_user,
         "products": await _product_rows(db), "part_fields": PART_FIELDS,

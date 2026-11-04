@@ -1,6 +1,8 @@
 from templates_config import templates
 from datetime import datetime, date
 from utils.timezone import app_now
+from utils.price_export import credit_new as _credit_new, credit_edit as _credit_edit   # Pricing Add (2026-11-03)
+from utils.price_export import can_add_prices as _px_add, price_unchanged as _px_keep, strip_price_keys as _strip_price_keys
 from utils.price_export import price_export_block as _price_block   # Pricing Export (2026-11-03)
 import csv
 import io
@@ -1303,6 +1305,11 @@ async def overdue_orders(
     current_user: User = Depends(require_sales),
 ):
 
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "dealers", "/dealers")
+    if _pvblk is not None:
+        return _pvblk
     now = app_now()  # naive UTC — must match DB column (DateTime, no tz)
     rows = (await db.execute(
         select(DealerOrder, Dealer)
@@ -1340,6 +1347,11 @@ async def dealer_ageing(
     current_user: User = Depends(require_sales),
 ):
     """Dealer ageing analysis — buckets outstanding amounts by overdue days."""
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "dealers", "/dealers")
+    if _pvblk is not None:
+        return _pvblk
 
     rows = (await db.execute(
         select(DealerOrder, Dealer)
@@ -1966,6 +1978,7 @@ async def dealer_calls_bulk_upload(
     alloc_code = await dealer_code_allocator(db)
 
     for i, row in enumerate(rows, start=2):  # row 1 = header
+        row = _strip_price_keys(row, current_user, "dealers")   # Pricing Add (2026-11-03)
         try:
             phone = row.get("dealer_phone", "").strip()
             name = row.get("business_name", "").strip()
@@ -2120,7 +2133,7 @@ async def create_dealer(
     website: str = Form(default=None),
     google_cid: str = Form(default=None),
     preferred_categories: str = Form(default=None),
-    credit_limit: float = Form(default=0),
+    credit_limit: str = Form(default=""),   # str: an Add-only role sends it blank (2026-11-03)
     assigned_to: str = Form(default=None),
     status: str = Form(default="active"),
     notes: str = Form(default=None),
@@ -2153,7 +2166,7 @@ async def create_dealer(
         website=(website or "").strip() or None,
         google_cid=parse_google_cid(google_cid),
         preferred_categories=preferred_categories,
-        credit_limit=credit_limit,
+        credit_limit=_credit_new(current_user, 'dealers', credit_limit),
         assigned_to=current_user.username,  # 2026-10-27: always the logged-in user
         status=status,
         notes=notes,
@@ -2253,6 +2266,11 @@ async def dealer_order_invoice(
     current_user: User = Depends(require_sales),
 ):
     """Printable GST invoice for a dealer order."""
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "dealers", "/dealers")
+    if _pvblk is not None:
+        return _pvblk
 
     import uuid as _uuid
     try:
@@ -2515,7 +2533,7 @@ async def update_dealer(
     website: str = Form(default=None),
     google_cid: str = Form(default=None),
     preferred_categories: str = Form(default=None),
-    credit_limit: float = Form(default=0),
+    credit_limit: str = Form(default=""),   # str: an Add-only role sends it blank (2026-11-03)
     assigned_to: str = Form(default=None),
     status: str = Form(default="active"),
     notes: str = Form(default=None),
@@ -2548,7 +2566,7 @@ async def update_dealer(
     dealer.state = state
     dealer.pincode = pincode
     dealer.preferred_categories = preferred_categories
-    dealer.credit_limit = credit_limit
+    dealer.credit_limit = _credit_edit(current_user, 'dealers', credit_limit, dealer.credit_limit)
     record_dealer_assignment(db, dealer, current_user.username, current_user.username)
     dealer.assigned_to = current_user.username  # 2026-10-27: always the logged-in user
     dealer.status = status
@@ -2783,6 +2801,8 @@ async def log_call(
     next_dt = _combine_date_time(next_followup_date, next_followup_time)
 
     _duration = int(duration_mins) if duration_mins and duration_mins.strip() else None
+    if not _px_add(current_user, 'dealers'):   # Pricing Add (2026-11-03)
+        quote_given = asking_price = None
     _quote = float(quote_given) if quote_given and quote_given.strip() else None
     _qty = int(qty) if qty and qty.strip().isdigit() else None
     _monthly_qty = int(monthly_quantity) if monthly_quantity and monthly_quantity.strip().isdigit() else None
@@ -2917,7 +2937,8 @@ async def update_call(
     call.call_outcome = call_outcome or None
     call.next_followup_date = next_dt
     call.items_discussed = (items_discussed or "").strip() or None
-    call.quote_given = float(quote_given) if quote_given and quote_given.strip() else None
+    if not _px_keep(current_user, 'dealers', quote_given):   # Pricing Add (2026-11-03)
+        call.quote_given = float(quote_given) if quote_given and quote_given.strip() else None
     call.whatsapp_sent = bool(whatsapp_sent)
     call.notes = (notes or "").strip() or None
     call.calling_remark = (calling_remark or "").strip() or None
@@ -2930,7 +2951,8 @@ async def update_call(
     # untouched here so historical values captured via the old form (or the
     # Dealer Management quick-edit modal) are not silently wiped on save.
     call.monthly_quantity = int(monthly_quantity) if monthly_quantity and monthly_quantity.strip().isdigit() else None
-    call.asking_price = float(asking_price) if asking_price and asking_price.strip() else None
+    if not _px_keep(current_user, 'dealers', asking_price):   # Pricing Add (2026-11-03)
+        call.asking_price = float(asking_price) if asking_price and asking_price.strip() else None
     call.deal_status = (deal_status or "").strip() or None
     call.requirements_preferred_config = (requirements_preferred_config or "").strip() or None
     call.whom_to_sell = (whom_to_sell or "").strip() or None
@@ -3183,6 +3205,11 @@ async def dealer_ledger(
     # dealer-record management that Attendance Group managers were granted.
     current_user: User = Depends(require_sales_mgr),
 ):
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "dealers", "/dealers")
+    if _pvblk is not None:
+        return _pvblk
     dr = await db.execute(select(Dealer).where(Dealer.id == dealer_id))
     dealer = dr.scalar_one_or_none()
     if not dealer:

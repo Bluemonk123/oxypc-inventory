@@ -1,3 +1,4 @@
+from utils.price_export import blank_prices as _blank_prices   # Pricing View (2026-11-03)
 """
 Partner Payments — finance verification of partner bid payments.
 
@@ -58,9 +59,9 @@ async def payment_details(bid_id: str, db: AsyncSession = Depends(get_db),
         .order_by(PartnerBidPayment.submitted_at.desc())
     )).scalars().first()
     if not pay:
-        return JSONResponse({"has_payment": False,
-                             "message": "The partner has not submitted payment details yet."})
-    return JSONResponse({
+        return JSONResponse(_blank_prices(current_user, 'partner_payments', {"has_payment": False,
+                             "message": "The partner has not submitted payment details yet."}, ['payment_amount', 'amount', 'bid_amount', 'total', 'price']))
+    return JSONResponse(_blank_prices(current_user, 'partner_payments', {
         "has_payment": True,
         "payment_date": pay.payment_date.strftime("%d-%b-%Y") if pay.payment_date else "-",
         "payment_mode": (pay.payment_mode or "-").replace("_", " ").title(),
@@ -69,7 +70,7 @@ async def payment_details(bid_id: str, db: AsyncSession = Depends(get_db),
         "submitted_by": pay.submitted_by or "-",
         "submitted_at": pay.submitted_at.strftime("%d-%b-%Y %H:%M") if pay.submitted_at else "-",
         "verified": bool(pay.verified),
-    })
+    }, ['payment_amount', 'amount', 'bid_amount', 'total', 'price']))
 
 
 @router.post("/{bid_id}/verify")

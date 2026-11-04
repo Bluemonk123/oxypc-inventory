@@ -140,10 +140,10 @@ def _can_view_pricing(current_user):
 
 
 def _can_set_price(current_user):
-    """Kept for old templates: Ready to Sale's Pricing tick (2026-10-26)."""
+    """Kept for old templates: Ready to Sale's Pricing Add tick (2026-11-03)."""
     if current_user is None:
         return True
-    return _can(current_user, "sales", "pricing")
+    return _can(current_user, "sales", "pricing_add")
 
 
 def _any_perm(role, *modules):
@@ -261,11 +261,73 @@ def _can(current_user, module, action="enable"):
         return False
     role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
     mods = (module,) if isinstance(module, str) else tuple(module)
-    return any(_has_perm(role, m, action) for m in mods)
+    # 2026-11-03: when every route behind a module's tick also needs Pricing Add
+    # (e.g. Parts Sales "add" = record a sale with its price), the button needs
+    # it too — so {% if can(u, 'part_sales', 'add') %} hides New Parts Sale for
+    # a role without Pricing Add, matching what the server would refuse.
+    return any(_has_perm(role, m, action)
+               and (action not in _price_bound_actions(m) or _has_perm(role, m, "pricing_add"))
+               for m in mods)
+
+
+_PRICE_BOUND = None
+
+
+def _price_bound_actions(module):
+    """Actions of `module` whose every mapped route also needs pricing_add."""
+    global _PRICE_BOUND
+    if _PRICE_BOUND is None:
+        from auth.route_actions import ROUTE_ACTIONS
+        seen: dict = {}
+        for (meth, _path), entry in ROUTE_ACTIONS.items():
+            if not entry or meth == "GET":
+                continue
+            mods_, act = entry
+            acts = act if isinstance(act, tuple) else (act,)
+            for m in ((mods_,) if isinstance(mods_, str) else mods_):
+                for a in acts:
+                    if a == "pricing_add":
+                        continue
+                    seen.setdefault((m, a), []).append("pricing_add" in acts)
+        _PRICE_BOUND = {}
+        for (m, a), flags in seen.items():
+            if all(flags):
+                _PRICE_BOUND.setdefault(m, set()).add(a)
+    return _PRICE_BOUND.get(module, ())
 # Actions: enable, add, upload, edit, delete, pricing, export (Download / Export, 2026-10-26).
 
 
 templates.env.globals["can"] = _can
+
+
+def _price_field_shown(current_user, module):
+    """Show a price input when the role may see (Pricing View) or set (Pricing Add) it."""
+    return _can(current_user, module, "pricing") or _can(current_user, module, "pricing_add")
+
+
+def _price_input_attrs(current_user, module, value, placeholder=""):
+    """Attributes for a price <input> (2026-11-03):
+      View + Add -> editable, current value
+      View only  -> read-only, current value
+      Add only   -> editable, empty ("current price hidden"); blank keeps the stored value
+    Use inside {% if price_field_shown(current_user, module) %}."""
+    from markupsafe import Markup, escape
+    view = _can(current_user, module, "pricing")
+    add = _can(current_user, module, "pricing_add")
+    val = "" if value is None else value
+    if view and add:
+        return Markup(f'value="{escape(val)}"' + (f' placeholder="{escape(placeholder)}"' if placeholder else ""))
+    if view:
+        return Markup(f'value="{escape(val)}" readonly tabindex="-1" style="background:#e9ecef" '
+                      f'title="Your role cannot change prices (Pricing Add)"')
+    if not add:
+        return Markup('value="" disabled placeholder="—" title="Your role cannot see or set prices"')
+    return Markup('value="" placeholder="Hidden — type a new price to change it" '
+                  'title="Current price hidden (no Pricing View). Leave blank to keep it."')
+
+
+templates.env.globals["price_field_shown"] = _price_field_shown
+templates.env.globals["price_input_attrs"] = _price_input_attrs
 templates.env.globals["has_explicit_perm"] = _has_explicit_perm
 templates.env.globals["any_perm"] = _any_perm
 templates.env.globals["narrowly_scoped_to"] = _narrowly_scoped_to

@@ -154,11 +154,11 @@
               <i class="bi bi-unlock"></i> Open Tag
             </button>
             {% endif %}
-            {% if can(current_user, 'sales', 'add') %}
+            {% if can(current_user, 'sales', 'add') and can(current_user, 'sales', 'pricing_add') %}
             <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 as-is-lot-sell-btn"
                     data-barcodes='{{ r.barcodes | tojson }}'>Sell</button>
             {% endif %}
-            {% if can(current_user, 'sales', 'add') %}
+            {% if can(current_user, 'sales', 'add') and can(current_user, 'sales', 'pricing_add') %}
             <button type="button" class="btn btn-sm btn-success py-0 px-2 as-is-lot-newsell-btn"
                     title="Open the New Tag Sale page with this lot's tags"
                     data-barcodes='{{ r.barcodes | tojson }}'>New Sell</button>

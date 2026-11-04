@@ -1,4 +1,5 @@
 """CRM Contacts router — unified buyer/supplier registry."""
+from utils.price_export import credit_new as _credit_new, credit_edit as _credit_edit   # Pricing Add (2026-11-03)
 from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
 import csv
 import io
@@ -1295,7 +1296,7 @@ async def create_contact(
     pincode:        str = Form(default=None),
     source_type:    str = Form(default=None),
     buyer_type:     str = Form(default=None),
-    credit_limit:   float = Form(default=0),
+    credit_limit:   str = Form(default=""),   # str: an Add-only role sends it blank (2026-11-03)
     tags:           str = Form(default=None),
     notes:          str = Form(default=None),
     status:         str = Form(default="active"),
@@ -1325,7 +1326,7 @@ async def create_contact(
             address=address or None, city=city or None,
             state=state or None, pincode=pincode or None,
             source_type=source_type or None, buyer_type=buyer_type or None,
-            credit_limit=credit_limit,
+            credit_limit=_credit_new(current_user, 'crm_contacts', credit_limit),
             tags=tags or None, notes=notes or None, status=status,
             assigned_to=assigned_to or current_user.username,
             bank_cheque_number=bank_cheque_number or None,
@@ -1570,7 +1571,7 @@ async def update_contact(
     pincode:        str = Form(default=None),
     source_type:    str = Form(default=None),
     buyer_type:     str = Form(default=None),
-    credit_limit:   float = Form(default=0),
+    credit_limit:   str = Form(default=""),   # str: an Add-only role sends it blank (2026-11-03)
     tags:           str = Form(default=None),
     notes:          str = Form(default=None),
     status:         str = Form(default="active"),
@@ -1606,7 +1607,7 @@ async def update_contact(
     contact.pincode = pincode or None
     contact.source_type = source_type or None
     contact.buyer_type = buyer_type or None
-    contact.credit_limit = credit_limit
+    contact.credit_limit = _credit_edit(current_user, 'crm_contacts', credit_limit, contact.credit_limit)
     contact.tags = tags or None
     contact.notes = notes or None
     contact.status = status

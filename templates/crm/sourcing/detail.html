@@ -503,7 +503,7 @@
                    falling back to list Unit Price — profitability must reflect
                    what we actually offered, not the vendor's asking price. #}
                 {% for li in deal_po_items %}
-                <option value="{{ li.id }}" data-qty="{{ li.quantity or 0 }}" data-unit="{{ li.offer_price if li.offer_price else (li.unit_price or 0) }}">{{ li.item_name }}</option>
+                <option value="{{ li.id }}" data-qty="{{ li.quantity or 0 }}" data-unit="{{ (li.offer_price if li.offer_price else (li.unit_price or 0)) if can(current_user, 'crm_sourcing', 'pricing') else '' }}">{{ li.item_name }}</option>
                 {% endfor %}
                 {% if deal_po_items %}
                 {% set _all_eff = namespace(total=0) %}
@@ -583,7 +583,7 @@
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-list-check me-1 text-primary"></i>PO Line Items ({{ deal_po_items|length }})</span>
         <div class="d-flex gap-1">
-          {% if can(current_user, 'crm_sourcing', 'add') %}<button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addDealPoItemModal"><i class="bi bi-plus-lg me-1"></i>Add PO Items</button>{% endif %}
+          {% if can(current_user, 'crm_sourcing', 'add') and can(current_user, 'crm_sourcing', 'pricing_add') %}<button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#addDealPoItemModal"><i class="bi bi-plus-lg me-1"></i>Add PO Items</button>{% endif %}
           {% if can(current_user, 'crm_sourcing', 'add') %}<button type="button" class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#generatePoModal"><i class="bi bi-file-earmark-arrow-down me-1"></i>Generate PO</button>{% endif %}
         </div>
       </div>
@@ -605,12 +605,12 @@
                   <span class="text-primary fw-semibold">₹{{ ((li.offer_price) | inr(2)) }}</span>
                   {% if can(current_user, 'crm_sourcing', 'pricing_add') %}{# Pricing Add (2026-11-03) #}
                   <button type="button" class="btn btn-sm btn-link py-0 px-1 offer-price-btn"
-                          data-item-id="{{ li.id }}" data-total-price="{{ li.total_price or 0 }}"
-                          data-offer-price="{{ li.offer_price }}">Edit</button>
+                          data-item-id="{{ li.id }}" data-total-price="{{ (li.total_price or 0) if can(current_user, 'crm_sourcing', 'pricing') else '' }}"
+                          data-offer-price="{{ (li.offer_price) if can(current_user, 'crm_sourcing', 'pricing') else '' }}">Edit</button>
                   {% endif %}
                   {% elif can(current_user, 'crm_sourcing', 'pricing_add') %}
                   <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 offer-price-btn"
-                          data-item-id="{{ li.id }}" data-total-price="{{ li.total_price or 0 }}"
+                          data-item-id="{{ li.id }}" data-total-price="{{ (li.total_price or 0) if can(current_user, 'crm_sourcing', 'pricing') else '' }}"
                           data-offer-price="">Offer Price</button>
                   {% else %}—
                   {% endif %}

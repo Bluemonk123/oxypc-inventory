@@ -595,6 +595,7 @@ async def startup_event():
             await _add_pricing_split_cols(_sess)
             await _merge_pricing_visibility_once(_sess)
             await _pricing_lockdown_once(_sess)
+            await _pricing_add_finance_once(_sess)
             await _migrate_sourcing_stages_once(_sess)
             await _apply_account_status_once(_sess)
             await _migrate_sales_stages_once(_sess)
@@ -1017,6 +1018,26 @@ async def _pricing_lockdown_once(sess) -> None:
         "'system', now())"), {"v": note[:500]})
     await sess.commit()
     print(f"  [Perms] Pricing lockdown applied — {note}")
+
+
+async def _pricing_add_finance_once(sess) -> None:
+    """One-time (2026-11-04, Pankaj): finance_manager joins the Pricing Add roles
+    (with spare_parts_manager, inventory_manager, counter_sales) — Pricing Add
+    ticked on every module; Pricing View / Export stay off. Runs after
+    pricing_lockdown_v1, so it also applies where that already ran."""
+    from sqlalchemy import text as _t
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'pricing_add_finance_v1'"))).first()
+    if done:
+        return
+    res = await sess.execute(_t(
+        "UPDATE role_module_permissions SET can_pricing_add = TRUE, updated_at = now(), updated_by = 'system' "
+        "WHERE role_name = 'finance_manager'"))
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('pricing_add_finance_v1', :v, 'Pricing Add on for finance_manager', 'system', now())"),
+        {"v": str(res.rowcount)})
+    await sess.commit()
+    print(f"  [Perms] Pricing Add on for finance_manager — {res.rowcount} matrix row(s)")
 
 
 async def _apply_account_status_once(sess) -> None:

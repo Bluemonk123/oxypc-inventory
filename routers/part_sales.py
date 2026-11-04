@@ -353,6 +353,10 @@ async def _next_part_sale_number(db: AsyncSession) -> str:
 async def part_sale_new_form(request: Request, db: AsyncSession = Depends(get_db),
                              current_user: User = Depends(allowed),
                              part_id: str = Query(default="")):
+    from utils.price_export import price_add_block   # a sale sets its price (2026-11-03)
+    _blk = price_add_block(current_user, "part_sales", "/part-sales")
+    if _blk is not None:
+        return _blk
     parts = (await db.execute(
         select(SparePart)
         .where(SparePart.source == "new", SparePart.is_trashed.is_(False))
@@ -368,6 +372,8 @@ async def part_sale_new_form(request: Request, db: AsyncSession = Depends(get_db
         "id": str(p.id), "name": p.name, "make": p.make or "", "model": p.model or "",
         "available": _stock_of(p, consumed), "unit_price": float(p.unit_price or 0),
     } for p in parts if str(p.id) in approved and _stock_of(p, consumed) > 0]
+    from utils.price_export import blank_prices as _bp   # Pricing View (2026-11-03)
+    _bp(current_user, "part_sales", options, ["unit_price"])
     from utils.sales_person import sales_person_options
     return templates.TemplateResponse("parts/sale_new.html", {
         "request": request, "current_user": current_user,

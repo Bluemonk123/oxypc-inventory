@@ -15,7 +15,7 @@
   </div>
   <div>
     <div class="lt-tile h-100" style="--tc:#0F7A37">
-      <div class="lt-tile-count">₹{{ ((pipeline_value) | inr) }}</div>
+      <div class="lt-tile-count">{% if can(current_user, 'crm_sales_opp', 'pricing') %}₹{{ ((pipeline_value) | inr) }}{% else %}—{% endif %}</div>
       <div class="lt-tile-label">Pipeline Value</div>
       <i class="bi bi-currency-rupee lt-tile-wm"></i>
     </div>

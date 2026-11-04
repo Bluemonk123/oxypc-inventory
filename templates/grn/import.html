@@ -112,7 +112,7 @@
                       data-bs-toggle="modal" data-bs-target="#editGrnModal"
                       data-id="{{ g.id }}" data-inv="{{ g.invoice_number or '' }}" data-date="{{ g.invoice_date or '' }}"
                       data-sender="{{ g.sender_name or '' }}" data-qty="{{ g.quantity if g.quantity is not none else '' }}"
-                      data-amount="{{ g.amount if g.amount is not none else '' }}">
+                      data-amount="{{ g.amount if (g.amount is not none and can(current_user, ['grn', 'grn_post_iqc', 'trade_partner_manage_lots'], 'pricing')) else '' }}">
                 <i class="bi bi-pencil"></i> Edit
               </button>
               {% endif %}
@@ -160,7 +160,7 @@
           <div class="col-6"><label class="form-label fw-semibold">Quantity</label>
             <input type="number" name="quantity" id="e_qty" class="form-control" min="0"></div>
           <div class="col-6"><label class="form-label fw-semibold">Amount</label>
-            <input type="text" name="amount" id="e_amount" class="form-control"></div>
+            <input type="text" name="amount" id="e_amount" class="form-control" {% if not can(current_user, ['grn', 'grn_post_iqc', 'trade_partner_manage_lots'], 'pricing_add') %}disabled placeholder="No Pricing Add permission" title="Your role cannot set prices (Pricing Add)"{% endif %}></div>
         </div>
       </div>
       <div class="modal-footer">

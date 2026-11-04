@@ -130,8 +130,11 @@ async def action_permission_middleware(request: Request, call_next):
     if role is None or role == "admin":
         return await call_next(request)          # not logged in -> the route's own auth handles it
     modules = resolve_module(request.method, path, module, path_params)
-    if not has_any_perm(role, modules, action):
-        label = ACTION_LABELS.get(action, action)
-        msg = f"Your role does not have {label} permission here. Ask an admin to tick {label} in the Permission Matrix."
-        return _denied(request, msg)
+    # An entry may need several ticks (2026-11-03): ('sales', ('add', 'pricing_add'))
+    # — a sale is both adding a record and setting its price, so both are required.
+    for act in (action if isinstance(action, tuple) else (action,)):
+        if not has_any_perm(role, modules, act):
+            label = ACTION_LABELS.get(act, act)
+            msg = f"Your role does not have {label} permission here. Ask an admin to tick {label} in the Permission Matrix."
+            return _denied(request, msg)
     return await call_next(request)

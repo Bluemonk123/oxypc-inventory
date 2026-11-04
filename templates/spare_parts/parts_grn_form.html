@@ -119,18 +119,18 @@
     </div>
     <div class="row g-3 mb-3">
       <div class="col-md-4">
-        <label class="form-label small fw-semibold">Invoice Price (₹){% if not ro %} <span class="text-danger">*</span>{% endif %}</label>
-        {% if ro %}<p class="form-control-plaintext">{% if grn.invoice_value %}{{ grn.invoice_value | inr(2) }}{% else %}—{% endif %}</p>
-        {% else %}<input type="number" name="invoice_value" id="hdrInvValue" step="0.01" class="form-control form-control-sm pg-tax-in" required>{% endif %}
+        <label class="form-label small fw-semibold">Invoice Price (₹){% if not ro and can(current_user, 'spare_parts_purchase', 'pricing_add') %} <span class="text-danger">*</span>{% endif %}</label>
+        {% if ro %}<p class="form-control-plaintext">{% if grn.invoice_value and can(current_user, 'spare_parts_purchase', 'pricing') %}{{ grn.invoice_value | inr(2) }}{% else %}—{% endif %}</p>
+        {% else %}<input type="number" name="invoice_value" id="hdrInvValue" step="0.01" class="form-control form-control-sm pg-tax-in" {% if can(current_user, 'spare_parts_purchase', 'pricing_add') %}required{% else %}disabled placeholder="No Pricing Add permission"{% endif %}>{% endif %}
       </div>
       <div class="col-md-4">
         <label class="form-label small fw-semibold">Tax Amount (₹) {% if not ro %}<span class="badge text-bg-light border fw-normal" id="pgGstLbl"></span>{% endif %}</label>
-        {% if ro %}{% set _ig = grn.igst %}<p class="form-control-plaintext">{% if grn.tax_amount is not none %}{{ grn.tax_amount | inr(2) }} <span class="badge text-bg-light border fw-normal">{{ 'GST' if grn.igst else 'CGST+SGST' }}</span>{% else %}—{% endif %}</p>
+        {% if ro %}{% set _ig = grn.igst %}<p class="form-control-plaintext">{% if grn.tax_amount is not none and can(current_user, 'spare_parts_purchase', 'pricing') %}{{ grn.tax_amount | inr(2) }} <span class="badge text-bg-light border fw-normal">{{ 'GST' if grn.igst else 'CGST+SGST' }}</span>{% else %}—{% endif %}</p>
         {% else %}<input type="text" id="pgTax" class="form-control form-control-sm bg-light" readonly tabindex="-1">{% endif %}
       </div>
       <div class="col-md-4">
         <label class="form-label small fw-semibold">Taxable Amount (₹)</label>
-        {% if ro %}<p class="form-control-plaintext">{% if grn.invoice_value is not none and grn.tax_amount is not none %}{{ (grn.invoice_value - grn.tax_amount) | inr(2) }}{% else %}—{% endif %}</p>
+        {% if ro %}<p class="form-control-plaintext">{% if grn.invoice_value is not none and grn.tax_amount is not none and can(current_user, 'spare_parts_purchase', 'pricing') %}{{ (grn.invoice_value - grn.tax_amount) | inr(2) }}{% else %}—{% endif %}</p>
         {% else %}<input type="text" id="pgTaxable" class="form-control form-control-sm bg-light" readonly tabindex="-1">{% endif %}
       </div>
     </div>
@@ -304,7 +304,7 @@
           </div>
           <div class="col-md-2">
             <label class="form-label small fw-semibold">Price (₹)</label>
-            <input type="number" id="li_price" class="form-control form-control-sm" step="0.01" min="0">
+            <input type="number" id="li_price" class="form-control form-control-sm" step="0.01" min="0" {% if not can(current_user, 'spare_parts_purchase', 'pricing_add') %}disabled placeholder="No Pricing Add"{% endif %}>
           </div>
           <div class="col-md-3">
             <label class="form-label small fw-semibold">Vehicle Number</label>

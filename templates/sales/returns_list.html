@@ -61,7 +61,7 @@
             <div class="d-flex align-items-center gap-1 flex-nowrap"><span class="badge bg-danger">Payment Due</span>
               {% if can(current_user, 'returns', 'edit') %}<button type="button" class="btn btn-sm btn-outline-success py-0 px-1" style="font-size:.7rem"
                       data-bs-toggle="modal" data-bs-target="#returnPaidModal" data-id="{{ ret.id }}" data-tag="{{ barcode }}"
-                      data-amount="{{ ((ret.refund_amount or 0) | inr) }}">Mark Paid</button>{% endif %}</div>
+                      data-amount="{{ ((ret.refund_amount or 0) | inr) if can(current_user, 'returns', 'pricing') else '—' }}">Mark Paid</button>{% endif %}</div>
             {% endif %}
           </td>
           <td>{{ ret.reason or '—' }}</td>
@@ -98,7 +98,7 @@
                     data-serial-number="{{ ret.serial_captured or '—' }}"
                     data-make="{{ brand or '—' }}"
                     data-model="{{ model or '—' }}"
-                    data-paid-repair="{{ '%.2f'|format(ret.refund_amount) if ret.refund_amount is not none else '0.00' }}"
+                    data-paid-repair="{{ ('%.2f'|format(ret.refund_amount) if ret.refund_amount is not none else '0.00') if can(current_user, 'returns', 'pricing') else '' }}"
                     data-charge="{% if ret.charge_decision == 'waive_off' %}Waived Off{% if ret.waiver_reason %} — {{ ret.waiver_reason }}{% endif %}{% elif ret.charge_decision == 'payment_due' and ret.paid_at %}Paid ({{ ret.payment_reference }}){% elif ret.charge_decision == 'payment_due' %}Payment Due{% else %}—{% endif %}">
               <i class="bi bi-receipt me-1"></i>Receipt
             </button>

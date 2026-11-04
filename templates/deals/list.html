@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}All Deals — OxyPC{% endblock %}
 {% block page_title %}All Deals{% endblock %}
-{% block content %}
+{% block content %}{% set _deal_pv = can(current_user, 'trade_partner_all_deals', 'pricing') %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <span class="badge bg-secondary fs-6 px-3 py-2">{{ deals|length }} deal(s)</span>
@@ -27,7 +27,7 @@
           <td>
             <button type="button" class="btn btn-link btn-sm p-0 font-monospace fw-bold deal-detail-btn"
                     data-deal-number="{{ d.deal_number }}"
-                    data-items-full='[{% for it in d.items %}{"item_name":{{ it.item_name|tojson }},"quantity":{{ it.quantity }},"unit_price":{{ it.unit_price }},"total_price":{{ it.total_price }}}{% if not loop.last %},{% endif %}{% endfor %}]'>
+                    data-items-full='[{% for it in d.items %}{"item_name":{{ it.item_name|tojson }},"quantity":{{ it.quantity }},"unit_price":{{ it.unit_price if _deal_pv else 'null' }},"total_price":{{ it.total_price if _deal_pv else 'null' }}}{% if not loop.last %},{% endif %}{% endfor %}]'>
               {{ d.deal_number }}
             </button>
           </td>
@@ -240,8 +240,9 @@ function removeItemRow(btn) {
     var items = [];
     try { items = JSON.parse(this.getAttribute('data-items-full') || '[]'); } catch (e) {}
     var rows = items.map(function (it) {
-      return '<tr><td>' + esc(it.item_name) + '</td><td>' + esc(it.quantity) + '</td><td>₹' +
-             Number(it.unit_price).toFixed(2) + '</td><td>₹' + Number(it.total_price).toFixed(2) + '</td></tr>';
+      var m = function (v) { return v == null ? '—' : '₹' + Number(v).toFixed(2); };   // null = no Pricing View
+      return '<tr><td>' + esc(it.item_name) + '</td><td>' + esc(it.quantity) + '</td><td>' +
+             m(it.unit_price) + '</td><td>' + m(it.total_price) + '</td></tr>';
     }).join('');
     document.getElementById('dealDetailBody').innerHTML = rows ||
       '<tr><td colspan="4" class="text-muted text-center py-3">No items.</td></tr>';

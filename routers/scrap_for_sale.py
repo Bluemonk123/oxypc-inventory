@@ -404,6 +404,11 @@ async def create_custom_scrap_sale(request: Request, db: AsyncSession = Depends(
 @router.get("/scrap-sale-report", response_class=HTMLResponse)
 async def scrap_sale_report(request: Request, db: AsyncSession = Depends(get_db),
                             current_user: User = Depends(require_module_perm(SCRAP_SALE_REPORT_MODULE))):
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "scrap_sale_report", "/scrap-for-sale")
+    if _pvblk is not None:
+        return _pvblk
     sales = (await db.execute(
         select(ScrapSale).where(ScrapSale.is_trashed.isnot(True))
         .order_by(ScrapSale.sale_date.desc(), ScrapSale.sale_number.desc())

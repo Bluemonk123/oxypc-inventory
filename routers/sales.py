@@ -1497,6 +1497,11 @@ async def _sale_new_response(request: Request, barcode: str, barcodes: str, qty:
     list — still fine in a query string) and POST /sales/new (Multi-Sell
     with a large selection, which a GET would otherwise cram into the URL
     and risk a 414 Request-URI Too Large from the web server/proxy)."""
+    # A sale is entering its price: needs Pricing Add on Ready to Sale (2026-11-03).
+    from utils.price_export import price_add_block
+    _blk = price_add_block(current_user, "sales", back if (back or "").startswith("/") else "/sales/ready")
+    if _blk is not None:
+        return _blk
     device = None; lot = None; stage_error = None; approved_qty = None
     stock_price = None; prefill_barcode = None; prefill_qty = None; multi_count = 0
 
@@ -3217,6 +3222,9 @@ async def process_return(
     _w = effective_warranty_for_sale(sale)
     paid_repair_amount = None
     if not (_w and _w.get("status") == "active"):
+        from utils.price_export import can_add_prices as _cap   # Pricing Add (2026-11-03): default amount without it
+        if not _cap(current_user, "returns"):
+            refund_amount = ""
         try:
             paid_repair_amount = Decimal(refund_amount) if refund_amount else None
         except Exception:
@@ -3457,6 +3465,12 @@ async def process_external_return(
         qty = max(1, int(quantity))
     except (TypeError, ValueError):
         qty = 1
+    from utils.price_export import can_add_prices as _cap   # Pricing Add (2026-11-03)
+    if not _cap(current_user, "returns") and paid_repair:
+        # Not the role's to set: the Additional Rates default applies instead.
+        from models.cost_config import CostConfig as _CC
+        _row = (await db.execute(select(_CC).where(_CC.key == "default_paid_repair"))).scalar_one_or_none()
+        paid_repair = str(_row.value) if _row else "1500"
     try:
         paid_repair_amount = Decimal(paid_repair) if paid_repair else Decimal("0")
     except Exception:
@@ -3577,6 +3591,9 @@ async def process_credit_note(
     if not received_by:
         return RedirectResponse(
             url="/returns/new?active_tab=credit&error=Return+Received+By+is+required", status_code=302)
+    from utils.price_export import can_add_prices as _cap   # Pricing Add (2026-11-03)
+    if not _cap(current_user, "returns"):
+        debit_note_amount = ""
     try:
         amount = Decimal(debit_note_amount) if debit_note_amount.strip() else None
     except Exception:

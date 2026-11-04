@@ -270,7 +270,7 @@
               <div class="input-group">
                 <span class="input-group-text">₹</span>
                 <input type="number" step="0.01" name="paid_repair" class="form-control"
-                       value="{{ '%.2f'|format(default_paid_repair if default_paid_repair is defined else 1500) }}">
+                       value="{{ '%.2f'|format(default_paid_repair if default_paid_repair is defined else 1500) }}" {% if not can(current_user, 'returns', 'pricing_add') %}readonly tabindex="-1" style="background:#e9ecef" title="Default amount — your role cannot change it (Pricing Add)"{% endif %}>
               </div>
             </div>
             <div class="col-12 mt-0">{{ charge_choice('er') }}</div>
@@ -318,7 +318,7 @@
           </div>
           <div class="mb-3">
             <label class="form-label fw-semibold">Debit Note Amount</label>
-            <input type="number" step="0.01" min="0" name="debit_note_amount" class="form-control">
+            <input type="number" step="0.01" min="0" name="debit_note_amount" class="form-control" {% if not can(current_user, 'returns', 'pricing_add') %}disabled placeholder="No Pricing Add permission"{% endif %}>
           </div>
           <hr>
           <p class="text-muted small mb-2">Sender Details — shown on the Credit Note page as a contact badge.</p>
@@ -658,7 +658,7 @@
   var rental = null, tags = [];   // tags: [{barcode, make, model}]
 
   function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
-  function inr(n) { return '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
+  function inr(n) { return (rental && rental.total_price == null) || !isFinite(n) ? '—' : '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }   // null price = no Pricing View
   function msg(text, cls) { msgEl.innerHTML = text ? '<div class="small text-' + (cls || 'danger') + '">' + esc(text) + '</div>' : ''; }
   function iso(d) { return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2); }
   if (!received.value) received.value = iso(new Date());

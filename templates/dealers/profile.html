@@ -43,7 +43,7 @@
           <a href="/whatsapp/compose?dealer_id={{ dealer.id }}" class="btn btn-sm btn-outline-dark"><i class="bi bi-whatsapp me-1"></i>WhatsApp</a>
           #}
           {% if can(current_user, 'dealers', 'export') %}<a href="/dealers/{{ dealer.id }}/statement.csv" class="btn btn-sm btn-outline-secondary"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Statement</a>{% endif %}
-          {% if can(current_user, 'dealers', 'add') %}
+          {% if can(current_user, 'dealers', 'add') and can(current_user, 'dealers', 'pricing_add') %}
           <button type="button" class="btn btn-sm btn-info text-white" onclick='openQuotationModal({{ {"id": dealer.id|string, "business_name": dealer.business_name, "dealer_type": dealer.dealer_type, "phone": dealer.phone or "", "email": dealer.email or "", "address": dealer.address or "", "gstin": dealer.gstin or ""} | tojson }})'>
             <i class="bi bi-file-earmark-text me-1"></i>Quotation
           </button>
@@ -121,7 +121,7 @@
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Orders &amp; Invoices</span>
-        {% if can(current_user, 'dealers', 'add') %}
+        {% if can(current_user, 'dealers', 'add') and can(current_user, 'dealers', 'pricing_add') %}
         <a href="/dealers/{{ dealer.id }}/orders/new" class="btn btn-sm btn-success">
           <i class="bi bi-plus me-1"></i>New Order
         </a>
@@ -142,7 +142,7 @@
                 <td><span class="badge bg-{% if order.status=='paid' %}success{% elif order.status=='pending' %}warning{% else %}secondary{% endif %}">{{ order.status | title }}</span></td>
                 <td>
                   {% if order.due_amount > 0 %}
-                  {% if can(current_user, 'dealers', 'edit') %}
+                  {% if can(current_user, 'dealers', 'edit') and can(current_user, 'dealers', 'pricing_add') %}
                   <button class="btn btn-sm btn-outline-success me-1" data-bs-toggle="modal"
                           data-bs-target="#payModal{{ loop.index }}" title="Record Payment">
                     <i class="bi bi-cash"></i>
@@ -158,9 +158,9 @@
                         <form method="post" action="/dealers/{{ dealer.id }}/orders/{{ order.id }}/pay">
                           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                           <div class="modal-body">
-                            <label class="form-label small fw-semibold">Amount (₹) — Due: ₹{{ ((order.due_amount) | inr) }}</label>
+                            <label class="form-label small fw-semibold">Amount (₹) — Due: {% if can(current_user, 'dealers', 'pricing') %}₹{{ ((order.due_amount) | inr) }}{% else %}—{% endif %}</label>
                             <input type="number" name="amount" class="form-control form-control-sm mb-2"
-                                   value="{{ order.due_amount }}" min="0.01" step="0.01" required>
+                                   value="{{ order.due_amount if can(current_user, 'dealers', 'pricing') else '' }}" min="0.01" step="0.01" required>
                             <select name="payment_mode" class="form-select form-select-sm">
                               <option value="">— Mode —</option>
                               <option value="cash">Cash</option>
@@ -180,7 +180,7 @@
                   {# WhatsApp integration removed — reminder button disabled #}
                   {% endif %}
                   {% if order.status != 'cancelled' %}
-                  {% if can(current_user, 'dealers', 'edit') %}
+                  {% if can(current_user, 'dealers', 'edit') and can(current_user, 'dealers', 'pricing_add') %}
                   <button class="btn btn-sm btn-outline-secondary me-1" data-bs-toggle="modal"
                           data-bs-target="#cnModal{{ loop.index }}" title="Issue Credit Note / Return">
                     <i class="bi bi-arrow-return-left"></i>
@@ -197,11 +197,11 @@
                           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                           <div class="modal-body">
                             <label class="form-label small fw-semibold">
-                              Credit Amount (₹) — Order Total: ₹{{ ((order.total_amount) | inr) }}
+                              Credit Amount (₹) — Order Total: {% if can(current_user, 'dealers', 'pricing') %}₹{{ ((order.total_amount) | inr) }}{% else %}—{% endif %}
                             </label>
                             <input type="number" name="amount" class="form-control form-control-sm mb-2"
-                                   value="{{ order.due_amount }}" min="0.01"
-                                   max="{{ order.total_amount }}" step="0.01" required>
+                                   value="{{ order.due_amount if can(current_user, 'dealers', 'pricing') else '' }}" min="0.01"
+                                   {% if can(current_user, 'dealers', 'pricing') %}max="{{ order.total_amount }}"{% endif %} step="0.01" required>
                             <select name="reason" class="form-select form-select-sm mb-2">
                               <option value="">— Reason —</option>
                               {% for r in master_options('dealer_credit_reason') %}
@@ -298,11 +298,11 @@
                     <select name="order_id" class="form-select form-select-sm" style="min-width:130px" required>
                       <option value="">— Select Order —</option>
                       {% for ord in open_orders %}
-                      <option value="{{ ord.id }}">{{ ord.order_number }} (₹{{ ((ord.due_amount) | inr) }})</option>
+                      <option value="{{ ord.id }}">{{ ord.order_number }} ({% if can(current_user, 'dealers', 'pricing') %}₹{{ ((ord.due_amount) | inr) }}{% else %}—{% endif %})</option>
                       {% endfor %}
                     </select>
                     <button type="submit" class="btn btn-sm btn-outline-success"
-                            onclick="return confirm('Apply ₹{{ ((cn.amount) | inr) }} from {{ cn.credit_number }} to selected order?')">
+                            onclick="return confirm('Apply {% if can(current_user, 'dealers', 'pricing') %}₹{{ ((cn.amount) | inr) }}{% else %}—{% endif %} from {{ cn.credit_number }} to selected order?')">
                       Apply
                     </button>
                   </form>

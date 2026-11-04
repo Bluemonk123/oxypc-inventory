@@ -50,7 +50,7 @@
           <td>{{ d.device_type or '—' }}</td>
           <td><span class="badge bg-secondary">{{ d.grade }}</span></td>
           <td>{{ d.qty or '—' }}</td>
-          <td>{% if d.budget %}₹{{ ((d.budget) | inr) }}{% else %}—{% endif %}</td>
+          <td>{% if d.budget %}{% if can(current_user, 'sales', 'pricing') %}₹{{ ((d.budget) | inr) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
           <td><span class="badge bg-{{ 'danger' if d.priority == 'urgent' else 'warning text-dark' if d.priority == 'high' else 'secondary' }}">{{ d.priority }}</span></td>
           <td>{{ d.stage | replace('_', ' ') | title }}</td>
         </tr>
@@ -189,12 +189,12 @@
               title="Download the QC report of every ticked tag (zip)">
         <i class="bi bi-download me-1"></i>Bulk QC (<span id="readySelCount5">0</span>)
       </button>
-      <button {% if _ps or not can(current_user, _pm, 'add') %}hidden {% endif %}type="button" id="multiSellBtn" class="btn btn-sm btn-outline-success d-none" disabled>
+      <button {% if _ps or not can(current_user, _pm, 'add') or not can(current_user, _pm, 'pricing_add') %}hidden {% endif %}type="button" id="multiSellBtn" class="btn btn-sm btn-outline-success d-none" disabled>
         <i class="bi bi-cart-plus me-1"></i>Multi-Sell (<span id="readySelCount2">0</span>)
       </button>
       {# New Bulk Sale: same selection as Multi-Sell, opens the separate New Tag Sale
          page (per-tag prices, no quantity cap). Multi-Sell above is unchanged. #}
-      <button {% if _ps or not can(current_user, _pm, 'add') %}hidden {% endif %}type="button" id="newBulkSaleBtn" class="btn btn-sm btn-success d-none" disabled
+      <button {% if _ps or not can(current_user, _pm, 'add') or not can(current_user, _pm, 'pricing_add') %}hidden {% endif %}type="button" id="newBulkSaleBtn" class="btn btn-sm btn-success d-none" disabled
               title="Open the New Tag Sale page with the selected tags">
         <i class="bi bi-cart-plus me-1"></i>New Bulk Sale (<span id="readySelCount4">0</span>)
       </button>

@@ -1,3 +1,4 @@
+from utils.price_export import blank_prices as _blank_prices   # Pricing View (2026-11-03)
 """Part Estimation — cost the spare parts a lot needs before production starts.
 
 Lots Summary lists every lot with its tag count and how many Required=Yes part
@@ -69,6 +70,11 @@ async def part_estimation_page(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
+    # Pricing View (2026-11-03): this page is all prices — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "part_estimation", "/dashboard")
+    if _pvblk is not None:
+        return _pvblk
     lots = (await db.execute(
         select(Lot).where(Lot.is_trashed == False).order_by(desc(Lot.purchase_date))  # noqa: E712
     )).scalars().all()
@@ -219,10 +225,10 @@ async def lot_parts(
     for p in parts:
         p["unit_cost"] = prev_costs.get(p["part_name"], "")
 
-    return JSONResponse({
+    return JSONResponse(_blank_prices(current_user, 'part_estimation', {
         "ok": True, "lot_number": lot.lot_number, "parts": parts,
         "labour_cost": prev_labour, "notes": prev_notes,
-    })
+    }, ['labour_cost', 'unit_cost', 'price', 'cost']))
 
 
 @router.get("/{lot_id}/model-matrix")
@@ -260,12 +266,12 @@ async def lot_model_matrix_json(
         prev_labour = str(prev.labour_cost or 0)
         prev_notes = prev.notes or ""
 
-    return JSONResponse({
+    return JSONResponse(_blank_prices(current_user, 'part_estimation', {
         "ok": True, "lot_number": lot.lot_number, "groups": group_meta(),
         "models": models, "prev_costs": prev_costs,
         "labour_cost": prev_labour, "notes": prev_notes,
         "grade_options": grade_options(),
-    })
+    }, ['labour_cost', 'unit_cost', 'price', 'cost']))
 
 
 def _line_label(model: str, part: str) -> str:
@@ -616,11 +622,11 @@ async def lot_checklist_matrix_json(
         prev_prices = {f"{l.model_name}||{l.field_group}|{l.field_name}": str(l.unit_price) for l in prev_lines}
         prev_labour = str(prev.labour_cost or 0)
 
-    return JSONResponse({
+    return JSONResponse(_blank_prices(current_user, 'part_estimation', {
         "ok": True, "lot_number": lot.lot_number, "groups": checklist_svc.group_meta(),
         "models": models, "prev_prices": prev_prices, "labour_cost": prev_labour,
         "grade_options": grade_options(),
-    })
+    }, ['labour_cost', 'unit_cost', 'price', 'cost']))
 
 
 def _build_checklist_workbook(*, lot_number, generated_on, generated_by, grade, groups,

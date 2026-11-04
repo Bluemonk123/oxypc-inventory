@@ -142,6 +142,11 @@ async def supplier_payments(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "finance_supplier", "/accounts")
+    if _pvblk is not None:
+        return _pvblk
     if current_user.role not in FINANCE_ROLES:
         return RedirectResponse(url="/?error=Access+denied", status_code=302)
     total = (await db.execute(
@@ -183,6 +188,8 @@ async def supplier_payments_data(
 ):
     """DataTables server-side feed for the Payment History table — this list
     only grows, so it was rendered in full on every page load."""
+    from utils.price_export import can_view_prices as _cvp   # Pricing View (2026-11-03)
+    _pv_sup = _cvp(current_user, "finance_supplier")
     if current_user.role not in FINANCE_ROLES:
         return JSONResponse({"error": "Access denied"}, status_code=403)
     q = _supplier_payments_query(contact_id)
@@ -212,7 +219,7 @@ async def supplier_payments_data(
             f'<span class="badge bg-secondary">{esc(p.payment_mode or "—")}</span>',
             f'<span class="font-monospace small">{esc(p.reference_no or "—")}</span>',
             ('<span class="badge bg-warning text-dark">Advance</span>' if p.is_advance else "—"),
-            f'<span class="fw-semibold text-danger">₹{p.amount:,.0f}</span>',
+            (f'<span class="fw-semibold text-danger">₹{p.amount:,.0f}</span>' if _pv_sup else '—'),
             (f'<div class="text-nowrap">{"".join(doc_links)}</div>' if doc_links else "—"),
             esc(p.created_by or "—"),
             ('<span class="badge bg-success" title="Verified by ' + esc(p.verified_by or "—") + (" on " + p.verified_at.strftime("%d-%m-%Y") if p.verified_at else "") + '">Verified</span>'
@@ -302,6 +309,11 @@ async def customer_receipts(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "finance_customer", "/accounts")
+    if _pvblk is not None:
+        return _pvblk
     if current_user.role not in FINANCE_ROLES:
         return RedirectResponse(url="/?error=Access+denied", status_code=302)
     total = (await db.execute(
@@ -336,6 +348,8 @@ async def customer_receipts_data(
     current_user: User = Depends(get_current_user),
 ):
     """DataTables server-side feed for the Receipt History table."""
+    from utils.price_export import can_view_prices as _cvp   # Pricing View (2026-11-03)
+    _pv_cus = _cvp(current_user, "finance_customer")
     if current_user.role not in FINANCE_ROLES:
         return JSONResponse({"error": "Access denied"}, status_code=403)
     q = _customer_receipts_query(dealer_id)
@@ -364,7 +378,7 @@ async def customer_receipts_data(
             esc(r.dealer.business_name) if r.dealer else "—",
             f'<span class="badge bg-secondary">{esc(r.payment_mode or "—")}</span>',
             f'<span class="font-monospace small">{esc(r.reference_no or "—")}</span>',
-            f'<span class="fw-semibold text-success">₹{r.amount:,.0f}</span>',
+            (f'<span class="fw-semibold text-success">₹{r.amount:,.0f}</span>' if _pv_cus else '—'),
             (f'<div class="text-nowrap">{"".join(doc_links)}</div>' if doc_links else "—"),
             esc(r.created_by or "—"),
             ('<span class="badge bg-success" title="Verified by ' + esc(r.verified_by or "—") + (" on " + r.verified_at.strftime("%d-%m-%Y") if r.verified_at else "") + '">Verified</span>'
@@ -487,6 +501,11 @@ async def receipt_bulk_upload_form(
     request: Request,
     current_user: User = Depends(get_current_user),
 ):
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "finance_customer", "/accounts")
+    if _pvblk is not None:
+        return _pvblk
     if current_user.role not in FINANCE_ROLES:
         return RedirectResponse(url="/?error=Access+denied", status_code=302)
     return templates.TemplateResponse("accounts/receipts_bulk_upload.html", {

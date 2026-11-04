@@ -548,6 +548,11 @@ async def cost_config_view(
     # own "admin always passes" behaviour).
     current_user: User = Depends(require_module_perm("cost_config")),
 ):
+    # Pricing View (2026-11-03): this page is all prices — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "cost_config", "/dashboard")
+    if _pvblk is not None:
+        return _pvblk
     result = await db.execute(select(CostConfig))
     rows = {r.key: r for r in result.scalars().all()}
     from services.repair_cost import APPLY_CHOICES, labour_categories, load_repair_rates

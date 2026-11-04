@@ -18,7 +18,7 @@
 <div class="card border-0 shadow-sm mb-3{% if qg_hdr_card %} hdr-card{% endif %}">
   <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
     <span class="fw-semibold"><i class="bi bi-file-earmark-ruled me-1 text-primary"></i>Quotes Generated ({{ quote_rows|length }})</span>
-    <button {% if not can(current_user, _qm, 'add') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-primary" id="newQuoteBtn">
+    <button {% if not can(current_user, _qm, 'add') or not can(current_user, 'crm_quotes', 'pricing_add') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-primary" id="newQuoteBtn">
       <i class="bi bi-plus-lg me-1"></i>New Quote
     </button>
   </div>

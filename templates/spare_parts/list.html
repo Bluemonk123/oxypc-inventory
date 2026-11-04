@@ -137,7 +137,7 @@
   </div>
   <div>
     <div class="lt-tile h-100" style="--tc:#0F7A37">
-      <div class="lt-tile-count">&#8377;{{ total_stock_value | inr }}</div>
+      <div class="lt-tile-count">{% if can(current_user, 'spare_parts', 'pricing') %}&#8377;{{ total_stock_value | inr }}{% else %}—{% endif %}</div>
       <div class="lt-tile-label">Total Stock Value</div>
       <i class="bi bi-currency-rupee lt-tile-wm"></i>
     </div>
@@ -927,7 +927,7 @@
                 {% for b in part_brands %}<option>{{ b }}</option>{% endfor %}
               </select>
             </div>
-            {% if can(current_user, 'spare_parts', 'pricing') %}
+            {% if can(current_user, 'spare_parts', 'pricing_add') %}
             <div class="col-md-4">
               <label class="form-label small fw-semibold">Price (₹)</label>
               <input type="number" name="price" step="0.01" min="0" class="form-control form-control-sm">

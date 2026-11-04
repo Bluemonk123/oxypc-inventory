@@ -115,6 +115,10 @@ async def new_quote_form(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    from utils.price_export import price_add_block   # a quote is its prices (2026-11-03)
+    _blk = price_add_block(current_user, "crm_quotes", "/crm/quotes")
+    if _blk is not None:
+        return _blk
     # All accounts (any type) — the form filters them by Contact Type (2026-11-01).
     contacts_r = await db.execute(
         select(CRMContact)
@@ -570,6 +574,11 @@ async def quote_print(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "crm_quotes", "/crm/quotes")
+    if _pvblk is not None:
+        return _pvblk
     _blk = _price_block(current_user, 'crm_quotes', f"/crm/quotes/{quote_id}")   # Pricing Export (2026-11-03)
     if _blk is not None:
         return _blk

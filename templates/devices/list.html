@@ -330,7 +330,7 @@
           {% set ld_data = {
             'lot_number': l.lot_number,
             'supplier_name': l.supplier_name,
-            'buying_price': l.buying_price,
+            'buying_price': l.buying_price if can(current_user, 'devices', 'pricing') else None,
             'tags': l.tags,
           } %}
           <tr>

@@ -87,6 +87,10 @@ async def new_po_form(
 ):
     if current_user.role not in ADMIN_ROLES:
         return RedirectResponse(url="/crm/purchase-orders?error=Permission+denied", status_code=302)
+    from utils.price_export import price_add_block   # a PO is its prices (2026-11-03)
+    _blk = price_add_block(current_user, "crm_purchase_orders", "/crm/purchase-orders")
+    if _blk is not None:
+        return _blk
     deal = None
     if deal_id:
         r = await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.id == deal_id))
@@ -257,6 +261,11 @@ async def print_po(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "crm_purchase_orders", "/crm/purchase-orders")
+    if _pvblk is not None:
+        return _pvblk
     _blk = _price_block(current_user, 'crm_purchase_orders', f"/crm/purchase-orders/{po_id}")   # Pricing Export (2026-11-03)
     if _blk is not None:
         return _blk

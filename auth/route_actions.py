@@ -119,7 +119,7 @@ ROUTE_ACTIONS = {
     ('POST', '/sales/new/prefill'): None,  # sale_new_form_prefill: renders prefilled form (POST twin of GET)
     ('POST', '/sales/qc-reports'): ('sales', 'export'),  # bulk_qc_reports: Bulk QC zip of ticked Ready for Sale tags (2026-10-28)
     ('POST', '/sales/new/block'): None,  # sale_new_from_block: renders prefilled New Sale form from a block; already gated sales/add; the real write is /sales/new
-    ('POST', '/sales/new'): ('sales', 'add'),  # create_sale: create sale; existing code gates require_module_perm('sales','add') (path prefix would say sales_list)
+    ('POST', '/sales/new'): ('sales', ('add', 'pricing_add')),  # create_sale: create sale; existing code gates require_module_perm('sales','add') (path prefix would say sales_list)
     ('POST', '/sales/change-date'): ('sales_list', 'edit'),  # change_sale_date
     ('POST', '/sales/bulk-delete'): ('sales_list', 'delete'),  # bulk_delete_sales
     ('POST', '/sales/export-selected'): ('sales_list', 'export'),  # export_selected_sales: export
@@ -149,7 +149,7 @@ ROUTE_ACTIONS = {
     ('POST', '/spare-parts/bulk-delete'): ('spare_parts', 'delete'),  # bulk_delete_parts
     ('POST', '/spare-parts/bulk-edit'): ('spare_parts', 'edit'),  # bulk_edit_parts: Make / Category / Unit Price on ticked rows (price also needs pricing_add), 2026-11-03
     ('POST', '/spare-parts/bulk-upload'): ('spare_parts', 'upload'),  # bulk_upload_parts
-    ('POST', '/spare-parts/purchase'): ('spare_parts_purchase', 'add'),  # record_purchase
+    ('POST', '/spare-parts/purchase'): ('spare_parts_purchase', ('add', 'pricing_add')),  # record_purchase
     ('POST', '/spare-parts/consume'): ('parts_consumption', 'add'),  # record_consumption
     ('POST', '/ram-tracking'): ('parts_tracking', 'add'),  # record_ram
     ('POST', '/spare-parts/{part_id}/procure'): ('spare_parts', 'add'),  # procure_from_master: raises a procurement request
@@ -211,9 +211,9 @@ ROUTE_ACTIONS = {
     ('POST', '/scrap/bulk-verify'): ('scrap_products', 'edit'),  # bulk_verify_scrap
     ('POST', '/scrap-products/{barcode}/set-replacement'): ('scrap_products', 'edit'),  # set_scrap_replacement
     # ===== routers/scrap_for_sale.py =====
-    ('POST', '/scrap-for-sale/custom-sale'): ('scrap_for_sale', 'add'),  # create_custom_scrap_sale
+    ('POST', '/scrap-for-sale/custom-sale'): ('scrap_for_sale', ('add', 'pricing_add')),  # create_custom_scrap_sale
     ('POST', '/scrap-for-sale/{scrap_id}/price'): ('scrap_for_sale', 'pricing_add'),  # set_scrap_for_sale_price
-    ('POST', '/scrap-for-sale/{scrap_id}/sell'): ('scrap_for_sale', 'add'),  # sell_scrap_for_sale: creates the scrap sale
+    ('POST', '/scrap-for-sale/{scrap_id}/sell'): ('scrap_for_sale', ('add', 'pricing_add')),  # sell_scrap_for_sale: creates the scrap sale
     ('POST', '/scrap-for-sale/{scrap_id}/delete'): ('scrap_for_sale', 'delete'),  # delete_scrap_for_sale
     # ===== routers/devices.py =====
     ('GET', '/devices/export'): (('devices', 'sales'), 'export'),  # export_devices: Inventory Search export; also Ready to Sale
@@ -281,9 +281,9 @@ ROUTE_ACTIONS = {
     ('POST', '/dealers/quick-new'): ('dealers', 'add'),  # quick_new_dealer
     ('POST', '/dealers/{dealer_id}/call'): ('dealers', 'add'),  # log_call: log call
     ('POST', '/dealers/{dealer_id}/calls/{call_id}/edit'): ('dealers', 'edit'),  # update_call
-    ('POST', '/dealers/{dealer_id}/orders/new'): ('dealers', 'add'),  # create_order
-    ('POST', '/dealers/{dealer_id}/orders/{order_id}/pay'): ('dealers', 'edit'),  # record_order_payment: records payment
-    ('POST', '/dealers/{dealer_id}/orders/{order_id}/credit-note'): ('dealers', 'add'),  # create_credit_note
+    ('POST', '/dealers/{dealer_id}/orders/new'): ('dealers', ('add', 'pricing_add')),  # create_order
+    ('POST', '/dealers/{dealer_id}/orders/{order_id}/pay'): ('dealers', ('edit', 'pricing_add')),  # record_order_payment: records payment
+    ('POST', '/dealers/{dealer_id}/orders/{order_id}/credit-note'): ('dealers', ('add', 'pricing_add')),  # create_credit_note
     # ===== routers/telecalling.py =====
     ('GET', '/telecalling/export-csv'): ('telecalling', 'export'),  # export_calls_csv
     ('POST', '/telecalling/add'): ('telecalling', 'add'),  # add_record
@@ -306,10 +306,10 @@ ROUTE_ACTIONS = {
     # ===== routers/part_estimation.py =====
     ('GET', '/part-estimation/{lot_id}/iqc-data.xlsx'): ('part_estimation', 'export'),  # lot_iqc_data_xlsx
     ('GET', '/part-estimation/download/{estimate_id}'): (('part_estimation', 'spare_parts', 'crm_dashboard'), 'export'),  # download_estimate: estimate file; Part Estimation, Parts Manager, Procure dashboard
-    ('POST', '/part-estimation/{lot_id}/generate-model-estimate'): ('part_estimation', 'add'),  # generate_model_estimate: creates estimate record
-    ('POST', '/part-estimation/{lot_id}/generate-checklist-estimate'): ('part_estimation', 'add'),  # generate_checklist_estimate
-    ('POST', '/part-estimation/{lot_id}/generate-open-estimate'): ('part_estimation', 'add'),  # generate_open_estimate
-    ('POST', '/part-estimation/{lot_id}/generate'): ('part_estimation', 'add'),  # generate_estimate: stores estimate + raises production sourcing request
+    ('POST', '/part-estimation/{lot_id}/generate-model-estimate'): ('part_estimation', ('add', 'pricing_add')),  # generate_model_estimate: creates estimate record
+    ('POST', '/part-estimation/{lot_id}/generate-checklist-estimate'): ('part_estimation', ('add', 'pricing_add')),  # generate_checklist_estimate
+    ('POST', '/part-estimation/{lot_id}/generate-open-estimate'): ('part_estimation', ('add', 'pricing_add')),  # generate_open_estimate
+    ('POST', '/part-estimation/{lot_id}/generate'): ('part_estimation', ('add', 'pricing_add')),  # generate_estimate: stores estimate + raises production sourcing request
     ('POST', '/part-estimation/{estimate_id}/delete-file'): ('part_estimation', 'delete'),  # delete_estimate_file
     # ===== routers/rentals.py =====
     ('GET', '/rentals/returns/{return_id}/receipt'): ('rentals', 'export'),  # rental_return_receipt
@@ -317,7 +317,7 @@ ROUTE_ACTIONS = {
     ('GET', '/rentals/{rental_id}/tags.csv'): ('rentals', 'export'),  # rental_tags_csv
     ('POST', '/rentals/tags/details'): None,  # rental_tag_details: read-only tag lookup
     ('POST', '/rentals/tags/upload'): None,  # rental_tag_upload: parses tag list for lookup (read-only)
-    ('POST', '/rentals/new'): ('rentals', 'add'),  # rental_create
+    ('POST', '/rentals/new'): ('rentals', ('add', 'pricing_add')),  # rental_create
     ('POST', '/rentals/return/submit'): ('rentals', 'edit'),  # rental_return_submit
     ('POST', '/rentals/{rental_id}/paid'): ('rentals', 'edit'),  # rental_mark_paid
     ('POST', '/rentals/{rental_id}/return'): ('rentals', 'edit'),  # rental_return
@@ -362,10 +362,10 @@ ROUTE_ACTIONS = {
     ('POST', '/stage-control/transition/remove'): ('stage_control', 'delete'),  # remove_transition
     ('POST', '/stage-control/aging/refresh'): None,  # trigger_aging_refresh: recompute aging cache, system internal
     # ===== routers/market.py =====
-    ('POST', '/market/add'): ('market', 'add'),  # add_entry
-    ('POST', '/market/{entry_id}/edit'): ('market', 'edit'),  # edit_entry_save
+    ('POST', '/market/add'): ('market', ('add', 'pricing_add')),  # add_entry
+    ('POST', '/market/{entry_id}/edit'): ('market', ('edit', 'pricing_add')),  # edit_entry_save
     ('POST', '/market/{entry_id}/toggle'): ('market', 'edit'),  # toggle_entry
-    ('POST', '/market/from-message'): ('market', 'add'),  # add_from_message: creates entry from WhatsApp message
+    ('POST', '/market/from-message'): ('market', ('add', 'pricing_add')),  # add_from_message: creates entry from WhatsApp message
     ('POST', '/market/link-dealer'): ('market', 'edit'),  # link_group_dealer
     # ===== routers/inventory_location.py =====
     ('GET', '/locations/master/bulk-template'): ('location_master', 'export'),  # location_bulk_template
@@ -463,7 +463,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/sourcing/{deal_id}/steps/{step_key}/attach'): ('crm_sourcing', 'upload'),  # attach_step_file: Inspection Report / Quote / Updated Quote / Invoice
     ('POST', '/crm/sourcing/{deal_id}/next-stage'): ('crm_sourcing', 'edit'),  # next_stage: Next Stage button (Won / Lost from Stock Received)
     ('POST', '/crm/sourcing/{deal_id}/link-lot'): ('crm_sourcing', 'edit'),  # link_lot
-    ('POST', '/crm/sourcing/{deal_id}/po-items/add'): ('crm_sourcing', 'add'),  # add_deal_po_item
+    ('POST', '/crm/sourcing/{deal_id}/po-items/add'): ('crm_sourcing', ('add', 'pricing_add')),  # add_deal_po_item
     ('POST', '/crm/sourcing/{deal_id}/po-items/{item_id}/delete'): ('crm_sourcing', 'delete'),  # delete_deal_po_item
     ('POST', '/crm/sourcing/{deal_id}/po-items/{item_id}/offer'): ('crm_sourcing', 'pricing_add'),  # set_deal_po_item_offer: offer price
     ('POST', '/crm/sourcing/{deal_id}/generate-po'): ('crm_sourcing', 'add'),  # generate_po_from_deal: creates CRMPurchaseOrder
@@ -479,8 +479,8 @@ ROUTE_ACTIONS = {
     # ===== routers/crm_quotes.py =====
     ('GET', '/crm/quotes/{quote_id}/print'): (('crm_quotes', 'crm_sales_opp', 'crm_contacts'), 'export'),  # quote_print: quote list/detail + shared quotes include (nq_perm_module)
     ('GET', '/crm/quotes/{quote_id}/download'): (('crm_quotes', 'crm_sales_opp', 'crm_contacts'), 'export'),  # download_quote_doc
-    ('POST', '/crm/quotes/new'): ('crm_quotes', 'add'),  # create_quote: Quotes row in the matrix
-    ('POST', '/crm/quotes/from-lot'): ('crm_quotes', 'add'),  # create_quote_from_lot: Quotes row in the matrix
+    ('POST', '/crm/quotes/new'): ('crm_quotes', ('add', 'pricing_add')),  # create_quote: Quotes row in the matrix
+    ('POST', '/crm/quotes/from-lot'): ('crm_quotes', ('add', 'pricing_add')),  # create_quote_from_lot: Quotes row in the matrix
     ('POST', '/crm/quotes/{quote_id}/generate'): (('crm_quotes', 'crm_sales_opp', 'crm_contacts'), 'export'),  # generate_quote_doc: generate + download document
     ('POST', '/crm/quotes/{quote_id}/status'): ('crm_quotes', 'edit'),  # update_status: Quotes row in the matrix
     ('POST', '/crm/quotes/{quote_id}/link-deal'): ('crm_quotes', 'edit'),  # link_deal: link a standalone quote to a deal
@@ -491,7 +491,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/price-matrix/new'): ('crm_price_matrix', 'pricing_add'),  # create_matrix_row: price matrix row
     ('POST', '/crm/price-matrix/{row_id}/edit'): ('crm_price_matrix', 'pricing_add'),  # update_matrix_row
     ('POST', '/crm/price-matrix/{row_id}/delete'): ('crm_price_matrix', 'delete'),  # delete_matrix_row
-    ('POST', '/crm/price-matrix/upload'): ('crm_price_matrix', 'upload'),  # upload_matrix: bulk price import (consider also requiring pricing)
+    ('POST', '/crm/price-matrix/upload'): ('crm_price_matrix', ('upload', 'pricing_add')),  # upload_matrix: bulk price import (consider also requiring pricing)
     # ===== routers/gate_pass.py =====
     ('POST', '/gate-pass/resolve-tags'): None,  # resolve_tags: read-only tag resolve
     ('POST', '/gate-pass/{sale_id}/exit'): ('gate_pass', 'edit'),  # confirm_exit
@@ -501,15 +501,15 @@ ROUTE_ACTIONS = {
     ('POST', '/ready-to-sale-parts/{part_id}/request'): ('ready_to_sale_parts', 'add'),  # raise_sale_request
     ('POST', '/parts-sale-request/{req_id}/approve'): ('parts_sale_request', 'edit'),  # approve_sale_request
     ('POST', '/parts-sale-request/{req_id}/reject'): ('parts_sale_request', 'edit'),  # reject_sale_request
-    ('POST', '/part-sales/new'): ('part_sales', 'add'),  # create_part_sale
+    ('POST', '/part-sales/new'): ('part_sales', ('add', 'pricing_add')),  # create_part_sale
     # ===== routers/partner_payments.py =====
     ('POST', '/partner-payments/{bid_id}/verify'): ('partner_payments', 'edit'),  # verify_payment
     # ===== routers/crm_purchase_orders.py =====
     ('GET', '/crm/purchase-orders/{po_id}/print'): (('crm_purchase_orders', 'crm_sourcing', 'crm_contacts'), 'export'),  # print_po: PO list/detail + shared PO include (po_perm_module)
-    ('POST', '/crm/purchase-orders/new'): ('crm_purchase_orders', 'add'),  # create_po
+    ('POST', '/crm/purchase-orders/new'): ('crm_purchase_orders', ('add', 'pricing_add')),  # create_po
     ('POST', '/crm/purchase-orders/{po_id}/issue'): ('crm_purchase_orders', 'edit'),  # issue_po
     # ===== routers/deals.py =====
-    ('POST', '/deals/new'): ('trade_partner_all_deals', 'add'),  # create_deal: deals.py MODULE
+    ('POST', '/deals/new'): ('trade_partner_all_deals', ('add', 'pricing_add')),  # create_deal: deals.py MODULE
     ('POST', '/deals/{deal_id}/approve'): ('trade_partner_all_deals', 'edit'),  # approve_deal
     ('POST', '/deals/{deal_id}/payment'): ('trade_partner_all_deals', 'edit'),  # mark_deal_paid: mark paid
     ('POST', '/deals/{deal_id}/delete'): ('trade_partner_all_deals', 'delete'),  # delete_deal: currently gated as edit
@@ -518,9 +518,9 @@ ROUTE_ACTIONS = {
     ('GET', '/accounts/customer-receipts/data'): None,  # customer_receipts_data: JSON data feed
     ('GET', '/accounts/customer-receipts/bulk-upload-template'): ('finance_customer', 'export'),  # download_receipt_csv_template
     ('GET', '/accounts/customer-receipts/bulk-upload'): None,  # receipt_bulk_upload_form: upload form page
-    ('POST', '/accounts/supplier-payments/new'): ('finance_supplier', 'add'),  # create_supplier_payment
-    ('POST', '/accounts/customer-receipts/new'): ('finance_customer', 'add'),  # create_customer_receipt
-    ('POST', '/accounts/customer-receipts/bulk-upload'): ('finance_customer', 'upload'),  # receipt_bulk_upload
+    ('POST', '/accounts/supplier-payments/new'): ('finance_supplier', ('add', 'pricing_add')),  # create_supplier_payment
+    ('POST', '/accounts/customer-receipts/new'): ('finance_customer', ('add', 'pricing_add')),  # create_customer_receipt
+    ('POST', '/accounts/customer-receipts/bulk-upload'): ('finance_customer', ('upload', 'pricing_add')),  # receipt_bulk_upload
     ('POST', '/accounts/po/{po_id}/complete-payment'): ('finance', 'edit'),  # complete_po_payment
     ('POST', '/accounts/verify/{kind}/{record_id}'): ('finance', 'edit'),  # accounts_verify
     ('POST', '/accounts/verify-kyc/{contact_id}'): ('crm_contacts', 'edit'),  # accounts_verify_kyc
@@ -573,7 +573,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/terms-conditions/{term_id}/toggle'): ('terms_conditions', 'edit'),  # toggle_term
     ('POST', '/admin/terms-conditions/{term_id}/delete'): ('terms_conditions', 'delete'),  # delete_term
     # ===== routers/dealer_quotations.py =====
-    ('POST', '/dealers/{dealer_id}/quotations'): ('dealers', 'add'),  # create_dealer_quotation: already require_module_perm('dealers','add')
+    ('POST', '/dealers/{dealer_id}/quotations'): ('dealers', ('add', 'pricing_add')),  # create_dealer_quotation: already require_module_perm('dealers','add')
     ('POST', '/dealer-quotations/{quotation_id}/confirm'): (('dealers', 'quotations'), 'edit'),  # confirm_dealer_quotation: shared quotation table on Dealer page and Quotations list - pick by Referer (/dealers* -> dealers, /quotations -> quotations)
     ('POST', '/dealer-quotations/{quotation_id}/delete'): (('dealers', 'quotations'), 'delete'),  # delete_dealer_quotation: same as confirm
     # ===== routers/sidebar_config.py =====
@@ -619,7 +619,7 @@ ROUTE_ACTIONS = {
     ('POST', '/trade-partner/partners/{dealer_id}/toggle'): ('trade_partner_partners', 'edit'),  # toggle_partner
     ('POST', '/trade-partner/partners/{dealer_id}/reset-password'): ('trade_partner_partners', 'edit'),  # reset_partner_password
     ('POST', '/trade-partner/partners/{dealer_id}/delete'): ('trade_partner_partners', 'delete'),  # delete_partner
-    ('POST', '/trade-partner/listings/create'): ('trade_partner_listings', 'add'),  # create_listing
+    ('POST', '/trade-partner/listings/create'): ('trade_partner_listings', ('add', 'pricing_add')),  # create_listing
     ('POST', '/trade-partner/listings/{listing_id}/publish'): ('trade_partner_listings', 'edit'),  # publish_listing
     ('POST', '/trade-partner/listings/{listing_id}/pause'): ('trade_partner_listings', 'edit'),  # pause_listing
     ('POST', '/trade-partner/listings/{listing_id}/reprice'): ('trade_partner_listings', 'pricing_add'),  # reprice_listing

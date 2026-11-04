@@ -11,7 +11,7 @@
     <div class="lt-tile h-100 d-flex flex-column" style="--tc:#0d6efd">
       <div class="lt-tile-count">{{ open_sourcing_count }}</div>
       <div class="lt-tile-label">Supplier Deals Open</div>
-      <div class="lt-tile-sub">₹{{ ((sourcing_pipeline_value) | inr) }}</div>
+      <div class="lt-tile-sub">{% if can(current_user, 'crm_sourcing', 'pricing') %}₹{{ ((sourcing_pipeline_value) | inr) }}{% else %}—{% endif %}</div>
       <a href="/crm/sourcing" class="btn btn-sm btn-outline-light lt-tile-btn mt-auto">View All →</a>
       <i class="bi bi-box-arrow-in-down lt-tile-wm"></i>
     </div>
@@ -20,7 +20,7 @@
     <div class="lt-tile h-100 d-flex flex-column" style="--tc:#0aa2c0">
       <div class="lt-tile-count">{{ open_sales_count }}</div>
       <div class="lt-tile-label">Customer Deals Open</div>
-      <div class="lt-tile-sub">₹{{ ((sales_pipeline_value) | inr) }}</div>
+      <div class="lt-tile-sub">{% if can(current_user, 'crm_sales_opp', 'pricing') %}₹{{ ((sales_pipeline_value) | inr) }}{% else %}—{% endif %}</div>
       <a href="/crm/sales" class="btn btn-sm btn-outline-light lt-tile-btn mt-auto">View All →</a>
       <i class="bi bi-graph-up lt-tile-wm"></i>
     </div>

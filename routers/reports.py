@@ -1436,6 +1436,11 @@ async def receivables_report(
     current_user: User = Depends(_require_receivables),
 ):
     """Dealer receivables ageing — outstanding orders bucketed by days overdue."""
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "report_receivables", "/dashboard")
+    if _pvblk is not None:
+        return _pvblk
     from decimal import Decimal
     from models.dealers import Dealer, DealerOrder
 

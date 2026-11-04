@@ -1025,6 +1025,9 @@ def eway_missing(invoice_price, eway_number, eway_date) -> list:
             if v is not None and not str(v).strip()]
 
 
+_GRN_PRICE_MODULES = ("grn", "grn_post_iqc", "trade_partner_manage_lots")
+
+
 def _missing_required(values: dict) -> list:
     """Labels of required fields that are blank. A field the form didn't
     send at all (None) is not checked — older forms / other pages."""
@@ -1072,6 +1075,11 @@ async def grn_create_manual(
     path uses, and the lot is left unmapped: mapping happens afterwards, on the
     tag list below, exactly as it does for an uploaded GRN.
     """
+    # Pricing Add (2026-11-03): no Invoice Price from a role that may not set prices
+    # (None = "not sent", so it is not a required field for them either).
+    from utils.price_export import can_add_prices as _cap
+    if not _cap(current_user, _GRN_PRICE_MODULES):
+        amount = None
     from datetime import date as _date
     from urllib.parse import quote
 
@@ -1241,6 +1249,11 @@ async def grn_edit(
     g = (await db.execute(select(GRNImport).where(GRNImport.id == gid))).scalar_one_or_none()
     if not g:
         raise HTTPException(404, "GRN not found")
+    # Pricing Add (2026-11-03): the Invoice Price keeps its stored value for a
+    # role that may not set prices (and is then not a required field).
+    from utils.price_export import price_unchanged as _pu
+    if _pu(current_user, _GRN_PRICE_MODULES, amount):
+        amount = str(g.amount) if g.amount is not None else None
     from urllib.parse import quote as _q
     _base = ("/trade-partner/manage-lots" if g.source == EXTERNAL_PARTNER_TEST_GRN_SOURCE
              else "/grn/post-iqc")
@@ -1446,7 +1459,9 @@ async def _grn_tabs_ctx(db, g, current_user) -> dict:
             select(IQCInspection.device_id).where(IQCInspection.device_id.in_(ids)).distinct())).all()}
         sold_set = {str(a) for (a,) in (await db.execute(
             select(Sale.device_id).where(Sale.device_id.in_(ids)))).all()}
-    show_pricing = _hp(getattr(current_user.role, "value", current_user.role), "devices", "pricing")
+    # GRN detail page belongs to GRN Post IQC (2026-11-03; was the Devices key).
+    show_pricing = any(_hp(getattr(current_user.role, "value", current_user.role), m, "pricing")
+                       for m in ("grn_post_iqc", "grn", "trade_partner_manage_lots"))
     costing = (select(DeviceCosting.device_id.label("device_id"),
                       func.max(DeviceCosting.total_cost).label("total_cost"))
                .group_by(DeviceCosting.device_id).subquery())

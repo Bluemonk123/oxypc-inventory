@@ -1,3 +1,4 @@
+from utils.price_export import blank_prices as _blank_prices, can_view_prices as _cvp_r   # Pricing View (2026-11-03)
 """Rentals (2026-10-22).
 
 New Rental: search + tick Ready to Sale tags (or upload a tags CSV), pick the
@@ -355,6 +356,10 @@ async def rental_records(request: Request, tab: str = Query(default="active"),
 
 @router.get("/new", response_class=HTMLResponse)
 async def rental_new(request: Request, db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed)):
+    from utils.price_export import price_add_block   # a rental sets its price (2026-11-03)
+    _blk = price_add_block(current_user, "rentals", "/rentals")
+    if _blk is not None:
+        return _blk
     companies = (await db.execute(
         select(Company).where(Company.is_active.isnot(False)).order_by(Company.company_name))).scalars().all()
     company_json = {str(c.id): {"name": c.company_name, "entity": c.company_entity or "",
@@ -371,15 +376,15 @@ async def rental_new(request: Request, db: AsyncSession = Depends(get_db), curre
 async def rental_tag_search(q: str = Query(default=""), db: AsyncSession = Depends(get_db),
                             current_user: User = Depends(allowed)):
     if len(q.strip()) < 2:
-        return JSONResponse({"tags": []})
+        return JSONResponse(_blank_prices(current_user, 'rentals', {"tags": []}, ['min_price', 'device_price', 'price']))
     found = await _ready_tags(db, q=q, limit=50)
-    return JSONResponse({"tags": [_tag_json(d, mp) for d, mp in found]})
+    return JSONResponse(_blank_prices(current_user, 'rentals', {"tags": [_tag_json(d, mp) for d, mp in found]}, ['min_price', 'device_price', 'price']))
 
 
 @router.post("/tags/details")
 async def rental_tag_details(barcodes: str = Form(""), db: AsyncSession = Depends(get_db),
                              current_user: User = Depends(allowed)):
-    return JSONResponse(await _lookup(db, barcodes.replace("\n", ",").split(",")))
+    return JSONResponse(_blank_prices(current_user, 'rentals', await _lookup(db, barcodes.replace("\n", ",").split(",")), ['min_price', 'device_price', 'price']))
 
 
 @router.post("/tags/upload")
@@ -396,8 +401,8 @@ async def rental_tag_upload(file: UploadFile = File(...), db: AsyncSession = Dep
             continue
         barcodes.append(v)
     if not barcodes:
-        return JSONResponse({"error": "No Tag Numbers found in the file (first column)."})
-    return JSONResponse(await _lookup(db, barcodes))
+        return JSONResponse(_blank_prices(current_user, 'rentals', {"error": "No Tag Numbers found in the file (first column)."}, ['min_price', 'device_price', 'price']))
+    return JSONResponse(_blank_prices(current_user, 'rentals', await _lookup(db, barcodes), ['min_price', 'device_price', 'price']))
 
 
 @router.post("/new")
@@ -629,10 +634,10 @@ async def rental_return_lookup(barcode: str = Query(default=""), db: AsyncSessio
                                current_user: User = Depends(allowed)):
     device, r, err = await _open_rental_of_tag(db, barcode)
     if err:
-        return JSONResponse({"ok": False, "error": err})
-    return JSONResponse({"ok": True, "tag": {"barcode": device.barcode, "make": device.brand or "",
+        return JSONResponse(_blank_prices(current_user, 'rentals', {"ok": False, "error": err}, ['total_price', 'price', 'daily_rate', 'rental_price']))
+    return JSONResponse(_blank_prices(current_user, 'rentals', {"ok": True, "tag": {"barcode": device.barcode, "make": device.brand or "",
                                               "model": device.model or ""},
-                         "rental": _rental_brief(r)})
+                         "rental": _rental_brief(r)}, ['total_price', 'price', 'daily_rate', 'rental_price']))
 
 
 @router.get("/return/rental/{rental_id}")
@@ -642,11 +647,11 @@ async def rental_return_prefill(rental_id: str, db: AsyncSession = Depends(get_d
     Rental Records' Return button starts with these."""
     r = await _get_rental(db, rental_id)
     if r.status not in OPEN_STATUSES:
-        return JSONResponse({"ok": False, "error": f"{r.rental_number} is {r.status}."})
+        return JSONResponse(_blank_prices(current_user, 'rentals', {"ok": False, "error": f"{r.rental_number} is {r.status}."}, ['total_price', 'price', 'daily_rate', 'rental_price']))
     done = (await _returned_device_ids(db, [r.id])).get(r.id, set())
     tags = [{"barcode": it.barcode, "make": it.make or "", "model": it.model or ""}
             for it in (await _items_of(db, [r.id])).get(r.id, []) if it.device_id not in done]
-    return JSONResponse({"ok": True, "rental": _rental_brief(r), "tags": tags})
+    return JSONResponse(_blank_prices(current_user, 'rentals', {"ok": True, "rental": _rental_brief(r), "tags": tags}, ['total_price', 'price', 'daily_rate', 'rental_price']))
 
 
 @router.post("/return/submit")
@@ -735,7 +740,8 @@ async def rental_return_submit(
     await db.commit()
     tab = "payment_due" if rental.status == "payment_due" else ("complete" if rental.status == "complete" else "active")
     msg = (f"{ret.return_number}: {len(devices)} tag(s) of {rental.rental_number} received back — "
-           + (f"₹{amt['outstanding']:,.2f} Payment Due" if decision == "payment_due" else "Waived Off")
+           + ((f"₹{amt['outstanding']:,.2f} Payment Due" if _cvp_r(current_user, "rentals") else "Payment Due")
+              if decision == "payment_due" else "Waived Off")
            + (f". {rental.rental_number} is still Active (tags still out)." if rental.status == "active" else "."))
     return RedirectResponse(url=f"/rentals?tab={tab}&success=" + quote(msg), status_code=302)
 
@@ -818,6 +824,11 @@ async def rental_view(request: Request, rental_id: str, db: AsyncSession = Depen
 async def rental_print(request: Request, rental_id: str, db: AsyncSession = Depends(get_db),
                        current_user: User = Depends(allowed)):
     """Printable rental summary — the browser's Print / Save as PDF."""
+    # Pricing View (2026-11-03): this page is all amounts — not shown without it.
+    from utils.price_export import price_view_block as _pvb
+    _pvblk = _pvb(current_user, "rentals", "/rentals")
+    if _pvblk is not None:
+        return _pvblk
     _blk = _price_block(current_user, 'rentals', f"/rentals/{rental_id}")   # Pricing Export (2026-11-03)
     if _blk is not None:
         return _blk
@@ -839,7 +850,7 @@ async def rental_summary_json(rental_id: str, db: AsyncSession = Depends(get_db)
     Model Summary tables as JSON."""
     r = await _get_rental(db, rental_id)
     its = (await _items_of(db, [r.id])).get(r.id, [])
-    return JSONResponse({
+    return JSONResponse(_blank_prices(current_user, 'rentals', {
         "number": r.rental_number,
         "tags": [{"barcode": it.barcode, "make": it.make or "", "model": it.model or "", "cpu": it.cpu or "",
                   "gen": it.generation or "", "ram": it.ram or "", "storage": it.storage or "",
@@ -849,7 +860,7 @@ async def rental_summary_json(rental_id: str, db: AsyncSession = Depends(get_db)
         "models": [{"make": g["make"], "model": g["model"], "cpu": g["cpu"], "gen": g["gen"], "ram": g["ram"],
                     "storage": g["storage"], "qty": g["qty"], "grades": g["grades"]}
                    for g in _model_summary([_item_dict(i) for i in its])],
-    })
+    }, ['min_price', 'max_price', 'price', 'device_price', 'min_total', 'rental_price']))
 
 
 @router.get("/{rental_id}/tags.csv")

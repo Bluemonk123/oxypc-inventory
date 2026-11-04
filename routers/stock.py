@@ -1,5 +1,7 @@
+from utils.price_export import blank_prices as _blank_prices   # Pricing View (2026-11-03)
 from templates_config import templates
 from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
+from utils.price_export import can_add_prices as _px_add, price_unchanged as _px_keep   # Pricing Add (2026-11-03)
 import logging
 import uuid
 from services.parts_changed import parts_badge_map
@@ -433,6 +435,10 @@ async def create_lot(
     # the Role Additional Permissions tab.
     _perm2: User = Depends(require_additional_perm("add_lot")),
 ):
+    # Pricing Add (2026-11-03): lot prices left empty without it.
+    from utils.price_export import can_add_prices as _cap
+    if not _cap(current_user, "lots"):
+        buying_price = selling_price = invoice_value = taxable_amount = sgst = cgst = igst = ""
     existing = await db.execute(select(Lot).where(Lot.lot_number == lot_number))
     if existing.scalar_one_or_none():
         next_num = await _next_lot_number(db)
@@ -568,6 +574,17 @@ async def edit_lot(
                 status_code=302)
     lot.lot_number = lot_number
     lot.supplier_name = supplier_name
+    # Pricing Add (2026-11-03): a price field the role may not set keeps its stored value.
+    from utils.price_export import price_unchanged as _pu
+    def _cur(v):
+        return "" if v is None else str(v)
+    if _pu(current_user, "lots", buying_price): buying_price = _cur(lot.buying_price)
+    if _pu(current_user, "lots", invoice_value): invoice_value = _cur(lot.invoice_value)
+    if _pu(current_user, "lots", selling_price): selling_price = _cur(lot.selling_price)
+    if _pu(current_user, "lots", taxable_amount): taxable_amount = _cur(lot.taxable_amount)
+    if _pu(current_user, "lots", sgst): sgst = _cur(lot.sgst)
+    if _pu(current_user, "lots", cgst): cgst = _cur(lot.cgst)
+    if _pu(current_user, "lots", igst): igst = _cur(lot.igst)
     lot.buying_price = float(buying_price) if buying_price.strip() else 0
     lot.qty = int(qty) if qty.strip().isdigit() else 1
     lot.purchase_date = datetime.strptime(purchase_date, "%Y-%m-%d")
@@ -1508,8 +1525,11 @@ async def return_stock_verify(
         raise HTTPException(404, "No return found for this tag")
 
     try:
-        ret.repair_cost = Decimal(repair_cost) if repair_cost.strip() else Decimal("0")
-        ret.labour_cost = Decimal(labour_cost) if labour_cost.strip() else Decimal("0")
+        # Pricing Add (2026-11-03): costs kept as stored for a role that may not set amounts.
+        if not _px_keep(current_user, "stock", repair_cost):
+            ret.repair_cost = Decimal(repair_cost) if repair_cost.strip() else Decimal("0")
+        if not _px_keep(current_user, "stock", labour_cost):
+            ret.labour_cost = Decimal(labour_cost) if labour_cost.strip() else Decimal("0")
     except InvalidOperation:
         raise HTTPException(400, "Repair Cost and Labour Cost must be numbers")
     ref = (payment_reference or "").strip()[:100]
@@ -2568,7 +2588,7 @@ async def get_lot_line_items(
         .order_by(LotLineItem.sub_category, LotLineItem.brand, LotLineItem.model)
     )
     items = result.scalars().all()
-    return JSONResponse({"items": [
+    return JSONResponse(_blank_prices(current_user, 'lots', {"items": [
         {
             "id": str(item.id),
             "sub_category": item.sub_category,
@@ -2589,7 +2609,7 @@ async def get_lot_line_items(
             "label": _line_item_label(item),
         }
         for item in items
-    ]})
+    ]}, ['unit_price']))
 
 
 def _line_item_label(item) -> str:
@@ -2639,7 +2659,8 @@ async def add_lot_line_item(
         has_storage  = body.get("has_storage", True),
         screen_size  = (body.get("screen_size") or "").strip() or None,
         grade        = (body.get("grade") or "").strip() or None,
-        unit_price   = float(body["unit_price"]),
+        # Pricing Add (2026-11-03): 0 when the role may not set prices.
+        unit_price   = float(body.get("unit_price") or 0) if _px_add(current_user, "lots") else 0,
         qty          = int(body.get("qty", 1)),
         notes        = (body.get("notes") or "").strip() or None,
     )
@@ -2676,7 +2697,8 @@ async def update_lot_line_item(
     item.has_storage  = body.get("has_storage", item.has_storage)
     item.screen_size  = (body.get("screen_size") or "").strip() or None
     item.grade        = (body.get("grade") or "").strip() or None
-    item.unit_price   = float(body["unit_price"])
+    if not _px_keep(current_user, "lots", body.get("unit_price")):   # Pricing Add (2026-11-03)
+        item.unit_price = float(body.get("unit_price") or 0)
     item.qty          = int(body.get("qty", item.qty))
     item.notes        = (body.get("notes") or "").strip() or None
     await db.commit()
@@ -2730,7 +2752,7 @@ async def bulk_import_line_items(
     saved, errors = 0, []
     for i, row in enumerate(reader, start=2):
         try:
-            unit_price = float((row.get("unit_price") or "0").replace(",", ""))
+            unit_price = float((row.get("unit_price") or "0").replace(",", "")) if _px_add(current_user, "lots") else 0
             qty = int(row.get("qty") or 1)
             sub_cat = (row.get("sub_category") or "Laptop").strip()
             has_ram_val = (row.get("has_ram") or "yes").strip().lower()
@@ -2821,7 +2843,7 @@ async def register_device_barcode(
     model_name = (body.get("model") or "").strip()
     serial_no  = (body.get("serial_no") or "").strip()
     sub_cat    = (body.get("sub_category") or "Laptop").strip()
-    device_price = body.get("device_price")
+    device_price = body.get("device_price") if _px_add(current_user, "lots") else None   # Pricing Add (2026-11-03)
 
     if not barcode:
         return JSONResponse({"ok": False, "error": "Barcode is required"}, status_code=400)
@@ -2958,7 +2980,7 @@ async def register_bulk_csv(
 
         sub_cat = (row.get("sub_category") or row.get("Category") or row.get("category") or "Laptop").strip()
         try:
-            price_raw = row.get("device_price") or row.get("price") or row.get("Price") or ""
+            price_raw = (row.get("device_price") or row.get("price") or row.get("Price") or "") if _px_add(current_user, "lots") else ""
             price = float(price_raw.replace(",", "")) if price_raw.strip() else None
         except Exception:
             price = None

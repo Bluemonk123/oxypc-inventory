@@ -144,7 +144,7 @@
             <td class="text-muted text-nowrap">{{ e.posted_date | ist if e.posted_date else '—' }}</td>
             <td>
               <div class="d-flex gap-1">
-                {% if can(current_user, 'market', 'edit') %}<a href="/market/{{ e.id }}/edit" class="btn btn-xs btn-outline-secondary" style="padding:2px 6px;font-size:0.72rem"><i class="bi bi-pencil"></i></a>{% endif %}
+                {% if can(current_user, 'market', 'edit') and can(current_user, 'market', 'pricing_add') %}<a href="/market/{{ e.id }}/edit" class="btn btn-xs btn-outline-secondary" style="padding:2px 6px;font-size:0.72rem"><i class="bi bi-pencil"></i></a>{% endif %}
                 {% if can(current_user, 'market', 'edit') %}
                 <form method="post" action="/market/{{ e.id }}/toggle" class="d-inline">
                   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
