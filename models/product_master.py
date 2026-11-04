@@ -221,6 +221,11 @@ async def migrate_pm_products_v2(db) -> None:
     from sqlalchemy import text, select
     await db.execute(text("ALTER TABLE pm_products ALTER COLUMN ram_id DROP NOT NULL"))
     await db.execute(text("ALTER TABLE pm_products ALTER COLUMN storage_id DROP NOT NULL"))
+    # v6 (dbdiagram approved 2026-11-04): competitor website + price source
+    await db.execute(text("ALTER TABLE pm_competitive_lists ADD COLUMN IF NOT EXISTS website VARCHAR(255)"))
+    await db.execute(text("ALTER TABLE pm_competitor_prices ADD COLUMN IF NOT EXISTS source VARCHAR(20)"))
+    await db.execute(text("ALTER TABLE pm_competitor_prices ADD COLUMN IF NOT EXISTS source_url VARCHAR(500)"))
+    await db.execute(text("ALTER TABLE pm_competitor_prices ADD COLUMN IF NOT EXISTS fetched_at TIMESTAMP"))
     # v5 (2026-10-18): 12-digit SKU — column, unique index, backfill
     await db.execute(text("ALTER TABLE pm_products ADD COLUMN IF NOT EXISTS sku VARCHAR(12)"))
     await db.execute(text("CREATE UNIQUE INDEX IF NOT EXISTS ix_pm_products_sku ON pm_products (sku)"))
@@ -259,6 +264,9 @@ class PMCompetitiveList(Base):
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(100), nullable=False, unique=True)
+    # v6 (dbdiagram approved 2026-11-04): shop website; when set, its prices are
+    # fetched into pm_competitor_prices (services/competitor_fetch.py).
+    website = Column(String(255), nullable=True)
     display_order = Column(Integer, default=0)
     created_by = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=app_now)
@@ -272,6 +280,10 @@ class PMCompetitorPrice(Base):
     product_id = Column(UUID(as_uuid=True), ForeignKey("pm_products.id"), nullable=False, index=True)
     list_id = Column(UUID(as_uuid=True), ForeignKey("pm_competitive_lists.id"), nullable=False, index=True)
     price = Column(Numeric(12, 2), nullable=False)
+    # v6 (dbdiagram approved 2026-11-04): where the price came from.
+    source = Column(String(20), nullable=True)          # 'manual' | 'website' (NULL = manual, before v6)
+    source_url = Column(String(500), nullable=True)     # product page the website price was read from
+    fetched_at = Column(DateTime, nullable=True)        # when it was read
     updated_by = Column(String(50), nullable=True)
     updated_at = Column(DateTime, default=app_now, onupdate=app_now)
 

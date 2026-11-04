@@ -174,14 +174,15 @@
         <div class="row g-4">
           <div class="col-lg-8">
             <table class="table table-hover mb-0" id="pmCompTable" style="width:100%">
-              <thead class="table-dark"><tr><th>Competitive Brand Name</th><th style="width:110px">Action</th></tr></thead>
+              <thead class="table-dark"><tr><th>Competitive Brand Name</th><th>Website</th><th style="width:110px">Action</th></tr></thead>
               <tbody>
                 {% for cl in comp_lists %}
                 <tr>
                   <td class="fw-semibold">{{ cl.name }}</td>
+                  <td>{% if cl.website %}<a href="{{ cl.website }}" target="_blank" rel="noopener noreferrer" class="small">{{ cl.website.split('://',1)[1] }} <i class="bi bi-box-arrow-up-right"></i></a>{% else %}<span class="text-muted small">— (prices typed by hand)</span>{% endif %}</td>
                   <td><div class="d-flex gap-1 justify-content-center">
                     {% if can(current_user, 'pm_product_master', 'edit') %}
-                    <button type="button" class="btn btn-sm btn-outline-warning py-0 px-1 pm-comp-edit" title="Edit" data-id="{{ cl.id }}" data-name="{{ cl.name }}"><i class="bi bi-pencil"></i></button>
+                    <button type="button" class="btn btn-sm btn-outline-warning py-0 px-1 pm-comp-edit" title="Edit" data-id="{{ cl.id }}" data-name="{{ cl.name }}" data-website="{{ cl.website or '' }}"><i class="bi bi-pencil"></i></button>
                     {% endif %}
                     {% if can(current_user, 'pm_product_master', 'delete') %}
                     <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 pm-comp-del" title="Delete" data-id="{{ cl.id }}" data-name="{{ cl.name }}"><i class="bi bi-trash3"></i></button>
@@ -219,6 +220,9 @@
     <input type="hidden" id="pmCompId">
     <label class="form-label fw-semibold">Competitive Brand Name</label>
     <input type="text" class="form-control" id="pmCompName" maxlength="100" placeholder="e.g. Amazon">
+    <label class="form-label fw-semibold mt-3">Website <span class="text-muted fw-normal small">(optional)</span></label>
+    <input type="url" class="form-control" id="pmCompWebsite" maxlength="255" placeholder="e.g. https://shop.example.com">
+    <div class="form-text small">When set, this brand's prices on Product Pricing are read from the website (Fetch website prices button, and once a day).</div>
     <div class="text-danger small mt-2" id="pmCompErr"></div>
   </div>
   <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -339,16 +343,16 @@
 
   // ── Competitive Pricings ──
   var compModal = new bootstrap.Modal(document.getElementById('pmCompModal'));
-  function openComp(id, name) {
-    $('#pmCompId').val(id || ''); $('#pmCompName').val(name || ''); $('#pmCompErr').text('');
+  function openComp(id, name, website) {
+    $('#pmCompId').val(id || ''); $('#pmCompName').val(name || ''); $('#pmCompWebsite').val(website || ''); $('#pmCompErr').text('');
     $('#pmCompTitle').text(id ? 'Edit Competitive Brand' : 'Add Competitive Brand');
     compModal.show(); setTimeout(function () { $('#pmCompName').trigger('focus'); }, 300);
   }
   $('#pmCompAddBtn').on('click', function () { openComp(); });
-  $(document).on('click', '.pm-comp-edit', function () { openComp($(this).data('id'), String($(this).data('name'))); });
+  $(document).on('click', '.pm-comp-edit', function () { openComp($(this).data('id'), String($(this).data('name')), String($(this).data('website') || '')); });
   $('#pmCompSave').on('click', function () {
     var btn = this; btn.disabled = true;
-    pmPost('/product-master/competitive/save', { item_id: $('#pmCompId').val(), name: $('#pmCompName').val() })
+    pmPost('/product-master/competitive/save', { item_id: $('#pmCompId').val(), name: $('#pmCompName').val(), website: $('#pmCompWebsite').val() })
       .then(function (j) { btn.disabled = false; if (j.ok) reloadTab('competitive'); else $('#pmCompErr').text(j.error); });
   });
   $('#pmCompName').on('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); $('#pmCompSave').click(); } });

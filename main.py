@@ -868,6 +868,14 @@ async def startup_event():
     except Exception as _dre:           # never block startup
         print(f"  [DailyReport] Scheduler not started: {_dre}")
 
+    # ── Competitor website prices: daily at 2:30 AM (2026-11-04) ─────────────
+    try:
+        from services.competitor_fetch import daily_loop as _comp_daily
+        asyncio.create_task(_comp_daily())
+        print("  [CompetitorFetch] Daily website price read scheduled (2:30 AM)")
+    except Exception as _cfe:           # never block startup
+        print(f"  [CompetitorFetch] Not scheduled: {_cfe}")
+
     # ── Print startup banner ───────────────────────────────────────────────────
     print(f"\n  {APP_NAME} started successfully")
     print(f"  URL: http://localhost:{APP_PORT}")

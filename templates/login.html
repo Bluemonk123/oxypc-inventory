@@ -145,7 +145,7 @@
         </div>
         <div class="mb-2">
           <label class="form-label small">Screenshots <span class="text-muted">(optional, up to 2)</span></label>
-          <input type="file" id="ltPhotos" class="form-control form-control-sm" accept="image/png,image/jpeg,image/gif,image/webp" multiple>
+          <input type="file" id="ltPhotos" class="form-control form-control-sm" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip" multiple>
           <div class="form-text small">PNG, JPG, GIF or WEBP — 5 MB each.</div>
         </div>
         <div id="ltError" class="text-danger small"></div>
@@ -178,7 +178,12 @@
     err.textContent = '';
     if (!name) { err.textContent = 'Please enter your name.'; return; }
     if (!fb) { err.textContent = 'Please describe your issue.'; return; }
-    if (files.length > 2) { err.textContent = 'Please attach at most 2 photos.'; return; }
+    if (files.length > 2) { err.textContent = 'Please attach at most 2 files.'; return; }
+    var _okExt = /\.(png|jpe?g|gif|webp|pdf|docx?|xlsx?|pptx?|zip)$/i;
+    for (var k = 0; k < files.length; k++) {
+      if (!_okExt.test(files[k].name)) { err.textContent = files[k].name + ': only images, PDF, Word, Excel, PowerPoint or ZIP files.'; return; }
+      if (files[k].size > 5 * 1024 * 1024) { err.textContent = files[k].name + ' is over 5 MB.'; return; }
+    }
     var fd = new FormData();
     fd.append('raised_by', name); fd.append('feedback', fb); fd.append('csrf_token', csrf());
     for (var i = 0; i < files.length; i++) fd.append('photos', files[i]);

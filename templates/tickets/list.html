@@ -46,15 +46,26 @@
               <div style="white-space:pre-wrap;word-break:break-word;max-height:80px;overflow-y:auto">{{ t.feedback }}</div>
             </td>
             <td>
-              {% if t.photos %}
+              {% if t.attachments %}
               <div class="d-flex gap-1">
-                {% for ph in t.photos %}
-                {# Opens full size in a new tab — the thumbnail is too small to
-                   read a screenshot of an error message, which is the point. #}
-                <a href="{{ ph }}" target="_blank" rel="noopener">
-                  <img src="{{ ph }}" alt="Ticket photo {{ loop.index }}"
+                {% for a in t.attachments %}
+                {# Images: thumbnail, opens full size in a new tab. Other files
+                   (2026-11-04): an icon tile — PDF opens, Office / ZIP download. #}
+                {% if a.kind == 'image' %}
+                <a href="{{ a.path }}" target="_blank" rel="noopener">
+                  <img src="{{ a.path }}" alt="Ticket attachment {{ loop.index }}"
                        style="width:42px;height:42px;object-fit:cover;border-radius:4px;border:1px solid #dee2e6">
                 </a>
+                {% else %}
+                {% set ic = {'pdf': 'bi-file-earmark-pdf text-danger', 'word': 'bi-file-earmark-word text-primary',
+                             'excel': 'bi-file-earmark-excel text-success', 'powerpoint': 'bi-file-earmark-ppt text-warning',
+                             'zip': 'bi-file-earmark-zip text-secondary'}.get(a.kind, 'bi-file-earmark') %}
+                <a href="{{ a.path }}" {% if a.kind == 'pdf' %}target="_blank" rel="noopener"{% else %}download{% endif %}
+                   title="{{ a.kind|capitalize }} file" class="d-inline-flex align-items-center justify-content-center text-decoration-none"
+                   style="width:42px;height:42px;border-radius:4px;border:1px solid #dee2e6;background:#f8f9fa">
+                  <i class="bi {{ ic }} fs-5"></i>
+                </a>
+                {% endif %}
                 {% endfor %}
               </div>
               {% else %}

@@ -29,26 +29,64 @@ async def _next_ticket_id(db: AsyncSession) -> str:
     return str(10000000 + n)  # Always 8 digits, starts at 10000001
 
 
-# Only real image types are accepted. A ticket attachment is displayed straight
-# back to an admin, so anything that could be served as active content is refused
-# rather than sanitised — the feature does not need that flexibility.
-ALLOWED_PHOTO_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}
+# Attachments (2026-11-04): images, PDF, MS Office files and ZIP. Checked by
+# file extension AND the file's first bytes (its real format), never by the
+# browser's content type or the name alone. Anything that could be served as
+# active content (HTML, SVG, scripts, macro-enabled Office .xlsm/.docm) is
+# refused rather than sanitised. Saved under our own name + vetted extension.
+ALLOWED_PHOTO_TYPES = {"image/png", "image/jpeg", "image/gif", "image/webp"}   # kept for imports
+# extension -> magic-byte family
+ATTACH_EXT = {
+    "png": "png", "jpg": "jpg", "jpeg": "jpg", "gif": "gif", "webp": "webp",
+    "pdf": "pdf",
+    "doc": "ole", "xls": "ole", "ppt": "ole",            # Office 97-2003
+    "docx": "zip", "xlsx": "zip", "pptx": "zip",         # Office 2007+ (ZIP containers)
+    "zip": "zip",
+}
+IMAGE_EXT = {"png", "jpg", "jpeg", "gif", "webp"}
 MAX_PHOTOS = 2
 MAX_PHOTO_BYTES = 5 * 1024 * 1024
+
+
+def _magic_ok(head: bytes, family: str) -> bool:
+    return {
+        "png": head.startswith(b"\x89PNG\r\n\x1a\n"),
+        "jpg": head.startswith(b"\xff\xd8\xff"),
+        "gif": head[:6] in (b"GIF87a", b"GIF89a"),
+        "webp": head[:4] == b"RIFF" and head[8:12] == b"WEBP",
+        "pdf": head.startswith(b"%PDF-"),
+        "ole": head.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),
+        "zip": head[:4] in (b"PK\x03\x04", b"PK\x05\x06"),
+    }.get(family, False)
+
+
+def attachment_kind(path: str) -> str:
+    """'image' / 'pdf' / 'word' / 'excel' / 'powerpoint' / 'zip' for the ticket list."""
+    ext = (path or "").rsplit(".", 1)[-1].lower()
+    if ext in IMAGE_EXT:
+        return "image"
+    return {"pdf": "pdf", "doc": "word", "docx": "word", "xls": "excel", "xlsx": "excel",
+            "ppt": "powerpoint", "pptx": "powerpoint", "zip": "zip"}.get(ext, "file")
 
 
 async def _save_photo(photo: UploadFile, ticket_id: str, idx: int) -> str | None:
     """Persist one attachment and return its /uploads path, or None if unusable."""
     if not photo or not photo.filename:
         return None
-    if photo.content_type not in ALLOWED_PHOTO_TYPES:
+    ext = photo.filename.rsplit(".", 1)[-1].lower() if "." in photo.filename else ""
+    family = ATTACH_EXT.get(ext)
+    if not family:
         return None
+    head = await photo.read(16)
+    await photo.seek(0)
+    if not _magic_ok(head, family):
+        return None          # name says one thing, contents another
+    if ext == "jpeg":
+        ext = "jpg"
     upload_dir = Path("uploads/tickets")
     upload_dir.mkdir(parents=True, exist_ok=True)
-    # Extension comes from the vetted content type, never from the user-supplied
-    # filename — that string is attacker-controlled and ends up on disk.
-    ext = {"image/png": "png", "image/jpeg": "jpg",
-           "image/gif": "gif", "image/webp": "webp"}[photo.content_type]
+    # Saved under our own name; only the vetted extension is kept from the
+    # user's filename (which is attacker-controlled).
     dest = upload_dir / f"tkt_{ticket_id}_{idx}_{int(time.time())}.{ext}"
     with open(dest, "wb") as f:
         shutil.copyfileobj(photo.file, f)
@@ -86,6 +124,7 @@ def _ticket_ctx(t: Ticket, names: dict | None = None) -> dict:
         "feedback":   t.feedback or "",
         "notes":      t.notes or "",
         "photos":     [p for p in (t.photo1_path, t.photo2_path) if p],
+        "attachments": [{"path": p, "kind": attachment_kind(p)} for p in (t.photo1_path, t.photo2_path) if p],
         "age_label":  age_label,
         "age_cls":    age_cls,
     }

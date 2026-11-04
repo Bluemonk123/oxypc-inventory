@@ -384,8 +384,25 @@ async def _comp_lists(db):
         PMCompetitiveList.display_order, PMCompetitiveList.name))).scalars().all()
 
 
+def _clean_website(v: str):
+    """'' -> None; adds https:// when missing; must be an http(s) address with a host."""
+    from urllib.parse import urlsplit
+    v = (v or "").strip()
+    if not v:
+        return None
+    if "://" not in v:
+        v = "https://" + v
+    u = urlsplit(v)
+    if u.scheme not in ("http", "https") or not u.netloc or " " in v:
+        raise ValueError("Enter a website like https://shop.example.com")
+    if len(v) > 255:
+        raise ValueError("Website is too long (255 characters max).")
+    return f"{u.scheme}://{u.netloc}".lower() + (u.path.rstrip("/") if u.path not in ("", "/") else "")
+
+
 @router.post("/competitive/save")
 async def competitive_save(request: Request, name: str = Form(""), item_id: str = Form(""),
+                           website: str = Form(""),
                            db: AsyncSession = Depends(get_db),
                            current_user: User = Depends(require_module_perm(PERM_PRODUCT))):
     name = (name or "").strip()
@@ -393,6 +410,10 @@ async def competitive_save(request: Request, name: str = Form(""), item_id: str 
         return _err("Enter a Competitive List Name.")
     if len(name) > 100:
         return _err("Name is too long (100 characters max).")
+    try:
+        website = _clean_website(website)       # Website (2026-11-04)
+    except ValueError as e:
+        return _err(str(e))
     dup = (await db.execute(select(PMCompetitiveList).where(
         func.lower(PMCompetitiveList.name) == name.lower()))).scalars().first()
     if item_id:
@@ -402,19 +423,20 @@ async def competitive_save(request: Request, name: str = Form(""), item_id: str 
             return _err("List not found.", 404)
         if dup and dup.id != row.id:
             return _err(f'"{name}" already exists.')
-        old = row.name
-        row.name = name
+        old, old_site = row.name, row.website
+        row.name, row.website = name, website
         await audit(db, action="PM_COMPETITIVE_LIST_EDITED", user=current_user, table_name="pm_competitive_lists",
-                    record_id=str(row.id), old_value={"name": old}, new_value={"name": name}, request=request)
+                    record_id=str(row.id), old_value={"name": old, "website": old_site},
+                    new_value={"name": name, "website": website}, request=request)
     else:
         if dup:
             return _err(f'"{name}" already exists.')
         order = (await db.execute(select(func.coalesce(func.max(PMCompetitiveList.display_order), -1)))).scalar() + 1
-        row = PMCompetitiveList(name=name, display_order=order, created_by=current_user.username)
+        row = PMCompetitiveList(name=name, website=website, display_order=order, created_by=current_user.username)
         db.add(row)
         await db.flush()
         await audit(db, action="PM_COMPETITIVE_LIST_ADDED", user=current_user, table_name="pm_competitive_lists",
-                    record_id=str(row.id), new_value={"name": name}, request=request)
+                    record_id=str(row.id), new_value={"name": name, "website": website}, request=request)
     await db.commit()
     return JSONResponse({"ok": True})
 
@@ -1207,7 +1229,55 @@ async def pricing_page(request: Request, db: AsyncSession = Depends(get_db),
         "request": request, "current_user": current_user, "products": await _product_rows(db),
         "dropdowns": await _dropdowns(db), "comp_lists": await _comp_lists(db),
         "comp_prices": await _comp_price_map(db), "comp_method": await competitive_method(db),
+        "comp_src": await _comp_source_map(db),
+        "fetch_last": await _fetch_last(db),
     })
+
+
+async def _comp_source_map(db) -> dict:
+    """{product_id: {list_id: {"url", "at"}}} for prices read from a website (2026-11-04)."""
+    rows = (await db.execute(select(PMCompetitorPrice.product_id, PMCompetitorPrice.list_id,
+                                    PMCompetitorPrice.source_url, PMCompetitorPrice.fetched_at)
+                             .where(PMCompetitorPrice.source == "website"))).all()
+    out = {}
+    for pid, lid, url, at in rows:
+        out.setdefault(str(pid), {})[str(lid)] = {"url": url or "", "at": at.strftime("%d-%m-%Y %H:%M") if at else ""}
+    return out
+
+
+async def _fetch_last(db):
+    from services.competitor_fetch import last_summary
+    return await last_summary(db)
+
+
+# ── Competitor website prices (2026-11-04) ─────────────────────────────────────
+@router.post("/pricing/fetch-website-prices")
+async def pricing_fetch_website(request: Request, db: AsyncSession = Depends(get_db),
+                                current_user: User = Depends(require_module_perm(PERM_PRICING))):
+    """Start reading competitor prices from their websites (runs in the background;
+    the page polls /pricing/fetch-status)."""
+    import asyncio
+    from services.competitor_fetch import run_fetch, PROGRESS, _lock
+    if _lock.locked() or PROGRESS.get("running"):
+        return JSONResponse({"ok": True, "already": True})
+    n = (await db.execute(select(func.count(PMCompetitiveList.id)).where(
+        PMCompetitiveList.website.isnot(None), PMCompetitiveList.website != ""))).scalar()
+    if not n:
+        return _err("No Competitive Brand has a website. Add one in Product Master → Competitive Brands.")
+    PROGRESS.clear()
+    PROGRESS.update({"running": True, "sites": {}, "by": current_user.username})
+    asyncio.create_task(run_fetch(current_user.username))
+    return JSONResponse({"ok": True})
+
+
+@router.get("/pricing/fetch-status")
+async def pricing_fetch_status(db: AsyncSession = Depends(get_db),
+                               current_user: User = Depends(require_module_perm(PERM_PRICING))):
+    from services.competitor_fetch import PROGRESS
+    prog = {k: v for k, v in PROGRESS.items()}
+    prog["sites"] = {k: {x: v.get(x) for x in ("website", "total", "done", "updated", "unchanged", "not_found")}
+                     for k, v in (PROGRESS.get("sites") or {}).items()}
+    return JSONResponse({"progress": prog, "last": await _fetch_last(db)})
 
 
 async def _comp_price_map(db, product_id=None) -> dict:
@@ -1264,9 +1334,12 @@ async def pricing_save(product_id: str, request: Request,
             if cur is not None:
                 await db.delete(cur)
         elif cur is None:
-            db.add(PMCompetitorPrice(product_id=p.id, list_id=lid, price=price, updated_by=current_user.username))
-        else:
+            db.add(PMCompetitorPrice(product_id=p.id, list_id=lid, price=price, updated_by=current_user.username,
+                                     source="manual"))
+        elif cur.price != price:
+            # typed by hand (2026-11-04): no longer the website's price
             cur.price, cur.updated_by = price, current_user.username
+            cur.source, cur.source_url, cur.fetched_at = "manual", None, None
     p.ram_id = ram.id if ram is not None else None
     p.storage_id = sto.id if sto is not None else None
     await db.flush()

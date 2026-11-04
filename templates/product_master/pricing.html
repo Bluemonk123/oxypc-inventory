@@ -32,13 +32,19 @@
             {% for d in dropdowns[cat] %}<option value="{{ d.value }}" {% if d.value == cur %}selected{% endif %}>{{ d.value }}</option>{% endfor %}
           </select></td>
           {% endfor %}
+          {% set cs = comp_src.get(p.id, {}) %}
           {% for cl in comp_lists %}
           {% set v = cp.get(cl.id|string) %}
+          {% set src = cs.get(cl.id|string) %}
           <td><div class="input-group input-group-sm" style="min-width:120px">
             <span class="input-group-text">₹</span>
             <input type="number" class="form-control pp-field pp-comp" name="comp_{{ cl.id }}" min="0" step="0.01"
                    value="{{ '%g'|format(v) if v is not none else '' }}">
-          </div></td>
+          </div>
+          {# Website price (2026-11-04): link to the page it was read from #}
+          {% if src %}<a href="{{ src.url }}" target="_blank" rel="noopener noreferrer" class="pp-web small text-decoration-none"
+             title="Read from {{ cl.name }}'s website on {{ src.at }} — click to open the product page"><i class="bi bi-globe2"></i> website · {{ src.at[:5] }}</a>{% endif %}
+          </td>
           {% endfor %}
           <td data-order="{{ p.product_price if p.product_price is not none else -1 }}">
             <div class="input-group input-group-sm" style="min-width:130px">
@@ -55,6 +61,41 @@
     </table>
 {% endmacro %}
 {% set pending = products | rejectattr('pricing_done') | list %}
+{% set web_lists = comp_lists | selectattr('website') | list %}
+{# Competitor website prices (2026-11-04): button + daily run; see services/competitor_fetch.py #}
+{% if web_lists %}
+<div class="alert alert-light border d-flex align-items-center flex-wrap gap-2 py-2 mb-3" id="ppFetchBar">
+  <i class="bi bi-globe2 text-primary"></i>
+  <span class="small"><strong>Website prices</strong> for {{ web_lists | map(attribute='name') | join(', ') }} ·
+    <span id="ppFetchLast">{% if fetch_last %}last read {{ fetch_last.finished_at or fetch_last.started_at }}{% if fetch_last.by %} ({{ 'daily run' if fetch_last.by == 'daily' else fetch_last.by }}){% endif %} — {{ fetch_last.prices_updated or 0 }} price(s) updated{% else %}not read yet{% endif %}</span>
+    · runs automatically every day at 2:30 AM</span>
+  <span class="small text-primary d-none" id="ppFetchProg"><span class="spinner-border spinner-border-sm me-1"></span><span></span></span>
+  <div class="ms-auto d-flex gap-2">
+    {% if fetch_last %}<button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#ppFetchModal"><i class="bi bi-list-check me-1"></i>Details</button>{% endif %}
+    {% if can(current_user, 'pm_product_pricing', 'pricing_add') %}
+    <button type="button" class="btn btn-sm btn-primary" id="ppFetchBtn"><i class="bi bi-cloud-download me-1"></i>Fetch website prices</button>
+    {% endif %}
+  </div>
+</div>
+{% if fetch_last %}
+<div class="modal fade" id="ppFetchModal" tabindex="-1"><div class="modal-dialog modal-lg modal-dialog-scrollable"><div class="modal-content">
+  <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-globe2 me-2"></i>Last website price read — {{ fetch_last.finished_at or fetch_last.started_at }}</h6>
+    <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body small">
+    <p class="text-muted mb-2">{{ fetch_last.products_checked or 0 }} product(s) checked{% if fetch_last.products_skipped %}; {{ fetch_last.products_skipped }} skipped because RAM Size or Storage Size is not picked{% endif %}.
+      A price is used only when the website's product title has the same Make, Model, CPU, RAM size and Storage size (and no different CPU Gen / RAM type / Storage type). The website price replaces the one in the table.</p>
+    {% for name, st in (fetch_last.sites or {}).items() %}
+    <div class="border rounded p-2 mb-2">
+      <div class="fw-semibold">{{ name }} <span class="text-muted fw-normal">{{ st.website }}</span></div>
+      <div><span class="badge bg-success">{{ st.updated }} updated</span> <span class="badge bg-secondary">{{ st.unchanged }} unchanged</span> <span class="badge bg-warning text-dark">{{ st.not_found }} not found</span></div>
+      {% if st.not_found_list %}<details class="mt-1"><summary>Not found on the website ({{ st.not_found }})</summary>
+        <ul class="mb-0 mt-1">{% for n in st.not_found_list %}<li>{{ n }}</li>{% endfor %}</ul></details>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+</div></div></div>
+{% endif %}
+{% endif %}
 {% set done = products | selectattr('pricing_done') | list %}
 <ul class="nav nav-tabs" id="ppTabs" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#ppTab_pending" type="button">
@@ -106,6 +147,33 @@
 {% block scripts %}
 {% include "product_master/_common.html" %}
 <script>
+// Fetch website prices (2026-11-04): start, then poll progress until done, then reload.
+(function () {
+  var btn = document.getElementById('ppFetchBtn'), prog = document.getElementById('ppFetchProg');
+  if (!document.getElementById('ppFetchBar')) return;
+  function show(p) {
+    var parts = Object.keys(p.sites || {}).map(function (k) {
+      var s = p.sites[k]; return k + ': ' + (s.done || 0) + '/' + (s.total || 0) + ' (' + (s.updated || 0) + ' updated)'; });
+    prog.classList.remove('d-none');
+    prog.querySelector('span:last-child').textContent = 'Reading website prices… ' + (parts.join(' · ') || 'starting');
+  }
+  function poll() {
+    fetch('/product-master/pricing/fetch-status', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); }).then(function (j) {
+        if (j.progress && j.progress.running) { show(j.progress); if (btn) btn.disabled = true; setTimeout(poll, 3000); }
+        else if (prog && !prog.classList.contains('d-none')) { location.reload(); }
+      }).catch(function () { setTimeout(poll, 5000); });
+  }
+  if (btn) btn.addEventListener('click', function () {
+    if (!confirm('Read prices from the competitor websites now? Website prices replace the prices in the table, and Sell Prices are recalculated.')) return;
+    btn.disabled = true;
+    pmPost('/product-master/pricing/fetch-website-prices', {}).then(function (j) {
+      if (j.ok) { show({ sites: {} }); setTimeout(poll, 1500); }
+      else { btn.disabled = false; showFlash('danger', j.error || 'Could not start'); }
+    });
+  });
+  poll();                      // a run already going (daily or another user) shows its progress
+})();
 (function () {
   var dtPending = initGlobalTable('#ppTable', { order: [[0, 'asc']], language: { emptyTable: 'No pending items.' } });
   var dtDone = initGlobalTable('#ppTableDone', { order: [[0, 'asc']], language: { emptyTable: 'No completed items.' } });

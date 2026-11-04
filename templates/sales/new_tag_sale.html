@@ -12,6 +12,19 @@
   .vp-card:hover > .card-header span, .vp-card:hover > .card-header .bi,
   .vp-card:hover > .card-header #ttSummary, .vp-card:hover > .card-header strong { color:#fff !important; }
   .vp-card:hover > .card-header #ttSummary .text-danger { color:#ffc9c9 !important; }
+  /* Frozen headers in both tabs (2026-11-04): each header cell sticks (a sticky
+     <thead> alone lets the row's price inputs scroll over it), above the inputs. */
+  .tt-sticky th { position:sticky; top:0; z-index:3; background:#f8f9fa !important;
+                  box-shadow:inset 0 -1px 0 #dee2e6; }
+  /* A site-wide rule gives tables overflow:hidden, which turns position:sticky off. */
+  #ttScroll > table, #tmScroll > table { overflow:visible !important; }
+  /* Sub-tabs in the card header colours (2026-11-04): the active tab is the
+     card header's light blue with navy text (was white); inactive tabs white. */
+  .tt-tabs .nav-link { background:#fff; color:#0e3a7a; }
+  .tt-tabs .nav-link:hover { background:#eef6fb; color:#0e3a7a; }
+  .card-body .tt-tabs.nav-tabs .nav-link.active { background:#d9ebf6 !important; color:#0e3a7a !important;
+      border:1.5px solid #0e3a7a; border-bottom-color:#d9ebf6; font-weight:600; }
+  .card-body .tt-tabs.nav-tabs .nav-link.active .bi { color:#0e3a7a !important; }
 </style>
 <div class="row justify-content-center">
   <div class="sale-wrap px-2">
@@ -54,7 +67,7 @@
           {# Global table card header colour + Device Detail style hover (navy, white
              text); the invoice total sits on the right of the header (2026-11-02). #}
           <div class="card mb-3 hdr-card vp-card" id="tagTableBox" style="box-shadow:0 .25rem .6rem rgba(0,0,0,.35)">
-            <div class="card-header small d-flex align-items-center flex-wrap gap-2"><span class="fw-semibold"><i class="bi bi-tags me-1"></i>Fill Your Sale Prices</span> <span class="badge bg-secondary" id="ttCount"></span>
+            <div class="card-header small d-flex align-items-center flex-wrap gap-2"><span class="fw-semibold"><i class="bi bi-tags me-1"></i>Fill Your Sale Prices</span>{# tag count badge removed (2026-11-04); the count is in the summary #}
               <div class="ms-auto fw-normal" id="ttSummary"></div></div>
             <div class="card-body p-3">
             {# Device Tag Number moved into this card, above the tabs (2026-11-03).
@@ -62,14 +75,14 @@
             <div class="mb-3">
               <label class="form-label fw-semibold">Device Tag Number <span class="text-danger">*</span>{% if multi_count is defined and multi_count and multi_count > 1 %} <span class="badge bg-primary">{{ multi_count }} tags selected</span>{% endif %}</label>
               <input type="text" name="barcode" id="barcode" class="form-control barcode-field font-monospace"
-                value="{{ prefill_barcode if prefill_barcode is defined and prefill_barcode else (device.barcode if device else '') }}" placeholder="Scan tag number" autofocus required>
+                value="{{ prefill_barcode if prefill_barcode is defined and prefill_barcode else (device.barcode if device else '') }}" placeholder="Scan tag number" required>{# autofocus removed (2026-11-04) #}
               <div class="form-text small text-muted">For multi-sale, enter comma-separated tag numbers.</div>
             </div>
             <div id="ttPricing" class="d-none">
             {# Two ways to price (2026-11-02): Tag Based (the original table) and
                Model Based (one row per Category + Model: Quantity + Unit Price,
                which sets every tag of that model). Both edit the same prices. #}
-            <ul class="nav nav-tabs mb-2" role="tablist">
+            <ul class="nav nav-tabs mb-2 tt-tabs" role="tablist">
               <li class="nav-item" role="presentation"><button class="nav-link active" type="button" data-bs-toggle="tab" data-bs-target="#ttModelPane" role="tab" id="ttModelTab"><i class="bi bi-grid-3x3-gap me-1"></i>Model Variations <span class="badge bg-secondary ms-1" id="tmCount"></span></button></li>
               <li class="nav-item" role="presentation"><button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#ttTagPane" role="tab" id="ttTagTab"><i class="bi bi-upc-scan me-1"></i>Tag Variations</button></li>
             </ul>
@@ -95,7 +108,7 @@
             <div class="small mb-2 d-none" id="ttUploadMsg"></div>
             <div id="ttScroll" style="overflow-y:auto" class="border rounded bg-body">
               <table class="table table-sm align-middle mb-0 small">
-                <thead class="table-light" style="position:sticky;top:0">
+                <thead class="table-light tt-sticky">
                   <tr><th style="width:34px"><input type="checkbox" id="ttAll" class="form-check-input" title="Tick all"></th>
                       <th>Tag</th><th>Model Name</th><th>Category</th><th class="text-end" style="width:150px">Unit Price (&#8377;)</th></tr>
                 </thead>
@@ -124,7 +137,7 @@
               </div>
               <div id="tmScroll" style="overflow-y:auto;max-height:340px" class="border rounded bg-body">
                 <table class="table table-sm align-middle mb-0 small">
-                  <thead class="table-light" style="position:sticky;top:0;z-index:1">
+                  <thead class="table-light tt-sticky">
                     <tr><th>Category</th><th>Model Name</th><th class="text-end" style="width:110px">Quantity</th>
                         <th class="text-end" style="width:170px">Unit Price (&#8377;)</th></tr>
                   </thead>
@@ -459,10 +472,9 @@ function refreshTable(){
   var q = document.getElementById('qtyInput'), tot = document.getElementById('totalSalePrice');
   var sp = document.getElementById('salePrice');
   if (!visible) { sp.required = true; tot.readOnly = false;
-    document.getElementById('ttCount').textContent = ''; document.getElementById('ttSummary').innerHTML = ''; return; }
+    document.getElementById('ttSummary').innerHTML = ''; return; }
   var own = tags.filter(_hasOwn).length, missing = tags.filter(function(t){ return _effective(t) === null; }).length;
   sp.required = own < tags.length;      // every tag priced individually: the default Sale Price is not needed
-  document.getElementById('ttCount').textContent = tags.length + ' tags';
   var grand = 0, distinct = {};
   tags.forEach(function(t){ var p = _effective(t); if (p !== null) { grand += p; distinct[p] = 1; } });
   var nd = Object.keys(distinct).length;

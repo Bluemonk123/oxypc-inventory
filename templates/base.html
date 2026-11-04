@@ -1161,10 +1161,10 @@ $.extend(true, $.fn.dataTable.defaults, {
                     placeholder="Describe the issue, feature request, or feedback in detail…"></textarea>
         </div>
         <div class="mb-2">
-          <label class="form-label small">Screenshots <span class="text-muted">(optional, up to 2)</span></label>
+          <label class="form-label small">Screenshots / Files <span class="text-muted">(optional, up to 2)</span></label>
           <input type="file" id="ticketPhotos" class="form-control form-control-sm"
-                 accept="image/png,image/jpeg,image/gif,image/webp" multiple>
-          <div class="form-text small">PNG, JPG, GIF or WEBP — 5 MB each.</div>
+                 accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip" multiple>
+          <div class="form-text small">Images (PNG, JPG, GIF, WEBP), PDF, Word, Excel, PowerPoint or ZIP — 5 MB each.</div>
         </div>
         <div id="ticketError" class="text-danger small mt-1"></div>
       </div>
@@ -1206,8 +1206,13 @@ $.extend(true, $.fn.dataTable.defaults, {
     // server-side — telling the user up front beats a silent truncation.
     var files = document.getElementById('ticketPhotos').files;
     if (files.length > 2) {
-      errEl.textContent = 'Please attach at most 2 photos.';
+      errEl.textContent = 'Please attach at most 2 files.';
       return;
+    }
+    var _okExt = /\.(png|jpe?g|gif|webp|pdf|docx?|xlsx?|pptx?|zip)$/i;
+    for (var k = 0; k < files.length; k++) {
+      if (!_okExt.test(files[k].name)) { errEl.textContent = files[k].name + ': only images, PDF, Word, Excel, PowerPoint or ZIP files.'; return; }
+      if (files[k].size > 5 * 1024 * 1024) { errEl.textContent = files[k].name + ' is over 5 MB.'; return; }
     }
     var fd = new FormData();
     fd.append('feedback', feedback);

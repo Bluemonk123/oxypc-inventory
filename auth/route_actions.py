@@ -418,6 +418,7 @@ ROUTE_ACTIONS = {
     ('POST', '/product-master/pricing-calculator/rows/edit'): ('pm_pricing_calculator', 'edit'),  # pricing_calculator_row_edit: RAM / Storage / damaged parts of one row
     ('POST', '/product-master/pricing-calculator/upload'): ('pm_pricing_calculator', 'upload'),  # pricing_calculator_upload
     ('POST', '/product-master/pricing/{product_id}/save'): ('pm_product_pricing', 'pricing_add'),  # pricing_save
+    ('POST', '/product-master/pricing/fetch-website-prices'): ('pm_product_pricing', 'pricing_add'),  # pricing_fetch_website: read competitor prices from their websites (2026-11-04)
     ('POST', '/product-master/spare-parts/{product_id}/save'): ('pm_spare_parts', 'pricing_add'),  # spare_parts_save: sets part prices for a product
     # ===== routers/iqc_api.py =====
     ('POST', '/iqc/api/submit'): None,  # submit_iqc: OxyQC EXE API (X-OxyQC-Key), not session UI
