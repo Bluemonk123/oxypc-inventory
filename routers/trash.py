@@ -9,7 +9,8 @@ import uuid as _uuid
 from datetime import datetime
 from utils.timezone import app_now
 from fastapi import APIRouter, Depends, Request, HTTPException, Form
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from urllib.parse import urlparse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, exists, or_, delete as sa_delete
 from sqlalchemy.orm import aliased
@@ -185,6 +186,10 @@ async def trash_lot(
 
     lot.is_trashed = True
     lot.trashed_at = app_now()
+    # Audit (2026-11-04): who trashed what, so a Trash spike can be traced.
+    await audit(db, action="LOT_TRASHED", user=current_user, table_name="lots",
+                record_id=str(lot.id), old_value={"is_trashed": False},
+                new_value={"is_trashed": True, "lot_number": lot.lot_number}, request=request)
     await db.commit()
     return RedirectResponse(url="/lots?success=Lot+moved+to+trash", status_code=302)
 
@@ -208,6 +213,9 @@ async def restore_lot(
 
     lot.is_trashed = False
     lot.trashed_at = None
+    await audit(db, action="LOT_RESTORED", user=current_user, table_name="lots",
+                record_id=str(lot.id), old_value={"is_trashed": True},
+                new_value={"is_trashed": False, "lot_number": lot.lot_number}, request=request)
     await db.commit()
     return RedirectResponse(url="/trash?tab=lots&success=Lot+restored", status_code=302)
 
@@ -311,28 +319,97 @@ async def trash_device(
 
     device.is_trashed = True
     device.trashed_at = app_now()
+    has_sale = bool((await db.execute(select(_has_sale_or_return().label("x"))
+                                      .where(Device.id == device.id))).scalar())
+    await audit(db, action="DEVICE_TRASHED", user=current_user, table_name="devices",
+                record_id=device.barcode, old_value={"is_trashed": False},
+                new_value={"is_trashed": True, "stage": _stage(device), "has_sale_or_return": has_sale},
+                notes="Trashed from " + (urlparse(request.headers.get("referer") or "").path or "?"),
+                request=request)
     await db.commit()
     return RedirectResponse(url="/devices?success=Device+moved+to+trash", status_code=302)
+
+
+# Bulk trash safeguards (2026-11-04): 555 tags went to Trash on 2-4 Nov in
+# three bulk clicks (349 of them sold, with sale records) and nothing recorded
+# who did it. Now: every bulk trash is audit-logged with its tags; more than
+# BULK_REASON_OVER tags needs a reason; tags with a sale/return record need an
+# explicit confirm. The page asks /trash/bulk/devices/check first to show this.
+BULK_REASON_OVER = 20
+
+
+def _stage(d):
+    st = d.current_stage
+    return getattr(st, "value", st)
+
+
+async def _bulk_summary(db, barcodes):
+    devices = (await db.execute(
+        select(Device).where(Device.barcode.in_(barcodes), Device.is_trashed == False)  # noqa: E712
+    )).scalars().all()
+    sale_ids = set()
+    if devices:
+        sale_ids = {r[0] for r in (await db.execute(
+            select(Device.id).where(Device.id.in_([d.id for d in devices]), _has_sale_or_return())
+        )).all()}
+    stages = {}
+    for d in devices:
+        stages[_stage(d)] = stages.get(_stage(d), 0) + 1
+    return devices, sale_ids, stages
+
+
+@router.post("/bulk/devices/check")
+async def trash_devices_bulk_check(
+    request: Request,
+    barcodes: list[str] = Form(default=[]),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """What a bulk trash of these tags would do — read only, for the confirm box."""
+    barcodes = [b for b in (barcodes or []) if b]
+    devices, sale_ids, stages = await _bulk_summary(db, barcodes) if barcodes else ([], set(), {})
+    return JSONResponse({"selected": len(barcodes), "will_trash": len(devices),
+                         "with_sale": len(sale_ids), "stages": stages,
+                         "need_reason": len(devices) > BULK_REASON_OVER,
+                         "reason_over": BULK_REASON_OVER})
 
 
 @router.post("/bulk/devices", response_class=HTMLResponse)
 async def trash_devices_bulk(
     request: Request,
     barcodes: list[str] = Form(default=[]),
+    reason: str = Form(""),
+    confirm_sale: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
     """Bulk soft-delete (move to Trash) the selected devices. Restorable from /trash."""
+    from urllib.parse import quote
     barcodes = [b for b in (barcodes or []) if b]
     if not barcodes:
         return RedirectResponse(url="/devices?error=No+devices+selected", status_code=302)
-    devices = (await db.execute(
-        select(Device).where(Device.barcode.in_(barcodes), Device.is_trashed == False)
-    )).scalars().all()
+    reason = (reason or "").strip()[:500]
+    devices, sale_ids, stages = await _bulk_summary(db, barcodes)
+    if len(devices) > BULK_REASON_OVER and not reason:
+        return RedirectResponse(url="/devices?error=" + quote(
+            f"Give a reason to move more than {BULK_REASON_OVER} tags to Trash. Nothing was moved."),
+            status_code=302)
+    if sale_ids and confirm_sale != "1":
+        return RedirectResponse(url="/devices?error=" + quote(
+            f"{len(sale_ids)} of the selected tags have a sale or return record. "
+            "Confirm that to move them to Trash. Nothing was moved."), status_code=302)
     now = app_now()
     for d in devices:
         d.is_trashed = True
         d.trashed_at = now
+    if devices:
+        await audit(db, action="DEVICES_TRASHED_BULK", user=current_user,
+                    table_name="devices", record_id=f"bulk:{len(devices)}",
+                    old_value={"is_trashed": False},
+                    new_value={"count": len(devices), "stages": stages,
+                               "with_sale_or_return": len(sale_ids),
+                               "barcodes": [d.barcode for d in devices]},
+                    notes=reason or None, request=request)
     await db.commit()
     return RedirectResponse(
         url=f"/devices?success={len(devices)}+device(s)+moved+to+trash", status_code=302)
@@ -446,5 +523,8 @@ async def restore_device(
 
     device.is_trashed = False
     device.trashed_at = None
+    await audit(db, action="DEVICE_RESTORED", user=current_user, table_name="devices",
+                record_id=device.barcode, old_value={"is_trashed": True},
+                new_value={"is_trashed": False}, request=request)
     await db.commit()
     return RedirectResponse(url="/trash?success=Device+restored", status_code=302)

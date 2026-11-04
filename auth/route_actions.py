@@ -426,6 +426,7 @@ ROUTE_ACTIONS = {
     ('GET', '/qa/srs/technical-spec/download'): ('qa', 'export'),  # srs_technical_spec_download
     ('GET', '/qa/srs/functional-spec/download'): ('qa', 'export'),  # srs_functional_spec_download
     ('GET', '/qa/srs/design-system/download'): ('qa', 'export'),  # srs_design_system_download
+    ('GET', '/qa/srs/handbook/{doc_key}/download'): ('qa', 'export'),  # srs_handbook_download
     ('GET', '/qa/srs/module-map/download'): ('qa', 'export'),  # srs_module_map_pdf
     ('GET', '/qa/srs/module-map/download.pptx'): ('qa', 'export'),  # srs_module_map_pptx
     ('POST', '/qa/requirements/new'): ('qa', 'add'),  # req_create
@@ -553,8 +554,9 @@ ROUTE_ACTIONS = {
     ('POST', '/trash/lots/{lot_id}'): ('lots', 'delete'),  # trash_lot: move lot to trash (soft delete) from Lot Overview
     ('POST', '/trash/lots/{lot_id}/restore'): ('location_trash', 'edit'),  # restore_lot: restore from trash
     ('POST', '/trash/lots/{lot_id}/delete'): ('location_trash', 'delete'),  # delete_lot_forever: permanent
-    ('POST', '/trash/devices/{barcode}'): (('devices', 'iqc'), 'delete'),  # trash_device: trash device; posted from All Inventory (devices) and IQC list - pick by Referer path
+    ('POST', '/trash/devices/{barcode}'): (('devices', 'iqc'), 'delete'),  # trash_device: posted from All Inventory (devices) and IQC list; module picked by Referer in resolve_module (_BY_REFERER, 2026-11-04)
     ('POST', '/trash/bulk/devices'): ('devices', 'delete'),  # trash_devices_bulk: All Inventory bulk trash
+    ('POST', '/trash/bulk/devices/check'): ('devices', 'delete'),  # trash_devices_bulk_check: read-only preview for the bulk trash confirm box (2026-11-04)
     ('POST', '/trash/devices/{barcode}/delete'): ('location_trash', 'delete'),  # delete_device_forever: permanent
     ('POST', '/trash/devices/{barcode}/restore'): ('location_trash', 'edit'),  # restore_device: restore
     ('POST', '/trash/bulk/devices/restore'): ('location_trash', 'edit'),  # restore_devices_bulk: Trash page Bulk Restore (2026-10-27)
@@ -686,7 +688,17 @@ GATED_GET_PREFIXES = frozenset(
     if method == "GET" and entry
 )
 
-def resolve_module(method: str, path: str, module, path_params: dict):
+# Routes shared by pages whose module must come from the page the request was
+# sent from (2026-11-04). Without this, a shared route passed when the role had
+# the action on ANY of its modules: Inventory Manager had Delete on Product IQC,
+# so unticking Delete on All Inventories still let it trash tags there.
+# (path prefix of the Referer, module); first match wins, last entry = default.
+_BY_REFERER = {
+    ('POST', '/trash/devices/{barcode}'): (('/iqc', 'iqc'), ('', 'devices')),
+}
+
+
+def resolve_module(method: str, path: str, module, path_params: dict, referer: str | None = None):
     """Which module(s) an incoming write is checked against.
 
     Single-module routes return that module. Routes shared by several modules
@@ -697,4 +709,11 @@ def resolve_module(method: str, path: str, module, path_params: dict):
     page-level buttons are hidden per module, so this only matters for a
     request crafted outside the UI.
     """
+    rules = _BY_REFERER.get((method, path))
+    if rules:
+        from urllib.parse import urlsplit
+        ref = urlsplit(referer or "").path or ""
+        for prefix, mod in rules:
+            if not prefix or ref == prefix or ref.startswith(prefix + "/") or ref.startswith(prefix + "?"):
+                return (mod,)
     return (module,) if isinstance(module, str) else tuple(module)

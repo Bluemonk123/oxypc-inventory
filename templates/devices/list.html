@@ -190,6 +190,37 @@
 <form id="bulkTrashForm" method="post" action="/trash/bulk/devices" style="display:none">
   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
 </form>
+{# Bulk trash confirm (2026-11-04): shows what will move (stages, tags with a
+   sale/return record), asks a reason above 20 tags; the server enforces both
+   and audit-logs every bulk trash. #}
+<div class="modal fade" id="bulkTrashModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-danger-subtle">
+        <h6 class="modal-title"><i class="bi bi-trash3 me-2"></i>Move <span id="btCount">0</span> tag(s) to Trash?</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body small">
+        <div id="btStages" class="mb-2 text-muted"></div>
+        <div id="btSaleBox" class="alert alert-danger py-2 d-none">
+          <div class="fw-semibold mb-1"><i class="bi bi-exclamation-triangle me-1"></i><span id="btSaleCount">0</span> of these tags have a sale or return record.</div>
+          Trashed tags drop out of every list and report.
+          <div class="form-check mt-2">
+            <input class="form-check-input" type="checkbox" id="btSaleOk">
+            <label class="form-check-label" for="btSaleOk">I understand, trash them anyway</label>
+          </div>
+        </div>
+        <label for="btReason" class="form-label fw-semibold mb-1">Reason <span id="btReasonReq" class="text-danger">*</span><span id="btReasonOpt" class="text-muted fw-normal">(optional)</span></label>
+        <textarea id="btReason" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="Why are these tags being trashed?"></textarea>
+        <div class="text-muted mt-2" style="font-size:.75rem">Recorded in the audit log with your name and every tag. Tags can be restored from the Trash page.</div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-danger" id="btGo" disabled><i class="bi bi-trash3 me-1"></i>Move to Trash</button>
+      </div>
+    </div>
+  </div>
+</div>
 {# Selected-tags export posts here — a ticked selection can run into the
    hundreds of barcodes, past what a GET querystring should carry. With
    nothing selected, the Export button uses the plain GET link below instead,
@@ -958,13 +989,46 @@ function runExport(url, init){
 function submitBulkTrash(){
   var barcodes = Array.from(devicesSelected);
   if(barcodes.length === 0) return;
-  if(!confirm('Move ' + barcodes.length + ' selected device(s) to Trash? They can be restored from the Trash page.')) return;
-  var form = document.getElementById('bulkTrashForm');
-  $(form).find('input[name="barcodes"]').remove();
-  barcodes.forEach(function(bc){
-    $('<input>').attr({ type:'hidden', name:'barcodes', value:bc }).appendTo(form);
-  });
-  form.submit();
+  var csrf = (document.cookie.match('(?:^|;)\\s*csrf_token=([^;]*)') || ['',''])[1];
+  var fd = new URLSearchParams();
+  fd.append('csrf_token', csrf);
+  barcodes.forEach(function(bc){ fd.append('barcodes', bc); });
+  fetch('/trash/bulk/devices/check', {method:'POST', body: fd}).then(function(r){
+    if (!r.ok) throw new Error('Could not check the selected tags (HTTP ' + r.status + ')');
+    return r.json();
+  }).then(function(c){
+    if (!c.will_trash) { alert('None of the selected tags can be moved to Trash (already trashed or not found).'); return; }
+    var esc = function(v){ return $('<div>').text(v).html(); };
+    $('#btCount').text(c.will_trash);
+    $('#btStages').html(Object.keys(c.stages).map(function(k){
+      return '<span class="badge bg-light text-dark border me-1">' + esc(k) + ': ' + c.stages[k] + '</span>';
+    }).join(''));
+    $('#btSaleBox').toggleClass('d-none', !c.with_sale);
+    $('#btSaleCount').text(c.with_sale);
+    $('#btSaleOk').prop('checked', false);
+    $('#btReason').val('');
+    $('#btReasonReq').toggle(!!c.need_reason);
+    $('#btReasonOpt').toggle(!c.need_reason);
+    var check = function(){
+      var ok = (!c.need_reason || $('#btReason').val().trim().length > 0) && (!c.with_sale || $('#btSaleOk').is(':checked'));
+      $('#btGo').prop('disabled', !ok);
+    };
+    $('#btReason').off('input.bt').on('input.bt', check);
+    $('#btSaleOk').off('change.bt').on('change.bt', check);
+    check();
+    $('#btGo').off('click.bt').on('click.bt', function(){
+      var form = document.getElementById('bulkTrashForm');
+      $(form).find('input[name="barcodes"],input[name="reason"],input[name="confirm_sale"]').remove();
+      barcodes.forEach(function(bc){
+        $('<input>').attr({ type:'hidden', name:'barcodes', value:bc }).appendTo(form);
+      });
+      $('<input>').attr({ type:'hidden', name:'reason', value:$('#btReason').val().trim() }).appendTo(form);
+      $('<input>').attr({ type:'hidden', name:'confirm_sale', value:$('#btSaleOk').is(':checked') ? '1' : '' }).appendTo(form);
+      $(this).prop('disabled', true);
+      form.submit();
+    });
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('bulkTrashModal')).show();
+  }).catch(function(err){ alert(err.message || 'Could not check the selected tags'); });
 }
 
 // ── Upload Tags: CSV of tag numbers → ticks the matching rows, any page ──

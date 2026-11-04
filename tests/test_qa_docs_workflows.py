@@ -1,0 +1,57 @@
+"""QA page refresh (2026-11-04): Product & Architecture Handbook downloads on
+the SRS card, change history read from qa_docs/changelog.txt when git is not
+available (production Docker image), current New GRN / Re-GRN workflow and
+Stage Workflows."""
+import uuid
+
+from tests.test_iqc_new_user import _login, make_user  # noqa: F401  (fixture)
+
+
+def test_changelog_without_git(monkeypatch):
+    import routers.qa_uat as q
+    with_git = q._get_recent_commits()
+
+    def no_git(*a, **k):
+        raise FileNotFoundError("git")
+    monkeypatch.setattr(q.subprocess, "run", no_git)
+    without = q._get_recent_commits()
+    assert len(without) > len(q._HARDCODED_COMMITS)
+    assert without[0]["date"] >= "2026-11-04"
+    assert abs(len(without) - len(with_git)) <= 5
+
+
+def test_handbook_card_and_downloads(app_client, make_user):  # noqa: F811
+    u, pw = make_user("admin")
+    _login(app_client, u, pw)
+    html = app_client.get("/qa/").text
+    from routers.qa_uat import SRS_HANDBOOK
+    for key, _f, title, *_ in SRS_HANDBOOK:
+        assert f"/qa/srs/handbook/{key}/download" in html
+        r = app_client.get(f"/qa/srs/handbook/{key}/download")
+        assert r.status_code == 200 and r.content[:4] == b"%PDF", key
+    assert app_client.get("/qa/srs/handbook/nope/download").status_code == 404
+
+
+def test_handbook_download_needs_export(app_client, make_user):  # noqa: F811
+    from models.role_permissions import set_cached_perms
+    role = "itest_qadoc_" + uuid.uuid4().hex[:6]
+    u, pw = make_user(role)
+    _login(app_client, u, pw)
+    try:
+        set_cached_perms(role, {"qa": {"enable": True, "export": False}})
+        assert "/qa/srs/handbook/" not in app_client.get("/qa/").text
+        r = app_client.get("/qa/srs/handbook/key-findings/download", follow_redirects=False)
+        assert r.status_code != 200 or r.content[:4] != b"%PDF"
+    finally:
+        set_cached_perms(role, {})
+
+
+def test_workflow_and_stage_workflows(app_client, make_user):  # noqa: F811
+    u, pw = make_user("admin")
+    _login(app_client, u, pw)
+    html = app_client.get("/qa/workflow").text
+    assert "Flow 1 — New GRN" in html and "Flow 2 — Re-GRN" in html and "₹50,000" in html
+    sw = app_client.get("/qa/stage-workflows").text
+    for t in ("Re-GRN (Item ReGRN)", "Final QC → Ready to Sale", "Customer Return → Return Stock"):
+        assert t in sw
+    assert app_client.get("/qa/stage-workflows/regrn/download").status_code == 200

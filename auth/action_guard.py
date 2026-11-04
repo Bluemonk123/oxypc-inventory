@@ -129,7 +129,7 @@ async def action_permission_middleware(request: Request, call_next):
     role = await _role_for(request)
     if role is None or role == "admin":
         return await call_next(request)          # not logged in -> the route's own auth handles it
-    modules = resolve_module(request.method, path, module, path_params)
+    modules = resolve_module(request.method, path, module, path_params, request.headers.get("referer"))
     # An entry may need several ticks (2026-11-03): ('sales', ('add', 'pricing_add'))
     # — a sale is both adding a record and setting its price, so both are required.
     for act in (action if isinstance(action, tuple) else (action,)):

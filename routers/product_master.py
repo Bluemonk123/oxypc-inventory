@@ -752,14 +752,20 @@ async def _calc_view(db) -> dict:
     for r in rows:
         p = prods.get(r.sku)
         pending, parts_used = [], []
+        disc_pct = None   # Product Master Discount % applied to Base Price (2026-11-04)
         if p is None:
             pending.append("SKU not found in Product Master")
             base = None
         else:
             pram, psto = _resolve(p, rams, stos)
-            base = product_figures(p, pram.ram_price if pram else None, psto.storage_price if psto else None)["base_price"]
+            fig = product_figures(p, pram.ram_price if pram else None, psto.storage_price if psto else None)
+            base = fig["base_price"]
             if base is None:
                 pending.append("Base Price")
+            elif p.discount_pct and D(p.discount_pct) > 0:
+                # Base Price here = Product Master Base Price - Discount Amount
+                base = (D(base) - D(fig["discount_amount"])).quantize(D("0.01"))
+                disc_pct = D(p.discount_pct)
         ram_name = f"{r.ram_type}/{r.ram_size}" if r.ram_type and r.ram_size else (r.ram_type or r.ram_size or "")
         sto_name = f"{r.storage_type}/{r.storage_size}" if r.storage_type and r.storage_size else (r.storage_type or r.storage_size or "")
         hr = rams.get(ram_name.lower()) if r.ram_type and r.ram_size else None
@@ -804,7 +810,9 @@ async def _calc_view(db) -> dict:
                                "edit": {"id": str(r.id), "ram_type": r.ram_type or "", "ram_size": r.ram_size or "",
                                         "storage_type": r.storage_type or "", "storage_size": r.storage_size or "",
                                         "damaged": [c for c in (r.damaged_parts or "").split(",") if c]},
-                               "base_price": float(base) if base is not None else None}
+                               "base_price": float(base) if base is not None else None,
+                               "disc_label": (f"{disc_pct.normalize():f}% applied" if disc_pct is not None
+                                              else "Standard")}
             order.append(key)
         g["qty"] += 1
         g["row_ids"].append(str(r.id))

@@ -613,6 +613,7 @@ async def device_search_data(
 
     role = getattr(current_user.role, "value", current_user.role)
     show_pricing = _hp(role, "devices", "pricing")   # Permission Matrix -> Inventory Search -> Pricing
+    can_trash = _hp(role, "devices", "delete")       # All Inventories -> Delete (2026-11-04)
 
     page_filters = _device_search_filters(q, stage, lot, grade, category, device_type, date_from, date_to,
                                      entity=entity, exclude_sold=_exclude_sold(exclude_sold, fs),
@@ -758,8 +759,9 @@ async def device_search_data(
             (f'<div class="d-flex gap-1 justify-content-center">'
              f'<a href="/devices/{esc(d.barcode)}" class="btn btn-sm btn-outline-primary py-0 px-1" title="View"><i class="bi bi-eye"></i></a>'
              f'<a href="/devices/{esc(d.barcode)}/edit" class="btn btn-sm btn-outline-warning py-0 px-1" title="Edit"><i class="bi bi-pencil"></i></a>'
-             f'<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 trash-one-btn" data-barcode="{esc(d.barcode)}" title="Move to Trash"><i class="bi bi-trash3"></i></button>'
-             f'</div>'),
+             + (f'<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 trash-one-btn" data-barcode="{esc(d.barcode)}" title="Move to Trash"><i class="bi bi-trash3"></i></button>'
+                if can_trash else '')
+             + f'</div>'),
         ]
         data.append(cells)
 

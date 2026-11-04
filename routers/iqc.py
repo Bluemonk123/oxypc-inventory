@@ -728,6 +728,9 @@ async def iqc_list_data(
     def esc(v):
         return escape(str(v)) if v is not None else ""
 
+    # Row Trash button only with Product IQC -> Delete (2026-11-04)
+    from models.role_permissions import has_perm as _hp_del
+    _can_trash = _hp_del(getattr(current_user.role, "value", current_user.role), "iqc", "delete")
     data = []
     for d, lot_number in rows:
         stage_val = getattr(d.current_stage, "value", d.current_stage)
@@ -750,8 +753,9 @@ async def iqc_list_data(
             d.created_at.strftime("%d-%m-%Y") if d.created_at else "—",
             (f'<div class="d-flex gap-1">'
              f'<a href="/devices/{esc(d.barcode)}/edit" class="btn btn-sm btn-outline-primary py-0 px-2" title="Edit"><i class="bi bi-pencil"></i></a>'
-             f'<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 trash-one-btn" data-barcode="{esc(d.barcode)}" title="Move to Trash"><i class="bi bi-trash3"></i></button>'
-             f'</div>'),
+             + (f'<button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 trash-one-btn" data-barcode="{esc(d.barcode)}" title="Move to Trash"><i class="bi bi-trash3"></i></button>'
+                if _can_trash else '')
+             + f'</div>'),
         ])
 
     return {"draw": draw, "recordsTotal": total, "recordsFiltered": filtered, "data": data}

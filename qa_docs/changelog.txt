@@ -1,0 +1,662 @@
+efe4556|2026-11-04|QA page refresh, Trash safeguards, Delete permission fix, calculator discount
+9405706|2026-11-04|Parts Manager exports: YYYY-MM-DD dates and plain-number amounts
+e8ec94d|2026-11-04|Spare Parts tiles: 7 cards split New / Harvest, recounted from table rows
+9cf778d|2026-11-04|Parts GRN: edit GRN + part lines, list as global table; hide calculator Avg column
+d03fbe5|2026-11-04|Pricing Calculator rework; 5-digit SKUs; Hardware Save; Pre-Sale QC tile
+c8adbd7|2026-11-04|Pricing Add + Pricing View sweeps; finance_manager gets Pricing Add
+2157800|2026-11-03|Pre-Sale QC Pass/Fail; pricing View/Add/Export split; matrix, dashboard, Bulk Edit, sidebar
+45f70d4|2026-11-03|WorkID Status: Cosmetic Pending = tags in Cosmetic now; clickable tiles; Pre-Sale QC
+491caa3|2026-11-03|WorkID Status: Cosmetic card Received / Completed from tag moves
+e88467e|2026-11-03|WorkID Status: Stage filter no longer drops Cosmetic passes
+9a397b1|2026-11-03|GRN: E-Way Bill Number / Date required only above 50,000 Invoice Price
+554f4f2|2026-11-03|Cosmetic Pass credit everywhere; year-first export dates; Ready Model Summary Location
+3dd902a|2026-11-03|Dealers: Assigned On + Assign Date filter + Not Contacted Yet; global tabs; New Tag Sale card
+5c38cb2|2026-11-02|New Tag Sale: Model Name column, Model tab first, header style; global field shadow
+c92ee1d|2026-11-02|WorkID Status: Cosmetic Pass/Fail from moves; New Tag Sale price card layout
+1b8d6c2|2026-11-02|New Tag Sale layout + Model pricing, Cosmetic tile in tags, Harvest rename fix
+0c32732|2026-11-02|Parts pricing: Harvest = lowest GRN price, upload prices; Parts GRN Detail page
+d423b28|2026-11-02|Faster dashboard, Move to Stage, parts availability by part, UI tidy-ups
+af69de2|2026-11-02|Sales Orders, accounts verification, handover by type, old-GRN tax fix
+8a2f792|2026-10-31|Dashboard speed + layout; global toast; All Inventory date filters hidden
+47447b2|2026-10-31|GRN: new Add/Edit layout, uploads, Vendor State + auto tax, GRN Detail page
+94d12ca|2026-10-31|Repair stages move the tag to TRC Floor
+33b7b1c|2026-10-31|Spare parts: one crate = one part; Data Fixes cards tidy-up
+de5db68|2026-10-31|Sidebar: Alerts moves into SUPPORT, before Tickets Raised
+440d6e0|2026-10-31|Data Fix: spare parts — one price per part, blank crates
+dbe0e38|2026-10-31|Part Master: Crate Number first, GRN in its place, Code column hidden
+74b6b82|2026-10-31|L1/L2 Mark Complete: replaced / credit-note returns follow the usual process
+6c8298b|2026-10-31|Spare parts: crate rows (Part Name + Make + Model + New/Harvest + Crate)
+9abba93|2026-10-31|Dashboard: Total Inventory / Total Spare Parts cards, section order, tint tiles
+a7c8bd0|2026-10-31|Data Fixes: Part Name to the Parts Consumption names
+15a3e5a|2026-10-31|Dashboard 12 Device Type tiles, Total Inventory, location export, return fixes
+bf6124c|2026-10-31|Dashboard tiles and defaults, All Inventory Zone filter, WorkID tag cards
+fca62c1|2026-10-30|WorkID Status: Aging/Stage last, Start Date in export; sidebar separators
+bfa3389|2026-10-30|Return Stock payment flow, customer-return L1/L2 to Sold, spec edits kept
+939fb6e|2026-10-30|WorkID Status: current engineer names; admin Delete WorkID
+3b02c59|2026-10-30|Fix Credit Note 500 for 4+ tags: audit record_id overflow
+c658c6e|2026-10-30|WorkID Status: Pre-Sale IQC tile follows the Work Date range
+18534a3|2026-10-30|Customise modal: Screen Size is a Master Data dropdown
+9fb0e76|2026-10-30|WorkID Status Pre-Sale IQC tile: Moved / Started; matrix row renamed
+8a6aeaf|2026-10-30|Ready for Sale: Assign to Pre-Sale shown to every user
+ce06926|2026-10-30|Pre-Sale IQC: floor Device Detail view and own Parts Manager tab
+369dad7|2026-10-29|Pre-Sale IQC page, return waivers, Device Detail header, WorkID/Ready for Sale updates
+061ff51|2026-10-29|WorkID Status: Repair Summary re-enabled — tags moved into Ready for Sale
+3f591a2|2026-10-29|Repair cost formula, Repair/Consumption Summary exports, Customise fixes, storage cleanup
+dbcae2c|2026-10-28|Ready for Sale tiles + Lots filters/Export; WorkID Repeat Tags; sidebar order; global tile hover
+7b0918f|2026-10-28|WorkID Status opens on today, faster all-dates tiles, total count badge; L3/L4 Scrap Reason + Notes
+5a35142|2026-10-28|WorkID Status: tiles and Stage/Staff Summary count WorkIDs; Ongoing = every open WorkID
+651fd51|2026-10-28|WorkID Status: Cosmetic Pass | Fail, result columns in export, no Waiting count
+cf6b491|2026-10-28|WorkID Status: Final QC Pass/Fail ignores the same-stage "price finalized" row
+c104619|2026-10-28|WorkID Status: one date range, Stress / Final QC Pass | Fail, tiles follow the table search
+2a5e106|2026-10-28|WorkID Status: Work Date filter; open WorkIDs show their own stage
+d0a123f|2026-10-28|Data Fixes: keep Inventory Request assignments open; reopen ones closed by mistake; admin error log page
+1250d21|2026-10-28|Data Fix: close WorkIDs still open on Ready to Sale / Sold tags; test harness fixes
+51e2ca8|2026-10-28|Bulk QC report zips; WorkID Status Stage list and Scrap default; QC report wording
+b27c955|2026-10-28|Pick This and Edit Tag Details without a page reload; Stress panel header buttons
+2d3b162|2026-10-28|Stress Test page: CPU / CPU Gen / RAM / Storage columns, Grade badge and Grade in Edit
+1fca902|2026-10-28|"16 GB" spacing on every page; Stress / Final QC Pick This layout; duplicate review columns
+f4c4bfe|2026-10-28|Bulk Upload duplicate review: window opens and Update All works
+a1d49f2|2026-10-28|One WorkID per stage visit for L1/L2, L3/L4, Stress, Final QC; Ready for Sale - Lots page
+8740b27|2026-10-27|WorkID Status: scrap counted apart from Completed; Assigned = every tag
+f5fc805|2026-10-27|WorkID Status counts match for every stage; RAM/Storage swap repair
+26e021b|2026-10-27|WorkID Status stage tiles + Excel export; RAM/Storage "16 GB" spacing
+fc1540a|2026-10-27|Cosmetic & Paint: managers whose role has all six stages get manager view
+c90c5a4|2026-10-27|Ready to Sale: entity counts per model; All Inventory-style tag cell
+5785325|2026-10-27|Ready to Sale filters + Export; deal pages header polish
+bccb790|2026-10-27|Log Call page: dealer name with phone below it
+2af55dc|2026-10-27|Telecaller pages: locked assignee, Add Quote, dark/tint tiles
+8494d89|2026-10-27|Buyer Deal stage workflow; CRM list/table polish; overlay page scrollbar
+c925fe8|2026-10-27|Sourcing Deal stage workflow; Trash bulk restore + Upload Tag
+c9ea75a|2026-10-26|Final QC layout; uniform filter-bar fields; Global Table hover accent
+ebd3aa9|2026-10-26|Quick spec edit on L1/L2, Stress Test, Final QC; Parts Consumption open to all
+5fbb08a|2026-10-26|Trash Updated On column; All Inventories tabs; WorkID Status tile order
+3a79d58|2026-10-26|Device Detail PNA success popup; L1/L2 + L3/L4 card header tidy
+2b7cdad|2026-10-26|PNA open to any signed-in user again; refused fetch calls get JSON
+c83c02e|2026-10-26|Transfers Entity filter/column/export; L3/L4 Unassigned tags
+8d59ff0|2026-10-26|Merge Pricing Visibility into the Permission Matrix Pricing tick; remove the tab
+f853ee3|2026-10-26|Permission Matrix: enforce Pricing / Add / Edit / Delete / Upload / Export per module; Hardware page redesign
+73abd3a|2026-10-24|Physical Audits: faster Upload Tag, Total row, Zip of shown rows' files
+4449a06|2026-10-24|Sidebar: Rentals before Return from Customer, Exit Gate Pass after it; Rentals table tooltips + alignment
+2bdaf95|2026-10-24|Rentals: Rental Return, Payment Due / Mark Paid, status tabs, Quantity modal
+af57668|2026-10-24|Data Fixes: Missing-tag removal matches ignoring hidden scan characters
+2a85f27|2026-10-24|Data Fixes: remove listed Physical Audit Missing tags
+9eca3fe|2026-10-24|Physical Audits: Final QC audits Final QC + Pass Hold + Fail Hold as one stage
+f7a712f|2026-10-24|Physical Audits: Current Count shows the live system count
+05448d7|2026-10-24|Physical Audits: No Tags switch records a Stage + Location with all counts 0
+bcba45b|2026-10-24|Cosmetic Water Sanding: Paint Fail sends the tag back to Painting
+a93f9ff|2026-10-24|Physical Audits: admin Upload Tag (bulk record a tag file); Ready to Sale search matches assigned user
+7529fff|2026-10-24|Release clears the Block For assignment; Data Fixes card for released tags still Blocked; audit Export/Download file names
+8771350|2026-10-24|Physical Audits: select the tag in the scan box after a failed scan so the next scan overwrites it
+d8ba0cb|2026-10-24|Physical Audits: PNA checkbox on the same line as the stage dropdown
+d695cc6|2026-10-24|Data Fixes: split plain L1/L2 / L3/L4 audit rows into PNA / Line
+0a5e816|2026-10-24|Top bar: server status as a tinted pill
+995c9e5|2026-10-24|Physical Audits: PNA / Line rows, Scrapped+Scrap for Sale, faster records
+e8e7716|2026-10-24|L1/L2 + L3/L4 Customer Return filter; Work ID Status scrap / return tiles
+874d9d1|2026-10-24|Physical Audits: PNA counts on L1/L2 and L3/L4 rows; more sheet columns
+cbc830c|2026-10-24|Physical Audits: Audit/Physical labels, one row per date + stage + location
+60e1b04|2026-10-24|Top bar: Search / Scan Tag Number box, plain server status; dashboard order
+e3974ff|2026-10-23|Add unused logo-dark.png / logo-light.png to static/img
+fd0f762|2026-10-23|Scrap flow: Tags Scrapped -> Scrap ID -> Scrap Sale Report
+ef84f95|2026-10-23|Work ID Status: Scrap column and Scrap Type filter
+d1d9fd1|2026-10-23|QC Report: simpler one-page PDF; QC Report column on Ready to Sale
+e1bc0d3|2026-10-23|Physical Audits: never a second row for one date; Data Fixes merge
+67500bb|2026-10-23|Physical Audits: one row per date, Missing = unknown tags, new sheets
+974c436|2026-10-23|Physical Audits: Missing Tags sheet and Missing column; plain Current Count
+a4fa6b8|2026-10-23|Physical Audits workbook: Difference Tags sheet
+b4a00a8|2026-10-23|Physical Audits: Matched/Unmatched badges, Excel workbook exports, count colours
+9a487a6|2026-10-23|WorkIDs: Reassigned (not Completed) on Pick This / Change Engineer / moves
+70f8748|2026-10-22|All Inventory: PNA Check filter, Stage after Entity, "Exclude Sold"
+ecaf4fd|2026-10-22|Dashboard date range, case-duplicate check, Trash sale/return filter
+a0d622e|2026-10-22|Data Fixes page: RAM/Storage fill, Sub-Category fill, data check
+3a4290e|2026-10-22|Dashboard pipeline: IQC through Final QC labels share IQC's grey
+4c1e549|2026-10-22|RAM / Storage fill: each set fills its blanks from the others
+5e4e9c9|2026-10-22|Dashboard 500 for admin: work queue no longer sends every stage
+95a2b2c|2026-10-22|RAM / Storage: two values in Upload and Export, eight fields per tag
+91f037c|2026-10-22|Credit Note sale at Payment Invoice Done; Sales filters; Device Type pairing
+7aff8dd|2026-10-22|All Inventory location cell, admin Sold in Customise, Return page auto-lookup
+3edb0e8|2026-10-22|Company Setting is live on every document; ReGRN Tag Number box is back
+6877ec1|2026-10-22|Schema startup: a refused enum change no longer blocks table creation
+531b9ed|2026-10-22|Admin System Health: read-only schema report + on-demand schema fix
+d553fde|2026-10-22|Rentals module, L1/L2 + L3/L4 Yes/No filters and Export, sort-arrow spacing
+f040680|2026-10-22|Ready to Sale: Entity as the first filter in all four tabs
+b9749aa|2026-10-22|Floor Movement blocks for assignee, export From/To as Location IDs; Ready to Sale tweaks
+fc97bb8|2026-10-22|Ready to Sale: Availability filter, Total/Open counts, per-model export
+bad77d2|2026-10-22|Sourcing deal page: vertical stage progress, Deal Info on top, Offer Price column
+6fa9af9|2026-10-21|GRN Post IQC: Entity filter, Export, GRN Pending accordion, hide lot/map buttons
+033688d|2026-10-21|GRN Stocked: count tags mapped to the GRN, kept after ReGRN
+5bec96f|2026-10-21|Edit GRN = Add GRN, add-only Stocked count by invoice, top bar, OxyPC box logo
+424cd2b|2026-10-21|Trade Partner login: same layout as the staff login
+bfca61d|2026-10-21|Report exports: FY export, export counts, Excel-safe dates, Daily Report workbook
+eb48f29|2026-10-21|Replacement tags carry the customer's invoice
+ab8d459|2026-10-21|Change Sale Date picks up the sales ticked in the table
+8a0091b|2026-10-21|Sales list: admin-only Change Sale Date
+e1aabb7|2026-10-21|One-time backfills: tag Zone/Location Type text and Sold tags' sale invoice
+253854f|2026-10-21|GRN Location ID flows to tags; IQC matches by GRN or invoice; sale invoice on tag
+5385d96|2026-10-21|Simplify GRN -> IQC -> Stock In and replace entity moves with ReGRN
+6b6bf96|2026-10-19|Run Backup Now: pg_dump 17 in the image; button never prunes backups
+ec4c34a|2026-10-19|New app logo: tick on the top face, larger van on the right face
+d393721|2026-10-19|Sidebar header: white-box app logo instead of the laptop icon
+58f3267|2026-10-19|Sell from any stage (entity-checked), 10k-tag sales, SELLING menu, header user menu
+170c51f|2026-10-19|Gate Pass: Select All across pages, scan auto-select, filter-bar Search
+22d5710|2026-10-19|Manuals page: show only manuals for modules enabled for the user's role
+d67282a|2026-10-19|Green processing bar during exports and modal saves; bell count on the bell
+fb8952b|2026-10-19|Pick This on L1/L2 + L3/L4, scan box auto-replace, Design System v2.3, Cosmetic flow badges
+dd2d63e|2026-10-19|Faster exports app-wide, Indian number format, All Inventory export fixes, Parts Manager tiles, Tags Scrapped count, Daily Stock note
+52b5bf6|2026-10-19|RAM/Storage "12 GB" spacing, Parts Manager Global Tables + speed + tiles, Active Stock rule, navy active tab
+c9714fa|2026-10-18|Pricing Calculator: header buttons stay on the right; formula wraps beside the title
+046d61a|2026-10-18|Pricing Calculator: formula line moved into the card header, reworded
+35f392e|2026-10-18|Pricing Calculator: add a row only if its configuration matches Product Master
+f42a128|2026-10-18|Success messages as top-right toast on shop-floor pages; sidebar active fix
+93779be|2026-10-18|Ready to Sale Bulk Upload Tags: grouped results with a download per group
+e15bd7a|2026-10-18|Pricing Calculator: success message as a top-right toast
+721c471|2026-10-18|Pricing Calculator: drop duplicate success/error banner (base.html already shows it)
+2342eaf|2026-10-18|Pricing Calculator: one combined table, matching rows add to Quantity; SKU Alerts popup
+2d9fe80|2026-10-18|Pricing Calculator: skip already-added configurations; hide SKU column
+7d7e41e|2026-10-18|Pricing Calculator: delete icon per table line
+d49e9b6|2026-10-18|Pricing Calculator: add only known SKUs, popup + download for the rest; SKU column
+3d4ffd0|2026-10-18|Product Master Export: SKU first column; Pricing Calculator accepts the export
+f1398ad|2026-10-18|Pricing Calculator: upload file, live-priced table; 12-digit product SKU
+b2ac1b9|2026-10-18|Product Pricing: save RAM/Storage picks without validation; price fills in once Hardware has it
+0fea964|2026-10-17|Product Master pages: card-header filters + Export, Competitive Brands, Hardware Updated On/By, spaced names, Pricing Calculator page
+8aa8032|2026-10-17|Global Table: header and body columns line up again with inline sort arrows
+5583f89|2026-10-17|Global Table: header separators, 12px cell padding, sort arrows 12px after label; Action columns never sort; more sortable columns
+daeebed|2026-10-17|Stock In and Create GRN tiles: Business P&L padding (1.1rem 1rem) and min-height 96px
+946fb27|2026-10-17|Sidebar header strip to OxyPC Forest #129042
+49f5c07|2026-10-17|Sidebar uses success green #0F7A37 (drop #198754 override); doc updated
+bf8c7d8|2026-10-17|Sidebar header band to OxyPC Leaf #54BA48; design doc text cleanup
+fe532b1|2026-10-17|Design doc: keep headings with their content
+f1e136b|2026-10-17|Design doc: version 2.2
+855d3a5|2026-10-17|Design doc: reorder brand swatches
+9c554af|2026-10-17|Design doc: rename colours (Bluemonk Navy/Blue, Sky Blue, Dark/Light Colour)
+dcb3e67|2026-10-17|Design doc: merge OxyPC greens into Brand and neutrals
+0ff6f9b|2026-10-17|Design doc: drop Light background and OxyPC Success swatches
+c2b60b2|2026-10-17|Design doc: remove remaining Navy / sidebar-bg mentions (Navy now called brand blue)
+f73808e|2026-10-17|Design doc: drop Navy and Sidebar background swatches
+40a6692|2026-10-17|Design system doc v1.2: OxyPC colours, sidebar #212529, new Global Table; HTML source + builder
+cab0da1|2026-10-17|Sidebar background: #212529 (Dark text) instead of #1e2a3a (Dark background)
+9cb9161|2026-10-17|Brand blue (--brand-blue) changed from #0377c2 to #0e3a7a; sidebar active item kept at #0377c2
+5f1e3cc|2026-10-17|Success colour #0F7A37 (buttons, text, charts, tiles); success badge solid #0F7A37 with white text; tile mint #E8F5E6; .profit-positive #129042. Sidebar unchanged.
+75b36f5|2026-10-17|OxyPC greens: success buttons, mint/dark-green labels, green tiles and chart colours; new logo as browser-tab icon. Sidebar left unchanged.
+bc207b5|2026-10-17|App icon in OxyPC greens; ticked-row shadow uses the same per-cell method as the hover shadow (no double shadow after merging production)
+7e72210|2026-10-17|Entity Movement, Trash duplicates, User Entity, PNA block, Asset History order, one Stress ID
+22606cc|2026-10-17|Returns: Add New Return in card header; IQC: tab card headers and selection export
+715360b|2026-10-17|Returns export: Customer Tag + Replaced Tag columns; Global Table shadows and grey footer total row
+d8bc498|2026-10-17|Login session length: 1 day on production and staging
+9769d07|2026-10-17|L1/L2: Tag Number and parts icon on one line; Bulk Part Request accordion, collapsed by default
+d7b1da8|2026-10-17|L1/L2 and L3/L4: success messages as a top-right toast like live notifications
+2c2a692|2026-10-17|Tag lookups: prefer live, exact-case tag over trashed duplicate-case copies
+8b765b4|2026-10-17|Bulk Upload IQC: warn about Tag Numbers in Trash; Extended Warranty Set matches tags case-insensitively
+f90a3da|2026-10-16|Tables: cells stay on one line (table scrolls instead of squashing); long values clamp to 2 lines within 160-260px
+10539a9|2026-10-16|Tables: light shadow on ticked rows, deeper shadow on the hovered row
+e3f7ad2|2026-10-16|Fix 6 page errors: sale_number_seq self-heal (New Sale / New Tag Sale / bulk + stock sales); Stock Aging tolerates devices with no created_at; Parts GRN script after jQuery; Spare Parts empty consumption table; New Part Sale script only with form
+6a3f1fb|2026-10-16|Tables: new style (navy rounded header, plain rows, ticked-row highlight, shadow) applied to every Global Table; opts.plainStyle opts out
+94f0cb9|2026-10-16|Topbar: slightly smaller back/forward triangles, tighter gap
+d5ac6fc|2026-10-16|Topbar: a little more space between back/forward triangles
+038b699|2026-10-16|Topbar: larger back/forward triangles, closer together
+5eab654|2026-10-16|Topbar: back/forward use filled triangle (caret) icons
+e973b64|2026-10-16|Topbar: bigger back/forward arrows
+798f5ea|2026-10-16|Topbar: back/forward use arrows instead of chevrons
+521f21c|2026-10-16|Topbar: back/forward history as plain chevrons (no pill or filled buttons)
+272ecfa|2026-10-16|Tables (Sky style): soft shadow behind the table
+c3e34a7|2026-10-16|Tables (Sky style): dark brand-navy header with white labels
+8eab31d|2026-10-16|Tables: more left padding on every Global Table's first column
+cd657bf|2026-10-16|Tables (Sky style): plain white rows, no row gaps or tray; divider runs through the checkbox column
+2fa2d9e|2026-10-16|Tables (Sky Cards): no outline around the table
+39c6583|2026-10-16|Tables: opt-in 'Sky Cards' Global Table style (light-blue header, 0.5px grey outline, light tray, card rows); enabled on All Inventory for review
+0a2e8cf|2026-10-16|Dashboard speed: Stage Pipeline 33 queries -> 2 grouped queries; DISTINCT ON for latest location; pipeline/analytics caches refresh on their own 30s timer (were stale until restart); template pre-compiled at startup
+dd526ea|2026-10-16|Login: no auto-focus on the username field
+4923f1d|2026-10-16|Login: show application version instead of deploy-check line
+8ef9f1c|2026-10-16|Login: 'Contact admin for access/issues' opens a ticket form with editable name; tickets reach /tickets and notify admins
+06b9b38|2026-10-16|Tickets: Raised By shows the user's full display name
+cf528df|2026-10-16|Login: logo badge without white border; more space between welcome and heading
+e15c15b|2026-10-16|Login: welcome 40% narrower with more vertical spacing
+d148311|2026-10-16|Login: welcome redrawn in flowing calligraphy style with swashes
+9ba80c8|2026-10-16|Login: welcome script 30% narrower, moved above the heading (light gradient on blue)
+b8fe785|2026-10-16|Login: animated handwritten 'welcome' above the sign-in form
+99ceb3b|2026-10-16|Login: logo badge 30% smaller
+60e7894|2026-10-16|Login: new OxyPC logo in a circular badge overlapping the card top edge
+913dcbe|2026-10-16|Login: subtle animated background (drifting device icons, moving grid)
+7c5d64a|2026-10-16|Inventory Search: Bin Location column + export; Move Device clears Bin Location
+1dda5f7|2026-10-16|Customise: Bin Location is a typed per-tag field; modal layout; white header outline buttons
+0965133|2026-10-16|Dashboard: drop Sold bar from Inventory by Category & Stage chart
+0c496bf|2026-10-16|Manuals: one manual per sidebar page (105), grouped/searchable page, fresh PDFs
+2787429|2026-10-16|Scrap for Sale: Custom Sale modal + Scrap Sale Report page
+f01cfb0|2026-10-16|Ready to Sale: filters in card header right, bulk buttons before table search box
+8c5de21|2026-10-16|Business P&L / Lot P&L: per-month and per-lot tag export icons
+f29168b|2026-10-15|Lot P&L: Last Updated column, table sorted newest activity first
+eb8b4e2|2026-10-15|Charts: fix hover/tooltip misalignment under app-wide CSS zoom
+9fb39c6|2026-10-15|Business P&L: taller KPI tile cards
+9e09613|2026-10-15|Dashboard: Inventory by Category chart uses Stage Pipeline steps
+ced2778|2026-10-15|Dashboard: reorder charts, remove Weekly Parts Price chart
+3edc1aa|2026-10-15|Dashboard: stop computing removed Analytics stat-card data (charts kept)
+72cdf6e|2026-10-15|Dashboard Analytics: remove the count/stat tile cards (charts stay)
+2b7108c|2026-10-15|Dashboard: chart boxes get a fixed 280px height so charts stop growing on load
+0d04ad1|2026-10-15|Business P&L: chart in a fixed-height box (maintainAspectRatio off) so it no longer keeps resizing on load
+74cf72c|2026-10-15|Sales Report (Tag P&L): ~4x faster — orphan lookup limited to orphan devices (NOT EXISTS), rows sent as JSON and rendered on demand (deferRender)
+0411121|2026-10-15|Sales Report (Tag P&L): Global Table with select checkboxes, shared filter bar, blank brand/model shows a dash
+69f5de6|2026-10-15|Lot P&L Global Table with select checkboxes; Gate Pass tag upload auto-select for bulk Confirm Exit; Spare Parts and Pricing Pending/Completed tabs
+c9efef2|2026-10-15|Gate Pass: Confirm Exit popup moved outside the page card so it renders as a proper modal
+02433f5|2026-10-15|Lot P&L: exclude trashed lots/devices, net revenue after returns, Cost of Sold Units + Profit on Sold Units
+c7b021d|2026-10-15|Transport details: Update Transport on Sale Detail; optional transport in Gate Pass Confirm Exit; Transport Mode + Delivery Courier from Master Data
+4ea184f|2026-10-15|QA Dashboard: Design System PDF under SRS Documents; Business P&L: light tile design on KPI cards
+1e01160|2026-10-15|Design rules: light tiles on Inventory Manager / Create GRN match Production Manager (8% watermark, spacing); every dashboard data card uses the blue header
+72e3fba|2026-10-15|Dashboard: Financial Summary = Business P&L FY totals (Revenue, Net Profit = Gross Profit), Profit This Month card, global-table header colour, pipeline watermark/80px tiles/.75rem labels/green filled arrows, white Split buttons, tighter summary spacing
+857eef4|2026-10-15|Business P&L: Parts Cost from verified part changes, Labour Cost per qualifying tag (repair_labour_rate), COGS -> Cost, Indian grouping, financial years (Apr-Mar, 2025-26 tabs); Dashboard Financial Summary: FY picker on the card, Total Investment = FY Device Cost
+513ab29|2026-10-15|Production Manager tiles: more spacing between count/label/button; background icon opacity 18% -> 8%
+3c9dd8f|2026-10-15|As-Is Lots in TRC: show 'Not Assigned Yet' when no engineer/department is assigned
+5563821|2026-10-15|As-Is Lots in TRC: include L1/L2/L3 repair stages (real flow TRC Production -> repair -> QC -> cosmetic -> Final QC hold)
+99258c0|2026-10-15|Customise: Stock Type (As-Is Lot + Sub-Lot / Finish Good / In Progress), Bin Location after Invoice, GRN Number hidden; Production Manager: As-Is Lots in TRC tab with select, search auto-select and Export
+f996fbc|2026-10-15|GRN Pending: Export (count) button; autosave banner: fixed under header, content width, 'Restore Last Values' / 'Close'
+ed3144f|2026-10-15|Tickets: alert the raiser (only) when someone else closes their ticket
+9ba4475|2026-10-15|GRN Add/Edit Lot: keep the GRN's own Quantity when mapping an existing Lot
+c9dc0d8|2026-10-15|Customise: any stage move for all users on All Inventory + Inventory Manager (never into Sold); fix GRN row buttons; invoice search on All Inventory; device detail shows tag's own invoice and entity
+aed9dab|2026-10-15|Global table + filter on Sale Report (Tags/Parts) and Ready to Sale Parts; global filter on Ready for Sale Tags; Sale ID under Sold stage; GRN Added By column
+7ba28fa|2026-10-15|Sales: (Box - <blockid>) under Sale ID; As-Is Lot search finds tag numbers; Ready to Sale tab padding
+2de26d4|2026-10-15|Block Tags: Sell button opens New Sale with all of a block's tags; Block ID and entity on Sales list and detail
+0428ad6|2026-10-15|IQC global filter bar; Create GRN light tiles and GRN Pending table; white fields app-wide
+3003e4f|2026-10-15|Changed parts applied when Final QC is skipped; Stock Type As-Is / Finish Good / In Progress
+0e73bc1|2026-10-15|WorkID Status: tiles by WorkID status
+4e90814|2026-10-15|WorkID Status and Dashboard: faster loading; WorkID tiles; dashboard layout
+e5538cf|2026-10-15|Rebrand: OxyPC Inventory Lifecycle name, new brand blue and navy, sidebar colours
+f9b70b2|2026-10-15|Breadcrumbs off by default; one-time switch-off of all saved breadcrumb toggles
+4ab9c77|2026-10-15|Inventory Manager: summary tiles in the Production Manager style
+cc0c5e5|2026-10-14|Product Master: count tiles moved above the tabs
+a9aff6c|2026-10-14|Hardware: RAM Details and Storage Details as two tabs
+bd62dc9|2026-10-14|Global Table: card-body padding for tables in a card without a .card-body (Transfers, Credit Note, Extended Warranty and any future page)
+c702559|2026-10-14|Production Manager tiles: box shadow and wider spacing
+fd5ecde|2026-10-14|Production Manager tiles: light tint style (option B); Dashboard pipeline: coloured title strip tiles (option C)
+2706a84|2026-10-14|Production Manager: summary tiles in the Product Master style (solid colour, white text, watermark icon)
+8cc5b2d|2026-10-14|Global Table in tabs: hide the button-less card header, card-body padding on the wrapper; Production Manager: Tag Number Allocation is the first tab
+0b71c6d|2026-10-14|Stock In Return Stock: selected count shown in the Assign Bucket button
+1e6c120|2026-10-14|Stock In: Bulk Move to L1/L2 and Return Stock Assign Bucket as primary buttons
+45e948d|2026-10-14|Stock In: Flag Items first in header; remove 'N device(s) in stage' line
+41a03af|2026-10-14|Stock In: action buttons in Inventory Stock card header; standard toolbar; Return Stock count+search before pagination
+08efe35|2026-10-14|Global filter + Global Table on Stock In, Production Manager, Extended Warranty, Credit Note, Transfers, WorkID Status
+e199e3f|2026-10-14|Dashboard category tiles: labels 'In TRC' and 'In Ready'
+872199b|2026-10-14|Dashboard category tiles: big number = all active; Under Pipeline + Ready to Sale lines below
+0b6efe1|2026-10-14|Dashboard category tiles: big number = Under Pipeline (active minus Ready to Sale), plus a Ready to Sale line
+fd54fce|2026-10-14|Dashboard category tiles: 'Total' renamed to 'Under Pipeline'
+50e7430|2026-10-14|Outline buttons: very light tint (5% of their colour)
+5c76032|2026-10-14|App-wide: outline buttons on a light tint of their own colour
+4652dc0|2026-10-14|GRN post IQC: Add GRN as a primary button
+997b36e|2026-10-14|GRN post IQC: drop page heading + Upload Invoice; Add GRN in the 'Create GRNs' card header
+7bedaa7|2026-10-14|All Inventory: remove the 'N device(s) total' line above the table
+71399dc|2026-10-14|GRN post IQC: shared filter-bar and Global Table on both tables
+4abed51|2026-10-14|App-wide: white background on all outline buttons (except outline-light)
+961aa75|2026-10-14|App-wide: white background on outline-secondary buttons
+9333204|2026-10-14|Stronger app-wide card shadow: .shadow-sm = 0 .25rem .5rem rgba(0,0,0,.5)
+50fb8a6|2026-10-14|All Inventory: Lot Based Summary becomes a working Global Table when empty
+6dae346|2026-10-14|All Inventory: Model Based Summary title, filters and Reset on one line
+dfa2b20|2026-10-14|Global Table: light sky blue card header with navy title everywhere
+61dd11e|2026-10-14|Filter bar: buttons at the right edge
+3b1611f|2026-10-14|Filter bar: filter-bar-6 variant (6 items per row); All Inventory uses it
+534c2d0|2026-10-14|All Inventory: use the shared filter-bar design
+851f501|2026-10-14|Global .filter-bar style for full-width filter sections; dashboard uses it
+c7b6bd1|2026-10-14|Dashboard filters: 1px navy separator
+9d82d0b|2026-10-14|Dashboard filters: no box, navy separator line below the filter row
+e256b9b|2026-10-14|Dashboard filters: light sky blue box (option 1)
+82901f8|2026-10-14|Dashboard filters: stop the filter row clipping dropdown menus
+4991eb7|2026-10-14|Dashboard filters: keep all filters and buttons on one row
+c02c319|2026-10-14|Dashboard filters: navy box, black field text, light Clear button
+8d4a043|2026-10-14|Dashboard filters: no labels (tooltips instead), soft blue box, white fields
+b3d0371|2026-10-14|Dashboard: filters in a white card box, as on Production Manager
+8f919f5|2026-10-14|Dashboard: coloured pipeline, category and summary tiles
+84c76ce|2026-10-14|Product Master: coloured count tiles with white watermark icon
+1c84811|2026-10-14|Product Master: one-time sync of Dropdown Configuration + Competitive Pricings from staging
+a243a18|2026-10-14|Product Master: RAM/Storage on Pricing, Competitive Pricings, Hardware grid
+7383f13|2026-10-14|Tickets: notify every active admin when a ticket is raised
+b887f88|2026-10-14|Dealers: not-yet-called first, most recently called dealer last
+276af67|2026-10-14|Product Master: one-time backfill of Dropdown Configuration from staging
+3867bf5|2026-10-14|Ready to Sale Model Summary Total row; All Inventory "No Grade" filter
+4da105c|2026-10-14|Product Master, Hardware, Spare Parts, Product Pricing pages
+7e21517|2026-10-13|L1/L2: reset Status / L3/L4 Status when a tag is assigned in from another stage
+30d2336|2026-10-13|All Inventory filters + Global Table: padding, rounded corners, centred select-all
+3220f07|2026-10-13|Sales: Replaced badges for Replace Now sales; Returns: Return Received By
+107becf|2026-10-13|Ready to Sale: Global Table + title header on all 4 tabs, Sub Lot first in As-Is Lot, hide device-count/New Sale row
+684fa27|2026-10-13|Progress bar no longer sticks after AJAX form saves; Assign Dealer Leads shows a success message after assigning
+70f6e51|2026-10-13|As-Is Lot Edit / Set price / Open Tag: fix 500 on Sub-Lot Numbers over 13 chars (audit record_id overflowed VARCHAR(50))
+e0839b7|2026-10-13|Ready to Sale: Grades filter on both Model Summary tabs; As-Is Lot edit shows the real error instead of a bare 500
+0209363|2026-10-13|Ready to Sale As-Is Lot: admin-only Edit (Sub-Lot Number, Assigned To)
+fb208b2|2026-10-13|Ready to Sale: Grades column in Model Summary (purchase price hidden), full configuration rows in As-Is Model Names popup
+c3c3de4|2026-10-13|Ready to Sale Model Summary: Total Quantity split by grade (A/B/C/D/E/NG), Sold badge removed
+e3e0b80|2026-10-13|Assign Dealer Leads: 4 tile cards, renamed filter checkboxes; Block Tags: Box/Bundle Number label
+672de7e|2026-10-13|Dealer Type: filter ignores case, list from Master Dropdown, upload creates new types, delete removes unused ones
+de33f74|2026-10-13|Dealer sub categories: upload reuses/reactivates existing values, delete removes unused ones
+84213c7|2026-10-13|Dealers: Export button on both pages, Assign page shows user display names
+ff189bd|2026-10-13|Set Price permission, 3-per-row dealer form, dealers sorted newest first
+bb2a882|2026-10-13|Dealers: Sub Category/Website/Google CID, Google Maps upload, filters, select-all
+0845742|2026-10-13|All Inventory Model Summary: per-spec rows, badges, total row, own filters
+95a9673|2026-10-10|Spec defaults backfill: skip GRN/IQC, sum multi-stick/drive, 0 count for 0 size, undo
+e881fee|2026-10-10|Backfill script: fill blank RAM/HDD count+size and CPU Make with defaults
+7d99e8f|2026-10-10|Changed parts: show part model only (no make); only the new value after Final QC pass / sale
+d1a050b|2026-10-10|Changed parts: live Part Master make/model, capacity from Part Master text, safer GB parsing; backfill uses same rules
+3f4d646|2026-10-10|Parts per visit + Faulty on verified part, coloured RAM/Storage cells, changed-parts backfill script
+418d075|2026-10-10|Changed-parts lifecycle: spec card colours (orange/green/blue), RAM/HDD applied at Final QC pass, pipeline tag badge
+15b2a78|2026-10-10|Sales list Cost/Unit: device price overrides lot average (avg marker), margin follows
+c497bce|2026-10-10|Flag Items, Returned column, stress checklist + reports, invoice columns, Customise fields
+e3772db|2026-10-10|Touch Type, Ready to Sale tabs/filters, All Inventory search, 6x3 block barcode
+4d5e97a|2026-10-10|Block Tags: one row per block with Tags/Models popups, two-sheet Excel export
+64b7784|2026-10-10|Block Tags: scanner-friendly selection, upload-to-select, Box Number, clearer table
+26a730c|2026-10-10|Add deploy-check line to login page
+61dc776|2026-10-07|Stock Type columns, Finish Good rename, Entity filter on Ready to Sale
+aff9990|2026-10-07|Daily Stock Tag Based export: add Category, Make, Model, CPU, RAM, Storage, Grade, Entity
+2f28960|2026-10-07|Daily Stock: Daily Report table (auto-generated 9 PM files); exclude deactivated/trashed tags
+e92e6bb|2026-10-07|Daily Stock: Opening excludes sold, Closing = Opening - day's sales, GRN excluded, sales by Sale Date
+99f7668|2026-10-07|WorkID Status: show assigned engineer, close WorkIDs on reassignment, date filter beats the row cap; New Sale: remove 500 cap
+967d2d2|2026-10-07|New Tag Sale page: per-tag prices on one invoice, no 500 cap; New Bulk Sale / New Sell buttons
+94fbe43|2026-10-07|WorkID Status: PNA History column (page + export)
+99f89e4|2026-10-07|Close L1/L2 WorkIDs when a tag leaves L1/L2; export Stock column shows all four values
+86a3352|2026-10-07|Ready to Sale pricing, PNA/Stock exports, tile summaries, Sales delete
+8feadf0|2026-10-01|Add Docker containerization design doc with final implementation state
+62261a8|2026-10-01|Add second autodeploy e2e marker to verify the health-check polling fix
+e3a90c9|2026-10-01|Fix autodeploy health-check race found by end-to-end test
+1676a5a|2026-10-01|Add marker comment to README (autodeploy end-to-end test)
+efc7388|2026-10-01|Update autodeploy script for Docker-based deploys
+992255e|2026-10-01|Add Docker containerization scaffold (app only, Postgres stays native)
+1a9edf5|2026-10-01|Add Daily Stock report (opening/closing stock reconstruction)
+770f4fb|2026-10-01|Hide GRN card from the Dashboard Device Stage Pipeline
+95734fd|2026-10-01|Add Block Tags feature and fix Sales Report export/select-all issues
+b3ac6ca|2026-10-01|Rework Physical Audits grouping and fix Sales Report export caching
+2bc3f17|2026-10-01|Fix Physical Audits Submit button incorrectly showing "Could not submit audit."
+8223f07|2026-10-01|Add PNA parts summary export: Production Manager PNA tile + Part Estimation page button
+61922d7|2026-10-01|Location Master: delete button, shorter Physical Audits location labels, nav move, zone dropdown wired to Master Data
+a2c2b65|2026-10-01|Rework Physical Audits' Perform Audit flow and brief info layout
+08e382b|2026-10-01|Fix 414 Request-URI Too Large on Ready to Sale's As-Is Lot and Model Summary Sell buttons
+826a6e8|2026-10-01|Add Invoice Number, Sales Person, Category, Stage, and Remarks to the Sales Report CSV export
+3e63346|2026-09-30|Ready to Sale As-Is lot release, inventory Zone/Bin fields, dashboard Zone filter, and new Physical Audits module
+85fa13f|2026-09-26|Fix trashed-device leakage in tag search, Inventory Manager/Ready-to-Sale UI polish
+6002bbf|2026-09-26|Fix slow dashboard load, update Stage Distribution pie and Change Engineer stages
+23108f7|2026-09-26|Add backfill script for StockTransfer.received_by
+1297daf|2026-09-26|Transfers page: fix Received By/timestamp/sort, reorder columns, add bulk delete
+8ef7df4|2026-09-26|Polish Account Team Mapping UI: filter labels, dropdown positioning, role display
+c7c2a3f|2026-09-26|Add Account Team Mapping feature
+66ce5aa|2026-09-25|Fix Ready to Sale table overflow and Scrap for Sale page showing no data
+54c3d47|2026-09-25|Fix 404 on Location Dashboard tag click
+5b4fdb1|2026-09-25|Dashboard fixes: In Repair scope, chart hover, L3/L4 WorkOrder orphans
+c03e67b|2026-09-25|Align Total Inventory and All Inventory's default view definitions
+3c6fb71|2026-09-25|Exclude trashed devices from every stage queue app-wide
+45bdb52|2026-09-25|Dashboard: exclude trashed devices from remaining queries
+fdddec8|2026-09-25|Spec: Account Team Mapping design
+285f742|2026-09-25|Dashboard: lead with Ready to Sale on tiles, rework In Repair card
+f462aa6|2026-09-25|Dashboard: fix trashed-device leakage, exclude Sold from category tiles
+1689f1d|2026-09-25|Dashboard: category tiles, Indian currency, chart layout, perf overhaul
+37ccf77|2026-09-25|Accounts: GST-based dedupe on bulk upload, list/search/form polish
+3460626|2026-09-25|Ready to Sale: temporarily hide Request-related buttons
+a76ed25|2026-09-25|Part Estimation: hide the superseded Part Estimate / Create Estimate buttons
+6eff3fc|2026-09-25|Part Estimation Open Estimate + Tag pricing/Ready-to-Sale batch + small fixes
+b6c74eb|2026-09-24|Auto-track QA Releases on every startup, closing the gap for good
+766bb07|2026-09-24|chore(qa): backfill QA dashboard release tracking, Jul 17 - Sep 24 (v1.11.0..v1.21.0)
+7b410f9|2026-09-24|QA Dashboard: Global Table across all tabs, honest KPI numbers
+d597f86|2026-09-24|Mark Complete auto-resolves open part requests; fix dead Parts Consumed card
+29859b3|2026-09-24|Auto-log device location on Stock In / Ready to Sale entry; Returns filter polish
+fae1354|2026-09-24|Product Return, Inventory Manager, and Credit Note enhancements
+a7e0cbf|2026-09-24|Fix New Sale warranty dropdown silently defaulting every sale to No Warranty
+321d388|2026-09-24|Extended Warranty: show current expiry + days-left badge on tag search
+2d77c62|2026-09-24|Fix Process Return / Device Detail showing Out of Warranty after an extension
+97dadab|2026-09-24|WorkID Status: hide /transfers assignment WorkOrders
+30bf447|2026-09-24|Ready to Sale page: fix Location ID and As-Is Lot Device Type bugs
+5d58c67|2026-09-24|Ready to Sale / GRN / Transfers / Scrap for Sale: assignment tracking + new page
+45dae1b|2026-09-24|External Partner Accounts: fix DataTables console error
+12388b1|2026-09-24|CRM Contacts: bulk-upload locations/contacts, table cleanup, partner delete fix
+bd40207|2026-09-24|CRM Contacts + Deals: redirect fixes, empty-state illustration, Created By/Reports To, Trade Partner delete
+100586d|2026-09-24|Move Production tile after Stock In in dashboard stage pipeline
+cfba4e9|2026-09-24|Fix duplicate WorkID race in Stock Transfer assignment; rename transfers filter label
+1141fbc|2026-09-23|Add CRM Contact Locations, User designation/reports-to, and All Deals page
+0b595bf|2026-09-23|Fix WorkID Status duplicate rows for L3/L4 and L1/L2; remove backfilled no-WorkID rows
+fcb34d6|2026-09-23|Fix duplicate WorkID race for L3/L4, add Date Assigned column, redesign Final QC Passed table
+7a5afc5|2026-09-23|Credit Note: lock CN Complete rows out of bulk selection, add Export
+7547cd5|2026-09-23|Fix trc_manager Cosmetic visibility, add Credit Note delete/bulk actions, fit Transfers filter bar to viewport
+acb3740|2026-09-23|Scope /transfers page to genuine /transfers/new submissions, fit filter bar on one row
+3025a01|2026-09-23|Scope Credit Note pipeline to its own tab, fix Return stage/status, add replacement badge
+35c87e0|2026-09-23|Fix Ready to Sale As-Is Lot crash, bulk-upload header aliases, and surface orphaned sold devices in Sales Report
+801c7ff|2026-09-22|Add Manage Lots search/bulk-move/count tiles; fix frozen-header dark-on-dark bug
+7f24751|2026-09-22|Remove throwaway Manage Lots verification script
+d88787a|2026-09-22|Add Credit Note workflow page, fix Cost Config 403, Manage Lots device edit modal, Lot P&L global table
+66d9ac0|2026-09-22|Add Ready to Sale As-Is Lot table with editable Min/Max Selling Price and multi-tag Sell
+2940773|2026-09-22|Manage Lots (External Partner test data): GRN mapping on Asset IQC, page-scoped bulk upload template, Lot Number mapped-counts popup
+07ba2e6|2026-09-22|Add Tag Return Status / Sub-Lot / Credit Note tracking across Return, Change Floor, GRN, Inventory Manager and Production Manager
+2ed0215|2026-09-22|Add Entity filter to Final QC page
+dfb6595|2026-09-22|Embed real GRN/Lot CRUD + Bulk Upload IQC into Manage Lots, fully isolated
+269bcf3|2026-09-22|Isolate External Partner test data; Partner/Account page UI updates
+d862fa7|2026-09-22|Split Trade Partner module permission into 8 pages, rename to External Partner
+60a4b55|2026-09-22|Hide L1/L2-side L3/L4 request movement from Workid-status page
+627cb87|2026-09-21|Dashboard P&L From/To now scopes by completed date; rename return form's Device Identity label to Customer Tag
+55af24b|2026-09-21|Fix /transfers Stage column to show live device stage; reorder Production Manager tiles
+7670e47|2026-09-21|Fix sold-without-sale return blocker; add Dashboard Split Location; split Parts Consumption export into Tags/Parts Summary
+781861f|2026-09-21|Fix Internal Tags Return case-sensitivity bug; add Dashboard Stock In tile; add Parts Consumption Tag Make/Model columns
+4d4a604|2026-09-19|Dashboard Split Entity fixed order/styling; Production Manager tile row fit + Change Engineer asset history
+a1510ff|2026-09-19|Fix Production Manager L3/L4 tile, add Cosmetic tile; redefine WorkID Status Aging/Completed Date per-WorkID
+126b99c|2026-09-19|Fix Dashboard Location ID filter; rename/hide L1/L2/L3 in stage dropdowns
+b4ed960|2026-09-19|Move device stage to L3 for the L1/L2 <-> L3/L4 hand-off
+9a871e3|2026-09-18|Fix Part Name filter, Parts Consumption UI, stale WorkID reuse, Location ID
+745640a|2026-09-18|Clickable entity badges on All Tags Inventory; Parts Consumption Date Added
+0fa8be7|2026-09-18|Fix L1/L2 Pick This gaps; add Move to L1/L2 from Inventory Manager
+79880e2|2026-09-18|feat: L1/L2 Repair — "Pick This" button self-assigns an unclaimed tag
+5cc1002|2026-09-18|feat: Production Manager Bucket Name/Change Engineer/Global Table, Dashboard one-row pipeline, bucket reuse-by-name
+b700da4|2026-09-18|feat: Dashboard — IQC/Production pipeline tiles, Split Entity toggle, wider filter reach
+a623952|2026-09-18|fix: align Stage filter dropdown exactly to its field, escape cache
+40a2e13|2026-09-18|fix: Stage filter dropdown clipped inside card on WorkID Status page
+fe0a5db|2026-09-18|feat: Parts Consumption per-part rows; Change Floor location fix; Dashboard filters
+d4969d2|2026-09-15|feat: Multi Request tabbed modal; Date filter + Export on Sales/Part Sales
+7c5916a|2026-09-15|fix: Cosmetic Received bulk Assign now also moves tags to Cleaning
+629c447|2026-09-15|feat: GRN post IQC — Add/Edit Lot modal maps several Lots to one GRN
+a2de389|2026-09-15|fix: Cosmetic Received — selection survives search, adds scan-to-select
+a210ea4|2026-09-15|feat: Transfers — show user display names instead of raw usernames
+e2613da|2026-09-15|feat: Work ID Status multiselect Stage + L3/L4 fix; Transfers Location ID + list overhaul
+28a7d3b|2026-09-15|feat: Device Detail Parts Consumption — Multi Request (batch part requests)
+02c616c|2026-09-15|fix: Bulk Part Request modal "Applies to N tags" deducts already-requested tags
+09f40f3|2026-09-15|fix: L1/L2 Bulk Part Request — re-enable New/Replace Request buttons
+ef83e6a|2026-09-15|feat: Search Tags — Search to View Asset History modal (6 pages)
+734762f|2026-09-14|fix: Extended Warranty parser, Parts Manager engineer filter, Final QC pricing, L1/L2 Bulk Part Request
+5157a50|2026-09-14|fix: Extended Warranty form + Cosmetic Received multi-select for Cosmetic Manager
+b4c3256|2026-09-14|feat: Extended Warranty — Warranty Left column + clickable Tag Number
+6ca3739|2026-09-14|feat: Product Return Replace Now, All Inventory Location ID export, Extended Warranty page
+56a4874|2026-09-11|fix: Ready to Sale bulk Upload Tags reported existing tags as not found
+d23e255|2026-09-09|feat: L3/L4 Request Part matches L1/L2 (plain link, not modal); L1/L2 Request Part always visible
+0a0ba95|2026-09-09|chore: track manual_7.pdf uploaded via app runtime on the Internal Server
+2dc4ec9|2026-09-09|fix: L1/L2 and L3/L4 repair action buttons silently doing nothing
+aadcbcd|2026-09-07|fix: All Inventory export failing on the full (unfiltered) device set
+108a742|2026-09-07|feat: fold select-all-header-checkbox fix into Global Table as a reusable option
+3f0dfc0|2026-09-07|chore: track manual_5.pdf uploaded via app runtime on the Internal Server
+77eb54c|2026-09-07|fix: select-all header checkbox stopped working after Global Table adoption
+f8596cd|2026-09-03|docs: fold sticky-header specificity fix and pagination pattern into doc
+dbe693c|2026-09-03|feat: Upload Tags banner to top of page + open /sales/ready to all roles
+c5ec542|2026-09-03|feat: topbar profile section — reorder, stack, uppercase, resize
+0c5823a|2026-09-03|fix: Fail Note info icon wraps onto its own line below the badge
+a276a23|2026-09-03|feat: WorkID Status one-row filter bar + Fail Note tooltip on 4 pages
+d033b0c|2026-09-03|feat: Global Table pagination — chevron icons + tighter page-number pattern
+d32a2cf|2026-09-03|fix: Global Table first column centers only when it's a checkbox
+5926765|2026-09-03|fix: Global Table frozen-column sticky header lost to DataTables' sort CSS
+256404f|2026-09-03|feat: relocate L1/L2 and QC filters to card header; rename Fail Note
+e7dcf94|2026-09-03|feat: Global Table for QC/Repair line + Final QC required-field validation
+5a2b487|2026-09-03|feat: make the application topbar sticky (fixed while scrolling)
+b88d68a|2026-09-03|feat: extend Global Table to All Inventory summaries, All Tags, WorkID Status
+4f83ab9|2026-09-03|docs: document Global Table cross-browser guarantee + cache-busting gotcha
+35eedfd|2026-09-03|fix: bust cache for global-table.js edits (Edge frozen-column-header bug)
+a308e74|2026-09-02|Tag Number first on WorkID Status; Cosmetic Stages onto Global Table
+097c736|2026-09-02|Global Table: clamp a value of exactly clampLength characters, not just over it
+5952964|2026-09-02|Self-attribute a WorkID on Stress Test submit; Tag Number before WorkID on Cosmetic Stages
+e8a72c8|2026-09-02|Add maxlength to free-text fields on Device Edit and IQC Entry forms
+6b35ffb|2026-09-02|Fix the real bug behind /iqc/new and /devices/edit 500s
+ae43e3f|2026-09-02|Global Table behavior — server-side DataTables UX module
+ffcacca|2026-09-02|Production Manager summary tiles + Scrap Products Replace flow
+6c999cb|2026-09-01|L1/L2 Back to Inventory routes to Tags Scrapped; Product Return receipt + External Tag
+6db827b|2026-09-01|Master Data: Global Visibility tab; hide Buckets table to Stock In tags
+53009c3|2026-09-01|Production Manager Repair Line: clickable Bucket ID, hide empty buckets
+37717be|2026-09-01|WorkID Status: Exclude Admin filter, narrowed CSV export to 8 fields
+85880bf|2026-09-01|Backfill all stages for a date range (not one stage at a time); add Assigned Date column
+70391c2|2026-09-01|Backfill WorkID Status with StageMovements that have no WorkOrder
+13b68a0|2026-09-01|Fix Return Stock bucket stuck at Move to Production; backfill per-WorkID Asset History
+b9df356|2026-09-01|Return Stock: show all return_status=Yes tags; fix workid-status filters
+0704df6|2026-09-01|Source WorkID Status Stage/Completed Date/Engineer from Asset History
+e3a73d2|2026-09-01|Add Return Stock table to Inventory Manager page
+94731ff|2026-09-01|L1/L2 Repair: consolidate all filters into one row in the table wrapper
+5a1155d|2026-09-01|Final QC Devices Failed: only Hardware parks in Tag Number Allocation when unassigned
+a1756e5|2026-09-01|Fix 500 on New Tag Sale / New Part Sale submit (Payment Mode column width + event log timezone bug)
+8594b81|2026-09-01|"Failed from Final QC" badge + filter on L1/L2 Repair, Stress Test, Cosmetic Received, Production Manager; Bulk Assign to L1/L2
+6eeecf1|2026-08-31|Final QC auto-attribution, export column fix, Multi-Sell 414 fix, per-stage Completed Date on workid-status
+be1afe6|2026-08-31|Final QC/GRN entity fix, Ready to Sale fix, Payment Modes, Cosmetic Received bulk assign, workid-status tiles/filters
+03a418d|2026-08-29|Final QC Devices Failed: per-tag rows, Move/Bulk Move, search
+833f33b|2026-08-28|feat: Final QC Assign now reuses Production Manager's Assign Bucket modal
+ed6a6f8|2026-08-27|feat: Final QC bucket identity lock + Pick This reset on return
+e7939c0|2026-08-27|feat: dynamic selling company on invoices, Flow Data auto-assign for cosmetic moves
+5070276|2026-08-27|feat: Cosmetic Manager/User roles, Flow Data, Group Config delete fix, Final QC Assign
+39ee768|2026-08-27|fix: report_year missing from admin/master's Dropdown Configuration UI
+ba136b0|2026-08-27|feat: Dashboard Yearly Financial Summary, cosmetic link fix, shared Year filter
+217cb8d|2026-08-27|fix: Cosmetic Received Move to Final QC silently required an engineer
+1e1550e|2026-08-27|feat: Assign Bucket no-engineer moves, Stress Test badge, All Tags filter
+8b56865|2026-08-26|fix: All Tags badge/sort, table count badge on 8 cosmetic pages, no re-pick
+7887432|2026-08-26|feat: All Tags tab, un-modal'd Completed->Final QC move, Final QC scan+Pick
+f9a2e8f|2026-08-26|test: cover a fully custom cosmetic role scoped to a late-pipeline stage
+5993bab|2026-08-26|fix: Cosmetic Page sidebar link must not whitelist built-in role names
+a3b46d6|2026-08-26|feat: dynamic Cosmetic Page sidebar link for non-manager cosmetic roles
+f3c6007|2026-08-26|feat: Company entity, L1/L2 filters, transitive Group Config, admin bulk Assign
+bb05cfc|2026-08-26|feat: Group Config visibility, Move-assign modal, split cosmetic perms
+a3588d8|2026-08-26|feat: Cosmetic Received / Cosmetic Completed stages bracketing cosmetic line
+66889e1|2026-08-26|feat: scope Bucket Qty to trc_production stage; Release Bucket replaces Assign to Engineer
+634a2dd|2026-08-26|feat: L1/L2 Engineer column + real Fail modal on Cleaning/Water Sanding pages
+5a0b33e|2026-08-26|feat: real Devices/IQC/Lot/GRN Edit+Add permissions; hide CPU/RAM/Storage on Stress Test
+d49055d|2026-08-26|refine: Stress Test checklist UX — All Pass placement/behavior, remove QC a Device button
+518096f|2026-08-26|feat: Stress Test manual checklist, L1/L2 Engineer column, All Notes section; fix All Inventory Tags Table for pricing-hidden roles
+77a0e66|2026-08-23|fix: scope Consumed pooling to Make/Model, save Make/Model on GRN/Harvest
+80a24b6|2026-08-23|Part Master global filter now actually filters the tiles
+06a29a3|2026-08-23|Deleted users now disappear from User Management by default
+46290f7|2026-08-23|Fix Delete button in User Management — quote-breaking confirm() string
+75b2ddc|2026-08-23|Final QC Bucket Name textbox, User Management Delete button
+e1701d4|2026-08-23|Fix bucket-reuse sweep, Consumed pooling, Ready to Sale stock filter
+eb62352|2026-08-23|Part Master global filter, Move Parts transfer, cosmetic Fail button, GRN Pending fix
+90a4a72|2026-08-23|Replace topbar Back button with a Back/Forward history pill
+84871f3|2026-08-23|Part Manager batch: Parts Consumption tab, Consumed tile, action-column width, upload modals, Add Harvest/GRN field trims, Edit Part row regroup, role-scoped Device Detail for floor roles
+965de42|2026-08-22|ci: rebuild Diagnose_Device_Agent.exe [skip ci]
+8835f10|2026-08-23|fix: Diagnose Device agent dies silently on some hardware's blank SMBIOS data
+f0d916c|2026-08-22|fix: Hardware Damage filter keyed opposite of its own label
+5b828e9|2026-08-22|fix: every device-creation path checks barcode existence case-insensitively
+6a9ce5e|2026-08-22|feat: wire Spare Part Names/Brands to Part Master's three entry forms
+e3b864c|2026-08-22|feat: multi-select inventory filters, corrected stage pipeline, WorkID export
+58dd2bd|2026-08-22|fix: cancelling a part request no longer bars the part for good
+ca6c210|2026-08-22|feat: Touchpad, Logic Card and Click Button are three parts, not one
+597c74e|2026-08-22|fix: Part Master counted handed-over stock as still available
+4eb19ef|2026-08-22|feat: desktop-only optical parts, case-tolerant tag upload, cosmetic Yes filter
+c9cfdee|2026-08-22|feat: Parts Consumption follows the Spare Part Names master list
+d0370ce|2026-08-22|feat: lot/make/model on Edit Part, invoice attachment on Add GRN
+fac334c|2026-08-22|feat: consolidate spare part names into one master list
+77cf9be|2026-08-22|feat: PNA part marking, Part Master/request filters, manual GRN entry
+901d22c|2026-08-22|fix: IQC save errors 500ed because rollback expired current_user
+13d89e9|2026-08-20|fix: log tracebacks for database errors, add new-user IQC regression tests
+8b47852|2026-08-19|fix: stop the 4s alert auto-dismiss from deleting modal scope panels
+f47b28e|2026-08-19|fix: qty available by part name, 8 cards in a row, open approve to all users
+f458e10|2026-08-19|fix: exclude trashed parts from request modals, harden L1/L2 bulk actions
+434a43c|2026-08-19|fix: part make/model cascade, parts manager cards, L1/L2 bulk request modal
+dfc2737|2026-08-19|feat: bucket->production stage move, bulk part request, part master upload fixes
+2bc537b|2026-08-19|fix(iqc): Add New IQC Entry 500 error — get_or_create_unassigned_lot had a check-then-insert race on the UNIQUE lot_number constraint; two concurrent no-Lot-selected submissions could both try to create the sentinel Lot row, and the loser crashed with an unhandled IntegrityError. Now retries the lookup on conflict instead of raising; call site also wrapped as defense-in-depth
+1744627|2026-08-14|fix(production-manager): Bucket Allocation now keyed off a real Bucket.dept_assigned column instead of an inferred device-stage check, which silently hid buckets that accumulate stock_in devices via Add to Bucket long after being sent to production
+cf10dd5|2026-08-14|fix(production-manager): Bucket Allocation tab now drops a bucket once Assign Bucket routes its devices off trc_production; feat(inventory-manager): remove RAM/Storage columns from Inventory Stock table; add backfill script for pre-fix Lot.grn_system_number gaps
+b45edca|2026-08-14|fix(grn): Add Lot now populates Lot.grn_system_number too — Product IQC's Lot Numbers tab and Edit Lot page read that field directly, not GRNImport; rename GRN in TRC page header to 'Create GRN'
+2ab641d|2026-08-14|fix(grn): Add Lot GRN-number autofill (get_lot_meta now matches lot_id FK, not just legacy free-text lot_number); fix(final-qc): bucket_name fallback to bucket_number when unnamed; feat(grn-trc): summary cards, header/upload layout, LOT column rename; feat: reorder sidebar so GRN post IQC sits below GRN with Invoice
+8ffb904|2026-08-14|fix(final-qc): Move to Inventory/Production buttons — script ran before jQuery loaded; fix(grn-in-plant): Edit GRN modal 3-column row layout
+d624b07|2026-08-14|fix(final-qc): editable Bucket field, warning banner instead of error on Fail, Full IQC tab; Assign Bucket modal radio-based engineer routing; clickable Bucket Name on Inventory Manager
+282bbdb|2026-08-14|feat(grn-in-plant): Lot Number column, GRN-Lot field sync, Add/Edit Lot flow
+ef28204|2026-08-14|feat(location-dashboard): Zone/Type filters + client-side ID and Bin Location search
+a1a77d6|2026-08-14|fix(production-manager): bucket allocation query + Repair Line tab group with Final QC Fail table
+606d893|2026-08-14|feat(inventory-manager): Final QC Pass (Buckets) table + Release Bucket action
+7544ef4|2026-08-14|feat(final-qc): hold-stage PASS/FAIL flow with Devices Passed/Failed tabs
+694cc17|2026-08-14|schema: add FQC hold stages, fail/pass notes, GRN-Lot link columns
+dac157a|2026-08-12|Create Estimate modal: removed checkboxes no longer count as always-selected
+91e6a15|2026-08-12|Create Estimate modal: default all filter checkboxes unselected
+4545b53|2026-08-12|Create Estimate modal: simplify filters, rename Working->not working labels
+5de8b68|2026-08-12|Fix GRN download 404 fallback + Part Estimation checklist additions
+8b73486|2026-08-11|FieldOps: UAT fixes — dead menu, hijacked errors, lockout, dead alert links
+7e8a350|2026-08-11|Part Estimation IQC Data + Location Dashboard filtering + Gate Pass rewrite
+c4f3fcb|2026-08-11|Create Estimate: 160px fixed Field column, totals in one row
+650efc6|2026-08-11|Fix Create Estimate: Generate always failed with 'Could not generate the estimate'
+7863a5f|2026-08-11|Create Estimate: rename Cosmetic Damage Scope, single-grade dropdown
+a013266|2026-08-11|Create Estimate: 3-scope Yes/No/Minor/Major filters, sticky column, parts count
+b662ad6|2026-08-11|Part Estimation: add Create Estimate — field-by-field checklist matrix
+0ae8179|2026-08-11|Entity Movement: add optional Invoice Number field to Change Entities modal
+7c68b8d|2026-08-11|FieldOps: bootstrap without server access
+9bf94a6|2026-08-11|FieldOps: make the bootstrap admin password single-use
+fb46428|2026-08-11|FieldOps: standalone app with its own login, accounts and database
+881e940|2026-08-11|FieldOps: share submitted work across devices
+29e948b|2026-08-11|Move FieldOps out of static/ so the Reliance inventory is not public
+96b2554|2026-08-11|Add Reliance Asset FieldOps app at /fieldops
+9ae9f01|2026-08-11|Inventory Manager: fit all 7 filters on a single row at md breakpoint
+a58c7bb|2026-08-11|Inventory Manager: add slim per-entity total cards above the 4 analytics cards
+776e6ae|2026-08-11|Inventory Manager: entity name + filter + badges (match All Inventory); move entity badges after length dropdown on both pages; fix employee/entity filters not reaching devicesTable ajax
+352685b|2026-08-11|Customise modal: reduce to 8 fields (2/row) on All Inventory + Inventory Manager, remove from Product IQC
+47b061f|2026-08-10|Partner login: add password show/hide toggle, autocomplete hints, no-store cache header
+875b8d3|2026-08-10|Part Estimation: hide Generate Estimate button, make Part Estimate primary
+6376634|2026-08-10|Part Master column cleanup; Bids Created column reorder/rename
+3d6d4f7|2026-08-10|Fix Location ID showing blank for devices assigned via Assign One
+982d7a8|2026-08-10|Location ID on Device Detail / All Inventory / Inventory Manager; drop rupee symbol from Part Master table
+d709f8d|2026-08-10|Sourcing Requests: a closed production row reaches Verify, not stuck forever
+b54d595|2026-08-10|Part Estimate modal polish + Sourcing Requests cleanup, Confirm Request gate
+e445ddf|2026-08-10|Part Estimate modal: multi-select status filters, layout cleanup
+3bf09f0|2026-08-10|Part Estimate: Select Grade is a single dropdown, Generate is repeatable
+e72ba13|2026-08-10|All Inventory export, Sourcing Requests cleanup, multi-grade Part Estimate
+14b79a2|2026-08-10|Default Cosmetics to No, rename Touchpad Logicboard, add permanent delete on Trash
+25cec65|2026-08-10|Stop browsers holding a stale page across a deploy
+70f107c|2026-08-10|Unify the IQC cosmetic scales and cost lots model by model
+37dc822|2026-08-10|Honour an explicit "No" at IQC; list every part in the estimate modal
+0bf85d0|2026-08-10|Move the body and display parts to the foot of Parts Consumption
+5392b96|2026-08-10|One bid per lot, Ready-to-Sale catalog gate, body panels, estimate file removal
+d51ac07|2026-08-10|Get bcrypt off the event loop and derive the lot cascade from the FK graph
+7bb850d|2026-08-10|PO Preview shows a lot summary; drop the Pending for IQC dashboard card
+538ce3d|2026-08-10|Open the app on My Attendance for everyone except admin
+7289511|2026-08-10|Enforce one attendance row per user per day at the database level
+865288a|2026-08-10|Stop a double-clicked Check In from breaking My Attendance for the whole day
+c309f8c|2026-08-07|Add Part Estimation so lots are costed before production starts
+450455a|2026-08-07|Split Product IQC into three tabs and export the full IQC record
+fd5093b|2026-08-07|Add the one-off backfill that moves GRN-carrying IQC tags to Stock Inward
+6e12e8e|2026-08-07|Send an IQC entry straight to Stock Inward when it carries a GRN
+d1e7266|2026-08-07|Cover the whole window with the modal backdrop under the 90% zoom
+cd3c2d0|2026-08-07|Show every permitted role the same dashboard the admin sees
+4bcf77b|2026-08-07|Answer L1 part-stock questions from one query instead of thirteen
+aec16f4|2026-08-07|Drop Lot Number and Validate GRN from the GRN pages; one table layout everywhere
+6b4d8e6|2026-08-07|Aggregate the Ready to Sale lot overview in SQL
+9c79c5e|2026-08-07|Show 12 rows per table, keep headings on one line, drop the L1 Location column
+6db8766|2026-08-07|Aggregate the Model Summary in SQL and fetch its tag detail on demand
+10395f2|2026-08-07|Stop feeding 22,000 UUIDs into IN clauses on the inventory pages
+705c480|2026-08-07|Stop the L1 repair page issuing one stock query per part per device
+204fb98|2026-08-07|Scope repair queues to the current assignee, and make Grade one list everywhere
+5cf72dd|2026-08-07|Publish the Module & Interconnectivity Map from the QA Dashboard, and scale the UI to 90%
+ee583df|2026-08-07|fix: bulk IQC upload 500s on any oversized checklist value
+c28dee1|2026-08-07|feat: entity column on IQC bulk upload; fix misaligned template example row
+a89ec87|2026-08-07|fix: cache-bust tag-scan-autocheck.js; move scan boxes into table toolbars
+855e17f|2026-08-07|fix: one search box per tag table, no new inputs
+29866d5|2026-08-07|feat: scan-to-select on the tag tables of four pages
+dc58a0a|2026-08-07|fix: Inventory Manager stock table has one scan-driven search box
+919ab6b|2026-08-05|feat: All Inventory Tag Number column shows entity name instead of quantity badge
+2a6361c|2026-08-05|fix: Entity Movement SEND TO was silently failing (enum value mismatch); add stage transitions + Requests for Lot table search/pagination
+a961f34|2026-08-05|feat: All Inventory Employee (all users, Tom Select) + IQC-date filter; Sidebar Config additions + reorder
+41a8aa5|2026-08-05|feat: add bulk-upload feature to Manage Location page
+87cce04|2026-08-05|feat: Business P&L — add Parts Consumed and Lots Sold KPI cards
+c4d230d|2026-08-05|feat: Product Scrapped page now filters Grade=scrap AND Stage=scrap_for_sale
+ec59894|2026-08-05|feat: All Inventory filters+entity strip, relocate Scrap Products table to Production Manager
+d982a1f|2026-08-05|feat: accept Tag No/Tag Number/barcode/tag_number aliases, reflow upload cards into one row
+4edf639|2026-08-05|feat: rework Change Entity modal with SOLD TO/SEND TO + Tag Number Movement table
+b7c55e9|2026-08-05|feat: add TagNumberMovement model + DeviceStage.scrap_for_sale enum value
+89120bd|2026-08-03|Swap only the strong-tag headlines in Bulk Move to TRC modal
+6c9227f|2026-08-03|Rename Bulk Move to TRC destination labels
+ae6ceb1|2026-08-03|Map this GRN sets entity to OxyPC Computers; swap Bulk Move to TRC option order
+e9cb73d|2026-08-03|GRN Board: reorder tabs, fix table scaling, restrict Pending for TRC to Deshwal
+89e4c43|2026-08-03|Add New IQC saves Stage IQC only; fix GRN Board freeze + Pending for TRC flow
+bb0ead1|2026-08-03|Fix startup crash: seed trc_production into stage_master (CANONICAL_STAGES)
+4efe309|2026-08-03|Add Entity Movement page, GRN Board tabs + Bulk Move to TRC, PO Preview fix
+a53f3f3|2026-08-03|Downgrade modal dropdowns, L3/L4 Mark Complete modal, Add IQC entity/GRN fixes
+37b0d97|2026-08-03|Device Detail/Edit/IQC/Sales/Customize/Part Manager batch: entity, downgrade, layout
+b5cbb68|2026-08-03|Add persistent Bulk Upload alert banner; fix Attendance status card auto-hiding
+aae258d|2026-08-03|Add Sale Date field to New Sale and New Spare Part Sale
+4480e79|2026-08-03|Production Manager: fix Bucket Allocation tab table, not the wrong lower section
+f7d52bd|2026-08-03|Inventory Stock: scope to Stock In stage; allow corrective transitions back to Stock In
+7bed8cf|2026-08-03|Inventory Manager: scanning/searching no longer drops prior tag selections
+0a39f85|2026-08-03|Business P&L: admin-only Edit on Monthly Breakdown, rolls up to KPI cards
+453e935|2026-08-03|Fix Customize Modal redirecting to the wrong page after submit
+c9f8428|2026-07-31|Add 4 sidebar entries missing from Sidebar Config / Page Titles / Permissions Matrix
+476f53a|2026-07-31|Inventory Manager: show any device with a GRN, not just Stock In stage
+73b6bac|2026-07-31|Production Manager: Bucket Name column + tabbed Bucket/Tag Allocation
+f32fac4|2026-07-31|ci: rebuild Diagnose_Device_Agent.exe [skip ci]
+2b90410|2026-07-31|OxyQC agent: fix screen-size boundary and Dell model-code over-detection
+ab92074|2026-07-31|Add Pending-for-IQC breakdown (Lot No / Category / Qty) to Dashboard
+201fa44|2026-07-30|Fix GRN invoice vendor-name extraction picking wrong text
+e3710bd|2026-07-30|Fix SyntaxError crashing the internal server (Python 3.10 f-string limit)
+53e6c4a|2026-07-30|Item 7: All Inventory — upload tags, select, bulk action via Customise

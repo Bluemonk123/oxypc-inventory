@@ -49,7 +49,7 @@
           <td class="text-nowrap">{{ g.model or '—' }}</td>
           <td>{{ g.cpu or '—' }}</td>
           <td>{{ g.cpu_gen or '—' }}</td>
-          <td data-order="{{ g.base_price if g.base_price is not none else -1 }}">{% if g.sku_missing %}<span class="pc-pill pc-pend">⏳ SKU not found</span>{% else %}{{ hw_status(g.base_price) }}{% endif %}</td>
+          <td data-order="{{ g.base_price if g.base_price is not none else -1 }}">{% if g.sku_missing %}<span class="pc-pill pc-pend">⏳ SKU not found</span>{% else %}{# Discount (2026-11-04): Product Master Discount % taken off Base Price #}<span class="text-nowrap">{{ g.disc_label }}</span><div>{{ hw_status(g.base_price) }}</div>{% endif %}</td>
           <td class="text-nowrap">{{ g.ram or '—' }}<div>{{ hw_status(g.ram_price) }}</div></td>
           <td class="text-nowrap">{{ g.ssd or '—' }}<div>{{ hw_status(g.sto_price) }}</div></td>
           <td class="pc-parts">
@@ -179,7 +179,7 @@ document.addEventListener('DOMContentLoaded', function () { if (window.flashAsTo
     language: { emptyTable: 'No file uploaded yet. Use Upload File to add one.' } });
   // Price rule on one line next to the count badge (2026-11-04); the search
   // box shrinks to share the row.
-  var pcRule = 'Selling Price = ((Base + RAM + Storage) − (Spare Parts)) · Spare Parts values OK / Okay / Blank (any case) will deduct nothing.';
+  var pcRule = 'Selling Price = ((Base + RAM + Storage) − (Spare Parts)) · Base = Product Master Base Price − Discount (when a Discount % is set) · Spare Parts values OK / Okay / Blank (any case) will deduct nothing.';
   $('#pcTable_wrapper .gtable-top').addClass('pc-top');
   $('<span class="pc-rule small text-muted"><i class="bi bi-info-circle me-1"></i></span>').append(document.createTextNode(pcRule))
     .attr('title', pcRule).insertAfter('#pcTable_info');

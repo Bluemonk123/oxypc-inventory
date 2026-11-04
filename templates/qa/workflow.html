@@ -4,288 +4,59 @@
 {% block content %}
 {% include 'qa/_tabs.html' %}
 
+{# Rewritten 2026-11-04: New GRN and Re-GRN as they work today (data in
+   routers/qa_uat.py WORKFLOW_FLOWS). Steps run left to right; each step lists
+   its branches underneath. #}
 <style>
-  .node   { stroke-width:1.2; rx:8; }
-  .lbl    { font-family:Arial,Helvetica,sans-serif; font-size:12px; font-weight:600; fill:#212529; }
-  .lbl-sm { font-family:Arial,Helvetica,sans-serif; font-size:10px; font-weight:400; fill:#212529; }
-  .lane   { font-family:Arial,Helvetica,sans-serif; font-size:11px; font-weight:700; fill:#6c757d; letter-spacing:.5px; }
-  .edge, .edge2       { stroke:#6c757d; stroke-width:1.4; fill:none; marker-end:url(#arrow); }
-  .edge-ret, .edge2-ret { stroke:#dc3545; stroke-width:1.4; fill:none; marker-end:url(#arrow); stroke-dasharray:5,3; }
+  .wf-steps{display:flex; align-items:stretch; gap:0; overflow-x:auto; padding:4px 2px 8px}
+  .wf-step{flex:1 0 220px; max-width:300px; display:flex; flex-direction:column;
+           border:1px solid #dbe3ee; border-radius:10px; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,.06)}
+  .wf-step-head{padding:.6rem .75rem .5rem; border-bottom:1px solid #eef0f3; background:#f4f8fd; border-radius:10px 10px 0 0}
+  .wf-num{display:inline-flex; width:22px; height:22px; border-radius:50%; background:#0d3b78; color:#fff;
+          font-size:.72rem; font-weight:700; align-items:center; justify-content:center; margin-right:.4rem}
+  .wf-title{font-weight:700; font-size:.88rem; color:#0d3b78}
+  .wf-where{font-size:.7rem; color:#6c757d; margin-top:.2rem}
+  .wf-body{padding:.6rem .75rem; font-size:.76rem; color:#343a40}
+  .wf-br{margin:.45rem .75rem 0; padding:.35rem .5rem; border-radius:6px; font-size:.72rem; border-left:3px solid}
+  .wf-br:last-child{margin-bottom:.75rem}
+  .wf-br b{display:block; font-weight:600}
+  .wf-br.success{background:#e8f6ee; border-color:#0F7A37}
+  .wf-br.warning{background:#fff6e0; border-color:#e0a800}
+  .wf-br.danger {background:#fdecee; border-color:#dc3545}
+  .wf-br.info   {background:#eef4fb; border-color:#6c8ebf}
+  .wf-arrow{flex:0 0 28px; display:flex; align-items:center; justify-content:center; color:#6c8ebf; font-size:1.2rem}
 </style>
 
-<!-- Both flows on one page, stacked (no tab toggle) -->
+{% for f in flows %}
 <div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-transparent fw-semibold small text-uppercase">
-    <i class="bi bi-diagram-3 me-2"></i>Flow 1 &mdash; PO / GRN &rarr; IQC
+  <div class="card-header bg-transparent">
+    <div class="fw-semibold small text-uppercase"><i class="bi bi-diagram-3 me-2"></i>{{ f.title }}</div>
+    <div class="text-muted small">{{ f.sub }}</div>
   </div>
   <div class="card-body">
-    <div style="overflow-x:auto">
-      <svg viewBox="0 0 1260 660" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:1100px;height:auto">
-        <defs>
-          <marker id="arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-            <path d="M0,0 L6,3 L0,6 Z" fill="#6c757d"/>
-          </marker>
-        </defs>
-
-        <!-- Lane labels -->
-        <text x="10" y="18" class="lane">SOURCING &amp; PROCUREMENT</text>
-        <text x="10" y="98" class="lane">INBOUND RECEIPT &amp; IQC</text>
-        <text x="10" y="178" class="lane">REPAIR &amp; PART CONSUMPTION</text>
-        <text x="10" y="398" class="lane">QC &amp; SALES-READY</text>
-        <text x="10" y="483" class="lane">DEALER / TELECALLING / CRM</text>
-        <text x="10" y="563" class="lane">RETURNS &amp; WARRANTY</text>
-
-        <!-- Lane A: Sourcing & Procurement -->
-        <rect x="10" y="28" width="140" height="48" class="node" fill="#e7f1ff" stroke="#0d6efd"/>
-        <text x="80" y="57" text-anchor="middle" class="lbl">PO Generation</text>
-        <rect x="170" y="28" width="150" height="48" class="node" fill="#e7f1ff" stroke="#0d6efd"/>
-        <text x="245" y="57" text-anchor="middle" class="lbl">Product Sourcing</text>
-        <path class="edge" d="M150,52 H170"/>
-        <rect x="340" y="28" width="140" height="48" class="node" fill="#e7f1ff" stroke="#0d6efd"/>
-        <text x="410" y="57" text-anchor="middle" class="lbl">Part Sourcing</text>
-        <path class="edge" d="M150,45 H160 V15 H410 V28"/>
-        <rect x="500" y="28" width="130" height="48" class="node" fill="#e7f1ff" stroke="#0d6efd"/>
-        <text x="565" y="57" text-anchor="middle" class="lbl">Part GRN</text>
-        <path class="edge" d="M480,52 H500"/>
-
-        <!-- Lane B: Inbound Receipt & IQC (Flow 1 order: GRN -> Lot/Stock Inward -> IQC) -->
-        <rect x="10" y="108" width="120" height="48" class="node" fill="#fff3cd" stroke="#997404"/>
-        <text x="70" y="130" text-anchor="middle" class="lbl">GRN</text>
-        <text x="70" y="145" text-anchor="middle" class="lbl-sm">(Goods Receipt)</text>
-        <path class="edge" d="M245,76 V95 H70 V108"/>
-        <rect x="150" y="108" width="160" height="48" class="node" fill="#fff3cd" stroke="#997404"/>
-        <text x="230" y="136" text-anchor="middle" class="lbl">Lot / Stock Inward</text>
-        <path class="edge" d="M130,132 H150"/>
-        <rect x="330" y="108" width="130" height="48" class="node" fill="#fff3cd" stroke="#997404"/>
-        <text x="395" y="136" text-anchor="middle" class="lbl">Product IQC</text>
-        <path class="edge" d="M310,132 H330"/>
-        <rect x="480" y="108" width="130" height="48" class="node" fill="#fff3cd" stroke="#997404"/>
-        <text x="545" y="130" text-anchor="middle" class="lbl">Grading</text>
-        <text x="545" y="145" text-anchor="middle" class="lbl-sm">(A / B / C)</text>
-        <path class="edge" d="M460,132 H480"/>
-
-        <!-- Lane C: Repair & Part Consumption -->
-        <path class="edge" d="M545,156 V195 H720"/>
-        <rect x="660" y="196" width="120" height="40" class="node" fill="#ffe5d0" stroke="#c1560c"/>
-        <text x="720" y="220" text-anchor="middle" class="lbl">Repair L1</text>
-        <rect x="660" y="246" width="120" height="40" class="node" fill="#ffe5d0" stroke="#c1560c"/>
-        <text x="720" y="270" text-anchor="middle" class="lbl">Repair L2</text>
-        <rect x="660" y="296" width="120" height="40" class="node" fill="#ffe5d0" stroke="#c1560c"/>
-        <text x="720" y="320" text-anchor="middle" class="lbl">Repair L3</text>
-        <path class="edge" d="M720,236 V246"/>
-        <path class="edge" d="M720,286 V296"/>
-
-        <rect x="800" y="246" width="170" height="40" class="node" fill="#ffe5d0" stroke="#c1560c"/>
-        <text x="885" y="270" text-anchor="middle" class="lbl">Raise Part Request</text>
-        <path class="edge" d="M780,216 H790 V266 H800"/>
-        <path class="edge" d="M780,266 H800"/>
-        <path class="edge" d="M780,316 H790 V266 H800"/>
-        <text x="885" y="240" text-anchor="middle" class="lbl-sm">(L1 / L2 / L3 &mdash; new or replace)</text>
-
-        <rect x="990" y="246" width="150" height="40" class="node" fill="#ffe5d0" stroke="#c1560c"/>
-        <text x="1065" y="270" text-anchor="middle" class="lbl">Part Consumption</text>
-        <path class="edge" d="M970,266 H990"/>
-        <path class="edge" d="M565,76 V80 H1065 V246"/>
-
-        <rect x="800" y="296" width="170" height="40" class="node" fill="#fff3cd" stroke="#997404"/>
-        <text x="885" y="320" text-anchor="middle" class="lbl">Replace Product (L3)</text>
-        <path class="edge" d="M780,316 H800"/>
-
-        <rect x="800" y="346" width="170" height="40" class="node" fill="#f8d7da" stroke="#b02a37"/>
-        <text x="885" y="370" text-anchor="middle" class="lbl">Scrap Product (L3)</text>
-        <path class="edge" d="M780,326 H790 V366 H800"/>
-
-        <!-- Lane D: QC & Sales-Ready -->
-        <path class="edge" d="M1065,286 V405 H160"/>
-        <path class="edge" d="M885,336 V405 H160"/>
-        <rect x="10" y="406" width="150" height="48" class="node" fill="#d1e7dd" stroke="#146c43"/>
-        <text x="85" y="435" text-anchor="middle" class="lbl">Stress Test / QC</text>
-        <rect x="180" y="406" width="190" height="48" class="node" fill="#d1e7dd" stroke="#146c43"/>
-        <text x="275" y="428" text-anchor="middle" class="lbl">Ready to Sale</text>
-        <text x="275" y="443" text-anchor="middle" class="lbl-sm">(requested by Telecalling)</text>
-        <path class="edge" d="M160,430 H180"/>
-        <rect x="390" y="406" width="130" height="48" class="node" fill="#d1e7dd" stroke="#146c43"/>
-        <text x="455" y="435" text-anchor="middle" class="lbl">Dispatch</text>
-        <path class="edge" d="M370,430 H390"/>
-        <rect x="540" y="406" width="190" height="48" class="node" fill="#d1e7dd" stroke="#146c43"/>
-        <text x="635" y="428" text-anchor="middle" class="lbl">Sale Marked</text>
-        <text x="635" y="443" text-anchor="middle" class="lbl-sm">(Counter Sale Executive)</text>
-        <path class="edge" d="M520,430 H540"/>
-
-        <!-- Lane E: Dealer / Telecalling / CRM -->
-        <rect x="10" y="484" width="130" height="48" class="node" fill="#e2e3ff" stroke="#6f42c1"/>
-        <text x="75" y="513" text-anchor="middle" class="lbl">Dealer Mgmt</text>
-        <rect x="160" y="484" width="130" height="48" class="node" fill="#e2e3ff" stroke="#6f42c1"/>
-        <text x="225" y="513" text-anchor="middle" class="lbl">Telecalling</text>
-        <path class="edge" d="M140,508 H160"/>
-        <rect x="310" y="484" width="130" height="48" class="node" fill="#e2e3ff" stroke="#6f42c1"/>
-        <text x="375" y="513" text-anchor="middle" class="lbl">Quotation</text>
-        <path class="edge" d="M290,508 H310"/>
-        <path class="edge" d="M225,484 V454 H275 V406"/>
-
-        <!-- Lane F: Returns & Warranty -->
-        <path class="edge-ret" d="M635,454 V590 H130"/>
-        <rect x="10" y="564" width="120" height="48" class="node" fill="#f8d7da" stroke="#b02a37"/>
-        <text x="70" y="593" text-anchor="middle" class="lbl">Returns</text>
-        <rect x="150" y="564" width="190" height="48" class="node" fill="#f8d7da" stroke="#b02a37"/>
-        <text x="245" y="593" text-anchor="middle" class="lbl">Return Warranty Check</text>
-        <path class="edge-ret" d="M130,588 H150"/>
-        <rect x="360" y="564" width="210" height="48" class="node" fill="#d1e7dd" stroke="#146c43"/>
-        <text x="465" y="586" text-anchor="middle" class="lbl">IN-Warranty Flow</text>
-        <text x="465" y="601" text-anchor="middle" class="lbl-sm">Free repair / replace</text>
-        <path class="edge-ret" d="M340,580 H360"/>
-        <rect x="590" y="564" width="230" height="48" class="node" fill="#f8d7da" stroke="#b02a37"/>
-        <text x="705" y="586" text-anchor="middle" class="lbl">OUT-of-Warranty Flow</text>
-        <text x="705" y="601" text-anchor="middle" class="lbl-sm">Chargeable repair / scrap</text>
-        <path class="edge-ret" d="M340,600 H590"/>
-        <path class="edge-ret" d="M465,564 V336 H720"/>
-        <path class="edge-ret" d="M705,564 V370 H970"/>
-        <text x="900" y="450" class="lbl-sm" style="fill:#b02a37">Warranty flows loop back into Repair L1&ndash;L3 / Scrap</text>
-      </svg>
+    <div class="wf-steps">
+      {% for title, where, what, branches in f.steps %}
+      <div class="wf-step">
+        <div class="wf-step-head">
+          <div><span class="wf-num">{{ loop.index }}</span><span class="wf-title">{{ title }}</span></div>
+          <div class="wf-where"><i class="bi bi-geo-alt me-1"></i>{{ where }}</div>
+        </div>
+        <div class="wf-body">{{ what }}</div>
+        {% for label, outcome, tone in branches %}
+        <div class="wf-br {{ tone }}"><b>{{ label }}</b>{{ outcome }}</div>
+        {% endfor %}
+      </div>
+      {% if not loop.last %}<div class="wf-arrow"><i class="bi bi-arrow-right"></i></div>{% endif %}
+      {% endfor %}
     </div>
   </div>
 </div>
-
-<div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-transparent fw-semibold small text-uppercase">
-    <i class="bi bi-diagram-3 me-2"></i>Flow 2 &mdash; IQC Received &rarr; GRN &rarr; Lot/Stock Inward
-  </div>
-  <div class="card-body">
-    <div style="overflow-x:auto">
-      <svg viewBox="0 0 1260 660" xmlns="http://www.w3.org/2000/svg" style="width:100%;min-width:1100px;height:auto">
-        <defs>
-          <marker id="arrow2" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-            <path d="M0,0 L6,3 L0,6 Z" fill="#6c757d"/>
-          </marker>
-        </defs>
-
-        <!-- Lane labels -->
-        <text x="10" y="18" class="lane">SOURCING &amp; PROCUREMENT</text>
-        <text x="10" y="98" class="lane">IQC RECEIPT &amp; INWARD (ALT. SEQUENCE)</text>
-        <text x="10" y="178" class="lane">REPAIR &amp; PART CONSUMPTION</text>
-        <text x="10" y="398" class="lane">QC &amp; SALES-READY</text>
-        <text x="10" y="483" class="lane">DEALER / TELECALLING / CRM</text>
-        <text x="10" y="563" class="lane">RETURNS &amp; WARRANTY</text>
-
-        <!-- Lane A: Sourcing & Procurement (unchanged) -->
-        <rect x="10" y="28" width="140" height="48" class="node" fill="#e7f1ff" stroke="#0d6efd"/>
-        <text x="80" y="57" text-anchor="middle" class="lbl">PO Generation</text>
-        <rect x="170" y="28" width="150" height="48" class="node" fill="#e7f1ff" stroke="#0d6efd"/>
-        <text x="245" y="57" text-anchor="middle" class="lbl">Product Sourcing</text>
-        <path class="edge2" d="M150,52 H170"/>
-        <rect x="340" y="28" width="140" height="48" class="node" fill="#e7f1ff" stroke="#0d6efd"/>
-        <text x="410" y="57" text-anchor="middle" class="lbl">Part Sourcing</text>
-        <path class="edge2" d="M150,45 H160 V15 H410 V28"/>
-        <rect x="500" y="28" width="130" height="48" class="node" fill="#e7f1ff" stroke="#0d6efd"/>
-        <text x="565" y="57" text-anchor="middle" class="lbl">Part GRN</text>
-        <path class="edge2" d="M480,52 H500"/>
-
-        <!-- Lane B: Alt sequence — Product IQC Received -> GRN -> Lot/Stock Inward -> Grading -->
-        <rect x="10" y="108" width="150" height="48" class="node" fill="#fff3cd" stroke="#997404"/>
-        <text x="85" y="130" text-anchor="middle" class="lbl">Product IQC Received</text>
-        <text x="85" y="145" text-anchor="middle" class="lbl-sm">(pre-GRN inspection)</text>
-        <path class="edge2" d="M245,76 V95 H85 V108"/>
-        <rect x="200" y="108" width="120" height="48" class="node" fill="#fff3cd" stroke="#997404"/>
-        <text x="260" y="130" text-anchor="middle" class="lbl">GRN</text>
-        <text x="260" y="145" text-anchor="middle" class="lbl-sm">(Goods Receipt)</text>
-        <path class="edge2" d="M160,132 H200"/>
-        <rect x="340" y="108" width="160" height="48" class="node" fill="#fff3cd" stroke="#997404"/>
-        <text x="420" y="136" text-anchor="middle" class="lbl">Lot / Stock Inward</text>
-        <path class="edge2" d="M320,132 H340"/>
-        <rect x="520" y="108" width="130" height="48" class="node" fill="#fff3cd" stroke="#997404"/>
-        <text x="585" y="130" text-anchor="middle" class="lbl">Grading</text>
-        <text x="585" y="145" text-anchor="middle" class="lbl-sm">(A / B / C)</text>
-        <path class="edge2" d="M500,132 H520"/>
-
-        <!-- Lane C: Repair & Part Consumption (identical to Flow 1) -->
-        <path class="edge2" d="M585,156 V195 H720"/>
-        <rect x="660" y="196" width="120" height="40" class="node" fill="#ffe5d0" stroke="#c1560c"/>
-        <text x="720" y="220" text-anchor="middle" class="lbl">Repair L1</text>
-        <rect x="660" y="246" width="120" height="40" class="node" fill="#ffe5d0" stroke="#c1560c"/>
-        <text x="720" y="270" text-anchor="middle" class="lbl">Repair L2</text>
-        <rect x="660" y="296" width="120" height="40" class="node" fill="#ffe5d0" stroke="#c1560c"/>
-        <text x="720" y="320" text-anchor="middle" class="lbl">Repair L3</text>
-        <path class="edge2" d="M720,236 V246"/>
-        <path class="edge2" d="M720,286 V296"/>
-
-        <rect x="800" y="246" width="170" height="40" class="node" fill="#ffe5d0" stroke="#c1560c"/>
-        <text x="885" y="270" text-anchor="middle" class="lbl">Raise Part Request</text>
-        <path class="edge2" d="M780,216 H790 V266 H800"/>
-        <path class="edge2" d="M780,266 H800"/>
-        <path class="edge2" d="M780,316 H790 V266 H800"/>
-        <text x="885" y="240" text-anchor="middle" class="lbl-sm">(L1 / L2 / L3 &mdash; new or replace)</text>
-
-        <rect x="990" y="246" width="150" height="40" class="node" fill="#ffe5d0" stroke="#c1560c"/>
-        <text x="1065" y="270" text-anchor="middle" class="lbl">Part Consumption</text>
-        <path class="edge2" d="M970,266 H990"/>
-        <path class="edge2" d="M565,76 V80 H1065 V246"/>
-
-        <rect x="800" y="296" width="170" height="40" class="node" fill="#fff3cd" stroke="#997404"/>
-        <text x="885" y="320" text-anchor="middle" class="lbl">Replace Product (L3)</text>
-        <path class="edge2" d="M780,316 H800"/>
-
-        <rect x="800" y="346" width="170" height="40" class="node" fill="#f8d7da" stroke="#b02a37"/>
-        <text x="885" y="370" text-anchor="middle" class="lbl">Scrap Product (L3)</text>
-        <path class="edge2" d="M780,326 H790 V366 H800"/>
-
-        <!-- Lane D: QC & Sales-Ready -->
-        <path class="edge2" d="M1065,286 V405 H160"/>
-        <path class="edge2" d="M885,336 V405 H160"/>
-        <rect x="10" y="406" width="150" height="48" class="node" fill="#d1e7dd" stroke="#146c43"/>
-        <text x="85" y="435" text-anchor="middle" class="lbl">Stress Test / QC</text>
-        <rect x="180" y="406" width="190" height="48" class="node" fill="#d1e7dd" stroke="#146c43"/>
-        <text x="275" y="428" text-anchor="middle" class="lbl">Ready to Sale</text>
-        <text x="275" y="443" text-anchor="middle" class="lbl-sm">(requested by Telecalling)</text>
-        <path class="edge2" d="M160,430 H180"/>
-        <rect x="390" y="406" width="130" height="48" class="node" fill="#d1e7dd" stroke="#146c43"/>
-        <text x="455" y="435" text-anchor="middle" class="lbl">Dispatch</text>
-        <path class="edge2" d="M370,430 H390"/>
-        <rect x="540" y="406" width="190" height="48" class="node" fill="#d1e7dd" stroke="#146c43"/>
-        <text x="635" y="428" text-anchor="middle" class="lbl">Sale Marked</text>
-        <text x="635" y="443" text-anchor="middle" class="lbl-sm">(Counter Sale Executive)</text>
-        <path class="edge2" d="M520,430 H540"/>
-
-        <!-- Lane E: Dealer / Telecalling / CRM -->
-        <rect x="10" y="484" width="130" height="48" class="node" fill="#e2e3ff" stroke="#6f42c1"/>
-        <text x="75" y="513" text-anchor="middle" class="lbl">Dealer Mgmt</text>
-        <rect x="160" y="484" width="130" height="48" class="node" fill="#e2e3ff" stroke="#6f42c1"/>
-        <text x="225" y="513" text-anchor="middle" class="lbl">Telecalling</text>
-        <path class="edge2" d="M140,508 H160"/>
-        <rect x="310" y="484" width="130" height="48" class="node" fill="#e2e3ff" stroke="#6f42c1"/>
-        <text x="375" y="513" text-anchor="middle" class="lbl">Quotation</text>
-        <path class="edge2" d="M290,508 H310"/>
-        <path class="edge2" d="M225,484 V454 H275 V406"/>
-
-        <!-- Lane F: Returns & Warranty -->
-        <path class="edge2-ret" d="M635,454 V590 H130"/>
-        <rect x="10" y="564" width="120" height="48" class="node" fill="#f8d7da" stroke="#b02a37"/>
-        <text x="70" y="593" text-anchor="middle" class="lbl">Returns</text>
-        <rect x="150" y="564" width="190" height="48" class="node" fill="#f8d7da" stroke="#b02a37"/>
-        <text x="245" y="593" text-anchor="middle" class="lbl">Return Warranty Check</text>
-        <path class="edge2-ret" d="M130,588 H150"/>
-        <rect x="360" y="564" width="210" height="48" class="node" fill="#d1e7dd" stroke="#146c43"/>
-        <text x="465" y="586" text-anchor="middle" class="lbl">IN-Warranty Flow</text>
-        <text x="465" y="601" text-anchor="middle" class="lbl-sm">Free repair / replace</text>
-        <path class="edge2-ret" d="M340,580 H360"/>
-        <rect x="590" y="564" width="230" height="48" class="node" fill="#f8d7da" stroke="#b02a37"/>
-        <text x="705" y="586" text-anchor="middle" class="lbl">OUT-of-Warranty Flow</text>
-        <text x="705" y="601" text-anchor="middle" class="lbl-sm">Chargeable repair / scrap</text>
-        <path class="edge2-ret" d="M340,600 H590"/>
-        <path class="edge2-ret" d="M465,564 V336 H720"/>
-        <path class="edge2-ret" d="M705,564 V370 H970"/>
-        <text x="900" y="450" class="lbl-sm" style="fill:#b02a37">Warranty flows loop back into Repair L1&ndash;L3 / Scrap</text>
-      </svg>
-    </div>
-  </div>
-</div>
+{% endfor %}
 
 <div class="small text-muted mt-2">
-  <span class="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle me-1">&nbsp;</span> Sourcing / Procurement
-  <span class="badge bg-warning bg-opacity-25 text-dark border border-warning-subtle ms-3 me-1">&nbsp;</span> Inbound / IQC / Grading
-  <span class="badge ms-3 me-1" style="background:#ffe5d0;border:1px solid #c1560c">&nbsp;</span> Repair &amp; Part Consumption
-  <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle ms-3 me-1">&nbsp;</span> QC &amp; Sales-Ready
-  <span class="badge ms-3 me-1" style="background:#e2e3ff;border:1px solid #6f42c1">&nbsp;</span> Dealer / Telecalling / CRM
-  <span class="badge bg-danger bg-opacity-10 text-danger border border-danger-subtle ms-3 me-1">&nbsp;</span> Returns &amp; Warranty Loop
+  <span class="wf-br success d-inline-block me-2 mb-1"><b class="d-inline">Green</b> moves forward</span>
+  <span class="wf-br warning d-inline-block me-2 mb-1"><b class="d-inline">Amber</b> waits or needs review</span>
+  <span class="wf-br danger d-inline-block me-2 mb-1"><b class="d-inline">Red</b> refused / skipped</span>
+  <span class="wf-br info d-inline-block me-2 mb-1"><b class="d-inline">Blue</b> rule or note</span>
 </div>
-
 {% endblock %}
