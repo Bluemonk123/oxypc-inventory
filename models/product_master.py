@@ -132,11 +132,15 @@ class PMProduct(Base):
     updated_at = Column(DateTime, default=app_now, onupdate=app_now)
 
 
+SKU_DIGITS = 5   # 2026-11-04 (Pankaj): short SKUs, typed by hand in upload files (was 12)
+
+
 def new_sku(taken: set) -> str:
-    """A random 12-digit SKU (no leading zero) not in `taken`; adds it there."""
+    """A random SKU_DIGITS-digit SKU (no leading zero) not in `taken`; adds it there."""
     import secrets
+    lo = 10 ** (SKU_DIGITS - 1)
     while True:
-        v = str(secrets.randbelow(9 * 10**11) + 10**11)
+        v = str(secrets.randbelow(9 * lo) + lo)
         if v not in taken:
             taken.add(v)
             return v
@@ -438,3 +442,40 @@ class PMCalcRow(Base):
     storage_size = Column(String(100), nullable=True)
     # comma-separated PART_FIELDS keys the file marked Damage / Not Working
     damaged_parts = Column(String(300), nullable=True)
+
+
+async def renumber_skus_5digit_once(db) -> int:
+    """One-time (2026-11-04, Pankaj): every Product Master SKU that is not
+    SKU_DIGITS long gets a new SKU_DIGITS-digit one. Pricing Calculator rows
+    are moved to the new SKU so past uploads stay linked; the old -> new list
+    goes to the audit log. Recorded in app_settings, so it runs once."""
+    import json
+    from sqlalchemy import text, select
+    done = (await db.execute(text("SELECT 1 FROM app_settings WHERE key = 'pm_sku_5digit_v1'"))).first()
+    if done:
+        return 0
+    rows = (await db.execute(select(PMProduct).order_by(PMProduct.created_at))).scalars().all()
+    taken = {p.sku for p in rows if p.sku and len(p.sku) == SKU_DIGITS}
+    mapping = {}
+    for p in rows:
+        if p.sku and len(p.sku) == SKU_DIGITS:
+            continue
+        old = p.sku
+        p.sku = new_sku(taken)
+        if old:
+            mapping[old] = p.sku
+    await db.flush()
+    for old, new in mapping.items():
+        await db.execute(text("UPDATE pm_calc_rows SET sku = :n WHERE sku = :o"), {"n": new, "o": old})
+    if mapping:
+        await db.execute(text(
+            "INSERT INTO audit_logs (id, username, action, table_name, record_id, old_value, new_value, notes, timestamp) "
+            "VALUES (gen_random_uuid(), 'system', 'PM_SKU_RENUMBERED', 'pm_products', :n, :o, :nv, :notes, now())"),
+            {"n": str(len(mapping)), "o": json.dumps(list(mapping.keys())), "nv": json.dumps(mapping),
+             "notes": f"Product Master SKUs shortened to {SKU_DIGITS} digits (old -> new in new_value)"})
+    await db.execute(text(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('pm_sku_5digit_v1', :v, 'Product Master SKUs renumbered to 5 digits', 'system', now())"),
+        {"v": str(len(mapping))})
+    await db.commit()
+    return len(mapping)

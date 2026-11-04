@@ -707,6 +707,10 @@ async def startup_event():
             _sync = await sync_pm_from_staging_once(_sesspm)
             if _sync:
                 print(f"  [ProductMaster] Staging sync: {_sync}")
+            from models.product_master import renumber_skus_5digit_once
+            _rn = await renumber_skus_5digit_once(_sesspm)
+            if _rn:
+                print(f"  [ProductMaster] {_rn} SKU(s) renumbered to 5 digits")
             _n = await seed_pm_dropdowns_if_empty(_sesspm)
             if _n:
                 print(f"  [ProductMaster] Seeded {_n} Dropdown Configuration value(s)")

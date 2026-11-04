@@ -127,7 +127,9 @@ asyncio.run(main())
             tile = ws.split('data-group="pre_sale_iqc"', 1)[1].split("lt-tile-wm", 1)[0]
             # Moved hidden, Pass | Fail added (2026-11-03)
             assert ">Moved<" not in tile and ">Completed<" not in tile
-            assert tile.index(">Received<") < tile.index(">Started<") < tile.index(">Pending<") < tile.index(">Pass<")
+            # 2026-11-04: Received hidden, Pending above Started
+            assert ">Received<" not in tile
+            assert tile.index(">Pending<") < tile.index(">Started<") < tile.index(">Pass<")
             assert ">Assigned<" not in tile
             return int(tile.split(f'data-k="{k}" data-server="', 1)[1].split('"', 1)[0])
 

@@ -2,27 +2,44 @@
 {% block title %}Pricing Calculator — OxyPC{% endblock %}
 {% block page_title %}Pricing Calculator{% endblock %}
 {% block content %}
+<style>
+/* Pricing rule beside the count badge, all on one row (2026-11-04) */
+#pcTable_wrapper .pc-top{flex-wrap:nowrap!important}
+#pcTable_wrapper .pc-top > div:first-child{flex:1 1 auto;min-width:0;flex-wrap:nowrap!important}
+#pcTable_wrapper .pc-top > div:last-child{flex:0 1 auto;flex-wrap:nowrap!important}
+#pcTable_wrapper .pc-rule{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+#pcTable_wrapper .dataTables_length,#pcTable_wrapper .dataTables_info{white-space:nowrap}
+#pcTable_wrapper .dataTables_filter input{width:clamp(120px,14vw,220px)!important}
+/* Status pills: Hardware under RAM / SSD, Spare Parts column, Selling Price (2026-11-04) */
+.pc-pill{display:inline-block;border-radius:999px;padding:1px 9px;font-size:11.5px;font-weight:600;white-space:nowrap;margin-top:3px}
+.pc-ok{background:#d1f0dc;color:#0F7A37}.pc-red{background:#f8d7da;color:#b02a37}.pc-pend{background:#ffe8cc;color:#b35900}.pc-none{background:#e9ecef;color:#495057}
+.pc-line{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:2px 0}
+#pcTable td.pc-parts{white-space:nowrap}
+#pcTable td.pc-parts .pc-line{display:block;margin:0 0 6px}#pcTable td.pc-parts .pc-line:last-child{margin-bottom:0}
+#pcTable td.pc-parts .pc-line > span:first-child{display:block;white-space:nowrap}
+.pc-price{font-size:15px;font-weight:700;color:#0F7A37}
+</style>
 {# Pricing Calculator (2026-10-18). OFF by default for every role in Master
    Data -> Permission Matrix. Prices are worked out live on the server
    (routers/product_master.py _calc_view); Pending fills in once priced. #}
+{% macro hw_status(v) %}{% if v is none %}<span class="pc-pill pc-pend">⏳ Price pending</span>{% else %}<span class="pc-pill pc-ok">✓ ₹{{ ((v) | inr(2)).rstrip('0').rstrip('.') }}</span>{% endif %}{% endmacro %}
 {% macro money(v) %}{% if v is none %}<span class="badge bg-warning text-dark">Pending</span>{% else %}₹{{ ((v) | inr(2)).rstrip('0').rstrip('.') }}{% endif %}{% endmacro %}
 
 
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span style="flex:1 1 auto;min-width:0"><span class="fw-semibold text-nowrap"><i class="bi bi-calculator me-2"></i>Pricing Calculator</span>
-      <span class="small text-muted ms-2">Selling Price = (Base Price + RAM Price + Storage Price) − Prices of the Spare Parts marked Damage / Not Working.</span></span>
+</span>
     <div class="d-flex align-items-center gap-2 flex-shrink-0">
       <button {% if not can(current_user, 'pm_pricing_calculator', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success" id="pcExport"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
-      {% if can(current_user, 'pm_pricing_calculator', 'export') %}<a href="/product-master/pricing-calculator/template" class="btn btn-sm btn-outline-secondary"><i class="bi bi-download me-1"></i>Template</a>{% endif %}
       {% if can(current_user, 'pm_pricing_calculator', 'upload') %}<button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#pcUploadModal"><i class="bi bi-upload me-1"></i>Upload File</button>{% endif %}
     </div>
   </div>
   <div class="card-body">
     <table id="pcTable" class="table table-hover mb-0" style="width:100%">
       <thead class="table-dark"><tr>
-        <th>SKU</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th>RAM</th><th>SSD</th>
-        <th>Quantity</th><th>Selling Price</th><th>Avg Price/Quantity</th><th>Action</th>
+        <th>SKU</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th>Base Price</th><th>RAM</th><th>SSD</th>
+<th class="pc-parts-h">Spare Parts (Deducted)</th><th>Selling Price</th><th>Avg Price/Quantity</th><th>Action</th>
       </tr></thead>
       <tbody>
       {% for g in view.rows %}
@@ -32,17 +49,24 @@
           <td class="text-nowrap">{{ g.model or '—' }}</td>
           <td>{{ g.cpu or '—' }}</td>
           <td>{{ g.cpu_gen or '—' }}</td>
-          <td class="text-nowrap">{{ g.ram or '—' }}</td>
-          <td class="text-nowrap">{{ g.ssd or '—' }}</td>
-          <td data-order="{{ g.qty }}">{{ g.qty }}</td>
-          <td data-order="{{ g.selling if g.selling is not none else -1 }}"
-              title="{% if g.pending %}Waiting for: {{ g.pending|join(', ') }}{% elif g.damaged %}Damaged parts deducted: {{ g.damaged }}{% endif %}">
-            {{ money(g.selling) }}
-            {% if g.pending %}<div class="small text-muted text-wrap" style="max-width:220px">Waiting for {{ g.pending|join(', ') }}</div>
-            {% elif g.damaged %}<div class="small text-muted text-wrap" style="max-width:220px">Less {{ g.damaged }}</div>{% endif %}
+          <td data-order="{{ g.base_price if g.base_price is not none else -1 }}">{% if g.sku_missing %}<span class="pc-pill pc-pend">⏳ SKU not found</span>{% else %}{{ hw_status(g.base_price) }}{% endif %}</td>
+          <td class="text-nowrap">{{ g.ram or '—' }}<div>{{ hw_status(g.ram_price) }}</div></td>
+          <td class="text-nowrap">{{ g.ssd or '—' }}<div>{{ hw_status(g.sto_price) }}</div></td>
+          <td class="pc-parts">
+            {% if g.parts_ok_text %}<div class="pc-line"><span>{{ g.parts_ok_text }}</span><span class="pc-pill pc-red">− ₹{{ ((g.parts_deduct) | inr(2)).rstrip('0').rstrip('.') }}</span></div>{% endif %}
+            {% if g.parts_pending %}<div class="pc-line"><span>{{ g.parts_pending|join(', ') }}</span><span class="pc-pill pc-pend">⏳ Price pending</span></div>{% endif %}
+            {% if not g.parts_ok_text and not g.parts_pending %}<div class="pc-line"><span class="text-muted">All OK</span><span class="pc-pill pc-none">No deduction</span></div>{% endif %}
           </td>
-          <td data-order="{{ g.avg if g.avg is not none else -1 }}">{{ money(g.avg) }}</td>
-          <td><div class="d-flex justify-content-center">
+          <td data-order="{{ g.selling if g.selling is not none else -1 }}" title="{% if g.pending %}Waiting for: {{ g.pending|join(', ') }}{% endif %}">
+            {% if g.selling is not none %}<span class="pc-price">₹{{ ((g.selling) | inr(2)).rstrip('0').rstrip('.') }}</span>
+            {% else %}<span class="pc-pill pc-pend">⏳ Pending</span><div class="small text-muted text-wrap" style="max-width:200px">{{ g.missing|join(', ') }} missing</div>{% endif %}
+          </td>
+          <td data-order="{{ g.avg if g.avg is not none else -1 }}">{% if g.avg is not none %}<span class="text-success fw-semibold">₹{{ ((g.avg) | inr(2)).rstrip('0').rstrip('.') }}</span>{% else %}<span class="pc-pill pc-pend">⏳ Pending</span>{% endif %}</td>
+          <td><div class="d-flex justify-content-center gap-1">
+            {% if can(current_user, 'pm_pricing_calculator', 'edit') %}
+            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1 pc-edit" title="Edit"
+                    data-row='{{ g.edit | tojson }}' data-name="{{ g.sku }} · {{ g.make }} {{ g.model }}"><i class="bi bi-pencil"></i></button>
+            {% endif %}
             {% if can(current_user, 'pm_pricing_calculator', 'delete') %}
             <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 pc-del" title="Delete"
                     data-ids="{{ g.row_ids|join(',') }}" data-qty="{{ g.qty }}"
@@ -56,17 +80,52 @@
   </div>
 </div>
 
+{# Edit one uploaded row: RAM / Storage and damaged parts (2026-11-04) #}
+<div class="modal fade" id="pcEditModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
+  <div class="modal-header"><h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit Row <span class="small text-muted fw-normal" id="pcEditName"></span></h5>
+    <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <input type="hidden" id="pcEditId">
+    <div class="row g-2 mb-3">
+      {% for fid, lbl, cat in [('pcEdRamType', 'Ram Type', 'ram_category'), ('pcEdRamSize', 'Ram Size', 'ram_capacity'),
+                               ('pcEdStoType', 'Storage Type', 'storage_category'), ('pcEdStoSize', 'Storage Size', 'storage_capacity')] %}
+      <div class="col-6"><label class="form-label small fw-semibold">{{ lbl }} <span class="text-danger">*</span></label>
+        <select class="form-select form-select-sm" id="{{ fid }}">
+          {% for v in pc_opts[cat] %}<option value="{{ v }}">{{ v }}</option>{% endfor %}
+        </select></div>
+      {% endfor %}
+    </div>
+    <div class="small fw-semibold mb-1">Spare Parts <span class="text-muted fw-normal">— tick the parts that are damaged (their price is deducted)</span></div>
+    <div class="row g-1">
+      {% for col, lbl in pc_parts %}
+      <div class="col-6"><div class="form-check"><input class="form-check-input pc-ed-part" type="checkbox" value="{{ col }}" id="pcEdP_{{ col }}">
+        <label class="form-check-label small" for="pcEdP_{{ col }}">{{ lbl }}</label></div></div>
+      {% endfor %}
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button type="button" class="btn btn-primary" id="pcEditSave"><i class="bi bi-save me-1"></i>Save</button>
+  </div>
+</div></div></div>
+
 <div class="modal fade" id="pcUploadModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">
   <form method="post" action="/product-master/pricing-calculator/upload" enctype="multipart/form-data" id="pcUploadForm">
     <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
     <div class="modal-header"><h5 class="modal-title"><i class="bi bi-upload me-2"></i>Upload File</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
     <div class="modal-body">
+      {% if can(current_user, 'pm_pricing_calculator', 'export') %}{# Template moved here from the card header (2026-11-04) #}
+      <div class="d-flex justify-content-between align-items-center mb-2 p-2 bg-light border rounded small">
+        <span class="text-muted"><i class="bi bi-file-earmark-spreadsheet me-1"></i>Start from the template so the columns match.</span>
+        <a href="/product-master/pricing-calculator/template" class="btn btn-sm btn-outline-secondary text-nowrap ms-2"><i class="bi bi-download me-1"></i>Download Template</a>
+      </div>
+      {% endif %}
       <label class="form-label small fw-semibold">CSV or Excel file <span class="text-danger">*</span></label>
       <input type="file" class="form-control form-control-sm" name="file" accept=".csv,.xlsx,.xlsm" required>
       <div class="form-text">
         Columns: {{ columns|join(', ') }}. The SKU is shown under each Product Name on Product Master.
-        Part columns are optional — a part marked <b>Damage</b>, <b>Damaged</b>, <b>Not Working</b> or <b>NotWorking</b>
-        (any case) has its Spare Parts price deducted.
+        Part columns are optional — <b>OK</b> / <b>Okay</b> (any case) or blank deducts nothing; any other value
+        (Damaged, Not Working, Missing…) deducts that part's price from the Spare Parts page.
       </div>
     </div>
     <div class="modal-footer">
@@ -77,8 +136,8 @@
 </div></div></div>
 
 {# SKUs in the file that are not in Product Master (2026-10-18) #}
-<div class="modal fade" id="pcMissingModal" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
-  <div class="modal-header bg-warning bg-opacity-10"><h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>SKU Alerts</h5>
+<div class="modal fade" id="pcMissingModal" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">
+  <div class="modal-header bg-warning bg-opacity-10"><h5 class="modal-title"><i class="bi bi-exclamation-triangle me-2 text-warning"></i>Upload Issues</h5>
     <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
   <div class="modal-body">
     <div class="small text-muted mb-3" id="pcMissingInfo"></div>
@@ -89,6 +148,17 @@
     <div id="pcMisBlock" class="mb-3">
       <p class="mb-2" id="pcMisMsg"></p>
       <a {% if not can(current_user, 'pm_pricing_calculator', 'export') %}hidden {% endif %}href="#" class="btn btn-sm btn-outline-primary" id="pcMisLink"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="pcMisName">Download file</span></a>
+    </div>
+    {# Row-by-row reasons (2026-11-04): which field failed and why. The downloaded files carry the same text in an "Error" column. #}
+    <div id="pcProbBlock" class="d-none">
+      <div class="fw-semibold small mb-1">Why each row was left out</div>
+      <div class="table-responsive border rounded" style="max-height:300px;overflow:auto">
+        <table class="table table-sm table-striped mb-0 small">
+          <thead class="table-light" style="position:sticky;top:0"><tr><th style="width:60px">Row</th><th style="width:140px">SKU</th><th>Error</th></tr></thead>
+          <tbody id="pcProbBody"></tbody>
+        </table>
+      </div>
+      <div class="small text-muted mt-1" id="pcProbMore"></div>
     </div>
   </div>
   <div class="modal-footer"><button type="button" class="btn btn-primary" data-bs-dismiss="modal">OK</button></div>
@@ -104,7 +174,43 @@ document.addEventListener('DOMContentLoaded', function () { if (window.flashAsTo
   // SKU column kept for Export but hidden on screen (2026-10-18)
   var dt = initGlobalTable('#pcTable', { order: [[1, 'asc']], columnDefs: [{ targets: 0, visible: false }],
     language: { emptyTable: 'No file uploaded yet. Use Upload File to add one.' } });
+  // Price rule on one line next to the count badge (2026-11-04); the search
+  // box shrinks to share the row.
+  var pcRule = 'Selling Price = ((Base + RAM + Storage) − (Spare Parts)) · Spare Parts values OK / Okay / Blank (any case) will deduct nothing.';
+  $('#pcTable_wrapper .gtable-top').addClass('pc-top');
+  $('<span class="pc-rule small text-muted"><i class="bi bi-info-circle me-1"></i></span>').append(document.createTextNode(pcRule))
+    .attr('title', pcRule).insertAfter('#pcTable_info');
   $('#pcExport').on('click', function () { pmExportCsv(dt, 'pricing_calculator', { prepend: [{ head: 'SKU', text: true, get: function (tr) { return tr.attr('data-sku'); } }] }); });
+  // Edit one row (2026-11-04)
+  $(document).on('click', '.pc-edit', function () {
+    var r = $(this).data('row');
+    $('#pcEditId').val(r.id); $('#pcEditName').text($(this).data('name'));
+    function pick(sel, v) {   // keep a value that is no longer in the dropdown list visible
+      var $s = $(sel);
+      if (v && !$s.find('option').filter(function () { return this.value === v; }).length) $s.append($('<option>').val(v).text(v));
+      $s.val(v);
+    }
+    pick('#pcEdRamType', r.ram_type); pick('#pcEdRamSize', r.ram_size);
+    pick('#pcEdStoType', r.storage_type); pick('#pcEdStoSize', r.storage_size);
+    $('.pc-ed-part').each(function () { this.checked = r.damaged.indexOf(this.value) >= 0; });
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('pcEditModal')).show();
+  });
+  $('#pcEditSave').on('click', function () {
+    var btn = $(this).prop('disabled', true), fd = new FormData();
+    fd.append('csrf_token', document.getElementById('pmCsrf').value);
+    fd.append('row_id', $('#pcEditId').val());
+    fd.append('ram_type', $('#pcEdRamType').val()); fd.append('ram_size', $('#pcEdRamSize').val());
+    fd.append('storage_type', $('#pcEdStoType').val()); fd.append('storage_size', $('#pcEdStoSize').val());
+    $('.pc-ed-part:checked').each(function () { fd.append('damaged', this.value); });
+    fetch('/product-master/pricing-calculator/rows/edit', { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Server error (' + r.status + ')' }; }); })
+      .then(function (j) {
+        btn.prop('disabled', false);
+        if (!j.ok) { showFlash('danger', j.error || j.detail || 'Not saved.'); return; }
+        location.href = '/product-master/pricing-calculator?success=' + encodeURIComponent('Row updated.');
+      })
+      .catch(function () { btn.prop('disabled', false); showFlash('danger', 'Could not reach the server.'); });
+  });
   // Delete a line (all its devices) from this upload (2026-10-18)
   $(document).on('click', '.pc-del', function () {
     var b = $(this), qty = b.data('qty');
@@ -148,16 +254,27 @@ document.addEventListener('DOMContentLoaded', function () { if (window.flashAsTo
         }
         $('#pcMissBlock').toggle(!!j.missing_rows);
         if (j.missing_rows) {
-          $('#pcMissingMsg').text('These SKU ' + j.missing_skus + ' from file are not available so please check and reupload the file.' +
-            (j.blank_skus ? ' (' + j.blank_skus + ' row(s) had no SKU.)' : ''));
+          $('#pcMissingMsg').html('<strong>SKU not found:</strong> ' + j.missing_rows + ' row(s) — ' +
+            j.missing_skus + ' SKU(s) are not in Product Master' +
+            (j.blank_skus ? ', ' + j.blank_skus + ' row(s) have no SKU' : '') + '. Correct them and upload again.');
           fileLink('pcMissingLink', 'pcMissingName', j.missing_file_b64, j.missing_file_name);
         }
         $('#pcMisBlock').toggle(!!j.mismatch_rows);
         if (j.mismatch_rows) {
-          $('#pcMisMsg').text('These SKU ' + j.mismatch_skus + ' configuration (Make, Model, CPU, CPU Gen, RAM, SSD) is not yet added in Product Master, so ' +
-            j.mismatch_rows + ' row(s) were not added.');
+          $('#pcMisMsg').html('<strong>Row details not valid:</strong> ' + j.mismatch_rows + ' row(s) of ' +
+            j.mismatch_skus + ' SKU(s) — Make / Model / CPU / CPU Gen differ from that SKU in Product Master, or a RAM / Storage ' +
+            'value is empty or not set up in Dropdown Configuration. See the reason for each row below.');
           fileLink('pcMisLink', 'pcMisName', j.mismatch_file_b64, j.mismatch_file_name);
         }
+        var probs = j.problems || [];
+        $('#pcProbBlock').toggleClass('d-none', !probs.length);
+        $('#pcProbBody').html(probs.map(function (p) {
+          var esc = function (t) { return $('<div>').text(t == null ? '' : String(t)).html(); };
+          return '<tr><td>' + p.row + '</td><td class="font-monospace">' + (esc(p.sku) || '<span class="text-muted">—</span>') +
+                 '</td><td class="text-danger">' + esc(p.error) + '</td></tr>';
+        }).join(''));
+        $('#pcProbMore').text(j.problems_total > probs.length ? 'Showing the first ' + probs.length + ' of ' + j.problems_total +
+          ' rows — the downloaded file has all of them in its Error column.' : 'The downloaded file has the same reason in its Error column.');
         new bootstrap.Modal(document.getElementById('pcMissingModal')).show();
       })
       .catch(function () { btn.prop('disabled', false); showFlash('danger', 'Could not reach the server.'); });

@@ -155,9 +155,9 @@
          labelled "Started" (Assigned elsewhere), then Completed. #}
       {# Both follow Work Date From/To (2026-10-30). #}
       {% set _pc = psiqc if psiqc is defined else {'moved': 0, 'started': 0, 'pass': 0, 'fail': 0, 'pending': 0} %}
-      {# "Moved" shown again as "Received" (2026-11-03); Pending and Pass | Fail below. #}
-      <div class="wid-stage-line" title="Tags moved to the Pre-Sale QC page's Assigned table from Ready for Sale in the Work Date range (still there, not completed)">
-        <span class="lt-tile-count" data-k="moved" data-server="{{ _pc.moved }}">{{ _pc.moved }}</span><span class="wid-stage-sub">Received</span>
+      {# 2026-11-04: Received hidden; Pending first, then Started, then Pass | Fail. #}
+      <div class="wid-stage-line" title="Tags in the Pre-Sale QC page's Assigned table right now (not filtered by this page)">
+        <span class="lt-tile-count" data-k="ps_pending" data-server="{{ _pc.pending }}">{{ _pc.pending }}</span><span class="wid-stage-sub">Pending</span>
       </div>
       <div class="wid-stage-line" title="Pre-Sale QC WorkIDs started (Start pressed) in the Work Date range">
         <span class="lt-tile-count" data-k="started" data-server="{{ _pc.started }}">{{ _pc.started }}</span><span class="wid-stage-sub">Started</span>
@@ -167,12 +167,7 @@
         <span class="lt-tile-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">{{ 'Received' if key == 'cosmetic' else 'Started' }}</span>
       </div>
       {% endif %}
-      {% if key == 'pre_sale_iqc' %}
-      {# Pending (2026-11-03) instead of Completed: tags in the Pre-Sale QC
-         page's Assigned table right now. #}
-      <div class="wid-stage-line" title="Tags in the Pre-Sale QC page's Assigned table right now (not filtered by this page)">
-        <span class="lt-tile-count" data-k="ps_pending" data-server="{{ _pc.pending }}">{{ _pc.pending }}</span><span class="wid-stage-sub">Pending</span>
-      </div>
+      {% if key == 'pre_sale_iqc' %}{# Pending is shown above Started (2026-11-04) #}
       {% else %}
       <div class="wid-stage-line" title="{{ 'Tags in Cosmetic right now, any step from Cosmetic Received to Cosmetic Completed (same as the Cosmetic All Tags page; not filtered by this page)' if key == 'cosmetic' else 'Completed WorkIDs (scrap decisions not included)' }}">
         <span class="lt-tile-count" data-k="completed" data-server="{{ t.completed }}">{{ t.completed }}</span><span class="wid-stage-sub">{{ 'Pending' if key == 'cosmetic' else 'Completed' }}</span>

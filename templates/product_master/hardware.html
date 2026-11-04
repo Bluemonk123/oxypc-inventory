@@ -22,6 +22,7 @@
 .hw-cell.can{cursor:pointer}.hw-cell.can:hover{outline:2px solid #0d6efd;outline-offset:-2px;color:#0d6efd}
 .hw-cell .hw-dot{position:absolute;top:4px;right:5px;min-width:16px;height:16px;border-radius:8px;background:#fd7e14;color:#fff;font-size:10px;line-height:16px;padding:0 4px;font-weight:700}
 .hw-cell input{width:90%;height:28px;font-size:13px;text-align:right;border:1px solid #0d6efd;border-radius:5px;padding:0 6px}
+.hw-cell.hw-pending{background:#fff8e1}.hw-cell.hw-pending input{border-color:#fd7e14;box-shadow:0 0 0 2px rgba(253,126,20,.2)}
 .hw-g{width:100%;font-size:13.5px}
 .hw-g thead th{background:#0e3a7a;color:#fff;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:8px 12px;white-space:nowrap}
 .hw-g td{padding:7px 12px;border-bottom:1px solid #e3eef7;vertical-align:middle}
@@ -61,10 +62,16 @@
         <div class="card border-0 shadow-sm h-100">
           <div class="card-header d-flex justify-content-between align-items-center">
             <span class="fw-semibold"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
-            <span class="small text-muted">{% if can_price %}Click a cell to set the price · Enter to save · Esc to cancel{% else %}View only{% endif %}</span>
+            <span class="small text-muted">{% if can_price %}Click cells to change prices · Save to store them · Esc to cancel a cell{% else %}View only{% endif %}</span>
           </div>
           <div class="card-body"><div class="table-responsive"><table class="hw-mx" id="mx_{{ kind }}"></table></div>
-            <div class="small text-muted mt-2"><span class="hw-dot-legend"><span class="badge rounded-pill" style="background:#fd7e14">n</span> = products waiting on this price</span></div>
+            <div class="d-flex justify-content-between align-items-center mt-2 gap-2">
+              <div class="small text-muted"><span class="hw-dot-legend"><span class="badge rounded-pill" style="background:#fd7e14">n</span> = products waiting on this price</span></div>
+              {% if can_price %}{# Save one or many edited cells at once (2026-11-04) #}
+              <button type="button" class="btn btn-sm btn-success hw-save-all" data-kind="{{ kind }}" disabled>
+                <i class="bi bi-save me-1"></i>Save<span class="hw-save-n"></span></button>
+              {% endif %}
+            </div>
           </div>
         </div>
       </div>
@@ -104,6 +111,7 @@
   var LABELS = {{ product_labels | tojson }};
   var DATA = { ram: {{ ram_rows | tojson }}, storage: {{ storage_rows | tojson }} };
   var NAME = { ram: 'RAM', storage: 'Storage' };
+  var PENDING = { ram: {}, storage: {} };   // edited, not yet saved: {name: value}
   var gKind = 'ram';
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -147,34 +155,56 @@
           ? 'Updated ' + (r.updated_on || '—') + ' by ' + (r.updated_by || '—') + ' · used in ' + r.using.length + ' product(s)'
           : (r.waiting.length ? r.waiting.length + ' product(s) waiting on this price' : 'No price yet');
         var dot = r.price == null && r.waiting.length ? '<span class="hw-dot">' + r.waiting.length + '</span>' : '';
-        h += '<td><div class="hw-cell ' + (r.price != null ? 'v' : 'e') + (CAN_PRICE ? ' can' : '') + '" data-kind="' + kind +
-             '" data-name="' + esc(r.name) + '" title="' + esc(tip) + '">' +
-             (r.price != null ? fmt(r.price) : (CAN_PRICE ? '+' : '—')) + dot + '</div></td>';
+        var shown = (r.price != null ? fmt(r.price) : (CAN_PRICE ? '+' : '—')) + dot;
+        var pend = PENDING[kind][r.name];
+        h += '<td><div class="hw-cell ' + (r.price != null ? 'v' : 'e') + (CAN_PRICE ? ' can' : '') + (pend != null ? ' hw-pending' : '') +
+             '" data-kind="' + kind + '" data-name="' + esc(r.name) + '" data-html="' + esc(shown) + '" title="' + esc(tip) + '">' +
+             (pend != null ? '<input type="number" class="hw-price" min="0" step="0.01" placeholder="₹" value="' + esc(pend) + '">' : shown) +
+             '</div></td>';
       });
       h += '</tr>';
     });
     $('#mx_' + kind).html(h + '</tbody>');
+    saveBtn(kind);
+  }
+  function saveBtn(kind) {
+    var n = Object.keys(PENDING[kind]).length;
+    var b = $('.hw-save-all[data-kind="' + kind + '"]').prop('disabled', !n);
+    b.find('.hw-save-n').text(n ? ' (' + n + ')' : '');
+  }
+  function cancelCell(cell) {
+    delete PENDING[cell.data('kind')][cell.attr('data-name')];
+    cell.removeClass('hw-pending').html(cell.attr('data-html'));
+    saveBtn(cell.data('kind'));
   }
   $(document).on('click', '.hw-cell.can', function () {
     var cell = $(this);
     if (cell.find('input').length) return;
     var r = find(cell.data('kind'), cell.attr('data-name'));
-    cell.data('html', cell.html()).html('<input type="number" class="hw-price" min="0" step="0.01" placeholder="₹" value="' + (r.price != null ? r.price : '') + '">');
+    cell.html('<input type="number" class="hw-price" min="0" step="0.01" placeholder="₹" value="' + (r.price != null ? r.price : '') + '">');
     cell.find('input').trigger('focus').trigger('select');
+  });
+  // Typing marks the cell as changed; it stays open until Save (or Esc).
+  $(document).on('input', '.hw-cell input', function () {
+    var cell = $(this).closest('.hw-cell'), kind = cell.data('kind'), name = cell.attr('data-name');
+    var r = find(kind, name), v = this.value.trim();
+    if (v === '' || (r.price != null && Number(v) === Number(r.price))) { delete PENDING[kind][name]; cell.removeClass('hw-pending'); }
+    else { PENDING[kind][name] = v; cell.addClass('hw-pending'); }
+    saveBtn(kind);
   });
   $(document).on('keydown', '.hw-cell input', function (e) {
     var cell = $(this).closest('.hw-cell');
-    if (e.key === 'Escape') { cell.html(cell.data('html')); return; }
+    if (e.key === 'Escape') { cancelCell(cell); return; }
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    var v = this.value.trim();
-    if (v === '') { cell.html(cell.data('html')); return; }
-    save(cell.data('kind'), cell.attr('data-name'), v);
+    saveAll(cell.data('kind'));          // Enter = Save for this card
   });
   $(document).on('blur', '.hw-cell input', function () {
     var cell = $(this).closest('.hw-cell');
-    setTimeout(function () { if (cell.find('input').length && !cell.data('busy')) cell.html(cell.data('html')); }, 150);
+    // An unchanged cell closes again; a changed one waits for Save.
+    setTimeout(function () { if (cell.find('input').length && PENDING[cell.data('kind')][cell.attr('data-name')] == null) cancelCell(cell); }, 150);
   });
+  $(document).on('click', '.hw-save-all', function () { saveAll($(this).data('kind')); });
 
   // ── Design 2: grouped list ──
   function list() {
@@ -257,6 +287,31 @@
         r.using = r.using.concat(r.waiting); r.waiting = [];   // the server links waiting products on save
         refresh(); showFlash('success', 'Price saved for ' + name.replace('/', ' / ') + '.');
       });
+  }
+  function toast(type, msg) { if (window.showTopToast) window.showTopToast(type, msg); else showFlash(type, msg); }
+  // Save every changed cell of one card (2026-11-04): one or many prices.
+  function saveAll(kind) {
+    var names = Object.keys(PENDING[kind]);
+    if (!names.length) return;
+    var bad = names.filter(function (n) { var v = Number(PENDING[kind][n]); return !isFinite(v) || v < 0; });
+    if (bad.length) { toast('danger', 'Enter a valid price for ' + bad.map(function (n) { return n.replace('/', ' / '); }).join(', ') + '.'); return; }
+    var btn = $('.hw-save-all[data-kind="' + kind + '"]').prop('disabled', true);
+    var okN = 0, errs = [];
+    var jobs = names.map(function (name) {
+      var r = find(kind, name), price = PENDING[kind][name];
+      return pmPost('/product-master/hardware/' + kind + '/save', { item_id: r.id, category: r.category, capacity: r.capacity, price: price })
+        .then(function (j) {
+          if (!j.ok) { errs.push(name.replace('/', ' / ') + ': ' + j.error); return; }
+          r.id = j.id; r.price = Number(price); r.updated_on = j.updated_on; r.updated_by = j.updated_by;
+          r.using = r.using.concat(r.waiting); r.waiting = [];   // the server links waiting products on save
+          delete PENDING[kind][name]; okN++;
+        }, function () { errs.push(name.replace('/', ' / ') + ': could not reach the server'); });
+    });
+    Promise.all(jobs).then(function () {
+      refresh();
+      if (okN) toast('success', okN + ' ' + NAME[kind] + ' price' + (okN > 1 ? 's' : '') + ' saved.');
+      if (errs.length) toast('danger', 'Not saved — ' + errs.join(' · '));
+    });
   }
   function refresh() { grid('ram'); grid('storage'); list(); tiles(); }
 

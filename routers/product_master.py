@@ -682,7 +682,7 @@ async def hardware_delete(kind: str, item_id: str, request: Request, db: AsyncSe
 # Storage Type/Size, plus optional part columns). Only the file's values are
 # stored (pm_calc_uploads / pm_calc_rows); every price is worked out live:
 #   Selling Price = (Base Price + RAM Price + Storage Price)
-#                   - (price of every part the file marks Damage / Not Working)
+#                   - (price of every part whose file value is not OK / Okay)
 #   Base Price    = Product Master Base Price of the SKU
 #   RAM / Storage = Hardware price of "<Type>/<Size>" from the file
 #   Part prices   = Spare Parts prices of the SKU
@@ -712,8 +712,12 @@ def _norm_head(h) -> str:
 
 
 def _is_damaged(v) -> bool:
+    """A part column deducts its Spare Parts price unless it says OK / Okay
+    (any case, 2026-11-04 — was only Damage / Damaged / Not Working). A blank
+    cell is treated as not checked and deducts nothing."""
     import re
-    return re.sub(r"[\s_\-]", "", str(v or "").lower()) in ("damage", "damaged", "notworking")
+    k = re.sub(r"[\s_\-.]", "", str(v or "").lower())
+    return bool(k) and k not in ("ok", "okay")
 
 
 def _read_calc_file(name: str, raw: bytes) -> list[list]:
@@ -765,14 +769,17 @@ async def _calc_view(db) -> dict:
         if hs is None:
             pending.append("Storage Price")
         deduct = D("0")
+        part_ok, part_pend = [], []   # (label, price) found / labels with no price (2026-11-04)
         for col in [c for c in (r.damaged_parts or "").split(",") if c]:
             v = getattr(p, col, None) if p is not None else None
             parts_used.append(_PART_LABEL.get(col, col))
             if v is None:
                 if p is not None:
                     pending.append(f"{_PART_LABEL.get(col, col)} Price")
+                    part_pend.append(_PART_LABEL.get(col, col))
             else:
                 deduct += D(v)
+                part_ok.append((_PART_LABEL.get(col, col), D(v)))
         unit = None
         if not pending:
             unit = (D(base) + D(hr.ram_price) + D(hs.storage_price) - deduct).quantize(D("0.01"))
@@ -780,14 +787,24 @@ async def _calc_view(db) -> dict:
         model = p.model if p else (r.model or "")
         cpu = p.cpu if p else (r.cpu or "")
         gen = p.cpu_gen if p else (r.cpu_gen or "")
-        # one line per SKU + Make + Model + CPU + CPU Gen + RAM + SSD; a match adds to its Quantity
-        key = ((r.sku or '').lower(), make.lower(), model.lower(), cpu.lower(), gen.lower(), ram_name.lower(), sto_name.lower())
+        # One line per uploaded row (2026-11-04, Pankaj): 6 rows uploaded = 6 lines,
+        # similar rows are not combined (was one line per SKU + RAM + SSD).
+        key = str(r.id)
         g = groups.get(key)
         if g is None:
             g = groups[key] = {"sku": r.sku or "", "make": make, "model": model, "cpu": cpu, "cpu_gen": gen,
                                "ram": ram_name.replace("/", " / "), "ssd": sto_name.replace("/", " / "),
                                "qty": 0, "total": D("0"), "pending": [], "sku_missing": False,
-                               "skus": [], "damaged": {}, "row_ids": []}
+                               "skus": [], "damaged": {}, "row_ids": [],
+                               # status per side for the table (2026-11-04)
+                               "ram_price": float(hr.ram_price) if hr is not None else None,
+                               "sto_price": float(hs.storage_price) if hs is not None else None,
+                               "parts_ok": {}, "parts_deduct": D("0"), "parts_pending": [],
+                               "base_missing": False,
+                               "edit": {"id": str(r.id), "ram_type": r.ram_type or "", "ram_size": r.ram_size or "",
+                                        "storage_type": r.storage_type or "", "storage_size": r.storage_size or "",
+                                        "damaged": [c for c in (r.damaged_parts or "").split(",") if c]},
+                               "base_price": float(base) if base is not None else None}
             order.append(key)
         g["qty"] += 1
         g["row_ids"].append(str(r.id))
@@ -795,6 +812,14 @@ async def _calc_view(db) -> dict:
             g["skus"].append(r.sku)
         if p is None:
             g["sku_missing"] = True
+        if base is None:
+            g["base_missing"] = True
+        for lbl, v in part_ok:
+            g["parts_ok"][lbl] = g["parts_ok"].get(lbl, 0) + 1
+            g["parts_deduct"] += v
+        for lbl in part_pend:
+            if lbl not in g["parts_pending"]:
+                g["parts_pending"].append(lbl)
         for x in pending:
             if x not in g["pending"]:
                 g["pending"].append(x)
@@ -806,6 +831,16 @@ async def _calc_view(db) -> dict:
     for k in order:
         g = groups[k]
         done = not g["pending"]
+        missing = []
+        if g["sku_missing"] or g["base_missing"]:
+            missing.append("Base price")
+        if g["ram_price"] is None or g["sto_price"] is None:
+            missing.append("Hardware price")
+        if g["parts_pending"]:
+            missing.append("Spare Parts price")
+        g["parts_ok_text"] = ", ".join(n if c == 1 else f"{n} ×{c}" for n, c in g["parts_ok"].items())
+        g["parts_deduct"] = float(g["parts_deduct"])
+        g["missing"] = missing
         out.append({**g, "selling": float(g["total"]) if done else None,
                     "avg": float((g["total"] / g["qty"]).quantize(D("0.01"))) if done and g["qty"] else None,
                     "damaged": ", ".join(f"{n} ×{c}" for n, c in g["damaged"].items())})
@@ -823,6 +858,7 @@ async def pricing_calculator_page(request: Request, db: AsyncSession = Depends(g
     return templates.TemplateResponse("product_master/pricing_calculator.html", {
         "request": request, "current_user": current_user,
         "view": await _calc_view(db), "columns": CALC_COLUMNS,
+        "pc_opts": await _calc_hw_options(db), "pc_parts": PART_FIELDS,
         "msg": request.query_params.get("success", ""), "err": request.query_params.get("error", ""),
     })
 
@@ -834,6 +870,56 @@ async def pricing_calculator_template(current_user: User = Depends(require_modul
                       + ["Damaged" if lbl == "Screen" else "" for _, lbl in PART_FIELDS])
     return Response("﻿" + head + "\r\n" + sample + "\r\n", media_type="text/csv",
                     headers={"Content-Disposition": 'attachment; filename="pricing_calculator_template.csv"'})
+
+
+async def _calc_hw_options(db) -> dict:
+    """RAM / Storage choices for the row Edit popup (Dropdown Configuration)."""
+    out = {"ram_category": [], "ram_capacity": [], "storage_category": [], "storage_capacity": []}
+    rows = (await db.execute(select(PMDropdownValue.category, PMDropdownValue.value)
+                             .where(PMDropdownValue.category.in_(list(out)))
+                             .order_by(PMDropdownValue.display_order, PMDropdownValue.value))).all()
+    for c, v in rows:
+        if v not in out[c]:
+            out[c].append(v)
+    return out
+
+
+@router.post("/pricing-calculator/rows/edit")
+async def pricing_calculator_row_edit(request: Request, row_id: str = Form(""),
+                                      ram_type: str = Form(""), ram_size: str = Form(""),
+                                      storage_type: str = Form(""), storage_size: str = Form(""),
+                                      damaged: list[str] = Form([]),
+                                      db: AsyncSession = Depends(get_db),
+                                      current_user: User = Depends(require_module_perm(PERM_CALCULATOR))):
+    """Edit one uploaded row (2026-11-04): its RAM / Storage and which parts are
+    damaged. Values must be in Dropdown Configuration; the price recalculates."""
+    rid = _uuid_or_none(row_id)
+    row = (await db.execute(select(PMCalcRow).where(PMCalcRow.id == rid))).scalar_one_or_none() if rid else None
+    if row is None:
+        return _err("Row not found — reload the page.")
+    opts = await _calc_hw_options(db)
+    vals = {"Ram Type": (ram_type, "ram_category"), "Ram Size": (ram_size, "ram_capacity"),
+            "Storage Type": (storage_type, "storage_category"), "Storage Size": (storage_size, "storage_capacity")}
+    for lbl, (v, cat) in vals.items():
+        if not (v or "").strip():
+            return _err(f"{lbl} is required.")
+        if v not in opts[cat]:
+            return _err(f"{lbl} '{v}' is not in Product Master → Dropdown Configuration.")
+    valid_parts = {c for c, _ in PART_FIELDS}
+    bad = [d for d in damaged if d not in valid_parts]
+    if bad:
+        return _err("Unknown part: " + ", ".join(bad))
+    before = {"ram": f"{row.ram_type}/{row.ram_size}", "storage": f"{row.storage_type}/{row.storage_size}",
+              "damaged": row.damaged_parts}
+    row.ram_type, row.ram_size = ram_type, ram_size
+    row.storage_type, row.storage_size = storage_type, storage_size
+    row.damaged_parts = ",".join(c for c, _ in PART_FIELDS if c in damaged) or None
+    await audit(db, action="PM_CALC_ROW_EDITED", user=current_user, table_name="pm_calc_rows",
+                record_id=str(row.id), old_value=before,
+                new_value={"ram": f"{ram_type}/{ram_size}", "storage": f"{storage_type}/{storage_size}",
+                           "damaged": row.damaged_parts}, request=request)
+    await db.commit()
+    return JSONResponse({"ok": True})
 
 
 @router.post("/pricing-calculator/rows/delete")
@@ -936,6 +1022,15 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
             pmap[_CALC_PART_HEAD[h]] = i
     if "sku" not in fmap:
         return _err("The file needs a SKU column. Download the template for the expected columns.")
+    # Every configuration column must be there, or every row would fail the
+    # Product Master match (2026-11-04: say which column, up front).
+    _need = [("Make", ("make",)), ("Model", ("model",)), ("CPU", ("cpu",)), ("CPU Gen", ("cpu_gen",)),
+             ("Ram Type", ("ram_type", "ram")), ("Ram Size", ("ram_size", "ram")),
+             ("Storage Type", ("storage_type", "storage")), ("Storage Size", ("storage_size", "storage"))]
+    _absent = [lbl for lbl, keys in _need if not any(k in fmap for k in keys)]
+    if _absent:
+        return _err("The file is missing these column(s): " + ", ".join(_absent)
+                    + ". Download the template for the expected columns.")
     body = table[1:]
     if len(body) > 20000:
         return _err("The file has more than 20,000 rows.")
@@ -975,29 +1070,83 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
     def norm(v):
         return "".join((v or "").split()).lower()
 
-    def same_config(p, r, pk):
-        rt, rs, st, ss = pk
-        pairs = [(p.make, cell(r, "make")), (p.model, cell(r, "model")), (p.cpu, cell(r, "cpu")),
-                 (p.cpu_gen, cell(r, "cpu_gen")), (p.ram_type, rt), (p.ram_size, rs),
-                 (p.storage_type, st), (p.storage_size, ss)]
-        return all(norm(a) == norm(b) for a, b in pairs)
+    # RAM / Storage come from the file (2026-11-04, Pankaj): one SKU can be
+    # uploaded with any RAM / Storage; each line is priced from the Hardware
+    # page for the RAM / Storage it lists. The values must be ones set up in
+    # Product Master -> Dropdown Configuration; Product Master's own spelling
+    # is stored, so "16gb" and "16 GB" are the same line.
+    dd = {}
+    for c, v in (await db.execute(select(PMDropdownValue.category, PMDropdownValue.value).where(
+            PMDropdownValue.category.in_(("ram_category", "ram_capacity", "storage_category", "storage_capacity"))))).all():
+        dd.setdefault(c, {})[norm(v)] = v
+
+    def hw_picks(pk):
+        """((ram_type, ram_size, storage_type, storage_size) in Product Master spelling, [reasons])."""
+        out, errs = [], []
+        for lbl, cat, v in (("Ram Type", "ram_category", pk[0]), ("Ram Size", "ram_capacity", pk[1]),
+                            ("Storage Type", "storage_category", pk[2]), ("Storage Size", "storage_capacity", pk[3])):
+            if not (v or "").strip():
+                errs.append(f"{lbl} is empty")
+                out.append(None)
+                continue
+            canon = dd.get(cat, {}).get(norm(v))
+            if canon is None:
+                known = ", ".join(sorted(dd.get(cat, {}).values())) or "none set up yet"
+                errs.append(f"{lbl} '{v}' is not in Product Master → Dropdown Configuration ({known})")
+            out.append(canon)
+        return tuple(out), errs
+
+    def config_diffs(p, r, pk):
+        """Make / Model / CPU / CPU Gen that differ from the SKU in Product Master,
+        as readable reasons (2026-11-04). RAM / Storage are free — see hw_picks."""
+        pairs = [("Make", p.make, cell(r, "make")), ("Model", p.model, cell(r, "model")),
+                 ("CPU", p.cpu, cell(r, "cpu")), ("CPU Gen", p.cpu_gen, cell(r, "cpu_gen"))]
+        out = []
+        for lbl, pm_v, file_v in pairs:
+            if norm(pm_v) == norm(file_v):
+                continue
+            if not (file_v or "").strip():
+                out.append(f"{lbl} is empty (Product Master: {pm_v or '—'})")
+            elif not (pm_v or "").strip():
+                out.append(f"{lbl} '{file_v}' — not set in Product Master for this SKU")
+            else:
+                out.append(f"{lbl} '{file_v}' does not match Product Master '{pm_v}'")
+        return out
+
+    from models.product_master import SKU_DIGITS
+
+    def sku_reason(raw, sku):
+        if not sku:
+            return "SKU is empty"
+        why = f"SKU '{sku}' is not in Product Master"
+        if not sku.isdigit():
+            why += " (SKUs are numbers only)"
+        elif len(sku) not in (SKU_DIGITS, 12):
+            why += f" ({len(sku)} digits — Product Master SKUs have {SKU_DIGITS})"
+        return why
 
     good, missing_rows, missing_skus, blank = [], [], set(), 0
     mismatch_rows, mismatch_skus = [], set()
+    problems = []   # (row no, sku, reason) for the popup, 2026-11-04
     for idx, r in enumerate(body, start=2):
         sku = _calc_sku(r[si]) if si < len(r) else None
         if sku in known:
             pk = picks(r)
             pp = prod_of[sku]
-            if same_config(pp, r, pk):
-                # store Product Master's own spelling, so "ddr4 / 8 GB" and
-                # "DDR4 / 8GB" price and group as the same configuration
-                good.append((idx, sku, r, (pp.ram_type, pp.ram_size, pp.storage_type, pp.storage_size)))
+            hw, hw_errs = hw_picks(pk)
+            diffs = config_diffs(pp, r, pk) + hw_errs
+            if not diffs:
+                # the file's RAM / Storage, in Product Master's own spelling
+                good.append((idx, sku, r, hw))
             else:
-                mismatch_rows.append(r)
+                why = "; ".join(diffs)
+                mismatch_rows.append(list(r) + [""] * (len(header) - len(r)) + [why])
                 mismatch_skus.add(sku)
+                problems.append({"row": idx, "sku": sku, "error": why})
         else:
-            missing_rows.append(r)
+            why = sku_reason(r[si] if si < len(r) else "", sku)
+            missing_rows.append(list(r) + [""] * (len(header) - len(r)) + [why])
+            problems.append({"row": idx, "sku": sku or "", "error": why})
             if sku:
                 missing_skus.add(sku)
             else:
@@ -1019,20 +1168,20 @@ async def pricing_calculator_upload(request: Request, file: UploadFile = File(..
         await audit(db, action="PM_CALC_UPLOADED", user=current_user, table_name="pm_calc_uploads",
                     record_id=str(up.id), new_value={"file": name, "rows": len(good),
                                                      "rows_sku_not_found": len(missing_rows),
-                                                     "rows_config_not_in_product_master": len(mismatch_rows)},
+                                                     "rows_not_added": len(mismatch_rows)},
                     request=request)
         await db.commit()
 
     out = {"ok": True, "added": len(good), "upload_id": str(up.id) if up else None,
            "missing_rows": len(missing_rows), "missing_skus": len(missing_skus), "blank_skus": blank,
-           "mismatch_rows": len(mismatch_rows), "mismatch_skus": len(mismatch_skus)}
-    width = len(header)
+           "mismatch_rows": len(mismatch_rows), "mismatch_skus": len(mismatch_skus),
+           "problems": problems[:200], "problems_total": len(problems)}
+    # The left-out rows come back with an "Error" column saying why (2026-11-04).
+    err_header = list(header) + ["Error"]
     if missing_rows:
-        rows = [list(r) + [""] * (width - len(r)) for r in missing_rows]
-        out["missing_file_name"], out["missing_file_b64"] = _calc_missing_file(name, header, rows, "SKU_not_found")
+        out["missing_file_name"], out["missing_file_b64"] = _calc_missing_file(name, err_header, missing_rows, "SKU_not_found")
     if mismatch_rows:
-        rows = [list(r) + [""] * (width - len(r)) for r in mismatch_rows]
-        out["mismatch_file_name"], out["mismatch_file_b64"] = _calc_missing_file(name, header, rows, "config_not_in_product_master")
+        out["mismatch_file_name"], out["mismatch_file_b64"] = _calc_missing_file(name, err_header, mismatch_rows, "not_added")
     return JSONResponse(out)
 
 
