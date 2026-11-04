@@ -21,6 +21,10 @@
 /* Base / RAM / SSD / Spare Parts (2026-11-04): label and price pill centred on
    one vertical line in the middle of the column, cells vertically centred. */
 #pcTable th.pc-c,#pcTable td.pc-c{text-align:center!important;vertical-align:middle}
+#pcTable td.pc-parts .pc-split{display:flex;justify-content:center;align-items:center}
+#pcTable td.pc-parts .pc-split .pc-line{margin:0}
+#pcTable td.pc-parts .pc-side-l{text-align:right;padding-right:12px;border-right:1px solid #dee2e6}
+#pcTable td.pc-parts .pc-side-r{text-align:left;padding-left:12px}
 </style>
 {# Pricing Calculator (2026-10-18). OFF by default for every role in Master
    Data -> Permission Matrix. Prices are worked out live on the server
@@ -56,8 +60,15 @@
           <td class="text-nowrap pc-c">{{ g.ram or '—' }}<div>{{ hw_status(g.ram_price) }}</div></td>
           <td class="text-nowrap pc-c">{{ g.ssd or '—' }}<div>{{ hw_status(g.sto_price) }}</div></td>
           <td class="pc-parts pc-c">
+            {# Priced + pending side by side (2026-11-04): deducted parts on the left
+               (right-aligned), a divider, pending parts on the right (left-aligned). #}
+            {% if g.parts_ok_text and g.parts_pending %}<div class="pc-split">
+              <div class="pc-line pc-side-l"><span>{{ g.parts_ok_text }}</span><span class="pc-pill pc-red">− ₹{{ ((g.parts_deduct) | inr(2)).rstrip('0').rstrip('.') }}</span></div>
+              <div class="pc-line pc-side-r"><span>{{ g.parts_pending|join(', ') }}</span><span class="pc-pill pc-pend">⏳ Price pending</span></div>
+            </div>{% else %}
             {% if g.parts_ok_text %}<div class="pc-line"><span>{{ g.parts_ok_text }}</span><span class="pc-pill pc-red">− ₹{{ ((g.parts_deduct) | inr(2)).rstrip('0').rstrip('.') }}</span></div>{% endif %}
             {% if g.parts_pending %}<div class="pc-line"><span>{{ g.parts_pending|join(', ') }}</span><span class="pc-pill pc-pend">⏳ Price pending</span></div>{% endif %}
+            {% endif %}
             {% if not g.parts_ok_text and not g.parts_pending %}<div class="pc-line"><span class="text-muted">All OK</span><span class="pc-pill pc-none">No deduction</span></div>{% endif %}
           </td>
           <td data-order="{{ g.selling if g.selling is not none else -1 }}" title="{% if g.pending %}Waiting for: {{ g.pending|join(', ') }}{% endif %}">

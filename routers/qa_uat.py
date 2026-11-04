@@ -22,18 +22,21 @@ Routes:
 """
 from __future__ import annotations
 
+import os
+import re
 import subprocess
 from datetime import datetime, timedelta
 from pathlib import Path
 from utils.timezone import app_now
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Form, Request, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Depends, File, Form, Request, HTTPException, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from auth.dependencies import get_current_user, require_roles
+from auth.dependencies import get_current_user, require_roles, verify_csrf
+from services.audit_engine import audit
 from database import get_db
 from models.user import User, UserRole
 from models.qa_uat import (
@@ -1027,14 +1030,159 @@ async def rtm_view(
 @router.get("/workflow", response_class=HTMLResponse)
 async def workflow_view(
     request: Request,
+    tab: str = "new_grn",
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_view),
 ):
-    """Application Workflow — both inbound-sequence diagrams together on one
-    dedicated page (moved out of the Dashboard so it isn't buried in a tab)."""
+    """Application Workflow — tabs New GRN, Re-GRN and Stage Flows (2026-11-04;
+    Stage Flows moved in from the old Stage Workflows tab). Each tab: flow
+    diagram (built-in, or one uploaded from Figma), PDF downloads, step journey."""
     return templates.TemplateResponse("qa/workflow.html", {
         "request": request, "current_user": current_user,
-        "flows": WORKFLOW_FLOWS,
+        "flows": WORKFLOW_FLOWS, "workflows": STAGE_WORKFLOWS,
+        "active_tab": tab if tab in _FLOW_TAB_KEYS else "new_grn",
+        "uploads": {k: await _flow_upload(db, k) for k in _FLOW_TAB_KEYS},
     })
+
+
+# ── Workflow downloads + uploaded diagrams (2026-11-04) ───────────────────────
+_FLOW_TAB_KEYS = ("new_grn", "regrn", "stage")
+_FLOWS_BY_KEY = {}            # filled after WORKFLOW_FLOWS is defined (below)
+_FLOW_UPLOAD_DIR = os.path.join("uploads", "qa_flows")
+_FLOW_UPLOAD_MAX = 10 * 1024 * 1024
+_FLOW_UPLOAD_TYPES = {"png": "image/png", "jpg": "image/jpeg", "svg": "image/svg+xml", "pdf": "application/pdf"}
+
+
+def _flow_or_404(key):
+    f = _FLOWS_BY_KEY.get(key)
+    if not f:
+        raise HTTPException(404, "Flow not found")
+    return f
+
+
+def _pdf_response(data: bytes, filename: str):
+    return Response(data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"'})
+
+
+@router.get("/workflow/{flow_key}/diagram.pdf")
+async def workflow_diagram_pdf(flow_key: str, current_user: User = Depends(_view)):
+    from utils.workflow_pdf import diagram_pdf
+    f = _flow_or_404(flow_key)
+    return _pdf_response(diagram_pdf(f["title"], f.get("sub", ""), f["diagram"]),
+                         f"OxyPC_{flow_key}_flow_diagram.pdf")
+
+
+@router.get("/workflow/{flow_key}/journey.pdf")
+async def workflow_journey_pdf(flow_key: str, current_user: User = Depends(_view)):
+    from utils.workflow_pdf import journey_pdf, stage_flows_pdf
+    if flow_key == "stage":
+        return _pdf_response(stage_flows_pdf(STAGE_WORKFLOWS), "OxyPC_stage_flows.pdf")
+    f = _flow_or_404(flow_key)
+    return _pdf_response(journey_pdf(f["title"], f.get("sub", ""), f["steps"]), f"OxyPC_{flow_key}_journey.pdf")
+
+
+def _upload_key(k):
+    return f"qa_flow_upload_{k}"
+
+
+async def _flow_upload(db, key):
+    import json as _json
+    from models.settings import AppSetting
+    v = (await db.execute(select(AppSetting.value).where(AppSetting.key == _upload_key(key)))).scalar()
+    try:
+        meta = _json.loads(v) if v else None
+    except ValueError:
+        return None
+    if meta and os.path.exists(os.path.join(_FLOW_UPLOAD_DIR, meta.get("file", ""))):
+        return meta
+    return None
+
+
+def _sniff(head: bytes, text_head: str):
+    """File type from its first bytes, never from the name."""
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "jpg"
+    if head.startswith(b"%PDF-"):
+        return "pdf"
+    t = text_head.lstrip("\ufeff \t\r\n").lower()
+    if (t.startswith("<?xml") or t.startswith("<svg") or t.startswith("<!--")) and "<svg" in t:
+        return "svg"
+    return None
+
+
+_SVG_BAD = re.compile(r"<\s*script|<\s*foreignobject|\bon[a-z]+\s*=|javascript:|<\s*iframe|<\s*embed|<\s*object"
+                      r"|xlink:href\s*=\s*[\"'](?!#|data:image/)|<!entity", re.I)
+
+
+@router.post("/workflow/{flow_key}/upload", dependencies=[Depends(verify_csrf)])
+async def workflow_upload(flow_key: str, request: Request, file: UploadFile = File(...),
+                          db: AsyncSession = Depends(get_db), current_user: User = Depends(_view)):
+    """Upload a flow diagram exported from Figma (PNG / JPG / SVG / PDF, 10 MB).
+    Replaces the tab's previous upload. SVGs with scripts or event handlers are
+    refused; files are served back only through workflow_uploaded (with a CSP)."""
+    import json as _json
+    import uuid as _uuid
+    from models.settings import AppSetting
+    if flow_key not in _FLOW_TAB_KEYS:
+        raise HTTPException(404, "Flow not found")
+    data = await file.read(_FLOW_UPLOAD_MAX + 1)
+    if len(data) > _FLOW_UPLOAD_MAX:
+        return JSONResponse({"ok": False, "error": "File is over 10 MB."}, status_code=400)
+    ext = _sniff(data[:16], data[:2048].decode("utf-8", "ignore"))
+    if ext is None:
+        return JSONResponse({"ok": False, "error": "Upload a PNG, JPG, SVG or PDF exported from Figma."}, status_code=400)
+    if ext == "svg" and _SVG_BAD.search(data.decode("utf-8", "ignore")):
+        return JSONResponse({"ok": False, "error": "This SVG contains scripts or links and can't be shown. "
+                                                   "Export it again from Figma, or use PNG / PDF."}, status_code=400)
+    os.makedirs(_FLOW_UPLOAD_DIR, exist_ok=True)
+    old = await _flow_upload(db, flow_key)
+    fname = f"{flow_key}_{_uuid.uuid4().hex}.{ext}"
+    with open(os.path.join(_FLOW_UPLOAD_DIR, fname), "wb") as fh:
+        fh.write(data)
+    meta = {"file": fname, "ext": ext, "name": (file.filename or fname)[:120], "size": len(data),
+            "by": current_user.username, "at": app_now().strftime("%d-%m-%Y %H:%M")}
+    row = (await db.execute(select(AppSetting).where(AppSetting.key == _upload_key(flow_key)))).scalar_one_or_none()
+    if row is None:
+        db.add(AppSetting(key=_upload_key(flow_key), value=_json.dumps(meta), description="QA Workflow uploaded diagram",
+                          updated_by=current_user.username))
+    else:
+        row.value, row.updated_by = _json.dumps(meta), current_user.username
+    await audit(db, action="QA_FLOW_DIAGRAM_UPLOADED", user=current_user, table_name="app_settings",
+                record_id=_upload_key(flow_key), old_value=old, new_value=meta, request=request)
+    await db.commit()
+    return JSONResponse({"ok": True, "upload": meta})
+
+
+@router.post("/workflow/{flow_key}/upload/remove", dependencies=[Depends(verify_csrf)])
+async def workflow_upload_remove(flow_key: str, request: Request, db: AsyncSession = Depends(get_db),
+                                 current_user: User = Depends(_view)):
+    """Stop showing the uploaded diagram (the built-in one shows again). The file
+    stays on disk; the audit row records which one it was."""
+    from models.settings import AppSetting
+    row = (await db.execute(select(AppSetting).where(AppSetting.key == _upload_key(flow_key)))).scalar_one_or_none()
+    if row is None:
+        return JSONResponse({"ok": True})
+    old = row.value
+    row.value, row.updated_by = "", current_user.username
+    await audit(db, action="QA_FLOW_DIAGRAM_REMOVED", user=current_user, table_name="app_settings",
+                record_id=_upload_key(flow_key), old_value={"upload": old}, request=request)
+    await db.commit()
+    return JSONResponse({"ok": True})
+
+
+@router.get("/workflow/{flow_key}/uploaded")
+async def workflow_uploaded(flow_key: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(_view)):
+    meta = await _flow_upload(db, flow_key)
+    if not meta:
+        raise HTTPException(404, "No uploaded diagram")
+    path = os.path.join(_FLOW_UPLOAD_DIR, meta["file"])
+    return FileResponse(path, media_type=_FLOW_UPLOAD_TYPES[meta["ext"]], headers={
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+        "X-Content-Type-Options": "nosniff", "Cache-Control": "no-store",
+        "Content-Disposition": f'inline; filename="{meta["file"]}"'})
 
 
 # Workflow tab (2026-11-04): New GRN and Re-GRN as they work today. Each step:
@@ -1103,51 +1251,73 @@ WORKFLOW_FLOWS = [
 # step cards. Nodes: (id, lane index, column, row in lane, label, kind) with
 # kind = step | decision | ok | warn | bad | end. Edges: (from, to, label).
 WORKFLOW_DIAGRAMS = {
+    # Detailed (2026-11-04, Pankaj asked for more detail): every decision and
+    # outcome from the step journey below, plus where the tag goes after.
     "new_grn": {
         "lanes": [("GRN post IQC", "bi-receipt"), ("Product IQC", "bi-clipboard-check"),
                   ("Stock Inwards", "bi-box-arrow-in-down"), ("Production Manager", "bi-diagram-3"),
-                  ("Repair & Production", "bi-tools")],
+                  ("Repair & Production", "bi-tools"), ("Final QC & Sales", "bi-patch-check")],
         "nodes": [
-            ("grn", 0, 0, 0, "Add GRN|invoice + lots", "step"),
-            ("tags", 1, 1, 0, "Enter tags|Upload / form / OxyQC", "step"),
-            ("chk", 1, 2, 0, "GRN on|row?", "decision"),
-            ("skip", 1, 3, 1, "Row skipped|reason file to download", "bad"),
-            ("dup", 1, 3, 0, "Tag exists|duplicate review", "warn"),
-            ("pend", 0, 3, 0, "GRN Pending|for these tags", "warn"),
-            ("map", 0, 4, 0, "Map GRN|GRN Stocked", "step"),
-            ("stock", 2, 5, 0, "Stock In|As-Is: Sub-Lot", "step"),
-            ("pm", 3, 6, 0, "Assign bucket|to a department", "step"),
-            ("l12", 4, 7, 0, "L1/L2 Repair", "ok"),
-            ("stress", 4, 7, 1, "Stress Test", "ok"),
-            ("cos", 4, 7, 2, "Cosmetic Repair", "ok"),
+            ("grn", 0, 0, 0, "Add GRN|auto no., invoice, PO", "step"),
+            ("ewb", 0, 1, 1, "E-Way Bill|if price > ₹50,000", "warn"),
+            ("inv", 0, 1, 0, "Invoice on|live GRN?", "decision"),
+            ("refuse", 0, 2, 1, "Save refused|duplicate invoice", "bad"),
+            ("lots", 0, 2, 0, "Lots linked|missing lot created", "step"),
+            ("tags", 1, 3, 0, "Enter tags|Upload / form / OxyQC", "step"),
+            ("chk", 1, 4, 0, "Row|valid?", "decision"),
+            ("dup", 1, 5, 1, "Duplicate review|Move · Update · Add Lot", "warn"),
+            ("skip", 1, 5, 2, "Row skipped|reason file", "bad"),
+            ("pend", 0, 5, 0, "GRN Pending|filter & scan tags", "warn"),
+            ("trc", 0, 6, 0, "Pending|for TRC?", "decision"),
+            ("sell", 0, 7, 1, "Send for Selling|back to IQC, GRN cleared", "warn"),
+            ("map", 0, 7, 0, "Map GRN|GRN Stocked", "step"),
+            ("stock", 2, 8, 0, "Stock In|default location", "step"),
+            ("asis", 2, 8, 1, "As-Is lot|Sub-Lot + Assigned To", "warn"),
+            ("pm", 3, 9, 0, "Assign bucket|to a department", "step"),
+            ("l12", 4, 10, 0, "L1/L2 Repair|pending WorkID", "ok"),
+            ("stress", 4, 10, 1, "Stress Test", "ok"),
+            ("cos", 4, 10, 2, "Cosmetic|& Paint", "ok"),
+            ("fqc", 5, 11, 0, "Final QC|Pass / Hold", "step"),
+            ("rts", 5, 12, 0, "Ready to Sale", "end"),
         ],
-        "edges": [("grn", "tags", ""), ("tags", "chk", ""), ("chk", "stock", "Valid GRN"),
-                  ("chk", "pend", "No GRN"), ("chk", "skip", "Wrong GRN / invoice"),
-                  ("chk", "dup", "Duplicate"), ("pend", "map", ""), ("map", "stock", ""),
+        "edges": [("grn", "inv", ""), ("grn", "ewb", "Invoice > ₹50k"), ("inv", "refuse", "Yes"),
+                  ("inv", "lots", "No"), ("lots", "tags", ""), ("tags", "chk", ""),
+                  ("chk", "pend", "No GRN"), ("chk", "dup", "Tag exists"), ("chk", "skip", "Wrong GRN / RAM-SSD swap"),
+                  ("chk", "stock", "Valid GRN"), ("pend", "trc", ""), ("trc", "map", "Sold to OxyPC"),
+                  ("trc", "sell", "Selling"), ("map", "stock", ""), ("map", "asis", "Yes As-Is"),
                   ("stock", "l12", "Move to L1/L2"), ("stock", "pm", "TRC Production"),
-                  ("pm", "l12", ""), ("pm", "stress", ""), ("pm", "cos", "")],
+                  ("pm", "l12", ""), ("pm", "stress", ""), ("pm", "cos", ""),
+                  ("l12", "stress", ""), ("stress", "cos", "Pass"), ("cos", "fqc", ""), ("fqc", "rts", "Pass")],
     },
     "regrn": {
         "lanes": [("Item ReGRN", "bi-arrow-left-right"), ("Move-to-GRN modal", "bi-window-stack"),
-                  ("Tag record", "bi-upc-scan"), ("History & Audit", "bi-journal-text")],
+                  ("Tag record", "bi-upc-scan"), ("Location", "bi-geo-alt"), ("History & Audit", "bi-journal-text")],
         "nodes": [
-            ("pick", 0, 0, 0, "Pick tags|box or CSV", "step"),
-            ("found", 0, 1, 0, "Found?", "decision"),
-            ("rep", 0, 2, 0, "Reported|not moved", "bad"),
-            ("grn", 1, 2, 0, "Choose GRN|entity required", "step"),
-            ("apply", 1, 3, 0, "Apply|per tag", "step"),
-            ("sold", 2, 4, 0, "Sold?", "decision"),
-            ("rts", 2, 5, 0, "Ready to Sale|old sale kept", "warn"),
-            ("same", 2, 5, 1, "Stage unchanged", "ok"),
-            ("rec", 3, 6, 0, "Recorded|counts under new GRN", "end"),
+            ("pick", 0, 0, 0, "Pick tags|paste or CSV, any stage", "step"),
+            ("found", 0, 1, 0, "Found &|live?", "decision"),
+            ("rep", 0, 2, 0, "Reported|not found / in Trash", "bad"),
+            ("grn", 1, 2, 0, "Choose target GRN|required", "step"),
+            ("ent", 1, 3, 0, "GRN has|entity?", "decision"),
+            ("refuse", 1, 4, 1, "Refused|not selectable", "bad"),
+            ("pdf", 1, 4, 0, "Invoice PDF|optional", "step"),
+            ("apply", 1, 5, 0, "Apply|per tag", "step"),
+            ("old", 2, 6, 0, "Old GRN keeps|its Stocked count", "ok"),
+            ("takes", 2, 7, 0, "Takes new GRN|no., invoice, entity", "step"),
+            ("sold", 2, 8, 0, "Was it|Sold?", "decision"),
+            ("rts", 2, 9, 0, "Ready to Sale|old sale kept", "warn"),
+            ("same", 2, 9, 1, "Stage unchanged", "ok"),
+            ("loc", 3, 8, 0, "Moves to GRN|location, bin cleared", "step"),
+            ("hist", 4, 10, 0, "REGRN in history|audit: tag + batch", "end"),
         ],
-        "edges": [("pick", "found", ""), ("found", "rep", "No / Trash"), ("found", "grn", "Yes"),
-                  ("grn", "apply", ""), ("apply", "sold", ""), ("sold", "rts", "Yes"),
-                  ("sold", "same", "No"), ("rts", "rec", ""), ("same", "rec", "")],
+        "edges": [("pick", "found", ""), ("found", "rep", "No"), ("found", "grn", "Yes"),
+                  ("grn", "ent", ""), ("ent", "refuse", "No"), ("ent", "pdf", "Yes"), ("pdf", "apply", ""),
+                  ("apply", "old", ""), ("old", "takes", ""), ("takes", "sold", ""),
+                  ("takes", "loc", "GRN has location"), ("sold", "rts", "Yes"), ("sold", "same", "No"),
+                  ("rts", "hist", ""), ("same", "hist", ""), ("loc", "hist", "")],
     },
 }
 
-_DG = {"label_w": 150, "col_w": 172, "node_w": 128, "node_h": 46, "row_h": 58, "pad": 10}
+_DG = {"label_w": 150, "col_w": 172, "node_w": 136, "node_h": 46, "row_h": 58, "pad": 10}
 
 
 def _diagram_layout(d: dict) -> dict:
@@ -1200,6 +1370,7 @@ def _diagram_layout(d: dict) -> dict:
 for _f in WORKFLOW_FLOWS:
     if _f.get("key") in WORKFLOW_DIAGRAMS:
         _f["diagram"] = _diagram_layout(WORKFLOW_DIAGRAMS[_f["key"]])
+    _FLOWS_BY_KEY[_f["key"]] = _f
 
 
 # ── Stage Workflows tab — per-stage-transition detail + download ─────────────
@@ -1311,12 +1482,8 @@ async def stage_workflows_view(
     request: Request,
     current_user: User = Depends(_view),
 ):
-    """Stage Workflows tab — one card per stage-transition, each with a
-    Download (plain-text) export and a Create Detail Workflow modal."""
-    return templates.TemplateResponse("qa/stage_workflows.html", {
-        "request": request, "current_user": current_user,
-        "workflows": STAGE_WORKFLOWS,
-    })
+    """Old Stage Workflows tab — moved into Workflow → Stage Flows (2026-11-04)."""
+    return RedirectResponse("/qa/workflow?tab=stage", status_code=302)
 
 
 @router.get("/stage-workflows/{workflow_key}/download")

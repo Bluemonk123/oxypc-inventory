@@ -4,9 +4,10 @@
 {% block content %}
 {% include 'qa/_tabs.html' %}
 
-{# Rewritten 2026-11-04: New GRN and Re-GRN as they work today (data in
-   routers/qa_uat.py WORKFLOW_FLOWS). Steps run left to right; each step lists
-   its branches underneath. #}
+{# Workflow (2026-11-04): tabs New GRN / Re-GRN / Stage Flows (Stage Flows moved
+   in from the old Stage Workflows tab). Each tab: flow diagram — built-in
+   (routers/qa_uat.py WORKFLOW_DIAGRAMS) or one uploaded from Figma —, PDF
+   downloads, and the step journey (WORKFLOW_FLOWS). #}
 <style>
   .wf-steps{display:flex; align-items:stretch; gap:0; overflow-x:auto; padding:4px 2px 8px}
   .wf-step{flex:1 0 220px; max-width:300px; display:flex; flex-direction:column;
@@ -27,7 +28,7 @@
   .wf-arrow{flex:0 0 28px; display:flex; align-items:center; justify-content:center; color:#6c8ebf; font-size:1.2rem}
   /* Flow diagram (2026-11-04): one swimlane per page / section */
   .wf-dg-wrap{overflow-x:auto; border:1px solid #dbe3ee; border-radius:10px; background:#fff; margin-bottom:1rem}
-  .wf-dg{display:block; min-width:900px; width:100%; height:auto; font-family:inherit}
+  .wf-dg{display:block; height:auto; font-family:inherit; max-width:none}
   .wf-dg .lane-bg{fill:#fff} .wf-dg .lane-bg.alt{fill:#f6f9fd}
   .wf-dg .lane-line{stroke:#e3e9f2}
   .wf-dg .lane-lbl{fill:#d9ebf6} .wf-dg .lane-txt{fill:#0e3a7a; font-size:12px; font-weight:600}
@@ -41,21 +42,20 @@
   .wf-dg .n text{font-size:11px; fill:#1f2d3d} .wf-dg .n text.t1{font-weight:600}
   .wf-dg .e{fill:none; stroke:#6c8ebf; stroke-width:1.4}
   .wf-dg .el{font-size:10px; fill:#495057; paint-order:stroke; stroke:#fff; stroke-width:3px}
+  /* Uploaded diagram (2026-11-04) */
+  .wf-up img{max-width:100%; height:auto; display:block; margin:0 auto}
+  .wf-up iframe{width:100%; height:640px; border:0}
+  .wf-legend .wf-br{margin:0}
 </style>
 
-{% for f in flows %}
-<div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-transparent">
-    <div class="fw-semibold small text-uppercase"><i class="bi bi-diagram-3 me-2"></i>{{ f.title }}</div>
-    <div class="text-muted small">{{ f.sub }}</div>
-  </div>
-  <div class="card-body">
-    {% if f.diagram %}{% set d = f.diagram %}
-    {# Flow diagram (2026-11-04): lanes = the page / section where each step happens #}
-    <div class="small fw-semibold text-muted mb-1"><i class="bi bi-bezier2 me-1"></i>Flow diagram</div>
-    <div class="wf-dg-wrap">
-      <svg class="wf-dg" viewBox="0 0 {{ d.w|int }} {{ d.h|int }}" role="img" aria-label="{{ f.title }} flow diagram">
-        <defs><marker id="wfArr{{ loop.index }}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+{% set can_export = can(current_user, 'qa', 'export') %}
+{% set can_upload = can(current_user, 'qa', 'upload') %}
+{% set can_remove = can(current_user, 'qa', 'delete') %}
+
+{% macro diagram_svg(d, title, mid) %}
+<div class="wf-dg-wrap">
+      <svg class="wf-dg" width="{{ (d.w * 0.85)|int }}" viewBox="0 0 {{ d.w|int }} {{ d.h|int }}" role="img" aria-label="{{ title }} flow diagram">
+        <defs><marker id="wfArr{{ mid }}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" fill="#6c8ebf"/></marker></defs>
         {% for ln in d.lanes %}
         <rect class="lane-bg {{ 'alt' if ln.alt }}" x="0" y="{{ ln.y }}" width="{{ d.w|int }}" height="{{ ln.h }}"/>
@@ -63,7 +63,7 @@
         <text class="lane-txt" x="10" y="{{ ln.y + ln.h / 2 + 4 }}">{{ ln.name }}</text>
         {% if not loop.first %}<line class="lane-line" x1="0" x2="{{ d.w|int }}" y1="{{ ln.y }}" y2="{{ ln.y }}"/>{% endif %}
         {% endfor %}
-        {% set mk = loop.index %}
+        {% set mk = mid %}
         {% for e in d.edges %}
         <path class="e" d="{{ e.path }}" marker-end="url(#wfArr{{ mk }})"/>
         {% endfor %}
@@ -86,8 +86,60 @@
         {% endif %}{% endfor %}
       </svg>
     </div>
-    <div class="small fw-semibold text-muted mb-1"><i class="bi bi-list-ol me-1"></i>Step journey</div>
-    {% endif %}
+{% endmacro %}
+
+{% macro upload_block(key, title) %}
+{% set up = uploads.get(key) %}
+{% if up %}
+<div class="wf-up border rounded p-2 mb-2 bg-white" id="wfUp_{{ key }}">
+  {% if up.ext == 'pdf' %}<iframe src="/qa/workflow/{{ key }}/uploaded" title="{{ title }} uploaded diagram"></iframe>
+  {% else %}<img src="/qa/workflow/{{ key }}/uploaded" alt="{{ title }} uploaded diagram">{% endif %}
+</div>
+<div class="small text-muted mb-3 d-flex align-items-center flex-wrap gap-2">
+  <i class="bi bi-cloud-check"></i> Uploaded diagram · {{ up.name }} ({{ up.ext|upper }}) · by {{ up.by }} on {{ up.at }}
+  <a href="/qa/workflow/{{ key }}/uploaded" target="_blank" rel="noopener" class="ms-1">Open full size</a>
+  {% if can_remove %}<button type="button" class="btn btn-link btn-sm p-0 text-danger wf-up-remove" data-key="{{ key }}">Remove (show built-in)</button>{% endif %}
+</div>
+{% endif %}
+{% endmacro %}
+
+{% macro toolbar(key, has_diagram) %}
+<div class="d-flex flex-wrap gap-2 ms-auto">
+  {% if has_diagram %}
+  <div class="btn-group btn-group-sm wf-view" role="group" data-key="{{ key }}" {% if not uploads.get(key) %}hidden{% endif %}>
+    <button type="button" class="btn btn-outline-primary active" data-v="up">Uploaded</button>
+    <button type="button" class="btn btn-outline-primary" data-v="built">Built-in</button>
+  </div>
+  {% if can_export %}<a class="btn btn-sm btn-outline-success" href="/qa/workflow/{{ key }}/diagram.pdf"><i class="bi bi-filetype-pdf me-1"></i>Diagram PDF</a>{% endif %}
+  {% endif %}
+  {% if can_export %}<a class="btn btn-sm btn-outline-success" href="/qa/workflow/{{ key }}/journey.pdf"><i class="bi bi-filetype-pdf me-1"></i>{{ 'Journey PDF' if has_diagram else 'Stage Flows PDF' }}</a>{% endif %}
+  {% if can_upload %}<button type="button" class="btn btn-sm btn-outline-primary wf-up-btn" data-key="{{ key }}" title="PNG, JPG, SVG or PDF exported from Figma — up to 10 MB"><i class="bi bi-upload me-1"></i>{{ 'Replace' if uploads.get(key) else 'Upload' }} diagram</button>{% endif %}
+</div>
+{% endmacro %}
+
+<ul class="nav nav-tabs mb-3" id="wfTabs" role="tablist">
+  {% for key, label, icon in [('new_grn', 'New GRN', 'bi-receipt'), ('regrn', 'Re-GRN', 'bi-arrow-left-right'), ('stage', 'Stage Flows', 'bi-signpost-split')] %}
+  <li class="nav-item"><button class="nav-link {{ 'active' if active_tab == key }}" data-bs-toggle="tab" data-bs-target="#wf_{{ key }}" data-key="{{ key }}" type="button">
+    <i class="bi {{ icon }} me-1"></i>{{ label }}</button></li>
+  {% endfor %}
+</ul>
+
+<div class="tab-content">
+{% for f in flows %}
+<div class="tab-pane fade {{ 'show active' if active_tab == f.key }}" id="wf_{{ f.key }}">
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
+    <div>
+      <div class="fw-semibold small text-uppercase"><i class="bi bi-diagram-3 me-2"></i>{{ f.title }}</div>
+      <div class="text-muted small">{{ f.sub }}</div>
+    </div>
+    {{ toolbar(f.key, f.diagram) }}
+  </div>
+  <div class="card-body">
+    <div class="small fw-semibold text-muted mb-1"><i class="bi bi-bezier2 me-1"></i>Flow diagram</div>
+    <div class="wf-v-up" data-key="{{ f.key }}">{{ upload_block(f.key, f.title) }}</div>
+    {% if f.diagram %}<div class="wf-v-built" data-key="{{ f.key }}" {% if uploads.get(f.key) %}hidden{% endif %}>{{ diagram_svg(f.diagram, f.title, loop.index) }}</div>{% endif %}
+    <div class="small fw-semibold text-muted mb-1 mt-2"><i class="bi bi-list-ol me-1"></i>Step journey</div>
     <div class="wf-steps">
       {% for title, where, what, branches in f.steps %}
       <div class="wf-step">
@@ -103,14 +155,135 @@
       {% if not loop.last %}<div class="wf-arrow"><i class="bi bi-arrow-right"></i></div>{% endif %}
       {% endfor %}
     </div>
+    <div class="small text-muted mt-3 d-flex flex-wrap gap-2 wf-legend">
+      <span class="wf-br success d-inline-block"><b class="d-inline">Green</b> moves forward</span>
+      <span class="wf-br warning d-inline-block"><b class="d-inline">Amber</b> waits or needs review</span>
+      <span class="wf-br danger d-inline-block"><b class="d-inline">Red</b> refused / skipped</span>
+      <span class="wf-br info d-inline-block"><b class="d-inline">Blue</b> rule or note</span>
+    </div>
   </div>
+</div>
 </div>
 {% endfor %}
 
-<div class="small text-muted mt-2">
-  <span class="wf-br success d-inline-block me-2 mb-1"><b class="d-inline">Green</b> moves forward</span>
-  <span class="wf-br warning d-inline-block me-2 mb-1"><b class="d-inline">Amber</b> waits or needs review</span>
-  <span class="wf-br danger d-inline-block me-2 mb-1"><b class="d-inline">Red</b> refused / skipped</span>
-  <span class="wf-br info d-inline-block me-2 mb-1"><b class="d-inline">Blue</b> rule or note</span>
+{# ── Stage Flows (moved from the old Stage Workflows tab, 2026-11-04) ── #}
+<div class="tab-pane fade {{ 'show active' if active_tab == 'stage' }}" id="wf_stage">
+<div class="card border-0 shadow-sm mb-4">
+  <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
+    <div>
+      <div class="fw-semibold small text-uppercase"><i class="bi bi-signpost-split me-2"></i>Stage Flows</div>
+      <div class="text-muted small">Each part of the device pipeline as it works today. Create Detail Workflow shows the step-by-step breakdown.</div>
+    </div>
+    {{ toolbar('stage', false) }}
+  </div>
+  <div class="card-body">
+    {% if uploads.get('stage') %}<div class="small fw-semibold text-muted mb-1"><i class="bi bi-bezier2 me-1"></i>Flow diagram</div>{{ upload_block('stage', 'Stage Flows') }}{% endif %}
+    <div class="row g-3">
+      {% for wf in workflows %}
+      <div class="col-md-6 col-xl-4">
+        <div class="card border h-100">
+          <div class="card-header bg-transparent fw-semibold small"><i class="bi bi-signpost-split me-2 text-primary"></i>{{ wf.title }}</div>
+          <div class="card-body">
+            <div class="d-flex flex-wrap align-items-center gap-1 mb-3">
+              {% for stage_name in wf.stages %}
+              <span class="badge bg-light text-dark border">{{ stage_name }}</span>
+              {% if not loop.last %}<i class="bi bi-arrow-right text-muted small"></i>{% endif %}
+              {% endfor %}
+            </div>
+            <div class="d-flex gap-2">
+              {% if can_export %}<a href="/qa/stage-workflows/{{ wf.key }}/download" class="btn btn-sm btn-outline-success"><i class="bi bi-download me-1"></i>Download</a>{% endif %}
+              <button type="button" class="btn btn-sm btn-outline-primary" onclick="showWorkflowDetail('{{ wf.key }}')"><i class="bi bi-diagram-2 me-1"></i>Create Detail Workflow</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
 </div>
+</div>
+</div>
+
+<!-- Detail Workflow Modal (Stage Flows) -->
+<div class="modal fade" id="workflowDetailModal" tabindex="-1">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="workflowDetailTitle">Workflow Detail</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body"><ol class="list-group list-group-numbered" id="workflowDetailBody"></ol></div>
+      <div class="modal-footer py-2">
+        <a {% if not can_export %}hidden {% endif %}id="workflowDetailDownload" href="#" class="btn btn-sm btn-outline-success"><i class="bi bi-download me-1"></i>Download</a>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<input type="file" id="wfUpFile" accept=".png,.jpg,.jpeg,.svg,.pdf" class="d-none">
+{% endblock %}
+{% block scripts %}
+<script>
+var WORKFLOW_DETAILS = {{ workflows | tojson }};
+function showWorkflowDetail(key) {
+  var wf = WORKFLOW_DETAILS.find(function (w) { return w.key === key; });
+  if (!wf) return;
+  document.getElementById('workflowDetailTitle').textContent = wf.title;
+  document.getElementById('workflowDetailDownload').href = '/qa/stage-workflows/' + encodeURIComponent(key) + '/download';
+  var body = document.getElementById('workflowDetailBody');
+  body.innerHTML = '';
+  wf.detail.forEach(function (pair) {
+    var li = document.createElement('li');
+    li.className = 'list-group-item';
+    var a = document.createElement('div'); a.className = 'fw-semibold small'; a.textContent = pair[0];
+    var b = document.createElement('div'); b.className = 'small text-muted'; b.textContent = pair[1];
+    li.appendChild(a); li.appendChild(b); body.appendChild(li);
+  });
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('workflowDetailModal')).show();
+}
+(function () {
+  // keep ?tab= in the address bar so a refresh / shared link opens the same tab
+  document.querySelectorAll('#wfTabs [data-bs-toggle="tab"]').forEach(function (b) {
+    b.addEventListener('shown.bs.tab', function () {
+      try { var u = new URL(location.href); u.searchParams.set('tab', b.dataset.key); history.replaceState(null, '', u); } catch (e) {}
+    });
+  });
+  // Uploaded / Built-in toggle
+  document.querySelectorAll('.wf-view').forEach(function (g) {
+    g.addEventListener('click', function (e) {
+      var btn = e.target.closest('button'); if (!btn) return;
+      g.querySelectorAll('button').forEach(function (x) { x.classList.toggle('active', x === btn); });
+      var key = g.dataset.key, up = btn.dataset.v === 'up';
+      document.querySelectorAll('.wf-v-up[data-key="' + key + '"]').forEach(function (x) { x.hidden = !up; });
+      document.querySelectorAll('.wf-v-built[data-key="' + key + '"]').forEach(function (x) { x.hidden = up; });
+    });
+  });
+  function csrf() { return (document.cookie.match('(?:^|;)\\s*csrf_token=([^;]*)') || ['', ''])[1]; }
+  var file = document.getElementById('wfUpFile'), upKey = null;
+  document.querySelectorAll('.wf-up-btn').forEach(function (b) {
+    b.addEventListener('click', function () { upKey = b.dataset.key; file.value = ''; file.click(); });
+  });
+  file.addEventListener('change', function () {
+    var f = file.files[0]; if (!f || !upKey) return;
+    if (f.size > 10 * 1024 * 1024) { showTopToast('danger', 'File is over 10 MB.'); return; }
+    var fd = new FormData(); fd.append('file', f); fd.append('csrf_token', csrf());
+    fetch('/qa/workflow/' + upKey + '/upload', { method: 'POST', body: fd, headers: { 'X-CSRF-Token': csrf() } })
+      .then(function (r) { return r.json().catch(function () { return { ok: false, error: 'Upload failed (HTTP ' + r.status + ')' }; }); })
+      .then(function (j) {
+        if (j.ok) { location.href = '/qa/workflow?tab=' + upKey; }
+        else { showTopToast('danger', j.error || j.detail || 'Upload failed'); }
+      });
+  });
+  document.querySelectorAll('.wf-up-remove').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (!confirm('Stop showing the uploaded diagram? The built-in diagram shows again.')) return;
+      var fd = new FormData(); fd.append('csrf_token', csrf());
+      fetch('/qa/workflow/' + b.dataset.key + '/upload/remove', { method: 'POST', body: fd, headers: { 'X-CSRF-Token': csrf() } })
+        .then(function (r) { return r.json(); }).then(function (j) {
+          if (j.ok) location.href = '/qa/workflow?tab=' + b.dataset.key; else showTopToast('danger', j.error || 'Could not remove');
+        });
+    });
+  });
+})();
+</script>
 {% endblock %}

@@ -424,6 +424,10 @@ ROUTE_ACTIONS = {
     ('POST', '/iqc/api/submit'): None,  # submit_iqc: OxyQC EXE API (X-OxyQC-Key), not session UI
     # ===== routers/qa_uat.py =====
     ('GET', '/qa/stage-workflows/{workflow_key}/download'): ('qa', 'export'),  # stage_workflow_download
+    ('GET', '/qa/workflow/{flow_key}/diagram.pdf'): ('qa', 'export'),  # workflow_diagram_pdf (2026-11-04)
+    ('GET', '/qa/workflow/{flow_key}/journey.pdf'): ('qa', 'export'),  # workflow_journey_pdf (2026-11-04)
+    ('POST', '/qa/workflow/{flow_key}/upload'): ('qa', 'upload'),  # workflow_upload: Figma diagram (2026-11-04)
+    ('POST', '/qa/workflow/{flow_key}/upload/remove'): ('qa', 'delete'),  # workflow_upload_remove (2026-11-04)
     ('GET', '/qa/srs/technical-spec/download'): ('qa', 'export'),  # srs_technical_spec_download
     ('GET', '/qa/srs/functional-spec/download'): ('qa', 'export'),  # srs_functional_spec_download
     ('GET', '/qa/srs/design-system/download'): ('qa', 'export'),  # srs_design_system_download

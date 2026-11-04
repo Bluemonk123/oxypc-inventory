@@ -54,7 +54,11 @@ def test_workflow_and_stage_workflows(app_client, make_user):  # noqa: F811
     # Flow diagrams (2026-11-04): one swimlane SVG per flow, above the step journey
     assert html.count('class="wf-dg"') == 2 and "Product IQC</text>" in html and "Move-to-GRN modal</text>" in html
     assert html.index('class="wf-dg"') < html.index('class="wf-steps"')
-    sw = app_client.get("/qa/stage-workflows").text
+    # Stage Flows now a tab of Workflow (2026-11-04); the old page redirects there
+    r = app_client.get("/qa/stage-workflows", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/qa/workflow?tab=stage"
+    sw = app_client.get("/qa/workflow?tab=stage").text
     for t in ("Re-GRN (Item ReGRN)", "Final QC → Ready to Sale", "Customer Return → Return Stock"):
         assert t in sw
+    assert 'href="/qa/stage-workflows"' not in sw            # tab removed from the QA menu
     assert app_client.get("/qa/stage-workflows/regrn/download").status_code == 200

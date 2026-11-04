@@ -660,11 +660,6 @@
         <i class="bi bi-box-seam me-2"></i> {{ sidebar_label('pm_product_master', 'Product Master') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'pm_pricing_calculator','enable') and not module_hidden('pm_pricing_calculator') %}
-      <li><a href="/product-master/pricing-calculator" class="nav-link {% if '/product-master/pricing-calculator' in request.url.path %}active{% endif %}">
-        <i class="bi bi-calculator me-2"></i> {{ sidebar_label('pm_pricing_calculator', 'Pricing Calculator') }}
-      </a></li>
-      {% endif %}
       {% if has_perm(role,'pm_hardware','enable') and not module_hidden('pm_hardware') %}
       <li><a href="/product-master/hardware" class="nav-link {% if '/product-master/hardware' in request.url.path %}active{% endif %}">
         <i class="bi bi-memory me-2"></i> {{ sidebar_label('pm_hardware', 'Hardware') }}
@@ -678,6 +673,12 @@
       {% if has_perm(role,'pm_product_pricing','enable') and not module_hidden('pm_product_pricing') %}
       <li><a href="/product-master/pricing" class="nav-link {% if request.url.path == '/product-master/pricing' or request.url.path.startswith('/product-master/pricing/') %}active{% endif %}">
         <i class="bi bi-tags me-2"></i> {{ sidebar_label('pm_product_pricing', 'Product Pricing') }}
+      </a></li>
+      {% endif %}
+      {# Pricing Calculator below Product Pricing (2026-11-04) #}
+      {% if has_perm(role,'pm_pricing_calculator','enable') and not module_hidden('pm_pricing_calculator') %}
+      <li><a href="/product-master/pricing-calculator" class="nav-link {% if '/product-master/pricing-calculator' in request.url.path %}active{% endif %}">
+        <i class="bi bi-calculator me-2"></i> {{ sidebar_label('pm_pricing_calculator', 'Pricing Calculator') }}
       </a></li>
       {% endif %}
 
