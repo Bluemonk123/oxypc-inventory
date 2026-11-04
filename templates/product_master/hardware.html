@@ -3,8 +3,9 @@
 {% block page_title %}Hardware{% endblock %}
 {% block head %}
 <style>
-/* Hardware page redesign (2026-10-25): Option B tiles, then two designs.
-   Design 1 = Type x Size price grid, Design 2 = list grouped by Type. */
+/* Hardware page redesign (2026-10-25): Option B tiles, then the Type x Size
+   price grid (Design 1). Design 2 (list grouped by Type) and the design tabs
+   removed 2026-11-04 — Design 1 was chosen. */
 .hw-tile{position:relative;overflow:hidden;border-radius:10px;padding:1rem;min-height:96px;
   background:color-mix(in srgb,var(--tc) 8%,#fff);border:1px solid color-mix(in srgb,var(--tc) 25%,#fff);
   box-shadow:0 .25rem .5rem rgba(0,0,0,.08)}
@@ -16,6 +17,12 @@
 .hw-mx th:first-child{text-align:left;border-radius:8px 0 0 8px}.hw-mx th:last-child{border-radius:0 8px 8px 0}
 .hw-mx td{padding:0;border-bottom:1px solid #e3eef7;text-align:center;height:40px;min-width:78px}
 .hw-mx td:first-child{text-align:left;padding:0 10px;font-weight:600;color:#0e3a7a;white-space:nowrap}
+/* First column frozen while the sizes scroll sideways (2026-11-04). The app-wide
+   ".card-body table { overflow:hidden }" would switch sticky off, so undo it here. */
+.hw-mx{overflow:visible!important}
+.hw-mx th:first-child,.hw-mx td:first-child{position:sticky;left:0;z-index:2}
+.hw-mx td:first-child{background:#fff;box-shadow:inset -1px 0 0 #e3eef7}
+.hw-mx th:first-child{z-index:3}
 .hw-cell{position:relative;width:100%;height:100%;min-height:39px;display:flex;align-items:center;justify-content:center;font-size:13px}
 .hw-cell.v{font-weight:600;color:#0F7A37;background:#f6fbf6}
 .hw-cell.e{color:#adb5bd}
@@ -23,15 +30,6 @@
 .hw-cell .hw-dot{position:absolute;top:4px;right:5px;min-width:16px;height:16px;border-radius:8px;background:#fd7e14;color:#fff;font-size:10px;line-height:16px;padding:0 4px;font-weight:700}
 .hw-cell input{width:90%;height:28px;font-size:13px;text-align:right;border:1px solid #0d6efd;border-radius:5px;padding:0 6px}
 .hw-cell.hw-pending{background:#fff8e1}.hw-cell.hw-pending input{border-color:#fd7e14;box-shadow:0 0 0 2px rgba(253,126,20,.2)}
-.hw-g{width:100%;font-size:13.5px}
-.hw-g thead th{background:#0e3a7a;color:#fff;font-size:11.5px;text-transform:uppercase;letter-spacing:.4px;padding:8px 12px;white-space:nowrap}
-.hw-g td{padding:7px 12px;border-bottom:1px solid #e3eef7;vertical-align:middle}
-.hw-g tr.grp td{background:#eef6fc;font-weight:700;color:#0e3a7a}
-.hw-prog{display:inline-block;width:100px;height:6px;border-radius:4px;background:#e9ecef;overflow:hidden;vertical-align:middle}
-.hw-prog>div{height:100%;background:#0F7A37}
-.hw-pend{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:#fff3cd;color:#8a6d00}
-.hw-v{font-weight:600;color:#0F7A37}
-.hw-in{width:130px}
 .hw-price::-webkit-outer-spin-button,.hw-price::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .hw-price{-moz-appearance:textfield;appearance:textfield}
 </style>
@@ -48,27 +46,24 @@
   <div class="col-6 col-xl-3"><div class="hw-tile" style="--tc:#fd7e14"><b id="tWait">{{ stats.waiting_products }}</b><span>Products waiting on a price</span><i class="bi bi-box-seam"></i></div></div>
 </div>
 
-<ul class="nav nav-tabs" id="hwDesignTabs" role="tablist">
-  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#hwD1" type="button" data-d="1"><i class="bi bi-grid-3x3 me-1"></i>Design 1</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#hwD2" type="button" data-d="2"><i class="bi bi-list-nested me-1"></i>Design 2</button></li>
-</ul>
-<div class="tab-content border border-top-0 rounded-bottom bg-white mb-4 p-3">
-
-  {# ── Design 1: Type x Size grid (Option B) ── #}
-  <div class="tab-pane fade show active" id="hwD1">
+<div class="mb-4">
+  {# ── Type x Size price grid (Design 1) ── #}
+  <div id="hwD1">
     <div class="row g-3">
       {% for kind, title, icon in [('ram', 'RAM Prices', 'bi-memory'), ('storage', 'Storage Prices', 'bi-device-hdd')] %}
       <div class="col-xxl-6">
         <div class="card border-0 shadow-sm h-100">
           <div class="card-header d-flex justify-content-between align-items-center">
-            <span class="fw-semibold"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
-            <span class="small text-muted">{% if can_price %}Click cells to change prices · Save to store them · Esc to cancel a cell{% else %}View only{% endif %}</span>
+            <span class="fw-semibold text-nowrap"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
+            {# Export moved here from Design 2 (2026-11-04) #}
+            <button {% if not can(current_user, 'pm_hardware', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success text-nowrap hw-export" data-kind="{{ kind }}"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
           </div>
           <div class="card-body"><div class="table-responsive"><table class="hw-mx" id="mx_{{ kind }}"></table></div>
             <div class="d-flex justify-content-between align-items-center mt-2 gap-2">
-              <div class="small text-muted"><span class="hw-dot-legend"><span class="badge rounded-pill" style="background:#fd7e14">n</span> = products waiting on this price</span></div>
+              <div class="small text-muted"><span class="hw-dot-legend"><span class="badge rounded-pill" style="background:#fd7e14">n</span> = products waiting on this price</span>
+                <span class="ms-2">· {% if can_price %}Click cells to change prices, Save to store them, Esc to cancel a cell{% else %}View only{% endif %}</span></div>
               {% if can_price %}{# Save one or many edited cells at once (2026-11-04) #}
-              <button type="button" class="btn btn-sm btn-success hw-save-all" data-kind="{{ kind }}" disabled>
+              <button type="button" class="btn btn-sm btn-success text-nowrap flex-shrink-0 hw-save-all" data-kind="{{ kind }}" disabled>
                 <i class="bi bi-save me-1"></i>Save<span class="hw-save-n"></span></button>
               {% endif %}
             </div>
@@ -79,25 +74,6 @@
     </div>
   </div>
 
-  {# ── Design 2: grouped by Type (Option C) ── #}
-  <div class="tab-pane fade" id="hwD2">
-    <ul class="nav nav-pills mb-3" id="hwKindPills">
-      <li class="nav-item"><button class="nav-link active" data-k="ram" type="button"><i class="bi bi-memory me-1"></i>RAM Details</button></li>
-      <li class="nav-item"><button class="nav-link" data-k="storage" type="button"><i class="bi bi-device-hdd me-1"></i>Storage Details</button></li>
-    </ul>
-    <div class="card border-0 shadow-sm">
-      <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span class="fw-semibold" id="g_title">RAM Details</span>
-        <div class="d-flex gap-2">
-          <select class="form-select form-select-sm w-auto" id="g_price">
-            <option value="">Price: All</option><option value="empty">Price: Empty</option><option value="filled">Price: Filled</option>
-          </select>
-          <button {% if not can(current_user, 'pm_hardware', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success" id="g_export"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>
-        </div>
-      </div>
-      <div class="card-body"><div class="table-responsive"><table class="hw-g" id="g_table"></table></div></div>
-    </div>
-  </div>
 </div>
 {% endblock %}
 
@@ -112,7 +88,6 @@
   var DATA = { ram: {{ ram_rows | tojson }}, storage: {{ storage_rows | tojson }} };
   var NAME = { ram: 'RAM', storage: 'Storage' };
   var PENDING = { ram: {}, storage: {} };   // edited, not yet saved: {name: value}
-  var gKind = 'ram';
 
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
     return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
@@ -206,63 +181,10 @@
   });
   $(document).on('click', '.hw-save-all', function () { saveAll($(this).data('kind')); });
 
-  // ── Design 2: grouped list ──
-  function list() {
-    var rows = DATA[gKind], f = $('#g_price').val(), ax = axes(rows);
-    $('#g_title').text(NAME[gKind] + ' Details');
-    var h = '<thead><tr><th>Size</th><th>' + NAME[gKind] + ' Price</th><th>Products using it</th><th>Products waiting</th><th>Last change</th><th>Action</th></tr></thead><tbody>';
-    ax.types.forEach(function (t) {
-      var grp = rows.filter(function (r) { return r.category === t; });
-      var done = grp.filter(function (r) { return r.price != null; }).length;
-      var shown = grp.filter(function (r) { return !f || (f === 'filled') === (r.price != null); });
-      if (!shown.length) return;
-      h += '<tr class="grp"><td colspan="6">' + esc(t) + ' <span class="small text-muted fw-normal ms-2">' + done + ' of ' + grp.length +
-           ' priced</span> <span class="hw-prog ms-2"><div style="width:' + Math.round(done * 100 / grp.length) + '%"></div></span></td></tr>';
-      shown.forEach(function (r) {
-        var priced = r.price != null;
-        var priceCell = priced ? '<span class="hw-v">' + fmt(r.price) + '</span>'
-          : (CAN_PRICE ? '<input type="number" class="form-control form-control-sm hw-in hw-price" min="0" step="0.01" placeholder="₹ Enter price">' : '<span class="text-muted">—</span>');
-        var act = '';
-        if (CAN_PRICE) act += priced ? '<button type="button" class="btn btn-sm btn-outline-warning py-0 px-1 g-edit" title="Edit"><i class="bi bi-pencil"></i></button>'
-                                     : '<button type="button" class="btn btn-sm btn-primary py-0 g-save">Save</button>';
-        if (CAN_DELETE && r.id && priced) act += ' <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 g-del" title="Remove price"><i class="bi bi-trash3"></i></button>';
-        h += '<tr data-name="' + esc(r.name) + '"><td class="text-nowrap">' + esc(r.capacity) + '</td><td class="g-pc">' + priceCell + '</td><td>' + usingText(r) + '</td><td>' +
-             (r.waiting.length ? '<span class="hw-pend" title="' + esc(r.waiting.map(function (i) { return LABELS[i]; }).join('\n')) + '">' + r.waiting.length + ' product' + (r.waiting.length > 1 ? 's' : '') + '</span>' : '<span class="text-muted">—</span>') +
-             '</td><td class="text-nowrap">' + (priced ? esc((r.updated_on || '—').split(' ')[0]) + ' · ' + esc(r.updated_by || '—') : '<span class="text-muted">—</span>') +
-             '</td><td class="text-nowrap">' + (act || '<span class="text-muted">—</span>') + '</td></tr>';
-      });
-    });
-    $('#g_table').html(h + '</tbody>');
-  }
-  $('#hwKindPills').on('click', '.nav-link', function () {
-    $('#hwKindPills .nav-link').removeClass('active'); $(this).addClass('active'); gKind = $(this).data('k'); list();
-  });
-  $('#g_price').on('change', list);
-  $(document).on('click', '.g-edit', function () {
-    var tr = $(this).closest('tr'), r = find(gKind, tr.attr('data-name'));
-    tr.find('.g-pc').html('<input type="number" class="form-control form-control-sm hw-in hw-price" min="0" step="0.01" value="' + r.price + '">');
-    $(this).replaceWith('<button type="button" class="btn btn-sm btn-primary py-0 g-save">Save</button>');
-    tr.find('input').trigger('focus').trigger('select');
-  });
-  $(document).on('keydown', '#g_table input', function (e) { if (e.key === 'Enter') { e.preventDefault(); $(this).closest('tr').find('.g-save').click(); } });
-  $(document).on('click', '.g-save', function () {
-    var tr = $(this).closest('tr'), v = tr.find('input').val().trim();
-    if (v === '') { showFlash('danger', 'Enter the ' + NAME[gKind] + ' price.'); return; }
-    this.disabled = true; save(gKind, tr.attr('data-name'), v);
-  });
-  $(document).on('click', '.g-del', function () {
-    var name = $(this).closest('tr').attr('data-name'), r = find(gKind, name);
-    if (!confirm('Remove the price for ' + name.replace('/', ' / ') + '? Products using it go back to Pending.')) return;
-    pmPost('/product-master/hardware/' + gKind + '/' + r.id + '/delete', {}).then(function (j) {
-      if (!j.ok) { showFlash('danger', j.error); return; }
-      r.waiting = r.waiting.concat(r.using); r.using = []; r.price = null; r.id = '';
-      r.updated_on = ''; r.updated_by = '';
-      refresh(); showFlash('success', 'Price removed for ' + name.replace('/', ' / ') + '.');
-    });
-  });
   // Price column only with Pricing Export (2026-11-03).
   var CAN_EXPORT_PRICE = {{ 'true' if can(current_user, 'pm_hardware', 'pricing_export') else 'false' }};
-  $('#g_export').on('click', function () {
+  $(document).on('click', '.hw-export', function () {
+    var gKind = $(this).data('kind');
     var hdr = ['Type', 'Size'].concat(CAN_EXPORT_PRICE ? [NAME[gKind] + ' Price'] : [])
       .concat(['Products using it', 'Products waiting', 'Updated On', 'Updated By']);
     var lines = [hdr];
@@ -276,7 +198,7 @@
     a.download = (gKind === 'ram' ? 'ram_details' : 'storage_details') + '.csv'; a.click();
   });
 
-  // ── Save (shared by both designs) ──
+  // ── Save ──
   function save(kind, name, price) {
     var r = find(kind, name);
     $('.hw-cell[data-name="' + name + '"]').data('busy', 1);
@@ -313,11 +235,7 @@
       if (errs.length) toast('danger', 'Not saved — ' + errs.join(' · '));
     });
   }
-  function refresh() { grid('ram'); grid('storage'); list(); tiles(); }
-
-  // Remember the chosen design per browser
-  $('#hwDesignTabs').on('shown.bs.tab', 'button', function () { try { localStorage.setItem('hwDesign', $(this).data('d')); } catch (e) {} });
-  try { if (localStorage.getItem('hwDesign') === '2') bootstrap.Tab.getOrCreateInstance(document.querySelector('#hwDesignTabs [data-d="2"]')).show(); } catch (e) {}
+  function refresh() { grid('ram'); grid('storage'); tiles(); }
   if (!DATA.ram.length && !DATA.storage.length) showFlash('warning', 'Add RAM and Storage Types and Sizes in Product Master → Dropdown Configuration first.');
   refresh();
 })();

@@ -1099,6 +1099,109 @@ WORKFLOW_FLOWS = [
 ]
 
 
+# Flow diagrams (2026-11-04): a swimlane per page / section above each flow's
+# step cards. Nodes: (id, lane index, column, row in lane, label, kind) with
+# kind = step | decision | ok | warn | bad | end. Edges: (from, to, label).
+WORKFLOW_DIAGRAMS = {
+    "new_grn": {
+        "lanes": [("GRN post IQC", "bi-receipt"), ("Product IQC", "bi-clipboard-check"),
+                  ("Stock Inwards", "bi-box-arrow-in-down"), ("Production Manager", "bi-diagram-3"),
+                  ("Repair & Production", "bi-tools")],
+        "nodes": [
+            ("grn", 0, 0, 0, "Add GRN|invoice + lots", "step"),
+            ("tags", 1, 1, 0, "Enter tags|Upload / form / OxyQC", "step"),
+            ("chk", 1, 2, 0, "GRN on|row?", "decision"),
+            ("skip", 1, 3, 1, "Row skipped|reason file to download", "bad"),
+            ("dup", 1, 3, 0, "Tag exists|duplicate review", "warn"),
+            ("pend", 0, 3, 0, "GRN Pending|for these tags", "warn"),
+            ("map", 0, 4, 0, "Map GRN|GRN Stocked", "step"),
+            ("stock", 2, 5, 0, "Stock In|As-Is: Sub-Lot", "step"),
+            ("pm", 3, 6, 0, "Assign bucket|to a department", "step"),
+            ("l12", 4, 7, 0, "L1/L2 Repair", "ok"),
+            ("stress", 4, 7, 1, "Stress Test", "ok"),
+            ("cos", 4, 7, 2, "Cosmetic Repair", "ok"),
+        ],
+        "edges": [("grn", "tags", ""), ("tags", "chk", ""), ("chk", "stock", "Valid GRN"),
+                  ("chk", "pend", "No GRN"), ("chk", "skip", "Wrong GRN / invoice"),
+                  ("chk", "dup", "Duplicate"), ("pend", "map", ""), ("map", "stock", ""),
+                  ("stock", "l12", "Move to L1/L2"), ("stock", "pm", "TRC Production"),
+                  ("pm", "l12", ""), ("pm", "stress", ""), ("pm", "cos", "")],
+    },
+    "regrn": {
+        "lanes": [("Item ReGRN", "bi-arrow-left-right"), ("Move-to-GRN modal", "bi-window-stack"),
+                  ("Tag record", "bi-upc-scan"), ("History & Audit", "bi-journal-text")],
+        "nodes": [
+            ("pick", 0, 0, 0, "Pick tags|box or CSV", "step"),
+            ("found", 0, 1, 0, "Found?", "decision"),
+            ("rep", 0, 2, 0, "Reported|not moved", "bad"),
+            ("grn", 1, 2, 0, "Choose GRN|entity required", "step"),
+            ("apply", 1, 3, 0, "Apply|per tag", "step"),
+            ("sold", 2, 4, 0, "Sold?", "decision"),
+            ("rts", 2, 5, 0, "Ready to Sale|old sale kept", "warn"),
+            ("same", 2, 5, 1, "Stage unchanged", "ok"),
+            ("rec", 3, 6, 0, "Recorded|counts under new GRN", "end"),
+        ],
+        "edges": [("pick", "found", ""), ("found", "rep", "No / Trash"), ("found", "grn", "Yes"),
+                  ("grn", "apply", ""), ("apply", "sold", ""), ("sold", "rts", "Yes"),
+                  ("sold", "same", "No"), ("rts", "rec", ""), ("same", "rec", "")],
+    },
+}
+
+_DG = {"label_w": 150, "col_w": 172, "node_w": 128, "node_h": 46, "row_h": 58, "pad": 10}
+
+
+def _diagram_layout(d: dict) -> dict:
+    """Coordinates for the SVG: lanes (y, h), nodes (x, y, w, h, lines), edges (path, label x/y)."""
+    g = _DG
+    rows = [1] * len(d["lanes"])
+    for _id, lane, _c, row, *_ in d["nodes"]:
+        rows[lane] = max(rows[lane], row + 1)
+    lanes, y = [], 0
+    for i, (name, icon) in enumerate(d["lanes"]):
+        h = rows[i] * g["row_h"] + g["pad"] * 2
+        lanes.append({"name": name, "icon": icon, "y": y, "h": h, "alt": i % 2})
+        y += h
+    ncols = max(n[2] for n in d["nodes"]) + 1
+    width, height = g["label_w"] + ncols * g["col_w"] + 10, y
+    nodes = {}
+    for nid, lane, col, row, label, kind in d["nodes"]:
+        w = g["node_w"]
+        x = g["label_w"] + col * g["col_w"] + (g["col_w"] - w) / 2
+        ny = lanes[lane]["y"] + g["pad"] + row * g["row_h"] + (g["row_h"] - g["node_h"]) / 2
+        nodes[nid] = {"id": nid, "x": x, "y": ny, "w": w, "h": g["node_h"], "kind": kind,
+                      "lines": label.split("|"), "cx": x + w / 2, "cy": ny + g["node_h"] / 2}
+    edges, elbows = [], {}
+    for a, b, label in d["edges"]:
+        A, B = nodes[a], nodes[b]
+        if B["x"] > A["x"] + 1:                       # forward: right side -> left side, elbow
+            x1, y1, x2, y2 = A["x"] + A["w"], A["cy"], B["x"], B["cy"]
+            if A["kind"] == "decision":
+                x1 = A["cx"] + 34                      # diamond tip
+            if B["kind"] == "decision":
+                x2 = B["cx"] - 34
+            if abs(y1 - y2) > 1:
+                k = elbows.get(a, 0)
+                elbows[a] = k + 1
+                mx = x1 + 8 + 6 * k                    # each elbow from one node gets its own lane
+            else:
+                mx = (x1 + x2) / 2
+            path = f"M{x1:.0f},{y1:.0f} H{mx:.0f} V{y2:.0f} H{x2 - 2:.0f}"
+            lx, ly, anchor = x2 - 6, y2 - 5, "end"       # label just before the arrowhead
+        else:                                          # same column: vertical
+            x1, x2 = A["cx"], B["cx"]
+            y1, y2 = (A["y"] + A["h"], B["y"]) if B["y"] > A["y"] else (A["y"], B["y"] + B["h"])
+            path = f"M{x1:.0f},{y1:.0f} V{y2:.0f}"
+            lx, ly, anchor = x1 + 5, (y1 + y2) / 2, "start"
+        edges.append({"path": path, "label": label, "lx": lx, "ly": ly, "anchor": anchor})
+    return {"lanes": lanes, "nodes": list(nodes.values()), "edges": edges, "w": width, "h": height,
+            "label_w": g["label_w"]}
+
+
+for _f in WORKFLOW_FLOWS:
+    if _f.get("key") in WORKFLOW_DIAGRAMS:
+        _f["diagram"] = _diagram_layout(WORKFLOW_DIAGRAMS[_f["key"]])
+
+
 # ── Stage Workflows tab — per-stage-transition detail + download ─────────────
 # Each entry: key, title, stages (ordered list of stage names), and a detail
 # block describing what actually happens at each hop (used both on-screen in

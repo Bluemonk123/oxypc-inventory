@@ -18,6 +18,9 @@
 #pcTable td.pc-parts .pc-line{display:block;margin:0 0 6px}#pcTable td.pc-parts .pc-line:last-child{margin-bottom:0}
 #pcTable td.pc-parts .pc-line > span:first-child{display:block;white-space:nowrap}
 .pc-price{font-size:15px;font-weight:700;color:#0F7A37}
+/* Base / RAM / SSD / Spare Parts (2026-11-04): label and price pill centred on
+   one vertical line in the middle of the column, cells vertically centred. */
+#pcTable th.pc-c,#pcTable td.pc-c{text-align:center!important;vertical-align:middle}
 </style>
 {# Pricing Calculator (2026-10-18). OFF by default for every role in Master
    Data -> Permission Matrix. Prices are worked out live on the server
@@ -38,8 +41,8 @@
   <div class="card-body">
     <table id="pcTable" class="table table-hover mb-0" style="width:100%">
       <thead class="table-dark"><tr>
-        <th>SKU</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th>Base Price</th><th>RAM</th><th>SSD</th>
-<th class="pc-parts-h">Spare Parts (Deducted)</th><th>Selling Price</th><th>Avg Price/Quantity</th><th>Action</th>
+        <th>SKU</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th class="pc-c">Base Price</th><th class="pc-c">RAM</th><th class="pc-c">SSD</th>
+<th class="pc-parts-h pc-c">Spare Parts (Deducted)</th><th>Selling Price</th><th>Avg Price/Quantity</th><th>Action</th>
       </tr></thead>
       <tbody>
       {% for g in view.rows %}
@@ -49,10 +52,10 @@
           <td class="text-nowrap">{{ g.model or '—' }}</td>
           <td>{{ g.cpu or '—' }}</td>
           <td>{{ g.cpu_gen or '—' }}</td>
-          <td data-order="{{ g.base_price if g.base_price is not none else -1 }}">{% if g.sku_missing %}<span class="pc-pill pc-pend">⏳ SKU not found</span>{% else %}{# Discount (2026-11-04): Product Master Discount % taken off Base Price #}<span class="text-nowrap">{{ g.disc_label }}</span><div>{{ hw_status(g.base_price) }}</div>{% endif %}</td>
-          <td class="text-nowrap">{{ g.ram or '—' }}<div>{{ hw_status(g.ram_price) }}</div></td>
-          <td class="text-nowrap">{{ g.ssd or '—' }}<div>{{ hw_status(g.sto_price) }}</div></td>
-          <td class="pc-parts">
+          <td class="pc-c" data-order="{{ g.base_price if g.base_price is not none else -1 }}">{% if g.sku_missing %}<span class="pc-pill pc-pend">⏳ SKU not found</span>{% else %}{# Discount (2026-11-04): Product Master Discount % taken off Base Price #}<span class="text-nowrap">{{ g.disc_label }}</span><div>{{ hw_status(g.base_price) }}</div>{% endif %}</td>
+          <td class="text-nowrap pc-c">{{ g.ram or '—' }}<div>{{ hw_status(g.ram_price) }}</div></td>
+          <td class="text-nowrap pc-c">{{ g.ssd or '—' }}<div>{{ hw_status(g.sto_price) }}</div></td>
+          <td class="pc-parts pc-c">
             {% if g.parts_ok_text %}<div class="pc-line"><span>{{ g.parts_ok_text }}</span><span class="pc-pill pc-red">− ₹{{ ((g.parts_deduct) | inr(2)).rstrip('0').rstrip('.') }}</span></div>{% endif %}
             {% if g.parts_pending %}<div class="pc-line"><span>{{ g.parts_pending|join(', ') }}</span><span class="pc-pill pc-pend">⏳ Price pending</span></div>{% endif %}
             {% if not g.parts_ok_text and not g.parts_pending %}<div class="pc-line"><span class="text-muted">All OK</span><span class="pc-pill pc-none">No deduction</span></div>{% endif %}
