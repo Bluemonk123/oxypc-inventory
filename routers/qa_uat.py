@@ -49,7 +49,8 @@ from models.qa_uat import (
 )
 from templates_config import templates
 
-router = APIRouter(prefix="/qa", tags=["qa-uat"])
+# CSRF on every QA write (2026-11-04): the forms already send csrf_token; GETs skip it.
+router = APIRouter(prefix="/qa", tags=["qa-uat"], dependencies=[Depends(verify_csrf)])
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -1117,7 +1118,7 @@ _SVG_BAD = re.compile(r"<\s*script|<\s*foreignobject|\bon[a-z]+\s*=|javascript:|
                       r"|xlink:href\s*=\s*[\"'](?!#|data:image/)|<!entity", re.I)
 
 
-@router.post("/workflow/{flow_key}/upload", dependencies=[Depends(verify_csrf)])
+@router.post("/workflow/{flow_key}/upload")
 async def workflow_upload(flow_key: str, request: Request, file: UploadFile = File(...),
                           db: AsyncSession = Depends(get_db), current_user: User = Depends(_view)):
     """Upload a flow diagram exported from Figma (PNG / JPG / SVG / PDF, 10 MB).
@@ -1156,7 +1157,7 @@ async def workflow_upload(flow_key: str, request: Request, file: UploadFile = Fi
     return JSONResponse({"ok": True, "upload": meta})
 
 
-@router.post("/workflow/{flow_key}/upload/remove", dependencies=[Depends(verify_csrf)])
+@router.post("/workflow/{flow_key}/upload/remove")
 async def workflow_upload_remove(flow_key: str, request: Request, db: AsyncSession = Depends(get_db),
                                  current_user: User = Depends(_view)):
     """Stop showing the uploaded diagram (the built-in one shows again). The file

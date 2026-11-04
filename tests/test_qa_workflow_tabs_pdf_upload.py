@@ -83,3 +83,31 @@ def test_upload_needs_qa_upload_tick(app_client, make_user):  # noqa: F811
         assert r.status_code in (303, 403) or not r.json().get("ok")
     finally:
         set_cached_perms(role, {})
+
+
+def test_qa_writes_need_csrf(app_client, make_user):  # noqa: F811
+    """2026-11-04: every QA POST checks the CSRF token (router-level)."""
+    import uuid
+    from tests.test_customise_ram_storage import _run
+    u, pw = make_user("admin")
+    _login(app_client, u, pw)
+    title = "ITCSRF " + uuid.uuid4().hex[:6]
+    r = app_client.post("/qa/requirements/new", data={"title": title}, follow_redirects=False)
+    # no token: refused the app's way (back to login), nothing saved
+    assert r.status_code in (302, 303) and r.headers["location"] == "/auth/login", (r.status_code, r.headers.get("location"))
+    assert title not in app_client.get("/qa/requirements").text
+    csrf = app_client.cookies.get("csrf_token") or "dummy"
+    r = app_client.post("/qa/requirements/new", data={"title": title, "csrf_token": csrf}, follow_redirects=False)
+    assert r.status_code == 303 and r.headers["location"].startswith("/qa/requirements"), r.headers.get("location")
+    assert title in app_client.get("/qa/requirements").text            # with the form's token: saved
+    _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("delete from qa_requirements where title = '{title}'"))
+        await db.commit()
+asyncio.run(main())
+""")

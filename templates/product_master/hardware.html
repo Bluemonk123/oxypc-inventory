@@ -61,7 +61,7 @@
           <div class="card-body"><div class="table-responsive"><table class="hw-mx" id="mx_{{ kind }}"></table></div>
             <div class="d-flex justify-content-between align-items-center mt-2 gap-2">
               <div class="small text-muted"><span class="hw-dot-legend"><span class="badge rounded-pill" style="background:#fd7e14">n</span> = products waiting on this price</span>
-                <span class="ms-2">· {% if can_price %}Click cells to change prices, Save to store them, Esc to cancel a cell{% else %}View only{% endif %}</span></div>
+                <span class="ms-2">· {% if can_price %}Click cells to change prices{% if can_delete %} (clear a cell to remove its price){% endif %}, Save to store them, Esc to cancel a cell{% else %}View only{% endif %}</span></div>
               {% if can_price %}{# Save one or many edited cells at once (2026-11-04) #}
               <button type="button" class="btn btn-sm btn-success text-nowrap flex-shrink-0 hw-save-all" data-kind="{{ kind }}" disabled>
                 <i class="bi bi-save me-1"></i>Save<span class="hw-save-n"></span></button>
@@ -163,7 +163,9 @@
   $(document).on('input', '.hw-cell input', function () {
     var cell = $(this).closest('.hw-cell'), kind = cell.data('kind'), name = cell.attr('data-name');
     var r = find(kind, name), v = this.value.trim();
-    if (v === '' || (r.price != null && Number(v) === Number(r.price))) { delete PENDING[kind][name]; cell.removeClass('hw-pending'); }
+    // Clearing a priced cell (2026-11-04) = remove that price on Save (needs Delete).
+    if (v === '' && r.price != null && r.id && CAN_DELETE) { PENDING[kind][name] = ''; cell.addClass('hw-pending'); }
+    else if (v === '' || (r.price != null && Number(v) === Number(r.price))) { delete PENDING[kind][name]; cell.removeClass('hw-pending'); }
     else { PENDING[kind][name] = v; cell.addClass('hw-pending'); }
     saveBtn(kind);
   });
@@ -215,12 +217,27 @@
   function saveAll(kind) {
     var names = Object.keys(PENDING[kind]);
     if (!names.length) return;
-    var bad = names.filter(function (n) { var v = Number(PENDING[kind][n]); return !isFinite(v) || v < 0; });
+    var bad = names.filter(function (n) { var p = PENDING[kind][n]; if (p === '') return false; var v = Number(p); return !isFinite(v) || v < 0; });
     if (bad.length) { toast('danger', 'Enter a valid price for ' + bad.map(function (n) { return n.replace('/', ' / '); }).join(', ') + '.'); return; }
+    // Cleared cells remove their price (2026-11-04): confirm, products using it go back to Pending.
+    var clears = names.filter(function (n) { return PENDING[kind][n] === ''; });
+    if (clears.length) {
+      var users = clears.reduce(function (a, n) { return a + find(kind, n).using.length; }, 0);
+      if (!confirm('Remove the price for ' + clears.map(function (n) { return n.replace('/', ' / '); }).join(', ') + '?' +
+                   (users ? ' ' + users + ' product(s) using it go back to Pending.' : ''))) return;
+    }
     var btn = $('.hw-save-all[data-kind="' + kind + '"]').prop('disabled', true);
-    var okN = 0, errs = [];
+    var okN = 0, rmN = 0, errs = [];
     var jobs = names.map(function (name) {
       var r = find(kind, name), price = PENDING[kind][name];
+      if (price === '') {
+        return pmPost('/product-master/hardware/' + kind + '/' + r.id + '/delete', {}).then(function (j) {
+          if (!j.ok) { errs.push(name.replace('/', ' / ') + ': ' + j.error); return; }
+          r.waiting = r.waiting.concat(r.using); r.using = []; r.price = null; r.id = '';
+          r.updated_on = ''; r.updated_by = '';
+          delete PENDING[kind][name]; rmN++;
+        }, function () { errs.push(name.replace('/', ' / ') + ': could not reach the server'); });
+      }
       return pmPost('/product-master/hardware/' + kind + '/save', { item_id: r.id, category: r.category, capacity: r.capacity, price: price })
         .then(function (j) {
           if (!j.ok) { errs.push(name.replace('/', ' / ') + ': ' + j.error); return; }
@@ -232,6 +249,7 @@
     Promise.all(jobs).then(function () {
       refresh();
       if (okN) toast('success', okN + ' ' + NAME[kind] + ' price' + (okN > 1 ? 's' : '') + ' saved.');
+      if (rmN) toast('success', rmN + ' ' + NAME[kind] + ' price' + (rmN > 1 ? 's' : '') + ' removed.');
       if (errs.length) toast('danger', 'Not saved — ' + errs.join(' · '));
     });
   }
