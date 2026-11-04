@@ -3,19 +3,8 @@
 {% block page_title %}Trash{% endblock %}
 {% block content %}
 
-{% if request.query_params.get('success') %}
-<div class="alert alert-success alert-dismissible fade show">
-  <i class="bi bi-check-circle me-2"></i>{{ request.query_params.get('success') }}
-  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
-
-{% if request.query_params.get('error') %}
-<div class="alert alert-danger alert-dismissible fade show">
-  <i class="bi bi-exclamation-triangle me-2"></i>{{ request.query_params.get('error') }}
-  <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-</div>
-{% endif %}
+{# Own success / error banners removed (2026-11-04): base.html already shows
+   ?success= (as the top-right toast) and ?error=, so they appeared twice. #}
 
 <div class="alert alert-warning d-flex align-items-center gap-2 small mb-3">
   <i class="bi bi-trash3 fs-5"></i>
@@ -91,7 +80,7 @@
             <tr>
               {% if can(current_user, 'location_trash', 'edit') %}<th class="ps-3"><input type="checkbox" id="trashSelectAll" class="form-check-input" title="Select all"></th>{% endif %}
               <th>Tag Number</th><th>Lot</th><th>Brand / Model</th>
-              <th>Grade</th><th>Stage</th><th>Trashed On</th><th>Updated On</th><th>Action</th>
+              <th>Grade</th><th>Stage</th><th>Trashed By</th><th>Trashed On</th><th>Updated On</th><th>Action</th>
             </tr>
           </thead>
           <tbody>
@@ -112,6 +101,8 @@
                 {% else %}—{% endif %}
               </td>
               <td><span class="badge bg-light text-dark">{{ dev.current_stage.value }}</span></td>
+              {% set _tb = trashed_by.get(dev.barcode) %}
+              <td class="text-nowrap" {% if _tb %}title="{{ _tb.username }}{% if _tb.reason %} · Reason: {{ _tb.reason }}{% endif %}"{% endif %}>{% if _tb %}{{ _tb.name }}{% if _tb.reason %} <i class="bi bi-chat-left-text text-muted small"></i>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
               <td class="text-muted" data-order="{{ dev.trashed_at.strftime('%Y%m%d%H%M%S') if dev.trashed_at else '' }}">{{ dev.trashed_at.strftime('%d-%m-%Y %H:%M') if dev.trashed_at else '—' }}</td>
               {# Updated On (2026-10-26): the tag's last change (Device.updated_at). #}
               <td class="text-muted text-nowrap" data-order="{{ dev.updated_at.strftime('%Y%m%d%H%M%S') if dev.updated_at else '' }}">{{ dev.updated_at.strftime('%d-%m-%Y %H:%M') if dev.updated_at else '—' }}</td>
@@ -298,7 +289,7 @@
 $(document).ready(function () {
   var trashChk = !!document.getElementById('trashSelectAll');
   var dtTags = initGlobalTable('#trashTagsTable', {
-    order: [[trashChk ? 6 : 5, 'desc']],
+    order: [[trashChk ? 7 : 6, 'desc']],   // Trashed On (after Trashed By, 2026-11-04)
     columnDefs: [{ orderable: false, targets: trashChk ? [0, -1] : [-1] }],
     language: { emptyTable: 'No trashed tags.' },
   }, trashChk ? {

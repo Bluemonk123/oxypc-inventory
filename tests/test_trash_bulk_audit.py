@@ -85,6 +85,13 @@ asyncio.run(main())
         assert _q(f"select count(*) from devices where barcode like 'ITTR{sfx}%' and is_trashed") == "22"
         assert _q(f"select count(*) from audit_logs where action = 'DEVICES_TRASHED_BULK' "
                   f"and notes = 'test cleanup' and new_value like '%{tags[-1]}%'") == "1"
+        # Trashed By column (2026-11-04) from the audit log, reason in the tooltip;
+        # the success message is shown once (base.html), not again by the page.
+        html = app_client.get("/trash?success=Hello+once").text
+        row = html.split(f">{tags[-1]}</code>", 1)[1].split("</tr>", 1)[0]
+        assert "Reason: test cleanup" in row and u in row, row[:600]
+        assert "<th>Trashed By</th><th>Trashed On</th>" in html
+        assert html.count("Hello once") == 1
 
         # single restore + single trash are audited too
         r = _post(app_client, f"/trash/devices/{tags[5]}/restore", [])

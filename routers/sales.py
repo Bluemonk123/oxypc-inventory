@@ -629,7 +629,11 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
 @router.get("/sales/ready", response_class=HTMLResponse)
 async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
                      current_user: User = Depends(ready_allowed)):
-    return await _ready_page(request, db, current_user, "sales/ready_list.html")
+    # Tag Wise Table opens with OxyPC Computers + Renew Circuits ticked (2026-11-04),
+    # same default as the Dashboard / All Inventory.
+    from utils.master_data import default_entity_selection
+    return await _ready_page(request, db, current_user, "sales/ready_list.html",
+                             extra={"entity_default": await default_entity_selection(db)})
 
 
 @router.get("/sales/lots", response_class=HTMLResponse)

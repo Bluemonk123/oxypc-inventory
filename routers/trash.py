@@ -57,6 +57,41 @@ def _has_sale_or_return():
                exists().where(Return.device_id == Device.id))
 
 
+async def _trashed_by(db, barcodes: set) -> dict:
+    """Trashed By column (2026-11-04): who moved each tag to Trash, from the
+    audit log (DEVICE_TRASHED / DEVICES_TRASHED_BULK, written since 4 Nov 2026).
+    No column on devices for this (schema change needs dbdiagram.io approval);
+    tags trashed before the audit started have no entry and show "—".
+    barcode -> {"name", "username", "reason"}; the latest trash wins."""
+    import json
+    from models.engines import AuditLog
+    if not barcodes:
+        return {}
+    logs = (await db.execute(
+        select(AuditLog.username, AuditLog.action, AuditLog.record_id, AuditLog.new_value, AuditLog.notes)
+        .where(AuditLog.action.in_(("DEVICE_TRASHED", "DEVICES_TRASHED_BULK")))
+        .order_by(AuditLog.timestamp)
+    )).all()
+    names = {u: (f or u) for u, f in (await db.execute(
+        select(User.username, User.full_name).where(User.username.in_({l.username for l in logs if l.username}))
+    )).all()} if logs else {}
+    out = {}
+    for l in logs:
+        if l.action == "DEVICE_TRASHED":
+            tags, reason = [l.record_id], None
+        else:
+            try:
+                tags = json.loads(l.new_value or "{}").get("barcodes") or []
+            except (ValueError, AttributeError):
+                tags = []
+            reason = l.notes
+        who = {"name": names.get(l.username, l.username or "—"), "username": l.username or "", "reason": reason}
+        for t in tags:
+            if t in barcodes:
+                out[t] = who
+    return out
+
+
 @router.get("", response_class=HTMLResponse)
 async def trash_index(
     request: Request,
@@ -87,11 +122,14 @@ async def trash_index(
         select(Device.id).where(Device.is_trashed == True, _has_sale_or_return())  # noqa: E712
     )).scalars().all()}
 
+    trashed_by = await _trashed_by(db, {row.Device.barcode for row in trashed_devices})
+
     return templates.TemplateResponse("trash/index.html", {
         "request": request,
         "current_user": current_user,
         "trashed_lots": trashed_lots,
         "trashed_devices": trashed_devices,
+        "trashed_by": trashed_by,
         "dup_ids": dup_ids,
         "dup_deletable": len(dup_rows) - dup_kept,
         "dup_kept": dup_kept,

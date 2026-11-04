@@ -1,4 +1,5 @@
-efe4556|2026-11-04|QA page refresh, Trash safeguards, Delete permission fix, calculator discount
+21d977d|2026-11-04|Customise Model Name, Ready to Sale default entities, Trash Trashed By
+689da6f|2026-11-04|QA page refresh, Trash safeguards, Delete permission fix, calculator discount
 9405706|2026-11-04|Parts Manager exports: YYYY-MM-DD dates and plain-number amounts
 e8ec94d|2026-11-04|Spare Parts tiles: 7 cards split New / Harvest, recounted from table rows
 9cf778d|2026-11-04|Parts GRN: edit GRN + part lines, list as global table; hide calculator Avg column

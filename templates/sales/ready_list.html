@@ -155,7 +155,7 @@
       <span class="fw-semibold">Tag Wise Table</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2" id="readyFilterBar">
       {# Order (2026-10-27): Entity, Device Type, Grade, Touch Type, Availability. #}
-      {{ ms.multiselect_inline('entity', 'Entity', entity_options, '') }}
+      {{ ms.multiselect_inline('entity', 'Entity', entity_options, entity_default | default('')) }}
       {{ ms.multiselect_inline('device_type', 'Device Types', device_type_options, '') }}
       {{ ms.multiselect_inline('grade', 'Grades', summary_grade_options, '') }}
       {{ touch_select('readyTouch') }}
