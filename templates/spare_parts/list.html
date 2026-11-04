@@ -93,55 +93,87 @@
            box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
   .lt-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1; white-space:nowrap}
   .lt-tile-sep{font-size:1rem; font-weight:400; color:#6c757d}
+  .lt-tile-head{font-size:.8rem; font-weight:600; white-space:nowrap; color:#343a40; margin-bottom:.75rem; position:relative; z-index:1}
+  #partsCards .lt-tile-label{margin-top:.05rem}
+  .lt-tile-label + .lt-tile-count{margin-top:.5rem}
   /* Light tile rule (Design System 05): label .35rem under the count, watermark 8%. */
   .lt-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1; margin-top:.35rem}
   .lt-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
               color:color-mix(in srgb, var(--tc) 8%, transparent); pointer-events:none}
 </style>
 <div class="lt-tiles-row" id="partsCards">
+  {# 2026-11-04: each tile = heading, New count, Harvest count — recounted from the
+     rows the Part Master table shows (see spTileRecount). #}
   <div>
     <div class="lt-tile h-100" style="--tc:#0d6efd">
-      <div class="lt-tile-count">{{ total_qty }}</div>
-      <div class="lt-tile-label">Total Quantities</div>
+      <div class="lt-tile-head">Total Quantities</div>
+      <div class="lt-tile-count" data-tile="qty-new">{{ tile_stats.new.qty }}</div>
+      <div class="lt-tile-label">New</div>
+      <div class="lt-tile-count" data-tile="qty-harvest">{{ tile_stats.harvest.qty }}</div>
+      <div class="lt-tile-label">Harvest</div>
       <i class="bi bi-boxes lt-tile-wm"></i>
     </div>
   </div>
   <div>
-    <div class="lt-tile h-100" style="--tc:#0F7A37">
-      <div class="lt-tile-count">{{ total_new }} <span class="lt-tile-sep">/</span> {{ total_harvest }}</div>
-      <div class="lt-tile-label">Types (New/Harvest)</div>
-      <i class="bi bi-recycle lt-tile-wm"></i>
+    <div class="lt-tile h-100" style="--tc:#6f42c1">
+      <div class="lt-tile-head">Parts Types</div>
+      <div class="lt-tile-count" data-tile="types-new">{{ tile_stats.new.types }}</div>
+      <div class="lt-tile-label">New</div>
+      <div class="lt-tile-count" data-tile="types-harvest">{{ tile_stats.harvest.types }}</div>
+      <div class="lt-tile-label">Harvest</div>
+      <i class="bi bi-diagram-3 lt-tile-wm"></i>
     </div>
   </div>
-  {# Part Types tile hidden (2026-10-21, Pankaj) — total_part_types is still passed by the route. #}
   <div>
-    <div class="lt-tile h-100" style="--tc:{{ '#dc3545' if below_min_count > 0 else '#0F7A37' }}">
-      <div class="lt-tile-count">{{ below_min_count }}</div>
-      <div class="lt-tile-label">Below Min Stock</div>
+    <div class="lt-tile h-100" style="--tc:#dc3545">
+      <div class="lt-tile-head">Low Stock</div>
+      <div class="lt-tile-count" data-tile="low-new">{{ tile_stats.new.low }}</div>
+      <div class="lt-tile-label">New</div>
+      <div class="lt-tile-count" data-tile="low-harvest">{{ tile_stats.harvest.low }}</div>
+      <div class="lt-tile-label">Harvest</div>
       <i class="bi bi-exclamation-triangle lt-tile-wm"></i>
     </div>
   </div>
   <div>
-    <div class="lt-tile h-100" style="--tc:{{ '#dc3545' if out_of_stock_count > 0 else '#0F7A37' }}">
-      <div class="lt-tile-count">{{ out_of_stock_count }}</div>
-      <div class="lt-tile-label">Out of Stock</div>
+    <div class="lt-tile h-100" style="--tc:#dc3545">
+      <div class="lt-tile-head">Out of Stock</div>
+      <div class="lt-tile-count" data-tile="out-new">{{ tile_stats.new.out }}</div>
+      <div class="lt-tile-label">New</div>
+      <div class="lt-tile-count" data-tile="out-harvest">{{ tile_stats.harvest.out }}</div>
+      <div class="lt-tile-label">Harvest</div>
       <i class="bi bi-x-octagon lt-tile-wm"></i>
     </div>
   </div>
   <div>
     <div class="lt-tile h-100" style="--tc:#0aa2c0">
-      <div class="lt-tile-count">{{ total_consumed }}</div>
-      <div class="lt-tile-label">Consumed</div>
+      <div class="lt-tile-head">Consumed</div>
+      <div class="lt-tile-count" data-tile="consumed-new">{{ tile_stats.new.consumed }}</div>
+      <div class="lt-tile-label">New</div>
+      <div class="lt-tile-count" data-tile="consumed-harvest">{{ tile_stats.harvest.consumed }}</div>
+      <div class="lt-tile-label">Harvest</div>
       <i class="bi bi-tools lt-tile-wm"></i>
     </div>
   </div>
   <div>
-    <div class="lt-tile h-100" style="--tc:#0F7A37">
-      <div class="lt-tile-count">{% if can(current_user, 'spare_parts', 'pricing') %}&#8377;{{ total_stock_value | inr }}{% else %}—{% endif %}</div>
-      <div class="lt-tile-label">Total Stock Value</div>
-      <i class="bi bi-currency-rupee lt-tile-wm"></i>
+    <div class="lt-tile h-100" style="--tc:#fd7e14">
+      <div class="lt-tile-head">Total Sold</div>
+      <div class="lt-tile-count" data-tile="sold-new">{{ tile_stats.new.sold }}</div>
+      <div class="lt-tile-label">New</div>
+      <div class="lt-tile-count" data-tile="sold-harvest">{{ tile_stats.harvest.sold }}</div>
+      <div class="lt-tile-label">Harvest</div>
+      <i class="bi bi-cart-check lt-tile-wm"></i>
     </div>
   </div>
+  {% if can(current_user, 'spare_parts', 'pricing') %}<div>
+    <div class="lt-tile h-100" style="--tc:#0F7A37">
+      <div class="lt-tile-head">Total Spare Parts Value</div>
+      <div class="lt-tile-count" data-tile="value-new">{% if can(current_user, 'spare_parts', 'pricing') %}&#8377;{{ tile_stats.new.value | inr }}{% else %}—{% endif %}</div>
+      <div class="lt-tile-label">New</div>
+      <div class="lt-tile-count" data-tile="value-harvest">{% if can(current_user, 'spare_parts', 'pricing') %}&#8377;{{ tile_stats.harvest.value | inr }}{% else %}—{% endif %}</div>
+      <div class="lt-tile-label">Harvest</div>
+      <i class="bi bi-currency-rupee lt-tile-wm"></i>
+    </div>
+  </div>{% endif %}
 </div>
 
 <!-- ── Tab Navigation ── -->
@@ -279,7 +311,8 @@
               data-grp="{{ ((part.name or '')|trim|lower) ~ '|' ~ ((part.make or '')|trim|lower) ~ '|' ~ ((part.model or '')|trim|lower) }}"
               data-grplabel="{{ (part.name or '—') ~ ' / ' ~ (part.make or '—') ~ ' / ' ~ (part.model or '—') }}"
               data-grpnew="{{ _g.get('new', 0) }}" data-grpharvest="{{ _g.get('harvest', 0) }}"
-              data-grpcrates="{{ (_g.get('crates') or [])|length }}" data-grprows="{{ _g.get('rows', 1) }}" data-code="{{ part.part_code }}">
+              data-grpcrates="{{ (_g.get('crates') or [])|length }}" data-grprows="{{ _g.get('rows', 1) }}" data-code="{{ part.part_code }}"
+              data-live="{{ live_stock }}" data-min="{{ part.min_stock_alert }}" data-cons="{{ consumed }}" data-sold="{{ sold }}"{% if can(current_user, 'spare_parts', 'pricing') %} data-val="{{ (part.unit_price or 0) * live_stock }}"{% endif %}>
             <td><input type="checkbox" class="form-check-input sp-cb" data-tbl="partsTable" value="{{ part.id }}"></td>
             <td>{{ part.crate_number or '—' }}</td>
             <td>
@@ -1086,7 +1119,7 @@ var spTables = {
      header row per Part Name + Make + Model that has 2+ crate rows, showing
      its New / Harvest totals across crates; click to collapse its rows. #}
   partsTable: function () { return [{ order: [[5, 'asc'], [6, 'asc'], [7, 'asc'], [2, 'asc'], [1, 'asc']], columnDefs: [cdNone],
-                                      language: { emptyTable: 'No parts registered.' }, drawCallback: spPartGroups }, {}]; },
+                                      language: { emptyTable: 'No parts registered.' }, drawCallback: function (st) { spPartGroups(st); spTileRecount(st); } }, {}]; },
   consumptionTable: function () { return [{ order: [[9, 'desc']], columnDefs: [cdNone], language: { emptyTable: 'No consumptions recorded.' } }, {}]; },
   partReqTable: function () { return [spReqTableOptions('partReqTable', 'No part requests.'), { clamp: false }]; },
   psiqcReqTable: function () { return [spReqTableOptions('psiqcReqTable', 'No Pre-Sale IQC part requests.'), { clamp: false }]; },
@@ -1095,6 +1128,27 @@ var spTables = {
   sourcingTable: function () { return [{ order: [], columnDefs: [cdNone], language: { emptyTable: 'No sourcing requests.' } }, {}]; },
 };
 var SP_COLLAPSED = {};
+// Tiles follow the table (2026-11-04): recount New / Harvest from the rows the
+// Part Master table currently shows (Added As filter + search applied).
+function spTileRecount(settings) {
+  var api = new $.fn.dataTable.Api(settings);
+  var t = { 'new': {}, harvest: {} };
+  ['new', 'harvest'].forEach(function (k) { t[k] = { qty: 0, types: 0, low: 0, out: 0, consumed: 0, sold: 0, value: 0 }; });
+  api.rows({ search: 'applied' }).nodes().each(function (tr) {
+    var x = t[tr.getAttribute('data-addedas') === 'Harvest' ? 'harvest' : 'new'];
+    var n = function (a) { return parseFloat(tr.getAttribute(a) || '0') || 0; };
+    var lv = n('data-live');
+    x.qty += lv; x.types += 1; if (lv <= n('data-min')) x.low += 1; if (lv <= 0) x.out += 1;
+    x.consumed += n('data-cons'); x.sold += n('data-sold'); x.value += n('data-val');
+  });
+  Object.keys(t).forEach(function (k) {
+    Object.keys(t[k]).forEach(function (f) {
+      var el = document.querySelector('#partsCards [data-tile="' + f + '-' + k + '"]');
+      if (!el) return;
+      el.textContent = f === 'value' ? '\u20B9' + Math.round(t[k][f]).toLocaleString('en-IN') : t[k][f];
+    });
+  });
+}
 function spPartGroups(settings) {
   var api = new $.fn.dataTable.Api(settings);
   var tbody = $(api.table().body());

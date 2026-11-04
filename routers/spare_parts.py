@@ -231,6 +231,25 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
     total_new = sum(1 for p in parts if (p.source or "new") != "harvest")
     total_harvest = sum(1 for p in parts if p.source == "harvest")
 
+    # Tiles split New / Harvest (2026-11-04) over the same rows and the same
+    # numbers as the Part Master table: Qty = In Stock, Types = rows, Low =
+    # In Stock <= Min Alert (the red rows), Out = In Stock <= 0, Consumed /
+    # Sold = those columns, Value = Unit Price x In Stock. The page recounts
+    # them in the browser when the table's New / Harvest filter or search
+    # narrows the rows, so tiles and table always agree.
+    tile_stats = {k: {"qty": 0, "types": 0, "low": 0, "out": 0, "consumed": 0, "sold": 0, "value": 0.0}
+                  for k in ("new", "harvest")}
+    for p in parts:
+        t = tile_stats["harvest" if p.source == "harvest" else "new"]
+        lv = _live(p)
+        t["qty"] += lv
+        t["types"] += 1
+        t["low"] += 1 if lv <= p.min_stock_alert else 0
+        t["out"] += 1 if lv <= 0 else 0
+        t["consumed"] += consumed_by_part.get(str(p.id), 0)
+        t["sold"] += int(sold_by_part.get(str(p.id), 0) or 0)
+        t["value"] += float(p.unit_price or 0) * lv
+
     # part_requested_count is computed further down, once part_reqs/faulty_reqs
     # (themselves filtered the same way as parts) are built — see below.
     part_sourced_count = (await db.execute(
@@ -462,6 +481,7 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
         "stock_by_name": stock_by_name,
         "total_part_types": total_part_types,
         "total_qty": total_qty,
+        "tile_stats": tile_stats,
         "total_new": total_new,
         "total_harvest": total_harvest,
         "below_min_count": below_min_count,
