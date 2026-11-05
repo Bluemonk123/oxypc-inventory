@@ -680,6 +680,7 @@ ROUTE_ACTIONS = {
     ('POST', '/pre-sale-iqc/bulk-complete-precheck'): ('pre_sale_iqc', 'edit'),  # what bulk Complete will do (read only)
     ('POST', '/pre-sale-iqc/bulk-complete'): ('pre_sale_iqc', 'edit'),  # bulk Complete of the ticked tags
     ('GET', '/workid-status/repair-summary'): ('workid_status', 'export'),  # workid_status_repair_summary
+    ('GET', '/workid-status/final-qc-pass'): ('workid_status', 'export'),  # workid_status_final_qc_pass
     # ===== routers/invoices.py =====
     ('GET', '/invoices/print/{sale_id}'): ('sales_list', 'export'),  # print_invoice: Sales detail Invoice PDF
     ('GET', '/invoices/waybill/{sale_id}'): ('sales_list', 'export'),  # print_waybill: Sales detail Waybill

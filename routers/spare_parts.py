@@ -515,7 +515,7 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
 
 
 async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=None,
-                                   include_prices: bool = True) -> bytes:
+                                   include_prices: bool = True, fqc_rows=None) -> bytes:
     """Repair Summary workbook (2026-10-29): one row per tag, in device_ids
     order — details, every changed part side by side (Part N Name / Part N
     Cost, as many pairs as the busiest tag needs), Total Parts Cost, Labour /
@@ -524,7 +524,11 @@ async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=
     with no parts still gets its row. Used by Parts Manager (Parts
     Consumption tab) and WorkID Status. ready_pass = {device_id: (last pass
     datetime, times, moved-from label)} adds "Passed to Ready for Sale" /
-    "Times Passed" / "Moved From" columns (WorkID Status, 2026-10-29)."""
+    "Times Passed" / "Moved From" columns (WorkID Status, 2026-10-29).
+    fqc_rows = {device_id: (last pass datetime, times, passed-to label,
+    inspector)} — the Final QC Pass export (2026-11-05): "Final QC Pass Date"
+    is then the pass inside the chosen dates (not the tag's latest ever) and
+    "Times Passed" / "Passed To" / "Final QC By" follow it; sheet "Final QC Pass"."""
     from openpyxl import Workbook
     from openpyxl.styles import Font, PatternFill, Alignment
     from openpyxl.utils import get_column_letter
@@ -555,6 +559,8 @@ async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=
                    StageMovement.to_stage.in_([DeviceStage.final_qc_pass_hold, DeviceStage.ready_to_sale]))
             .group_by(StageMovement.device_id))).all():
             fqc_pass[did] = at
+    if fqc_rows is not None:
+        fqc_pass = {did: v[0] for did, v in fqc_rows.items()}
     # In batches: one query can carry at most 32,767 values (WorkID Status
     # with no date range covers every tag).
     loc_map, pna = {}, {}
@@ -571,13 +577,15 @@ async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=
             "GRN Date", "Final QC Pass Date"]
     if ready_pass is not None:
         head += ["Passed to Ready for Sale", "Times Passed", "Moved From"]
+    elif fqc_rows is not None:
+        head += ["Times Passed", "Passed To", "Final QC By"]
     for i in range(1, n_parts + 1):
         head += [f"Part {i} Name", f"Part {i} Cost"]
     head += ["Total Parts Cost", "Labour Cost", "Packing Cost", "Freight Cost", "Grand Total"]
 
     wb = Workbook()
     ws = wb.active
-    ws.title = "Repair Summary"
+    ws.title = "Final QC Pass" if fqc_rows is not None else "Repair Summary"
     ws.append(head)
     for c in ws[1]:
         c.font = Font(bold=True, color="FFFFFF")
@@ -604,6 +612,9 @@ async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=
         if ready_pass is not None:
             rp_at, rp_n, rp_from = ready_pass.get(did, (None, 0, ""))
             line += [rp_at, rp_n, rp_from]
+        elif fqc_rows is not None:
+            _at, fq_n, fq_to, fq_by = fqc_rows.get(did, (None, 0, "", ""))
+            line += [fq_n, fq_to, fq_by]
         for p in parts:
             name = p["part_name"] + (f" x{p['total_qty']}" if (p.get("total_qty") or 0) > 1 else "")
             line += [name, round(float(p["total_price"]), 2)]

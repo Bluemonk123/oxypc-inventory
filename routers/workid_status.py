@@ -2143,6 +2143,93 @@ async def workid_status_repair_summary(request: Request, db: AsyncSession = Depe
         headers={"Content-Disposition": f'attachment; filename="repair_summary_ready_{app_now().strftime("%Y-%m-%d")}.xlsx"'})
 
 
+@router.get("/workid-status/final-qc-pass")
+async def workid_status_final_qc_pass(request: Request, db: AsyncSession = Depends(get_db),
+                                      current_user: User = Depends(get_current_user),
+                                      workid: str = Query(default=""),
+                                      tag: str = Query(default=""),
+                                      engineer: str = Query(default=""),
+                                      completed_from: str = Query(default=""),
+                                      completed_to: str = Query(default=""),
+                                      work_from: str = Query(default=""),
+                                      work_to: str = Query(default=""),
+                                      cosmetic_stage: str = Query(default=""),
+                                      exclude_admin: str = Query(default=""),
+                                      show_reassigned: str = Query(default=""),
+                                      scrap_type: str = Query(default="all")):
+    """WorkID Status -> "Final QC Pass" (2026-11-05, Pankaj): the tags whose
+    Final QC WorkID was completed as PASS (moved on to Final QC Pass Hold or
+    Ready for Sale) inside the page's Work Date From/To — the same WorkIDs as
+    the Final QC tile's Pass number, in the Repair Summary layout. A tag
+    passed twice in the range is one row with Times Passed = 2 and "Final QC
+    Pass Date" = its latest pass in the range.
+
+    Delegates to the page handler (like Team Productivity) so the filters and
+    a non-admin's row visibility are exactly the page's."""
+    from routers.spare_parts import _parts_consumption_rows, build_repair_summary_xlsx
+    from services.audit_engine import audit
+    from utils.price_export import can_export_prices
+
+    page = await _workid_status_page(request=request, db=db, current_user=current_user,
+                                     workid=workid, tag=tag, engineer=engineer,
+                                     completed_from=completed_from, completed_to=completed_to,
+                                     work_from=work_from, work_to=work_to,
+                                     cosmetic_stage=cosmetic_stage, exclude_admin=exclude_admin,
+                                     show_reassigned=show_reassigned, scrap_type=scrap_type,
+                                     highlight="", row_cap=None)
+    wf, wt = _parse_date(work_from), _parse_date(work_to)
+    lo = wf or datetime(1900, 1, 1)
+    hi = wt.replace(hour=23, minute=59, second=59) if wt else datetime(2999, 1, 1)
+    passes = []
+    for it in page.context["items"]:
+        if _stage_group(it.get("stage_value")) != "final_qc" or it.get("qc_result") != "pass" or it.get("scrap"):
+            continue
+        done = it.get("completed_at") or it.get("wo_completed_at")
+        if (wf or wt) and not (done and lo <= done <= hi):
+            continue
+        if it.get("device_id"):
+            passes.append((it["device_id"], it.get("wo_completed_at") or done, it.get("engineer") or ""))
+
+    ids = list({d for d, _a, _e in passes})
+    mv_by_dev: dict = {}
+    for i in range(0, len(ids), 10000):
+        for m in (await db.execute(select(StageMovement)
+                                   .where(StageMovement.device_id.in_(ids[i:i + 10000]),
+                                          StageMovement.from_stage == DeviceStage.final_qc))).scalars().all():
+            mv_by_dev.setdefault(m.device_id, []).append(m)
+    fqc_rows: dict = {}
+    for did, at, eng in passes:
+        nxt = _qc_next_stage_py(mv_by_dev.get(did, []), at, "final_qc")
+        to_lbl = STAGE_LABELS.get(nxt, _sv(nxt) or "") if nxt is not None else ""
+        last, n, lbl, by = fqc_rows.get(did, (None, 0, "", ""))
+        if last is None or (at and at > last):
+            last, lbl, by = at, to_lbl, eng
+        fqc_rows[did] = (last, n + 1, lbl, by)
+
+    barcodes = {}
+    for i in range(0, len(ids), 10000):
+        for did, bc in (await db.execute(select(Device.id, Device.barcode)
+                                          .where(Device.id.in_(ids[i:i + 10000])))).all():
+            barcodes[did] = bc or ""
+    order = sorted(barcodes, key=lambda d: barcodes[d])
+    wanted = set(order)
+    parts_by_device: dict = {}
+    for r in await _parts_consumption_rows(db):
+        if r["device_id"] in wanted:
+            parts_by_device.setdefault(r["device_id"], []).append(r)
+    data = await build_repair_summary_xlsx(db, order, parts_by_device, fqc_rows=fqc_rows,
+                                           include_prices=can_export_prices(current_user, "workid_status"))
+    await audit(db, user=current_user, action="EXPORT_FINAL_QC_PASS", table_name="work_orders",
+                record_id=f"{len(order)} tags",
+                new_value={"tags": len(order), "passes": len(passes), "from": "workid_status",
+                           "work_from": work_from, "work_to": work_to}, request=request)
+    await db.commit()
+    return Response(
+        content=data,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="final_qc_pass_{app_now().strftime("%Y-%m-%d")}.xlsx"'})
+
+
 # ── Delete a WorkID (admin only, 2026-10-30) ─────────────────────────────────
 @router.post("/workid-status/delete", dependencies=[Depends(verify_csrf)])
 async def workid_status_delete(request: Request, work_id: str = Form(""),
