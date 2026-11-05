@@ -64,10 +64,14 @@ async def _computed_stock(part_id, db: AsyncSession) -> int:
     return stock_in - stock_out
 
 
-async def _parts_consumption_rows(db, added_from="", added_to="", category="", part_name="", engineer=""):
+async def _parts_consumption_rows(db, added_from="", added_to="", category="", part_name="", engineer="",
+                                  device_windows=None):
     """Parts Consumption tab rows — one per (tag, part) "Part Changed"
     PartRequest roll-up, with the global filter bar applied. Shared by the
-    page and its Repair Summary export (2026-10-29)."""
+    page and its Repair Summary export (2026-10-29).
+    device_windows = {device_id: (after, until)} keeps, for those tags, only
+    parts verified after `after` and up to `until` (None = open) — the Final
+    QC Pass export's "this refurbishment" window (2026-11-05)."""
     from datetime import date
     changed_rows = (await db.execute(
         select(PartRequest, Device.barcode, Lot.lot_number, Device.brand, Device.model)
@@ -105,6 +109,15 @@ async def _parts_consumption_rows(db, added_from="", added_to="", category="", p
     for r, barcode, lot_number, tag_make, tag_model in changed_rows:
         if not _pc_in_date_range(r.actioned_at):
             continue
+        if device_windows is not None:
+            win = device_windows.get(r.device_id)
+            if win is None:
+                continue
+            after, until = win
+            if after is not None and (r.actioned_at is None or r.actioned_at <= after):
+                continue
+            if until is not None and r.actioned_at is not None and r.actioned_at > until:
+                continue
         sp = changed_sp_by_id.get(r.part_id)
         # Category / Part Name / Engineer apply here too (2026-10-19), so the
         # global filter bar covers every tab. Date stays the Verify date above.

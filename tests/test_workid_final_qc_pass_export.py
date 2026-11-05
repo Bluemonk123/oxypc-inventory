@@ -33,6 +33,8 @@ from sqlalchemy import text
 from database import AsyncSessionLocal
 from models.device import Device, DeviceStage, StageMovement
 from models.work_order import WorkOrder
+from models.spare_parts import SparePart
+from models.part_request import PartRequest
 from utils.timezone import app_now
 async def main():
     async with AsyncSessionLocal() as db:
@@ -59,6 +61,19 @@ async def main():
         mv("{tf}", DeviceStage.l1, DeviceStage.final_qc, a1 - timedelta(hours=1))
         mv("{tf}", DeviceStage.final_qc, DeviceStage.l1, a1); wo("{tf}", 3, a1)
         mv("{ti}", DeviceStage.iqc, DeviceStage.ready_to_sale, a1)
+        # parts: only this refurbishment's (after the last Sale before the
+        # pass, up to the next Sale after it)
+        mv("{tp}", DeviceStage.ready_to_sale, DeviceStage.sold, a1 - timedelta(hours=5))
+        mv("{tp}", DeviceStage.final_qc_pass_hold, DeviceStage.sold, now - timedelta(minutes=30))
+        sps = []
+        for nm, price in (("ITFQ-Old-{sfx}", 900), ("ITFQ-Cur-{sfx}", 400), ("ITFQ-Next-{sfx}", 700)):
+            sp = SparePart(id=uuid.uuid4(), part_code=("P" + uuid.uuid4().hex[:10]).upper(), name=nm,
+                           category="ITFQ", unit_price=price)
+            db.add(sp); sps.append(sp)
+        await db.flush()
+        for sp, at in zip(sps, (a1 - timedelta(hours=6), a1 - timedelta(hours=2), now - timedelta(minutes=10))):
+            db.add(PartRequest(device_id=devs["{tp}"].id, part_id=sp.id, part_name=sp.name, status="received",
+                               qty_requested=1, qty_handed_over=1, engineer_name="t", actioned_at=at))
         await db.commit()
 asyncio.run(main())
 """)
@@ -85,6 +100,8 @@ asyncio.run(main())
         assert set(rows) == {tp}                       # fail and IQC -> Ready are not passes
         assert rows[tp]["Times Passed"] == 2 and rows[tp]["Passed To"] == "Ready to Sale"
         assert rows[tp]["Final QC Pass Date"] is not None
+        assert rows[tp]["Part 1 Name"] == f"ITFQ-Cur-{sfx}" and "Part 2 Name" not in head
+        assert rows[tp]["Total Parts Cost"] == 400
         old = (date.today() - timedelta(days=30)).isoformat()
         _t, _h, rows = export(tag=f"ITFQ{sfx}", work_from=old, work_to=old)
         assert rows == {}
@@ -97,9 +114,11 @@ from database import AsyncSessionLocal
 async def main():
     async with AsyncSessionLocal() as db:
         ids = "(select id from devices where barcode like 'ITFQ{sfx}%')"
+        await db.execute(text(f"delete from part_requests where device_id in {{ids}}"))
         await db.execute(text(f"delete from work_orders where device_id in {{ids}}"))
         await db.execute(text(f"delete from stage_movements where device_id in {{ids}}"))
         await db.execute(text("delete from devices where barcode like 'ITFQ{sfx}%'"))
+        await db.execute(text("delete from spare_parts where name like 'ITFQ-%{sfx}'"))
         await db.commit()
 asyncio.run(main())
 """)

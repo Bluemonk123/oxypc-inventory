@@ -2212,11 +2212,27 @@ async def workid_status_final_qc_pass(request: Request, db: AsyncSession = Depen
                                           .where(Device.id.in_(ids[i:i + 10000])))).all():
             barcodes[did] = bc or ""
     order = sorted(barcodes, key=lambda d: barcodes[d])
-    wanted = set(order)
+    # Parts (2026-11-05, Pankaj): not by the date filter — the parts of THIS
+    # refurbishment: verified after the tag's last Sale before its pass, up
+    # to its next Sale after the pass (a later return's repair is the next
+    # cycle). Never sold before the pass -> every part from the start.
+    sold_by_dev: dict = {}
+    for i in range(0, len(ids), 10000):
+        for did, at in (await db.execute(select(StageMovement.device_id, StageMovement.moved_at)
+                                         .where(StageMovement.device_id.in_(ids[i:i + 10000]),
+                                                StageMovement.to_stage == DeviceStage.sold,
+                                                StageMovement.moved_at.isnot(None)))).all():
+            sold_by_dev.setdefault(did, []).append(at)
+    windows = {}
+    for did in order:
+        at = fqc_rows[did][0]
+        sales = sorted(sold_by_dev.get(did, []))
+        before = [x for x in sales if at and x < at]
+        after = [x for x in sales if at and x >= at]
+        windows[did] = (before[-1] if before else None, after[0] if after else None)
     parts_by_device: dict = {}
-    for r in await _parts_consumption_rows(db):
-        if r["device_id"] in wanted:
-            parts_by_device.setdefault(r["device_id"], []).append(r)
+    for r in await _parts_consumption_rows(db, device_windows=windows):
+        parts_by_device.setdefault(r["device_id"], []).append(r)
     data = await build_repair_summary_xlsx(db, order, parts_by_device, fqc_rows=fqc_rows,
                                            include_prices=can_export_prices(current_user, "workid_status"))
     await audit(db, user=current_user, action="EXPORT_FINAL_QC_PASS", table_name="work_orders",

@@ -1,4 +1,5 @@
-4ae19f2|2026-11-05|WorkID Status: Final QC Pass export (tags passed Final QC in Work Date range, Repair Summary layout)
+b304007|2026-11-05|Final QC Pass export: parts of this refurbishment only
+574ffad|2026-11-05|WorkID Status: Final QC Pass export (tags passed Final QC in Work Date range, Repair Summary layout)
 97e796b|2026-11-05|Global Table date display and one export format for every download
 7b2eda1|2026-11-04|QA CSRF on every write, Hardware grid clears remove a price, drop unused template
 b16537a|2026-11-04|Pricing Calculator: uploads replace the table, Clear Table, info above card; Device Detail hover
