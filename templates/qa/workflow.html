@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Application Workflow — OxyPC QA{% endblock %}
-{% block page_title %}Application Workflow{% endblock %}
+{% block page_title %}UX Journeys{% endblock %}
 {% block content %}
 {% include 'qa/_tabs.html' %}
 
@@ -48,9 +48,9 @@
   .wf-legend .wf-br{margin:0}
 </style>
 
-{% set can_export = can(current_user, 'qa', 'export') %}
-{% set can_upload = can(current_user, 'qa', 'upload') %}
-{% set can_remove = can(current_user, 'qa', 'delete') %}
+{% set can_export = can(current_user, 'qa_ux', 'export') %}
+{% set can_upload = can(current_user, 'qa_ux', 'upload') %}
+{% set can_remove = can(current_user, 'qa_ux', 'delete') %}
 
 {% macro diagram_svg(d, title, mid) %}
 <div class="wf-dg-wrap">
@@ -172,75 +172,46 @@
   <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
     <div>
       <div class="fw-semibold small text-uppercase"><i class="bi bi-signpost-split me-2"></i>Stage Flows</div>
-      <div class="text-muted small">Each part of the device pipeline as it works today. Create Detail Workflow shows the step-by-step breakdown.</div>
+      <div class="text-muted small">Each part of the device pipeline as it works today.</div>
     </div>
     {{ toolbar('stage', false) }}
   </div>
   <div class="card-body">
     {% if uploads.get('stage') %}<div class="small fw-semibold text-muted mb-1"><i class="bi bi-bezier2 me-1"></i>Flow diagram</div>{{ upload_block('stage', 'Stage Flows') }}{% endif %}
-    <div class="row g-3">
-      {% for wf in workflows %}
-      <div class="col-md-6 col-xl-4">
-        <div class="card border h-100">
-          <div class="card-header bg-transparent fw-semibold small"><i class="bi bi-signpost-split me-2 text-primary"></i>{{ wf.title }}</div>
-          <div class="card-body">
-            <div class="d-flex flex-wrap align-items-center gap-1 mb-3">
-              {% for stage_name in wf.stages %}
-              <span class="badge bg-light text-dark border">{{ stage_name }}</span>
-              {% if not loop.last %}<i class="bi bi-arrow-right text-muted small"></i>{% endif %}
-              {% endfor %}
-            </div>
-            <div class="d-flex gap-2">
-              {% if can_export %}<a href="/qa/stage-workflows/{{ wf.key }}/download" class="btn btn-sm btn-outline-success"><i class="bi bi-download me-1"></i>Download</a>{% endif %}
-              <button type="button" class="btn btn-sm btn-outline-primary" onclick="showWorkflowDetail('{{ wf.key }}')"><i class="bi bi-diagram-2 me-1"></i>Create Detail Workflow</button>
-            </div>
-          </div>
-        </div>
+    {# Laid out like the Stage Flows PDF (2026-11-05): each flow's title, its
+       stage chain, then every step with what happens — no modal needed. #}
+    <style>
+      .sf-flow{margin-bottom:1.6rem}
+      .sf-title{color:#0e3a7a; font-weight:700; font-size:1rem; margin:0}
+      .sf-chain{color:#6c757d; font-size:.8rem; margin:.1rem 0 .5rem}
+      .sf-t{width:100%; font-size:.85rem; border-collapse:collapse}
+      .sf-t td{padding:.45rem .6rem; border-bottom:1px solid #e3e9f2; vertical-align:top}
+      .sf-t tr:nth-child(odd) td{background:#f7f9fc}
+      .sf-t td:first-child{width:22%; min-width:140px; color:#1f2d3d; font-weight:500}
+    </style>
+    {% for wf in workflows %}
+    <div class="sf-flow" id="sf_{{ wf.key }}">
+      <div class="d-flex align-items-center gap-2">
+        <h6 class="sf-title">{{ wf.title }}</h6>
+        {% if can_export %}<a href="/qa/stage-workflows/{{ wf.key }}/download" class="btn btn-sm btn-link p-0 text-success" title="Download this flow"><i class="bi bi-download"></i></a>{% endif %}
       </div>
-      {% endfor %}
+      <div class="sf-chain">{{ wf.stages | join(' → ') }}</div>
+      {% if wf.detail %}
+      <table class="sf-t"><tbody>
+        {% for step, what in wf.detail %}<tr><td>{{ step }}</td><td>{{ what }}</td></tr>{% endfor %}
+      </tbody></table>
+      {% endif %}
     </div>
+    {% endfor %}
   </div>
 </div>
 </div>
 </div>
 
-<!-- Detail Workflow Modal (Stage Flows) -->
-<div class="modal fade" id="workflowDetailModal" tabindex="-1">
-  <div class="modal-dialog modal-lg modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header py-2">
-        <h6 class="modal-title" id="workflowDetailTitle">Workflow Detail</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body"><ol class="list-group list-group-numbered" id="workflowDetailBody"></ol></div>
-      <div class="modal-footer py-2">
-        <a {% if not can_export %}hidden {% endif %}id="workflowDetailDownload" href="#" class="btn btn-sm btn-outline-success"><i class="bi bi-download me-1"></i>Download</a>
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
 <input type="file" id="wfUpFile" accept=".png,.jpg,.jpeg,.svg,.pdf" class="d-none">
 {% endblock %}
 {% block scripts %}
 <script>
-var WORKFLOW_DETAILS = {{ workflows | tojson }};
-function showWorkflowDetail(key) {
-  var wf = WORKFLOW_DETAILS.find(function (w) { return w.key === key; });
-  if (!wf) return;
-  document.getElementById('workflowDetailTitle').textContent = wf.title;
-  document.getElementById('workflowDetailDownload').href = '/qa/stage-workflows/' + encodeURIComponent(key) + '/download';
-  var body = document.getElementById('workflowDetailBody');
-  body.innerHTML = '';
-  wf.detail.forEach(function (pair) {
-    var li = document.createElement('li');
-    li.className = 'list-group-item';
-    var a = document.createElement('div'); a.className = 'fw-semibold small'; a.textContent = pair[0];
-    var b = document.createElement('div'); b.className = 'small text-muted'; b.textContent = pair[1];
-    li.appendChild(a); li.appendChild(b); body.appendChild(li);
-  });
-  bootstrap.Modal.getOrCreateInstance(document.getElementById('workflowDetailModal')).show();
-}
 (function () {
   // keep ?tab= in the address bar so a refresh / shared link opens the same tab
   document.querySelectorAll('#wfTabs [data-bs-toggle="tab"]').forEach(function (b) {

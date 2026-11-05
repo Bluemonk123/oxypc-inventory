@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1668 1213" width="1668" height="1213" font-family="Helvetica,Arial,sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="100" y="80" font-size="52" font-weight="bold" fill="#0e3a7a">OxyPC Database Map — Spare Parts</text>
+<text x="100" y="120" font-size="22" fill="#5b6878">PK = primary key · FK = foreign key · UK = column other tables link to · lines read 1 parent → ∞ child rows, coloured by the parent table's module</text>
+<rect x="140" y="240" width="1428" height="893" rx="18" fill="#EEF7EC" stroke="#3E8E41" stroke-width="3"/>
+<text x="204" y="296" font-size="34" font-weight="bold" fill="#3E8E41">Spare Parts <tspan font-size="18" font-weight="normal" fill="#5b6878">9 tables</tspan></text>
+<path d="M504,394.6666666666667 C584.0,394.6666666666667 624.0,893.78 704,893.78" fill="none" stroke="#3E8E41" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="391.6666666666667" font-size="11" fill="#3E8E41">1</text><text x="686" y="890.78" font-size="13" fill="#3E8E41">∞</text>
+<path d="M504,497.78 C584.0,497.78 624.0,695.78 704,695.78" fill="none" stroke="#3E8E41" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="494.78" font-size="11" fill="#3E8E41">1</text><text x="686" y="692.78" font-size="13" fill="#3E8E41">∞</text>
+<path d="M504,402.3333333333333 C584.0,402.3333333333333 624.0,1034.78 704,1034.78" fill="none" stroke="#3E8E41" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="399.3333333333333" font-size="11" fill="#3E8E41">1</text><text x="686" y="1031.78" font-size="13" fill="#3E8E41">∞</text>
+<path d="M504,387.0 C584.0,387.0 624.0,554.78 704,554.78" fill="none" stroke="#3E8E41" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="384.0" font-size="11" fill="#3E8E41">1</text><text x="686" y="551.78" font-size="13" fill="#3E8E41">∞</text>
+<path d="M504,371.6666666666667 C784.0,371.6666666666667 924.0,394.78 1204,394.78" fill="none" stroke="#3E8E41" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="368.6666666666667" font-size="11" fill="#3E8E41">1</text><text x="1186" y="391.78" font-size="13" fill="#3E8E41">∞</text>
+<path d="M1004,375.78 C1084.0,375.78 1124.0,413.78 1204,413.78" fill="none" stroke="#3E8E41" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1012" y="372.78" font-size="11" fill="#3E8E41">1</text><text x="1186" y="410.78" font-size="13" fill="#3E8E41">∞</text>
+<path d="M504,379.3333333333333 C584.0,379.3333333333333 624.0,394.78 704,394.78" fill="none" stroke="#3E8E41" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="376.3333333333333" font-size="11" fill="#3E8E41">1</text><text x="686" y="391.78" font-size="13" fill="#3E8E41">∞</text>
+<rect x="204" y="336" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="336" width="300" height="28" rx="4" fill="#3E8E41"/>
+<text x="212" y="355" font-size="14" font-weight="bold" fill="#fff">spare_parts</text>
+<text x="212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="397" font-size="11" fill="#7A8696">+ 18 more fields</text>
+<rect x="204" y="458" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="458" width="300" height="28" rx="4" fill="#3E8E41"/>
+<text x="212" y="477" font-size="14" font-weight="bold" fill="#fff">parts_grn</text>
+<text x="212" y="500" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="519" font-size="11" fill="#7A8696">+ 30 more fields</text>
+<rect x="204" y="580" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="580" width="300" height="28" rx="4" fill="#3E8E41"/>
+<text x="212" y="599" font-size="14" font-weight="bold" fill="#fff">ram_tracking</text>
+<text x="212" y="622" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="641" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="212" y="660" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">destination_device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="212" y="679" font-size="11" fill="#7A8696">+ 6 more fields</text>
+<rect x="704" y="336" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="336" width="300" height="28" rx="4" fill="#3E8E41"/>
+<text x="712" y="355" font-size="14" font-weight="bold" fill="#fff">part_sale_requests</text>
+<text x="712" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">part_id</tspan></text>
+<text x="712" y="416" font-size="11" fill="#7A8696">+ 12 more fields</text>
+<rect x="704" y="477" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="477" width="300" height="28" rx="4" fill="#3E8E41"/>
+<text x="712" y="496" font-size="14" font-weight="bold" fill="#fff">device_pna_parts</text>
+<text x="712" y="519" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="538" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="712" y="557" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">part_id</tspan></text>
+<text x="712" y="576" font-size="11" fill="#7A8696">+ 9 more fields</text>
+<rect x="704" y="637" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="637" width="300" height="28" rx="4" fill="#3E8E41"/>
+<text x="712" y="656" font-size="14" font-weight="bold" fill="#fff">parts_grn_line_items</text>
+<text x="712" y="679" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="698" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">grn_id</tspan></text>
+<text x="712" y="717" font-size="11" fill="#7A8696">+ 22 more fields</text>
+<rect x="704" y="778" width="300" height="150" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="778" width="300" height="28" rx="4" fill="#3E8E41"/>
+<text x="712" y="797" font-size="14" font-weight="bold" fill="#fff">spare_parts_consumption</text>
+<text x="712" y="820" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="839" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="712" y="858" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ lots</tspan></text>
+<text x="712" y="877" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">repair_job_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ repair_jobs</tspan></text>
+<text x="712" y="896" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">part_id</tspan></text>
+<text x="712" y="915" font-size="11" fill="#7A8696">+ 7 more fields</text>
+<rect x="704" y="976" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="976" width="300" height="28" rx="4" fill="#3E8E41"/>
+<text x="712" y="995" font-size="14" font-weight="bold" fill="#fff">spare_parts_purchases</text>
+<text x="712" y="1018" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="1037" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">part_id</tspan></text>
+<text x="712" y="1056" font-size="11" fill="#7A8696">+ 7 more fields</text>
+<rect x="1204" y="336" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1204" y="336" width="300" height="28" rx="4" fill="#3E8E41"/>
+<text x="1212" y="355" font-size="14" font-weight="bold" fill="#fff">part_sales</text>
+<text x="1212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1212" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">part_id</tspan></text>
+<text x="1212" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">request_id</tspan></text>
+<text x="1212" y="435" font-size="11" fill="#7A8696">+ 28 more fields</text>
+</svg>

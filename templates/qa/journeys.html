@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% set _jd = 'User Journeys' if view == 'journeys' else 'Database Diagram' %}
+{% block title %}{{ _jd }} — OxyPC QA{% endblock %}
+{% block page_title %}UX Journeys{% endblock %}
+{% block content %}
+{% include 'qa/_tabs.html' %}
+
+{# User Journeys / Database Diagram (2026-11-05; one "Journey Diagrams" tab
+   before): the combined view on top, then one module at a time below.
+   view = "journeys" | "diagrams". Data: services/qa_journeys.py.
+   Diagrams: static/qa/journeys/*.svg #}
+<style>
+  .jd-viewer{position:relative; height:70vh; min-height:420px; border:1px solid #dbe3ee; border-radius:10px;
+             background:#fff; overflow:hidden; cursor:grab; touch-action:none}
+  .jd-viewer.dragging{cursor:grabbing}
+  .jd-viewer img{position:absolute; left:0; top:0; transform-origin:0 0; max-width:none; user-select:none; -webkit-user-drag:none}
+  .jd-zoom{position:absolute; right:12px; top:12px; z-index:2; display:flex; gap:4px; background:rgba(255,255,255,.92);
+           border:1px solid #dbe3ee; border-radius:8px; padding:4px}
+  .jd-zoom .lvl{min-width:52px; text-align:center; font-size:.78rem; align-self:center; color:#495057}
+  .jd-hint{position:absolute; left:12px; bottom:10px; z-index:2; font-size:.72rem; color:#6c757d;
+           background:rgba(255,255,255,.9); padding:2px 8px; border-radius:6px}
+  .jd-tw{overflow-x:auto; border:1px solid #dbe3ee; border-radius:10px; background:#fff}
+  .jd-t{border-collapse:separate; border-spacing:0; font-size:.8rem; margin:0}
+  /* app.css ".card-body table{overflow:hidden}" stops position:sticky — same override as .gtable */
+  .card-body .jd-t{overflow:visible}
+  .jd-t th,.jd-t td{padding:.55rem .7rem; vertical-align:top; border-top:1px solid #eef0f3; min-width:230px; max-width:260px; background:#fff}
+  .jd-t thead th{background:#f4f8fd; font-weight:400}
+  .jd-t .lbl{position:sticky; left:0; z-index:2; min-width:150px; max-width:150px; background:#fff; border-right:1px solid #dbe3ee;
+             font-size:.68rem; letter-spacing:.06em; text-transform:uppercase; color:#6c757d; font-weight:600}
+  .jd-t thead .lbl{background:#e8eef6; z-index:3}
+  .jd-t th.ph{font-weight:600; font-size:.85rem; color:#0d3b78; border-left:2px solid #0d3b78; min-width:0}
+  .jd-t th.ph.alt{background:#fff}
+  .jd-t .first{border-left:2px solid #0d3b78}
+  .jd-t .alt-col{background:#f8fafd}
+  .jd-t .num{font-size:.72rem; color:#6c757d; margin-right:.3rem}
+  .jd-t .st{font-weight:600; color:#0d3b78; margin-top:.2rem}
+  .jd-t .data{font-family:SFMono-Regular,Menlo,Consolas,monospace; font-size:.72rem; color:#495057; overflow-wrap:anywhere}
+  .jd-chip{display:inline-block; font-size:.66rem; font-weight:600; padding:0 .45rem; border-radius:999px; border:1px solid currentColor; white-space:nowrap}
+  .jd-mods .btn{margin:0 .25rem .35rem 0}
+</style>
+
+{% macro viewer(src, title, vid) %}
+<div class="jd-viewer" id="{{ vid }}" data-src="{{ src }}">
+  <div class="jd-zoom" role="group" aria-label="Zoom">
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-z="out" title="Zoom out"><i class="bi bi-zoom-out"></i></button>
+    <span class="lvl">100%</span>
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-z="in" title="Zoom in"><i class="bi bi-zoom-in"></i></button>
+    <button type="button" class="btn btn-sm btn-outline-secondary" data-z="fit" title="Fit to window"><i class="bi bi-arrows-angle-contract"></i></button>
+    <a class="btn btn-sm btn-outline-secondary" href="{{ src }}" target="_blank" rel="noopener" title="Open full size"><i class="bi bi-box-arrow-up-right"></i></a>
+  </div>
+  <img src="{{ src }}" alt="{{ title }}" draggable="false">
+  <div class="jd-hint">Drag to move · Ctrl + scroll or the buttons to zoom</div>
+</div>
+{% endmacro %}
+
+{% macro module_table(m) %}
+<div class="jd-tw"><table class="jd-t">
+  <thead><tr><th class="lbl">Step →</th>
+    {% for s in m.steps %}<th><span class="num">{{ loop.index }}</span><div class="st">{{ s[0] }}</div></th>{% endfor %}
+  </tr></thead>
+  <tbody>
+  {% for label in ['Touchpoint', 'Actions', 'Outputs', 'Data carried forward'] %}{% set r = loop.index %}
+  <tr><th class="lbl" scope="row">{{ label }}</th>
+    {% for s in m.steps %}<td class="{{ 'data' if r == 4 }}">{{ s[r] }}</td>{% endfor %}</tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% endmacro %}
+
+{# ── Combined (top) ── #}
+<div class="card border-0 shadow-sm mb-4"><div class="card-body">
+  {% if view == 'diagrams' %}
+  <div class="d-flex align-items-baseline gap-2 mb-2"><h6 class="mb-0">Combined Database Diagram</h6>
+    <span class="text-muted small">All tables by module · PK / FK / UK columns · lines read 1 parent → ∞ child rows</span></div>
+  {{ viewer('/static/qa/journeys/combined.svg', 'Combined database diagram', 'jdv_combined') }}
+  {% else %}
+  <div class="d-flex align-items-baseline gap-2 mb-2"><h6 class="mb-0">Combined User Journey</h6>
+    <span class="text-muted small">{{ columns|length }} steps, left to right · scroll sideways; row labels stay fixed</span></div>
+  <div class="jd-tw"><table class="jd-t">
+    <thead>
+      <tr><th class="lbl">Phase →</th>
+        {% for ph in phases %}<th class="ph {{ 'alt' if loop.index0 % 2 }}" colspan="{{ ph.steps|length }}">{{ ph.label }} · {{ ph.name }}</th>{% endfor %}</tr>
+      <tr><th class="lbl">Step →</th>
+        {% for c in columns %}<th class="{{ 'first' if c.first }} {{ 'alt-col' if c.phase % 2 }}"><span class="num">{{ c.n }}</span><span class="jd-chip" style="color:{{ c.color }}">{{ c.module }}</span><div class="st">{{ c.step[0] }}</div></th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+    {% for label in ['Touchpoint', 'Actions', 'Outputs', 'Data carried forward'] %}{% set r = loop.index %}
+      <tr><th class="lbl" scope="row">{{ label }}</th>
+        {% for c in columns %}<td class="{{ 'first' if c.first }} {{ 'alt-col' if c.phase % 2 }} {{ 'data' if r == 4 }}">{{ c.step[r] }}</td>{% endfor %}</tr>
+    {% endfor %}
+    </tbody>
+  </table></div>
+  {% endif %}
+</div></div>
+
+{# ── By module (below) ── #}
+<div class="card border-0 shadow-sm mb-4"><div class="card-body">
+  <h6 class="mb-2">{{ 'Database Diagram by Module' if view == 'diagrams' else 'User Journey by Module' }}</h6>
+  <div class="jd-mods mb-3" id="jdMods">
+    {% for m in modules %}<button type="button" class="btn btn-sm {{ 'btn-primary' if m.key == active_module else 'btn-outline-primary' }}" data-mod="{{ m.key }}">{{ m.name }} <span class="opacity-75">({{ m.steps|length }})</span></button>{% endfor %}
+  </div>
+  {% for m in modules %}
+  <div class="jd-mod" data-mod="{{ m.key }}" {% if m.key != active_module %}hidden{% endif %}>
+    {% if view == 'diagrams' %}
+    <h6 class="mb-2" style="color:{{ m.color }}">{{ m.name }} — Database Diagram</h6>
+    {{ viewer('/static/qa/journeys/' ~ m.svg, m.name ~ ' database diagram', 'jdv_' ~ m.key) }}
+    <div class="text-muted small mt-1">"→ table" next to a column means it links to a table in another module.</div>
+    {% else %}
+    <h6 class="mb-2" style="color:{{ m.color }}">{{ m.name }} — User Journey</h6>
+    {{ module_table(m) }}
+    {% endif %}
+  </div>
+  {% endfor %}
+</div></div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  // Zoom / pan inside the frame (no page scroll): buttons, Ctrl+wheel, drag
+  function Viewer(el) {
+    var img = el.querySelector('img'), lvl = el.querySelector('.lvl');
+    var s = 1, x = 0, y = 0, ready = false;
+    function apply() { img.style.transform = 'translate(' + x + 'px,' + y + 'px) scale(' + s + ')'; lvl.textContent = Math.round(s * 100) + '%'; }
+    function fit() {
+      if (!img.naturalWidth || !el.clientWidth) return;
+      s = Math.min(el.clientWidth / img.naturalWidth, el.clientHeight / img.naturalHeight) * 0.98;
+      x = (el.clientWidth - img.naturalWidth * s) / 2; y = (el.clientHeight - img.naturalHeight * s) / 2; apply();
+    }
+    function zoomAt(f, cx, cy) {
+      var ns = Math.min(4, Math.max(0.05, s * f));
+      x = cx - (cx - x) * ns / s; y = cy - (cy - y) * ns / s; s = ns; apply();
+    }
+    el.querySelector('.jd-zoom').addEventListener('click', function (e) {
+      var b = e.target.closest('[data-z]'); if (!b) return;
+      var c = [el.clientWidth / 2, el.clientHeight / 2];
+      if (b.dataset.z === 'in') zoomAt(1.25, c[0], c[1]);
+      else if (b.dataset.z === 'out') zoomAt(0.8, c[0], c[1]);
+      else fit();
+    });
+    el.addEventListener('wheel', function (e) {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault(); var r = el.getBoundingClientRect();
+      zoomAt(e.deltaY < 0 ? 1.15 : 0.87, e.clientX - r.left, e.clientY - r.top);
+    }, { passive: false });
+    var drag = null;
+    el.addEventListener('pointerdown', function (e) {
+      if (e.target.closest('.jd-zoom')) return;
+      drag = [e.clientX - x, e.clientY - y]; el.classList.add('dragging'); el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener('pointermove', function (e) { if (!drag) return; x = e.clientX - drag[0]; y = e.clientY - drag[1]; apply(); });
+    el.addEventListener('pointerup', function () { drag = null; el.classList.remove('dragging'); });
+    if (img.complete) fit(); else img.addEventListener('load', fit);
+    this.fit = fit;
+  }
+  var viewers = {};
+  document.querySelectorAll('.jd-viewer').forEach(function (el) { viewers[el.id] = new Viewer(el); });
+  function refit(scope) { (scope || document).querySelectorAll('.jd-viewer').forEach(function (el) { if (el.offsetParent) viewers[el.id].fit(); }); }
+
+  // Module picker (below the combined view)
+  document.getElementById('jdMods').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-mod]'); if (!b) return;
+    document.querySelectorAll('#jdMods [data-mod]').forEach(function (x) {
+      var on = x === b; x.classList.toggle('btn-primary', on); x.classList.toggle('btn-outline-primary', !on);
+    });
+    document.querySelectorAll('.jd-mod').forEach(function (p) { p.hidden = p.dataset.mod !== b.dataset.mod; });
+    try { var u = new URL(location.href); u.searchParams.set('module', b.dataset.mod); history.replaceState(null, '', u); } catch (e) {}
+    refit(document.querySelector('.jd-mod[data-mod="' + b.dataset.mod + '"]'));
+  });
+  window.addEventListener('resize', function () { refit(); });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,115 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1668 1457" width="1668" height="1457" font-family="Helvetica,Arial,sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="100" y="80" font-size="52" font-weight="bold" fill="#0e3a7a">OxyPC Database Map — Sales & Dealers</text>
+<text x="100" y="120" font-size="22" fill="#5b6878">PK = primary key · FK = foreign key · UK = column other tables link to · lines read 1 parent → ∞ child rows, coloured by the parent table's module</text>
+<rect x="140" y="240" width="1428" height="1137" rx="18" fill="#FBEFF3" stroke="#B24A6D" stroke-width="3"/>
+<text x="204" y="296" font-size="34" font-weight="bold" fill="#B24A6D">Sales &amp; Dealers <tspan font-size="18" font-weight="normal" fill="#5b6878">13 tables</tspan></text>
+<path d="M1004,516.78 C1084.0,516.78 1124.0,573.78 1204,573.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1012" y="513.78" font-size="11" fill="#B24A6D">1</text><text x="1186" y="570.78" font-size="13" fill="#B24A6D">∞</text>
+<path d="M504,374.8333333333333 C584.0,374.8333333333333 624.0,394.78 704,394.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="371.8333333333333" font-size="11" fill="#B24A6D">1</text><text x="686" y="391.78" font-size="13" fill="#B24A6D">∞</text>
+<path d="M504,418.1666666666667 C584.0,418.1666666666667 624.0,958.78 704,958.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="415.1666666666667" font-size="11" fill="#B24A6D">1</text><text x="686" y="955.78" font-size="13" fill="#B24A6D">∞</text>
+<path d="M504,526.6666666666666 C584.0,526.6666666666666 624.0,676.78 704,676.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="523.6666666666666" font-size="11" fill="#B24A6D">1</text><text x="686" y="673.78" font-size="13" fill="#B24A6D">∞</text>
+<path d="M504,407.3333333333333 C584.0,407.3333333333333 624.0,817.78 704,817.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="404.3333333333333" font-size="11" fill="#B24A6D">1</text><text x="686" y="814.78" font-size="13" fill="#B24A6D">∞</text>
+<path d="M504,396.5 C584.0,396.5 624.0,535.78 704,535.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="393.5" font-size="11" fill="#B24A6D">1</text><text x="686" y="532.78" font-size="13" fill="#B24A6D">∞</text>
+<path d="M504,548.3333333333334 C584.0,548.3333333333334 624.0,1099.78 704,1099.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="545.3333333333334" font-size="11" fill="#B24A6D">1</text><text x="686" y="1096.78" font-size="13" fill="#B24A6D">∞</text>
+<path d="M504,657.78 C584.0,657.78 624.0,1259.78 704,1259.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="654.78" font-size="11" fill="#B24A6D">1</text><text x="686" y="1256.78" font-size="13" fill="#B24A6D">∞</text>
+<path d="M1004,657.78 C1084.0,657.78 1124.0,714.78 1204,714.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1012" y="654.78" font-size="11" fill="#B24A6D">1</text><text x="1186" y="711.78" font-size="13" fill="#B24A6D">∞</text>
+<path d="M504,385.6666666666667 C784.0,385.6666666666667 924.0,394.78 1204,394.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="382.6666666666667" font-size="11" fill="#B24A6D">1</text><text x="1186" y="391.78" font-size="13" fill="#B24A6D">∞</text>
+<path d="M1004,385.6666666666667 C1084.0,385.6666666666667 1124.0,413.78 1204,413.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1012" y="382.6666666666667" font-size="11" fill="#B24A6D">1</text><text x="1186" y="410.78" font-size="13" fill="#B24A6D">∞</text>
+<path d="M1004,407.3333333333333 C1084.0,407.3333333333333 1124.0,432.78 1204,432.78" fill="none" stroke="#B24A6D" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1012" y="404.3333333333333" font-size="11" fill="#B24A6D">1</text><text x="1186" y="429.78" font-size="13" fill="#B24A6D">∞</text>
+<rect x="204" y="336" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="336" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="212" y="355" font-size="14" font-weight="bold" fill="#fff">dealers</text>
+<text x="212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">crm_contact_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ crm_contacts</tspan></text>
+<text x="212" y="416" font-size="11" fill="#7A8696">+ 42 more fields</text>
+<rect x="204" y="477" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="477" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="212" y="496" font-size="14" font-weight="bold" fill="#fff">rental_records</text>
+<text x="212" y="519" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="538" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">billing_company_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ companies</tspan></text>
+<text x="212" y="557" font-size="11" fill="#7A8696">+ 29 more fields</text>
+<rect x="204" y="618" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="618" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="212" y="637" font-size="14" font-weight="bold" fill="#fff">sales</text>
+<text x="212" y="660" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="679" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="212" y="698" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">company_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ companies</tspan></text>
+<text x="212" y="717" font-size="11" fill="#7A8696">+ 30 more fields</text>
+<rect x="704" y="336" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="336" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="712" y="355" font-size="14" font-weight="bold" fill="#fff">dealer_orders</text>
+<text x="712" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan></text>
+<text x="712" y="416" font-size="11" fill="#7A8696">+ 15 more fields</text>
+<rect x="704" y="477" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="477" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="712" y="496" font-size="14" font-weight="bold" fill="#fff">dealer_quotations</text>
+<text x="712" y="519" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="538" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan></text>
+<text x="712" y="557" font-size="11" fill="#7A8696">+ 21 more fields</text>
+<rect x="704" y="618" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="618" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="712" y="637" font-size="14" font-weight="bold" fill="#fff">rental_returns</text>
+<text x="712" y="660" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="679" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">rental_id</tspan></text>
+<text x="712" y="698" font-size="11" fill="#7A8696">+ 15 more fields</text>
+<rect x="704" y="759" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="759" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="712" y="778" font-size="14" font-weight="bold" fill="#fff">dealer_assignments</text>
+<text x="712" y="801" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="820" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan></text>
+<text x="712" y="839" font-size="11" fill="#7A8696">+ 5 more fields</text>
+<rect x="704" y="900" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="900" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="712" y="919" font-size="14" font-weight="bold" fill="#fff">dealer_calls</text>
+<text x="712" y="942" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="961" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan></text>
+<text x="712" y="980" font-size="11" fill="#7A8696">+ 27 more fields</text>
+<rect x="704" y="1041" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="1041" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="712" y="1060" font-size="14" font-weight="bold" fill="#fff">rental_items</text>
+<text x="712" y="1083" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="1102" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">rental_id</tspan></text>
+<text x="712" y="1121" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="712" y="1140" font-size="11" fill="#7A8696">+ 9 more fields</text>
+<rect x="704" y="1201" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="1201" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="712" y="1220" font-size="14" font-weight="bold" fill="#fff">returns</text>
+<text x="712" y="1243" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="1262" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">sale_id</tspan></text>
+<text x="712" y="1281" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="712" y="1300" font-size="11" fill="#7A8696">+ 33 more fields</text>
+<rect x="1204" y="336" width="300" height="131" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1204" y="336" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="1212" y="355" font-size="14" font-weight="bold" fill="#fff">dealer_credit_notes</text>
+<text x="1212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1212" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan></text>
+<text x="1212" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">order_id</tspan></text>
+<text x="1212" y="435" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">applied_to_order_id</tspan></text>
+<text x="1212" y="454" font-size="11" fill="#7A8696">+ 10 more fields</text>
+<rect x="1204" y="515" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1204" y="515" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="1212" y="534" font-size="14" font-weight="bold" fill="#fff">dealer_quotation_items</text>
+<text x="1212" y="557" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1212" y="576" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">quotation_id</tspan></text>
+<text x="1212" y="595" font-size="11" fill="#7A8696">+ 7 more fields</text>
+<rect x="1204" y="656" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1204" y="656" width="300" height="28" rx="4" fill="#B24A6D"/>
+<text x="1212" y="675" font-size="14" font-weight="bold" fill="#fff">rental_return_items</text>
+<text x="1212" y="698" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1212" y="717" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">rental_return_id</tspan></text>
+<text x="1212" y="736" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="1212" y="755" font-size="11" fill="#7A8696">+ 1 more fields</text>
+</svg>

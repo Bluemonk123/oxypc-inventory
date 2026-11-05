@@ -1,0 +1,253 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2588 2185" width="2588" height="2185" font-family="Helvetica,Arial,sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="100" y="80" font-size="52" font-weight="bold" fill="#0e3a7a">OxyPC Database Map — Inventory & Lots</text>
+<text x="100" y="120" font-size="22" fill="#5b6878">PK = primary key · FK = foreign key · UK = column other tables link to · lines read 1 parent → ∞ child rows, coloured by the parent table's module</text>
+<rect x="140" y="240" width="2348" height="1865" rx="18" fill="#EAF2FB" stroke="#2F6DB5" stroke-width="3"/>
+<text x="204" y="296" font-size="34" font-weight="bold" fill="#2F6DB5">Inventory &amp; Lots <tspan font-size="18" font-weight="normal" fill="#5b6878">26 tables</tspan></text>
+<path d="M504,396.85714285714283 C640.0,396.85714285714283 708.0,1335.78 844,1335.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="393.85714285714283" font-size="11" fill="#2F6DB5">1</text><text x="826" y="1332.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,1029.78 C1152.0,1029.78 1476.0,624.78 2124,624.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="1026.78" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="621.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1784,388.4 C1920.0,388.4 1988.0,643.78 2124,643.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1792" y="385.4" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="640.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1784,473.8 C1920.0,473.8 1988.0,2006.78 2124,2006.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1792" y="470.8" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="2003.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,1221.78 C1152.0,1221.78 1476.0,394.78 2124,394.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="1218.78" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="391.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1784,376.2 C1920.0,376.2 1988.0,413.78 2124,413.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1792" y="373.2" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="410.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,537.7142857142857 C1152.0,537.7142857142857 1476.0,432.78 2124,432.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="534.7142857142857" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="429.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1784,400.6 C1920.0,400.6 1988.0,835.78 2124,835.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1792" y="397.6" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="832.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,550.8571428571429 C1152.0,550.8571428571429 1476.0,854.78 2124,854.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="547.8571428571429" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="851.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1144,392.0 C1280.0,392.0 1348.0,624.78 1484,624.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1152" y="389.0" font-size="11" fill="#2F6DB5">1</text><text x="1466" y="621.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,383.7142857142857 C896.0,383.7142857142857 1092.0,643.78 1484,643.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="380.7142857142857" font-size="11" fill="#2F6DB5">1</text><text x="1466" y="640.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1784,437.2 C1920.0,437.2 1988.0,1411.78 2124,1411.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1792" y="434.2" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="1408.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,693.6666666666666 C640.0,693.6666666666666 708.0,586.78 844,586.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="690.6666666666666" font-size="11" fill="#2F6DB5">1</text><text x="826" y="583.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,544.2857142857143 C640.0,544.2857142857143 708.0,778.78 844,778.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="541.2857142857143" font-size="11" fill="#2F6DB5">1</text><text x="826" y="775.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1144,612.0 C1536.0,612.0 1732.0,1238.78 2124,1238.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1152" y="609.0" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="1235.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1784,425.0 C1920.0,425.0 1988.0,1257.78 2124,1257.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1792" y="422.0" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="1254.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,390.2857142857143 C640.0,390.2857142857143 708.0,970.78 844,970.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="387.2857142857143" font-size="11" fill="#2F6DB5">1</text><text x="826" y="967.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1784,461.6 C1920.0,461.6 1988.0,1833.78 2124,1833.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1792" y="458.6" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="1830.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1144,584.0 C1280.0,584.0 1348.0,816.78 1484,816.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1152" y="581.0" font-size="11" fill="#2F6DB5">1</text><text x="1466" y="813.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,370.57142857142856 C640.0,370.57142857142856 708.0,394.78 844,394.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="367.57142857142856" font-size="11" fill="#2F6DB5">1</text><text x="826" y="391.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,524.5714285714286 C640.0,524.5714285714286 708.0,413.78 844,413.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="521.5714285714286" font-size="11" fill="#2F6DB5">1</text><text x="826" y="410.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,377.14285714285717 C896.0,377.14285714285717 1092.0,394.78 1484,394.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="374.14285714285717" font-size="11" fill="#2F6DB5">1</text><text x="1466" y="391.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,531.1428571428571 C896.0,531.1428571428571 1092.0,413.78 1484,413.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="528.1428571428571" font-size="11" fill="#2F6DB5">1</text><text x="1466" y="410.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1144,951.78 C1280.0,951.78 1348.0,451.78 1484,451.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1152" y="948.78" font-size="11" fill="#2F6DB5">1</text><text x="1466" y="448.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,866.6666666666666 C640.0,866.6666666666666 708.0,1143.78 844,1143.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="863.6666666666666" font-size="11" fill="#2F6DB5">1</text><text x="826" y="1140.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,888.3333333333334 C640.0,888.3333333333334 708.0,1162.78 844,1162.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="885.3333333333334" font-size="11" fill="#2F6DB5">1</text><text x="826" y="1159.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1784,449.4 C1920.0,449.4 1988.0,1584.78 2124,1584.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1792" y="446.4" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="1581.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1144,759.78 C1536.0,759.78 1732.0,1603.78 2124,1603.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1152" y="756.78" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="1600.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,403.42857142857144 C1152.0,403.42857142857144 1476.0,1622.78 2124,1622.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="400.42857142857144" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="1619.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,557.4285714285714 C1152.0,557.4285714285714 1476.0,1641.78 2124,1641.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="554.4285714285714" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="1638.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M504,715.3333333333334 C1152.0,715.3333333333334 1476.0,1660.78 2124,1660.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="712.3333333333334" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="1657.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1144,420.0 C1536.0,420.0 1732.0,1046.78 2124,1046.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1152" y="417.0" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="1043.78" font-size="13" fill="#2F6DB5">∞</text>
+<path d="M1784,412.8 C1920.0,412.8 1988.0,1065.78 2124,1065.78" fill="none" stroke="#2F6DB5" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1792" y="409.8" font-size="11" fill="#2F6DB5">1</text><text x="2106" y="1062.78" font-size="13" fill="#2F6DB5">∞</text>
+<rect x="204" y="336" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="336" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="212" y="355" font-size="14" font-weight="bold" fill="#fff">lots</text>
+<text x="212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="397" font-size="11" fill="#7A8696">+ 27 more fields</text>
+<rect x="204" y="490" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="490" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="212" y="509" font-size="14" font-weight="bold" fill="#fff">storage_locations</text>
+<text x="212" y="532" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="551" font-size="11" fill="#7A8696">+ 8 more fields</text>
+<rect x="204" y="644" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="644" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="212" y="663" font-size="14" font-weight="bold" fill="#fff">scrap_for_sale</text>
+<text x="212" y="686" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="705" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">assigned_to_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="212" y="724" font-size="11" fill="#7A8696">+ 7 more fields</text>
+<rect x="204" y="817" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="817" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="212" y="836" font-size="14" font-weight="bold" fill="#fff">stage_master</text>
+<text x="212" y="859" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="878" font-size="11"><tspan fill="#6b4fa0" font-weight="bold">UK</tspan><tspan fill="#17202b" dx="6">name</tspan></text>
+<text x="212" y="897" font-size="11" fill="#7A8696">+ 3 more fields</text>
+<rect x="204" y="990" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="990" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="212" y="1009" font-size="14" font-weight="bold" fill="#fff">block_records</text>
+<text x="212" y="1032" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="1051" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">block_for_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="212" y="1070" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">created_by_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="212" y="1089" font-size="11" fill="#7A8696">+ 7 more fields</text>
+<rect x="204" y="1182" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="1182" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="212" y="1201" font-size="14" font-weight="bold" fill="#fff">inventory_audits</text>
+<text x="212" y="1224" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="1243" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">initiated_by</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="212" y="1262" font-size="11" fill="#7A8696">+ 11 more fields</text>
+<rect x="204" y="1355" width="300" height="188" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="1355" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="212" y="1374" font-size="14" font-weight="bold" fill="#fff">cosmetic_flow_rows</text>
+<text x="212" y="1397" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="1416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">cleaning_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="212" y="1435" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">putty_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="212" y="1454" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dry_sanding_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="212" y="1473" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">masking_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="212" y="1492" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">painting_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="212" y="1511" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">water_sanding_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="212" y="1530" font-size="11" fill="#7A8696">+ 5 more fields</text>
+<rect x="204" y="1623" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="1623" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="212" y="1642" font-size="14" font-weight="bold" fill="#fff">tag_number_movements</text>
+<text x="212" y="1665" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="1684" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">by_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="212" y="1703" font-size="11" fill="#7A8696">+ 8 more fields</text>
+<rect x="844" y="336" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="844" y="336" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="852" y="355" font-size="14" font-weight="bold" fill="#fff">grn_imports</text>
+<text x="852" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="852" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan></text>
+<text x="852" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">location_id</tspan></text>
+<text x="852" y="435" font-size="11" fill="#7A8696">+ 37 more fields</text>
+<rect x="844" y="528" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="844" y="528" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="852" y="547" font-size="14" font-weight="bold" fill="#fff">scrap_sales</text>
+<text x="852" y="570" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="852" y="589" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">scrap_for_sale_id</tspan></text>
+<text x="852" y="608" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">company_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ companies</tspan></text>
+<text x="852" y="627" font-size="11" fill="#7A8696">+ 21 more fields</text>
+<rect x="844" y="720" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="844" y="720" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="852" y="739" font-size="14" font-weight="bold" fill="#fff">buckets</text>
+<text x="852" y="762" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="852" y="781" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">location_id</tspan></text>
+<text x="852" y="800" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">fail_engineer_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="852" y="819" font-size="11" fill="#7A8696">+ 19 more fields</text>
+<rect x="844" y="912" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="844" y="912" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="852" y="931" font-size="14" font-weight="bold" fill="#fff">lot_line_items</text>
+<text x="852" y="954" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="852" y="973" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan></text>
+<text x="852" y="992" font-size="11" fill="#7A8696">+ 16 more fields</text>
+<rect x="844" y="1085" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="844" y="1085" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="852" y="1104" font-size="14" font-weight="bold" fill="#fff">allowed_transitions</text>
+<text x="852" y="1127" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="852" y="1146" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">from_stage</tspan></text>
+<text x="852" y="1165" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">to_stage</tspan></text>
+<text x="852" y="1184" font-size="11" fill="#7A8696">+ 1 more fields</text>
+<rect x="844" y="1277" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="844" y="1277" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="852" y="1296" font-size="14" font-weight="bold" fill="#fff">as_is_lot_prices</text>
+<text x="852" y="1319" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="852" y="1338" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan></text>
+<text x="852" y="1357" font-size="11" fill="#7A8696">+ 5 more fields</text>
+<rect x="1484" y="336" width="300" height="150" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1484" y="336" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="1492" y="355" font-size="14" font-weight="bold" fill="#fff">devices</text>
+<text x="1492" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1492" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan></text>
+<text x="1492" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">location_id</tspan></text>
+<text x="1492" y="435" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">assigned_to_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="1492" y="454" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_line_item_id</tspan></text>
+<text x="1492" y="473" font-size="11" fill="#7A8696">+ 73 more fields</text>
+<rect x="1484" y="566" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1484" y="566" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="1492" y="585" font-size="14" font-weight="bold" fill="#fff">grn_lots</text>
+<text x="1492" y="608" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1492" y="627" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">grn_id</tspan></text>
+<text x="1492" y="646" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan></text>
+<text x="1492" y="665" font-size="11" fill="#7A8696">+ 2 more fields</text>
+<rect x="1484" y="758" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1484" y="758" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="1492" y="777" font-size="14" font-weight="bold" fill="#fff">scrap_sale_items</text>
+<text x="1492" y="800" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1492" y="819" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">scrap_sale_id</tspan></text>
+<text x="1492" y="838" font-size="11" fill="#7A8696">+ 9 more fields</text>
+<rect x="2124" y="336" width="300" height="150" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2124" y="336" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="2132" y="355" font-size="14" font-weight="bold" fill="#fff">audit_scan_items</text>
+<text x="2132" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2132" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">audit_id</tspan></text>
+<text x="2132" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan></text>
+<text x="2132" y="435" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">location_id</tspan></text>
+<text x="2132" y="454" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">scanned_by</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="2132" y="473" font-size="11" fill="#7A8696">+ 5 more fields</text>
+<rect x="2124" y="566" width="300" height="131" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2124" y="566" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="2132" y="585" font-size="14" font-weight="bold" fill="#fff">block_record_items</text>
+<text x="2132" y="608" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2132" y="627" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">block_record_id</tspan></text>
+<text x="2132" y="646" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan></text>
+<text x="2132" y="665" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">status_changed_by_user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="2132" y="684" font-size="11" fill="#7A8696">+ 10 more fields</text>
+<rect x="2124" y="777" width="300" height="131" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2124" y="777" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="2132" y="796" font-size="14" font-weight="bold" fill="#fff">device_location_logs</text>
+<text x="2132" y="819" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2132" y="838" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan></text>
+<text x="2132" y="857" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">location_id</tspan></text>
+<text x="2132" y="876" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">actor_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="2132" y="895" font-size="11" fill="#7A8696">+ 4 more fields</text>
+<rect x="2124" y="988" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2124" y="988" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="2132" y="1007" font-size="14" font-weight="bold" fill="#fff">grn_stocked_tags</text>
+<text x="2132" y="1030" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2132" y="1049" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">grn_id</tspan></text>
+<text x="2132" y="1068" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan></text>
+<text x="2132" y="1087" font-size="11" fill="#7A8696">+ 4 more fields</text>
+<rect x="2124" y="1180" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2124" y="1180" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="2132" y="1199" font-size="14" font-weight="bold" fill="#fff">scrap_sale_tags</text>
+<text x="2132" y="1222" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2132" y="1241" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">scrap_sale_id</tspan></text>
+<text x="2132" y="1260" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan></text>
+<rect x="2124" y="1353" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2124" y="1353" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="2132" y="1372" font-size="14" font-weight="bold" fill="#fff">stage_movements</text>
+<text x="2132" y="1395" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2132" y="1414" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan></text>
+<text x="2132" y="1433" font-size="11" fill="#7A8696">+ 6 more fields</text>
+<rect x="2124" y="1526" width="300" height="169" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2124" y="1526" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="2132" y="1545" font-size="14" font-weight="bold" fill="#fff">stock_transfers</text>
+<text x="2132" y="1568" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2132" y="1587" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan></text>
+<text x="2132" y="1606" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">bucket_id</tspan></text>
+<text x="2132" y="1625" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan></text>
+<text x="2132" y="1644" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">to_location_id</tspan></text>
+<text x="2132" y="1663" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">scrap_for_sale_id</tspan></text>
+<text x="2132" y="1682" font-size="11" fill="#7A8696">+ 24 more fields</text>
+<rect x="2124" y="1775" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2124" y="1775" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="2132" y="1794" font-size="14" font-weight="bold" fill="#fff">stock_validations</text>
+<text x="2132" y="1817" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2132" y="1836" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan></text>
+<text x="2132" y="1855" font-size="11" fill="#7A8696">+ 7 more fields</text>
+<rect x="2124" y="1948" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2124" y="1948" width="300" height="28" rx="4" fill="#2F6DB5"/>
+<text x="2132" y="1967" font-size="14" font-weight="bold" fill="#fff">telecaller_dispatch_requests</text>
+<text x="2132" y="1990" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2132" y="2009" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan></text>
+<text x="2132" y="2028" font-size="11" fill="#7A8696">+ 16 more fields</text>
+</svg>

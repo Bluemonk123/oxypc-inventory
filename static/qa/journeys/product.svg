@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1568 1587" width="1568" height="1587" font-family="Helvetica,Arial,sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="100" y="80" font-size="52" font-weight="bold" fill="#0e3a7a">OxyPC Database Map — Products & Pricing</text>
+<text x="100" y="120" font-size="22" fill="#5b6878">PK = primary key · FK = foreign key · UK = column other tables link to · lines read 1 parent → ∞ child rows, coloured by the parent table's module</text>
+<rect x="140" y="240" width="1328" height="1267" rx="18" fill="#F4EEFB" stroke="#7B4FB0" stroke-width="3"/>
+<text x="204" y="296" font-size="34" font-weight="bold" fill="#7B4FB0">Products &amp; Pricing <tspan font-size="18" font-weight="normal" fill="#5b6878">12 tables</tspan></text>
+<path d="M954,375.78 C1014,375.78 1044,394.78 1104,394.78" fill="none" stroke="#7B4FB0" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="962" y="372.78" font-size="11" fill="#7B4FB0">1</text><text x="1086" y="391.78" font-size="13" fill="#7B4FB0">∞</text>
+<path d="M504,741.78 C744.0,741.78 864.0,413.78 1104,413.78" fill="none" stroke="#7B4FB0" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="738.78" font-size="11" fill="#7B4FB0">1</text><text x="1086" y="410.78" font-size="13" fill="#7B4FB0">∞</text>
+<path d="M504,619.78 C564,619.78 594,554.78 654,554.78" fill="none" stroke="#7B4FB0" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="616.78" font-size="11" fill="#7B4FB0">1</text><text x="636" y="551.78" font-size="13" fill="#7B4FB0">∞</text>
+<path d="M504,375.78 C564,375.78 594,394.78 654,394.78" fill="none" stroke="#7B4FB0" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="372.78" font-size="11" fill="#7B4FB0">1</text><text x="636" y="391.78" font-size="13" fill="#7B4FB0">∞</text>
+<path d="M504,497.78 C564,497.78 594,413.78 654,413.78" fill="none" stroke="#7B4FB0" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="494.78" font-size="11" fill="#7B4FB0">1</text><text x="636" y="410.78" font-size="13" fill="#7B4FB0">∞</text>
+<rect x="204" y="336" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="336" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="212" y="355" font-size="14" font-weight="bold" fill="#fff">hw_ram</text>
+<text x="212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="397" font-size="11" fill="#7A8696">+ 7 more fields</text>
+<rect x="204" y="458" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="458" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="212" y="477" font-size="14" font-weight="bold" fill="#fff">hw_storage</text>
+<text x="212" y="500" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="519" font-size="11" fill="#7A8696">+ 7 more fields</text>
+<rect x="204" y="580" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="580" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="212" y="599" font-size="14" font-weight="bold" fill="#fff">pm_calc_uploads</text>
+<text x="212" y="622" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="641" font-size="11" fill="#7A8696">+ 4 more fields</text>
+<rect x="204" y="702" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="702" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="212" y="721" font-size="14" font-weight="bold" fill="#fff">pm_competitive_lists</text>
+<text x="212" y="744" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="763" font-size="11" fill="#7A8696">+ 6 more fields</text>
+<rect x="204" y="824" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="824" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="212" y="843" font-size="14" font-weight="bold" fill="#fff">pm_dropdown_values</text>
+<text x="212" y="866" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="885" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">parent_id</tspan></text>
+<text x="212" y="904" font-size="11" fill="#7A8696">+ 6 more fields</text>
+<rect x="204" y="965" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="965" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="212" y="984" font-size="14" font-weight="bold" fill="#fff">business_pl_overrides</text>
+<text x="212" y="1007" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="1026" font-size="11" fill="#7A8696">+ 8 more fields</text>
+<rect x="204" y="1087" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="1087" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="212" y="1106" font-size="14" font-weight="bold" fill="#fff">cost_config</text>
+<text x="212" y="1129" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="1148" font-size="11" fill="#7A8696">+ 5 more fields</text>
+<rect x="204" y="1209" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="1209" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="212" y="1228" font-size="14" font-weight="bold" fill="#fff">market_availability</text>
+<text x="212" y="1251" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="1270" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealers</tspan></text>
+<text x="212" y="1289" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">source_message_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ whatsapp_messages</tspan></text>
+<text x="212" y="1308" font-size="11" fill="#7A8696">+ 25 more fields</text>
+<rect x="204" y="1369" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="1369" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="212" y="1388" font-size="14" font-weight="bold" fill="#fff">model_requests</text>
+<text x="212" y="1411" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="1430" font-size="11" fill="#7A8696">+ 25 more fields</text>
+<rect x="654" y="336" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="654" y="336" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="662" y="355" font-size="14" font-weight="bold" fill="#fff">pm_products</text>
+<text x="662" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="662" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">ram_id</tspan></text>
+<text x="662" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">storage_id</tspan></text>
+<text x="662" y="435" font-size="11" fill="#7A8696">+ 23 more fields</text>
+<rect x="654" y="496" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="654" y="496" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="662" y="515" font-size="14" font-weight="bold" fill="#fff">pm_calc_rows</text>
+<text x="662" y="538" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="662" y="557" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">upload_id</tspan></text>
+<text x="662" y="576" font-size="11" fill="#7A8696">+ 11 more fields</text>
+<rect x="1104" y="336" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1104" y="336" width="300" height="28" rx="4" fill="#7B4FB0"/>
+<text x="1112" y="355" font-size="14" font-weight="bold" fill="#fff">pm_competitor_prices</text>
+<text x="1112" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1112" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">product_id</tspan></text>
+<text x="1112" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">list_id</tspan></text>
+<text x="1112" y="435" font-size="11" fill="#7A8696">+ 6 more fields</text>
+</svg>

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Test Cases — QA{% endblock %}
-{% block page_title %}QA Dashboard{% endblock %}
+{% block page_title %}UAT Analysis{% endblock %}
 {% block content %}
 {% include 'qa/_tabs.html' %}
 
@@ -22,7 +22,7 @@
     </select>
     <button class="btn btn-sm btn-outline-secondary">Filter</button>
   </form>
-  {% if can(current_user, 'qa', 'add') %}
+  {% if can(current_user, 'qa_uat', 'add') %}
   <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newTCModal">
     <i class="bi bi-plus-circle me-1"></i>New Test Case
   </button>

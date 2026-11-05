@@ -425,25 +425,25 @@ ROUTE_ACTIONS = {
     # ===== routers/iqc_api.py =====
     ('POST', '/iqc/api/submit'): None,  # submit_iqc: OxyQC EXE API (X-OxyQC-Key), not session UI
     # ===== routers/qa_uat.py =====
-    ('GET', '/qa/stage-workflows/{workflow_key}/download'): ('qa', 'export'),  # stage_workflow_download
-    ('GET', '/qa/workflow/{flow_key}/diagram.pdf'): ('qa', 'export'),  # workflow_diagram_pdf (2026-11-04)
-    ('GET', '/qa/workflow/{flow_key}/journey.pdf'): ('qa', 'export'),  # workflow_journey_pdf (2026-11-04)
-    ('POST', '/qa/workflow/{flow_key}/upload'): ('qa', 'upload'),  # workflow_upload: Figma diagram (2026-11-04)
-    ('POST', '/qa/workflow/{flow_key}/upload/remove'): ('qa', 'delete'),  # workflow_upload_remove (2026-11-04)
+    ('GET', '/qa/stage-workflows/{workflow_key}/download'): ('qa_ux', 'export'),  # stage_workflow_download
+    ('GET', '/qa/workflow/{flow_key}/diagram.pdf'): ('qa_ux', 'export'),  # workflow_diagram_pdf (2026-11-04)
+    ('GET', '/qa/workflow/{flow_key}/journey.pdf'): ('qa_ux', 'export'),  # workflow_journey_pdf (2026-11-04)
+    ('POST', '/qa/workflow/{flow_key}/upload'): ('qa_ux', 'upload'),  # workflow_upload: Figma diagram (2026-11-04)
+    ('POST', '/qa/workflow/{flow_key}/upload/remove'): ('qa_ux', 'delete'),  # workflow_upload_remove (2026-11-04)
     ('GET', '/qa/srs/technical-spec/download'): ('qa', 'export'),  # srs_technical_spec_download
     ('GET', '/qa/srs/functional-spec/download'): ('qa', 'export'),  # srs_functional_spec_download
     ('GET', '/qa/srs/design-system/download'): ('qa', 'export'),  # srs_design_system_download
     ('GET', '/qa/srs/handbook/{doc_key}/download'): ('qa', 'export'),  # srs_handbook_download
     ('GET', '/qa/srs/module-map/download'): ('qa', 'export'),  # srs_module_map_pdf
     ('GET', '/qa/srs/module-map/download.pptx'): ('qa', 'export'),  # srs_module_map_pptx
-    ('POST', '/qa/requirements/new'): ('qa', 'add'),  # req_create
-    ('POST', '/qa/requirements/{req_id}/status'): ('qa', 'edit'),  # req_status
-    ('POST', '/qa/test-cases/new'): ('qa', 'add'),  # tc_create
-    ('POST', '/qa/test-cases/{tc_id}/execute'): ('qa', 'edit'),  # tc_execute
-    ('POST', '/qa/defects/new'): ('qa', 'add'),  # defect_create
-    ('POST', '/qa/defects/{defect_id}/status'): ('qa', 'edit'),  # defect_status
-    ('POST', '/qa/uat/new'): ('qa', 'add'),  # uat_create
-    ('POST', '/qa/uat/{uat_id}/execute'): ('qa', 'edit'),  # uat_execute
+    ('POST', '/qa/requirements/new'): ('qa_uat', 'add'),  # req_create
+    ('POST', '/qa/requirements/{req_id}/status'): ('qa_uat', 'edit'),  # req_status
+    ('POST', '/qa/test-cases/new'): ('qa_uat', 'add'),  # tc_create
+    ('POST', '/qa/test-cases/{tc_id}/execute'): ('qa_uat', 'edit'),  # tc_execute
+    ('POST', '/qa/defects/new'): ('qa_uat', 'add'),  # defect_create
+    ('POST', '/qa/defects/{defect_id}/status'): ('qa_uat', 'edit'),  # defect_status
+    ('POST', '/qa/uat/new'): ('qa_uat', 'add'),  # uat_create
+    ('POST', '/qa/uat/{uat_id}/execute'): ('qa_uat', 'edit'),  # uat_execute
     ('POST', '/qa/releases/new'): ('qa', 'add'),  # release_create
     ('POST', '/qa/releases/{rel_id}/status'): ('qa', 'edit'),  # release_status
     # ===== routers/crm_contacts.py =====

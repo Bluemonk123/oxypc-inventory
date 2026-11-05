@@ -788,12 +788,44 @@
         </div>
       </li>
 
-      {# QA Dashboard — admin only, all sub-pages accessible via tabs on the QA pages #}
-      {% if role == 'admin' %}
-      <li><a href="/qa/" class="nav-link {% if request.url.path.startswith('/qa') %}active{% endif %}">
-        <i class="bi bi-speedometer2 me-2"></i> {{ sidebar_label('qa', 'QA Dashboard') }}
-      </a></li>
       {% endif %}
+
+      {# Product Management (2026-11-05, Pankaj; was one "QA Dashboard" link) —
+         an accordion like Admin Settings with the three QA pages. Each link
+         shows for admin or a role with Enable on its Permission Matrix row
+         (QA Dashboard "qa" / UAT Analysis "qa_uat" / UX Journeys "qa_ux"); the
+         group is hidden when none of the three is allowed. Its own section,
+         so a role given only these pages (no Admin Settings) still sees it. #}
+      {% set _pm_dash = has_explicit_perm(role, 'qa') %}
+      {% set _pm_uat = has_explicit_perm(role, 'qa_uat') %}
+      {% set _pm_ux = has_explicit_perm(role, 'qa_ux') %}
+      {% if _pm_dash or _pm_uat or _pm_ux %}
+      {% set _qp = request.url.path %}
+      {% set _qa_uat = _qp.startswith('/qa/uat') or _qp.startswith('/qa/requirements') or _qp.startswith('/qa/test-cases') or _qp.startswith('/qa/defects') %}
+      {% set _qa_ux = _qp.startswith('/qa/workflow') or _qp.startswith('/qa/journeys') or _qp.startswith('/qa/database-diagram') or _qp.startswith('/qa/stage-workflows') %}
+      {% set _qa_on = _qp.startswith('/qa') %}
+      {% if not admin_settings_visible %}<li class="nav-section">PRODUCT</li>{% endif %}
+      <li class="nav-item">
+        <a href="#productMgmtCollapse" class="nav-link d-flex align-items-center {% if _qa_on %}active{% endif %}"
+           data-bs-toggle="collapse" role="button"
+           aria-expanded="{{ 'true' if _qa_on else 'false' }}" aria-controls="productMgmtCollapse">
+          <i class="bi bi-kanban me-2"></i> {{ sidebar_label('qa', 'Product Management') }}
+          <i class="bi bi-chevron-down ms-auto small transition-icon"></i>
+        </a>
+        <div class="collapse {% if _qa_on %}show{% endif %}" id="productMgmtCollapse">
+          <ul class="nav flex-column ps-3 pb-1">
+            {% if _pm_dash %}<li><a href="/qa/" class="nav-link py-1 small {% if _qa_on and not _qa_uat and not _qa_ux %}active{% endif %}">
+              <i class="bi bi-speedometer2 me-2"></i> QA Dashboard
+            </a></li>{% endif %}
+            {% if _pm_uat %}<li><a href="/qa/uat" class="nav-link py-1 small {% if _qa_uat %}active{% endif %}">
+              <i class="bi bi-person-check me-2"></i> UAT Analysis
+            </a></li>{% endif %}
+            {% if _pm_ux %}<li><a href="/qa/workflow" class="nav-link py-1 small {% if _qa_ux %}active{% endif %}">
+              <i class="bi bi-signpost-2 me-2"></i> UX Journeys
+            </a></li>{% endif %}
+          </ul>
+        </div>
+      </li>
       {% endif %}
 
       {# Application Settings — collapsible group. Standalone (not nested inside

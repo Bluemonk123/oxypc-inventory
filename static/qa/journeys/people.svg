@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1118 1099" width="1118" height="1099" font-family="Helvetica,Arial,sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="100" y="80" font-size="52" font-weight="bold" fill="#0e3a7a">OxyPC Database Map — Users & Access</text>
+<text x="100" y="120" font-size="22" fill="#5b6878">PK = primary key · FK = foreign key · UK = column other tables link to · lines read 1 parent → ∞ child rows, coloured by the parent table's module</text>
+<rect x="140" y="240" width="878" height="779" rx="18" fill="#F1F1F4" stroke="#55566A" stroke-width="3"/>
+<text x="204" y="296" font-size="34" font-weight="bold" fill="#55566A">Users &amp; Access <tspan font-size="18" font-weight="normal" fill="#5b6878">9 tables</tspan></text>
+<path d="M504,389.75 C564,389.75 594,394.78 654,394.78" fill="none" stroke="#55566A" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="386.75" font-size="11" fill="#55566A">1</text><text x="636" y="391.78" font-size="13" fill="#55566A">∞</text>
+<path d="M504,415.5 C564,415.5 594,676.78 654,676.78" fill="none" stroke="#55566A" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="412.5" font-size="11" fill="#55566A">1</text><text x="636" y="673.78" font-size="13" fill="#55566A">∞</text>
+<path d="M504,554.78 C564,554.78 594,535.78 654,535.78" fill="none" stroke="#55566A" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="551.78" font-size="11" fill="#55566A">1</text><text x="636" y="532.78" font-size="13" fill="#55566A">∞</text>
+<path d="M504,441.25 C564,441.25 594,817.78 654,817.78" fill="none" stroke="#55566A" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="438.25" font-size="11" fill="#55566A">1</text><text x="636" y="814.78" font-size="13" fill="#55566A">∞</text>
+<rect x="204" y="336" width="300" height="131" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="336" width="300" height="28" rx="4" fill="#55566A"/>
+<text x="212" y="355" font-size="14" font-weight="bold" fill="#fff">users</text>
+<text x="212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="397" font-size="11"><tspan fill="#6b4fa0" font-weight="bold">UK</tspan><tspan fill="#17202b" dx="6">username</tspan></text>
+<text x="212" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">manager_username</tspan></text>
+<text x="212" y="435" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">reports_to</tspan></text>
+<text x="212" y="454" font-size="11" fill="#7A8696">+ 12 more fields</text>
+<rect x="204" y="515" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="515" width="300" height="28" rx="4" fill="#55566A"/>
+<text x="212" y="534" font-size="14" font-weight="bold" fill="#fff">attendance_groups</text>
+<text x="212" y="557" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="576" font-size="11" fill="#7A8696">+ 5 more fields</text>
+<rect x="204" y="637" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="637" width="300" height="28" rx="4" fill="#55566A"/>
+<text x="212" y="656" font-size="14" font-weight="bold" fill="#fff">custom_roles</text>
+<text x="212" y="679" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="698" font-size="11" fill="#7A8696">+ 4 more fields</text>
+<rect x="204" y="759" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="759" width="300" height="28" rx="4" fill="#55566A"/>
+<text x="212" y="778" font-size="14" font-weight="bold" fill="#fff">role_additional_permissions</text>
+<text x="212" y="801" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="820" font-size="11" fill="#7A8696">+ 17 more fields</text>
+<rect x="204" y="881" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="881" width="300" height="28" rx="4" fill="#55566A"/>
+<text x="212" y="900" font-size="14" font-weight="bold" fill="#fff">role_module_permissions</text>
+<text x="212" y="923" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="942" font-size="11" fill="#7A8696">+ 13 more fields</text>
+<rect x="654" y="336" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="654" y="336" width="300" height="28" rx="4" fill="#55566A"/>
+<text x="662" y="355" font-size="14" font-weight="bold" fill="#fff">attendance</text>
+<text x="662" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="662" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">user_id</tspan></text>
+<text x="662" y="416" font-size="11" fill="#7A8696">+ 11 more fields</text>
+<rect x="654" y="477" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="654" y="477" width="300" height="28" rx="4" fill="#55566A"/>
+<text x="662" y="496" font-size="14" font-weight="bold" fill="#fff">attendance_group_members</text>
+<text x="662" y="519" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="662" y="538" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">group_id</tspan></text>
+<text x="662" y="557" font-size="11" fill="#7A8696">+ 2 more fields</text>
+<rect x="654" y="618" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="654" y="618" width="300" height="28" rx="4" fill="#55566A"/>
+<text x="662" y="637" font-size="14" font-weight="bold" fill="#fff">login_logs</text>
+<text x="662" y="660" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="662" y="679" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">user_id</tspan></text>
+<text x="662" y="698" font-size="11" fill="#7A8696">+ 4 more fields</text>
+<rect x="654" y="759" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="654" y="759" width="300" height="28" rx="4" fill="#55566A"/>
+<text x="662" y="778" font-size="14" font-weight="bold" fill="#fff">user_permissions</text>
+<text x="662" y="801" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="662" y="820" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">user_id</tspan></text>
+<text x="662" y="839" font-size="11" fill="#7A8696">+ 4 more fields</text>
+</svg>

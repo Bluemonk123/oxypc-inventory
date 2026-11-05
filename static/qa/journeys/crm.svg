@@ -1,0 +1,265 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2788 1655" width="2788" height="1655" font-family="Helvetica,Arial,sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="100" y="80" font-size="52" font-weight="bold" fill="#0e3a7a">OxyPC Database Map — CRM</text>
+<text x="100" y="120" font-size="22" fill="#5b6878">PK = primary key · FK = foreign key · UK = column other tables link to · lines read 1 parent → ∞ child rows, coloured by the parent table's module</text>
+<rect x="140" y="240" width="2548" height="1335" rx="18" fill="#E8F4F8" stroke="#1F7A93" stroke-width="3"/>
+<text x="204" y="296" font-size="34" font-weight="bold" fill="#1F7A93">CRM <tspan font-size="18" font-weight="normal" fill="#5b6878">27 tables</tspan></text>
+<path d="M504,397.73333333333335 C808.0,397.73333333333335 960.0,893.78 1264,893.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="394.73333333333335" font-size="11" fill="#1F7A93">1</text><text x="1246" y="890.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,727.3333333333334 C1126.0,727.3333333333334 1172.0,912.78 1264,912.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="724.3333333333334" font-size="11" fill="#1F7A93">1</text><text x="1246" y="909.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1564,384.6 C1656.0,384.6 1702.0,394.78 1794,394.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1572" y="381.6" font-size="11" fill="#1F7A93">1</text><text x="1776" y="391.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,540.8 C1338.0,540.8 1490.0,413.78 1794,413.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="537.8" font-size="11" fill="#1F7A93">1</text><text x="1776" y="410.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,373.2 C1020.0,373.2 1278.0,432.78 1794,432.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="370.2" font-size="11" fill="#1F7A93">1</text><text x="1776" y="429.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,434.0 C1126.0,434.0 1172.0,1476.78 1264,1476.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="431.0" font-size="11" fill="#1F7A93">1</text><text x="1246" y="1473.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,367.06666666666666 C596.0,367.06666666666666 642.0,394.78 734,394.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="364.06666666666666" font-size="11" fill="#1F7A93">1</text><text x="716" y="391.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1564,446.4 C1656.0,446.4 1702.0,950.78 1794,950.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1572" y="443.4" font-size="11" fill="#1F7A93">1</text><text x="1776" y="947.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,420.0 C1126.0,420.0 1172.0,1335.78 1264,1335.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="417.0" font-size="11" fill="#1F7A93">1</text><text x="1246" y="1332.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,376.26666666666665 C1232.0,376.26666666666665 1596.0,535.78 2324,535.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="373.26666666666665" font-size="11" fill="#1F7A93">1</text><text x="2306" y="532.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,574.4 C1550.0,574.4 1808.0,611.78 2324,611.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="571.4" font-size="11" fill="#1F7A93">1</text><text x="2306" y="608.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M2094,432.6666666666667 C2186.0,432.6666666666667 2232.0,630.78 2324,630.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="2102" y="429.6666666666667" font-size="11" fill="#1F7A93">1</text><text x="2306" y="627.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,400.8 C596.0,400.8 642.0,996.78 734,996.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="397.8" font-size="11" fill="#1F7A93">1</text><text x="716" y="993.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,391.6 C808.0,391.6 960.0,733.78 1264,733.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="388.6" font-size="11" fill="#1F7A93">1</text><text x="1246" y="730.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,705.6666666666666 C1126.0,705.6666666666666 1172.0,752.78 1264,752.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="702.6666666666666" font-size="11" fill="#1F7A93">1</text><text x="1246" y="749.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M2094,398.3333333333333 C2186.0,398.3333333333333 2232.0,394.78 2324,394.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="2102" y="395.3333333333333" font-size="11" fill="#1F7A93">1</text><text x="2306" y="391.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,392.0 C1126.0,392.0 1172.0,573.78 1264,573.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="389.0" font-size="11" fill="#1F7A93">1</text><text x="1246" y="570.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,382.4 C808.0,382.4 960.0,592.78 1264,592.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="379.4" font-size="11" fill="#1F7A93">1</text><text x="1246" y="589.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1564,571.0 C1656.0,571.0 1702.0,809.78 1794,809.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1572" y="568.0" font-size="11" fill="#1F7A93">1</text><text x="1776" y="806.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,406.93333333333334 C1020.0,406.93333333333334 1278.0,1232.78 1794,1232.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="403.93333333333334" font-size="11" fill="#1F7A93">1</text><text x="1776" y="1229.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1564,599.0 C1656.0,599.0 1702.0,1270.78 1794,1270.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1572" y="596.0" font-size="11" fill="#1F7A93">1</text><text x="1776" y="1267.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,406.0 C1338.0,406.0 1490.0,1289.78 1794,1289.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="403.0" font-size="11" fill="#1F7A93">1</text><text x="1776" y="1286.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,370.1333333333333 C808.0,370.1333333333333 960.0,394.78 1264,394.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="367.1333333333333" font-size="11" fill="#1F7A93">1</text><text x="1246" y="391.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,378.0 C1126.0,378.0 1172.0,413.78 1264,413.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="375.0" font-size="11" fill="#1F7A93">1</text><text x="1246" y="410.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,557.6 C1126.0,557.6 1172.0,432.78 1264,432.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="554.6" font-size="11" fill="#1F7A93">1</text><text x="1246" y="429.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,836.78 C1126.0,836.78 1172.0,1053.78 1264,1053.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="833.78" font-size="11" fill="#1F7A93">1</text><text x="1246" y="1050.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,379.3333333333333 C596.0,379.3333333333333 642.0,554.78 734,554.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="376.3333333333333" font-size="11" fill="#1F7A93">1</text><text x="716" y="551.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1264,405.2 C1172.0,405.2 1126.0,573.78 1034,573.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1250" y="402.2" font-size="11" fill="#1F7A93">1</text><text x="1044" y="570.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,385.46666666666664 C1020.0,385.46666666666664 1278.0,592.78 1794,592.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="382.46666666666664" font-size="11" fill="#1F7A93">1</text><text x="1776" y="589.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1564,425.8 C1656.0,425.8 1702.0,668.78 1794,668.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1572" y="422.8" font-size="11" fill="#1F7A93">1</text><text x="1776" y="665.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,394.6666666666667 C1232.0,394.6666666666667 1596.0,790.78 2324,790.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="391.6666666666667" font-size="11" fill="#1F7A93">1</text><text x="2306" y="787.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M2094,554.78 C2186.0,554.78 2232.0,809.78 2324,809.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="2102" y="551.78" font-size="11" fill="#1F7A93">1</text><text x="2306" y="806.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1034,591.2 C1126.0,591.2 1172.0,1194.78 1264,1194.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1042" y="588.2" font-size="11" fill="#1F7A93">1</text><text x="1246" y="1191.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,388.53333333333336 C596.0,388.53333333333336 642.0,714.78 734,714.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="385.53333333333336" font-size="11" fill="#1F7A93">1</text><text x="716" y="711.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M1564,714.78 C1656.0,714.78 1702.0,1091.78 1794,1091.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1572" y="711.78" font-size="11" fill="#1F7A93">1</text><text x="1776" y="1088.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,497.78 C596.0,497.78 642.0,855.78 734,855.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="494.78" font-size="11" fill="#1F7A93">1</text><text x="716" y="852.78" font-size="13" fill="#1F7A93">∞</text>
+<path d="M504,403.8666666666667 C596.0,403.8666666666667 642.0,1137.78 734,1137.78" fill="none" stroke="#1F7A93" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="400.8666666666667" font-size="11" fill="#1F7A93">1</text><text x="716" y="1134.78" font-size="13" fill="#1F7A93">∞</text>
+<rect x="204" y="336" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="336" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="212" y="355" font-size="14" font-weight="bold" fill="#fff">crm_contacts</text>
+<text x="212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="397" font-size="11" fill="#7A8696">+ 46 more fields</text>
+<rect x="204" y="458" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="458" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="212" y="477" font-size="14" font-weight="bold" fill="#fff">crm_lead_groups</text>
+<text x="212" y="500" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="519" font-size="11" fill="#7A8696">+ 4 more fields</text>
+<rect x="204" y="580" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="580" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="212" y="599" font-size="14" font-weight="bold" fill="#fff">crm_grade_price_matrix</text>
+<text x="212" y="622" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="641" font-size="11" fill="#7A8696">+ 12 more fields</text>
+<rect x="204" y="702" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="702" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="212" y="721" font-size="14" font-weight="bold" fill="#fff">telecalling_sessions</text>
+<text x="212" y="744" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="763" font-size="11" fill="#7A8696">+ 9 more fields</text>
+<rect x="734" y="336" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="734" y="336" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="742" y="355" font-size="14" font-weight="bold" fill="#fff">crm_sourcing_deals</text>
+<text x="742" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="742" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="742" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">linked_lot_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ lots</tspan></text>
+<text x="742" y="435" font-size="11" fill="#7A8696">+ 31 more fields</text>
+<rect x="734" y="496" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="734" y="496" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="742" y="515" font-size="14" font-weight="bold" fill="#fff">crm_sales_opportunities</text>
+<text x="742" y="538" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="742" y="557" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="742" y="576" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">quote_id</tspan></text>
+<text x="742" y="595" font-size="11" fill="#7A8696">+ 20 more fields</text>
+<rect x="734" y="656" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="734" y="656" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="742" y="675" font-size="14" font-weight="bold" fill="#fff">crm_contact_locations</text>
+<text x="742" y="698" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="742" y="717" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="742" y="736" font-size="11" fill="#7A8696">+ 6 more fields</text>
+<rect x="734" y="797" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="734" y="797" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="742" y="816" font-size="14" font-weight="bold" fill="#fff">crm_leads</text>
+<text x="742" y="839" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="742" y="858" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">group_id</tspan></text>
+<text x="742" y="877" font-size="11" fill="#7A8696">+ 21 more fields</text>
+<rect x="734" y="938" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="734" y="938" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="742" y="957" font-size="14" font-weight="bold" fill="#fff">crm_activities</text>
+<text x="742" y="980" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="742" y="999" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="742" y="1018" font-size="11" fill="#7A8696">+ 12 more fields</text>
+<rect x="734" y="1079" width="300" height="131" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="734" y="1079" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="742" y="1098" font-size="14" font-weight="bold" fill="#fff">crm_contact_team_members</text>
+<text x="742" y="1121" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="742" y="1140" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="742" y="1159" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">user_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="742" y="1178" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">created_by</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ users</tspan></text>
+<text x="742" y="1197" font-size="11" fill="#7A8696">+ 2 more fields</text>
+<rect x="1264" y="336" width="300" height="131" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1264" y="336" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1272" y="355" font-size="14" font-weight="bold" fill="#fff">crm_quotes</text>
+<text x="1272" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1272" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="1272" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">sourcing_deal_id</tspan></text>
+<text x="1272" y="435" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">opportunity_id</tspan></text>
+<text x="1272" y="454" font-size="11" fill="#7A8696">+ 15 more fields</text>
+<rect x="1264" y="515" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1264" y="515" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1272" y="534" font-size="14" font-weight="bold" fill="#fff">crm_purchase_orders</text>
+<text x="1272" y="557" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1272" y="576" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">deal_id</tspan></text>
+<text x="1272" y="595" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="1272" y="614" font-size="11" fill="#7A8696">+ 26 more fields</text>
+<rect x="1264" y="675" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1264" y="675" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1272" y="694" font-size="14" font-weight="bold" fill="#fff">deals</text>
+<text x="1272" y="717" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1272" y="736" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="1272" y="755" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">location_id</tspan></text>
+<text x="1272" y="774" font-size="11" fill="#7A8696">+ 10 more fields</text>
+<rect x="1264" y="835" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1264" y="835" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1272" y="854" font-size="14" font-weight="bold" fill="#fff">crm_contact_numbers</text>
+<text x="1272" y="877" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1272" y="896" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="1272" y="915" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">location_id</tspan></text>
+<text x="1272" y="934" font-size="11" fill="#7A8696">+ 6 more fields</text>
+<rect x="1264" y="995" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1264" y="995" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1272" y="1014" font-size="14" font-weight="bold" fill="#fff">crm_lead_calls</text>
+<text x="1272" y="1037" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1272" y="1056" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lead_id</tspan></text>
+<text x="1272" y="1075" font-size="11" fill="#7A8696">+ 12 more fields</text>
+<rect x="1264" y="1136" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1264" y="1136" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1272" y="1155" font-size="14" font-weight="bold" fill="#fff">crm_sales_steps</text>
+<text x="1272" y="1178" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1272" y="1197" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">deal_id</tspan></text>
+<text x="1272" y="1216" font-size="11" fill="#7A8696">+ 11 more fields</text>
+<rect x="1264" y="1277" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1264" y="1277" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1272" y="1296" font-size="14" font-weight="bold" fill="#fff">crm_sourcing_deal_line_items</text>
+<text x="1272" y="1319" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1272" y="1338" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">deal_id</tspan></text>
+<text x="1272" y="1357" font-size="11" fill="#7A8696">+ 11 more fields</text>
+<rect x="1264" y="1418" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1264" y="1418" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1272" y="1437" font-size="14" font-weight="bold" fill="#fff">crm_sourcing_steps</text>
+<text x="1272" y="1460" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1272" y="1479" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">deal_id</tspan></text>
+<text x="1272" y="1498" font-size="11" fill="#7A8696">+ 11 more fields</text>
+<rect x="1794" y="336" width="300" height="131" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1794" y="336" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1802" y="355" font-size="14" font-weight="bold" fill="#fff">crm_sales_orders</text>
+<text x="1802" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1802" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">quote_id</tspan></text>
+<text x="1802" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">deal_id</tspan></text>
+<text x="1802" y="435" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="1802" y="454" font-size="11" fill="#7A8696">+ 10 more fields</text>
+<rect x="1794" y="515" width="300" height="188" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1794" y="515" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1802" y="534" font-size="14" font-weight="bold" fill="#fff">telecalling_records</text>
+<text x="1802" y="557" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1802" y="576" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealers</tspan></text>
+<text x="1802" y="595" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">crm_contact_id</tspan></text>
+<text x="1802" y="614" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ lots</tspan></text>
+<text x="1802" y="633" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_line_item_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ lot_line_items</tspan></text>
+<text x="1802" y="652" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_order_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealer_orders</tspan></text>
+<text x="1802" y="671" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">crm_quote_id</tspan></text>
+<text x="1802" y="690" font-size="11" fill="#7A8696">+ 35 more fields</text>
+<rect x="1794" y="751" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1794" y="751" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1802" y="770" font-size="14" font-weight="bold" fill="#fff">crm_po_line_items</text>
+<text x="1802" y="793" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1802" y="812" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">po_id</tspan></text>
+<text x="1802" y="831" font-size="11" fill="#7A8696">+ 10 more fields</text>
+<rect x="1794" y="892" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1794" y="892" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1802" y="911" font-size="14" font-weight="bold" fill="#fff">crm_quote_items</text>
+<text x="1802" y="934" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1802" y="953" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">quote_id</tspan></text>
+<text x="1802" y="972" font-size="11" fill="#7A8696">+ 10 more fields</text>
+<rect x="1794" y="1033" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1794" y="1033" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1802" y="1052" font-size="14" font-weight="bold" fill="#fff">deal_items</text>
+<text x="1802" y="1075" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1802" y="1094" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">deal_id</tspan></text>
+<text x="1802" y="1113" font-size="11" fill="#7A8696">+ 5 more fields</text>
+<rect x="1794" y="1174" width="300" height="150" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1794" y="1174" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="1802" y="1193" font-size="14" font-weight="bold" fill="#fff">supplier_payments</text>
+<text x="1802" y="1216" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1802" y="1235" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="1802" y="1254" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ lots</tspan></text>
+<text x="1802" y="1273" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">po_id</tspan></text>
+<text x="1802" y="1292" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">sourcing_deal_id</tspan></text>
+<text x="1802" y="1311" font-size="11" fill="#7A8696">+ 13 more fields</text>
+<rect x="2324" y="336" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2324" y="336" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="2332" y="355" font-size="14" font-weight="bold" fill="#fff">crm_sales_order_items</text>
+<text x="2332" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2332" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">so_id</tspan></text>
+<text x="2332" y="416" font-size="11" fill="#7A8696">+ 9 more fields</text>
+<rect x="2324" y="477" width="300" height="188" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2324" y="477" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="2332" y="496" font-size="14" font-weight="bold" fill="#fff">customer_receipts</text>
+<text x="2332" y="519" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2332" y="538" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">contact_id</tspan></text>
+<text x="2332" y="557" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealers</tspan></text>
+<text x="2332" y="576" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">sale_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ sales</tspan></text>
+<text x="2332" y="595" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_order_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealer_orders</tspan></text>
+<text x="2332" y="614" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">opportunity_id</tspan></text>
+<text x="2332" y="633" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">so_id</tspan></text>
+<text x="2332" y="652" font-size="11" fill="#7A8696">+ 12 more fields</text>
+<rect x="2324" y="713" width="300" height="131" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="2324" y="713" width="300" height="28" rx="4" fill="#1F7A93"/>
+<text x="2332" y="732" font-size="14" font-weight="bold" fill="#fff">telecalling_assignments</text>
+<text x="2332" y="755" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="2332" y="774" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealers</tspan></text>
+<text x="2332" y="793" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">crm_contact_id</tspan></text>
+<text x="2332" y="812" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">call_record_id</tspan></text>
+<text x="2332" y="831" font-size="11" fill="#7A8696">+ 14 more fields</text>
+</svg>

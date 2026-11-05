@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1668 1259" width="1668" height="1259" font-family="Helvetica,Arial,sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="100" y="80" font-size="52" font-weight="bold" fill="#0e3a7a">OxyPC Database Map — Care & Tickets</text>
+<text x="100" y="120" font-size="22" fill="#5b6878">PK = primary key · FK = foreign key · UK = column other tables link to · lines read 1 parent → ∞ child rows, coloured by the parent table's module</text>
+<rect x="140" y="240" width="1428" height="939" rx="18" fill="#EDF5F3" stroke="#2E7D6B" stroke-width="3"/>
+<text x="204" y="296" font-size="34" font-weight="bold" fill="#2E7D6B">Care &amp; Tickets <tspan font-size="18" font-weight="normal" fill="#5b6878">11 tables</tspan></text>
+<path d="M1004,432.6666666666667 C1084.0,432.6666666666667 1124.0,554.78 1204,554.78" fill="none" stroke="#2E7D6B" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1012" y="429.6666666666667" font-size="11" fill="#2E7D6B">1</text><text x="1186" y="551.78" font-size="13" fill="#2E7D6B">∞</text>
+<path d="M504,385.0 C784.0,385.0 924.0,394.78 1204,394.78" fill="none" stroke="#2E7D6B" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="382.0" font-size="11" fill="#2E7D6B">1</text><text x="1186" y="391.78" font-size="13" fill="#2E7D6B">∞</text>
+<path d="M1004,398.3333333333333 C1084.0,398.3333333333333 1124.0,413.78 1204,413.78" fill="none" stroke="#2E7D6B" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1012" y="395.3333333333333" font-size="11" fill="#2E7D6B">1</text><text x="1186" y="410.78" font-size="13" fill="#2E7D6B">∞</text>
+<path d="M504,535.78 C584.0,535.78 624.0,714.78 704,714.78" fill="none" stroke="#2E7D6B" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="532.78" font-size="11" fill="#2E7D6B">1</text><text x="686" y="711.78" font-size="13" fill="#2E7D6B">∞</text>
+<path d="M504,406.0 C584.0,406.0 624.0,394.78 704,394.78" fill="none" stroke="#2E7D6B" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="403.0" font-size="11" fill="#2E7D6B">1</text><text x="686" y="391.78" font-size="13" fill="#2E7D6B">∞</text>
+<path d="M504,427.0 C584.0,427.0 624.0,573.78 704,573.78" fill="none" stroke="#2E7D6B" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="424.0" font-size="11" fill="#2E7D6B">1</text><text x="686" y="570.78" font-size="13" fill="#2E7D6B">∞</text>
+<rect x="204" y="336" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="336" width="300" height="28" rx="4" fill="#2E7D6B"/>
+<text x="212" y="355" font-size="14" font-weight="bold" fill="#fff">care_device_pairings</text>
+<text x="212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="212" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">sale_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ sales</tspan></text>
+<text x="212" y="435" font-size="11" fill="#7A8696">+ 18 more fields</text>
+<rect x="204" y="496" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="496" width="300" height="28" rx="4" fill="#2E7D6B"/>
+<text x="212" y="515" font-size="14" font-weight="bold" fill="#fff">care_offers</text>
+<text x="212" y="538" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="557" font-size="11" fill="#7A8696">+ 16 more fields</text>
+<rect x="204" y="618" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="618" width="300" height="28" rx="4" fill="#2E7D6B"/>
+<text x="212" y="637" font-size="14" font-weight="bold" fill="#fff">care_audit_logs</text>
+<text x="212" y="660" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="679" font-size="11" fill="#7A8696">+ 9 more fields</text>
+<rect x="204" y="740" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="740" width="300" height="28" rx="4" fill="#2E7D6B"/>
+<text x="212" y="759" font-size="14" font-weight="bold" fill="#fff">care_dispatch_exceptions</text>
+<text x="212" y="782" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="801" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="212" y="820" font-size="11" fill="#7A8696">+ 6 more fields</text>
+<rect x="204" y="881" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="881" width="300" height="28" rx="4" fill="#2E7D6B"/>
+<text x="212" y="900" font-size="14" font-weight="bold" fill="#fff">care_warranties</text>
+<text x="212" y="923" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="942" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="212" y="961" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">sale_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ sales</tspan></text>
+<text x="212" y="980" font-size="11" fill="#7A8696">+ 12 more fields</text>
+<rect x="204" y="1041" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="1041" width="300" height="28" rx="4" fill="#2E7D6B"/>
+<text x="212" y="1060" font-size="14" font-weight="bold" fill="#fff">tickets</text>
+<text x="212" y="1083" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="1102" font-size="11" fill="#7A8696">+ 10 more fields</text>
+<rect x="704" y="336" width="300" height="131" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="336" width="300" height="28" rx="4" fill="#2E7D6B"/>
+<text x="712" y="355" font-size="14" font-weight="bold" fill="#fff">care_support_tickets</text>
+<text x="712" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">pairing_id</tspan></text>
+<text x="712" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="712" y="435" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">sale_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ sales</tspan></text>
+<text x="712" y="454" font-size="11" fill="#7A8696">+ 20 more fields</text>
+<rect x="704" y="515" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="515" width="300" height="28" rx="4" fill="#2E7D6B"/>
+<text x="712" y="534" font-size="14" font-weight="bold" fill="#fff">care_agent_events</text>
+<text x="712" y="557" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="576" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">pairing_id</tspan></text>
+<text x="712" y="595" font-size="11" fill="#7A8696">+ 4 more fields</text>
+<rect x="704" y="656" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="656" width="300" height="28" rx="4" fill="#2E7D6B"/>
+<text x="712" y="675" font-size="14" font-weight="bold" fill="#fff">care_offer_deliveries</text>
+<text x="712" y="698" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="717" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">offer_id</tspan></text>
+<text x="712" y="736" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="712" y="755" font-size="11" fill="#7A8696">+ 5 more fields</text>
+<rect x="1204" y="336" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1204" y="336" width="300" height="28" rx="4" fill="#2E7D6B"/>
+<text x="1212" y="355" font-size="14" font-weight="bold" fill="#fff">care_diagnostic_snapshots</text>
+<text x="1212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1212" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">pairing_id</tspan></text>
+<text x="1212" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">ticket_id</tspan></text>
+<text x="1212" y="435" font-size="11" fill="#7A8696">+ 18 more fields</text>
+<rect x="1204" y="496" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1204" y="496" width="300" height="28" rx="4" fill="#2E7D6B"/>
+<text x="1212" y="515" font-size="14" font-weight="bold" fill="#fff">care_ticket_events</text>
+<text x="1212" y="538" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1212" y="557" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">ticket_id</tspan></text>
+<text x="1212" y="576" font-size="11" fill="#7A8696">+ 7 more fields</text>
+</svg>

@@ -55,7 +55,33 @@ router = APIRouter(prefix="/qa", tags=["qa-uat"], dependencies=[Depends(verify_c
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 # Any logged-in user can view; admin + inventory_manager + qc_inspector can edit
-_view  = get_current_user
+_UAT_PATHS = ("/qa/uat", "/qa/requirements", "/qa/test-cases", "/qa/defects")
+_UX_PATHS = ("/qa/workflow", "/qa/journeys", "/qa/database-diagram", "/qa/stage-workflows")
+
+
+def qa_module_for(path: str) -> str:
+    """Permission Matrix row for a Product Management page (2026-11-05):
+    QA Dashboard = "qa", UAT Analysis = "qa_uat", UX Journeys = "qa_ux"."""
+    if path.startswith(_UAT_PATHS):
+        return "qa_uat"
+    if path.startswith(_UX_PATHS):
+        return "qa_ux"
+    return "qa"
+
+
+async def _qa_access(request: Request, current_user: User = Depends(get_current_user)) -> User:
+    """Product Management pages (2026-11-05, Pankaj): admin, or a role with
+    Enable ticked on that page's Permission Matrix row (QA Dashboard / UAT
+    Analysis / UX Journeys). Strict — a role with no row is NOT allowed (was:
+    any signed-in user could open /qa/... by typing the address)."""
+    from models.role_permissions import has_explicit_perm
+    role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if not has_explicit_perm(role, qa_module_for(request.url.path)):
+        raise HTTPException(status_code=403, detail="Your role does not have access to this Product Management page.")
+    return current_user
+
+
+_view  = _qa_access
 _edit  = require_roles(UserRole.admin, UserRole.inventory_manager, UserRole.qc_inspector)
 _admin = require_roles(UserRole.admin, UserRole.inventory_manager)
 
@@ -545,9 +571,12 @@ async def req_list(
         q = q.where(QARequirement.priority == priority)
     res = await db.execute(q)
     reqs = res.scalars().all()
+    tc_counts = {str(rid): n for rid, n in (await db.execute(
+        select(QATestCase.requirement_id, func.count()).where(QATestCase.requirement_id.isnot(None))
+        .group_by(QATestCase.requirement_id))).all()}
     return templates.TemplateResponse("qa/requirements.html", {
         "request": request, "current_user": current_user,
-        "reqs": reqs,
+        "reqs": reqs, "tc_counts": tc_counts,
         "statuses": list(RequirementStatus),
         "priorities": list(RequirementPriority),
         "sources": list(RequirementSource),
@@ -1044,6 +1073,31 @@ async def workflow_view(
         "active_tab": tab if tab in _FLOW_TAB_KEYS else "new_grn",
         "uploads": {k: await _flow_upload(db, k) for k in _FLOW_TAB_KEYS},
     })
+
+
+def _journeys_page(request, current_user, view, module):
+    """User Journeys / Database Diagram (2026-11-05, split from the one
+    Journey Diagrams tab): the combined view on top, one module at a time
+    below. Data: services/qa_journeys.py; diagrams: static/qa/journeys/*.svg."""
+    from services.qa_journeys import MODULES, COMBINED_PHASES, combined_columns
+    keys = [m["key"] for m in MODULES]
+    return templates.TemplateResponse("qa/journeys.html", {
+        "request": request, "current_user": current_user, "view": view,
+        "active_module": module if module in keys else keys[0],
+        "modules": MODULES, "phases": COMBINED_PHASES, "columns": combined_columns(),
+    })
+
+
+@router.get("/journeys", response_class=HTMLResponse)
+async def journeys_view(request: Request, module: str = "", current_user: User = Depends(_view)):
+    """QA › User Journeys: the end-to-end journey, then each module's."""
+    return _journeys_page(request, current_user, "journeys", module)
+
+
+@router.get("/database-diagram", response_class=HTMLResponse)
+async def database_diagram_view(request: Request, module: str = "", current_user: User = Depends(_view)):
+    """QA › Database Diagram: the combined diagram, then each module's."""
+    return _journeys_page(request, current_user, "diagrams", module)
 
 
 # ── Workflow downloads + uploaded diagrams (2026-11-04) ───────────────────────

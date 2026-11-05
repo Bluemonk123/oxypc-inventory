@@ -1,52 +1,31 @@
-{# Shared QA tab navigation — include at the top of every QA page content block #}
-<ul class="nav nav-tabs mb-4">
+{# Shared QA tab navigation — include at the top of every QA page content block.
+   Product Management (2026-11-05, Pankaj): the QA pages are three sidebar
+   pages, each with its own tabs —
+     QA Dashboard : Dashboard, Releases, RTM
+     UAT Analysis : UAT Board, Requirements, Test Cases, Defects
+     UX Journeys  : Workflows, User Journeys, Database Diagram
+   The group follows the page you are on (qa_group below; base.html's sidebar
+   uses the same rule). #}
+{% set _p = request.url.path %}
+{% set qa_group = 'uat' if (_p.startswith('/qa/uat') or _p.startswith('/qa/requirements') or _p.startswith('/qa/test-cases') or _p.startswith('/qa/defects'))
+              else 'ux' if (_p.startswith('/qa/workflow') or _p.startswith('/qa/journeys') or _p.startswith('/qa/database-diagram') or _p.startswith('/qa/stage-workflows'))
+              else 'dash' %}
+{% set _tabs = {
+  'dash': [('/qa/', 'bi-speedometer2', 'Dashboard'), ('/qa/releases', 'bi-rocket', 'Releases'), ('/qa/rtm', 'bi-table', 'RTM')],
+  'uat':  [('/qa/uat', 'bi-person-check', 'UAT Board'), ('/qa/requirements', 'bi-list-check', 'Requirements'),
+           ('/qa/test-cases', 'bi-clipboard-data', 'Test Cases'), ('/qa/defects', 'bi-bug', 'Defects')],
+  'ux':   [('/qa/workflow', 'bi-diagram-3', 'Workflows'), ('/qa/journeys', 'bi-signpost-2', 'User Journeys'),
+           ('/qa/database-diagram', 'bi-diagram-2', 'Database Diagram')],
+}[qa_group] %}
+<style>
+  .qa-tabs{flex-wrap:nowrap; overflow-x:auto; overflow-y:hidden; scrollbar-width:thin}
+  .qa-tabs .nav-link{white-space:nowrap; padding-left:.9rem; padding-right:.9rem}
+</style>
+<ul class="nav nav-tabs mb-4 qa-tabs">
+  {% for href, icon, label in _tabs %}
+  {% set _on = (_p in ('/qa/', '/qa')) if href == '/qa/' else _p.startswith(href) %}
   <li class="nav-item">
-    <a class="nav-link {% if request.url.path == '/qa/' or request.url.path == '/qa' %}active{% endif %}"
-       href="/qa/">
-      <i class="bi bi-speedometer2 me-1"></i>Dashboard
-    </a>
+    <a class="nav-link {% if _on %}active{% endif %}" href="{{ href }}"><i class="bi {{ icon }} me-1"></i>{{ label }}</a>
   </li>
-  <li class="nav-item">
-    <a class="nav-link {% if '/qa/requirements' in request.url.path %}active{% endif %}"
-       href="/qa/requirements">
-      <i class="bi bi-list-check me-1"></i>Requirements
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link {% if '/qa/test-cases' in request.url.path %}active{% endif %}"
-       href="/qa/test-cases">
-      <i class="bi bi-clipboard-data me-1"></i>Test Cases
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link {% if '/qa/defects' in request.url.path %}active{% endif %}"
-       href="/qa/defects">
-      <i class="bi bi-bug me-1"></i>Defects
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link {% if '/qa/uat' in request.url.path %}active{% endif %}"
-       href="/qa/uat">
-      <i class="bi bi-person-check me-1"></i>UAT Board
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link {% if '/qa/releases' in request.url.path %}active{% endif %}"
-       href="/qa/releases">
-      <i class="bi bi-rocket me-1"></i>Releases
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link {% if '/qa/rtm' in request.url.path %}active{% endif %}"
-       href="/qa/rtm">
-      <i class="bi bi-table me-1"></i>RTM
-    </a>
-  </li>
-  <li class="nav-item">
-    <a class="nav-link {% if '/qa/workflow' in request.url.path %}active{% endif %}"
-       href="/qa/workflow">
-      <i class="bi bi-diagram-3 me-1"></i>Workflow
-    </a>
-  </li>
-  {# Stage Workflows tab removed (2026-11-04): now Workflow → Stage Flows; the old URL redirects there. #}
+  {% endfor %}
 </ul>

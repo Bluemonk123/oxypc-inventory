@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1668 1278" width="1668" height="1278" font-family="Helvetica,Arial,sans-serif">
+<rect width="100%" height="100%" fill="#ffffff"/>
+<text x="100" y="80" font-size="52" font-weight="bold" fill="#0e3a7a">OxyPC Database Map — Trade Partners</text>
+<text x="100" y="120" font-size="22" fill="#5b6878">PK = primary key · FK = foreign key · UK = column other tables link to · lines read 1 parent → ∞ child rows, coloured by the parent table's module</text>
+<rect x="140" y="240" width="1428" height="958" rx="18" fill="#FFF8E1" stroke="#A7801A" stroke-width="3"/>
+<text x="204" y="296" font-size="34" font-weight="bold" fill="#A7801A">Trade Partners <tspan font-size="18" font-weight="normal" fill="#5b6878">13 tables</tspan></text>
+<path d="M504,403.0 C584.0,403.0 624.0,733.78 704,733.78" fill="none" stroke="#A7801A" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="400.0" font-size="11" fill="#A7801A">1</text><text x="686" y="730.78" font-size="13" fill="#A7801A">∞</text>
+<path d="M1004,398.3333333333333 C1084.0,398.3333333333333 1124.0,394.78 1204,394.78" fill="none" stroke="#A7801A" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1012" y="395.3333333333333" font-size="11" fill="#A7801A">1</text><text x="1186" y="391.78" font-size="13" fill="#A7801A">∞</text>
+<path d="M504,416.0 C584.0,416.0 624.0,893.78 704,893.78" fill="none" stroke="#A7801A" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="413.0" font-size="11" fill="#A7801A">1</text><text x="686" y="890.78" font-size="13" fill="#A7801A">∞</text>
+<path d="M504,390.0 C584.0,390.0 624.0,573.78 704,573.78" fill="none" stroke="#A7801A" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="387.0" font-size="11" fill="#A7801A">1</text><text x="686" y="570.78" font-size="13" fill="#A7801A">∞</text>
+<path d="M504,377.0 C584.0,377.0 624.0,394.78 704,394.78" fill="none" stroke="#A7801A" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="512" y="374.0" font-size="11" fill="#A7801A">1</text><text x="686" y="391.78" font-size="13" fill="#A7801A">∞</text>
+<path d="M1004,432.6666666666667 C1084.0,432.6666666666667 1124.0,535.78 1204,535.78" fill="none" stroke="#A7801A" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1012" y="429.6666666666667" font-size="11" fill="#A7801A">1</text><text x="1186" y="532.78" font-size="13" fill="#A7801A">∞</text>
+<path d="M1004,554.78 C1084.0,554.78 1124.0,676.78 1204,676.78" fill="none" stroke="#A7801A" stroke-opacity="0.7" stroke-width="1.6"/>
+<text x="1012" y="551.78" font-size="11" fill="#A7801A">1</text><text x="1186" y="673.78" font-size="13" fill="#A7801A">∞</text>
+<rect x="204" y="336" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="336" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="212" y="355" font-size="14" font-weight="bold" fill="#fff">partner_listings</text>
+<text x="212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ lots</tspan></text>
+<text x="212" y="416" font-size="11" fill="#7A8696">+ 27 more fields</text>
+<rect x="204" y="477" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="477" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="212" y="496" font-size="14" font-weight="bold" fill="#fff">lot_booking_requests</text>
+<text x="212" y="519" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="538" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ lots</tspan></text>
+<text x="212" y="557" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealers</tspan></text>
+<text x="212" y="576" font-size="11" fill="#7A8696">+ 4 more fields</text>
+<rect x="204" y="637" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="637" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="212" y="656" font-size="14" font-weight="bold" fill="#fff">lot_dealer_visibility</text>
+<text x="212" y="679" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="698" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ lots</tspan></text>
+<text x="212" y="717" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealers</tspan></text>
+<text x="212" y="736" font-size="11" fill="#7A8696">+ 2 more fields</text>
+<rect x="204" y="797" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="797" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="212" y="816" font-size="14" font-weight="bold" fill="#fff">partner_floor_config</text>
+<text x="212" y="839" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="858" font-size="11" fill="#7A8696">+ 7 more fields</text>
+<rect x="204" y="919" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="919" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="212" y="938" font-size="14" font-weight="bold" fill="#fff">partner_login_logs</text>
+<text x="212" y="961" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="212" y="980" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealers</tspan></text>
+<text x="212" y="999" font-size="11" fill="#7A8696">+ 5 more fields</text>
+<rect x="204" y="1060" width="300" height="74" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="204" y="1060" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="212" y="1079" font-size="14" font-weight="bold" fill="#fff">partner_settings</text>
+<text x="212" y="1102" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">key</tspan></text>
+<text x="212" y="1121" font-size="11" fill="#7A8696">+ 3 more fields</text>
+<rect x="704" y="336" width="300" height="131" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="336" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="712" y="355" font-size="14" font-weight="bold" fill="#fff">partner_bids</text>
+<text x="712" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">listing_id</tspan></text>
+<text x="712" y="416" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">lot_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ lots</tspan></text>
+<text x="712" y="435" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealers</tspan></text>
+<text x="712" y="454" font-size="11" fill="#7A8696">+ 12 more fields</text>
+<rect x="704" y="515" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="515" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="712" y="534" font-size="14" font-weight="bold" fill="#fff">partner_bookings</text>
+<text x="712" y="557" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="576" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">listing_id</tspan></text>
+<text x="712" y="595" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealers</tspan></text>
+<text x="712" y="614" font-size="11" fill="#7A8696">+ 13 more fields</text>
+<rect x="704" y="675" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="675" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="712" y="694" font-size="14" font-weight="bold" fill="#fff">partner_listing_devices</text>
+<text x="712" y="717" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="736" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">listing_id</tspan></text>
+<text x="712" y="755" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">device_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ devices</tspan></text>
+<text x="712" y="774" font-size="11" fill="#7A8696">+ 1 more fields</text>
+<rect x="704" y="835" width="300" height="112" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="704" y="835" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="712" y="854" font-size="14" font-weight="bold" fill="#fff">partner_listing_views</text>
+<text x="712" y="877" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="712" y="896" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">listing_id</tspan></text>
+<text x="712" y="915" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">dealer_id</tspan><tspan fill="#7A8696" font-size="10" dx="4">→ dealers</tspan></text>
+<text x="712" y="934" font-size="11" fill="#7A8696">+ 1 more fields</text>
+<rect x="1204" y="336" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1204" y="336" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="1212" y="355" font-size="14" font-weight="bold" fill="#fff">partner_bid_documents</text>
+<text x="1212" y="378" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1212" y="397" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">bid_id</tspan></text>
+<text x="1212" y="416" font-size="11" fill="#7A8696">+ 5 more fields</text>
+<rect x="1204" y="477" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1204" y="477" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="1212" y="496" font-size="14" font-weight="bold" fill="#fff">partner_bid_payments</text>
+<text x="1212" y="519" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1212" y="538" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">bid_id</tspan></text>
+<text x="1212" y="557" font-size="11" fill="#7A8696">+ 11 more fields</text>
+<rect x="1204" y="618" width="300" height="93" rx="4" fill="#ffffff" stroke="#9AA5B1"/>
+<rect x="1204" y="618" width="300" height="28" rx="4" fill="#A7801A"/>
+<text x="1212" y="637" font-size="14" font-weight="bold" fill="#fff">partner_payment_proofs</text>
+<text x="1212" y="660" font-size="11"><tspan fill="#8a5a00" font-weight="bold">PK</tspan><tspan fill="#17202b" dx="6">id</tspan></text>
+<text x="1212" y="679" font-size="11"><tspan fill="#1F5FA8" font-weight="bold">FK</tspan><tspan fill="#17202b" dx="6">booking_id</tspan></text>
+<text x="1212" y="698" font-size="11" fill="#7A8696">+ 8 more fields</text>
+</svg>

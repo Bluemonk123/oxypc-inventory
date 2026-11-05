@@ -685,6 +685,21 @@ async def startup_event():
     except Exception as _qae:
         print(f"  [QA] Could not auto-track releases: {_qae}")
 
+    # ── Weekly QA Requirements / Test Cases / Defects (2026-11-05) ───────────
+    # Same idea for the other QA pages, which had stopped at 16 July: one
+    # requirement per week, a test case per test file added, a defect per
+    # bug fix — from qa_docs/changelog.txt + test_index.txt. See
+    # services/qa_weekly.py. Idempotent; refreshes the current week.
+    try:
+        from services.qa_weekly import auto_track_weekly_qa
+        from database import AsyncSessionLocal as _ASL8
+        async with _ASL8() as _sess8:
+            _wk = await auto_track_weekly_qa(_sess8)
+        print(f"  [QA] Weekly tracking: {_wk['requirements']} requirement(s), "
+              f"{_wk['test_cases']} test case(s), {_wk['defects']} defect(s) added")
+    except Exception as _qwe:
+        print(f"  [QA] Could not update weekly QA tracking: {_qwe}")
+
     # ── Warm sidebar-footer app version from the latest Deployed QARelease ────
     try:
         from models.qa_uat import QARelease, ReleaseStatus, set_cached_app_version

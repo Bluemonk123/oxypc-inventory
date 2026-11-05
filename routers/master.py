@@ -232,7 +232,11 @@ PERM_MODULES = [
     ("report_receivables",   "Receivables"),
     ("market",               "Market Intel"),
     # ── ADMIN (admin-only) ────────────────────────────────────────────────
+    # Product Management (2026-11-05): one row per page; the sidebar group
+    # shows when any of them is enabled.
     ("qa",                   "QA Dashboard"),
+    ("qa_uat",               "UAT Analysis"),
+    ("qa_ux",                "UX Journeys"),
     ("manuals",              "Manuals"),
     # ── APPLICATION SETTINGS (admin-only by default; grantable via matrix) ─
     ("move_device_internal", "Move Device Internal"),
