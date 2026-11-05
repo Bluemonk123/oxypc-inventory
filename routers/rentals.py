@@ -660,7 +660,8 @@ async def rental_return_submit(
     barcodes: str = Form(""),
     received_date: str = Form(""),
     decision: str = Form(""),
-    notes: str = Form(""),
+    notes: str = Form(""),                   # "Complaint Description" on the form (2026-11-05)
+    return_reason: str = Form(""),           # optional (2026-11-05)
     waiver_reason: str = Form(""),
     db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed),
 ):
@@ -709,6 +710,7 @@ async def rental_return_submit(
             extra_days=amt["extra_days"], outstanding_amount=amt["outstanding"], decision=decision,
             # optional reason when waived (2026-10-29, same as Customer / External returns)
             waiver_reason=(waiver_reason.strip() or None) if decision == "waive_off" else None,
+            return_reason=(return_reason.strip()[:100] or None),
             notes=notes.strip() or None, created_by=current_user.username)
         db.add(ret)
         try:

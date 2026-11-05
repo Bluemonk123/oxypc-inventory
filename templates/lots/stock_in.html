@@ -212,8 +212,9 @@
     <div class="d-flex align-items-center gap-3 flex-wrap">
       <span class="fw-semibold"><i class="bi bi-arrow-return-left me-2"></i>Return Stock</span>
       {# Received / Completed tabs (2026-10-30): Completed = Return Complete
-         (re-sold and exited at Gate Pass); everything else is Received. #}
-      {% set _rs_done = return_stock_rows | selectattr('status', 'equalto', 'Return Complete') | list | length %}
+         (re-sold and exited at Gate Pass) or Stocked In (Only Stock In,
+         2026-11-05); everything else is Received. #}
+      {% set _rs_done = return_stock_rows | selectattr('status', 'in', ['Return Complete', 'Stocked In']) | list | length %}
       <ul class="nav nav-pills nav-sm" id="rsTabs" role="tablist">
         <li class="nav-item"><button type="button" class="nav-link py-1 px-3 active" data-rs-tab="received">
           Received <span class="badge bg-light text-dark ms-1">{{ return_stock_rows|length - _rs_done }}</span></button></li>
@@ -223,11 +224,12 @@
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap">
       {# Search box is moved by JS into the table toolbar, before the pagination.
-         The selected count now shows inside the Assign Bucket button. #}
+         Move to L1/L2 (2026-11-05, replaces Assign Bucket) shows the selected count. #}
       <input type="text" id="rsSearchBox" class="form-control form-control-sm" style="width:220px;"
              placeholder="Search Tag / Serial / Model">
-      <button {% if not can(current_user, 'stock', 'edit') %}hidden {% endif %}type="button" id="rsAssignBucketBtn" class="btn btn-sm btn-primary text-nowrap" disabled>
-        <i class="bi bi-box me-1"></i>Assign Bucket (<span id="rsSelectedCount">0</span>)
+      <button {% if not can(current_user, 'stock', 'edit') %}hidden {% endif %}type="button" id="rsMoveL12Btn" class="btn btn-sm btn-primary text-nowrap" disabled
+              title="Send the ticked Received tags to L1/L2 (unassigned — an engineer uses Pick This)">
+        <i class="bi bi-tools me-1"></i>Move to L1/L2 (<span id="rsSelectedCount">0</span>)
       </button>
     </div>
   </div>
@@ -246,8 +248,8 @@
           {% for row in return_stock_rows %}
           {% set d = row.device %}{% set ret = row.ret %}
           <tr data-rs-search="{{ (d.barcode or '') ~ ' ' ~ (d.serial_no or '') ~ ' ' ~ (d.model or '') }}"
-              data-rs-tab="{{ 'completed' if row.status == 'Return Complete' else 'received' }}">
-            <td>{% if not row.resold %}<input type="checkbox" class="rs-row-check" value="{{ d.barcode }}">{% endif %}</td>
+              data-rs-tab="{{ 'completed' if row.status in ('Return Complete', 'Stocked In') else 'received' }}">
+            <td>{% if row.can_move_l12 %}<input type="checkbox" class="rs-row-check" value="{{ d.barcode }}">{% endif %}</td>
             <td>
               <a href="/devices/{{ d.barcode }}" class="font-monospace text-decoration-none"><code>{{ d.barcode }}</code></a>
               {% if d.tag_return_status and d.tag_return_status.startswith('Replaced by ') %}
@@ -275,14 +277,22 @@
                status filled underneath; moved next to Action. #}
             {% set _st_cls = {'Received': 'bg-secondary', 'Repair Pending': 'bg-warning text-dark',
                               'Payment Pending': 'bg-danger', 'Dispatch Pending': 'bg-primary',
-                              'Return Complete': 'bg-success'} %}
+                              'Ready at Gate Pass': 'bg-info text-dark',
+                              'Return Complete': 'bg-success', 'Stocked In': 'bg-success'} %}
             <td class="text-nowrap rs-stage-cell">
               <span class="badge bg-transparent border border-secondary text-secondary">{{ row.stage_label }}</span>
               <div class="mt-1"><span class="badge rs-status {{ _st_cls.get(row.status, 'bg-secondary') }}">{{ row.status }}</span></div>
             </td>
             <td class="text-nowrap rs-action-cell">
-              {% if row.resold %}
-              <span class="text-muted small">{{ 'Exited' if row.status == 'Return Complete' else 'At Gate Pass' }}</span>
+              {# Action column (2026-11-05): Received -> Verify Payment (if due) +
+                 Only Stock In; Repair Pending / Payment Pending -> Verify Payment
+                 (if due); Dispatch Pending -> Ready to Dispatch; then text only. #}
+              {% if row.stocked_in %}
+              <span class="text-muted small">Stocked In</span>
+              {% elif row.sold_again %}
+              <span class="text-muted small">Sold again</span>
+              {% elif row.resold %}
+              <span class="text-muted small">{{ 'Exited' if row.status == 'Return Complete' else 'Waiting at Gate Pass' }}</span>
               {% else %}
               {# Verify Payment first (payment-due, not yet paid), then Ready to
                  Dispatch (2026-10-30; were Charges / Complete). #}
@@ -295,8 +305,12 @@
                       data-part-cost="{{ row.part_cost if (row.part_cost is not none and can(current_user, 'stock', 'pricing')) else '' }}"
                       data-receipt="{{ ret.payment_reference or '' }}">Verify Payment</button>
               {% endif %}
-              {% if can(current_user, 'stock', 'edit') %}
-              <button type="button" class="btn btn-xs btn-outline-success btn-sm py-0 px-2 rs-complete-btn{{ ' d-none' if _need_pay }}"
+              {% if can(current_user, 'stock', 'edit') and row.can_stock_in %}
+              <button type="button" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2 me-1 rs-stockin-btn"
+                      data-barcode="{{ d.barcode }}" title="No repair needed: keep it as normal stock and close the return">Only Stock In</button>
+              {% endif %}
+              {% if can(current_user, 'stock', 'edit') and row.can_dispatch and not _need_pay %}
+              <button type="button" class="btn btn-xs btn-outline-success btn-sm py-0 px-2 rs-complete-btn"
                       data-barcode="{{ d.barcode }}">Ready to Dispatch</button>
               {% endif %}
               {% endif %}
@@ -309,11 +323,14 @@
   </div>
 </div>
 
-<!-- Bucket / Carton table -->
+<!-- Bucket / Carton table — accordion, collapsed by default (2026-11-05) -->
 <div class="card border-0 shadow-sm mt-4 mb-3">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2 si-acc-head collapsed"
+       role="button" data-bs-toggle="collapse" data-bs-target="#bucketCardBody" aria-expanded="false" aria-controls="bucketCardBody">
     <span class="fw-semibold"><i class="bi bi-box me-2"></i>Buckets / Cartons</span>
+    <i class="bi bi-chevron-down si-acc-chev"></i>
   </div>
+  <div class="collapse si-acc-body" id="bucketCardBody">
   <div class="card-body p-0">
     <div>
       <table id="bucketTable" class="table table-hover mb-0 small">
@@ -325,13 +342,18 @@
       </table>
     </div>
   </div>
+  </div>
 </div>
 
-<!-- Final QC Pass (Buckets): buckets released from Final QC's Devices Passed table -->
+<!-- Final QC Pass (Buckets): buckets released from Final QC's Devices Passed table — accordion, collapsed by default (2026-11-05) -->
 <div class="card border-0 shadow-sm mt-4 mb-3">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
-    <span class="fw-semibold"><i class="bi bi-patch-check me-2"></i>Final QC Pass (Buckets)</span>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2 si-acc-head collapsed"
+       role="button" data-bs-toggle="collapse" data-bs-target="#fqcPassCardBody" aria-expanded="false" aria-controls="fqcPassCardBody">
+    <span class="fw-semibold"><i class="bi bi-patch-check me-2"></i>Final QC Pass (Buckets)
+      <span class="badge bg-light text-dark ms-1">{{ fqc_pass_buckets | length }}</span></span>
+    <i class="bi bi-chevron-down si-acc-chev"></i>
   </div>
+  <div class="collapse si-acc-body" id="fqcPassCardBody">
   <div class="card-body p-0">
     <div>
       <table id="fqcPassTable" class="table table-hover mb-0 small">
@@ -351,28 +373,13 @@
       </table>
     </div>
   </div>
-</div>
-
-<!-- Return Stock: Assign Bucket modal -->
-<div class="modal fade" id="rsAssignBucketModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-sm">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-box me-2"></i>Assign Bucket</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="mb-2 text-muted small"><span id="rsAssignCount">0</span> tag(s) selected</div>
-        <label class="form-label fw-semibold">Bucket Name</label>
-        <input type="text" id="rsBucketName" class="form-control" placeholder="e.g. Carton A1">
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" id="rsAssignBucketSubmit" class="btn btn-primary">Assign</button>
-      </div>
-    </div>
   </div>
 </div>
+<style>
+  .si-acc-head{cursor:pointer; user-select:none}
+  .si-acc-chev{transition:transform .2s}
+  .si-acc-head:not(.collapsed) .si-acc-chev{transform:rotate(180deg)}
+</style>
 
 <!-- Return Stock: Verify modal -->
 <div class="modal fade" id="rsVerifyModal" tabindex="-1" aria-hidden="true">
@@ -1116,6 +1123,13 @@ document.getElementById('editBktSubmit').addEventListener('click', function(){
 // #rsSearchBox drives the table's own search; select-all reaches every row
 // matching that search (scope 'search'), so selection is read through the
 // DataTables API (off-page rows are detached from the DOM).
+// Accordion cards (2026-11-05): tables built while collapsed get their
+// column widths fixed once opened.
+document.querySelectorAll('.si-acc-body').forEach(function (b) {
+  b.addEventListener('shown.bs.collapse', function () {
+    try { $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust(); } catch (e) {}
+  });
+});
 var dtReturnStock = initGlobalTable('#returnStockTable', {
   order: [],
   columnDefs: [{ orderable: false, targets: [0, 14] }],
@@ -1153,41 +1167,28 @@ function rsSelectedBarcodes(){
 function rsUpdateSelectionUi(){
   var n = rsSelectedBarcodes().length;
   document.getElementById('rsSelectedCount').textContent = n;
-  document.getElementById('rsAssignBucketBtn').disabled = n === 0;
+  document.getElementById('rsMoveL12Btn').disabled = n === 0;
 }
 // Header + row checkbox changes are wired by opts.selectAll above.
 document.getElementById('rsSearchBox').addEventListener('keyup', function(){
   dtReturnStock.search(this.value.trim()).draw();
 });
 
-document.getElementById('rsAssignBucketBtn').addEventListener('click', function(){
+// Move to L1/L2 (2026-11-05, replaces Assign Bucket): ticked Received tags
+// go to L1/L2 unassigned (Pick This); the page reloads with the result.
+document.getElementById('rsMoveL12Btn').addEventListener('click', function(){
   var bcs = rsSelectedBarcodes();
   if(!bcs.length) return;
-  document.getElementById('rsAssignCount').textContent = bcs.length;
-  document.getElementById('rsBucketName').value = '';
-  new bootstrap.Modal(document.getElementById('rsAssignBucketModal')).show();
-});
-document.getElementById('rsAssignBucketSubmit').addEventListener('click', function(){
-  var bcs = rsSelectedBarcodes();
-  var name = document.getElementById('rsBucketName').value.trim();
-  if(!name){ alert('Bucket Name is required.'); return; }
+  if(!confirm('Move '+bcs.length+' returned tag(s) to L1/L2? An engineer will take them with Pick This.')) return;
   var fd = new FormData();
   fd.append('csrf_token', getCsrf());
   fd.append('barcodes', bcs.join(','));
-  fd.append('bucket_name', name);
-  fetch('/stock/return-stock/assign-bucket', {method:'POST', body:fd}).then(function(r){return r.json();}).then(function(d){
-    if(d.ok){
-      bootstrap.Modal.getInstance(document.getElementById('rsAssignBucketModal')).hide();
-      loadBucketTable();
-      dtReturnStock.$('.rs-row-check:checked').prop('checked', false);
-      $('#rsSelectAll').prop('checked', false);
-      rsUpdateSelectionUi();
-    } else {
-      alert(d.detail || 'Failed to assign bucket.');
-    }
-  });
+  fetch('/stock/return-stock/move-l1l2', {method:'POST', body:fd}).then(function(r){return r.json();}).then(function(d){
+    if(!d.ok){ alert(d.detail || 'Move failed.'); return; }
+    var msg = d.moved+' tag(s) moved to L1/L2' + (d.skipped && d.skipped.length ? ('; not moved (not at Stock In): '+d.skipped.join(', ')) : '');
+    location.href = '/stock?success=' + encodeURIComponent(msg);
+  }).catch(function(){ alert('Network error — please try again.'); });
 });
-
 document.getElementById('returnStockTable').addEventListener('click', function(e){
   var vBtn = e.target.closest('.rs-verify-btn');
   if(vBtn){
@@ -1199,6 +1200,16 @@ document.getElementById('returnStockTable').addEventListener('click', function(e
     new bootstrap.Modal(document.getElementById('rsVerifyModal')).show();
     return;
   }
+  var sBtn = e.target.closest('.rs-stockin-btn');
+  if(sBtn){
+    if(!confirm('Only Stock In: keep tag '+sBtn.dataset.barcode+' at Stock In as normal stock and close this return? No repair, no new sale.')) return;
+    var sfd = new FormData(); sfd.append('csrf_token', getCsrf());
+    fetch('/stock/return-stock/'+sBtn.dataset.barcode+'/stock-in-only', {method:'POST', body:sfd}).then(function(r){return r.json();}).then(function(d){
+      if(!d.ok){ alert(d.detail || 'Failed.'); return; }
+      location.href = '/stock?success=' + encodeURIComponent(sBtn.dataset.barcode+' kept as Stock In; return closed');
+    });
+    return;
+  }
   var cBtn = e.target.closest('.rs-complete-btn');
   if(cBtn){
     if(!confirm('Ready to Dispatch: mark tag '+cBtn.dataset.barcode+' as sold again, using the same customer details as its earlier sale?')) return;
@@ -1206,12 +1217,12 @@ document.getElementById('returnStockTable').addEventListener('click', function(e
     fetch('/stock/return-stock/'+cBtn.dataset.barcode+'/complete', {method:'POST', body:fd}).then(function(r){return r.json();}).then(function(d){
       if(d.ok){
         alert('Sold as '+d.sale_number+' \u2014 now at Gate Pass.');
-        // Stays in Received as Dispatch Pending until Gate Pass exit (2026-10-30)
+        // Stays in Received as "Ready at Gate Pass" until Gate Pass exit (2026-11-05)
         var tr = cBtn.closest('tr');
         var st = tr.querySelector('.rs-status');
-        if(st){ st.className = 'badge rs-status bg-primary'; st.textContent = 'Dispatch Pending'; }
+        if(st){ st.className = 'badge rs-status bg-info text-dark'; st.textContent = 'Ready at Gate Pass'; }
         var chk = tr.querySelector('.rs-row-check'); if(chk) chk.remove();
-        tr.querySelector('.rs-action-cell').innerHTML = '<span class="text-muted small">At Gate Pass</span>';
+        tr.querySelector('.rs-action-cell').innerHTML = '<span class="text-muted small">Waiting at Gate Pass</span>';
         rsUpdateSelectionUi();
       } else {
         alert(d.detail || 'Failed to complete sale.');
@@ -1237,11 +1248,12 @@ document.getElementById('rsVerifySubmit').addEventListener('click', function(){
       row.querySelector('.rs-labour-cost').textContent = parseFloat(d.labour_cost).toFixed(2);
       btn.dataset.repairCost = d.repair_cost;
       btn.dataset.labourCost = d.labour_cost;
-      if(d.paid){            // payment verified -> Ready to Dispatch (2026-10-30)
-        btn.remove();
-        var cb = row.querySelector('.rs-complete-btn'); if(cb) cb.classList.remove('d-none');
+      if(d.paid){            // payment verified (2026-11-05): reload so the row shows the
+        btn.remove();        // right status / button — Ready to Dispatch only after Mark Complete
         var st = row.querySelector('.rs-status');
-        if(st && st.textContent === 'Payment Pending'){ st.className = 'badge rs-status bg-primary'; st.textContent = 'Dispatch Pending'; }
+        if(st && st.textContent === 'Payment Pending'){
+          location.href = '/stock?success=' + encodeURIComponent('Payment verified for '+barcode+' — Ready to Dispatch');
+        }
       }
     } else {
       alert(d.detail || 'Failed to save.');

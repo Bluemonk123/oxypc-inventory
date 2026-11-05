@@ -117,7 +117,7 @@ def test_process_return_matches_barcode_case_insensitively(app_client, make_user
         _login(app_client, username, password)
         csrf = app_client.cookies.get("csrf_token") or "dummy"
 
-        r = app_client.post("/returns/new", data={
+        r = app_client.post("/returns/new", data={"complaint_text": "Test complaint", 
             "csrf_token": csrf,
             "barcode": sold_barcode.upper(),  # typed in the OPPOSITE case of stored
             "reason": "Physical damage",
@@ -144,7 +144,7 @@ def test_process_return_replacement_tag_matches_case_insensitively(app_client, m
         _login(app_client, username, password)
         csrf = app_client.cookies.get("csrf_token") or "dummy"
 
-        r = app_client.post("/returns/new", data={
+        r = app_client.post("/returns/new", data={"complaint_text": "Test complaint", 
             "csrf_token": csrf,
             "barcode": sold_barcode,
             "reason": "Physical damage",

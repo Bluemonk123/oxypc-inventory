@@ -192,7 +192,7 @@ def test_process_return_sold_without_sale_succeeds_with_placeholder_sale(app_cli
         username, password = make_user("admin")
         _login(app_client, username, password)
         csrf = app_client.cookies.get("csrf_token") or "dummy"
-        r = app_client.post("/returns/new", data={
+        r = app_client.post("/returns/new", data={"complaint_text": "Test complaint", 
             "csrf_token": csrf, "barcode": barcode,
             "reason": "Physical damage", "condition_on_return": "Minor damage",
             "replace_now": "no",
@@ -252,7 +252,7 @@ asyncio.run(main())
         username, password = make_user("admin")
         _login(app_client, username, password)
         csrf = app_client.cookies.get("csrf_token") or "dummy"
-        r = app_client.post("/returns/new", data={
+        r = app_client.post("/returns/new", data={"complaint_text": "Test complaint", 
             "csrf_token": csrf, "barcode": barcode,
             "reason": "Physical damage", "condition_on_return": "Minor damage",
             "replace_now": "yes", "replace_tag": replace_barcode,

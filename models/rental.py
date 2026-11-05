@@ -106,7 +106,10 @@ class RentalReturn(Base):
     outstanding_amount = Column(Numeric(14, 2), nullable=False, default=0)
     decision = Column(String(20), nullable=False)            # payment_due | waive_off
     waiver_reason = Column(Text, nullable=True)              # optional, when waive_off (2026-10-29, dbdiagram)
-    notes = Column(Text, nullable=True)
+    # Return Reason (2026-11-05, approved by Pankaj): optional, same list as
+    # Internal Tag / External Tag returns (Master Data product_return_reason).
+    return_reason = Column(String(100), nullable=True)
+    notes = Column(Text, nullable=True)                      # shown as "Complaint Description" (2026-11-05)
     created_by = Column(String(50), nullable=True)
     created_at = Column(DateTime, nullable=False, default=app_now)
     paid_at = Column(DateTime, nullable=True)

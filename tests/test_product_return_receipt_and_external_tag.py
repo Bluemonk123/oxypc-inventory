@@ -84,6 +84,9 @@ async def main():
                 await db.delete(r)
             for s in (await db.execute(select(Sale).where(Sale.device_id == dev.id))).scalars().all():
                 await db.delete(s)
+            from sqlalchemy import text as _t
+            for t in ("iqc_inspections", "stage_movements", "device_location_logs"):
+                await db.execute(_t(f"delete from {{t}} where device_id = :d"), {{"d": dev.id}})
             await db.delete(dev)
         await db.commit()
 
@@ -135,7 +138,7 @@ def test_return_form_has_internal_and_external_tabs(app_client, make_user):  # n
     username, password = make_user("admin")
     _login(app_client, username, password)
     html = app_client.get("/returns/new", follow_redirects=True).text
-    assert "Internal Tags" in html
+    assert "Internal Tag" in html
     assert "External Tag" in html
     assert 'action="/returns/new/external"' in html
     assert 'name="tag_number"' in html
@@ -152,7 +155,7 @@ def test_external_tag_creates_return_and_shows_in_return_stock(app_client, make_
         _login(app_client, username, password)
         csrf = app_client.cookies.get("csrf_token") or "dummy"
 
-        r = app_client.post("/returns/new/external", data={
+        r = app_client.post("/returns/new/external", data={"complaint_text": "Test complaint", 
             "csrf_token": csrf,
             "entity": "OxyPC Computers",
             "customer_name": "External Customer",
@@ -165,6 +168,7 @@ def test_external_tag_creates_return_and_shows_in_return_stock(app_client, make_
             "serial_number": "SN-12345",
             "make": "ITestBrand",
             "model": "ITestModel",
+            "cpu": "i5-8350U", "generation": "8th", "ram": "16 GB", "storage": "512 GB SSD",
             "quantity": "1",
             "paid_repair": "1500",
         }, follow_redirects=False)
@@ -195,6 +199,12 @@ async def main():
         print(dev.entity)
         sale = (await db.execute(select(Sale).where(Sale.device_id == dev.id))).scalar_one()
         print(sale.sale_price)
+        from models.lot import Lot
+        from models.iqc_inspection import IQCInspection
+        print((await db.get(Lot, dev.lot_id)).lot_number)
+        print(dev.current_stage.value)
+        print(dev.cpu, dev.generation, dev.ram_gb, dev.storage_gb, sep="|")
+        print((await db.execute(select(IQCInspection).where(IQCInspection.device_id == dev.id))).scalar_one_or_none() is not None)
 
 asyncio.run(main())
 """).splitlines()
@@ -202,6 +212,11 @@ asyncio.run(main())
         assert state[1] == "ITestBrand"
         assert state[2] == "OxyPC Computers"
         assert state[3] == "0.00" or state[3] == "0"
+        # 2026-11-05: new External tag -> Lot CUST, IQC record, lands at Stock In
+        assert state[4] == "CUST"
+        assert state[5] == "stock_in"
+        assert state[6] == "i5-8350U|8th|16|512"
+        assert state[7] == "True"
     finally:
         _cleanup(tag_number)
 
@@ -210,7 +225,25 @@ def test_external_tag_requires_tag_number_reason_condition(app_client, make_user
     username, password = make_user("admin")
     _login(app_client, username, password)
     csrf = app_client.cookies.get("csrf_token") or "dummy"
-    r = app_client.post("/returns/new/external", data={
+    r = app_client.post("/returns/new/external", data={"complaint_text": "Test complaint", 
         "csrf_token": csrf, "tag_number": "", "reason": "", "condition_on_return": "",
     }, follow_redirects=True)
     assert "required" in r.text.lower()
+
+
+def test_external_tag_requires_specs(app_client, make_user):  # noqa: F811
+    """2026-11-05: CPU / CPU Gen / RAM / Storage are mandatory ("0" allowed)."""
+    username, password = make_user("admin")
+    _login(app_client, username, password)
+    csrf = app_client.cookies.get("csrf_token") or "dummy"
+    tag = f"ITEXT{uuid.uuid4().hex[:6]}"
+    base = {"complaint_text": "Dead", "csrf_token": csrf, "entity": "OxyPC Computers", "customer_name": "X",
+            "reason": "Not working", "condition_on_return": "Dead", "tag_number": tag, "quantity": "1",
+            "paid_repair": "0", "cpu": "0", "generation": "0", "ram": "0", "storage": ""}
+    r = app_client.post("/returns/new/external", data=base, follow_redirects=True)
+    assert "CPU, CPU Gen, RAM and Storage are required" in r.text
+    try:
+        r = app_client.post("/returns/new/external", data={**base, "storage": "0"}, follow_redirects=False)
+        assert r.status_code == 302 and "error" not in r.headers["location"], r.headers.get("location")
+    finally:
+        _cleanup(tag)

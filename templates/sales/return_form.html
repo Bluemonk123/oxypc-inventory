@@ -52,7 +52,7 @@
       <li class="nav-item">
         <button class="nav-link {{ 'active' if active_tab == 'internal' else '' }}"
                 data-bs-toggle="tab" data-bs-target="#internalTagsTab" type="button">
-          <i class="bi bi-arrow-return-left me-1"></i>Internal Tags
+          <i class="bi bi-arrow-return-left me-1"></i>Internal Tag
         </button>
       </li>
       <li class="nav-item">
@@ -148,8 +148,8 @@
             </div>
           </div>
           <div class="mb-3">
-            <label class="form-label fw-semibold">Return Reason</label>
-            <select name="reason" class="form-select">
+            <label class="form-label fw-semibold">Return Reason <span class="text-danger">*</span></label>
+            <select name="reason" class="form-select" required>
               <option value="">-- Select reason --</option>
               {% for r in master_options('product_return_reason') %}
               <option>{{ r }}</option>
@@ -164,8 +164,8 @@
             </select>
           </div>
           <div class="mb-3">
-            <label class="form-label fw-semibold">Complaint / Issue Description</label>
-            <textarea name="complaint_text" class="form-control" rows="2" placeholder="Describe the customer's complaint or issue"></textarea>
+            <label class="form-label fw-semibold">Complaint Description <span class="text-danger">*</span></label>
+            <textarea name="complaint_text" class="form-control" rows="2" required placeholder="Describe the customer's complaint or issue"></textarea>
           </div>
           <div class="mb-3 d-none" id="paidRepairRow">
             <label class="form-label">Paid Repair (default)</label>
@@ -178,10 +178,7 @@
             </div>
             {{ charge_choice('ir') }}
           </div>
-          <div class="mb-3">
-            <label class="form-label">Notes</label>
-            <textarea name="notes" class="form-control" rows="2"></textarea>
-          </div>
+          {# Notes removed (2026-11-05, Pankaj): Complaint Description is enough. #}
           {{ received_by_field('mb-3') }}
           <div class="d-flex gap-2">
             <button type="submit" class="btn btn-warning px-4"><i class="bi bi-arrow-return-left me-2"></i>Process Return</button>
@@ -233,6 +230,25 @@
               <label class="form-label">Model</label>
               <input type="text" name="model" class="form-control">
             </div>
+            {# Specs (2026-11-05, Pankaj): required — a new tag is created from them
+               (Lot CUST), gets its IQC record and lands at Stock In. Enter 0 when
+               the device is dead. #}
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">CPU <span class="text-danger">*</span></label>
+              <input type="text" name="cpu" class="form-control" required maxlength="100" placeholder="e.g. i5-8350U (0 if dead)">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">CPU Gen <span class="text-danger">*</span></label>
+              <input type="text" name="generation" class="form-control" required maxlength="50" placeholder="e.g. 8th (0 if dead)">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">RAM <span class="text-danger">*</span></label>
+              <input type="text" name="ram" class="form-control" required maxlength="50" placeholder="e.g. 16 GB (0 if dead)">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Storage <span class="text-danger">*</span></label>
+              <input type="text" name="storage" class="form-control" required maxlength="50" placeholder="e.g. 512 GB SSD (0 if dead)">
+            </div>
             <div class="col-md-6">
               <label class="form-label fw-semibold">Customer Name</label>
               <input type="text" name="customer_name" class="form-control">
@@ -250,8 +266,8 @@
               <input type="text" name="customer_address" class="form-control">
             </div>
             <div class="col-md-6">
-              <label class="form-label fw-semibold">Reason</label>
-              <select name="reason" class="form-select">
+              <label class="form-label fw-semibold">Return Reason <span class="text-danger">*</span></label>
+              <select name="reason" class="form-select" required>
                 <option value="">-- Select reason --</option>
                 {% for r in master_options('product_return_reason') %}
                 <option>{{ r }}</option>
@@ -274,9 +290,11 @@
               </div>
             </div>
             <div class="col-12 mt-0">{{ charge_choice('er') }}</div>
+            {# Complaint (2026-11-05; was Notes) — saved as the return's Complaint,
+               shown in Inventory Manager's Return Stock table. #}
             <div class="col-12">
-              <label class="form-label">Notes</label>
-              <textarea name="notes" class="form-control" rows="2"></textarea>
+              <label class="form-label fw-semibold">Complaint Description <span class="text-danger">*</span></label>
+              <textarea name="complaint_text" class="form-control" rows="2" required placeholder="Describe the customer's complaint or issue"></textarea>
             </div>
             {{ received_by_field('col-12') }}
           </div>
@@ -297,7 +315,7 @@
         {% if error and active_tab == 'credit' %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
         {% if success and active_tab == 'credit' %}<div class="alert alert-success">{{ success }}</div>{% endif %}
         <p class="text-muted small mb-3">Search any Tag Number — it does not need to have been returned via
-          Internal Tags first — and add as many as needed — submitting this form is what adds them to the
+          Internal Tag first — and add as many as needed — submitting this form is what adds them to the
           Credit Note pipeline; the Debit Note Number/Amount below apply to all of them.</p>
         <form action="/returns/new/credit-note" method="post" id="creditNoteForm">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
@@ -408,9 +426,20 @@
                        placeholder="Why is the charge waived?">
               </div>
             </div>
+            {# Return Reason + Complaint Description (2026-11-05; Notes renamed) —
+               both optional on Rental Return. #}
             <div class="mb-3">
-              <label class="form-label fw-semibold">Notes</label>
-              <textarea name="notes" class="form-control" rows="2"></textarea>
+              <label class="form-label fw-semibold">Return Reason</label>
+              <select name="return_reason" class="form-select">
+                <option value="">-- Select reason --</option>
+                {% for r in master_options('product_return_reason') %}
+                <option>{{ r }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Complaint Description</label>
+              <textarea name="notes" class="form-control" rows="2" placeholder="Describe the customer's complaint or issue"></textarea>
             </div>
             {{ received_by_field('mb-3') }}
             <div class="d-flex gap-2">

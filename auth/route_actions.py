@@ -71,6 +71,8 @@ ROUTE_ACTIONS = {
     ('POST', '/stock/return-stock/assign-bucket'): ('stock', 'edit'),  # return_stock_assign_bucket
     ('POST', '/stock/return-stock/{barcode}/verify'): ('stock', 'edit'),  # return_stock_verify
     ('POST', '/stock/return-stock/{barcode}/complete'): ('stock', 'edit'),  # return_stock_complete
+    ('POST', '/stock/return-stock/move-l1l2'): ('stock', 'edit'),  # return_stock_move_l1l2 (2026-11-05)
+    ('POST', '/stock/return-stock/{barcode}/stock-in-only'): ('stock', 'edit'),  # return_stock_in_only (2026-11-05)
     ('POST', '/stock/validate'): ('stock', 'edit'),  # stock_validate: records qty received / validates stock-in (a write, not validate-only)
     ('POST', '/stock/bulk-transfer'): ('stock', 'edit'),  # stock_bulk_transfer
     ('POST', '/stock/move-to-stock'): ('stock', 'edit'),  # move_to_stock
@@ -347,6 +349,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/subcategory-fill'): None,  # subcategory_fill_apply: system health internals
     ('POST', '/admin/system/reassign-fix'): None,  # reassign_fix_apply: system health internals
     ('POST', '/admin/system/audit-split-fix'): None,  # audit_split_apply: system health internals
+    ('POST', '/admin/system/stale-returns-fix'): None,  # stale_returns_apply: admin-only Data Fix (2026-11-05)
     ('POST', '/admin/system/audit-scrap-fix'): None,  # audit_scrap_apply: system health internals
     ('POST', '/admin/system/audit-pna-fix'): None,  # audit_pna_apply: system health internals
     ('POST', '/admin/system/hold-release-fix'): None,  # hold_release_apply: system health internals

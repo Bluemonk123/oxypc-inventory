@@ -1,4 +1,5 @@
-1372c34|2026-11-05|QA: Journey Diagrams tab — combined + per-module database diagrams with zoom, horizontal user journeys
+8d17772|2026-11-05|Return Stock redesign; required return fields; External Tag specs via CUST + IQC; return clean-up
+330e68a|2026-11-05|QA: Journey Diagrams tab — combined + per-module database diagrams with zoom, horizontal user journeys
 9231e35|2026-11-05|Model Name data fix + save rule; Repair Summary parts per round; Trash delete fix; Parts Edit modal
 d61491e|2026-11-05|Final QC Pass export: parts of this refurbishment only
 574ffad|2026-11-05|WorkID Status: Final QC Pass export (tags passed Final QC in Work Date range, Repair Summary layout)

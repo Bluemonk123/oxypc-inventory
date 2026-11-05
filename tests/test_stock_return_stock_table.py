@@ -107,6 +107,30 @@ asyncio.run(main())
 """)
 
 
+def _mark_repaired(barcode):
+    """L1/L2 Mark Complete after the return (2026-11-05): Ready to Dispatch
+    only comes after repair."""
+    _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import select
+from database import AsyncSessionLocal
+from models.device import Device, DeviceStage, StageMovement
+async def main():
+    async with AsyncSessionLocal() as db:
+        dev = (await db.execute(select(Device).where(Device.barcode == "{barcode}"))).scalar_one()
+        db.add(StageMovement(device_id=dev.id, from_stage=DeviceStage.l1, to_stage=DeviceStage.sold, moved_by="t"))
+        dev.current_stage = DeviceStage.sold
+        await db.commit()
+asyncio.run(main())
+""")
+
+
+def _row(html, barcode):
+    i = html.index(f'href="/devices/{barcode}"')
+    return html[html.rindex("<tr", 0, i):html.index("</tr>", i)]
+
+
 def _cleanup_device(barcode):
     _run(f"""
 import asyncio, sys
@@ -155,9 +179,13 @@ def test_return_stock_table_renders_row(app_client, make_user):  # noqa: F811
         # No Paid Repair Cost on this return (2026-10-30): nothing due, so no
         # Verify Payment, Ready to Dispatch straight away, costs "—"
         # (tests/test_return_stock_charges.py covers the payment-due flow).
-        row = html.split(f'value="{barcode}"', 1)[1].split("</tr>", 1)[0]
+        row = _row(html, barcode)
         assert "rs-verify-btn" not in row
-        assert "rs-complete-btn" in row and "Ready to Dispatch" in row and "d-none" not in row
+        # 2026-11-05: Received (not repaired) -> no Ready to Dispatch yet
+        assert ">Received<" in row and "rs-complete-btn" not in row
+        _mark_repaired(barcode)
+        row = _row(app_client.get("/stock", follow_redirects=True).text, barcode)
+        assert ">Dispatch Pending<" in row and "rs-complete-btn" in row and "Ready to Dispatch" in row
     finally:
         _cleanup_device(barcode)
 
@@ -221,6 +249,9 @@ def test_complete_creates_sale_with_copied_customer_details_and_clears_return_st
         _login(app_client, username, password)
         csrf = app_client.cookies.get("csrf_token") or "dummy"
 
+        r = app_client.post(f"/stock/return-stock/{barcode}/complete", data={"csrf_token": csrf})
+        assert r.status_code == 400 and "Mark Complete" in r.json()["detail"]   # not repaired yet
+        _mark_repaired(barcode)
         r = app_client.post(f"/stock/return-stock/{barcode}/complete", data={"csrf_token": csrf})
         assert r.status_code == 200, r.text
         body = r.json()
@@ -308,6 +339,7 @@ def test_verify_and_complete_work_on_a_pending_return(app_client, make_user):  #
         assert r.status_code == 200, r.text
         assert r.json()["ok"] is True
 
+        _mark_repaired(barcode)
         r2 = app_client.post(f"/stock/return-stock/{barcode}/complete", data={"csrf_token": csrf})
         assert r2.status_code == 200, r2.text
         body = r2.json()

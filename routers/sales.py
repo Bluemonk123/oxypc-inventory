@@ -3087,6 +3087,12 @@ async def process_return(
             "request": request, "current_user": current_user,
             "error": f"Device {barcode} not found", "sale": None,
         })
+    # Return Reason + Complaint Description are mandatory on Internal Tag (2026-11-05, Pankaj)
+    if not (reason or "").strip() or not (complaint_text or "").strip():
+        return await _return_form_response(db, {
+            "request": request, "current_user": current_user, "sale": None,
+            "error": "Return Reason and Complaint Description are required.",
+        })
 
     sale_result = await db.execute(
         select(Sale).where(Sale.device_id == device.id)
@@ -3361,6 +3367,22 @@ async def process_return(
 _EXTERNAL_RETURNS_LOT_NUMBER = "EXT-RETURNS"
 
 
+_CUST_LOT_NUMBER = "CUST"
+
+
+async def _get_or_create_cust_lot(db: AsyncSession) -> Lot:
+    """Lot "CUST" (2026-11-05, Pankaj): where new External Tag returns are
+    created (was EXT-RETURNS). Uses the existing CUST lot; creates it the same
+    way as EXT-RETURNS if a server doesn't have one."""
+    lot = (await db.execute(select(Lot).where(Lot.lot_number == _CUST_LOT_NUMBER))).scalars().first()
+    if not lot:
+        lot = Lot(lot_number=_CUST_LOT_NUMBER, supplier_name="Customer Returns",
+                  buying_price=Decimal("0"), qty=0, purchase_date=app_now())
+        db.add(lot)
+        await db.flush()
+    return lot
+
+
 async def _get_or_create_external_returns_lot(db: AsyncSession) -> Lot:
     """A dedicated, clearly-labelled Lot for devices created via the
     External Tag return form, so they never get mixed into a real sourcing
@@ -3397,6 +3419,11 @@ async def process_external_return(
     quantity: str = Form("1"),
     paid_repair: str = Form("0"),
     notes: str = Form(""),
+    complaint_text: str = Form(""),          # External Tag "Complaint" (2026-11-05; was Notes)
+    cpu: str = Form(""),                     # specs, required (2026-11-05) — "0" when dead
+    generation: str = Form(""),
+    ram: str = Form(""),
+    storage: str = Form(""),
     return_received_by: str = Form(""),
     charge_decision: str = Form(""),
     waiver_reason: str = Form(""),
@@ -3427,6 +3454,16 @@ async def process_external_return(
             "request": request, "current_user": current_user, "sale": None,
             "active_tab": "external", "error": "Return Reason and Condition on Return are required.",
         })
+    if not all(v.strip() for v in (cpu, generation, ram, storage)):   # mandatory (2026-11-05)
+        return await _return_form_response(db, {
+            "request": request, "current_user": current_user, "sale": None,
+            "active_tab": "external", "error": "CPU, CPU Gen, RAM and Storage are required (enter 0 if the device is dead).",
+        })
+    if not complaint_text.strip():                       # mandatory (2026-11-05, Pankaj)
+        return await _return_form_response(db, {
+            "request": request, "current_user": current_user, "sale": None,
+            "active_tab": "external", "error": "Complaint Description is required.",
+        })
     received_by = _current_received_by(current_user)   # always the signed-in user (2026-10-29)
     if not received_by:
         return await _return_form_response(db, {
@@ -3436,14 +3473,35 @@ async def process_external_return(
 
     device = (await db.execute(select(Device).where(Device.barcode == tag_number))).scalar_one_or_none()
     if not device:
-        lot = await _get_or_create_external_returns_lot(db)
+        # New tag (2026-11-05, Pankaj): created from the form in Lot CUST, with
+        # its IQC record, then moved IQC -> Stock In like any IQC'd tag — so it
+        # lands in Return Stock at Stock In (Only Stock In / Move to L1/L2).
+        import re as _re
+        from models.iqc_inspection import IQCInspection
+
+        def _gb(v):
+            m = _re.search(r"\d+", v or "")
+            return int(m.group()) if m else None
+        lot = await _get_or_create_cust_lot(db)
         device = Device(
             barcode=tag_number, lot_id=lot.id, brand=make.strip() or None, model=model.strip() or None,
-            entity=entity.strip() or None, current_stage=DeviceStage.iqc, is_active=True,
+            serial_no=serial_number.strip() or None, entity=entity.strip() or None,
+            cpu=cpu.strip()[:100], generation=generation.strip()[:50],
+            total_ram_size=ram.strip()[:50], ram_gb=_gb(ram),
+            total_hdd_size=storage.strip()[:50], storage_gb=_gb(storage),
+            current_stage=DeviceStage.iqc, is_active=True,
         )
         db.add(device)
         await db.flush()
-        await ensure_stage_location(db, device, DeviceStage.iqc, current_user)
+        db.add(StageMovement(device_id=device.id, from_stage=None, to_stage=DeviceStage.iqc,
+                             moved_by=current_user.username, notes="External Tag return — new tag, IQC entry"))
+        db.add(IQCInspection(device_id=device.id))
+        device.current_stage = DeviceStage.stock_in
+        device.updated_at = app_now()
+        db.add(StageMovement(device_id=device.id, from_stage=DeviceStage.iqc, to_stage=DeviceStage.stock_in,
+                             moved_by=current_user.username,
+                             notes="External Tag return submitted — back in Stock In"))
+        await ensure_stage_location(db, device, DeviceStage.stock_in, current_user)
     elif device.current_stage != DeviceStage.stock_in:
         # A tag already in the system comes back to Stock In (2026-10-30),
         # same as a Customer / Internal Tag return (process_return) — it
@@ -3504,6 +3562,7 @@ async def process_external_return(
         serial_captured=serial_number.strip() or None,
         warranty_status="no_warranty",
         customer_email=customer_email.strip() or None,
+        complaint_text=complaint_text.strip() or None,
     )
     db.add(ret)
     device.return_status = True
@@ -3760,6 +3819,14 @@ def _try_advance_return(ret: Return, payment_invoice: str = "") -> str | None:
     return None
 
 
+async def _cn_close_return_flag(db, ret: Return) -> None:
+    """CN Complete (2026-11-05, Pankaj): the credit note is finished, so the
+    tag's profile no longer shows an open return — clear the flag."""
+    device = (await db.execute(select(Device).where(Device.id == ret.device_id))).scalar_one_or_none()
+    if device and device.return_status:
+        device.return_status = False
+
+
 async def _reset_device_return_flags_if_orphaned(db: AsyncSession, device_id) -> None:
     """After deleting a Return row, clear Device.return_status/
     tag_return_status IF this was the device's last remaining Return —
@@ -3919,6 +3986,8 @@ async def credit_note_advance(
                 table_name="returns", record_id=str(ret.id),
                 new_value={"cn_stage": next_stage}, request=request)
     sold_note = ""
+    if next_stage == "CN Complete":
+        await _cn_close_return_flag(db, ret)
     if next_stage == "Payment Invoice Done":
         sale_no = await _cn_complete_old_tag(db, ret, current_user, request)
         if sale_no:
@@ -4030,6 +4099,8 @@ async def credit_note_bulk_verify(
                     table_name="returns", record_id=str(ret.id),
                     new_value={"cn_stage": ret.cn_stage}, request=request)
         advanced += 1
+        if ret.cn_stage == "CN Complete":
+            await _cn_close_return_flag(db, ret)
         if ret.cn_stage == "Payment Invoice Done" and await _cn_complete_old_tag(db, ret, current_user, request):
             sold += 1
     await db.commit()

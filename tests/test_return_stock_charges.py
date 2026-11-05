@@ -102,7 +102,8 @@ def test_return_stock_charges_and_verify_then_dispatch(app_client, make_user):  
         html = app_client.get("/stock", follow_redirects=True).text
 
         def row(bc):
-            return html.split(f'value="{bc}"', 1)[1].split("</tr>", 1)[0]
+            i = html.index(f'href="/devices/{bc}"')
+            return html[html.rindex("<tr", 0, i):html.index("</tr>", i)]
 
         ra, rb = row(a), row(b)
         # Repair 1500 | Labour Without / With L3/L4 | Part 2 x 450 (the pre-sale part ignored)
@@ -110,10 +111,11 @@ def test_return_stock_charges_and_verify_then_dispatch(app_client, make_user):  
         assert f">{float(lab_w):.2f}<" in rb and 'title="With L3/L4"' in rb
         assert 'title="Without L3/L4"' in ra
         assert "Verify Payment" in ra and 'data-part-cost="900' in ra
-        assert "rs-complete-btn d-none" in ra                      # Ready to Dispatch hidden until paid
+        assert "rs-complete-btn" not in ra                        # Ready to Dispatch hidden until paid
         # Current Stage: outline stage badge + filled status (2026-10-30)
         assert "border-secondary text-secondary" in ra and ">Payment Pending<" in ra
-        assert 'data-rs-tab="received"' in html.split(f'value="{a}"', 1)[0].rsplit("<tr", 1)[1]
+        assert 'data-rs-tab="received"' in ra
+        assert "rs-stockin-btn" not in ra and "rs-row-check" not in ra   # repair done: no Only Stock In / Move
 
         # Ready to Dispatch refused before Verify Payment; receipt number required
         r = app_client.post(f"/stock/return-stock/{a}/complete", data={"csrf_token": csrf})
@@ -124,7 +126,8 @@ def test_return_stock_charges_and_verify_then_dispatch(app_client, make_user):  
         r = app_client.post(f"/stock/return-stock/{a}/verify", data={
             "csrf_token": csrf, "repair_cost": "1500", "labour_cost": "650", "payment_reference": "RCPT-77"})
         assert r.status_code == 200 and r.json()["paid"] is True, r.text
-        ra = app_client.get("/stock", follow_redirects=True).text.split(f'value="{a}"', 1)[1].split("</tr>", 1)[0]
+        html = app_client.get("/stock", follow_redirects=True).text
+        ra = row(a)
         assert "rs-verify-btn" not in ra and "Ready to Dispatch" in ra and "rs-complete-btn d-none" not in ra
         assert ">650.00<" in ra and ">Dispatch Pending<" in ra      # verified Labour kept
         r = app_client.post(f"/stock/return-stock/{a}/complete", data={"csrf_token": csrf})
@@ -137,7 +140,7 @@ def test_return_stock_charges_and_verify_then_dispatch(app_client, make_user):  
             i = h.index(f'href="/devices/{bc}"')
             return h[h.rindex("<tr", 0, i):h.index("</tr>", i)]
         t = tr(a)                                                   # still listed until Gate Pass exit
-        assert 'data-rs-tab="received"' in t and ">Dispatch Pending<" in t and "At Gate Pass" in t
+        assert 'data-rs-tab="received"' in t and ">Ready at Gate Pass<" in t and "Waiting at Gate Pass" in t
         assert "rs-row-check" not in t
         _run(f"""
 import asyncio, sys

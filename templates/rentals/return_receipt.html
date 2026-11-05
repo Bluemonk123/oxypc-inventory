@@ -112,7 +112,8 @@
     </table>
   </div>
 
-  {% if ret.notes %}<div class="notes"><strong>Notes:</strong> {{ ret.notes }}</div>{% endif %}
+  {% if ret.return_reason %}<div class="notes"><strong>Return Reason:</strong> {{ ret.return_reason }}</div>{% endif %}
+  {% if ret.notes %}<div class="notes"><strong>Complaint Description:</strong> {{ ret.notes }}</div>{% endif %}
 
   <div class="footer">
     <div><div class="sign">Customer Signature</div></div>

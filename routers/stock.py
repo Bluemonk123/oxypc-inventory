@@ -1261,11 +1261,33 @@ async def stock_in_list(
             if cur is None or (cur[2].return_date or datetime.min) < (ret.return_date or datetime.min):
                 return_stock_by_device[dev.id] = (dev, lot_num, ret)
 
+    # Only Stock In (2026-11-05): the return was closed and the tag kept as
+    # normal stock — flag cleared, still listed on the Completed tab as
+    # "Stocked In" (newest return of the tag only).
+    for dev, lot_num, ret in (await db.execute(
+            select(Device, Lot.lot_number, Return)
+            .join(Lot, Device.lot_id == Lot.id).join(Return, Return.device_id == Device.id)
+            .where(Return.action_taken == RETURN_STOCK_IN_ONLY, Device.is_active == True)  # noqa: E712
+            .order_by(Return.return_date.desc()))).all():
+        cur = return_stock_by_device.get(dev.id)
+        if cur is None:
+            return_stock_by_device[dev.id] = (dev, lot_num, ret)
+
     return_stock_rows = []
     # Charges (2026-10-30): payment-due returns only — see _return_charge_defaults.
     _pairs = [(d, r) for d, _l, r in return_stock_by_device.values()]
     _charges = await _return_charge_defaults(db, _pairs)
     _prog = await _return_progress(db, _pairs)
+    # Sold again after the return (2026-11-05, Pankaj): a sale of the tag
+    # dated after the return (not the Ready to Dispatch re-sale) means the
+    # return is over — show it as Return Complete on the Completed tab.
+    _later_sale = {}
+    _rs_ids = [d.id for d, _r in _pairs]
+    if _rs_ids:
+        for s_dev, s_at in (await db.execute(
+                select(Sale.device_id, func.max(Sale.sold_at)).where(Sale.device_id.in_(_rs_ids))
+                .group_by(Sale.device_id))).all():
+            _later_sale[s_dev] = s_at
     for dev, lot_num, ret in return_stock_by_device.values():
         ch = _charges.get(dev.id)
         due = ch is not None
@@ -1278,9 +1300,16 @@ async def stock_in_list(
         # verified) -> Dispatch Pending (verified / nothing due; also after
         # Ready to Dispatch until Gate Pass exit) -> Return Complete (exited).
         _started, _done = _prog.get(dev.id, (False, False))
-        if resale is not None:
+        # 2026-11-05: after Ready to Dispatch the status is "Ready at Gate Pass"
+        # (was Dispatch Pending); Only Stock In closes the return as "Stocked In".
+        if ret.action_taken == RETURN_STOCK_IN_ONLY:
+            status = "Stocked In"
+        elif resale is not None:
             status = ("Return Complete" if resale.delivery_status in ("dispatched", "delivered")
-                      else "Dispatch Pending")
+                      else "Ready at Gate Pass")
+        elif (_later_sale.get(dev.id) and ret.return_date
+              and _later_sale[dev.id] > ret.return_date):
+            status = "Return Complete"
         elif _done:
             status = "Payment Pending" if (due and not ret.paid_at) else "Dispatch Pending"
         elif _started:
@@ -1292,6 +1321,13 @@ async def stock_in_list(
             "labour_cost": labour_cost, "repair_cost": repair_cost,
             "payment_due": due, "paid": bool(ret.paid_at),
             "resold": resale is not None, "status": status,
+            "stocked_in": status == "Stocked In",
+            "sold_again": status == "Return Complete" and resale is None,
+            # Buttons (2026-11-05): Only Stock In while Received at Stock In;
+            # Ready to Dispatch once repair is done (Dispatch Pending).
+            "can_stock_in": status == "Received" and dev.current_stage == DeviceStage.stock_in,
+            "can_dispatch": status == "Dispatch Pending",
+            "can_move_l12": status == "Received" and dev.current_stage == DeviceStage.stock_in,
             "labour_basis": (None if not due else ("With L3/L4" if ch["l34"] else
                              ("Without L3/L4" if ch["l34"] is False else "Not repaired yet"))),
             "stage_label": STAGE_LABELS.get(dev.current_stage, dev.current_stage.value if dev.current_stage else "—"),
@@ -1551,6 +1587,76 @@ async def return_stock_verify(
                          "paid": bool(ret.paid_at), "payment_reference": ret.payment_reference or ""})
 
 
+RETURN_STOCK_IN_ONLY = "stock_in_only"   # Return.action_taken for "Only Stock In" (2026-11-05)
+
+
+@router.post("/stock/return-stock/move-l1l2")
+async def return_stock_move_l1l2(
+    request: Request,
+    barcodes: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Return Stock -> Move to L1/L2 (2026-11-05, replaces Assign Bucket):
+    the ticked returned tags go into the L1/L2 queue unassigned, an engineer
+    takes them with Pick This — the same move as Inventory Stock's Move to
+    L1/L2. Only tags still at Stock In move; the rest are reported."""
+    from services.audit_engine import audit
+    bc_list = [b.strip() for b in barcodes.split(",") if b.strip()]
+    if not bc_list:
+        return JSONResponse({"ok": False, "detail": "No tags selected"}, status_code=400)
+    devices = (await db.execute(select(Device).where(Device.barcode.in_(bc_list),
+                                                     Device.return_status == True))).scalars().all()  # noqa: E712
+    moved, skipped = [], []
+    for device in devices:
+        (moved if await _move_device_to_l1l2(db, device, current_user) else skipped).append(device.barcode)
+    skipped += [b for b in bc_list if b not in {d.barcode for d in devices}]
+    if moved:
+        await audit(db, user=current_user, action="RETURN_STOCK_MOVE_L1L2", table_name="devices",
+                    record_id=f"bulk:{len(moved)}", new_value={"moved": moved, "skipped": skipped},
+                    request=request)
+    await db.commit()
+    return JSONResponse({"ok": True, "moved": len(moved), "skipped": skipped})
+
+
+@router.post("/stock/return-stock/{barcode}/stock-in-only")
+async def return_stock_in_only(
+    request: Request,
+    barcode: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Return Stock -> Only Stock In (2026-11-05, Pankaj): the returned tag
+    needs no repair — it stays at Stock In as normal stock and the return is
+    closed (flag cleared; listed on the Completed tab as "Stocked In"). No
+    new sale, no Gate Pass. In or out of warranty, no payment needed. Only
+    while the tag is still Received at Stock In."""
+    from services.audit_engine import audit
+    device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
+    if not device:
+        raise HTTPException(404, f"Device {barcode} not found")
+    ret = await _latest_return_for_device(db, device.id)
+    if not ret or not device.return_status:
+        return JSONResponse({"ok": False, "detail": "This tag has no open return"}, status_code=400)
+    if device.current_stage != DeviceStage.stock_in:
+        return JSONResponse({"ok": False, "detail": "Only Stock In is for a tag still at Stock In"}, status_code=400)
+    _st, _done = (await _return_progress(db, [(device, ret)])).get(device.id, (False, False))
+    if _st:
+        return JSONResponse({"ok": False, "detail": "Repair has already started on this tag"}, status_code=400)
+    old = {"action_taken": ret.action_taken, "tag_return_status": device.tag_return_status}
+    ret.action_taken = RETURN_STOCK_IN_ONLY
+    ret.notes = ((ret.notes + "\n") if ret.notes else "") + \
+        f"Only Stock In by {current_user.username} on {app_now().strftime('%d-%m-%Y %H:%M')}"
+    device.return_status = False
+    device.tag_return_status = "Stocked In"
+    device.updated_at = app_now()
+    await audit(db, user=current_user, action="RETURN_STOCK_IN_ONLY", table_name="returns",
+                record_id=str(ret.id), old_value=old,
+                new_value={"barcode": barcode, "action_taken": RETURN_STOCK_IN_ONLY}, request=request)
+    await db.commit()
+    return JSONResponse({"ok": True})
+
+
 @router.post("/stock/return-stock/{barcode}/complete")
 async def return_stock_complete(
     request: Request,
@@ -1579,6 +1685,10 @@ async def return_stock_complete(
         raise HTTPException(404, "No return found for this tag")
     if not device.return_status:                          # already Ready to Dispatch-ed (2026-10-30)
         return JSONResponse({"ok": False, "detail": "This return was already sent to dispatch"}, status_code=400)
+    _st, _done = (await _return_progress(db, [(device, ret)])).get(device.id, (False, False))
+    if not _done:                                          # after L1/L2 Mark Complete (2026-11-05)
+        return JSONResponse({"ok": False, "detail": "Repair is not finished yet — Ready to Dispatch comes after "
+                                                     "L1/L2 Mark Complete"}, status_code=400)
     if _return_payment_due(ret) and not ret.paid_at:      # Ready to Dispatch after Verify Payment (2026-10-30)
         return JSONResponse({"ok": False, "detail": "Verify Payment first — this return has a Paid Repair Cost due"},
                             status_code=400)

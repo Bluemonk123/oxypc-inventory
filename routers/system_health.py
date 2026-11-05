@@ -2025,6 +2025,83 @@ async def model_name_fix(request: Request, current_user: User = Depends(admin_on
     return back or JSONResponse({"ok": True, "updated": total, "spellings": len(ids_by), "refused": refused})
 
 
+# ── Stale open returns (2026-11-05, Pankaj) ──────────────────────────────────
+# Returns still flagged open on a tag that is at stage Sold and was never
+# repaired after the return (no L1/L2/L3 move since) — old returns nobody
+# worked, and tags sold again with the flag still on. Credit Note returns are
+# left alone (their own pipeline clears the flag at CN Complete). Apply clears
+# Device.return_status for the listed tags after the admin reviews them.
+
+async def _stale_returns(db):
+    from sqlalchemy import select, func
+    from models.device import Device, DeviceStage
+    from models.sales import Return, Sale
+    from routers.stock import _return_progress
+    rows = (await db.execute(
+        select(Device, Return).join(Return, Return.device_id == Device.id)
+        .where(Device.return_status == True, Device.is_active == True,  # noqa: E712
+               Device.current_stage == DeviceStage.sold)
+        .order_by(Return.return_date.desc()))).all()
+    latest = {}
+    for d, r in rows:
+        latest.setdefault(d.id, (d, r))
+    pairs = [(d, r) for d, r in latest.values() if not r.cn_stage]
+    if not pairs:
+        return []
+    prog = await _return_progress(db, pairs)
+    last_sale = dict((await db.execute(
+        select(Sale.device_id, func.max(Sale.sold_at)).where(Sale.device_id.in_([d.id for d, _r in pairs]))
+        .group_by(Sale.device_id))).all())
+    out = []
+    for d, r in pairs:
+        started, _done = prog.get(d.id, (False, False))
+        if started:
+            continue
+        ls = last_sale.get(d.id)
+        sold_again = bool(ls and r.return_date and ls > r.return_date)
+        out.append({"device_id": d.id, "tag": d.barcode, "return_id": r.id,
+                    "return_date": r.return_date, "reason": r.reason or "",
+                    "kind": "Sold again after return" if sold_again else "No activity since return"})
+    return out
+
+
+@router.get("/stale-returns-fix")
+async def stale_returns_preview(current_user: User = Depends(admin_only)):
+    from database import AsyncSessionLocal
+    async with AsyncSessionLocal() as db:
+        c = await _stale_returns(db)
+    return JSONResponse({"returns_to_close": len(c), "list": [
+        {"tag": r["tag"], "kind": r["kind"], "reason": r["reason"],
+         "return_date": r["return_date"].strftime("%d-%m-%Y") if r["return_date"] else ""} for r in c]})
+
+
+@router.post("/stale-returns-fix")
+async def stale_returns_apply(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import update
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        c = await _stale_returns(db)
+        ids = [r["device_id"] for r in c]
+        if ids:
+            await db.execute(update(Device).where(Device.id.in_(ids), Device.return_status == True)  # noqa: E712
+                             .values(return_status=False).execution_options(synchronize_session=False))
+            await audit(db, user=current_user, action="STALE_RETURNS_CLOSED", table_name="devices",
+                        record_id=f"{len(ids)} tags",
+                        old_value={"return_status": True},
+                        new_value={"return_status": False, "count": len(ids),
+                                   "device_ids": [str(i) for i in ids],
+                                   "tags": [r["tag"] for r in c],
+                                   "return_ids": [str(r["return_id"]) for r in c]},
+                        notes="Open returns on tags at Sold, never repaired after the return. "
+                              "Reverse: set return_status = true for these device ids.",
+                        request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Stale returns closed: {len(ids):,} tags no longer show an open return.")
+    return back or JSONResponse({"ok": True, "updated": len(ids)})
+
+
 # ── Data Fixes page (2026-10-22) ─────────────────────────────────────────────
 # One admin page: preview + Apply button for each fill, and the data check.
 # The Apply buttons are ordinary form posts the admin clicks.
@@ -2073,6 +2150,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         audit_scrap = await _audit_scrap_preview(db, await _audit_scrap_candidates(db))
         audit_pna = await _audit_pna_preview(db, await _audit_pna_candidates(db))
         hold_rel = await _hold_release_candidates(db)
+        stale_ret = await _stale_returns(db)
         miss_list = _split_tag_list(missing_tags)
         miss_found = [{k: v for k, v in f.items() if k != "item"}
                       for f in await _audit_missing_matches(db, miss_list)]
@@ -2100,6 +2178,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "scrap_l12": scrap_l12[:200], "scrap_l12_total": len(scrap_l12),
         "stress_open": stress_open[:200], "stress_open_total": len(stress_open),
         "cosm_open": cosm_open[:200], "cosm_open_total": len(cosm_open),
+        "stale_ret": stale_ret[:300], "stale_ret_total": len(stale_ret),
         "rts_open": rts_open[:200], "rts_open_total": len(rts_open),
         "rts_asgn": rts_asgn[:200], "rts_asgn_total": len(rts_asgn),
         "stype_total": len(stype), "stype_examples": [{"tag": t, "ch": ch} for _d, t, ch in stype[:15]],

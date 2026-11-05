@@ -51,6 +51,7 @@ async def main():
             await db.execute(text(f"delete from stage_movements where device_id in {{ids}}"))
             await db.execute(text(f"delete from device_location_logs where device_id in {{ids}}"))
             await db.execute(text(f"delete from sales where device_id in {{ids}}"))
+            await db.execute(text(f"delete from iqc_inspections where device_id in {{ids}}"))
             await db.execute(text(f"delete from devices where barcode = '{{t}}'"))
         await db.commit()
 asyncio.run(main())
@@ -81,7 +82,7 @@ def test_external_return_waive_and_mark_paid(app_client, make_user):  # noqa: F8
         assert 'name="return_received_by" value="IQC Test User"' in form
 
         def submit(tag, amount, **extra):
-            r = app_client.post("/returns/new/external", data={
+            r = app_client.post("/returns/new/external", data={"complaint_text": "Test complaint", "cpu": "0", "generation": "0", "ram": "0", "storage": "0", 
                 "csrf_token": csrf, "entity": "OxyPC Computers", "customer_name": "IT Waiver",
                 "reason": "Not working", "condition_on_return": "Minor damage", "tag_number": tag,
                 "quantity": "1", "paid_repair": amount, **extra,

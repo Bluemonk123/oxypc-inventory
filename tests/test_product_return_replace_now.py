@@ -156,7 +156,7 @@ def test_replace_now_sells_replacement_at_zero_with_same_customer(app_client, ma
 
         r = app_client.post(
             "/returns/new",
-            data={
+            data={"complaint_text": "Test complaint", 
                 "csrf_token": csrf,
                 "barcode": identity_barcode,
                 "reason": "Defective",
@@ -201,7 +201,7 @@ def test_replace_now_rejects_a_device_not_in_ready_to_sale(app_client, make_user
 
         r = app_client.post(
             "/returns/new",
-            data={
+            data={"complaint_text": "Test complaint", 
                 "csrf_token": csrf,
                 "barcode": identity_barcode,
                 "reason": "Defective",

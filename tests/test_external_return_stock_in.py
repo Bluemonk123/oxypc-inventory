@@ -1,5 +1,6 @@
-"""External Tag return (2026-10-30): a tag already in the system moves to
-Stock In, like a Customer return; a tag new to the system still starts at IQC."""
+"""External Tag return: a tag already in the system moves to Stock In, like a
+Customer return; a new tag (2026-11-05) is created in Lot CUST with its IQC
+record and also lands at Stock In."""
 import pathlib
 import subprocess
 import sys
@@ -42,7 +43,9 @@ asyncio.run(main())
         for tag in (old, new):
             r = app_client.post("/returns/new/external", content=urlencode({
                 "csrf_token": csrf, "entity": "OxyPC Computers", "customer_name": "IT Ext", "reason": "Not working",
-                "condition_on_return": "Minor damage", "tag_number": tag, "quantity": "1", "paid_repair": "0"}),
+                "condition_on_return": "Minor damage", "tag_number": tag, "quantity": "1", "paid_repair": "0",
+                "complaint_text": "Screen flickers", "cpu": "i5", "generation": "8th", "ram": "8 GB",
+                "storage": "256 GB"}),
                 headers={"X-CSRF-Token": csrf, "Content-Type": "application/x-www-form-urlencoded"},
                 follow_redirects=False)
             assert r.status_code == 302 and "error" not in r.headers["location"], r.headers.get("location")
@@ -55,9 +58,13 @@ async def main():
     async with AsyncSessionLocal() as db:
         for bc in ("{old}", "{new}"):
             print((await db.execute(text(f"select current_stage from devices where barcode = '{{bc}}'"))).scalar())
+            print((await db.execute(text(f"select replace(complaint_text, ' ', '_') from returns where device_id = "
+                                          f"(select id from devices where barcode = '{{bc}}')"))).scalar())
 asyncio.run(main())
 """).split()
-        assert out == ["stock_in", "iqc"], out
+        # 2026-11-05: External Tag "Complaint" (was Notes) is saved as the Complaint
+        # 2026-11-05: a new tag gets its IQC record and lands at Stock In too
+        assert out == ["stock_in", "Screen_flickers", "stock_in", "Screen_flickers"], out
     finally:
         _run(f"""
 import asyncio, sys
@@ -68,7 +75,7 @@ async def main():
     async with AsyncSessionLocal() as db:
         for bc in ("{old}", "{new}"):
             ids = f"(select id from devices where barcode = '{{bc}}')"
-            for t in ("returns", "stage_movements", "device_location_logs", "sales"):
+            for t in ("returns", "stage_movements", "device_location_logs", "sales", "iqc_inspections"):
                 await db.execute(text(f"delete from {{t}} where device_id in {{ids}}"))
             await db.execute(text(f"delete from devices where barcode = '{{bc}}'"))
         await db.commit()
