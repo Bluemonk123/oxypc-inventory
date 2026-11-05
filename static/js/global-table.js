@@ -267,6 +267,54 @@ function _gtableEmptyHtml(imageUrl, captionText) {
          '<div class="gtable-empty-text">' + caption + '</div></div>';
 }
 
+
+// ── Date display (2026-11-04, Pankaj) ────────────────────────────────────────
+// Every Global Table shows dates the same way: "04 Nov 2026 17:42" when the
+// value has a time, "04 Nov 2026" when it is a date only (no invented 00:00).
+// Recognised in a cell when a whole text piece is a date: DD-MM-YYYY,
+// YYYY-MM-DD, DD/MM/YYYY, "04 Nov 2026" / "04-Nov-2026", each optionally with
+// HH:MM[:SS]. Cells of a DOM table are rewritten before DataTables reads them,
+// and get data-order="YYYYMMDDHHMMSS" so the column sorts by the real date;
+// server-side / ajax rows are rewritten as they are created (sorting there is
+// the server's). Opt out: opts.dates === false, class "gt-no-dates" on the
+// table, or "gt-keep-date" on a <th> (that column) / <td> (that cell).
+// window.gtParseDate / gtFormatDate / gtIsoDate are shared with page scripts
+// (filters, exports) so they read the new text back correctly.
+// gtParseDate / gtFormatDate / gtIsoDate / _gtSortKey live in
+// static/js/date-export.js (loaded first by base.html) so page exports share them.
+var gtParseDate = window.gtParseDate, gtFormatDate = window.gtFormatDate, _gtSortKey = window.gtSortKey;
+
+// Rewrite the date text pieces inside the given rows. Returns, per column
+// index, whether any cell of it was a date (used to fill data-order).
+function gtFormatDateRows(rows, keepCols, setOrder) {
+  var dateCols = {};
+  for (var r = 0; r < rows.length; r++) {
+    var cells = rows[r].children;
+    for (var c = 0; c < cells.length; c++) {
+      var td = cells[c];
+      if (td.tagName !== 'TD' || keepCols[c] || (td.classList && td.classList.contains('gt-keep-date'))) continue;
+      var walker = document.createTreeWalker(td, NodeFilter.SHOW_TEXT, null), node, only = null, pieces = 0, other = false;
+      while ((node = walker.nextNode())) {
+        var raw = node.nodeValue;
+        if (!raw || !raw.trim()) continue;
+        var par = node.parentNode && node.parentNode.nodeName;
+        if (par === 'SCRIPT' || par === 'STYLE' || par === 'TEXTAREA' || par === 'OPTION') { other = true; continue; }
+        var p = gtParseDate(raw);
+        if (p) {
+          var lead = raw.match(/^\s*/)[0], trail = raw.match(/\s*$/)[0];
+          node.nodeValue = lead + gtFormatDate(p) + trail;
+          pieces++; only = p;
+        } else { other = true; }
+      }
+      if (setOrder && pieces === 1 && !other && !td.hasAttribute('data-order') && !td.hasAttribute('data-sort')) {
+        td.setAttribute('data-order', _gtSortKey(only));
+        dateCols[c] = true;
+      }
+    }
+  }
+  return dateCols;
+}
+
 function initGlobalTable(tableSelector, dtOptions, opts) {
   opts = opts || {};
   dtOptions = dtOptions || {};
@@ -378,7 +426,37 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
   merged.language.emptyTable = emptyTableHtml; // set post-merge — always the image+caption wrapper, never a caller's bare string
   merged.language.zeroRecords = zeroRecordsHtml; // same wrapper for the "search filtered to zero" case — see note above
 
+  // Date display (2026-11-04) — see gtFormatDateRows above.
+  var gtDates = opts.dates !== false && !$table.hasClass('gt-no-dates');
+  var gtKeepCols = {};
+  if (gtDates) {
+    $table.find('thead tr').first().children('th').each(function (i) { if ($(this).hasClass('gt-keep-date')) gtKeepCols[i] = true; });
+    var domRows = $table.children('tbody').children('tr').get();
+    if (domRows.length && !merged.serverSide && !merged.ajax) {
+      var dc = gtFormatDateRows(domRows, gtKeepCols, true);
+      // DataTables reads data-order per column — every cell of a date column
+      // needs one, or the column falls back to sorting by text.
+      Object.keys(dc).forEach(function (c) {
+        domRows.forEach(function (tr) {
+          var td = tr.children[c];
+          if (td && td.tagName === 'TD' && !td.hasAttribute('data-order') && !td.hasAttribute('data-sort') && !td.hasAttribute('colspan')) {
+            td.setAttribute('data-order', '');
+          }
+        });
+      });
+    }
+    var callerCreated = merged.createdRow;
+    merged.createdRow = function (row) {
+      gtFormatDateRows([row], gtKeepCols, false);
+      if (callerCreated) return callerCreated.apply(this, arguments);
+    };
+  }
+
   var dt = $table.DataTable(merged);
+  // Rows a page adds or rebuilds after init (rows.add, redraws of rewritten
+  // HTML) still show the shared format — display only; sorting/search keep
+  // what DataTables cached.
+  if (gtDates) dt.on('draw.dt', function () { gtFormatDateRows(dt.rows({ page: 'current' }).nodes().toArray(), gtKeepCols, false); });
 
   // Column 1 centers (app.css .gtable-checkbox-first) only when it's
   // actually a checkbox — every other table's first column is real content

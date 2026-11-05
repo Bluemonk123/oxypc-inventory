@@ -1121,6 +1121,7 @@ $.extend(true, $.fn.dataTable.defaults, {
      2-line cell truncation, and the standard toolbar layout. Loaded on every
      page like form-autosave.js above — see static/js/global-table.js. Any
      page calls initGlobalTable(...) from its own page-specific scripts block below. -->
+<script src="/static/js/date-export.js?v={{ ASSET_VERSION }}"></script>{# shared date + export format (2026-11-04) #}
 <script src="/static/js/global-table.js?v={{ ASSET_VERSION }}"></script>
 <!-- Top-bar Search / Scan Tag Number (2026-10-24). -->
 <script src="/static/js/topbar-search.js?v={{ ASSET_VERSION }}"></script>

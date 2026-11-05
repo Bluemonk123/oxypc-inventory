@@ -35,6 +35,11 @@ _VERSIONED_ASSETS = [
     os.path.join(BASE_DIR, "static", "js", "tag-scan-autocheck.js"),
     # Top-bar Search / Scan box (2026-10-24), loaded on every page by base.html.
     os.path.join(BASE_DIR, "static", "js", "topbar-search.js"),
+    # Shared date + export format (2026-11-04), loaded on every page.
+    os.path.join(BASE_DIR, "static", "js", "date-export.js"),
+    # Global toast (2026-10-31) — tagged ?v= in base.html but was missing here,
+    # so editing it alone never busted a browser cache (found 2026-11-04).
+    os.path.join(BASE_DIR, "static", "js", "toast.js"),
 ]
 try:
     ASSET_VERSION = str(int(max(

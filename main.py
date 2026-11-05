@@ -9,7 +9,7 @@ import traceback as _tb
 
 import uvicorn
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.exceptions import RequestValidationError
@@ -113,6 +113,36 @@ async def _no_store_pages(request: Request, call_next):
     if resp.headers.get("content-type", "").split(";")[0].strip() == "text/html":
         resp.headers["Cache-Control"] = "no-store"
     return resp
+
+
+# ── Global export format (2026-11-04) ────────────────────────────────────────
+# Every CSV / Excel download is normalised once here: dates YYYY-MM-DD (no
+# time; real date cells in Excel), amounts as plain numbers — see
+# utils/export_format.py. Registered after GZip, so it runs outside it and may
+# see a gzip body; that is unpacked, normalised and sent uncompressed.
+# A route can opt out with the response header X-Export-Raw: 1.
+_EXPORT_MAX_BYTES = 25 * 1024 * 1024
+
+
+@app.middleware("http")
+async def _export_format(request: Request, call_next):
+    resp = await call_next(request)
+    from utils.export_format import export_kind, normalize_export
+    kind = export_kind(resp.headers.get("content-type", ""), resp.headers.get("content-disposition", ""))
+    if not kind or resp.headers.get("x-export-raw"):
+        return resp
+    body = b"".join([chunk async for chunk in resp.body_iterator])
+    headers = {k: v for k, v in resp.headers.items() if k.lower() not in ("content-length", "content-encoding")}
+    try:
+        raw = body
+        if resp.headers.get("content-encoding", "").lower() == "gzip":
+            import gzip
+            raw = gzip.decompress(body)
+        new = normalize_export(kind, raw) if len(raw) <= _EXPORT_MAX_BYTES else raw
+    except Exception as exc:                       # never break a download over formatting
+        logging.getLogger("oxypc.errors").error("export format skipped for %s: %s", request.url.path, exc)
+        return Response(body, status_code=resp.status_code, headers=dict(resp.headers))
+    return Response(new, status_code=resp.status_code, headers=headers)
 
 
 # ── Error logger (writes to errors.log next to main.py) ───────────────────────

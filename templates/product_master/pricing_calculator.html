@@ -57,7 +57,14 @@
       </tr></thead>
       <tbody>
       {% for g in view.rows %}
-        <tr data-sku="{{ g.skus|join(', ') }}">
+        {# Export row (2026-11-04): labels and amounts in their own columns #}
+        {% set _exp = {'sku': g.skus|join(', '), 'make': g.make, 'model': g.model, 'cpu': g.cpu, 'gen': g.cpu_gen,
+                       'base_label': ('SKU not found' if g.sku_missing else g.disc_label), 'base': g.base_price,
+                       'ram': g.ram, 'ram_price': g.ram_price, 'ssd': g.ssd, 'ssd_price': g.sto_price,
+                       'parts': g.parts_ok_text, 'parts_deduct': (g.parts_deduct if g.parts_ok_text else None),
+                       'parts_pending': g.parts_pending|join(', '), 'selling': g.selling,
+                       'missing': g.missing|join(', ')} %}
+        <tr data-sku="{{ g.skus|join(', ') }}" data-exp="{{ _exp|tojson|forceescape }}">
           <td class="text-nowrap font-monospace pm-text">{{ g.sku or '—' }}</td>
           <td class="text-nowrap">{{ g.make or '—' }}{% if g.sku_missing %}<div><span class="badge bg-danger" title="SKU {{ g.skus|join(', ') }} is not in Product Master">SKU not found</span></div>{% endif %}</td>
           <td class="text-nowrap">{{ g.model or '—' }}</td>
@@ -208,7 +215,24 @@ document.addEventListener('DOMContentLoaded', function () { if (window.flashAsTo
       if (j.ok) location.reload(); else { b.disabled = false; showFlash('danger', j.error || 'Could not clear'); }
     });
   });
-  $('#pcExport').on('click', function () { pmExportCsv(dt, 'pricing_calculator', { prepend: [{ head: 'SKU', text: true, get: function (tr) { return tr.attr('data-sku'); } }] }); });
+  // Export (2026-11-04): one column per value — labels and amounts apart, so
+  // amounts leave as plain numbers (shared export format) and SUM works.
+  $('#pcExport').on('click', function () {
+    var H = ['SKU', 'Make', 'Model', 'CPU', 'CPU Gen', 'Base Price Type', 'Base Price', 'RAM', 'RAM Price', 'SSD', 'SSD Price',
+             'Spare Parts Deducted', 'Spare Parts Deduction', 'Spare Parts Price Pending', 'Selling Price', 'Missing'];
+    var K = ['sku', 'make', 'model', 'cpu', 'gen', 'base_label', 'base', 'ram', 'ram_price', 'ssd', 'ssd_price',
+             'parts', 'parts_deduct', 'parts_pending', 'selling', 'missing'];
+    var q = function (v) { v = v == null ? '' : String(v); return /[",\r\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var lines = [H.join(',')];
+    dt.rows({ search: 'applied', order: 'applied' }).nodes().each(function (tr) {
+      var d = {}; try { d = JSON.parse(tr.getAttribute('data-exp') || '{}'); } catch (e) {}
+      lines.push(K.map(function (k) { return k === 'sku' && d.sku ? '="' + d.sku + '"' : q(d[k]); }).join(','));
+    });
+    var a = document.createElement('a'), dd = new Date(), pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    a.href = URL.createObjectURL(new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+    a.download = 'pricing_calculator_' + dd.getFullYear() + pad(dd.getMonth() + 1) + pad(dd.getDate()) + '.csv';
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  });
   // Edit one row (2026-11-04)
   $(document).on('click', '.pc-edit', function () {
     var r = $(this).data('row');

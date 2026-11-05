@@ -210,7 +210,8 @@ $(document).ready(function(){
       var from = document.getElementById('fFrom').value;
       var to   = document.getElementById('fTo').value;
       if (!from && !to) return true;
-      var d = (data[2] || '').trim();  // Date of Invoice — column 2 since Lot Number was removed
+      // Global Table shows '04 Nov 2026' (2026-11-04); read it back as YYYY-MM-DD.
+      var d = window.gtIsoDate ? window.gtIsoDate(data[2] || '') : (data[2] || '').trim();  // Date of Invoice — column 2 since Lot Number was removed
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;  // unparseable dates excluded when filtering
       if (from && d < from) return false;
       if (to && d > to) return false;

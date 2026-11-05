@@ -411,7 +411,7 @@ $(document).ready(function(){
     });
     if (lines.length < 2) { alert('No rows to export.'); return; }
     var a = document.createElement('a');
-    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent('\ufeff' + lines.join('\r\n'));
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(window.gtNormalizeCsv ? window.gtNormalizeCsv('\ufeff' + lines.join('\r\n')) : '\ufeff' + lines.join('\r\n'))  /* global export format (2026-11-04) */;
     a.download = 'iqc_model_summary.csv';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
   });

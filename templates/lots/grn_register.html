@@ -375,7 +375,7 @@ async function uploadCSV() {
 function downloadTemplate() {
   const csv = 'barcode,brand,model,serial_no,sub_category,device_price\n,HP,EliteBook 840 G8,,Laptop,\n,Dell,Latitude 5420,,Laptop,\n';
   const a = document.createElement('a');
-  a.href = 'data:text/csv,' + encodeURIComponent(csv);
+  a.href = 'data:text/csv,' + encodeURIComponent(window.gtNormalizeCsv ? window.gtNormalizeCsv(csv) : csv)  /* global export format (2026-11-04) */;
   a.download = 'grn_import_template.csv';
   a.click();
 }

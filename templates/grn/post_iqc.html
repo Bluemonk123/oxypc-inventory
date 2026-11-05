@@ -566,7 +566,8 @@ $(document).ready(function(){
       var from = document.getElementById('fFrom').value;
       var to   = document.getElementById('fTo').value;
       if (!from && !to) return true;
-      var d = (data[3] || '').trim();  // Date of Invoice — column 3 (GRN, Lot, Invoice before it)
+      // Global Table shows '04 Nov 2026' (2026-11-04); read it back as YYYY-MM-DD.
+      var d = window.gtIsoDate ? window.gtIsoDate(data[3] || '') : (data[3] || '').trim();  // Date of Invoice — column 3 (GRN, Lot, Invoice before it)
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
       if (from && d < from) return false;
       if (to && d > to) return false;
