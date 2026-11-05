@@ -1931,6 +1931,100 @@ async def audit_missing_remove(request: Request, current_user: User = Depends(ad
     return JSONResponse({"ok": True, "removed": len(ids)})
 
 
+# ── Product Model Name consistency (2026-11-05, Pankaj) ──────────────────────
+# One model, one spelling: spellings that match ignoring case / spaces /
+# punctuation become the group's canonical one (utils/model_name.choose).
+# New saves are kept consistent by the Device listener (models/device.py).
+
+async def _model_name_data(db):
+    """(rows [(model, tags)], typed overrides {key: spelling}) — every tag."""
+    from sqlalchemy import func, select
+    from models.device import Device
+    from models.master import MasterData
+    from utils.model_name import OVERRIDE_CATEGORY, overrides_from
+    rows = (await db.execute(select(Device.model, func.count()).where(Device.model.isnot(None))
+                             .group_by(Device.model))).all()
+    typed = (await db.execute(select(MasterData.value).where(
+        MasterData.category == OVERRIDE_CATEGORY, MasterData.is_active.isnot(False)))).scalars().all()
+    return rows, overrides_from(typed)
+
+
+async def _model_name_changes(db):
+    """[(saved spelling, canonical, tag count)]."""
+    from utils.model_name import changes
+    rows, typed = await _model_name_data(db)
+    return changes(rows, typed)
+
+
+async def _model_name_groups(db):
+    from utils.model_name import fix_groups
+    rows, typed = await _model_name_data(db)
+    return fix_groups(rows, typed)
+
+
+@router.post("/model-name-fix")
+async def model_name_fix(request: Request, current_user: User = Depends(admin_only)):
+    """Apply: each listed model gets the name in its box (pre-filled with the
+    automatic spelling). A typed name must be the same model — same letters
+    and digits — only capitals, spaces and punctuation can change; it is
+    remembered (Master Data "model_spelling") so later saves follow it."""
+    from sqlalchemy import delete, select, update
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from models.master import MasterData
+    from services.audit_engine import audit
+    from utils.model_name import OVERRIDE_CATEGORY, clear_cache, model_key, tidy
+    form = await request.form()
+    async with AsyncSessionLocal() as db:
+        groups = await _model_name_groups(db)
+        existing = (await db.execute(select(MasterData).where(
+            MasterData.category == OVERRIDE_CATEGORY))).scalars().all()
+        now, ids_by, total, refused, remembered = None, {}, 0, [], []
+        from utils.timezone import app_now
+        now = app_now()
+        for g in groups:
+            typed = tidy(form.get(f"mn_{g['key']}")) or g["final"]
+            if model_key(typed) != g["key"]:
+                refused.append(f"{typed} (not the same model as {g['final']})")
+                continue
+            final = typed
+            # remember a typed name; forget one put back to the automatic name
+            for m in existing:
+                if model_key(m.value) == g["key"] and m.value != final:
+                    await db.delete(m)
+            if final != g["auto"] and not any(m.value == final for m in existing):
+                db.add(MasterData(category=OVERRIDE_CATEGORY, value=final[:200],
+                                  description="Product Model Name spelling (Data Fixes)", is_active=True))
+                remembered.append(final)
+            await db.flush()
+            for old, _n in g["spellings"]:
+                if old == final:
+                    continue
+                ids = (await db.execute(select(Device.id).where(Device.model == old))).scalars().all()
+                if not ids:
+                    continue
+                ids_by[f"{old} -> {final}"] = [str(i) for i in ids]
+                total += len(ids)
+                # Core UPDATE: no ORM flush, so the on-save listener isn't involved.
+                await db.execute(update(Device).where(Device.model == old)
+                                 .values(model=final, updated_at=now).execution_options(synchronize_session=False))
+        await audit(db, user=current_user, action="MODEL_NAME_FIX", table_name="devices",
+                    record_id=f"{total} tags",
+                    new_value={"count": total, "spellings": len(ids_by), "typed_names": remembered,
+                               "refused": refused, "device_ids": ids_by},
+                    notes="Product Model Name: each spelling set to its model's name "
+                          "(same model = same letters/digits ignoring case, spaces, punctuation). "
+                          "Reverse: put each group's old spelling back for the listed ids.",
+                    request=request)
+        await db.commit()
+    clear_cache()
+    msg = f"Product Model Name tidied: {total:,} tags, {len(ids_by):,} spellings."
+    if refused:
+        msg += " Not changed (a name must keep the same letters and numbers): " + "; ".join(refused[:5]) + "."
+    back = _back_to_page(form, msg)
+    return back or JSONResponse({"ok": True, "updated": total, "spellings": len(ids_by), "refused": refused})
+
+
 # ── Data Fixes page (2026-10-22) ─────────────────────────────────────────────
 # One admin page: preview + Apply button for each fill, and the data check.
 # The Apply buttons are ordinary form posts the admin clicks.
@@ -1953,6 +2047,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         subcat = await _subcat_changes(db)
         dt12_tags, dt12_master = await _dt12_changes(db)
         pname = await _part_name_changes(db)
+        mname = await _model_name_changes(db)
+        mgroups = await _model_name_groups(db)
         from services.parts_stock import crate_fix_plan
         pcrate = await crate_fix_plan(db)
         from services.parts_stock import cleanup_plan, crates_with_several_parts
@@ -2018,6 +2114,9 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "dt12_tags": [{"old": o, "new": n, "count": c} for o, n, c in dt12_tags],
         "dt12_total": sum(c for _o, _n, c in dt12_tags), "dt12_master": dt12_master,
         "dt12_list": DEVICE_TYPES_12,
+        "mname_total": sum(c for _o, _n, c in mname), "mname_spellings": len(mname),
+        "mname_models": len({n for _o, n, _c in mname}),
+        "mname_groups": mgroups,
         "pname": [{"code": c, "old": o, "new": n, "m0": m0, "m1": m1} for _i, c, o, n, m0, m1 in pname],
         "pcrate": pcrate, "pclean": pclean, "pmulti": pmulti,
         "hvmatch": hvmatch,

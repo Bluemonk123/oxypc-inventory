@@ -92,6 +92,11 @@ asyncio.run(main())
         assert "Reason: test cleanup" in row and u in row, row[:600]
         assert "<th>Trashed By</th><th>Trashed On</th>" in html
         assert html.count("Hello once") == 1
+        # Delete button (2026-11-05): action in data-* attributes — the old
+        # onclick="confirmPurge(..., "TAG", ...)" broke on its own quotes and
+        # the confirm box never opened.
+        assert f'data-purge-action="/trash/devices/{tags[-1]}/delete"' in row
+        assert f'data-purge-name="{tags[-1]}"' in row and "onclick=\"confirmPurge" not in html
 
         # single restore + single trash are audited too
         r = _post(app_client, f"/trash/devices/{tags[5]}/restore", [])

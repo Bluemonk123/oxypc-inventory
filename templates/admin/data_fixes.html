@@ -549,6 +549,66 @@
   </div>
   {% endif %}
 
+  {# ── Product Model Name consistency (2026-11-05) — stays on the page with a
+       green 0 once every model has one spelling. One row per model: its
+       spellings now and a box with the name it will be saved as (automatic,
+       editable — only capitals / spaces / punctuation may change). ── #}
+  <div class="col-12">
+    <div class="card border-0 shadow-sm{% if mname_total %} border-start border-warning border-3{% endif %}">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-type me-2"></i>Product Model Name — one spelling per model
+          <span class="badge {% if mname_total %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ "{:,}".format(mname_total) }}</span></span>
+        {% if mname_total %}
+        <form method="post" action="/admin/system/model-name-fix" class="df-confirm" id="mnForm"
+              data-confirm="Click again to apply">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-warning"><i class="bi bi-magic me-1"></i>Apply ({{ "{:,}".format(mname_total) }} tags)</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not mname_total %}
+        <p class="mb-0 text-success"><i class="bi bi-check-circle me-1"></i>All model names are consistent — every model has one spelling.
+          <span class="text-muted">Any Model typed on a page, upload or OxyQC is saved in its model's spelling automatically.</span></p>
+        {% else %}
+        <p class="text-muted mb-2">Spellings that are the same model (same letters and numbers, ignoring capitals, spaces and punctuation) become one name.
+          The <strong>Save as</strong> box is filled in automatically — normal capitals (not ALL CAPS or all small letters) and a space between words and numbers ("840 G6", not "840g6"), otherwise the most-used spelling.
+          <strong>Type in the box to change it</strong>; you can change capitals, spaces and punctuation, but not the letters or numbers.
+          A typed name is remembered, so tags saved later get it too.
+          <strong>{{ "{:,}".format(mname_groups | length) }}</strong> models, <strong>{{ "{:,}".format(mname_spellings) }}</strong> spellings to change.
+          Different names for the same model (e.g. "1030 G7" vs "EliteBook x360 1030 G7") are not merged — change those with Customise → Model Name.</p>
+        <div style="max-height:520px;overflow:auto">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light" style="position:sticky;top:0"><tr><th style="width:42%">Spellings now (tags)</th><th>Save as</th><th class="text-end">Tags to change</th></tr></thead>
+          <tbody>
+          {% for g in mname_groups %}
+            <tr>
+              <td>{% for sp, n in g.spellings %}<div><code>{{ sp }}</code> <span class="text-muted">({{ "{:,}".format(n) }})</span>{% if sp == g.final %} <span class="badge bg-light text-success border">kept</span>{% endif %}</div>{% endfor %}</td>
+              <td><input type="text" class="form-control form-control-sm mn-name" form="mnForm" name="mn_{{ g.key }}"
+                         value="{{ g.final }}" data-key="{{ g.key }}" maxlength="100" style="max-width:340px">
+                  {% if g.typed %}<div class="text-muted" style="font-size:.75rem">Typed earlier (automatic: {{ g.auto }})</div>{% endif %}
+                  <div class="text-danger mn-warn d-none" style="font-size:.75rem">Letters / numbers changed — this row won't be applied</div></td>
+              <td class="text-end">{{ "{:,}".format(g.to_change) }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <script>
+  // Warn as you type when a Save-as name is no longer the same model (2026-11-05).
+  document.querySelectorAll('.mn-name').forEach(function (i) {
+    i.addEventListener('input', function () {
+      var k = (i.value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+      i.parentNode.querySelector('.mn-warn').classList.toggle('d-none', !i.value.trim() || k === i.dataset.key);
+    });
+  });
+  </script>
+
   {# ── Device Type: the 12 categories (2026-10-30) ── #}
   {% set _dt12_m = dt12_master or {} %}
   {% if dt12_total or _dt12_m.get('add') or _dt12_m.get('turn_on') or _dt12_m.get('turn_off') %}

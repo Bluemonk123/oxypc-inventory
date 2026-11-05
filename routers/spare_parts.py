@@ -799,8 +799,14 @@ async def edit_part_form(part_id: str, request: Request,
     part = result.scalar_one_or_none()
     if not part:
         raise HTTPException(404, "Part not found")
-    return templates.TemplateResponse("spare_parts/edit_form.html", {
+    from services.parts_stock import live_map as _lm
+    live_stock = (await _lm(db, [part])).get(str(part.id))
+    # ?modal=1 (2026-11-05): just the form, for the Parts Manager Edit modal.
+    modal = request.query_params.get("modal") == "1"
+    return templates.TemplateResponse(
+        "spare_parts/_edit_part_form.html" if modal else "spare_parts/edit_form.html", {
         "request": request, "part": part, "categories": await master_values(db, "iqc_part_category"),
+        "live_stock": live_stock, "modal": modal,
         # Spare Part Names / Spare Part Brands master dropdowns, wired to Part
         # Name and Part Make. part.name / part.make are injected as a fallback
         # option in the template when not present in these lists, so an older
@@ -826,6 +832,9 @@ async def update_part(
     crate_number: str = Form(""),
     make: str = Form(""),
     model: str = Form(""),
+    shown_stock: str = Form(""),
+    count_reason: str = Form(""),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
@@ -861,7 +870,27 @@ async def update_part(
     part.crate_number = crate_number.strip() or None
     part.make = make.strip() or None
     part.model = model.strip() or None
-    if qty_in_stock is not None:
+    if qty_in_stock is not None and shown_stock.strip().lstrip("-").isdigit():
+        # In Stock shown as the live count (2026-11-05, replaces Update Count):
+        # In Stock becomes exactly the typed number — qty_in_stock moves by
+        # the difference from the live figure, as Update Count did.
+        from services.parts_stock import live_map as _lm
+        shown = (await _lm(db, [part]))[str(part.id)]
+        counted = max(0, int(qty_in_stock))
+        delta = counted - shown
+        if delta:
+            part.qty_in_stock = int(part.qty_in_stock or 0) + delta
+            db.add(SparePartsLedger(
+                part_id=part.id, entry_type="IN" if delta > 0 else "OUT", qty=abs(delta),
+                cost_per_unit=float(part.unit_price or 0), total_cost=abs(delta) * float(part.unit_price or 0),
+                reference_type="adjustment", reference_id=None, created_by=current_user.username,
+                notes=f"Edit Part count crate {part.crate_number or '-'}: {shown} -> {counted}",
+            ))
+            await audit(db, action="PART_COUNT_UPDATED", user=current_user, table_name="spare_parts",
+                        record_id=str(part.id), old_value={"in_stock": shown},
+                        new_value={"in_stock": counted, "crate": part.crate_number, "part_code": part.part_code},
+                        notes=(count_reason or "").strip()[:500] or None, request=request)
+    elif qty_in_stock is not None:
         new_qty = max(0, int(qty_in_stock))
         old_qty = int(part.qty_in_stock or 0)
         delta = new_qty - old_qty

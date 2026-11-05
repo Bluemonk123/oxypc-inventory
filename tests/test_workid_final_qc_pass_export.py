@@ -102,6 +102,13 @@ asyncio.run(main())
         assert rows[tp]["Final QC Pass Date"] is not None
         assert rows[tp]["Part 1 Name"] == f"ITFQ-Cur-{sfx}" and "Part 2 Name" not in head
         assert rows[tp]["Total Parts Cost"] == 400
+        # Repair Summary: same parts rule around the move to Ready for Sale
+        r = app_client.get("/workid-status/repair-summary", params={"tag": f"ITFQ{sfx}", "work_from": today,
+                                                                     "work_to": today})
+        ws = load_workbook(io.BytesIO(r.content)).active
+        rh = [c.value for c in ws[1]]
+        rrows = {x[0]: dict(zip(rh, x)) for x in ws.iter_rows(min_row=2, values_only=True)}
+        assert rrows[tp]["Part 1 Name"] == f"ITFQ-Cur-{sfx}" and rrows[tp]["Total Parts Cost"] == 400
         old = (date.today() - timedelta(days=30)).isoformat()
         _t, _h, rows = export(tag=f"ITFQ{sfx}", work_from=old, work_to=old)
         assert rows == {}

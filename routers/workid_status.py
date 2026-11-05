@@ -2081,6 +2081,28 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
         headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
+async def _refurb_windows(db, anchor_by_dev: dict) -> dict:
+    """{device_id: (after, until)} — one refurbishment around `anchor` (a
+    pass date, 2026-11-05, Pankaj): after the tag's last Sale before it, up
+    to its next Sale after it. Never sold before -> after = None (all parts
+    from the start); not sold since -> until = None."""
+    ids = list(anchor_by_dev)
+    sold_by_dev: dict = {}
+    for i in range(0, len(ids), 10000):
+        for did, at in (await db.execute(select(StageMovement.device_id, StageMovement.moved_at)
+                                         .where(StageMovement.device_id.in_(ids[i:i + 10000]),
+                                                StageMovement.to_stage == DeviceStage.sold,
+                                                StageMovement.moved_at.isnot(None)))).all():
+            sold_by_dev.setdefault(did, []).append(at)
+    out = {}
+    for did, at in anchor_by_dev.items():
+        sales = sorted(sold_by_dev.get(did, []))
+        before = [x for x in sales if at and x < at]
+        after = [x for x in sales if at and x >= at]
+        out[did] = (before[-1] if before else None, after[0] if after else None)
+    return out
+
+
 @router.get("/workid-status/repair-summary")
 async def workid_status_repair_summary(request: Request, db: AsyncSession = Depends(get_db),
                                        current_user: User = Depends(get_current_user),
@@ -2105,8 +2127,9 @@ async def workid_status_repair_summary(request: Request, db: AsyncSession = Depe
     Counted by the movement, so a tag sold (or returned) afterwards is still
     in; a tag that passed twice in the range is one row with Times Passed =
     2 and Moved From = the stage of its latest pass. Each tag's parts =
-    every part verified as changed on it (any date), plus Labour / Packing /
-    Freight — its full repair cost.
+    the parts of THIS refurbishment (2026-11-05: verified after its last
+    Sale before that move, up to its next Sale; never sold -> all parts),
+    plus Labour / Packing / Freight.
 
     Engineer / WorkID / Tag search narrow it to tags that have such a WorkID;
     a non-admin only ever gets tags from WorkIDs the page would show them."""
@@ -2124,11 +2147,12 @@ async def workid_status_repair_summary(request: Request, db: AsyncSession = Depe
                                           .where(Device.id.in_(ids[i:i + 10000])))).all():
             barcodes[did] = bc or ""
     order = sorted(barcodes, key=lambda d: barcodes[d])
-    wanted = set(order)
+    # Parts (2026-11-05, Pankaj): this refurbishment's only — same rule as
+    # Final QC Pass, around the tag's latest move to Ready for Sale.
+    windows = await _refurb_windows(db, {d: ready_pass[d][0] for d in order})
     parts_by_device: dict = {}
-    for r in await _parts_consumption_rows(db):
-        if r["device_id"] in wanted:
-            parts_by_device.setdefault(r["device_id"], []).append(r)
+    for r in await _parts_consumption_rows(db, device_windows=windows):
+        parts_by_device.setdefault(r["device_id"], []).append(r)
     from utils.price_export import can_export_prices
     data = await build_repair_summary_xlsx(db, order, parts_by_device, ready_pass=ready_pass,
                                            include_prices=can_export_prices(current_user, "workid_status"))
@@ -2216,20 +2240,7 @@ async def workid_status_final_qc_pass(request: Request, db: AsyncSession = Depen
     # refurbishment: verified after the tag's last Sale before its pass, up
     # to its next Sale after the pass (a later return's repair is the next
     # cycle). Never sold before the pass -> every part from the start.
-    sold_by_dev: dict = {}
-    for i in range(0, len(ids), 10000):
-        for did, at in (await db.execute(select(StageMovement.device_id, StageMovement.moved_at)
-                                         .where(StageMovement.device_id.in_(ids[i:i + 10000]),
-                                                StageMovement.to_stage == DeviceStage.sold,
-                                                StageMovement.moved_at.isnot(None)))).all():
-            sold_by_dev.setdefault(did, []).append(at)
-    windows = {}
-    for did in order:
-        at = fqc_rows[did][0]
-        sales = sorted(sold_by_dev.get(did, []))
-        before = [x for x in sales if at and x < at]
-        after = [x for x in sales if at and x >= at]
-        windows[did] = (before[-1] if before else None, after[0] if after else None)
+    windows = await _refurb_windows(db, {d: fqc_rows[d][0] for d in order})
     parts_by_device: dict = {}
     for r in await _parts_consumption_rows(db, device_windows=windows):
         parts_by_device.setdefault(r["device_id"], []).append(r)

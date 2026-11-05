@@ -349,3 +349,15 @@ def reset_repair_cycle_on_entry(device, prev_stage, new_stage) -> bool:
         device.l34_status = None
         return True
     return False
+
+
+# Product Model Name consistency (2026-11-05): every save of a tag's Model —
+# any page, upload or OxyQC — is tidied and snapped to the existing model's
+# canonical spelling (utils/model_name.py).
+def _snap_model(mapper, connection, target):
+    from utils.model_name import snap_on_flush
+    snap_on_flush(mapper, connection, target)
+
+
+event.listen(Device, "before_insert", _snap_model)
+event.listen(Device, "before_update", _snap_model)

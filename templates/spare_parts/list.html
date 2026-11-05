@@ -356,12 +356,11 @@
             <td>
               <div class="d-flex gap-1">
                 {% if can(current_user, 'spare_parts', 'edit') %}
-                <a href="/spare-parts/{{ part.id }}/edit"
+                {# Edit opens in a modal (2026-11-05); Update Count removed — Edit's
+                   In Stock now sets the counted number the same way. #}
+                <a href="/spare-parts/{{ part.id }}/edit" data-edit-part="{{ part.id }}"
+                   data-edit-label="{{ part.part_code }} — {{ part.name }} · {{ part.make or '—' }} / {{ part.model or '—' }} · Crate {{ part.crate_number or '—' }}"
                    class="btn btn-xs btn-outline-primary btn-sm py-0 px-2">Edit</a>
-                <button type="button" class="btn btn-xs btn-outline-success btn-sm py-0 px-2 text-nowrap"
-                        title="Set this crate's count after a physical count"
-                        onclick="spUpdateCount('{{ part.id }}', {{ live_stock }}, this)"
-                        data-label="{{ part.name }} · {{ part.make or '—' }} / {{ part.model or '—' }} · {{ 'Harvest' if part.source == 'harvest' else 'New' }} · Crate {{ part.crate_number or '—' }}">Update Count</button>
                 {% endif %}
                 {% if can(current_user, 'spare_parts', 'edit') %}
                 <form method="post" action="/spare-parts/{{ part.id }}/procure" class="d-inline">
@@ -842,6 +841,18 @@
   </div>
 </div>
 {% endif %}
+<div class="modal fade" id="editPartModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit Part <span id="editPartTitle" class="text-muted small"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="editPartBody"><div class="text-center text-muted py-4">Loading…</div></div>
+    </div>
+  </div>
+</div>
+
 <div class="modal fade" id="addPartModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
@@ -1180,7 +1191,24 @@ $(document).on('click', '#partsTable tr.sp-grp', function () {
   $('#partsTable').DataTable().draw(false);
 });
 
-// Update Count (2026-10-31): physical count of one crate row.
+// Edit Part in a modal (2026-11-05): the Edit page's form, loaded on click.
+// Saving posts the form as before and comes back to this page.
+document.addEventListener('click', function (e) {
+  var a = e.target.closest('a[data-edit-part]');
+  if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
+  e.preventDefault();
+  var body = document.getElementById('editPartBody');
+  body.innerHTML = '<div class="text-center text-muted py-4">Loading…</div>';
+  document.getElementById('editPartTitle').textContent = a.getAttribute('data-edit-label') || '';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('editPartModal')).show();
+  fetch(a.getAttribute('href') + '?modal=1', { credentials: 'same-origin' })
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+    .then(function (html) { body.innerHTML = html; })
+    .catch(function () { location.href = a.getAttribute('href'); });   // fall back to the page
+});
+
+// Update Count (2026-10-31): physical count of one crate row. Button removed
+// 2026-11-05 (Edit does it); kept for any old bookmark of the flow.
 function spUpdateCount(id, shown, btn) {
   var label = btn.getAttribute('data-label') || '';
   var v = prompt('Update Count\n' + label + '\n\nSystem shows ' + shown + '. Enter the counted quantity:', shown);

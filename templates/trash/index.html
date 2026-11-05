@@ -119,8 +119,11 @@
                 {% if can(current_user, 'location_trash', 'delete') %}
                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1"
                         title="Delete this tag permanently"
-                        onclick="confirmPurge('/trash/devices/{{ dev.barcode | urlencode }}/delete',
-                                              {{ dev.barcode | tojson }}, 'device', null)">
+                        {# data-* + one click handler (2026-11-05): the tojson value in
+                           onclick="…" carried double quotes that cut the attribute
+                           short, so the confirm box never opened. #}
+                        data-purge-action="/trash/devices/{{ dev.barcode | urlencode }}/delete"
+                        data-purge-name="{{ dev.barcode }}" data-purge-kind="device">
                   <i class="bi bi-trash3 me-1"></i>Delete
                 </button>
                 {% endif %}
@@ -169,9 +172,9 @@
                 {% if can(current_user, 'location_trash', 'delete') %}
                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2 ms-1"
                         title="Delete this lot and its devices permanently"
-                        onclick="confirmPurge('/trash/lots/{{ lot.id }}/delete',
-                                              {{ lot.lot_number | tojson }}, 'lot',
-                                              {{ lot.qty | tojson }})">
+                        data-purge-action="/trash/lots/{{ lot.id }}/delete"
+                        data-purge-name="{{ lot.lot_number }}" data-purge-kind="lot"
+                        data-purge-qty="{{ lot.qty or '' }}">
                   <i class="bi bi-trash3 me-1"></i>Delete
                 </button>
                 {% endif %}
@@ -398,6 +401,11 @@ document.getElementById('dupInput').addEventListener('input', function () {
 });
 
 var purgeExpected = '';
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('[data-purge-action]');
+  if (!b) return;
+  confirmPurge(b.dataset.purgeAction, b.dataset.purgeName, b.dataset.purgeKind, b.dataset.purgeQty || null);
+});
 
 function confirmPurge(action, name, kind, qty) {
   purgeExpected = name;

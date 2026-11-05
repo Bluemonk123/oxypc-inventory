@@ -1,0 +1,106 @@
+{# Edit Part form — used by the Edit page and the Parts Manager Edit modal (2026-11-05). #}
+        <form action="/spare-parts/{{ part.id }}/edit" method="post">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+          <div class="row g-3">
+            {# Crate Number gets its own row so Row 1 / Row 2 below stay
+               exactly the three fields each they're specified as.
+               Row 1: Part Code (generated, never editable — no name attr so
+               it is never submitted) / Part Lot / Part Model.
+               Row 2: Part Category / Part Name / Part Make. #}
+            <div class="col-md-12">
+              <label class="form-label fw-semibold">Crate Number</label>
+              <input type="text" name="crate_number" class="form-control" value="{{ part.crate_number or '' }}" placeholder="Crate the part arrived in">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Part Code</label>
+              <input type="text" class="form-control" value="{{ part.part_code }}" disabled>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Part Lot</label>
+              <input type="text" name="part_lot" class="form-control" value="{{ part.part_lot or '' }}" placeholder="Vendor lot / batch ref">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Part Model</label>
+              <input type="text" name="model" class="form-control" value="{{ part.model or '' }}" placeholder="e.g. M471A1K43CB1">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Part Category</label>
+              <select name="category" class="form-select" required>
+                {% for cat in categories %}
+                <option {% if cat == part.category %}selected{% endif %}>{{ cat }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Part Name</label>
+              {# Wired to the Spare Part Names master dropdown. If this row's
+                 name is not in that list — a handful of parts predate the
+                 2026-08 name consolidation — it is injected as an extra
+                 option so editing the part never silently renames it. #}
+              <select name="name" class="form-select" required>
+                {% for n in part_names %}
+                <option {% if n == part.name %}selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+                {% if part.name and part.name not in part_names %}
+                <option value="{{ part.name }}" selected>{{ part.name }} (not in Spare Part Names)</option>
+                {% endif %}
+              </select>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Part Make</label>
+              {# Wired to the Spare Part Brands master dropdown. Same fallback
+                 as above — a blank dropdown here (e.g. before it is seeded on
+                 a given server) must not blank out an existing make. #}
+              <select name="make" class="form-select">
+                <option value="">— Select —</option>
+                {% for b in part_brands %}
+                <option {% if b == part.make %}selected{% endif %}>{{ b }}</option>
+                {% endfor %}
+                {% if part.make and part.make not in part_brands %}
+                <option value="{{ part.make }}" selected>{{ part.make }} (not in Spare Part Brands)</option>
+                {% endif %}
+              </select>
+            </div>
+            {% if price_field_shown(current_user, 'spare_parts') %}
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Unit Price (₹)</label>
+              <div class="input-group">
+                <span class="input-group-text">₹</span>
+                <input type="number" name="unit_price" class="form-control" {{ price_input_attrs(current_user, 'spare_parts', part.unit_price) }} min="0" step="0.01">
+              </div>
+            </div>
+            {% else %}
+            {# No Pricing View/Add: no price sent; the server keeps it. #}
+            <input type="hidden" name="unit_price" value="">{# server keeps the stored price (2026-11-03) #}
+            {% endif %}
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">In Stock (qty)</label>
+              {# 2026-11-05: the count shown in the Part Master table (after
+                 handovers / sales) — changing it works like the old Update
+                 Count button: In Stock becomes exactly this number. #}
+              <input type="number" name="qty_in_stock" class="form-control" value="{{ live_stock if live_stock is not none else (part.qty_in_stock or 0) }}" min="0">
+              <input type="hidden" name="shown_stock" value="{{ live_stock if live_stock is not none else '' }}">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold">Low Stock Alert (qty)</label>
+              <input type="number" name="min_stock_alert" class="form-control" value="{{ part.min_stock_alert }}" min="0">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label">Count change reason</label>
+              <input type="text" name="count_reason" class="form-control" placeholder="e.g. Stock-take (only if In Stock changed)">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Supplier</label>
+              <input type="text" name="supplier" class="form-control" value="{{ part.supplier or '' }}" placeholder="Supplier name">
+            </div>
+            <div class="col-12">
+              <label class="form-label">Notes</label>
+              <textarea name="notes" class="form-control" rows="2">{{ part.notes or '' }}</textarea>
+            </div>
+          </div>
+          <div class="mt-4 d-flex gap-2">
+            <button type="submit" class="btn btn-primary px-4"><i class="bi bi-save me-2"></i>Save Changes</button>
+            {% if modal %}<button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            {% else %}<a href="/spare-parts" class="btn btn-outline-secondary">Cancel</a>{% endif %}
+          </div>
+        </form>
