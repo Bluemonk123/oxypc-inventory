@@ -16,6 +16,8 @@ the best-separated one ("840 G6" over "840g6"; then the most-used).
   * The admin can type the spelling for a model on that card; it is kept in
     Master Data (category "model_spelling", hidden from the Master Data
     page) and wins over the automatic choice, now and on later saves.
+    A typed name with different letters / numbers renames the model
+    (2026-11-06): kept as "old => new" so later saves follow it too.
   * snap_on_flush (models/device.py listener) keeps it that way: whenever a
     tag's Model is saved from ANY page / upload / OxyQC, spaces are tidied
     and a spelling of a model that already exists is saved as that model's
@@ -91,13 +93,38 @@ def _groups(rows) -> dict:
     return groups
 
 
+# A typed name with different letters / numbers is a rename (2026-11-06,
+# Pankaj): kept as "old spelling => new name", so that model's old spellings
+# saved later become the new name too.
+RENAME_SEP = "=>"
+
+
+def parse_override(value):
+    """(key it applies to, name to save) for one Master Data value, or None.
+    "Prodesk 400 G4 SFF => Prodesk 400 G4" -> ("prodesk400g4sff", "Prodesk 400 G4");
+    a plain spelling applies to its own key."""
+    t = tidy(value)
+    if not t:
+        return None
+    if RENAME_SEP in t:
+        old, new = (tidy(x) for x in t.split(RENAME_SEP, 1))
+        if old and new and model_key(old) and model_key(new):
+            return model_key(old), new
+        return None
+    return (model_key(t), t) if model_key(t) else None
+
+
+def rename_value(old_spelling: str, new_name: str) -> str:
+    return f"{tidy(old_spelling)} {RENAME_SEP} {tidy(new_name)}"
+
+
 def overrides_from(values) -> dict:
-    """Typed spellings (Master Data values) -> {key: spelling}."""
+    """Typed spellings and renames (Master Data values) -> {key: name}."""
     out = {}
     for v in values:
-        t = tidy(v)
-        if t and model_key(t):
-            out[model_key(t)] = t
+        p = parse_override(v)
+        if p:
+            out[p[0]] = p[1]
     return out
 
 
@@ -143,6 +170,54 @@ def fix_groups(rows, overrides=None) -> list:
             out.append({"key": k, "auto": auto, "final": final, "typed": k in overrides,
                         "spellings": sorted(saved, key=lambda x: -x[1]), "to_change": change})
     return sorted(out, key=lambda g: -g["to_change"])
+
+
+def make_key(value) -> str:
+    """Makes compare like models: "LENOVO" / "Lenovo" / " lenovo" are one Make."""
+    return model_key(value)
+
+
+def fix_groups_by_make(rows3, overrides=None) -> list:
+    """Card rows split by Make (2026-11-06, Pankaj). rows3 = [(make, model as
+    saved, tags)]. The name for a model is worked out over every make (one
+    name per model); each (model, make) pair is its own row with its own
+    Save-as box. A row is listed when it has spellings to change, or when the
+    same model is saved under more than one Make (so a wrong Make shows up).
+    Makes are compared ignoring capitals / spaces ("LENOVO" = "Lenovo").
+    -> [{key, make (make key), make_names, auto, final, typed, spellings, to_change, makes}]"""
+    overrides = overrides or {}
+    cmap = canonical_map([(m, n) for _mk, m, n in rows3], overrides)
+    per: dict = {}
+    names: dict = {}          # make key -> {Make as saved: tags}
+    for make, model, n in rows3:
+        t = tidy(model)
+        if not t or not model_key(t):
+            continue
+        k = model_key(t)
+        mk = make_key(make)
+        bucket = per.setdefault(k, {}).setdefault(mk, {})
+        bucket[model] = bucket.get(model, 0) + int(n or 0)     # "HP" / "Hp" rows of one spelling add up
+        names.setdefault(mk, {}).setdefault(tidy(make) or "", 0)
+        names[mk][tidy(make) or ""] += int(n or 0)
+    auto_map = canonical_map([(m, n) for _mk, m, n in rows3])
+    out = []
+    for k, by_make in per.items():
+        final = cmap.get(k)
+        several = len(by_make) > 1
+        for mk, saved_d in by_make.items():
+            saved = list(saved_d.items())
+            change = sum(n for m, n in saved if m != final)
+            if change or several:
+                shown = sorted(names.get(mk, {"": 0}), key=lambda x: -names[mk][x]) if mk in names else [""]
+                out.append({"key": k, "make": mk, "make_names": [x for x in shown if x],
+                            "auto": auto_map.get(k, final), "final": final,
+                            "typed": k in overrides, "spellings": sorted(saved, key=lambda x: -x[1]),
+                            "to_change": change, "makes": len(by_make)})
+    # most tags to change first; a model's makes stay together
+    tot = {}
+    for g in out:
+        tot[g["key"]] = tot.get(g["key"], 0) + g["to_change"]
+    return sorted(out, key=lambda g: (-tot[g["key"]], g["key"], -sum(n for _m, n in g["spellings"])))
 
 
 # ── On-save guard (used by the Device listener) ──────────────────────────────

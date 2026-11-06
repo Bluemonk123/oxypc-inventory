@@ -304,6 +304,10 @@ def _back_to_page(request_form, msg):
     message instead of raw JSON."""
     from fastapi.responses import RedirectResponse
     from urllib.parse import quote
+    if (request_form.get("ajax") or "") == "1":
+        # Sent by the page's own script (2026-11-06): it shows `message` as a
+        # toast and refreshes only that card — no page reload.
+        return JSONResponse({"ok": True, "message": msg})
     if (request_form.get("back") or "") == "1":
         return RedirectResponse(f"/admin/system/data-fixes?done={quote(msg)}", status_code=303)
     return None
@@ -1957,72 +1961,165 @@ async def _model_name_changes(db):
 
 
 async def _model_name_groups(db):
-    from utils.model_name import fix_groups
-    rows, typed = await _model_name_data(db)
-    return fix_groups(rows, typed)
+    """Card rows, one per Model + Make (2026-11-06)."""
+    from sqlalchemy import func, select
+    from models.device import Device
+    from utils.model_name import fix_groups_by_make
+    _rows, typed = await _model_name_data(db)
+    rows3 = (await db.execute(select(Device.brand, Device.model, func.count()).where(Device.model.isnot(None))
+                              .group_by(Device.brand, Device.model))).all()
+    return fix_groups_by_make(rows3, typed)
+
+
+def _make_cond(mk: str):
+    """Tags whose Make is this make key (capitals / spaces ignored; "" = no Make)."""
+    from sqlalchemy import func, or_
+    from models.device import Device
+    norm = func.lower(func.regexp_replace(func.coalesce(Device.brand, ""), "[^A-Za-z0-9]", "", "g"))
+    return norm == mk if mk else or_(Device.brand.is_(None), norm == "")
+
+
+def _mn_field(g) -> str:
+    """Save-as box name for one card row (model key + Make)."""
+    return f"mn_{g['key']}|{g['make']}"
 
 
 @router.post("/model-name-fix")
 async def model_name_fix(request: Request, current_user: User = Depends(admin_only)):
     """Apply: each listed model gets the name in its box (pre-filled with the
-    automatic spelling). A typed name must be the same model — same letters
-    and digits — only capitals, spaces and punctuation can change; it is
-    remembered (Master Data "model_spelling") so later saves follow it."""
-    from sqlalchemy import delete, select, update
+    automatic spelling). A typed name is remembered (Master Data
+    "model_spelling") so later saves follow it. Same letters / digits = a
+    spelling change; different letters / digits (2026-11-06, Pankaj) = a rename
+    of every spelling in the row, also remembered as "old => new"."""
+    from sqlalchemy import func, or_, select, update
     from database import AsyncSessionLocal
     from models.device import Device
     from models.master import MasterData
     from services.audit_engine import audit
-    from utils.model_name import OVERRIDE_CATEGORY, clear_cache, model_key, tidy
+    from utils.model_name import OVERRIDE_CATEGORY, clear_cache, model_key, parse_override, rename_value, tidy
     form = await request.form()
     async with AsyncSessionLocal() as db:
         groups = await _model_name_groups(db)
         existing = (await db.execute(select(MasterData).where(
             MasterData.category == OVERRIDE_CATEGORY))).scalars().all()
-        now, ids_by, total, refused, remembered = None, {}, 0, [], []
+        ids_by, total, renamed, remembered = {}, 0, [], []
         from utils.timezone import app_now
         now = app_now()
+
+        def _remember(value):
+            if not any(m.value == value for m in existing):
+                m = MasterData(category=OVERRIDE_CATEGORY, value=value[:200],
+                               description="Product Model Name spelling (Data Fixes)", is_active=True)
+                db.add(m)
+                existing.append(m)
+                remembered.append(value)
+
+        def _typed(g):
+            # mn_<key>|<make> (2026-11-06); mn_<key> still accepted (older page / scripts)
+            return (tidy(form.get(_mn_field(g))) or tidy(form.get(f"mn_{g['key']}")) or g["final"])[:100]
+        # One remembered name per model (the save rule is per model, not per
+        # Make) — only when every Make row of it got the same name.
+        decide = {}
         for g in groups:
-            typed = tidy(form.get(f"mn_{g['key']}")) or g["final"]
-            if model_key(typed) != g["key"]:
-                refused.append(f"{typed} (not the same model as {g['final']})")
-                continue
-            final = typed
-            # remember a typed name; forget one put back to the automatic name
-            for m in existing:
-                if model_key(m.value) == g["key"] and m.value != final:
+            n = sum(c for _m, c in g["spellings"])
+            if g["key"] not in decide or n > decide[g["key"]][0]:
+                decide[g["key"]] = (n, g)
+        finals = {}
+        for g in groups:
+            finals.setdefault(g["key"], set()).add(_typed(g))
+        for _n, g in decide.values():
+            if len(finals[g["key"]]) > 1:
+                continue       # makes given different names: apply them, remember none
+            final = _typed(g)
+            rename = model_key(final) != g["key"]
+            # forget what this model had remembered before, unless it is still wanted
+            for m in list(existing):
+                p = parse_override(m.value)
+                if p and p[0] == g["key"] and p[1] != final:
                     await db.delete(m)
-            if final != g["auto"] and not any(m.value == final for m in existing):
-                db.add(MasterData(category=OVERRIDE_CATEGORY, value=final[:200],
-                                  description="Product Model Name spelling (Data Fixes)", is_active=True))
-                remembered.append(final)
-            await db.flush()
+                    existing.remove(m)
+            if rename:
+                _remember(rename_value(g["auto"], final))    # old spellings saved later -> new name
+                _remember(final)                             # and the new name keeps this spelling
+            elif final != g["auto"]:
+                _remember(final)
+        await db.flush()
+        for g in groups:
+            final = _typed(g)
+            if model_key(final) != g["key"]:
+                renamed.append(f"{g['final']} -> {final}" + (f" ({g['make_names'][0]})" if g["make_names"] else ""))
+            make_cond = _make_cond(g["make"])
             for old, _n in g["spellings"]:
                 if old == final:
                     continue
-                ids = (await db.execute(select(Device.id).where(Device.model == old))).scalars().all()
+                ids = (await db.execute(select(Device.id).where(Device.model == old, make_cond))).scalars().all()
                 if not ids:
                     continue
-                ids_by[f"{old} -> {final}"] = [str(i) for i in ids]
+                ids_by[(f"{old} -> {final}" + (f" [{'/'.join(g['make_names'])}]" if g["make_names"] else ""))[:200]] = [str(i) for i in ids]
                 total += len(ids)
                 # Core UPDATE: no ORM flush, so the on-save listener isn't involved.
-                await db.execute(update(Device).where(Device.model == old)
+                await db.execute(update(Device).where(Device.id.in_(ids))
                                  .values(model=final, updated_at=now).execution_options(synchronize_session=False))
         await audit(db, user=current_user, action="MODEL_NAME_FIX", table_name="devices",
                     record_id=f"{total} tags",
                     new_value={"count": total, "spellings": len(ids_by), "typed_names": remembered,
-                               "refused": refused, "device_ids": ids_by},
-                    notes="Product Model Name: each spelling set to its model's name "
-                          "(same model = same letters/digits ignoring case, spaces, punctuation). "
+                               "renamed": renamed, "device_ids": ids_by},
+                    notes="Product Model Name: each spelling set to the name in its row's Save-as box "
+                          "(a name with different letters/digits renames the row). "
                           "Reverse: put each group's old spelling back for the listed ids.",
                     request=request)
         await db.commit()
     clear_cache()
-    msg = f"Product Model Name tidied: {total:,} tags, {len(ids_by):,} spellings."
-    if refused:
-        msg += " Not changed (a name must keep the same letters and numbers): " + "; ".join(refused[:5]) + "."
+    msg = f"Product Model Name updated: {total:,} tags, {len(ids_by):,} spellings."
+    if renamed:
+        msg += f" Renamed: {'; '.join(renamed[:5])}" + (f" (+{len(renamed) - 5} more)" if len(renamed) > 5 else "") + "."
     back = _back_to_page(form, msg)
-    return back or JSONResponse({"ok": True, "updated": total, "spellings": len(ids_by), "refused": refused})
+    return back or JSONResponse({"ok": True, "updated": total, "spellings": len(ids_by), "renamed": renamed})
+
+
+@router.get("/model-name-fix/export")
+async def model_name_export(model: str = "", make: str = "", current_user: User = Depends(admin_only)):
+    """Product Model Name card (2026-11-06, Pankaj): the tags saved with one
+    spelling (and Make) — Make, Model, hardware, current stage, PNA, Return,
+    Scrap — as a CSV."""
+    import csv
+    import io
+    from fastapi.responses import Response
+    from sqlalchemy import func, or_, select
+    from database import AsyncSessionLocal
+    from models.device import Device, STAGE_LABELS
+    from models.pna_part import DevicePNAPart
+    from utils.model_name import tidy
+    from utils.model_name import make_key
+    mk = make_key(make)
+    async with AsyncSessionLocal() as db:
+        devs = (await db.execute(select(Device).where(Device.model == model, _make_cond(mk))
+                                 .order_by(Device.barcode))).scalars().all()
+        pna = {}
+        if devs:
+            for did, part in (await db.execute(select(DevicePNAPart.device_id, DevicePNAPart.part_name).where(
+                    DevicePNAPart.device_id.in_([d.id for d in devs]), DevicePNAPart.is_active.isnot(False)))).all():
+                pna.setdefault(did, []).append(part)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Tag Number", "Make", "Model", "Sub-Category", "CPU", "CPU Gen", "RAM (GB)", "RAM", "Storage (GB)",
+                "Storage Type", "HDD (GB)", "Hard Drive", "Screen Size", "Touch", "Grade", "Current Stage",
+                "PNA", "PNA Parts", "Return", "Return Status", "Scrap", "Entity"])
+    for d in devs:
+        st = d.current_stage
+        w.writerow([d.barcode, d.brand or "", d.model or "", d.sub_category or "", d.cpu or "", d.generation or "",
+                    d.ram_gb if d.ram_gb is not None else "", d.total_ram_size or d.ram_summary or "",
+                    d.storage_gb if d.storage_gb is not None else "", d.storage_type or "",
+                    d.hdd_capacity_gb if d.hdd_capacity_gb is not None else "", d.total_hdd_size or d.hdd_summary or "",
+                    d.screen_size or "", "Touch" if d.touch_type == "touch" else "Non-Touch",
+                    d.grade.value if d.grade else "", STAGE_LABELS.get(st, st.value if st else ""),
+                    "Yes" if d.id in pna else "No", "; ".join(pna.get(d.id, [])),
+                    "Yes" if d.return_status else "No", d.tag_return_status or "",
+                    "Yes" if (st and st.value.startswith("scrap")) or d.scrap_verified else "No", d.entity or ""])
+    import re as _re
+    fname = "Model_" + (_re.sub(r"[^A-Za-z0-9]+", "_", f"{make} {model}").strip("_") or "blank") + ".csv"
+    return Response("\ufeff" + buf.getvalue(), media_type="text/csv",
+                    headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 # ── Stale open returns (2026-11-05, Pankaj) ──────────────────────────────────

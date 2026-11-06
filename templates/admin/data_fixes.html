@@ -12,6 +12,8 @@
 <style>
   .df-card .card-header{flex-wrap:wrap; gap:.5rem}
   .df-scroll{overflow:auto}
+  .df-chev{transition:transform .15s}
+  [aria-expanded="true"] > .df-chev{transform:rotate(90deg)}
   .card-body .df-scroll table{overflow:visible}
   .df-scroll thead th{position:sticky; top:0; z-index:1; background:var(--bs-tertiary-bg, #f8f9fa)}
 </style>
@@ -19,44 +21,53 @@
   {# ── Product Model Name consistency (2026-11-05) — stays on the page with a
        green 0 once every model has one spelling. One row per model: its
        spellings now and a box with the name it will be saved as (automatic,
-       editable — only capitals / spaces / punctuation may change). ── #}
-  <div class="col-12">
+       editable; a different name renames the row, 2026-11-06). ── #}
+  <div class="col-12" data-df="product-model-name-consistency-stays-on-">
     <div class="card border-0 shadow-sm h-100 df-card{% if mname_total %} border-start border-warning border-3{% endif %}">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-type me-2"></i>Product Model Name — one spelling per model
           <span class="badge {% if mname_total %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ "{:,}".format(mname_total) }}</span></span>
-        {% if mname_total %}
+        {% if mname_groups %}
         <form method="post" action="/admin/system/model-name-fix" class="df-confirm" id="mnForm"
               data-confirm="Click again to apply">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <input type="hidden" name="back" value="1">
-          <button class="btn btn-sm btn-warning"><i class="bi bi-magic me-1"></i>Apply ({{ "{:,}".format(mname_total) }} tags)</button>
+          <button class="btn btn-sm btn-warning"><i class="bi bi-magic me-1"></i>Apply<span id="mnApplyCount">{% if mname_total %} ({{ "{:,}".format(mname_total) }} tags){% endif %}</span></button>
         </form>
         {% endif %}
       </div>
       <div class="card-body small">
-        {% if not mname_total %}
+        {% if not mname_groups %}
         <p class="mb-0 text-success"><i class="bi bi-check-circle me-1"></i>All model names are consistent — every model has one spelling.
           <span class="text-muted">Any Model typed on a page, upload or OxyQC is saved in its model's spelling automatically.</span></p>
         {% else %}
         <p class="text-muted mb-2">Spellings that are the same model (same letters and numbers, ignoring capitals, spaces and punctuation) become one name.
           The <strong>Save as</strong> box is filled in automatically — normal capitals (not ALL CAPS or all small letters) and a space between words and numbers ("840 G6", not "840g6"), otherwise the most-used spelling.
-          <strong>Type in the box to change it</strong>; you can change capitals, spaces and punctuation, but not the letters or numbers.
+          <strong>Type in the box to change it</strong> — capitals, spaces and punctuation, or a different name altogether
+          (different letters / numbers rename every spelling in that row).
           A typed name is remembered, so tags saved later get it too.
-          <strong>{{ "{:,}".format(mname_groups | length) }}</strong> models, <strong>{{ "{:,}".format(mname_spellings) }}</strong> spellings to change.
-          Different names for the same model (e.g. "1030 G7" vs "EliteBook x360 1030 G7") are not merged — change those with Customise → Model Name.</p>
+          {% if mname_total %}<strong>{{ "{:,}".format(mname_models) }}</strong> models, <strong>{{ "{:,}".format(mname_spellings) }}</strong> spellings to change.{% endif %}
+          Different names for the same model (e.g. "1030 G7" vs "EliteBook x360 1030 G7") are not merged — change those with Customise → Model Name.
+          Each Make has its own row: the same model saved under another Make shows as a separate row (check the Make on those tags).
+          <i class="bi bi-download"></i> downloads a spelling's tags with their hardware, stage, PNA, Return and Scrap.</p>
         <div style="max-height:520px;overflow:auto">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light" style="position:sticky;top:0"><tr><th style="width:42%">Spellings now (tags)</th><th>Save as</th><th class="text-end">Tags to change</th></tr></thead>
+          <thead class="table-light" style="position:sticky;top:0"><tr><th style="width:13%">Make</th><th style="width:38%">Spellings now (tags)</th><th>Save as</th><th class="text-end">Tags to change</th></tr></thead>
           <tbody>
+          {# One row per Model + Make (2026-11-06): the same model saved under
+             another Make gets its own row. ⬇ downloads that spelling's tags. #}
           {% for g in mname_groups %}
             <tr>
-              <td>{% for sp, n in g.spellings %}<div><code>{{ sp }}</code> <span class="text-muted">({{ "{:,}".format(n) }})</span>{% if sp == g.final %} <span class="badge bg-light text-success border">kept</span>{% endif %}</div>{% endfor %}</td>
-              <td><input type="text" class="form-control form-control-sm mn-name" form="mnForm" name="mn_{{ g.key }}"
+              <td>{{ g.make_names | join(' / ') if g.make_names else '—' }}{% if g.makes > 1 %}<div class="text-warning-emphasis" style="font-size:.72rem"><i class="bi bi-exclamation-triangle me-1"></i>Same model under {{ g.makes }} makes</div>{% endif %}</td>
+              <td>{% for sp, n in g.spellings %}<div class="d-flex align-items-center gap-1 mn-sp" data-sp="{{ sp }}" data-n="{{ n }}">
+                <a href="/admin/system/model-name-fix/export?model={{ sp | urlencode }}&make={{ (g.make_names[0] if g.make_names else '') | urlencode }}"
+                   class="btn btn-link btn-sm p-0 lh-1" title="Download these {{ n }} tags (CSV)"><i class="bi bi-download"></i></a>
+                <code>{{ sp }}</code> <span class="text-muted">({{ "{:,}".format(n) }})</span>{% if sp == g.final %} <span class="badge bg-light text-success border">kept</span>{% endif %}</div>{% endfor %}</td>
+              <td><input type="text" class="form-control form-control-sm mn-name" form="mnForm" name="mn_{{ g.key }}|{{ g.make }}"
                          value="{{ g.final }}" data-key="{{ g.key }}" maxlength="100" style="max-width:340px">
                   {% if g.typed %}<div class="text-muted" style="font-size:.75rem">Typed earlier (automatic: {{ g.auto }})</div>{% endif %}
-                  <div class="text-danger mn-warn d-none" style="font-size:.75rem">Letters / numbers changed — this row won't be applied</div></td>
-              <td class="text-end">{{ "{:,}".format(g.to_change) }}</td>
+                  <div class="text-warning-emphasis mn-warn d-none" style="font-size:.75rem"><i class="bi bi-pencil-square me-1"></i>Different name — every spelling in this row will be renamed to it</div></td>
+              <td class="text-end mn-change">{{ "{:,}".format(g.to_change) }}</td>
             </tr>
           {% endfor %}
           </tbody>
@@ -66,18 +77,9 @@
       </div>
     </div>
   </div>
-  <script>
-  // Warn as you type when a Save-as name is no longer the same model (2026-11-05).
-  document.querySelectorAll('.mn-name').forEach(function (i) {
-    i.addEventListener('input', function () {
-      var k = (i.value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-      i.parentNode.querySelector('.mn-warn').classList.toggle('d-none', !i.value.trim() || k === i.dataset.key);
-    });
-  });
-  </script>
 
   {# ── RAM / Storage fill ── #}
-  <div class="col-lg-6">
+  <div class="col-lg-6" data-df="ram-storage-fill">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-memory me-2"></i>RAM / Storage fill</span>
@@ -122,7 +124,7 @@
   </div>
 
   {# ── Sub-Category fill ── #}
-  <div class="col-lg-6">
+  <div class="col-lg-6" data-df="sub-category-fill">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Sub-Category fill from Device Type</span>
@@ -154,7 +156,7 @@
   </div>
 
   {# ── RAM / Storage size spacing (2026-10-27) ── #}
-  <div class="col-lg-6">
+  <div class="col-lg-6" data-df="ram-storage-size-spacing">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-hdd me-2"></i>RAM / Storage size spacing</span>
@@ -199,7 +201,7 @@
   </div>
 
   {# ── RAM / Storage swapped or "0" (2026-10-27) — beside the spacing card ── #}
-  <div class="col-lg-6">
+  <div class="col-lg-6" data-df="ram-storage-swapped-or-0-beside-the-spac">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-arrow-down-up me-2"></i>RAM / Storage swapped or "0"
@@ -253,7 +255,7 @@
   </div>
 
   {# ── Stress WorkIDs left open after the tag left Stress (2026-10-27) ── #}
-  <div class="col-xxl-3 col-md-6">
+  <div class="col-xxl-3 col-md-6" data-df="stress-workids-left-open-after-the-tag-l">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-speedometer2 me-2"></i>Stress WorkIDs still open after the tag left Stress
@@ -300,7 +302,7 @@
   </div>
 
   {# ── Cosmetic WorkIDs left open by bulk Assign (2026-10-27) ── #}
-  <div class="col-xxl-3 col-md-6">
+  <div class="col-xxl-3 col-md-6" data-df="cosmetic-workids-left-open-by-bulk-assig">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-droplet me-2"></i>Cosmetic WorkIDs left open by bulk Assign
@@ -347,7 +349,7 @@
   </div>
 
   {# ── Scrapped tags whose L1/L2 WorkID is still open (2026-10-27) ── #}
-  <div class="col-xxl-3 col-md-6">
+  <div class="col-xxl-3 col-md-6" data-df="scrapped-tags-whose-l1-l2-workid-is-stil">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-recycle me-2"></i>Scrapped tags with an L1/L2 WorkID still open
@@ -389,7 +391,7 @@
   </div>
 
   {# ── WorkIDs still open on tags at Ready to Sale / Sold (2026-10-28) ── #}
-  <div class="col-xxl-3 col-md-6">
+  <div class="col-xxl-3 col-md-6" data-df="workids-still-open-on-tags-at-ready-to-s">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-hourglass-split me-2"></i>WorkIDs still open on tags already at Ready to Sale
@@ -434,7 +436,7 @@
 
   {# ── Spare parts: crate rows (2026-10-31) ── #}
   {% if pcrate and not pcrate.row_mode %}
-  <div class="col-12">
+  <div class="col-12" data-df="spare-parts-crate-rows">
     <div class="card border-0 shadow-sm h-100 df-card border-start border-warning border-3">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Spare Parts — crate rows
@@ -492,7 +494,7 @@
 
   {# ── Harvest rows with no matching New part (2026-11-02) ── #}
   {% if hvmatch %}
-  <div class="col-lg-6">
+  <div class="col-lg-6" data-df="harvest-rows-with-no-matching-new-part">
     <div class="card border-0 shadow-sm h-100 df-card border-start border-warning border-3">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span class="fw-semibold"><i class="bi bi-recycle me-2"></i>Harvest parts whose Make / Model match no New part
@@ -533,7 +535,7 @@
 
   {# ── Spare parts cleanup: one price per part, blank crates (2026-10-31) ── #}
   {% if pclean and pclean.row_mode and (pclean.prices or pclean.merges or pclean.unresolved or pclean.typos) %}
-  <div class="col-lg-6">
+  <div class="col-lg-6" data-df="spare-parts-cleanup-one-price-per-part-b">
     <div class="card border-0 shadow-sm h-100 df-card border-start border-warning border-3">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Spare Parts — one price per part, blank crates
@@ -568,7 +570,14 @@
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <input type="hidden" name="back" value="1">
         {% if pclean.typos %}
-        <div class="fw-semibold mt-2">Possible crate typo — one character apart (merged only if you choose):</div>
+        {# Collapsed by default (2026-11-06, Pankaj). The choices inside still
+           submit with the form when it is closed. #}
+        <button type="button" class="btn btn-link p-0 mt-2 fw-semibold text-decoration-none text-reset d-flex align-items-center gap-1 collapsed"
+                data-bs-toggle="collapse" data-bs-target="#pcleanTypos" aria-expanded="false" aria-controls="pcleanTypos">
+          <i class="bi bi-chevron-right df-chev"></i>Possible crate typo — one character apart (merged only if you choose):
+          <span class="badge bg-light text-secondary border fw-normal">{{ pclean.typos | length }}</span>
+        </button>
+        <div class="collapse" id="pcleanTypos">
         <table class="table table-sm mb-0 w-auto"><thead><tr><th>Part / Make / Model</th><th>Type</th><th>Crate A</th><th>Crate B</th><th>Same crate?</th></tr></thead><tbody>
           {% for t in pclean.typos %}<tr><td>{{ t.part }}</td><td>{{ t.type }}</td>
             <td><strong>{{ t.a }}</strong> ({{ t.a_qty }})</td><td><strong>{{ t.b }}</strong> ({{ t.b_qty }})</td>
@@ -578,6 +587,7 @@
               <option value="{{ t.b_id }}|{{ t.a_id }}">Same — keep {{ t.b }} ({{ t.a_qty + t.b_qty }})</option>
             </select></td></tr>{% endfor %}
         </tbody></table>
+        </div>
         {% endif %}
         </form>
       </div>
@@ -587,7 +597,7 @@
 
   {# ── Old GRNs: Tax from a picked Vendor State (2026-11-02) ── #}
   {% if grntax_total %}
-  <div class="col-12">
+  <div class="col-12" data-df="old-grns-tax-from-a-picked-vendor-state">
     <div class="card border-0 shadow-sm h-100 df-card border-start border-warning border-3">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Old GRNs without Tax
@@ -634,24 +644,11 @@
       </div>
     </div>
   </div>
-  <script>
-  (function () {
-    var all = document.getElementById('gtSetAll');
-    function count() { document.getElementById('gtCount').textContent =
-      Array.prototype.filter.call(document.querySelectorAll('.gt-st'), function (s) { return s.value; }).length; }
-    all.addEventListener('change', function () {
-      if (!this.value) return;
-      var v = this.value; document.querySelectorAll('.gt-st').forEach(function (s) { s.value = v; }); count();
-    });
-    document.querySelectorAll('.gt-st').forEach(function (s) { s.addEventListener('change', count); });
-    count();
-  })();
-  </script>
   {% endif %}
 
   {# ── Dealer "Assigned On" dates from the audit log (2026-11-03) ── #}
   {% if dlassign_total %}
-  <div class="col-12">
+  <div class="col-12" data-df="dealer-assigned-on-dates-from-the-audit-">
     <div class="card border-0 shadow-sm h-100 df-card border-start border-warning border-3">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-person-check me-2"></i>Dealers without an "Assigned On" date
@@ -678,7 +675,7 @@
 
   {# ── Repair-stage tags not on TRC Floor (2026-10-31) ── #}
   {% if trcfix_total %}
-  <div class="col-12">
+  <div class="col-12" data-df="repair-stage-tags-not-on-trc-floor">
     <div class="card border-0 shadow-sm h-100 df-card border-start border-warning border-3">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-geo-alt me-2"></i>Repair-stage tags not on TRC Floor
@@ -709,7 +706,7 @@
 
   {# ── One crate = one part (2026-10-31) ── #}
   {% if pmulti %}
-  <div class="col-12">
+  <div class="col-12" data-df="one-crate-one-part">
     <div class="card border-0 shadow-sm h-100 df-card border-start border-danger border-3">
       <div class="card-header bg-transparent">
         <span class="fw-semibold text-danger"><i class="bi bi-box-seam me-2"></i>Crates holding more than one part
@@ -733,7 +730,7 @@
 
   {# ── Part Names = Parts Consumption names (2026-10-31) ── #}
   {% if pname %}
-  <div class="col-12">
+  <div class="col-12" data-df="part-names-parts-consumption-names">
     <div class="card border-0 shadow-sm h-100 df-card border-start border-warning border-3">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-gear me-2"></i>Part Name — Parts Consumption names
@@ -758,7 +755,7 @@
   {# ── Device Type: the 12 categories (2026-10-30) ── #}
   {% set _dt12_m = dt12_master or {} %}
   {% if dt12_total or _dt12_m.get('add') or _dt12_m.get('turn_on') or _dt12_m.get('turn_off') %}
-  <div class="col-12">
+  <div class="col-12" data-df="device-type-the-12-categories">
     <div class="card border-0 shadow-sm h-100 df-card border-start border-warning border-3">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Device Type — the 12 categories
@@ -789,7 +786,7 @@
      those 1,625 WorkIDs stay closed) cards removed at Pankaj's request. #}
 
   {# ── Stale open returns (2026-11-05) ── #}
-  <div class="col-12">
+  <div class="col-12" data-df="stale-open-returns">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-arrow-return-left me-2"></i>Open returns with no activity
@@ -832,7 +829,7 @@
   </div>
 
   {# ── Physical Audit: split one-per-date rows (2026-10-24) ── #}
-  <div class="col-xxl-3 col-md-6">
+  <div class="col-xxl-3 col-md-6" data-df="physical-audit-split-one-per-date-rows">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-clipboard-check me-2"></i>Physical Audit rows to split by Stage + Location
@@ -865,7 +862,7 @@
   </div>
 
   {# ── Physical Audit: Scrapped + Scrap for Sale rows (2026-10-24) ── #}
-  <div class="col-xxl-3 col-md-6">
+  <div class="col-xxl-3 col-md-6" data-df="physical-audit-scrapped-scrap-for-sale-r">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-recycle me-2"></i>Physical Audit Scrapped / Scrap for Sale rows to recount
@@ -898,7 +895,7 @@
   </div>
 
   {# ── Physical Audit: plain L1/L2 + L3/L4 rows -> PNA / Line (2026-10-24) ── #}
-  <div class="col-xxl-3 col-md-6">
+  <div class="col-xxl-3 col-md-6" data-df="physical-audit-plain-l1-l2-l3-l4-rows-pn">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-exclamation-triangle me-2"></i>Physical Audit L1/L2 / L3/L4 rows to split into PNA / Line
@@ -931,7 +928,7 @@
   </div>
 
   {# ── Physical Audit: remove listed Missing tags (2026-10-24) ── #}
-  <div class="col-xxl-3 col-md-6" id="auditMissingRemove">
+  <div class="col-xxl-3 col-md-6" data-df="physical-audit-remove-listed-missing-tag" id="auditMissingRemove">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-x-octagon me-2"></i>Physical Audit: remove Missing tags
@@ -973,7 +970,7 @@
   </div>
 
   {# ── Hold for Selling: released tags still assigned (2026-10-24) ── #}
-  <div class="col-lg-6">
+  <div class="col-lg-6" data-df="hold-for-selling-released-tags-still-ass">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-unlock me-2"></i>Released Hold for Selling tags still showing Blocked
@@ -1009,7 +1006,7 @@
   </div>
 
   {# ── Tag numbers that differ only by capital / small letters ── #}
-  <div class="col-lg-6">
+  <div class="col-lg-6" data-df="tag-numbers-that-differ-only-by-capital-">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent fw-semibold">
         <i class="bi bi-type me-2"></i>Same tag number, different letter case
@@ -1043,15 +1040,19 @@
   </div>
 
   {# ── Data check ── #}
-  <div class="col-12">
+  <div class="col-12" data-df="data-check">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <span class="fw-semibold"><i class="bi bi-exclamation-triangle me-2"></i>RAM / Storage data check
-          <span class="badge bg-secondary ms-1">{{ "{:,}".format(issues_total) }} tags</span></span>
+        {# Collapsed by default (2026-11-06, Pankaj): click the title to open. #}
+        <button type="button" class="btn btn-link p-0 fw-semibold text-decoration-none text-reset d-flex align-items-center gap-1 collapsed"
+                data-bs-toggle="collapse" data-bs-target="#specCheckBody" aria-expanded="false" aria-controls="specCheckBody">
+          <i class="bi bi-chevron-right df-chev"></i><i class="bi bi-exclamation-triangle mx-1"></i>RAM / Storage data check
+          <span class="badge bg-secondary ms-1">{{ "{:,}".format(issues_total) }} tags</span></button>
         {% if issues_total %}
         <a href="/admin/system/spec-check?csv=1" class="btn btn-sm btn-outline-success"><i class="bi bi-download me-1"></i>Export all (CSV)</a>
         {% endif %}
       </div>
+      <div class="collapse" id="specCheckBody">
       <div class="card-body small">
         <p class="text-muted mb-2">Read-only. Values that look entered wrong — correct them on each tag's Edit page. The fill never changes these.</p>
         {% if issue_counts %}
@@ -1091,6 +1092,7 @@
         <div class="text-muted">No problems found.</div>
         {% endif %}
       </div>
+      </div>
     </div>
   </div>
 </div>
@@ -1101,26 +1103,99 @@
 $(document).ready(function () {
   // Two-click confirm instead of confirm(): the desktop app's browser pane
   // blocks confirm() pop-ups silently, which left the button doing nothing.
-  document.querySelectorAll('form.df-confirm').forEach(function (f) {
-    var btn = f.querySelector('button'), label = btn.innerHTML, timer = null;
-    f.addEventListener('submit', function (e) {
-      if (f.dataset.armed !== '1') {
-        e.preventDefault();
-        f.dataset.armed = '1';
-        btn.classList.replace('btn-primary', 'btn-danger');
-        btn.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + f.dataset.confirm;
-        timer = setTimeout(function () {          // disarm if not confirmed
-          f.dataset.armed = ''; btn.classList.replace('btn-danger', 'btn-primary'); btn.innerHTML = label;
-        }, 8000);
-        return;
-      }
-      clearTimeout(timer);
-      setTimeout(function () {                    // after the submit is on its way
-        btn.disabled = true;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Working… please wait';
-      }, 0);
-    });
+  // Apply (2026-11-06, Pankaj): sent in the background — the result shows as a
+  // toast and only that card is refreshed, no page reload. Handlers are
+  // delegated on document, so a refreshed card keeps working.
+  function dfBtn(f, sub) { return sub || f.querySelector('button[type=submit], button:not([type])') ||
+                                  document.querySelector('button[form="' + f.id + '"]'); }
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!f.closest || !f.closest('[data-df]') || (f.getAttribute('method') || '').toLowerCase() !== 'post') return;
+    if (e.defaultPrevented) return;
+    var btn = dfBtn(f, e.submitter);
+    if (f.classList.contains('df-confirm') && f.dataset.armed !== '1') {
+      e.preventDefault();
+      f.dataset.armed = '1'; f._label = btn.innerHTML;
+      btn.classList.replace('btn-primary', 'btn-danger');
+      btn.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + f.dataset.confirm;
+      f._timer = setTimeout(function () {          // disarm if not confirmed
+        f.dataset.armed = ''; btn.classList.replace('btn-danger', 'btn-primary'); btn.innerHTML = f._label;
+      }, 8000);
+      return;
+    }
+    clearTimeout(f._timer);
+    if (!window.fetch || !window.DOMParser) return;  // old browser: normal submit
+    e.preventDefault();
+    dfSend(f, btn);
   });
+  async function dfSend(f, btn) {
+    var label = f._label || (btn && btn.innerHTML), col = f.closest('[data-df]');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Working… please wait'; }
+    var fd = new FormData(f); fd.append('ajax', '1');
+    try {
+      var r = await fetch(f.action, { method: 'POST', body: fd, credentials: 'same-origin',
+                                      headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+      var msg = 'Done.', data = null;
+      if ((r.headers.get('content-type') || '').indexOf('json') >= 0) { data = await r.json(); }
+      if (!r.ok || (data && data.ok === false)) {
+        throw new Error((data && (data.detail || data.error || data.message)) || ('Failed (' + r.status + ')'));
+      }
+      if (data && data.message) msg = data.message;
+      else if (data && typeof data.updated === 'number') msg = data.updated.toLocaleString() + ' updated.';
+      window.showTopToast && window.showTopToast('success', msg);
+      await dfRefreshCard(col.dataset.df);
+    } catch (err) {
+      window.showTopToast && window.showTopToast('danger', String(err.message || err));
+      if (btn) { btn.disabled = false; btn.classList.replace('btn-danger', 'btn-primary'); btn.innerHTML = label; }
+      f.dataset.armed = ''; if (btn) delete btn.dataset.ok;
+    }
+  }
+  async function dfRefreshCard(key) {
+    var old = document.querySelector('[data-df="' + key + '"]');
+    var r = await fetch('/admin/system/data-fixes', { credentials: 'same-origin',
+                                                       headers: { 'X-Requested-With': 'XMLHttpRequest' } });
+    var doc = new DOMParser().parseFromString(await r.text(), 'text/html');
+    var fresh = doc.querySelector('[data-df="' + key + '"]');
+    if (!old) return;
+    if (fresh) { old.replaceWith(document.importNode(fresh, true)); }
+    else { old.remove(); }                   // nothing left to fix: the card is gone
+    dfLimitRows();
+  }
+  // Model Name, as you type (2026-11-05 / 11-06): note when the name is a
+  // different model (a rename), and keep "Tags to change" + the Apply count
+  // equal to what Apply will do — every spelling in the row that is not
+  // exactly the box's text (spaces tidied, as the server does).
+  function mnTidy(v) { return String(v || '').replace(/\s+/g, ' ').trim().slice(0, 100); }
+  function mnRow(i) {
+    var tr = i.closest('tr'), name = mnTidy(i.value) || i.defaultValue, n = 0;
+    tr.querySelectorAll('.mn-sp').forEach(function (d) { if (d.dataset.sp !== name) n += +d.dataset.n || 0; });
+    var cell = tr.querySelector('.mn-change'); if (cell) cell.textContent = n.toLocaleString('en-US');
+    var k = name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    i.parentNode.querySelector('.mn-warn').classList.toggle('d-none', !i.value.trim() || k === i.dataset.key);
+  }
+  function mnTotal() {
+    var t = 0, out = document.getElementById('mnApplyCount'); if (!out) return;
+    document.querySelectorAll('.mn-change').forEach(function (c) { t += +c.textContent.replace(/[^0-9]/g, '') || 0; });
+    out.textContent = t ? ' (' + t.toLocaleString('en-US') + ' tags)' : '';
+  }
+  document.addEventListener('input', function (e) {
+    var i = e.target;
+    if (!i.classList || !i.classList.contains('mn-name')) return;
+    mnRow(i); mnTotal();
+  });
+  // Old GRNs without Tax: "Set all to" + the count on its Apply button
+  function gtCount() {
+    var c = document.getElementById('gtCount'); if (!c) return;
+    c.textContent = Array.prototype.filter.call(document.querySelectorAll('.gt-st'), function (s) { return s.value; }).length;
+  }
+  document.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.id === 'gtSetAll') {
+      if (!t.value) return;
+      document.querySelectorAll('.gt-st').forEach(function (s) { s.value = t.value; }); gtCount();
+    } else if (t.classList && t.classList.contains('gt-st')) { gtCount(); }
+  });
+  gtCount();
   // Every list: at most 20 rows visible, then scroll (2026-11-05). The Data
   // check table pages itself (DataTables), so it is left alone.
   function dfLimitRows() {
@@ -1144,6 +1219,14 @@ $(document).ready(function () {
     });
   }
   dfLimitRows();
+  // A list inside a closed section has no height yet: size it when opened.
+  document.addEventListener('shown.bs.collapse', function (e) {
+    dfLimitRows();
+    // DataTables measures columns while the table is hidden — redo it once shown.
+    if (e.target.id === 'specCheckBody' && window.jQuery && $.fn.dataTable) {
+      $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    }
+  });
   window.addEventListener('resize', function () { clearTimeout(window._dfR); window._dfR = setTimeout(dfLimitRows, 150); });
   if (document.getElementById('specCheckTable')) {
     initGlobalTable('#specCheckTable', { order: [], pageLength: 25, columnDefs: [{ orderable: false, targets: [10] }] });

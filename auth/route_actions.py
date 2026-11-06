@@ -336,6 +336,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/storage-type-fix'): None,  # storage_type_fix_apply: system health data fix (admin-only), 2026-10-29
     ('POST', '/admin/system/part-name-fix'): None,  # part_name_fix: system health data fix (admin-only) — Part Name to the Parts Consumption names, 2026-10-31
     ('POST', '/admin/system/model-name-fix'): None,  # model_name_fix: system health data fix (admin-only) — Product Model Name one spelling per model, 2026-11-05
+    ('GET', '/admin/system/model-name-fix/export'): None,  # model_name_export: admin-only Data Fixes download (Product Model Name tags of one spelling), 2026-11-06
     ('POST', '/admin/system/parts-crate-fix'): None,  # parts_crate_fix: system health data fix (admin-only) — spare parts crate rows, 2026-10-31
     ('POST', '/admin/system/harvest-rename-fix'): None,  # harvest_rename_fix: system health data fix (admin-only) — Harvest rows renamed to the matching New Make / Model, 2026-11-02
     ('POST', '/admin/system/grn-tax-fix'): None,  # grn_tax_fix: system health data fix (admin-only) — tax on old GRNs from a picked Vendor State, 2026-11-02

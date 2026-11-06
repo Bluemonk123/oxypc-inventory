@@ -79,7 +79,7 @@ asyncio.run(main())
         assert "Product Model Name" in html and "/admin/system/model-name-fix" in html
         assert odd in html                                # the odd spelling is listed to fix
         key = model_key(canon)
-        assert f'name="mn_{key}"' in html and f'value="{canon}"' in html   # Save-as box, filled in
+        assert f'name="mn_{key}|' in html and f'value="{canon}"' in html   # Save-as box, filled in
         # Apply with a typed name (capitals / spaces changed) + one refused name
         csrf = app_client.cookies.get("csrf_token") or "dummy"
         typed = f"ZQX-Book {sfx} G7"
@@ -124,6 +124,166 @@ from database import AsyncSessionLocal
 async def main():
     async with AsyncSessionLocal() as db:
         await db.execute(text("delete from devices where barcode like 'ITMN{sfx}%'"))
+        await db.execute(text("delete from master_data where category='model_spelling' and value ilike '%{sfx}%'"))
+        await db.commit()
+asyncio.run(main())
+""")
+
+
+def test_rename_rule():
+    """2026-11-06: a name with different letters / numbers is a rename,
+    remembered as "old => new" so old spellings saved later follow it."""
+    from utils.model_name import parse_override, rename_value
+    v = rename_value("Prodesk 400 G4 SFF", "Prodesk 400 G4")
+    assert v == "Prodesk 400 G4 SFF => Prodesk 400 G4"
+    assert parse_override(v) == ("prodesk400g4sff", "Prodesk 400 G4")
+    ov = overrides_from([v, "Prodesk 400 G4"])
+    assert ov == {"prodesk400g4sff": "Prodesk 400 G4", "prodesk400g4": "Prodesk 400 G4"}
+    assert changes([("PRODESK 400 G4 SFF", 106), ("Prodesk 400 G4 Sff", 20)], ov) == [
+        ("PRODESK 400 G4 SFF", "Prodesk 400 G4", 106), ("Prodesk 400 G4 Sff", "Prodesk 400 G4", 20)]
+
+
+def test_apply_renames_a_row(app_client, make_user):  # noqa: F811
+    sfx = uuid.uuid4().hex[:6].upper()
+    old_a, old_b, new = f"QZW Desk {sfx} SFF", f"Qzw Desk {sfx} Sff", f"Qzw Desk {sfx}"
+    _run(f"""
+import asyncio, sys, uuid
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text, insert
+from database import AsyncSessionLocal
+from models.device import Device, DeviceStage
+async def main():
+    async with AsyncSessionLocal() as db:
+        lot = (await db.execute(text("select id from lots limit 1"))).scalar()
+        for i, m in enumerate(["{old_a}"] * 2 + ["{old_b}"]):
+            await db.execute(insert(Device).values(id=uuid.uuid4(), barcode=f"ITMR{sfx}{{i}}", lot_id=lot,
+                                                   current_stage=DeviceStage.stock_in, model=m))
+        await db.commit()
+asyncio.run(main())
+""")
+    try:
+        u, pw = make_user("admin")
+        _login(app_client, u, pw)
+        csrf = app_client.cookies.get("csrf_token") or "dummy"
+        key = model_key(old_a)
+        assert f'name="mn_{key}|' in app_client.get("/admin/system/data-fixes").text
+        r = app_client.post("/admin/system/model-name-fix",
+                            data={"csrf_token": csrf, "back": "1", "ajax": "1", f"mn_{key}": new},
+                            headers={"X-CSRF-Token": csrf})
+        assert r.status_code == 200 and r.json()["ok"] and "Renamed" in r.json()["message"], r.text
+        got = _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        ms = (await db.execute(text("select distinct model from devices where barcode like 'ITMR{sfx}%'"))).scalars().all()
+        ov = sorted((await db.execute(text("select value from master_data where category='model_spelling' and value ilike '%{sfx}%'"))).scalars().all())
+        print("|".join(ms) + "#" + "~".join(ov))
+asyncio.run(main())
+""").splitlines()[-1]
+        models, ov = got.split("#")
+        assert models == new, got                                   # every spelling renamed
+        ov = set(ov.split("~"))
+        assert new in ov and len(ov) == 2, got                      # the new name + one "old => new"
+        assert ({f"{old_a} => {new}", f"{old_b} => {new}"} & ov), got
+    finally:
+        _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("delete from devices where barcode like 'ITMR{sfx}%'"))
+        await db.execute(text("delete from master_data where category='model_spelling' and value ilike '%{sfx}%'"))
+        await db.commit()
+asyncio.run(main())
+""")
+
+
+def test_rows_by_make_and_export(app_client, make_user):  # noqa: F811
+    """2026-11-06: one row per Model + Make (a model under two Makes shows as
+    two rows, even when the spelling is fine), and each spelling downloads
+    its tags with hardware, stage, PNA, Return and Scrap."""
+    from utils.model_name import fix_groups_by_make
+    g = fix_groups_by_make([("Dell", "Latitude 7490", 50), ("HP", "Latitude 7490", 2), ("Dell", "Latitude 5490", 9)])
+    assert [(x["make_names"], x["to_change"], x["makes"]) for x in g] == [(["Dell"], 0, 2), (["HP"], 0, 2)]
+    # capitals / spaces in the Make don't make a second Make
+    g = fix_groups_by_make([("Dell", "Latitude 7490", 50), ("DELL", "Latitude 7490", 2)])
+    assert g == []
+    g = fix_groups_by_make([("Dell", "LATITUDE 7490", 3), ("Dell", "Latitude 7490", 50)])
+    assert len(g) == 1 and g[0]["final"] == "Latitude 7490" and g[0]["to_change"] == 3
+
+    sfx = uuid.uuid4().hex[:6].upper()
+    model = f"Qxv Pad {sfx}"
+    _run(f"""
+import asyncio, sys, uuid
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text, insert
+from database import AsyncSessionLocal
+from models.device import Device, DeviceStage
+async def main():
+    async with AsyncSessionLocal() as db:
+        lot = (await db.execute(text("select id from lots limit 1"))).scalar()
+        for i, (mk, st) in enumerate([("Dell", "stock_in"), ("Dell", "scrapped"), ("HP", "stock_in")]):
+            await db.execute(insert(Device).values(id=uuid.uuid4(), barcode=f"ITMK{sfx}{{i}}", lot_id=lot, brand=mk,
+                                                   current_stage=DeviceStage(st), model="{model}", cpu="i5", ram_gb=8))
+        await db.commit()
+asyncio.run(main())
+""")
+    try:
+        u, pw = make_user("admin")
+        _login(app_client, u, pw)
+        html = app_client.get("/admin/system/data-fixes").text
+        key = model_key(model)
+        assert f'name="mn_{key}|dell"' in html and f'name="mn_{key}|hp"' in html
+        assert "Same model under 2 makes" in html
+        r = app_client.get("/admin/system/model-name-fix/export", params={"model": model, "make": "Dell"})
+        assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
+        lines = r.content.decode("utf-8-sig").strip().splitlines()
+        assert lines[0].startswith("Tag Number,Make,Model") and "PNA" in lines[0] and "Scrap" in lines[0]
+        assert len(lines) == 3                                   # the 2 Dell tags only
+        assert any(",Yes," in ln for ln in lines[1:])            # the scrapped one says Scrap = Yes
+        # Apply on the Dell row renames only the Dell tags
+        csrf = app_client.cookies.get("csrf_token") or "dummy"
+        r = app_client.post("/admin/system/model-name-fix",
+                            data={"csrf_token": csrf, "ajax": "1", f"mn_{key}|dell": f"{model} Pro",
+                                  f"mn_{key}|hp": model}, headers={"X-CSRF-Token": csrf})
+        assert r.status_code == 200 and r.json()["ok"], r.text
+        got = _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        print(sorted(tuple(x) for x in (await db.execute(text("select brand, model from devices where barcode like 'ITMK{sfx}%'"))).all()))
+asyncio.run(main())
+""").splitlines()[-1]
+        assert got == str(sorted([("Dell", f"{model} Pro"), ("Dell", f"{model} Pro"), ("HP", model)])), got
+        # different names per Make -> nothing remembered for later saves
+        ov = _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        print((await db.execute(text("select count(*) from master_data where category='model_spelling' and value ilike '%{sfx}%'"))).scalar())
+asyncio.run(main())
+""").splitlines()[-1]
+        assert ov == "0", ov
+    finally:
+        _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("delete from devices where barcode like 'ITMK{sfx}%'"))
         await db.execute(text("delete from master_data where category='model_spelling' and value ilike '%{sfx}%'"))
         await db.commit()
 asyncio.run(main())
