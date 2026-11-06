@@ -1719,35 +1719,22 @@ async def srs_functional_spec_download(current_user: User = Depends(_view)):
     })
 
 
-# Design System document (2026-10-15) — a fixed PDF kept in qa_docs/ (shipped
-# with the app; docs/ is excluded from the Docker image), served behind the
-# same QA view permission as the other SRS documents.
-_DESIGN_SYSTEM_PDF = "OxyPC_Inventory_Lifecycle_Design_System_2.4.pdf"  # v2.4, 21 Oct 2026
+# Design System PDF: now document 07 of the Product Handbook (2026-11-06; its
+# own /srs/design-system/download route was removed).
 
 
-@router.get("/srs/design-system/download")
-async def srs_design_system_download(current_user: User = Depends(_view)):
-    import os
-    from fastapi.responses import FileResponse
-    path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "qa_docs", _DESIGN_SYSTEM_PDF)
-    if not os.path.exists(path):
-        raise HTTPException(status_code=404, detail="Design System document not found")
-    return FileResponse(path, media_type="application/pdf", filename=_DESIGN_SYSTEM_PDF)
-
-
-# Product & Architecture Handbook (2026-11-04) — the 8 documents plus the
-# combined handbook, fixed PDFs in qa_docs/handbook/ (last updated 25 Oct 2026).
+# Product Handbook (2026-11-04; set replaced 2026-11-06, Pankaj) — 7 documents
+# plus the combined handbook, fixed PDFs in qa_docs/handbook/ (updated 6 Nov 2026).
+# (key, file, title, description, pages)
 SRS_HANDBOOK = [
-    ("handbook", "00_OxyPC_Handbook_All_Documents.pdf", "Complete Handbook", "All 8 documents in one file", 222),
-    ("key-findings", "01_Key_Findings.pdf", "Key Findings", "Security, data-safety and process gaps, what to fix first", 3),
-    ("product-overview", "02_Product_Overview.pdf", "Product Overview", "Vision, roadmap and KPI definitions", 21),
-    ("personas", "03_Personas_and_Journeys.pdf", "Personas & Journeys", "The 12 roles that handle a device, and their journeys", 15),
-    ("business-process", "04_Business_Process_and_Rules.pdf", "Business Process & Rules", "How a device moves through every stage, and the rules", 32),
-    ("access-security", "05_Access_and_Security.pdf", "Access & Security", "Role & permission matrix, security design", 29),
-    ("technical-architecture", "06_Technical_Architecture.pdf", "Technical Architecture", "System design, data model, integrations", 61),
-    ("operations-testing", "07_Operations_and_Testing.pdf", "Operations & Testing", "Deploy, run, recover; quality targets and sign-off", 35),
-    ("prds", "08_Product_Requirements_PRDs.pdf", "Product Requirements (PRDs)", "Top improvement opportunities, plus the PRD template", 24),
+    ("handbook", "00_OxyPC_Handbook_All_Documents.pdf", "Complete Handbook", "All 7 documents in one file", 239),
+    ("product-overview", "01_Product_Overview.pdf", "Product Overview", "Key findings, vision, roadmap and KPI definitions", 23),
+    ("brd", "02_Business_Requirements_BRD.pdf", "Business Requirements (BRD)", "Objectives, scope, requirements, risks; business rules & SOPs", 29),
+    ("personas", "03_Personas_and_Journeys.pdf", "Personas & Journeys", "The 12 roles, their journeys, and how a device moves through every stage", 34),
+    ("permission-security", "04_Permission_and_Security_Rules.pdf", "Permission & Security Rules", "Who can see and do what, and how the app protects its data", 32),
+    ("technical-architecture", "05_Technical_Architecture.pdf", "Technical Architecture", "System design, data model, integrations and decisions", 61),
+    ("uat-dr", "06_UAT_and_Disaster_Recovery.pdf", "UAT & Disaster Recovery", "Test and sign-off, recovery runbook, deployment", 35),
+    ("design-system", "07_Design_System_v2.4.pdf", "Design System v2.4", "Colours, type, layout, components and their rules", 23),
 ]
 _SRS_HANDBOOK_BY_KEY = {k: f for k, f, *_ in SRS_HANDBOOK}
 
@@ -1765,26 +1752,5 @@ async def srs_handbook_download(doc_key: str, current_user: User = Depends(_view
     return FileResponse(path, media_type="application/pdf", filename="OxyPC_" + fname[3:])
 
 
-@router.get("/srs/module-map/download")
-async def srs_module_map_pdf(current_user: User = Depends(_view)):
-    from fastapi.responses import Response
-    from utils.module_map_doc import build_module_map_pdf
-    pdf_bytes = build_module_map_pdf(generated_on=app_now().strftime("%d %b %Y"))
-    return Response(pdf_bytes, media_type="application/pdf", headers={
-        "Content-Disposition": 'attachment; filename="OxyPC_Module_Interconnectivity_Map.pdf"'
-    })
-
-
-@router.get("/srs/module-map/download.pptx")
-async def srs_module_map_pptx(current_user: User = Depends(_view)):
-    from fastapi.responses import Response
-    from utils.module_map_doc import build_module_map_pptx
-    ppt_bytes = build_module_map_pptx(generated_on=app_now().strftime("%d %b %Y"))
-    return Response(
-        ppt_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={
-            "Content-Disposition":
-                'attachment; filename="OxyPC_Module_Interconnectivity_Map.pptx"'
-        },
-    )
+# Module & Interconnectivity Map downloads removed 2026-11-06 (not in the
+# updated document set). utils/module_map_doc.py is no longer called.

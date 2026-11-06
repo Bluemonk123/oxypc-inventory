@@ -1,4 +1,5 @@
-8098bb2|2026-11-05|Data Fixes: Model Name card first, related cards side by side, equal heights, 20-row lists
+9a421e4|2026-11-06|QA: SRS card shows the updated 7-document set; fix 7 Database Diagram images
+f6837c4|2026-11-05|Data Fixes: Model Name card first, related cards side by side, equal heights, 20-row lists
 d2c436e|2026-11-05|Return Stock redesign; required return fields; External Tag specs via CUST + IQC; return clean-up
 330e68a|2026-11-05|QA: Journey Diagrams tab — combined + per-module database diagrams with zoom, horizontal user journeys
 9231e35|2026-11-05|Model Name data fix + save rule; Repair Summary parts per round; Trash delete fix; Parts Edit modal

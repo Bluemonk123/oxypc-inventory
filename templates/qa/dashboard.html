@@ -130,7 +130,7 @@
         <i class="bi bi-file-earmark-text me-2"></i>SRS Documents
       </div>
       <div class="card-body d-flex flex-column">
-        {# 2026-11-04: Product & Architecture Handbook (8 documents + all-in-one),
+        {# 2026-11-04: Product Handbook (7 documents + all-in-one since 6 Nov),
            replacing the auto-generated Technical / Functional Specification. #}
         {% set _qx = can(current_user, 'qa', 'export') %}
         {% for key, fname, title, desc, pages in srs_handbook %}
@@ -145,28 +145,8 @@
         </div>
         {% if loop.first %}<hr class="my-2">{% endif %}
         {% endfor %}
-        <hr class="my-2">
-        <div class="d-flex justify-content-between align-items-center">
-          <div>
-            <div class="small fw-semibold">Module &amp; Interconnectivity Map</div>
-            <div class="text-muted" style="font-size:.7rem">88 modules, 8 cross-module flows, coupling</div>
-          </div>
-          <div class="btn-group btn-group-sm">
-            {% if can(current_user, 'qa', 'export') %}<a href="/qa/srs/module-map/download" class="btn btn-outline-primary"
-               title="Download as PDF"><i class="bi bi-filetype-pdf"></i></a>{% endif %}
-            {% if can(current_user, 'qa', 'export') %}<a href="/qa/srs/module-map/download.pptx" class="btn btn-outline-primary"
-               title="Download as PowerPoint"><i class="bi bi-filetype-ppt"></i></a>{% endif %}
-          </div>
-        </div>
-        <hr class="my-2">
-        <div class="d-flex justify-content-between align-items-center">
-          <div>
-            <div class="small fw-semibold">Design System <span class="badge bg-light text-secondary border fw-normal">v2.4</span></div>
-            <div class="text-muted" style="font-size:.7rem">Colours, type, layout, components and their rules</div>
-          </div>
-          {% if can(current_user, 'qa', 'export') %}<a href="/qa/srs/design-system/download" class="btn btn-sm btn-outline-primary"
-             title="Download as PDF"><i class="bi bi-filetype-pdf"></i></a>{% endif %}
-        </div>
+        {# 2026-11-06: Module & Interconnectivity Map and the separate Design System
+           row removed — the Design System is now document 07 of the set. #}
       </div>
     </div>
   </div>

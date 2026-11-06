@@ -30,6 +30,11 @@ def test_handbook_card_and_downloads(app_client, make_user):  # noqa: F811
         r = app_client.get(f"/qa/srs/handbook/{key}/download")
         assert r.status_code == 200 and r.content[:4] == b"%PDF", key
     assert app_client.get("/qa/srs/handbook/nope/download").status_code == 404
+    # 2026-11-06 set: 7 documents + handbook; Module Map and the separate
+    # Design System row are gone (Design System is document 07)
+    assert len(SRS_HANDBOOK) == 8 and SRS_HANDBOOK[-1][0] == "design-system"
+    assert "/qa/srs/module-map/" not in html and "/qa/srs/design-system/" not in html
+    assert app_client.get("/qa/srs/handbook/key-findings/download").status_code == 404
 
 
 def test_handbook_download_needs_export(app_client, make_user):  # noqa: F811
@@ -40,7 +45,7 @@ def test_handbook_download_needs_export(app_client, make_user):  # noqa: F811
     try:
         set_cached_perms(role, {"qa": {"enable": True, "export": False}})
         assert "/qa/srs/handbook/" not in app_client.get("/qa/").text
-        r = app_client.get("/qa/srs/handbook/key-findings/download", follow_redirects=False)
+        r = app_client.get("/qa/srs/handbook/product-overview/download", follow_redirects=False)
         assert r.status_code != 200 or r.content[:4] != b"%PDF"
     finally:
         set_cached_perms(role, {})
@@ -62,3 +67,15 @@ def test_workflow_and_stage_workflows(app_client, make_user):  # noqa: F811
         assert t in sw
     assert 'href="/qa/stage-workflows"' not in sw            # tab removed from the QA menu
     assert app_client.get("/qa/stage-workflows/regrn/download").status_code == 200
+
+
+def test_database_diagram_svgs_are_valid_xml():
+    """2026-11-06: 7 module diagrams had a bare "&" in the title ("Sales &
+    Dealers"), so the browser refused to draw them (broken image on
+    /qa/database-diagram). Every diagram must parse as XML."""
+    import glob
+    import xml.etree.ElementTree as ET
+    files = glob.glob("static/qa/journeys/*.svg")
+    assert len(files) == 11
+    for f in files:
+        ET.parse(f)

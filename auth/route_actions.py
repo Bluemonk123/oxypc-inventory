@@ -435,10 +435,7 @@ ROUTE_ACTIONS = {
     ('POST', '/qa/workflow/{flow_key}/upload/remove'): ('qa_ux', 'delete'),  # workflow_upload_remove (2026-11-04)
     ('GET', '/qa/srs/technical-spec/download'): ('qa', 'export'),  # srs_technical_spec_download
     ('GET', '/qa/srs/functional-spec/download'): ('qa', 'export'),  # srs_functional_spec_download
-    ('GET', '/qa/srs/design-system/download'): ('qa', 'export'),  # srs_design_system_download
     ('GET', '/qa/srs/handbook/{doc_key}/download'): ('qa', 'export'),  # srs_handbook_download
-    ('GET', '/qa/srs/module-map/download'): ('qa', 'export'),  # srs_module_map_pdf
-    ('GET', '/qa/srs/module-map/download.pptx'): ('qa', 'export'),  # srs_module_map_pptx
     ('POST', '/qa/requirements/new'): ('qa_uat', 'add'),  # req_create
     ('POST', '/qa/requirements/{req_id}/status'): ('qa_uat', 'edit'),  # req_status
     ('POST', '/qa/test-cases/new'): ('qa_uat', 'add'),  # tc_create
