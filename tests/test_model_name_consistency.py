@@ -292,3 +292,71 @@ async def main():
         await db.commit()
 asyncio.run(main())
 """)
+
+
+def test_rename_into_an_existing_model_merges(app_client, make_user):  # noqa: F811
+    """2026-11-06 (500 on Apply): renaming a row to a model that already exists
+    crashed ("Instance is not persisted") when that model came later in the
+    list; now both end up with the one typed name."""
+    sfx = uuid.uuid4().hex[:6].upper()
+    a, b, new = f"Aqz {sfx} SFF", f"BQZ {sfx}", f"Bqz {sfx}"
+    _run(f"""
+import asyncio, sys, uuid
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text, insert
+from database import AsyncSessionLocal
+from models.device import Device, DeviceStage
+async def main():
+    async with AsyncSessionLocal() as db:
+        lot = (await db.execute(text("select id from lots limit 1"))).scalar()
+        for i, m in enumerate(["{a}"] * 2 + ["{b}"] * 2):
+            await db.execute(insert(Device).values(id=uuid.uuid4(), barcode=f"ITMQ{sfx}{{i}}", lot_id=lot,
+                                                   current_stage=DeviceStage.stock_in, model=m))
+        await db.commit()
+asyncio.run(main())
+""")
+    try:
+        u, pw = make_user("admin")
+        _login(app_client, u, pw)
+        csrf = app_client.cookies.get("csrf_token") or "dummy"
+        r = app_client.post("/admin/system/model-name-fix",
+                            data={"csrf_token": csrf, "ajax": "1", f"mn_{model_key(a)}|": new},
+                            headers={"X-CSRF-Token": csrf})
+        assert r.status_code == 200 and r.json()["ok"], r.text
+        got = _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        print("|".join(sorted((await db.execute(text("select distinct model from devices where barcode like 'ITMQ{sfx}%'"))).scalars().all())))
+asyncio.run(main())
+""").splitlines()[-1]
+        assert got == new, got
+    finally:
+        _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        await db.execute(text("delete from devices where barcode like 'ITMQ{sfx}%'"))
+        await db.execute(text("delete from master_data where category='model_spelling' and value ilike '%{sfx}%'"))
+        await db.commit()
+asyncio.run(main())
+""")
+
+
+def test_suggestions_from_fuller_names():
+    from utils.model_name import fix_groups_by_make, suggest_names
+    rows = [("HP", "1030 G7", 10), ("HP", "EliteBook x360 1030 G7", 500), ("HP", "x360 1030 G7", 60),
+            (None, "1030 G7", 5), ("Dell", "Latitude 7490", 9)]
+    g = fix_groups_by_make(rows, include_all=True)
+    suggest_names(g, rows)
+    hp = next(x for x in g if x["make"] == "hp" and x["final"] == "1030 G7")
+    assert hp["suggest"] == ["EliteBook x360 1030 G7", "x360 1030 G7"]
+    blank = next(x for x in g if x["make"] == "" and x["final"] == "1030 G7")
+    assert blank["suggest"][0] == "EliteBook x360 1030 G7"          # no Make: looks across all
+    assert next(x for x in g if x["final"] == "Latitude 7490")["suggest"] == []

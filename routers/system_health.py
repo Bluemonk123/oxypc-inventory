@@ -1966,10 +1966,25 @@ async def _model_name_groups(db, include_all=True):
     from sqlalchemy import func, select
     from models.device import Device
     from utils.model_name import fix_groups_by_make
+    from utils.model_name import make_key, model_key, suggest_names, tidy
     _rows, typed = await _model_name_data(db)
-    rows3 = (await db.execute(select(Device.brand, Device.model, func.count()).where(Device.model.isnot(None))
-                              .group_by(Device.brand, Device.model))).all()
-    return fix_groups_by_make(rows3, typed, include_all=include_all)
+    rows4 = (await db.execute(select(Device.brand, Device.model, Device.sub_category, func.count())
+                              .where(Device.model.isnot(None))
+                              .group_by(Device.brand, Device.model, Device.sub_category))).all()
+    rows3, cats = {}, {}
+    for b, m, sc, n in rows4:
+        rows3[(b, m)] = rows3.get((b, m), 0) + n
+        t = tidy(m)
+        if t and model_key(t):
+            c = cats.setdefault((make_key(b), model_key(t)), {})
+            c[tidy(sc) or "—"] = c.get(tidy(sc) or "—", 0) + n
+    rows3 = [(b, m, n) for (b, m), n in rows3.items()]
+    groups = fix_groups_by_make(rows3, typed, include_all=include_all)
+    for g in groups:                     # Category column (2026-11-06): Laptop / Desktop / TFT …
+        c = cats.get((g["make"], g["key"]), {})
+        g["categories"] = [x for x, _n in sorted(c.items(), key=lambda kv: -kv[1])]
+    suggest_names(groups, rows3)
+    return groups
 
 
 def _make_cond(mk: str):
@@ -2015,9 +2030,22 @@ async def model_name_fix(request: Request, current_user: User = Depends(admin_on
                 existing.append(m)
                 remembered.append(value)
 
+        def _boxed(g):
+            # mn_<key>|<make> (2026-11-06); mn_<key> still accepted (older page / scripts).
+            # None = box not sent / not changed.
+            v = tidy(form.get(_mn_field(g))) or tidy(form.get(f"mn_{g['key']}"))
+            return v[:100] if v else None
+        # A row renamed to a model that already exists merges into it: that
+        # model's rows (boxes left as they were) take the same name, so the
+        # result is still one spelling per model.
+        into = {}
+        for g in groups:
+            b = _boxed(g)
+            if b and model_key(b) != g["key"]:
+                into[model_key(b)] = b
+
         def _typed(g):
-            # mn_<key>|<make> (2026-11-06); mn_<key> still accepted (older page / scripts)
-            return (tidy(form.get(_mn_field(g))) or tidy(form.get(f"mn_{g['key']}")) or g["final"])[:100]
+            return _boxed(g) or into.get(g["key"]) or g["final"]
         # One remembered name per model (the save rule is per model, not per
         # Make) — only when every Make row of it got the same name.
         decide = {}
@@ -2037,7 +2065,10 @@ async def model_name_fix(request: Request, current_user: User = Depends(admin_on
             for m in list(existing):
                 p = parse_override(m.value)
                 if p and p[0] == g["key"] and p[1] != final:
-                    await db.delete(m)
+                    if m in db.new:            # added earlier in this Apply (not saved yet)
+                        db.expunge(m)
+                    else:
+                        await db.delete(m)
                     existing.remove(m)
             if rename:
                 _remember(rename_value(g["auto"], final))    # old spellings saved later -> new name

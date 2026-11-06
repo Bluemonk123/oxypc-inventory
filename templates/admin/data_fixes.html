@@ -65,7 +65,7 @@
         </div>
         <div style="max-height:520px;overflow:auto">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light" style="position:sticky;top:0"><tr><th style="width:13%">Make</th><th style="width:38%">Spellings now (tags)</th><th>Save as</th><th class="text-end">Tags to change</th></tr></thead>
+          <thead class="table-light" style="position:sticky;top:0"><tr><th style="width:12%">Make</th><th style="width:9%">Category</th><th style="width:31%">Spellings now (tags)</th><th>Save as</th><th class="text-end">Tags to change</th></tr></thead>
           <tbody>
           {# One row per Model + Make (2026-11-06): the same model saved under
              another Make gets its own row. ⬇ downloads that spelling's tags. #}
@@ -73,6 +73,7 @@
             <tr class="mn-row" data-status="{{ g.status }}" data-makes="{{ g.makes }}"
                 data-q="{{ ((g.make_names | join(' ')) ~ ' ' ~ (g.spellings | map('first') | join(' '))) | lower }}">
               <td>{{ g.make_names | join(' / ') if g.make_names else '—' }}{% if g.makes > 1 %}<div class="text-warning-emphasis" style="font-size:.72rem"><i class="bi bi-exclamation-triangle me-1"></i>Same model under {{ g.makes }} makes</div>{% endif %}</td>
+              <td>{{ g.categories | join(' / ') if g.categories else '—' }}</td>
               <td>{% for sp, n in g.spellings %}<div class="d-flex align-items-center gap-1 mn-sp" data-sp="{{ sp }}" data-n="{{ n }}">
                 <a href="/admin/system/model-name-fix/export?model={{ sp | urlencode }}&make={{ (g.make_names[0] if g.make_names else '') | urlencode }}"
                    class="btn btn-link btn-sm p-0 lh-1" title="Download these {{ n }} tags (CSV)"><i class="bi bi-download"></i></a>
@@ -80,7 +81,16 @@
               <td><input type="text" class="form-control form-control-sm mn-name" form="mnForm" name="mn_{{ g.key }}|{{ g.make }}"
                          value="{{ g.final }}" data-key="{{ g.key }}" maxlength="100" style="max-width:340px">
                   {% if g.typed %}<div class="text-muted" style="font-size:.75rem">Typed earlier (automatic: {{ g.auto }})</div>{% endif %}
-                  <div class="text-warning-emphasis mn-warn d-none" style="font-size:.75rem"><i class="bi bi-pencil-square me-1"></i>Different name — every spelling in this row will be renamed to it</div></td>
+                  <div class="text-warning-emphasis mn-warn d-none" style="font-size:.75rem"><i class="bi bi-pencil-square me-1"></i>Different name — every spelling in this row will be renamed to it</div>
+                  {# Suggestions (2026-11-06): fuller names of this model found on other tags of the
+                     same Make — click to put it in the box — plus a web search for the Make + model. #}
+                  <div class="d-flex flex-wrap align-items-center gap-1 mt-1" style="font-size:.72rem">
+                    {% for sg in g.suggest %}<button type="button" class="btn btn-outline-secondary btn-sm py-0 px-1 mn-sg"
+                        style="font-size:.72rem" data-v="{{ sg }}" title="Use this name">{{ sg }}</button>{% endfor %}
+                    <a class="btn btn-link btn-sm p-0" style="font-size:.72rem" target="_blank" rel="noopener"
+                       href="https://www.google.com/search?q={{ ((g.make_names[0] if g.make_names else '') ~ ' ' ~ g.final ~ ' model') | urlencode }}"
+                       title="Look up the full model name on the web"><i class="bi bi-search me-1"></i>Web</a>
+                  </div></td>
               <td class="text-end mn-change">{{ "{:,}".format(g.to_change) }}</td>
             </tr>
           {% endfor %}
@@ -1214,6 +1224,12 @@ $(document).ready(function () {
     dfLimitRows();
   }
   document.addEventListener('change', function (e) { if (e.target.id === 'mnShow') mnFilter(); });
+  // a suggested name -> into that row's Save-as box (counts / note update as if typed)
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.mn-sg'); if (!b) return;
+    var i = b.closest('td').querySelector('.mn-name'); i.value = b.dataset.v;
+    i.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   mnFilter();
   // Old GRNs without Tax: "Set all to" + the count on its Apply button
   function gtCount() {

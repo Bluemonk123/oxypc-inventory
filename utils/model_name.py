@@ -230,6 +230,39 @@ def fix_groups_by_make(rows3, overrides=None, include_all=False) -> list:
                                       -sum(n for _m, n in g["spellings"])))
 
 
+def suggest_names(groups, rows3, limit=2) -> None:
+    """Up to `limit` fuller names for each card row, from the tags themselves
+    (2026-11-06): other models of the same Make whose letters/numbers contain
+    this one — "1030 G7" -> "EliteBook x360 1030 G7" — most-used first.
+    Sets g["suggest"] = [names]."""
+    names = canonical_map([(m, n) for _mk, m, n in rows3])
+    tags_by = {}                         # (make key, model key) -> tags
+    for mk, m, n in rows3:
+        t = tidy(m)
+        if t and model_key(t):
+            kk = (make_key(mk), model_key(t))
+            tags_by[kk] = tags_by.get(kk, 0) + int(n or 0)
+    by_make = {}
+    for (mk, k), n in tags_by.items():
+        by_make.setdefault(mk, []).append((k, n))
+    for g in groups:
+        k = g["key"]
+        if len(k) < 3:                   # "G7" alone would match everything
+            g["suggest"] = []
+            continue
+        # a row with no Make looks across every Make
+        pool = by_make.get(g["make"], []) if g["make"] else [x for v in by_make.values() for x in v]
+        cands = sorted(((n, ck) for ck, n in pool if ck != k and k in ck), key=lambda x: (-x[0], x[1]))
+        out = []
+        for _n, ck in cands:
+            nm = names.get(ck)
+            if nm and nm != g["final"] and nm not in out:
+                out.append(nm)
+            if len(out) >= limit:
+                break
+        g["suggest"] = out
+
+
 # ── On-save guard (used by the Device listener) ──────────────────────────────
 _CACHE = {"at": None, "map": {}}     # at=None: not loaded (0.0 looked "fresh" on a machine up < 10 min)
 _LOCK = threading.Lock()

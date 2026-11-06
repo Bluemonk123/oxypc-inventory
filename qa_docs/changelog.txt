@@ -1,4 +1,5 @@
-e1509f2|2026-11-06|Master Data: Product Model Names linked to Make (Reload from tags); Model Name card lists every model
+ad1f692|2026-11-06|Model Name card: fix 500 on Apply when renaming into an existing model; Category column; name suggestions
+c4744bc|2026-11-06|Master Data: Product Model Names linked to Make (Reload from tags); Model Name card lists every model
 865ff05|2026-11-06|Data Fixes: Apply without page reload (toast + card refresh); Model Name rows by Make, renames, downloads
 6058a11|2026-11-06|QA: SRS card shows the updated 7-document set; fix 7 Database Diagram images
 f6837c4|2026-11-05|Data Fixes: Model Name card first, related cards side by side, equal heights, 20-row lists
