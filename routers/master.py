@@ -4,7 +4,7 @@ from templates_config import templates
 from fastapi import APIRouter, Depends, Form, Request, HTTPException, File, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, update
+from sqlalchemy import select, delete, update, func
 from database import get_db
 from models.user import User, UserRole
 from models.master import MasterData
@@ -98,6 +98,12 @@ ACCORDION_SECTIONS = [
             "market_trade_type", "market_item_category", "market_condition",
             "attendance_status", "qa_environment",
         ],
+    },
+    # Product Model Names (2026-11-06, Pankaj): one place for every model name,
+    # filled from the tags by "Reload". Shown full width, values in 1-4 columns.
+    {
+        "id": "product_models", "label": "Product Model Names", "icon": "bi-type",
+        "cat_keys": ["product_model_name"], "wide": True,
     },
 ]
 
@@ -529,7 +535,13 @@ CATEGORIES = [
     ("tc_stock_type",       "Telecalling: Ready / Lot",      "sales"),
     # ── Assign Social Leads ────────────────────────────────────────
     ("asl_status",          "Assign Leads: Status",          "sales"),
+    # ── Product Model Names (2026-11-06) ────────────────────────────
+    ("product_model_name",  "Product Model Names",           "laptop"),
 ]
+
+# Dropdowns whose values belong to a value of another dropdown (2026-11-06):
+# category -> the category its parent comes from.
+PARENT_CATEGORIES = {"product_model_name": "brand"}
 
 # Group by tab
 TABS = [
@@ -559,10 +571,13 @@ async def master_list(
     items = result.scalars().all()
     grouped = {}
     for cat_key, cat_label, cat_tab in CATEGORIES:
+        its = [i for i in items if i.category == cat_key]
+        if cat_key in PARENT_CATEGORIES:     # grouped by Make, then name (2026-11-06)
+            its.sort(key=lambda i: ((i.parent or "~").lower(), i.value.lower()))
         grouped[cat_key] = {
             "label": cat_label,
             "tab": cat_tab,
-            "items": [i for i in items if i.category == cat_key],
+            "items": its,
         }
 
     # Build accordion sections with data attached
@@ -637,6 +652,7 @@ async def master_list(
         "request": request,
         "grouped": grouped,
         "categories": CATEGORIES,
+        "parent_categories": PARENT_CATEGORIES,
         "tabs": TABS,
         "accordion_data": accordion_data,
         "current_user": current_user,
@@ -709,18 +725,23 @@ async def add_master_value(
     category: str = Form(...),
     value: str = Form(...),
     description: str = Form(""),
+    parent: str = Form(""),          # Product Model Names: the Make (2026-11-06)
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_only),
 ):
     value = value.strip()
     if category in MASTER_SIZE_CATEGORIES:  # "12GB" -> "12 GB" (2026-10-19)
         value = space_size_unit(value)
+    parent = parent.strip()[:200] or None if category in PARENT_CATEGORIES else None
+    if category in PARENT_CATEGORIES and not parent:
+        return RedirectResponse(url="/admin/master?error=Select+the+Make", status_code=302)
     existing = await db.execute(
-        select(MasterData).where(MasterData.category == category, MasterData.value == value)
+        select(MasterData).where(MasterData.category == category, MasterData.value == value,
+                                 func.coalesce(MasterData.parent, "") == (parent or ""))
     )
     if existing.scalar_one_or_none():
         return RedirectResponse(url=f"/admin/master?error=Value+already+exists+in+{category}", status_code=302)
-    item = MasterData(category=category, value=value, description=description.strip() or None)
+    item = MasterData(category=category, value=value, description=description.strip() or None, parent=parent)
     db.add(item)
     await db.commit()
     await refresh_master_cache(db)
@@ -728,11 +749,80 @@ async def add_master_value(
     return RedirectResponse(url=f"/admin/master?success=Value+added&tab={cat_tab}", status_code=302)
 
 
+@router.post("/product-model-names/reload")
+async def reload_product_model_names(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only),
+):
+    """Product Model Names "Reload" (2026-11-06, Pankaj): adds every Make +
+    Model pair found on the tags that the list doesn't have yet. The model is
+    named the way the Data Fixes "Product Model Name" card names it (capitals
+    / spaces / punctuation ignored when comparing); the Make is the matching
+    "Device Brands" value (else the tags' most-used spelling of it). A model
+    under several Makes gets one entry per Make. Entries already in the list
+    are left as they are (also if edited or disabled); nothing is deleted."""
+    from sqlalchemy import func as _f
+    from models.device import Device
+    from services.audit_engine import audit
+    from utils.model_name import OVERRIDE_CATEGORY, canonical_map, model_key, overrides_from, tidy
+    cat = "product_model_name"
+    rows = (await db.execute(select(Device.brand, Device.model, _f.count()).where(Device.model.isnot(None))
+                             .group_by(Device.brand, Device.model))).all()
+    typed = (await db.execute(select(MasterData.value).where(
+        MasterData.category == OVERRIDE_CATEGORY, MasterData.is_active.isnot(False)))).scalars().all()
+    names = canonical_map([(m, n) for _b, m, n in rows], overrides_from(typed))
+    # Make: the Device Brands value with the same letters, else the most-used spelling on the tags
+    brands = {model_key(v): v for v in (await db.execute(
+        select(MasterData.value).where(MasterData.category == "brand"))).scalars().all()}
+    seen_make: dict = {}
+    for b, _m, n in rows:
+        t = tidy(b)
+        if t:
+            seen_make.setdefault(model_key(t), {}).setdefault(t, 0)
+            seen_make[model_key(t)][t] += int(n or 0)
+    def _make(b):
+        k = model_key(tidy(b) or "")
+        if not k:
+            return None
+        return brands.get(k) or max(seen_make[k].items(), key=lambda x: x[1])[0]
+    pairs = {}
+    for b, m, _n in rows:
+        mk = model_key(tidy(m) or "")
+        if mk and names.get(mk):
+            pairs[(model_key(_make(b) or ""), mk)] = (_make(b), names[mk])
+    existing = (await db.execute(select(MasterData.parent, MasterData.value)
+                                 .where(MasterData.category == cat))).all()
+    have = {(model_key(p or ""), model_key(v)) for p, v in existing}
+    added = []
+    for key, (make, name) in sorted(pairs.items(), key=lambda kv: ((kv[1][0] or "~").lower(), kv[1][1].lower())):
+        if key in have:
+            continue
+        db.add(MasterData(category=cat, value=name[:200], parent=(make or None) and make[:200], is_active=True))
+        added.append(f"{make or '(no Make)'} / {name}")
+        have.add(key)
+    if added:
+        await audit(db, user=current_user, action="MASTER_MODEL_NAMES_RELOAD", table_name="master_data",
+                    record_id=f"{len(added)} names", new_value={"category": cat, "added": added[:500],
+                                                                "count": len(added)},
+                    notes="Product Model Names: Make + Model pairs from the tags added to Master Data.",
+                    request=request)
+    await db.commit()
+    await refresh_master_cache(db)
+    from urllib.parse import quote
+    no_make = sum(1 for (pk, _k) in pairs if not pk)
+    msg = (f"Product Model Names reloaded: {len(added):,} new Make + Model pair(s) added, "
+           f"{len(pairs) - len(added):,} already in the list."
+           + (f" {no_make:,} model(s) have tags with no Make — listed under (no Make)." if no_make else ""))
+    return RedirectResponse(url=f"/admin/master?success={quote(msg)}#section-product_models", status_code=302)
+
+
 @router.post("/{item_id}/edit")
 async def edit_master_value(
     item_id: str,
     value: str = Form(...),
     description: str = Form(""),
+    parent: str = Form(""),          # Product Model Names: the Make (2026-11-06)
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_only),
 ):
@@ -744,6 +834,8 @@ async def edit_master_value(
     if item.category in MASTER_SIZE_CATEGORIES:  # "12GB" -> "12 GB" (2026-10-19)
         item.value = space_size_unit(item.value)
     item.description = description.strip() or None
+    if item.category in PARENT_CATEGORIES and parent.strip():
+        item.parent = parent.strip()[:200]
     await db.commit()
     await refresh_master_cache(db)
     cat_tab = dict((c[0], c[2]) for c in CATEGORIES).get(item.category, 'laptop')
@@ -794,9 +886,11 @@ async def export_category_csv(category: str, db: AsyncSession = Depends(get_db),
     items = result.scalars().all()
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["value", "description", "is_active", "display_order"])
+    linked = category in PARENT_CATEGORIES        # Product Model Names: + Make (2026-11-06)
+    writer.writerow((["make"] if linked else []) + ["value", "description", "is_active", "display_order"])
     for item in items:
-        writer.writerow([item.value, item.description or "", "yes" if item.is_active else "no", item.display_order])
+        writer.writerow(([item.parent or ""] if linked else [])
+                        + [item.value, item.description or "", "yes" if item.is_active else "no", item.display_order])
     output.seek(0)
     return Response(
         content=output.getvalue().encode("utf-8-sig"),
@@ -809,8 +903,12 @@ async def export_category_csv(category: str, db: AsyncSession = Depends(get_db),
 async def download_category_template(category: str, current_user: User = Depends(admin_only)):
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["value", "description"])
-    writer.writerow(["Example Value", "Optional description"])
+    if category in PARENT_CATEGORIES:
+        writer.writerow(["make", "value", "description"])
+        writer.writerow(["Lenovo", "ThinkPad T14 Gen 1", "Optional description"])
+    else:
+        writer.writerow(["value", "description"])
+        writer.writerow(["Example Value", "Optional description"])
     output.seek(0)
     return Response(
         content=output.getvalue().encode("utf-8-sig"),
@@ -848,15 +946,17 @@ async def bulk_upload_category(
         if not value:
             continue
         description = (row.get("description") or "").strip() or None
+        parent = ((row.get("make") or "").strip()[:200] or None) if category in PARENT_CATEGORIES else None
 
         existing = await db.execute(
-            select(MasterData).where(MasterData.category == category, MasterData.value == value)
+            select(MasterData).where(MasterData.category == category, MasterData.value == value,
+                                     func.coalesce(MasterData.parent, "") == (parent or ""))
         )
         if existing.scalar_one_or_none():
             skipped += 1
             continue
 
-        item = MasterData(category=category, value=value, description=description)
+        item = MasterData(category=category, value=value, description=description, parent=parent)
         db.add(item)
         added += 1
 
@@ -870,13 +970,23 @@ async def bulk_upload_category(
 
 
 @router.get("/api/{category}", response_class=JSONResponse)
-async def get_master_values(category: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+async def get_master_values(category: str, parent: str = "", db: AsyncSession = Depends(get_db),
+                            current_user: User = Depends(get_current_user)):
+    """Active values of a dropdown. ?parent=<Make> (2026-11-06) lists only the
+    values linked to that parent — e.g. /admin/master/api/product_model_name?parent=Lenovo."""
+    if parent.strip():
+        from utils.master_data import master_children
+        return JSONResponse({"values": master_children(category, parent)})
     result = await db.execute(
         select(MasterData.value)
         .where(MasterData.category == category, MasterData.is_active == True)
         .order_by(MasterData.display_order, MasterData.value)
     )
-    return JSONResponse({"values": [r[0] for r in result.all()]})
+    vals = []
+    for (v,) in result.all():
+        if v not in vals:
+            vals.append(v)
+    return JSONResponse({"values": vals})
 
 
 # ── Permission Matrix Routes ──────────────────────────────────────────────────

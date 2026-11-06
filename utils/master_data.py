@@ -134,15 +134,38 @@ async def refresh_master_cache(db: AsyncSession) -> None:
     """Reload the full in-memory cache from DB. Call at startup and after any
     admin add/edit/toggle/delete on /admin/master."""
     result = await db.execute(
-        select(MasterData.category, MasterData.value)
+        select(MasterData.category, MasterData.value, MasterData.parent)
         .where(MasterData.is_active == True)
         .order_by(MasterData.category, MasterData.display_order, MasterData.value)
     )
     fresh: dict = {}
-    for category, value in result.all():
-        fresh.setdefault(category, []).append(value)
+    children: dict = {}
+    for category, value, parent in result.all():
+        lst = fresh.setdefault(category, [])
+        if value not in lst:          # a model under two Makes is listed once here
+            lst.append(value)
+        children.setdefault(category, {}).setdefault(_pkey(parent), []).append(value)
     _MASTER_CACHE.clear()
     _MASTER_CACHE.update(fresh)
+    _CHILD_CACHE.clear()
+    _CHILD_CACHE.update(children)
+
+
+# Linked dropdowns (2026-11-06): {category: {parent key: [values]}}
+_CHILD_CACHE: dict = {}
+
+
+def _pkey(value) -> str:
+    """Parents compare ignoring capitals / spaces / punctuation ("LENOVO" = "Lenovo")."""
+    import re
+    return re.sub(r"[^a-z0-9]", "", str(value or "").lower())
+
+
+def master_children(category: str, parent) -> list:
+    """Values of `category` that belong to `parent` — e.g.
+    master_children("product_model_name", "Lenovo") -> Lenovo's model names.
+    Synchronous Jinja global, reads the warm cache."""
+    return _CHILD_CACHE.get(category, {}).get(_pkey(parent), [])
 
 
 def master_options(category: str) -> list:

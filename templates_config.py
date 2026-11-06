@@ -381,6 +381,9 @@ templates.env.globals["ROLE_DISPLAY_MAP"] = _ROLE_DISPLAY
 from utils.master_data import master_options as _master_options
 
 templates.env.globals["master_options"] = _master_options
+# master_children('product_model_name', make) → that Make's model names (2026-11-06)
+from utils.master_data import master_children as _master_children
+templates.env.globals["master_children"] = _master_children
 
 # grade_options() → [(enum value, admin-managed label)] for every Grade dropdown.
 # Separate from master_options('grade') because that category holds display

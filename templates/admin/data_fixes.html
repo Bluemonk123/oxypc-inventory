@@ -49,7 +49,20 @@
           {% if mname_total %}<strong>{{ "{:,}".format(mname_models) }}</strong> models, <strong>{{ "{:,}".format(mname_spellings) }}</strong> spellings to change.{% endif %}
           Different names for the same model (e.g. "1030 G7" vs "EliteBook x360 1030 G7") are not merged — change those with Customise → Model Name.
           Each Make has its own row: the same model saved under another Make shows as a separate row (check the Make on those tags).
-          <i class="bi bi-download"></i> downloads a spelling's tags with their hardware, stage, PNA, Return and Scrap.</p>
+          <i class="bi bi-download"></i> downloads a spelling's tags with their hardware, stage, PNA, Return and Scrap.
+          Every model is listed so any of them can be renamed here — rows to fix come first.</p>
+        {% if not mname_total %}<p class="text-success mb-2"><i class="bi bi-check-circle me-1"></i>No spellings to fix — every model has one spelling. Rename any model below if you need to.</p>{% endif %}
+        {% set _mfix = mname_groups | selectattr('status', 'equalto', 'fix') | list | length %}
+        {% set _mmk = mname_groups | selectattr('status', 'equalto', 'make') | list | length %}
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+          <input type="search" id="mnSearch" class="form-control form-control-sm" style="max-width:260px" placeholder="Search model or make…">
+          <select id="mnShow" class="form-select form-select-sm" style="width:auto">
+            <option value="">All models ({{ "{:,}".format(mname_groups | length) }})</option>
+            <option value="fix">Spellings to fix ({{ "{:,}".format(_mfix) }})</option>
+            <option value="make">Same model under several makes ({{ "{:,}".format(mname_groups | selectattr('makes', 'gt', 1) | list | length) }})</option>
+          </select>
+          <span class="text-muted" id="mnShown"></span>
+        </div>
         <div style="max-height:520px;overflow:auto">
         <table class="table table-sm align-middle mb-0">
           <thead class="table-light" style="position:sticky;top:0"><tr><th style="width:13%">Make</th><th style="width:38%">Spellings now (tags)</th><th>Save as</th><th class="text-end">Tags to change</th></tr></thead>
@@ -57,7 +70,8 @@
           {# One row per Model + Make (2026-11-06): the same model saved under
              another Make gets its own row. ⬇ downloads that spelling's tags. #}
           {% for g in mname_groups %}
-            <tr>
+            <tr class="mn-row" data-status="{{ g.status }}" data-makes="{{ g.makes }}"
+                data-q="{{ ((g.make_names | join(' ')) ~ ' ' ~ (g.spellings | map('first') | join(' '))) | lower }}">
               <td>{{ g.make_names | join(' / ') if g.make_names else '—' }}{% if g.makes > 1 %}<div class="text-warning-emphasis" style="font-size:.72rem"><i class="bi bi-exclamation-triangle me-1"></i>Same model under {{ g.makes }} makes</div>{% endif %}</td>
               <td>{% for sp, n in g.spellings %}<div class="d-flex align-items-center gap-1 mn-sp" data-sp="{{ sp }}" data-n="{{ n }}">
                 <a href="/admin/system/model-name-fix/export?model={{ sp | urlencode }}&make={{ (g.make_names[0] if g.make_names else '') | urlencode }}"
@@ -1132,6 +1146,9 @@ $(document).ready(function () {
     var label = f._label || (btn && btn.innerHTML), col = f.closest('[data-df]');
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Working… please wait'; }
     var fd = new FormData(f); fd.append('ajax', '1');
+    if (f.id === 'mnForm') {          // ~1,000 boxes: send only the edited ones (unsent = pre-filled name)
+      document.querySelectorAll('.mn-name').forEach(function (i) { if (i.value === i.defaultValue) fd.delete(i.name); });
+    }
     try {
       var r = await fetch(f.action, { method: 'POST', body: fd, credentials: 'same-origin',
                                       headers: { 'X-Requested-With': 'XMLHttpRequest' } });
@@ -1159,7 +1176,7 @@ $(document).ready(function () {
     if (!old) return;
     if (fresh) { old.replaceWith(document.importNode(fresh, true)); }
     else { old.remove(); }                   // nothing left to fix: the card is gone
-    dfLimitRows();
+    mnFilter();                              // also sizes the lists (dfLimitRows)
   }
   // Model Name, as you type (2026-11-05 / 11-06): note when the name is a
   // different model (a rename), and keep "Tags to change" + the Apply count
@@ -1180,9 +1197,24 @@ $(document).ready(function () {
   }
   document.addEventListener('input', function (e) {
     var i = e.target;
+    if (i.id === 'mnSearch') { mnFilter(); return; }
     if (!i.classList || !i.classList.contains('mn-name')) return;
     mnRow(i); mnTotal();
   });
+  // Every model is listed (2026-11-06): search + "show" filter
+  function mnFilter() {
+    var q = ((document.getElementById('mnSearch') || {}).value || '').toLowerCase().trim();
+    var show = (document.getElementById('mnShow') || {}).value || '', n = 0;
+    document.querySelectorAll('.mn-row').forEach(function (tr) {
+      var ok = (!q || tr.dataset.q.indexOf(q) >= 0) &&
+               (!show || (show === 'fix' ? tr.dataset.status === 'fix' : +tr.dataset.makes > 1));
+      tr.classList.toggle('d-none', !ok); if (ok) n++;
+    });
+    var out = document.getElementById('mnShown'); if (out) out.textContent = n.toLocaleString('en-US') + ' shown';
+    dfLimitRows();
+  }
+  document.addEventListener('change', function (e) { if (e.target.id === 'mnShow') mnFilter(); });
+  mnFilter();
   // Old GRNs without Tax: "Set all to" + the count on its Apply button
   function gtCount() {
     var c = document.getElementById('gtCount'); if (!c) return;
@@ -1211,7 +1243,8 @@ $(document).ready(function () {
         }
       }
       box.style.maxHeight = 'none';
-      var rows = t.tBodies.length ? t.tBodies[0].rows : [];
+      var rows = t.tBodies.length ? Array.prototype.filter.call(t.tBodies[0].rows, function (r) {
+        return !r.classList.contains('d-none'); }) : [];
       if (rows.length <= 20) return;
       var h = t.tHead ? t.tHead.offsetHeight : 0, sum = 0;
       for (var i = 0; i < 20; i++) sum += rows[i].offsetHeight || 26;

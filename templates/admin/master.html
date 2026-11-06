@@ -56,7 +56,45 @@
 {# TAB 1 — DROPDOWN CONFIGURATION                                             #}
 {# ═══════════════════════════════════════════════════════════════════════════ #}
 {% if main_tab == 'dropdowns' %}
+{% macro value_item(item) %}
+                  <div class="list-group-item list-group-item-action px-3 py-1 d-flex align-items-center value-row
+                              {{ 'text-muted bg-light' if not item.is_active else '' }}"
+                       data-value="{{ item.value|lower }}">
+                    <div class="flex-grow-1">
+                      <span class="{{ 'text-decoration-line-through text-muted' if not item.is_active else '' }} small">
+                        {{ item.value }}
+                      </span>
+                      {% if item.description %}
+                      <small class="text-muted d-block" style="font-size:.72rem">{{ item.description }}</small>
+                      {% endif %}
+                    </div>
+                    <div class="d-flex gap-1 ms-2 flex-shrink-0">
+                      <button class="btn btn-xs py-0 px-1 btn-outline-secondary"
+                              onclick='openEdit({{ item.id|string|tojson }}, {{ item.value|tojson }}, {{ (item.description or "")|tojson }}, {{ (item.parent or "")|tojson }}, {{ item.category|tojson }})'
+                              title="Edit">
+                        <i class="bi bi-pencil" style="font-size:.7rem"></i>
+                      </button>
+                      <form action="/admin/master/{{ item.id }}/toggle" method="post" class="d-inline">
+                        <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+                        <button type="submit"
+                                class="btn btn-xs py-0 px-1 {{ 'btn-warning' if item.is_active else 'btn-success' }}"
+                                title="{{ 'Disable' if item.is_active else 'Enable' }}">
+                          <i class="bi {{ 'bi-eye-slash' if item.is_active else 'bi-eye' }}" style="font-size:.7rem"></i>
+                        </button>
+                      </form>
+                      <form action="/admin/master/{{ item.id }}/delete" method="post" class="d-inline"
+                            onsubmit="return confirm('Delete {{ item.value }}?')">
+                        <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+                        <button type="submit" class="btn btn-xs py-0 px-1 btn-outline-danger" title="Delete">
+                          <i class="bi bi-trash" style="font-size:.7rem"></i>
+                        </button>
+                      </form>
+                    </div>
+                  </div>
+{% endmacro %}
 
+<style>.mn-grid > .col > .value-row{border-width:0 1px 1px 0;border-style:solid;border-color:var(--bs-border-color-translucent)}
+  .mn-grid > .mn-make-head{flex:0 0 100% !important;width:100% !important;position:sticky;top:0;z-index:1}</style>
 <div class="d-flex justify-content-between align-items-center mb-3">
   <input type="text" id="globalSearch" class="form-control form-control-sm"
          placeholder="Search across all dropdowns…" style="max-width:300px"
@@ -82,8 +120,9 @@
          data-bs-parent="">
       <div class="accordion-body">
         <div class="row g-3">
+          {% set wide = section.wide %}{# Product Model Names: full width, values in 1-4 columns (2026-11-06) #}
           {% for cat in section.categories %}
-          <div class="col-lg-6 col-xl-4 cat-card" data-cat="{{ cat.key }}" data-label="{{ cat.label|lower }}">
+          <div class="{{ 'col-12' if wide else 'col-lg-6 col-xl-4' }} cat-card" data-cat="{{ cat.key }}" data-label="{{ cat.label|lower }}">
             <div class="card border-0 border shadow-sm h-100">
               <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
                 <span class="fw-semibold small"><i class="bi bi-tag me-1 text-primary"></i>{{ cat.label }}</span>
@@ -101,47 +140,32 @@
                           onclick="openAddInline('{{ cat.key }}','{{ cat.label }}')" title="Add Value">
                     <i class="bi bi-plus"></i>
                   </button>
+                  {% if cat.key == 'product_model_name' %}
+                  <form action="/admin/master/product-model-names/reload" method="post" class="d-inline"
+                        onsubmit="var b=this.querySelector('button'); b.disabled=true; b.innerHTML='<span class=&quot;spinner-border spinner-border-sm&quot;></span> Loading…';">
+                    <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+                    <button type="submit" class="btn btn-xs btn-sm py-0 px-2 btn-primary"
+                            title="Add every model name found on the tags that isn't in this list yet">
+                      <i class="bi bi-arrow-clockwise me-1"></i>Reload
+                    </button>
+                  </form>
+                  {% endif %}
                 </div>
               </div>
               <div class="card-body p-0">
-                <div class="list-group list-group-flush" id="list-{{ cat.key }}"
-                     style="max-height:280px;overflow-y:auto;">
+                <div class="{{ 'row row-cols-1 row-cols-sm-2 row-cols-lg-3 row-cols-xl-4 g-0 mn-grid' if wide else 'list-group list-group-flush' }}" id="list-{{ cat.key }}"
+                     style="max-height:{{ '560px' if wide else '280px' }};overflow-y:auto;">
                   {% if cat['items'] %}
+                  {% set ns = namespace(make=None) %}
                   {% for item in cat['items'] %}
-                  <div class="list-group-item list-group-item-action px-3 py-1 d-flex align-items-center value-row
-                              {{ 'text-muted bg-light' if not item.is_active else '' }}"
-                       data-value="{{ item.value|lower }}">
-                    <div class="flex-grow-1">
-                      <span class="{{ 'text-decoration-line-through text-muted' if not item.is_active else '' }} small">
-                        {{ item.value }}
-                      </span>
-                      {% if item.description %}
-                      <small class="text-muted d-block" style="font-size:.72rem">{{ item.description }}</small>
-                      {% endif %}
-                    </div>
-                    <div class="d-flex gap-1 ms-2 flex-shrink-0">
-                      <button class="btn btn-xs py-0 px-1 btn-outline-secondary"
-                              onclick='openEdit({{ item.id|string|tojson }}, {{ item.value|tojson }}, {{ (item.description or "")|tojson }})'
-                              title="Edit">
-                        <i class="bi bi-pencil" style="font-size:.7rem"></i>
-                      </button>
-                      <form action="/admin/master/{{ item.id }}/toggle" method="post" class="d-inline">
-                        <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                        <button type="submit"
-                                class="btn btn-xs py-0 px-1 {{ 'btn-warning' if item.is_active else 'btn-success' }}"
-                                title="{{ 'Disable' if item.is_active else 'Enable' }}">
-                          <i class="bi {{ 'bi-eye-slash' if item.is_active else 'bi-eye' }}" style="font-size:.7rem"></i>
-                        </button>
-                      </form>
-                      <form action="/admin/master/{{ item.id }}/delete" method="post" class="d-inline"
-                            onsubmit="return confirm('Delete {{ item.value }}?')">
-                        <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                        <button type="submit" class="btn btn-xs py-0 px-1 btn-outline-danger" title="Delete">
-                          <i class="bi bi-trash" style="font-size:.7rem"></i>
-                        </button>
-                      </form>
-                    </div>
+                  {% if wide and cat.key == 'product_model_name' and (loop.first or (item.parent or '') != ns.make) %}
+                  {% set ns.make = item.parent or '' %}
+                  <div class="col-12 mn-make-head px-3 py-1 small fw-semibold bg-light border-bottom" data-make="{{ (item.parent or '')|lower }}">
+                    <i class="bi bi-tag me-1 text-primary"></i>{{ item.parent or '(no Make)' }}
+                    <span class="text-muted fw-normal">({{ cat['items'] | selectattr('parent', 'equalto', item.parent) | list | length }})</span>
                   </div>
+                  {% endif %}
+{% if wide %}<div class="col" data-make="{{ (item.parent or '')|lower }}">{% endif %}{{ value_item(item) }}{% if wide %}</div>{% endif %}
                   {% endfor %}
                   {% else %}
                   <div class="list-group-item text-muted small py-2 px-3">
@@ -705,8 +729,16 @@ document.querySelectorAll('.global-visibility-toggle').forEach(function (sw) {
               {% endfor %}
             </select>
           </div>
+          {# Product Model Names (2026-11-06): pick the Make first (a Device Brands value) #}
+          <div class="mb-3 d-none" id="addParentWrap">
+            <label class="form-label fw-semibold">Make <span class="text-danger">*</span></label>
+            <select name="parent" id="addParent" class="form-select">
+              <option value="">-- Select Make --</option>
+              {% for b in master_options('brand') %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+            </select>
+          </div>
           <div class="mb-3">
-            <label class="form-label fw-semibold">Value</label>
+            <label class="form-label fw-semibold" id="addValueLabel">Value</label>
             <input type="text" name="value" id="addValue" class="form-control"
                    placeholder="e.g. HP, DDR4, Core i7" required>
           </div>
@@ -735,8 +767,14 @@ document.querySelectorAll('.global-visibility-toggle').forEach(function (sw) {
       <form id="editForm" method="post">
         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
         <div class="modal-body">
+          <div class="mb-3 d-none" id="editParentWrap">
+            <label class="form-label fw-semibold">Make</label>
+            <select name="parent" id="editParent" class="form-select">
+              {% for b in master_options('brand') %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+            </select>
+          </div>
           <div class="mb-3">
-            <label class="form-label fw-semibold">Value</label>
+            <label class="form-label fw-semibold" id="editValueLabel">Value</label>
             <input type="text" name="value" id="editValue" class="form-control" required>
           </div>
           <div class="mb-2">
@@ -797,18 +835,37 @@ document.querySelectorAll('.global-visibility-toggle').forEach(function (sw) {
 {% if main_tab == 'dropdowns' %}
 // ── Dropdown Config Tab ────────────────────────────────────────────────────
 
-function openEdit(id, value, desc) {
+// Dropdowns whose values belong to a Make (2026-11-06): show the Make field
+const PARENT_CATS = {{ parent_categories | tojson }};
+function openEdit(id, value, desc, parent, category) {
   document.getElementById('editForm').action = `/admin/master/${id}/edit`;
   document.getElementById('editValue').value = value;
   document.getElementById('editDesc').value = desc;
+  const linked = !!PARENT_CATS[category];
+  document.getElementById('editParentWrap').classList.toggle('d-none', !linked);
+  document.getElementById('editValueLabel').textContent = linked ? 'Model Name' : 'Value';
+  const ps = document.getElementById('editParent');
+  ps.disabled = !linked;
+  if (linked) {
+    if (parent && ![...ps.options].some(o => o.value === parent)) ps.add(new Option(parent, parent));
+    ps.value = parent || '';
+  }
   new bootstrap.Modal(document.getElementById('editModal')).show();
 }
+function syncAddParent() {
+  const linked = !!PARENT_CATS[document.getElementById('addCategory').value];
+  document.getElementById('addParentWrap').classList.toggle('d-none', !linked);
+  const ps = document.getElementById('addParent'); ps.required = linked; ps.disabled = !linked;
+  document.getElementById('addValueLabel').textContent = linked ? 'Model Name' : 'Value';
+}
+document.getElementById('addCategory').addEventListener('change', syncAddParent);
 
 function openAddInline(catKey, catLabel) {
   const sel = document.getElementById('addCategory');
   for (let opt of sel.options) {
     if (opt.value === catKey) { opt.selected = true; break; }
   }
+  syncAddParent();
   new bootstrap.Modal(document.getElementById('addModal')).show();
   setTimeout(() => document.getElementById('addValue').focus(), 300);
 }
@@ -824,17 +881,28 @@ function openBulkUpload(catKey, catLabel) {
 function globalFilter(q) {
   const query = q.toLowerCase().trim();
   document.querySelectorAll('.cat-card').forEach(card => {
-    if (!query) { card.style.display = ''; return; }
+    if (!query) {                       // cleared: show everything again
+      card.style.display = '';
+      card.querySelectorAll('.value-row, .mn-grid > .col, .mn-make-head').forEach(el => { el.style.display = ''; });
+      return;
+    }
     const label = card.dataset.label || '';
     const rows = card.querySelectorAll('.value-row');
     let hit = label.includes(query);
     rows.forEach(row => {
       const val = row.dataset.value || '';
       const show = val.includes(query) || label.includes(query);
-      row.style.display = show ? '' : 'none';
+      // grid sections (Product Model Names) wrap each value in a .col — hide that too
+      const wrap = row.parentElement.classList.contains('col') ? row.parentElement : row;
+      wrap.style.display = show ? '' : 'none';
       if (show) hit = true;
     });
     card.style.display = hit ? '' : 'none';
+    card.querySelectorAll('.mn-make-head').forEach(h => {     // Make headings follow their values
+      const any = [...card.querySelectorAll('.col[data-make="' + CSS.escape(h.dataset.make) + '"]')]
+        .some(c => c.style.display !== 'none');
+      h.style.display = any || !query ? '' : 'none';
+    });
   });
 }
 

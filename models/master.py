@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from utils.timezone import app_now
-from sqlalchemy import Column, String, Integer, Boolean, DateTime, UniqueConstraint
+from sqlalchemy import Column, String, Integer, Boolean, DateTime, Index, func
 from sqlalchemy.dialects.postgresql import UUID
 from database import Base
 
@@ -16,8 +16,16 @@ class MasterData(Base):
     display_order = Column(Integer, default=0)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=app_now)
+    # Linked dropdowns (2026-11-06, Pankaj — approved): the value this one
+    # belongs to. Product Model Names: the Make (a "Device Brands" value), so
+    # a Make can be picked first and only its models listed. NULL elsewhere.
+    parent = Column(String(200), nullable=True)
 
-    __table_args__ = (UniqueConstraint("category", "value", name="uq_master_category_value"),)
+    # Unique per category + parent + value (was category + value, 2026-11-06):
+    # the same model name may belong to two Makes. main._master_parent_once
+    # moves existing databases over.
+    __table_args__ = (Index("uq_master_category_parent_value", "category", func.coalesce(parent, ""), "value",
+                            unique=True),)
 
 
 # Dedicated Entity value for External Partner (Trade Partner) test-data intake

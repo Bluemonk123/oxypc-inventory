@@ -213,6 +213,10 @@ def test_rows_by_make_and_export(app_client, make_user):  # noqa: F811
     # capitals / spaces in the Make don't make a second Make
     g = fix_groups_by_make([("Dell", "Latitude 7490", 50), ("DELL", "Latitude 7490", 2)])
     assert g == []
+    # the card lists every model (include_all), rows to fix first
+    g = fix_groups_by_make([("Dell", "Latitude 5490", 9), ("Dell", "LATITUDE 7490", 3), ("Dell", "Latitude 7490", 50)],
+                           include_all=True)
+    assert [(x["final"], x["status"]) for x in g] == [("Latitude 7490", "fix"), ("Latitude 5490", "ok")]
     g = fix_groups_by_make([("Dell", "LATITUDE 7490", 3), ("Dell", "Latitude 7490", 50)])
     assert len(g) == 1 and g[0]["final"] == "Latitude 7490" and g[0]["to_change"] == 3
 

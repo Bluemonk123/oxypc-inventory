@@ -1960,15 +1960,16 @@ async def _model_name_changes(db):
     return changes(rows, typed)
 
 
-async def _model_name_groups(db):
-    """Card rows, one per Model + Make (2026-11-06)."""
+async def _model_name_groups(db, include_all=True):
+    """Card rows, one per Model + Make (2026-11-06) — every model, so any of
+    them can be renamed from the card (rows to fix come first)."""
     from sqlalchemy import func, select
     from models.device import Device
     from utils.model_name import fix_groups_by_make
     _rows, typed = await _model_name_data(db)
     rows3 = (await db.execute(select(Device.brand, Device.model, func.count()).where(Device.model.isnot(None))
                               .group_by(Device.brand, Device.model))).all()
-    return fix_groups_by_make(rows3, typed)
+    return fix_groups_by_make(rows3, typed, include_all=include_all)
 
 
 def _make_cond(mk: str):

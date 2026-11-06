@@ -177,12 +177,14 @@ def make_key(value) -> str:
     return model_key(value)
 
 
-def fix_groups_by_make(rows3, overrides=None) -> list:
+def fix_groups_by_make(rows3, overrides=None, include_all=False) -> list:
     """Card rows split by Make (2026-11-06, Pankaj). rows3 = [(make, model as
     saved, tags)]. The name for a model is worked out over every make (one
     name per model); each (model, make) pair is its own row with its own
     Save-as box. A row is listed when it has spellings to change, or when the
-    same model is saved under more than one Make (so a wrong Make shows up).
+    same model is saved under more than one Make (so a wrong Make shows up);
+    include_all lists every model (the card, 2026-11-06, so any model can be
+    renamed there).
     Makes are compared ignoring capitals / spaces ("LENOVO" = "Lenovo").
     -> [{key, make (make key), make_names, auto, final, typed, spellings, to_change, makes}]"""
     overrides = overrides or {}
@@ -207,28 +209,36 @@ def fix_groups_by_make(rows3, overrides=None) -> list:
         for mk, saved_d in by_make.items():
             saved = list(saved_d.items())
             change = sum(n for m, n in saved if m != final)
-            if change or several:
+            if change or several or include_all:
                 shown = sorted(names.get(mk, {"": 0}), key=lambda x: -names[mk][x]) if mk in names else [""]
                 out.append({"key": k, "make": mk, "make_names": [x for x in shown if x],
                             "auto": auto_map.get(k, final), "final": final,
                             "typed": k in overrides, "spellings": sorted(saved, key=lambda x: -x[1]),
-                            "to_change": change, "makes": len(by_make)})
+                            "to_change": change, "makes": len(by_make),
+                            "status": "fix" if change else ("make" if several else "ok")})
     # most tags to change first; a model's makes stay together
     tot = {}
     for g in out:
         tot[g["key"]] = tot.get(g["key"], 0) + g["to_change"]
-    return sorted(out, key=lambda g: (-tot[g["key"]], g["key"], -sum(n for _m, n in g["spellings"])))
+    # rows to fix first (most tags), then models under several Makes, then the
+    # rest by name; a model's makes stay together
+    rank = {"fix": 0, "make": 1, "ok": 2}
+    best = {}
+    for g in out:
+        best[g["key"]] = min(best.get(g["key"], 2), rank[g["status"]])
+    return sorted(out, key=lambda g: (best[g["key"]], -tot[g["key"]], (g["final"] or "").lower(), g["key"],
+                                      -sum(n for _m, n in g["spellings"])))
 
 
 # ── On-save guard (used by the Device listener) ──────────────────────────────
-_CACHE = {"at": 0.0, "map": {}}
+_CACHE = {"at": None, "map": {}}     # at=None: not loaded (0.0 looked "fresh" on a machine up < 10 min)
 _LOCK = threading.Lock()
 _TTL = 600            # seconds; cleared at once by the Data Fix
 
 
 def clear_cache() -> None:
     with _LOCK:
-        _CACHE["at"], _CACHE["map"] = 0.0, {}
+        _CACHE["at"], _CACHE["map"] = None, {}
 
 
 def _load(connection) -> dict:
@@ -250,7 +260,7 @@ def snap(connection, value):
     if not k:
         return t
     with _LOCK:
-        fresh = time.monotonic() - _CACHE["at"] < _TTL
+        fresh = _CACHE["at"] is not None and time.monotonic() - _CACHE["at"] < _TTL
         cmap = _CACHE["map"]
     if not fresh:
         try:

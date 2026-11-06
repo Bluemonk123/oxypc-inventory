@@ -623,6 +623,7 @@ async def startup_event():
             await _backfill_action_perms_once(_sess)
             await _backfill_export_perm_once(_sess)
             await _add_pricing_split_cols(_sess)
+            await _master_parent_once(_sess)
             await _merge_pricing_visibility_once(_sess)
             await _pricing_lockdown_once(_sess)
             await _pricing_add_finance_once(_sess)
@@ -955,6 +956,19 @@ async def _backfill_action_perms_once(sess) -> None:
         {"v": str(res.rowcount)})
     await sess.commit()
     print(f"  [Perms] Action ticks backfilled on {res.rowcount} enabled matrix row(s)")
+
+
+async def _master_parent_once(sess) -> None:
+    """Master Data linked values (2026-11-06, approved by Pankaj): a nullable
+    `parent` column (Product Model Names -> their Make) and uniqueness on
+    category + parent + value instead of category + value. Nothing else
+    changes for other dropdowns (their parent stays NULL). Safe on every start."""
+    from sqlalchemy import text as _t
+    await sess.execute(_t("ALTER TABLE master_data ADD COLUMN IF NOT EXISTS parent VARCHAR(200)"))
+    await sess.execute(_t("CREATE UNIQUE INDEX IF NOT EXISTS uq_master_category_parent_value "
+                          "ON master_data (category, coalesce(parent, ''), value)"))
+    await sess.execute(_t("ALTER TABLE master_data DROP CONSTRAINT IF EXISTS uq_master_category_value"))
+    await sess.commit()
 
 
 async def _add_pricing_split_cols(sess) -> None:
