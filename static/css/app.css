@@ -608,6 +608,32 @@ fieldset:disabled .btn {
    for dark backgrounds) is left alone. */
 .gtable-card > .card-header [class*="btn-outline-"]:not(.btn-outline-light):not(:hover):not(:active):not(.active):not(.show) { background-color: #fff; }
 .hdr-card > .card-header [class*="btn-outline-"]:not(.btn-outline-light):not(:hover):not(:active):not(.active):not(.show) { background-color: #fff; }
+/* Dark card (2026-11-06, Pankaj): the whole Stage Progress card on the
+   Supplier / Customer Deal pages — Bluemonk Navy, light text. */
+.hdr-card.sd-dark { background: #0b2f63; color: #e8eef7; }
+.hdr-card.sd-dark > .card-header { background: #072250 !important; color: #fff !important; border-bottom: 1px solid #1d4a8a; }
+.hdr-card.sd-dark > .card-header, .hdr-card.sd-dark > .card-header > span, .hdr-card.sd-dark > .card-header .bi { color: #fff !important; }
+.sd-dark .text-muted { color: #a9bbd6 !important; }
+.sd-dark a:not(.btn) { color: #8cc4ff; }
+.sd-dark .text-success { color: #5ee08f !important; }
+.sd-dark .text-primary { color: #8cc4ff !important; }
+.sd-dark .sd-icon-btn { color: #8cc4ff; }
+.sd-dark .sd-icon-btn:hover { color: #fff; }
+.sd-dark .sd-remark { color: #a9bbd6; }
+.sd-dark .sd-dot { box-shadow: 0 0 0 3px #0b2f63 !important; }
+.sd-dark .sd-step.is-done { --sd-dot: #3ddc84; --sd-line: #3ddc84; }
+.sd-dark .sd-step.is-upcoming { --sd-dot: #6b84aa; --sd-line: #3a5a8a; }
+.sd-dark .sd-step.is-upcoming .sd-title { color: #8ea4c4 !important; }
+.sd-dark .sd-step.is-current { background: #123d7a !important; border-color: #5aa9ff !important; --sd-dot: #5aa9ff;
+                               box-shadow: 0 .4rem 1rem rgba(0,0,0,.25) !important; }
+.sd-dark .btn-outline-primary, .sd-dark .btn-outline-info { color: #cfe4ff; border-color: #8cc4ff; background: transparent; }
+.sd-dark .btn-outline-primary:hover, .sd-dark .btn-outline-info:hover { background: #8cc4ff; color: #072250; }
+.sd-dark .btn-outline-danger { color: #ff9a9a; border-color: #ff9a9a; background: transparent; }
+.sd-dark .btn-outline-danger:hover { background: #ff9a9a; color: #072250; }
+.sd-dark .btn-outline-success { color: #8ff0b4; border-color: #8ff0b4; background: transparent; }
+.hdr-card.sd-dark.sd-won > .card-header { background: #198754 !important; border-bottom-color: #198754; }
+.hdr-card.sd-dark.sd-lost > .card-header { background: #dc3545 !important; border-bottom-color: #dc3545; }
+.sd-closed-label { font-size: .9rem; font-weight: 700; letter-spacing: .02em; }
 
 /* App-wide small shadow (Bootstrap .shadow-sm, used on cards everywhere):
    was 0 .125rem .25rem rgba(0,0,0,.075). */
@@ -996,3 +1022,58 @@ table.gtable tbody td .gtable-clamp2 {
 .lt-tile, .pm-tile, .dash-tile, .inv-tile, .prod-tile, .hw-tile{transition:transform .15s, box-shadow .15s}
 .lt-tile:hover, .pm-tile:hover, .dash-tile:hover, .inv-tile:hover, .prod-tile:hover, .hw-tile:hover{
   box-shadow:0 10px 30px 4px rgba(0,0,0,.30), inset 0 -6px 0 #212529 !important; transform:translateY(-3px)}
+
+/* ── Tiles (oxt-) — the app's four tile types (2026-11-06, Pankaj) ────────
+   templates/_tiles.html macros. Set the colour with --tc (done by the macro).
+   * Single count  .oxt-tile.oxt-single — count + label; optional title on top,
+     secondary lines ("In TRC: 3,155") and a download button.
+   * Double count  .oxt-tile.oxt-double — title, two counts each with a label.
+   * Both: .oxt-tint = light wash of the colour, coloured count, shadow;
+           .oxt-dark = solid colour, white text, no shadow.
+   * Surface       .oxt-surface — count, label under it, on a colour wash with a left
+     accent; no border, no shadow, one look only. */
+.oxt-row{display:flex; flex-wrap:wrap; gap:.75rem; overflow:visible; padding:4px 6px 10px; margin-bottom:1rem}
+.oxt-row > div{flex:1 1 0; min-width:150px}
+.oxt-row.oxt-row-surface{gap:.6rem}
+.oxt-row.oxt-row-surface > div{min-width:130px}
+.oxt-link{display:block; height:100%; color:inherit}
+.oxt-tile{position:relative; overflow:hidden; border-radius:10px; padding:1rem 1rem .8rem; min-height:96px; height:100%;
+          display:flex; flex-direction:column; transition:transform .15s, box-shadow .15s}
+.oxt-title{font-size:.8rem; font-weight:600; position:relative; z-index:1; margin-bottom:.35rem}
+.oxt-count{font-size:1.6rem; font-weight:700; line-height:1.1; position:relative; z-index:1; white-space:nowrap}
+.oxt-label{font-size:.72rem; position:relative; z-index:1; margin-top:.3rem; white-space:nowrap}
+.oxt-pair + .oxt-pair{margin-top:.55rem}
+.oxt-pair .oxt-label{margin-top:.1rem}
+.oxt-secondary{font-size:.75rem; line-height:1.55; margin-top:.55rem; position:relative; z-index:1}
+.oxt-actions{margin-top:auto; padding-top:.55rem; position:relative; z-index:2}
+.oxt-dl{font-size:.7rem; padding:.05rem .45rem; border:1px solid currentColor; background:transparent}
+.oxt-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1; pointer-events:none}
+/* single count with nothing under the label: label sits at the bottom (as #3) */
+.oxt-single .oxt-label:last-child, .oxt-single .oxt-label:has(+ .oxt-wm:last-child){margin-top:auto; padding-top:.55rem}
+/* tint */
+.oxt-tint{background:color-mix(in srgb, var(--tc) 8%, #fff); border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
+          box-shadow:0 .25rem .5rem rgba(0,0,0,.35)}
+.oxt-tint .oxt-title, .oxt-tint .oxt-label{color:#343a40}
+.oxt-tint .oxt-count{color:var(--tc)}
+.oxt-tint .oxt-secondary{color:#495057}
+.oxt-tint .oxt-dl{color:var(--tc)}
+.oxt-tint .oxt-dl:hover{background:var(--tc); color:#fff}
+.oxt-tint .oxt-wm{color:color-mix(in srgb, var(--tc) 10%, transparent)}
+/* dark */
+.oxt-dark{background:var(--tc); border:1px solid var(--tc); box-shadow:none}
+.oxt-dark .oxt-title, .oxt-dark .oxt-count{color:#fff}
+.oxt-dark .oxt-label{color:rgba(255,255,255,.88)}
+.oxt-dark .oxt-secondary{color:rgba(255,255,255,.9)}
+.oxt-dark .oxt-dl{color:#fff}
+.oxt-dark .oxt-dl:hover{background:#fff; color:var(--tc)}
+.oxt-dark .oxt-wm{color:rgba(255,255,255,.2)}
+.oxt-link:hover .oxt-tile, .oxt-tile:has(.oxt-dl):hover{transform:translateY(-3px);
+  box-shadow:0 10px 30px 4px rgba(0,0,0,.30), inset 0 -6px 0 #212529}
+/* surface */
+.oxt-surface{border-radius:.5rem; padding:.6rem .75rem; height:100%; color:#343a40;
+             background:#fff linear-gradient(color-mix(in srgb, var(--tc) 9%, transparent), color-mix(in srgb, var(--tc) 9%, transparent));
+             border-left:4px solid var(--tc)}
+.oxt-surface.oxt-zero{opacity:.5}
+.oxt-s-label{font-size:.72rem; color:#343a40; margin-top:.1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.oxt-s-count{font-size:1.35rem; font-weight:700; line-height:1.15; color:var(--tc)}
+.oxt-link:hover .oxt-surface{background:#fff linear-gradient(color-mix(in srgb, var(--tc) 16%, transparent), color-mix(in srgb, var(--tc) 16%, transparent))}

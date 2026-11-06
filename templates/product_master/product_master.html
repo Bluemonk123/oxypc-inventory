@@ -7,13 +7,6 @@
      dates...). The Discount % dropdown and its amount sit side by side; the Status
      badges stay stacked, as asked for earlier. */
   #pmProductsTable tbody td, #pmProductsTable thead th { white-space: nowrap; }
-  /* Count tiles: solid colour with a large faint white watermark icon */
-  .pm-tile { position: relative; overflow: hidden; border-radius: 10px; color: #fff; min-height: 96px;
-             box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .pm-tile-num { font-size: 1.9rem; font-weight: 700; line-height: 1.1; position: relative; z-index: 1; }
-  .pm-tile-lbl { font-size: .82rem; color: rgba(255,255,255,.88); position: relative; z-index: 1; }
-  .pm-tile-wm { position: absolute; right: -6px; bottom: -14px; font-size: 4.6rem; line-height: 1;
-                color: rgba(255,255,255,.22); pointer-events: none; }
 </style>
 {% endblock %}
 {% block content %}
@@ -26,20 +19,15 @@
   {% set n_pp = products|rejectattr('price_complete')|list|length %}
   {% set n_parts = products|rejectattr('parts_done')|list|length %}
   {% set n_done = products|selectattr('price_complete')|selectattr('parts_done')|list|length %}
-  <div class="row g-3 mb-3">
+  {% import "_tiles.html" as tl %}
+  <div class="oxt-row">
     {% for label, n, bg, icon in [('All Records', n_all, '#343a40', 'bi-collection'),
         ('Product Price Pending', n_pp, '#f0ad00', 'bi-hourglass-split'),
         ('Parts Price Pending', n_parts, '#0aa2c0', 'bi-tools'),
         ('Pricing Done', n_done, '#0F7A37', 'bi-check-circle'),
         ('Active', n_done, '#0d6efd', 'bi-toggle-on'),
         ('Inactive', n_all - n_done, '#6c757d', 'bi-toggle-off')] %}
-    <div class="col-6 col-md-4 col-xl-2">
-      <div class="pm-tile p-3 h-100" style="background:{{ bg }}">
-        <div class="pm-tile-num">{{ n }}</div>
-        <div class="pm-tile-lbl">{{ label }}</div>
-        <i class="bi {{ icon }} pm-tile-wm"></i>
-      </div>
-    </div>
+    {{ tl.single(n, label, bg, icon, variant='dark') }}
     {% endfor %}
   </div>
 <ul class="nav nav-tabs mb-0" role="tablist">

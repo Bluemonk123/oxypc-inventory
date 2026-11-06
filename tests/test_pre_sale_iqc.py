@@ -124,7 +124,7 @@ asyncio.run(main())
         # Assigned table; Assigned hidden on that tile
         def ps_tile(k, **params):          # Moved / Started follow Work Date (default: today)
             ws = app_client.get("/workid-status", params=params).text
-            tile = ws.split('data-group="pre_sale_iqc"', 1)[1].split("lt-tile-wm", 1)[0]
+            tile = ws.split('data-group="pre_sale_iqc"', 1)[1].split("oxt-wm", 1)[0]
             # Moved hidden, Pass | Fail added (2026-11-03)
             assert ">Moved<" not in tile and ">Completed<" not in tile
             # 2026-11-04: Received hidden, Pending above Started

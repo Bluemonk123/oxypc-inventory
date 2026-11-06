@@ -58,7 +58,7 @@ asyncio.run(main())
         assert j["tiles"]["total"] == 1 and j["tiles"]["types"] == {"laptop": 1}
 
         html = app_client.get("/sales/ready").text
-        for s in ("Inventory Stock", "Grades &gt; Tags", 'href="/sales/ready" class="rfs-link"',
+        for s in ("Inventory Stock", "Grades &gt; Tags", 'href="/sales/ready" class="oxt-link',
                   'data-rfs-type="laptop"', 'data-rfs-type="server"', "Touch Types"):
             assert s in html, s
         assert "As-Is Stock" not in html          # moved to Ready for Sale - Lots
@@ -67,7 +67,7 @@ asyncio.run(main())
         # Ready for Sale - Lots: the same six dark tiles + AS-IS STOCK and
         # GRADES > AS-IS LOTS, counted in the page from the As-Is Lot rows.
         html = app_client.get("/sales/lots").text
-        for s in ("As-Is Stock", "Grades &gt; As-Is Lots", 'href="/sales/lots" class="rfs-link"',
+        for s in ("As-Is Stock", "Grades &gt; As-Is Lots", 'href="/sales/lots" class="oxt-link',
                   'data-rfs-type="laptop"', 'data-rfs-type="tft monitor"', "Touch Types", "data-rfs-touch",
                   "function rfsLotTiles"):
             assert s in html, s

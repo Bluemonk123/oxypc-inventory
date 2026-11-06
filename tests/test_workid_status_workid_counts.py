@@ -52,7 +52,7 @@ def test_tiles_and_export_add_up_to_rows(app_client, make_user):  # noqa: F811
     rows = json.loads(re.search(r'id="workidRows">(.*?)</script>', html, re.S).group(1))
 
     def tile(key):
-        return int(re.search(r'data-tile="%s".*?pm-tile-num" data-server="(\d+)"' % key, html, re.S).group(1))
+        return int(re.search(r'data-tile="%s".*?oxt-count" data-server="(\d+)"' % key, html, re.S).group(1))
 
     if "widCapNote" not in html:        # not capped: tiles count the loaded rows' TAGS (2026-10-30)
         assert tile("assigned") == len({r["b"] for r in rows})

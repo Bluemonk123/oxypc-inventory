@@ -25,7 +25,9 @@ def test_global_filter_bar_present_once_above_the_tiles(app_client, make_user): 
     assert 'id="globalFilterBar"' in html
     assert html.index('id="globalFilterBar"') < html.index('id="partsCards"'), (
         "global filter bar must render above the summary tiles")
-    bar = html.split('id="globalFilterBar"', 1)[1].split('</div>\n</div>', 1)[0]
+    # The bar ends before the summary tiles (was the old tile row's closing
+    # '</div>\n</div>'; tiles are tl.double macros since 2026-11-06).
+    bar = html.split('id="globalFilterBar"', 1)[1].split('</form>', 1)[0]
     assert "Added From" in bar
     assert "Added To" in bar
     assert "Category" in bar

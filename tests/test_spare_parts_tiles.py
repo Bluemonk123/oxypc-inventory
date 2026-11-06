@@ -8,7 +8,9 @@ from tests.test_iqc_new_user import _login, make_user  # noqa: F401  (fixture)
 
 
 def _tiles(html):
-    return dict(re.findall(r'data-tile="([a-z]+-(?:new|harvest))">\s*([^<]*?)\s*<', html))
+    # Counts are thousands-formatted by the tile macro (2026-11-06): drop the commas.
+    return {k: (v if k.startswith("value-") else v.replace(",", ""))
+            for k, v in re.findall(r'data-tile="([a-z]+-(?:new|harvest))">\s*([^<]*?)\s*<', html)}
 
 
 def test_tiles_split_and_match_rows(app_client, make_user):  # noqa: F811

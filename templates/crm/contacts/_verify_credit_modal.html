@@ -1,0 +1,72 @@
+{# templates/crm/contacts/_verify_credit_modal.html (2026-11-06, Pankaj)
+   Verify Credit — one modal for Account Detail and Activity Board → Account
+   Verification. A button opens it with data-* attributes:
+     data-vc-id, data-vc-company, data-vc-old (current limit),
+     data-vc-so / data-vc-so-n, data-vc-po / data-vc-po-n (Deals History)
+   Set vc_return_to before including to come back to that page. #}
+<div class="modal fade" id="verifyCreditModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" id="vcForm" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+      <input type="hidden" name="return_to" value="{{ vc_return_to | default('') }}">
+      <div class="modal-header py-2">
+        <h5 class="modal-title"><i class="bi bi-patch-check me-2"></i>Verify Credit — <span id="vcCompany"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <div class="col-6">
+            <label class="form-label small fw-semibold mb-1">New Credit Limit <span class="text-danger">*</span></label>
+            <div class="input-group input-group-sm"><span class="input-group-text">₹</span>
+              <input type="number" name="new_credit_limit" id="vcNew" class="form-control" min="0" step="1" required></div>
+          </div>
+          <div class="col-6">
+            <label class="form-label small fw-semibold mb-1">Old Credit Limit</label>
+            <div class="input-group input-group-sm"><span class="input-group-text">₹</span>
+              <input type="text" id="vcOld" class="form-control bg-light" readonly></div>
+          </div>
+          <div class="col-12">
+            <label class="form-label small fw-semibold mb-1">Reason <span class="text-danger">*</span></label>
+            <textarea name="reason" class="form-control form-control-sm" rows="2" required maxlength="2000"
+                      placeholder="Why this credit limit"></textarea>
+          </div>
+          <div class="col-12">
+            <div class="small fw-semibold mb-1">Deals History <span class="text-muted fw-normal">(this account, in total)</span></div>
+            <div class="row g-2">
+              <div class="col-6"><div class="border rounded p-2 small">
+                <div class="text-muted">Sales Orders (SO) <span id="vcSoN"></span></div>
+                <div class="fw-semibold">₹<span id="vcSo">0</span></div></div></div>
+              <div class="col-6"><div class="border rounded p-2 small">
+                <div class="text-muted">Purchase Orders (PO) <span id="vcPoN"></span></div>
+                <div class="fw-semibold">₹<span id="vcPo">0</span></div></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-check-lg me-1"></i>Verify Credit</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  function inr(v) { var n = Number(v || 0); return n.toLocaleString('en-IN', { maximumFractionDigits: 2 }); }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('[data-vc-id]'); if (!b) return;
+    e.preventDefault();
+    var f = document.getElementById('vcForm');
+    f.action = '/crm/contacts/' + b.dataset.vcId + '/verify-credit';
+    f.reset();
+    document.getElementById('vcCompany').textContent = b.dataset.vcCompany || '';
+    document.getElementById('vcOld').value = inr(b.dataset.vcOld);
+    document.getElementById('vcSo').textContent = inr(b.dataset.vcSo);
+    document.getElementById('vcPo').textContent = inr(b.dataset.vcPo);
+    document.getElementById('vcSoN').textContent = '(' + (b.dataset.vcSoN || 0) + ')';
+    document.getElementById('vcPoN').textContent = '(' + (b.dataset.vcPoN || 0) + ')';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('verifyCreditModal')).show();
+    setTimeout(function () { document.getElementById('vcNew').focus(); }, 300);
+  });
+})();
+</script>

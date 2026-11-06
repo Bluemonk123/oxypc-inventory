@@ -113,8 +113,8 @@ SALES_STAGES = [
 # deal — shown automatically. "documents" holds the Deal Info Upload section.
 SALES_STAGE_STEPS = {
     "screening": [
-        ("screening_assign", "Assign to Inspection", "user"),
-        ("screening_report", "Inspection Report", "file"),
+        ("screening_assign", "Assign to Screening", "user"),   # was "Assign to Inspection" (2026-11-06)
+        ("screening_report", "Screening Report", "file"),      # was "Inspection Report"
     ],
     "quote": [
         ("quote_l1", "Level 1", "approval"),
@@ -226,6 +226,10 @@ class CRMContact(Base):
     credit_verified    = Column(Boolean,  nullable=False, default=False, server_default="false")
     credit_verified_by = Column(String(50), nullable=True)
     credit_verified_at = Column(DateTime, nullable=True)
+    # Verify Credit modal (2026-11-06, Pankaj — approved): the limit before
+    # this verification and the reason given; credit_limit holds the new one.
+    credit_old_limit     = Column(Numeric(14, 2), nullable=True)
+    credit_verify_reason = Column(Text, nullable=True)
 
     def apply_account_status(self) -> None:
         """Active only when both KYC and Credit are verified; blacklisted stays."""

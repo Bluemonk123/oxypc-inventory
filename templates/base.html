@@ -92,6 +92,14 @@
         </a>
       </li>
       {% endif %}
+      {# Activity Board (2026-11-06, Pankaj): routers/activity_board.py #}
+      {% if has_perm(role,'activity_board','enable') and not module_hidden('activity_board') %}
+      <li class="nav-item">
+        <a href="/activity-board" class="nav-link {% if request.url.path.startswith('/activity-board') %}active{% endif %}">
+          <i class="bi bi-kanban me-2"></i> {{ sidebar_label('activity_board', 'Activity Board') }}
+        </a>
+      </li>
+      {% endif %}
       {% if has_perm(role,'dispatch','enable') and not module_hidden('dispatch') %}
       <li class="nav-item">
         <a href="/dispatch" class="nav-link {% if '/dispatch' in request.url.path %}active{% endif %}">

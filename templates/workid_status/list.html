@@ -81,19 +81,15 @@
 <!-- Card Count tiles — reflect the SAME filters as the table below (see
      tile_counts in routers/workid_status.py, computed from the filtered
      `items` list). -->
-{# Tiles: same solid-colour design as /product-master (pm-tile). #}
+{# Tiles: shared tile macros (templates/_tiles.html), solid colour (dark),
+   same as /product-master (2026-11-06). #}
+{% import "_tiles.html" as tl %}
 <style>
-  .pm-tile { position: relative; overflow: hidden; border-radius: 10px; color: #fff; min-height: 96px;
-             box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-  .pm-tile-num { font-size: 1.9rem; font-weight: 700; line-height: 1.1; position: relative; z-index: 1; }
-  .pm-tile-lbl { font-size: .82rem; color: rgba(255,255,255,.88); position: relative; z-index: 1; }
-  .pm-tile-wm { position: absolute; right: -6px; bottom: -14px; font-size: 4.6rem; line-height: 1;
-                color: rgba(255,255,255,.22); pointer-events: none; }
   .wid-tile { cursor: pointer; transition: opacity .15s, box-shadow .15s; }
   .wid-tiles-active .wid-tile:not(.active) { opacity: .45; }
-  .wid-tile.active { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #0e3a7a; }
+  .oxt-tile.wid-tile.active { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #0e3a7a; }
 </style>
-<div class="row g-3 mb-3" id="widTiles">
+<div class="oxt-row" id="widTiles">
   {# Open / Closed WorkIDs tiles hidden (2026-10-24); Total Scrap and Total
      Customer Return added. Total Scrap ignores the Scrap Type filter. #}
   {# Each tile filters the table on click (2026-10-24); click again to clear. #}
@@ -108,14 +104,10 @@
       ('cr', 'Total Customer Return', tile_counts.total_cust_return, '#6c757d', 'bi-arrow-return-left'),
       ('scrap', 'Total Scrap', tile_counts.total_scrap, '#343a40', 'bi-recycle'),
       ('pna', 'Total PNA', tile_counts.total_pna, '#dc3545', 'bi-exclamation-triangle')] %}
-  <div class="col-6 col-md-4 col-xl-2">
-    <div class="pm-tile wid-tile p-3 h-100" data-tile="{{ key }}" role="button" tabindex="0"
-         title="Show only these rows (click again to clear)" style="background:{{ bg }}">
-      <div class="pm-tile-num" data-server="{{ n }}">{{ n }}</div>
-      <div class="pm-tile-lbl">{{ label }}</div>
-      <i class="bi {{ icon }} pm-tile-wm"></i>
-    </div>
-  </div>
+  {{ tl.single(n, label, bg, icon, variant='dark', cls='wid-tile',
+               title_attr='Show only these rows (click again to clear)',
+               extra='data-tile="' ~ key ~ '" role="button" tabindex="0"',
+               count_attrs='data-server="' ~ n ~ '"') }}
   {% endfor %}
 </div>
 
@@ -124,31 +116,30 @@
    WorkID there) and Completed (the part already done) tag counts, each big —
    grouped by the table's Stage column. Built in routers/workid_status.py
    (stage_tiles; STAGE_GROUPS). #}
+{# 2026-11-06: shared tile macro (tl.single, tint) — stage name as the
+   title, the stage lines (each count keeps data-k / data-server for the
+   page JS) as the count block. #}
 <style>
-  .wid-stage-name { font-size:.85rem; font-weight:700; color:var(--tc); position:relative; z-index:1;
-                    margin-bottom:.35rem; white-space:nowrap; }
+  .wid-stage .oxt-title { font-size:.85rem; font-weight:700; color:var(--tc); white-space:nowrap; }
+  .wid-stage .oxt-count { font-size:inherit; font-weight:inherit; line-height:inherit; }
+  .wid-stage-count { font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); white-space:nowrap; }
   .wid-stage-line { display:flex; align-items:baseline; gap:.4rem; position:relative; z-index:1; }
   .wid-stage-line + .wid-stage-line { margin-top:.15rem; }
   .wid-stage-sub { font-size:.72rem; color:#343a40; white-space:nowrap; }
-  .lt-tiles-row > a.wid-tile-link { flex:1 1 0; min-width:130px; }
-  .wid-tile-link .lt-tile { cursor:pointer; transition:box-shadow .15s ease, transform .15s ease; }
-  .wid-tile-link:hover .lt-tile { box-shadow:0 .4rem 1rem rgba(0,0,0,.25); transform:translateY(-1px); }
 </style>
-<div class="lt-tiles-row" id="widStageTiles">
+<div class="oxt-row" id="widStageTiles">
   {% for key, label, _stages, color, icon in stage_groups %}
   {% set t = stage_tiles[key] %}
   {# Each tile opens its stage's page (2026-11-03). #}
   {% set _tile_href = {'l1l2': '/repair/l1', 'l3l4': '/repair/l3l4', 'stress': '/qc',
                        'cosmetic': '/cosmetic/all_tags', 'final_qc': '/cosmetic/final_qc',
                        'pre_sale_iqc': '/pre-sale-iqc'}.get(key) %}
-  {% if _tile_href %}<a href="{{ _tile_href }}" class="d-block text-decoration-none wid-tile-link" style="color:inherit" title="Open {{ label }}">{% else %}<div>{% endif %}
     {# Stage name, then Assigned and Completed counts, stacked (2026-10-27;
        no total). #}
-    <div class="lt-tile h-100" style="--tc:{{ color }}" data-group="{{ key }}" data-stages="{{ _stages | join(',') }}"{% if t.moves %} data-moves="1"{% endif %}{% if t.pending_now %} data-pending="1"{% endif %}>
-      {# "(Waiting - N)" removed from the tiles (2026-10-28). #}
-      {# "Move to Ready" count moved off the Final QC tile to the table's
-         count line, next to Repeat Tags (2026-10-29). #}
-      <div class="wid-stage-name">{{ label }}</div>
+    {# "(Waiting - N)" removed from the tiles (2026-10-28). #}
+    {# "Move to Ready" count moved off the Final QC tile to the table's
+       count line, next to Repeat Tags (2026-10-29). #}
+  {% set _lines %}
       {% if key == 'pre_sale_iqc' %}
       {# Pre-Sale IQC (2026-10-30): "Moved" = tags in the Pre-Sale IQC page's
          Assigned table now (not filtered by this page), then the WorkID count
@@ -157,48 +148,50 @@
       {% set _pc = psiqc if psiqc is defined else {'moved': 0, 'started': 0, 'pass': 0, 'fail': 0, 'pending': 0} %}
       {# 2026-11-04: Received hidden; Pending first, then Started, then Pass | Fail. #}
       <div class="wid-stage-line" title="Tags in the Pre-Sale QC page's Assigned table right now (not filtered by this page)">
-        <span class="lt-tile-count" data-k="ps_pending" data-server="{{ _pc.pending }}">{{ _pc.pending }}</span><span class="wid-stage-sub">Pending</span>
+        <span class="wid-stage-count" data-k="ps_pending" data-server="{{ _pc.pending }}">{{ _pc.pending }}</span><span class="wid-stage-sub">Pending</span>
       </div>
       <div class="wid-stage-line" title="Pre-Sale QC WorkIDs started (Start pressed) in the Work Date range">
-        <span class="lt-tile-count" data-k="started" data-server="{{ _pc.started }}">{{ _pc.started }}</span><span class="wid-stage-sub">Started</span>
+        <span class="wid-stage-count" data-k="started" data-server="{{ _pc.started }}">{{ _pc.started }}</span><span class="wid-stage-sub">Started</span>
       </div>
       {% else %}
       <div class="wid-stage-line" title="{{ ('Tags that came into Cosmetic (moved to Cosmetic Received) in the Work Date range' if t.moves else 'Tags with a Cosmetic WorkID in this view (each Cosmetic sub-stage has its own WorkID; the table lists them all)') if key == 'cosmetic' else 'WorkIDs in this stage (open or completed)' }}">
-        <span class="lt-tile-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">{{ 'Received' if key == 'cosmetic' else 'Started' }}</span>
+        <span class="wid-stage-count" data-k="assigned" data-server="{{ t.assigned }}">{{ t.assigned }}</span><span class="wid-stage-sub">{{ 'Received' if key == 'cosmetic' else 'Started' }}</span>
       </div>
       {% endif %}
       {% if key == 'pre_sale_iqc' %}{# Pending is shown above Started (2026-11-04) #}
       {% else %}
       <div class="wid-stage-line" title="{{ 'Tags in Cosmetic right now, any step from Cosmetic Received to Cosmetic Completed (same as the Cosmetic All Tags page; not filtered by this page)' if key == 'cosmetic' else 'Completed WorkIDs (scrap decisions not included)' }}">
-        <span class="lt-tile-count" data-k="completed" data-server="{{ t.completed }}">{{ t.completed }}</span><span class="wid-stage-sub">{{ 'Pending' if key == 'cosmetic' else 'Completed' }}</span>
+        <span class="wid-stage-count" data-k="completed" data-server="{{ t.completed }}">{{ t.completed }}</span><span class="wid-stage-sub">{{ 'Pending' if key == 'cosmetic' else 'Completed' }}</span>
       </div>
       {% endif %}
       {% if key in ('stress', 'final_qc', 'cosmetic') %}
       {# Pass | Fail (2026-10-28): completed Stress / Final QC WorkIDs by where the tag went next. #}
       <div class="wid-stage-line" title="{{ 'Completed Stress tests: Pass = sent on to Cosmetic; Fail = sent back to L1/L2 or L3/L4' if key == 'stress' else ('Cosmetic, tags moved in the Work Date range: Pass = from Cosmetic to Final QC; Fail = from Cosmetic back to L1/L2 or L3/L4 (Paint Fail inside Cosmetic not counted)' if key == 'cosmetic' else 'Completed Final QC: Pass = Final QC Pass Hold / Ready to Sale; Fail = Fail Hold or sent back') }}">
-        <span class="lt-tile-count" data-k="pass" data-server="{{ t.pass }}">{{ t.pass }}</span><span class="wid-stage-sub">Pass</span>
+        <span class="wid-stage-count" data-k="pass" data-server="{{ t.pass }}">{{ t.pass }}</span><span class="wid-stage-sub">Pass</span>
         <span class="text-muted">|</span>
-        <span class="lt-tile-count" data-k="fail" data-server="{{ t.fail }}">{{ t.fail }}</span><span class="wid-stage-sub">Fail</span>
+        <span class="wid-stage-count" data-k="fail" data-server="{{ t.fail }}">{{ t.fail }}</span><span class="wid-stage-sub">Fail</span>
       </div>
       {% endif %}
       {% if key == 'pre_sale_iqc' %}
       {# Pass | Fail (2026-11-03): the result picked in Mark Complete on the
          Pre-Sale QC page, for completions in the Work Date range. #}
       <div class="wid-stage-line" title="Pre-Sale QC completed in the Work Date range: Pass / Fail as picked in Mark Complete">
-        <span class="lt-tile-count" data-k="ps_pass" data-server="{{ _pc.pass }}">{{ _pc.pass }}</span><span class="wid-stage-sub">Pass</span>
+        <span class="wid-stage-count" data-k="ps_pass" data-server="{{ _pc.pass }}">{{ _pc.pass }}</span><span class="wid-stage-sub">Pass</span>
         <span class="text-muted">|</span>
-        <span class="lt-tile-count" data-k="ps_fail" data-server="{{ _pc.fail }}">{{ _pc.fail }}</span><span class="wid-stage-sub">Fail</span>
+        <span class="wid-stage-count" data-k="ps_fail" data-server="{{ _pc.fail }}">{{ _pc.fail }}</span><span class="wid-stage-sub">Fail</span>
       </div>
       {% endif %}
       {% if key in ('l1l2', 'l3l4') %}
       {# Scrap decisions, counted apart from Completed (2026-10-27). #}
       <div class="wid-stage-line" title="WorkIDs here closed by a scrap step (L3/L4 scrap decision, or L1/L2 Back to Inventory)">
-        <span class="lt-tile-count" data-k="scrap" data-server="{{ t.scrap }}">{{ t.scrap }}</span><span class="wid-stage-sub">Scrap</span>
+        <span class="wid-stage-count" data-k="scrap" data-server="{{ t.scrap }}">{{ t.scrap }}</span><span class="wid-stage-sub">Scrap</span>
       </div>
       {% endif %}
-      <i class="bi {{ icon }} lt-tile-wm"></i>
-    </div>
-  {% if _tile_href %}</a>{% else %}</div>{% endif %}
+  {% endset %}
+  {{ tl.single(_lines, '', color, icon, title=label, cls='wid-stage', href=_tile_href,
+               title_attr=('Open ' ~ label) if _tile_href else '',
+               extra='data-group="' ~ key ~ '" data-stages="' ~ (_stages | join(',')) ~ '"'
+                     ~ (' data-moves="1"' if t.moves else '') ~ (' data-pending="1"' if t.pending_now else '')) }}
   {% endfor %}
 </div>
 
@@ -488,9 +481,10 @@ $(document).ready(function(){
     if (!useServer && activeTile) return;
     if (!useServer) list = dt.rows({ search: 'applied' }).data().toArray();
     document.querySelectorAll('.wid-tile').forEach(function (t) {
-      var key = t.getAttribute('data-tile'), num = t.querySelector('.pm-tile-num');
+      var key = t.getAttribute('data-tile'), num = t.querySelector('.oxt-count[data-server]');
       if (!num) return;
-      if (useServer || !TILE_TEST[key]) { num.textContent = num.getAttribute('data-server'); return; }
+      // Server value is thousands-formatted like the tile macro (2026-11-06).
+      if (useServer || !TILE_TEST[key]) { num.textContent = Number(num.getAttribute('data-server')).toLocaleString('en-US'); return; }
       num.textContent = (key === 'assigned' || key === 'completed' || key === 'ongoing')   // distinct tags (2026-10-30)
         ? new Set(list.filter(TILE_TEST[key]).map(function (r) { return r.b; })).size
         : _tagSet(list, TILE_TEST[key]);

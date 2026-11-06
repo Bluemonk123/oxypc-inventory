@@ -462,7 +462,10 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/contacts/new'): ('crm_contacts', 'add'),  # create_contact
     ('POST', '/crm/contacts/{contact_id}/edit'): ('crm_contacts', 'edit'),  # update_contact
     ('POST', '/crm/contacts/{contact_id}/verify-kyc'): ('crm_contacts', 'edit'),  # verify_kyc
-    ('POST', '/crm/contacts/{contact_id}/verify-credit'): ('crm_contacts', 'edit'),  # verify_credit
+    ('POST', '/crm/contacts/{contact_id}/verify-credit'): None,  # verify_credit: gated in the route — the account's mapped VP/AVP or AM/DM/GM, or admin (2026-11-06)
+    ('POST', '/activity-board/{kind}/{deal_id}/start'): None,  # start_check: gated in the route — the person assigned to Inspection / Screening, or admin / Activity Board Edit
+    ('POST', '/activity-board/{kind}/{deal_id}/report'): None,  # upload_report: gated in the route — same as start_check
+    ('POST', '/activity-board/accounts/{contact_id}/map-manager'): ('activity_board', 'edit'),  # map_manager
     ('POST', '/crm/contacts/{contact_id}/trash'): ('crm_contacts', 'delete'),  # trash_contact: soft delete
     ('POST', '/crm/contacts/{contact_id}/restore'): ('crm_contacts', 'edit'),  # restore_contact: restore from trash
     # ===== routers/crm_sourcing.py =====

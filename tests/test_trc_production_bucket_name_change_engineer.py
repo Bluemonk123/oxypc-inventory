@@ -263,8 +263,11 @@ def test_summary_tiles_row_never_wraps(app_client, make_user):  # noqa: F811
     username, password = make_user("admin")
     _login(app_client, username, password)
     html = app_client.get("/trc-production", follow_redirects=True).text
-    assert "prod-tiles-row" in html
-    assert "flex-wrap:nowrap" in html.replace(" ", "")
+    # 2026-11-06: tiles now use the shared tile macros (templates/_tiles.html),
+    # one .oxt-row holding all eight summary tiles.
+    assert "prod-tiles-row" not in html
+    row = html.split('<div class="oxt-row">', 1)[1].split('<div class="d-flex justify-content-end', 1)[0]
+    assert row.count('class="oxt-tile oxt-single oxt-tint') == 8
 
 
 def test_change_engineer_modal_has_asset_history_table(app_client, make_user):  # noqa: F811

@@ -234,6 +234,7 @@ from routers.iqc_api import router as iqc_api_router
 from routers.qa_uat import router as qa_uat_router
 from routers.crm_dashboard import router as crm_dashboard_router
 from routers.crm_contacts import router as crm_contacts_router
+from routers.activity_board import router as activity_board_router   # Activity Board (2026-11-06)
 from routers.crm_sourcing import router as crm_sourcing_router
 from routers.crm_sales import router as crm_sales_router
 from routers.crm_quotes import router as crm_quotes_router
@@ -324,6 +325,7 @@ app.include_router(iqc_api_router)
 app.include_router(qa_uat_router)
 app.include_router(crm_dashboard_router)
 app.include_router(crm_contacts_router)
+app.include_router(activity_board_router)
 app.include_router(crm_sourcing_router)
 app.include_router(crm_sales_router)
 app.include_router(crm_quotes_router)

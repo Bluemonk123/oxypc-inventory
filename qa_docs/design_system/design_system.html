@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8">
 <title>OxyPC Inventory Lifecycle — Design System v2.2</title>
+<!-- 2026-11-06: section 05 (Summary tiles) updated to the four tile types.
+     The published v2.5 PDF (qa_docs/handbook/07_Design_System_v2.5.pdf) is the
+     v2.4 PDF with its two tile pages replaced by this section; the v2.3/v2.4
+     changes (logo, spacing) exist only in the PDF, not in this file. -->
 <!-- Source of OxyPC_Inventory_Lifecycle_Design_System PDF (2026-10-18).
      Rebuild the PDF with:  python qa_docs/design_system/build_pdf.py
      Samples are rendered with the app's real Bootstrap + app.css, so they
@@ -328,93 +332,144 @@
 </div>
 
 <!-- ============================== 05 ============================== -->
+<!-- v2.5 (2026-11-06): four tile types from templates/_tiles.html replace the
+     older light-tint / solid / stat-card tiles. -->
+<style>.sample .oxt-row{flex-wrap:nowrap; padding:2px 2px 8px} .sample .oxt-row > div{min-width:0}</style>
 <div class="page">
   <div class="chap-no">05</div>
-  <h1 class="chap">Summary tiles</h1>
-  <p class="lead">Four tile styles. Light-tint is the standard for count tiles on working pages. Solid tiles are for status and category overviews. The pipeline and stat cards belong to the Dashboard.</p>
-  <h2>A · Light-tint tile (standard)</h2>
-  <div class="sample d-flex gap-3">
-    <div class="tint flex-fill" style="--c:#6f42c1"><b style="font-size:16pt">48</b><br>Total Tags at You</div>
-    <div class="tint flex-fill" style="--c:#0d6efd"><b style="font-size:16pt">611</b><br>Total Tags in L1/L2</div>
-    <div class="tint flex-fill" style="--c:#fd7e14"><b style="font-size:16pt">37</b><br>Total Tags in L3/L4</div>
-    <div class="tint flex-fill" style="--c:#dc3545"><b style="font-size:16pt">22</b><br>Total Tags in PNA</div>
-    <div class="tint flex-fill" style="--c:#0F7A37;background:#E8F5E6"><b style="font-size:16pt">3,518</b><br>Devices in Stock</div>
-  </div>
-  <div class="cap">Production Manager (<code>/trc-production</code>). The same tile is used on Inventory Manager (<code>/stock</code>) and Create GRN (<code>/grn/post-iqc</code>).</div>
+  <h1 class="chap">Summary tiles <span class="tag chg">UPDATED</span></h1>
+  <p class="lead">Every summary tile in the app is one of four types, drawn by the macros in <code>templates/_tiles.html</code>. Types 1 and 2 come in two looks, tint and dark, each with or without a download button. A page picks one look and keeps it for all its tiles.</p>
   <table class="doc">
-    <tr><th style="width:22%">Part</th><th>Spec</th></tr>
-    <tr><td>Background</td><td>8% of the tile colour over white: <code>color-mix(in srgb, var(--tc) 8%, #fff)</code>; green tiles use mint <code>#E8F5E6</code>. One variable, <code>--tc</code>, set per tile.</td></tr>
-    <tr><td>Box</td><td>1px border at 25% of the tile colour · radius 10px · padding <code>.6rem .7rem</code> · shadow <code>0 .25rem .5rem rgba(0,0,0,.5)</code></td></tr>
-    <tr><td>Text</td><td>Number 1.6rem, weight 700, tile colour · label .72rem, <code>#343a40</code>, one line, <b>.35rem below the number</b></td></tr>
-    <tr><td>Watermark</td><td>Bootstrap icon, 3.4rem, bottom-right (<code>right:-4px; bottom:-10px</code>), <b>8% of the tile colour</b>, partly cut off</td></tr>
-    <tr><td>Optional button</td><td><code>btn-sm py-0 px-1</code>, .65rem, <b>.6rem below the label</b>; white with tile-colour border and text; fills with the tile colour on hover</td></tr>
-    <tr><td>Row</td><td><code>row g-3 mb-4</code>, padding <code>4px 6px 10px</code> so the shadow isn't clipped. <code>col-6 col-lg-3</code> for 4 tiles; 5–8 tiles use a no-wrap flex row (<code>d-flex gap-3</code>, min-width 118px)</td></tr>
+    <tr><th style="width:5%">#</th><th style="width:27%">Type</th><th style="width:30%">Macro</th><th>Looks</th></tr>
+    <tr><td>1</td><td>Single count</td><td><code>tl.single(count, label, colour, icon)</code></td><td>Tint or dark · download optional</td></tr>
+    <tr><td>2</td><td>Double count</td><td><code>tl.double(title, n1, label1, n2, label2, colour, icon)</code></td><td>Tint or dark · download optional</td></tr>
+    <tr><td>3</td><td>Single count with secondary counts</td><td><code>tl.single(…, title=, secondary=[…])</code></td><td>Tint or dark</td></tr>
+    <tr><td>4</td><td>Surface count</td><td><code>tl.surface(label, count, colour)</code></td><td>One look</td></tr>
   </table>
-  <pre class="codeblk">&lt;div class="prod-tile h-100" style="--tc:#0F7A37"&gt;
-  &lt;div class="prod-tile-count"&gt;{{ devices_in_stock }}&lt;/div&gt;
-  &lt;div class="prod-tile-label"&gt;Devices in Stock&lt;/div&gt;
-  &lt;i class="bi bi-box-seam prod-tile-wm"&gt;&lt;/i&gt;
-&lt;/div&gt;</pre>
-  <div class="two">
-    <div class="note"><div class="t">Do</div>One tile, one count, with a label that names it ("Total Tags in L1/L2"). Tiles go above the filter bar. A count tile that leads somewhere gets a small Summary button.</div>
-    <div class="note dont"><div class="t">Don't</div>Make a count tile itself a link, or put tiles below the filter bar. Whole-tile links are only for the Dashboard's category cards and pipeline (B and C).</div>
+  <h2>1 · Single count</h2>
+  <div class="sample"><div class="oxt-row mb-0">
+    <div><div class="oxt-tile oxt-single oxt-tint" style="--tc:#2F6DB5" >
+  <div class="oxt-count" >34</div><div class="oxt-label" >Devices in IQC</div><i class="bi bi-clipboard-check oxt-wm" aria-hidden="true"></i>
+</div></div>
+    <div><div class="oxt-tile oxt-single oxt-tint" style="--tc:#2F6DB5" >
+  <div class="oxt-count" >750</div><div class="oxt-label" >Total Tags in L1/L2</div><div class="oxt-actions"><a href="#" class="btn btn-sm oxt-dl" onclick="event.stopPropagation()" title="Summary"><i class="bi bi-download me-1"></i>Summary</a></div><i class="bi bi-tools oxt-wm" aria-hidden="true"></i>
+</div></div>
+    <div><div class="oxt-tile oxt-single oxt-dark" style="--tc:#0d6efd" >
+  <div class="oxt-count" >2,049</div><div class="oxt-label" >Total Dealers</div><i class="bi bi-building oxt-wm" aria-hidden="true"></i>
+</div></div>
+    <div><div class="oxt-tile oxt-single oxt-dark" style="--tc:#dc3545" >
+  <div class="oxt-count" >153</div><div class="oxt-label" >Total Tags in PNA</div><div class="oxt-actions"><a href="#" class="btn btn-sm oxt-dl" onclick="event.stopPropagation()" title="Summary"><i class="bi bi-download me-1"></i>Summary</a></div><i class="bi bi-exclamation-triangle oxt-wm" aria-hidden="true"></i>
+</div></div>
+  </div></div>
+  <div class="cap">Tint without and with download, then dark without and with download. Shown together only to compare. Used on Stock Inwards, Hardware, Dealers, CRM lists, TRC Production and the Dashboard stat cards.</div>
+  <h2>2 · Double count</h2>
+  <div class="sample"><div class="oxt-row mb-0">
+    <div><div class="oxt-tile oxt-double oxt-tint" style="--tc:#0d6efd" >
+  <div class="oxt-title">Total Quantities</div>
+  <div class="oxt-pair">
+    <div class="oxt-count" >18,186</div><div class="oxt-label">New</div>
   </div>
+  <div class="oxt-pair">
+    <div class="oxt-count oxt-count-2" >21</div><div class="oxt-label">Harvest</div>
+  </div><i class="bi bi-boxes oxt-wm" aria-hidden="true"></i>
+</div></div>
+    <div><div class="oxt-tile oxt-double oxt-tint" style="--tc:#0aa2c0" >
+  <div class="oxt-title">Consumed</div>
+  <div class="oxt-pair">
+    <div class="oxt-count" >2,134</div><div class="oxt-label">New</div>
+  </div>
+  <div class="oxt-pair">
+    <div class="oxt-count oxt-count-2" >158</div><div class="oxt-label">Harvest</div>
+  </div><div class="oxt-actions"><a href="#" class="btn btn-sm oxt-dl" onclick="event.stopPropagation()" title="Download"><i class="bi bi-download me-1"></i>Download</a></div><i class="bi bi-tools oxt-wm" aria-hidden="true"></i>
+</div></div>
+    <div><div class="oxt-tile oxt-double oxt-dark" style="--tc:#6f42c1" >
+  <div class="oxt-title">Total Sold</div>
+  <div class="oxt-pair">
+    <div class="oxt-count" >1</div><div class="oxt-label">New</div>
+  </div>
+  <div class="oxt-pair">
+    <div class="oxt-count oxt-count-2" >0</div><div class="oxt-label">Harvest</div>
+  </div><i class="bi bi-cart-check oxt-wm" aria-hidden="true"></i>
+</div></div>
+    <div><div class="oxt-tile oxt-double oxt-dark" style="--tc:#0F7A37" >
+  <div class="oxt-title">Parts Types</div>
+  <div class="oxt-pair">
+    <div class="oxt-count" >699</div><div class="oxt-label">New</div>
+  </div>
+  <div class="oxt-pair">
+    <div class="oxt-count oxt-count-2" >12</div><div class="oxt-label">Harvest</div>
+  </div><div class="oxt-actions"><a href="#" class="btn btn-sm oxt-dl" onclick="event.stopPropagation()" title="Download"><i class="bi bi-download me-1"></i>Download</a></div><i class="bi bi-diagram-3 oxt-wm" aria-hidden="true"></i>
+</div></div>
+  </div></div>
+  <div class="cap">A title and two counts, each with its own label. Used on Parts Manager, Create GRN and Business P&amp;L.</div>
+  <h2>3 · Single count with secondary counts</h2>
+  <div class="sample"><div class="oxt-row mb-0">
+    <div><div class="oxt-tile oxt-single oxt-tint" style="--tc:#fd7e14" ><div class="oxt-title">TFT Monitor</div>
+  <div class="oxt-count" >3,690</div><div class="oxt-secondary"><div>In TRC: <strong>1,072</strong></div><div>In Showroom: <strong>2,618</strong></div><div>In Ready for Sale: <strong>3,690</strong></div>
+  </div><i class="bi bi-display oxt-wm" aria-hidden="true"></i>
+</div></div>
+    <div><div class="oxt-tile oxt-single oxt-dark" style="--tc:#0d6efd" ><div class="oxt-title">Laptop</div>
+  <div class="oxt-count" >6,926</div><div class="oxt-secondary"><div>In TRC: <strong>3,155</strong></div><div>In Showroom: <strong>3,768</strong></div><div>In Ready for Sale: <strong>5,202</strong></div>
+  </div><i class="bi bi-laptop oxt-wm" aria-hidden="true"></i>
+</div></div>
+    <div><div class="oxt-tile oxt-single oxt-dark" style="--tc:#0F7A37" ><div class="oxt-title">Desktop</div>
+  <div class="oxt-count" >1,684</div><div class="oxt-secondary"><div>In TRC: <strong>366</strong></div><div>In Showroom: <strong>1,318</strong></div><div>In Ready for Sale: <strong>1,632</strong></div>
+  </div><i class="bi bi-pc-display oxt-wm" aria-hidden="true"></i>
+</div></div>
+  </div></div>
+  <div class="cap">Title, main count, then one line per secondary count. Shown tint first, then dark. Dashboard category cards use the dark look, each linking to All Inventory for that category.</div>
+  <h2>4 · Surface count</h2>
+  <div class="sample"><div class="oxt-row oxt-row-surface mb-0">
+    <div><div class="oxt-surface" style="--tc:#0d6efd" title="Bezel: 3,966" >
+  <div class="oxt-s-count">3,966</div>
+  <div class="oxt-s-label">Bezel</div>
+</div></div><div><div class="oxt-surface" style="--tc:#198754" title="Internal Battery: 2,304" >
+  <div class="oxt-s-count">2,304</div>
+  <div class="oxt-s-label">Internal Battery</div>
+</div></div><div><div class="oxt-surface" style="--tc:#fd7e14" title="Panel: 2,201" >
+  <div class="oxt-s-count">2,201</div>
+  <div class="oxt-s-label">Panel</div>
+</div></div><div><div class="oxt-surface" style="--tc:#6f42c1" title="Keyboard: 2,106" >
+  <div class="oxt-s-count">2,106</div>
+  <div class="oxt-s-label">Keyboard</div>
+</div></div><div><div class="oxt-surface oxt-zero" style="--tc:#d63384" title="Hinge: 0" >
+  <div class="oxt-s-count">0</div>
+  <div class="oxt-s-label">Hinge</div>
+</div></div>
+  </div></div>
+  <div class="cap">Count with the label under it, as in types 1–3, on a light colour wash with a coloured left edge; no border, no shadow. A zero count fades to 50%. Used for the Dashboard parts counts.</div>
 </div>
-
 <div class="page">
-  <h2>B · Solid tile (status and category overviews)</h2>
-  <div class="sample">
-    <div class="d-flex gap-2 mb-2 text-white" style="font-size:8pt">
-      <div class="flex-fill rounded-3 p-2 bg-dark"><b style="font-size:14pt">128</b><br>Open WorkIDs</div>
-      <div class="flex-fill rounded-3 p-2 bg-secondary"><b style="font-size:14pt">964</b><br>Closed WorkIDs</div>
-      <div class="flex-fill rounded-3 p-2 bg-primary"><b style="font-size:14pt">402</b><br>Assigned Tags</div>
-      <div class="flex-fill rounded-3 p-2" style="background:#f0ad00"><b style="font-size:14pt">156</b><br>Ongoing Tags</div>
-      <div class="flex-fill rounded-3 p-2" style="background:#0F7A37"><b style="font-size:14pt">2,215</b><br>Completed Tags</div>
-      <div class="flex-fill rounded-3 p-2 bg-danger"><b style="font-size:14pt">22</b><br>Total PNA</div>
-    </div>
-    <div class="d-flex gap-2 text-white" style="font-size:8pt">
-      <div class="flex-fill rounded-3 p-2 bg-primary">Laptops<br><b style="font-size:16pt">2,846</b><br>In TRC: 2,104<br>In Ready: 742</div>
-      <div class="flex-fill rounded-3 p-2" style="background:#0F7A37">Desktops<br><b style="font-size:16pt">512</b><br>In TRC: 418<br>In Ready: 94</div>
-      <div class="flex-fill rounded-3 p-2" style="background:#fd7e14">TFT Monitor<br><b style="font-size:16pt">203</b><br>In TRC: 165<br>In Ready: 38</div>
-      <div class="flex-fill rounded-3 p-2" style="background:#20c997">Tablet<br><b style="font-size:16pt">61</b><br>In TRC: 52<br>In Ready: 9</div>
-      <div class="flex-fill rounded-3 p-2 bg-purple">Mini PC<br><b style="font-size:16pt">88</b><br>In TRC: 70<br>In Ready: 18</div>
-      <div class="flex-fill rounded-3 p-2" style="background:#0aa2c0">Server<br><b style="font-size:16pt">14</b><br>In TRC: 11<br>In Ready: 3</div>
-    </div>
-  </div>
-  <div class="cap">Top: Product Master and WorkID Status (<code>.pm-tile</code>, <code>col-xl-2</code>). Bottom: Dashboard category cards (<code>.dash-tile</code>), each linking to All Inventory for that category. Green is the v2.2 success green <code>#0F7A37</code>.</div>
+  <h2>Specification</h2>
   <table class="doc">
     <tr><th style="width:22%">Part</th><th>Spec</th></tr>
-    <tr><td>Count tile</td><td>Solid fill, <code>p-3</code>, radius 10px, min-height 96px, shadow <code>0 1px 3px rgba(0,0,0,.08)</code>. White number 1.9rem bold; label .82rem at 88% white; watermark 4.6rem at 22% white.</td></tr>
-    <tr><td>Category card</td><td>Same, but min-height 120px: label first (.9rem, semibold), number 2.2rem, then two .8rem sub-lines (In TRC / In Ready); watermark 5rem. Lifts 4px with a larger shadow on hover.</td></tr>
+    <tr><td>Colour</td><td>One variable, <code>--tc</code>, set by the macro from its colour argument. Pick the colour from what the tile counts (section 02, Tile colours).</td></tr>
+    <tr><td>Tint look</td><td>Background 8% of the colour over white; 1px border at 25%; coloured count; dark label <code>#343a40</code>; shadow.</td></tr>
+    <tr><td>Dark look</td><td>Solid colour background and border; white count and title; label at 88% white; no shadow.</td></tr>
+    <tr><td>Box</td><td>Radius 10px · padding <code>1rem 1rem .8rem</code> · min-height 96px · all tiles in a row stretch to the same height.</td></tr>
+    <tr><td>Text</td><td>Count 1.6rem, weight 700, one line, thousands grouped · label .72rem, one line · title .8rem, weight 600 · secondary lines .75rem.</td></tr>
+    <tr><td>Watermark</td><td>Optional Bootstrap icon, 3.4rem, bottom-right, partly cut off: 10% of the colour (tint) or 20% white (dark).</td></tr>
+    <tr><td>Download</td><td><code>download=URL</code> adds a small outline button at the bottom (<code>download_label</code>, default "Download"); it fills on hover. Pass <code>None</code> when the user lacks the Export permission.</td></tr>
+    <tr><td>Link</td><td><code>href=</code> makes the whole tile a link; it lifts 3px on hover.</td></tr>
+    <tr><td>Row</td><td><code>&lt;div class="oxt-row"&gt;</code>: a flex row, gap .75rem, tiles share the width (min 150px) and wrap. Surface tiles use <code>oxt-row oxt-row-surface</code> (gap .6rem, min 130px).</td></tr>
+    <tr><td>Page hooks</td><td><code>cls=</code> extra classes and <code>extra=</code> raw attributes (id, data-*) on the tile; <code>count_attrs=</code> / <code>label_attrs=</code> on the count and label (double: <code>count1_attrs</code> / <code>count2_attrs</code>).</td></tr>
   </table>
-  <h2>C · Pipeline tile (Dashboard only)</h2>
-  <div class="sample d-flex align-items-center gap-1" style="font-size:7pt">
-    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-secondary text-white px-2 rounded-top">IQC</span><b class="fs-6">142</b></span><i class="bi bi-caret-right-fill text-success"></i>
-    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-info px-2 rounded-top">Stock In</span><b class="fs-6">318</b></span><i class="bi bi-caret-right-fill text-success"></i>
-    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-warning px-2 rounded-top">L1/L2</span><b class="fs-6">611</b></span><i class="bi bi-caret-right-fill text-success"></i>
-    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-danger text-white px-2 rounded-top">L3/L4</span><b class="fs-6">37</b></span><i class="bi bi-caret-right-fill text-success"></i>
-    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-teal text-white px-2 rounded-top">Cosmetic</span><b class="fs-6">129</b></span><i class="bi bi-caret-right-fill text-success"></i>
-    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-purple text-white px-2 rounded-top">Final QC</span><b class="fs-6">58</b></span><i class="bi bi-caret-right-fill text-success"></i>
-    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-success text-white px-2 rounded-top">Ready to Sale</span><b class="fs-6">874</b></span><i class="bi bi-caret-right-fill text-success"></i>
-    <span class="text-center bg-white shadow-sm rounded-3"><span class="d-block bg-dark text-white px-2 rounded-top">Sold</span><b class="fs-6">12,406</b></span>
+  <pre class="codeblk">{% import "_tiles.html" as tl %}
+&lt;div class="oxt-row"&gt;
+  {{ tl.single(devices_in_iqc, 'Devices in IQC', '#2F6DB5', 'bi-clipboard-check') }}
+  {{ tl.single(pna, 'Total Tags in PNA', '#dc3545', 'bi-exclamation-triangle',
+               download=pna_url if can_export else None, download_label='Summary') }}
+  {{ tl.double('Total Quantities', qty_new, 'New', qty_harvest, 'Harvest', '#0d6efd', 'bi-boxes') }}
+&lt;/div&gt;
+&lt;div class="oxt-row oxt-row-surface"&gt;{{ tl.surface('Bezel', 3966, '#0d6efd') }}&lt;/div&gt;</pre>
+  <div class="two">
+    <div class="note"><div class="t">Do</div>Use the macros for every tile, one look per page. One count per label that names it ("Total Tags in L1/L2"). Tiles sit above the filter bar, in one row.</div>
+    <div class="note dont"><div class="t">Don't</div>Hand-write tile markup or add a new tile class, mix tint and dark on one page, or put tiles below the filter bar.</div>
   </div>
-  <table class="doc">
-    <tr><th style="width:22%">Part</th><th>Spec</th></tr>
-    <tr><td>Tile</td><td>White, <code>rounded-3</code>, min-width 80px, shadow <code>0 .125rem .35rem rgba(0,0,0,.15)</code>. Coloured title strip on top (<code>bg-{stage colour}</code>, .75rem, weight 600); count below: 1.25rem bold.</td></tr>
-    <tr><td>Row and card</td><td>All ten stages on one row (<code>flex-wrap:nowrap</code>) with a filled green arrow between them (<code>bi-caret-right-fill text-success</code>, now #0F7A37). Split Entity / Split Zone as white outline buttons; Bluemonk Navy watermark 7rem at 6%.</td></tr>
-  </table>
-  <h2>D · Stat card (Dashboard only)</h2>
-  <div class="sample d-flex gap-2">
-    <div class="flex-fill rounded-3 p-2" style="background:#e7f0ff;border-left:4px solid #0d6efd">Total Inventory<br><b class="fs-5">3,724</b></div>
-    <div class="flex-fill rounded-3 p-2" style="background:#fff6dd;border-left:4px solid #ffc107">In Repair<br><b class="fs-5">648</b></div>
-    <div class="flex-fill rounded-3 p-2" style="background:#E8F5E6;border-left:4px solid #0F7A37">Revenue This Month<br><b class="fs-5">₹8,62,300</b></div>
-    <div class="flex-fill rounded-3 p-2" style="background:#E8F5E6;border-left:4px solid #0F7A37">Profit This Month<br><b class="fs-5 profit-positive">₹1,14,850</b></div>
-  </div>
-  <table class="doc">
-    <tr><th style="width:22%">Part</th><th>Spec</th></tr>
-    <tr><td>Card</td><td>Light tint with a 4px coloured left edge: <code>stat-primary</code> #e7f0ff, <code>stat-warning</code> #fff6dd, <code>stat-success</code> <b>#E8F5E6</b> with edge #0F7A37, <code>stat-danger</code> #fdeaea.</td></tr>
-    <tr><td>Money</td><td>₹ with Indian grouping. Profit This Month switches to <code>stat-danger</code> and red text when negative.</td></tr>
-  </table>
+  <h2>Dashboard pipeline (unchanged)</h2>
+  <p>The Dashboard's stage pipeline stays its own component: a white card per stage with a coloured title strip and the count below, joined by green arrows, all ten stages on one row. It is not a summary tile and is not drawn by <code>_tiles.html</code>.</p>
+  <h2>Retired tile classes</h2>
+  <p><code>lt-tile</code>, <code>pm-tile</code>, <code>hw-tile</code>, <code>prod-tile</code>, <code>inv-tile</code>, <code>dash-tile</code>, <code>part-tile</code> and <code>stat-card</code> are replaced by the four types above. Don't use them on new or changed pages.</p>
 </div>
 
 <!-- ============================== 06 ============================== -->

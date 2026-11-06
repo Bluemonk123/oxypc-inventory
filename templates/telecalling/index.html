@@ -4,8 +4,9 @@
 {% block content %}
 
 <!-- KPI Cards — counts match the Recent Calls table below -->
-<div class="lt-tiles-row lt-dark mb-1">
-  {# Dark tile cards (2026-10-27, .lt-tiles-row.lt-dark in app.css). #}
+{% import "_tiles.html" as tl %}
+<div class="oxt-row mb-1">
+  {# Dark single-count tiles (2026-11-06, _tiles.html). #}
   {% set stats = [
     ('Total Calls',    today_stats.get('total',0),          '#0d6efd', 'bi-telephone',      ''),
     ('Interested',     today_stats.get('interested',0),     '#0F7A37', 'bi-star-fill',      'outcome=interested'),
@@ -15,18 +16,8 @@
     ('Connected',      today_stats.get('connected',0),      '#0aa2c0', 'bi-telephone-fill', ''),
   ] %}
   {% for label, val, color, icon, filter_qs in stats %}
-  <div>
-    {% if filter_qs %}
-    <a href="/telecalling?{{ filter_qs }}&date_from={{ date_from }}&date_to={{ date_to }}{% if assigned %}&assigned={{ assigned }}{% endif %}"
-       class="text-decoration-none">
-    {% endif %}
-    <div class="lt-tile h-100" style="--tc:{{ color }}">
-      <div class="lt-tile-count">{{ val }}</div>
-      <div class="lt-tile-label">{{ label }}</div>
-      <i class="bi {{ icon }} lt-tile-wm"></i>
-    </div>
-    {% if filter_qs %}</a>{% endif %}
-  </div>
+  {% set _href = ('/telecalling?' ~ filter_qs ~ '&date_from=' ~ date_from ~ '&date_to=' ~ date_to ~ ('&assigned=' ~ assigned if assigned else '')) if filter_qs else None %}
+  {{ tl.single(val, label, color, icon, variant='dark', href=_href) }}
   {% endfor %}
 </div>
 

@@ -44,19 +44,14 @@
 
 {# Dark tile cards (2026-10-27). The id stays: assigning dealers swaps this
    block's innerHTML from the refreshed page (AJAX partial refresh). #}
-<div class="lt-tiles-row lt-dark mb-3" id="assignDealerSummaryCards">
+{% import "_tiles.html" as tl %}
+<div class="oxt-row mb-3" id="assignDealerSummaryCards">
   {% for count, label, color, cid, icon in [
        (active_count, 'Active Dealers', '#0F7A37', 'assignActiveCount', 'bi-check-circle'),
        (inactive_count, 'Inactive Dealers', '#6c757d', 'assignInactiveCount', 'bi-pause-circle'),
        (unassigned_count, 'Unassigned Dealers', '#fd7e14', 'assignUnassignedCount', 'bi-person-dash'),
        (assigned_count, 'Assigned Dealers', '#0d6efd', 'assignAssignedCount', 'bi-person-check')] %}
-  <div>
-    <div class="lt-tile h-100" style="--tc:{{ color }}">
-      <div class="lt-tile-count" id="{{ cid }}">{{ count }}</div>
-      <div class="lt-tile-label">{{ label }}</div>
-      <i class="bi {{ icon }} lt-tile-wm"></i>
-    </div>
-  </div>
+  {{ tl.single(count, label, color, icon, variant='dark', count_attrs='id="' ~ cid ~ '"') }}
   {% endfor %}
 </div>
 

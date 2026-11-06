@@ -966,11 +966,10 @@ async def iqc_bulk_apply_grade_type(
     # the endpoint still lives under /iqc and accepts either module's edit
     # right so both All Inventory and Inventory Manager can use it.
     _perm: User = Depends(require_any_module_perm("iqc", "devices", action="edit")),
-    # The check above only ever looks at each module's "enable" bit (see
-    # has_perm()'s docstring — the matrix's own Edit checkbox is display-only)
-    # so it never actually blocked anyone. This is the real, enforced gate —
-    # Devices Edit or IQC Edit from the Role Additional Permissions tab.
-    _perm2: User = Depends(require_any_additional_perm("edit_devices", "edit_iqc")),
+    # Edit is enforced by the Permission Matrix (auth/route_actions.py:
+    # IQC / Devices / Stock -> Edit, by the page it is used from). The old
+    # Role Additional Permissions "Devices Edit / IQC Edit" gate was dropped
+    # 2026-11-06 (Pankaj) — one place decides who can use Customise.
 ):
     """Bulk-apply Device Type, Entity, Grade, Invoice Number, GRN Number,
     Location ID, Device Price, Min Selling Price and/or a stage move to a set

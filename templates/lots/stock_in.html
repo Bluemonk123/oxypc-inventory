@@ -18,50 +18,13 @@
 {% endif %}
 <!-- Analytics count cards (#17) -->
 {% if analytics is defined %}
-{# Same tile style as the Production Manager summary tiles (option B): very
-   light tint of the tile colour, number in that colour, faint matching
-   watermark icon, box shadow. --tc is set per tile. #}
-<style>
-  .inv-tiles-row{padding:4px 6px 10px}
-  .inv-tile{position:relative; overflow:hidden; border-radius:10px; padding:1.1rem 1rem; min-height:96px;
-            background:color-mix(in srgb, var(--tc) 8%, #fff) !important;
-            border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
-            box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
-  .inv-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1}
-  /* Light tile rule (Design System 05): label .35rem under the count, button .6rem under the label, watermark 8%. */
-  .inv-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1; margin-top:.35rem}
-  .inv-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
-               color:color-mix(in srgb, var(--tc) 8%, transparent); pointer-events:none}
-</style>
-<div class="row g-3 mb-4 inv-tiles-row">
-  <div class="col-6 col-lg-3">
-    <div class="inv-tile h-100" style="--tc:#0d6efd">
-      <div class="inv-tile-count">{{ analytics.iqc }}</div>
-      <div class="inv-tile-label">Devices in IQC</div>
-      <i class="bi bi-clipboard-check inv-tile-wm"></i>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="inv-tile h-100" style="--tc:#0F7A37">
-      <div class="inv-tile-count">{{ analytics.in_stock }}</div>
-      <div class="inv-tile-label">Devices in Stock</div>
-      <i class="bi bi-box-seam inv-tile-wm"></i>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="inv-tile h-100" style="--tc:#fd7e14">
-      <div class="inv-tile-count">{{ analytics.trc }}</div>
-      <div class="inv-tile-label">Devices in TRC</div>
-      <i class="bi bi-tools inv-tile-wm"></i>
-    </div>
-  </div>
-  <div class="col-6 col-lg-3">
-    <div class="inv-tile h-100" style="--tc:#0aa2c0">
-      <div class="inv-tile-count">{{ analytics.ready }}</div>
-      <div class="inv-tile-label">Devices in Ready to Sell</div>
-      <i class="bi bi-bag-check inv-tile-wm"></i>
-    </div>
-  </div>
+{# Summary tiles: shared tile macros (templates/_tiles.html), tint look. #}
+{% import "_tiles.html" as tl %}
+<div class="oxt-row">
+  {{ tl.single(analytics.iqc, 'Devices in IQC', '#0d6efd', 'bi-clipboard-check') }}
+  {{ tl.single(analytics.in_stock, 'Devices in Stock', '#0F7A37', 'bi-box-seam') }}
+  {{ tl.single(analytics.trc, 'Devices in TRC', '#fd7e14', 'bi-tools') }}
+  {{ tl.single(analytics.ready, 'Devices in Ready to Sell', '#0aa2c0', 'bi-bag-check') }}
 </div>
 {% endif %}
 <!-- Filter Bar -->

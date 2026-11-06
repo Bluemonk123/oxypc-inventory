@@ -79,15 +79,13 @@ asyncio.run(main())
 
 
 def _get_count(html, label):
-    """Extract the number shown under a given tile label (crude but sufficient
-    — the tile markup always puts the count div immediately after the label
+    """Extract the number shown on a given tile (shared tile macro,
+    templates/_tiles.html: the count div sits immediately before the label
     div in source order)."""
-    idx = html.index(label)
-    tail = html[idx:idx + 400]
     import re
-    m = re.search(r'fw-bold"[^>]*>\s*(\d+)\s*<', tail)
-    assert m, f"count not found near label {label!r}"
-    return int(m.group(1))
+    m = re.search(r'class="oxt-count"[^>]*>([\d,]+)</div><div class="oxt-label"[^>]*>' + re.escape(label) + '<', html)
+    assert m, f"count not found for label {label!r}"
+    return int(m.group(1).replace(",", ""))
 
 
 def test_summary_tiles_reflect_stage_counts(app_client, make_user):  # noqa: F811

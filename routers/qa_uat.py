@@ -1727,14 +1727,14 @@ async def srs_functional_spec_download(current_user: User = Depends(_view)):
 # plus the combined handbook, fixed PDFs in qa_docs/handbook/ (updated 6 Nov 2026).
 # (key, file, title, description, pages)
 SRS_HANDBOOK = [
-    ("handbook", "00_OxyPC_Handbook_All_Documents.pdf", "Complete Handbook", "All 7 documents in one file", 239),
+    ("handbook", "00_OxyPC_Handbook_All_Documents.pdf", "Complete Handbook", "All 7 documents in one file", 240),
     ("product-overview", "01_Product_Overview.pdf", "Product Overview", "Key findings, vision, roadmap and KPI definitions", 23),
     ("brd", "02_Business_Requirements_BRD.pdf", "Business Requirements (BRD)", "Objectives, scope, requirements, risks; business rules & SOPs", 29),
     ("personas", "03_Personas_and_Journeys.pdf", "Personas & Journeys", "The 12 roles, their journeys, and how a device moves through every stage", 34),
     ("permission-security", "04_Permission_and_Security_Rules.pdf", "Permission & Security Rules", "Who can see and do what, and how the app protects its data", 32),
     ("technical-architecture", "05_Technical_Architecture.pdf", "Technical Architecture", "System design, data model, integrations and decisions", 61),
     ("uat-dr", "06_UAT_and_Disaster_Recovery.pdf", "UAT & Disaster Recovery", "Test and sign-off, recovery runbook, deployment", 35),
-    ("design-system", "07_Design_System_v2.4.pdf", "Design System v2.4", "Colours, type, layout, components and their rules", 23),
+    ("design-system", "07_Design_System_v2.5.pdf", "Design System v2.5", "Colours, type, layout, components and their rules", 24),
 ]
 _SRS_HANDBOOK_BY_KEY = {k: f for k, f, *_ in SRS_HANDBOOK}
 

@@ -139,43 +139,13 @@
    leaves visible, so they always describe the same slice of data as the table
    below rather than the whole dataset — same pattern as GRN with Invoice's
    (templates/grn/import.html) cards. #}
-{# Light tile design (Design System "A · Light-tint tile"), same as
-   Inventory Manager / Production Manager. IDs kept — the filter script fills
-   the numbers. #}
-<style>
-  .lt-tiles-row{padding:4px 6px 10px}
-  .lt-tile{position:relative; overflow:hidden; border-radius:10px; padding:1.1rem 1rem; min-height:96px;
-           background:color-mix(in srgb, var(--tc) 8%, #fff) !important;
-           border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
-           box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
-  .lt-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1}
-  /* Light tile rule (Design System 05): label .35rem under the count, button .6rem under the label, watermark 8%. */
-  .lt-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1; margin-top:.35rem}
-  .lt-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
-              color:color-mix(in srgb, var(--tc) 8%, transparent); pointer-events:none}
-</style>
-<div class="row g-3 mb-4 lt-tiles-row">
-  <div class="col-6 col-lg-4">
-    <div class="lt-tile h-100" style="--tc:#0d6efd">
-      <div class="lt-tile-count" id="cardTotalQty">0</div>
-      <div class="lt-tile-label">Total GRN Quantities</div>
-      <i class="bi bi-receipt lt-tile-wm"></i>
-    </div>
-  </div>
-  <div class="col-6 col-lg-4">
-    <div class="lt-tile h-100" style="--tc:#0F7A37">
-      <div class="lt-tile-count" id="cardDevicesAdded">0</div>
-      <div class="lt-tile-label">Total Devices Added</div>
-      <i class="bi bi-check2-square lt-tile-wm"></i>
-    </div>
-  </div>
-  <div class="col-6 col-lg-4">
-    <div class="lt-tile h-100" style="--tc:#fd7e14">
-      <div class="lt-tile-count" id="cardDevicesPending">0</div>
-      <div class="lt-tile-label">Total Devices Pending</div>
-      <i class="bi bi-hourglass-split lt-tile-wm"></i>
-    </div>
-  </div>
+{# Shared tile macros (templates/_tiles.html, 2026-11-06), light tint.
+   IDs kept on the counts — the filter script fills the numbers. #}
+{% import "_tiles.html" as tl %}
+<div class="oxt-row">
+  {{ tl.single(0, 'Total GRN Quantities', '#0d6efd', 'bi-receipt', count_attrs='id="cardTotalQty"') }}
+  {{ tl.single(0, 'Total Devices Added', '#0F7A37', 'bi-check2-square', count_attrs='id="cardDevicesAdded"') }}
+  {{ tl.single(0, 'Total Devices Pending', '#fd7e14', 'bi-hourglass-split', count_attrs='id="cardDevicesPending"') }}
 </div>
 
 <div class="card border-0 shadow-sm mb-4">

@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Activity Board — OxyPC{% endblock %}
+{% block page_title %}Activity Board{% endblock %}
+{% block content %}
+{# Activity Board (2026-11-06, Pankaj): routers/activity_board.py #}
+{% set csrf = request.cookies.get('csrf_token', '') %}
+<style>
+  .ab-tabs .nav-link{font-weight:600}
+  .ab-file{max-width:220px}
+  /* Action column: buttons on one line, right-aligned (2026-11-06) — beats
+     the Global Table's centred last column */
+  .ab-table th.ab-act, .ab-table td.ab-act{text-align:right !important; white-space:nowrap}
+</style>
+
+<ul class="nav nav-tabs ab-tabs mb-3" role="tablist">
+  <li class="nav-item"><button class="nav-link {{ 'active' if tab == 'supplier' }}" data-bs-toggle="tab" data-bs-target="#abSupplier" type="button" data-tab="supplier">
+    <i class="bi bi-box-arrow-in-down me-1"></i>Supplier Deals <span class="badge bg-secondary">{{ supplier | length }}</span></button></li>
+  <li class="nav-item"><button class="nav-link {{ 'active' if tab == 'customer' }}" data-bs-toggle="tab" data-bs-target="#abCustomer" type="button" data-tab="customer">
+    <i class="bi bi-graph-up me-1"></i>Customer Deals <span class="badge bg-secondary">{{ customer | length }}</span></button></li>
+  <li class="nav-item"><button class="nav-link {{ 'active' if tab == 'accounts' }}" data-bs-toggle="tab" data-bs-target="#abAccounts" type="button" data-tab="accounts">
+    <i class="bi bi-patch-check me-1"></i>Account Verification <span class="badge bg-secondary">{{ contacts | length }}</span></button></li>
+</ul>
+
+{% macro deal_table(kind, rows, word, idlabel) %}
+<div class="card border-0 shadow-sm">
+  <div class="card-body">
+    <table class="table table-sm align-middle mb-0 ab-table" id="ab_{{ kind }}">
+      <thead><tr><th>{{ idlabel }}</th><th>Added On</th><th>Added By</th><th>Status</th><th class="ab-act">Action</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td><a href="{{ r.url }}" class="fw-semibold text-decoration-none">{{ r.number }}</a>
+            <div class="small text-muted text-truncate" style="max-width:280px" title="{{ r.deal.title }}">{{ r.deal.title }}</div>
+            {% if see_all %}<div class="small text-muted"><i class="bi bi-person me-1"></i>{{ names.get(r.assignee, r.assignee) }}</div>{% endif %}</td>
+          <td data-order="{{ r.deal.created_at.strftime('%Y%m%d%H%M') if r.deal.created_at else '' }}">{{ r.deal.created_at.strftime('%d-%m-%Y') if r.deal.created_at else '—' }}</td>
+          <td>{{ names.get(r.deal.created_by, r.deal.created_by or '—') }}</td>
+          <td>
+            {% if r.status == 'done' %}<span class="badge bg-success">{{ word }} Done</span>
+            {% elif r.status == 'started' %}<span class="badge bg-info text-dark">{{ word }} Started</span>
+            {% else %}<span class="badge bg-warning text-dark">{{ word }} Pending</span>{% endif %}
+          </td>
+          <td class="ab-act">
+            {# buttons on one line, right-aligned (2026-11-06) #}
+            <div class="d-flex flex-nowrap justify-content-end align-items-center gap-2">
+            {% if r.status == 'pending' %}
+            <form method="post" action="/activity-board/{{ kind }}/{{ r.deal.id }}/start" class="d-inline">
+              <input type="hidden" name="csrf_token" value="{{ csrf }}">
+              <button class="btn btn-sm btn-primary"><i class="bi bi-play-circle me-1"></i>Verify {{ word }}</button>
+            </form>
+            {% else %}
+              {% if r.file %}<a href="/uploads/crm/{{ r.file }}" target="_blank" class="btn btn-sm btn-outline-success ab-file text-truncate"
+                 title="Open / download the {{ word }} Report"><i class="bi bi-download me-1"></i>{{ word }} Report</a>{% endif %}
+              <button type="button" class="btn btn-sm {{ 'btn-outline-secondary' if r.file else 'btn-primary' }} ab-upload-btn"
+                      data-action="/activity-board/{{ kind }}/{{ r.deal.id }}/report"
+                      data-title="{{ (word ~ ' Report') if not r.file else ('Reupload ' ~ word ~ ' Report') }} — {{ r.number }}">
+                <i class="bi bi-upload me-1"></i>{{ 'Reupload' if r.file else (word ~ ' Report Upload') }}</button>
+            {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endmacro %}
+
+<div class="tab-content">
+  <div class="tab-pane fade {{ 'show active' if tab == 'supplier' }}" id="abSupplier">
+    <p class="small text-muted mb-2">Supplier Deals at stage <strong>Inspection</strong> with someone assigned to Inspection.
+      {% if not see_all %}Only the deals assigned to you are listed.{% endif %}</p>
+    {{ deal_table('supplier', supplier, 'Inspection', 'Supplier Deal ID') }}
+  </div>
+  <div class="tab-pane fade {{ 'show active' if tab == 'customer' }}" id="abCustomer">
+    <p class="small text-muted mb-2">Customer Deals at stage <strong>Screening</strong> with someone assigned to Screening.
+      {% if not see_all %}Only the deals assigned to you are listed.{% endif %}</p>
+    {{ deal_table('customer', customer, 'Screening', 'Customer Deal ID') }}
+  </div>
+
+  <div class="tab-pane fade {{ 'show active' if tab == 'accounts' }}" id="abAccounts">
+    <p class="small text-muted mb-2">Credit is verified by the account's mapped <strong>VP/AVP</strong> or <strong>AM/DM/GM</strong> (Map Team).
+      {% if not see_all %}Only accounts where you are on the team are listed.{% endif %}</p>
+    <div class="card border-0 shadow-sm"><div class="card-body">
+    <table class="table table-sm align-middle mb-0 ab-table" id="ab_accounts">
+      <thead><tr><th>Account Name</th><th>Manager</th><th>GST No.</th><th>KYC</th><th>Credit</th><th>Place</th><th>Person</th><th>Team</th><th>Status</th><th>Created By</th><th class="ab-act">Action</th></tr></thead>
+      <tbody>
+      {% for c in contacts %}
+        {% set t = team.get(c.id, {}) %}
+        <tr>
+          <td><a href="/crm/contacts/{{ c.id }}" class="fw-semibold text-decoration-none">{{ c.company_name[:50] }}</a>
+            <div class="mt-1">{% if c.contact_type == 'supplier' %}<span class="badge bg-primary">Supplier</span>{% elif c.contact_type == 'buyer' %}<span class="badge bg-info text-white">Buyer</span>{% else %}<span class="badge bg-success">Both</span>{% endif %}</div></td>
+          <td class="small">{% if t.get('manager') %}{{ t['manager'] | map(attribute='name') | join(', ') }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+          <td class="small font-monospace">{{ c.gstin or '—' }}</td>
+          <td>{% if c.kyc_verified %}<span class="badge bg-success">Verified</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
+          <td>{% if c.credit_verified %}<span class="badge bg-success" title="Verified by {{ c.credit_verified_by or '—' }}{% if c.credit_verified_at %} on {{ c.credit_verified_at.strftime('%d-%m-%Y') }}{% endif %}">Verified</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
+          <td class="small">{{ [c.city, c.state] | select | join(', ') or '—' }}</td>
+          <td class="small">{{ c.contact_person or '—' }}</td>
+          <td class="small">{% for b, lbl in [('vp_avp','VP/AVP'),('am_dm_gm','AM/DM/GM'),('executive','Exec')] %}{% if t.get(b) %}<div><span class="text-muted">{{ lbl }}:</span> {{ t[b] | map(attribute='name') | join(', ') }}</div>{% endif %}{% endfor %}{% if not t %}<span class="text-muted">—</span>{% endif %}</td>
+          <td>{% if c.status == 'active' %}<span class="badge bg-success">Active</span>{% elif c.status == 'blacklisted' %}<span class="badge bg-dark">Blacklisted</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td>
+          <td class="small">{{ names.get(c.created_by, c.created_by or '—') }}</td>
+          <td class="ab-act">
+            <div class="d-flex flex-nowrap justify-content-end align-items-center gap-1">
+              {% if not c.credit_verified and can_vc.get(c.id) %}
+              {% set tt = totals.get(c.id, {}) %}
+              <button type="button" class="btn btn-sm btn-success"
+                      data-vc-id="{{ c.id }}" data-vc-company="{{ c.company_name }}" data-vc-old="{{ c.credit_limit or 0 }}"
+                      data-vc-so="{{ tt.get('so_total', 0) }}" data-vc-so-n="{{ tt.get('so_count', 0) }}"
+                      data-vc-po="{{ tt.get('po_total', 0) }}" data-vc-po-n="{{ tt.get('po_count', 0) }}">
+                <i class="bi bi-patch-check me-1"></i>Verify Credit</button>
+              {% endif %}
+              {% if see_all %}
+              <button type="button" class="btn btn-sm btn-outline-dark ab-mgr-btn" data-id="{{ c.id }}" data-company="{{ c.company_name }}"
+                      data-current="{{ (t.get('manager') or [{}])[0].get('id', '') }}"><i class="bi bi-person-badge me-1"></i>Map Manager</button>
+              {% endif %}
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div></div>
+  </div>
+</div>
+
+{# Report upload (Inspection / Screening) #}
+<div class="modal fade" id="abUploadModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" id="abUploadForm" enctype="multipart/form-data" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-upload me-1"></i><span id="abUploadTitle"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="file" name="file" class="form-control form-control-sm" required
+               accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.xls,.xlsx,.csv,.doc,.docx">
+        <div class="form-text">PDF, image, Excel or Word — up to 20 MB. A reupload replaces the earlier file.</div>
+      </div>
+      <div class="modal-footer py-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-sm btn-primary"><i class="bi bi-upload me-1"></i>Upload</button></div>
+    </form>
+  </div>
+</div>
+
+{# Map Manager — Map Team's modal, Manager only #}
+{% if see_all %}
+<div class="modal fade" id="abMgrModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" id="abMgrForm" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <div class="modal-header py-2"><h5 class="modal-title"><i class="bi bi-people-fill me-2"></i>Map Manager — <span id="abMgrCompany"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold mb-1">Manager</label>
+        <select name="manager_id" id="abMgrSelect" class="form-select form-select-sm">
+          <option value="">— None —</option>
+          {% for uid, nm in managers %}<option value="{{ uid }}">{{ nm }}</option>{% endfor %}
+        </select>
+        <p class="small text-muted mt-2 mb-0">Only the Manager is changed; VP/AVP, AM/DM/GM and Executive stay as they are.</p>
+      </div>
+      <div class="modal-footer py-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-sm btn-primary"><i class="bi bi-check2 me-1"></i>Save Manager</button></div>
+    </form>
+  </div>
+</div>
+{% endif %}
+
+{% set vc_return_to = '/activity-board?tab=accounts' %}
+{% include "crm/contacts/_verify_credit_modal.html" %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(document).ready(function () {
+  document.querySelectorAll('.ab-table').forEach(function (t) {
+    if (window.initGlobalTable) initGlobalTable('#' + t.id, { order: [], columnDefs: [{ orderable: false, targets: [-1] }] });
+  });
+  // keep the open tab in the address bar (a reload / redirect comes back to it)
+  document.querySelectorAll('.ab-tabs [data-tab]').forEach(function (b) {
+    b.addEventListener('shown.bs.tab', function () {
+      try { var u = new URL(location.href); u.searchParams.set('tab', b.dataset.tab); u.searchParams.delete('success'); u.searchParams.delete('error'); history.replaceState(null, '', u); } catch (e) {}
+      if ($.fn.dataTable) $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    });
+  });
+  document.addEventListener('click', function (e) {
+    var up = e.target.closest('.ab-upload-btn');
+    if (up) {
+      var f = document.getElementById('abUploadForm'); f.reset(); f.action = up.dataset.action;
+      document.getElementById('abUploadTitle').textContent = up.dataset.title;
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('abUploadModal')).show();
+      return;
+    }
+    var mg = e.target.closest('.ab-mgr-btn');
+    if (mg) {
+      var m = document.getElementById('abMgrForm');
+      m.action = '/activity-board/accounts/' + mg.dataset.id + '/map-manager';
+      document.getElementById('abMgrCompany').textContent = mg.dataset.company;
+      document.getElementById('abMgrSelect').value = mg.dataset.current || '';
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('abMgrModal')).show();
+    }
+  });
+});
+</script>
+{% endblock %}

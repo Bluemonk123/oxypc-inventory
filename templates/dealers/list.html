@@ -112,26 +112,22 @@
 
 </div>
 
-<!-- Summary tiles — top 4: dark tile cards (2026-10-27) -->
-<div class="lt-tiles-row lt-dark mb-1">
+<!-- Summary tiles — top 4: dark single-count tiles (2026-11-06, _tiles.html) -->
+{% import "_tiles.html" as tl %}
+<div class="oxt-row mb-1">
   {% for val, label, color, icon, tip in [
        (total_count, 'Total Dealers', '#0d6efd', 'bi-building', ''),
        (active_count, 'Active', '#0F7A37', 'bi-check-circle', ''),
        (followup_count, 'Follow-ups Due', '#fd7e14', 'bi-alarm', 'Dealers whose latest call status is Follow-up and follow-up date is today or past'),
        (('₹' ~ outstanding) if can(current_user, 'dealers', 'pricing') else '—', 'Outstanding', '#dc3545', 'bi-currency-rupee', '')] %}
-  <div>
-    <div class="lt-tile h-100" style="--tc:{{ color }}"{% if tip %} title="{{ tip }}"{% endif %}>
-      <div class="lt-tile-count">{{ val }}</div>
-      <div class="lt-tile-label">{{ label }}{% if tip %} <i class="bi bi-info-circle ms-1" style="font-size:0.7rem"></i>{% endif %}</div>
-      <i class="bi {{ icon }} lt-tile-wm"></i>
-    </div>
-  </div>
+  {% set _lbl = (label ~ ' <i class="bi bi-info-circle ms-1" style="font-size:0.7rem"></i>') | safe if tip else label %}
+  {{ tl.single(val, _lbl, color, icon, variant='dark', title_attr=tip) }}
   {% endfor %}
 </div>
 
-<!-- Call outcome tiles — light tint tile cards (2026-10-27); based on each
+<!-- Call outcome tiles — tint single-count tiles (2026-11-06, _tiles.html); based on each
      dealer's LATEST call log status (matches table below) -->
-<div class="lt-tiles-row mb-3">
+<div class="oxt-row mb-3">
   {% set base_qs = '?' ~ request.query_string.decode() %}
   {% for outcome_key, label, color, icon in [
     ('interested',     'Interested',     '#0F7A37', 'bi-hand-thumbs-up-fill'),
@@ -141,13 +137,7 @@
     ('not_connected',  'Not Connected',  '#6c757d', 'bi-telephone-x-fill'),
     ('no_requirement', 'No Requirement', '#343a40', 'bi-slash-circle')
   ] %}
-  <div>
-    <div class="lt-tile h-100" style="--tc:{{ color }}" title="Dealers whose latest call log outcome is: {{ label }}">
-      <div class="lt-tile-count">{{ outcome_stats.get(outcome_key, 0) }}</div>
-      <div class="lt-tile-label">{{ label }}</div>
-      <i class="bi {{ icon }} lt-tile-wm"></i>
-    </div>
-  </div>
+  {{ tl.single(outcome_stats.get(outcome_key, 0), label, color, icon, title_attr='Dealers whose latest call log outcome is: ' ~ label) }}
   {% endfor %}
 </div>
 

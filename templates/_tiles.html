@@ -1,0 +1,72 @@
+{# templates/_tiles.html — the app's four tile types (2026-11-06, Pankaj):
+   1 Single count (tint/dark, download optional), 2 Double count (tint/dark,
+   download optional), 3 Single count with secondary counts (tint/dark),
+   4 Surface (count above label).
+   Styles: static/css/app.css "Tiles (oxt-)". Replaces the ten older tile
+   designs (lt-tile, pm-tile, hw-tile, prod-tile, inv-tile, dash cards…).
+
+   {% import "_tiles.html" as tl %}
+   <div class="oxt-row">
+     {{ tl.single(1234, 'Devices in IQC', '#0d6efd', 'bi-clipboard-check') }}
+     {{ tl.single(6926, 'Laptop', '#0d6efd', 'bi-laptop', variant='dark',
+                  secondary=[('In TRC', 3155), ('In Showroom', 3768)]) }}
+     {{ tl.double('Total Quantities', 18186, 'New', 21, 'Harvest', '#0d6efd', 'bi-boxes') }}
+   </div>
+   <div class="oxt-row oxt-row-surface">{{ tl.surface('Bezel', 3966, '#0d6efd') }}</div>
+
+   Single count / Double count: variant 'tint' (light colour + shadow) or
+   'dark' (solid colour, no shadow). download=URL adds a small button
+   (download_label, default "Download"). href makes the whole tile a link.
+   Surface: count with the label under it (same order as types 1-3) on a light colour wash with a left accent; no
+   border, no shadow, one look only.
+   Hooks for page JS: cls= extra classes on the tile div, extra= raw
+   attributes on the tile div (id, data-*), count_attrs= raw attributes on
+   the count div (double: count1_attrs / count2_attrs), label_attrs= raw
+   attributes on the label div. #}
+
+{%- macro _fmt(v) -%}{%- if v is number -%}{{ "{:,}".format(v) }}{%- else -%}{{ v }}{%- endif -%}{%- endmacro -%}
+
+{%- macro _open(href, cls, color, title_attr='', extra='') -%}
+{%- if href -%}<a href="{{ href }}" class="oxt-link text-decoration-none">{%- endif -%}
+<div class="{{ cls }}" style="--tc:{{ color }}"{% if title_attr %} title="{{ title_attr }}"{% endif %} {{ extra | safe }}>
+{%- endmacro -%}
+
+{%- macro _close(href) -%}</div>{%- if href -%}</a>{%- endif -%}{%- endmacro -%}
+
+{%- macro _download(url, label) -%}
+{%- if url -%}<a href="{{ url }}" class="btn btn-sm oxt-dl" onclick="event.stopPropagation()" title="{{ label }}"><i class="bi bi-download me-1"></i>{{ label }}</a>{%- endif -%}
+{%- endmacro -%}
+
+{% macro single(count, label, color, icon='', variant='tint', title='', secondary=[], download=None, download_label='Download', href=None, title_attr='', extra='', cls='', count_attrs='', label_attrs='') -%}
+<div>{{ _open(href, 'oxt-tile oxt-single oxt-' ~ variant ~ (' ' ~ cls if cls else ''), color, title_attr, extra) }}
+  {%- if title %}<div class="oxt-title">{{ title }}</div>{% endif %}
+  <div class="oxt-count" {{ count_attrs | safe }}>{{ _fmt(count) }}</div>
+  {%- if label %}<div class="oxt-label" {{ label_attrs | safe }}>{{ label }}</div>{% endif %}
+  {%- if secondary %}<div class="oxt-secondary">
+    {%- for lbl, val in secondary %}<div>{{ lbl }}: <strong>{{ _fmt(val) }}</strong></div>{% endfor %}
+  </div>{% endif %}
+  {%- if download %}<div class="oxt-actions">{{ _download(download, download_label) }}</div>{% endif %}
+  {%- if icon %}<i class="bi {{ icon }} oxt-wm" aria-hidden="true"></i>{% endif %}
+{{ _close(href) }}</div>
+{%- endmacro %}
+
+{% macro double(title, count1, label1, count2, label2, color, icon='', variant='tint', download=None, download_label='Download', href=None, title_attr='', extra='', cls='', count1_attrs='', count2_attrs='') -%}
+<div>{{ _open(href, 'oxt-tile oxt-double oxt-' ~ variant ~ (' ' ~ cls if cls else ''), color, title_attr, extra) }}
+  <div class="oxt-title">{{ title }}</div>
+  <div class="oxt-pair">
+    <div class="oxt-count" {{ count1_attrs | safe }}>{{ _fmt(count1) }}</div><div class="oxt-label">{{ label1 }}</div>
+  </div>
+  <div class="oxt-pair">
+    <div class="oxt-count oxt-count-2" {{ count2_attrs | safe }}>{{ _fmt(count2) }}</div><div class="oxt-label">{{ label2 }}</div>
+  </div>
+  {%- if download %}<div class="oxt-actions">{{ _download(download, download_label) }}</div>{% endif %}
+  {%- if icon %}<i class="bi {{ icon }} oxt-wm" aria-hidden="true"></i>{% endif %}
+{{ _close(href) }}</div>
+{%- endmacro %}
+
+{% macro surface(label, count, color, href=None, title_attr='', extra='', cls='') -%}
+<div>{{ _open(href, 'oxt-surface' ~ (' oxt-zero' if (count is number and count == 0) else '') ~ (' ' ~ cls if cls else ''), color, title_attr or (label ~ ': ' ~ _fmt(count)), extra) }}
+  <div class="oxt-s-count">{{ _fmt(count) }}</div>
+  <div class="oxt-s-label">{{ label }}</div>
+{{ _close(href) }}</div>
+{%- endmacro %}

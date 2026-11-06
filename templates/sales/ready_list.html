@@ -92,26 +92,22 @@
 {# Pre-Sale IQC tiles (2026-10-29): medium dark tiles, counted from the
    queued tags with the table's filters; clicking one filters the table
    (click again to clear). Filled from /pre-sale-iqc/data "psiqc_tiles". #}
+{% import "_tiles.html" as tl %}
 <style>
-  #psiqcTiles .lt-tile { cursor:pointer; }
-  #psiqcTiles .lt-tile.active { box-shadow:0 0 0 3px #fff, 0 0 0 6px #212529 !important; }
-  #psiqcTiles.has-active .lt-tile:not(.active) { opacity:.55; }
-  #psiqcTiles .lt-tile-label { font-size:.85rem; font-weight:700; }
+  #psiqcTiles .oxt-tile { cursor:pointer; }
+  #psiqcTiles .oxt-tile.active { box-shadow:0 0 0 3px #fff, 0 0 0 6px #212529 !important; }
+  #psiqcTiles.has-active .oxt-tile:not(.active) { opacity:.55; }
 </style>
-<div class="lt-tiles-row lt-dark mb-2" id="psiqcTiles">
+<div class="oxt-row mb-2" id="psiqcTiles">
   {% for key, label, bg, icon, tip in [
       ('assigned', 'Assigned', '#0d6efd', 'bi-inbox', 'Tags in the Pre-Sale IQC queue not completed yet (the Assigned tab)'),
       ('requested', 'Part Requested', '#fd7e14', 'bi-bag', 'Assigned tab: tags with parts requested and not yet verified (Pending / Handed Over)'),
       ('verified', 'Part Verified', '#6f42c1', 'bi-bag-check', 'Assigned tab: tags whose requested parts are all verified'),
       ('completed', 'Completed', '#0F7A37', 'bi-check2-circle', 'Tags whose Pre-Sale IQC is completed (the Completed tab)')] %}
-  <div>
-    <div class="lt-tile h-100 psiqc-tile" data-tile="{{ key }}" role="button" tabindex="0" style="--tc:{{ bg }}"
-         title="{{ tip }} — click to show only these tags (click again to clear)">
-      <div class="lt-tile-count" data-psk="{{ key }}">…</div>
-      <div class="lt-tile-label">{{ label }}</div>
-      <i class="bi {{ icon }} lt-tile-wm"></i>
-    </div>
-  </div>
+  {{ tl.single('…', label, bg, icon, variant='dark', cls='psiqc-tile',
+               extra='data-tile="' ~ key ~ '" role="button" tabindex="0"',
+               title_attr=tip ~ ' — click to show only these tags (click again to clear)',
+               count_attrs='data-psk="' ~ key ~ '"') }}
   {% endfor %}
 </div>
 {% endif %}

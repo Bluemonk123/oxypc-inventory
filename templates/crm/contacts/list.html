@@ -72,16 +72,11 @@
   </form>
 </div>
 
-<!-- Summary tiles: dark tile cards (2026-10-27, .lt-tiles-row.lt-dark in app.css) -->
-<div class="lt-tiles-row lt-dark">
+<!-- Summary tiles: dark single-count tiles (2026-11-06, _tiles.html) -->
+{% import "_tiles.html" as tl %}
+<div class="oxt-row">
   {% for label, val, color, icon in [('Total', counts.total, '#343a40', 'bi-people'), ('Suppliers', counts.suppliers, '#0d6efd', 'bi-box-arrow-in-down'), ('Buyers', counts.buyers, '#0aa2c0', 'bi-cart'), ('Active', counts.active, '#0F7A37', 'bi-check-circle')] %}
-  <div>
-    <div class="lt-tile h-100" style="--tc:{{ color }}">
-      <div class="lt-tile-count">{{ val }}</div>
-      <div class="lt-tile-label">{{ label }}</div>
-      <i class="bi {{ icon }} lt-tile-wm"></i>
-    </div>
-  </div>
+  {{ tl.single(val, label, color, icon, variant='dark') }}
   {% endfor %}
 </div>
 
@@ -141,6 +136,7 @@
             <th class="ps-3"><input type="checkbox" id="teamSelectAll" class="form-check-input"></th>
             {% endif %}
             <th>Account Name</th>
+            <th>Manager</th>
             <th>GST No.</th>
             <th>KYC</th>
             <th>Credit</th>
@@ -197,6 +193,8 @@
                 {% endif %}
               </div>
             </td>
+            {# Manager (2026-11-06): the account's mapped Manager(s) — set by Map Team or Activity Board → Map Manager #}
+            <td class="small">{% set _mgr = team_map.get(cid, {}).get('manager', []) %}{% if _mgr %}{{ _mgr | map(attribute='name') | join(', ') }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
             {# GST number #}
             <td class="small">{% if c.gstin %}<span class="font-monospace">{{ c.gstin }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
             {# KYC — Finance verifies on Account Detail #}
@@ -555,8 +553,8 @@
 })();
 </script>
 <script>
-// col index (edit perm): 0=Checkbox,1=Account Name,2=GST No.,3=KYC,4=Credit,5=Place,6=Person,7=Team,8=Last Activity,9=Notes(hidden),10=Status,11=Created By,12=Actions
-// col index (no edit perm, no checkbox column): 0=Account Name,1=GST No.,2=KYC,3=Credit,4=Place,5=Person,6=Team,7=Last Activity,8=Notes(hidden),9=Status,10=Created By,11=Actions
+// col index (edit perm): 0=Checkbox,1=Account Name,2=Manager,3=GST No.,4=KYC,5=Credit,6=Place,7=Person,8=Team,9=Last Activity,10=Notes(hidden),11=Status,12=Created By,13=Actions
+// col index (no edit perm, no checkbox column): 0=Account Name,1=Manager,2=GST No.,3=KYC,4=Credit,5=Place,6=Person,7=Team,8=Last Activity,9=Notes(hidden),10=Status,11=Created By,12=Actions
 $(document).ready(function(){
   // Global Table module (static/js/global-table.js) — always initialized,
   // even with zero rows: DataTables reads its columns from <thead>, not from
@@ -569,7 +567,7 @@ $(document).ready(function(){
   var off = hasCheckboxCol ? 1 : 0;
   initGlobalTable('#contactsTable', {
     order: [[0 + off, 'asc']],  // default sort by Company
-    columnDefs: [{ orderable: false, targets: hasCheckboxCol ? [0, 5, 6, 7, 12] : [4, 5, 6, 11] }],
+    columnDefs: [{ orderable: false, targets: hasCheckboxCol ? [0, 6, 7, 8, 13] : [5, 6, 7, 12] }],
     language: { emptyTable: 'No contacts found. Use the Add Account button above to create one.' }
   });
   // DataTables' initial draw (applying the sort above + odd/even striping)

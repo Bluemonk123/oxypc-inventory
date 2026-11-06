@@ -73,7 +73,7 @@ asyncio.run(main())
         assert out[3] in ("True False", "True None"), out
         html = app_client.get("/dashboard?entity=").text
         for name in ("Router", "Printer", "Switch", "Projector", "All-in-One", "Mobile"):
-            assert f'<div class="dash-tile-lbl fw-semibold">{name}</div>' in html, name
+            assert f'<div class="oxt-title">{name}</div>' in html, name  # shared tile macro title (2026-11-06)
     finally:
         _run(f"""
 import asyncio, sys, json

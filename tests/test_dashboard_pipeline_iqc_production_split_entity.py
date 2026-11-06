@@ -190,8 +190,9 @@ def test_returned_scrapped_scrap_for_sale_excluded_from_total_devices(app_client
         # ...but the entity-filtered "Total Inventory" stat is exactly 1
         # (only the live IQC device), proving the 3 dead-end stages were
         # excluded from the total rather than inflating it to 4.
-        total_inventory_block = html.split("Total Inventory", 1)[1][:200]
-        assert '<div class="fs-3 fw-bold">1</div>' in total_inventory_block
+        # Admin "Total Inventory" stat tile (shared tile macro: count div
+        # immediately before the label div).
+        assert '<div class="oxt-count" >1</div><div class="oxt-label" >Total Inventory</div>' in html
     finally:
         for b in (barcode_ret, barcode_scr, barcode_sfs, barcode_live):
             _cleanup(b)

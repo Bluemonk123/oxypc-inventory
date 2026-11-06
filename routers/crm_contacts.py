@@ -1511,7 +1511,10 @@ async def contact_profile(
         if scorecard["total_deals"] > 0 else None
     )
 
+    _can_vc = await can_verify_credit(db, contact.id, current_user)
+    _vc_tot = await credit_deal_totals(db, contact.id)
     return templates.TemplateResponse("crm/contacts/profile.html", {
+        "can_verify_credit": _can_vc, "credit_totals": _vc_tot,
         "request": request, "current_user": current_user,
         "contact": contact, "activities": activities,
         "sourcing_deals": sourcing_deals, "sales_opps": sales_opps,
@@ -1692,24 +1695,81 @@ async def verify_kyc(
     return RedirectResponse(url=f"/crm/contacts/{contact_id}?success=KYC+verified", status_code=302)
 
 
+async def can_verify_credit(db, contact_id, user) -> bool:
+    """Verify Credit (2026-11-06, Pankaj): the account's mapped VP/AVP or
+    AM/DM/GM (Map Team), or an admin."""
+    role = getattr(user.role, "value", user.role)
+    if role == "admin":
+        return True
+    if not getattr(user, "id", None):
+        return False
+    row = (await db.execute(select(CRMContactTeamMember.id).where(
+        CRMContactTeamMember.contact_id == contact_id, CRMContactTeamMember.user_id == user.id,
+        CRMContactTeamMember.role_bucket.in_(("vp_avp", "am_dm_gm"))).limit(1))).first()
+    return row is not None
+
+
+async def credit_deal_totals(db, contact_id) -> dict:
+    """Deals History in the Verify Credit modal: this account's Sales Orders
+    and Purchase Orders in total (cancelled ones left out)."""
+    from sqlalchemy import func as _f
+    from models.crm import CRMSalesOrder, CRMPurchaseOrder
+    so = (await db.execute(select(_f.coalesce(_f.sum(CRMSalesOrder.total_amount), 0), _f.count()).where(
+        CRMSalesOrder.contact_id == contact_id, CRMSalesOrder.status != "cancelled"))).one()
+    po = (await db.execute(select(_f.coalesce(_f.sum(CRMPurchaseOrder.total_amount), 0), _f.count()).where(
+        CRMPurchaseOrder.contact_id == contact_id, CRMPurchaseOrder.status != "cancelled"))).one()
+    return {"so_total": so[0] or 0, "so_count": so[1], "po_total": po[0] or 0, "po_count": po[1]}
+
+
+def _credit_back(contact_id, return_to, msg, ok=True):
+    from urllib.parse import quote_plus
+    base = return_to if (return_to or "").startswith("/activity-board") else f"/crm/contacts/{contact_id}"
+    sep = "&" if "?" in base else "?"
+    return RedirectResponse(url=f"{base}{sep}{'success' if ok else 'error'}={quote_plus(msg)}", status_code=302)
+
+
 @router.post("/{contact_id}/verify-credit")
 async def verify_credit(
     contact_id: str,
     request: Request,
+    new_credit_limit: str = Form(default=""),
+    reason: str = Form(default=""),
+    return_to: str = Form(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Verify Credit modal (2026-11-06): New Credit Limit + Reason; the old
+    limit is kept on the account. Allowed for the account's mapped VP/AVP or
+    AM/DM/GM, or an admin. Same route from Account Detail and Activity Board."""
+    from decimal import Decimal, InvalidOperation
     contact = (await db.execute(select(CRMContact).where(CRMContact.id == contact_id))).scalar_one_or_none()
     if not contact:
         return RedirectResponse(url="/crm/contacts?error=Not+found", status_code=302)
+    if not await can_verify_credit(db, contact.id, current_user):
+        return _credit_back(contact_id, return_to,
+                            "Only this account's mapped VP/AVP or AM/DM/GM can verify credit", ok=False)
+    try:
+        new_limit = Decimal((new_credit_limit or "").replace(",", "").strip())
+        if new_limit < 0:
+            raise InvalidOperation
+    except (InvalidOperation, ValueError):
+        return _credit_back(contact_id, return_to, "Enter the New Credit Limit (a number)", ok=False)
+    if not (reason or "").strip():
+        return _credit_back(contact_id, return_to, "Reason is required", ok=False)
+    old = {"credit_limit": str(contact.credit_limit or 0), "credit_verified": contact.credit_verified}
+    contact.credit_old_limit = contact.credit_limit or 0
+    contact.credit_limit = new_limit
+    contact.credit_verify_reason = reason.strip()[:2000]
     contact.credit_verified = True
     contact.credit_verified_by = current_user.username
     contact.credit_verified_at = app_now()
     contact.apply_account_status()
     await audit(db, user=current_user, action="ACCOUNT_CREDIT_VERIFIED",
-                table_name="crm_contacts", record_id=str(contact.id), request=request)
+                table_name="crm_contacts", record_id=str(contact.id), old_value=old,
+                new_value={"credit_limit": str(new_limit), "old_limit": old["credit_limit"],
+                           "reason": contact.credit_verify_reason}, request=request)
     await db.commit()
-    return RedirectResponse(url=f"/crm/contacts/{contact_id}?success=Credit+verified", status_code=302)
+    return _credit_back(contact_id, return_to, f"Credit verified for {contact.company_name}")
 
 
 # ── TRASH / RESTORE ───────────────────────────────────────────────────────────

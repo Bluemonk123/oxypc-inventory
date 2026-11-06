@@ -5,44 +5,20 @@
 
 {% if success %}<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>{% endif %}
 
-<!-- KPI Row: dark tile cards (2026-10-27, .lt-tiles-row.lt-dark in app.css) -->
-<div class="lt-tiles-row lt-dark">
-  <div>
-    <div class="lt-tile h-100 d-flex flex-column" style="--tc:#0d6efd">
-      <div class="lt-tile-count">{{ open_sourcing_count }}</div>
-      <div class="lt-tile-label">Supplier Deals Open</div>
-      <div class="lt-tile-sub">{% if can(current_user, 'crm_sourcing', 'pricing') %}₹{{ ((sourcing_pipeline_value) | inr) }}{% else %}—{% endif %}</div>
-      <a href="/crm/sourcing" class="btn btn-sm btn-outline-light lt-tile-btn mt-auto">View All →</a>
-      <i class="bi bi-box-arrow-in-down lt-tile-wm"></i>
-    </div>
-  </div>
-  <div>
-    <div class="lt-tile h-100 d-flex flex-column" style="--tc:#0aa2c0">
-      <div class="lt-tile-count">{{ open_sales_count }}</div>
-      <div class="lt-tile-label">Customer Deals Open</div>
-      <div class="lt-tile-sub">{% if can(current_user, 'crm_sales_opp', 'pricing') %}₹{{ ((sales_pipeline_value) | inr) }}{% else %}—{% endif %}</div>
-      <a href="/crm/sales" class="btn btn-sm btn-outline-light lt-tile-btn mt-auto">View All →</a>
-      <i class="bi bi-graph-up lt-tile-wm"></i>
-    </div>
-  </div>
-  <div>
-    <div class="lt-tile h-100 d-flex flex-column" style="--tc:{{ '#dc3545' if overdue_count > 0 else '#0F7A37' }}">
-      <div class="lt-tile-count">{{ overdue_count }}</div>
-      <div class="lt-tile-label">Follow-ups Overdue</div>
-      <div class="lt-tile-sub">{{ today_count }} due today</div>
-      <a href="/crm/activities/followups" class="btn btn-sm btn-outline-light lt-tile-btn mt-auto">View All →</a>
-      <i class="bi bi-alarm lt-tile-wm"></i>
-    </div>
-  </div>
-  <div>
-    <div class="lt-tile h-100 d-flex flex-column" style="--tc:#343a40">
-      <div class="lt-tile-count">{{ contact_total }}</div>
-      <div class="lt-tile-label">Total Contacts</div>
-      <div class="lt-tile-sub">{{ supplier_count }} suppliers · {{ buyer_count }} buyers</div>
-      <a href="/crm/contacts" class="btn btn-sm btn-outline-light lt-tile-btn mt-auto">View All →</a>
-      <i class="bi bi-people lt-tile-wm"></i>
-    </div>
-  </div>
+<!-- KPI Row: dark single-count tiles with secondary lines (2026-11-06, _tiles.html);
+     each tile links to its list (was the "View All →" button) -->
+{% import "_tiles.html" as tl %}
+{% set _src_pv = ('₹' ~ ((sourcing_pipeline_value) | inr)) if can(current_user, 'crm_sourcing', 'pricing') else '—' %}
+{% set _sal_pv = ('₹' ~ ((sales_pipeline_value) | inr)) if can(current_user, 'crm_sales_opp', 'pricing') else '—' %}
+<div class="oxt-row">
+  {{ tl.single(open_sourcing_count, 'Supplier Deals Open', '#0d6efd', 'bi-box-arrow-in-down', variant='dark',
+               secondary=[('Pipeline', _src_pv)], href='/crm/sourcing') }}
+  {{ tl.single(open_sales_count, 'Customer Deals Open', '#0aa2c0', 'bi-graph-up', variant='dark',
+               secondary=[('Pipeline', _sal_pv)], href='/crm/sales') }}
+  {{ tl.single(overdue_count, 'Follow-ups Overdue', '#dc3545' if overdue_count > 0 else '#0F7A37', 'bi-alarm', variant='dark',
+               secondary=[('Due today', today_count)], href='/crm/activities/followups') }}
+  {{ tl.single(contact_total, 'Total Contacts', '#343a40', 'bi-people', variant='dark',
+               secondary=[('Suppliers', supplier_count), ('Buyers', buyer_count)], href='/crm/contacts') }}
 </div>
 
 <!-- Funnels + Follow-ups -->

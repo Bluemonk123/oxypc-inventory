@@ -117,6 +117,7 @@ PERM_MODULES = [
     ("inventory_requests",   "Inventory Request"),
     ("model_requested",      "Model Requested"),
     ("devices",              "Inventory Search"),
+    ("activity_board",       "Activity Board"),       # 2026-11-06: Supplier / Customer Deals + Account Verification
     # ── ATTENDANCE ─────────────────────────────────────────────────
     ("attendance",           "My Attendance"),
     ("attendance_report",    "Attendance Report"),

@@ -11,48 +11,19 @@
     {% else %}<span class="badge bg-light text-dark border ms-1">All Agents</span>{% endif %}
   </span>
 </div>
-{# Dark tile cards (2026-10-27, .lt-tiles-row.lt-dark in app.css). #}
-<div class="lt-tiles-row lt-dark">
-  <div>
-    <a href="/dealers{% if not is_manager_view %}?assigned={{ current_user.username }}{% endif %}" class="text-decoration-none">
-      <div class="lt-tile h-100" style="--tc:#0d6efd">
-        <div class="lt-tile-count">{{ dealer_stats.total }}</div>
-        <div class="lt-tile-label">My Dealers</div>
-        <div class="lt-tile-note">{{ dealer_stats.active }} active</div>
-        <i class="bi bi-building lt-tile-wm"></i>
-      </div>
-    </a>
-  </div>
-  <div>
-    <div class="lt-tile h-100" style="--tc:#fd7e14">
-      <div class="lt-tile-count">{{ device_request_stats.total }}</div>
-      <div class="lt-tile-label">Device Requests</div>
-      <div class="lt-tile-note">{{ device_request_stats.pending }} pending · {{ device_request_stats.approved }} approved</div>
-      <i class="bi bi-box-seam lt-tile-wm"></i>
-    </div>
-  </div>
-  <div>
-    <a href="/sales" class="text-decoration-none">
-      <div class="lt-tile h-100" style="--tc:#0F7A37">
-        <div class="lt-tile-count">{{ sales_stats.today_count }}</div>
-        <div class="lt-tile-label">Today's Sales</div>
-        {% if can(current_user, 'telesales_dashboard', 'pricing') %}
-        <div class="lt-tile-note">₹{{ ((sales_stats.today_revenue) | inr) }} today · ₹{{ ((sales_stats.month_revenue) | inr) }} MTD</div>
-        {% endif %}
-        <i class="bi bi-receipt lt-tile-wm"></i>
-      </div>
-    </a>
-  </div>
-  <div>
-    <a href="/returns" class="text-decoration-none">
-      <div class="lt-tile h-100" style="--tc:#dc3545">
-        <div class="lt-tile-count">{{ returns_month_count }}</div>
-        <div class="lt-tile-label">Returns (MTD)</div>
-        <div class="lt-tile-note">against {{ sales_stats.month_count }} sales this month</div>
-        <i class="bi bi-arrow-return-left lt-tile-wm"></i>
-      </div>
-    </a>
-  </div>
+{# Dark single-count tiles with secondary lines (2026-11-06, _tiles.html). #}
+{% import "_tiles.html" as tl %}
+{% set _sales_sec = [('Today', '₹' ~ ((sales_stats.today_revenue) | inr)), ('MTD', '₹' ~ ((sales_stats.month_revenue) | inr))] if can(current_user, 'telesales_dashboard', 'pricing') else [] %}
+<div class="oxt-row">
+  {{ tl.single(dealer_stats.total, 'My Dealers', '#0d6efd', 'bi-building', variant='dark',
+               secondary=[('Active', dealer_stats.active)],
+               href='/dealers' ~ ('' if is_manager_view else '?assigned=' ~ current_user.username)) }}
+  {{ tl.single(device_request_stats.total, 'Device Requests', '#fd7e14', 'bi-box-seam', variant='dark',
+               secondary=[('Pending', device_request_stats.pending), ('Approved', device_request_stats.approved)]) }}
+  {{ tl.single(sales_stats.today_count, "Today's Sales", '#0F7A37', 'bi-receipt', variant='dark',
+               secondary=_sales_sec, href='/sales') }}
+  {{ tl.single(returns_month_count, 'Returns (MTD)', '#dc3545', 'bi-arrow-return-left', variant='dark',
+               secondary=[('Sales this month', sales_stats.month_count)], href='/returns') }}
 </div>
 
 <!-- Business Snapshot detail — Device Requests / Recent Sales / Recent Returns -->

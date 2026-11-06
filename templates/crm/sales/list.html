@@ -4,29 +4,13 @@
 {% block content %}
 
 
-<!-- Summary tiles: dark tile cards (2026-10-27, .lt-tiles-row.lt-dark in app.css) -->
-<div class="lt-tiles-row lt-dark">
-  <div>
-    <div class="lt-tile h-100" style="--tc:#0aa2c0">
-      <div class="lt-tile-count">{{ opps | selectattr('stage', 'ne', 'won') | selectattr('stage', 'ne', 'lost') | list | length }}</div>
-      <div class="lt-tile-label">Open Opportunities</div>
-      <i class="bi bi-hourglass-split lt-tile-wm"></i>
-    </div>
-  </div>
-  <div>
-    <div class="lt-tile h-100" style="--tc:#0F7A37">
-      <div class="lt-tile-count">{% if can(current_user, 'crm_sales_opp', 'pricing') %}₹{{ ((pipeline_value) | inr) }}{% else %}—{% endif %}</div>
-      <div class="lt-tile-label">Pipeline Value</div>
-      <i class="bi bi-currency-rupee lt-tile-wm"></i>
-    </div>
-  </div>
-  <div>
-    <div class="lt-tile h-100" style="--tc:{{ '#dc3545' if overdue_count > 0 else '#0F7A37' }}">
-      <div class="lt-tile-count">{{ overdue_count }}</div>
-      <div class="lt-tile-label">Overdue Follow-ups</div>
-      <i class="bi bi-alarm lt-tile-wm"></i>
-    </div>
-  </div>
+<!-- Summary tiles: dark single-count tiles (2026-11-06, _tiles.html) -->
+{% import "_tiles.html" as tl %}
+{% set _pipe = ('₹' ~ ((pipeline_value) | inr)) if can(current_user, 'crm_sales_opp', 'pricing') else '—' %}
+<div class="oxt-row">
+  {{ tl.single(opps | selectattr('stage', 'ne', 'won') | selectattr('stage', 'ne', 'lost') | list | length, 'Open Opportunities', '#0aa2c0', 'bi-hourglass-split', variant='dark') }}
+  {{ tl.single(_pipe, 'Pipeline Value', '#0F7A37', 'bi-currency-rupee', variant='dark') }}
+  {{ tl.single(overdue_count, 'Overdue Follow-ups', '#dc3545' if overdue_count > 0 else '#0F7A37', 'bi-alarm', variant='dark') }}
 </div>
 
 <div class="card border-0 shadow-sm">

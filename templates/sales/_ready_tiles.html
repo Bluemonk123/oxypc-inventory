@@ -8,7 +8,11 @@
     own table.
 
     Dark row: the six device types of the Dashboard / All Inventory tiles.
-    Medium size only (the size switch was removed 2026-10-28). -#}
+    2026-11-06: built from the shared tile macros (_tiles.html) — dark
+    single-count tiles + tint tiles (single with secondary lines, or double
+    for two one-count lines). The data-rfs-type / data-rfs hooks that
+    rfsFill() writes into are unchanged. -#}
+{% import "_tiles.html" as tl %}
 
 {% macro tiles(type_title='') %}
 {% set DARK_TYPES = [
@@ -19,55 +23,39 @@
     ('mini pc', 'Mini PC', '#6f42c1', 'bi-cpu'),
     ('server', 'Server', '#0aa2c0', 'bi-hdd-network')] %}
 <style>
-  .rfs-tile-head { font-size:.85rem; font-weight:700; letter-spacing:.03em; text-transform:uppercase;
-                   color:var(--tc); position:relative; z-index:1; margin-top:.75rem; white-space:nowrap; }
-  .rfs-line { position:relative; z-index:1; white-space:nowrap; color:#343a40; }
-  .rfs-line b { color:var(--tc); }
-  .rfs-line + .rfs-line { margin-top:.2rem; }
-  a.rfs-link { color:inherit; text-decoration:none; display:block; height:100%; }
-  /* Hover shadow: global tile rule in static/css/app.css.
-     Space between the tint tiles and the tables below. */
-  #rfsTiles > .lt-tiles-row:last-child { margin-bottom:1.75rem; }
-  #rfsTiles .rfs-line { font-size:.84rem; }
-  .rfs-sep { margin:0 .6rem; color:#adb5bd; }
-  /* Counts in the tint tiles: bigger than the labels (2026-10-28). */
-  #rfsTiles .rfs-line b { font-size:1.2rem; font-weight:700; line-height:1.2; }
-  /* Dark tiles' names (Laptops, Desktops...): same size as the tint headings. */
-  #rfsTiles .lt-dark .lt-tile-label { font-size:.85rem; font-weight:700; }
+  /* Space between the tint tiles and the tables below. */
+  #rfsTiles > .oxt-row:last-child { margin-bottom:1.75rem; }
 </style>
 <div id="rfsTiles">
-  <div class="lt-tiles-row lt-dark mb-2">
+  <div class="oxt-row mb-2">
     {% for key, label, bg, icon in DARK_TYPES %}
-    <div>
-      <div class="lt-tile h-100" style="--tc:{{ bg }}" title="{{ label }} {{ type_title }}">
-        <div class="lt-tile-count" data-rfs-type="{{ key }}">…</div>
-        <div class="lt-tile-label">{{ label }}</div>
-        <i class="bi {{ icon }} lt-tile-wm"></i>
-      </div>
-    </div>
+    {{ tl.single('…', label, bg, icon, variant='dark', title_attr=label ~ ' ' ~ type_title,
+                 count_attrs='data-rfs-type="' ~ key ~ '"') }}
     {% endfor %}
   </div>
-  <div class="lt-tiles-row">
+  <div class="oxt-row">
     {{ caller() }}
   </div>
 </div>
 {% endmacro %}
 
-{# One tint tile. lines: list of [(label, data-key), ...] per line, shown
-   "Label - N | Label - N"; each N is a <b data-rfs="key">. #}
+{# One tint tile. lines: list of [(label, data-key), ...] per line; each
+   count is filled by rfsFill() through data-rfs="key". Two lines of one
+   count each -> double-count tile; otherwise single-count tile: the first
+   count is the big count (its label under it), the rest are secondary lines.
+   head is the tile's title. #}
 {% macro tint(head, color, icon, lines, href='', title='') %}
-<div>
-  {% if href %}<a href="{{ href }}" class="rfs-link" title="{{ title or head }}">{% endif %}
-  <div class="lt-tile h-100" style="--tc:{{ color }}"{% if title and not href %} title="{{ title }}"{% endif %}>
-    {% for line in lines %}
-    <div class="rfs-line">{% for label, key in line %}{% if not loop.first %}<span class="rfs-sep">|</span>{% endif %}{{ label }} - <b data-rfs="{{ key }}">…</b>{% endfor %}</div>
-    {% endfor %}
-    {# Heading under the counts (2026-10-28), like the dark tiles' names. #}
-    <div class="rfs-tile-head">{{ head }}</div>
-    <i class="bi {{ icon }} lt-tile-wm"></i>
-  </div>
-  {% if href %}</a>{% endif %}
-</div>
+{%- set items = [] -%}
+{%- for line in lines %}{% for label, key in line %}{% set _ = items.append((label, key)) %}{% endfor %}{% endfor -%}
+{%- if lines | length == 2 and lines[0] | length == 1 and lines[1] | length == 1 -%}
+{{ tl.double(head, '…', items[0][0], '…', items[1][0], color, icon, href=href or None, title_attr=title or (head if href else ''),
+             count1_attrs='data-rfs="' ~ items[0][1] ~ '"', count2_attrs='data-rfs="' ~ items[1][1] ~ '"') }}
+{%- else -%}
+{%- set sec = [] -%}
+{%- for label, key in items[1:] %}{% set _ = sec.append((label, ('<span data-rfs="' ~ key ~ '">…</span>') | safe)) %}{% endfor -%}
+{{ tl.single('…', items[0][0], color, icon, title=head, secondary=sec, href=href or None, title_attr=title or (head if href else ''),
+             count_attrs='data-rfs="' ~ items[0][1] ~ '"') }}
+{%- endif -%}
 {% endmacro %}
 
 {% macro script() %}
