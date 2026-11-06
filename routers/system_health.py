@@ -2002,6 +2002,21 @@ def _mn_field(g) -> str:
 
 @router.post("/model-name-fix")
 async def model_name_fix(request: Request, current_user: User = Depends(admin_only)):
+    """Apply — see _model_name_fix. A failure comes back as JSON with the
+    actual reason (2026-11-06), so the admin's toast says what went wrong
+    instead of a generic "database error"."""
+    from sqlalchemy.exc import SQLAlchemyError
+    import traceback as _tb2
+    try:
+        return await _model_name_fix(request, current_user)
+    except SQLAlchemyError as e:
+        print(f"\n500 POST /admin/system/model-name-fix\n{_tb2.format_exc()}", flush=True)
+        first = (str(getattr(e, "orig", None) or e).strip().splitlines() or [""])[0][:300]
+        return JSONResponse({"ok": False, "error": f"Model Name Apply failed — {type(e).__name__}: {first}"},
+                            status_code=500)
+
+
+async def _model_name_fix(request: Request, current_user: User):
     """Apply: each listed model gets the name in its box (pre-filled with the
     automatic spelling). A typed name is remembered (Master Data
     "model_spelling") so later saves follow it. Same letters / digits = a
@@ -2069,6 +2084,7 @@ async def model_name_fix(request: Request, current_user: User = Depends(admin_on
                         db.expunge(m)
                     else:
                         await db.delete(m)
+                        await db.flush()       # delete now: a re-add of the same text must not clash
                     existing.remove(m)
             if rename:
                 _remember(rename_value(g["auto"], final))    # old spellings saved later -> new name

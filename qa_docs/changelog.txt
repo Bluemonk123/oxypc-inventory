@@ -1,4 +1,5 @@
-ad1f692|2026-11-06|Model Name card: fix 500 on Apply when renaming into an existing model; Category column; name suggestions
+a0d43da|2026-11-06|Model Name Apply: remove an old saved name before saving it again; show the real reason on failure
+4225f5a|2026-11-06|Model Name card: fix 500 on Apply when renaming into an existing model; Category column; name suggestions
 c4744bc|2026-11-06|Master Data: Product Model Names linked to Make (Reload from tags); Model Name card lists every model
 865ff05|2026-11-06|Data Fixes: Apply without page reload (toast + card refresh); Model Name rows by Make, renames, downloads
 6058a11|2026-11-06|QA: SRS card shows the updated 7-document set; fix 7 Database Diagram images
