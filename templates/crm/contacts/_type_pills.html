@@ -1,0 +1,17 @@
+{# Account Type pills (2026-11-11 PM, Pankaj) — Partner, Supplier / Buyer / Both,
+   Source Type and Buyer Type on one line. Used by the Accounts List's Account
+   Type column and Partner Accounts' Segment column.
+   {% import "crm/contacts/_type_pills.html" as tp %} {{ tp.pills(c, is_partner, source_labels, buyer_labels, wrap=True) }} #}
+{% macro pills(c, is_partner=False, source_labels={}, buyer_labels={}, segment=None, wrap=False) -%}
+<div class="d-flex {{ 'flex-wrap' if wrap else 'flex-nowrap text-nowrap' }} gap-1 align-items-center">
+  {% if segment %}<span class="badge bg-info-subtle text-info-emphasis border" title="Price Segment">{{ segment | replace('_',' ') | title }}</span>{% endif %}
+  {% if is_partner %}<span class="badge bg-warning-subtle text-warning-emphasis border" title="External Partner"><i class="bi bi-shop me-1"></i>Partner</span>{% endif %}
+  {% if c %}
+  {% if c.contact_type == 'supplier' %}<span class="badge bg-primary">Supplier</span>
+  {% elif c.contact_type == 'buyer' %}<span class="badge bg-info text-white">Buyer</span>
+  {% else %}<span class="badge bg-success">Both</span>{% endif %}
+  {% if c.source_type %}<span class="badge bg-light text-dark border">{{ source_labels.get(c.source_type, c.source_type | replace('_',' ') | title) }}</span>{% endif %}
+  {% if c.buyer_type %}<span class="badge bg-light text-dark border">{{ buyer_labels.get(c.buyer_type, c.buyer_type | replace('_',' ') | title) }}</span>{% endif %}
+  {% endif %}
+</div>
+{%- endmacro %}

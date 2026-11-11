@@ -217,8 +217,8 @@ async def list_contacts(
     # existing locations_map/numbers_map below.
     users_result = await db.execute(select(User).where(User.status == True).order_by(User.full_name))
     all_users = users_result.scalars().all()
-    bucket_options = {b: [(str(u.id), u.full_name) for u in eligible_users_for_bucket(all_users, b)]
-                       for b in ROLE_BUCKETS}
+    from services.crm_team import bucket_options as _bucket_options
+    bucket_options = await _bucket_options(db, all_users)
 
     team_map: dict = {}
     _contact_ids_scope = [c.id for c in contacts]
@@ -324,6 +324,9 @@ async def list_contacts(
         "team_map": team_map,
         "bucket_options": bucket_options,
         "bucket_labels": BUCKET_LABELS,
+        **(await _partner_move_context(db, all_users, [c.id for c in contacts])),   # Move to External Partner (2026-11-11)
+        "account_manager_names": {u.username: (u.full_name or u.username) for u in all_users},   # Account Manager column (2026-11-11 PM)
+        "person_roles": PERSON_ROLES,   # Location Mapping form (2026-11-11 PM)
         "f_vp_avp": f_vp_avp, "f_manager": f_manager,
         "f_am_dm_gm": f_am_dm_gm, "f_executive": f_executive,
         "contacted_set": contacted_set,
@@ -340,6 +343,23 @@ async def list_contacts(
 
 
 # ── BULK UPLOAD (simple direct import) ───────────────────────────────────────
+
+async def _accounts_by_gstin_and_name(db, rows) -> tuple:
+    """Existing (untrashed) Accounts for a CSV's rows: ({GSTIN upper: Account},
+    {company_name lower: Account}). gstin is the match key; name the fallback."""
+    want_gstins = {(r.get("gstin") or "").strip().upper() for r in rows if (r.get("gstin") or "").strip()}
+    want_names = {(r.get("company_name") or "").strip().lower() for r in rows if (r.get("company_name") or "").strip()}
+    by_gstin, by_name = {}, {}
+    if want_gstins:
+        res = await db.execute(select(CRMContact).where(
+            func.upper(CRMContact.gstin).in_(want_gstins), CRMContact.is_trashed.isnot(True)))
+        by_gstin = {(c.gstin or "").strip().upper(): c for c in res.scalars().all()}
+    if want_names:
+        res = await db.execute(select(CRMContact).where(
+            func.lower(CRMContact.company_name).in_(want_names), CRMContact.is_trashed.isnot(True)))
+        by_name = {(c.company_name or "").strip().lower(): c for c in res.scalars().all()}
+    return by_gstin, by_name
+
 
 @router.get("/upload", response_class=HTMLResponse)
 async def upload_contacts_form(
@@ -359,37 +379,20 @@ async def upload_contacts_csv(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Bulk-create Accounts from one CSV — and optionally, in the same sheet,
-    add multiple Locations per Account and multiple Contacts per Location.
+    """Bulk-create Accounts from one CSV, optionally with several Locations each.
 
-    One row = one Account, OR one row = an extra Location (with its own
-    Contact) for an Account already established earlier in the same file or
-    already in the database. Rows for the same Account are matched by gstin
-    first, then by company_name — so a sheet carries one full "header" row
-    per Account followed by as many location-only rows as needed, each just
-    repeating company_name plus that location's own location_* /
-    location_contact_* columns. Matching on gstin means a row can never
-    create a second Account for a GST number that already exists — it is
-    reused instead, same as an existing Account matched by company_name.
+    One row = one Account, or an extra Location for an Account already
+    established earlier in the same file or already in the database. Rows for
+    the same Account are matched by gstin first, then company_name, so a GST
+    number can never create a second Account.
 
-    There is deliberately no separate contact_person/phone/whatsapp/city/state
-    column at the Account level any more — that was the same information the
-    Location columns already carry. A new Account's own Company Details are
-    auto-filled from its first row's location_contact_name (-> contact_person),
-    location_contact_phone (-> phone and whatsapp) and location_city/
-    location_state (-> city/state), so the sheet never asks for the same fact
-    twice; they stay editable afterwards on the Account's own Edit page.
-
-    location_address/location_city/location_state/location_email create or
-    reuse a CRMContactLocation under the resolved Account — reused (not
-    duplicated) if an existing Location for that Account already has the same
-    address/city/state. location_contact_role/_name/_phone/_email then add a
-    CRMContactNumber under that Location — reused if the Location already has
-    a number with that phone (or, lacking a phone, that name). A row with
-    location_contact_* but no location_address/city/state is an error (a
-    contact number always belongs to a location), reported without aborting
-    the rest of the file.
+    Location Contacts (role / name / phone / email) are no longer part of this
+    sheet (2026-11-11, Pankaj): they go in the separate Upload Locations sheet
+    (POST /crm/contacts/upload-locations), which adds Locations and their
+    Contacts to existing Accounts. A new Account's city / state still come from
+    its first row's location_city / location_state.
     """
+    from services.account_locations import LocationWriter, cell
     if not (file.filename or "").lower().endswith(".csv"):
         return templates.TemplateResponse("crm/contacts/upload.html", {
             "request": request, "current_user": current_user,
@@ -413,60 +416,10 @@ async def upload_contacts_csv(
     _valid_statuses      = {"active", "inactive", "blacklisted"}
 
     rows = list(reader)
-
-    # Preload existing Accounts by gstin / company_name. gstin is the primary
-    # dedupe key — two rows (or a row and an Account already in the database)
-    # sharing the same GST number are the same real-world Account, so the
-    # upload reuses it instead of creating a duplicate. company_name is the
-    # fallback for rows with no gstin at all.
-    want_gstins = {(r.get("gstin") or "").strip().upper()
-                   for r in rows if (r.get("gstin") or "").strip()}
-    want_names = {(r.get("company_name") or "").strip().lower()
-                  for r in rows if (r.get("company_name") or "").strip()}
-    by_gstin: dict = {}
-    by_name: dict = {}
-    if want_gstins:
-        res = await db.execute(select(CRMContact).where(
-            func.upper(CRMContact.gstin).in_(want_gstins), CRMContact.is_trashed == False))  # noqa: E712
-        by_gstin = {(c.gstin or "").strip().upper(): c for c in res.scalars().all()}
-    if want_names:
-        res = await db.execute(select(CRMContact).where(
-            func.lower(CRMContact.company_name).in_(want_names),
-            CRMContact.is_trashed == False))  # noqa: E712
-        by_name = {(c.company_name or "").strip().lower(): c for c in res.scalars().all()}
-
-    # Per-Account location cache: {contact_id: {(addr,city,state) lower -> CRMContactLocation}}
-    locations_by_contact: dict = {}
-    # Per-Location contact-number cache: {location_id: {phone-or-name lower}}
-    numbers_by_location: dict = {}
-
-    async def _locations_for(contact) -> dict:
-        cache = locations_by_contact.get(contact.id)
-        if cache is None:
-            existing = (await db.execute(
-                select(CRMContactLocation).where(CRMContactLocation.contact_id == contact.id)
-            )).scalars().all()
-            cache = {
-                ((l.address or "").strip().lower(), (l.city or "").strip().lower(),
-                 (l.state or "").strip().lower()): l
-                for l in existing
-            }
-            locations_by_contact[contact.id] = cache
-        return cache
-
-    async def _numbers_for(location) -> set:
-        cache = numbers_by_location.get(location.id)
-        if cache is None:
-            existing = (await db.execute(
-                select(CRMContactNumber).where(CRMContactNumber.location_id == location.id)
-            )).scalars().all()
-            cache = {((n.phone or "").strip() or (n.person_name or "").strip().lower())
-                     for n in existing}
-            numbers_by_location[location.id] = cache
-        return cache
+    by_gstin, by_name = await _accounts_by_gstin_and_name(db, rows)
+    locs = LocationWriter(db)
 
     created = skipped = 0
-    locations_created = contacts_created = 0
     errors: list[str] = []
 
     for i, row in enumerate(rows, start=2):
@@ -476,21 +429,8 @@ async def upload_contacts_csv(
             continue
         try:
             # Each row runs in its own SAVEPOINT: one bad row rolls back only
-            # its own inserts, never the Accounts/Locations already committed
-            # to the session by earlier rows in this same file.
+            # its own inserts, never the Accounts/Locations of earlier rows.
             async with db.begin_nested():
-                # ── Location / Location Contact columns (read first — a new
-                # Account's own Company Details are derived from these) ──────
-                loc_address = (row.get("location_address") or "").strip()
-                loc_city = (row.get("location_city") or "").strip()
-                loc_state = (row.get("location_state") or "").strip()
-                loc_email = (row.get("location_email") or "").strip()
-                loc_contact_role = (row.get("location_contact_role") or "").strip()
-                loc_contact_name = (row.get("location_contact_name") or "").strip()
-                loc_contact_phone = (row.get("location_contact_phone") or "").strip()
-                loc_contact_email = (row.get("location_contact_email") or "").strip()
-
-                phone = loc_contact_phone or None
                 gstin_val = (row.get("gstin") or "").strip().upper() or None
                 contact = by_gstin.get(gstin_val) if gstin_val else None
                 if contact is None:
@@ -516,18 +456,12 @@ async def upload_contacts_csv(
                     contact = CRMContact(
                         contact_code=code,
                         company_name=company,
-                        # Auto-filled from this row's Location Contact / Location —
-                        # no separate contact_person/phone/whatsapp/city/state
-                        # column exists any more (see docstring).
-                        contact_person=loc_contact_name or None,
-                        phone=phone,
-                        whatsapp=phone,
                         email=(row.get("email") or "").strip() or None,
                         contact_type=contact_type,
                         source_type=source_type,
                         buyer_type=buyer_type,
-                        city=loc_city or None,
-                        state=loc_state or None,
+                        city=cell(row, "location_city") or None,
+                        state=cell(row, "location_state") or None,
                         gstin=_kyc_up(row.get("gstin")),
                         status=status,
                         created_by=current_user.username,
@@ -541,54 +475,14 @@ async def upload_contacts_csv(
                     created += 1
                     row_added_something = True
 
-                # ── Location (optional) ─────────────────────────────────────
-                location = None
-                if loc_address or loc_city or loc_state:
-                    loc_cache = await _locations_for(contact)
-                    loc_key = (loc_address.lower(), loc_city.lower(), loc_state.lower())
-                    location = loc_cache.get(loc_key)
-                    if location is None:
-                        location = CRMContactLocation(
-                            contact_id=contact.id,
-                            contact_email=loc_email or None,
-                            address=loc_address or None,
-                            city=loc_city or None,
-                            state=loc_state or None,
-                            sort_order=len(loc_cache),
-                        )
-                        db.add(location)
-                        await db.flush()
-                        loc_cache[loc_key] = location
-                        locations_created += 1
-                        row_added_something = True
-                elif loc_contact_name or loc_contact_phone:
-                    raise ValueError(
-                        "location_contact_* needs location_address/city/state on the same row")
-
-                # ── Location contact number (optional) ──────────────────────
-                if location is not None and (loc_contact_name or loc_contact_phone):
-                    num_cache = await _numbers_for(location)
-                    num_key = loc_contact_phone or loc_contact_name.lower()
-                    if num_key not in num_cache:
-                        db.add(CRMContactNumber(
-                            # contact_id is model-docs "legacy", but the live DB still
-                            # enforces NOT NULL on it — every other writer in this file
-                            # (create_contact/update_contact) sets it for that reason.
-                            contact_id=contact.id, location_id=location.id,
-                            person_role=loc_contact_role or None,
-                            person_name=loc_contact_name or None,
-                            phone=loc_contact_phone or None,
-                            email=loc_contact_email or None,
-                            sort_order=len(num_cache),
-                        ))
-                        num_cache.add(num_key)
-                        contacts_created += 1
-                        row_added_something = True
+                _loc, loc_new = await locs.location(contact, row)
+                row_added_something = row_added_something or loc_new
 
                 if not row_added_something:
                     skipped += 1
         except Exception as e:
             errors.append(f"Row {i}: {str(e)[:100]}")
+    locations_created, contacts_created = locs.locations_created, 0
 
     await db.commit()
 
@@ -604,6 +498,162 @@ async def upload_contacts_csv(
     })
 
 
+# ── UPLOAD LOCATIONS (2026-11-11, Pankaj) ────────────────────────────────────
+# Several Locations per Account and several Contacts per Location, for Accounts
+# that already exist. Columns: gstin, company_name, location_address,
+# location_city, location_state, location_email, location_contact_role,
+# location_contact_name, location_contact_phone, location_contact_email.
+
+@router.get("/upload-locations", response_class=HTMLResponse)
+async def upload_locations_form(
+    request: Request,
+    current_user: User = Depends(require_module_perm("crm_contacts", "upload")),
+):
+    return templates.TemplateResponse("crm/contacts/upload_locations.html", {
+        "request": request, "current_user": current_user, "result": None, "error": None})
+
+
+@router.post("/upload-locations")
+async def upload_locations_csv(
+    request: Request,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module_perm("crm_contacts", "upload")),
+):
+    """Add Locations + Location Contacts to existing Accounts: matched by gstin,
+    then company_name; a row whose Account isn't found is reported, never created."""
+    from services.account_locations import LocationWriter, CONTACT_COLS, cell
+    page = "crm/contacts/upload_locations.html"
+    if not (file.filename or "").lower().endswith(".csv"):
+        return templates.TemplateResponse(page, {"request": request, "current_user": current_user,
+                                                 "result": None, "error": "Please upload a .csv file"})
+    reader = csv.DictReader(io.StringIO(decode_csv_bytes(await file.read())))
+    cols = {(c or "").strip().lower() for c in (reader.fieldnames or [])}
+    if not ({"gstin", "company_name"} & cols):
+        return templates.TemplateResponse(page, {"request": request, "current_user": current_user, "result": None,
+                                                 "error": "CSV must have a 'gstin' or 'company_name' column"})
+    rows = list(reader)
+    by_gstin, by_name = await _accounts_by_gstin_and_name(db, rows)
+    locs = LocationWriter(db)
+    accounts, skipped, errors = set(), 0, []
+    for i, row in enumerate(rows, start=2):
+        gst, name = cell(row, "gstin").upper(), cell(row, "company_name")
+        if not (gst or name):
+            skipped += 1
+            continue
+        contact = (by_gstin.get(gst) if gst else None) or (by_name.get(name.lower()) if name else None)
+        if contact is None:
+            errors.append(f"Row {i}: no account found for " + (f"GSTIN {gst}" if gst else f"'{name}'") + " — add the account first")
+            continue
+        try:
+            async with db.begin_nested():
+                loc, loc_new = await locs.location(contact, row)
+                person_new = False
+                if any(cell(row, c) for c in CONTACT_COLS):
+                    if loc is None:
+                        raise ValueError("a contact needs location_address / city / state on the same row")
+                    person_new = await locs.contact_person(contact, loc, row)
+                if loc_new or person_new:
+                    accounts.add(contact.id)
+                else:
+                    skipped += 1
+        except Exception as e:
+            errors.append(f"Row {i}: {str(e)[:120]}")
+    if locs.locations_created or locs.contacts_created:
+        await audit(db, user=current_user, action="ACCOUNT_LOCATIONS_UPLOADED", table_name="crm_contact_locations",
+                    record_id=f"bulk:{len(accounts)}",
+                    new_value={"file": file.filename, "accounts": len(accounts),
+                               "locations": locs.locations_created, "contacts": locs.contacts_created},
+                    request=request)
+    await db.commit()
+    return templates.TemplateResponse(page, {"request": request, "current_user": current_user, "error": None,
+        "result": {"accounts": len(accounts), "locations_created": locs.locations_created,
+                   "contacts_created": locs.contacts_created, "skipped": skipped, "errors": errors}})
+
+
+@router.post("/locations-bulk")
+async def add_locations_bulk(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module_perm("crm_contacts", "edit")),
+):
+    """Accounts List → Location Mapping → Use Form (2026-11-11 PM, Pankaj): the
+    Add Account page's Locations section, added to every selected Account. A
+    location already on an Account (same address + city + state) and a contact
+    already at that location (same phone, else name) are reused, not duplicated."""
+    from urllib.parse import quote_plus
+    from services.account_locations import LocationWriter
+    form = await request.form()
+    cids = []
+    for c in form.getlist("contact_ids"):
+        try:
+            cids.append(_uuid.UUID(c))
+        except ValueError:
+            continue
+    locations = _parse_locations(form)
+    back = "/crm/contacts"
+    if not cids:
+        return RedirectResponse(url=back + "?error=Select+at+least+one+account", status_code=302)
+    if not locations:
+        return RedirectResponse(url=back + "?error=Fill+in+at+least+one+location", status_code=302)
+    if any(not (l["address"] or l["city"] or l["state"]) for l in locations):
+        return RedirectResponse(url=back + "?error=" + quote_plus("Each location needs an Address, City or State"), status_code=302)
+    contacts = (await db.execute(select(CRMContact).where(
+        CRMContact.id.in_(cids), CRMContact.is_trashed.isnot(True)))).scalars().all()
+    w = LocationWriter(db)
+    for c in contacts:
+        for l in locations:
+            loc, _new = await w.location(c, {"location_address": l["address"], "location_city": l["city"],
+                                            "location_state": l["state"], "location_email": l["email"]})
+            for rl, nm, ph, em in l["numbers"]:
+                await w.contact_person(c, loc, {"location_contact_role": rl, "location_contact_name": nm,
+                                                "location_contact_phone": ph, "location_contact_email": em})
+    await audit(db, user=current_user, action="ACCOUNT_LOCATIONS_ADDED", table_name="crm_contact_locations",
+                record_id=f"bulk:{len(contacts)}",
+                new_value={"accounts": [str(c.id) for c in contacts][:50], "locations": w.locations_created,
+                           "contacts": w.contacts_created, "via": "Accounts List → Location Mapping"}, request=request)
+    await db.commit()
+    return RedirectResponse(url=back + "?success=" + quote_plus(
+        f"Location Mapping: {w.locations_created} location(s) and {w.contacts_created} contact(s) added "
+        f"across {len(contacts)} account(s); existing ones were kept"), status_code=302)
+
+
+@router.post("/upload-gsts")
+async def upload_gsts(
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Upload GSTs (2026-11-11 PM, Pankaj): a one-column CSV of GST numbers →
+    which Accounts have them, so the Accounts List can tick those rows (like
+    Upload Tags on All Inventory). Read-only."""
+    from fastapi.responses import JSONResponse
+    reader = csv.DictReader(io.StringIO(decode_csv_bytes(await file.read())))
+    fields = {(f or "").strip().lower(): f for f in (reader.fieldnames or [])}
+    key = fields.get("gstin") or fields.get("gst") or fields.get("gst_number") or fields.get("gst_no")
+    if not key:
+        return JSONResponse({"error": "CSV must have a 'gstin' column header"}, status_code=400)
+    gsts, seen, dups, rows_read, errors = [], set(), [], 0, []
+    for i, row in enumerate(reader, start=2):
+        rows_read += 1
+        g = (row.get(key) or "").strip().upper()
+        if not g:
+            errors.append(f"Row {i}: gstin is empty")
+            continue
+        if g in seen:
+            dups.append(g)
+            continue
+        seen.add(g)
+        gsts.append(g)
+    found = {}
+    if gsts:
+        for cid, g in (await db.execute(select(CRMContact.id, func.upper(func.trim(CRMContact.gstin))).where(
+                func.upper(func.trim(CRMContact.gstin)).in_(gsts), CRMContact.is_trashed.isnot(True)))).all():
+            found.setdefault(g, []).append(str(cid))
+    return JSONResponse({"found": found, "not_found": [g for g in gsts if g not in found],
+                         "rows_read": rows_read, "duplicates": dups, "errors": errors})
+
+
 # ── ACCOUNT TEAM MAPPING ─────────────────────────────────────────────────────
 
 @router.post("/team-mapping")
@@ -611,6 +661,11 @@ async def save_team_mapping(
     request: Request,
     contact_ids: list[str] = Form(...),
     mode: str = Form(...),
+    owner_level: str = Form(default=""),
+    owner_id: str = Form(default=""),
+    pick_am_dm_gm: str = Form(default=""),
+    pick_manager: str = Form(default=""),
+    pick_vp_avp: str = Form(default=""),
     bucket_vp_avp: str = Form(default=""),
     bucket_manager: str = Form(default=""),
     bucket_am_dm_gm: str = Form(default=""),
@@ -620,7 +675,14 @@ async def save_team_mapping(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module_perm("crm_contacts", "edit")),
 ):
-    from services.crm_team import replace_team_buckets
+    """Map Team (2026-11-11 PM, Pankaj): one Executive or Team Leader is the
+    Account Manager (the account's Assigned To); the levels above it come from
+    Report To in the modal (editable). Executive / Team Leader / Manager / AVP/VP
+    are replaced together — in single mode always, in bulk mode only when an
+    Account Manager is picked. Finance: single = as picked (blank clears),
+    bulk = only when picked. The older per-level bucket_* fields still work."""
+    from services.crm_team import replace_team_buckets, HIERARCHY
+    from services.partner_move import levels_from
     _rt = return_to.strip() if return_to.strip().startswith("/crm/") and "//" not in return_to else ""
 
     def _parse_ids(s: str) -> list:
@@ -635,15 +697,32 @@ async def save_team_mapping(
                 continue
         return out
 
-    raw_buckets = {
-        "vp_avp": bucket_vp_avp, "manager": bucket_manager,
-        "am_dm_gm": bucket_am_dm_gm, "executive": bucket_executive,
-        "finance": bucket_finance,
-    }
-    if mode == "single":
-        bucket_user_ids = {b: _parse_ids(v) for b, v in raw_buckets.items()}
-    else:
-        bucket_user_ids = {b: _parse_ids(v) for b, v in raw_buckets.items() if v.strip()}
+    owner = None
+    oid = (_parse_ids(owner_id) or [None])[0]
+    if oid:
+        owner = (await db.execute(select(User).where(User.id == oid))).scalar_one_or_none()
+    if owner_level or owner_id:                       # the Account Manager modal
+        lvl = owner_level if owner_level in ("executive", "am_dm_gm") else "executive"
+        picks = {b: (_parse_ids(v) or [None])[0] for b, v in
+                 (("am_dm_gm", pick_am_dm_gm), ("manager", pick_manager), ("vp_avp", pick_vp_avp))}
+        team = levels_from(lvl, owner.id, picks) if owner else {}
+        if owner or mode == "single":
+            bucket_user_ids = {b: team.get(b, []) for b in HIERARCHY}   # the whole team is replaced
+        else:
+            bucket_user_ids = {}
+        fin = _parse_ids(bucket_finance)
+        if mode == "single" or fin:
+            bucket_user_ids["finance"] = fin
+    else:                                             # older per-level form
+        raw_buckets = {
+            "vp_avp": bucket_vp_avp, "manager": bucket_manager,
+            "am_dm_gm": bucket_am_dm_gm, "executive": bucket_executive,
+            "finance": bucket_finance,
+        }
+        if mode == "single":
+            bucket_user_ids = {b: _parse_ids(v) for b, v in raw_buckets.items()}
+        else:
+            bucket_user_ids = {b: _parse_ids(v) for b, v in raw_buckets.items() if v.strip()}
 
     cids = []
     for c in contact_ids:
@@ -663,13 +742,18 @@ async def save_team_mapping(
         old_value: dict = {}
         for r in old_rows:
             old_value.setdefault(r.role_bucket, []).append(str(r.user_id))
+        old_value["account_manager"] = contact.assigned_to
 
         await replace_team_buckets(
             db, contact_id=contact.id, bucket_user_ids=bucket_user_ids,
             created_by=current_user.username,
         )
+        if owner:
+            contact.assigned_to = owner.username      # Account Manager
 
         new_value = {b: [str(u) for u in ids] for b, ids in bucket_user_ids.items()}
+        if owner:
+            new_value["account_manager"] = owner.username
         await audit(db, user=current_user, action="TEAM_MAPPING_UPDATED",
                     table_name="crm_contact_team_members", record_id=str(contact.id),
                     old_value=old_value, new_value=new_value, request=request)
@@ -677,6 +761,85 @@ async def save_team_mapping(
     await db.commit()
     return RedirectResponse(url=(_rt or "/crm/contacts") + ("&" if "?" in (_rt or "") else "?") + "success=Team+mapping+updated",
                             status_code=302)
+
+
+async def _partner_move_context(db, users, contact_ids) -> dict:
+    """Move to External Partner modal: every active user (with designation) for
+    the level dropdowns, each user's Report To chain for the auto-fill, and the
+    Accounts on this page that are already External Partners (for the badge)."""
+    from models.dealers import Dealer
+    from models.partner import PRICE_SEGMENTS
+    from routers.partner_admin import PARTNER_TYPES
+    from services.crm_team import designation_hierarchy
+    partner_ids = set()
+    if contact_ids:
+        partner_ids = {str(x) for x in (await db.execute(select(Dealer.crm_contact_id).where(
+            Dealer.crm_contact_id.in_(contact_ids), Dealer.trashed_at.is_(None)))).scalars().all()}
+    return {"pm_users": [(str(u.id), u.full_name or u.username, u.designation or "") for u in users],
+            "pm_levels": designation_hierarchy(users), "partner_contact_ids": partner_ids,
+            "pm_partner_types": PARTNER_TYPES, "pm_price_segments": PRICE_SEGMENTS}
+
+
+@router.post("/move-to-partner")
+async def move_accounts_to_partner(
+    request: Request,
+    contact_ids: list[str] = Form(default=[]),
+    owner_level: str = Form("executive"),
+    owner_id: str = Form(""),
+    pick_am_dm_gm: str = Form(""),
+    pick_manager: str = Form(""),
+    pick_vp_avp: str = Form(""),
+    partner_type: str = Form(""),       # not asked any more (2026-11-11 PM): blank =
+    price_segment: str = Form(""),      # keep a partner's own, else dealer / new_dealer
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module_perm("trade_partner_partners", "add")),
+):
+    """Accounts List → Move to External Partner (2026-11-11, Pankaj): the
+    selected Accounts become External Partners without a portal login. The
+    modal is a plain confirmation (2026-11-11 PM); owner_id / pick_* / type /
+    segment are still accepted but no longer sent (services/partner_move.py)."""
+    from urllib.parse import quote_plus
+    from models.partner import PRICE_SEGMENTS
+    from routers.partner_admin import PARTNER_TYPES
+    from services.partner_move import move_to_partner
+
+    def _uid(v):
+        try:
+            return _uuid.UUID(v.strip()) if v and v.strip() else None
+        except ValueError:
+            return None
+
+    back = "/crm/contacts"
+    if owner_level not in ("executive", "am_dm_gm"):
+        owner_level = "executive"
+    oid = _uid(owner_id)
+    owner = (await db.execute(select(User).where(User.id == oid, User.status == True))).scalar_one_or_none() if oid else None  # noqa: E712
+    if oid and not owner:
+        return RedirectResponse(url=back + "?error=" + quote_plus("That user is not active"), status_code=302)
+    # team mapping is optional (2026-11-11 PM): no owner = move only, team kept
+    cids = [x for x in (_uid(c) for c in contact_ids) if x]
+    contacts = (await db.execute(select(CRMContact).where(
+        CRMContact.id.in_(cids), CRMContact.is_trashed.isnot(True)))).scalars().all() if cids else []
+    if not contacts:
+        return RedirectResponse(url=back + "?error=" + quote_plus("Select at least one account"), status_code=302)
+    picks = {"am_dm_gm": _uid(pick_am_dm_gm), "manager": _uid(pick_manager), "vp_avp": _uid(pick_vp_avp)}
+    res = await move_to_partner(
+        db, contacts, current_user, owner=owner, owner_level=owner_level, picks=picks,
+        partner_type=partner_type if partner_type in PARTNER_TYPES else None,
+        price_segment=price_segment if price_segment in PRICE_SEGMENTS else None,
+        request=request)
+    await db.commit()
+    parts = []
+    if res["moved"]:
+        parts.append(f"{len(res['moved'])} account(s) moved to External Partner")
+    if res["updated"]:
+        parts.append(f"{len(res['updated'])} already a partner")
+    if owner:
+        parts.append(f"Team mapped — Account Manager / Sales Owner: {owner.full_name or owner.username}")
+    parts.append("Create their logins with Generate Access")
+    # Land on Partner Accounts, where the moved accounts are now listed (2026-11-11 PM)
+    # (the route already needs the Partner Accounts "add" permission)
+    return RedirectResponse(url="/trade-partner/partners?success=" + quote_plus(". ".join(parts)), status_code=302)
 
 
 @router.get("/team-mapping/sample-csv")
@@ -690,9 +853,10 @@ async def team_mapping_sample_csv(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["gstin", "company_name", "manager", "executive", "vp_avp", "am_dm_gm", "finance"])   # Team Mapping order (2026-11-11)
+    from services.crm_team import CSV_COLUMNS
+    writer.writerow(["gstin", "company_name"] + [CSV_COLUMNS[b] for b in ROLE_BUCKETS])   # Executive, Team Leader, Manager, AVP/VP, Finance (2026-11-11)
     for c in contacts:
-        writer.writerow([c.gstin or "", c.company_name, "", "", "", "", ""])
+        writer.writerow([c.gstin or "", c.company_name] + [""] * len(ROLE_BUCKETS))
 
     return StreamingResponse(
         iter([buf.getvalue().encode("utf-8-sig")]),
@@ -743,6 +907,9 @@ async def team_mapping_upload_apply(
     by_name: dict = {}
     for u in all_users:
         by_name.setdefault(u.full_name, []).append(u)
+    from services.crm_team import designation_hierarchy, HIERARCHY
+    hierarchy = designation_hierarchy(all_users)
+    user_by_id = {u.id: u for u in all_users}
 
     applied = 0
     skipped = 0
@@ -764,8 +931,9 @@ async def team_mapping_upload_apply(
             continue
 
         bucket_user_ids: dict = {}
+        from services.crm_team import CSV_COLUMNS
         for bucket in ROLE_BUCKETS:
-            cell = (row.get(bucket) or "").strip()
+            cell = (row.get(CSV_COLUMNS[bucket]) or row.get(bucket) or "").strip()   # new column name, or the old key
             if not cell:
                 continue
             resolved = []
@@ -782,18 +950,36 @@ async def team_mapping_upload_apply(
             skipped += 1
             continue
 
+        # Executive / Team Leader filled (2026-11-11 PM, Pankaj): that person is the
+        # Account Manager, and every level above it the row leaves empty is mapped
+        # from their Report To chain by designation (Team Leader, Manager, AVP/VP).
+        owner = None
+        for lvl in ("executive", "am_dm_gm"):
+            if bucket_user_ids.get(lvl):
+                owner = (lvl, bucket_user_ids[lvl][0])
+                break
+        if owner:
+            up = hierarchy.get(str(owner[1]), {})
+            for b in HIERARCHY[HIERARCHY.index(owner[0]) + 1:]:
+                if b not in bucket_user_ids and up.get(b):
+                    bucket_user_ids[b] = [_uuid.UUID(up[b])]
+
         old_rows = (await db.execute(
             select(CRMContactTeamMember).where(CRMContactTeamMember.contact_id == contact.id)
         )).scalars().all()
         old_value: dict = {}
         for r in old_rows:
             old_value.setdefault(r.role_bucket, []).append(str(r.user_id))
+        old_value["account_manager"] = contact.assigned_to
 
         await replace_team_buckets(
             db, contact_id=contact.id, bucket_user_ids=bucket_user_ids,
             created_by=current_user.username,
         )
         new_value = {b: [str(u) for u in ids] for b, ids in bucket_user_ids.items()}
+        if owner and owner[1] in user_by_id:
+            contact.assigned_to = user_by_id[owner[1]].username     # Account Manager
+            new_value["account_manager"] = contact.assigned_to
         await audit(db, user=current_user, action="TEAM_MAPPING_UPDATED",
                     table_name="crm_contact_team_members", record_id=str(contact.id),
                     old_value=old_value, new_value=new_value, request=request)
@@ -853,7 +1039,9 @@ async def import_csv_preview(
         dup = None
         if phone:
             r = await db.execute(select(CRMContact).where(CRMContact.phone == phone))
-            dup = r.scalar_one_or_none()
+            dup = r.scalars().first()
+        if dup is None and (row.get("gstin") or "").strip():
+            dup = await _gst_owner(db, row.get("gstin"))      # GST is unique (2026-11-11)
         preview.append({
             "row": i,
             "company_name": company,
@@ -954,6 +1142,10 @@ async def export_contacts_csv(
     buyer_type: str = Query(default=""),
     contacted: str = Query(default=""),
     created_by_filter: str = Query(default=""),
+    f_vp_avp: str = Query(default=""),       # team filters too (2026-11-11 PM): the
+    f_manager: str = Query(default=""),      # file = exactly the rows on the list,
+    f_am_dm_gm: str = Query(default=""),     # matching the count on the button
+    f_executive: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -989,6 +1181,17 @@ async def export_contacts_csv(
         query = query.where(CRMContact.id.notin_(has_activity_subq))
     if created_by_filter:
         query = query.where(CRMContact.created_by == created_by_filter)
+    for _bucket, _raw in {"vp_avp": f_vp_avp, "manager": f_manager,
+                          "am_dm_gm": f_am_dm_gm, "executive": f_executive}.items():
+        _ids = []
+        for _v in _raw.split(","):
+            try:
+                _ids.append(_uuid.UUID(_v.strip()))
+            except ValueError:
+                continue
+        if _ids:
+            query = query.where(CRMContact.id.in_(select(CRMContactTeamMember.contact_id).where(
+                CRMContactTeamMember.role_bucket == _bucket, CRMContactTeamMember.user_id.in_(_ids))))
 
     result = await db.execute(query.order_by(CRMContact.company_name))
     contacts = result.scalars().all()
@@ -999,7 +1202,7 @@ async def export_contacts_csv(
         "Contact Code", "Type", "Company Name", "Contact Person",
         "Phone", "WhatsApp", "Email", "GSTIN", "City", "State",
         "Source Type", "Buyer Type", "Status", "Tags",
-        "Credit Limit", "Outstanding", "Assigned To", "Created By", "Created At",
+        "Credit Limit", "Outstanding", "Account Manager", "Created By", "Created At",
     ])
     for c in contacts:
         writer.writerow([
@@ -1172,6 +1375,8 @@ async def account_calls_bulk_upload(
         by_name = {(c.company_name or "").strip().lower(): c
                    for c in res.scalars().all()}
 
+    by_gst: dict = {}      # GST → Account, filled as rows are read (2026-11-11)
+
     def _to_date(val: str):
         if not val:
             return None
@@ -1194,8 +1399,16 @@ async def account_calls_bulk_upload(
         try:
             phone = row.get("phone", "")
             name = row.get("company_name", "")
+            gst = (row.get("gstin", "") or "").strip().upper()
 
-            contact = by_phone.get(phone) if phone else None
+            # GST is unique per Account (2026-11-11): a known GST is always that Account
+            contact = by_gst.get(gst) if gst else None
+            if contact is None and gst:
+                contact = await _gst_owner(db, gst)
+                if contact is not None:
+                    by_gst[gst] = contact
+            if contact is None and phone:
+                contact = by_phone.get(phone)
             if contact is None and name:
                 contact = by_name.get(name.lower())
 
@@ -1224,11 +1437,16 @@ async def account_calls_bulk_upload(
                     by_phone[phone] = contact
                 if name:
                     by_name[name.lower()] = contact
+                if gst:
+                    by_gst[gst] = contact
                 created_accounts += 1
             else:
                 changed = False
                 for col, attr in _ACCOUNT_COLS.items():
                     val = row.get(col, "")
+                    if attr == "gstin" and val and await _gst_owner(db, val, contact.id):
+                        errors.append(f"Row {i}: GST {val.upper()} is already used by another account — GST not changed")
+                        continue
                     if val and (getattr(contact, attr, None) or "") != val:
                         setattr(contact, attr, val)
                         changed = True
@@ -1298,6 +1516,33 @@ async def account_calls_bulk_upload(
 
 # ── NEW ───────────────────────────────────────────────────────────────────────
 
+async def _gst_owner(db, gstin, exclude_id=None):
+    """The live (untrashed) Account already using this GST number, if any.
+    GST is unique per Account (2026-11-11, Pankaj) — checked here in the app;
+    there is no database unique index on crm_contacts.gstin."""
+    g = (gstin or "").strip().upper()
+    if not g:
+        return None
+    q = select(CRMContact).where(func.upper(func.trim(CRMContact.gstin)) == g, CRMContact.is_trashed.isnot(True))
+    if exclude_id:
+        q = q.where(CRMContact.id != exclude_id)
+    return (await db.execute(q.limit(1))).scalars().first()
+
+
+@router.get("/gst-check")
+async def gst_check(gstin: str = "", exclude: str = "", db: AsyncSession = Depends(get_db),
+                    current_user: User = Depends(get_current_user)):
+    """Account form: warn as soon as a GST already on another Account is typed."""
+    from fastapi.responses import JSONResponse
+    try:
+        ex = _uuid.UUID(exclude) if exclude else None
+    except ValueError:
+        ex = None
+    c = await _gst_owner(db, gstin, ex)
+    return JSONResponse({"taken": bool(c), "company": c.company_name if c else "",
+                         "code": c.contact_code if c else "", "url": f"/crm/contacts/{c.id}" if c else ""})
+
+
 @router.get("/new", response_class=HTMLResponse)
 async def new_contact_form(
     request: Request,
@@ -1350,6 +1595,12 @@ async def create_contact(
     current_user: User = Depends(get_current_user),
     _perm: User = Depends(require_module_perm("crm_contacts", "add")),
 ):
+    # GST is unique per Account (2026-11-11, Pankaj)
+    _dup = await _gst_owner(db, gstin)
+    if _dup:
+        from urllib.parse import quote_plus
+        return RedirectResponse(url="/crm/contacts/new?error=" + quote_plus(
+            f"GST {_kyc_up(gstin)} is already used by {_dup.company_name} ({_dup.contact_code}) — not saved"), status_code=302)
     # Contact person / phone / whatsapp now live per-person in each Location's Contact Numbers.
     location_rows = _parse_locations(await request.form())
     from utils.master_data import clean_from_entity
@@ -1643,6 +1894,12 @@ async def update_contact(
     if not contact:
         return RedirectResponse(url="/crm/contacts?error=Not+found", status_code=302)
 
+    # GST is unique per Account (2026-11-11, Pankaj)
+    _dup = await _gst_owner(db, gstin, contact.id)
+    if _dup:
+        from urllib.parse import quote_plus
+        return RedirectResponse(url=f"/crm/contacts/{contact.id}/edit?error=" + quote_plus(
+            f"GST {_kyc_up(gstin)} is already used by {_dup.company_name} ({_dup.contact_code}) — not saved"), status_code=302)
     contact.contact_type = contact_type
     from utils.master_data import clean_from_entity
     contact.from_entity = await clean_from_entity(db, from_entity, contact.from_entity)
@@ -1749,7 +2006,7 @@ async def verify_kyc(
 
 async def can_verify_credit(db, contact_id, user) -> bool:
     """Verify Credit (2026-11-06, Pankaj): the account's mapped VP/AVP or
-    DM/GM/CTO/CEO (Map Team), or an admin."""
+    Team Leader (Map Team), or an admin."""
     role = getattr(user.role, "value", user.role)
     if role == "admin":
         return True
@@ -1792,14 +2049,14 @@ async def verify_credit(
 ):
     """Verify Credit modal (2026-11-06): New Credit Limit + Reason; the old
     limit is kept on the account. Allowed for the account's mapped VP/AVP or
-    DM/GM/CTO/CEO, or an admin. Same route from Account Detail and Activity Board."""
+    Team Leader, or an admin. Same route from Account Detail and Activity Board."""
     from decimal import Decimal, InvalidOperation
     contact = (await db.execute(select(CRMContact).where(CRMContact.id == contact_id))).scalar_one_or_none()
     if not contact:
         return RedirectResponse(url="/crm/contacts?error=Not+found", status_code=302)
     if not await can_verify_credit(db, contact.id, current_user):
         return _credit_back(contact_id, return_to,
-                            "Only this account's mapped VP/AVP or DM/GM/CTO/CEO can verify credit", ok=False)
+                            "Only this account's mapped AVP/VP or Team Leader can verify credit", ok=False)
     try:
         new_limit = Decimal((new_credit_limit or "").replace(",", "").strip())
         if new_limit < 0:

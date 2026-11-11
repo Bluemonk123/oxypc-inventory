@@ -5,7 +5,7 @@
     Inspection Report -> "Inspection Done" (Reupload replaces the file).
   * Customer Deals — Buyer Deals at stage Screening, same flow (Screening).
   * Account Verification — accounts with their Manager and Credit; Verify
-    Credit (account's mapped VP/AVP or DM/GM/CTO/CEO, or admin) and Map Manager.
+    Credit (account's mapped AVP/VP or Team Leader, or admin) and Map Manager.
 
 Status and file live on the deal's own Stage Progress items (crm_sourcing_steps
 / crm_sales_steps: *_assign = who, *_report = status + file), so the deal
@@ -15,7 +15,7 @@ Who sees what (2026-11-09, Pankaj): the page is three cards, in this order —
 Account Verification, Supplier Deals, Customer Deals — each with its own date
 filter and Export in the card header.
   * Admin / Activity Board -> Edit: all three cards, every row.
-  * Account team members (mapped VP/AVP or DM/GM/CTO/CEO on any account): all three
+  * Account team members (mapped AVP/VP or Team Leader on any account): all three
     cards; Account Verification lists the accounts they are on, the deal cards
     only the deals assigned to them.
   * Everyone else: only the Supplier and/or Customer card, and only when a deal
@@ -77,7 +77,7 @@ ACCOUNT_BUCKETS = ("vp_avp", "am_dm_gm")   # mapped on an account = an Account V
 
 async def account_user(db, user) -> bool:
     """Sees all three cards: admin / Activity Board -> Edit, or mapped VP/AVP
-    or DM/GM/CTO/CEO on any account (they verify credit)."""
+    or Team Leader on any account (they verify credit)."""
     if see_all(user):
         return True
     hit = (await db.execute(select(CRMContactTeamMember.id).where(
@@ -310,13 +310,18 @@ async def activity_board(request: Request, db: AsyncSession = Depends(get_db),
             stage_cards[key] = {"kind": kind, "rows": rows, "locs": locs, "nums": nums, "team": tms}
     users = (await db.execute(select(User).where(User.status == True))).scalars().all()  # noqa: E712
     names = {u.username: (u.full_name or u.username) for u in users}
-    managers = [(str(u.id), u.full_name or u.username) for u in eligible_users_for_bucket(users, "manager")]
+    # Map Manager (2026-11-11 PM, Pankaj): Executive + Team Leader dropdowns; the
+    # levels above come from Report To by designation (services/crm_team).
+    from services.crm_team import bucket_options as _bopts, designation_hierarchy
+    _opts = await _bopts(db, sorted(users, key=lambda u: (u.full_name or u.username or "").lower()))
+    managers = {"executive": _opts["executive"], "am_dm_gm": _opts["am_dm_gm"]}
+    mgr_levels = designation_hierarchy(users)
     return templates.TemplateResponse("activity_board/index.html", {
         "request": request, "current_user": current_user,
         "cards": [k for k in CARDS if k in visible], "qp": request.query_params,
         "supplier": supplier, "customer": customer, "contacts": contacts, "team": team,
         "approvals": approvals, "approval_tabs": APPROVAL_TABS, "stage_cards": stage_cards,
-        "can_vc": can_vc, "totals": totals, "names": names, "managers": managers,
+        "can_vc": can_vc, "totals": totals, "names": names, "managers": managers, "mgr_levels": mgr_levels,
         "see_all": see_all(current_user), "role_labels": ROLE_LABELS,
     })
 
@@ -339,7 +344,7 @@ async def export_card(kind: str, request: Request, db: AsyncSession = Depends(ge
     if kind == "accounts":
         contacts, team = await _account_rows(db, current_user, d_from, d_to)
         w.writerow(["Account Name", "Type", "Manager", "GST No.", "KYC", "Credit", "City", "State",
-                    "Contact Person", "VP/AVP", "DM/GM/CTO/CEO", "Executive", "Finance Manager", "Status", "Created By", "Created On"])
+                    "Contact Person", "AVP/VP", "Team Leader", "Executive", "Finance Manager", "Status", "Created By", "Created On"])
         for c in contacts:
             t = team.get(c.id, {})
             nm = lambda b: ", ".join(x["name"] or "" for x in t.get(b, []))  # noqa: E731
@@ -474,28 +479,48 @@ async def upload_report(kind: str, deal_id: str, request: Request, file: UploadF
 
 
 @router.post("/accounts/{contact_id}/map-manager")
-async def map_manager(contact_id: str, request: Request, manager_id: str = Form(default=""),
+async def map_manager(contact_id: str, request: Request, executive_id: str = Form(default=""),
+                      team_leader_id: str = Form(default=""),
                       db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
-    """Map Manager: sets the account's Manager (Map Team's Manager bucket only;
-    the other buckets are left as they are). Blank clears it."""
-    from services.crm_team import replace_team_buckets
+    """Map Manager (2026-11-11 PM, Pankaj): pick an Executive and / or a Team
+    Leader. The Executive (else the Team Leader) is the Account Manager; the
+    levels above it come from the Report To chain by designation (a picked
+    Team Leader wins over the chain's). Executive / Team Leader / Manager /
+    AVP/VP are replaced together; Finance is left as it is."""
+    from services.crm_team import replace_team_buckets, designation_hierarchy, team_from_owner, HIERARCHY
     if not see_all(current_user):
-        return _back("accounts", "Only admin or Activity Board → Edit can map the Manager", ok=False)
+        return _back("accounts", "Only admin or Activity Board → Edit can map the team", ok=False)
     contact = (await db.execute(select(CRMContact).where(CRMContact.id == contact_id))).scalar_one_or_none()
     if not contact:
         return _back("accounts", "Account not found", ok=False)
-    ids = []
-    if manager_id.strip():
+
+    def _uid(v):
         try:
-            ids = [_uuid.UUID(manager_id.strip())]
+            return str(_uuid.UUID(v.strip())) if v and v.strip() else None
         except ValueError:
-            return _back("accounts", "Select a manager", ok=False)
-    old = [str(m.user_id) for m in (await db.execute(select(CRMContactTeamMember).where(
-        CRMContactTeamMember.contact_id == contact.id, CRMContactTeamMember.role_bucket == "manager"))).scalars().all()]
-    await replace_team_buckets(db, contact_id=contact.id, bucket_user_ids={"manager": ids},
-                               created_by=current_user.username)
+            return None
+    ex, tl = _uid(executive_id), _uid(team_leader_id)
+    if not (ex or tl):
+        return _back("accounts", "Pick an Executive or a Team Leader", ok=False)
+    users = (await db.execute(select(User).where(User.status == True))).scalars().all()  # noqa: E712
+    by_id = {str(u.id): u for u in users}
+    lvl, owner = ("executive", ex) if ex else ("am_dm_gm", tl)
+    if owner not in by_id:
+        return _back("accounts", "That user is not active", ok=False)
+    team = team_from_owner(lvl, owner, designation_hierarchy(users), {"am_dm_gm": tl} if (ex and tl) else None)
+    buckets = {b: [_uuid.UUID(x) for x in team.get(b, [])] for b in HIERARCHY}
+    old = {}
+    for m in (await db.execute(select(CRMContactTeamMember).where(
+            CRMContactTeamMember.contact_id == contact.id,
+            CRMContactTeamMember.role_bucket.in_(HIERARCHY)))).scalars().all():
+        old.setdefault(m.role_bucket, []).append(str(m.user_id))
+    old["account_manager"] = contact.assigned_to
+    await replace_team_buckets(db, contact_id=contact.id, bucket_user_ids=buckets, created_by=current_user.username)
+    contact.assigned_to = by_id[owner].username
     await audit(db, user=current_user, action="TEAM_MAPPING_UPDATED", table_name="crm_contact_team_members",
-                record_id=str(contact.id), old_value={"manager": old},
-                new_value={"manager": [str(i) for i in ids], "via": "Activity Board → Map Manager"}, request=request)
+                record_id=str(contact.id), old_value=old,
+                new_value={**{b: [str(x) for x in v] for b, v in buckets.items()},
+                           "account_manager": contact.assigned_to, "via": "Activity Board → Map Manager"}, request=request)
     await db.commit()
-    return _back("accounts", f"Manager {'mapped' if ids else 'cleared'} for {contact.company_name}")
+    nm = by_id[owner].full_name or by_id[owner].username
+    return _back("accounts", f"Team mapped for {contact.company_name} — Account Manager {nm}")

@@ -131,14 +131,18 @@ asyncio.run(main())
         html = app_client.get("/activity-board").text
         assert "SD-IU" + sfx in html and "SD-IT" + sfx in html
         wid = _q(f"select id from users where username='{worker}'")[0]
+        # Map Manager since 2026-11-11 PM: Executive / Team Leader → Account Manager + levels above by designation
         r = app_client.post(f"/activity-board/accounts/{cid}/map-manager", headers={"X-CSRF-Token": csrf},
-                            data={"csrf_token": csrf, "manager_id": wid}, follow_redirects=False)
+                            data={"csrf_token": csrf}, follow_redirects=False)
+        assert "error" in r.headers["location"]                    # nothing picked
+        r = app_client.post(f"/activity-board/accounts/{cid}/map-manager", headers={"X-CSRF-Token": csrf},
+                            data={"csrf_token": csrf, "team_leader_id": wid}, follow_redirects=False)
         assert "success" in r.headers["location"], r.headers["location"]
-        n = _q(f"select count(*) from crm_contact_team_members where contact_id='{cid}' and role_bucket='manager'")[0]
-        assert n == "1"
-        assert _q(f"select count(*) from crm_contact_team_members where contact_id='{cid}' and role_bucket='am_dm_gm'")[0] == "1"
+        assert _q(f"select user_id from crm_contact_team_members where contact_id='{cid}' and role_bucket='am_dm_gm'") == [wid]
+        assert _q(f"select count(*) from crm_contact_team_members where contact_id='{cid}' and role_bucket='executive'")[0] == "0"
+        assert _q(f"select assigned_to from crm_contacts where id='{cid}'")[0] == worker
         lst = app_client.get("/crm/contacts").text
-        assert "<th>Manager</th>" in lst
+        assert "<th>Account Manager</th>" in lst      # column is the Account Manager since 2026-11-11 PM
     finally:
         _run(f"""
 import asyncio, sys

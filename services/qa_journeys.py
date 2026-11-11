@@ -44,14 +44,15 @@ MODULES = [
         ('Competitor prices', 'Competitive Lists', 'Record competitor website prices per product', 'Competitor price records', 'pm_competitor_prices.product_id, list_id, price'),
         ('Market and P&L', 'Market Availability / Business P&L', 'Capture dealer stock from WhatsApp; adjust monthly P&L figures', 'Market rows; P&L overrides', 'market_availability.dealer_id, model; business_pl_overrides.revenue_override'),
     ]},
-    {"key": 'crm', "name": 'CRM', "color": '#1F7A93', "svg": 'crm.svg', "steps": [
-        ('Create account', 'CRM Contacts › Add Account', 'Add a supplier or buyer with locations, persons and team mapping', 'Account, status Inactive', 'crm_contacts.id, contact_type, source / buyer type, gstin'),
-        ('KYC and credit', 'Account page / Accounts Dashboard', 'Finance verifies KYC; Management verifies credit', 'Account becomes Active', 'kyc_verified, credit_verified, status'),
-        ('Sourcing deal', 'Sourcing Deals', 'Create deal; inspection; supplier quote; negotiation with L1/L2 approvals', 'Sourcing deal SD-xxx with steps and quotes', 'crm_sourcing_deals.deal_number, stage, crm_quotes.sourcing_deal_id'),
-        ('Purchase order', 'Sourcing Deal › PO Line Items › Generate PO', 'Build the PO from the vendor document', 'PO-xxx with line items; Accounts verifies', 'crm_purchase_orders.po_number, total_amount, offer_total'),
-        ('Buyer deal and quote', 'Buyer Deals / Quotes', 'Create deal; raise quotes; Level 1 and Level 2 approval', 'Buyer deal OPP-xxx with quotes', 'crm_sales_opportunities.opp_number, crm_quotes.quote_number, total_amount'),
-        ('Sales order', 'Automatic on Quotation Level 2 approval', 'Snapshot the latest quote as a Sales Order', 'SO-xxx; Accounts verifies', 'crm_sales_orders.so_number, quote_id, deal_id'),
-        ('Payment and close', 'Accounts › Supplier Payments / Customer Receipts', 'Record payment against PO or SO; Accounts verifies; close deal Won or Lost', 'Verified payment; closed deal', 'supplier_payments.po_id, customer_receipts.so_id, amount, verified'),
+    {"key": 'crm', "name": 'CRM', "color": '#1F7A93', "svg": 'crm.svg', "steps": [   # updated 2026-11-11
+        ('Create account', 'CRM Contacts › Add Account', 'Add a supplier or buyer with locations, persons, From Entity, Credit Days and team mapping', 'Account, status Inactive', 'crm_contacts.id, contact_type, from_entity, credit_days, gstin'),
+        ('KYC and credit', 'Accounts Dashboard / Activity Board', 'Finance verifies KYC; the mapped AVP/VP or Team Leader verifies credit', 'Account becomes Active', 'kyc_verified, credit_verified, status'),
+        ('Supplier deal', 'Supplier Deals › Stage Progress', 'Lead → Pricing Added → Contacted → Inspection (report on Activity Board) → Pricing Approval → Quote (L1 + L2) → Negotiations; finished stages move on by themselves', 'Supplier deal with steps and quotes', 'crm_sourcing_deals.deal_number, stage, expected_close_date, crm_sourcing_steps.step_key'),
+        ('Purchase order', 'Generate PO · Accounts › Purchase Order card', 'Level 1 approval; Verify on Accounts or Issue on the PO page marks it Verified + Issued and the stage Done', 'PO verified and issued; deal at Payment', 'crm_purchase_orders.po_number, verified, status'),
+        ('Customer deal and quote', 'Customer Deals / Quotes', 'Lead → Pricing → Screening → Pricing Approval → Quote with Level 1 and Level 2 (either order)', 'Customer deal with QT-DEAL quotes', 'crm_sales_opportunities.opp_number, crm_quotes.quote_number, status'),
+        ('Sales order', 'Automatic on Quote L1 + L2 · Accounts › Sales Order card', 'Snapshot the quote as a Sales Order; Level 1 approval in Accounts', 'SO-xxx approved; deal at Payment', 'crm_sales_orders.so_number, quote_id, deal_id'),
+        ('Payment in Accounts', 'Accounts › Supplier / Customer Payment card or page', 'Payment Level 1 request is Verified (Complete Payment: date, amount, UTR, mode, snapshot) or Rejected with a reason', 'Verified payment; Payment stage Done', 'supplier_payments / customer_receipts.amount, reference_no, verified; step payment_l1'),
+        ('Pickup and close', 'CRM › Pickup Process · deal Next Stage', 'Assign to Inventory starts the pickup; move it step by step to Received / Handover; close Won or Lost', 'Pickup done; closed deal', 'step received_assign, pickup_status; deal stage won / lost'),
         ('Leads and calls', 'Assign Leads / Telecalling', 'Call leads, log outcomes, set follow-ups', 'Lead calls; activities', 'crm_leads.lead_id, crm_lead_calls.outcome, followup_date'),
     ]},
     {"key": 's', "name": 'Sales & Dealers', "color": '#B24A6D', "svg": 'sales.svg', "steps": [
@@ -106,10 +107,10 @@ COMBINED_PHASES = [
     {"label": 'Phase 4', "name": 'Inspect, repair and QC', "steps": [('q', 0), ('q', 1), ('q', 2), ('q', 3), ('q', 4), ('p', 0), ('p', 1), ('p', 2), ('p', 3), ('p', 4), ('q', 5), ('q', 6)]},
     {"label": 'Phase 5', "name": 'Handle stock', "steps": [('inv', 4), ('inv', 5), ('inv', 6)]},
     {"label": 'Phase 6', "name": 'Price the Ready stock', "steps": [('pr', 3), ('pr', 4), ('pr', 5)]},
-    {"label": 'Phase 7', "name": 'Find buyers: leads and dealers', "steps": [('crm', 7), ('s', 0), ('s', 1), ('s', 2)]},
+    {"label": 'Phase 7', "name": 'Find buyers: leads and dealers', "steps": [('crm', 8), ('s', 0), ('s', 1), ('s', 2)]},
     {"label": 'Phase 8', "name": 'Sell through trade partners', "steps": [('tp', 0), ('tp', 1), ('tp', 2), ('tp', 3), ('tp', 4), ('tp', 5)]},
     {"label": 'Phase 9', "name": 'Sell: buyer deal to invoice', "steps": [('crm', 4), ('crm', 5), ('s', 3), ('s', 4), ('s', 5)]},
-    {"label": 'Phase 10', "name": 'Payment and close', "steps": [('crm', 6)]},
+    {"label": 'Phase 10', "name": 'Payment, pickup and close', "steps": [('crm', 6), ('crm', 7)]},
     {"label": 'Phase 11', "name": 'After-sales', "steps": [('c', 0), ('c', 1), ('c', 2), ('c', 3), ('c', 4), ('c', 5), ('s', 6), ('p', 5)]},
 ]
 

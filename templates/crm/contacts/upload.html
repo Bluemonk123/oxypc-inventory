@@ -1,238 +1,84 @@
 {% extends "base.html" %}
-{% block title %}Bulk Upload Contacts — OxyPC{% endblock %}
-{% block page_title %}Bulk Upload CRM Contacts{% endblock %}
+{% block title %}Bulk Upload Accounts — OxyPC{% endblock %}
+{% block page_title %}Bulk Upload Accounts{% endblock %}
 {% block content %}
+{# Bulk Upload Accounts (2026-11-11, Pankaj): routers/crm_contacts.py, services/account_locations.py.
+   Location Contact columns moved to Upload Locations. #}
 <div class="row justify-content-center">
   <div class="col-lg-8">
-
     {% if error %}
-    <div class="alert alert-danger alert-dismissible fade show">
-      <i class="bi bi-exclamation-triangle me-2"></i>{{ error }}
-      <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-    </div>
+    <div class="alert alert-danger alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ error }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
     {% endif %}
 
     {% if result %}
-    <!-- Upload Result -->
     <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-transparent fw-semibold">
-        <i class="bi bi-clipboard-check me-2"></i>Import Result
-      </div>
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-clipboard-check me-2"></i>Import Result</div>
       <div class="card-body">
-        <div class="row row-cols-2 row-cols-md-5 g-3 mb-3 text-center">
-          <div class="col">
-            <div class="fs-3 fw-bold text-success">{{ result.created }}</div>
-            <div class="small text-muted">Accounts Created</div>
-          </div>
-          <div class="col">
-            <div class="fs-3 fw-bold text-info">{{ result.locations_created }}</div>
-            <div class="small text-muted">Locations Added</div>
-          </div>
-          <div class="col">
-            <div class="fs-3 fw-bold text-primary">{{ result.contacts_created }}</div>
-            <div class="small text-muted">Location Contacts Added</div>
-          </div>
-          <div class="col">
-            <div class="fs-3 fw-bold text-warning">{{ result.skipped }}</div>
-            <div class="small text-muted">Skipped (no new data)</div>
-          </div>
-          <div class="col">
-            <div class="fs-3 fw-bold text-danger">{{ result.errors | length }}</div>
-            <div class="small text-muted">Errors</div>
-          </div>
+        <div class="row row-cols-2 row-cols-md-4 g-3 mb-3 text-center">
+          <div class="col"><div class="fs-3 fw-bold text-success">{{ result.created }}</div><div class="small text-muted">Accounts Created</div></div>
+          <div class="col"><div class="fs-3 fw-bold text-info">{{ result.locations_created }}</div><div class="small text-muted">Locations Added</div></div>
+          <div class="col"><div class="fs-3 fw-bold text-warning">{{ result.skipped }}</div><div class="small text-muted">Skipped (no new data)</div></div>
+          <div class="col"><div class="fs-3 fw-bold text-danger">{{ result.errors | length }}</div><div class="small text-muted">Errors</div></div>
         </div>
         {% if result.errors %}
-        <div class="alert alert-warning py-2 small mb-3">
-          <strong>Row errors:</strong>
-          <ul class="mb-0 mt-1">
-            {% for e in result.errors %}<li>{{ e }}</li>{% endfor %}
-          </ul>
-        </div>
+        <div class="alert alert-warning py-2 small mb-3"><strong>Row errors:</strong>
+          <ul class="mb-0 mt-1">{% for e in result.errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
         {% endif %}
         <div class="d-flex gap-2">
-          <a href="/crm/contacts" class="btn btn-primary btn-sm">
-            <i class="bi bi-people me-1"></i>View All Contacts
-          </a>
+          <a href="/crm/contacts" class="btn btn-primary btn-sm"><i class="bi bi-people me-1"></i>View All Accounts</a>
           <a href="/crm/contacts/upload" class="btn btn-outline-secondary btn-sm">Upload Another</a>
+          <a href="/crm/contacts/upload-locations" class="btn btn-sm btn-outline-secondary"><i class="bi bi-geo-alt me-1"></i>Upload Locations</a>
         </div>
       </div>
     </div>
 
     {% else %}
-    <!-- Upload Form -->
     <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-transparent fw-semibold">
-        <i class="bi bi-cloud-upload me-2"></i>Upload Contacts CSV
+      <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-cloud-upload me-2"></i>Bulk Upload Accounts CSV</span>
+        <a href="/crm/contacts/upload-locations" class="btn btn-sm btn-outline-secondary"><i class="bi bi-geo-alt me-1"></i>Upload Locations</a>
       </div>
       <div class="card-body">
-
-        <!-- Step 1: Download sample -->
         <div class="mb-3">
           <div class="d-flex align-items-center justify-content-between mb-2">
-            <span class="fw-semibold small">
-              <i class="bi bi-1-circle-fill text-primary me-1"></i>Download &amp; fill the sample file
-            </span>
-            {% if can(current_user, 'crm_contacts', 'export') %}<a href="/static/samples/crm_contacts_sample.csv"
-               class="btn btn-sm btn-primary" download>
-              <i class="bi bi-file-earmark-spreadsheet me-1"></i>Download Sample CSV
-            </a>{% endif %}
+            <span class="fw-semibold small"><i class="bi bi-1-circle-fill text-primary me-1"></i>Download &amp; fill the sample file</span>
+            {% if can(current_user, 'crm_contacts', 'export') %}<a href="/static/samples/crm_contacts_sample.csv" class="btn btn-sm btn-primary" download>
+              <i class="bi bi-file-earmark-spreadsheet me-1"></i>Download Sample CSV</a>{% endif %}
           </div>
-          <!-- Column preview table -->
           <div class="table-responsive border rounded" style="max-height:150px;overflow-y:auto">
             <table class="table table-sm table-bordered mb-0" style="font-size:.7rem;white-space:nowrap">
-              <thead class="table-dark">
-                <tr>
-                  <th>company_name *</th>
-                  <th>email</th>
-                  <th class="text-info">location_address</th>
-                  <th class="text-info">location_city</th>
-                  <th class="text-info">location_state</th>
-                  <th class="text-info">location_email</th>
-                  <th class="text-warning">location_contact_role</th>
-                  <th class="text-warning">location_contact_name</th>
-                  <th class="text-warning">location_contact_phone</th>
-                  <th class="text-warning">location_contact_email</th>
-                  <th>contact_type</th>
-                  <th>source_type</th>
-                  <th>buyer_type</th>
-                  <th>gstin</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td>Acme Computers</td>
-                  <td>raj@acme.com</td>
-                  <td>12 Nehru Place</td>
-                  <td>Delhi</td>
-                  <td>Delhi</td>
-                  <td>branch1@acme.com</td>
-                  <td>Manager</td>
-                  <td>Suresh Nair</td>
-                  <td>9811100022</td>
-                  <td>suresh@acme.com</td>
-                  <td>buyer</td>
-                  <td>dealer</td>
-                  <td>dealer</td>
-                  <td>07AABCA1234B1ZP</td>
-                </tr>
-                <tr>
-                  <td>Acme Computers</td>
-                  <td></td>
-                  <td>45 MG Road</td>
-                  <td>Gurgaon</td>
-                  <td>Haryana</td>
-                  <td>branch2@acme.com</td>
-                  <td>Finance</td>
-                  <td>Neha Gupta</td>
-                  <td>9822200033</td>
-                  <td>neha@acme.com</td>
-                  <td></td>
-                  <td></td>
-                  <td></td>
-                  <td></td>
-                </tr>
-                <tr>
-                  <td>TechBazaar Pvt Ltd</td>
-                  <td>sanjay@techbazaar.com</td>
-                  <td>12 Textile Market</td>
-                  <td>Mumbai</td>
-                  <td>Maharashtra</td>
-                  <td></td>
-                  <td>Manager</td>
-                  <td>Sanjay Mehta</td>
-                  <td>9123456789</td>
-                  <td>sanjay@techbazaar.com</td>
-                  <td>supplier</td>
-                  <td>trader</td>
-                  <td></td>
-                </tr>
-              </tbody>
+              <thead class="table-dark"><tr><th>company_name *</th><th>email</th><th class="text-info">location_address</th><th class="text-info">location_city</th><th class="text-info">location_state</th><th class="text-info">location_email</th><th>contact_type</th><th>source_type</th><th>buyer_type</th><th>gstin</th></tr></thead>
+              <tbody><tr><td>Acme Computers</td><td>raj@acme.com</td><td>12 Nehru Place</td><td>Delhi</td><td>Delhi</td><td>branch1@acme.com</td><td>buyer</td><td>dealer</td><td>dealer</td><td>07AABCA1234B1ZP</td></tr><tr><td>Acme Computers</td><td></td><td>45 MG Road</td><td>Gurgaon</td><td>Haryana</td><td>branch2@acme.com</td><td></td><td></td><td></td><td>07AABCA1234B1ZP</td></tr><tr><td>TechBazaar Pvt Ltd</td><td>sanjay@techbazaar.com</td><td>12 Textile Market</td><td>Mumbai</td><td>Maharashtra</td><td></td><td>supplier</td><td>trader</td><td></td><td></td></tr></tbody>
             </table>
           </div>
-          <div class="form-text mt-1">
-            There is no separate <code>contact_person</code>/<code>phone</code>/
-            <code>whatsapp</code>/<code>city</code>/<code>state</code> column any more —
-            a new Account's own Company Details are auto-filled from its first row's
-            <span class="text-warning">Location Contact</span> name/phone and
-            <span class="text-info">Location</span> city/state, so you never type the
-            same fact twice. Accounts are matched (never duplicated) by
-            <code>gstin</code> first, then by <code>company_name</code>. Rows 1–2
-            above are the <strong>same Account</strong>
-            (same <code>company_name</code>) with two different
-            <span class="text-info">Locations</span>, each with its own
-            <span class="text-warning">Location Contact</span>.
-          </div>
+          <div class="form-text mt-1">Accounts are matched (never duplicated) by <code>gstin</code> first, then <code>company_name</code>.
+            Rows 1–2 are the <strong>same Account</strong> with two <span class="text-info">Locations</span>.
+            Location Contacts (role, name, phone, email) are added with <a href="/crm/contacts/upload-locations">Upload Locations</a>.</div>
         </div>
-
         <hr class="my-3">
-
-        <!-- Step 2: Upload -->
-        <div class="fw-semibold small mb-2">
-          <i class="bi bi-2-circle-fill text-primary me-1"></i>Upload your filled file
-        </div>
+        <div class="fw-semibold small mb-2"><i class="bi bi-2-circle-fill text-primary me-1"></i>Upload your filled file</div>
         <form action="/crm/contacts/upload" method="post" enctype="multipart/form-data">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
-          <div class="mb-3">
-            <input type="file" name="file" class="form-control form-control-sm" accept=".csv" required>
-            <div class="form-text">
-              Required: <code>company_name</code> &nbsp;|&nbsp;
-              Rows matching an existing Account (same gstin, else same
-              company_name) are reused instead of duplicated — repeat company_name on
-              extra rows to add more Locations/Contacts to that same Account. A GST
-              number already used by another Account can never create a duplicate.
-            </div>
-          </div>
+          <div class="mb-3"><input type="file" name="file" class="form-control form-control-sm" accept=".csv" required></div>
           <div class="d-flex gap-2">
-            <button type="submit" class="btn btn-primary">
-              <i class="bi bi-upload me-1"></i>Upload &amp; Import
-            </button>
+            <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-1"></i>Upload &amp; Import</button>
             <a href="/crm/contacts" class="btn btn-outline-secondary">Cancel</a>
           </div>
         </form>
-
       </div>
     </div>
 
-    <!-- Column reference -->
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent fw-semibold small">Column Reference</div>
       <div class="card-body p-0">
         <table class="table table-sm mb-0 small">
-          <thead class="table-light">
-            <tr><th>Column</th><th>Required</th><th>Valid Values</th></tr>
-          </thead>
-          <tbody>
-            <tr><td>company_name</td><td><span class="badge bg-danger">Yes</span></td><td>Any text</td></tr>
-            <tr><td>email</td><td>No</td><td>Email address (Account's own, distinct from location_email)</td></tr>
-            <tr class="table-info bg-opacity-25"><td>location_address</td><td>No</td><td>Adds/reuses a Location under the Account</td></tr>
-            <tr class="table-info bg-opacity-25"><td>location_city</td><td>No</td><td>Any city name — also becomes the new Account's own city</td></tr>
-            <tr class="table-info bg-opacity-25"><td>location_state</td><td>No</td><td>Any state name — also becomes the new Account's own state</td></tr>
-            <tr class="table-info bg-opacity-25"><td>location_email</td><td>No</td><td>Email for that Location</td></tr>
-            <tr class="table-warning bg-opacity-25"><td>location_contact_role</td><td>No</td><td>Directors, Finance, Manager, Other</td></tr>
-            <tr class="table-warning bg-opacity-25"><td>location_contact_name</td><td>No</td><td>Person at that Location — also becomes the new Account's own contact_person</td></tr>
-            <tr class="table-warning bg-opacity-25"><td>location_contact_phone</td><td>No</td><td>Their phone — also becomes the new Account's own phone/whatsapp</td></tr>
-            <tr class="table-warning bg-opacity-25"><td>location_contact_email</td><td>No</td><td>Their email</td></tr>
-            <tr><td>contact_type</td><td>No</td><td><code>buyer</code>, <code>supplier</code>, <code>both</code> (default: buyer)</td></tr>
-            <tr><td>source_type</td><td>No</td><td>recycler, refurb_vendor, end_customer, trader, individual, online_platform</td></tr>
-            <tr><td>buyer_type</td><td>No</td><td>corp_buyer, dealer, online_seller, exporter, retail, government</td></tr>
-            <tr><td>gstin</td><td>No</td><td>15-char GST number — the field used to match rows to the same Account and prevent duplicate Accounts for the same GST</td></tr>
-            <tr><td>status</td><td>No</td><td><code>active</code>, <code>inactive</code>, <code>blacklisted</code> (default: active)</td></tr>
-          </tbody>
+          <thead class="table-light"><tr><th>Column</th><th>Required</th><th>Valid Values</th></tr></thead>
+          <tbody><tr><td>company_name</td><td><span class="badge bg-danger">Yes</span></td><td>Any text</td></tr><tr><td>email</td><td>No</td><td>Account's own email</td></tr><tr class="table-info bg-opacity-25"><td>location_address</td><td>No</td><td>Adds / reuses a Location under the Account</td></tr><tr class="table-info bg-opacity-25"><td>location_city</td><td>No</td><td>Also becomes a new Account's city</td></tr><tr class="table-info bg-opacity-25"><td>location_state</td><td>No</td><td>Also becomes a new Account's state</td></tr><tr class="table-info bg-opacity-25"><td>location_email</td><td>No</td><td>Email for that Location</td></tr><tr><td>contact_type</td><td>No</td><td><code>buyer</code>, <code>supplier</code>, <code>both</code> (default: buyer)</td></tr><tr><td>source_type</td><td>No</td><td>recycler, refurb_vendor, end_customer, trader, individual, online_platform</td></tr><tr><td>buyer_type</td><td>No</td><td>corp_buyer, dealer, online_seller, exporter, retail, government</td></tr><tr><td>gstin</td><td>No</td><td>15-char GST number — unique: a GST already on an Account reuses that Account, never a duplicate</td></tr><tr><td>status</td><td>No</td><td><code>active</code>, <code>inactive</code>, <code>blacklisted</code> (default: active)</td></tr></tbody>
         </table>
-        <div class="small text-muted p-2 border-top">
-          <span class="badge bg-info text-dark me-1">Location</span>columns create/reuse a
-          Location on the Account (deduped by address+city+state).
-          <span class="badge bg-warning text-dark me-1 ms-2">Location Contact</span>columns
-          add a person under that row's Location (deduped by phone, else by name) —
-          requires a location_address/city/state on the same row. On the row that
-          creates a new Account, the Location + Location Contact columns also seed
-          that Account's own Company Details (contact_person/phone/whatsapp/city/state)
-          — there's no separate column for those any more.
-        </div>
       </div>
     </div>
     {% endif %}
-
   </div>
 </div>
 {% endblock %}

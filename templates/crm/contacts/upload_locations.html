@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Upload Locations — OxyPC{% endblock %}
+{% block page_title %}Upload Locations{% endblock %}
+{% block content %}
+{# Upload Locations (2026-11-11, Pankaj): routers/crm_contacts.py, services/account_locations.py.
+   Locations + Location Contacts for existing Accounts. #}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    {% if error %}
+    <div class="alert alert-danger alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ error }}
+      <button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
+    {% endif %}
+
+    {% if result %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-clipboard-check me-2"></i>Import Result</div>
+      <div class="card-body">
+        <div class="row row-cols-2 row-cols-md-5 g-3 mb-3 text-center">
+          <div class="col"><div class="fs-3 fw-bold text-success">{{ result.accounts }}</div><div class="small text-muted">Accounts Updated</div></div>
+          <div class="col"><div class="fs-3 fw-bold text-info">{{ result.locations_created }}</div><div class="small text-muted">Locations Added</div></div>
+          <div class="col"><div class="fs-3 fw-bold text-primary">{{ result.contacts_created }}</div><div class="small text-muted">Contacts Added</div></div>
+          <div class="col"><div class="fs-3 fw-bold text-warning">{{ result.skipped }}</div><div class="small text-muted">Skipped (already there)</div></div>
+          <div class="col"><div class="fs-3 fw-bold text-danger">{{ result.errors | length }}</div><div class="small text-muted">Errors</div></div>
+        </div>
+        {% if result.errors %}
+        <div class="alert alert-warning py-2 small mb-3"><strong>Row errors:</strong>
+          <ul class="mb-0 mt-1">{% for e in result.errors %}<li>{{ e }}</li>{% endfor %}</ul></div>
+        {% endif %}
+        <div class="d-flex gap-2">
+          <a href="/crm/contacts" class="btn btn-primary btn-sm"><i class="bi bi-people me-1"></i>View All Accounts</a>
+          <a href="/crm/contacts/upload-locations" class="btn btn-outline-secondary btn-sm">Upload Another</a>
+          <a href="/crm/contacts/upload" class="btn btn-sm btn-outline-secondary"><i class="bi bi-cloud-upload me-1"></i>Bulk Upload Accounts</a>
+        </div>
+      </div>
+    </div>
+
+    {% else %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="bi bi-geo-alt me-2"></i>Upload Locations CSV</span>
+        <a href="/crm/contacts/upload" class="btn btn-sm btn-outline-secondary"><i class="bi bi-cloud-upload me-1"></i>Bulk Upload Accounts</a>
+      </div>
+      <div class="card-body">
+        <div class="mb-3">
+          <div class="d-flex align-items-center justify-content-between mb-2">
+            <span class="fw-semibold small"><i class="bi bi-1-circle-fill text-primary me-1"></i>Download &amp; fill the sample file</span>
+            {% if can(current_user, 'crm_contacts', 'export') %}<a href="/static/samples/crm_locations_sample.csv" class="btn btn-sm btn-primary" download>
+              <i class="bi bi-file-earmark-spreadsheet me-1"></i>Download Sample CSV</a>{% endif %}
+          </div>
+          <div class="table-responsive border rounded" style="max-height:150px;overflow-y:auto">
+            <table class="table table-sm table-bordered mb-0" style="font-size:.7rem;white-space:nowrap">
+              <thead class="table-dark"><tr><th>gstin</th><th>company_name</th><th class="text-info">location_address</th><th class="text-info">location_city</th><th class="text-info">location_state</th><th class="text-info">location_email</th><th class="text-warning">location_contact_role</th><th class="text-warning">location_contact_name</th><th class="text-warning">location_contact_phone</th><th class="text-warning">location_contact_email</th></tr></thead>
+              <tbody><tr><td>07AABCA1234B1ZP</td><td>Acme Computers</td><td>12 Nehru Place</td><td>Delhi</td><td>Delhi</td><td>branch1@acme.com</td><td>Manager</td><td>Suresh Nair</td><td>9811100022</td><td>suresh@acme.com</td></tr><tr><td>07AABCA1234B1ZP</td><td>Acme Computers</td><td>45 MG Road</td><td>Gurgaon</td><td>Haryana</td><td>branch2@acme.com</td><td>Finance</td><td>Neha Gupta</td><td>9822200033</td><td>neha@acme.com</td></tr><tr><td>07AABCA1234B1ZP</td><td>Acme Computers</td><td>45 MG Road</td><td>Gurgaon</td><td>Haryana</td><td>branch2@acme.com</td><td>Directors</td><td>Vikram Acme</td><td>9822200044</td><td>vikram@acme.com</td></tr></tbody>
+            </table>
+          </div>
+          <div class="form-text mt-1">Each row adds one <span class="text-warning">Contact</span> to one <span class="text-info">Location</span> of an existing Account.
+            Repeat the same location on more rows to add more contacts there (rows 2–3), or a new address for another location.
+            Accounts are never created here — add them first with <a href="/crm/contacts/upload">Bulk Upload Accounts</a>.
+            The first contact also fills the Account's own contact person / phone when those are still empty.</div>
+        </div>
+        <hr class="my-3">
+        <div class="fw-semibold small mb-2"><i class="bi bi-2-circle-fill text-primary me-1"></i>Upload your filled file</div>
+        <form action="/crm/contacts/upload-locations" method="post" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+          <div class="mb-3"><input type="file" name="file" class="form-control form-control-sm" accept=".csv" required></div>
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-1"></i>Upload &amp; Import</button>
+            <a href="/crm/contacts" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent fw-semibold small">Column Reference</div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0 small">
+          <thead class="table-light"><tr><th>Column</th><th>Required</th><th>Valid Values</th></tr></thead>
+          <tbody><tr><td>gstin</td><td>One of these</td><td>Finds the Account (first choice)</td></tr><tr><td>company_name</td><td>One of these</td><td>Finds the Account when there is no gstin</td></tr><tr class="table-info bg-opacity-25"><td>location_address</td><td>For a location</td><td>Adds / reuses a Location (same address + city + state = same Location)</td></tr><tr class="table-info bg-opacity-25"><td>location_city</td><td>For a location</td><td>City</td></tr><tr class="table-info bg-opacity-25"><td>location_state</td><td>For a location</td><td>State</td></tr><tr class="table-info bg-opacity-25"><td>location_email</td><td>No</td><td>Email for that Location</td></tr><tr class="table-warning bg-opacity-25"><td>location_contact_role</td><td>No</td><td>Directors, Finance, Manager, Owner, Other</td></tr><tr class="table-warning bg-opacity-25"><td>location_contact_name</td><td>For a contact</td><td>Person at that Location</td></tr><tr class="table-warning bg-opacity-25"><td>location_contact_phone</td><td>For a contact</td><td>Their phone — same phone on the same Location is not added twice</td></tr><tr class="table-warning bg-opacity-25"><td>location_contact_email</td><td>No</td><td>Their email</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

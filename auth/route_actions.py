@@ -24,6 +24,7 @@ ROUTE_ACTIONS = {
     ('POST', '/fieldops/api/auth/login'): None,  # fieldops_login: FieldOps login
     ('POST', '/tickets/raise-public'): None,  # raise_ticket_public: public ticket raise
     ('POST', '/partner/login'): None,  # login: partner portal login (external partners)
+    ('POST', '/partner/contact-admin'): None,  # contact_admin: public ticket from the partner login page (2026-11-11)
     ('POST', '/care/api/v1/pair'): None,  # pair: care device-agent API (token auth)
     ('POST', '/care/api/v1/tickets'): None,  # create_ticket: care device-agent API
     ('POST', '/care/api/v1/diagnostics'): None,  # submit_diagnostics: care device-agent API
@@ -456,7 +457,11 @@ ROUTE_ACTIONS = {
     ('GET', '/crm/contacts/export-csv'): ('crm_contacts', 'export'),  # export_contacts_csv
     ('GET', '/crm/contacts/calls/bulk-upload-template'): ('crm_contacts', 'export'),  # account_calls_bulk_upload_template
     ('POST', '/crm/contacts/upload'): ('crm_contacts', 'upload'),  # upload_contacts_csv
+    ('POST', '/crm/contacts/upload-locations'): ('crm_contacts', 'upload'),  # upload_locations_csv: Locations + Location Contacts for existing Accounts (2026-11-11)
+    ('POST', '/crm/contacts/locations-bulk'): ('crm_contacts', 'edit'),  # add_locations_bulk: Accounts List Location Mapping → Use Form (2026-11-11)
+    ('POST', '/crm/contacts/upload-gsts'): None,  # upload_gsts: read-only GST lookup that ticks rows on the Accounts List (2026-11-11)
     ('POST', '/crm/contacts/team-mapping'): ('crm_contacts', 'edit'),  # save_team_mapping
+    ('POST', '/crm/contacts/move-to-partner'): ('trade_partner_partners', 'add'),  # move_accounts_to_partner: Accounts List bulk Move to External Partner, no login (2026-11-11)
     ('POST', '/crm/contacts/team-mapping/upload'): ('crm_contacts', 'upload'),  # team_mapping_upload_apply
     ('POST', '/crm/contacts/import-csv'): None,  # import_csv_preview: import preview only (writes nothing); import-confirm is the write
     ('POST', '/crm/contacts/import-confirm'): ('crm_contacts', 'upload'),  # import_csv_confirm
@@ -464,7 +469,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/contacts/new'): ('crm_contacts', 'add'),  # create_contact
     ('POST', '/crm/contacts/{contact_id}/edit'): ('crm_contacts', 'edit'),  # update_contact
     ('POST', '/crm/contacts/{contact_id}/verify-kyc'): ('crm_contacts', 'edit'),  # verify_kyc
-    ('POST', '/crm/contacts/{contact_id}/verify-credit'): None,  # verify_credit: gated in the route — the account's mapped VP/AVP or AM/DM/GM, or admin (2026-11-06)
+    ('POST', '/crm/contacts/{contact_id}/verify-credit'): None,  # verify_credit: gated in the route — the account's mapped AVP/VP or Team Leader, or admin (2026-11-06)
     ('POST', '/activity-board/{kind}/{deal_id}/start'): None,  # start_check: gated in the route — the person assigned to Inspection / Screening, or admin / Activity Board Edit
     ('POST', '/activity-board/{kind}/{deal_id}/report'): None,  # upload_report: gated in the route — same as start_check
     ('POST', '/activity-board/accounts/{contact_id}/map-manager'): ('activity_board', 'edit'),  # map_manager
@@ -632,6 +637,7 @@ ROUTE_ACTIONS = {
     ('POST', '/buckets/{bucket_id}/release-repair-line'): ('production_manager', 'edit'),  # release_bucket_from_repair_line
     # ===== routers/partner_portal.py =====
     ('POST', '/partner/logout'): None,  # logout: partner portal
+    ('POST', '/partner/tickets'): None,  # raise_my_ticket: partner portal My Tickets (external, 2026-11-11)
     ('POST', '/partner/listings/{listing_id}/bid'): None,  # place_bid: partner portal (external)
     ('POST', '/partner/listings/{listing_id}/custom-price'): None,  # request_custom_price: partner portal (external)
     ('POST', '/partner/lots/{lot_id}/bid'): None,  # place_lot_bid: partner portal (external)
@@ -648,6 +654,7 @@ ROUTE_ACTIONS = {
     ('POST', '/trade-partner/partners/{dealer_id}/update'): ('trade_partner_partners', 'edit'),  # update_partner
     ('POST', '/trade-partner/partners/{dealer_id}/toggle'): ('trade_partner_partners', 'edit'),  # toggle_partner
     ('POST', '/trade-partner/partners/{dealer_id}/reset-password'): ('trade_partner_partners', 'edit'),  # reset_partner_password
+    ('POST', '/trade-partner/partners/{dealer_id}/set-login'): ('trade_partner_partners', 'edit'),  # set_partner_login: Generate / Regenerate Password with a picked contact (2026-11-11)
     ('POST', '/trade-partner/partners/{dealer_id}/delete'): ('trade_partner_partners', 'delete'),  # delete_partner
     ('POST', '/trade-partner/listings/create'): ('trade_partner_listings', ('add', 'pricing_add')),  # create_listing
     ('POST', '/trade-partner/listings/{listing_id}/publish'): ('trade_partner_listings', 'edit'),  # publish_listing

@@ -1987,7 +1987,7 @@ MANUALS = [{'id': 1,
              ["Type in 'Search' to find by company name, contact person, phone, city, state or GSTIN.",
               "Use 'Account Type' (Supplier, Buyer, Both), 'Source Type', 'Buyer Type' and 'Contacted' "
               '(Contacted / Not Yet).',
-              "Use the team filters 'VP/AVP', 'Manager', 'AM/DM/GM' and 'Executive/Sr Exec' to see accounts "
+              "Use the team filters 'Executive', 'Team Leader', 'Manager' and 'AVP/VP' to see accounts "
               'mapped to selected people.',
               "Admins also get an 'Agent' filter to see accounts added by one user.",
               "Click 'Filter' to apply and 'Clear' to reset."]),
@@ -2016,7 +2016,7 @@ MANUALS = [{'id': 1,
               'account.']),
             ('Map the account team',
              ['Click the person-badge (Map Team) icon on a row to set who handles the account in each of '
-              'five levels: VP/AVP, Manager, AM/DM/GM, Executive/Sr Executive and Finance Manager. Leaving a '
+              'five levels: Executive, Team Leader, Manager, AVP/VP and Finance Manager. Leaving a '
               'level blank clears it for that account.',
               'Each dropdown lists the users whose designation or role matches that level. Finance Manager '
               'lists users with Finance or Accounts in their designation or role.',
@@ -2027,7 +2027,7 @@ MANUALS = [{'id': 1,
             ('Account status, KYC, Credit and History',
              ['A new account is Inactive. It becomes Active only when KYC is verified (Finance -> Accounts, '
               "Account KYC card, or the profile's KYC card) and Credit is verified (Activity Board -> "
-              "Account Verification, by the account's VP/AVP or AM/DM/GM, or an admin). Blacklisted stays "
+              "Account Verification, by the account's AVP/VP or Team Leader, or an admin). Blacklisted stays "
               'blacklisted.',
               "Deal pages show a 'KYC Pending' or 'KYC Verified' badge for the account.",
               "The profile's 'History' card lists every change to the account - create, edit, trash, "
@@ -4666,13 +4666,13 @@ MANUALS = [{'id': 1,
              ["Click 'Activity Board' in the left menu.",
               'Three cards, in this order: Account Verification, Supplier Deals and Customer Deals. Each has '
               "Pending / Completed pills, its own date filter and 'Export' in the card header.",
-              'Admins and roles with Activity Board -> Edit see every row. Account team members (VP/AVP or '
-              'AM/DM/GM mapped on an account) see the accounts they are on and the deals assigned to them. '
+              'Admins and roles with Activity Board -> Edit see every row. Account team members (AVP/VP or '
+              'Team Leader mapped on an account) see the accounts they are on and the deals assigned to them. '
               'Everyone else sees only the deals assigned to them.']),
             ('Account Verification',
              ['Lists accounts with their Place, KYC, Credit, Manager, Team and Status.',
-              "Click 'Verify Credit' to verify the account's credit. Only the account's mapped VP/AVP or "
-              'AM/DM/GM, or an admin, can do this.',
+              "Click 'Verify Credit' to verify the account's credit. Only the account's mapped AVP/VP or "
+              'Team Leader, or an admin, can do this.',
               'An account becomes Active only when both KYC (verified on Finance -> Accounts) and Credit are '
               'verified.',
               "Click 'Map Manager', pick the manager and click 'Save Manager'."]),

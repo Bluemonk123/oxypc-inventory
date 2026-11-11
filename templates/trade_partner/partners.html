@@ -5,6 +5,7 @@
 <link rel="stylesheet" href="/static/vendor/tom-select/css/tom-select.bootstrap5.min.css">
 {% endblock %}
 {% block content %}
+{% import "crm/contacts/_type_pills.html" as tp %}
 
 {% if success %}
 <div class="alert alert-success py-2"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>
@@ -98,37 +99,61 @@
     {% endif %}
   </div>
   <div class="card-body p-0">
-      <table id="externalPartnerAccountsTable" class="table table-hover mb-0">
+      {# Columns (2026-11-11 PM, Pankaj): Business links to the Account; Login ID =
+         login email over phone (placed before Last Login, which also carries the
+         portal status pill); Segment = price segment + the Account Type pills;
+         Place / Person / Team as on /crm/contacts. Edit modals live below the
+         table (inside a cell they were clipped by the table's layout). #}
+      <table id="externalPartnerAccountsTable" class="table table-hover mb-0 align-middle">
         <thead class="table-light">
           <tr>
             <th>Business</th>
-            <th>Login Mobile</th>
             <th>Segment</th>
+            <th>Place</th>
+            <th>Person</th>
+            <th>Team</th>
             <th>Sales Owner</th>
             <th>Score</th>
+            <th>Login ID</th>
             <th>Last Login</th>
-            <th>Status</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for p in partners %}
+          {% set acid = p.crm_contact_id | string if p.crm_contact_id else '' %}
+          {% set acct = accounts_by_id.get(acid) %}
+          {% set has_login = p.portal_password_hash %}
           <tr>
-            <td>
-              <div class="fw-semibold">{{ p.business_name }}</div>
-              <small class="text-muted">{{ p.dealer_code }}{% if p.city %} · {{ p.city }}{% endif %}</small>
+            <td class="text-nowrap">
+              {% if acct %}<a href="/crm/contacts/{{ acid }}" class="fw-semibold text-decoration-none" title="Open Account Detail">{{ p.business_name }}</a>
+              {% else %}<div class="fw-semibold">{{ p.business_name }}</div>{% endif %}
+              <div><small class="text-muted">{{ p.dealer_code }}{% if p.city %} · {{ p.city }}{% endif %}</small></div>
             </td>
-            <td><code>{{ p.portal_phone or '—' }}</code></td>
-            <td><span class="badge bg-info-subtle text-info-emphasis border">{{ (p.price_segment or 'new_dealer') | replace('_',' ') | title }}</span></td>
+            <td style="min-width:160px">{{ tp.pills(acct, True, source_labels, buyer_labels, segment=(p.price_segment or 'new_dealer'), wrap=True) }}</td>
+            {% set locs = cell_locs.get(acid, []) %}
+            <td>{% if locs %}<button type="button" class="btn btn-sm btn-secondary py-0 px-2 text-nowrap ac-loc-btn" data-company="{{ p.business_name }}" data-locations='{{ locs | tojson }}'><i class="bi bi-geo-alt me-1"></i>{{ locs | length }}</button>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+            {% set groups = cell_nums.get(acid, []) %}{% set total = groups | map(attribute='numbers') | map('length') | sum %}
+            <td>{% if total %}<button type="button" class="btn btn-sm btn-info text-dark py-0 px-2 text-nowrap ac-num-btn" data-company="{{ p.business_name }}" data-groups='{{ groups | tojson }}'><i class="bi bi-people me-1"></i>{{ total }}</button>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+            {% set t = cell_team.get(acid, {}) %}{% set team_total = t.values() | map('length') | sum if t else 0 %}
+            <td>{% if team_total %}<button type="button" class="btn btn-sm btn-outline-dark py-0 px-2 text-nowrap ac-team-btn" data-company="{{ p.business_name }}" data-team='{{ t | tojson }}'><i class="bi bi-person-badge me-1"></i>{{ team_total }}</button>{% else %}<span class="text-muted">0</span>{% endif %}</td>
             <td class="small">{{ full_name_by_username.get(p.sales_owner_username, p.sales_owner_username) if p.sales_owner_username else '—' }}</td>
             <td>
               {% set sc = scores.get(p.id|string) %}
               {% if sc %}<span class="badge bg-{{ sc.color }}">{{ sc.score }}</span>{% else %}—{% endif %}
               {% if p.portal_token_only %}<span class="badge bg-danger-subtle text-danger border" title="Penalty ladder: token-only access">Token-only</span>{% endif %}
             </td>
-            <td class="small">{{ p.portal_last_login_at | ist_datetime if p.portal_last_login_at else 'Never' }}</td>
-            <td>
-              {% if p.portal_enabled %}<span class="badge bg-success">Enabled</span>
+            <td class="small text-nowrap">
+              {% if has_login %}
+                <div>{% if p.email %}<i class="bi bi-envelope me-1 text-muted"></i>{{ p.email }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
+                <div class="font-monospace">{% if p.portal_phone %}<i class="bi bi-phone me-1 text-muted"></i>{{ p.portal_phone }}{% else %}<span class="text-muted">—</span>{% endif %}</div>
+              {% else %}<span class="text-muted fst-italic">Password Not Setup</span>{% endif %}
+            </td>
+            {# Last Login + portal status pill (2026-11-11 PM, Pankaj — Status column merged in) #}
+            <td class="small text-nowrap">
+              <div>{{ p.portal_last_login_at | ist_datetime if p.portal_last_login_at else 'Never' }}</div>
+              {% if not has_login %}<span class="badge bg-warning text-dark" title="Create the login with Generate Password">No login yet</span>
+              {% elif p.portal_enabled %}<span class="badge bg-success">Enabled</span>
               {% else %}<span class="badge bg-secondary">Disabled</span>{% endif %}
             </td>
             <td>
@@ -138,25 +163,19 @@
                         data-bs-toggle="modal" data-bs-target="#editModal{{ loop.index }}">
                   <i class="bi bi-pencil"></i>
                 </button>
-                {% endif %}
-                {# Reset opens a real Bootstrap modal, not a native confirm().
-                   confirm() is silently suppressed once a browser's "prevent
-                   this page from creating additional dialogs" is ticked — the
-                   form then submitted with no prompt and jumped straight to the
-                   success banner. A DOM modal cannot be suppressed that way. #}
-                {% if can(current_user, 'trade_partner_partners', 'edit') %}
-                <button type="button" class="btn btn-outline-warning" title="Reset password"
-                        data-bs-toggle="modal" data-bs-target="#resetPwModal"
-                        data-action="/trade-partner/partners/{{ p.id }}/reset-password"
-                        data-name="{{ p.business_name }}">
-                  <i class="bi bi-key"></i>
+                {# Generate Password (first time) / Regenerate Password (2026-11-11 PM):
+                   pick one of the Account's contacts → their phone / email is the Login ID #}
+                <button type="button" class="btn btn-outline-{{ 'warning' if has_login else 'success' }} pw-btn"
+                        title="{{ 'Regenerate Password' if has_login else 'Generate Password' }}"
+                        data-action="/trade-partner/partners/{{ p.id }}/set-login" data-name="{{ p.business_name }}"
+                        data-account="{{ acid }}" data-first="{{ '0' if has_login else '1' }}"
+                        data-current-phone="{{ p.portal_phone or '' }}" data-current-email="{{ (p.email or '') | lower }}">
+                  <i class="bi bi-{{ 'arrow-repeat' if has_login else 'key-fill' }}"></i>
                 </button>
                 {% endif %}
-                {# Toggle opens a Bootstrap modal too — same reason as Reset:
-                   a native confirm() is silently suppressed once the browser's
-                   "prevent additional dialogs" is ticked, flipping portal
-                   access with no prompt. #}
-                {% if can(current_user, 'trade_partner_partners', 'edit') %}
+                {# Toggle opens a Bootstrap modal — a native confirm() is silently
+                   suppressed once the browser's "prevent additional dialogs" is ticked. #}
+                {% if can(current_user, 'trade_partner_partners', 'edit') and has_login %}
                 <button type="button" class="btn btn-outline-{{ 'danger' if p.portal_enabled else 'success' }}"
                         title="{{ 'Disable' if p.portal_enabled else 'Enable' }}"
                         data-bs-toggle="modal" data-bs-target="#togglePortalModal"
@@ -166,10 +185,6 @@
                   <i class="bi bi-{{ 'slash-circle' if p.portal_enabled else 'check-circle' }}"></i>
                 </button>
                 {% endif %}
-                {# Delete opens a real Bootstrap modal too — same reason as
-                   Reset/Toggle above: a native confirm() is silently
-                   suppressed once the browser's "prevent additional dialogs"
-                   is ticked, and this action is permanent. #}
                 {% if can(current_user, 'trade_partner_partners', 'delete') %}
                 <button type="button" class="btn btn-outline-danger" title="Delete"
                         data-bs-toggle="modal" data-bs-target="#deletePartnerModal"
@@ -179,7 +194,16 @@
                 </button>
                 {% endif %}
               </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+  </div>
+</div>
 
+{# Edit modals — outside the table so the table's layout can't clip them (2026-11-11 PM) #}
+{% for p in partners %}
               <!-- Edit modal -->
               <div class="modal fade" id="editModal{{ loop.index }}" tabindex="-1">
                 <div class="modal-dialog">
@@ -192,7 +216,7 @@
                       </div>
                       <div class="modal-body">
                         <div class="mb-2">
-                          <label class="form-label small fw-semibold mb-1">Login Mobile (10 digits)</label>
+                          <label class="form-label small fw-semibold mb-1">Login Phone (10 digits)</label>
                           <input type="tel" name="portal_phone" class="form-control form-control-sm" inputmode="numeric"
                                  value="{{ p.portal_phone or '' }}" placeholder="Leave unchanged">
                           <small class="text-muted">Updates the mobile number this dealer logs into the partner portal with.</small>
@@ -233,13 +257,42 @@
                   </div>
                 </div>
               </div>
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+{% endfor %}
+
+{# Generate / Regenerate Password (2026-11-11 PM, Pankaj) — POST .../set-login #}
+<div class="modal fade" id="setLoginModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <form method="post" id="setLoginForm" action="" class="modal-content" autocomplete="off">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-key me-2"></i><span id="slTitle">Generate Password</span> — <span id="slName"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold mb-1">Who logs in?</label>
+        <div class="form-text mt-0 mb-2">Their email and phone become the Login ID.</div>
+        <div id="slPersons" class="list-group mb-3"></div>
+        <div id="slNoPersons" class="alert alert-warning py-2 small d-none">This account has no contact persons yet —
+          add one on the <a href="#" id="slAcctLink">Account</a> (Locations) first.</div>
+        <label class="form-label small fw-semibold mb-1">Password</label>
+        <div class="input-group">
+          <input type="password" name="password" id="slPassword" class="form-control font-monospace" minlength="8" maxlength="128" required autocomplete="new-password">
+          <button type="button" class="btn btn-outline-secondary" id="slEye" title="Show password" aria-label="Show password"><i class="bi bi-eye"></i></button>
+          <button type="button" class="btn btn-outline-secondary" id="slGen" title="Generate a new password"><i class="bi bi-arrow-repeat"></i></button>
+          <button type="button" class="btn btn-outline-secondary" id="slCopy" title="Copy"><i class="bi bi-clipboard"></i></button>
+        </div>
+        <div class="form-text">A strong password is filled in — keep it or type your own (8 characters or more). It is shown once after saving.
+          <span id="slRegenNote" class="d-none">The partner's current sessions are signed out.</span></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-sm btn-primary" id="slSubmit"><i class="bi bi-check2 me-1"></i>Save Password</button>
+      </div>
+    </form>
   </div>
 </div>
+<script type="application/json" id="slPersonsData">{{ persons | tojson }}</script>
+{% include "crm/contacts/_account_cell_modals.html" %}
 
 <!-- Reset Password confirmation modal (shared; populated on trigger click) -->
 <div class="modal fade" id="resetPwModal" tabindex="-1">
@@ -389,8 +442,74 @@
 <script>
 initGlobalTable('#externalPartnerAccountsTable', {
   order: [],
+  columnDefs: [{ orderable: false, targets: [-1] }],
   language: { emptyTable: 'No portal partners yet. Click Generate Access to provision the first dealer.' }
 });
+// Generate / Regenerate Password (2026-11-11 PM): radio list of the Account's
+// contacts + a password box prefilled with a strong random password.
+(function () {
+  var el = document.getElementById('setLoginModal');
+  if (!el) return;
+  var all = {};
+  try { all = JSON.parse(document.getElementById('slPersonsData').textContent || '{}'); } catch (e) {}
+  var pw = document.getElementById('slPassword');
+  function genPw() {
+    var chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789@#$%', a = new Uint32Array(12), out = '';
+    (window.crypto || window.msCrypto).getRandomValues(a);
+    for (var i = 0; i < a.length; i++) out += chars[a[i] % chars.length];
+    return out;
+  }
+  function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  document.getElementById('slGen').addEventListener('click', function () { pw.value = genPw(); });
+  // Hidden by default; the eye shows / hides it (2026-11-11 PM)
+  var eye = document.getElementById('slEye');
+  function setShown(on) {
+    pw.type = on ? 'text' : 'password';
+    eye.innerHTML = '<i class="bi bi-eye' + (on ? '-slash' : '') + '"></i>';
+    eye.title = on ? 'Hide password' : 'Show password';
+    eye.setAttribute('aria-label', eye.title);
+  }
+  eye.addEventListener('click', function () { setShown(pw.type === 'password'); });
+  document.getElementById('slCopy').addEventListener('click', function () {
+    try { navigator.clipboard.writeText(pw.value); }
+    catch (e) { var t = pw.type; pw.type = 'text'; pw.select(); document.execCommand('copy'); pw.type = t; }
+  });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.pw-btn');
+    if (!b) return;
+    var first = b.dataset.first === '1';
+    document.getElementById('setLoginForm').action = b.dataset.action;
+    document.getElementById('slName').textContent = b.dataset.name;
+    document.getElementById('slTitle').textContent = first ? 'Generate Password' : 'Regenerate Password';
+    document.getElementById('slRegenNote').classList.toggle('d-none', first);
+    var list = all[b.dataset.account] || [], box = document.getElementById('slPersons');
+    box.innerHTML = '';
+    var curPhone = b.dataset.currentPhone, curEmail = b.dataset.currentEmail, picked = false;
+    list.forEach(function (p, i) {
+      var phoneOk = (p.phone || '').replace(/\D/g, '').slice(-10).length === 10, usable = phoneOk || p.email;
+      var isCur = (curPhone && (p.phone || '').replace(/\D/g, '').slice(-10) === curPhone) || (curEmail && (p.email || '').toLowerCase() === curEmail);
+      var lab = document.createElement('label');
+      lab.className = 'list-group-item d-flex align-items-start gap-2' + (usable ? '' : ' text-muted');
+      lab.innerHTML = '<input class="form-check-input mt-1" type="radio" name="person_id" value="' + esc(p.id) + '"' + (usable ? '' : ' disabled') + ' required>' +
+        '<div class="flex-grow-1"><div class="fw-semibold">' + esc(p.name || '—') + (p.role ? ' <span class="badge bg-light text-dark border ms-1">' + esc(p.role) + '</span>' : '') +
+        (isCur ? ' <span class="badge bg-success ms-1">current login</span>' : '') + '</div>' +
+        '<div class="small">' + (p.email ? '<i class="bi bi-envelope me-1"></i>' + esc(p.email) : '<span class="text-muted">no email</span>') + ' · ' +
+        (p.phone ? '<i class="bi bi-phone me-1"></i>' + esc(p.phone) : '<span class="text-muted">no phone</span>') +
+        (p.location ? ' <span class="text-muted">· ' + esc(p.location) + '</span>' : '') + '</div>' +
+        (usable ? '' : '<div class="small text-danger">Needs a 10-digit phone or an email</div>') + '</div>';
+      box.appendChild(lab);
+      if (usable && (isCur || (!picked && list.filter(function (x) { return (x.phone || '').replace(/\D/g, '').slice(-10).length === 10 || x.email; }).length === 1))) {
+        lab.querySelector('input').checked = true; picked = true;
+      }
+    });
+    document.getElementById('slNoPersons').classList.toggle('d-none', list.length > 0);
+    document.getElementById('slAcctLink').href = '/crm/contacts/' + b.dataset.account;
+    document.getElementById('slSubmit').disabled = list.length === 0;
+    pw.value = genPw();
+    setShown(false);
+    bootstrap.Modal.getOrCreateInstance(el).show();
+  });
+})();
 // Reset-password modal: copy the clicked row's action URL and partner name
 // onto the shared modal's form. The csrf_token hidden input is already
 // injected by base.html's CSRF auto-inject on page load and is preserved here.

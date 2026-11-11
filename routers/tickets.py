@@ -227,19 +227,17 @@ async def raise_ticket(
 #   - rate-limited per IP so the open form can't be used to flood admins.
 # The ticket is a normal Ticket row — it appears on /tickets for admins and
 # every active admin is notified, exactly like a signed-in ticket.
-@router.post("/raise-public")
-@limiter.limit("5/hour", key_func=ip_key_func)
-async def raise_ticket_public(
-    request: Request,
-    raised_by: str = Form(...),
-    feedback: str = Form(...),
-    photos: list[UploadFile] = File(default=[]),
-    _csrf=Depends(verify_csrf),
-    db: AsyncSession = Depends(get_db),
-):
-    name = " ".join((raised_by or "").split())[:50]
+async def create_public_ticket(db, raised_by, feedback, photos, source="login page", tag=""):
+    """A ticket from someone who can't sign in — the staff login page or
+    (2026-11-11 PM) the Trade Partner login page. Lands on /tickets for admins
+    and notifies them; source goes in the feedback prefix and the notification."""
+    # A leading "[...]" is reserved for the partner tag ("[DLR-001] Name") that
+    # the partner portal's My Tickets uses to find a partner's tickets, so a
+    # typed name can't make a ticket show up in some partner's history.
+    name = " ".join((raised_by or "").split()).lstrip("[ ")
     if not name:
         return JSONResponse({"error": "Please enter your name."}, status_code=400)
+    name = (tag + name)[:50]
     if not (feedback or "").strip():
         return JSONResponse({"error": "Please describe your issue."}, status_code=400)
     tid = await _next_ticket_id(db)
@@ -251,7 +249,7 @@ async def raise_ticket_public(
     ticket = Ticket(
         ticket_id=tid,
         raised_by=name,
-        feedback="[From login page] " + feedback.strip()[:5000],
+        feedback=f"[From {source}] " + feedback.strip()[:5000],
         photo1_path=saved[0] if len(saved) > 0 else None,
         photo2_path=saved[1] if len(saved) > 1 else None,
     )
@@ -267,13 +265,26 @@ async def raise_ticket_public(
         preview = body if len(body) <= 120 else body[:117] + "..."
         for admin_id in admins:
             await create_notification(
-                db, user_id=admin_id, title=f"New Ticket {tid} (login page)",
-                message=f"{name} raised a ticket from the login page: {preview}",
+                db, user_id=admin_id, title=f"New Ticket {tid} ({source})",
+                message=f"{name} raised a ticket from the {source}: {preview}",
                 notification_type="alert",
             )
     except Exception:
         await db.rollback()
     return JSONResponse({"ok": True, "ticket_id": tid})
+
+
+@router.post("/raise-public")
+@limiter.limit("5/hour", key_func=ip_key_func)
+async def raise_ticket_public(
+    request: Request,
+    raised_by: str = Form(...),
+    feedback: str = Form(...),
+    photos: list[UploadFile] = File(default=[]),
+    _csrf=Depends(verify_csrf),
+    db: AsyncSession = Depends(get_db),
+):
+    return await create_public_ticket(db, raised_by, feedback, photos, source="login page")
 
 
 # ── CLOSE ────────────────────────────────────────────────────────────────────

@@ -2,6 +2,7 @@
 {% block title %}CRM Contacts — OxyPC{% endblock %}
 {% block page_title %}CRM Contacts{% endblock %}
 {% block content %}
+{% import "crm/contacts/_type_pills.html" as tp %}
 {% import "_multiselect_filter.html" as ms %}
 
 <!-- Summary tiles: dark single-count tiles (2026-11-06, _tiles.html) -->
@@ -68,11 +69,11 @@
       </select>
     </div>
     {% endif %}
-    {# Team filters, in the Team Mapping order (2026-11-11) #}
+    {# Team filters: Executive, Team Leader, Manager, AVP/VP (2026-11-11 PM) #}
+    {{ ms.multiselect('f_executive', 'Executive', bucket_options['executive'], f_executive, '') }}
+    {{ ms.multiselect('f_am_dm_gm', 'Team Leader', bucket_options['am_dm_gm'], f_am_dm_gm, '') }}
     {{ ms.multiselect('f_manager', 'Manager', bucket_options['manager'], f_manager, '') }}
-    {{ ms.multiselect('f_executive', 'Executive/Sr Exec', bucket_options['executive'], f_executive, '') }}
-    {{ ms.multiselect('f_vp_avp', 'VP/AVP', bucket_options['vp_avp'], f_vp_avp, '') }}
-    {{ ms.multiselect('f_am_dm_gm', 'DM/GM/CTO/CEO', bucket_options['am_dm_gm'], f_am_dm_gm, '') }}
+    {{ ms.multiselect('f_vp_avp', 'AVP/VP', bucket_options['vp_avp'], f_vp_avp, '') }}
     <div>
       <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
       <a href="/crm/contacts" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
@@ -89,14 +90,28 @@
          primary button: the new one accepts its columns unchanged AND handles
          call records, so it supersedes it. #}
       {% if can(current_user, 'crm_contacts', 'upload') %}<a href="/crm/contacts/upload" class="btn btn-sm btn-outline-secondary"><i class="bi bi-cloud-upload me-1"></i>Bulk Upload CSV</a>{% endif %}
-      {% if can(current_user, 'crm_contacts', 'upload') %}
-      <a href="/crm/contacts/team-mapping/upload" class="btn btn-sm btn-outline-secondary">
-        <i class="bi bi-people me-1"></i>Team Mapping CSV
-      </a>
-      {% endif %}
+      {# Upload Locations / Team Mapping CSV buttons removed (2026-11-11 PM): both uploads
+         are the "Use Upload" tab of the Location Mapping / Team Mapping modals; their
+         pages (/crm/contacts/upload-locations, /crm/contacts/team-mapping/upload) stay. #}
+      {# Upload GSTs (2026-11-11 PM): CSV of GST numbers ticks those accounts, like Upload Tags on All Inventory #}
       {% if has_perm(current_user.role.value, 'crm_contacts', 'edit') %}
-      <button {% if not can(current_user, 'crm_contacts', 'edit') %}hidden {% endif %}type="button" id="bulkTeamMappingBtn" class="btn btn-sm btn-outline-dark" disabled>
-        <i class="bi bi-person-badge me-1"></i>Bulk Team Mapping (<span id="teamSelCount">0</span>)
+      <button type="button" class="btn btn-sm btn-outline-primary" data-bs-toggle="modal" data-bs-target="#gstUploadModal">
+        <i class="bi bi-upload me-1"></i>Upload GSTs
+      </button>
+      {% endif %}
+      {# Team Mapping / Location Mapping (2026-11-11 PM): shown only while rows are ticked #}
+      {% if can(current_user, 'crm_contacts', 'edit') %}
+      <button type="button" id="bulkTeamMappingBtn" class="btn btn-sm btn-outline-primary sel-only" hidden>
+        <i class="bi bi-person-badge me-1"></i>Team Mapping (<span id="teamSelCount">0</span>)
+      </button>
+      <button type="button" id="locationMappingBtn" class="btn btn-sm btn-outline-primary sel-only" hidden>
+        <i class="bi bi-geo-alt me-1"></i>Location Mapping (<span id="locSelCount">0</span>)
+      </button>
+      {% endif %}
+      {# Move to External Partner (2026-11-11, Pankaj): partner without a portal login #}
+      {% if has_perm(current_user.role.value, 'crm_contacts', 'edit') and can(current_user, 'trade_partner_partners', 'add') %}
+      <button type="button" id="movePartnerBtn" class="btn btn-sm btn-outline-primary sel-only" hidden>
+        <i class="bi bi-shop me-1"></i>Move to External Partner (<span id="partnerSelCount">0</span>)
       </button>
       {% endif %}
       {# Hidden for now — reuse later. Modal (#accountBulkUploadModal) and its
@@ -106,9 +121,11 @@
       </button>
       #}
       {% if current_user.role.value == 'admin' %}
-      <a href="/crm/contacts/export-csv?q={{ q }}&from_entity={{ from_entity | urlencode }}&contact_type={{ contact_type }}&source_type={{ source_type }}&buyer_type={{ buyer_type }}&contacted={{ contacted }}&created_by_filter={{ created_by_filter }}"
+      {# Export CSV (n) (2026-11-11 PM): n = the accounts listed with the current filters,
+         team filters included — exactly the rows the file will have. #}
+      <a href="/crm/contacts/export-csv?q={{ q | urlencode }}&from_entity={{ from_entity | urlencode }}&contact_type={{ contact_type }}&source_type={{ source_type }}&buyer_type={{ buyer_type }}&contacted={{ contacted }}&created_by_filter={{ created_by_filter }}&f_vp_avp={{ f_vp_avp }}&f_manager={{ f_manager }}&f_am_dm_gm={{ f_am_dm_gm }}&f_executive={{ f_executive }}"
          class="btn btn-sm btn-outline-success">
-        <i class="bi bi-download me-1"></i>Export CSV
+        <i class="bi bi-download me-1"></i>Export CSV ({{ contacts | length }})
       </a>
       {% endif %}
       {% if can(current_user, 'crm_contacts', 'add') %}<a href="/crm/contacts/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle me-1"></i>Add Account</a>{% endif %}
@@ -128,7 +145,7 @@
         'neutral':        'secondary',
         'pending':        'warning',
       } %}
-      {# Column order (when edit perm grants the checkbox column): Checkbox | Account Name (+Type, Sub-Type) | GST No. | KYC | Credit | Place | Person | Team | Notes (hidden) | Created By | Status | Actions #}
+      {# Column order (when edit perm grants the checkbox column): Checkbox | Account Name (+GST) | Account Type | Account Manager | KYC | Credit | Place | Person | Team | Notes (hidden) | Created By | Status | Actions #}
       <table class="table table-hover mb-0 small" id="contactsTable">
         <thead class="table-light">
           <tr>
@@ -136,8 +153,7 @@
             <th class="ps-3"><input type="checkbox" id="teamSelectAll" class="form-check-input"></th>
             {% endif %}
             <th>Account Name</th>
-            <th>Manager</th>
-            <th>GST No.</th>
+            <th>Account Type</th>
             <th>KYC</th>
             <th>Credit</th>
             <th>Place</th>
@@ -145,8 +161,9 @@
             <th>Team</th>
             <th>Last Activity</th>
             <th class="d-none">Notes</th>
-            <th>Status</th>
+            <th>Account Manager</th>
             <th>Created By</th>
+            <th>Status</th>
             <th>Actions</th>
           </tr>
         </thead>
@@ -159,28 +176,17 @@
           {% set last_act_date = act.get('date', none) if act else none %}
           <tr>
             {% if has_perm(current_user.role.value, 'crm_contacts', 'edit') %}
-            <td class="ps-3"><input type="checkbox" class="form-check-input team-row-chk" value="{{ c.id }}"></td>
+            <td class="ps-3"><input type="checkbox" class="form-check-input team-row-chk" value="{{ c.id }}" data-gst="{{ (c.gstin or '') | upper | trim }}"></td>
             {% endif %}
-            {# 1. Company + Contacted badge #}
-            <td style="max-width:160px">
+            {# 1. Company + Contacted badge — no max-width (2026-11-11 PM) so the
+               one-line pills fit; long names are still cut at 50 characters. #}
+            <td>
               <a href="/crm/contacts/{{ c.id }}" class="fw-semibold text-decoration-none"
                  title="{{ c.company_name }}">
                 {{ c.company_name[:50] }}{% if c.company_name | length > 50 %}…{% endif %}
               </a>
-              {# Type + Sub-Type on one line under the name (2026-11-01) #}
-              <div class="mt-1 d-flex flex-wrap gap-1 align-items-center">
-              {% if c.contact_type == 'supplier' %}
-                <span class="badge bg-primary">Supplier</span>
-              {% elif c.contact_type == 'buyer' %}
-                <span class="badge bg-info text-white">Buyer</span>
-              {% else %}
-                <span class="badge bg-success">Both</span>
-              {% endif %}
-            
-              {% if c.source_type %}<span class="badge bg-light text-dark border me-1">{{ source_labels.get(c.source_type, c.source_type | replace('_',' ') | title) }}</span>{% endif %}
-              {% if c.buyer_type %}<span class="badge bg-light text-dark border">{{ buyer_labels.get(c.buyer_type, c.buyer_type | replace('_',' ') | title) }}</span>{% endif %}
-              
-            </div>
+              {# GST under the name (2026-11-11 PM, Pankaj) — was its own column #}
+              <div class="small font-monospace {{ '' if c.gstin else 'text-muted' }}">{{ c.gstin or 'No GST' }}</div>
               <div class="mt-1 d-none">
                 {% if contacted %}
                 <span class="badge bg-success bg-opacity-75" title="At least one log activity exists">
@@ -193,10 +199,8 @@
                 {% endif %}
               </div>
             </td>
-            {# Manager (2026-11-06): the account's mapped Manager(s) — set by Map Team or Activity Board → Map Manager #}
-            <td class="small">{% set _mgr = team_map.get(cid, {}).get('manager', []) %}{% if _mgr %}{{ _mgr | map(attribute='name') | join(', ') }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
-            {# GST number #}
-            <td class="small">{% if c.gstin %}<span class="font-monospace">{{ c.gstin }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+            {# Account Type (2026-11-11 PM, Pankaj): the pills that sat under the name #}
+            <td style="min-width:150px">{{ tp.pills(c, cid in partner_contact_ids, source_labels, buyer_labels, wrap=True) }}</td>
             {# KYC — Finance verifies on Account Detail #}
             <td>
               {% if c.kyc_verified %}
@@ -276,12 +280,9 @@
               <span class="text-muted">—</span>
               {% endif %}
             </td>
-            {# Status — account status only (Active only when KYC + Credit verified) #}
-            <td>
-              {% if c.status == 'active' %}<span class="badge bg-success">Active</span>
-              {% elif c.status == 'blacklisted' %}<span class="badge bg-dark">Blacklisted</span>
-              {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
-            </td>
+            {# Account Manager (2026-11-11 PM, Pankaj): the account's Assigned To — the
+               Executive / Team Leader picked in Map Team (was the mapped Manager level) #}
+            <td class="small">{% if c.assigned_to %}{{ account_manager_names.get(c.assigned_to, c.assigned_to) }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
             {# 10b. Created By — who created it, or ran the bulk upload it came
                in on; reports_to badge sourced from Admin > User Management #}
             <td class="small">
@@ -292,6 +293,12 @@
               {% else %}
               <span class="text-muted">{{ c.created_by or '—' }}</span>
               {% endif %}
+            </td>
+            {# Status — account status only (Active only when KYC + Credit verified) #}
+            <td>
+              {% if c.status == 'active' %}<span class="badge bg-success">Active</span>
+              {% elif c.status == 'blacklisted' %}<span class="badge bg-dark">Blacklisted</span>
+              {% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}
             </td>
             {# 11. Actions #}
             <td>
@@ -445,6 +452,54 @@
 </div>
 
 {% include "crm/contacts/_map_team_modal.html" %}
+{% if can(current_user, 'crm_contacts', 'edit') %}{% include "crm/contacts/_location_mapping_modal.html" %}{% endif %}
+
+{# Upload GSTs (2026-11-11 PM, Pankaj) — POST /crm/contacts/upload-gsts, read-only #}
+<div class="modal fade" id="gstUploadModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header"><h5 class="modal-title"><i class="bi bi-upload me-2"></i>Upload GSTs</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label fw-semibold">GST Numbers CSV</label>
+        <input type="file" id="gstUploadFile" class="form-control" accept=".csv">
+        <div class="form-text small">One column with header <code>gstin</code>, one GST number per row. The matching accounts are ticked in the table.</div>
+        <div id="gstUploadStatus" class="small mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="gstUploadBtn" class="btn btn-primary"><i class="bi bi-check2-square me-1"></i>Select Accounts</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Move to External Partner (2026-11-11, Pankaj) — a plain confirmation (2026-11-11 PM):
+   the selected Accounts become External Partners without a portal login; their team
+   is not touched. routers/crm_contacts.py move_accounts_to_partner, services/partner_move.py. #}
+{% if has_perm(current_user.role.value, 'crm_contacts', 'edit') and can(current_user, 'trade_partner_partners', 'add') %}
+<div class="modal fade" id="movePartnerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" action="/crm/contacts/move-to-partner" class="modal-content" id="movePartnerForm">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+      <div id="movePartnerIds"></div>
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-shop me-2"></i>Move to External Partner</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="mb-2">Move <strong id="movePartnerCount"></strong> to External Partner?</p>
+        <p class="small text-muted mb-0">They will be listed on <b>Partner Accounts</b> without a portal login — create logins there with
+          <b>Generate Access</b>. Team mapping stays as it is.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1"></i>Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 
 <!-- Bulk Upload Accounts & Calls modal -->
 <div class="modal fade" id="accountBulkUploadModal" tabindex="-1" aria-hidden="true">
@@ -558,8 +613,8 @@
 })();
 </script>
 <script>
-// col index (edit perm): 0=Checkbox,1=Account Name,2=Manager,3=GST No.,4=KYC,5=Credit,6=Place,7=Person,8=Team,9=Last Activity,10=Notes(hidden),11=Status,12=Created By,13=Actions
-// col index (no edit perm, no checkbox column): 0=Account Name,1=Manager,2=GST No.,3=KYC,4=Credit,5=Place,6=Person,7=Team,8=Last Activity,9=Notes(hidden),10=Status,11=Created By,12=Actions
+// col index (edit perm): 0=Checkbox,1=Account Name (+GST),2=Account Type,3=KYC,4=Credit,5=Place,6=Person,7=Team,8=Last Activity,9=Notes(hidden),10=Account Manager,11=Created By,12=Status,13=Actions
+// col index (no edit perm, no checkbox column): 0=Account Name (+GST),1=Account Type,2=KYC,3=Credit,4=Place,5=Person,6=Team,7=Last Activity,8=Notes(hidden),9=Account Manager,10=Created By,11=Status,12=Actions
 $(document).ready(function(){
   // Global Table module (static/js/global-table.js) — always initialized,
   // even with zero rows: DataTables reads its columns from <thead>, not from
@@ -572,7 +627,7 @@ $(document).ready(function(){
   var off = hasCheckboxCol ? 1 : 0;
   initGlobalTable('#contactsTable', {
     order: [[0 + off, 'asc']],  // default sort by Company
-    columnDefs: [{ orderable: false, targets: hasCheckboxCol ? [0, 6, 7, 8, 13] : [5, 6, 7, 12] }],
+    columnDefs: [{ orderable: false, targets: hasCheckboxCol ? [0, 5, 6, 7, 13] : [4, 5, 6, 12] }],
     language: { emptyTable: 'No contacts found. Use the Add Account button above to create one.' }
   });
   // DataTables' initial draw (applying the sort above + odd/even striping)
@@ -640,7 +695,7 @@ function wireContactsPageModals() {
   }
 
   var BUCKET_LABELS = {
-    manager: 'Manager', executive: 'Executive/Sr Executive', vp_avp: 'VP/AVP', am_dm_gm: 'DM/GM/CTO/CEO',
+    executive: 'Executive', am_dm_gm: 'Team Leader', manager: 'Manager', vp_avp: 'AVP/VP',
     finance: 'Finance Manager'
   };
 
@@ -668,97 +723,131 @@ function wireContactsPageModals() {
     });
   }
 
-  // Map Team modal — shared between the per-row "Map Team" button (single
-  // mode, pre-filled) and the toolbar "Bulk Team Mapping" button (bulk mode,
-  // starts empty). setBucketSelection() dispatches a native 'change' event
-  // on a checkbox after setting it, so it reuses the existing sync() logic
-  // in static/js/multiselect-filter.js (hidden-input + label text) instead
-  // of duplicating it.
-  var mapTeamModalEl = document.getElementById('mapTeamModal');
-  if (mapTeamModalEl) {
-    var mapTeamModal = new bootstrap.Modal(mapTeamModalEl);
-
-    function setBucketSelection(fieldName, ids) {
-      var wrap = document.querySelector('.ms-filter[data-ms="' + fieldName + '"]');
-      if (!wrap) return;
-      var menu = wrap.querySelector('.dropdown-menu');
-      var boxes = menu.querySelectorAll('.ms-opt');
-      boxes.forEach(function (cb) { cb.checked = ids.indexOf(cb.value) !== -1; });
-      if (boxes.length) {
-        boxes[0].dispatchEvent(new Event('change', { bubbles: true }));
-      } else {
-        var hidden = document.getElementById('ms_val_' + fieldName);
-        if (hidden) hidden.value = '';
-      }
-    }
-
-    function fillContactIds(ids) {
-      var container = document.getElementById('mapTeamContactIds');
-      container.innerHTML = '';
-      ids.forEach(function (id) {
-        var input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = 'contact_ids';
-        input.value = id;
-        container.appendChild(input);
-      });
-    }
-
-    function openMapTeamModal(mode, ids, headerText, teamData) {
-      document.getElementById('mapTeamMode').value = mode;
-      fillContactIds(ids);
-      document.getElementById('mapTeamHeader').textContent = headerText;
-      document.getElementById('mapTeamHint').textContent = mode === 'single'
-        ? 'Leaving a bucket blank clears it for this account.'
-        : 'Only buckets where you select at least one person are changed — untouched buckets are left as-is for every selected account.';
-      var td = teamData || {};
-      setBucketSelection('bucket_vp_avp', (td.vp_avp || []).map(function (m) { return m.id; }));
-      setBucketSelection('bucket_manager', (td.manager || []).map(function (m) { return m.id; }));
-      setBucketSelection('bucket_am_dm_gm', (td.am_dm_gm || []).map(function (m) { return m.id; }));
-      setBucketSelection('bucket_executive', (td.executive || []).map(function (m) { return m.id; }));
-      // Must prefill too: in single mode a blank bucket is cleared on save.
-      setBucketSelection('bucket_finance', (td.finance || []).map(function (m) { return m.id; }));
-      mapTeamModal.show();
-    }
-
+  // Map Team modal (2026-11-11 PM): templates/crm/contacts/_map_team_modal.html
+  // owns the form; here the row button (single, prefilled) and the toolbar
+  // "Bulk Team Mapping" button (bulk, empty) just open it.
+  function teamIds(td) {
+    var out = {};
+    Object.keys(td || {}).forEach(function (b) { out[b] = (td[b] || []).map(function (m) { return m.id; }); });
+    return out;
+  }
+  if (window.MapTeam) {
     document.querySelectorAll('.map-team-btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        var contactId = this.getAttribute('data-contact-id');
-        var company = this.getAttribute('data-company') || '';
         var teamData = {};
         try { teamData = JSON.parse(this.getAttribute('data-team') || '{}'); } catch (e) {}
-        openMapTeamModal('single', [contactId], company, teamData);
+        window.MapTeam.open('single', [this.getAttribute('data-contact-id')], this.getAttribute('data-company') || '', teamIds(teamData));
       });
     });
-
     var bulkBtn = document.getElementById('bulkTeamMappingBtn');
     if (bulkBtn) {
       bulkBtn.addEventListener('click', function () {
-        var ids = [];
-        document.querySelectorAll('.team-row-chk:checked').forEach(function (cb) { ids.push(cb.value); });
+        var ids = window._contactsSelectedIds ? window._contactsSelectedIds() : [];
         if (!ids.length) return;
-        openMapTeamModal('bulk', ids, ids.length + ' companies selected', {});
+        window.MapTeam.open('bulk', ids, 'Team Mapping — ' + ids.length + ' account' + (ids.length === 1 ? '' : 's'), {}, { tabs: true });
       });
     }
   }
 
-  // Row checkbox select-all + toolbar button enable/disable + count
+  // Row checkboxes (2026-11-11 PM): counted across every page of the table, not
+  // just the one on screen — DataTables keeps the other pages' rows off the DOM.
   var selectAllChk = document.getElementById('teamSelectAll');
   var bulkTeamBtn = document.getElementById('bulkTeamMappingBtn');
   var teamSelCountEl = document.getElementById('teamSelCount');
-  function updateTeamSelUI() {
-    var checked = document.querySelectorAll('.team-row-chk:checked').length;
-    if (teamSelCountEl) teamSelCountEl.textContent = String(checked);
-    if (bulkTeamBtn) bulkTeamBtn.disabled = checked === 0;
+  var movePartnerBtn = document.getElementById('movePartnerBtn');
+  var partnerSelCountEl = document.getElementById('partnerSelCount');
+  function rowChks(onlyFiltered) {
+    if (window.$ && $.fn.dataTable && $.fn.dataTable.isDataTable('#contactsTable')) {
+      return $($('#contactsTable').DataTable().rows(onlyFiltered ? { search: 'applied' } : undefined).nodes()).find('.team-row-chk').toArray();
+    }
+    return Array.prototype.slice.call(document.querySelectorAll('.team-row-chk'));
   }
+  function selectedIds() { return rowChks().filter(function (c) { return c.checked; }).map(function (c) { return c.value; }); }
+  window._contactsSelectedIds = selectedIds;
+  function updateTeamSelUI() {
+    var checked = selectedIds().length;
+    document.querySelectorAll('.sel-only').forEach(function (b) { b.hidden = checked === 0; });
+    ['teamSelCount', 'locSelCount'].forEach(function (id) { var e = document.getElementById(id); if (e) e.textContent = String(checked); });
+    if (partnerSelCountEl) partnerSelCountEl.textContent = String(checked);
+  }
+
+  // Move to External Partner (2026-11-11 PM): confirm the number of selected accounts, then post
+  var pmModalEl = document.getElementById('movePartnerModal');
+  if (pmModalEl && movePartnerBtn) {
+    movePartnerBtn.addEventListener('click', function () {
+      var ids = selectedIds();
+      if (!ids.length) return;
+      var box = document.getElementById('movePartnerIds'); box.innerHTML = '';
+      ids.forEach(function (id) { var i = document.createElement('input'); i.type = 'hidden'; i.name = 'contact_ids'; i.value = id; box.appendChild(i); });
+      document.getElementById('movePartnerCount').textContent = ids.length + ' selected account' + (ids.length === 1 ? '' : 's');
+      bootstrap.Modal.getOrCreateInstance(pmModalEl).show();
+    });
+  }
+
   if (selectAllChk) {
     selectAllChk.addEventListener('change', function () {
-      document.querySelectorAll('.team-row-chk').forEach(function (cb) { cb.checked = selectAllChk.checked; });
+      rowChks(true).forEach(function (cb) { cb.checked = selectAllChk.checked; });   // every row the search leaves
       updateTeamSelUI();
     });
   }
-  document.querySelectorAll('.team-row-chk').forEach(function (cb) {
-    cb.addEventListener('change', updateTeamSelUI);
+  document.getElementById('contactsTable').addEventListener('change', function (e) {
+    if (e.target.classList && e.target.classList.contains('team-row-chk')) updateTeamSelUI();
+  });
+
+  // Location Mapping (2026-11-11 PM): _location_mapping_modal.html
+  var locBtn = document.getElementById('locationMappingBtn');
+  if (locBtn && window.LocationMapping) {
+    locBtn.addEventListener('click', function () {
+      var ids = selectedIds();
+      if (ids.length) window.LocationMapping.open(ids);
+    });
+  }
+
+  // Upload GSTs (2026-11-11 PM): CSV of GST numbers → tick those accounts on every page
+  var gstBtn = document.getElementById('gstUploadBtn');
+  if (gstBtn) gstBtn.addEventListener('click', async function () {
+    var fileInput = document.getElementById('gstUploadFile'), status = document.getElementById('gstUploadStatus');
+    if (!fileInput.files.length) { status.innerHTML = '<span class="text-danger">Select a CSV file first.</span>'; return; }
+    gstBtn.disabled = true;
+    status.innerHTML = '<span class="text-muted">Uploading…</span>';
+    var fd = new FormData();
+    fd.append('file', fileInput.files[0]);
+    fd.append('csrf_token', (document.cookie.match('(?:^|;)\\s*csrf_token=([^;]*)') || ['', ''])[1]);
+    try {
+      var r = await fetch('/crm/contacts/upload-gsts', { method: 'POST', body: fd, headers: { 'X-CSRF-Token': (document.cookie.match('(?:^|;)\\s*csrf_token=([^;]*)') || ['', ''])[1] } });
+      var d = await r.json();
+      if (d.error) { status.innerHTML = '<span class="text-danger">' + esc(d.error) + '</span>'; return; }
+      var byId = {};
+      rowChks().forEach(function (c) { byId[c.value] = c; });
+      var ticked = 0, offList = [];
+      Object.keys(d.found || {}).forEach(function (g) {
+        var any = false;
+        d.found[g].forEach(function (id) { if (byId[id]) { if (!byId[id].checked) ticked++; byId[id].checked = true; any = true; } });
+        if (!any) offList.push(g);
+      });
+      updateTeamSelUI();
+      var matched = Object.keys(d.found || {}).length;
+      var parts = [d.rows_read + ' rows in file'];
+      if ((d.duplicates || []).length) parts.push(d.duplicates.length + ' duplicate(s) ignored');
+      parts.push(matched + ' GST(s) matched');
+      if ((d.not_found || []).length) parts.push(d.not_found.length + ' not found');
+      if (offList.length) parts.push(offList.length + ' not in the current list (filters)');
+      parts.push(selectedIds().length + ' now selected in total');
+      function list(label, xs) { return xs && xs.length ? '<div class="mt-1"><span class="fw-semibold">' + label + ':</span> <span class="font-monospace">' + xs.map(esc).join(', ') + '</span></div>' : ''; }
+      bootstrap.Modal.getInstance(document.getElementById('gstUploadModal')).hide();
+      var box = document.createElement('div');
+      box.className = 'alert alert-info alert-dismissible fade show small mb-3';
+      box.innerHTML = '<strong>' + parts.join(', ') + '</strong>' + list('Not found', d.not_found) +
+        list('Not in the current list', offList) + list('Duplicates in file', d.duplicates) + list('Row errors', d.errors) +
+        '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+      document.querySelector('main').prepend(box);
+      box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      fileInput.value = '';
+    } catch (e) {
+      status.innerHTML = '<span class="text-danger">Upload failed.</span>';
+    } finally {
+      gstBtn.disabled = false;
+    }
   });
 }
 </script>

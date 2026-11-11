@@ -83,7 +83,10 @@
     <div class="row g-3 align-items-end">
       <div class="col-md-6">
         <label class="form-label fw-semibold">GSTIN</label>
-        <input type="text" name="gstin" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.gstin or '' if contact else '' }}" placeholder="15-char GSTIN" maxlength="15">
+        <input type="text" name="gstin" id="gstinInput" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.gstin or '' if contact else '' }}" placeholder="15-char GSTIN" maxlength="15"
+               data-exclude="{{ contact.id if contact else '' }}">
+        {# GST is unique per Account (2026-11-11): warned here, refused on save #}
+        <div class="invalid-feedback" id="gstinDup"></div>
       </div>
       <div class="col-md-6">
         <label class="form-label fw-semibold">Upload GSTIN Document</label>
@@ -189,7 +192,8 @@
         </select>
       </div>
       <div class="col-md-3">
-        <label class="form-label fw-semibold">Assigned To</label>
+        {# Account Manager (2026-11-11 PM): was "Assigned To"; Map Team sets it to the picked Executive / Team Leader #}
+        <label class="form-label fw-semibold">Account Manager</label>
         <select name="assigned_to" class="form-select">
           {% for u in users %}
           <option value="{{ u.username }}"
@@ -258,6 +262,32 @@ document.addEventListener('input', function (e) {
   var pos = el.selectionStart, up = el.value.toUpperCase();
   if (up !== el.value) { el.value = up; try { el.setSelectionRange(pos, pos); } catch (x) {} }
 });
+// GST is unique per Account (2026-11-11, Pankaj): warn as soon as it's typed; the server refuses it too.
+(function () {
+  var inp = document.getElementById('gstinInput'), msg = document.getElementById('gstinDup');
+  if (!inp) return;
+  var last = '';
+  function check() {
+    var v = inp.value.trim().toUpperCase();
+    if (v === last) return; last = v;
+    if (!v) { inp.classList.remove('is-invalid'); return; }
+    fetch('/crm/contacts/gst-check?gstin=' + encodeURIComponent(v) + '&exclude=' + encodeURIComponent(inp.dataset.exclude || ''))
+      .then(function (r) { return r.json(); }).then(function (d) {
+        if (inp.value.trim().toUpperCase() !== v) return;
+        if (d.taken) {
+          msg.innerHTML = 'Already used by <a href="' + d.url + '" target="_blank"></a> — GST must be unique.';
+          msg.querySelector('a').textContent = d.company + ' (' + d.code + ')';
+          inp.classList.add('is-invalid');
+        } else { inp.classList.remove('is-invalid'); }
+      }).catch(function () {});
+  }
+  inp.addEventListener('blur', check);
+  inp.addEventListener('input', function () { if (inp.value.trim().length >= 15) check(); else inp.classList.remove('is-invalid'); });
+  var form = inp.form;
+  if (form) form.addEventListener('submit', function (e) {
+    if (inp.classList.contains('is-invalid')) { e.preventDefault(); inp.focus(); }
+  });
+})();
 function addLocationBlock() {
   var tpl = document.getElementById('locationBlockTemplate');
   var clone = tpl.content.cloneNode(true);

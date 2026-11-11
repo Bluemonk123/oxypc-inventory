@@ -21,9 +21,9 @@ def _u(designation=None, role="sales"):
 def test_role_buckets_and_labels_cover_the_same_four_keys():
     # Five buckets since 2026-11-09 (Finance Manager added); name kept for history.
     assert set(ROLE_BUCKETS) == set(BUCKET_LABELS.keys())
-    # 2026-11-11: Manager, Executive/Sr Executive, VP/AVP, DM/GM/CTO/CEO, Finance Manager
-    assert ROLE_BUCKETS == ["manager", "executive", "vp_avp", "am_dm_gm", "finance"]
-    assert BUCKET_LABELS["am_dm_gm"] == "DM/GM/CTO/CEO"
+    # 2026-11-11 PM: Executive, Team Leader (key am_dm_gm), Manager, AVP/VP, Finance Manager
+    assert ROLE_BUCKETS == ["executive", "am_dm_gm", "manager", "vp_avp", "finance"]
+    assert BUCKET_LABELS["am_dm_gm"] == "Team Leader" and BUCKET_LABELS["vp_avp"] == "AVP/VP"
     assert BUCKET_LABELS["finance"] == "Finance Manager"
 
 
@@ -40,14 +40,14 @@ def test_eligible_users_matches_whole_word_designation():
 
 
 def test_eligible_users_does_not_false_positive_on_substring():
-    # 2026-11-11: the bucket is DM/GM/CTO/CEO (AM no longer matches)
+    # 2026-11-11 PM: the bucket is Team Leader (Team Leader / Team Lead / TL, whole words)
     users = [_u(designation="Team Lead"), _u(designation="Samir's Assistant"), _u(designation="DM - North"),
-             _u(designation="AM - North"), _u(designation="CTO"), _u(designation="Director")]
-    assert eligible_users_for_bucket(users, "am_dm_gm") == [users[2], users[4]]
+             _u(designation="TL - North"), _u(designation="Teamleader"), _u(designation="Sales Team Leader")]
+    assert eligible_users_for_bucket(users, "am_dm_gm") == [users[0], users[3], users[5]]
 
 
 def test_eligible_users_can_match_multiple_buckets():
-    u = _u(designation="Sr Executive / GM")
+    u = _u(designation="Sr Executive / Team Leader")
     assert eligible_users_for_bucket([u], "executive") == [u]
     assert eligible_users_for_bucket([u], "am_dm_gm") == [u]
 
@@ -261,7 +261,7 @@ async def test_team_mapping_sample_csv_lists_accounts():
             # Row count depends on how many non-trashed accounts exist in
             # whatever DB this runs against (the local dev DB currently has
             # none active) — the header contract is what this test locks in.
-            assert body.splitlines()[0] == "gstin,company_name,manager,executive,vp_avp,am_dm_gm,finance"
+            assert body.splitlines()[0] == "gstin,company_name,executive,team_leader,manager,avp_vp,finance"
     finally:
         app.dependency_overrides.pop(get_current_user, None)
         app.dependency_overrides.pop(get_db, None)

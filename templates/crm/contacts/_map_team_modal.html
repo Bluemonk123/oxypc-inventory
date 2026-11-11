@@ -1,39 +1,74 @@
 {# templates/crm/contacts/_map_team_modal.html
-   Shared single/bulk edit modal for Account Team Mapping. Included once
-   from list.html; scope (single company vs bulk) is switched by JS before
-   opening — same convention as other shared modals in this codebase.
-   Field names (bucket_vp_avp etc.) are distinct from the filter bar's
-   f_vp_avp etc. so the two sets of checkbox-dropdown macro instances don't
-   collide on element id. #}
+   Shared single / bulk Account Team Mapping modal — Accounts List (list.html)
+   and the Supplier / Customer Deal pages' Team Mapping Edit.
+
+   2026-11-11 PM (Pankaj): pick ONE Executive or Team Leader. That person is the
+   Account Manager (the account's Assigned To), and the levels above — Team
+   Leader, Manager, AVP/VP — fill from each person's Report To, editable before
+   saving (by designation, see services/crm_team.designation_hierarchy).
+   Finance Manager stays its own picker. Saved by POST
+   /crm/contacts/team-mapping (routers/crm_contacts.py save_team_mapping).
+
+   Needs: bucket_options (Finance list), pm_users [(id, name, designation)],
+   pm_levels {user_id: {level: user_id}} — up the Report To chain, the first
+   person whose designation is Team Leader / Manager / AVP/VP fills that level. Deal pages also pass mt_contact_id,
+   mt_selected ({bucket: "id,id"}) and mt_return. JS: window.MapTeam.open(mode,
+   ids, header, teamData) — list.html calls it; the deal pages' Edit button just
+   opens the modal and the server-side mt_selected prefills it. #}
 {% import "_multiselect_filter.html" as ms %}
-{# Deal pages (2026-11-11): one account, opened from Team Mapping's Edit button —
-   mt_contact_id / mt_selected ({bucket: "id,id"}) / mt_return come prefilled. #}
 {% set _mt_sel = mt_selected if mt_selected is defined else {} %}
 <div class="modal fade" id="mapTeamModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
-    <form method="post" action="/crm/contacts/team-mapping" class="modal-content" id="mapTeamForm">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
-      <input type="hidden" name="mode" id="mapTeamMode" value="single">
-      <div id="mapTeamContactIds">{% if mt_contact_id is defined and mt_contact_id %}<input type="hidden" name="contact_ids" value="{{ mt_contact_id }}">{% endif %}</div>
-      {% if mt_return is defined and mt_return %}<input type="hidden" name="return_to" value="{{ mt_return }}">{% endif %}
+    <div class="modal-content">
       <div class="modal-header py-2">
         <h5 class="modal-title"><i class="bi bi-people-fill me-2"></i><span id="mapTeamHeader">Map Team</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
+      {# Use Form / Use Upload (2026-11-11 PM): the tabs show only when opened from
+         the Accounts List's "Team Mapping (n)" selection button. #}
+      <ul class="nav nav-tabs px-3 pt-2" id="mtTabs" hidden>
+        <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#mtFormPane"><i class="bi bi-ui-checks me-1"></i>Use Form</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#mtUploadPane"><i class="bi bi-upload me-1"></i>Use Upload</button></li>
+      </ul>
+      <div class="tab-content">
+      <div class="tab-pane fade show active" id="mtFormPane">
+    <form method="post" action="/crm/contacts/team-mapping" id="mapTeamForm">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+      <input type="hidden" name="mode" id="mapTeamMode" value="single">
+      <div id="mapTeamContactIds">{% if mt_contact_id is defined and mt_contact_id %}<input type="hidden" name="contact_ids" value="{{ mt_contact_id }}">{% endif %}</div>
+      {% if mt_return is defined and mt_return %}<input type="hidden" name="return_to" value="{{ mt_return }}">{% endif %}
       <div class="modal-body">
+        <label class="form-label fw-semibold mb-1">Account Manager level</label>
+        <div class="d-flex gap-3 mb-3">
+          <div class="form-check"><input class="form-check-input" type="radio" name="owner_level" id="mtLvlExec" value="executive" checked>
+            <label class="form-check-label" for="mtLvlExec">Executive</label></div>
+          <div class="form-check"><input class="form-check-input" type="radio" name="owner_level" id="mtLvlTl" value="am_dm_gm">
+            <label class="form-check-label" for="mtLvlTl">Team Leader</label></div>
+        </div>
         <div class="row g-3">
-          {# Order (2026-11-11, Pankaj): Manager, Executive/Sr Executive, VP/AVP,
-             DM/GM/CTO/CEO, then Finance Manager (shown only here, not on the deal pages). #}
-          <div class="col-md-6">{{ ms.multiselect('bucket_manager', 'Manager', bucket_options['manager'], _mt_sel.get('manager', ''), width='') }}</div>
-          <div class="col-md-6">{{ ms.multiselect('bucket_executive', 'Executive/Sr Executive', bucket_options['executive'], _mt_sel.get('executive', ''), width='') }}</div>
-          <div class="col-md-6">{{ ms.multiselect('bucket_vp_avp', 'VP/AVP', bucket_options['vp_avp'], _mt_sel.get('vp_avp', ''), width='') }}</div>
-          <div class="col-md-6">{{ ms.multiselect('bucket_am_dm_gm', 'DM/GM/CTO/CEO', bucket_options['am_dm_gm'], _mt_sel.get('am_dm_gm', ''), width='') }}</div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold mb-1"><span id="mtOwnerLbl">Executive</span> — Account Manager</label>
+            <select name="owner_id" id="mtOwner" class="form-select">
+              <option value="">— Select —</option>
+              {% for uid, nm, dsg in pm_users %}<option value="{{ uid }}">{{ nm }}{% if dsg %} · {{ dsg }}{% endif %}</option>{% endfor %}
+            </select>
+            <div class="form-text">Becomes the account's Account Manager.</div>
+          </div>
+          {% for b, lbl in [('am_dm_gm', 'Team Leader'), ('manager', 'Manager'), ('vp_avp', 'AVP/VP')] %}
+          <div class="col-md-6 mt-level" data-level="{{ b }}">
+            <label class="form-label fw-semibold mb-1">{{ lbl }}</label>
+            <select name="pick_{{ b }}" class="form-select mt-pick" data-level="{{ b }}">
+              <option value="">— None —</option>
+              {% for uid, nm, dsg in pm_users %}<option value="{{ uid }}">{{ nm }}{% if dsg %} · {{ dsg }}{% endif %}</option>{% endfor %}
+            </select>
+          </div>
+          {% endfor %}
           {# Finance team member (2026-11-09, Pankaj): users whose Designation or
              role name has the word Finance or Accounts (services/crm_team.py). #}
           <div class="col-md-6">{{ ms.multiselect('bucket_finance', 'Finance Manager', bucket_options['finance'], _mt_sel.get('finance', ''), width='') }}</div>
         </div>
         <p class="small text-muted mt-3 mb-0" id="mapTeamHint">
-          Leaving a bucket blank clears it for this account.
+          The levels above fill in from the Account Manager's <b>Report To</b> chain — whoever has the Team Leader, Manager or AVP/VP designation. Change any of them before saving.
         </p>
       </div>
       <div class="modal-footer py-2">
@@ -41,5 +76,110 @@
         <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check2 me-1"></i>Save Team Mapping</button>
       </div>
     </form>
+      </div>
+      {# Use Upload = the Team Mapping CSV page (/crm/contacts/team-mapping/upload) #}
+      <div class="tab-pane fade" id="mtUploadPane">
+        <form method="post" action="/crm/contacts/team-mapping/upload" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+          <div class="modal-body">
+            <p class="small text-muted mb-2">Match key is <code>gstin</code> — rows without a GSTIN are skipped. Columns
+              <code>executive</code>, <code>team_leader</code>, <code>manager</code>, <code>avp_vp</code>, <code>finance</code> take
+              full names (comma-separated for more than one), exactly as on the user list. A blank column leaves that level as it is.</p>
+            <p class="small text-muted mb-3">Fill <code>executive</code> or <code>team_leader</code> and that person becomes the
+              <b>Account Manager</b>; the levels above left blank are mapped from their <b>Report To</b> chain by designation.</p>
+            {% if can(current_user, 'crm_contacts', 'export') %}<a href="/crm/contacts/team-mapping/sample-csv" class="btn btn-sm btn-outline-secondary mb-3">
+              <i class="bi bi-download me-1"></i>Download Sample CSV (all accounts)</a>{% endif %}
+            <input type="file" name="file" class="form-control form-control-sm" accept=".csv" required>
+            <div class="form-text"><a href="/crm/contacts/team-mapping/upload" target="_blank">Open the full upload page</a> for the name reference list.</div>
+          </div>
+          <div class="modal-footer py-2">
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-upload me-1"></i>Upload &amp; Apply</button>
+          </div>
+        </form>
+      </div>
+      </div>
+    </div>
   </div>
 </div>
+<script type="application/json" id="mtLevels">{{ pm_levels | tojson }}</script>
+<script type="application/json" id="mtServerSel">{{ _mt_sel | tojson }}</script>
+<script>
+(function () {
+  var el = document.getElementById('mapTeamModal');
+  if (!el) return;
+  var levels = {}, serverSel = {};
+  try { levels = JSON.parse(document.getElementById('mtLevels').textContent || '{}'); } catch (e) {}
+  try { serverSel = JSON.parse(document.getElementById('mtServerSel').textContent || '{}'); } catch (e) {}
+  var LEVELS = ['executive', 'am_dm_gm', 'manager', 'vp_avp'];
+  var LBL = { executive: 'Executive', am_dm_gm: 'Team Leader' };
+  var owner = document.getElementById('mtOwner');
+  var opened = false;
+  function level() { var r = el.querySelector('[name=owner_level]:checked'); return r ? r.value : 'executive'; }
+  function above() { return LEVELS.slice(LEVELS.indexOf(level()) + 1); }
+  function pick(lvl) { return el.querySelector('.mt-pick[data-level="' + lvl + '"]'); }
+  function has(sel, v) { return v && sel.querySelector('option[value="' + v + '"]'); }
+  function showLevels() {
+    var up = above();
+    document.getElementById('mtOwnerLbl').textContent = LBL[level()];
+    el.querySelectorAll('.mt-level').forEach(function (d) {
+      var on = up.indexOf(d.dataset.level) !== -1;
+      d.hidden = !on;
+      var s = d.querySelector('select'); s.disabled = !on; if (!on) s.value = '';
+    });
+  }
+  // levels above the Account Manager: whoever up their Report To chain has that designation
+  function autofill() {
+    var c = levels[owner.value] || {};
+    above().forEach(function (lvl) { var s = pick(lvl); s.value = has(s, c[lvl]) ? c[lvl] : ''; });
+  }
+  function setFinance(ids) {
+    var wrap = el.querySelector('.ms-filter[data-ms="bucket_finance"]');
+    if (!wrap) return;
+    var boxes = wrap.querySelectorAll('.ms-opt');
+    boxes.forEach(function (cb) { cb.checked = ids.indexOf(cb.value) !== -1; });
+    if (boxes.length) boxes[0].dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  // teamData: {bucket: [ids]} — the account's current mapping (single mode)
+  function prefill(teamData) {
+    var t = teamData || {}, first = function (b) { return (t[b] || [])[0] || ''; };
+    var lvl = first('executive') ? 'executive' : (first('am_dm_gm') ? 'am_dm_gm' : 'executive');
+    el.querySelector('[name=owner_level][value="' + lvl + '"]').checked = true;
+    showLevels();
+    owner.value = has(owner, first(lvl)) ? first(lvl) : '';
+    above().forEach(function (b) { var s = pick(b); s.value = has(s, first(b)) ? first(b) : ''; });
+    setFinance(t.finance || []);
+  }
+  el.querySelectorAll('[name=owner_level]').forEach(function (r) {
+    r.addEventListener('change', function () { showLevels(); autofill(); });
+  });
+  owner.addEventListener('change', autofill);
+
+  window.MapTeam = {
+    open: function (mode, ids, header, teamData) {
+      opened = true;
+      document.getElementById('mapTeamMode').value = mode;
+      var box = document.getElementById('mapTeamContactIds'); box.innerHTML = '';
+      (ids || []).forEach(function (id) { var i = document.createElement('input'); i.type = 'hidden'; i.name = 'contact_ids'; i.value = id; box.appendChild(i); });
+      document.getElementById('mapTeamHeader').textContent = header || 'Map Team';
+      document.getElementById('mapTeamHint').innerHTML = mode === 'single'
+        ? 'The levels above fill in from the Account Manager\'s <b>Report To</b> chain by designation (Team Leader, Manager, AVP/VP) — change any of them before saving. The team is replaced by these people.'
+        : 'Picking an Account Manager replaces Executive, Team Leader, Manager and AVP/VP on every selected account; Finance changes only if you pick someone.';
+      var tabs = document.getElementById('mtTabs');
+      tabs.hidden = !(arguments[4] && arguments[4].tabs);
+      bootstrap.Tab.getOrCreateInstance(tabs.querySelector('[data-bs-target="#mtFormPane"]')).show();
+      if (mode === 'single') prefill(teamData);
+      else { el.querySelector('#mtLvlExec').checked = true; showLevels(); owner.value = ''; autofill(); setFinance([]); }
+      bootstrap.Modal.getOrCreateInstance(el).show();
+    }
+  };
+  // Deal pages open it straight from the Edit button: prefill from the server's mapping
+  el.addEventListener('show.bs.modal', function () {
+    if (opened) { opened = false; return; }
+    var t = {};
+    Object.keys(serverSel).forEach(function (b) { t[b] = (serverSel[b] || '').split(',').filter(Boolean); });
+    prefill(t);
+  });
+  showLevels();
+})();
+</script>

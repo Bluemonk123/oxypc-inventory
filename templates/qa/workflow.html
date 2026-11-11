@@ -118,8 +118,8 @@
 {% endmacro %}
 
 <ul class="nav nav-tabs mb-3" id="wfTabs" role="tablist">
-  {# Order (2026-11-09, Pankaj): Stage Flows first, then New GRN, Re-GRN, Spare Parts. #}
-  {% for key, label, icon in [('stage', 'Stage Flows', 'bi-signpost-split'), ('new_grn', 'New GRN', 'bi-receipt'), ('regrn', 'Re-GRN', 'bi-arrow-left-right'), ('parts', 'Spare Parts', 'bi-tools')] %}
+  {# Order (2026-11-09, Pankaj): Stage Flows first, then New GRN, Re-GRN, Spare Parts; Supplier / Customer Deal added 2026-11-11. #}
+  {% for key, label, icon in [('stage', 'Stage Flows', 'bi-signpost-split'), ('new_grn', 'New GRN', 'bi-receipt'), ('regrn', 'Re-GRN', 'bi-arrow-left-right'), ('parts', 'Spare Parts', 'bi-tools'), ('supplier_deal', 'Supplier Deal', 'bi-box-arrow-in-down'), ('customer_deal', 'Customer Deal', 'bi-graph-up')] %}
   <li class="nav-item"><button class="nav-link {{ 'active' if active_tab == key }}" data-bs-toggle="tab" data-bs-target="#wf_{{ key }}" data-key="{{ key }}" type="button">
     <i class="bi {{ icon }} me-1"></i>{{ label }}</button></li>
   {% endfor %}

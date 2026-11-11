@@ -1,8 +1,7 @@
-company_name,email,location_address,location_city,location_state,location_email,location_contact_role,location_contact_name,location_contact_phone,location_contact_email,contact_type,source_type,buyer_type,gstin
-Acme Computers,raj@acme.com,12 Nehru Place,Delhi,Delhi,branch1@acme.com,Manager,Suresh Nair,9811100022,suresh@acme.com,buyer,dealer,dealer,07AABCA1234B1ZP
-Acme Computers,,45 MG Road,Gurgaon,Haryana,branch2@acme.com,Finance,Neha Gupta,9822200033,neha@acme.com,,,,
-Acme Computers,,45 MG Road,Gurgaon,Haryana,branch2@acme.com,Directors,Vikram Acme,9822200044,vikram@acme.com,,,,
-TechBazaar Pvt Ltd,sanjay@techbazaar.com,12 Textile Market,Mumbai,Maharashtra,,Manager,Sanjay Mehta,9123456789,sanjay@techbazaar.com,supplier,trader,,
-Infosys Asset Recovery,assets@infosys.com,Hinjewadi Phase 2,Pune,Maharashtra,,Manager,Ashok Rao,9988776655,assets@infosys.com,both,corporate,,27AAACI1681G1ZK
-Global IT Solutions,priya@globalit.in,MG Road,Bangalore,Karnataka,,Owner,Priya Sharma,9871234560,priya@globalit.in,buyer,,online_seller,
-Eastern Tech Hub,,Salt Lake Sector 5,Kolkata,West Bengal,,Owner,Amit Singh,9012345678,,supplier,refurb_vendor,,
+company_name,email,location_address,location_city,location_state,location_email,contact_type,source_type,buyer_type,gstin
+Acme Computers,raj@acme.com,12 Nehru Place,Delhi,Delhi,branch1@acme.com,buyer,dealer,dealer,07AABCA1234B1ZP
+Acme Computers,,45 MG Road,Gurgaon,Haryana,branch2@acme.com,,,,07AABCA1234B1ZP
+TechBazaar Pvt Ltd,sanjay@techbazaar.com,12 Textile Market,Mumbai,Maharashtra,,supplier,trader,,
+Infosys Asset Recovery,assets@infosys.com,Hinjewadi Phase 2,Pune,Maharashtra,,both,corporate,,27AAACI1681G1ZK
+Global IT Solutions,priya@globalit.in,MG Road,Bangalore,Karnataka,,buyer,,online_seller,
+Eastern Tech Hub,,Salt Lake Sector 5,Kolkata,West Bengal,,supplier,refurb_vendor,,

@@ -1,0 +1,106 @@
+{% extends "partner/base.html" %}
+{% block title %}My Tickets — OxyPC Trade Partner{% endblock %}
+{% block content %}
+{# My Tickets (2026-11-11 PM, Pankaj): raise a ticket to OxyPC admin (same form
+   as Contact Admin on the login pages) and see your ticket history below. #}
+
+<h5 class="fw-bold mb-3"><i class="bi bi-ticket-detailed me-2 text-warning"></i>My Tickets</h5>
+
+<div class="card listing-card mb-4">
+  <div class="card-body">
+    <h6 class="fw-semibold mb-3">Raise a Ticket</h6>
+    <div class="mb-3">
+      <label class="form-label small fw-semibold">Raised By (your name) <span class="text-danger">*</span></label>
+      <input type="text" id="tkName" class="form-control form-control-sm" maxlength="40" value="{{ default_name }}" placeholder="Enter your full name">
+    </div>
+    <div class="mb-3">
+      <label class="form-label small fw-semibold">Issue / Request <span class="text-danger">*</span></label>
+      <textarea id="tkFeedback" class="form-control" rows="4" maxlength="5000"
+                placeholder="e.g. a lot I booked isn't showing, I need an invoice, change my login mobile…"></textarea>
+    </div>
+    <div class="mb-3">
+      <label class="form-label small">Screenshots <span class="text-muted">(optional, up to 2)</span></label>
+      <input type="file" id="tkPhotos" class="form-control form-control-sm" accept=".png,.jpg,.jpeg,.gif,.webp,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip" multiple>
+      <div class="form-text small">Images, PDF, Office files or ZIP — 5 MB each.</div>
+    </div>
+    <div id="tkError" class="text-danger small mb-2"></div>
+    <div id="tkDone" class="alert alert-success py-2 small d-none"></div>
+    <button id="tkSubmit" class="btn btn-sm btn-warning fw-semibold"><i class="bi bi-send me-1"></i>Submit Ticket</button>
+  </div>
+</div>
+
+<h6 class="fw-semibold mb-2">Ticket History <span class="badge bg-secondary-subtle text-secondary-emphasis">{{ tickets|length }}</span></h6>
+{% if tickets %}
+  {% for t in tickets %}
+  {% set fb = t.feedback or '' %}
+  {% if fb.startswith('[From ') and '] ' in fb %}{% set fb = fb.split('] ', 1)[1] %}{% endif %}
+  <div class="card listing-card mb-2">
+    <div class="card-body py-2">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span class="fw-semibold">{{ t.ticket_id }}</span>
+        {% if t.status == 'Closed' %}
+          <span class="badge rounded-pill bg-success-subtle text-success-emphasis">Closed</span>
+        {% else %}
+          <span class="badge rounded-pill bg-warning-subtle text-warning-emphasis">Open</span>
+        {% endif %}
+      </div>
+      <div class="text-muted small mb-1">{{ t.raised_on | ist_datetime }} · {{ t.raised_by.split('] ', 1)[-1] }}</div>
+      <div class="small" style="white-space: pre-line;">{{ fb }}</div>
+      {% set atts = [t.photo1_path, t.photo2_path] | select | list %}
+      {% if atts %}
+      <div class="mt-1">
+        {% for a in atts %}<a href="{{ a }}" target="_blank" rel="noopener" class="small me-2"><i class="bi bi-paperclip"></i>Attachment {{ loop.index }}</a>{% endfor %}
+      </div>
+      {% endif %}
+      {% if t.notes %}
+      <div class="mt-2 p-2 rounded bg-light small"><span class="fw-semibold"><i class="bi bi-reply me-1"></i>Admin reply:</span> {{ t.notes }}</div>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+{% else %}
+  <p class="text-muted small">You haven't raised any tickets yet.</p>
+{% endif %}
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  function csrf() { var m = document.cookie.match(/(?:^|;\s*)partner_csrf_token=([^;]+)/); return m ? decodeURIComponent(m[1]) : '{{ partner_csrf }}'; }
+  document.getElementById('tkSubmit').addEventListener('click', async function () {
+    var btn = this, err = document.getElementById('tkError');
+    var name = document.getElementById('tkName').value.trim();
+    var fb = document.getElementById('tkFeedback').value.trim();
+    var files = document.getElementById('tkPhotos').files;
+    err.textContent = '';
+    if (!name) { err.textContent = 'Please enter your name.'; return; }
+    if (!fb) { err.textContent = 'Please describe your issue.'; return; }
+    if (files.length > 2) { err.textContent = 'Please attach at most 2 files.'; return; }
+    var okExt = /\.(png|jpe?g|gif|webp|pdf|docx?|xlsx?|pptx?|zip)$/i;
+    for (var k = 0; k < files.length; k++) {
+      if (!okExt.test(files[k].name)) { err.textContent = files[k].name + ': only images, PDF, Word, Excel, PowerPoint or ZIP files.'; return; }
+      if (files[k].size > 5 * 1024 * 1024) { err.textContent = files[k].name + ' is over 5 MB.'; return; }
+    }
+    var fd = new FormData();
+    fd.append('raised_by', name); fd.append('feedback', fb); fd.append('csrf_token', csrf());
+    for (var i = 0; i < files.length; i++) fd.append('photos', files[i]);
+    btn.disabled = true;
+    try {
+      var r = await fetch('/partner/tickets', { method: 'POST', headers: { 'X-CSRF-Token': csrf() }, body: fd });
+      var d = {}; try { d = await r.json(); } catch (e) {}
+      if (r.ok && d.ok) {
+        var done = document.getElementById('tkDone');
+        done.innerHTML = '<i class="bi bi-check-circle me-1"></i>Ticket <strong>' + d.ticket_id + '</strong> sent to admin.';
+        done.classList.remove('d-none');
+        setTimeout(function () { location.reload(); }, 1200);
+      } else {
+        err.textContent = r.status === 429 ? 'Too many tickets. Please try again later.'
+                                           : (d.error || 'Could not send the ticket. Please refresh the page and try again.');
+        btn.disabled = false;
+      }
+    } catch (e) { err.textContent = 'Network error. Please try again.'; btn.disabled = false; }
+  });
+})();
+</script>
+{% endblock %}

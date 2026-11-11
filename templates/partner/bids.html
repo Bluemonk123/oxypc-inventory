@@ -1,5 +1,16 @@
 {% extends "partner/base.html" %}
+{% import "_tiles.html" as tl %}
 {% block title %}Bids Analysis — OxyPC Trade{% endblock %}
+{% block head_extra %}
+{# The app's shared tile look lives in app.css; the portal runs at 100% zoom. #}
+<link rel="stylesheet" href="/static/css/app.css?v={{ ASSET_VERSION }}">
+<style>
+  :root { --app-zoom: 1; }
+  body { zoom: 1; background: #f4f6f9; }
+  .bids-tiles { padding-left: 0; padding-right: 0; }
+  .bids-tiles > div { min-width: 140px; }
+</style>
+{% endblock %}
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -11,31 +22,14 @@
 
 {# Summary across settled bids only — a win rate that counted live bids as
    losses would read worse the more actively you bid. #}
-<div class="row g-2 mb-4">
-  <div class="col-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body py-2 text-center">
-        <div class="fw-bold text-success fs-5">{{ stats.won }}</div>
-        <div class="small text-muted">Won</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body py-2 text-center">
-        <div class="fw-bold text-danger fs-5">{{ stats.lost }}</div>
-        <div class="small text-muted">Lost</div>
-      </div>
-    </div>
-  </div>
-  <div class="col-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body py-2 text-center">
-        <div class="fw-bold text-primary fs-6">₹{{ ((stats.won_value) | inr) }}</div>
-        <div class="small text-muted">Won value</div>
-      </div>
-    </div>
-  </div>
+{# Count tiles (2026-11-11 PM, Pankaj): the app's tint tiles (templates/_tiles.html). #}
+<div class="oxt-row bids-tiles">
+  {{ tl.single(stats.won, 'Won', '#198754', 'bi-trophy') }}
+  {{ tl.single(stats.lost, 'Lost', '#dc3545', 'bi-x-circle') }}
+  {{ tl.single('₹' ~ (stats.won_value | inr), 'Won Value', '#0d6efd', 'bi-currency-rupee') }}
+  {{ tl.single(stats.payment_due, 'Payment Due', '#fd7e14', 'bi-hourglass-split',
+               secondary=[('Amount', '₹' ~ (stats.payment_due_value | inr))],
+               title_attr='Won bids with the PO issued and no payment submitted yet') }}
 </div>
 
 {% if request.query_params.get('success') %}

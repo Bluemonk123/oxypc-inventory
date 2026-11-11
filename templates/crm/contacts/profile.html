@@ -81,7 +81,7 @@
         {% if contact.credit_verify_reason %}<div class="small mt-1"><span class="text-muted">Reason:</span> {{ contact.credit_verify_reason }}</div>{% endif %}
         {% if contact.credit_old_limit is not none and can(current_user, 'crm_contacts', 'pricing') %}<div class="small"><span class="text-muted">Old limit:</span> ₹{{ (contact.credit_old_limit | inr) }} → ₹{{ ((contact.credit_limit or 0) | inr) }}</div>{% endif %}
         {% else %}
-        {# Verify Credit (2026-11-06): the account's mapped VP/AVP or DM/GM/CTO/CEO, or admin #}
+        {# Verify Credit (2026-11-06): the account's mapped AVP/VP or Team Leader, or admin #}
         {% if can_verify_credit %}
         <button type="button" class="btn btn-sm btn-success"
                 data-vc-id="{{ contact.id }}" data-vc-company="{{ contact.company_name }}"
@@ -90,7 +90,7 @@
                 data-vc-po="{{ credit_totals.po_total }}" data-vc-po-n="{{ credit_totals.po_count }}">
           <i class="bi bi-check-circle me-1"></i>Verify Credit
         </button>
-        {% else %}<div class="small text-muted">Verified by the account's VP/AVP or DM/GM/CTO/CEO (Map Team).</div>
+        {% else %}<div class="small text-muted">Verified by the account's AVP/VP or Team Leader (Map Team).</div>
         {% endif %}
         {% endif %}
 

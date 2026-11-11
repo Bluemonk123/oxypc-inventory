@@ -188,7 +188,7 @@
           <td>{% if c.credit_verified %}<span class="badge bg-success" title="Verified by {{ c.credit_verified_by or '—' }}{% if c.credit_verified_at %} on {{ c.credit_verified_at.strftime('%d-%m-%Y') }}{% endif %}">Verified</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
           <td class="small">{{ [c.city, c.state] | select | join(', ') or '—' }}</td>
           <td class="small">{{ c.contact_person or '—' }}</td>
-          <td class="small">{% for b, lbl in [('executive','Exec'),('vp_avp','VP/AVP'),('am_dm_gm','DM/GM/CTO/CEO'),('finance','Finance')] %}{% if t.get(b) %}<div><span class="text-muted">{{ lbl }}:</span> {{ t[b] | map(attribute='name') | join(', ') }}</div>{% endif %}{% endfor %}{% if not t %}<span class="text-muted">—</span>{% endif %}</td>
+          <td class="small">{% for b, lbl in [('executive','Exec'),('am_dm_gm','Team Leader'),('vp_avp','AVP/VP'),('finance','Finance')] %}{% if t.get(b) %}<div><span class="text-muted">{{ lbl }}:</span> {{ t[b] | map(attribute='name') | join(', ') }}</div>{% endif %}{% endfor %}{% if not t %}<span class="text-muted">—</span>{% endif %}</td>
           <td>{% if c.status == 'active' %}<span class="badge bg-success">Active</span>{% elif c.status == 'blacklisted' %}<span class="badge bg-dark">Blacklisted</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td>
           <td class="small">{{ names.get(c.created_by, c.created_by or '—') }}</td>
           <td class="ab-act">
@@ -203,7 +203,7 @@
               {% endif %}
               {% if see_all %}
               <button type="button" class="btn btn-sm btn-outline-dark ab-mgr-btn" data-id="{{ c.id }}" data-company="{{ c.company_name }}"
-                      data-current="{{ (t.get('manager') or [{}])[0].get('id', '') }}"><i class="bi bi-person-badge me-1"></i>Map Manager</button>
+                      data-exec="{{ (t.get('executive') or [{}])[0].get('id', '') }}" data-tl="{{ (t.get('am_dm_gm') or [{}])[0].get('id', '') }}"><i class="bi bi-person-badge me-1"></i>Map Manager</button>
               {% endif %}
             </div>
           </td>
@@ -243,7 +243,7 @@
 <div class="card border-0 shadow-sm mb-4" id="ab-accounts">
   {{ card_header('accounts', 'bi-patch-check', 'Account Verification', contacts | rejectattr('credit_verified') | list | length) }}
   <div class="card-body">
-    <p class="small text-muted mb-2">Credit is verified by the account's mapped <strong>VP/AVP</strong> or <strong>DM/GM/CTO/CEO</strong> (Map Team).
+    <p class="small text-muted mb-2">Credit is verified by the account's mapped <strong>AVP/VP</strong> or <strong>Team Leader</strong> (Map Team).
       {% if not see_all %}Only accounts where you are on the team are listed.{% endif %}</p>
     {# Pending = credit not verified yet; Completed = credit verified (2026-11-09). #}
     <div class="tab-content">
@@ -409,7 +409,8 @@
   </div>
 </div>
 
-{# Map Manager — Map Team's modal, Manager only #}
+{# Map Manager (2026-11-11 PM, Pankaj): Executive + Team Leader; Manager and AVP/VP
+   follow from the Report To chain by designation (routers/activity_board.map_manager). #}
 {% if see_all %}
 <div class="modal fade" id="abMgrModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -418,15 +419,22 @@
       <div class="modal-header py-2"><h5 class="modal-title"><i class="bi bi-people-fill me-2"></i>Map Manager — <span id="abMgrCompany"></span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
       <div class="modal-body">
-        <label class="form-label small fw-semibold mb-1">Manager</label>
-        <select name="manager_id" id="abMgrSelect" class="form-select form-select-sm">
+        <label class="form-label small fw-semibold mb-1">Executive</label>
+        <select name="executive_id" id="abMgrExec" class="form-select form-select-sm mb-2">
           <option value="">— None —</option>
-          {% for uid, nm in managers %}<option value="{{ uid }}">{{ nm }}</option>{% endfor %}
+          {% for uid, nm in managers.executive %}<option value="{{ uid }}">{{ nm }}</option>{% endfor %}
         </select>
-        <p class="small text-muted mt-2 mb-0">Only the Manager is changed; Executive, VP/AVP and DM/GM/CTO/CEO stay as they are.</p>
+        <label class="form-label small fw-semibold mb-1">Team Leader</label>
+        <select name="team_leader_id" id="abMgrTl" class="form-select form-select-sm">
+          <option value="">— None —</option>
+          {% for uid, nm in managers.am_dm_gm %}<option value="{{ uid }}">{{ nm }}</option>{% endfor %}
+        </select>
+        <p class="small text-muted mt-2 mb-0">The Executive (or, without one, the Team Leader) becomes the <b>Account Manager</b>.
+          Team Leader, Manager and AVP/VP are mapped from their <b>Report To</b> chain by designation. Finance stays as it is.</p>
+        <script type="application/json" id="abMgrLevels">{{ mgr_levels | tojson }}</script>
       </div>
       <div class="modal-footer py-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button class="btn btn-sm btn-primary"><i class="bi bi-check2 me-1"></i>Save Manager</button></div>
+        <button class="btn btn-sm btn-primary"><i class="bi bi-check2 me-1"></i>Save Team</button></div>
     </form>
   </div>
 </div>
@@ -437,6 +445,16 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+// Map Manager: picking an Executive fills the Team Leader from their Report To chain (by designation)
+document.addEventListener('change', function (e) {
+  if (e.target.id !== 'abMgrExec') return;
+  var lv = {};
+  try { lv = JSON.parse(document.getElementById('abMgrLevels').textContent || '{}'); } catch (x) {}
+  var tl = document.getElementById('abMgrTl'), want = (lv[e.target.value] || {}).am_dm_gm || '';
+  if (want && tl.querySelector('option[value="' + want + '"]')) tl.value = want;
+});
+</script>
 <script>
 $(document).ready(function () {
   document.querySelectorAll('.ab-table').forEach(function (t) {
@@ -493,7 +511,9 @@ $(document).ready(function () {
       var m = document.getElementById('abMgrForm');
       m.action = '/activity-board/accounts/' + mg.dataset.id + '/map-manager';
       document.getElementById('abMgrCompany').textContent = mg.dataset.company;
-      document.getElementById('abMgrSelect').value = mg.dataset.current || '';
+      var ex = document.getElementById('abMgrExec'), tl = document.getElementById('abMgrTl');
+      ex.value = ex.querySelector('option[value="' + (mg.dataset.exec || '') + '"]') ? mg.dataset.exec : '';
+      tl.value = tl.querySelector('option[value="' + (mg.dataset.tl || '') + '"]') ? mg.dataset.tl : '';
       bootstrap.Modal.getOrCreateInstance(document.getElementById('abMgrModal')).show();
     }
   });

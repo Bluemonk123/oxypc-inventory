@@ -85,9 +85,18 @@ async def login(
     if not cookie_token or form.get("csrf_token", "") != cookie_token:
         return _login_page(request, "Session expired — please try again.")
 
-    norm = normalize_phone(phone)
-    result = await db.execute(select(Dealer).where(Dealer.portal_phone == norm))
-    dealer = result.scalar_one_or_none()
+    # Login ID = the portal mobile or (2026-11-11 PM) the login email set from
+    # Partner Accounts → Generate Password (stored in Dealer.email).
+    ident = (phone or "").strip()
+    if "@" in ident:
+        norm = ident.lower()[:30]
+        dealer = (await db.execute(select(Dealer).where(
+            func.lower(Dealer.email) == ident.lower(),
+            Dealer.portal_password_hash.isnot(None)).limit(1))).scalars().first()
+    else:
+        norm = normalize_phone(ident)
+        result = await db.execute(select(Dealer).where(Dealer.portal_phone == norm))
+        dealer = result.scalar_one_or_none()
 
     ua = (request.headers.get("user-agent") or "")[:300]
     ip = request.client.host if request.client else None
@@ -118,7 +127,7 @@ async def login(
                                phone_attempted=norm, ip_address=ip,
                                user_agent=ua, success=False))
         await db.commit()
-        return _login_page(request, "Invalid phone number or password")
+        return _login_page(request, "Invalid login ID or password")
 
     token = create_partner_token(dealer)
     db.add(PartnerLoginLog(dealer_id=dealer.id, phone_attempted=norm,
@@ -135,6 +144,27 @@ async def login(
     resp.set_cookie(PARTNER_CSRF_COOKIE, csrf_tok, httponly=False, samesite="strict",
                     max_age=_max_age, secure=COOKIE_SECURE)
     return resp
+
+
+@router.post("/contact-admin")
+@limiter.limit("5/hour", key_func=ip_key_func)
+async def contact_admin(
+    request: Request,
+    raised_by: str = Form(...),
+    feedback: str = Form(...),
+    photos: list[UploadFile] = File(default=[]),
+    db: AsyncSession = Depends(get_db),
+):
+    """Partner login page → Contact admin for access/issues (2026-11-11 PM,
+    Pankaj): same ticket flow as the staff login page, checked against the
+    partner login page's own CSRF cookie."""
+    from routers.tickets import create_public_ticket
+    cookie_token = request.cookies.get(PARTNER_CSRF_COOKIE, "")
+    form = await request.form()
+    sent = form.get("csrf_token", "") or request.headers.get("X-CSRF-Token", "")
+    if not cookie_token or not secrets.compare_digest(sent, cookie_token):
+        return JSONResponse({"error": "Session expired — please refresh the page and try again."}, status_code=403)
+    return await create_public_ticket(db, raised_by, feedback, photos, source="partner login page")
 
 
 @router.post("/logout")
@@ -177,6 +207,16 @@ async def _sales_owner_wa(db: AsyncSession, dealer: Dealer):
         digits = "91" + digits
     return digits or None
 
+
+
+# Available Stock columns, in table order (catalog.html builds the same headers).
+STOCK_KEYS = [
+    "model", "lot_number", "brand", "device_type", "grade", "color", "cpu", "cpu_make",
+    "generation", "ram", "ram_type", "total_ram_size", "storage", "total_hdd_size",
+    "screen_size", "battery_health", "display_scratch", "display_dent", "display_broken",
+    "bezel_scratch", "base_scratch", "palmrest_scratch", "screen_dot", "screen_line",
+    "screen_scratch", "touch_screen", "hinge", "keyboard", "touchpad", "speaker", "webcam",
+]
 
 @router.get("/catalog", response_class=HTMLResponse)
 async def catalog(
@@ -278,11 +318,26 @@ async def catalog(
             )
         )).scalars().all()
         booking_by_lot = {str(b.lot_id): b for b in my_bookings}
+        # Category column (2026-11-11 PM, Pankaj): the device types in each lot
+        # (device_type, else sub_category — older GRNs filled only one of them).
+        # 2026-11-11 PM: with counts — the biggest category shows in the cell,
+        # "view more" opens all of them with their counts.
+        types_by_lot = {}
+        for lid_, dt, sc, n in (await db.execute(
+                select(Device.lot_id, Device.device_type, Device.sub_category, func.count(Device.id)).where(
+                    Device.lot_id.in_(lot_ids), Device.is_active == True,  # noqa: E712
+                    Device.is_trashed.isnot(True))
+                .group_by(Device.lot_id, Device.device_type, Device.sub_category))).all():
+            t = (dt or sc or "").strip().title()
+            if t:
+                d = types_by_lot.setdefault(str(lid_), {})
+                d[t] = d.get(t, 0) + n
         for lot in vis_rows:
             lid = str(lot.id)
             visible_lots.append({
                 "id": lid, "lot_number": lot.lot_number,
                 "purchase_date": lot.purchase_date,
+                "categories": sorted(types_by_lot.get(lid, {}).items(), key=lambda kv: (-kv[1], kv[0])),
                 "available_quantity": avail_map.get(lid, 0),
                 # buying_price is NOT NULL and defaults to 0, so "unset" arrives
                 # as 0 rather than None. Map it to None: the template then shows
@@ -356,9 +411,13 @@ async def catalog(
                 "webcam":           _v(getattr(iqc, "webcam_status", None)),
             })
 
+    # Speed (2026-11-11 PM): the stock table ships as compact JSON rows in this
+    # column order, not as ~4,000 rendered <tr>s (3.7 MB of HTML that took the
+    # browser 10+ seconds). The page draws only the rows it shows.
+    stock_rows = [[d[k] for k in STOCK_KEYS] + [d["lot_id"]] for d in lot_stock]
     return templates.TemplateResponse("partner/catalog.html", {
         "request": request, "dealer": dealer, "listings": listings,
-        "lot_stock": lot_stock,
+        "lot_stock": lot_stock, "stock_rows": stock_rows,
         "ageing": ageing, "incentive_text": settings.get("incentive_text") or "",
         "f_type": listing_type, "f_brand": brand, "f_grade": grade, "f_sort": sort,
         "partner_csrf": request.cookies.get(PARTNER_CSRF_COOKIE, ""),
@@ -1066,7 +1125,7 @@ async def my_bids_analysis(
     # download, and whatever payment the dealer has already submitted.
     from models.partner import PartnerBidDocument
     from models.partner_payment import (PartnerBidPayment, payment_status,
-                                        PAYMENT_STATUS_BADGE)
+                                        PAYMENT_STATUS_BADGE, PS_PAYMENT_PENDING)
     won_ids = [r["bid"].id for r in won]
     docs, pays = {}, {}
     if won_ids:
@@ -1086,6 +1145,11 @@ async def my_bids_analysis(
         r["payment"] = pays.get(bid_key)
         r["payment_status"] = payment_status(r["has_po"], r["payment"])
         r["payment_badge"] = PAYMENT_STATUS_BADGE.get(r["payment_status"], "bg-secondary")
+    # Payment Due tile (2026-11-11 PM): won bids whose PO is out and no payment
+    # has been submitted yet — what the partner has to pay now.
+    due = [r for r in won if r["payment_status"] == PS_PAYMENT_PENDING]
+    stats["payment_due"] = len(due)
+    stats["payment_due_value"] = sum((Decimal(str(r["bid"].bid_amount)) for r in due), Decimal("0"))
 
     return templates.TemplateResponse("partner/bids.html", {
         "request": request, "dealer": dealer,
@@ -1347,6 +1411,46 @@ async def cancel_booking(
                 notes=f"dealer:{dealer.business_name}", request=request)
     await db.commit()
     return RedirectResponse(url="/partner/bookings", status_code=302)
+
+
+# ── My Tickets (2026-11-11 PM, Pankaj) ────────────────────────────────────────
+# A partner raises tickets from the portal and sees their history. Tickets have
+# no dealer column (no schema change), so the partner's tickets are tagged
+# "[<dealer code>] <name>" in Raised By — that tag is how the history finds
+# them, and how admins on /tickets see which partner raised one.
+
+def _ticket_tag(dealer) -> str:
+    return f"[{dealer.dealer_code}] "
+
+
+@router.get("/tickets", response_class=HTMLResponse)
+async def my_tickets(request: Request, dealer: Dealer = Depends(get_current_partner),
+                     db: AsyncSession = Depends(get_db)):
+    from models.ticket import Ticket
+    tag = _ticket_tag(dealer)
+    rows = (await db.execute(select(Ticket).where(Ticket.raised_by.startswith(tag, autoescape=True))
+                             .order_by(Ticket.raised_on.desc()).limit(200))).scalars().all()
+    return templates.TemplateResponse("partner/tickets.html", {
+        "request": request, "dealer": dealer, "tickets": rows, "tag": tag,
+        "default_name": (dealer.contact_person or dealer.first_name or dealer.business_name or "")[:40],
+        "partner_csrf": request.cookies.get(PARTNER_CSRF_COOKIE, ""),
+    })
+
+
+@router.post("/tickets")
+@limiter.limit("10/hour", key_func=ip_key_func)
+async def raise_my_ticket(
+    request: Request,
+    raised_by: str = Form(...),
+    feedback: str = Form(...),
+    photos: list[UploadFile] = File(default=[]),
+    _csrf=Depends(verify_partner_csrf),
+    dealer: Dealer = Depends(get_current_partner),
+    db: AsyncSession = Depends(get_db),
+):
+    from routers.tickets import create_public_ticket
+    return await create_public_ticket(db, raised_by, feedback, photos,
+                                      source="partner portal", tag=_ticket_tag(dealer))
 
 
 @router.get("/profile", response_class=HTMLResponse)

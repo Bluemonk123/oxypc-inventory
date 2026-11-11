@@ -29,7 +29,7 @@
 </div>
 <script>
 (function () {
-  var LABELS = {manager: 'Manager', executive: 'Executive/Sr Executive', vp_avp: 'VP/AVP', am_dm_gm: 'DM/GM/CTO/CEO', finance: 'Finance Manager'};
+  var LABELS = {executive: 'Executive', am_dm_gm: 'Team Leader', manager: 'Manager', vp_avp: 'AVP/VP', finance: 'Finance Manager'};
   function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
   function data(btn, attr, dflt) { try { return JSON.parse(btn.getAttribute(attr) || dflt); } catch (e) { return JSON.parse(dflt); } }
   function open(id, btn, html, empty, cols) {

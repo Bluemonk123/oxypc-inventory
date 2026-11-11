@@ -2,13 +2,54 @@
 {% block title %}Catalog — OxyPC Trade Partner{% endblock %}
 {# Catalog runs full width so the lots list and stock can sit side by side. #}
 {% block main_max %}100%{% endblock %}
+{% block head_extra %}
+{# Global Card + Global Table (2026-11-11 PM, Pankaj) — the main app's shared
+   look (app.css) and table module (global-table.js), here without paging. #}
+<link rel="stylesheet" href="/static/vendor/datatables/css/dataTables.bootstrap5.min.css">
+<link rel="stylesheet" href="/static/css/app.css?v={{ ASSET_VERSION }}">
+<style>
+  /* app.css is written for the staff app's 90% zoom; the portal runs at 100%. */
+  :root { --app-zoom: 1; }
+  body { zoom: 1; background: #f4f6f9; }
+  /* Categories popup: the table runs edge to edge, no padding around it. */
+  #lotCatModal .dataTables_wrapper, #lotCatModal .dataTables_wrapper .row { margin: 0 !important; padding: 0 !important; }
+  #lotCatModal .dataTables_wrapper .col-sm-12 { padding: 0 !important; }
+  #lotCatModal table.gtable { margin: 0 !important; }
+  #lotCatModal .modal-content { overflow: hidden; }
+  #lotCatModal table.gtable thead th { border-radius: 0 !important; }
+  .cat-card > .card-header { display: flex; align-items: center; gap: .75rem; }
+  .cat-card > .card-header > :first-child { flex: 0 0 auto; white-space: nowrap; }
+  .cat-card > .card-header { flex-wrap: wrap; row-gap: .4rem; }
+  .cat-card > .card-header .dataTables_filter { flex: 1 1 140px; min-width: 140px; text-align: left; }
+  .cat-card > .card-header .dataTables_filter label { display: block; width: 100%; margin: 0; }
+  .cat-card > .card-header .dataTables_filter input { width: 100%; min-width: 0; margin: 0 !important;
+    height: 30px; padding: .2rem .6rem; font-size: .85rem; background: #fff; }
+  .cat-card > .card-header > .stock-badges { flex: 0 0 auto; }
+  /* Tables fill the card edge to edge — no padding around them (2026-11-11 PM). */
+  .cat-card .cat-scroll { padding: 0 !important; }
+  /* Rounded bottom corners: the scrolling table and its scrollbars are clipped
+     to the card's curve (sticky header/column still work inside .cat-scroll). */
+  .cat-card { overflow: hidden; }
+  .cat-card .cat-scroll > .dataTables_wrapper { padding: 0 !important; margin: 0 !important; }
+  .cat-card .cat-scroll table.gtable { margin: 0 !important; }
+  .cat-card .cat-scroll table.gtable thead th { border-radius: 0 !important; }
+  /* Sticky header row: DataTables gives sortable headers position:relative,
+     which un-stuck every header but the unsortable ones — rows then showed
+     through the header while scrolling. */
+  .cat-card .cat-scroll table.gtable thead th { position: sticky !important; top: 0; z-index: 3; }
+  .cat-card .cat-scroll table.gtable thead th.stock-sticky-col { left: 0; z-index: 4; }
+</style>
+{% endblock %}
 {% block content %}
 <style>
   /* Two-column split above 920px: lots list 1/3, stock 2/3.
      Below that the columns stack, which is the phone/tablet reading order. */
   @media (min-width: 920px) {
-    .cat-left  { flex: 0 0 33.3333%; max-width: 33.3333%; }
-    .cat-right { flex: 0 0 66.6667%; max-width: 66.6667%; }
+    /* 2026-11-11 PM: the lots column is as wide as its table needs (so every
+       column, Actions included, shows without sideways scrolling), up to 58% of
+       the screen; stock takes the rest. */
+    .cat-left  { flex: 0 0 auto; width: auto; max-width: 58%; }
+    .cat-right { flex: 1 1 0; width: auto; max-width: none; min-width: 0; }
 
     /* The PAGE does not scroll — each table does, inside its own pane. --cat-h is
        measured at runtime (see sizeCatRow below) from this row's real top offset
@@ -25,6 +66,13 @@
        gives the columns a definite cross size to stretch into, which is what lets
        min-height:0 below actually shrink them. */
     .cat-row { height: var(--cat-h, calc(100vh - 13rem)); overflow: hidden; flex-wrap: nowrap; }
+    /* Side by side the page itself doesn't scroll, so the space body/main keep
+       free for the fixed footer menu isn't needed — the panes are sized to end
+       above it (sizeCatRow). Both cards fill their column to the same height. */
+    .cat-row { padding-bottom: 6px; }   /* room for the cards' bottom shadow */
+    body { padding-bottom: 0 !important; }
+    main { padding-bottom: 0 !important; }
+    .cat-left .cat-card, .cat-right .cat-card { margin-bottom: 0 !important; flex: 1 1 auto; }
     .cat-left, .cat-right { display: flex; flex-direction: column; min-height: 0; }
     /* min-height:0 matters: a flex child defaults to min-height:auto, which
        refuses to shrink below its content and would push the scroll back onto
@@ -32,7 +80,7 @@
     .cat-pane { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
     .cat-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
     /* Lots: vertical only. Stock: both, because it carries the full IQC column set. */
-    .cat-scroll-lots  { overflow-x: hidden; }
+    .cat-scroll-lots  { overflow-x: auto; }   /* Actions column is reachable when the pane is narrow */
     .cat-scroll-stock { overflow-x: auto; }
   }
 
@@ -40,14 +88,13 @@
      actually holds under a scrolling ancestor across browsers. */
   .cat-scroll thead th {
     position: sticky; top: 0; z-index: 3;
-    background: var(--bs-table-bg, #f8f9fa);
-    box-shadow: inset 0 -1px 0 var(--bs-border-color, #dee2e6);
+    background: #0e3a7a; color: #fff;
   }
   /* Model Name stays readable while the stock table scrolls sideways. */
   #stockTable td.stock-sticky-col, #stockTable th.stock-sticky-col {
     position: sticky; left: 0; z-index: 2; background: #fff;
   }
-  #stockTable thead th.stock-sticky-col { z-index: 4; background: #f8f9fa; }
+  #stockTable thead th.stock-sticky-col { z-index: 4; background: #0e3a7a; }
   #stockTable th { white-space: nowrap; }
 </style>
 <div class="row g-3 cat-row"><div class="col-12 cat-left"><div class="cat-pane">
@@ -66,13 +113,14 @@
 {% endif %}
 
 {% if visible_lots %}
-<div class="card border-0 shadow-sm mb-3 cat-pane">
-  <div class="card-header bg-transparent fw-semibold small flex-shrink-0"><i class="bi bi-box-seam me-2"></i>Lots Available to You</div>
+<div class="card shadow-sm mb-3 cat-pane cat-card">
+  <div class="card-header flex-shrink-0"><span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Lots Available to You</span></div>
   <div class="cat-scroll cat-scroll-lots">
-    <table class="table table-sm table-hover mb-0 small align-middle">
+    <table class="table table-sm table-hover mb-0 align-middle" id="lotsTable" style="width:100%">
       <thead class="table-light">
-        <tr><th class="ps-2">Lot Number</th><th>Purchase Date</th><th>Available Qty</th>
-            <th>Price</th><th>Highest Bid</th><th style="width:210px">Action</th></tr>
+        {# Headers (2026-11-11 PM, Pankaj): Lot, Category, Quantity, Price, Highest Bid, Action — never wrapped #}
+        <tr class="text-nowrap"><th class="ps-2">Lot</th><th>Category</th><th>Quantity</th>
+            <th>Price</th><th>Highest Bid</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for l in visible_lots %}
@@ -82,12 +130,21 @@
             {# Clicking the lot opens its model-wise stock breakdown. #}
             <a href="#" class="font-monospace text-decoration-none lot-stock-link"
                data-lot-id="{{ l.id }}" data-lot-number="{{ l.lot_number }}">
-              {{ l.lot_number }} <i class="bi bi-box-arrow-up-right small"></i>
+              {{ l.lot_number }}
             </a>
           </td>
-          <td class="text-muted">{{ l.purchase_date.strftime('%d-%m-%Y') if l.purchase_date else '—' }}</td>
-          <td><span class="badge bg-info text-dark">{{ l.available_quantity }}</span></td>
           <td>
+            {% if l.categories %}
+              <span class="text-nowrap">{{ l.categories[0][0] }}</span>
+              {% if l.categories|length > 1 %}
+              <a href="#" class="d-block small text-decoration-none lot-cat-more"
+                 data-lot-number="{{ l.lot_number }}" data-cats='{{ l.categories | tojson }}'>view more</a>
+              {% endif %}
+            {% else %}—{% endif %}
+          </td>
+          <td data-order="{{ l.available_quantity or 0 }}"><span class="badge bg-info text-dark">{{ l.available_quantity }}</span></td>
+          {# data-order = plain number: DataTables doesn't know "₹", so these sorted as text #}
+          <td data-order="{{ l.price if l.price is not none else -1 }}">
             {% if l.price is not none %}
               <span class="fw-semibold">&#8377;{{ '%.2f'|format(l.price) }}</span>
             {% else %}
@@ -95,13 +152,13 @@
               <span class="text-muted fst-italic">Not set</span>
             {% endif %}
           </td>
-          <td>
+          <td data-order="{{ b.highest if b and b.highest else -1 }}">
             {% if b and b.highest %}
               <span class="fw-semibold">&#8377;{{ ((b.highest) | inr) }}</span>
               {% if b.leading %}<span class="badge bg-success ms-1">You</span>{% endif %}
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
-          <td>
+          <td class="text-nowrap">
             <button type="button" class="btn btn-sm btn-primary py-0 px-2 lot-bid-btn"
                     data-lot-id="{{ l.id }}" data-lot-number="{{ l.lot_number }}"
                     data-min="{{ b.min_next if b and b.min_next else '' }}"
@@ -142,23 +199,20 @@
    cosmetic condition. Cosmetics are recorded per device and cannot be
    aggregated, so this is deliberately not a model-wise summary. The table
    scrolls in both directions inside its pane; the page itself does not scroll. #}
-<div class="d-flex justify-content-between align-items-center mb-2 flex-shrink-0" id="availableStock">
-  <h6 class="fw-bold mb-0">Available Stock</h6>
-  <div class="d-flex align-items-center gap-2">
-    <span class="badge bg-secondary d-none" id="stockLotChip"></span>
-    {# Selected lot / all lots visible to this dealer. Both halves are unit
-       counts; with no lot selected the two are equal by definition. #}
-    <span class="badge bg-primary">
-      <span id="stockSelCount">{{ lot_stock | length }}</span> /
-      <span id="stockTotCount">{{ lot_stock | length }}</span> units
-    </span>
+<div class="card shadow-sm cat-pane cat-card" id="availableStock">
+  <div class="card-header flex-shrink-0">
+    <span class="fw-semibold">Available Stock</span>
+    <div class="d-flex align-items-center gap-2 stock-badges ms-auto">
+      <span class="badge bg-secondary d-none" id="stockLotChip"></span>
+      {# Selected lot / all lots visible to this dealer (unit counts). #}
+      <span class="badge bg-primary">
+        <span id="stockSelCount">{{ lot_stock | length }}</span>&nbsp;/&nbsp;<span id="stockTotCount">{{ lot_stock | length }}</span>&nbsp;units
+      </span>
+    </div>
   </div>
-</div>
-
 {% if lot_stock %}
-<div class="card border-0 shadow-sm cat-pane">
   <div class="cat-scroll cat-scroll-stock">
-    <table class="table table-sm table-hover mb-0 small align-middle" id="stockTable">
+    <table class="table table-sm table-hover mb-0 align-middle" id="stockTable" style="width:100%">
       <thead class="table-light">
         <tr>
           <th class="ps-2 stock-sticky-col">Model Name</th><th>Lot No</th>
@@ -173,56 +227,17 @@
           <th>Speaker</th><th>Webcam</th>
         </tr>
       </thead>
-      <tbody>
-        {% for s in lot_stock %}
-        <tr data-lot-id="{{ s.lot_id }}">
-          <td class="ps-2 fw-semibold stock-sticky-col">{{ s.model }}</td>
-          <td class="font-monospace text-muted">{{ s.lot_number }}</td>
-          <td>{{ s.brand }}</td>
-          <td>{{ s.device_type }}</td>
-          <td><span class="badge bg-secondary">{{ s.grade }}</span></td>
-          <td>{{ s.color }}</td>
-          <td>{{ s.cpu }}</td>
-          <td>{{ s.cpu_make }}</td>
-          <td>{{ s.generation }}</td>
-          <td>{{ s.ram }}</td>
-          <td>{{ s.ram_type }}</td>
-          <td>{{ s.total_ram_size }}</td>
-          <td>{{ s.storage }}</td>
-          <td>{{ s.total_hdd_size }}</td>
-          <td>{{ s.screen_size }}</td>
-          <td>{{ s.battery_health }}</td>
-          <td>{{ s.display_scratch }}</td>
-          <td>{{ s.display_dent }}</td>
-          <td>{{ s.display_broken }}</td>
-          <td>{{ s.bezel_scratch }}</td>
-          <td>{{ s.base_scratch }}</td>
-          <td>{{ s.palmrest_scratch }}</td>
-          <td>{{ s.screen_dot }}</td>
-          <td>{{ s.screen_line }}</td>
-          <td>{{ s.screen_scratch }}</td>
-          <td>{{ s.touch_screen }}</td>
-          <td>{{ s.hinge }}</td>
-          <td>{{ s.keyboard }}</td>
-          <td>{{ s.touchpad }}</td>
-          <td>{{ s.speaker }}</td>
-          <td>{{ s.webcam }}</td>
-        </tr>
-        {% endfor %}
-        <tr class="d-none" id="stockNoMatch">
-          <td colspan="31" class="text-center text-muted py-4">No stock in this lot.</td>
-        </tr>
-      </tbody>
+      <tbody></tbody>{# rows come from #stockData — drawn per lot, see the script #}
     </table>
   </div>
-</div>
 {% else %}
-<div class="text-center text-muted py-5">
-  <i class="bi bi-box-seam fs-1 d-block mb-2"></i>
-  No lot stock available to you yet.<br>
-  <small>Check back soon — new lots are added daily.</small>
-</div>
+  <div class="card-body text-center text-muted py-5">
+    <i class="bi bi-box-seam fs-1 d-block mb-2"></i>
+    No lot stock available to you yet.<br>
+    <small>Check back soon — new lots are added daily.</small>
+  </div>
 {% endif %}
+</div>
 
 </div></div></div>{# /cat-pane /cat-right /row #}
 
@@ -283,8 +298,64 @@
   </div>
 </div>
 
+{# Lot categories with counts (2026-11-11 PM) — opened by "view more". #}
+<div class="modal fade" id="lotCatModal" tabindex="-1" aria-labelledby="lotCatTitle">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-semibold" id="lotCatTitle">Categories</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+        <table class="table table-sm mb-0 align-middle" id="lotCatTable" style="width:100%">
+          <thead><tr><th>Category</th><th class="text-end">Count</th></tr></thead>
+          <tbody></tbody>
+          <tfoot><tr class="fw-semibold"><td>Total</td><td class="text-end" id="lotCatTotal"></td></tr></tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script type="application/json" id="stockData">{{ stock_rows | tojson }}</script>
 {% endblock %}
 {% block scripts %}
+<script src="/static/vendor/jquery/jquery-3.7.1.min.js"></script>
+<script src="/static/vendor/datatables/js/jquery.dataTables.min.js"></script>
+<script src="/static/vendor/datatables/js/dataTables.bootstrap5.min.js"></script>
+<script src="/static/js/global-table.js?v={{ ASSET_VERSION }}"></script>
+<script>
+/* Global Tables (2026-11-11 PM, Pankaj): all rows on one page — no paging or
+   "Page view". The toolbar (count + search) moves up into the card, above the
+   scrolling pane, so it stays put while the rows scroll. */
+var GT_ALL = { paging: false, order: [] };
+// 2026-11-11 PM: no count pill; the search box sits in the card header right
+// after the title and stretches to fill the space left there.
+function gtToolbarToCard(sel) {
+  var $w = $(sel).closest('.dataTables_wrapper'), $card = $w.closest('.cat-card');
+  var $hdr = $card.children('.card-header'), $f = $w.find('.dataTables_filter');
+  $f.find('input').attr('placeholder', 'Search…');
+  $f.insertAfter($hdr.children().first());
+  $w.children('.gtable-top').remove();
+}
+var lotCatDt = null;
+document.addEventListener('click', function (e) {
+  var a = e.target.closest('.lot-cat-more');
+  if (!a) return;
+  e.preventDefault();
+  var cats = JSON.parse(a.dataset.cats || '[]'), total = 0;
+  if (!lotCatDt) {
+    lotCatDt = initGlobalTable('#lotCatTable', $.extend({ searching: false, info: false,
+      columnDefs: [{ targets: 1, className: 'text-end' }] }, GT_ALL), { freeze: false, dates: false });
+    $('#lotCatTable').closest('.dataTables_wrapper').children('.gtable-top').remove();   // empty toolbar row
+  }
+  lotCatDt.clear();
+  cats.forEach(function (c) { lotCatDt.row.add([$('<div>').text(c[0]).html(), c[1]]); total += c[1]; });
+  lotCatDt.draw();
+  document.getElementById('lotCatTotal').textContent = total;
+  document.getElementById('lotCatTitle').textContent = 'Lot ' + a.dataset.lotNumber + ' — Categories';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('lotCatModal')).show();
+});
+</script>
 <script>
 (function () {
   var inr = function (n) {
@@ -300,11 +371,92 @@
   // The stock table is rendered server-side with every visible lot in it, so
   // a lot click is a filter, not a fetch. Clicking the same lot again clears
   // it — otherwise the only way back to the full list is a page reload.
-  var stockRows = Array.prototype.slice.call(
-    document.querySelectorAll('#stockTable tbody tr[data-lot-id]'));
+  // Rows arrive as JSON: [31 column values..., lot_id]. deferRender means a
+  // row's <tr> is only built when it is shown, so the page draws one lot's
+  // rows, not every unit of every lot (2026-11-11 PM speed fix).
+  var stockData = [];
+  try { stockData = JSON.parse((document.getElementById('stockData') || {}).textContent || '[]'); } catch (e) {}
+  var LOT_COL = 31, STOCK_STEP = 150;
+  var stocked = {};
+  stockData.forEach(function (r) { stocked[r[LOT_COL]] = true; });
   var stockChip = document.getElementById('stockLotChip');
-  var stockNone = document.getElementById('stockNoMatch');
   var activeLot = null;
+
+  var lotsDt = document.getElementById('lotsTable')
+    ? initGlobalTable('#lotsTable', $.extend({}, GT_ALL, { info: false, order: [[3, 'desc']] }),   // highest Price first (2026-11-11 PM)
+    { freeze: false, dates: false }) : null;
+  if (lotsDt) gtToolbarToCard('#lotsTable');
+
+  // Default view: pre-select the first lot (in the table's order) that ACTUALLY
+  // HAS STOCK, before the stock table first draws, so it opens on one lot.
+  var firstLink = Array.prototype.slice.call(document.querySelectorAll('.lot-stock-link'))
+    .filter(function (a) { return stocked[a.dataset.lotId]; })[0];
+  if (firstLink) {
+    activeLot = firstLink.dataset.lotId;
+    if (stockChip) {
+      stockChip.textContent = 'Lot ' + firstLink.dataset.lotNumber + ' — click again to clear';
+      stockChip.classList.remove('d-none');
+    }
+  }
+  // The lot filter is a DataTables row filter, so the search box and the lot
+  // pick work together.
+  $.fn.dataTable.ext.search.push(function (settings, data, idx) {
+    if (settings.nTable.id !== 'stockTable' || !activeLot) return true;
+    return settings.aoData[idx]._aData[LOT_COL] === activeLot;
+  });
+  var txt = $.fn.dataTable.render.text();
+  var stockCols = [];
+  for (var ci = 0; ci < LOT_COL; ci++) stockCols.push({ data: ci, render: txt });
+  stockCols[0].className = 'ps-2 fw-semibold stock-sticky-col';
+  // createdCell, not className: className would also restyle the header.
+  stockCols[1].createdCell = function (td) { td.className = 'font-monospace text-muted'; };
+  stockCols[4].render = function (v, type) {
+    return type === 'display' ? '<span class="badge bg-secondary">' + esc(v) + '</span>' : v;
+  };
+  var stockDt = document.getElementById('stockTable')
+    ? initGlobalTable('#stockTable', $.extend({}, GT_ALL, {
+        data: stockData, columns: stockCols, deferRender: true, autoWidth: false, info: false,
+        // Still one continuous list — no page controls — but rows are drawn
+        // STOCK_STEP at a time and more are added as the list is scrolled
+        // (loadMoreStock below). Drawing thousands of 31-column rows at once
+        // froze the page for seconds.
+        paging: true, lengthChange: false, pageLength: STOCK_STEP,
+        language: { zeroRecords: 'No stock in this lot.' } }),
+      { freeze: false, dates: false, clamp: false }) : null;
+  if (stockDt) {
+    gtToolbarToCard('#stockTable');
+    var stockPane = document.querySelector('.cat-scroll-stock');
+    var stockTbl = document.getElementById('stockTable');
+    // Add the next STOCK_STEP rows when the bottom of the drawn rows comes
+    // within ~2 screens of the visible area (the pane scrolls on big screens,
+    // the page scrolls on phones — both are watched).
+    var growing = false;
+    var loadMoreStock = function () {
+      var shown = stockDt.rows({ page: 'current' }).count();
+      var total = stockDt.rows({ search: 'applied' }).count();
+      if (shown >= total) return;
+      var visBottom = Math.min(window.innerHeight, stockPane.getBoundingClientRect().bottom);
+      if (stockTbl.getBoundingClientRect().bottom - visBottom < 800) {
+        growing = true;
+        stockDt.page.len(stockDt.page.len() + STOCK_STEP).draw('page');
+        growing = false;
+      }
+    };
+    stockPane.addEventListener('scroll', loadMoreStock, { passive: true });
+    window.addEventListener('scroll', loadMoreStock, { passive: true });
+    // Any other redraw (new lot, search, sort) starts again from the first
+    // STOCK_STEP rows, back at the top.
+    stockDt.on('preDraw.dt', function (e, settings) {
+      if (!growing && settings._iDisplayLength !== STOCK_STEP) {
+        settings._iDisplayLength = STOCK_STEP;
+        settings._iDisplayStart = 0;
+        stockPane.scrollTop = 0;
+      }
+    });
+    stockDt.on('draw.dt', function () {
+      if (selCountEl) selCountEl.textContent = stockDt.rows({ search: 'applied' }).count();
+    });
+  }
 
   var selCountEl = document.getElementById('stockSelCount');
 
@@ -319,13 +471,16 @@
     if (!row) return;
     var nav = document.querySelector('.tp-bottomnav');
     var top = row.getBoundingClientRect().top + window.pageYOffset;
-    // Reserve whichever is LARGER: the fixed bottom nav's own height, or the
-    // bottom padding body sets aside for it. They are not the same number —
-    // body reserves 70px for a nav that measures less — and subtracting only
-    // the nav left the page scrollable by the difference.
-    var padBottom = parseFloat(getComputedStyle(document.body).paddingBottom) || 0;
-    var reserve = Math.max(nav ? nav.offsetHeight : 0, padBottom);
-    var avail = window.innerHeight - top - reserve - 12;
+    // 2026-11-11 PM: side by side, both panes run down to just above the
+    // footer menu — measured to the top of its raised active bubble, the
+    // highest point of the menu — so they use the full height and end level.
+    var bottom = window.innerHeight;
+    if (nav) {
+      bottom = nav.getBoundingClientRect().top;
+      var bub = nav.querySelector('a.active i');
+      if (bub) bottom = Math.min(bottom, bub.getBoundingClientRect().top);
+    }
+    var avail = bottom - top - 10;
     // Floor it: on a very short window a tiny pane is worse than a little scroll.
     var h = Math.max(320, Math.round(avail));
     row.style.setProperty('--cat-h', h + 'px');
@@ -344,16 +499,9 @@
   window.addEventListener('orientationchange', sizeCatRow);
 
   function applyStockFilter() {
-    var shown = 0;
-    stockRows.forEach(function (tr) {
-      var hit = !activeLot || tr.dataset.lotId === activeLot;
-      tr.classList.toggle('d-none', !hit);
-      if (hit) shown++;
-    });
-    if (stockNone) stockNone.classList.toggle('d-none', shown > 0);
-    // Left half of the pill tracks the visible selection; the right half is the
-    // total across every lot and is rendered server-side, so it never changes.
-    if (selCountEl) selCountEl.textContent = shown;
+    // Left half of the pill tracks the visible rows (draw handler above); the
+    // right half is the total across every lot, rendered server-side.
+    if (stockDt) stockDt.draw();
   }
 
   function selectLot(lotId, lotNumber){
@@ -383,19 +531,9 @@
     });
   });
 
-  // Default view: pre-select the first lot that ACTUALLY HAS STOCK, so Available
-  // Stock opens on one lot rather than every lot at once. Taking the first lot
-  // blindly opened the page on an empty table whenever that lot held no devices
-  // — which is common, and reads as the feature being broken.
-  (function(){
-    var stocked = {};
-    stockRows.forEach(function (tr) { stocked[tr.dataset.lotId] = true; });
-    var links = Array.prototype.slice.call(document.querySelectorAll('.lot-stock-link'));
-    var first = links.filter(function (a) { return stocked[a.dataset.lotId]; })[0];
-    // Every visible lot empty → leave unfiltered, showing the full list.
-    if (first) selectLot(first.dataset.lotId, first.dataset.lotNumber);
-    else applyStockFilter();
-  })();
+  // Default lot is picked above, before the stock table's first draw (taking
+  // a lot with no devices would open on an empty table).
+  if (selCountEl && stockDt) selCountEl.textContent = stockDt.rows({ search: 'applied' }).count();
 
   // ── Bid modal ────────────────────────────────────────────────────────────
   var bidModal = new bootstrap.Modal(document.getElementById('lotBidModal'));

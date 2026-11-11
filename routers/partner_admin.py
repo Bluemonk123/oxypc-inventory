@@ -20,7 +20,7 @@ from urllib.parse import quote_plus
 from fastapi import APIRouter, Depends, Form, Request, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, or_
 
 from database import get_db
 from templates_config import templates
@@ -173,7 +173,11 @@ async def _render_partners(
     rather than redirecting with the password in the query string — keeps
     the secret out of browser history and proxy logs.
     """
-    query = select(Dealer).where(Dealer.portal_enabled == True)  # noqa: E712
+    # Portal partners, plus Accounts moved to External Partner without a login
+    # yet (Accounts List → Move to External Partner, 2026-11-11).
+    query = select(Dealer).where(Dealer.trashed_at.is_(None), or_(
+        Dealer.portal_enabled == True,  # noqa: E712
+        Dealer.crm_contact_id.isnot(None)))
     if q:
         like = f"%{q}%"
         query = query.where(
@@ -209,8 +213,32 @@ async def _render_partners(
     # on why the FORM VALUE stays the username).
     full_name_by_username = {u: (n or u) for u, n in sales_users}
 
+    # Account columns (2026-11-11 PM, Pankaj): the linked Account's type pills,
+    # Place / Person / Team cells (same as /crm/contacts) and its location
+    # contacts — the Generate / Regenerate Password modal picks one of them.
+    from models.crm import CRMContactNumber, CRMContactLocation, SOURCE_TYPES, BUYER_TYPES
+    from services.account_cells import account_cell_maps
+    cids = [p.crm_contact_id for p in partners if p.crm_contact_id]
+    accounts_by_id, persons = {}, {}
+    if cids:
+        accounts_by_id = {str(c.id): c for c in (await db.execute(
+            select(CRMContact).where(CRMContact.id.in_(cids)))).scalars().all()}
+        for n, loc in (await db.execute(
+                select(CRMContactNumber, CRMContactLocation).join(
+                    CRMContactLocation, CRMContactNumber.location_id == CRMContactLocation.id, isouter=True)
+                .where(CRMContactNumber.contact_id.in_(cids))
+                .order_by(CRMContactNumber.contact_id, CRMContactNumber.sort_order))).all():
+            persons.setdefault(str(n.contact_id), []).append({
+                "id": str(n.id), "name": n.person_name or "", "role": n.person_role or "",
+                "phone": n.phone or "", "email": n.email or "",
+                "location": ", ".join(filter(None, [loc.city, loc.state])) if loc else ""})
+    cell_locs, cell_nums, cell_team = await account_cell_maps(db, cids)
+
     return templates.TemplateResponse("trade_partner/partners.html", {
         "request": request, "current_user": current_user,
+        "accounts_by_id": accounts_by_id, "persons": persons,
+        "cell_locs": cell_locs, "cell_nums": cell_nums, "cell_team": cell_team,
+        "source_labels": dict(SOURCE_TYPES), "buyer_labels": dict(BUYER_TYPES),
         "partners": partners, "accounts": await _account_candidates(db),
         "q": q, "scores": scores,
         "sales_users": sales_users, "full_name_by_username": full_name_by_username,
@@ -428,6 +456,9 @@ async def toggle_partner(
     dealer = (await db.execute(select(Dealer).where(Dealer.id == dealer_id))).scalar_one_or_none()
     if not dealer:
         raise HTTPException(status_code=404, detail="Dealer not found")
+    if not dealer.portal_enabled and not dealer.portal_password_hash:
+        # Moved to External Partner without a login (2026-11-11): nothing to enable yet
+        return RedirectResponse(url="/trade-partner/partners?error=No+login+yet+-+use+Generate+Password+first", status_code=302)
     dealer.portal_enabled = not dealer.portal_enabled
     # Kill live sessions on disable
     dealer.portal_password_version = (dealer.portal_password_version or 1) + 1
@@ -437,6 +468,79 @@ async def toggle_partner(
     await db.commit()
     state = "enabled" if dealer.portal_enabled else "disabled"
     return RedirectResponse(url=f"/trade-partner/partners?success=Portal+{state}", status_code=302)
+
+
+@router.post("/partners/{dealer_id}/set-login")
+async def set_partner_login(
+    request: Request,
+    dealer_id: str,
+    person_id: str = Form(""),
+    password: str = Form(""),
+    _csrf=Depends(verify_csrf),
+    current_user: User = Depends(require_module_perm("trade_partner_partners", "edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Generate / Regenerate Password (2026-11-11 PM, Pankaj). One of the
+    Account's location contacts is picked; their phone (portal_phone) and email
+    (Dealer.email) become the Login ID, and the password typed in the modal is
+    set. First time also switches the portal on; a regenerate keeps its
+    Enabled / Disabled state. Old sessions are signed out either way."""
+    from models.crm import CRMContactNumber
+    back = "/trade-partner/partners"
+    dealer = (await db.execute(select(Dealer).where(Dealer.id == dealer_id))).scalar_one_or_none()
+    if not dealer:
+        raise HTTPException(status_code=404, detail="Dealer not found")
+    if not dealer.crm_contact_id:
+        return RedirectResponse(url=back + "?error=" + quote_plus("This partner is not linked to an account"), status_code=302)
+    try:
+        pid = uuid_mod.UUID(person_id)
+    except ValueError:
+        return RedirectResponse(url=back + "?error=" + quote_plus("Pick the person who will log in"), status_code=302)
+    person = (await db.execute(select(CRMContactNumber).where(
+        CRMContactNumber.id == pid, CRMContactNumber.contact_id == dealer.crm_contact_id))).scalar_one_or_none()
+    if not person:
+        return RedirectResponse(url=back + "?error=" + quote_plus("That person is not a contact of this account"), status_code=302)
+    phone = normalize_phone(person.phone or "")
+    email = (person.email or "").strip().lower()
+    if len(phone) != 10:
+        phone = ""
+    if not (phone or email):
+        return RedirectResponse(url=back + "?error=" + quote_plus(
+            f"{person.person_name or 'This person'} has no 10-digit phone or email — add one on the account first"), status_code=302)
+    if len(password) < 8 or len(password) > 128:
+        return RedirectResponse(url=back + "?error=" + quote_plus("Password must be 8 to 128 characters"), status_code=302)
+    if phone:
+        dup = (await db.execute(select(Dealer).where(Dealer.portal_phone == phone, Dealer.id != dealer.id))).scalars().first()
+        if dup:
+            return RedirectResponse(url=back + "?error=" + quote_plus(f"{phone} is already the login for {dup.business_name}"), status_code=302)
+    if email:
+        dup = (await db.execute(select(Dealer).where(func.lower(Dealer.email) == email, Dealer.id != dealer.id,
+                                                     Dealer.portal_password_hash.isnot(None)))).scalars().first()
+        if dup:
+            return RedirectResponse(url=back + "?error=" + quote_plus(f"{email} is already the login for {dup.business_name}"), status_code=302)
+
+    first = not dealer.portal_password_hash
+    old = {"portal_phone": dealer.portal_phone, "email": dealer.email, "portal_enabled": dealer.portal_enabled}
+    dealer.portal_phone = phone or None
+    if email:
+        dealer.email = email
+    dealer.portal_password_hash = await hash_password_async(password)
+    dealer.portal_password_version = (dealer.portal_password_version or 1) + 1   # signs old sessions out
+    if first:
+        dealer.portal_enabled = True
+    await audit(db, action="PARTNER_LOGIN_SET", user=current_user, table_name="dealers",
+                record_id=str(dealer.id), old_value=old,
+                new_value={"portal_phone": dealer.portal_phone, "email": dealer.email,
+                           "portal_enabled": dealer.portal_enabled, "first_time": first,
+                           "person": person.person_name}, request=request)   # never the password
+    await db.commit()
+    login_id = " / ".join(x for x in (email, phone) if x)
+    return await _render_partners(
+        request, current_user, db,
+        provisioned=[{"name": dealer.business_name, "dealer_code": dealer.dealer_code,
+                      "phone": login_id, "password": password, "dealer_created": False}],
+        success=f"Password {'generated' if first else 'regenerated'} for {dealer.business_name} — {person.person_name or login_id} logs in with {login_id}",
+    )
 
 
 @router.post("/partners/{dealer_id}/reset-password")

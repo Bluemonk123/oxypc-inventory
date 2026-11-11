@@ -1,0 +1,126 @@
+{# Location Mapping (2026-11-11 PM, Pankaj) — Accounts List selection button.
+   Use Form  = the Add Account page's Locations section, added to every selected
+               Account (POST /crm/contacts/locations-bulk).
+   Use Upload = the Upload Locations sheet (POST /crm/contacts/upload-locations).
+   Reuses crm/contacts/_location_block.html, so the block's own buttons call
+   addNumberRow / removeLocationBlock / removeNumberRow defined below (the
+   Accounts List has no other Locations section, so the names don't clash).
+   Needs person_roles. JS: window.LocationMapping.open(ids). #}
+<div class="modal fade" id="locationMappingModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h5 class="modal-title"><i class="bi bi-geo-alt me-2"></i>Location Mapping — <span id="lmCount"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <ul class="nav nav-tabs px-3 pt-2">
+        <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#lmFormPane"><i class="bi bi-ui-checks me-1"></i>Use Form</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#lmUploadPane"><i class="bi bi-upload me-1"></i>Use Upload</button></li>
+      </ul>
+      <div class="tab-content">
+        <div class="tab-pane fade show active" id="lmFormPane">
+          <form method="post" action="/crm/contacts/locations-bulk" id="lmForm">
+            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+            <div id="lmContactIds"></div>
+            <div class="modal-body">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="text-muted small">These locations and their contact numbers are added to <b>every selected account</b>.
+                  A location the account already has (same address, city and state) is kept, not duplicated.</span>
+                <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" onclick="addLocationBlock()"><i class="bi bi-plus-lg me-1"></i>Add Location</button>
+              </div>
+              <div id="locationsContainer">
+                {% set loc = None %}
+                {% include "crm/contacts/_location_block.html" %}
+              </div>
+            </div>
+            <div class="modal-footer py-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check2 me-1"></i>Save Locations</button>
+            </div>
+          </form>
+        </div>
+        <div class="tab-pane fade" id="lmUploadPane">
+          <form method="post" action="/crm/contacts/upload-locations" enctype="multipart/form-data">
+            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+            <div class="modal-body">
+              <p class="small text-muted mb-2">Columns: <code>gstin</code>, <code>company_name</code>, <code>location_address</code>, <code>location_city</code>,
+                <code>location_state</code>, <code>location_email</code>, <code>location_contact_role</code>, <code>location_contact_name</code>,
+                <code>location_contact_phone</code>, <code>location_contact_email</code>.</p>
+              <p class="small text-muted mb-3">Each row adds one contact to one location of an existing account (found by <code>gstin</code>,
+                else <code>company_name</code>). Repeat a location on more rows to add more contacts there. Accounts are never created here.</p>
+              {% if can(current_user, 'crm_contacts', 'export') %}<a href="/static/samples/crm_locations_sample.csv" class="btn btn-sm btn-outline-secondary mb-3" download>
+                <i class="bi bi-file-earmark-spreadsheet me-1"></i>Download Sample CSV</a>{% endif %}
+              <input type="file" name="file" class="form-control form-control-sm" accept=".csv" required>
+              <div class="form-text"><a href="/crm/contacts/upload-locations" target="_blank">Open the full upload page</a> for the column reference.</div>
+            </div>
+            <div class="modal-footer py-2">
+              <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+              <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-upload me-1"></i>Upload &amp; Import</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<template id="locationBlockTemplate">
+  {% set loc = None %}
+  {% include "crm/contacts/_location_block.html" %}
+</template>
+<template id="numberRowTemplate">
+  <tr>
+    <td><select name="cn_role[]" class="form-select form-select-sm">
+      <option value="">— Select —</option>
+      {% for r in person_roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+    </select></td>
+    <td><input type="text" name="cn_person[]" class="form-control form-control-sm" placeholder="Name"></td>
+    <td><input type="text" name="cn_phone[]" class="form-control form-control-sm" placeholder="Phone number"></td>
+    <td><input type="email" name="cn_email[]" class="form-control form-control-sm" placeholder="email@example.com"></td>
+    <td class="text-center">
+      <input type="hidden" name="cn_location_index[]" class="cn-loc-index" value="0">
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="removeNumberRow(this)"><i class="bi bi-trash"></i></button>
+    </td>
+  </tr>
+</template>
+<script>
+// Same helpers as the Add Account page (templates/crm/contacts/form.html)
+function syncLocationIndices() {
+  document.querySelectorAll('#locationsContainer .location-block').forEach(function (block, idx) {
+    block.querySelectorAll('.cn-loc-index').forEach(function (input) { input.value = idx; });
+  });
+}
+function addLocationBlock() {
+  document.getElementById('locationsContainer').appendChild(document.getElementById('locationBlockTemplate').content.cloneNode(true));
+  syncLocationIndices();
+}
+function removeLocationBlock(btn) {
+  if (document.querySelectorAll('#locationsContainer .location-block').length <= 1) return;
+  btn.closest('.location-block').remove();
+  syncLocationIndices();
+}
+function addNumberRow(btn) {
+  btn.closest('.location-block').querySelector('.loc-numbers-body').appendChild(document.getElementById('numberRowTemplate').content.cloneNode(true));
+  syncLocationIndices();
+}
+function removeNumberRow(btn) {
+  var rows = btn.closest('.loc-numbers-body').querySelectorAll('tr');
+  if (rows.length <= 1) {
+    var r = btn.closest('tr');
+    r.querySelectorAll('input').forEach(function (i) { if (i.type !== 'hidden') i.value = ''; });
+    r.querySelectorAll('select').forEach(function (s) { s.selectedIndex = 0; });
+    return;
+  }
+  btn.closest('tr').remove();
+}
+window.LocationMapping = {
+  open: function (ids) {
+    var el = document.getElementById('locationMappingModal');
+    var box = document.getElementById('lmContactIds'); box.innerHTML = '';
+    ids.forEach(function (id) { var i = document.createElement('input'); i.type = 'hidden'; i.name = 'contact_ids'; i.value = id; box.appendChild(i); });
+    document.getElementById('lmCount').textContent = ids.length + ' account' + (ids.length === 1 ? '' : 's');
+    bootstrap.Tab.getOrCreateInstance(el.querySelector('[data-bs-target="#lmFormPane"]')).show();
+    syncLocationIndices();
+    bootstrap.Modal.getOrCreateInstance(el).show();
+  }
+};
+</script>
