@@ -1,0 +1,143 @@
+{% extends "base.html" %}
+{% block title %}Pickup Process — OxyPC{% endblock %}
+{% block page_title %}Pickup Process{% endblock %}
+{% block content %}
+{# Pickup Process (2026-11-11, Pankaj): routers/crm_pickups.py, services/pickups.py.
+   A row lands here when a user is assigned on a deal's Stock Received (Supplier
+   Deal) / Stock Handover (Customer Deal) stage. #}
+{% set csrf = request.cookies.get('csrf_token', '') %}
+
+{# Tint tiles, two counts each — For Supplier / For Customer; a step a flow
+   doesn't have shows "Not Required" (like the WorkID Status tiles). #}
+{% set _icons = {'Created': 'bi-plus-circle', 'Scheduled': 'bi-calendar-event', 'In-progress': 'bi-hourglass-split',
+                 'Completed': 'bi-check2-circle', 'In-transit': 'bi-truck', 'Received / Handover': 'bi-box-seam'} %}
+<div class="oxt-row">
+  {% for title, ks, kc in tiles %}
+  <div><div class="oxt-tile oxt-multi oxt-tint" style="--tc:{{ colors[ks] }}">
+    <div class="oxt-title">{{ title }}</div>
+    <div class="oxt-mline"><span class="oxt-mcount">{{ counts.supplier.get(ks, 0) }}</span><span class="oxt-mlabel">For Supplier</span></div>
+    <div class="oxt-mline">
+      {% if kc %}<span class="oxt-mcount">{{ counts.customer.get(kc, 0) }}</span>
+      {% else %}<span class="oxt-mcount pk-nr">Not Required</span>{% endif %}<span class="oxt-mlabel">For Customer</span>
+    </div>
+    <i class="bi {{ _icons.get(title, 'bi-truck') }} oxt-wm" aria-hidden="true"></i>
+  </div></div>
+  {% endfor %}
+</div>
+<style>
+  .pk-nr { font-size: .85rem !important; letter-spacing: 0 !important; font-weight: 600; opacity: .75; }
+  .pk-table th.pk-act, .pk-table td.pk-act { text-align: right !important; white-space: nowrap; }
+</style>
+
+{% macro pk_rows(kind, list, st) %}
+<table class="table table-sm align-middle mb-0 pk-table" id="pk_{{ kind }}_{{ st }}">
+  <thead><tr><th>Deal ID</th><th>Account</th><th>Assigned To</th><th>Assigned On</th><th>Status</th><th>Last Update</th><th class="pk-act">Action</th></tr></thead>
+  <tbody>
+  {% for r in list %}
+    <tr>
+      <td><a href="{{ r.url }}" class="fw-semibold font-monospace text-decoration-none">{{ r.number }}</a>
+        <div class="small text-muted text-truncate" style="max-width:260px" title="{{ r.deal.title }}">{{ r.deal.title }}</div></td>
+      <td class="small">{% if r.account %}<a href="/crm/contacts/{{ r.account.id }}" class="text-decoration-none">{{ r.account.company_name }}</a>{% else %}—{% endif %}</td>
+      <td class="small">{{ names.get(r.assignee, r.assignee) }}</td>
+      <td class="small" data-order="{{ r.assigned_on.strftime('%Y%m%d%H%M') if r.assigned_on else '' }}">{{ r.assigned_on.strftime('%d-%m-%Y') if r.assigned_on else '—' }}</td>
+      <td><span class="badge" style="background:{{ colors[r.status] }}">{{ r.status_label }}</span></td>
+      <td class="small">{% if r.updated_at %}{{ names.get(r.updated_by, r.updated_by) }} · {{ r.updated_at.strftime('%d-%m-%Y %H:%M') }}{% else %}—{% endif %}
+        {% if r.note %}<div class="text-muted fst-italic text-truncate" style="max-width:220px" title="{{ r.note }}">“{{ r.note }}”</div>{% endif %}</td>
+      <td class="pk-act">
+        {% if r.next and (see_all or r.assignee == current_user.username) %}
+        <button type="button" class="btn btn-sm btn-primary py-0 pk-move" data-action="/crm/pickups/{{ kind }}/{{ r.deal.id }}/advance"
+                data-number="{{ r.number }}" data-next="{{ r.next_label }}"><i class="bi bi-arrow-right-circle me-1"></i>{{ r.next_label }}</button>
+        {% elif not r.next %}<span class="badge bg-success"><i class="bi bi-check2-all me-1"></i>Done</span>
+        {% else %}<a href="{{ r.url }}" class="btn btn-sm btn-outline-primary py-0"><i class="bi bi-eye me-1"></i>View</a>{% endif %}
+      </td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% set _tabs = [('supplier', 'Supplier Deal', 'bi-box-arrow-in-down'), ('customer', 'Customer Deal', 'bi-graph-up')] %}
+<ul class="nav nav-tabs mb-0" id="pkTabs" role="tablist">
+  {% for k, l, ic in _tabs %}
+  <li class="nav-item"><button class="nav-link{% if (tab if tab in ('supplier','customer') else 'supplier') == k %} active{% endif %}" data-bs-toggle="tab"
+          data-bs-target="#pk-{{ k }}" type="button" data-pk="{{ k }}"><i class="bi {{ ic }} me-1"></i>{{ l }}
+    <span class="badge rounded-pill bg-warning text-dark ms-1" title="Open pickups">{{ rows[k] | rejectattr('next', 'none') | list | length }}</span></button></li>
+  {% endfor %}
+</ul>
+<div class="tab-content">
+  {% for k, l, ic in _tabs %}
+  <div class="tab-pane fade{% if (tab if tab in ('supplier','customer') else 'supplier') == k %} show active{% endif %}" id="pk-{{ k }}">
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-3">
+        <span class="fw-semibold"><i class="bi bi-truck me-2"></i>{{ l }} Pickups</span>
+        <ul class="nav pill-tabs" role="tablist">
+          {% for s, _lbl in flows[k] %}
+          <li class="nav-item"><button type="button" class="nav-link{% if loop.first %} active{% endif %}" data-bs-toggle="tab"
+                  data-bs-target="#pk_{{ k }}_{{ s }}_pane" data-pill="{{ s }}">{{ short[s] }}</button></li>
+          {% endfor %}
+        </ul>
+      </div>
+      <div class="card-body">
+        <p class="small text-muted mb-2">Flow: {% for s, lbl in flows[k] %}{{ lbl }}{% if not loop.last %} → {% endif %}{% endfor %}.
+          A pickup lands here when someone is assigned on the deal's {{ 'Stock Received' if k == 'supplier' else 'Stock Handover' }} stage.
+          {% if not see_all %}Only the pickups assigned to you are listed.{% endif %}</p>
+        <div class="tab-content">
+          {% for s, _lbl in flows[k] %}
+          <div class="tab-pane fade{% if loop.first %} show active{% endif %}" id="pk_{{ k }}_{{ s }}_pane">
+            {{ pk_rows(k, rows[k] | selectattr('status', 'equalto', s) | list, s) }}
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{# Move a pickup one step on, with an optional note #}
+<div class="modal fade" id="pkMoveModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" id="pkMoveForm" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <div class="modal-header py-2"><h6 class="modal-title">Move to <span id="pkMoveNext"></span> — <span class="font-monospace" id="pkMoveNum"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold">Note (optional)</label>
+        <textarea name="note" class="form-control" rows="2" maxlength="500" placeholder="e.g. pickup booked for 12 Nov, vehicle DL01AB1234"></textarea>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check2 me-1"></i>Confirm</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  document.querySelectorAll('.pk-table').forEach(function (t) {
+    if (window.initGlobalTable) initGlobalTable('#' + t.id, { order: [], columnDefs: [{ orderable: false, targets: [-1] }],
+                                                            language: { emptyTable: 'Nothing here' } });
+  });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.pk-move');
+    if (!b) return;
+    var f = document.getElementById('pkMoveForm'); f.reset(); f.action = b.dataset.action;
+    document.getElementById('pkMoveNext').textContent = b.dataset.next;
+    document.getElementById('pkMoveNum').textContent = b.dataset.number;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('pkMoveModal')).show();
+  });
+  // re-fit a table when its tab / pill is shown (sized while hidden = squeezed header)
+  function refit() { if (window.$ && $.fn.dataTable) $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust(); }
+  document.querySelectorAll('[data-bs-toggle="tab"]').forEach(function (b) { b.addEventListener('shown.bs.tab', refit); });
+  // after a move: open the tab + the pill of the new status
+  var qp = new URLSearchParams(location.search), pill = qp.get('pill'), tab = qp.get('tab') || 'supplier';
+  if (pill) {
+    var btn = document.querySelector('#pk-' + tab + ' [data-pill="' + pill + '"]');
+    if (btn) bootstrap.Tab.getOrCreateInstance(btn).show();
+  }
+  setTimeout(refit, 50);
+})();
+</script>
+{% endblock %}

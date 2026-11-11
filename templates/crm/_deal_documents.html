@@ -1,0 +1,57 @@
+{# Documents card (2026-11-11, Pankaj): below Deal Info on Supplier / Customer
+   Deal pages — an accordion, collapsed by default, with every document in one
+   row. Each document is a deal step file, so the same file shows in Stage
+   Progress (Inspection / Screening Report, Quote, Invoice).
+
+   Context the including page sets:
+     dd_items   - [(step_key, label)] in display order
+     dd_attach  - '/crm/sourcing/<id>/steps/' or '/crm/sales/<id>/steps/'
+     dd_upload  - True when the user may upload
+     dd_quote   - the latest generated quotation (or none), shown under Quotation
+     dd_quote_key - the step key of the Quotation slot
+     dd_legacy  - [(label, url)] documents uploaded before this card (shown read-only) #}
+{% set _have = namespace(n=0) %}{% for k, l in dd_items %}{% if steps.get(k) and steps.get(k).file_path %}{% set _have.n = _have.n + 1 %}{% endif %}{% endfor %}
+<div class="card border-0 shadow-sm hdr-card mb-3">
+  <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center sd-acc collapsed"
+       data-bs-toggle="collapse" data-bs-target="#dealDocsBody" role="button" aria-expanded="false" aria-controls="dealDocsBody" style="cursor:pointer">
+    <span class="fw-semibold"><i class="bi bi-folder2-open me-1 text-primary"></i>Documents
+      <span class="badge bg-secondary ms-1" title="Uploaded">{{ _have.n }}/{{ dd_items | length }}</span></span>
+    <i class="bi bi-chevron-down sd-acc-chev"></i>
+  </div>
+  <div class="collapse" id="dealDocsBody">
+    <div class="card-body pt-1">
+      <div class="dd-row">
+        {% for k, l in dd_items %}{% set st = steps.get(k) %}
+        <div class="dd-cell">
+          <form method="post" action="{{ dd_attach }}{{ k }}/attach" enctype="multipart/form-data" class="mb-0">
+            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+            <label class="form-label small fw-semibold mb-1 text-truncate d-block" title="{{ l }}">{{ l }}</label>
+            {% if dd_upload %}
+            <div class="input-group input-group-sm">
+              <input type="file" name="file" class="form-control form-control-sm" required accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.xlsx,.xls,.csv,.doc,.docx">
+              <button class="btn btn-primary" title="Upload {{ l }}"><i class="bi bi-cloud-upload"></i></button>
+            </div>
+            {% endif %}
+            {% if st and st.file_path %}<a href="/uploads/crm/{{ st.file_path }}" target="_blank" class="small d-block mt-1 text-decoration-none"><i class="bi bi-paperclip"></i>Current file</a>
+            {% elif not dd_upload %}<div class="small text-muted">—</div>{% endif %}
+            {% if k == dd_quote_key and dd_quote %}<a href="/crm/quotes/{{ dd_quote.id }}{{ '/download' if can(current_user, 'crm_quotes', 'export') }}" class="small d-block text-decoration-none" title="Generated quotation"><i class="bi bi-file-earmark-text"></i>{{ dd_quote.quote_number }}</a>{% endif %}
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+      {% if dd_upload %}<div class="form-text small">PDF, image, Excel or Word — up to 20 MB each.</div>{% endif %}
+      {% if dd_legacy %}
+      <div class="small mt-2"><span class="text-muted">Earlier uploads:</span>
+        {% for l, u in dd_legacy %}<a href="{{ u }}" target="_blank" class="text-decoration-none ms-2"><i class="bi bi-file-earmark-arrow-down me-1"></i>{{ l }}</a>{% endfor %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+<style>
+  /* one row, five documents; scrolls sideways on a narrow screen */
+  .dd-row { display: flex; gap: .75rem; overflow-x: auto; }
+  .dd-cell { flex: 1 1 0; min-width: 170px; }
+  .sd-acc-chev { transition: transform .15s; }
+  .sd-acc:not(.collapsed) .sd-acc-chev { transform: rotate(180deg); }
+</style>

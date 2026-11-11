@@ -1,4 +1,5 @@
 {% set _qsm = qt_perm_module if qt_perm_module is defined else ['dealers', 'quotations'] %}
+{% import "_download_cell.html" as dl %}
 {# Shared "Quotation Shared" table — included on Dealer Management (all
    quotations) and Dealer Detail (this dealer's quotations only). Expects a
    `quotations` list in the including template's context.
@@ -13,9 +14,14 @@
     <span class="badge bg-secondary ms-1">{{ quotations|length }}</span>
     {# Add Quote (2026-10-27): only where the page passes the dealer list
        (Quotations page); opens the shared Create Quotation modal. #}
-    {% if qtn_dealers is defined and can(current_user, 'dealers', 'add') %}
+    {% if qtn_add_dealer is defined and can(current_user, 'dealers', 'add') and can(current_user, 'dealers', 'pricing_add') %}
+    {# Dealer page (2026-11-10): Add Quotation for this dealer #}
+    <button type="button" class="btn btn-sm btn-primary ms-auto" data-hdr-primary onclick='openQuotationModal({{ qtn_add_dealer | tojson }})'>
+      <i class="bi bi-plus-circle me-1"></i>Add Quotation
+    </button>
+    {% elif qtn_dealers is defined and can(current_user, 'dealers', 'add') %}
     <button type="button" class="btn btn-sm btn-primary ms-auto" onclick="openQuotationModalPickDealer()">
-      <i class="bi bi-plus-lg me-1"></i>Add Quote
+      <i class="bi bi-plus-circle me-1"></i>Add Quote
     </button>
     {% endif %}
   </div>
@@ -23,38 +29,43 @@
     <table class="table table-hover mb-0 small"{% if qs_global_table %} id="quotationSharedTable"{% endif %}>
       <thead class="{{ 'table-dark' if qs_global_table else 'table-light' }}">
         <tr>
-          <th class="ps-3">Customer Name</th>
+          <th class="ps-3">Quote No</th>
+          <th>Customer Name</th>
           <th>Customer Type</th>
           <th>Total Quantity</th>
           <th>Total Quotation Price</th>
           <th>Status</th>
+          <th>Download</th>
           <th>Action</th>
         </tr>
       </thead>
       <tbody>
         {% for q in quotations %}
+        {# Status flow (2026-11-10): Added -> Negotiation -> Approved / Rejected
+           (Level 1 on TeleSales Dashboard, by the creator's Report To) or Expired.
+           Download shows the Quote once Approved. #}
         <tr>
-          <td class="ps-3">{{ q.customer_name }} <span class="text-muted small">({{ q.quote_number }})</span></td>
+          <td class="ps-3 font-monospace small"><a href="/dealer-quotations/{{ q.id }}" class="text-decoration-none fw-semibold" title="Open quotation">{{ q.quote_number }}</a></td>
+          <td>{{ q.customer_name }}</td>
           <td><span class="badge bg-secondary">{{ (q.customer_type or '—') | title }}</span></td>
           <td>{{ q.total_quantity }}</td>
           <td>{% if can(current_user, _qsm, 'pricing') %}₹{{ ((q.total_price or 0) | inr) }}{% else %}—{% endif %}</td>
           <td>
-            {% if q.status == 'confirmed' %}
-            <span class="badge bg-success">Confirmed</span>
-            {% else %}
-            <span class="badge bg-warning text-dark">Shared</span>
-            {% endif %}
+            <span class="badge bg-{{ QUOTE_STATUS_COLORS.get(q.status, 'secondary') }}">{{ (q.status or 'added') | title }}</span>
+            {% if q.status in ('approved', 'rejected') and q.confirmed_by %}<div class="text-muted" style="font-size:.7rem">L1: {{ q.confirmed_by }}</div>{% endif %}
           </td>
+          <td>{{ dl.cell([{'label': 'Quote', 'url': '/dealer-quotations/' ~ q.id ~ '/print', 'newtab': True}] if q.status == 'approved' and can(current_user, _qsm, 'export') else []) }}</td>
           <td>
             <div class="btn-group btn-group-sm">
-              {% if q.status != 'confirmed' %}
-              {% if can(current_user, _qsm, 'edit') %}
-              <form method="post" action="/dealer-quotations/{{ q.id }}/confirm" class="d-inline">
+              {% if can(current_user, _qsm, 'edit') and q.status in ('added', 'negotiation') %}
+              {% for ns, ic, lbl in ([('negotiation', 'bi-chat-left-dots', 'Move to Negotiation')] if q.status == 'added' else []) + [('expired', 'bi-hourglass-bottom', 'Mark Expired')] %}
+              <form method="post" action="/dealer-quotations/{{ q.id }}/status" class="d-inline">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
                 <input type="hidden" name="return_to" value="{{ request.url.path }}">
-                <button type="submit" class="btn btn-outline-success" title="Confirm"><i class="bi bi-check-lg"></i></button>
+                <input type="hidden" name="new_status" value="{{ ns }}">
+                <button type="submit" class="btn btn-outline-{{ 'warning' if ns == 'negotiation' else 'secondary' }}" title="{{ lbl }}"><i class="bi {{ ic }}"></i></button>
               </form>
-              {% endif %}
+              {% endfor %}
               {% endif %}
               {% if can(current_user, _qsm, 'delete') %}
               <button type="button" class="btn btn-outline-danger qtnDeleteBtn" title="Delete"
@@ -67,7 +78,7 @@
         </tr>
         {% else %}
         {% if not qs_global_table %}
-        <tr><td colspan="6" class="text-center text-muted py-3">No quotations shared yet.</td></tr>
+        <tr><td colspan="8" class="text-center text-muted py-3">No quotations shared yet.</td></tr>
         {% endif %}
         {% endfor %}
       </tbody>

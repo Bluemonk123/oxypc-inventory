@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Parts GRN {{ grn.grn_number }} — OxyPC{% endblock %}
 {% block page_title %}Parts GRN: {{ grn.grn_number }}{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ grn.grn_number }}{% endblock %}{% block record_parent %}/parts-grn{% endblock %}{% block record_parent_label %}Parts GRN{% endblock %}
 {% block content %}
 {# Parts GRN Detail (2026-11-02): read-only, same layout as the (device) GRN
    Detail page — KPI cards, GRN & Invoice Details, Financial Breakdown — with

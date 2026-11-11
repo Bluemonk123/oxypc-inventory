@@ -35,89 +35,55 @@
   {% if city %} · City: <strong>{{ city }}</strong>{% endif %}
 </div>
 
-<!-- Filter bar -->
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Search</label>
-        <input type="text" name="q" value="{{ q }}" placeholder="Dealer name / phone..."
-               class="form-control form-control-sm" style="width:210px">
-      </div>
+<!-- Filter bar — Global filter bar (app.css .filter-bar, 2026-11-08); labels live in title= -->
+<form method="get" action="/telecalling" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" value="{{ q }}" title="Search" placeholder="Dealer name / phone..."
+             class="form-control form-control-sm">
+    </div>
 
-      {% if current_user.role.value in ('admin', 'sales_manager', 'sales') %}
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Agent</label>
-        <select name="assigned" class="form-select form-select-sm" style="width:160px">
-          <option value="">All Agents</option>
-          {% for u in sales_users %}
-          <option value="{{ u.username }}" {% if assigned == u.username %}selected{% endif %}>
-            {{ u.full_name }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      {% endif %}
+    {% if current_user.role.value in ('admin', 'sales_manager', 'sales') %}
+    <div>
+      <select name="assigned" class="form-select form-select-sm" title="Agent">
+        <option value="">All Agents</option>
+        {% for u in sales_users %}
+        <option value="{{ u.username }}" {% if assigned == u.username %}selected{% endif %}>
+          {{ u.full_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
 
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">City</label>
-        <input type="text" name="city" value="{{ city }}" placeholder="City"
-               class="form-control form-control-sm" style="width:110px">
-      </div>
+    <div>
+      <input type="text" name="city" value="{{ city }}" title="City" placeholder="City"
+             class="form-control form-control-sm">
+    </div>
 
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Outcome</label>
-        <select name="outcome" class="form-select form-select-sm" style="width:145px">
-          <option value="">All Outcomes</option>
-          {% for ov in ['interested','order_placed','callback','not_interested','no_answer','followup','do_not_call'] %}
-          <option value="{{ ov }}" {% if outcome == ov %}selected{% endif %}>
-            {{ ov | replace('_',' ') | title }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
+    <div>
+      <select name="outcome" class="form-select form-select-sm" title="Outcome">
+        <option value="">All Outcomes</option>
+        {% for ov in ['interested','order_placed','callback','not_interested','no_answer','followup','do_not_call'] %}
+        <option value="{{ ov }}" {% if outcome == ov %}selected{% endif %}>
+          {{ ov | replace('_',' ') | title }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
 
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Call Date From</label>
-        <input type="date" name="date_from" value="{{ date_from }}"
-               class="form-control form-control-sm" style="width:140px">
-      </div>
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Call Date To</label>
-        <input type="date" name="date_to" value="{{ date_to }}"
-               class="form-control form-control-sm" style="width:140px">
-      </div>
+    <div><input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" title="Call Date From"></div>
+    <div><input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" title="Call Date To"></div>
 
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Follow-up From</label>
-        <input type="date" name="followup_from" value="{{ followup_from }}"
-               class="form-control form-control-sm" style="width:140px">
-      </div>
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Follow-up To</label>
-        <input type="date" name="followup_to" value="{{ followup_to }}"
-               class="form-control form-control-sm" style="width:140px">
-      </div>
+    <div><input type="date" name="followup_from" value="{{ followup_from }}" class="form-control form-control-sm" title="Follow-up From"></div>
+    <div><input type="date" name="followup_to" value="{{ followup_to }}" class="form-control form-control-sm" title="Follow-up To"></div>
 
-      <button class="btn btn-sm btn-outline-primary">Filter</button>
-      <a href="/telecalling" class="btn btn-sm btn-outline-secondary">Clear</a>
-
-      <div class="ms-auto d-flex gap-2">
-        {% if can(current_user, 'telecalling', 'add') %}
-        <a href="/telecalling/add" class="btn btn-sm btn-primary">
-          <i class="bi bi-plus me-1"></i>Log Call
-        </a>
-        {% endif %}
-        <a href="/telecalling/records" class="btn btn-sm btn-outline-secondary">
-          <i class="bi bi-list me-1"></i>All Records
-        </a>
-        <a href="/telecalling/agent-performance" class="btn btn-sm btn-outline-info">
-          <i class="bi bi-graph-up me-1"></i>Performance
-        </a>
-      </div>
-    </form>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/telecalling" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
+</form>
 
 <!-- Follow-ups due today — accordion (collapsed by default) -->
 <div class="accordion mb-3" id="followupsAccordion">
@@ -201,16 +167,29 @@
 
 <!-- Recent Calls — live from DealerCall (auto-synced with Dealer Management) -->
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent d-flex align-items-center justify-content-between">
+  <div class="card-header bg-transparent d-flex align-items-center justify-content-between flex-wrap gap-2">
     <span class="fw-semibold">
       <i class="bi bi-clock-history me-2"></i>Recent Calls
       <small class="text-muted fw-normal ms-2">(sourced from Dealer Management call logs)</small>
     </span>
+    <div class="d-flex gap-2 align-items-center">
+    {% if can(current_user, 'telecalling', 'add') %}
+    <a href="/telecalling/add" class="btn btn-sm btn-primary text-nowrap">
+      <i class="bi bi-plus me-1"></i>Log Call
+    </a>
+    {% endif %}
+    <a href="/telecalling/records" class="btn btn-sm btn-outline-secondary text-nowrap">
+      <i class="bi bi-list me-1"></i>All Records
+    </a>
+    <a href="/telecalling/agent-performance" class="btn btn-sm btn-outline-info text-nowrap">
+      <i class="bi bi-graph-up me-1"></i>Performance
+    </a>
     {% if can(current_user, 'telecalling', 'export') %}<a href="/telecalling/export-csv?q={{ q }}&assigned={{ assigned }}&city={{ city }}&outcome={{ outcome }}&date_from={{ date_from }}&date_to={{ date_to }}&followup_from={{ followup_from }}&followup_to={{ followup_to }}"
        class="btn btn-sm btn-outline-success"
        title="Export all matching calls (no row cap) — includes full call log + dealer details">
       <i class="bi bi-file-earmark-arrow-down me-1"></i>Export CSV
     </a>{% endif %}
+    </div>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">

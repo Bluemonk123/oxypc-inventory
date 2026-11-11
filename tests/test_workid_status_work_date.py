@@ -133,13 +133,13 @@ asyncio.run(main())
         html = app_client.get("/workid-status?engineer=sp_eng&work_from=2026-10-27&work_to=2026-10-27").text
         stress = html.split('data-group="stress"', 1)[1].split('data-group="cosmetic"', 1)[0]
         import re
-        got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="wid-stage-sub">(Pass|Fail)', stress))
+        got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">(Pass|Fail)', stress))
         assert got == {"Pass": "1", "Fail": "1"}, got
         fqc = html.split('data-group="final_qc"', 1)[1].split('data-group="pre_sale_iqc"', 1)[0]
-        got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="wid-stage-sub">(Pass|Fail)', fqc))
+        got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">(Pass|Fail)', fqc))
         assert got == {"Pass": "1", "Fail": "1"}, got
         cos = html.split('data-group="cosmetic"', 1)[1].split('data-group="final_qc"', 1)[0]
-        got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="wid-stage-sub">(Pass|Fail)', cos))
+        got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">(Pass|Fail)', cos))
         assert got == {"Pass": "1", "Fail": "1"}, got          # Paint Fail (Water Sanding -> Painting) not counted
         assert 'name="workid"' not in html and 'name="tag"' not in html      # search boxes hidden
         from tests.workid_helpers import export_sheet

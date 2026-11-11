@@ -3,9 +3,12 @@
 {% block page_title %}Stage Movement Log{% endblock %}
 {% block content %}
 <div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
-    <table id="smTable" class="table table-hover mb-0 small">
-      <thead class="table-dark"><tr><th>Date/Time</th><th>Tag Number</th><th>Device</th><th>From</th><th>To</th><th>By</th><th>Notes</th></tr></thead>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-arrow-left-right me-2"></i>Stage Movements</span>
+  </div>
+  <div class="card-body">
+    <table id="smTable" class="table table-hover align-middle mb-0">
+      <thead><tr><th>Date/Time</th><th>Tag Number</th><th>Device</th><th>From</th><th>To</th><th>By</th><th>Notes</th></tr></thead>
       <tbody>
         {% for mv, barcode, brand, model in movements %}
         <tr>
@@ -24,5 +27,10 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>$(document).ready(function(){ $('#smTable').DataTable({pageLength: 12, order:[[0,'desc']]}); });</script>
+<script>$(document).ready(function(){
+  initGlobalTable('#smTable', {
+    order: [[0, 'desc']],
+    language: { emptyTable: 'No stage movements recorded.' },
+  });
+});</script>
 {% endblock %}

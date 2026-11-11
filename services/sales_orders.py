@@ -9,13 +9,9 @@ from models.crm import CRMQuote, CRMQuoteItem, CRMSalesOrder, CRMSalesOrderItem
 
 
 async def next_so_number(db) -> str:
-    year = app_now().year
-    prefix = f"SO-{year}-"
-    last = (await db.execute(
-        select(func.max(CRMSalesOrder.so_number)).where(CRMSalesOrder.so_number.like(f"{prefix}%"))
-    )).scalar()
-    seq = int(last.rsplit("-", 1)[1]) + 1 if last else 1
-    return f"{prefix}{seq:04d}"
+    """Sales Order ID SO-DEAL-<MMYYYY><NNNN> (2026-11-10, was SO-<year>-<n>)."""
+    from utils.quote_numbers import next_monthly_number, SALES_ORDER_BASE
+    return await next_monthly_number(db, CRMSalesOrder.so_number, SALES_ORDER_BASE, app_now().date())
 
 
 async def create_sales_order_from_deal(db, opp, user, request=None):

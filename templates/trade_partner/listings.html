@@ -22,30 +22,43 @@
   {% endfor %}
 </div>
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <form method="get" class="d-flex gap-2">
-    <select name="status" class="form-select form-select-sm" style="width:140px">
-      <option value="">All Status</option>
-      {% for s in ['draft','published','paused','sold_out'] %}
-      <option value="{{ s }}" {% if f_status==s %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
-      {% endfor %}
-    </select>
-    <select name="listing_type" class="form-select form-select-sm" style="width:160px">
-      <option value="">All Types</option>
-      {% for t in listing_types %}
-      <option value="{{ t }}" {% if f_type==t %}selected{% endif %}>{{ t | replace('_',' ') | title }}</option>
-      {% endfor %}
-    </select>
-    <button class="btn btn-sm btn-outline-primary">Filter</button>
-  </form>
-  {% if can(current_user, 'trade_partner_listings', 'add') %}
-  <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createModal">
-    <i class="bi bi-plus-circle me-1"></i>New Listing
-  </button>
-  {% endif %}
-</div>
+{# Global filter bar (app.css .filter-bar, 2026-11-08) — labels live in title=. #}
+<form method="get" action="/trade-partner/listings" class="filter-bar">
+  <div class="filter-bar-row">
+    <div>
+      <select name="status" class="form-select form-select-sm" title="Status">
+        <option value="">All Status</option>
+        {% for s in ['draft','published','paused','sold_out'] %}
+        <option value="{{ s }}" {% if f_status==s %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="listing_type" class="form-select form-select-sm" title="Listing Type">
+        <option value="">All Types</option>
+        {% for t in listing_types %}
+        <option value="{{ t }}" {% if f_type==t %}selected{% endif %}>{{ t | replace('_',' ') | title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/trade-partner/listings" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
+  </div>
+</form>
 
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Listings</span>
+    {% if can(current_user, 'trade_partner_listings', 'add') %}
+    <div class="d-flex gap-2 align-items-center">
+      <button class="btn btn-sm btn-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#createModal">
+        <i class="bi bi-plus-circle me-1"></i>Add Listing
+      </button>
+    </div>
+    {% endif %}
+  </div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0">

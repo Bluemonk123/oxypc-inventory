@@ -31,6 +31,24 @@ def test_tabs_and_pdfs(app_client, make_user):  # noqa: F811
     assert app_client.get("/qa/workflow/nope/diagram.pdf").status_code == 404
 
 
+def test_tab_order_and_spare_parts_tab(app_client, make_user):  # noqa: F811
+    """2026-11-09 (Pankaj): Stage Flows first (and open by default), then New
+    GRN, Re-GRN, Spare Parts; New GRN covers after-sale + scrap, Re-GRN carries
+    on through the same flow, Spare Parts has its own diagram and journey."""
+    u, pw = make_user("admin")
+    _login(app_client, u, pw)
+    html = app_client.get("/qa/workflow").text
+    order = [html.index(f'data-bs-target="#wf_{k}"') for k in ("stage", "new_grn", "regrn", "parts")]
+    assert order == sorted(order)
+    assert 'tab-pane fade show active" id="wf_stage"' in html
+    for word in ("Process Return", "Replace Now", "Credit Note", "On Rent", "Scrap at L3/L4"):
+        assert word in html, word
+    assert "Continues from" in html and "Ready to Sale Parts" in html
+    for url in ("/qa/workflow/parts/diagram.pdf", "/qa/workflow/parts/journey.pdf"):
+        r = app_client.get(url)
+        assert r.status_code == 200 and r.content[:5] == b"%PDF-", url
+
+
 def test_upload_replace_refuse_remove(app_client, make_user):  # noqa: F811
     u, pw = make_user("admin")
     _login(app_client, u, pw)

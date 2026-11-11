@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ lot.lot_number }} — OxyPC{% endblock %}
 {% block page_title %}Lot: {{ lot.lot_number }}{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ lot.lot_number }}{% endblock %}{% block record_parent %}/lots{% endblock %}{% block record_parent_label %}Lot Management{% endblock %}
 {% block content %}
 
 {% if request.query_params.get('success') %}
@@ -70,7 +71,7 @@
           {% endif %}
           {% if can(current_user, 'lots', 'add') %}
           <a href="/lots/{{ lot.id }}/register" class="btn btn-sm btn-success py-0">
-            <i class="bi bi-upc-scan me-1"></i>Add New Tag
+            <i class="bi bi-plus-circle me-1"></i>Add Tag
           </a>
           {% endif %}
           {% if can(current_user, 'lots', 'edit') %}
@@ -523,18 +524,17 @@
 
 <!-- ── Devices Table ── -->
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-laptop me-2"></i>Individual Product Tags in this Lot ({{ devices|length }})</span>
     {% if can(current_user, 'lots', 'add') %}
-    <a href="/iqc/new?lot_id={{ lot.id }}&grn_number={{ lot.grn_system_number or lot.grn_number_new or '' }}" class="btn btn-sm btn-outline-success">
+    <a href="/iqc/new?lot_id={{ lot.id }}&grn_number={{ lot.grn_system_number or lot.grn_number_new or '' }}" class="btn btn-sm btn-outline-success text-nowrap">
       <i class="bi bi-plus-circle me-1"></i>Register Device
     </a>
     {% endif %}
   </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table id="deviceTable" class="table table-hover mb-0 small">
-        <thead class="table-dark">
+  <div class="card-body">
+      <table id="deviceTable" class="table table-hover align-middle mb-0">
+        <thead>
           <tr>
             <th>Tag Number</th><th>Device Type</th><th>Brand</th><th>Model</th><th>CPU</th><th>RAM</th>
             <th>Storage</th><th>Grade</th><th>Stage</th><th>Floor</th>
@@ -542,7 +542,7 @@
             <th class="text-center" title="Repair attempts">Repairs</th>
             <th class="text-center" title="QC checks">QC</th>
             <th class="text-center">Status</th>
-            <th></th>
+            <th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -589,12 +589,11 @@
               <span class="badge bg-secondary">Available</span>
               {% endif %}
             </td>
-            <td><a href="/devices/{{ d.barcode }}" class="btn btn-sm btn-outline-primary py-0">View</a></td>
+            <td class="text-nowrap"><a href="/devices/{{ d.barcode }}" class="btn btn-sm btn-outline-primary py-0">View</a></td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
-    </div>
   </div>
 </div>
 
@@ -605,7 +604,12 @@
 {% endblock %}
 {% block scripts %}
 <script>
-$(document).ready(function(){ $('#deviceTable').DataTable({pageLength: 12, order:[[0,'asc']]}) });
+$(document).ready(function(){
+  initGlobalTable('#deviceTable', {
+    order: [[0, 'asc']],
+    language: { emptyTable: 'No devices registered in this lot yet.' },
+  });
+});
 
 const LOT_ID = "{{ lot.id }}";
 

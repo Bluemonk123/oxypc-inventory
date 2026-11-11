@@ -127,6 +127,8 @@ def _ticket_ctx(t: Ticket, names: dict | None = None) -> dict:
         "attachments": [{"path": p, "kind": attachment_kind(p)} for p in (t.photo1_path, t.photo2_path) if p],
         "age_label":  age_label,
         "age_cls":    age_cls,
+        "age_days":   max(0, (app_now() - t.raised_on).days) if t.raised_on else 0,
+        "raised_iso": t.raised_on.isoformat() if t.raised_on else "",
     }
 
 
@@ -148,10 +150,20 @@ async def list_tickets(
         names = {u: n for u, n in (await db.execute(
             select(User.username, User.full_name).where(User.username.in_(usernames)))).all()}
     tickets = [_ticket_ctx(t, names) for t in rows]
+    # Dark tiles (2026-11-10, Pankaj): Total / Open / Closed / Average Aging.
+    # Average Aging = mean days since raised, over the tickets still Open.
+    open_t = [t for t in tickets if t["status"] == "Open"]
+    stats = {
+        "total": len(tickets),
+        "open": len(open_t),
+        "closed": len(tickets) - len(open_t),
+        "avg_age": round(sum(t["age_days"] for t in open_t) / len(open_t), 1) if open_t else 0,
+    }
     return templates.TemplateResponse("tickets/list.html", {
         "request": request,
         "current_user": current_user,
         "tickets": tickets,
+        "stats": stats,
     })
 
 

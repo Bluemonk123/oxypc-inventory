@@ -70,9 +70,7 @@
           <button {% if not can(current_user, 'repair_l1', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l1ExportBtn"
                   title="Export the rows shown (current filters / search) to CSV">
             <i class="bi bi-download me-1"></i>Export (<span id="l1ExportBtnCount">0</span>)</button>
-          {# Search Tags after Export (2026-10-26). #}
-          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
-            <i class="bi bi-clock-history me-1"></i>Search Tags</button>
+          {# Search Tags button removed (2026-11-09): the top-bar search opens the same modal. #}
         </div>
       </div>
       {# No .table-responsive wrapper — initGlobalTable's own scrollX
@@ -246,7 +244,7 @@
                     {% if can(current_user, 'repair_l1', 'add') %}
                     <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
                             onclick="openBulkPartRequest('new', '{{ bp.label | e }}', '{{ bp.category | e }}', {{ bp.qty }}, {{ bp.requested }})">
-                      <i class="bi bi-bag-plus"></i> New Request</button>
+                      <i class="bi bi-plus-circle"></i> Add Request</button>
                     <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2"
                             onclick="openBulkPartRequest('replace', '{{ bp.label | e }}', '{{ bp.category | e }}', {{ bp.qty }}, {{ bp.requested }})">
                       <i class="bi bi-arrow-repeat"></i> Replace Request</button>
@@ -412,7 +410,7 @@
 </div>
 {# Pencil next to the Tag Number: quick spec edit (2026-10-26). #}
 {{ spec_edit_modal() }}
-{% include "_search_tags_modal.html" %}
+{# Search Tags modal is included once by base.html (2026-11-08). #}
 {% endblock %}
 {% block scripts %}
 <style>

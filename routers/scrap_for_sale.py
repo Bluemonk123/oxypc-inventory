@@ -31,8 +31,8 @@ from services.audit_engine import audit
 
 router = APIRouter(tags=["scrap_for_sale"], dependencies=[Depends(verify_csrf)])
 allowed = require_roles(UserRole.admin, UserRole.inventory_manager, UserRole.sales_manager)
-# The sale form also opens from Tags Scrapped (/scrap-products), which sales
-# users can reach — they could already sell a scrapped tag from there.
+# Sale form roles. (It used to open from Tags Scrapped too; since 2026-11-09
+# only a Scrap ID on Scrap for Sale is sold.)
 sale_allowed = require_roles(UserRole.admin, UserRole.inventory_manager, UserRole.sales_manager,
                              UserRole.sales)
 
@@ -189,32 +189,6 @@ async def _batch_sell_tags(db: AsyncSession, batch) -> tuple[list, list]:
     return devices, [t for t in trs if t.move_kind == "parts"]
 
 
-async def _tags_sell_devices(db: AsyncSession, barcodes: list) -> tuple[list, list]:
-    """(sellable devices, [(barcode, reason)]) for Sell on Tags Scrapped:
-    on Tags Scrapped (Scrap for Sale stage, not in a live batch) and Verified."""
-    from services.scrap_flow import batched_device_ids
-    ups = [b.upper() for b in barcodes]
-    found = (await db.execute(
-        select(Device).where(func.upper(Device.barcode).in_(ups))
-    )).scalars().all() if ups else []
-    in_batch = await batched_device_ids(db, [d.id for d in found])
-    by_up = {d.barcode.upper(): d for d in found}
-    ok, bad = [], []
-    for b in barcodes:
-        d = by_up.get(b.upper())
-        if d is None:
-            bad.append((b, "not found"))
-        elif d.is_trashed or d.current_stage != DeviceStage.scrap_for_sale:
-            bad.append((b, "not on Tags Scrapped"))
-        elif d.id in in_batch:
-            bad.append((b, f"in Scrap ID {in_batch[d.id]} — sell the batch"))
-        elif not d.scrap_verified:
-            bad.append((b, "not verified"))
-        elif d not in ok:
-            ok.append(d)
-    return ok, bad
-
-
 def _tag_lines(devices) -> list:
     groups = {}
     for d in devices:
@@ -226,7 +200,6 @@ def _tag_lines(devices) -> list:
 @router.get("/scrap-for-sale/sell-prefill")
 async def sell_prefill(batch: str = "", tags: str = "", db: AsyncSession = Depends(get_db),
                        current_user: User = Depends(sale_allowed)):
-    from services.scrap_flow import refused_text
     if batch:
         try:
             b = (await db.execute(select(ScrapForSale).where(ScrapForSale.id == _uuid.UUID(batch)))).scalar_one_or_none()
@@ -243,13 +216,9 @@ async def sell_prefill(batch: str = "", tags: str = "", db: AsyncSession = Depen
             return JSONResponse({"ok": False, "error": f"Scrap ID {b.scrap_id} has nothing left to sell."})
         return JSONResponse({"ok": True, "title": f"Sell Scrap ID {b.scrap_id}", "scrap_for_sale_id": str(b.id),
                              "barcodes": [d.barcode for d in devices], "lines": lines})
-    wanted = [t.strip() for t in tags.split(",") if t.strip()]
-    ok, bad = await _tags_sell_devices(db, wanted)
-    if not ok:
-        return JSONResponse({"ok": False, "error": "Nothing to sell. " + refused_text(bad)})
-    return JSONResponse({"ok": True, "title": f"Sell {len(ok)} Scrapped Tag(s)", "scrap_for_sale_id": "",
-                         "barcodes": [d.barcode for d in ok], "lines": _tag_lines(ok),
-                         "skipped": refused_text(bad) if bad else ""})
+    # Selling loose tags (from Tags Scrapped) stopped 2026-11-09: Verify puts
+    # them into a Scrap ID, and only a Scrap ID is sold, from Scrap for Sale.
+    return JSONResponse({"ok": False, "error": "Sell from Scrap for Sale: pick a Scrap ID."})
 
 
 @router.post("/scrap-for-sale/custom-sale")
@@ -279,10 +248,9 @@ async def create_custom_scrap_sale(request: Request, db: AsyncSession = Depends(
             return _cs_redirect(f"Scrap ID {batch.scrap_id} is already sold.")
         sell_devices, _parts = await _batch_sell_tags(db, batch)
     elif sell_barcodes:
-        from services.scrap_flow import refused_text
-        sell_devices, bad = await _tags_sell_devices(db, sell_barcodes)
-        if bad:
-            return _cs_redirect("Not sold — " + refused_text(bad))
+        # Loose tags are no longer sold (2026-11-09) — only a Scrap ID, from
+        # Scrap for Sale. Tags Scrapped's Verify puts tags into a Scrap ID.
+        return _cs_redirect("Sell from Scrap for Sale: tags are sold only as part of a Scrap ID.")
 
     entity = g("entity")
     if not entity:

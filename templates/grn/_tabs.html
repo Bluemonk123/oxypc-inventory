@@ -10,10 +10,12 @@
 <div class="tab-content">
   <div class="tab-pane fade show active" id="{{ tab_prefix }}TagsTab" role="tabpanel">
     <div class="card border-0 shadow-sm border-top-0">
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table id="{{ tab_prefix }}DeviceTable" class="table table-hover mb-0 small grn-dev-table">
-            <thead class="table-dark">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="fw-semibold"><i class="bi bi-laptop me-2"></i>Device Tags</span>
+      </div>
+      <div class="card-body">
+          <table id="{{ tab_prefix }}DeviceTable" class="table table-hover align-middle mb-0 grn-dev-table">
+            <thead>
               <tr>
                 <th>Tag Number</th><th>Device Type</th><th>Brand</th><th>Model</th><th>CPU</th><th>RAM</th>
                 <th>Storage</th><th>Grade</th><th>Stage</th><th>Floor</th>
@@ -21,7 +23,7 @@
                 <th class="text-center" title="Repair attempts">Repairs</th>
                 <th class="text-center" title="QC checks">QC</th>
                 <th class="text-center">Status</th>
-                <th></th>
+                <th>Action</th>
               </tr>
             </thead>
             <tbody>
@@ -43,22 +45,23 @@
                 <td class="text-center">{% set rc = repair_map.get(did, 0) %}{% if rc %}<span class="badge bg-info text-dark">{{ rc }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
                 <td class="text-center">{% set qc = qc_map.get(did, 0) %}{% if qc %}<span class="badge" style="background:#6f42c1">{{ qc }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
                 <td class="text-center">{% if did in sold_set %}<span class="badge bg-success">Sold</span>{% else %}<span class="badge bg-secondary">Available</span>{% endif %}</td>
-                <td><a href="/devices/{{ d.barcode }}" class="btn btn-sm btn-outline-primary py-0">View</a></td>
+                <td class="text-nowrap"><a href="/devices/{{ d.barcode }}" class="btn btn-sm btn-outline-primary py-0">View</a></td>
               </tr>
               {% endfor %}
             </tbody>
           </table>
-        </div>
       </div>
     </div>
   </div>
 
   <div class="tab-pane fade" id="{{ tab_prefix }}ModelsTab" role="tabpanel">
     <div class="card border-0 shadow-sm border-top-0">
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table id="{{ tab_prefix }}ModelTable" class="table table-hover mb-0 small grn-model-table">
-            <thead class="table-dark">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="fw-semibold"><i class="bi bi-grid-3x3-gap me-2"></i>Model Summary</span>
+      </div>
+      <div class="card-body">
+          <table id="{{ tab_prefix }}ModelTable" class="table table-hover align-middle mb-0 grn-model-table">
+            <thead>
               <tr>
                 <th>Model</th><th>Make</th><th>Device Type</th><th>CPU</th><th>RAM</th><th>Storage</th>
                 <th>Entity</th><th>Touch</th><th>Stock</th><th>Grade</th>
@@ -81,7 +84,6 @@
               {% endfor %}
             </tbody>
           </table>
-        </div>
       </div>
     </div>
   </div>
@@ -89,14 +91,20 @@
 <script>
 window.grnTabsInit = window.grnTabsInit || function (root) {
   root.querySelectorAll('table.grn-dev-table').forEach(function (t) {
-    if (!$.fn.dataTable.isDataTable(t)) $(t).DataTable({ pageLength: 12, order: [[0, 'asc']] });
+    if (!$.fn.dataTable.isDataTable(t)) initGlobalTable(t, {
+      order: [[0, 'asc']],
+      language: { emptyTable: 'No device tags in this GRN.' },
+    });
   });
   root.querySelectorAll('button[data-bs-toggle="tab"]').forEach(function (b) {
     b.addEventListener('shown.bs.tab', function () {
       var pane = document.querySelector(b.getAttribute('data-bs-target'));
       if (!pane) return;
       pane.querySelectorAll('table.grn-model-table').forEach(function (t) {
-        if (!$.fn.dataTable.isDataTable(t)) $(t).DataTable({ pageLength: 25, order: [[10, 'desc']] });
+        if (!$.fn.dataTable.isDataTable(t)) initGlobalTable(t, {
+          order: [[10, 'desc']],
+          language: { emptyTable: 'No models in this GRN.' },
+        });
         else $(t).DataTable().columns.adjust();
       });
       pane.querySelectorAll('table.grn-dev-table').forEach(function (t) { if ($.fn.dataTable.isDataTable(t)) $(t).DataTable().columns.adjust(); });

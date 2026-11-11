@@ -3,46 +3,54 @@
 {% block page_title %}Grade Price Matrix{% endblock %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-start mb-3 flex-wrap gap-2">
-  <form method="get" class="d-flex gap-2 flex-wrap align-items-center">
-    <select name="device_type" class="form-select form-select-sm" style="width:160px">
-      <option value="">All Device Types</option>
-      {% for dt in device_types %}
-      <option value="{{ dt }}" {% if sel_device==dt %}selected{% endif %}>{{ dt }}</option>
-      {% endfor %}
-    </select>
-    <select name="grade" class="form-select form-select-sm" style="width:110px">
-      <option value="">All Grades</option>
-      {% for g in grades %}
-      <option value="{{ g }}" {% if sel_grade==g %}selected{% endif %}>Grade {{ g }}</option>
-      {% endfor %}
-    </select>
-    <button class="btn btn-sm btn-outline-primary">Filter</button>
-    {% if sel_device or sel_grade %}
-    <a href="/crm/price-matrix" class="btn btn-sm btn-outline-secondary">Clear</a>
-    {% endif %}
-  </form>
-  {% if can_edit %}
-  <div class="d-flex gap-2">
-    {% if can(current_user, 'crm_price_matrix', 'upload') %}
-    <button type="button" class="btn btn-sm btn-outline-success" data-bs-toggle="modal" data-bs-target="#uploadModal">
-      <i class="bi bi-cloud-upload me-1"></i>Upload CSV/XLSX
-    </button>
-    {% endif %}
-    {% if can(current_user, 'crm_price_matrix', 'add') and can(current_user, 'crm_price_matrix', 'pricing_add') %}<a href="/crm/price-matrix/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle me-1"></i>Add Row</a>{% endif %}
-  </div>
-  {% endif %}
-</div>
-
 <div class="alert alert-light border small mb-3 py-2">
   <i class="bi bi-info-circle me-1 text-primary"></i>
   This matrix sets <strong>benchmark buy/sell prices</strong> by device type and grade.
   The pricing calculator on sourcing deals auto-references these when matching device type + grade.
 </div>
 
+{# Global filter bar (app.css .filter-bar, 2026-11-08) — labels live in title=. #}
+<form method="get" action="/crm/price-matrix" class="filter-bar">
+  <div class="filter-bar-row">
+    <div>
+      <select name="device_type" class="form-select form-select-sm" title="Device Type">
+        <option value="">All Device Types</option>
+        {% for dt in device_types %}
+        <option value="{{ dt }}" {% if sel_device==dt %}selected{% endif %}>{{ dt }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="grade" class="form-select form-select-sm" title="Grade">
+        <option value="">All Grades</option>
+        {% for g in grades %}
+        <option value="{{ g }}" {% if sel_grade==g %}selected{% endif %}>Grade {{ g }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/crm/price-matrix" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
+  </div>
+</form>
+
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-grid-3x3-gap me-2"></i>Price Benchmarks</span>
+    {% if can_edit %}
+    <div class="d-flex gap-2 align-items-center">
+      {% if can(current_user, 'crm_price_matrix', 'upload') %}
+      <button type="button" class="btn btn-sm btn-outline-success text-nowrap" data-bs-toggle="modal" data-bs-target="#uploadModal">
+        <i class="bi bi-cloud-upload me-1"></i>Upload CSV/XLSX
+      </button>
+      {% endif %}
+      {% if can(current_user, 'crm_price_matrix', 'add') and can(current_user, 'crm_price_matrix', 'pricing_add') %}<a href="/crm/price-matrix/new" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-plus-circle me-1"></i>Add Row</a>{% endif %}
+    </div>
+    {% endif %}
+  </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
+    <div>
       <table class="table table-sm table-hover mb-0" id="matrixTable">
         <thead class="table-light">
           <tr>
@@ -95,13 +103,6 @@
               </div>
             </td>
             {% endif %}
-          </tr>
-          {% else %}
-          <tr>
-            <td colspan="{{ 11 if can_edit else 10 }}" class="text-center text-muted py-4">
-              No price benchmarks configured yet.
-              {% if can_edit %}<a href="/crm/price-matrix/new">Add the first row</a>{% endif %}
-            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -194,10 +195,13 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// Global Table module (static/js/global-table.js, 2026-11-08). Empty tables are
+// handled by language.emptyTable (no colspan placeholder row in the markup).
 $(document).ready(function() {
-  if ($('#matrixTable tbody tr').length > 5) {
-    $('#matrixTable').DataTable({ pageLength: 12, order: [[0,'asc'],[1,'asc']] });
-  }
+  initGlobalTable('#matrixTable', {
+    order: [[0,'asc'],[1,'asc']],
+    language: { emptyTable: {{ ('No price benchmarks configured yet.' ~ (' <a href="/crm/price-matrix/new">Add the first row</a>' if can_edit else '')) | tojson }} },
+  });
 });
 </script>
 {% endblock %}

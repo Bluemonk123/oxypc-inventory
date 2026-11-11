@@ -3,40 +3,42 @@
 {% block page_title %}Overdue Devices{% endblock %}
 {% block content %}
 
-<form method="get" action="/reports/overdue" class="row g-2 mb-3 align-items-end">
-  <div class="col-md-3">
-    <label class="form-label small fw-semibold">Filter by Stage</label>
-    <select name="stage" class="form-select form-select-sm">
-      <option value="">All Active Stages</option>
-      {% for s in all_stages %}
-      <option value="{{ s.value }}" {% if stage == s.value %}selected{% endif %}>
-        {{ stage_labels.get(s, s.value.replace('_',' ').title()) }}
-      </option>
-      {% endfor %}
-    </select>
-  </div>
-  <div class="col-md-2">
-    <label class="form-label small fw-semibold">Min Days in Stage</label>
-    <input type="number" name="min_days" class="form-control form-control-sm"
-           value="{{ min_days }}" min="0">
-  </div>
-  <div class="col-auto">
-    <button type="submit" class="btn btn-sm btn-primary">
-      <i class="bi bi-funnel me-1"></i>Filter
-    </button>
-    <a href="/reports/overdue" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
-    {% if can(current_user, 'report_overdue', 'export') %}<a href="/reports/overdue/csv?stage={{ stage }}&min_days={{ min_days }}"
-       class="btn btn-sm btn-outline-success ms-1">
-      <i class="bi bi-download me-1"></i>Export CSV
-    </a>{% endif %}
+<form method="get" action="/reports/overdue" class="filter-bar">
+  <div class="filter-bar-row">
+    <div>
+      <select name="stage" class="form-select form-select-sm" title="Filter by Stage">
+        <option value="">All Active Stages</option>
+        {% for s in all_stages %}
+        <option value="{{ s.value }}" {% if stage == s.value %}selected{% endif %}>
+          {{ stage_labels.get(s, s.value.replace('_',' ').title()) }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <input type="number" name="min_days" class="form-control form-control-sm" title="Min Days in Stage"
+             placeholder="Min Days in Stage" value="{{ min_days }}" min="0">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/reports/overdue" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
 </form>
 
 {% if rows %}
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent small text-muted">
-    Showing {{ rows|length }} device(s) waiting &ge; {{ min_days }} day(s)
-    {% if stage %} in stage <strong>{{ stage.replace('_',' ').title() }}</strong>{% endif %}
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="small text-muted">
+      Showing {{ rows|length }} device(s) waiting &ge; {{ min_days }} day(s)
+      {% if stage %} in stage <strong>{{ stage.replace('_',' ').title() }}</strong>{% endif %}
+    </span>
+    <div class="d-flex gap-2 align-items-center">
+      {% if can(current_user, 'report_overdue', 'export') %}<a href="/reports/overdue/csv?stage={{ stage }}&min_days={{ min_days }}"
+         class="btn btn-sm btn-outline-success">
+        <i class="bi bi-download me-1"></i>Export CSV
+      </a>{% endif %}
+    </div>
   </div>
   <div class="card-body p-0">
     <div class="table-responsive">

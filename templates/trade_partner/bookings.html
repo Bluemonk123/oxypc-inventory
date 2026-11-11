@@ -6,19 +6,29 @@
 {% if success %}<div class="alert alert-success py-2"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger py-2"><i class="bi bi-exclamation-circle me-2"></i>{{ error }}</div>{% endif %}
 
-<form method="get" class="d-flex gap-2 mb-3 flex-wrap">
-  <select name="status" class="form-select form-select-sm" style="width:190px" onchange="this.form.submit()">
-    <option value="">All Status</option>
-    {% for s, label in [('pending_payment','Pending Payment'), ('proof_uploaded','Proof Uploaded — verify'),
-                        ('confirmed_token','Token Confirmed'), ('balance_pending','Balance Pending — verify'),
-                        ('ready_for_dispatch','Ready for Dispatch'), ('dispatched','Dispatched'),
-                        ('rejected','Rejected'), ('expired','Expired'), ('cancelled','Cancelled')] %}
-    <option value="{{ s }}" {% if f_status==s %}selected{% endif %}>{{ label }}</option>
-    {% endfor %}
-  </select>
-  <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" style="width:220px"
-         placeholder="Search booking / dealer / listing…">
-  <button class="btn btn-sm btn-outline-primary">Filter</button>
+{# Global filter bar (app.css .filter-bar, 2026-11-08) — labels live in title=. #}
+<form method="get" action="/trade-partner/bookings" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" title="Search"
+             placeholder="Search booking / dealer / listing…">
+    </div>
+    <div>
+      <select name="status" class="form-select form-select-sm" title="Status">
+        <option value="">All Status</option>
+        {% for s, label in [('pending_payment','Pending Payment'), ('proof_uploaded','Proof Uploaded — verify'),
+                            ('confirmed_token','Token Confirmed'), ('balance_pending','Balance Pending — verify'),
+                            ('ready_for_dispatch','Ready for Dispatch'), ('dispatched','Dispatched'),
+                            ('rejected','Rejected'), ('expired','Expired'), ('cancelled','Cancelled')] %}
+        <option value="{{ s }}" {% if f_status==s %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/trade-partner/bookings" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
+  </div>
 </form>
 
 {% set status_colors = {

@@ -13,6 +13,7 @@ import io
 import json
 from pathlib import Path
 
+from urllib.parse import quote_plus
 from fastapi import APIRouter, Depends, Form, Request, HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse, RedirectResponse, Response
 from sqlalchemy import select
@@ -45,9 +46,12 @@ def _visible_manuals(user: User) -> list:
     'key' = Permission Matrix module key, same as the sidebar's) is enabled
     for this user's role. Same has_perm() check the sidebar uses, so a
     custom role (e.g. trc_manager) is covered too; Admin always sees all."""
-    from models.role_permissions import has_perm
+    # 2026-11-09 (Pankaj): also drop modules hidden for everyone in Master
+    # (module_hidden), so the list matches the left menu exactly - admin too.
+    from models.role_permissions import has_perm, get_cached_module_hidden
     role = user.role.value if hasattr(user.role, "value") else str(user.role)
-    return [m for m in MANUALS if has_perm(role, m["key"], "enable")]
+    return [m for m in MANUALS
+            if has_perm(role, m["key"], "enable") and not get_cached_module_hidden(m["key"])]
 
 
 def _manual_hash(manual: dict | None = None) -> str:
@@ -260,6 +264,8 @@ async def manuals_list(
         "manuals": manuals,
         "sections": [s for s in MANUAL_SECTIONS if s in present],
         "users": users,
+        # Share list (2026-11-09): per manual, only the users who can open it
+        "share_ok": {m["id"]: [str(u.id) for u in users if m in _visible_manuals(u)] for m in manuals},
         "shared": shared,
     })
 
@@ -311,6 +317,10 @@ async def share_manual(
     target = res.scalar_one_or_none()
     if not target:
         raise HTTPException(404, "User not found")
+    if manual not in _visible_manuals(target):   # 2026-11-09: their role can't open this module
+        return RedirectResponse("/manuals/?error=" + quote_plus(
+            f"{target.full_name or target.username} cannot open {manual['module']} - not enabled for their role."),
+            status_code=303)
 
     notif = Notification(
         user_id=target.id,

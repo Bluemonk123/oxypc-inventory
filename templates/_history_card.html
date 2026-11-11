@@ -1,0 +1,31 @@
+{# History card (2026-11-09, Pankaj): every action taken on this record —
+   Action / Details / Taken By / Taken On — from services/record_history.py.
+   Include with:  {% include "_history_card.html" %}  (needs `history`). #}
+<div class="card border-0 shadow-sm mt-3" id="recordHistory">
+  <div class="card-header bg-transparent d-flex align-items-center gap-2" data-show-header>
+    <span class="fw-semibold"><i class="bi bi-clock-history me-2"></i>History</span>
+  </div>
+  <div class="card-body p-0">
+    <table id="recordHistoryTable" class="table table-hover mb-0 small">
+      <thead class="table-dark"><tr><th>Action</th><th>Details</th><th>Taken By</th><th>Taken On</th></tr></thead>
+      <tbody>
+      {% for h in history or [] %}
+        <tr>
+          <td class="fw-semibold text-nowrap">{{ h.action }}</td>
+          <td>{{ h.details or '—' }}</td>
+          <td class="text-nowrap">{{ h.by }}</td>
+          <td class="text-nowrap" data-order="{{ h.at.strftime('%Y%m%d%H%M%S') if h.at else '' }}">{{ h.at.strftime('%d-%m-%Y %H:%M') if h.at else '—' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  if (window.initGlobalTable && window.jQuery) {
+    initGlobalTable('#recordHistoryTable', { pageLength: 12, order: [[3, 'desc']],
+      language: { emptyTable: 'No actions recorded yet.' } });
+  }
+});
+</script>

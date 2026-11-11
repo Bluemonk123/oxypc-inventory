@@ -7,14 +7,13 @@
 {% if error %}<div class="alert alert-danger py-2"><i class="bi bi-exclamation-circle me-2"></i>{{ error }}</div>{% endif %}
 
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-    <span class="fw-semibold"><i class="bi bi-cash-coin me-2 text-success"></i>Marked Won — Payment Verification</span>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-cash-coin me-2"></i>Marked Won — Payment Verification</span>
     <span class="badge bg-success">{{ rows | length }}</span>
   </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-sm table-hover align-middle mb-0" id="ppTable">
-        <thead class="table-light">
+  <div class="card-body">
+      <table class="table table-hover align-middle mb-0" id="ppTable">
+        <thead>
           <tr>
             <th class="ps-2">Bid Amount</th><th>Bid ID</th><th>Lot Number</th>
             <th>Account Name</th><th>Manager Name</th>
@@ -52,12 +51,9 @@
               {% endif %}
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="8" class="text-center text-muted py-3">No won bids yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
-    </div>
   </div>
 </div>
 
@@ -122,9 +118,10 @@ document.querySelectorAll('.verify-btn').forEach(function(b){
 });
 
 $(document).ready(function(){
-  if ($('#ppTable tbody tr').length && !$('#ppTable tbody td[colspan]').length) {
-    $('#ppTable').DataTable({ order: [], pageLength: 25, lengthChange: false });
-  }
+  initGlobalTable('#ppTable', {
+    order: [],
+    language: { emptyTable: 'No won bids yet.' },
+  });
 });
 </script>
 {% endblock %}

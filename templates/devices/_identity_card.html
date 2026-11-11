@@ -1,0 +1,67 @@
+{# Identity & Location card (2026-11-08) — Device Detail and the Search Tags
+   modal (/devices/api/detail-cards). Expects device, lot, current_location,
+   assigned_location, warranty_label, repair_status. #}
+<!-- Identity & Location -->
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent fw-semibold small text-uppercase d-flex justify-content-between align-items-center">
+    <span><i class="bi bi-geo-alt me-2"></i>Identity &amp; Location</span>
+    <a href="/locations/device/{{ device.id }}" class="btn btn-xs btn-outline-primary py-0 px-2" style="font-size:.75rem;">
+      <i class="bi bi-geo-alt-fill me-1"></i>Manage Location
+    </a>
+  </div>
+  <div class="card-body p-0">
+    <!-- Current tracked location -->
+    {% if current_location %}
+      {% if current_location.action == 'picked_up' %}
+      <div class="alert alert-warning rounded-0 border-0 py-2 px-3 mb-0 small">
+        <i class="bi bi-hand-index me-1"></i>
+        <strong>In Hand</strong> — picked up by {{ current_location.actor_name or 'unknown' }}
+      </div>
+      {% elif current_location.unit_id %}
+      <div class="alert alert-success rounded-0 border-0 py-2 px-3 mb-0 small">
+        <i class="bi bi-geo-alt-fill me-1"></i>
+        <strong>{{ current_location.unit_id }}</strong>
+      </div>
+      {% endif %}
+    {% else %}
+      <div class="alert alert-secondary rounded-0 border-0 py-2 px-3 mb-0 small">
+        <i class="bi bi-question-circle me-1"></i>No location recorded —
+        <a href="/locations/device/{{ device.id }}">assign one</a>
+      </div>
+    {% endif %}
+    <table class="table table-sm mb-0">
+      <tbody>
+        <tr><th class="ps-3 text-muted small w-40">GRN Number</th><td>{% if device.grn_number %}<a href="/grn?highlight={{ device.grn_number|urlencode }}" class="text-decoration-none font-monospace" title="View in GRN Import">{{ device.grn_number }}</a>{% else %}—{% endif %}</td></tr>
+        {# The tag's own Invoice Number (set per tag via Customise / GRN mapping);
+   the Lot's invoice only when the tag has none of its own (2026-10-15 — this
+   showed the Lot's invoice even when the tag had a different one). #}
+        <tr><th class="ps-3 text-muted small">Invoice No.</th><td class="font-monospace small">{{ device.invoice_number or (lot.invoice_no if lot and lot.invoice_no else '—') }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Serial No.</th><td class="font-monospace small">{{ device.serial_no or '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Location ID</th><td class="font-monospace small">{{ assigned_location.unit_id if assigned_location else '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Bin Location</th><td class="font-monospace small">{{ device.bin_location or (assigned_location.slot if assigned_location and assigned_location.slot else '—') }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Location Type</th><td>{{ assigned_location.unit_type_label if assigned_location else '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Zone</th><td>{{ assigned_location.zone_label if assigned_location else '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Return Status</th>
+          <td><span class="badge bg-{{ 'warning text-dark' if device.return_status else 'secondary' }}">{{ 'Yes' if device.return_status else 'No' }}</span></td></tr>
+        <tr><th class="ps-3 text-muted small">Warranty Status</th>
+          <td>
+            {% if warranty_label == 'Within Warranty' %}
+            <span class="badge bg-success">Within Warranty</span>
+            {% elif warranty_label == 'Out of Warranty' %}
+            <span class="badge bg-danger">Out of Warranty</span>
+            {% else %}
+            <span class="badge bg-secondary">Not Sold Yet</span>
+            {% endif %}
+          </td></tr>
+        <tr><th class="ps-3 text-muted small">Replaced</th>
+          <td>{% if device.replaced %}<span class="font-monospace small">{{ device.replaced }}</span>{% else %}—{% endif %}</td></tr>
+        <tr><th class="ps-3 text-muted small">Repair Status</th>
+          <td>{% if repair_status %}<span class="badge bg-info text-dark">{{ repair_status }}</span>{% else %}—{% endif %}</td></tr>
+        <tr><th class="ps-3 text-muted small">Registered</th>
+          <td>{{ device.created_at.strftime('%d %b %Y %H:%M') if device.created_at else '—' }}</td></tr>
+        <tr><th class="ps-3 text-muted small">Last Updated</th>
+          <td>{{ device.updated_at.strftime('%d %b %Y %H:%M') if device.updated_at else '—' }}</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>

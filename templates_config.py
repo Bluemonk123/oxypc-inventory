@@ -23,6 +23,7 @@ _VERSIONED_ASSETS = [
     # despite both hitting the same deployed HEAD — a stale-cache symptom,
     # not a real position:sticky engine gap between browsers.
     os.path.join(BASE_DIR, "static", "js", "global-table.js"),
+    os.path.join(BASE_DIR, "static", "js", "filter-fields.js"),
     # Same stale-cache gap as global-table.js above, found the same way: the
     # dropdown-positioning fix landed in this file and deployed cleanly, but
     # templates/workid_status/list.html's <script src> had no ?v= stamp, so
@@ -35,8 +36,12 @@ _VERSIONED_ASSETS = [
     os.path.join(BASE_DIR, "static", "js", "tag-scan-autocheck.js"),
     # Top-bar Search / Scan box (2026-10-24), loaded on every page by base.html.
     os.path.join(BASE_DIR, "static", "js", "topbar-search.js"),
+    os.path.join(BASE_DIR, "static", "js", "quick-add.js"),   # top-bar "+" menu (2026-11-08)
     # Shared date + export format (2026-11-04), loaded on every page.
     os.path.join(BASE_DIR, "static", "js", "date-export.js"),
+    # General JS, loaded on every page; holds oxtShort() for tile counts
+    # (Lk / Cr) since 2026-11-08, when base.html started tagging it ?v=.
+    os.path.join(BASE_DIR, "static", "js", "app.js"),
     # Global toast (2026-10-31) — tagged ?v= in base.html but was missing here,
     # so editing it alone never busted a browser cache (found 2026-11-04).
     os.path.join(BASE_DIR, "static", "js", "toast.js"),
@@ -111,6 +116,55 @@ def inr(value, decimals=0):
 
 
 templates.env.filters["inr"] = inr  # {{ amount | inr }} -> Indian lakh/crore grouping
+
+
+def tile_num(value):
+    """Tile count text (2026-11-08, Pankaj): Indian short form from one lakh
+    up -- 1,25,000 -> "1.250 Lk", 2,40,00,000 -> "2.400 Cr" (three decimals)
+    -- for plain numbers and for rupee strings like "₹2,76,120" (-> "₹2.761 Lk"). The full figure
+    goes in a hover tooltip. Below a lakh: thousands grouping as before.
+    Anything else (—, "1 / 24", "100.0%") is returned unchanged."""
+    from markupsafe import Markup, escape
+    prefix, num = "", None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        num = float(value)
+    elif isinstance(value, str):
+        txt = value.strip()
+        body = txt
+        if body.startswith("-₹"):
+            prefix, body = "₹", "-" + body[2:]
+        elif body.startswith("₹"):
+            prefix, body = "₹", body[1:]
+        try:
+            num = float(body.replace(",", ""))
+        except ValueError:
+            return value
+    else:
+        return value
+    full = (prefix and ("-₹" if num < 0 else "₹") + inr(abs(num))) or (
+        "{:,}".format(int(num)) if float(num).is_integer() else "{:,}".format(num))
+    a = abs(num)
+    if a < 1e5:
+        if isinstance(value, str):
+            return value
+        return full
+    unit, div = ("Cr", 1e7) if a >= 1e7 else ("Lk", 1e5)
+    short = "%.3f" % (a / div)  # always 3 decimals: 3.211 Lk, 2.400 Cr (2026-11-08)
+    sign = "-" if num < 0 else ""
+    text = f"{sign}{prefix}{short} {unit}"
+    if not prefix:
+        full = inr(num)  # tooltip in Indian grouping: 1,25,000
+    return Markup('<span title="%s">%s</span>') % (escape(full), escape(text))
+
+
+templates.env.globals["tile_num"] = tile_num  # tile counts: 1.250 Lk / 2.400 Cr
+
+# System Colors (2026-11-08): admin-editable colour tokens + per-user Light/Dark.
+from services.system_colors import css as _system_colors_css, theme_mode as _theme_mode
+templates.env.globals["system_colors_css"] = _system_colors_css
+templates.env.globals["theme_mode"] = _theme_mode
 
 # ── Permission helpers — usable in any template ──
 #   has_perm(role, module, action)  → single-module check (matrix-driven)
@@ -305,6 +359,18 @@ def _price_bound_actions(module):
 templates.env.globals["can"] = _can
 
 
+def _quick_add_menu(current_user):
+    """Top-bar "+" menu items for this user (services/quick_add.py, 2026-11-08)."""
+    from services.quick_add import quick_add_menu
+    try:
+        return quick_add_menu(current_user, _can, _has_perm, _module_hidden)
+    except Exception:   # noqa: BLE001 — never break the top bar
+        return []
+
+
+templates.env.globals["quick_add_menu"] = _quick_add_menu
+
+
 def _price_field_shown(current_user, module):
     """Show a price input when the role may see (Pricing View) or set (Pricing Add) it."""
     return _can(current_user, module, "pricing") or _can(current_user, module, "pricing_add")
@@ -381,6 +447,26 @@ templates.env.globals["ROLE_DISPLAY_MAP"] = _ROLE_DISPLAY
 from utils.master_data import master_options as _master_options
 
 templates.env.globals["master_options"] = _master_options
+
+
+def _from_entity_options(current=None):
+    """From Entity dropdown (2026-11-10): Master Data entities (fallback list
+    when unset), minus the External Partner test entity; a record's / user's
+    own value stays selectable even if it was later removed."""
+    from utils.master_data import ENTITY_FALLBACK
+    from models.master import EXTERNAL_PARTNER_TEST_ENTITY
+    opts = [e for e in (_master_options("entity") or ENTITY_FALLBACK) if e != EXTERNAL_PARTNER_TEST_ENTITY]
+    if current and current not in opts:
+        opts.append(current)
+    return opts
+
+
+templates.env.globals["from_entity_options"] = _from_entity_options
+
+# Quotation status flow, both kinds (2026-11-10): Added -> Negotiation -> Approved / Rejected / Expired
+from utils.quote_numbers import QUOTE_STATUSES as _QS, QUOTE_STATUS_COLORS as _QSC
+templates.env.globals["QUOTE_STATUSES"] = _QS
+templates.env.globals["QUOTE_STATUS_COLORS"] = _QSC
 # master_children('product_model_name', make) → that Make's model names (2026-11-06)
 from utils.master_data import master_children as _master_children
 templates.env.globals["master_children"] = _master_children

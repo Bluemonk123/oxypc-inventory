@@ -808,7 +808,10 @@
           </div>
 
           <!-- ── Section 9: Condition & Location ── -->
+          {# 2026-11-08 (Pankaj): Quantity removed from the form — always 1 (hidden);
+             BIOS Password on its own row below. #}
           <p class="fw-bold small text-uppercase mb-2 border-bottom pb-1 sec-hd">Condition &amp; Location</p>
+          <input type="hidden" name="qty" value="1">
           <div class="row g-3 mb-3">
             <div class="col-md-3">
               <label class="form-label">R2V3 Grade Category</label>
@@ -817,11 +820,6 @@
                 {% for c in master_options('iqc_r2v3_grade_category') %}<option>{{ c }}</option>{% endfor %}
               </select>
             </div>
-            <div class="col-md-2">
-              <label class="form-label">Quantity</label>
-              <input type="number" name="qty" class="form-control" min="1" value="1"
-                     placeholder="1">
-            </div>
             <div class="col-md-3">
               <label class="form-label">IQC Grade</label>
               <select name="grade" id="iqc-grade-select" class="form-select">
@@ -829,8 +827,8 @@
                 <option>A</option><option>B</option><option>C</option><option>scrap</option>
               </select>
             </div>
-            <div class="col-md-3 d-flex align-items-end">
-              <div class="form-check ms-2 mb-2">
+            <div class="col-12">
+              <div class="form-check">
                 <input type="checkbox" name="bios_password" value="yes" class="form-check-input" id="biosPwd">
                 <label class="form-check-label" for="biosPwd">BIOS Password Set?</label>
               </div>

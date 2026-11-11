@@ -2,6 +2,7 @@
 {% block title %}Sales Opportunities — OxyPC{% endblock %}
 {% block page_title %}Sales Opportunities{% endblock %}
 {% block content %}
+{% import "_download_cell.html" as dl %}
 
 
 <!-- Summary tiles: dark single-count tiles (2026-11-06, _tiles.html) -->
@@ -44,7 +45,7 @@
       <a href="/crm/sales" class="btn btn-sm btn-outline-secondary">Clear</a>
       {% endif %}
     </form>
-    {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-plus-circle me-1"></i>New Opportunity</a>{% endif %}
+    {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-plus-circle me-1"></i>Add Opportunity</a>{% endif %}
     </div>
   </div>
   <div class="card-body p-0">
@@ -107,15 +108,7 @@
               <span class="badge bg-{{ priority_colors.get(o.priority,'secondary') }}">{{ o.priority | title }}</span>
             </td>
             <td class="small">{{ o.assigned_to or '—' }}</td>
-            <td class="text-center">
-              {% if o.product_records_file %}
-              {% if can(current_user, 'crm_sales_opp', 'export') %}<a href="/uploads/crm/{{ o.product_records_file }}" class="btn btn-sm btn-outline-success" title="Download Product Records" target="_blank" download>
-                <i class="bi bi-file-earmark-arrow-down me-1"></i>Download
-              </a>{% endif %}
-              {% else %}
-              <span class="text-muted small">—</span>
-              {% endif %}
-            </td>
+            <td class="text-center">{{ dl.cell(downloads.get(o.id|string) if can(current_user, 'crm_sales_opp', 'export') else []) }}</td>
             <td>
               <div class="btn-group btn-group-sm">
                 <a href="/crm/sales/{{ o.id }}" class="btn btn-outline-info" title="View"><i class="bi bi-eye"></i></a>

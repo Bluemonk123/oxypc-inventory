@@ -3,42 +3,36 @@
 {% block page_title %}Audit Log{% endblock %}
 {% block content %}
 
-<!-- Filter form -->
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <form method="get" class="d-flex gap-2 flex-wrap align-items-end">
-      <div>
-        <label class="form-label small fw-semibold mb-1">Username</label>
-        <input type="text" name="username" value="{{ username }}" class="form-control form-control-sm" style="width:150px" placeholder="Search user…">
-      </div>
-      <div>
-        <label class="form-label small fw-semibold mb-1">Action</label>
-        <input type="text" name="action" value="{{ action }}" class="form-control form-control-sm" style="width:200px" placeholder="e.g. ORDER_CREATED">
-      </div>
-      <div>
-        <label class="form-label small fw-semibold mb-1">Table</label>
-        <select name="table_name" class="form-select form-select-sm" style="width:180px">
-          <option value="">All Tables</option>
-          {% for t in table_names %}
-          <option value="{{ t }}" {% if t == table_name %}selected{% endif %}>{{ t }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="d-flex gap-2">
-        <button class="btn btn-sm btn-primary">Filter</button>
-        <a href="/admin/audit-log" class="btn btn-sm btn-outline-secondary">Clear</a>
-      </div>
-    </form>
+<form method="get" action="/admin/audit-log" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="username" value="{{ username }}" class="form-control form-control-sm" title="Username" placeholder="Search user…">
+    </div>
+    <div>
+      <input type="text" name="action" value="{{ action }}" class="form-control form-control-sm" title="Action" placeholder="Action, e.g. ORDER_CREATED">
+    </div>
+    <div>
+      <select name="table_name" class="form-select form-select-sm" title="Table">
+        <option value="">All Tables</option>
+        {% for t in table_names %}
+        <option value="{{ t }}" {% if t == table_name %}selected{% endif %}>{{ t }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/admin/audit-log" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
-
-<div class="d-flex justify-content-between align-items-center mb-2">
-  <small class="text-muted">{{ total_count }} log entries</small>
-</div>
+</form>
 
 <div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
-    <div class="table-responsive">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-journal-text me-2"></i>Audit Log
+      <span class="text-muted fw-normal small ms-1">{{ total_count }} log entries</span></span>
+  </div>
+  <div class="card-body">
+    <div>
       <table class="table table-hover table-sm mb-0 small" id="adminAuditTable">
         <thead class="table-dark">
           <tr>
@@ -86,7 +80,7 @@
 {% block scripts %}
 <script>
 $(document).ready(function(){
-  if ($('#adminAuditTable tbody tr td').length > 1) $('#adminAuditTable').DataTable({ order: [] });
+  if ($('#adminAuditTable tbody tr td').length > 1) initGlobalTable('#adminAuditTable', { order: [] });
 });
 </script>
 {% endblock %}

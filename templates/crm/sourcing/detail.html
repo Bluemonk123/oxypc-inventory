@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block title %}{{ deal.deal_number }} — Sourcing — OxyPC{% endblock %}
 {% block page_title %}{{ deal.deal_number }}: {{ deal.title[:60] }}{% if deal.title|length > 60 %}…{% endif %}{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ deal.deal_number }}{% endblock %}{% block record_parent %}/crm/sourcing{% endblock %}{% block record_parent_label %}Sourcing Deals{% endblock %}
 {% block content %}
 
 {% set stage_colors = {
-  'lead': 'secondary', 'contacted': 'info', 'inspection': 'warning',
+  'lead': 'secondary', 'pricing': 'info', 'pricing_approval': 'warning', 'contacted': 'info', 'inspection': 'warning',
   'quote': 'warning', 'negotiation': 'warning', 'purchase_order': 'primary', 'payment': 'primary',
   'received': 'success', 'won': 'success', 'lost': 'danger'
 } %}
@@ -20,7 +21,7 @@
          on the left, attached documents on the right (SOURCING_STAGE_STEPS,
          stored in crm_sourcing_steps). Items show for done + current stages. -->
     <style>
-      .sd-steps { list-style: none; margin: 0; padding: 0; }
+      .sd-steps { list-style: none; margin: 0; padding: 14px 0 6px; }   /* more room above / below the stage list (2026-11-10) */
       .sd-step { position: relative; display: flex; gap: .75rem; padding: .55rem .75rem .55rem .5rem; border-radius: .75rem; border: 1px solid transparent; }
       .sd-step::before { content: ""; position: absolute; left: calc(.5rem + 7px); top: 0; bottom: 0; border-left: 2px solid var(--sd-line, #ced4da); }
       .sd-step:first-child::before { top: 1.1rem; }
@@ -38,6 +39,8 @@
       .sd-items { display: flex; gap: .75rem; margin-top: .3rem; font-size: .78rem; }
       .sd-items > div { min-width: 0; }
       .sd-item { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem; line-height: 1.5; }
+      .sd-files { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .9rem; font-size: .78rem; }
+      .sd-files .sd-item { gap: .2rem; }
       .sd-icon-btn { border: 0; background: none; padding: 0 .15rem; color: var(--bs-primary); line-height: 1; }
       .sd-icon-btn:hover { color: #0a58ca; }
       .sd-remark { font-size: .72rem; color: #6c757d; font-style: italic; }
@@ -52,32 +55,22 @@
         <span class="text-muted">{{ label }}{% if kind == 'approval' %} approval{% endif %}:</span>
         {% if st and st.assigned_to %}
           <span class="fw-semibold">{{ user_names.get(st.assigned_to, st.assigned_to) }}</span>
-          {% if kind == 'approval' %}
-            {% if st.status == 'approved' %}<span class="badge bg-success">Approved</span>
-            {% elif st.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>
-            {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
-          {% endif %}
         {% else %}<span class="text-muted">—</span>{% endif %}
         {% if _sd_edit %}<button type="button" class="sd-icon-btn sd-assign-btn" title="Assign user"
             data-step="{{ key }}" data-label="{{ label }}{% if kind == 'approval' %} approval{% endif %}"
             data-current="{{ st.assigned_to if st and st.assigned_to else '' }}"><i class="bi bi-person-plus"></i></button>{% endif %}
-        {% if kind == 'approval' and st and st.status == 'pending' and _sd_open and (st.assigned_to == current_user.username or _is_admin) %}
-          <button type="button" class="btn btn-success btn-sm py-0 px-1 sd-decide-btn" style="font-size:.7rem"
-                  data-step="{{ key }}" data-label="{{ label }}" data-decision="approved">Approve</button>
-          <button type="button" class="btn btn-outline-danger btn-sm py-0 px-1 sd-decide-btn" style="font-size:.7rem"
-                  data-step="{{ key }}" data-label="{{ label }}" data-decision="rejected">Reject</button>
-        {% endif %}
       </div>
       {% if st and st.note %}<div class="sd-remark">“{{ st.note }}”</div>{% endif %}
     {%- endmacro %}
-    {% macro sd_file(key, label) -%}
+    {# done=True (stage Done): the file still shows, no upload button (2026-11-11) #}
+    {% macro sd_file(key, label, done=False) -%}
       {% set st = steps.get(key) %}
-      <div class="sd-item justify-content-end text-end">
+      <div class="sd-item">
         {% if st and st.file_path %}
           <a href="/uploads/crm/{{ st.file_path }}" target="_blank" class="text-decoration-none" title="Open {{ label }}"><i class="bi bi-paperclip"></i>{{ label }}</a>
         {% elif st and st.status == 'started' %}<span class="text-muted">{{ label }}:</span> <span class="badge bg-info text-dark" title="Started on Activity Board{{ ' by ' ~ st.acted_by if st.acted_by }}">Started</span>
         {% else %}<span class="text-muted">{{ label }}: —</span>{% endif %}
-        {% if _sd_upload %}<button type="button" class="sd-icon-btn sd-attach-btn" title="Attach {{ label }}"
+        {% if _sd_upload and not done %}<button type="button" class="sd-icon-btn sd-attach-btn" title="Attach {{ label }}"
             data-step="{{ key }}" data-label="{{ label }}"><i class="bi bi-upload"></i></button>{% endif %}
       </div>
     {%- endmacro %}
@@ -88,9 +81,24 @@
         <span><i class="bi bi-diagram-3 me-1"></i>Stage Progress</span>
         {% if deal.stage == 'won' %}<span class="sd-closed-label"><i class="bi bi-trophy-fill me-1"></i>Deal Won</span>
         {% elif deal.stage == 'lost' %}<span class="sd-closed-label"><i class="bi bi-x-circle-fill me-1"></i>Deal Lost</span>{% endif %}
+        {# Next Stage (2026-11-11): header right; gone once the deal is Won / Lost #}
+        <style>.sd-dark .card-header .sd-next-btn{background:#2f80ed!important;border-color:#2f80ed!important;color:#fff!important}.sd-dark .card-header .sd-next-btn:hover{background:#1c6ad6!important}</style>
+        {% if _sd_open %}
+          {% if can(current_user, 'crm_sourcing', 'edit') %}
+          {% if deal.stage == 'received' %}
+          <button type="button" class="btn btn-sm fw-semibold py-0 sd-next-btn" data-bs-toggle="modal" data-bs-target="#sdCloseModal">
+            <i class="bi bi-arrow-right-circle me-1"></i>Next Stage</button>
+          {% elif next_stage %}
+          <form method="post" action="/crm/sourcing/{{ deal.id }}/next-stage" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+            <button class="btn btn-sm fw-semibold py-0 sd-next-btn"><i class="bi bi-arrow-right-circle me-1"></i>Next Stage</button>
+          </form>
+          {% endif %}
+          {% endif %}
+        {% endif %}
       </div>
       <div class="card-body pt-1">
-        <ol class="sd-steps mb-3">
+        <ol class="sd-steps mb-4">
           {% for i, (val, label) in stage_list %}
           {% if not ((val == 'lost' and deal.stage != 'lost') or (val == 'won' and deal.stage == 'lost')) %}
           {% set _state = 'done' if i < current_idx else ('current' if i == current_idx else 'upcoming') %}
@@ -99,13 +107,68 @@
             <span class="sd-dot" aria-hidden="true"></span>
             <div class="sd-body">
               <div class="d-flex justify-content-between align-items-start gap-2">
+                {# Attached files next to the stage name (2026-11-11, Pankaj); approval
+                   statuses stay on the right #}
+                <div class="d-flex align-items-center flex-wrap gap-2">
                 <div class="sd-title">{{ label }}</div>
+                {% if _state != 'upcoming' and val in stage_steps %}
+                {% set _files = stage_steps[val] | selectattr(2, 'equalto', 'file') | list %}
+                <div class="sd-files">
+                    {% for k, l, kind in _files %}{{ sd_file(k, l, _state == 'done') }}{% endfor %}
+                    {# Negotiation (2026-11-11, Pankaj): the approved quotation (both Quote levels
+                       approved) carried forward with its file #}
+                    {% if val == 'negotiation' %}
+                    {% set _ql1, _ql2 = steps.get('quote_l1'), steps.get('quote_l2') %}
+                    {% set _qok = latest_quote and _ql1 and _ql2 and _ql1.status == 'approved' and _ql2.status == 'approved' %}
+                    <div class="sd-item">
+                      {% if _qok %}<a href="/crm/quotes/{{ latest_quote.id }}{{ '/download' if can(current_user, 'crm_quotes', 'export') }}" class="text-decoration-none" title="Approved Quotation — {{ 'download the file' if can(current_user, 'crm_quotes', 'export') else 'open the quote' }}"><i class="bi bi-paperclip"></i>{{ latest_quote.quote_number }}</a>
+                      {% else %}<span class="text-muted">Quotation: —</span>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if val == 'quote' %}
+                    {# Generated quotation file (2026-11-11, Pankaj): the latest quote's document #}
+                    <div class="sd-item">
+                      {% if latest_quote %}{% if can(current_user, 'crm_quotes', 'export') %}<a href="/crm/quotes/{{ latest_quote.id }}/download" class="text-decoration-none" title="Download the quotation file"><i class="bi bi-paperclip"></i>{{ latest_quote.quote_number }}</a>{% else %}<a href="/crm/quotes/{{ latest_quote.id }}" class="text-decoration-none" title="Open the quote"><i class="bi bi-paperclip"></i>{{ latest_quote.quote_number }}</a>{% endif %}
+                      {% else %}<span class="text-muted">Quotation: —</span>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if val == 'purchase_order' %}
+                    <div class="sd-item">
+                      {% if latest_po %}<a href="/crm/purchase-orders/{{ latest_po.id }}" class="text-decoration-none" title="Latest PO generated from this deal"><i class="bi bi-paperclip"></i>{{ latest_po.po_number }}</a>{% if latest_po.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ latest_po.verified_by if latest_po.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
+                      {% else %}<span class="text-muted">PO: —</span>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if val == 'payment' %}
+                    {% for pm in deal_payments %}
+                    <div class="sd-item" title="Supplier payment {{ pm.created_at.strftime('%d-%m-%Y') if pm.created_at else '' }}">
+                      {% if pm.invoice_path %}<a href="/uploads/accounts/{{ pm.invoice_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Invoice</a>{% endif %}
+                      {% if pm.payment_photo_path %}<a href="/uploads/accounts/{{ pm.payment_photo_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Payment Proof</a>{% endif %}
+                      {% if not pm.invoice_path and not pm.payment_photo_path %}<span class="text-muted">Supplier payment (no document)</span>{% endif %}
+                      {% if pm.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ pm.verified_by if pm.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
+                    </div>
+                    {% else %}
+                    <div class="sd-item"><span class="text-muted">Supplier payment: —</span></div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+                {% endif %}
+                </div>
                 {% if _state == 'done' %}<span class="sd-status text-success"><i class="bi bi-check-circle-fill me-1"></i>Done</span>
                 {% elif _state == 'current' %}<span class="sd-status text-primary">Current</span>{% endif %}
               </div>
               {% if _state != 'upcoming' %}
                 {% if val == 'lead' %}
                 <div class="sd-items"><div class="text-muted">Added {{ deal.created_at.strftime('%d-%m-%Y') if deal.created_at else '—' }}{% if deal.created_by %} by {{ user_names.get(deal.created_by, deal.created_by) }}{% endif %}</div></div>
+                {% elif val == 'pricing' %}
+                {# Pricing Added (2026-11-10): who saved the Pricing card, and when #}
+                {% set _ps = steps.get('pricing_saved') %}
+                <div class="sd-items"><div>
+                  {% if _ps %}<span class="text-muted">Saved</span> {{ _ps.acted_at.strftime('%d-%m-%Y') if _ps.acted_at else '' }}{% if _ps.acted_by %} <span class="text-muted">by</span> {{ user_names.get(_ps.acted_by, _ps.acted_by) }}{% endif %}
+                  {% elif deal.asking_price_unit or deal.our_offer_unit or deal.asking_price_total or deal.our_offer_total %}
+                  {# priced before the "Pricing Added" record existed: prices came with the deal #}
+                  <span class="text-muted">Added with the deal</span> {{ deal.created_at.strftime('%d-%m-%Y') if deal.created_at else '' }}{% if deal.created_by %} <span class="text-muted">by</span> {{ user_names.get(deal.created_by, deal.created_by) }}{% endif %}
+                  {% else %}<span class="text-muted">Not added yet — fill the Pricing card</span>{% endif %}
+                </div></div>
                 {% elif val == 'contacted' %}
                 <div class="sd-items"><div>
                   {% if last_contact %}
@@ -118,28 +181,14 @@
                 {% set _people = stage_steps[val] | selectattr(2, 'ne', 'file') | list %}
                 {% set _files = stage_steps[val] | selectattr(2, 'equalto', 'file') | list %}
                 <div class="sd-items justify-content-between">
-                  <div>{% for k, l, kind in _people %}{{ sd_person(k, l, kind) }}{% endfor %}</div>
+                  <div class="flex-grow-1">{% for k, l, kind in _people %}{{ sd_person(k, l, kind) }}{% endfor %}</div>
                   <div class="text-end">
-                    {% for k, l, kind in _files %}{{ sd_file(k, l) }}{% endfor %}
-                    {% if val == 'purchase_order' %}
-                    <div class="sd-item justify-content-end">
-                      {% if latest_po %}<a href="/crm/purchase-orders/{{ latest_po.id }}" class="text-decoration-none" title="Latest PO generated from this deal"><i class="bi bi-paperclip"></i>{{ latest_po.po_number }}</a>{% if latest_po.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ latest_po.verified_by if latest_po.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
-                      {% else %}<span class="text-muted">PO: —</span>{% endif %}
-                    </div>
-                    {% endif %}
-                    {% if val == 'payment' %}
-                    {% for pm in deal_payments %}
-                    <div class="sd-item justify-content-end" title="Supplier payment {{ pm.created_at.strftime('%d-%m-%Y') if pm.created_at else '' }}">
-                      {% if pm.invoice_path %}<a href="/uploads/accounts/{{ pm.invoice_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Invoice</a>{% endif %}
-                      {% if pm.payment_photo_path %}<a href="/uploads/accounts/{{ pm.payment_photo_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Payment Proof</a>{% endif %}
-                      {% if not pm.invoice_path and not pm.payment_photo_path %}<span class="text-muted">Supplier payment (no document)</span>{% endif %}
-                      {% if pm.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ pm.verified_by if pm.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
-                    </div>
-                    {% else %}
-                    <div class="sd-item justify-content-end"><span class="text-muted">Supplier payment: —</span></div>
+                    {# Every approval (2026-11-11, Pankaj): status only, on the right, one line
+                       per approver row — no Approve / Reject on the deal page; they are
+                       decided on the Activity Board. #}
+                    {% for k, l, kind in _people if kind == 'approval' %}{% set _s = steps.get(k) %}
+                    <div class="sd-item justify-content-end">{% if _s and _s.assigned_to %}{% if _s.status == 'approved' %}<span class="badge bg-success">{{ 'Verified' if k == 'payment_l1' else 'Approved' }}</span>{% elif _s.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}{% else %}&nbsp;{% endif %}</div>
                     {% endfor %}
-                    {% endif %}
-
                   </div>
                 </div>
                 {% elif val in ('won', 'lost') and deal.win_loss_reason %}
@@ -158,23 +207,9 @@
         {# Next Stage + the deal's action buttons in one row (2026-11-06): the
            buttons used to sit under the card; the next stage's name is no
            longer shown on the button. #}
-        <div class="d-flex gap-2 flex-wrap align-items-center">
-        {% if _sd_open %}
-          {% if can(current_user, 'crm_sourcing', 'edit') %}
-          {% if deal.stage == 'received' %}
-          <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#sdCloseModal">
-            <i class="bi bi-arrow-right-circle me-1"></i>Next Stage</button>
-          {% elif next_stage %}
-          <form method="post" action="/crm/sourcing/{{ deal.id }}/next-stage" class="d-inline">
-            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-            <button class="btn btn-sm btn-primary"><i class="bi bi-arrow-right-circle me-1"></i>Next Stage</button>
-          </form>
-          {% endif %}
-          {% endif %}
-        {% endif %}
-        </div>
+        {# Next Stage moved to the card header, right (2026-11-11, Pankaj) #}
         {# the other buttons on one row below Next Stage (2026-11-06) #}
-        <div class="d-flex gap-2 flex-nowrap align-items-center{{ ' mt-2' if _sd_open }}">
+        <div class="d-flex gap-2 flex-nowrap align-items-center">
         {% if can(current_user, 'crm_sourcing', 'edit') %}<a href="/crm/purchase-orders" class="btn btn-sm btn-outline-primary"><i class="bi bi-link-45deg me-1"></i>Link PO</a>{% endif %}
         {% if deal.stage not in ['won','lost'] %}
         {# Create Lot & Mark WON hidden here (2026-10-27, Pankaj); /lots/new?from_deal= still works. #}
@@ -367,19 +402,24 @@
 
     <!-- Deal Info (2026-10-22: top of the right column, four fields per row) -->
     <div class="card border-0 shadow-sm hdr-card mb-3">
-      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-        <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i>Deal Info</span>
-        {# Edit moved here from under Stage Progress (2026-11-06, Pankaj) #}
-        {% if can(current_user, 'crm_sourcing', 'edit') %}<a href="/crm/sourcing/{{ deal.id }}/edit" class="btn btn-sm btn-outline-primary ms-auto me-2"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
-        <span class="badge bg-{{ stage_colors.get(deal.stage,'secondary') }}">
-          {{ stage_labels.get(deal.stage, deal.stage | replace('_',' ') | title) }}
-        </span>
+      {# Header (2026-11-10, Pankaj): status pill + Assigned To next to the title; Edit on the right #}
+      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i>Deal Info</span>
+          <span class="badge bg-{{ stage_colors.get(deal.stage,'secondary') }}">{{ stage_labels.get(deal.stage, deal.stage | replace('_',' ') | title) }}</span>
+          <span class="badge bg-light text-dark border" title="Assigned To"><i class="bi bi-person me-1"></i>{{ user_names.get(deal.assigned_to, deal.assigned_to) if deal.assigned_to else 'Unassigned' }}</span>
+        </div>
+        {% if can(current_user, 'crm_sourcing', 'edit') %}<a href="/crm/sourcing/{{ deal.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
       </div>
       <div class="card-body pt-1">
         <div class="row g-3">
           <div class="col-6 col-md-3">
             <div class="small text-muted">Deal Number</div>
             <code>{{ deal.deal_number }}</code>
+          </div>
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">From Entity</div>
+            <div class="fw-semibold">{{ deal.from_entity or '—' }}</div>
           </div>
           <div class="col-6 col-md-3">
             <div class="small text-muted">Title</div>
@@ -393,98 +433,94 @@
             {% else %}—{% endif %}
           </div>
           <div class="col-6 col-md-3">
-            <div class="small text-muted">Source Type</div>
+            <div class="small text-muted">Supplier Type</div>
             <div>{% if deal.source_type %}<span class="badge bg-light text-dark border">{{ deal.source_type | replace('_',' ') | title }}</span>{% else %}—{% endif %}</div>
           </div>
+          {# Device Type / Condition Type now in the Pricing card (2026-11-10) #}
           <div class="col-6 col-md-3">
-            <div class="small text-muted">Device Type</div>
-            <div>{{ deal.device_type or '—' }}</div>
-          </div>
-          <div class="col-6 col-md-3">
-            <div class="small text-muted">Material Type</div>
-            <div>{% if deal.material_type %}<span class="badge bg-light text-dark border">{{ material_map.get(deal.material_type, deal.material_type | title) }}</span>{% else %}—{% endif %}</div>
+            <div class="small text-muted">Expected Close</div>
+            <div class="small {% if deal.expected_close_date and deal.expected_close_date < now.date() and deal.stage not in ['won','lost'] %}text-danger fw-semibold{% endif %}">{{ deal.expected_close_date.strftime('%d %b %Y') if deal.expected_close_date else '—' }}</div>
           </div>
           <div class="col-6 col-md-3">
             <div class="small text-muted">Priority</div>
             <span class="badge bg-{{ priority_colors.get(deal.priority,'secondary') }}">{{ deal.priority | title }}</span>
           </div>
-          <div class="col-6 col-md-3">
-            <div class="small text-muted">Assigned To</div>
-            <div>{{ deal.assigned_to or '—' }}</div>
-          </div>
+          {# Assigned To moved to the card header (2026-11-10) #}
           {% if deal.notes %}
           <div class="col-12">
             <div class="small text-muted">Notes</div>
             <div class="small">{{ deal.notes }}</div>
           </div>
           {% endif %}
-          {% if deal.purchase_invoice_path or deal.purchase_order_path or deal.eway_bill_path or deal.quote_received_path %}
-          <div class="col-12">
-            <div class="small text-muted mb-1">Documents</div>
-            <div class="d-flex flex-wrap gap-3">
-              {% if deal.purchase_invoice_path %}
-              <a href="/uploads/crm/{{ deal.purchase_invoice_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>Purchase Invoice</a>
-              {% endif %}
-              {% if deal.purchase_order_path %}
-              <a href="/uploads/crm/{{ deal.purchase_order_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>Purchase Order</a>
-              {% endif %}
-              {% if deal.eway_bill_path %}
-              <a href="/uploads/crm/{{ deal.eway_bill_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>E-way Bill</a>
-              {% endif %}
-              {% if deal.quote_received_path %}
-              <a href="/uploads/crm/{{ deal.quote_received_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>Quote Received</a>
-              {% endif %}
+        </div>
+        {# Pricing (2026-11-11, Pankaj): moved into Deal Info, above Team Mapping.
+           Same fields as the Add page; saving marks "Pricing Added"; a price
+           change resubmits Pricing Approval. #}
+        {% set _pr_edit = can(current_user, 'crm_sourcing', 'edit') and deal.stage not in ['won','lost'] %}
+        {% set _pa = steps.get('pricing_l1') %}
+        <div id="pricingCard" class="border-top mt-3 pt-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold"><i class="bi bi-currency-rupee me-1 text-success"></i>Pricing</span>
+            {% if _pa and _pa.assigned_to %}
+            <span class="badge {{ 'bg-success' if _pa.status == 'approved' else ('bg-danger' if _pa.status == 'rejected' else 'bg-warning text-dark') }}"
+                  title="Pricing Approval — {{ user_names.get(_pa.assigned_to, _pa.assigned_to) }}">Pricing Approval: {{ (_pa.status or 'pending') | title }}</span>
+            {% endif %}
+          </div>
+          <form method="post" action="/crm/sourcing/{{ deal.id }}/pricing">
+            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+            <fieldset {% if not _pr_edit %}disabled{% endif %}>
+              {% include "crm/sourcing/_pricing_fields.html" %}
+            </fieldset>
+            {% if _pr_edit %}
+            <div class="mt-3 d-flex align-items-center gap-2">
+              <button class="btn btn-sm btn-primary"><i class="bi bi-check2-circle me-1"></i>Save Pricing</button>
+              {% if _pa and _pa.assigned_to %}<span class="small text-muted">A price change sends it to {{ user_names.get(_pa.assigned_to, _pa.assigned_to) }} for Pricing Approval again.</span>{% endif %}
             </div>
-          </div>
-          {% endif %}
-          {# Upload Documents (2026-10-27): moved into Deal Info as a fold-out. #}
-          {% if can(current_user, 'crm_sourcing', 'upload') %}
-          <div class="col-12">
-            <a class="small text-decoration-none sd-acc collapsed" data-bs-toggle="collapse" href="#uploadBody"
-               role="button" aria-expanded="false" aria-controls="uploadBody">
-              <i class="bi bi-cloud-upload me-1"></i>Upload Documents <i class="bi bi-chevron-down small sd-acc-chev"></i>
-            </a>
-            <div class="collapse mt-2" id="uploadBody">
-                <form method="post" action="/crm/sourcing/{{ deal.id }}/upload" enctype="multipart/form-data" class="row g-2 align-items-end">
-          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">Purchase Invoice</label>
-            <input type="file" name="purchase_invoice" class="form-control form-control-sm">
-            {% if deal.purchase_invoice_path %}
-            <a href="/uploads/crm/{{ deal.purchase_invoice_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
             {% endif %}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">Purchase Order</label>
-            <input type="file" name="purchase_order" class="form-control form-control-sm">
-            {% if deal.purchase_order_path %}
-            <a href="/uploads/crm/{{ deal.purchase_order_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
-            {% endif %}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">E-way Bill</label>
-            <input type="file" name="eway_bill" class="form-control form-control-sm">
-            {% if deal.eway_bill_path %}
-            <a href="/uploads/crm/{{ deal.eway_bill_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
-            {% endif %}
-          </div>
-          <div class="col-md-3">
-            <label class="form-label small fw-semibold mb-1">Quote Received</label>
-            <input type="file" name="quote_received" class="form-control form-control-sm">
-            {% if deal.quote_received_path %}
-            <a href="/uploads/crm/{{ deal.quote_received_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>
-            {% endif %}
-          </div>
-          <div class="col-12">
-            <button class="btn btn-sm btn-primary"><i class="bi bi-cloud-upload me-1"></i>Upload</button>
-          </div>
-        </form>
-                    </div>
-          </div>
-          {% endif %}
+          </form>
         </div>
       </div>
+      {# Team Mapping (2026-11-11, Pankaj): the Deal Info card's footer, light grey —
+         the Account's mapped team (Manager, Executive/Sr Executive, VP/AVP, DM/GM/CTO/CEO). #}
+      {# header colour, more breathing room, Edit opens the Map Team modal (2026-11-11) #}
+      <div class="card-footer border-0 px-3 py-3 sd-team-foot">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="small fw-semibold"><i class="bi bi-people me-1"></i>Team Mapping</span>
+          {% if contact and can(current_user, 'crm_contacts', 'edit') %}
+          <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1" data-bs-toggle="modal" data-bs-target="#mapTeamModal" title="Edit Team Mapping"><i class="bi bi-pencil"></i></button>
+          {% endif %}
+        </div>
+        <div class="row g-2">
+          {% for label, people in deal_team %}
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">{{ label }}</div>
+            <div class="small fw-semibold">{{ people | join(', ') if people else '—' }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% if not (deal_team | selectattr(1) | list) %}<div class="small text-muted mt-1">No team mapped on the Account yet.</div>{% endif %}
+      </div>
     </div>
+
+    {# Documents (2026-11-11, Pankaj): its own accordion card below Deal Info, collapsed #}
+    {% set dd_items = [('inspection_report', 'Inspection Report'), ('quote_file', 'Quotation'),
+                       ('doc_purchase_order', 'Purchase Order'), ('payment_invoice', 'Payment Invoice'),
+                       ('doc_product_data_sheet', 'Product Data Sheet')] %}
+    {% set dd_attach = '/crm/sourcing/' ~ deal.id ~ '/steps/' %}
+    {% set dd_upload = can(current_user, 'crm_sourcing', 'upload') %}
+    {% set dd_quote, dd_quote_key = latest_quote, 'quote_file' %}
+    {% set dd_legacy = [] %}
+    {% for l, pth in [('Purchase Invoice', deal.purchase_invoice_path), ('Purchase Order', deal.purchase_order_path),
+                      ('E-way Bill', deal.eway_bill_path), ('Quote Received', deal.quote_received_path)] %}
+      {% if pth %}{% set _ = dd_legacy.append((l, '/uploads/crm/' ~ pth)) %}{% endif %}
+    {% endfor %}
+    {% include "crm/_deal_documents.html" %}
+    {% if contact and can(current_user, 'crm_contacts', 'edit') %}
+    {% set mt_return = '/crm/sourcing/' ~ deal.id %}
+    {% include "crm/contacts/_map_team_modal.html" %}
+    <script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
+    {% endif %}
+    <style>.sd-team-foot { background: var(--oxy-sky) !important; border-top: 1px solid #c0ddf0 !important; }</style>
 
     <!-- Fold-out chevrons (Upload Documents in Deal Info). -->
     <style>
@@ -723,8 +759,10 @@
 
             <label class="form-label small fw-semibold mb-1">Company Details</label>
             <select name="company_id" class="form-select form-select-sm mb-3">
+              {% set _ent_hit = namespace(done=False) %}
               {% for c in companies %}
-              <option value="{{ c.id }}">{{ c.company_name }}</option>
+              {# defaults to the deal's From Entity company (2026-11-10) #}
+              <option value="{{ c.id }}" {% if not _ent_hit.done and deal.from_entity and c.company_entity == deal.from_entity %}selected{% set _ent_hit.done = True %}{% endif %}>{{ c.company_name }}</option>
               {% endfor %}
             </select>
 
@@ -855,8 +893,12 @@
 
   </div>
 </div>
+
+{# History card (2026-11-09, Pankaj) #}
+{% include "_history_card.html" %}
 {% endblock %}
 {% block scripts %}
+{% include "crm/sourcing/_pricing_js.html" %}
 <script>
 function calcProfit() {
   var acq      = parseFloat(document.getElementById('c_acq').value)      || 0;

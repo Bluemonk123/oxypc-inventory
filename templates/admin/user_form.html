@@ -2,7 +2,9 @@
 {% block title %}{{ 'Edit' if edit_user else 'New' }} User — OxyPC{% endblock %}
 {% block page_title %}{{ 'Edit' if edit_user else 'Add' }} User{% endblock %}
 {% block content %}
-<div class="row justify-content-center">
+{# Side by side (2026-11-09, Pankaj): user form left, All Roles table right
+   (built-in + custom roles, from routers/admin.py _role_data). #}
+<div class="row g-3 align-items-start">
   <div class="col-lg-6">
     <div class="card border-0 shadow-sm">
       <div class="card-header bg-transparent fw-semibold">
@@ -121,5 +123,29 @@
       </div>
     </div>
   </div>
+
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex align-items-center">
+        <span class="fw-semibold"><i class="bi bi-person-badge me-2"></i>All Roles <span class="badge bg-secondary ms-1">{{ role_choices|length }}</span></span>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0" id="rolesTable">
+          <thead class="table-dark"><tr><th>Role Display Name</th><th>Role User Name</th></tr></thead>
+          <tbody>
+            {% for value, label in role_choices %}
+            <tr><td class="fw-semibold">{{ label }}</td><td class="font-monospace small">{{ value }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+$(function () { if (window.initGlobalTable) initGlobalTable('#rolesTable', { order: [[0, 'asc']], pageLength: 50, language: { emptyTable: 'No roles found.' } }); });
+</script>
 {% endblock %}

@@ -110,7 +110,8 @@ def test_ready_to_sale_has_new_buttons_and_old_ones_remain():
     # since 2026-10-28 (sales/ready_lots.html), not on the Tags page.
     lots = open(templates.env.get_template("sales/ready_lots.html").filename, encoding="utf-8").read()
     # new
-    assert 'id="newBulkSaleBtn"' in src and "New Bulk Sale (" in src
+    # Label is "Add Bulk Sale" since 2026-11-08 (Add instead of New on add buttons).
+    assert 'id="newBulkSaleBtn"' in src and "Add Bulk Sale (" in src
     assert 'action="/sales/new-tag-sale/prefill"' in src
     assert "as-is-lot-newsell-btn" in lots and ">New Sell</button>" in lots
     assert 'action="/sales/new-tag-sale/prefill"' in lots

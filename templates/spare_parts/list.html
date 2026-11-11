@@ -33,6 +33,37 @@
 </div>
 {%- endmacro %}
 
+
+{# Success message: the top-right toast for every page (static/js/toast.js, 2026-10-31). #}
+
+<!-- ── Summary Cards (counts reflect all tables across all tabs) ── -->
+{# Shared tile macros (templates/_tiles.html, 2026-11-06): Double count,
+   light tint. Each tile = heading, New count, Harvest count. All 7 stay on
+   one row (scrolls sideways on a narrow screen). #}
+{% import "_tiles.html" as tl %}
+<style>
+  #partsCards{flex-wrap:nowrap; overflow-x:auto}
+</style>
+<div class="oxt-row" id="partsCards">
+  {# 2026-11-04: each tile = heading, New count, Harvest count — recounted from the
+     rows the Part Master table shows (see spTileRecount). #}
+  {% for key, title, color, icon in [('qty', 'Total Quantities', '#0d6efd', 'bi-boxes'),
+      ('types', 'Parts Types', '#6f42c1', 'bi-diagram-3'),
+      ('low', 'Low Stock', '#dc3545', 'bi-exclamation-triangle'),
+      ('out', 'Out of Stock', '#dc3545', 'bi-x-octagon'),
+      ('consumed', 'Consumed', '#0aa2c0', 'bi-tools'),
+      ('sold', 'Total Sold', '#fd7e14', 'bi-cart-check')] %}
+  {{ tl.multi(title, [[(tile_stats.new[key], 'New', 'data-tile="' ~ key ~ '-new"')],
+                      [(tile_stats.harvest[key], 'Harvest', 'data-tile="' ~ key ~ '-harvest"')]], color, icon) }}
+  {% endfor %}
+  {% if can(current_user, 'spare_parts', 'pricing') %}
+  {% set _val_new = ('₹' ~ (tile_stats.new.value | inr)) if can(current_user, 'spare_parts', 'pricing') else '—' %}
+  {% set _val_harvest = ('₹' ~ (tile_stats.harvest.value | inr)) if can(current_user, 'spare_parts', 'pricing') else '—' %}
+  {{ tl.multi('Total Spare Parts Value', [[(_val_new, 'New', 'data-tile="value-new"')],
+                                         [(_val_harvest, 'Harvest', 'data-tile="value-harvest"')]], '#0F7A37', 'bi-currency-rupee') }}
+  {% endif %}
+</div>
+{# Filters below the count tiles (2026-11-09, Pankaj: tiles first, then filters, on every page). #}
 {# Global filter bar (app.css .filter-bar, 2026-10-19) — one row, no labels
    (title= tooltips), Search / Reset. A real server-side filter, so the tiles
    below are recomputed from the filtered scope. Applies to every tab:
@@ -70,41 +101,11 @@
       </select>
     </div>
     <div>
-      <button type="submit" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+      <button type="submit" class="btn btn-primary btn-sm text-nowrap">Apply</button>
       <a href="/spare-parts" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</a>
     </div>
   </div>
 </form>
-
-{# Success message: the top-right toast for every page (static/js/toast.js, 2026-10-31). #}
-
-<!-- ── Summary Cards (counts reflect all tables across all tabs) ── -->
-{# Shared tile macros (templates/_tiles.html, 2026-11-06): Double count,
-   light tint. Each tile = heading, New count, Harvest count. All 7 stay on
-   one row (scrolls sideways on a narrow screen). #}
-{% import "_tiles.html" as tl %}
-<style>
-  #partsCards{flex-wrap:nowrap; overflow-x:auto}
-</style>
-<div class="oxt-row" id="partsCards">
-  {# 2026-11-04: each tile = heading, New count, Harvest count — recounted from the
-     rows the Part Master table shows (see spTileRecount). #}
-  {% for key, title, color, icon in [('qty', 'Total Quantities', '#0d6efd', 'bi-boxes'),
-      ('types', 'Parts Types', '#6f42c1', 'bi-diagram-3'),
-      ('low', 'Low Stock', '#dc3545', 'bi-exclamation-triangle'),
-      ('out', 'Out of Stock', '#dc3545', 'bi-x-octagon'),
-      ('consumed', 'Consumed', '#0aa2c0', 'bi-tools'),
-      ('sold', 'Total Sold', '#fd7e14', 'bi-cart-check')] %}
-  {{ tl.double(title, tile_stats.new[key], 'New', tile_stats.harvest[key], 'Harvest', color, icon,
-               count1_attrs='data-tile="' ~ key ~ '-new"', count2_attrs='data-tile="' ~ key ~ '-harvest"') }}
-  {% endfor %}
-  {% if can(current_user, 'spare_parts', 'pricing') %}
-  {% set _val_new = ('₹' ~ (tile_stats.new.value | inr)) if can(current_user, 'spare_parts', 'pricing') else '—' %}
-  {% set _val_harvest = ('₹' ~ (tile_stats.harvest.value | inr)) if can(current_user, 'spare_parts', 'pricing') else '—' %}
-  {{ tl.double('Total Spare Parts Value', _val_new, 'New', _val_harvest, 'Harvest', '#0F7A37', 'bi-currency-rupee',
-               count1_attrs='data-tile="value-new"', count2_attrs='data-tile="value-harvest"') }}
-  {% endif %}
-</div>
 
 <!-- ── Tab Navigation ── -->
 <ul class="nav nav-tabs mb-0 d-flex" id="sparePartsTabs" role="tablist">
@@ -629,24 +630,14 @@
                  E-way Bill), same as every non-production sourcing request:
                  disabled placeholder icons when a document isn't uploaded
                  yet, no separate dash. #}
-              {% if _deal and _deal.purchase_invoice_path %}
-              <a class="btn btn-sm btn-outline-secondary py-0 px-1" title="Purchase Invoice"
-                 href="/uploads/crm/{{ _deal.purchase_invoice_path }}" target="_blank"><i class="bi bi-file-earmark-text"></i></a>
-              {% else %}
-              <button class="btn btn-sm btn-outline-secondary py-0 px-1" disabled title="Purchase Invoice not uploaded"><i class="bi bi-file-earmark-text"></i></button>
-              {% endif %}
-              {% if _deal and _deal.purchase_order_path %}
-              <a class="btn btn-sm btn-outline-secondary py-0 px-1" title="Purchase Order"
-                 href="/uploads/crm/{{ _deal.purchase_order_path }}" target="_blank"><i class="bi bi-file-earmark-ruled"></i></a>
-              {% else %}
-              <button class="btn btn-sm btn-outline-secondary py-0 px-1" disabled title="Purchase Order not uploaded"><i class="bi bi-file-earmark-ruled"></i></button>
-              {% endif %}
-              {% if _deal and _deal.eway_bill_path %}
-              <a class="btn btn-sm btn-outline-secondary py-0 px-1" title="E-way Bill"
-                 href="/uploads/crm/{{ _deal.eway_bill_path }}" target="_blank"><i class="bi bi-truck"></i></a>
-              {% else %}
-              <button class="btn btn-sm btn-outline-secondary py-0 px-1" disabled title="E-way Bill not uploaded"><i class="bi bi-truck"></i></button>
-              {% endif %}
+              {# Deal documents (2026-11-11): the Supplier Deal page's Documents card —
+                 Inspection Report, Quotation, Purchase Order, Payment Invoice,
+                 Product Data Sheet (+ an earlier E-way Bill); services/deal_documents.py #}
+              {% set _docs = deal_docs.get(_deal.id | string, []) if _deal else [] %}
+              {% if _docs %}
+              {% for d in _docs %}{% if d.url %}<a class="btn btn-sm btn-outline-secondary py-0 px-1" title="{{ d.label }}" href="{{ d.url }}" target="_blank"><i class="bi {{ d.icon }}"></i></a>
+              {% else %}<button class="btn btn-sm btn-outline-secondary py-0 px-1" disabled title="{{ d.label }} not uploaded"><i class="bi {{ d.icon }}"></i></button>{% endif %}{% endfor %}
+              {% else %}<span class="text-muted">—</span>{% endif %}
             </td>
             <td>
               {# Verify/Verified is checked ahead of the production branch so
@@ -659,7 +650,8 @@
               {% elif s.status == 'closed' %}
               {% if can(current_user, 'spare_parts', 'edit') %}
               <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
-                      onclick="openSourcingVerifyModal('{{ s.id }}', '{{ s.part_name }}')">Verify</button>
+                      data-docs='{{ (deal_docs.get(_deal.id | string, []) if _deal else []) | tojson }}'
+                      onclick="openSourcingVerifyModal('{{ s.id }}', '{{ s.part_name }}', this)">Verify</button>
               {% endif %}
               {% elif s.source == 'production' %}
                 {% if s.confirmed %}
@@ -695,7 +687,9 @@
         <input type="hidden" id="sv_sr_id" name="sr_id">
         <input type="hidden" name="csrf_token" id="sv_csrf">
         <div class="modal-body">
-          <p class="mb-0">Confirm that the sourced documents (invoice, PO, e-way bill) and quantity have been checked and are correct?</p>
+          {# the linked Supplier Deal's documents (Documents card), 2026-11-11 #}
+          <div id="sv_docs" class="mb-3"></div>
+          <p class="mb-0">Confirm that the sourced documents and quantity have been checked and are correct?</p>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -792,11 +786,11 @@
       </div>
       <div class="modal-body d-flex flex-column gap-3 py-3">
         <a href="/parts-grn/new" class="btn btn-outline-primary">
-          <i class="bi bi-file-earmark-plus me-2"></i>Add New Part
+          <i class="bi bi-plus-circle me-2"></i>Add Part
         </a>
         <button type="button" class="btn btn-outline-secondary"
                 onclick="bootstrap.Modal.getInstance(document.getElementById('addPartModal')).hide(); setTimeout(function(){ new bootstrap.Modal(document.getElementById('harvestModal')).show(); }, 300);">
-          <i class="bi bi-recycle me-2"></i>Add Harvest Part
+          <i class="bi bi-plus-circle me-2"></i>Add Harvest Part
         </button>
         <button type="button" class="btn btn-outline-dark" data-bs-dismiss="modal">Close</button>
       </div>
@@ -1086,7 +1080,8 @@ function spTileRecount(settings) {
     Object.keys(t[k]).forEach(function (f) {
       var el = document.querySelector('#partsCards [data-tile="' + f + '-' + k + '"]');
       if (!el) return;
-      el.textContent = f === 'value' ? '\u20B9' + Math.round(t[k][f]).toLocaleString('en-IN') : t[k][f].toLocaleString('en-US');   // en-US: same grouping as the tile macro (2026-11-06)
+      el.textContent = f === 'value' ? oxtShort(t[k][f], true) : oxtShort(t[k][f]);   // 1.250 Lk / 2.400 Cr from one lakh (2026-11-08)
+      el.title = Math.abs(t[k][f]) >= 1e5 ? (f === 'value' ? '\u20B9' : '') + Math.round(t[k][f]).toLocaleString('en-IN') : '';   // full figure on hover   // en-US: same grouping as the tile macro (2026-11-06)
     });
   });
 }
@@ -1459,9 +1454,22 @@ function spPostConsumptionExport(url) {
 }
 
 // Sourcing Request Verify modal (#4)
-function openSourcingVerifyModal(srId, partName) {
+function openSourcingVerifyModal(srId, partName, btn) {
   document.getElementById('sv_sr_id').value = srId;
   document.getElementById('sv_part').textContent = partName;
+  // the deal's documents (Documents card on the Supplier Deal page)
+  var docs = []; try { docs = JSON.parse((btn && btn.dataset.docs) || '[]'); } catch (e) {}
+  var box = document.getElementById('sv_docs'); box.innerHTML = '';
+  if (docs.length) {
+    var t = document.createElement('div'); t.className = 'small fw-semibold mb-1'; t.textContent = 'Supplier Deal documents'; box.appendChild(t);
+    docs.forEach(function (d) {
+      var row = document.createElement('div'); row.className = 'small d-flex align-items-center gap-2';
+      var ic = document.createElement('i'); ic.className = 'bi ' + d.icon; row.appendChild(ic);
+      if (d.url) { var a = document.createElement('a'); a.href = d.url; a.target = '_blank'; a.textContent = d.label; row.appendChild(a); }
+      else { var sp = document.createElement('span'); sp.className = 'text-muted'; sp.textContent = d.label + ' — not uploaded'; row.appendChild(sp); }
+      box.appendChild(row);
+    });
+  } else { box.innerHTML = '<div class="small text-muted">No Supplier Deal linked.</div>'; }
   var csrfEl = document.querySelector('[name="csrf_token"]');
   document.getElementById('sv_csrf').value = csrfEl ? csrfEl.value : '';
   new bootstrap.Modal(document.getElementById('sourcingVerifyModal')).show();

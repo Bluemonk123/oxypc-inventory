@@ -55,12 +55,12 @@ asyncio.run(main())
         import re
         html = app_client.get(f"/workid-status?tag={tag}&work_from=2026-10-27&work_to=2026-10-27").text
         cos = html.split('data-group="cosmetic"', 1)[1].split('data-group="final_qc"', 1)[0]
-        got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="wid-stage-sub">(Pass|Fail)', cos))
+        got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">(Pass|Fail)', cos))
         assert got == {"Pass": "1", "Fail": "0"}, got
         def lines(day):
             h = app_client.get(f"/workid-status?tag={tag}&work_from={day}&work_to={day}").text
             c = h.split('data-group="cosmetic"', 1)[1].split('data-group="final_qc"', 1)[0]
-            return dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="wid-stage-sub">([^<]+)', c))
+            return dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">([^<]+)', c))
         # Received = arrived in Cosmetic Received in the range; Pending = tags in
         # Cosmetic right now (Cosmetic All Tags page), not by date (2026-11-03).
         _pending_now = _run(f"""

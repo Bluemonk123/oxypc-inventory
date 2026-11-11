@@ -2,6 +2,7 @@
 {% block title %}Sales Orders — OxyPC{% endblock %}
 {% block page_title %}Sales Orders{% endblock %}
 {% block content %}
+{% import "_download_cell.html" as dl %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="text-muted small">{{ orders | length }} sales order(s) · created when a Buyer Deal's quotation passes Level 2 approval</div>
 </div>
@@ -11,7 +12,7 @@
     <div class="table-responsive">
       <table class="table table-hover mb-0" id="soTable">
         <thead class="table-light">
-          <tr><th>SO #</th><th>Buyer</th><th>Quote</th><th>Buyer Deal</th><th>Date</th><th>Total Amount</th><th>Accounts</th><th>Status</th><th>Actions</th></tr>
+          <tr><th>SO #</th><th>Buyer</th><th>Quote</th><th>Buyer Deal</th><th>Date</th><th>Total Amount</th><th>Accounts</th><th>Status</th><th>Download</th><th>Actions</th></tr>
         </thead>
         <tbody>
           {% for so in orders %}
@@ -24,6 +25,7 @@
             <td class="small fw-semibold">{% if can(current_user, 'crm_quotes', 'pricing') %}₹{{ (so.total_amount or 0) | inr }}{% else %}—{% endif %}</td>
             <td>{% if so.verified %}<span class="badge bg-success" title="Verified by {{ so.verified_by or '—' }}">Verified</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
             <td><span class="badge bg-{{ 'secondary' if so.status == 'cancelled' else 'primary' }}">{{ so.status | title }}</span></td>
+            <td>{{ dl.cell(downloads.get(so.id|string) if can(current_user, 'crm_sales_opp', 'export') else []) }}</td>
             <td><a href="/crm/sales-orders/{{ so.id }}" class="btn btn-sm btn-outline-primary" title="View"><i class="bi bi-eye"></i></a></td>
           </tr>
           {% endfor %}

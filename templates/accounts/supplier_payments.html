@@ -2,6 +2,7 @@
 {% block title %}Supplier Payments — OxyPC{% endblock %}
 {% block page_title %}Supplier Payments{% endblock %}
 {% block content %}
+{% import "accounts/_deal_payment_requests.html" as dpr with context %}
 {% if request.query_params.get('success') %}
 <div class="alert alert-success alert-dismissible fade show"><i class="bi bi-check-circle me-2"></i>{{ request.query_params.get('success') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% endif %}
@@ -15,70 +16,52 @@
   <div class="card-body">
     <form action="/accounts/supplier-payments/new" method="post" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+      {# Same fields as the Complete Payment form, plus Supplier Deal ID and Account Name,
+         linked to each other (static/js/deal-account-link.js) — 2026-11-11, Pankaj #}
       <div class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label fw-semibold">Supplier</label>
-          <select name="contact_id" class="form-select form-select-sm">
-            <option value="">— Select Supplier —</option>
-            {% for s in suppliers %}<option value="{{ s.id }}">{{ s.company_name }}</option>{% endfor %}
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Supplier Deal ID</label>
+          <select name="sourcing_deal_id" class="form-select form-select-sm" data-link-deal>
+            <option value="">— Select Deal —</option>
+            {% for d in sourcing_deals %}<option value="{{ d.id }}" data-contact="{{ d.contact_id or '' }}">{{ d.deal_number }} — {{ (d.title or '')[:40] }}</option>{% endfor %}
           </select>
         </div>
-        <div class="col-md-4">
-          <label class="form-label">Linked Lot</label>
-          <select name="lot_id" class="form-select form-select-sm">
-            <option value="">— No Lot —</option>
-            {% for l in lots %}<option value="{{ l.id }}">{{ l.lot_number }} &mdash; {{ l.supplier_name }}</option>{% endfor %}
+        <div class="col-md-6">
+          <label class="form-label fw-semibold">Account Name</label>
+          <select name="contact_id" class="form-select form-select-sm" data-link-account>
+            <option value="">— Select Account —</option>
+            {% for c in suppliers %}<option value="{{ c.id }}">{{ c.company_name }}</option>{% endfor %}
           </select>
         </div>
-        <div class="col-md-4">
-          <label class="form-label">Supplier Deal ID</label>
-          <select name="sourcing_deal_id" class="form-select form-select-sm">
-            <option value="">— No Deal —</option>
-            {% for d in sourcing_deals %}<option value="{{ d.id }}">{{ d.deal_number }} — {{ d.title[:40] }}</option>{% endfor %}
-          </select>
-        </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
           <label class="form-label fw-semibold">Payment Date <span class="text-danger">*</span></label>
           <input type="date" name="payment_date" class="form-control form-control-sm" required>
         </div>
         <div class="col-md-3">
-          <label class="form-label fw-semibold">Amount (&#8377;) <span class="text-danger">*</span></label>
-          <input type="number" name="amount" class="form-control form-control-sm" min="0.01" step="0.01" placeholder="0" required>
+          <label class="form-label fw-semibold">Payment Amount (&#8377;) <span class="text-danger">*</span></label>
+          <input type="number" name="amount" class="form-control form-control-sm" min="0.01" step="0.01" required>
         </div>
         <div class="col-md-3">
-          <label class="form-label">Payment Mode</label>
-          <select name="payment_mode" class="form-select form-select-sm">
+          <label class="form-label fw-semibold">Payment UTR/Invoice Number <span class="text-danger">*</span></label>
+          <input type="text" name="reference_no" class="form-control form-control-sm" maxlength="100" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label fw-semibold">Payment Mode <span class="text-danger">*</span></label>
+          <select name="payment_mode" class="form-select form-select-sm" required>
             <option value="">— Select —</option>
             {% for m in payment_modes %}<option value="{{ m }}">{{ m | upper }}</option>{% endfor %}
           </select>
         </div>
-        <div class="col-md-3">
-          <label class="form-label">Reference / UTR</label>
-          <input type="text" name="reference_no" class="form-control form-control-sm" placeholder="Ref no">
-        </div>
-        <div class="col-md-3 d-flex align-items-end">
-          <div class="form-check mb-1">
-            <input type="checkbox" name="is_advance" class="form-check-input" id="isAdvance">
-            <label class="form-check-label" for="isAdvance">Advance Payment</label>
-          </div>
-        </div>
-        <div class="col-12">
-          <label class="form-label">Notes</label>
-          <input type="text" name="notes" class="form-control form-control-sm" placeholder="Notes">
-        </div>
         <div class="col-md-6">
-          <label class="form-label">Invoice PDF</label>
-          <input type="file" name="invoice" accept="application/pdf" class="form-control form-control-sm">
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">Payment Photo</label>
-          <input type="file" name="payment_photo" accept="image/*" class="form-control form-control-sm">
+          <label class="form-label fw-semibold">Payment Snapshot</label>
+          <input type="file" name="payment_photo" accept="image/*,.pdf" class="form-control form-control-sm">
         </div>
         <div class="col-12">
           {% if can(current_user, 'finance_supplier', 'add') %}<button type="submit" class="btn btn-danger btn-sm px-4"><i class="bi bi-check-circle me-2"></i>Record Payment</button>{% endif %}
         </div>
       </div>
     </form>
+    <script src="/static/js/deal-account-link.js?v={{ ASSET_VERSION }}"></script>
   </div>
 </div>
 {% endif %}
@@ -86,58 +69,28 @@
 <!-- Payment Pending / Payment History tabs (2026-10-27, Pankaj) -->
 <ul class="nav nav-tabs" id="spTabs" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="sp-pending-tab" data-bs-toggle="tab" data-bs-target="#sp-pending" type="button" role="tab"><i class="bi bi-hourglass-split me-1"></i>Payment Pending</button>
+    <button class="nav-link active" id="sp-pending-tab" data-bs-toggle="tab" data-bs-target="#sp-pending" type="button" role="tab"><i class="bi bi-hourglass-split me-1"></i>Pending <span class="badge rounded-pill bg-warning text-dark ms-1">{{ sp_req.pending|length }}</span></button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="sp-history-tab" data-bs-toggle="tab" data-bs-target="#sp-history" type="button" role="tab"><i class="bi bi-clock-history me-1"></i>Payment History</button>
+    <button class="nav-link" id="sp-history-tab" data-bs-toggle="tab" data-bs-target="#sp-history" type="button" role="tab"><i class="bi bi-check2-all me-1"></i>Completed</button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="sp-rejected-tab" data-bs-toggle="tab" data-bs-target="#sp-rejected" type="button" role="tab"><i class="bi bi-x-circle me-1"></i>Rejected</button>
   </li>
 </ul>
 <div class="tab-content pt-3">
   <div class="tab-pane fade show active" id="sp-pending" role="tabpanel">
-<!-- List of PO Generated -->
-<div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent fw-semibold"><i class="bi bi-file-earmark-text me-2"></i>List of PO Generated</div>
-  <div class="card-body p-0">
-    <table class="table table-hover mb-0 small" id="poTable">
-      <thead class="table-dark"><tr><th>PO Number</th><th>Supplier</th><th>Date</th><th>Amount</th><th>Payment Status</th><th>Document</th><th>Action</th></tr></thead>
-      <tbody>
-        {% for po in purchase_orders %}
-        <tr>
-          <td class="font-monospace">{{ po.po_number }}</td>
-          <td>{{ po.contact.company_name if po.contact else '&mdash;' }}</td>
-          <td>{{ po.po_date.strftime('%d-%m-%Y') if po.po_date else '&mdash;' }}</td>
-          <td class="fw-semibold">&#8377;{{ ((po.total_amount or 0) | inr) }}</td>
-          <td>{% if po.payment_status == 'paid' %}<span class="badge bg-success">Paid</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
-          <td class="text-nowrap">
-            {% if po.invoice_path %}<a href="/uploads/accounts/{{ po.invoice_path }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Invoice"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}
-            {% if po.payment_snapshot_path %}<a href="/uploads/accounts/{{ po.payment_snapshot_path }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Payment Snapshot"><i class="bi bi-image"></i></a>{% endif %}
-            {% if not po.invoice_path and not po.payment_snapshot_path %}&mdash;{% endif %}
-          </td>
-          <td class="text-nowrap">
-            {% if can_edit %}
-            {% if po.payment_status != 'paid' %}
-            {% if can(current_user, 'finance_supplier', 'edit') %}
-            <button type="button" class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#poCompletePaymentModal" data-id="{{ po.id }}">Complete Payment</button>
-            {% endif %}
-            {% endif %}
-            {% if can(current_user, 'finance_supplier', 'upload') %}
-            <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" data-bs-toggle="modal" data-bs-target="#poUploadInvoiceModal" data-id="{{ po.id }}">Upload Invoice</button>
-            {% endif %}
-            {% endif %}
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="7" class="text-center text-muted py-4">No purchase orders generated.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
+{# Payment Requests (2026-11-11, Pankaj): the Payment stage's Level 1 approval
+   of Supplier Deals — Verify Payment opens Complete Payment, then it is Completed #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent fw-semibold"><i class="bi bi-cash-coin me-2"></i>Payment Requests</div>
+  <div class="card-body">{{ dpr.table(sp_req.pending, 'pending', 'supplier', '/accounts/supplier-payments', verify_label='Verify Payment', reject_label='Reject Payment', verify_hash='#history', reject_hash='#rejected') }}</div>
 </div>
   </div>
   <div class="tab-pane fade" id="sp-history" role="tabpanel">
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent d-flex justify-content-between">
-    <span class="fw-semibold"><i class="bi bi-list-ul me-2"></i>Payment History</span>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-check2-all me-2"></i>Completed Payments</span>
     <form class="d-flex gap-2 align-items-center" method="get" action="/accounts/supplier-payments">
       <select name="contact_id" class="form-select form-select-sm w-auto" onchange="this.form.submit()">
         <option value="">All Suppliers</option>
@@ -145,101 +98,50 @@
       </select>
     </form>
   </div>
-  <div class="card-body p-0">
-    <table class="table table-hover mb-0 small" id="paymentsTable">
-      <thead class="table-dark"><tr><th>Date</th><th>Supplier</th><th>Lot</th><th>Mode</th><th>Ref</th><th>Advance</th><th>Amount</th><th>Document</th><th>By</th><th>Accounts</th></tr></thead>
+  <div class="card-body">
+    <table class="table table-hover align-middle mb-0" id="paymentsTable">
+      <thead><tr><th>Date</th><th>Supplier</th><th>Lot</th><th>Mode</th><th>Ref</th><th>Advance</th><th>Amount</th><th>Document</th><th>By</th><th>Accounts</th></tr></thead>
       <!-- rows come from /accounts/supplier-payments/data via DataTables serverSide -->
       <tbody></tbody>
-      <tfoot class="table-light">
+      <tfoot>
         <tr><td colspan="6" class="text-end fw-bold">Total:</td><td class="fw-bold text-danger">&#8377;{{ ((total) | inr) }}</td><td colspan="3"></td></tr>
       </tfoot>
     </table>
   </div>
 </div>
   </div>
+  <div class="tab-pane fade" id="sp-rejected" role="tabpanel">
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent fw-semibold"><i class="bi bi-x-circle me-2"></i>Rejected Payment Requests</div>
+  <div class="card-body">{{ dpr.table(sp_req.rejected, 'rejected', 'supplier', '/accounts/supplier-payments') }}</div>
 </div>
-
-<!-- Complete Payment modal (PO) -->
-<div class="modal fade" id="poCompletePaymentModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form method="post" id="poCompletePaymentForm" class="modal-content" enctype="multipart/form-data">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-      <div class="modal-header"><h5 class="modal-title">Complete Payment</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">
-        <label class="form-label fw-semibold">UTR Number <span class="text-danger">*</span></label>
-        <input type="text" name="utr_number" class="form-control mb-3" required>
-        <label class="form-label fw-semibold">Payment Snapshot</label>
-        <input type="file" name="payment_snapshot" accept="image/*" class="form-control">
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success">Complete Payment</button>
-      </div>
-    </form>
   </div>
 </div>
-
-<!-- Upload Invoice modal (PO) -->
-<div class="modal fade" id="poUploadInvoiceModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form method="post" id="poUploadInvoiceForm" class="modal-content" enctype="multipart/form-data">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-      <div class="modal-header"><h5 class="modal-title">Upload Invoice</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-      <div class="modal-body">
-        <label class="form-label fw-semibold">Invoice PDF <span class="text-danger">*</span></label>
-        <input type="file" name="invoice" accept="application/pdf" class="form-control" required>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-primary">Upload</button>
-      </div>
-    </form>
-  </div>
-</div>
+{{ dpr.modals(payment_modes) }}
 
 {% endblock %}
 {% block scripts %}
 <script>
-var _lenMenu = [[12, 25, 50, 100, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000],
-                [12, 25, 50, 100, 500, 1000, 1500, 2000, 2500, 3000, 4000, 5000]];
-$('#paymentsTable').DataTable({
+initGlobalTable('#paymentsTable', {
   serverSide: true,
   processing: true,
-  pageLength: 25,
-  lengthMenu: _lenMenu,
   order: [],
   searchDelay: 400,
   ajax: { url: '/accounts/supplier-payments/data' + window.location.search },
   columnDefs: [{ orderable: false, targets: [5, 7, 9] }],
+  language: { emptyTable: 'No payments recorded.' },
 });
-// PO list is capped at 100 rows server-side already — plain client-side
-// paging is enough, just needs the same Show Entries values as every other
-// table in this batch.
-if ($('#poTable tbody tr').length > 1) {
-  $('#poTable').DataTable({ pageLength: 25, lengthMenu: _lenMenu, order: [] });
-}
 
-var _pcp = document.getElementById('poCompletePaymentModal');
-if (_pcp) {
-  _pcp.addEventListener('show.bs.modal', function (e) {
-    document.getElementById('poCompletePaymentForm').action = '/accounts/po/' + e.relatedTarget.getAttribute('data-id') + '/complete-payment';
-  });
-}
-var _pui = document.getElementById('poUploadInvoiceModal');
-if (_pui) {
-  _pui.addEventListener('show.bs.modal', function (e) {
-    document.getElementById('poUploadInvoiceForm').action = '/accounts/po/' + e.relatedTarget.getAttribute('data-id') + '/upload-invoice';
-  });
-}
 // Tabs: open Payment History when it was asked for (#history, or the
 // contact_id filter that lives on that tab), and re-fit each table when
 // its tab is shown (a table sized while hidden has zero-width columns).
 (function () {
   var wantHistory = location.hash === '#history' || new URLSearchParams(location.search).get('contact_id');
   if (wantHistory) bootstrap.Tab.getOrCreateInstance(document.getElementById('sp-history-tab')).show();
+  if (location.hash === '#rejected') bootstrap.Tab.getOrCreateInstance(document.getElementById('sp-rejected-tab')).show();
   document.querySelectorAll('#spTabs button[data-bs-toggle="tab"]').forEach(function (b) {
     b.addEventListener('shown.bs.tab', function () {
-      history.replaceState(null, '', location.pathname + location.search + (b.id === 'sp-history-tab' ? '#history' : ''));
+      history.replaceState(null, '', location.pathname + location.search + (b.id === 'sp-history-tab' ? '#history' : (b.id === 'sp-rejected-tab' ? '#rejected' : '')));
       $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
     });
   });

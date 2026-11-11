@@ -26,7 +26,7 @@
       </select>
     </div>
     <div>
-      <button type="button" id="fSearch" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+      <button type="button" id="fSearch" class="btn btn-primary btn-sm text-nowrap">Apply</button>
       <button type="button" id="fReset" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</button>
     </div>
   </div>
@@ -103,10 +103,11 @@ $(document).ready(function(){
     language: { emptyTable: 'No spare parts available to sell.' },
   });
   document.getElementById('fSearch').addEventListener('click', function(){ dt.draw(); });
-  document.getElementById('fCode').addEventListener('input', function(){ dt.draw(); });
-  document.getElementById('fName').addEventListener('input', function(){ dt.draw(); });
-  document.getElementById('fMake').addEventListener('change', function(){ dt.draw(); });
-  document.getElementById('fModel').addEventListener('change', function(){ dt.draw(); });
+  // Filters apply only on Apply (2026-11-08, global filter bar rule); Enter
+  // in a text box counts as Apply.
+  ['fCode','fName'].forEach(function(id){
+    document.getElementById(id).addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); dt.draw(); } });
+  });
   document.getElementById('fReset').addEventListener('click', function(){
     ['fCode','fName','fMake','fModel'].forEach(function(id){ document.getElementById(id).value=''; });
     dt.draw();

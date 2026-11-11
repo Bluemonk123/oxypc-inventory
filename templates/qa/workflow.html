@@ -4,7 +4,7 @@
 {% block content %}
 {% include 'qa/_tabs.html' %}
 
-{# Workflow (2026-11-04): tabs New GRN / Re-GRN / Stage Flows (Stage Flows moved
+{# Workflow (2026-11-04; 2026-11-09 tabs: Stage Flows, New GRN, Re-GRN, Spare Parts): (Stage Flows moved
    in from the old Stage Workflows tab). Each tab: flow diagram — built-in
    (routers/qa_uat.py WORKFLOW_DIAGRAMS) or one uploaded from Figma —, PDF
    downloads, and the step journey (WORKFLOW_FLOWS). #}
@@ -118,7 +118,8 @@
 {% endmacro %}
 
 <ul class="nav nav-tabs mb-3" id="wfTabs" role="tablist">
-  {% for key, label, icon in [('new_grn', 'New GRN', 'bi-receipt'), ('regrn', 'Re-GRN', 'bi-arrow-left-right'), ('stage', 'Stage Flows', 'bi-signpost-split')] %}
+  {# Order (2026-11-09, Pankaj): Stage Flows first, then New GRN, Re-GRN, Spare Parts. #}
+  {% for key, label, icon in [('stage', 'Stage Flows', 'bi-signpost-split'), ('new_grn', 'New GRN', 'bi-receipt'), ('regrn', 'Re-GRN', 'bi-arrow-left-right'), ('parts', 'Spare Parts', 'bi-tools')] %}
   <li class="nav-item"><button class="nav-link {{ 'active' if active_tab == key }}" data-bs-toggle="tab" data-bs-target="#wf_{{ key }}" data-key="{{ key }}" type="button">
     <i class="bi {{ icon }} me-1"></i>{{ label }}</button></li>
   {% endfor %}
@@ -172,7 +173,7 @@
   <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
     <div>
       <div class="fw-semibold small text-uppercase"><i class="bi bi-signpost-split me-2"></i>Stage Flows</div>
-      <div class="text-muted small">Each part of the device pipeline as it works today.</div>
+      <div class="text-muted small">Device pipeline, after sale, spare parts and CRM &amp; Accounts as they work today.</div>
     </div>
     {{ toolbar('stage', false) }}
   </div>
@@ -182,6 +183,7 @@
        stage chain, then every step with what happens — no modal needed. #}
     <style>
       .sf-flow{margin-bottom:1.6rem}
+      .sf-group{color:#1f2d3d; font-weight:700; font-size:1.05rem; border-bottom:2px solid #0e3a7a; padding-bottom:.25rem; margin:1.2rem 0 .9rem; scroll-margin-top:80px}
       .sf-title{color:#0e3a7a; font-weight:700; font-size:1rem; margin:0}
       .sf-chain{color:#6c757d; font-size:.8rem; margin:.1rem 0 .5rem}
       .sf-t{width:100%; font-size:.85rem; border-collapse:collapse}
@@ -189,7 +191,15 @@
       .sf-t tr:nth-child(odd) td{background:#f7f9fc}
       .sf-t td:first-child{width:22%; min-width:140px; color:#1f2d3d; font-weight:500}
     </style>
+    {# Grouped (2026-11-09): Device pipeline / After sale / Spare parts / CRM & Accounts, with jump links #}
+    <div class="d-flex flex-wrap gap-2 mb-3">
+      {% for g in workflows | map(attribute='group') | unique %}<a href="#sfg_{{ loop.index }}" class="btn btn-sm btn-outline-primary">{{ g }}</a>{% endfor %}
+    </div>
+    {% set ns = namespace(g=None, i=0) %}
     {% for wf in workflows %}
+    {% if wf.group != ns.g %}{% set ns.g = wf.group %}{% set ns.i = ns.i + 1 %}
+    <h5 class="sf-group" id="sfg_{{ ns.i }}">{{ wf.group }}</h5>
+    {% endif %}
     <div class="sf-flow" id="sf_{{ wf.key }}">
       <div class="d-flex align-items-center gap-2">
         <h6 class="sf-title">{{ wf.title }}</h6>

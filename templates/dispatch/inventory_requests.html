@@ -10,8 +10,7 @@
 
 <!-- Telecaller Requests (moved here from TRC Dashboard) -->
 <div class="card border-0 shadow-sm mb-3">
-  <div class="card-header bg-transparent">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold">
         <i class="bi bi-telephone me-2"></i>Tag Number Requests
         <span class="badge bg-warning text-dark ms-1">{{ requests|selectattr('status','equalto','requested')|list|length }} pending</span>
@@ -23,8 +22,6 @@
           <option value="{{ uname }}">{{ name }}</option>
           {% endfor %}
         </select>
-        <input type="text" id="tcSearch" class="form-control form-control-sm" style="min-width:200px"
-               placeholder="Search Tag Number…">
         {% if _appr %}
         {% if can(current_user, 'inventory_requests', 'upload') %}
         <button type="button" class="btn btn-sm btn-outline-primary text-nowrap"
@@ -37,12 +34,11 @@
         </button>
         {% endif %}
       </div>
-    </div>
   </div>
-  <div class="card-body p-0">
-    <table id="tcRequestsTable" class="table table-hover mb-0 small align-middle">
-      <thead class="table-dark"><tr>
-        <th class="ps-3">{% if _appr %}<input type="checkbox" id="tcSelectAll" class="form-check-input">{% endif %}</th>
+  <div class="card-body">
+    <table id="tcRequestsTable" class="table table-hover align-middle mb-0">
+      <thead><tr>
+        <th>{% if _appr %}<input type="checkbox" id="tcSelectAll" class="form-check-input">{% endif %}</th>
         <th>Telecaller Name</th><th>Request Date</th><th>Tag Number</th><th>Quantity Requested</th><th>Quantity Available</th><th>Action</th>
       </tr></thead>
       <tbody>
@@ -50,13 +46,13 @@
         <tr data-telecaller="{{ r.telecaller_username or '' }}" data-barcode="{{ (r.barcode or '')|lower }}">
           {# Only pending rows get a checkbox — approved/rejected rows are skipped
              server-side anyway, so offering them would just inflate the count. #}
-          <td class="ps-3">{% if _appr and r.status == 'requested' %}<input type="checkbox" class="form-check-input tcChk" value="{{ r.id }}">{% endif %}</td>
+          <td>{% if _appr and r.status == 'requested' %}<input type="checkbox" class="form-check-input tcChk" value="{{ r.id }}">{% endif %}</td>
           <td>{{ r.telecaller_name or r.telecaller_username or '—' }}</td>
           <td class="text-muted small">{{ r.created_at.strftime('%d-%m-%Y') if r.created_at else '—' }}</td>
           <td><a href="/devices/{{ r.barcode }}" class="font-monospace text-decoration-none">{{ r.barcode }}</a></td>
           <td>{{ r.qty_requested }}</td>
           <td>{{ r.qty_available }}</td>
-          <td>
+          <td class="text-nowrap">
             {% if r.status == 'approved' %}<span class="badge bg-success"><i class="bi bi-check-lg"></i> Approved</span>
             {% elif r.status == 'rejected' %}<span class="badge bg-danger" title="{{ r.rejected_notes or '' }}"><i class="bi bi-x-lg"></i> Rejected</span>
             {% elif _appr %}
@@ -76,8 +72,6 @@
             {% else %}<span class="badge bg-warning text-dark">Requested</span>{% endif %}
           </td>
         </tr>
-        {% else %}
-        <tr><td colspan="7" class="text-center text-muted small py-3">No telecaller requests raised.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -86,8 +80,7 @@
 
 <!-- Sales Request for Lot (moved here from TRC Dashboard) -->
 <div class="card border-0 shadow-sm mb-3">
-  <div class="card-header bg-transparent">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold">
         <i class="bi bi-collection me-2"></i>Lot Number Requests
         <span class="badge bg-warning text-dark ms-1">{{ lot_requests|selectattr('status','equalto','requested')|list|length }} pending</span>
@@ -97,19 +90,18 @@
         <i class="bi bi-check-all me-1"></i>Approve Selected (<span id="lotSelCount">0</span>)
       </button>
       {% endif %}
-    </div>
   </div>
-  <div class="card-body p-0">
-    <table id="lotRequestsTable" class="table table-hover mb-0 small align-middle">
-      <thead class="table-dark"><tr>
-        <th class="ps-3">{% if _appr %}<input type="checkbox" id="lotSelectAll" class="form-check-input">{% endif %}</th>
+  <div class="card-body">
+    <table id="lotRequestsTable" class="table table-hover align-middle mb-0">
+      <thead><tr>
+        <th>{% if _appr %}<input type="checkbox" id="lotSelectAll" class="form-check-input">{% endif %}</th>
         <th>Telecaller Name</th><th>Request Date</th><th>Model</th><th>Make</th>
         <th>Tag Number</th><th>Quantity Requested</th><th>Quantity Available</th><th>Action</th>
       </tr></thead>
       <tbody>
         {% for r in lot_requests %}
         <tr>
-          <td class="ps-3">{% if _appr and r.status == 'requested' %}<input type="checkbox" class="form-check-input lotChk" value="{{ r.id }}">{% endif %}</td>
+          <td>{% if _appr and r.status == 'requested' %}<input type="checkbox" class="form-check-input lotChk" value="{{ r.id }}">{% endif %}</td>
           <td>{{ r.telecaller_name or r.telecaller_username or '—' }}</td>
           <td class="text-muted small">{{ r.created_at.strftime('%d-%m-%Y') if r.created_at else '—' }}</td>
           <td>{{ r.model_name or '—' }}</td>
@@ -117,7 +109,7 @@
           <td><a href="/devices/{{ r.barcode }}" class="font-monospace text-decoration-none">{{ r.barcode }}</a></td>
           <td>{{ r.qty_requested }}</td>
           <td>{{ r.qty_available }}</td>
-          <td>
+          <td class="text-nowrap">
             {% if r.status == 'approved' %}<span class="badge bg-success"><i class="bi bi-check-lg"></i> Approved</span>
             {% elif r.status == 'rejected' %}<span class="badge bg-danger" title="{{ r.rejected_notes or '' }}"><i class="bi bi-x-lg"></i> Rejected</span>
             {% elif _appr %}
@@ -137,8 +129,6 @@
             {% else %}<span class="badge bg-warning text-dark">Requested</span>{% endif %}
           </td>
         </tr>
-        {% else %}
-        <tr><td colspan="9" class="text-center text-muted small py-3">No lot-level requests raised.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -214,16 +204,17 @@
 {% endblock %}
 {% block scripts %}
 <script>
-document.querySelectorAll('.reject-btn').forEach(function (btn) {
-  btn.addEventListener('click', function () {
-    document.getElementById('rejectReqForm').action = '/dispatch/' + btn.dataset.reqId + '/reject';
-    new bootstrap.Modal(document.getElementById('rejectReqModal')).show();
-  });
+// Delegated: the Global Table rewrites cell HTML at init (and pages rows), so
+// a listener bound directly on each button would be lost.
+$(document).on('click', '.reject-btn', function () {
+  document.getElementById('rejectReqForm').action = '/dispatch/' + this.dataset.reqId + '/reject';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('rejectReqModal')).show();
 });
 // ── Bulk approve wiring, shared by both request tables ──
 // dt.$() is used instead of querySelectorAll so ticked rows that DataTables has
-// paged out of the DOM still make it into the submitted batch.
-function wireBulkApprove(dt, tableId, chkCls, selectAllId, btnId, countId, formId, idsBoxId){
+// paged out of the DOM still make it into the submitted batch. The Select All
+// header is wired by the Global Table (opts.selectAll, scope 'search').
+function wireBulkApprove(dt, tableId, chkCls, btnId, countId, formId, idsBoxId){
   var btn = document.getElementById(btnId);
   if (!btn) return;  // non-approver: no checkboxes rendered at all
   function selectedIds(){
@@ -237,14 +228,6 @@ function wireBulkApprove(dt, tableId, chkCls, selectAllId, btnId, countId, formI
     btn.disabled = n === 0;
   }
   $('#' + tableId).on('change', '.' + chkCls, refresh);
-  var all = document.getElementById(selectAllId);
-  if (all) all.addEventListener('change', function(){
-    var ck = this.checked;
-    var boxes = dt ? dt.$('.' + chkCls).toArray()
-                   : Array.prototype.slice.call(document.querySelectorAll('#' + tableId + ' .' + chkCls));
-    boxes.forEach(function(c){ c.checked = ck; });
-    refresh();
-  });
   btn.addEventListener('click', function(){
     var ids = selectedIds();
     if (!ids.length) return;
@@ -262,12 +245,19 @@ function wireBulkApprove(dt, tableId, chkCls, selectAllId, btnId, countId, formI
 }
 
 $(document).ready(function(){
-  var tcDt = null, lotDt = null;
+  var tcDt = null, lotDt = null, tcRefresh = null, lotRefresh = null;
   var $tc = $('#tcRequestsTable');
-  if ($tc.length && $tc.find('tbody tr[data-barcode]').length){
-    tcDt = $tc.DataTable({ pageLength: 12, ordering:false, dom:'rtip', searching:true });
+  if ($tc.length){
+    tcDt = initGlobalTable('#tcRequestsTable', {
+      ordering: false,
+      language: { emptyTable: 'No telecaller requests raised.' },
+    }, {
+      selectAll: {
+        headerSelector: '#tcSelectAll', rowSelector: '.tcChk', scope: 'search',
+        onChange: function(){ if (tcRefresh) tcRefresh(); },
+      },
+    });
     var filterSel = document.getElementById('tcFilter');
-    var searchBox = document.getElementById('tcSearch');
     $.fn.dataTable.ext.search.push(function(settings, data, dataIndex){
       if (settings.nTable.id !== 'tcRequestsTable') return true;
       var tc = filterSel ? filterSel.value : '';
@@ -276,18 +266,25 @@ $(document).ready(function(){
       return !!row && row.getAttribute('data-telecaller') === tc;
     });
     if (filterSel) filterSel.addEventListener('change', function(){ tcDt.draw(); });
-    if (searchBox) searchBox.addEventListener('input', function(){ tcDt.search(this.value).draw(); });
   }
 
   var $lr = $('#lotRequestsTable');
-  if ($lr.length && $lr.find('tbody tr td').length > 1){
-    lotDt = $lr.DataTable({ pageLength: 12, ordering:false, dom:'rtip' });
+  if ($lr.length){
+    lotDt = initGlobalTable('#lotRequestsTable', {
+      ordering: false,
+      language: { emptyTable: 'No lot-level requests raised.' },
+    }, {
+      selectAll: {
+        headerSelector: '#lotSelectAll', rowSelector: '.lotChk', scope: 'search',
+        onChange: function(){ if (lotRefresh) lotRefresh(); },
+      },
+    });
   }
 
-  var tcRefresh = wireBulkApprove(tcDt, 'tcRequestsTable', 'tcChk', 'tcSelectAll',
-                  'tcApproveSelBtn', 'tcSelCount', 'tcBulkForm', 'tcBulkIds');
-  wireBulkApprove(lotDt, 'lotRequestsTable', 'lotChk', 'lotSelectAll',
-                  'lotApproveSelBtn', 'lotSelCount', 'lotBulkForm', 'lotBulkIds');
+  tcRefresh = wireBulkApprove(tcDt, 'tcRequestsTable', 'tcChk',
+              'tcApproveSelBtn', 'tcSelCount', 'tcBulkForm', 'tcBulkIds');
+  lotRefresh = wireBulkApprove(lotDt, 'lotRequestsTable', 'lotChk',
+               'lotApproveSelBtn', 'lotSelCount', 'lotBulkForm', 'lotBulkIds');
 
   // ── Upload Tags: file of tag numbers -> tick matching pending rows ──
   var tagBtn = document.getElementById('tcTagSelectBtn');

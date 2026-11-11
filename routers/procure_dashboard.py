@@ -178,11 +178,14 @@ async def procure_dashboard(
     #    Matching Stock, with a procurement-only Close Deal action) ─────────
     dr_r = await db.execute(
         select(ModelRequest)
-        .where(ModelRequest.status.notin_(["cancelled", "closed"]))
-        .order_by(ModelRequest.created_at.desc())
-        .limit(200)
+        .order_by(ModelRequest.created_at.desc())   # closed ones too: Closed Request pill (2026-11-11)
+        .limit(300)
     )
     device_sourcing = dr_r.scalars().all()
+    # Part Name shows "<part name> - <model> - <make>" (2026-11-11, Pankaj)
+    from models.spare_parts import SparePart
+    _pids = {s.part_id for s in part_sourcing if s.part_id}
+    part_map = {str(p.id): p for p in (await db.execute(select(SparePart).where(SparePart.id.in_(_pids)))).scalars().all()} if _pids else {}
 
     return templates.TemplateResponse("procure/dashboard.html", {
         "request": request, "current_user": current_user, "is_sm": is_sm,
@@ -191,6 +194,7 @@ async def procure_dashboard(
         "sourcing_deals_for_close": sourcing_deals_for_close,
         "deal_map": deal_map,
         "device_sourcing": device_sourcing,
+        "part_map": part_map,
         "status_badge": STATUS_BADGE,
         "success": request.query_params.get("success"),
         # contacts

@@ -70,7 +70,7 @@
              value="{{ request.query_params.get('date_to', '') }}">
     </div>
     <div>
-      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search me-1"></i>Filter</button>
+      <button type="submit" class="btn btn-primary btn-sm">Apply</button>
       <a href="/stock" class="btn btn-outline-secondary btn-sm bg-white">Reset</a>
     </div>
   </div>
@@ -129,6 +129,59 @@
     </form>
   </div>
 </div>
+{# Tabs (2026-11-09, Pankaj): Inventory Stock / Bucket-Carton / Return Stock —
+   the three cards that were stacked on this page, one per tab (Global Tabs,
+   main). The last-open tab is remembered per browser tab (sessionStorage) so
+   a filter submit or action reload comes back to it. The filter bar above
+   filters Inventory Stock. #}
+{# Supplier Deal section (2026-11-10, Pankaj): col-lg-3 on the left of the
+   tabs — Supplier Deals whose Stock Received is Pending (stage Stock Received)
+   or Done (closed Won), in pill tabs Pending | Received. #}
+{% import "_download_cell.html" as dl %}
+<div class="row g-3">
+<div class="col-lg-3">
+  <div class="card border-0 shadow-sm h-100" id="stkSupplierDeals">
+    <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
+      <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1"></i>Supplier Deal</span>
+      <ul class="nav pill-tabs ms-auto" role="tablist">
+        <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#stkSdPend">Pending <span class="badge bg-warning text-dark ms-1">{{ sd_pending|length }}</span></button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#stkSdRecv">Received</button></li>
+      </ul>
+    </div>
+    <div class="card-body p-0 tab-content" style="max-height:640px;overflow-y:auto">
+      {% for pane, rows, empty in [('stkSdPend', sd_pending, 'Nothing pending'), ('stkSdRecv', sd_received, 'Nothing received yet')] %}
+      <div class="tab-pane fade{% if loop.first %} show active{% endif %}" id="{{ pane }}">
+        <table class="table table-sm table-hover mb-0 small align-middle">
+          <thead class="table-light"><tr><th>Deal</th><th>Title</th><th>Download</th><th>Assigned to</th></tr></thead>
+          <tbody>
+          {% for d in rows %}{% set who = sd_assignee.get(d.id|string) or d.assigned_to %}
+            <tr>
+              <td class="text-nowrap"><a href="/crm/sourcing/{{ d.id }}" class="fw-semibold text-decoration-none">{{ d.deal_number }}</a></td>
+              <td><div class="text-truncate" style="max-width:120px" title="{{ d.title }}">{{ d.title }}</div></td>
+              <td>{{ dl.cell(sd_files.get(d.id|string, [])) }}</td>
+              <td>{{ sd_names.get(who, who) if who else '—' }}</td>
+            </tr>
+          {% else %}
+            <tr><td colspan="4" class="text-center text-muted py-3">{{ empty }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+<div class="col-lg-9">
+<ul class="nav nav-tabs mb-0" id="stkTabs">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#stkInvTab" type="button">
+    <i class="bi bi-archive me-1"></i>Inventory Stock</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stkBktTab" type="button">
+    <i class="bi bi-box me-1"></i>Bucket/Carton</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#stkRetTab" type="button">
+    <i class="bi bi-arrow-return-left me-1"></i>Return Stock</button></li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="stkInvTab">
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-archive me-2"></i>Inventory Stock</span>
@@ -137,7 +190,7 @@
               title="Flag the selected tags as Urgent at inventory">
         <i class="bi bi-flag-fill me-1"></i>Flag Items (<span id="flagItemsCount">0</span>)
       </button>
-      <button {% if not can(current_user, 'stock', 'edit') %}hidden {% endif %}type="button" id="bulkMoveL1L2Btn" class="btn btn-primary btn-sm d-none text-nowrap" disabled>
+      <button {% if not can(current_user, 'stock', 'edit') %}hidden {% endif %}type="button" id="bulkMoveL1L2Btn" data-hdr-primary class="btn btn-primary btn-sm d-none text-nowrap" disabled>
         <i class="bi bi-tools me-1"></i>Bulk Move to L1/L2 (<span id="bulkMoveL1L2Count">0</span>)
       </button>
       <button type="button" id="customiseBtn" class="btn btn-outline-primary btn-sm d-none text-nowrap"
@@ -164,25 +217,70 @@
     </div>
   </div>
 </div>
+</div>
+<div class="tab-pane fade" id="stkBktTab">
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2" data-show-header>
+    <span class="fw-semibold"><i class="bi bi-box me-2"></i>Buckets / Cartons</span>
+  </div>
+  <div id="bucketCardBody">
+  <div class="card-body p-0">
+    <div>
+      <table id="bucketTable" class="table table-hover mb-0 small">
+        <thead class="table-dark">
+          <tr><th>Bucket Number</th><th>Name</th><th>Location</th><th>Category</th><th>Qty</th><th>Actions</th></tr>
+        </thead>
+        <tbody id="bucketTbody">
+        </tbody>
+      </table>
+    </div>
+  </div>
+  </div>
+</div>
 
-
-{% set customise_return_to = '/stock' %}
-{% include "_customise_modal.html" %}
-
-<!-- Return Stock: customer-return tags back in the pipeline for repair/re-sale -->
-<div class="card border-0 shadow-sm mt-4 mb-3">
+<!-- Final QC Pass (Buckets): buckets released from Final QC's Devices Passed table — accordion, collapsed by default (2026-11-05) -->
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2 si-acc-head collapsed"
+       role="button" data-bs-toggle="collapse" data-bs-target="#fqcPassCardBody" aria-expanded="false" aria-controls="fqcPassCardBody">
+    <span class="fw-semibold"><i class="bi bi-patch-check me-2"></i>Final QC Pass (Buckets)
+      <span class="badge bg-light text-dark ms-1">{{ fqc_pass_buckets | length }}</span></span>
+    <i class="bi bi-chevron-down si-acc-chev"></i>
+  </div>
+  <div class="collapse si-acc-body" id="fqcPassCardBody">
+  <div class="card-body p-0">
+    <div>
+      <table id="fqcPassTable" class="table table-hover mb-0 small">
+        <thead class="table-dark">
+          <tr><th>Bucket Name</th><th>Bucket ID</th><th>Stage</th><th>Action</th></tr>
+        </thead>
+        <tbody>
+          {% for row in fqc_pass_buckets %}
+          <tr>
+            <td><a href="#" class="text-decoration-none view-bkt-tags" data-id="{{ row.bucket_id }}" data-number="{{ row.bucket_number }}">{{ row.bucket_name or '—' }}</a></td>
+            <td class="font-monospace">{{ row.bucket_number }}</td>
+            <td><span class="badge bg-success">Ready to Sale</span></td>
+            <td>{% if can(current_user, 'stock', 'edit') %}<button class="btn btn-sm btn-outline-danger release-bucket-btn" data-bucket-id="{{ row.bucket_id }}">Release Bucket</button>{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  </div>
+</div>
+</div>
+<div class="tab-pane fade" id="stkRetTab">
+<div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <div class="d-flex align-items-center gap-3 flex-wrap">
       <span class="fw-semibold"><i class="bi bi-arrow-return-left me-2"></i>Return Stock</span>
       {# Received / Completed tabs (2026-10-30): Completed = Return Complete
          (re-sold and exited at Gate Pass) or Stocked In (Only Stock In,
          2026-11-05); everything else is Received. #}
-      {% set _rs_done = return_stock_rows | selectattr('status', 'in', ['Return Complete', 'Stocked In']) | list | length %}
-      <ul class="nav nav-pills nav-sm" id="rsTabs" role="tablist">
-        <li class="nav-item"><button type="button" class="nav-link py-1 px-3 active" data-rs-tab="received">
-          Received <span class="badge bg-light text-dark ms-1">{{ return_stock_rows|length - _rs_done }}</span></button></li>
-        <li class="nav-item"><button type="button" class="nav-link py-1 px-3" data-rs-tab="completed">
-          Completed <span class="badge bg-light text-dark ms-1">{{ _rs_done }}</span></button></li>
+      {# Global pill tabs (2026-11-09): .pill-tabs in app.css; no count badges. #}
+      <ul class="nav pill-tabs" id="rsTabs" role="tablist">
+        <li class="nav-item"><button type="button" class="nav-link active" data-rs-tab="received">Received</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-rs-tab="completed">Completed</button></li>
       </ul>
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap">
@@ -285,59 +383,18 @@
     </div>
   </div>
 </div>
+</div>
+</div>{# /.tab-content #}
+</div>{# /.col-lg-9 #}
+</div>{# /.row Supplier Deal + tabs #}
+
+
+{% set customise_return_to = '/stock' %}
+{% include "_customise_modal.html" %}
+
+<!-- Return Stock: customer-return tags back in the pipeline for repair/re-sale -->
 
 <!-- Bucket / Carton table — accordion, collapsed by default (2026-11-05) -->
-<div class="card border-0 shadow-sm mt-4 mb-3">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2 si-acc-head collapsed"
-       role="button" data-bs-toggle="collapse" data-bs-target="#bucketCardBody" aria-expanded="false" aria-controls="bucketCardBody">
-    <span class="fw-semibold"><i class="bi bi-box me-2"></i>Buckets / Cartons</span>
-    <i class="bi bi-chevron-down si-acc-chev"></i>
-  </div>
-  <div class="collapse si-acc-body" id="bucketCardBody">
-  <div class="card-body p-0">
-    <div>
-      <table id="bucketTable" class="table table-hover mb-0 small">
-        <thead class="table-dark">
-          <tr><th>Bucket Number</th><th>Name</th><th>Location</th><th>Category</th><th>Qty</th><th>Actions</th></tr>
-        </thead>
-        <tbody id="bucketTbody">
-        </tbody>
-      </table>
-    </div>
-  </div>
-  </div>
-</div>
-
-<!-- Final QC Pass (Buckets): buckets released from Final QC's Devices Passed table — accordion, collapsed by default (2026-11-05) -->
-<div class="card border-0 shadow-sm mt-4 mb-3">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2 si-acc-head collapsed"
-       role="button" data-bs-toggle="collapse" data-bs-target="#fqcPassCardBody" aria-expanded="false" aria-controls="fqcPassCardBody">
-    <span class="fw-semibold"><i class="bi bi-patch-check me-2"></i>Final QC Pass (Buckets)
-      <span class="badge bg-light text-dark ms-1">{{ fqc_pass_buckets | length }}</span></span>
-    <i class="bi bi-chevron-down si-acc-chev"></i>
-  </div>
-  <div class="collapse si-acc-body" id="fqcPassCardBody">
-  <div class="card-body p-0">
-    <div>
-      <table id="fqcPassTable" class="table table-hover mb-0 small">
-        <thead class="table-dark">
-          <tr><th>Bucket Name</th><th>Bucket ID</th><th>Stage</th><th>Action</th></tr>
-        </thead>
-        <tbody>
-          {% for row in fqc_pass_buckets %}
-          <tr>
-            <td><a href="#" class="text-decoration-none view-bkt-tags" data-id="{{ row.bucket_id }}" data-number="{{ row.bucket_number }}">{{ row.bucket_name or '—' }}</a></td>
-            <td class="font-monospace">{{ row.bucket_number }}</td>
-            <td><span class="badge bg-success">Ready to Sale</span></td>
-            <td>{% if can(current_user, 'stock', 'edit') %}<button class="btn btn-sm btn-outline-danger release-bucket-btn" data-bucket-id="{{ row.bucket_id }}">Release Bucket</button>{% endif %}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </div>
-  </div>
-</div>
 <style>
   .si-acc-head{cursor:pointer; user-select:none}
   .si-acc-chev{transition:transform .2s}
@@ -645,12 +702,13 @@ $(document).ready(function(){
   // box top right, inside the table wrapper.
   $('#entityBadgeArea').append($('#entityBadges').removeClass('d-none'));
   // Table action buttons live in the card header, right side, in this order:
-  // Flag Items, Assign Bucket, Bulk Move to L1/L2.
+  // Flag Items, Assign Bucket, Customise, then Bulk Move to L1/L2 — the
+  // primary action — far right (2026-11-09).
   $('#stkHeaderBtns').prepend(
     $('#flagItemsBtn').removeClass('d-none me-2'),
-    $('#assignBucketBtn').removeClass('d-none me-2'),
-    $('#bulkMoveL1L2Btn').removeClass('d-none')
-  );
+    $('#assignBucketBtn').removeClass('d-none me-2')
+  ).append($('#bulkMoveL1L2Btn').removeClass('d-none'));
+  if (window.retidyCardHeader) window.retidyCardHeader(document.querySelector('#stkInvTab .card-header'));
   $('#stkScanArea').append($('#stockScanInput').removeClass('d-none'));
 
   $('#bulkMoveL1L2Btn').on('click', function () {
@@ -802,8 +860,8 @@ function updateStockSel(){
   $('#customiseCount').text(n);
   $('#customiseBtn').toggleClass('d-none', n === 0);
   $('#flagItemsCount').text(n);
-  $('#flagItemsBtn').prop('disabled', n === 0)
-    .toggleClass('btn-danger', n > 0).toggleClass('btn-outline-danger', n === 0);
+  // Red outline always — only Bulk Move to L1/L2 is solid (header standard, 2026-11-09).
+  $('#flagItemsBtn').prop('disabled', n === 0);
 }
 // "Select all" reaches only the rows currently rendered (this page's/this
 // search's result set) — same page-scoped convention used elsewhere for
@@ -1223,5 +1281,25 @@ document.getElementById('rsVerifySubmit').addEventListener('click', function(){
     }
   });
 });
+</script>
+<script>
+/* Inventory Manager tabs (2026-11-09): reopen the last tab after a reload, and
+   re-measure DataTables when a tab is shown (a table set up in a hidden tab
+   has zero-width columns until adjusted). */
+(function () {
+  var KEY = 'stockInvTab';
+  document.querySelectorAll('#stkTabs [data-bs-toggle="tab"]').forEach(function (btn) {
+    btn.addEventListener('shown.bs.tab', function () {
+      try { sessionStorage.setItem(KEY, btn.getAttribute('data-bs-target')); } catch (e) {}
+      if (window.jQuery && $.fn.dataTable) $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    });
+  });
+  var saved = null;
+  try { saved = sessionStorage.getItem(KEY); } catch (e) {}
+  if (saved && saved !== '#stkInvTab') {
+    var b = document.querySelector('#stkTabs [data-bs-target="' + saved + '"]');
+    if (b && window.bootstrap) bootstrap.Tab.getOrCreateInstance(b).show();
+  }
+})();
 </script>
 {% endblock %}

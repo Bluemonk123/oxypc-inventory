@@ -5,29 +5,53 @@
 {# Activity Board (2026-11-06, Pankaj): routers/activity_board.py #}
 {% set csrf = request.cookies.get('csrf_token', '') %}
 <style>
-  .ab-tabs .nav-link{font-weight:600}
   .ab-file{max-width:220px}
   /* Action column: buttons on one line, right-aligned (2026-11-06) — beats
      the Global Table's centred last column */
   .ab-table th.ab-act, .ab-table td.ab-act{text-align:right !important; white-space:nowrap}
 </style>
 
-<ul class="nav nav-tabs ab-tabs mb-3" role="tablist">
-  <li class="nav-item"><button class="nav-link {{ 'active' if tab == 'supplier' }}" data-bs-toggle="tab" data-bs-target="#abSupplier" type="button" data-tab="supplier">
-    <i class="bi bi-box-arrow-in-down me-1"></i>Supplier Deals <span class="badge bg-secondary">{{ supplier | length }}</span></button></li>
-  <li class="nav-item"><button class="nav-link {{ 'active' if tab == 'customer' }}" data-bs-toggle="tab" data-bs-target="#abCustomer" type="button" data-tab="customer">
-    <i class="bi bi-graph-up me-1"></i>Customer Deals <span class="badge bg-secondary">{{ customer | length }}</span></button></li>
-  <li class="nav-item"><button class="nav-link {{ 'active' if tab == 'accounts' }}" data-bs-toggle="tab" data-bs-target="#abAccounts" type="button" data-tab="accounts">
-    <i class="bi bi-patch-check me-1"></i>Account Verification <span class="badge bg-secondary">{{ contacts | length }}</span></button></li>
-</ul>
+{# 2026-11-09 (Pankaj): the three tabs became three cards (back in tabs below, same day), in this order —
+   Account Verification, Supplier Deals, Customer Deals — each with its own
+   date filter (Added On / Created) and Export in the card header. Which cards
+   a user sees: routers/activity_board.py _visible(). #}
+{% set P = {'accounts': 'acc', 'supplier': 'sup', 'customer': 'cus', 'negotiation': 'neg', 'pricing': 'prc', 'quotations': 'qtn'} %}
+{% macro card_header(kind, icon, title, count) %}
+  {% set p = P[kind] %}
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <span class="fw-semibold"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
+      {# Global pill tabs Pending | Completed (2026-11-09, Pankaj): .pill-tabs in
+         app.css, no count badges. The badge beside the title is the Pending count. #}
+      <ul class="nav pill-tabs" role="tablist">
+        <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#ab_{{ kind }}_p_pane">Pending</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#ab_{{ kind }}_c_pane">Completed</button></li>
+      </ul>
+    </div>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      <form method="get" action="/activity-board" class="d-flex gap-2 align-items-center mb-0">
+        <input type="date" name="{{ p }}_from" value="{{ qp.get(p ~ '_from', '') }}" class="form-control form-control-sm" style="width:150px" title="{{ 'Created' if kind == 'accounts' else 'Added On' }} from">
+        <input type="date" name="{{ p }}_to" value="{{ qp.get(p ~ '_to', '') }}" class="form-control form-control-sm" style="width:150px" title="{{ 'Created' if kind == 'accounts' else 'Added On' }} to">
+        {# keep the other cards' dates when this one changes #}
+        {% for k, op in P.items() if k != kind %}{% for sfx in ('_from', '_to') %}{% if qp.get(op ~ sfx) %}<input type="hidden" name="{{ op ~ sfx }}" value="{{ qp.get(op ~ sfx) }}">{% endif %}{% endfor %}{% endfor %}
+      </form>
+      {% if can(current_user, 'activity_board', 'export') %}
+      <a href="/activity-board/export/{{ kind }}?from={{ qp.get(p ~ '_from', '') | urlencode }}&to={{ qp.get(p ~ '_to', '') | urlencode }}"
+         class="btn btn-sm btn-outline-primary text-nowrap" title="Export the rows in this card (date filter applied) to CSV"><i class="bi bi-download me-1"></i>Export</a>
+      {% endif %}
+    </div>
+  </div>
+{% endmacro %}
 
-{% macro deal_table(kind, rows, word, idlabel) %}
-<div class="card border-0 shadow-sm">
-  <div class="card-body">
-    <table class="table table-sm align-middle mb-0 ab-table" id="ab_{{ kind }}">
+{% if not cards %}
+<div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>Nothing is waiting for you on the Activity Board.</div>
+{% endif %}
+
+{% macro deal_rows(kind, list, word, idlabel, sfx) %}
+    <table class="table table-sm align-middle mb-0 ab-table" id="ab_{{ kind }}_{{ sfx }}">
       <thead><tr><th>{{ idlabel }}</th><th>Added On</th><th>Added By</th><th>Status</th><th class="ab-act">Action</th></tr></thead>
       <tbody>
-      {% for r in rows %}
+      {% for r in list %}
         <tr>
           <td><a href="{{ r.url }}" class="fw-semibold text-decoration-none">{{ r.number }}</a>
             <div class="small text-muted text-truncate" style="max-width:280px" title="{{ r.deal.title }}">{{ r.deal.title }}</div>
@@ -61,30 +85,99 @@
       {% endfor %}
       </tbody>
     </table>
+{% endmacro %}
+{# Approval tabs (2026-11-10, Pankaj): Negotiation / Pricing Approvals — Level 1
+   items of Supplier and Customer Deals, pill tabs Pending | Approved | Rejected. #}
+{% macro appr_rows(tab, list, sfx) %}
+    <table class="table table-sm align-middle mb-0 ab-table" id="ab_{{ tab }}_{{ sfx }}">
+      {# Quotations tab (2026-11-11): Quote No. + Level columns #}
+      {% set _q = tab in ('quotations', 'negotiation') %}   {# Quotation ID + Download (Negotiation too, 2026-11-11) #}
+      {% set _lv = tab == 'quotations' %}
+      {# Quotations (2026-11-11): Quotation ID first, Download before Status #}
+      <thead><tr>{% if _q %}<th>Quotation ID</th>{% endif %}<th>Deal</th><th>Type</th>{% if _lv %}<th>Level</th>{% endif %}<th>Added On</th><th>Approver</th>{% if _q %}<th>Download</th>{% endif %}<th>Status</th><th class="ab-act">Action</th></tr></thead>
+      <tbody>
+      {% for r in list %}
+        <tr>
+          {% if _q %}<td>{% if r.quote %}<a href="{{ r.quote.url }}" class="fw-semibold font-monospace text-decoration-none">{{ r.quote.number }}</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>{% endif %}
+          <td><a href="{{ r.url }}" class="fw-semibold text-decoration-none">{{ r.number }}</a>
+            <div class="small text-muted text-truncate" style="max-width:280px" title="{{ r.deal.title }}">{{ r.deal.title }}</div></td>
+          <td>{% if r.kind == 'supplier' %}<span class="badge bg-light text-dark border">Supplier Deal</span>{% else %}<span class="badge bg-light text-dark border">Customer Deal</span>{% endif %}</td>
+          {% if _lv %}<td><span class="badge {{ 'bg-primary' if r.level == 'Level 1' else 'bg-info text-white' }}">{{ r.level }}</span></td>{% endif %}
+          <td data-order="{{ r.deal.created_at.strftime('%Y%m%d%H%M') if r.deal.created_at else '' }}">{{ r.deal.created_at.strftime('%d-%m-%Y') if r.deal.created_at else '—' }}</td>
+          <td>{{ names.get(r.assignee, r.assignee) }}</td>
+          {% if _q %}<td>{% if r.quote and can(current_user, 'crm_quotes', 'export') %}<a href="{{ r.quote.url }}/download" class="btn btn-sm btn-outline-success py-0 text-nowrap" title="Download {{ r.quote.number }}"><i class="bi bi-download me-1"></i>Quote</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>{% endif %}
+          <td>
+            {% if r.status == 'approved' %}<span class="badge bg-success">Approved</span>
+            {% elif r.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>
+            {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
+            {% if r.acted_by and r.status != 'pending' %}<div class="small text-muted">{{ names.get(r.acted_by, r.acted_by) }}{% if r.acted_at %} · {{ r.acted_at.strftime('%d-%m-%Y') }}{% endif %}</div>{% endif %}
+            {% if r.note %}<div class="small text-muted fst-italic text-truncate" style="max-width:220px" title="{{ r.note }}">“{{ r.note }}”</div>{% endif %}
+          </td>
+          <td class="ab-act">
+            <div class="d-flex flex-nowrap justify-content-end align-items-center gap-2">
+            {% if r.can_decide %}
+              <button type="button" class="btn btn-sm btn-success ab-decide-btn" data-action="{{ r.decide }}" data-decision="approved"
+                      data-title="Approve — {{ r.number }}" data-return="/activity-board#ab-{{ tab }}"><i class="bi bi-check2 me-1"></i>Approve</button>
+              <button type="button" class="btn btn-sm btn-outline-danger ab-decide-btn" data-action="{{ r.decide }}" data-decision="rejected"
+                      data-title="Reject — {{ r.number }}" data-return="/activity-board#ab-{{ tab }}"><i class="bi bi-x-lg me-1"></i>Reject</button>
+            {% else %}<a href="{{ r.url }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-eye me-1"></i>View</a>{% endif %}
+            </div>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+{% endmacro %}
+{% macro appr_card(tab, rows, icon, title, note) %}
+{% set p = P[tab] %}
+{% set pend = rows | selectattr('status', 'equalto', 'pending') | list %}
+<div class="card border-0 shadow-sm mb-4" id="ab-{{ tab }}">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <span class="fw-semibold"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
+      <ul class="nav pill-tabs" role="tablist">
+        <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#ab_{{ tab }}_p_pane">Pending</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#ab_{{ tab }}_a_pane">Approved</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#ab_{{ tab }}_r_pane">Rejected</button></li>
+      </ul>
+    </div>
+    <form method="get" action="/activity-board" class="d-flex gap-2 align-items-center mb-0">
+      <input type="date" name="{{ p }}_from" value="{{ qp.get(p ~ '_from', '') }}" class="form-control form-control-sm" style="width:150px" title="Added On from">
+      <input type="date" name="{{ p }}_to" value="{{ qp.get(p ~ '_to', '') }}" class="form-control form-control-sm" style="width:150px" title="Added On to">
+      {% for k, op in P.items() if k != tab %}{% for sfx in ('_from', '_to') %}{% if qp.get(op ~ sfx) %}<input type="hidden" name="{{ op ~ sfx }}" value="{{ qp.get(op ~ sfx) }}">{% endif %}{% endfor %}{% endfor %}
+    </form>
+  </div>
+  <div class="card-body">
+    <p class="small text-muted mb-2">{{ note }} {% if not see_all %}Only the approvals assigned to you are listed.{% endif %}</p>
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="ab_{{ tab }}_p_pane">{{ appr_rows(tab, pend, 'p') }}</div>
+      <div class="tab-pane fade" id="ab_{{ tab }}_a_pane">{{ appr_rows(tab, rows | selectattr('status', 'equalto', 'approved') | list, 'a') }}</div>
+      <div class="tab-pane fade" id="ab_{{ tab }}_r_pane">{{ appr_rows(tab, rows | selectattr('status', 'equalto', 'rejected') | list, 'r') }}</div>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+{% macro deal_table(kind, rows, word, idlabel, icon, title, note) %}
+{# Pending = not Done yet (Pending / Started); Completed = Done (2026-11-09). #}
+{% set pend = rows | rejectattr('status', 'equalto', 'done') | list %}
+{% set done = rows | selectattr('status', 'equalto', 'done') | list %}
+<div class="card border-0 shadow-sm mb-4" id="ab-{{ kind }}">
+  {{ card_header(kind, icon, title, pend | length) }}
+  <div class="card-body">
+    <p class="small text-muted mb-2">{{ note }} {% if not see_all %}Only the deals assigned to you are listed.{% endif %}</p>
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="ab_{{ kind }}_p_pane">{{ deal_rows(kind, pend, word, idlabel, 'p') }}</div>
+      <div class="tab-pane fade" id="ab_{{ kind }}_c_pane">{{ deal_rows(kind, done, word, idlabel, 'c') }}</div>
+    </div>
   </div>
 </div>
 {% endmacro %}
 
-<div class="tab-content">
-  <div class="tab-pane fade {{ 'show active' if tab == 'supplier' }}" id="abSupplier">
-    <p class="small text-muted mb-2">Supplier Deals at stage <strong>Inspection</strong> with someone assigned to Inspection.
-      {% if not see_all %}Only the deals assigned to you are listed.{% endif %}</p>
-    {{ deal_table('supplier', supplier, 'Inspection', 'Supplier Deal ID') }}
-  </div>
-  <div class="tab-pane fade {{ 'show active' if tab == 'customer' }}" id="abCustomer">
-    <p class="small text-muted mb-2">Customer Deals at stage <strong>Screening</strong> with someone assigned to Screening.
-      {% if not see_all %}Only the deals assigned to you are listed.{% endif %}</p>
-    {{ deal_table('customer', customer, 'Screening', 'Customer Deal ID') }}
-  </div>
-
-  <div class="tab-pane fade {{ 'show active' if tab == 'accounts' }}" id="abAccounts">
-    <p class="small text-muted mb-2">Credit is verified by the account's mapped <strong>VP/AVP</strong> or <strong>AM/DM/GM</strong> (Map Team).
-      {% if not see_all %}Only accounts where you are on the team are listed.{% endif %}</p>
-    <div class="card border-0 shadow-sm"><div class="card-body">
-    <table class="table table-sm align-middle mb-0 ab-table" id="ab_accounts">
+{% macro acc_rows(list, sfx) %}
+    <table class="table table-sm align-middle mb-0 ab-table" id="ab_accounts_{{ sfx }}">
       <thead><tr><th>Account Name</th><th>Manager</th><th>GST No.</th><th>KYC</th><th>Credit</th><th>Place</th><th>Person</th><th>Team</th><th>Status</th><th>Created By</th><th class="ab-act">Action</th></tr></thead>
       <tbody>
-      {% for c in contacts %}
+      {% for c in list %}
         {% set t = team.get(c.id, {}) %}
         <tr>
           <td><a href="/crm/contacts/{{ c.id }}" class="fw-semibold text-decoration-none">{{ c.company_name[:50] }}</a>
@@ -95,7 +188,7 @@
           <td>{% if c.credit_verified %}<span class="badge bg-success" title="Verified by {{ c.credit_verified_by or '—' }}{% if c.credit_verified_at %} on {{ c.credit_verified_at.strftime('%d-%m-%Y') }}{% endif %}">Verified</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</td>
           <td class="small">{{ [c.city, c.state] | select | join(', ') or '—' }}</td>
           <td class="small">{{ c.contact_person or '—' }}</td>
-          <td class="small">{% for b, lbl in [('vp_avp','VP/AVP'),('am_dm_gm','AM/DM/GM'),('executive','Exec')] %}{% if t.get(b) %}<div><span class="text-muted">{{ lbl }}:</span> {{ t[b] | map(attribute='name') | join(', ') }}</div>{% endif %}{% endfor %}{% if not t %}<span class="text-muted">—</span>{% endif %}</td>
+          <td class="small">{% for b, lbl in [('executive','Exec'),('vp_avp','VP/AVP'),('am_dm_gm','DM/GM/CTO/CEO'),('finance','Finance')] %}{% if t.get(b) %}<div><span class="text-muted">{{ lbl }}:</span> {{ t[b] | map(attribute='name') | join(', ') }}</div>{% endif %}{% endfor %}{% if not t %}<span class="text-muted">—</span>{% endif %}</td>
           <td>{% if c.status == 'active' %}<span class="badge bg-success">Active</span>{% elif c.status == 'blacklisted' %}<span class="badge bg-dark">Blacklisted</span>{% else %}<span class="badge bg-secondary">Inactive</span>{% endif %}</td>
           <td class="small">{{ names.get(c.created_by, c.created_by or '—') }}</td>
           <td class="ab-act">
@@ -118,7 +211,164 @@
       {% endfor %}
       </tbody>
     </table>
-    </div></div>
+{% endmacro %}
+
+{# 2026-11-09 (Pankaj, later the same day): the three cards are back in three
+   tabs (Global Tabs) - one tab per card, in the same order. A tab shows only
+   when its card is visible to the user (routers/activity_board.py _visible()),
+   so permissions decide the tabs exactly as they decided the cards. #ab-<card>
+   in the URL (after an action) opens that tab; otherwise the last-open tab is
+   remembered per browser tab, so a date filter reload comes back to it. #}
+{% set tab_meta = {
+  'accounts': ('bi-patch-check', 'Account Verification', contacts | rejectattr('credit_verified') | list | length),
+  'supplier': ('bi-box-arrow-in-down', 'Supplier Deals', supplier | rejectattr('status', 'equalto', 'done') | list | length),
+  'customer': ('bi-graph-up', 'Customer Deals', customer | rejectattr('status', 'equalto', 'done') | list | length),
+  'negotiation': ('bi-chat-left-dots', 'Negotiation', approvals['negotiation'] | selectattr('status', 'equalto', 'pending') | list | length),
+  'pricing': ('bi-currency-rupee', 'Pricing Approvals', approvals['pricing'] | selectattr('status', 'equalto', 'pending') | list | length),
+  'quotations': ('bi-file-earmark-text', 'Quotations', approvals['quotations'] | selectattr('status', 'equalto', 'pending') | list | length),
+} %}
+{% if cards %}
+<ul class="nav nav-tabs mb-0" id="abTabs" role="tablist">
+  {% for kind in cards %}{% set ic, ttl, n = tab_meta[kind] %}
+  <li class="nav-item"><button class="nav-link{% if loop.first %} active{% endif %}" data-bs-toggle="tab" data-bs-target="#ab-{{ kind }}-tab"
+          type="button" data-ab="{{ kind }}"><i class="bi {{ ic }} me-1"></i>{{ ttl }}
+    <span class="badge rounded-pill bg-warning text-dark ms-1" title="Pending">{{ n }}</span></button></li>
+  {% endfor %}
+</ul>
+{% endif %}
+<div class="tab-content">
+{% for kind in cards %}
+<div class="tab-pane fade{% if loop.first %} show active{% endif %}" id="ab-{{ kind }}-tab">
+{% if kind == 'accounts' %}
+<div class="card border-0 shadow-sm mb-4" id="ab-accounts">
+  {{ card_header('accounts', 'bi-patch-check', 'Account Verification', contacts | rejectattr('credit_verified') | list | length) }}
+  <div class="card-body">
+    <p class="small text-muted mb-2">Credit is verified by the account's mapped <strong>VP/AVP</strong> or <strong>DM/GM/CTO/CEO</strong> (Map Team).
+      {% if not see_all %}Only accounts where you are on the team are listed.{% endif %}</p>
+    {# Pending = credit not verified yet; Completed = credit verified (2026-11-09). #}
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="ab_accounts_p_pane">{{ acc_rows(contacts | rejectattr('credit_verified') | list, 'p') }}</div>
+      <div class="tab-pane fade" id="ab_accounts_c_pane">{{ acc_rows(contacts | selectattr('credit_verified') | list, 'c') }}</div>
+    </div>
+  </div>
+</div>
+{% elif kind == 'supplier' %}
+{{ deal_table('supplier', supplier, 'Inspection', 'Supplier Deal ID', 'bi-box-arrow-in-down', 'Supplier Deals',
+              'Supplier Deals at stage Inspection with someone assigned to Inspection.') }}
+{% elif kind == 'customer' %}
+{{ deal_table('customer', customer, 'Screening', 'Customer Deal ID', 'bi-graph-up', 'Customer Deals',
+              'Customer Deals at stage Screening with someone assigned to Screening.') }}
+{% elif kind == 'negotiation' %}
+{{ appr_card('negotiation', approvals['negotiation'], 'bi-chat-left-dots', 'Negotiation',
+             'Negotiation Level 1 approvals on Supplier and Customer Deals. A rejection sends the deal back to Pricing Approval.') }}
+{% elif kind == 'quotations' %}
+{{ appr_card('quotations', approvals['quotations'], 'bi-file-earmark-text', 'Quotations',
+             'Quote Level 1 and Level 2 approvals on Supplier and Customer Deals. Either level can approve first; once both approve, the Quote stage is Done and the deal moves to Negotiation.') }}
+{% else %}
+{{ appr_card('pricing', approvals['pricing'], 'bi-currency-rupee', 'Pricing Approvals',
+             'Pricing Approval Level 1 on Supplier and Customer Deals. A pricing change on the deal resubmits it here as Pending.') }}
+{% endif %}
+</div>
+{% endfor %}
+</div>
+
+{# Inspection / Screening cards (2026-11-10, Pankaj): side by side below the
+   tabs, in the Accounts-page card style. Rows = deals whose Inspection
+   (Supplier Deals) / Screening (Customer Deals) is assigned on the deal's
+   Stage Progress; a card shows only to the people it is assigned to (admins /
+   Activity Board -> Edit see all). Start -> In Progress; Upload (PDF, Word,
+   PowerPoint, Excel) -> Completed; Download = the uploaded report. #}
+{% macro stage_rows(key, r_kind, word, rows, sc, sfx) %}
+  {# 2026-11-11 (Pankaj): Place / Person / Team as on the Accounts list (count
+     buttons -> Locations / Contacts / Team pop-ups); Assigned To column next to
+     Account Name with the assigned date and an aging badge. #}
+  <table class="table table-sm table-hover mb-0 small align-middle">
+    <thead class="table-light"><tr><th>Account Name</th><th>Assigned To</th><th>Manager</th><th>Place</th><th>Person</th><th>Team</th><th>Status</th><th>Download</th><th class="text-end">Action</th></tr></thead>
+    <tbody>
+    {% for r in rows %}{% set c = r.account %}{% set cid = (c.id | string) if c else '' %}{% set t = sc.team.get(cid, {}) %}
+      <tr>
+        <td>{% if c %}<a href="/crm/contacts/{{ c.id }}" class="fw-semibold text-decoration-none">{{ c.company_name[:40] }}</a>{% else %}<span class="text-muted">—</span>{% endif %}
+          <div><a href="{{ r.url }}" class="small text-muted text-decoration-none font-monospace" title="{{ r.deal.title }}">{{ r.number }}</a></div></td>
+        <td class="text-nowrap">
+          <div>{{ names.get(r.assignee, r.assignee) }}</div>
+          {% if r.assigned_on %}<div class="small text-muted">{{ r.assigned_on.strftime('%d-%m-%Y') }}
+            {% set a = r.age or 0 %}
+            {% if r.status == 'done' %}<span class="badge bg-secondary ms-1" title="Took {{ a }} day(s) from assignment to report">{{ a }}d</span>
+            {% else %}<span class="badge {{ 'bg-success' if a <= 2 else ('bg-warning text-dark' if a <= 6 else 'bg-danger') }} ms-1" title="{{ a }} day(s) since assigned">{{ a }}d</span>{% endif %}
+          </div>{% endif %}
+        </td>
+        <td>{% if t.get('manager') %}{{ t['manager'] | map(attribute='name') | join(', ') }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td>{% set locs = sc.locs.get(cid, []) %}{% if locs %}<button type="button" class="btn btn-sm btn-secondary py-0 px-2 text-nowrap ac-loc-btn" data-company="{{ c.company_name }}" data-locations='{{ locs | tojson }}'><i class="bi bi-geo-alt me-1"></i>{{ locs | length }}</button>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+        <td>{% set groups = sc.nums.get(cid, []) %}{% set total = groups | map(attribute='numbers') | map('length') | sum %}{% if total %}<button type="button" class="btn btn-sm btn-info text-dark py-0 px-2 text-nowrap ac-num-btn" data-company="{{ c.company_name }}" data-groups='{{ groups | tojson }}'><i class="bi bi-people me-1"></i>{{ total }}</button>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+        <td>{% set team_total = t.values() | map('length') | sum if t else 0 %}{% if team_total %}<button type="button" class="btn btn-sm btn-outline-dark py-0 px-2 text-nowrap ac-team-btn" data-company="{{ c.company_name }}" data-team='{{ t | tojson }}'><i class="bi bi-person-badge me-1"></i>{{ team_total }}</button>{% else %}<span class="text-muted">0</span>{% endif %}</td>
+        <td class="text-nowrap">
+          {% if r.status == 'done' %}<span class="badge bg-success">Completed - {{ word }}</span>
+          {% elif r.status == 'started' %}<span class="badge bg-info text-dark">Started - {{ word }}</span>
+          {% else %}<span class="badge bg-warning text-dark">Pending - {{ word }}</span>{% endif %}
+        </td>
+        <td>{% if r.file %}<a href="/uploads/crm/{{ r.file }}" target="_blank" class="btn btn-sm btn-outline-success py-0 text-nowrap" title="Download the {{ word }} Report"><i class="bi bi-download me-1"></i>Report</a>{% else %}<span class="text-muted">—</span>{% endif %}</td>
+        <td class="text-end text-nowrap">
+          {% if r.can_act and r.status == 'pending' %}
+          <form method="post" action="/activity-board/{{ r_kind }}/{{ r.deal.id }}/start" class="d-inline mb-0">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="back" value="stage-{{ key }}">
+            <button class="btn btn-sm btn-primary py-0"><i class="bi bi-play-circle me-1"></i>Start</button>
+          </form>
+          {% elif r.can_act %}
+          <button type="button" class="btn btn-sm {{ 'btn-outline-secondary' if r.file else 'btn-primary' }} py-0 ab-report-btn"
+                  data-action="/activity-board/{{ r_kind }}/{{ r.deal.id }}/report" data-back="stage-{{ key }}"
+                  data-title="{{ 'Reupload' if r.file else 'Upload' }} {{ word }} Report — {{ r.number }}"><i class="bi bi-upload me-1"></i>{{ 'Reupload' if r.file else 'Upload' }}</button>
+          {% else %}<a href="{{ r.url }}" class="btn btn-sm btn-outline-primary py-0"><i class="bi bi-eye me-1"></i>View</a>{% endif %}
+        </td>
+      </tr>
+    {% else %}
+      <tr><td colspan="9" class="text-center text-muted py-3">Nothing here</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+{% endmacro %}
+{% if stage_cards %}
+<div class="row g-3 mt-1 mb-4">
+  {% for key, title, word in [('inspection', 'Inspection', 'Inspection'), ('screening', 'Screening', 'Screening')] if key in stage_cards %}
+  {% set sc = stage_cards[key] %}
+  {% set p_rows = sc.rows | selectattr('status', 'equalto', 'pending') | list %}
+  <div class="{{ 'col-lg-6' if stage_cards | length > 1 else 'col-12' }}">
+    <div class="card border-0 shadow-sm h-100" id="ab-stage-{{ key }}">
+      <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2" data-show-header>
+        <span class="fw-semibold">{{ title }}</span>
+        <ul class="nav pill-tabs ms-2" role="tablist">
+          <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#ab_st_{{ key }}_p">Pending</button></li>
+          <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#ab_st_{{ key }}_s">In Progress</button></li>
+          <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#ab_st_{{ key }}_c">Completed</button></li>
+        </ul>
+      </div>
+      <div class="card-body p-0 tab-content" style="max-height:360px;overflow:auto">
+        <div class="tab-pane fade show active" id="ab_st_{{ key }}_p">{{ stage_rows(key, sc.kind, word, p_rows, sc, 'p') }}</div>
+        <div class="tab-pane fade" id="ab_st_{{ key }}_s">{{ stage_rows(key, sc.kind, word, sc.rows | selectattr('status', 'equalto', 'started') | list, sc, 's') }}</div>
+        <div class="tab-pane fade" id="ab_st_{{ key }}_c">{{ stage_rows(key, sc.kind, word, sc.rows | selectattr('status', 'equalto', 'done') | list, sc, 'c') }}</div>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% include "crm/contacts/_account_cell_modals.html" %}
+
+{# Report upload from the Inspection / Screening cards: PDF, Word, PowerPoint, Excel #}
+<div class="modal fade" id="abReportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" id="abReportForm" enctype="multipart/form-data" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="back" id="abReportBack">
+      <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-upload me-1"></i><span id="abReportTitle"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <input type="file" name="file" class="form-control form-control-sm" required accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx">
+        <div class="form-text">PDF, Word, PowerPoint or Excel — up to 20 MB. A reupload replaces the earlier file.</div>
+      </div>
+      <div class="modal-footer py-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-sm btn-primary"><i class="bi bi-upload me-1"></i>Upload</button></div>
+    </form>
   </div>
 </div>
 
@@ -140,6 +390,25 @@
   </div>
 </div>
 
+{# Approve / Reject with an optional remark (Negotiation / Pricing Approvals) #}
+<div class="modal fade" id="abDecideModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" id="abDecideForm" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="decision" id="abDecideDecision">
+      <input type="hidden" name="return_to" id="abDecideReturn">
+      <div class="modal-header py-2"><h6 class="modal-title" id="abDecideTitle"></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold mb-1">Remark <span class="text-muted fw-normal">(optional)</span></label>
+        <textarea name="note" class="form-control form-control-sm" rows="2" maxlength="500"></textarea>
+      </div>
+      <div class="modal-footer py-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-sm btn-primary" id="abDecideBtn">Confirm</button></div>
+    </form>
+  </div>
+</div>
+
 {# Map Manager — Map Team's modal, Manager only #}
 {% if see_all %}
 <div class="modal fade" id="abMgrModal" tabindex="-1" aria-hidden="true">
@@ -154,7 +423,7 @@
           <option value="">— None —</option>
           {% for uid, nm in managers %}<option value="{{ uid }}">{{ nm }}</option>{% endfor %}
         </select>
-        <p class="small text-muted mt-2 mb-0">Only the Manager is changed; VP/AVP, AM/DM/GM and Executive stay as they are.</p>
+        <p class="small text-muted mt-2 mb-0">Only the Manager is changed; Executive, VP/AVP and DM/GM/CTO/CEO stay as they are.</p>
       </div>
       <div class="modal-footer py-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button class="btn btn-sm btn-primary"><i class="bi bi-check2 me-1"></i>Save Manager</button></div>
@@ -163,7 +432,7 @@
 </div>
 {% endif %}
 
-{% set vc_return_to = '/activity-board?tab=accounts' %}
+{% set vc_return_to = '/activity-board#ab-accounts' %}
 {% include "crm/contacts/_verify_credit_modal.html" %}
 {% endblock %}
 
@@ -173,19 +442,50 @@ $(document).ready(function () {
   document.querySelectorAll('.ab-table').forEach(function (t) {
     if (window.initGlobalTable) initGlobalTable('#' + t.id, { order: [], columnDefs: [{ orderable: false, targets: [-1] }] });
   });
-  // keep the open tab in the address bar (a reload / redirect comes back to it)
-  document.querySelectorAll('.ab-tabs [data-tab]').forEach(function (b) {
-    b.addEventListener('shown.bs.tab', function () {
-      try { var u = new URL(location.href); u.searchParams.set('tab', b.dataset.tab); u.searchParams.delete('success'); u.searchParams.delete('error'); history.replaceState(null, '', u); } catch (e) {}
-      if ($.fn.dataTable) $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
-    });
+  // Main tabs: open #ab-<card> from the URL (after an action), else the
+  // last-open tab for this browser tab; remember the choice.
+  var KEY = 'abTab';
+  document.querySelectorAll('#abTabs [data-bs-toggle="tab"]').forEach(function (b) {
+    b.addEventListener('shown.bs.tab', function () { try { sessionStorage.setItem(KEY, b.dataset.ab); } catch (e) {} });
   });
+  // Tables start in hidden panes (main tab / pill): re-measure when shown.
+  // Registered BEFORE the remembered tab is opened, and run once more after
+  // it (2026-11-10): the header of a table in a restored tab was measured at
+  // 0px while hidden and stayed narrow.
+  function _abAdjust() { if (window.jQuery && $.fn.dataTable) $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust(); }
+  document.querySelectorAll('#abTabs [data-bs-toggle="tab"], .pill-tabs [data-bs-toggle="tab"]').forEach(function (b) {
+    b.addEventListener('shown.bs.tab', _abAdjust);
+  });
+  var want = (location.hash.match(/^#ab-(\w+)$/) || [])[1] || new URLSearchParams(location.search).get('tab');
+  if (!want) { try { want = sessionStorage.getItem(KEY); } catch (e) {} }
+  var wb = want && document.querySelector('#abTabs [data-ab="' + want + '"]');
+  if (wb) { bootstrap.Tab.getOrCreateInstance(wb).show(); setTimeout(_abAdjust, 250); }
   document.addEventListener('click', function (e) {
+    var rp = e.target.closest('.ab-report-btn');
+    if (rp) {
+      var rf = document.getElementById('abReportForm'); rf.reset(); rf.action = rp.dataset.action;
+      document.getElementById('abReportBack').value = rp.dataset.back;
+      document.getElementById('abReportTitle').textContent = rp.dataset.title;
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('abReportModal')).show();
+      return;
+    }
     var up = e.target.closest('.ab-upload-btn');
     if (up) {
       var f = document.getElementById('abUploadForm'); f.reset(); f.action = up.dataset.action;
       document.getElementById('abUploadTitle').textContent = up.dataset.title;
       bootstrap.Modal.getOrCreateInstance(document.getElementById('abUploadModal')).show();
+      return;
+    }
+    var dc = e.target.closest('.ab-decide-btn');
+    if (dc) {
+      var df = document.getElementById('abDecideForm'); df.reset(); df.action = dc.dataset.action;
+      document.getElementById('abDecideDecision').value = dc.dataset.decision;
+      document.getElementById('abDecideReturn').value = dc.dataset.return;
+      document.getElementById('abDecideTitle').textContent = dc.dataset.title;
+      var bt = document.getElementById('abDecideBtn');
+      bt.className = 'btn btn-sm ' + (dc.dataset.decision === 'approved' ? 'btn-success' : 'btn-danger');
+      bt.textContent = dc.dataset.decision === 'approved' ? 'Approve' : 'Reject';
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('abDecideModal')).show();
       return;
     }
     var mg = e.target.closest('.ab-mgr-btn');

@@ -39,53 +39,51 @@
 </div>
 
 {# ── Filters ── #}
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <form method="get" action="/market" class="row g-2 align-items-end">
-      <div class="col-md-3">
-        <input type="text" name="q" class="form-control form-control-sm" placeholder="Search model, brand, processor, dealer…" value="{{ q }}">
-      </div>
-      <div class="col-md-2">
-        <select name="brand" class="form-select form-select-sm">
-          <option value="">All Brands</option>
-          {% for b in all_brands %}
-          <option value="{{ b }}" {% if brand==b %}selected{% endif %}>{{ b }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <select name="category" class="form-select form-select-sm">
-          <option value="">All Categories</option>
-          {% for c in all_categories %}
-          <option value="{{ c }}" {% if category==c %}selected{% endif %}>{{ c }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <select name="trade" class="form-select form-select-sm">
-          <option value="">Buy &amp; Sell</option>
-          <option value="sell" {% if trade=='sell' %}selected{% endif %}>Selling (Available)</option>
-          <option value="buy"  {% if trade=='buy'  %}selected{% endif %}>Buying (Required)</option>
-        </select>
-      </div>
-      <div class="col-md-1">
-        <select name="active" class="form-select form-select-sm">
-          <option value="1" {% if active=='1' %}selected{% endif %}>Active</option>
-          <option value=""  {% if active==''  %}selected{% endif %}>All</option>
-        </select>
-      </div>
-      <div class="col-md-2 d-flex gap-1">
-        <button type="submit" class="btn btn-primary btn-sm flex-fill"><i class="bi bi-search me-1"></i>Search</button>
-        <a href="/market" class="btn btn-outline-secondary btn-sm">✕</a>
-      </div>
-    </form>
+<form method="get" action="/market" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" class="form-control form-control-sm" title="Search" placeholder="Search model, brand, processor, dealer…" value="{{ q }}">
+    </div>
+    <div>
+      <select name="brand" class="form-select form-select-sm" title="Brand">
+        <option value="">All Brands</option>
+        {% for b in all_brands %}
+        <option value="{{ b }}" {% if brand==b %}selected{% endif %}>{{ b }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="category" class="form-select form-select-sm" title="Category">
+        <option value="">All Categories</option>
+        {% for c in all_categories %}
+        <option value="{{ c }}" {% if category==c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="trade" class="form-select form-select-sm" title="Trade">
+        <option value="">Buy &amp; Sell</option>
+        <option value="sell" {% if trade=='sell' %}selected{% endif %}>Selling (Available)</option>
+        <option value="buy"  {% if trade=='buy'  %}selected{% endif %}>Buying (Required)</option>
+      </select>
+    </div>
+    <div>
+      <select name="active" class="form-select form-select-sm" title="Status">
+        <option value="1" {% if active=='1' %}selected{% endif %}>Active</option>
+        <option value=""  {% if active==''  %}selected{% endif %}>All Statuses</option>
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/market" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
+</form>
 
 {# ── Entries table ── #}
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent d-flex justify-content-between align-items-center small fw-semibold">
-    <span><i class="bi bi-table me-2"></i>{{ total }} entries
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+    <span class="fw-semibold"><i class="bi bi-table me-2"></i>{{ total }} entries
       {% if q or brand or category or trade %}<span class="text-muted ms-2">(filtered)</span>{% endif %}
     </span>
   </div>
@@ -397,7 +395,7 @@
 <script>
 $(document).ready(function(){
   if ($('#marketEntriesTable tbody tr td').length > 1) {
-    $('#marketEntriesTable').DataTable({ order: [], columnDefs: [{ orderable: false, targets: [9] }] });
+    initGlobalTable('#marketEntriesTable', { order: [], columnDefs: [{ orderable: false, targets: [9] }] });
   }
 });
 function toggleSource(btn) {

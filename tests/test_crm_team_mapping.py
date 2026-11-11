@@ -19,8 +19,19 @@ def _u(designation=None, role="sales"):
 
 
 def test_role_buckets_and_labels_cover_the_same_four_keys():
+    # Five buckets since 2026-11-09 (Finance Manager added); name kept for history.
     assert set(ROLE_BUCKETS) == set(BUCKET_LABELS.keys())
-    assert ROLE_BUCKETS == ["vp_avp", "manager", "am_dm_gm", "executive"]
+    # 2026-11-11: Manager, Executive/Sr Executive, VP/AVP, DM/GM/CTO/CEO, Finance Manager
+    assert ROLE_BUCKETS == ["manager", "executive", "vp_avp", "am_dm_gm", "finance"]
+    assert BUCKET_LABELS["am_dm_gm"] == "DM/GM/CTO/CEO"
+    assert BUCKET_LABELS["finance"] == "Finance Manager"
+
+
+def test_finance_bucket_matches_finance_or_accounts_designation():
+    users = [_u(designation="Finance Executive"), _u(designation="Accounts Head"),
+             _u(designation="Account Manager"), _u(designation=None)]
+    # Whole word "Finance" / "Accounts" only — "Account Manager" (sales) is not Finance.
+    assert eligible_users_for_bucket(users, "finance") == [users[0], users[1]]
 
 
 def test_eligible_users_matches_whole_word_designation():
@@ -29,12 +40,14 @@ def test_eligible_users_matches_whole_word_designation():
 
 
 def test_eligible_users_does_not_false_positive_on_substring():
-    users = [_u(designation="Team Lead"), _u(designation="Samir's Assistant"), _u(designation="AM - North")]
-    assert eligible_users_for_bucket(users, "am_dm_gm") == [users[2]]
+    # 2026-11-11: the bucket is DM/GM/CTO/CEO (AM no longer matches)
+    users = [_u(designation="Team Lead"), _u(designation="Samir's Assistant"), _u(designation="DM - North"),
+             _u(designation="AM - North"), _u(designation="CTO"), _u(designation="Director")]
+    assert eligible_users_for_bucket(users, "am_dm_gm") == [users[2], users[4]]
 
 
 def test_eligible_users_can_match_multiple_buckets():
-    u = _u(designation="Sr Executive / AM")
+    u = _u(designation="Sr Executive / GM")
     assert eligible_users_for_bucket([u], "executive") == [u]
     assert eligible_users_for_bucket([u], "am_dm_gm") == [u]
 
@@ -248,7 +261,7 @@ async def test_team_mapping_sample_csv_lists_accounts():
             # Row count depends on how many non-trashed accounts exist in
             # whatever DB this runs against (the local dev DB currently has
             # none active) — the header contract is what this test locks in.
-            assert body.splitlines()[0] == "gstin,company_name,vp_avp,manager,am_dm_gm,executive"
+            assert body.splitlines()[0] == "gstin,company_name,manager,executive,vp_avp,am_dm_gm,finance"
     finally:
         app.dependency_overrides.pop(get_current_user, None)
         app.dependency_overrides.pop(get_db, None)

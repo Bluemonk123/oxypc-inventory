@@ -1,0 +1,132 @@
+{# Deal Payment requests (2026-11-11, Pankaj): the Payment stage's Level 1
+   approval of Supplier / Customer Deals, verified in Accounts.
+   services/deal_payments.py builds the rows; routers/accounts.py posts.
+   Used by the Accounts dashboard (Supplier / Customer Payment cards) and the
+   Supplier Payment / Customer Payment pages.
+
+   import with context:  {% import "accounts/_deal_payment_requests.html" as dpr with context %}
+   then  {{ dpr.table(rows, 'pending'|'verified'|'rejected', 'supplier'|'customer', return_to, labels) }}
+   and once per page  {{ dpr.modals(payment_modes) }}  #}
+
+{% macro doc(p) -%}
+{% if p and p.payment_photo_path %}<a href="/uploads/accounts/{{ p.payment_photo_path }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Payment Snapshot"><i class="bi bi-image"></i></a>{% endif %}
+{%- if p and p.invoice_path %} <a href="/uploads/accounts/{{ p.invoice_path }}" target="_blank" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Invoice"><i class="bi bi-file-earmark-pdf"></i></a>{% endif %}
+{%- if not p or (not p.payment_photo_path and not p.invoice_path) %}<span class="text-muted">—</span>{% endif %}
+{%- endmacro %}
+
+{% macro table(rows, mode, kind, return_to, verify_label='Verify', reject_label='Reject', show_amount=true, verify_hash='', reject_hash='') %}
+{% set _mod = 'finance_supplier' if kind == 'supplier' else 'finance_customer' %}
+{% set _act = can(current_user, 'finance', 'edit') and can(current_user, _mod, 'edit') %}
+{% set _amt = can(current_user, _mod, 'pricing') %}
+{% set _acct = 'Supplier' if kind == 'supplier' else 'Buyer' %}
+<table class="table table-sm table-hover align-middle mb-0 small dpr-table">
+  <thead class="table-light"><tr>
+    <th>Deal ID</th><th>{{ _acct }}</th>
+    {% if mode == 'pending' %}<th>Added On</th><th>Approver</th>{% if show_amount %}<th class="text-end">Amount</th>{% endif %}<th class="text-end">Action</th>
+    {% elif mode == 'verified' %}<th class="text-end">Amount</th><th>Document</th><th>Status</th><th>On</th>
+    {% else %}<th>Status</th><th>On</th><th>Reason</th>{% endif %}
+  </tr></thead>
+  <tbody>
+  {% for r in rows %}
+    <tr>
+      <td><a href="{{ r.url }}" class="fw-semibold text-decoration-none font-monospace">{{ r.number }}</a></td>
+      <td>{% if r.account %}<a href="/crm/contacts/{{ r.account.id }}" class="text-decoration-none">{{ r.account.company_name }}</a>{% else %}—{% endif %}</td>
+      {% if mode == 'pending' %}
+      <td>{{ r.requested_at.strftime('%d-%m-%Y') if r.requested_at else '—' }}</td>
+      <td>{{ user_names.get(r.assignee, r.assignee) if user_names is defined else r.assignee }}</td>
+      {% if show_amount %}<td class="text-end">{% if _amt and r.amount %}&#8377;{{ r.amount | inr }}{% else %}—{% endif %}</td>{% endif %}
+      <td class="text-end text-nowrap">
+        {% if _act %}
+        <button type="button" class="btn btn-sm btn-success py-0 px-2 text-nowrap dpr-verify" data-action="/accounts/deal-payment/{{ kind }}/{{ r.deal.id }}/verify"
+                data-amount="{{ r.amount or 0 }}" data-number="{{ r.number }}" data-return="{{ return_to ~ verify_hash }}"><i class="bi bi-check2-circle me-1"></i>{{ verify_label }}</button>
+        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 dpr-reject" data-action="/accounts/deal-payment/{{ kind }}/{{ r.deal.id }}/reject"
+                data-number="{{ r.number }}" data-return="{{ return_to ~ reject_hash }}" title="{{ reject_label }}" aria-label="{{ reject_label }}"><i class="bi bi-x-lg"></i></button>
+        {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
+      </td>
+      {% elif mode == 'verified' %}
+      <td class="text-end">{% if _amt and r.payment %}&#8377;{{ r.payment.amount | inr }}{% else %}—{% endif %}</td>
+      <td class="text-nowrap">{{ doc(r.payment) }}</td>
+      <td><span class="badge bg-success">Verified</span>{% if r.note %}<div class="text-muted" style="font-size:.72rem">{{ r.note }}</div>{% endif %}</td>
+      <td title="Verified by {{ user_names.get(r.acted_by, r.acted_by) if user_names is defined else r.acted_by }}">{{ r.acted_at.strftime('%d-%m-%Y') if r.acted_at else '—' }}</td>
+      {% else %}
+      <td><span class="badge bg-danger">Rejected</span></td>
+      <td title="Rejected by {{ user_names.get(r.acted_by, r.acted_by) if user_names is defined else r.acted_by }}">{{ r.acted_at.strftime('%d-%m-%Y') if r.acted_at else '—' }}</td>
+      <td class="text-muted fst-italic">{{ r.note or '—' }}</td>
+      {% endif %}
+    </tr>
+  {% else %}
+    <tr><td colspan="7" class="text-center text-muted py-3">{{ 'Nothing pending' if mode == 'pending' else ('Nothing verified yet' if mode == 'verified' else 'Nothing rejected') }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro modals(payment_modes) %}
+{# Verify = the Complete Payment form (same fields, 2026-11-09 order) #}
+<div class="modal fade" id="dprVerifyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" id="dprVerifyForm" class="modal-content" enctype="multipart/form-data">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <input type="hidden" name="return_to" value="">
+      <div class="modal-header"><h5 class="modal-title">Complete Payment <span class="text-muted small font-monospace" id="dprVerifyNum"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label fw-semibold">Payment Date <span class="text-danger">*</span></label>
+        <input type="date" name="payment_date" class="form-control mb-3 cp-date" required>
+        <label class="form-label fw-semibold">Payment Amount (&#8377;) <span class="text-danger">*</span></label>
+        <input type="number" name="payment_amount" class="form-control mb-3 cp-amount" min="0.01" step="0.01" required>
+        <label class="form-label fw-semibold">Payment UTR/Invoice Number <span class="text-danger">*</span></label>
+        <input type="text" name="utr_number" class="form-control mb-3" maxlength="100" required>
+        <label class="form-label fw-semibold">Payment Mode <span class="text-danger">*</span></label>
+        <select name="payment_mode" class="form-select mb-3" required>
+          <option value="">— Select —</option>
+          {% for m in payment_modes %}<option value="{{ m }}">{{ m | upper }}</option>{% endfor %}
+        </select>
+        <label class="form-label fw-semibold">Payment Snapshot</label>
+        <input type="file" name="payment_snapshot" accept="image/*,.pdf" class="form-control">
+        <div class="form-text">Saving marks this payment Verified and the deal's Payment stage Done.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-success">Complete Payment</button>
+      </div>
+    </form>
+  </div>
+</div>
+<div class="modal fade" id="dprRejectModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" id="dprRejectForm" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <input type="hidden" name="return_to" value="">
+      <div class="modal-header"><h5 class="modal-title">Reject Payment <span class="text-muted small font-monospace" id="dprRejectNum"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label fw-semibold">Reason <span class="text-danger">*</span></label>
+        <textarea name="reason" class="form-control" rows="3" maxlength="500" required></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-danger"><i class="bi bi-x-lg me-1"></i>Reject</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  document.addEventListener('click', function (e) {
+    var v = e.target.closest('.dpr-verify'), r = e.target.closest('.dpr-reject');
+    if (v) {
+      var f = document.getElementById('dprVerifyForm'); f.reset();
+      f.action = v.dataset.action; f.querySelector('[name=return_to]').value = v.dataset.return || '';
+      document.getElementById('dprVerifyNum').textContent = v.dataset.number || '';
+      var d = new Date(); f.querySelector('.cp-date').value = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+      var amt = parseFloat(v.dataset.amount || '0'); f.querySelector('.cp-amount').value = amt > 0 ? amt.toFixed(2) : '';
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('dprVerifyModal')).show();
+    } else if (r) {
+      var g = document.getElementById('dprRejectForm'); g.reset();
+      g.action = r.dataset.action; g.querySelector('[name=return_to]').value = r.dataset.return || '';
+      document.getElementById('dprRejectNum').textContent = r.dataset.number || '';
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('dprRejectModal')).show();
+    }
+  });
+})();
+</script>
+{% endmacro %}

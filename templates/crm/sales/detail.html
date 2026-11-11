@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block title %}{{ opp.opp_number }} — Sales — OxyPC{% endblock %}
 {% block page_title %}{{ opp.opp_number }}: {{ opp.title[:60] }}{% if opp.title|length > 60 %}…{% endif %}{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ opp.opp_number }}{% endblock %}{% block record_parent %}/crm/sales{% endblock %}{% block record_parent_label %}Sales Opportunities{% endblock %}
 {% block content %}
 
 {% set stage_colors = {
-  'lead': 'secondary', 'contacted': 'secondary', 'screening': 'info', 'quote': 'info',
+  'lead': 'secondary', 'pricing': 'info', 'pricing_approval': 'warning', 'contacted': 'secondary', 'screening': 'info', 'quote': 'info',
   'negotiation': 'warning', 'sales_order': 'primary', 'purchase_order': 'primary',
   'payment': 'success', 'received': 'success', 'won': 'success', 'lost': 'danger'
 } %}
@@ -20,7 +21,7 @@
          on the left, attached documents on the right (SOURCING_STAGE_STEPS,
          stored in crm_sales_steps (SALES_STAGE_STEPS)). Items show for done + current stages. -->
     <style>
-      .sd-steps { list-style: none; margin: 0; padding: 0; }
+      .sd-steps { list-style: none; margin: 0; padding: 14px 0 6px; }   /* more room above / below the stage list (2026-11-10) */
       .sd-step { position: relative; display: flex; gap: .75rem; padding: .55rem .75rem .55rem .5rem; border-radius: .75rem; border: 1px solid transparent; }
       .sd-step::before { content: ""; position: absolute; left: calc(.5rem + 7px); top: 0; bottom: 0; border-left: 2px solid var(--sd-line, #ced4da); }
       .sd-step:first-child::before { top: 1.1rem; }
@@ -38,6 +39,8 @@
       .sd-items { display: flex; gap: .75rem; margin-top: .3rem; font-size: .78rem; }
       .sd-items > div { min-width: 0; }
       .sd-item { display: flex; align-items: center; flex-wrap: wrap; gap: .3rem; line-height: 1.5; }
+      .sd-files { display: flex; flex-wrap: wrap; align-items: center; gap: .15rem .9rem; font-size: .78rem; }
+      .sd-files .sd-item { gap: .2rem; }
       .sd-icon-btn { border: 0; background: none; padding: 0 .15rem; color: var(--bs-primary); line-height: 1; }
       .sd-icon-btn:hover { color: #0a58ca; }
       .sd-remark { font-size: .72rem; color: #6c757d; font-style: italic; }
@@ -52,32 +55,22 @@
         <span class="text-muted">{{ label }}{% if kind == 'approval' %} approval{% endif %}:</span>
         {% if st and st.assigned_to %}
           <span class="fw-semibold">{{ user_names.get(st.assigned_to, st.assigned_to) }}</span>
-          {% if kind == 'approval' %}
-            {% if st.status == 'approved' %}<span class="badge bg-success">Approved</span>
-            {% elif st.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>
-            {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
-          {% endif %}
         {% else %}<span class="text-muted">—</span>{% endif %}
         {% if _sd_edit %}<button type="button" class="sd-icon-btn sd-assign-btn" title="Assign user"
             data-step="{{ key }}" data-label="{{ label }}{% if kind == 'approval' %} approval{% endif %}"
             data-current="{{ st.assigned_to if st and st.assigned_to else '' }}"><i class="bi bi-person-plus"></i></button>{% endif %}
-        {% if kind == 'approval' and st and st.status == 'pending' and _sd_open and (st.assigned_to == current_user.username or _is_admin) %}
-          <button type="button" class="btn btn-success btn-sm py-0 px-1 sd-decide-btn" style="font-size:.7rem"
-                  data-step="{{ key }}" data-label="{{ label }}" data-decision="approved">Approve</button>
-          <button type="button" class="btn btn-outline-danger btn-sm py-0 px-1 sd-decide-btn" style="font-size:.7rem"
-                  data-step="{{ key }}" data-label="{{ label }}" data-decision="rejected">Reject</button>
-        {% endif %}
       </div>
       {% if st and st.note %}<div class="sd-remark">“{{ st.note }}”</div>{% endif %}
     {%- endmacro %}
-    {% macro sd_file(key, label) -%}
+    {# done=True (stage Done): the file still shows, no upload button (2026-11-11) #}
+    {% macro sd_file(key, label, done=False) -%}
       {% set st = steps.get(key) %}
-      <div class="sd-item justify-content-end text-end">
+      <div class="sd-item">
         {% if st and st.file_path %}
           <a href="/uploads/crm/{{ st.file_path }}" target="_blank" class="text-decoration-none" title="Open {{ label }}"><i class="bi bi-paperclip"></i>{{ label }}</a>
         {% elif st and st.status == 'started' %}<span class="text-muted">{{ label }}:</span> <span class="badge bg-info text-dark" title="Started on Activity Board{{ ' by ' ~ st.acted_by if st.acted_by }}">Started</span>
         {% else %}<span class="text-muted">{{ label }}: —</span>{% endif %}
-        {% if _sd_upload %}<button type="button" class="sd-icon-btn sd-attach-btn" title="Attach {{ label }}"
+        {% if _sd_upload and not done %}<button type="button" class="sd-icon-btn sd-attach-btn" title="Attach {{ label }}"
             data-step="{{ key }}" data-label="{{ label }}"><i class="bi bi-upload"></i></button>{% endif %}
       </div>
     {%- endmacro %}
@@ -88,9 +81,24 @@
         <span><i class="bi bi-diagram-3 me-1"></i>Stage Progress</span>
         {% if opp.stage == 'won' %}<span class="sd-closed-label"><i class="bi bi-trophy-fill me-1"></i>Deal Won</span>
         {% elif opp.stage == 'lost' %}<span class="sd-closed-label"><i class="bi bi-x-circle-fill me-1"></i>Deal Lost</span>{% endif %}
+        {# Next Stage (2026-11-11): header right; gone once the deal is Won / Lost #}
+        <style>.sd-dark .card-header .sd-next-btn{background:#2f80ed!important;border-color:#2f80ed!important;color:#fff!important}.sd-dark .card-header .sd-next-btn:hover{background:#1c6ad6!important}</style>
+        {% if _sd_open %}
+          {% if can(current_user, 'crm_sales_opp', 'edit') %}
+          {% if opp.stage == last_open_stage %}
+          <button type="button" class="btn btn-sm fw-semibold py-0 sd-next-btn" data-bs-toggle="modal" data-bs-target="#sdCloseModal">
+            <i class="bi bi-arrow-right-circle me-1"></i>Next Stage</button>
+          {% elif next_stage %}
+          <form method="post" action="/crm/sales/{{ opp.id }}/next-stage" class="d-inline">
+            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+            <button class="btn btn-sm fw-semibold py-0 sd-next-btn"><i class="bi bi-arrow-right-circle me-1"></i>Next Stage</button>
+          </form>
+          {% endif %}
+          {% endif %}
+        {% endif %}
       </div>
       <div class="card-body pt-1">
-        <ol class="sd-steps mb-3">
+        <ol class="sd-steps mb-4">
           {% for i, (val, label) in stage_list %}
           {% if not ((val == 'lost' and opp.stage != 'lost') or (val == 'won' and opp.stage == 'lost')) %}
           {% set _state = 'done' if i < current_idx else ('current' if i == current_idx else 'upcoming') %}
@@ -99,13 +107,69 @@
             <span class="sd-dot" aria-hidden="true"></span>
             <div class="sd-body">
               <div class="d-flex justify-content-between align-items-start gap-2">
+                {# Attached files next to the stage name (2026-11-11, Pankaj); approval
+                   statuses stay on the right #}
+                <div class="d-flex align-items-center flex-wrap gap-2">
                 <div class="sd-title">{{ label }}</div>
+                {% if _state != 'upcoming' and val in stage_steps %}
+                {% set _files = stage_steps[val] | selectattr(2, 'equalto', 'file') | list %}
+                <div class="sd-files">
+                    {% for k, l, kind in _files %}{{ sd_file(k, l, _state == 'done') }}{% endfor %}
+                    {# Negotiation (2026-11-11, Pankaj): the approved quotation (both Quote levels
+                       approved) carried forward with its file #}
+                    {% if val == 'negotiation' %}
+                    {% set _ql1, _ql2 = steps.get('quote_l1'), steps.get('quote_l2') %}
+                    {% set _qok = latest_quote and _ql1 and _ql2 and _ql1.status == 'approved' and _ql2.status == 'approved' %}
+                    <div class="sd-item">
+                      {% if _qok %}<a href="/crm/quotes/{{ latest_quote.id }}{{ '/download' if can(current_user, 'crm_quotes', 'export') }}" class="text-decoration-none" title="Approved Quotation — {{ 'download the file' if can(current_user, 'crm_quotes', 'export') else 'open the quote' }}"><i class="bi bi-paperclip"></i>{{ latest_quote.quote_number }}</a>
+                      {% else %}<span class="text-muted">Quotation: —</span>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if val == 'quote' %}
+                    {# Generated quotation file (2026-11-11, Pankaj): the latest quote's document #}
+                    <div class="sd-item">
+                      {% if latest_quote %}{% if can(current_user, 'crm_quotes', 'export') %}<a href="/crm/quotes/{{ latest_quote.id }}/download" class="text-decoration-none" title="Download the quotation file"><i class="bi bi-paperclip"></i>{{ latest_quote.quote_number }}</a>{% else %}<a href="/crm/quotes/{{ latest_quote.id }}" class="text-decoration-none" title="Open the quote"><i class="bi bi-paperclip"></i>{{ latest_quote.quote_number }}</a>{% endif %}
+                      {% else %}<span class="text-muted">Quotation: —</span>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if val == 'sales_order' %}
+                    {% set latest_so = deal_sales_orders[0] if deal_sales_orders else none %}
+                    <div class="sd-item">
+                      {% if latest_so %}<a href="/crm/sales-orders/{{ latest_so.id }}" class="text-decoration-none" title="Sales Order raised from this deal"><i class="bi bi-paperclip"></i>{{ latest_so.so_number }}</a>{% if latest_so.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ latest_so.verified_by if latest_so.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
+                      {% else %}<span class="text-muted">SO: —</span>{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if val == 'payment' %}
+                    {% for pm in deal_receipts %}
+                    <div class="sd-item" title="Customer payment {{ pm.created_at.strftime('%d-%m-%Y') if pm.created_at else '' }}">
+                      {% if pm.invoice_path %}<a href="/uploads/accounts/{{ pm.invoice_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Invoice</a>{% endif %}
+                      {% if pm.payment_photo_path %}<a href="/uploads/accounts/{{ pm.payment_photo_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Payment Proof</a>{% endif %}
+                      {% if not pm.invoice_path and not pm.payment_photo_path %}<span class="text-muted">Customer payment (no document)</span>{% endif %}
+                      {% if pm.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ pm.verified_by if pm.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
+                    </div>
+                    {% else %}
+                    <div class="sd-item"><span class="text-muted">Customer payment: —</span></div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+                {% endif %}
+                </div>
                 {% if _state == 'done' %}<span class="sd-status text-success"><i class="bi bi-check-circle-fill me-1"></i>Done</span>
                 {% elif _state == 'current' %}<span class="sd-status text-primary">Current</span>{% endif %}
               </div>
               {% if _state != 'upcoming' %}
                 {% if val == 'lead' %}
                 <div class="sd-items"><div class="text-muted">Added {{ opp.created_at.strftime('%d-%m-%Y') if opp.created_at else '—' }}{% if opp.created_by %} by {{ user_names.get(opp.created_by, opp.created_by) }}{% endif %}</div></div>
+                {% elif val == 'pricing' %}
+                {# Pricing Added (2026-11-10): who saved the Pricing card, and when #}
+                {% set _ps = steps.get('pricing_saved') %}
+                <div class="sd-items"><div>
+                  {% if _ps %}<span class="text-muted">Saved</span> {{ _ps.acted_at.strftime('%d-%m-%Y') if _ps.acted_at else '' }}{% if _ps.acted_by %} <span class="text-muted">by</span> {{ user_names.get(_ps.acted_by, _ps.acted_by) }}{% endif %}
+                  {% elif opp.budget_per_unit or opp.estimated_value %}
+                  {# priced before the "Pricing Added" record existed: prices came with the deal #}
+                  <span class="text-muted">Added with the deal</span> {{ opp.created_at.strftime('%d-%m-%Y') if opp.created_at else '' }}{% if opp.created_by %} <span class="text-muted">by</span> {{ user_names.get(opp.created_by, opp.created_by) }}{% endif %}
+                  {% else %}<span class="text-muted">Not added yet — fill the Pricing card</span>{% endif %}
+                </div></div>
                 {% elif val == 'contacted' %}
                 <div class="sd-items"><div>
                   {% if last_contact %}
@@ -118,35 +182,14 @@
                 {% set _people = stage_steps[val] | selectattr(2, 'ne', 'file') | list %}
                 {% set _files = stage_steps[val] | selectattr(2, 'equalto', 'file') | list %}
                 <div class="sd-items justify-content-between">
-                  <div>{% for k, l, kind in _people %}{{ sd_person(k, l, kind) }}{% endfor %}</div>
+                  <div class="flex-grow-1">{% for k, l, kind in _people %}{{ sd_person(k, l, kind) }}{% endfor %}</div>
                   <div class="text-end">
-                    {% for k, l, kind in _files %}{{ sd_file(k, l) }}{% endfor %}
-                    {% if val == 'quote' %}
-                    <div class="sd-item justify-content-end">
-                      {% if latest_quote %}<a href="/crm/quotes/{{ latest_quote.id }}" class="text-decoration-none" title="Latest quote generated for this deal"><i class="bi bi-paperclip"></i>{{ latest_quote.quote_number }}</a>
-                      {% else %}<span class="text-muted">Quote: —</span>{% endif %}
-                    </div>
-                    {% endif %}
-                    {% if val == 'sales_order' %}
-                    {% set latest_so = deal_sales_orders[0] if deal_sales_orders else none %}
-                    <div class="sd-item justify-content-end">
-                      {% if latest_so %}<a href="/crm/sales-orders/{{ latest_so.id }}" class="text-decoration-none" title="Sales Order raised from this deal"><i class="bi bi-paperclip"></i>{{ latest_so.so_number }}</a>{% if latest_so.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ latest_so.verified_by if latest_so.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
-                      {% else %}<span class="text-muted">SO: —</span>{% endif %}
-                    </div>
-                    {% endif %}
-                    {% if val == 'payment' %}
-                    {% for pm in deal_receipts %}
-                    <div class="sd-item justify-content-end" title="Customer payment {{ pm.created_at.strftime('%d-%m-%Y') if pm.created_at else '' }}">
-                      {% if pm.invoice_path %}<a href="/uploads/accounts/{{ pm.invoice_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Invoice</a>{% endif %}
-                      {% if pm.payment_photo_path %}<a href="/uploads/accounts/{{ pm.payment_photo_path }}" target="_blank" class="text-decoration-none me-1"><i class="bi bi-paperclip"></i>Payment Proof</a>{% endif %}
-                      {% if not pm.invoice_path and not pm.payment_photo_path %}<span class="text-muted">Customer payment (no document)</span>{% endif %}
-                      {% if pm.verified %}<i class="bi bi-patch-check-fill text-success ms-1" title="Verified by Accounts{{ ' — ' ~ pm.verified_by if pm.verified_by }}"></i>{% else %}<span class="badge bg-warning text-dark ms-1" title="Awaiting Accounts verification">Pending</span>{% endif %}
-                    </div>
-                    {% else %}
-                    <div class="sd-item justify-content-end"><span class="text-muted">Customer payment: —</span></div>
+                    {# Every approval (2026-11-11, Pankaj): status only, on the right, one line
+                       per approver row — no Approve / Reject on the deal page; they are
+                       decided on the Activity Board. #}
+                    {% for k, l, kind in _people if kind == 'approval' %}{% set _s = steps.get(k) %}
+                    <div class="sd-item justify-content-end">{% if _s and _s.assigned_to %}{% if _s.status == 'approved' %}<span class="badge bg-success">{{ 'Verified' if k == 'payment_l1' else 'Approved' }}</span>{% elif _s.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}{% else %}&nbsp;{% endif %}</div>
                     {% endfor %}
-                    {% endif %}
-
                   </div>
                 </div>
                 {% elif val in ('won', 'lost') and opp.win_loss_reason %}
@@ -165,23 +208,9 @@
         {# Next Stage + the deal's action buttons in one row (2026-11-06): the
            buttons used to sit under the card; the next stage's name is no
            longer shown on the button. #}
-        <div class="d-flex gap-2 flex-wrap align-items-center">
-        {% if _sd_open %}
-          {% if can(current_user, 'crm_sales_opp', 'edit') %}
-          {% if opp.stage == last_open_stage %}
-          <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#sdCloseModal">
-            <i class="bi bi-arrow-right-circle me-1"></i>Next Stage</button>
-          {% elif next_stage %}
-          <form method="post" action="/crm/sales/{{ opp.id }}/next-stage" class="d-inline">
-            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-            <button class="btn btn-sm btn-primary"><i class="bi bi-arrow-right-circle me-1"></i>Next Stage</button>
-          </form>
-          {% endif %}
-          {% endif %}
-        {% endif %}
-        </div>
+        {# Next Stage moved to the card header, right (2026-11-11, Pankaj) #}
         {# the other buttons on one row below Next Stage (2026-11-06) #}
-        <div class="d-flex gap-2 flex-nowrap align-items-center{{ ' mt-2' if _sd_open }}">
+        <div class="d-flex gap-2 flex-nowrap align-items-center">
         {% if quote %}
         <a href="/crm/quotes/{{ quote.id }}" class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-text me-1"></i>View Quote</a>
         {% endif %}{# Create Quote button hidden (2026-10-27, Pankaj): New Quote in Quotes Generated does the same. #}
@@ -310,7 +339,7 @@
         <div class="mb-1">
           <a href="/crm/quotes/{{ quote.id }}" class="fw-semibold text-decoration-none">{{ quote.quote_number }}</a>
         </div>
-        {% set qstatus_colors = {'draft':'secondary','sent':'info','negotiating':'warning','accepted':'success','rejected':'danger','expired':'secondary'} %}
+        {% set qstatus_colors = QUOTE_STATUS_COLORS %}
         <span class="badge bg-{{ qstatus_colors.get(quote.status,'secondary') }}">{{ quote.status | title }}</span>
         {% if quote.total_amount and can(current_user, 'crm_sales_opp', 'pricing') %}
         <div class="small text-muted mt-2">Total: <strong class="text-success">₹{{ ((quote.total_amount) | inr) }}</strong></div>
@@ -328,83 +357,99 @@
     <!-- Deal Info (2026-10-27: Sourcing Deal layout — four fields per row,
          Upload fold-out in the same card). -->
     <div class="card border-0 shadow-sm hdr-card mb-3">
-      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-        <span class="fw-semibold"><i class="bi bi-graph-up me-1 text-info"></i>Deal Info</span>
-        {# Edit moved here from under Stage Progress (2026-11-06, Pankaj) #}
-        {% if can(current_user, 'crm_sales_opp', 'edit') %}<a href="/crm/sales/{{ opp.id }}/edit" class="btn btn-sm btn-outline-primary ms-auto me-2"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
-        <span class="badge bg-{{ stage_colors.get(opp.stage,'secondary') }}">{{ stage_labels.get(opp.stage, opp.stage | replace('_',' ') | title) }}</span>
+      {# Header (2026-11-10, Pankaj): status pill + Assigned To next to the title; Edit on the right #}
+      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center gap-2 flex-wrap">
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <span class="fw-semibold"><i class="bi bi-graph-up me-1 text-info"></i>Deal Info</span>
+          <span class="badge bg-{{ stage_colors.get(opp.stage,'secondary') }}">{{ stage_labels.get(opp.stage, opp.stage | replace('_',' ') | title) }}</span>
+          <span class="badge bg-light text-dark border" title="Assigned To"><i class="bi bi-person me-1"></i>{{ user_names.get(opp.assigned_to, opp.assigned_to) if opp.assigned_to else 'Unassigned' }}</span>
+        </div>
+        {% if can(current_user, 'crm_sales_opp', 'edit') %}<a href="/crm/sales/{{ opp.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
       </div>
       <div class="card-body pt-1">
         <div class="row g-3">
           <div class="col-6 col-md-3"><div class="small text-muted">Opp Number</div><code>{{ opp.opp_number }}</code></div>
+          <div class="col-6 col-md-3"><div class="small text-muted">From Entity</div><div class="fw-semibold">{{ opp.from_entity or '—' }}</div></div>
           <div class="col-6 col-md-3"><div class="small text-muted">Title</div><div class="fw-semibold">{{ opp.title }}</div></div>
           <div class="col-6 col-md-3"><div class="small text-muted">Buyer</div>
             {% if contact %}<a href="/crm/contacts/{{ contact.id }}" class="text-decoration-none">{{ contact.company_name }}</a>{% if contact.kyc_verified %}<span class="badge bg-success ms-1" title="KYC verified">KYC Verified</span>{% else %}<span class="badge bg-warning text-dark ms-1" title="KYC pending (Finance)">KYC Pending</span>{% endif %}
             {% if contact.contact_person %}<div class="small text-muted">{{ contact.contact_person }}</div>{% endif %}{% else %}—{% endif %}</div>
-          <div class="col-6 col-md-3"><div class="small text-muted">Lot Number</div>
-            {# Present only when this deal came from a won bid. #}
-            {% if lot %}<a href="/lots/{{ lot.id }}" class="text-decoration-none fw-semibold font-monospace">{{ lot.lot_number }}</a>{% else %}—{% endif %}</div>
+          {# Lot Number removed from Deal Info (2026-11-10, Pankaj) #}
           <div class="col-6 col-md-3"><div class="small text-muted">Buyer Type</div>
             <div>{% if opp.buyer_type %}<span class="badge bg-light text-dark border">{{ buyer_map.get(opp.buyer_type, opp.buyer_type | replace('_',' ') | title) }}</span>{% else %}—{% endif %}</div></div>
-          <div class="col-6 col-md-3"><div class="small text-muted">Device Type</div><div>{{ opp.device_type or '—' }}</div></div>
-          <div class="col-6 col-md-3"><div class="small text-muted">Material Type</div>
-            <div>{% if opp.material_type %}<span class="badge bg-light text-dark border">{{ material_map.get(opp.material_type, opp.material_type | title) }}</span>{% else %}—{% endif %}</div></div>
-          <div class="col-6 col-md-3"><div class="small text-muted">Grade Required</div>
-            <div>{% if opp.grade_required %}<span class="badge bg-warning text-dark">{{ opp.grade_required }}</span>{% else %}—{% endif %}</div></div>
-          <div class="col-6 col-md-3"><div class="small text-muted">Qty Required</div><div class="fw-semibold">{{ opp.required_qty or '—' }}</div></div>
-          <div class="col-6 col-md-3"><div class="small text-muted">Est. Value</div>
-            <div class="fw-semibold text-success">{% if can(current_user, 'crm_sales_opp', 'pricing') and opp.estimated_value %}₹{{ ((opp.estimated_value) | inr) }}{% else %}—{% endif %}</div></div>
+          {# Device / Material / Grade / Qty / Est. Value now in the Pricing card (2026-11-10) #}
           <div class="col-6 col-md-3"><div class="small text-muted">Expected Close</div>
             <div class="small {% if opp.expected_close_date and opp.expected_close_date < now.date() and opp.stage not in ['won','lost'] %}text-danger fw-semibold{% endif %}">{{ opp.expected_close_date.strftime('%d %b %Y') if opp.expected_close_date else '—' }}</div></div>
           <div class="col-6 col-md-3"><div class="small text-muted">Priority</div><span class="badge bg-{{ priority_colors.get(opp.priority,'secondary') }}">{{ opp.priority | title }}</span></div>
-          <div class="col-6 col-md-3"><div class="small text-muted">Assigned To</div><div>{{ user_names.get(opp.assigned_to, opp.assigned_to) if opp.assigned_to else '—' }}</div></div>
+          {# Assigned To moved to the card header (2026-11-10) #}
           {% if opp.notes %}<div class="col-12"><div class="small text-muted">Notes</div><div class="small">{{ opp.notes }}</div></div>{% endif %}
-          {% set _docs = stage_steps['documents'] %}
-          {% set _have_docs = namespace(n=0) %}{% for k, l, kind in _docs %}{% if steps.get(k) and steps.get(k).file_path %}{% set _have_docs.n = _have_docs.n + 1 %}{% endif %}{% endfor %}
-          {% if _have_docs.n %}
-          <div class="col-12">
-            <div class="small text-muted mb-1">Documents</div>
-            <div class="d-flex flex-wrap gap-3">
-              {% for k, l, kind in _docs %}{% set st = steps.get(k) %}{% if st and st.file_path %}
-              <a href="/uploads/crm/{{ st.file_path }}" target="_blank" class="small text-decoration-none"><i class="bi bi-file-earmark-arrow-down me-1"></i>{{ l }}</a>
-              {% endif %}{% endfor %}
-            </div>
+        </div>
+        {# Pricing (2026-11-11, Pankaj): moved into Deal Info, above Team Mapping.
+           Same fields as the Add page; saving marks "Pricing Added"; a price
+           change resubmits Pricing Approval. #}
+        {% set _pr_edit = can(current_user, 'crm_sales_opp', 'edit') and opp.stage not in ['won','lost'] %}
+        {% set _pa = steps.get('pricing_l1') %}
+        <div id="pricingCard" class="border-top mt-3 pt-3">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold"><i class="bi bi-currency-rupee me-1 text-success"></i>Pricing</span>
+            {% if _pa and _pa.assigned_to %}
+            <span class="badge {{ 'bg-success' if _pa.status == 'approved' else ('bg-danger' if _pa.status == 'rejected' else 'bg-warning text-dark') }}"
+                  title="Pricing Approval — {{ user_names.get(_pa.assigned_to, _pa.assigned_to) }}">Pricing Approval: {{ (_pa.status or 'pending') | title }}</span>
+            {% endif %}
           </div>
-          {% endif %}
-          {# Upload Documents fold-out inside Deal Info (same as Sourcing Deals). #}
-          {% if can(current_user, 'crm_sales_opp', 'upload') %}
-          <div class="col-12">
-            <a class="small text-decoration-none sd-acc collapsed" data-bs-toggle="collapse" href="#uploadBody"
-               role="button" aria-expanded="false" aria-controls="uploadBody">
-              <i class="bi bi-cloud-upload me-1"></i>Upload Documents <i class="bi bi-chevron-down small sd-acc-chev"></i>
-            </a>
-            <div class="collapse mt-2" id="uploadBody">
-              <div class="row g-2">
-                {% for k, l, kind in _docs %}{% set st = steps.get(k) %}
-                <div class="col-md-3">
-                  <form method="post" action="/crm/sales/{{ opp.id }}/steps/{{ k }}/attach" enctype="multipart/form-data">
-                    <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                    <label class="form-label small fw-semibold mb-1">{{ l }}</label>
-                    <div class="input-group input-group-sm">
-                      <input type="file" name="file" class="form-control form-control-sm" required accept=".pdf,.png,.jpg,.jpeg,.webp,.gif,.xlsx,.xls,.csv,.doc,.docx">
-                      <button class="btn btn-primary" title="Upload {{ l }}"><i class="bi bi-cloud-upload"></i></button>
-                    </div>
-                    {% if st and st.file_path %}<a href="/uploads/crm/{{ st.file_path }}" target="_blank" class="small d-block mt-1"><i class="bi bi-download me-1"></i>Current file</a>{% endif %}
-                  </form>
-                </div>
-                {% endfor %}
-              </div>
-              <div class="form-text small">PDF, image, Excel or Word — up to 20 MB each.</div>
+          <form method="post" action="/crm/sales/{{ opp.id }}/pricing">
+            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+            <fieldset {% if not _pr_edit %}disabled{% endif %}>
+              {% include "crm/sales/_pricing_fields.html" %}
+            </fieldset>
+            {% if _pr_edit %}
+            <div class="mt-3 d-flex align-items-center gap-2">
+              <button class="btn btn-sm btn-primary"><i class="bi bi-check2-circle me-1"></i>Save Pricing</button>
+              {% if _pa and _pa.assigned_to %}<span class="small text-muted">A price change sends it to {{ user_names.get(_pa.assigned_to, _pa.assigned_to) }} for Pricing Approval again.</span>{% endif %}
             </div>
-          </div>
-          {% endif %}
+            {% endif %}
+          </form>
         </div>
       </div>
+      {# Team Mapping (2026-11-11, Pankaj): the Deal Info card's footer, light grey #}
+      {# header colour, more breathing room, Edit opens the Map Team modal (2026-11-11) #}
+      <div class="card-footer border-0 px-3 py-3 sd-team-foot">
+        <div class="d-flex align-items-center gap-2 mb-2">
+          <span class="small fw-semibold"><i class="bi bi-people me-1"></i>Team Mapping</span>
+          {% if contact and can(current_user, 'crm_contacts', 'edit') %}
+          <button type="button" class="btn btn-sm btn-outline-primary py-0 px-1" data-bs-toggle="modal" data-bs-target="#mapTeamModal" title="Edit Team Mapping"><i class="bi bi-pencil"></i></button>
+          {% endif %}
+        </div>
+        <div class="row g-2">
+          {% for label, people in deal_team %}
+          <div class="col-6 col-md-3">
+            <div class="small text-muted">{{ label }}</div>
+            <div class="small fw-semibold">{{ people | join(', ') if people else '—' }}</div>
+          </div>
+          {% endfor %}
+        </div>
+        {% if not (deal_team | selectattr(1) | list) %}<div class="small text-muted mt-1">No team mapped on the Account yet.</div>{% endif %}
+      </div>
     </div>
-    <style>
-      .sd-acc-chev { transition: transform .15s; }
-      .sd-acc:not(.collapsed) .sd-acc-chev { transform: rotate(180deg); }
-    </style>
+
+    {# Documents (2026-11-11, Pankaj): its own accordion card below Deal Info, collapsed #}
+    {% set dd_items = [('screening_report', 'Screening Report'), ('doc_quote', 'Quotation'),
+                       ('doc_sales_order', 'Sales Order'), ('payment_invoice', 'Payment Invoice'),
+                       ('doc_product_data_sheet', 'Product Data Sheet')] %}
+    {% set dd_attach = '/crm/sales/' ~ opp.id ~ '/steps/' %}
+    {% set dd_upload = can(current_user, 'crm_sales_opp', 'upload') %}
+    {% set dd_quote, dd_quote_key = latest_quote, 'doc_quote' %}
+    {% set dd_legacy = [] %}
+    {% for k, l in [('doc_sales_invoice', 'Sales Invoice'), ('doc_purchase_order', 'Purchase Order'), ('doc_eway_bill', 'E-way Bill')] %}
+      {% if steps.get(k) and steps.get(k).file_path %}{% set _ = dd_legacy.append((l, '/uploads/crm/' ~ steps.get(k).file_path)) %}{% endif %}
+    {% endfor %}
+    {% include "crm/_deal_documents.html" %}
+    {% if contact and can(current_user, 'crm_contacts', 'edit') %}
+    {% set mt_return = '/crm/sales/' ~ opp.id %}
+    {% include "crm/contacts/_map_team_modal.html" %}
+    <script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
+    {% endif %}
+    <style>.sd-team-foot { background: var(--oxy-sky) !important; border-top: 1px solid #c0ddf0 !important; }</style>
 
     {# Sales Orders — raised when this deal's quotation passes Level 2 (2026-11-01) #}
     <div class="card border-0 shadow-sm mb-3 hdr-card">
@@ -533,4 +578,10 @@
 
   </div>
 </div>
+
+{# History card (2026-11-09, Pankaj) #}
+{% include "_history_card.html" %}
+{% endblock %}
+{% block scripts %}
+{% include "crm/sales/_pricing_js.html" %}
 {% endblock %}

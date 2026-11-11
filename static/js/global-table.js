@@ -333,7 +333,9 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
     if ($tabCard.length && $pane.has($tabCard).length) {
       $tabCard.addClass('gtable-in-tab');
       var $hdr = $tabCard.children('.card-header');
-      if ($hdr.length && !$hdr.find('button, a.btn, input, select').length) {
+      // data-show-header on the card-header keeps it (2026-11-08, Production
+      // Manager tabs).
+      if ($hdr.length && !$hdr.is('[data-show-header]') && !$hdr.find('button, a.btn, input, select').length) {
         $hdr.addClass('gtable-tab-hidden-header');
       }
     }
@@ -371,6 +373,19 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
   var lastHead = $(tableSelector).find('thead tr').first().children('th').last();
   if (lastHead.length && /^(actions?)?$/i.test($.trim(lastHead.text()))) {
     columnDefs.push({ targets: -1, orderable: false });
+  }
+  // Checkbox column never sorts (2026-11-08, Pankaj): when the first header
+  // holds a checkbox (Select All) or the first body cell does, column 0 is
+  // made non-orderable — same rule as the Action column above, and a page's
+  // own columnDefs still win. With no order given, the table keeps the
+  // order the rows arrive in (the server's / page's own order) instead of
+  // "sorting" by the checkbox column — same rows, same order as before.
+  var $firstHead = $(tableSelector).find('thead tr').first().children('th').first();
+  var cbFirst = $firstHead.find('input[type="checkbox"]').length > 0 ||
+                $(tableSelector).find('tbody tr:first-child td:first-child input[type="checkbox"]').length > 0;
+  if (cbFirst) {
+    columnDefs.push({ targets: 0, orderable: false });
+    if (dtOptions.order === undefined) dtOptions = $.extend({}, dtOptions, { order: [] });
   }
   // opts.clamp === false skips the clamp renderer entirely (2026-10-19): on a
   // DOM-sourced table any columns.render makes DataTables rewrite every
@@ -557,11 +572,13 @@ function initGlobalTable(tableSelector, dtOptions, opts) {
   }
 
   // Card-body spacing: a table sitting in a .card-body already gets 1rem of
-  // padding (app.css .card-body:has(table)). A table in a tab, or in a card
-  // without a .card-body, gets the same 1rem on its wrapper instead, so every
-  // Global Table has the same breathing room.
+  // padding (app.css .card-body:has(table)). A table in a tab, or in a card,
+  // WITHOUT a .card-body gets the same 1rem on its wrapper instead, so every
+  // Global Table has the same breathing room. A table in a tab that is
+  // inside a .card-body gets no extra padding (2026-11-08, Pankaj: in-tab
+  // tables used to get 2rem — card body + wrapper — instead of 1rem).
   var $wrap = $(dt.table().container());
-  if ($pane.length || ($wrap.closest('.card').length && !$wrap.closest('.card-body').length)) {
+  if (!$wrap.closest('.card-body').length && ($pane.length || $wrap.closest('.card').length)) {
     $wrap.addClass('gtable-tab-wrap');
     // Widths were measured before the padding existed — re-measure.
     dt.columns.adjust();

@@ -75,12 +75,14 @@
 </div>
 
 <div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table id="grnTable" class="table table-hover mb-0 small align-middle">
-        <thead class="table-dark">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>GRN Imports</span>
+  </div>
+  <div class="card-body">
+      <table id="grnTable" class="table table-hover align-middle mb-0">
+        <thead>
           <tr>
-            <th class="ps-3">GRN</th><th>Invoice Number</th><th>Date of Invoice</th>
+            <th>GRN</th><th>Invoice Number</th><th>Date of Invoice</th>
             <th>Vendor Name</th><th>Quantity</th><th>Stocked</th><th>Amount</th><th>Download</th><th>Action</th>
           </tr>
         </thead>
@@ -88,7 +90,7 @@
           {% set _hl = request.query_params.get('highlight') %}
           {% for g in grns %}
           <tr id="grn-{{ g.grn_number }}" class="{{ 'table-warning' if _hl and _hl == g.grn_number else '' }}">
-            <td class="ps-3"><span class="font-monospace fw-bold">{{ g.grn_number }}</span></td>
+            <td><span class="font-monospace fw-bold">{{ g.grn_number }}</span></td>
             <td>{{ g.invoice_number or '—' }}</td>
             <td>{{ g.invoice_date or '—' }}</td>
             <td>{{ g.sender_name or '—' }}</td>
@@ -131,12 +133,9 @@
               {% endif %}
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="10" class="text-center text-muted py-4">No GRN imports yet. Upload an invoice to begin.</td></tr>
           {% endfor %}
         </tbody>
       </table>
-    </div>
   </div>
 </div>
 
@@ -193,15 +192,14 @@ $(document).ready(function(){
     document.getElementById('cardDevicesPending').textContent = Math.max(0, qty - added);
   }
 
-  if ($('#grnTable tbody tr td').length > 1) {
-    dt = $('#grnTable').DataTable({pageLength: 12, order: []});
-    dt.on('draw.dt', function () {
-      refreshCards(dt.rows({search: 'applied'}).nodes().toArray());
-    });
+  dt = initGlobalTable('#grnTable', {
+    order: [],
+    language: { emptyTable: 'No GRN imports yet. Upload an invoice to begin.' },
+  });
+  dt.on('draw.dt', function () {
     refreshCards(dt.rows({search: 'applied'}).nodes().toArray());
-  } else {
-    refreshCards([]);
-  }
+  });
+  refreshCards(dt.rows({search: 'applied'}).nodes().toArray());
   if (dt) {
 
     // Date-range custom filter on the "Date of Invoice" column (index 2, ISO yyyy-mm-dd)

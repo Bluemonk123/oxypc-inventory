@@ -2,6 +2,7 @@
 {% block title %}Purchase Orders — OxyPC{% endblock %}
 {% block page_title %}Purchase Orders{% endblock %}
 {% block content %}
+{% import "_download_cell.html" as dl %}
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="d-flex gap-2">
     {% for s in ['','draft','issued','acknowledged','received','cancelled'] %}
@@ -11,7 +12,7 @@
     {% endfor %}
   </div>
   {% if can_edit %}
-  {% if can(current_user, 'crm_purchase_orders', 'add') %}<a href="/crm/purchase-orders/new" class="btn btn-success btn-sm"><i class="bi bi-plus-lg me-1"></i>New PO</a>{% endif %}
+  {% if can(current_user, 'crm_purchase_orders', 'add') %}<a href="/crm/purchase-orders/new" class="btn btn-success btn-sm"><i class="bi bi-plus-circle me-1"></i>Add PO</a>{% endif %}
   {% endif %}
 </div>
 <div class="card border-0 shadow-sm">
@@ -24,7 +25,7 @@
       <tbody>
         {% for po in pos %}
         <tr>
-          <td class="fw-semibold">{{ po.po_number }}</td>
+          <td class="fw-semibold"><a href="/crm/purchase-orders/{{ po.id }}" class="text-decoration-none">{{ po.po_number }}</a></td>
           <td>{{ po.contact.company_name if po.contact else '—' }}</td>
           <td>{{ po.deal.title[:40] if po.deal else '—' }}</td>
           <td>{{ po.po_date.strftime('%d-%m-%Y') if po.po_date else '—' }}</td>
@@ -35,9 +36,7 @@
             <span class="badge bg-{{ sc.get(po.status,'secondary') }}">{{ po.status|capitalize }}</span>
             <div class="mt-1">{% if po.verified %}<span class="badge bg-success" title="Verified by Accounts{{ ' — ' ~ po.verified_by if po.verified_by }}"><i class="bi bi-patch-check me-1"></i>Accounts Verified</span>{% else %}<span class="badge bg-warning text-dark" title="Awaiting Accounts verification">Accounts Pending</span>{% endif %}</div>
           </td>
-          <td>
-            {% if can(current_user, 'crm_purchase_orders', 'export') %}<a href="/crm/purchase-orders/{{ po.id }}/print" target="_blank" class="btn btn-sm btn-success"><i class="bi bi-download me-1"></i>Generate PO</a>{% endif %}
-          </td>
+          <td>{{ dl.cell(downloads.get(po.id|string) if can(current_user, 'crm_purchase_orders', 'export') else []) }}</td>
           <td>
             <a href="/crm/purchase-orders/{{ po.id }}" class="btn btn-sm btn-outline-primary">View</a>
             {% if can(current_user, 'crm_purchase_orders', 'export') %}<a href="/crm/purchase-orders/{{ po.id }}/print" target="_blank" class="btn btn-sm btn-outline-secondary"><i class="bi bi-printer"></i></a>{% endif %}

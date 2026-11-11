@@ -2,6 +2,13 @@
 {% block title %}Extended Warranty — OxyPC{% endblock %}
 {% block page_title %}Extended Warranty{% endblock %}
 {% block content %}
+<style>
+  /* Read-only lookup fields look read-only (2026-11-08). */
+  #warrantySetForm .ew-ro { background-color: var(--oxy-light, #f0f4f8); color: var(--oxy-text-main, #212529); cursor: default; }
+  #warrantySetForm .ew-ro:focus { box-shadow: none; border-color: var(--oxy-border, #ced4da); }
+  #warrantySetForm .ew-reset { color: #6c757d; border-color: var(--oxy-border, #ced4da); background: var(--oxy-surface, #fff); width: 38px; padding-left: 0; padding-right: 0; }
+  #warrantySetForm .ew-reset:hover { color: var(--oxy-label, #343a40); background: var(--oxy-light, #f0f4f8); }
+</style>
 {% if success %}<div class="alert alert-success">{{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger">{{ error }}</div>{% endif %}
 
@@ -10,31 +17,39 @@
   <div class="card-body">
     <form action="/extended-warranty/set" method="post" id="warrantySetForm">
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      {# 2026-11-08: Stock Type added after Lot Number; Lot / Stock Type /
+         Warranty Starts / Warranty Stops are read-only (filled by the tag
+         lookup); search button primary; Update labelled, blue outline; grey
+         icon Reset clears the form. #}
       <div class="row g-3 align-items-end">
         <div class="col-md-3">
           <label class="form-label fw-semibold">Tag Number</label>
           <div class="input-group">
             <input type="text" name="barcode" id="ewBarcode" class="form-control barcode-field font-monospace"
                    placeholder="Scan Tag Number" required autofocus>
-            <button type="button" class="btn btn-outline-primary" id="ewSearchBtn"><i class="bi bi-search"></i></button>
+            <button type="button" class="btn btn-primary" id="ewSearchBtn" title="Search tag"><i class="bi bi-search"></i></button>
           </div>
         </div>
-        <div class="col-md-2">
+        <div class="col-md">
           <label class="form-label">Lot Number</label>
-          <input type="text" id="ewLot" class="form-control" readonly>
+          <input type="text" id="ewLot" class="form-control ew-ro" readonly tabindex="-1">
         </div>
-        <div class="col-md-2">
+        <div class="col-md">
+          <label class="form-label">Stock Type</label>
+          <input type="text" id="ewStock" class="form-control ew-ro" readonly tabindex="-1">
+        </div>
+        <div class="col-md">
           <label class="form-label">Warranty Starts</label>
-          <input type="text" id="ewStarts" class="form-control" readonly placeholder="Date of mark sold">
+          <input type="text" id="ewStarts" class="form-control ew-ro" readonly tabindex="-1" placeholder="Date of mark sold">
         </div>
-        <div class="col-md-2">
-          <label class="form-label">Warranty Stops
+        <div class="col-md">
+          <label class="form-label text-nowrap">Warranty Stops
             <span id="ewStopsBadge" class="badge rounded-pill d-none ms-1"></span>
           </label>
-          <input type="text" id="ewStops" class="form-control" readonly>
+          <input type="text" id="ewStops" class="form-control ew-ro" readonly tabindex="-1">
         </div>
-        <div class="col-md-2">
-          <label class="form-label fw-semibold">Warranty (in days)</label>
+        <div class="col-md">
+          <label class="form-label fw-semibold text-nowrap">Warranty (in days)</label>
           <select name="warranty_type" id="ewWarrantyType" class="form-select" required>
             <option value="">-- Select --</option>
             {% for t in master_options('sale_warranty_type') %}
@@ -44,10 +59,11 @@
             {% endfor %}
           </select>
         </div>
-        <div class="col-md-1">
+        <div class="col-md-auto d-flex gap-2">
           {% if can(current_user, 'extended_warranty', 'edit') %}
-          <button type="submit" class="btn btn-warning w-100"><i class="bi bi-check2"></i></button>
+          <button type="submit" class="btn btn-outline-primary text-nowrap"><i class="bi bi-check2 me-1"></i>Update</button>
           {% endif %}
+          <button type="button" class="btn btn-outline-secondary ew-reset" id="ewResetBtn" title="Reset" aria-label="Reset"><i class="bi bi-arrow-counterclockwise"></i></button>
         </div>
       </div>
       <div id="ewMsg" class="mt-2"></div>
@@ -137,7 +153,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-$(document).ready(function(){ initGlobalTable('#warrantyTable', {pageLength: 15, language: {emptyTable: 'No sold devices with warranty found.'}}); });
+$(document).ready(function(){ initGlobalTable('#warrantyTable', {language: {emptyTable: 'No sold devices with warranty found.'}}); });
 
 var EW_CSRF = "{{ request.cookies.get('csrf_token','') }}";
 
@@ -161,6 +177,7 @@ function parseWarrantyDays(label){
   var barcodeInput = document.getElementById('ewBarcode');
   var searchBtn = document.getElementById('ewSearchBtn');
   var lotEl = document.getElementById('ewLot');
+  var stockEl = document.getElementById('ewStock');
   var startsEl = document.getElementById('ewStarts');
   var stopsEl = document.getElementById('ewStops');
   var stopsBadge = document.getElementById('ewStopsBadge');
@@ -227,6 +244,7 @@ function parseWarrantyDays(label){
       .then(function(d){
         if(d && d.found){
           lotEl.value = d.lot_number || '—';
+          stockEl.value = d.stock_type || '—';
           startsEl.value = d.sold_on || '—';
           startsIso = (d.sold_on && d.sold_on !== '—') ? d.sold_on.split('-').reverse().join('-') : null;
           msg.innerHTML = '';
@@ -243,7 +261,7 @@ function parseWarrantyDays(label){
             recomputeStops();
           }
         } else {
-          lotEl.value = ''; startsEl.value = ''; stopsEl.value = ''; startsIso = null;
+          lotEl.value = ''; stockEl.value = ''; startsEl.value = ''; stopsEl.value = ''; startsIso = null;
           updateStopsBadge(null, false);
           msg.innerHTML = '<div class="alert alert-danger py-2 px-3 small mb-0">' +
             (d.error || (val + ' not found, or not sold yet.')) + '</div>';
@@ -253,6 +271,13 @@ function parseWarrantyDays(label){
   searchBtn.addEventListener('click', search);
   barcodeInput.addEventListener('keydown', function(e){ if(e.key==='Enter'){ e.preventDefault(); search(); } });
   typeEl.addEventListener('change', recomputeStops);
+  // Reset (2026-11-08): clear the tag, the looked-up fields and the message.
+  document.getElementById('ewResetBtn').addEventListener('click', function(){
+    barcodeInput.value = ''; lotEl.value = ''; stockEl.value = ''; startsEl.value = '';
+    stopsEl.value = ''; typeEl.value = ''; startsIso = null; msg.innerHTML = '';
+    updateStopsBadge(null, false);
+    barcodeInput.focus();
+  });
 })();
 
 // Delegated so Update works on every DataTables page, not just the first.

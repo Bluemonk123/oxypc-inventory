@@ -94,23 +94,24 @@
 
 <!-- Never-located gaps -->
 {% if never_logged_detail %}
-<div class="card shadow-sm border-0">
-  <div class="card-header py-2 bg-secondary bg-opacity-10">
-    <strong><i class="bi bi-question-circle me-2 text-secondary"></i>Never Located
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span>
+      <span class="fw-semibold"><i class="bi bi-question-circle me-2"></i>Never Located</span>
       <span class="badge bg-secondary ms-2">{{ never_logged_detail | length }}</span>
-    </strong>
-    <span class="text-muted small ms-3">Active devices that have no location record at all</span>
+      <span class="text-muted small ms-3">Active devices that have no location record at all</span>
+    </span>
   </div>
-  <div class="card-body p-0">
-    <table class="table table-sm table-hover mb-0" id="neverTable">
-      <thead class="table-light">
+  <div class="card-body">
+    <table class="table table-hover align-middle mb-0" id="neverTable">
+      <thead>
         <tr>
           <th>Tag Number</th>
           <th>Device</th>
           <th>Stage</th>
           <th>Grade</th>
           <th>In System Since</th>
-          <th></th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody>
@@ -123,7 +124,7 @@
           </td>
           <td>{{ dev.grade.value if dev.grade else "—" }}</td>
           <td class="text-muted small">{{ dev.created_at.strftime('%d %b %Y') }}</td>
-          <td>
+          <td class="text-nowrap">
             <a href="/locations/device/{{ dev.id }}" class="btn btn-sm btn-outline-success py-0">
               Assign Location
             </a>
@@ -141,7 +142,10 @@
 {% block scripts %}
 <script>
 $(document).ready(function(){
-  $('#neverTable').DataTable({pageLength: 12, order:[[4,'asc']]});
+  initGlobalTable('#neverTable', {
+    order: [[4, 'asc']],
+    language: { emptyTable: 'Every active device has a location record.' },
+  });
 });
 </script>
 {% endblock %}

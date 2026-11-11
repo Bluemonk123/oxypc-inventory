@@ -10,7 +10,7 @@
 <div class="row g-3">
 
   {# ── Left: Device Table (2/3) ─────────────────────────────────────────── #}
-  <div class="col-12 col-lg-8">
+  <div class="col-12 col-lg-9">
     <div class="card border-0 shadow-sm">
       {# Global Table convention (static/js/global-table.js): icon-free
          title on the left, this table's own filter controls on the right
@@ -22,8 +22,7 @@
       <div class="card-header bg-transparent d-flex flex-wrap align-items-center justify-content-between gap-2">
         <span class="fw-semibold">Devices in Stress Test</span>
         <div class="d-flex flex-wrap align-items-center gap-2">
-          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
-            <i class="bi bi-clock-history me-1"></i>Search Tags</button>
+          {# Search Tags button removed (2026-11-09): the top-bar search opens the same modal. #}
           <div class="form-check form-check-inline mb-0">
             <input class="form-check-input" type="checkbox" id="qcFailedFqcFilter">
             <label class="form-check-label small" for="qcFailedFqcFilter">Failed from Final QC</label>
@@ -118,8 +117,8 @@
 
   </div>
 
-  {# ── Right: Stress Test Panel (1/3) ──────────────────────────────────── #}
-  <div class="col-12 col-lg-4">
+  {# ── Right: Stress Test Panel (1/4; 9/3 split 2026-11-09) ──────────────────────────────────── #}
+  <div class="col-12 col-lg-3">
     <div class="card border-0 shadow-sm stress-panel-card" id="stressPanel">
 
       <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between py-2">
@@ -215,7 +214,7 @@
 
 {# Pencil next to the Tag Number: quick spec edit (2026-10-26). #}
 {{ spec_edit_modal(with_grade=True) }}
-{% include "_search_tags_modal.html" %}
+{# Search Tags modal is included once by base.html (2026-11-08). #}
 {% endblock %}
 {% block scripts %}
 <script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
@@ -225,7 +224,13 @@
    (lg+ / >=992px) - below that breakpoint the columns stack and a sticky
    panel would float on top of the table underneath it instead. */
 @media (min-width: 992px) {
-  .stress-panel-card { position:sticky; top:16px; max-height:calc(100vh - 100px); overflow-y:auto; }
+  /* Only the part list scrolls (2026-11-09, Pankaj): the header, the device
+     label / All Pass row and the Save / Fail / Complete buttons stay put.
+     --full-vh allows for the app's global zoom. */
+  .stress-panel-card { position:sticky; top:16px; max-height:calc(var(--full-vh, 100vh) - 100px); display:flex; flex-direction:column; overflow:hidden; }
+  .stress-panel-card #stressPanelBody { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+  .stress-panel-card #stressActiveArea:not(.d-none) { flex:1 1 auto; min-height:0; display:flex; flex-direction:column; }
+  .stress-panel-card #stressChecklist { flex:1 1 auto; min-height:0; overflow-y:auto; padding-right:2px; }
 }
 .c-row { display:flex; align-items:center; gap:8px; background:#f8f9fa; border-radius:5px; padding:5px 8px; }
 .c-name { font-size:12px; color:#212529; font-weight:600; flex:1; }

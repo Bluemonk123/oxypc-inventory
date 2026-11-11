@@ -1,0 +1,11 @@
+<script>
+// Customer Deal Pricing (2026-11-10): Estimated Value = Required Qty x Budget Per Unit.
+document.addEventListener('input', function (e) {
+  var box = e.target.closest && e.target.closest('.cs-pricing');
+  if (!box || !e.target.matches('.cs-qty, .cs-budget')) return;
+  var q = parseFloat((box.querySelector('.cs-qty') || {}).value) || 0,
+      b = parseFloat((box.querySelector('.cs-budget') || {}).value) || 0,
+      est = box.querySelector('.cs-est');
+  if (est && !est.disabled && q > 0 && b > 0) est.value = (q * b).toFixed(2);
+});
+</script>

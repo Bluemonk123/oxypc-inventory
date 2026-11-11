@@ -30,16 +30,17 @@ from routers.crm_purchase_orders import _next_po_number
 from models.lot import Lot
 from models.device import Device, DeviceStage
 
+from services.crm_team import team_modal_context as _team_modal_ctx   # Team Mapping Edit (2026-11-11)
+
 router = APIRouter(prefix="/crm/sourcing", tags=["crm-sourcing"], dependencies=[Depends(verify_csrf)])
 
 PURCHASE_ROLES = (UserRole.admin, UserRole.inventory_manager, UserRole.sales_manager)
 
 
 async def _next_deal_number(db: AsyncSession) -> str:
-    result = await db.execute(select(func.count(CRMSourcingDeal.id)))
-    n = (result.scalar() or 0) + 1
-    year = app_now().year
-    return f"SD-{year}-{n:04d}"
+    """Supplier Deal ID SUPP-DEAL-<MMYYYY><NNNN> (2026-11-10, was SD-<year>-<n>)."""
+    from utils.quote_numbers import next_monthly_number, SUPPLIER_DEAL_BASE
+    return await next_monthly_number(db, CRMSourcingDeal.deal_number, SUPPLIER_DEAL_BASE, app_now().date())
 
 
 # ── LIST ─────────────────────────────────────────────────────────────────────
@@ -126,8 +127,10 @@ async def list_sourcing_deals(
         for po in po_r.scalars().all():
             latest_po_map.setdefault(str(po.deal_id), po)
 
+    from services.doc_downloads import sourcing_downloads   # Download column (2026-11-10)
+    downloads = await sourcing_downloads(db, deals)
     return templates.TemplateResponse("crm/sourcing/list.html", {
-        "request": request, "current_user": current_user,
+        "request": request, "current_user": current_user, "downloads": downloads,
         "deals": deals, "contacts_map": contacts_map,
         "pipeline_value": pipeline_value, "overdue_count": overdue_count,
         "line_totals_map": line_totals_map, "latest_po_map": latest_po_map,
@@ -141,6 +144,15 @@ async def list_sourcing_deals(
 
 
 # ── NEW ───────────────────────────────────────────────────────────────────────
+
+def _close_date(v):
+    """Expected Close Date from a yyyy-mm-dd form value, or None."""
+    from datetime import date as _d
+    try:
+        return _d.fromisoformat((v or "").strip()) if (v or "").strip() else None
+    except ValueError:
+        return None
+
 
 @router.get("/new", response_class=HTMLResponse)
 async def new_deal_form(
@@ -177,11 +189,13 @@ async def create_deal(
     asking_price_unit:   str = Form(default=None),
     asking_price_total:  str = Form(default=None),
     our_offer_unit:      str = Form(default=None),
-    payment_advance_pct: str = Form(default="0"),
+    payment_advance_pct: str = Form(default=None),   # field removed from the form 2026-11-10; kept if absent
+    expected_close_date: str = Form(default=""),     # Expected Close Date (2026-11-10)
     payment_terms:       str = Form(default=None),
     priority:            str = Form(default="medium"),
     assigned_to:         str = Form(default=None),
     notes:               str = Form(default=None),
+    from_entity:         str = Form(default=""),
     product_records:     UploadFile = File(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -217,8 +231,10 @@ async def create_deal(
     our_unit = _n(our_offer_unit)
     our_total = round(our_unit * qty, 2) if our_unit and qty else None
 
+    from utils.master_data import clean_from_entity
     deal = CRMSourcingDeal(
         deal_number=deal_number,
+        from_entity=await clean_from_entity(db, from_entity),
         contact_id=contact_id or None,
         title=title,
         source_type=source_type or None,
@@ -230,16 +246,22 @@ async def create_deal(
         our_offer_unit=our_unit,
         our_offer_total=our_total,
         payment_advance_pct=_i(payment_advance_pct) or 0,
+        expected_close_date=_close_date(expected_close_date),
         payment_terms=payment_terms or None,
         priority=priority,
         assigned_to=assigned_to or current_user.username,
         notes=notes or None,
         product_records_file=saved_filename,
         created_by=current_user.username,
-        stage="lead",
+        # 2026-11-10: Lead Generated is done on creation; Pricing Added too when
+        # prices were entered here (deal opens at Contacted), else it opens at Pricing Added.
+        stage="contacted" if (aq_unit or our_unit) else "pricing",
     )
     db.add(deal)
     await db.flush()   # get deal.id
+    if aq_unit or our_unit:   # Pricing entered on the Add page -> "Pricing Added" (2026-11-10)
+        from services.deal_pricing import record_pricing_saved
+        await record_pricing_saved(db, CRMSourcingStep, deal, current_user, prices_changed=False)
     await audit(db, action="CRM_DEAL_CREATED", user=current_user,
                 table_name="crm_sourcing_deals", record_id=str(deal.id),
                 new_value={"deal_number": deal_number, "title": title,
@@ -370,7 +392,10 @@ async def deal_detail(
     )).scalars().all()
     quote_rows = await quote_summary_rows(db, sd_quotes)
 
+    from services.record_history import record_history   # History card (2026-11-09)
+    _history = await record_history(db, deal.id)
     return templates.TemplateResponse("crm/sourcing/detail.html", {
+        "history": _history,
         "request": request, "current_user": current_user,
         "deal": deal, "contact": contact, "activities": activities,
         "purchase_orders": purchase_orders,
@@ -378,6 +403,7 @@ async def deal_detail(
         "deal_po_items_total": deal_po_items_total,
         "deal_po_items_offer_total": deal_po_items_offer_total,
         "companies": companies, "terms_by_type": terms_by_type, "quote_rows": quote_rows,
+        "latest_quote": sd_quotes[0] if sd_quotes else None,   # Stage Progress → Quote (2026-11-11)
         "deal_payments": deal_payments,
         "next_fu": next_fu, "lot": lot,
         "lot_registered": lot_registered,
@@ -390,6 +416,9 @@ async def deal_detail(
         "stage_labels": dict(SOURCING_STAGES),
         "source_map": dict(SOURCE_TYPES),
         "material_map": dict(MATERIAL_TYPES),
+        "material_types": MATERIAL_TYPES,   # Pricing card (2026-11-10)
+        "deal_team": await _deal_team(db, deal.contact_id),
+        **(await _team_modal_ctx(db, deal.contact_id)),   # Team Mapping Edit (2026-11-11)   # Team Mapping section (2026-11-10)
         "now": app_now(),
     })
 
@@ -412,6 +441,7 @@ async def move_stage(
     if not deal:
         return RedirectResponse(url="/crm/sourcing?error=Deal+not+found", status_code=302)
 
+    _old_stage = deal.stage
     deal.stage = new_stage
     if win_loss_reason:
         deal.win_loss_reason = win_loss_reason
@@ -440,6 +470,11 @@ async def move_stage(
         outcome="done",
     )
     db.add(activity)
+    # History card (2026-11-09): every stage change on the deal is audited.
+    await audit(db, action="CRM_SOURCING_STAGE_MOVED", user=current_user,
+                table_name="crm_sourcing_deals", record_id=str(deal.id),
+                old_value={"stage": _old_stage}, new_value={"stage": new_stage,
+                "win_loss_reason": deal.win_loss_reason}, request=request)
     await db.commit()
     return RedirectResponse(url=f"/crm/sourcing/{deal_id}?success=Stage+updated", status_code=302)
 
@@ -526,19 +561,25 @@ async def decide_step(
     request: Request, deal_id: str, step_key: str,
     decision: str = Form(...),
     note: str = Form(default=""),
+    return_to: str = Form(default=""),   # Activity Board approvals tabs (2026-11-10)
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """Approve / Reject an approval item. Only the assigned approver (or an
-    admin) may decide; the remark is kept on the step and in the Activity Log."""
+    admin) may decide; the remark is kept on the step and in the Activity Log.
+    A rejected Negotiation Level 1 sends the deal back to Pricing Approval
+    (services/deal_pricing.py)."""
+    from services.deal_pricing import on_step_decided, safe_return, back_to
+    _ret = safe_return(return_to)
+    _bk = (lambda _id, msg, ok=True: back_to(_ret, msg, ok)) if _ret else _back
     deal, step = await _deal_and_step(db, deal_id, step_key)
     if not deal or not step or SOURCING_STEP_INDEX[step_key][2] != "approval":
-        return _back(deal_id, "Approval not found", ok=False)
+        return _bk(deal_id, "Approval not found", ok=False)
     role = getattr(current_user.role, "value", current_user.role)
     if step.assigned_to != current_user.username and role != "admin":
-        return _back(deal_id, "Only the assigned approver can approve or reject", ok=False)
+        return _bk(deal_id, "Only the assigned approver can approve or reject", ok=False)
     if decision not in ("approved", "rejected"):
-        return _back(deal_id, "Choose Approve or Reject", ok=False)
+        return _bk(deal_id, "Choose Approve or Reject", ok=False)
     old = {"status": step.status, "note": step.note}
     step.status = decision
     step.note = (note or "").strip() or None
@@ -548,11 +589,33 @@ async def decide_step(
     stage_label = dict(SOURCING_STAGES).get(stage, stage)
     db.add(_note(deal, current_user, f"{stage_label} — {label}: {decision.title()}"
                                      + (f" — {step.note}" if step.note else "")))
+    moved = await on_step_decided(db, CRMSourcingStep, deal, step_key, decision, current_user)
+    if moved:
+        db.add(_note(deal, current_user, "Negotiation rejected — deal moved back to Pricing Approval"))
+    # Approved on the Activity Board and every level of the stage approved ->
+    # the stage is Done and the deal moves on (2026-11-11)
+    if _ret and decision == "approved":
+        from services.stage_advance import advance, all_approvals_done
+        _stage = SOURCING_STEP_INDEX.get(step_key, (None,))[0]
+        if _stage and await all_approvals_done(db, CRMSourcingStep, deal.id, _stage, SOURCING_STAGE_STEPS):
+            _mv = advance(deal, _stage, SOURCING_STAGES)
+            if _mv:
+                moved = _mv[1]
+                db.add(_note(deal, current_user, f"Stage moved to: {dict(SOURCING_STAGES).get(_mv[1], _mv[1])} (approved on Activity Board)"))
+                from services.stage_advance import reopen_approvals
+                if await reopen_approvals(db, CRMSourcingStep, deal.id, _mv[1], SOURCING_STAGE_STEPS):
+                    db.add(_note(deal, current_user, f"{dict(SOURCING_STAGES).get(_mv[1], _mv[1])} approvals reset to Pending — approve again"))
     await audit(db, action="CRM_SOURCING_STEP_DECIDED", user=current_user,
                 table_name="crm_sourcing_steps", record_id=str(deal.id), old_value=old,
-                new_value={"step": step_key, "status": decision, "note": step.note}, request=request)
+                new_value={"step": step_key, "status": decision, "note": step.note,
+                           **({"stage": moved} if moved else {})}, request=request)
     await db.commit()
-    return _back(deal_id, f"{label} {decision}")
+    _tail = ""
+    if moved == "pricing_approval" and decision == "rejected":
+        _tail = " — back to Pricing Approval"
+    elif moved:
+        _tail = f" — moved to {dict(SOURCING_STAGES).get(moved, moved)}"
+    return _bk(deal_id, f"{label} {decision}" + _tail)
 
 
 @router.post("/{deal_id}/steps/{step_key}/attach")
@@ -630,6 +693,10 @@ async def next_stage(
     deal.stage = new
     labels = dict(SOURCING_STAGES)
     text = f"Stage moved to: {labels.get(new, new)}"
+    # entering a stage asks its approvals again (2026-11-11)
+    from services.stage_advance import reopen_approvals
+    if new not in ("won", "lost") and await reopen_approvals(db, CRMSourcingStep, deal.id, new, SOURCING_STAGE_STEPS):
+        text += " — its approvals reset to Pending"
     if new in ("won", "lost") and deal.win_loss_reason:
         text += f" — {deal.win_loss_reason}"
     db.add(_note(deal, current_user, text))
@@ -683,11 +750,13 @@ async def update_deal(
     asking_price_total:  str = Form(default=None),
     our_offer_unit:      str = Form(default=None),
     our_offer_total:     str = Form(default=None),
-    payment_advance_pct: str = Form(default="0"),
+    payment_advance_pct: str = Form(default=None),   # field removed from the form 2026-11-10; kept if absent
+    expected_close_date: str = Form(default=""),     # Expected Close Date (2026-11-10)
     payment_terms:       str = Form(default=None),
     priority:            str = Form(default="medium"),
     assigned_to:         str = Form(default=None),
     notes:               str = Form(default=None),
+    from_entity:         str = Form(default=""),
     product_records:     UploadFile = File(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -714,11 +783,14 @@ async def update_deal(
             deal.product_records_file = safe_name
 
     deal.title = title
+    from utils.master_data import clean_from_entity
+    deal.from_entity = await clean_from_entity(db, from_entity, deal.from_entity)
     deal.contact_id = contact_id or None
     deal.source_type = source_type or None
     deal.device_type = device_type or None
     deal.est_quantity = _i(est_quantity)
     deal.material_type = material_type or None
+    _before = _price_snapshot(deal)
     from utils.price_export import price_unchanged as _pu   # Pricing Add (2026-11-03)
     if not _pu(current_user, 'crm_sourcing', asking_price_unit):
         deal.asking_price_unit = _n(asking_price_unit)
@@ -728,13 +800,89 @@ async def update_deal(
         deal.our_offer_unit = _n(our_offer_unit)
     if not _pu(current_user, 'crm_sourcing', our_offer_total):
         deal.our_offer_total = _n(our_offer_total)
-    deal.payment_advance_pct = _i(payment_advance_pct) or 0
+    if payment_advance_pct is not None:
+        deal.payment_advance_pct = _i(payment_advance_pct) or 0
+    deal.expected_close_date = _close_date(expected_close_date)
     deal.payment_terms = payment_terms or None
     deal.priority = priority
     deal.assigned_to = assigned_to
     deal.notes = notes or None
+    if _price_snapshot(deal) != _before or deal.asking_price_unit or deal.our_offer_unit:
+        from services.deal_pricing import record_pricing_saved
+        await record_pricing_saved(db, CRMSourcingStep, deal, current_user,
+                                   prices_changed=_price_snapshot(deal) != _before)
+    await audit(db, action="CRM_SOURCING_DEAL_EDITED", user=current_user,
+                table_name="crm_sourcing_deals", record_id=str(deal.id),
+                new_value={"title": deal.title, "priority": deal.priority, "from_entity": deal.from_entity,
+                           "assigned_to": deal.assigned_to}, request=request)
     await db.commit()
     return RedirectResponse(url=f"/crm/sourcing/{deal_id}?success=Deal+updated", status_code=302)
+
+
+def _price_snapshot(deal):
+    """The pricing values that resubmit Pricing Approval when they change."""
+    f = lambda v: None if v is None else round(float(v), 2)  # noqa: E731
+    return (deal.est_quantity, f(deal.asking_price_unit), f(deal.asking_price_total),
+            f(deal.our_offer_unit), f(deal.our_offer_total))
+
+
+@router.post("/{deal_id}/pricing")
+async def save_pricing(
+    request: Request, deal_id: str,
+    device_type:        str = Form(default=None),
+    est_quantity:       str = Form(default=None),
+    material_type:      str = Form(default=None),
+    asking_price_unit:  str = Form(default=None),
+    asking_price_total: str = Form(default=None),
+    our_offer_unit:     str = Form(default=None),
+    our_offer_total:    str = Form(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pricing card on the deal page (2026-11-10, Pankaj): same fields as the
+    Add page's Pricing card. Saving marks "Pricing Added"; a price change
+    resubmits Pricing Approval to its approver (services/deal_pricing.py)."""
+    deal = (await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.id == deal_id))).scalar_one_or_none()
+    if not deal:
+        return RedirectResponse(url="/crm/sourcing?error=Not+found", status_code=302)
+
+    def _n(v):
+        try:
+            return round(float(v), 2) if v and v.strip() else None
+        except ValueError:
+            return None
+
+    def _i(v):
+        try:
+            return int(float(v)) if v and v.strip() else None
+        except ValueError:
+            return None
+
+    before = _price_snapshot(deal)
+    deal.device_type = device_type or None
+    deal.est_quantity = _i(est_quantity)
+    deal.material_type = material_type or None
+    from utils.price_export import price_unchanged as _pu
+    for col, val in (("asking_price_unit", asking_price_unit), ("our_offer_unit", our_offer_unit)):
+        if not _pu(current_user, 'crm_sourcing', val):
+            setattr(deal, col, _n(val))
+    # totals always follow unit x quantity (server-side, never the client's total)
+    q = deal.est_quantity or 0
+    deal.asking_price_total = round(float(deal.asking_price_unit) * q, 2) if deal.asking_price_unit is not None and q else (
+        deal.asking_price_total if _pu(current_user, 'crm_sourcing', asking_price_total) else _n(asking_price_total))
+    deal.our_offer_total = round(float(deal.our_offer_unit) * q, 2) if deal.our_offer_unit is not None and q else (
+        deal.our_offer_total if _pu(current_user, 'crm_sourcing', our_offer_total) else _n(our_offer_total))
+    changed = _price_snapshot(deal) != before
+    from services.deal_pricing import record_pricing_saved
+    resubmitted = await record_pricing_saved(db, CRMSourcingStep, deal, current_user, prices_changed=changed)
+    db.add(_note(deal, current_user, "Pricing updated" + (" — resubmitted for Pricing Approval" if resubmitted else "")))
+    await audit(db, action="CRM_SOURCING_PRICING_SAVED", user=current_user,
+                table_name="crm_sourcing_deals", record_id=str(deal.id),
+                old_value={"pricing": [str(x) for x in before]},
+                new_value={"pricing": [str(x) for x in _price_snapshot(deal)], "resubmitted": resubmitted},
+                request=request)
+    await db.commit()
+    return _back(deal_id, "Pricing saved" + (" — sent for Pricing Approval again" if resubmitted else ""))
 
 
 # ── LINK LOT ─────────────────────────────────────────────────────────────────
@@ -821,6 +969,9 @@ async def link_lot(
         performed_by=current_user.username, outcome="done",
     )
     db.add(activity)
+    await audit(db, action="CRM_SOURCING_LOT_LINKED", user=current_user,
+                table_name="crm_sourcing_deals", record_id=str(deal.id),
+                new_value={"lot_id": str(lot_id), "stage": "received"}, request=request)
     await db.commit()
     return RedirectResponse(url=f"/crm/sourcing/{deal_id}?success=Linked+to+Lot+%26+marked+Received", status_code=302)
 
@@ -955,6 +1106,7 @@ async def generate_po_from_deal(
         po = CRMPurchaseOrder(
             po_number=await _next_po_number(db),
             deal_id=deal.id, contact_id=deal.contact_id,
+            from_entity=deal.from_entity,
             supplier_gstin=(contact.gstin if contact else None),
             total_amount=total, status="draft", created_by=username,
             # Our offer (sum of the line items' Offer Price) — shown as Offer
@@ -982,6 +1134,12 @@ async def generate_po_from_deal(
         break
     if po is None:
         return RedirectResponse(url=f"/crm/sourcing/{deal_id}?error=Could+not+generate+PO+number", status_code=302)
+    # History card (2026-11-09): the new PO is recorded on both the deal and the PO.
+    for _tbl, _rid in (("crm_sourcing_deals", deal.id), ("crm_purchase_orders", po.id)):
+        await audit(db, action="CRM_PO_GENERATED", user=current_user, table_name=_tbl,
+                    record_id=str(_rid), new_value={"po_number": po.po_number, "deal_id": str(deal.id)},
+                    request=request)
+    await db.commit()
 
     # Gather company + the specific term chosen per section (falls back to
     # every active policy of that type if somehow no id was picked but the
@@ -999,7 +1157,7 @@ async def generate_po_from_deal(
             return [row] if row else []
         return await get_active_terms(db, kind)
 
-    company = await get_company_settings(db, (form.get("company_id") or "").strip())
+    company = await get_company_settings(db, (form.get("company_id") or "").strip(), entity=deal.from_entity)
     payment_terms  = await _chosen_term("payment",    sections["payment"])
     delivery_terms = await _chosen_term("delivery",   sections["delivery"])
     disclaimers    = await _chosen_term("disclaimer", sections["conditions"])
@@ -1042,7 +1200,7 @@ async def download_deal_po(
     if not po:
         return RedirectResponse(url=f"/crm/sourcing/{deal_id}?error=No+PO+generated+yet", status_code=302)
 
-    company = await get_company_settings(db)
+    company = await get_company_settings(db, entity=(po.from_entity or deal.from_entity))   # From Entity's company (2026-11-10)
     payment_terms  = await get_active_terms(db, "payment")
     delivery_terms = await get_active_terms(db, "delivery")
     disclaimers    = await get_active_terms(db, "disclaimer")
@@ -1059,3 +1217,8 @@ async def download_deal_po(
         content=pdf_bytes, media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+async def _deal_team(db, contact_id):
+    from services.crm_team import deal_team
+    return await deal_team(db, contact_id)

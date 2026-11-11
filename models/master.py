@@ -378,6 +378,7 @@ MASTER_SEED = {
     ],
     "crm_buyer_type": ["corp_buyer", "dealer", "online_seller", "export", "retail", "gov"],
     "crm_priority": ["low", "medium", "high", "urgent"],
+    "crm_credit_days": ["10", "15", "30", "45", "60"],   # Accounts: Credit Days (2026-11-10)
     "crm_activity_type": ["call", "whatsapp", "visit", "email", "meeting", "note"],
     "crm_activity_outcome": [
         "interested", "not_interested", "callback", "order_placed",

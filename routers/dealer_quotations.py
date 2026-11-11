@@ -6,7 +6,7 @@ items, never trusted from the client."""
 from decimal import Decimal, InvalidOperation
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 
@@ -86,9 +86,10 @@ async def create_dealer_quotation(
     if not items:
         return RedirectResponse(url=f"{back}?error=Add+at+least+one+line+item", status_code=302)
 
-    count_result = await db.execute(select(func.count(DealerQuotation.id)))
-    seq = (count_result.scalar() or 0) + 1
-    quote_number = f"QTN-{seq:04d}"
+    # QT-TELE-<MMYYYY><NNNN> (2026-11-10, utils/quote_numbers.py)
+    from utils.quote_numbers import next_quote_number
+    from utils.timezone import app_now
+    quote_number = await next_quote_number(db, DealerQuotation.quote_number, "TELE", app_now().date())
 
     company = await get_company_settings(db)
 
@@ -110,7 +111,7 @@ async def create_dealer_quotation(
         additional_notes=additional_notes or None,
         total_quantity=total_quantity,
         total_price=total_price,
-        status="shared",
+        status="added",
         created_by=current_user.username,
     )
     db.add(quotation)
@@ -121,7 +122,7 @@ async def create_dealer_quotation(
 
     await audit(
         db, user=current_user, action="DEALER_QUOTATION_CREATED",
-        table_name="dealer_quotations", record_id=quotation.quote_number,
+        table_name="dealer_quotations", record_id=str(quotation.id),
         new_value={"dealer_id": str(dealer.id), "total_quantity": total_quantity, "total_price": str(total_price)},
         request=request,
     )
@@ -129,33 +130,145 @@ async def create_dealer_quotation(
     return RedirectResponse(url=f"{back}?success=Quotation+{quote_number}+created", status_code=302)
 
 
-@router.post("/dealer-quotations/{quotation_id}/confirm")
-async def confirm_dealer_quotation(
+def _safe_back(return_to: str, default: str = "/quotations") -> str:
+    """Only a local path (never another site) is used to come back."""
+    rt = (return_to or "").strip()
+    return rt if rt.startswith("/") and not rt.startswith("//") else default
+
+
+def _with(url: str, key: str, msg: str) -> str:
+    from urllib.parse import quote_plus
+    return f"{url}{'&' if '?' in url else '?'}{key}={quote_plus(msg)}"
+
+
+# ── Status (2026-11-10, Pankaj) ──────────────────────────────────────────────
+# Added -> Negotiation -> Approved / Rejected (Level 1, TeleSales Dashboard) or
+# Expired. Negotiation / Expired are set from the Quotations table; Approve /
+# Reject only by the creator's Report To hierarchy (or admin).
+
+@router.post("/dealer-quotations/{quotation_id}/status")
+async def set_dealer_quotation_status(
     request: Request,
     quotation_id: str,
-    return_to: str = Form(default="/dealers"),
+    new_status: str = Form(...),
+    return_to: str = Form(default="/quotations"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_sales),
 ):
-    from utils.timezone import app_now
+    back = _safe_back(return_to)
     quotation = (await db.execute(
-        select(DealerQuotation).where(DealerQuotation.id == quotation_id)
-    )).scalar_one_or_none()
+        select(DealerQuotation).where(DealerQuotation.id == quotation_id))).scalar_one_or_none()
     if not quotation:
-        return RedirectResponse(url=f"{return_to}?error=Quotation+not+found", status_code=302)
-
-    quotation.status = "confirmed"
-    quotation.confirmed_by = current_user.username
-    quotation.confirmed_at = app_now()
-
-    await audit(
-        db, user=current_user, action="DEALER_QUOTATION_CONFIRMED",
-        table_name="dealer_quotations", record_id=quotation.quote_number,
-        new_value={"status": "confirmed"}, request=request,
-    )
+        return RedirectResponse(url=_with(back, "error", "Quotation not found"), status_code=302)
+    allowed = {"added": ("negotiation", "expired"), "negotiation": ("expired",)}
+    if new_status not in allowed.get(quotation.status, ()):
+        return RedirectResponse(url=_with(back, "error", f"{quotation.quote_number} cannot move to {new_status.title()}"),
+                                status_code=302)
+    old = quotation.status
+    quotation.status = new_status
+    await audit(db, user=current_user, action="DEALER_QUOTATION_STATUS",
+                table_name="dealer_quotations", record_id=str(quotation.id),
+                old_value={"status": old}, new_value={"status": new_status}, request=request)
     await db.commit()
-    sep = "&" if "?" in return_to else "?"
-    return RedirectResponse(url=f"{return_to}{sep}success=Quotation+{quotation.quote_number}+confirmed", status_code=302)
+    return RedirectResponse(url=_with(back, "success", f"{quotation.quote_number} moved to {new_status.title()}"),
+                            status_code=302)
+
+
+@router.post("/dealer-quotations/{quotation_id}/decision")
+async def decide_dealer_quotation(
+    request: Request,
+    quotation_id: str,
+    decision: str = Form(...),          # approve / reject
+    return_to: str = Form(default="/telesales-dashboard"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_sales),
+):
+    """Level 1 approval: admin, or anyone above the creator in Report To."""
+    from services.report_chain import can_approve
+    from utils.timezone import app_now
+    back = _safe_back(return_to, "/telesales-dashboard")
+    quotation = (await db.execute(
+        select(DealerQuotation).where(DealerQuotation.id == quotation_id))).scalar_one_or_none()
+    if not quotation:
+        return RedirectResponse(url=_with(back, "error", "Quotation not found"), status_code=302)
+    if quotation.status not in ("added", "negotiation") or decision not in ("approve", "reject"):
+        return RedirectResponse(url=_with(back, "error", f"{quotation.quote_number} is not waiting for approval"),
+                                status_code=302)
+    if not await can_approve(db, current_user, quotation.created_by):
+        return RedirectResponse(url=_with(back, "error", "Only the creator's Report To managers can approve this quotation"),
+                                status_code=302)
+    old = quotation.status
+    quotation.status = "approved" if decision == "approve" else "rejected"
+    quotation.confirmed_by = current_user.username      # Level 1 decision by / at
+    quotation.confirmed_at = app_now()
+    await audit(db, user=current_user, action="DEALER_QUOTATION_" + ("APPROVED" if decision == "approve" else "REJECTED"),
+                table_name="dealer_quotations", record_id=str(quotation.id),
+                old_value={"status": old}, new_value={"status": quotation.status, "level": 1}, request=request)
+    await db.commit()
+    return RedirectResponse(url=_with(back, "success", f"{quotation.quote_number} {quotation.status}"), status_code=302)
+
+
+@router.get("/dealer-quotations/{quotation_id}", response_class=HTMLResponse)
+async def dealer_quotation_detail(
+    request: Request,
+    quotation_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_sales),
+):
+    """Telecalling Quotation detail page (2026-11-10, Pankaj): dealer, lines,
+    status, Level 1 decision, Download once approved, History."""
+    try:
+        quotation = (await db.execute(
+            select(DealerQuotation).where(DealerQuotation.id == quotation_id))).scalar_one_or_none()
+    except Exception:
+        quotation = None
+    if not quotation:
+        return RedirectResponse(url="/quotations?error=Quotation+not+found", status_code=302)
+    items = (await db.execute(select(DealerQuotationItem).where(DealerQuotationItem.quotation_id == quotation.id)
+                              .order_by(DealerQuotationItem.sort_order))).scalars().all()
+    from services.report_chain import can_approve
+    from services.record_history import record_history
+    creator_name = (await db.execute(select(User.full_name).where(User.username == quotation.created_by))).scalar_one_or_none()
+    from templates_config import templates
+    return templates.TemplateResponse("dealers/quotation_detail.html", {
+        "request": request, "current_user": current_user, "q": quotation, "items": items,
+        "creator_name": creator_name,
+        "can_decide": quotation.status in ("added", "negotiation") and await can_approve(db, current_user, quotation.created_by),
+        "history": await record_history(db, quotation.id),
+    })
+
+
+@router.get("/dealer-quotations/{quotation_id}/print", response_class=HTMLResponse)
+async def print_dealer_quotation(
+    request: Request,
+    quotation_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_sales),
+):
+    """Download "Quote" (2026-11-10): printable quotation, only once approved."""
+    quotation = (await db.execute(
+        select(DealerQuotation).where(DealerQuotation.id == quotation_id))).scalar_one_or_none()
+    if not quotation or quotation.status != "approved":
+        return RedirectResponse(url="/quotations?error=" + ("Quotation+not+found" if not quotation else
+                                "Only+approved+quotations+can+be+downloaded"), status_code=302)
+    items = (await db.execute(select(DealerQuotationItem).where(DealerQuotationItem.quotation_id == quotation.id)
+                              .order_by(DealerQuotationItem.sort_order))).scalars().all()
+    # Company details: the Company Setting company of the creator's entity
+    # (2026-11-10); the details saved on the quotation are the fallback.
+    creator_entity = (await db.execute(select(User.entity).where(User.username == quotation.created_by))).scalar_one_or_none()
+    company = None
+    if creator_entity:
+        from routers.settings import get_company_settings as _gcs
+        from models.company import Company
+        if (await db.execute(select(Company.id).where(Company.is_active == True, Company.company_entity == creator_entity))).first():
+            company = await _gcs(db, entity=creator_entity)
+    if not company:
+        company = {"name": quotation.company_name or "", "address": quotation.company_address or "",
+                   "gstin": quotation.company_gstin or "", "phone": quotation.company_phone or "",
+                   "email": quotation.company_email or ""}
+    from templates_config import templates
+    return templates.TemplateResponse("dealers/quotation_print.html", {
+        "request": request, "current_user": current_user, "q": quotation, "items": items, "company": company})
 
 
 @router.post("/dealer-quotations/{quotation_id}/delete")
@@ -174,7 +287,7 @@ async def delete_dealer_quotation(
 
     await audit(
         db, user=current_user, action="DEALER_QUOTATION_DELETED",
-        table_name="dealer_quotations", record_id=quotation.quote_number,
+        table_name="dealer_quotations", record_id=str(quotation.id),
         old_value={"status": quotation.status, "dealer_id": str(quotation.dealer_id)},
         request=request,
     )

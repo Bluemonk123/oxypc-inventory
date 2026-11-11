@@ -860,6 +860,7 @@ Table stock_transfers {
 // ── crm_contacts ─────────────────────────────────────────────
 Table crm_contacts {
   id uuid [pk, not null]
+  from_entity varchar(100) [note: 'From Entity - issuing company entity; defaults to the creator entity (approved 2026-11-10)']
   contact_code varchar(20) [not null, unique, note: 'indexed']
   contact_type varchar(20) [default: 'supplier']
   company_name varchar(200) [not null, note: 'indexed']
@@ -876,6 +877,7 @@ Table crm_contacts {
   source_type varchar(30)
   buyer_type varchar(30)
   credit_limit decimal(14,2) [default: 0]
+  credit_days integer [note: 'Credit Days (Master Data crm_credit_days), 2026-11-10']
   outstanding decimal(14,2) [default: 0]
   tags varchar(300)
   notes text
@@ -904,6 +906,7 @@ Ref: crm_contact_numbers.contact_id > crm_contacts.id
 // ── crm_sourcing_deals ───────────────────────────────────────
 Table crm_sourcing_deals {
   id uuid [pk, not null]
+  from_entity varchar(100) [note: 'From Entity - issuing company entity; defaults to the creator entity (approved 2026-11-10)']
   deal_number varchar(30) [not null, unique, note: 'indexed']
   contact_id uuid [note: 'indexed']
   title varchar(300) [not null]
@@ -922,6 +925,7 @@ Table crm_sourcing_deals {
   inspection_result varchar(20)
   inspection_notes text
   expected_pickup_date date
+  expected_close_date date [note: 'Expected Close Date, 2026-11-10']
   payment_advance_pct int [default: 0]
   payment_terms text
   linked_lot_id uuid
@@ -942,6 +946,7 @@ Table crm_sourcing_deals {
 // ── crm_sales_opportunities ──────────────────────────────────
 Table crm_sales_opportunities {
   id uuid [pk, not null]
+  from_entity varchar(100) [note: 'From Entity - issuing company entity; defaults to the creator entity (approved 2026-11-10)']
   opp_number varchar(30) [not null, unique, note: 'indexed']
   contact_id uuid [note: 'indexed']
   title varchar(300) [not null]
@@ -968,6 +973,7 @@ Table crm_sales_opportunities {
 // ── crm_quotes ───────────────────────────────────────────────
 Table crm_quotes {
   id uuid [pk, not null]
+  from_entity varchar(100) [note: 'From Entity - issuing company entity; defaults to the creator entity (approved 2026-11-10)']
   quote_number varchar(30) [not null, unique, note: 'indexed']
   contact_id uuid [note: 'indexed']
   quote_date date [default: `now()`]
@@ -1035,6 +1041,7 @@ Table crm_grade_price_matrix {
 // ── crm_purchase_orders ──────────────────────────────────────
 Table crm_purchase_orders {
   id uuid [pk, not null]
+  from_entity varchar(100) [note: 'From Entity - issuing company entity; defaults to the creator entity (approved 2026-11-10)']
   po_number varchar(30) [not null, unique, note: 'indexed']
   deal_id uuid
   contact_id uuid [note: 'indexed']

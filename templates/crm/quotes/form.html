@@ -2,6 +2,7 @@
 {% block title %}{{ 'Edit' if quote else 'New' }} Quote — OxyPC{% endblock %}
 {% block page_title %}{{ 'Edit Quote' if quote else 'New Quote' }}{% endblock %}
 {% block content %}
+{% import "_from_entity_field.html" as fe with context %}
 
 <div class="row justify-content-center">
 <div class="col-xl-11">
@@ -21,16 +22,18 @@
   <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-file-earmark-text me-2 text-success"></i>Quote Details</div>
   <div class="card-body">
     <div class="row g-3">
-      {# Row 1: Contact Type + Account Name (2026-11-01) #}
-      <div class="col-md-4">
+      {# Row 1: From Entity + Contact Type + For Account Name (From Entity 2026-11-10) #}
+      {{ fe.field(quote.from_entity if quote else None, 'col-md-3') }}
+      <div class="col-md-3">
         <label class="form-label fw-semibold">Contact Type <span class="text-danger">*</span></label>
         <select id="qContactType" name="quote_kind" class="form-select" required>
-          <option value="buyer" {% if not sourcing_deal_id %}selected{% endif %}>Buyer</option>
-          <option value="supplier" {% if sourcing_deal_id %}selected{% endif %}>Supplier</option>
+          {% set _sup = sourcing_deal_id or edit_kind == 'supplier' %}
+          <option value="buyer" {% if not _sup %}selected{% endif %}>Buyer</option>
+          <option value="supplier" {% if _sup %}selected{% endif %}>Supplier</option>
         </select>
       </div>
-      <div class="col-md-8">
-        <label class="form-label fw-semibold">Account Name <span class="text-danger">*</span></label>
+      <div class="col-md-6">
+        <label class="form-label fw-semibold">For Account Name <span class="text-danger">*</span></label>
         <select name="contact_id" id="qAccount" class="form-select" required>
           <option value="">— Select Account —</option>
           {% for c in contacts %}
@@ -221,7 +224,7 @@
 </template>
 {% endblock %}
 {% block scripts %}
-{% if not opp_id and not sourcing_deal_id %}
+{% if not opp_id and not sourcing_deal_id and not quote %}
 <div class="modal fade" id="askDealModal" tabindex="-1" data-bs-backdrop="static"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
   <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-briefcase me-1"></i>Create Deal</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
   <div class="modal-body"><p class="mb-1">Do you want to create a Deal now?</p>
@@ -267,7 +270,7 @@
     var v = t.value;
     Array.prototype.forEach.call(a.options, function (o) {
       if (!o.value) return;
-      var ok = o.dataset.type === v || o.dataset.type === 'both';
+      var ok = o.dataset.type === v || o.dataset.type === 'both' || !o.dataset.type;   // no type set: show under both
       o.hidden = !ok; o.disabled = !ok;
       if (!ok && o.selected) a.value = '';
     });

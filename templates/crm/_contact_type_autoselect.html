@@ -1,0 +1,17 @@
+<script>
+// Buyer / Supplier Type follows the chosen Account (2026-11-10, Pankaj):
+// picking a Contact sets the Type to that Account's Source / Buyer Type.
+(function () {
+  var c = document.querySelector('select[data-type-target]');
+  if (!c) return;
+  var t = document.querySelector('select[name="' + c.dataset.typeTarget + '"]');
+  if (!t) return;
+  function apply(force) {
+    var o = c.options[c.selectedIndex], v = o ? (o.getAttribute('data-type') || '') : '';
+    if (!v || ![].some.call(t.options, function (x) { return x.value === v; })) return;
+    if (force || !t.value) t.value = v;
+  }
+  c.addEventListener('change', function () { apply(true); });
+  apply(false);
+})();
+</script>

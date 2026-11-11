@@ -2,6 +2,7 @@
 {% block title %}Sourcing Deals — OxyPC{% endblock %}
 {% block page_title %}Sourcing Deals{% endblock %}
 {% block content %}
+{% import "_download_cell.html" as dl %}
 
 
 <!-- Summary tiles: dark single-count tiles (2026-11-06, _tiles.html) -->
@@ -45,7 +46,7 @@
       <a href="/crm/sourcing" class="btn btn-sm btn-outline-secondary">Clear</a>
       {% endif %}
     </form>
-    {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-plus-circle me-1"></i>New Deal</a>{% endif %}
+    {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-plus-circle me-1"></i>Add Deal</a>{% endif %}
     </div>
   </div>
   <div class="card-body p-0">
@@ -102,36 +103,7 @@
               <span class="badge bg-{{ priority_colors.get(d.priority,'secondary') }}">{{ d.priority | title }}</span>
             </td>
             <td class="small">{{ d.assigned_to or '—' }}</td>
-            {% set has_po = latest_po_map.get(d.id|string) %}
-            {% set has_any_file = has_po or d.purchase_invoice_path or d.purchase_order_path or d.eway_bill_path or d.quote_received_path %}
-            <td class="text-center">
-              {% if has_any_file and can(current_user, 'crm_sourcing', 'export') %}
-              <div class="dropdown">
-                <button class="btn btn-sm btn-outline-success dropdown-toggle" type="button" data-bs-toggle="dropdown">
-                  <i class="bi bi-file-earmark-arrow-down me-1"></i>Download
-                </button>
-                <ul class="dropdown-menu dropdown-menu-end">
-                  {% if has_po %}
-                  <li><a class="dropdown-item small" href="/crm/sourcing/{{ d.id }}/download-po">Generated PO</a></li>
-                  {% endif %}
-                  {% if d.purchase_invoice_path %}
-                  <li><a class="dropdown-item small" href="/uploads/crm/{{ d.purchase_invoice_path }}" target="_blank">Purchase Invoice</a></li>
-                  {% endif %}
-                  {% if d.purchase_order_path %}
-                  <li><a class="dropdown-item small" href="/uploads/crm/{{ d.purchase_order_path }}" target="_blank">Purchase Order</a></li>
-                  {% endif %}
-                  {% if d.eway_bill_path %}
-                  <li><a class="dropdown-item small" href="/uploads/crm/{{ d.eway_bill_path }}" target="_blank">E-way Bill</a></li>
-                  {% endif %}
-                  {% if d.quote_received_path %}
-                  <li><a class="dropdown-item small" href="/uploads/crm/{{ d.quote_received_path }}" target="_blank">Quote Received</a></li>
-                  {% endif %}
-                </ul>
-              </div>
-              {% else %}
-              <span class="text-muted small">—</span>
-              {% endif %}
-            </td>
+            <td class="text-center">{{ dl.cell(downloads.get(d.id|string) if can(current_user, 'crm_sourcing', 'export') else []) }}</td>
             <td>
               <div class="btn-group btn-group-sm">
                 <a href="/crm/sourcing/{{ d.id }}" class="btn btn-outline-primary" title="View"><i class="bi bi-eye"></i></a>

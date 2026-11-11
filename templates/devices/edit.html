@@ -324,7 +324,12 @@
           </div></div>
 
           <!-- ── Section: Condition & Location ── -->
+          {# 2026-11-08 (Pankaj): Quantity and Min / Max Selling Price removed from
+             the form — Quantity keeps the stored value (hidden), Min / Max are not
+             sent so the server keeps them. R2V3, IQC Grade, Unit Price and Assign
+             Location on one row; BIOS Password below. #}
           <p class="fw-bold small text-uppercase mb-2 border-bottom pb-1 sec-hd">Condition &amp; Location</p>
+          <input type="hidden" name="qty" value="{{ device.qty or 1 }}">
           <div class="row g-3 mb-3">
             <div class="col-md-3">
               <label class="form-label">R2V3 Grade Category</label>
@@ -336,18 +341,6 @@
                 {% endfor %}
               </select>
             </div>
-            <div class="col-md-2">
-              <label class="form-label">Quantity</label>
-              <input type="number" name="qty" class="form-control" min="1"
-                     value="{{ device.qty or 1 }}" placeholder="1">
-            </div>
-            {% if price_field_shown(current_user, 'devices') %}
-            <div class="col-md-3">
-              <label class="form-label">Unit Price inclusive taxes (₹)</label>
-              <input type="number" name="device_price_input" class="form-control" step="0.01" min="0"
-                     {{ price_input_attrs(current_user, 'devices', device.device_price or '', 'e.g. 4500.00') }}>
-            </div>
-            {% endif %}
             <div class="col-md-3">
               <label class="form-label">IQC Grade</label>
               {# Grade is an enum — use static options, do NOT load from master data #}
@@ -359,31 +352,15 @@
                 {% endfor %}
               </select>
             </div>
-            <div class="col-md-3 d-flex align-items-end">
-              <div class="form-check ms-2 mb-2">
-                <input type="checkbox" name="bios_password" value="yes" class="form-check-input" id="biosPwd" {% if device.bios_password %}checked{% endif %}>
-                <label class="form-check-label" for="biosPwd">BIOS Password Set?</label>
-              </div>
-            </div>
             {% if price_field_shown(current_user, 'devices') %}
             <div class="col-md-3">
-              <label class="form-label">Min Selling Price (₹)</label>
-              <input type="number" name="min_selling_price_input" class="form-control" step="0.01" min="0"
-                     {{ price_input_attrs(current_user, 'devices', device.min_selling_price or '', 'e.g. 5000.00') }}>
+              <label class="form-label">Unit Price inclusive taxes (₹)</label>
+              <input type="number" name="device_price_input" class="form-control" step="0.01" min="0"
+                     {{ price_input_attrs(current_user, 'devices', device.device_price or '', 'e.g. 4500.00') }}>
             </div>
-            <div class="col-md-3">
-              <label class="form-label">Max Selling Price (₹)</label>
-              <input type="number" name="max_selling_price_input" class="form-control" step="0.01" min="0"
-                     {{ price_input_attrs(current_user, 'devices', device.max_selling_price or '', 'e.g. 6500.00') }}>
-            </div>
-            {% else %}
-            {# No Pricing View/Add: nothing sent — the server keeps the stored prices (2026-11-03). #}
-            <input type="hidden" name="min_selling_price_input" value="">
-            <input type="hidden" name="max_selling_price_input" value="">
             {% endif %}
-
             <!-- Tracked storage location (new system) -->
-            <div class="col-md-6">
+            <div class="col-md-3">
               <label class="form-label">Assign Location</label>
               <select id="assignLocationSelect" class="form-select" data-device-id="{{ device.id }}">
                 <option value="">— {% if current_loc %}Move to{% else %}Assign{% endif %} Location —</option>
@@ -397,6 +374,12 @@
               <div class="form-text small">
                 Saved immediately (separate from this form's Save button).
                 <a href="/locations/device/{{ device.id }}" class="ms-1">Full location history →</a>
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="form-check">
+                <input type="checkbox" name="bios_password" value="yes" class="form-check-input" id="biosPwd" {% if device.bios_password %}checked{% endif %}>
+                <label class="form-check-label" for="biosPwd">BIOS Password Set?</label>
               </div>
             </div>
 

@@ -1,0 +1,15 @@
+{# From Entity (2026-11-10, Pankaj): the company entity issuing this record.
+   Defaults to the record's saved value, else the logged-in user's profile
+   entity; any Master Data entity can be picked. Saved to <table>.from_entity. #}
+{% macro field(selected=None, col='col-md-4', required=False) -%}
+{% set _sel = selected if selected else (current_user.entity if current_user else None) %}
+<div class="{{ col }}">
+  <label class="form-label fw-semibold">From Entity{% if required %} <span class="text-danger">*</span>{% endif %}</label>
+  <select name="from_entity" class="form-select" {% if required %}required{% endif %}>
+    <option value="">— Select Entity —</option>
+    {% for e in from_entity_options(_sel) %}
+    <option value="{{ e }}" {% if e == _sel %}selected{% endif %}>{{ e }}</option>
+    {% endfor %}
+  </select>
+</div>
+{%- endmacro %}

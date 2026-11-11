@@ -2,6 +2,7 @@
 {% block title %}New Purchase Order — OxyPC{% endblock %}
 {% block page_title %}New Purchase Order{% endblock %}
 {% block content %}
+{% import "_from_entity_field.html" as fe with context %}
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent fw-semibold"><i class="bi bi-file-earmark-plus me-2"></i>Create Purchase Order</div>
   <div class="card-body">
@@ -25,7 +26,8 @@
           <input type="number" name="advance_amount" class="form-control" min="0" step="0.01" placeholder="0"
                  value="{{ prefill_advance|default('') }}">
         </div>
-        <div class="col-md-6">
+        {{ fe.field(prefill_from_entity|default(None), 'col-md-3') }}
+        <div class="col-md-5">
           <label class="form-label fw-semibold">Supplier Contact</label>
           <select name="contact_id" id="supplierSelect" class="form-select">
             <option value="">— Select Supplier —</option>

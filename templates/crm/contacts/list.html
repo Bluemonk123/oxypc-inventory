@@ -4,74 +4,6 @@
 {% block content %}
 {% import "_multiselect_filter.html" as ms %}
 
-<div class="mb-3">
-  <form method="get" class="d-flex gap-2 flex-wrap align-items-end">
-    <div class="col-auto">
-      <label class="form-label small fw-semibold mb-1">Search</label>
-      <input type="text" name="q" value="{{ q }}" placeholder="Search name, phone, city, state, GST…" class="form-control form-control-sm" style="width:220px">
-    </div>
-    <div class="col-auto">
-      <label class="form-label small fw-semibold mb-1">Account Type</label>
-      <select name="contact_type" class="form-select form-select-sm" style="width:130px">
-        <option value="">All Types</option>
-        <option value="supplier" {% if contact_type=='supplier' %}selected{% endif %}>Supplier</option>
-        <option value="buyer"    {% if contact_type=='buyer'    %}selected{% endif %}>Buyer</option>
-        <option value="both"     {% if contact_type=='both'     %}selected{% endif %}>Both</option>
-      </select>
-    </div>
-    <div class="col-auto" id="fSourceTypeWrap">
-      <label class="form-label small fw-semibold mb-1">Source Type</label>
-      <select name="source_type" class="form-select form-select-sm" style="width:150px">
-        <option value="">All Source Types</option>
-        {% for val, label in source_types %}
-        <option value="{{ val }}" {% if source_type==val %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="col-auto" id="fBuyerTypeWrap">
-      <label class="form-label small fw-semibold mb-1">Buyer Type</label>
-      <select name="buyer_type" class="form-select form-select-sm" style="width:150px">
-        <option value="">All Buyer Types</option>
-        {% for val, label in buyer_types %}
-        <option value="{{ val }}" {% if buyer_type==val %}selected{% endif %}>{{ label }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    {# Contacted filter hidden 2026-11-01 (still honoured if passed in the URL) #}
-    <div class="col-auto d-none">
-      <label class="form-label small fw-semibold mb-1">Contacted</label>
-      <select name="contacted" class="form-select form-select-sm" style="width:135px">
-        <option value="">All Contacts</option>
-        <option value="yes" {% if contacted=='yes' %}selected{% endif %}>
-          ✅ Contacted
-        </option>
-        <option value="no"  {% if contacted=='no'  %}selected{% endif %}>
-          🕐 Not Yet
-        </option>
-      </select>
-    </div>
-    {% if current_user.role.value == 'admin' %}
-    <div class="col-auto">
-      <label class="form-label small fw-semibold mb-1">Agent</label>
-      <select name="created_by_filter" class="form-select form-select-sm" style="width:160px" title="Filter by agent who added contact">
-        <option value="">All Agents</option>
-        {% for uname, fname in crm_users %}
-        <option value="{{ uname }}" {% if created_by_filter == uname %}selected{% endif %}>{{ fname }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    {% endif %}
-    {{ ms.multiselect('f_vp_avp', 'VP/AVP', bucket_options['vp_avp'], f_vp_avp, width='col-auto') }}
-    {{ ms.multiselect('f_manager', 'Manager', bucket_options['manager'], f_manager, width='col-auto') }}
-    {{ ms.multiselect('f_am_dm_gm', 'AM/DM/GM', bucket_options['am_dm_gm'], f_am_dm_gm, width='col-auto') }}
-    {{ ms.multiselect('f_executive', 'Executive/Sr Exec', bucket_options['executive'], f_executive, width='col-auto') }}
-    <button class="btn btn-sm btn-outline-primary">Filter</button>
-    {% if q or contact_type or source_type or buyer_type or contacted or created_by_filter or f_vp_avp or f_manager or f_am_dm_gm or f_executive %}
-    <a href="/crm/contacts" class="btn btn-sm btn-outline-secondary">Clear</a>
-    {% endif %}
-  </form>
-</div>
-
 <!-- Summary tiles: dark single-count tiles (2026-11-06, _tiles.html) -->
 {% import "_tiles.html" as tl %}
 <div class="oxt-row">
@@ -79,6 +11,74 @@
   {{ tl.single(val, label, color, icon, variant='dark') }}
   {% endfor %}
 </div>
+
+{# Global filter bar (app.css .filter-bar, 2026-11-08) — labels live in title=. #}
+{# One row (2026-11-10, Pankaj): this bar can hold 9+ filters, which the
+   global rule would wrap into 6-per-row; keep it on one line here. Hidden
+   filters sit outside the row so they don't count. #}
+<style>.filter-bar.fb-one-row .filter-bar-row.fb-one-row { display: flex; }
+.filter-bar.fb-one-row .filter-bar-row.fb-one-row > div:not(:last-child) { min-width: 0; }</style>
+<form method="get" action="/crm/contacts" class="filter-bar fb-one-row">
+  <input type="hidden" name="contacted" value="{{ contacted }}">
+  <div class="filter-bar-row fb-one-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" value="{{ q }}" title="Search" placeholder="Search name, phone, city, state, GST…" class="form-control form-control-sm">
+    </div>
+    {# Entity (2026-11-10, Pankaj): the account's From Entity #}
+    <div>
+      <select name="from_entity" class="form-select form-select-sm" title="Entity">
+        <option value="">All Entities</option>
+        {% for e in from_entity_options(from_entity) %}
+        <option value="{{ e }}" {% if from_entity == e %}selected{% endif %}>{{ e }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="contact_type" class="form-select form-select-sm" title="Account Type">
+        <option value="">All Account Types</option>
+        <option value="supplier" {% if contact_type=='supplier' %}selected{% endif %}>Supplier</option>
+        <option value="buyer"    {% if contact_type=='buyer'    %}selected{% endif %}>Buyer</option>
+        <option value="both"     {% if contact_type=='both'     %}selected{% endif %}>Both</option>
+      </select>
+    </div>
+    <div id="fSourceTypeWrap">
+      <select name="source_type" class="form-select form-select-sm" title="Source Type">
+        <option value="">All Source Types</option>
+        {% for val, label in source_types %}
+        <option value="{{ val }}" {% if source_type==val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div id="fBuyerTypeWrap">
+      <select name="buyer_type" class="form-select form-select-sm" title="Buyer Type">
+        <option value="">All Buyer Types</option>
+        {% for val, label in buyer_types %}
+        <option value="{{ val }}" {% if buyer_type==val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {# Contacted filter hidden 2026-11-01: kept as the hidden input above #}
+    {% if current_user.role.value == 'admin' %}
+    <div>
+      <select name="created_by_filter" class="form-select form-select-sm" title="Agent (who added the contact)">
+        <option value="">All Agents</option>
+        {% for uname, fname in crm_users %}
+        <option value="{{ uname }}" {% if created_by_filter == uname %}selected{% endif %}>{{ fname }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    {# Team filters, in the Team Mapping order (2026-11-11) #}
+    {{ ms.multiselect('f_manager', 'Manager', bucket_options['manager'], f_manager, '') }}
+    {{ ms.multiselect('f_executive', 'Executive/Sr Exec', bucket_options['executive'], f_executive, '') }}
+    {{ ms.multiselect('f_vp_avp', 'VP/AVP', bucket_options['vp_avp'], f_vp_avp, '') }}
+    {{ ms.multiselect('f_am_dm_gm', 'DM/GM/CTO/CEO', bucket_options['am_dm_gm'], f_am_dm_gm, '') }}
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/crm/contacts" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
+  </div>
+</form>
 
 <!-- Main contacts table -->
 <div class="card border-0 shadow-sm mb-4">
@@ -106,12 +106,12 @@
       </button>
       #}
       {% if current_user.role.value == 'admin' %}
-      <a href="/crm/contacts/export-csv?q={{ q }}&contact_type={{ contact_type }}&source_type={{ source_type }}&buyer_type={{ buyer_type }}&contacted={{ contacted }}&created_by_filter={{ created_by_filter }}"
+      <a href="/crm/contacts/export-csv?q={{ q }}&from_entity={{ from_entity | urlencode }}&contact_type={{ contact_type }}&source_type={{ source_type }}&buyer_type={{ buyer_type }}&contacted={{ contacted }}&created_by_filter={{ created_by_filter }}"
          class="btn btn-sm btn-outline-success">
         <i class="bi bi-download me-1"></i>Export CSV
       </a>
       {% endif %}
-      {% if can(current_user, 'crm_contacts', 'add') %}<a href="/crm/contacts/new" class="btn btn-sm btn-primary"><i class="bi bi-person-plus me-1"></i>Add Account</a>{% endif %}
+      {% if can(current_user, 'crm_contacts', 'add') %}<a href="/crm/contacts/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle me-1"></i>Add Account</a>{% endif %}
     </div>
   </div>
   <div class="card-body p-0">
@@ -245,7 +245,7 @@
             {# 5b. Team — mapped account team by seniority bucket #}
             <td>
               {% set tm = team_map.get(cid, {}) %}
-              {% set team_total = (tm.get('vp_avp', []) | length) + (tm.get('manager', []) | length) + (tm.get('am_dm_gm', []) | length) + (tm.get('executive', []) | length) %}
+              {% set team_total = (tm.get('vp_avp', []) | length) + (tm.get('manager', []) | length) + (tm.get('am_dm_gm', []) | length) + (tm.get('executive', []) | length) + (tm.get('finance', []) | length) %}
               {% if team_total %}
               <button type="button" class="btn btn-sm btn-outline-dark py-0 px-2 team-view-btn"
                       data-company="{{ c.company_name }}"
@@ -256,9 +256,14 @@
               <span class="text-muted">0</span>
               {% endif %}
             </td>
-            {# Last Activity (2026-11-02) — outcome of the latest call / activity, its own column #}
-            <td>
-              {% if last_outcome %}<span class="badge bg-{{ oc_colors.get(last_outcome, 'secondary') }}">{{ last_outcome | replace('_',' ') | title }}</span>
+            {# Last Activity (2026-11-10, Pankaj): Stage Name of the Account's latest deal,
+               then that stage's status badge (services/deal_stage_status.py). With no
+               deal yet: the outcome of the latest call / activity, as before. #}
+            {% set ds = deal_stage_map.get(cid) %}
+            <td class="text-nowrap">
+              {% if ds %}<a href="{{ ds.url }}" class="text-decoration-none text-body small fw-semibold" title="{{ ds.number }}">{{ ds.stage }}</a>
+                <span class="badge bg-{{ ds.color }}{% if ds.color in ('warning', 'info') %} text-dark{% endif %} ms-1">{{ ds.status }}</span>
+              {% elif last_outcome %}<span class="badge bg-{{ oc_colors.get(last_outcome, 'secondary') }}">{{ last_outcome | replace('_',' ') | title }}</span>
               {% else %}<span class="text-muted">—</span>{% endif %}
             </td>
             {# 10. Notes (hidden) #}
@@ -635,7 +640,8 @@ function wireContactsPageModals() {
   }
 
   var BUCKET_LABELS = {
-    vp_avp: 'VP/AVP', manager: 'Manager', am_dm_gm: 'AM/DM/GM', executive: 'Executive/Sr Executive'
+    manager: 'Manager', executive: 'Executive/Sr Executive', vp_avp: 'VP/AVP', am_dm_gm: 'DM/GM/CTO/CEO',
+    finance: 'Finance Manager'
   };
 
   // Team column badge → read-only Team View modal
@@ -710,6 +716,8 @@ function wireContactsPageModals() {
       setBucketSelection('bucket_manager', (td.manager || []).map(function (m) { return m.id; }));
       setBucketSelection('bucket_am_dm_gm', (td.am_dm_gm || []).map(function (m) { return m.id; }));
       setBucketSelection('bucket_executive', (td.executive || []).map(function (m) { return m.id; }));
+      // Must prefill too: in single mode a blank bucket is cleared on save.
+      setBucketSelection('bucket_finance', (td.finance || []).map(function (m) { return m.id; }));
       mapTeamModal.show();
     }
 

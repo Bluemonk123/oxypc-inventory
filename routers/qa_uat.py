@@ -1060,7 +1060,7 @@ async def rtm_view(
 @router.get("/workflow", response_class=HTMLResponse)
 async def workflow_view(
     request: Request,
-    tab: str = "new_grn",
+    tab: str = "stage",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(_view),
 ):
@@ -1070,7 +1070,7 @@ async def workflow_view(
     return templates.TemplateResponse("qa/workflow.html", {
         "request": request, "current_user": current_user,
         "flows": WORKFLOW_FLOWS, "workflows": STAGE_WORKFLOWS,
-        "active_tab": tab if tab in _FLOW_TAB_KEYS else "new_grn",
+        "active_tab": tab if tab in _FLOW_TAB_KEYS else "stage",
         "uploads": {k: await _flow_upload(db, k) for k in _FLOW_TAB_KEYS},
     })
 
@@ -1101,7 +1101,7 @@ async def database_diagram_view(request: Request, module: str = "", current_user
 
 
 # ── Workflow downloads + uploaded diagrams (2026-11-04) ───────────────────────
-_FLOW_TAB_KEYS = ("new_grn", "regrn", "stage")
+_FLOW_TAB_KEYS = ("stage", "new_grn", "regrn", "parts")   # tab order (2026-11-09)
 _FLOWS_BY_KEY = {}            # filled after WORKFLOW_FLOWS is defined (below)
 _FLOW_UPLOAD_DIR = os.path.join("uploads", "qa_flows")
 _FLOW_UPLOAD_MAX = 10 * 1024 * 1024
@@ -1275,6 +1275,36 @@ WORKFLOW_FLOWS = [
              [("L1/L2 Repair", "Stage L1/L2", "success"),
               ("Stress Test", "Stage Stress Test", "success"),
               ("Cosmetic Repair", "Stage Cosmetic Received", "success")]),
+            # 2026-11-09 (Pankaj): the rest of the device's life — sale, after-sale and scrap.
+            ("Final QC → Ready to Sale", "Final QC Report",
+             "After repair, stress test and cosmetic, Final QC passes the tag to Ready to Sale.",
+             [("Pass", "Ready to Sale", "success"),
+              ("Hold / Fail", "Back to the repair line", "warning")]),
+            ("Sale & Gate Pass", "Ready to Sale → New Sale / New Tag Sale",
+             "A Sale is created per tag (customer, invoice, payment mode, warranty) and the tag moves to Sold. The tag's invoice number becomes the sale invoice.",
+             [("Blocked or wrong-entity tag", "Refused", "danger"),
+              ("Gate Pass → Confirm Exit", "Dispatched with transport details", "success")]),
+            ("Customer Return", "Returns → Process Return (Internal / External Tag)",
+             "Reason, complaint and condition are required. The tag moves to Stock In at once and shows on Inventory Manager → Return Stock; warranty decides if the repair is paid.",
+             [("Manager approval", "Approve: tag stays at Stock In · Reject (reason): tag back to Sold, off Return Stock — refused once repair has started", "warning"),
+              ("Return Stock", "Move to L1/L2 → repair → Verify Payment → Ready to Dispatch (re-sale) → Gate Pass → Return Complete", "success"),
+              ("Only Stock In", "Return completed; tag stays in stock, no re-sale", "info")]),
+            ("Replacement", "Process Return → Replace Now = Yes",
+             "A Ready to Sale tag is sold to the same customer at ₹0 and takes over the original invoice; the returned tag shows Replaced by <tag>.",
+             [("Replacement tag", "Must be at Ready to Sale and not the returned tag", "info")]),
+            ("Credit Note", "Returns → Credit Note tab, then Credit Note page",
+             "Scan the tags and enter the Debit Note Number. Each tag goes through Return Received → Debit Note Verified → Verify Payment → Payment Invoice Done → Restock Pending → CN Complete.",
+             [("Payment Invoice Done", "Old tag is closed as Sold at ₹0, Payment Mode Credit Note", "success"),
+              ("CN Complete", "Return flag cleared", "success")]),
+            ("Rentals", "Rentals → New Rental",
+             "Only Ready to Sale tags can go on rent (RNT- record, start date, duration, price); they move to On Rent.",
+             [("Rental Return", "Returns → Rental Return: Payment Due or Waive Off; tags back to Ready to Sale", "success"),
+              ("Mark Paid", "Invoice / UTR number required", "info")]),
+            ("Scrap from L3/L4", "L3/L4 Repair → Scrap",
+             "Normal Scrap or Replacement Scrap with a Scrap Reason; the tag returns to L1/L2, where Back to Inventory sends it to Tags Scrapped (grade Scrap).",
+             [("Replacement Scrap", "Replace (pick the replacement tag) before Verify", "warning"),
+              ("Verify", "Tags go to Scrap for Sale under a new Scrap ID", "success"),
+              ("Scrap for Sale → Sell", "Tags Sold; listed on Scrap Sale Report", "success")]),
         ],
     },
     {
@@ -1297,6 +1327,50 @@ WORKFLOW_FLOWS = [
             ("Recorded", "Tag history + audit",
              "A REGRN entry shows in the tag's movement history; one audit row per tag plus one for the batch.",
              [("GRN Stocked", "Tag now counts under the new GRN; the old GRN still counts it", "success")]),
+            # 2026-11-09 (Pankaj): after ReGRN the tag follows the same flow as a New GRN tag.
+            ("Continues in the pipeline", "From the tag's current stage",
+             "Nothing else changes for the tag: it carries on exactly as in the New GRN flow — Stock In, L1/L2 → Stress → Cosmetic, L3/L4 if needed, Final QC, Ready to Sale.",
+             [("Was Sold", "Starts again at Ready to Sale", "warning"),
+              ("Scrap at L3/L4", "Tags Scrapped → Scrap ID → Scrap sold", "danger")]),
+            ("Sale & after-sale", "Same pages as New GRN",
+             "Sale and Gate Pass, then Customer Return, Replacement, Credit Note and Rentals work the same way, now under the new GRN, invoice and entity.",
+             [("Return / Replacement / Credit Note", "See the New GRN tab, steps 9–11", "info"),
+              ("Rentals", "Ready to Sale → On Rent → back to Ready to Sale", "info")]),
+        ],
+    },
+    {
+        "key": "parts",
+        "title": "Flow 3 — Spare Parts",
+        "sub": "New part / Harvest part → Requests → Handover → Consumption · Part Sales for New parts",
+        "steps": [
+            ("New Part", "Parts GRN → New",
+             "Vendor, PO, invoice, vehicle and quantities are required; tax is worked out on the server. Each line's physical qty goes into the part's New crate row (created if missing).",
+             [("Stock type", "New", "success"),
+              ("Line price", "Applied to every crate of that Part Name + Make + Model", "info")]),
+            ("Harvest Part", "Parts Manager → Add Part → Add Harvest Part (or Upload Harvest)",
+             "An internal Parts GRN (vendor Internal, PO Harvest) adds the qty to the part's Harvest crate row.",
+             [("Price", "Lowest Parts GRN price for the same part; typed price only if it never came on a GRN", "info")]),
+            ("Raise a request", "Device Profile → parts section",
+             "An engineer raises New / Replace / Downgrade / Faulty for the tag at L1, L2 or L3; it is linked to the open WorkID and starts as Requested.",
+             [("PNA", "Part Not Available can be marked on the tag", "warning"),
+              ("Pre-Sale QC WorkID", "Shows under Pre-Sale IQC Requests", "info")]),
+            ("Spare Parts Manager", "Parts Manager → Part Requests",
+             "The manager decides each request.",
+             [("Handover", "Pick New or Harvest crate; refused if the crate has less stock", "success"),
+              ("Not In Stock", "Request closed as not in stock", "danger"),
+              ("Procure", "Opens a Sourcing Request; Sales Manager closes it", "warning")]),
+            ("Faulty parts", "Parts Manager → Faulty Request",
+             "Faulty parts raised from the Device Profile.",
+             [("Scrap", "Listed on Scrap Products → Scrapped Parts", "danger"),
+              ("Warranty Replace → Received", "Qty added back to stock", "success")]),
+            ("Consumption", "Device Profile → Validate Receiving",
+             "The engineer confirms the part arrived (status Received). It shows on Parts Consumption and its cost (qty × unit price) counts in the device's P&L.",
+             [("Past Final QC", "RAM / HDD spec is written to the device at once", "info")]),
+            ("Part Sales (New parts)", "Ready to Sale Parts → Request → Parts Sale Request → New Parts Sale",
+             "Only New parts can be sold: the list shows only New parts, and saving a Sale Request or a sale refuses any other part. A Sale Request (one pending per part) is approved or rejected; an approved request allows one sale.",
+             [("Approved", "New Parts Sale: sale price, margin; sold qty goes up", "success"),
+              ("Rejected", "Reason kept", "danger"),
+              ("Listed on", "Spare Part Sales (export available)", "info")]),
         ],
     },
 ]
@@ -1311,7 +1385,10 @@ WORKFLOW_DIAGRAMS = {
     "new_grn": {
         "lanes": [("GRN post IQC", "bi-receipt"), ("Product IQC", "bi-clipboard-check"),
                   ("Stock Inwards", "bi-box-arrow-in-down"), ("Production Manager", "bi-diagram-3"),
-                  ("Repair & Production", "bi-tools"), ("Final QC & Sales", "bi-patch-check")],
+                  ("Repair & Production", "bi-tools"), ("Final QC & Sales", "bi-patch-check"),
+                  # 2026-11-09 (Pankaj): after-sale, rentals and scrap from L3/L4
+                  ("Returns & Credit Note", "bi-arrow-return-left"), ("Rentals", "bi-calendar-range"),
+                  ("Scrap", "bi-trash3")],
         "nodes": [
             ("grn", 0, 0, 0, "Add GRN|auto no., invoice, PO", "step"),
             ("ewb", 0, 1, 1, "E-Way Bill|if price > ₹50,000", "warn"),
@@ -1333,7 +1410,30 @@ WORKFLOW_DIAGRAMS = {
             ("stress", 4, 10, 1, "Stress Test", "ok"),
             ("cos", 4, 10, 2, "Cosmetic|& Paint", "ok"),
             ("fqc", 5, 11, 0, "Final QC|Pass / Hold", "step"),
-            ("rts", 5, 12, 0, "Ready to Sale", "end"),
+            ("rts", 5, 12, 0, "Ready to Sale", "ok"),
+            ("l34", 4, 11, 1, "L3/L4 Repair|or scrap", "step"),
+            ("sale", 5, 13, 0, "New Sale|invoice, warranty", "step"),
+            ("gate", 5, 14, 0, "Gate Pass|Confirm Exit", "end"),
+            ("ret", 6, 14, 0, "Process Return|Internal / External", "warn"),
+            ("rpl", 6, 14, 1, "Replace Now|ready tag sold ₹0", "warn"),
+            ("cn", 6, 14, 4, "Credit Note|Debit Note No.", "warn"),
+            ("rstk", 6, 15, 0, "Return Stock|tag at Stock In", "step"),
+            ("appr", 6, 15, 2, "Manager|approves?", "decision"),
+            ("cnst", 6, 15, 4, "CN stages|verify → pay invoice", "step"),
+            ("aok", 6, 16, 2, "Approved|stays at Stock In", "ok"),
+            ("arej", 6, 16, 3, "Rejected|back to Sold", "bad"),
+            ("cnok", 6, 16, 4, "CN Complete|old tag sold ₹0", "end"),
+            ("rfix", 6, 16, 0, "L1/L2 repair|verify payment", "step"),
+            ("ronly", 6, 16, 1, "Only Stock In|Stocked In", "ok"),
+            ("rdone", 6, 17, 0, "Ready to Dispatch|re-sale → Gate Pass", "end"),
+            ("rent", 7, 13, 0, "On Rent|RNT- record", "warn"),
+            ("rret", 7, 14, 0, "Rental Return|Payment Due / Waive Off", "step"),
+            ("rback", 7, 15, 0, "Back to|Ready to Sale", "ok"),
+            ("sdec", 8, 12, 0, "Scrap at L3/L4|Normal / Replacement", "bad"),
+            ("binv", 8, 13, 0, "Back to Inventory|L1/L2 page", "step"),
+            ("tsc", 8, 14, 0, "Tags Scrapped|Replace · Verify", "warn"),
+            ("sid", 8, 15, 0, "Scrap ID|Scrap for Sale", "step"),
+            ("ssold", 8, 16, 0, "Scrap sold|Scrap Sale Report", "end"),
         ],
         "edges": [("grn", "inv", ""), ("grn", "ewb", "Invoice > ₹50k"), ("inv", "refuse", "Yes"),
                   ("inv", "lots", "No"), ("lots", "tags", ""), ("tags", "chk", ""),
@@ -1342,11 +1442,21 @@ WORKFLOW_DIAGRAMS = {
                   ("trc", "sell", "Selling"), ("map", "stock", ""), ("map", "asis", "Yes As-Is"),
                   ("stock", "l12", "Move to L1/L2"), ("stock", "pm", "TRC Production"),
                   ("pm", "l12", ""), ("pm", "stress", ""), ("pm", "cos", ""),
-                  ("l12", "stress", ""), ("stress", "cos", "Pass"), ("cos", "fqc", ""), ("fqc", "rts", "Pass")],
+                  ("l12", "stress", ""), ("stress", "cos", "Pass"), ("cos", "fqc", ""), ("fqc", "rts", "Pass"),
+                  ("l12", "l34", "L3/L4 needed"), ("rts", "sale", ""), ("sale", "gate", ""),
+                  ("sale", "ret", "Customer return"), ("ret", "rpl", "Replace Now"), ("sale", "cn", "Credit Note"),
+                  ("ret", "rstk", ""), ("ret", "appr", ""), ("appr", "aok", "Approve"), ("appr", "arej", "Reject"),
+                  ("rstk", "rfix", "Move to L1/L2"), ("rstk", "ronly", "Only Stock In"), ("rfix", "rdone", ""),
+                  ("cn", "cnst", ""), ("cnst", "cnok", ""),
+                  ("rts", "rent", "Rental"), ("rent", "rret", ""), ("rret", "rback", ""),
+                  ("l34", "sdec", "Scrap"), ("sdec", "binv", ""), ("binv", "tsc", ""), ("tsc", "sid", "Verify"),
+                  ("sid", "ssold", "Sell")],
     },
     "regrn": {
         "lanes": [("Item ReGRN", "bi-arrow-left-right"), ("Move-to-GRN modal", "bi-window-stack"),
-                  ("Tag record", "bi-upc-scan"), ("Location", "bi-geo-alt"), ("History & Audit", "bi-journal-text")],
+                  ("Tag record", "bi-upc-scan"), ("Location", "bi-geo-alt"), ("History & Audit", "bi-journal-text"),
+                  # 2026-11-09 (Pankaj): after ReGRN the tag follows the New GRN flow
+                  ("Pipeline (as New GRN)", "bi-tools"), ("Sales & After Sale", "bi-cart-check"), ("Scrap", "bi-trash3")],
         "nodes": [
             ("pick", 0, 0, 0, "Pick tags|paste or CSV, any stage", "step"),
             ("found", 0, 1, 0, "Found &|live?", "decision"),
@@ -1362,13 +1472,65 @@ WORKFLOW_DIAGRAMS = {
             ("rts", 2, 9, 0, "Ready to Sale|old sale kept", "warn"),
             ("same", 2, 9, 1, "Stage unchanged", "ok"),
             ("loc", 3, 8, 0, "Moves to GRN|location, bin cleared", "step"),
-            ("hist", 4, 10, 0, "REGRN in history|audit: tag + batch", "end"),
+            ("hist", 4, 10, 0, "REGRN in history|audit: tag + batch", "step"),
+            ("cont", 5, 11, 0, "Continues from|its current stage", "step"),
+            ("pipe", 5, 12, 0, "Stock In → L1/L2|Stress → Cosmetic", "ok"),
+            ("l34", 5, 12, 1, "L3/L4 Repair|or scrap", "step"),
+            ("fqc", 5, 13, 0, "Final QC|Pass", "step"),
+            ("rts2", 6, 14, 0, "Ready to Sale", "ok"),
+            ("sale", 6, 15, 0, "New Sale|→ Gate Pass", "step"),
+            ("rent", 6, 15, 1, "Rentals|back to Ready to Sale", "warn"),
+            ("after", 6, 16, 0, "Return · Replacement|Credit Note", "end"),
+            ("scr", 7, 13, 0, "Tags Scrapped|Scrap ID → sold", "bad"),
         ],
         "edges": [("pick", "found", ""), ("found", "rep", "No"), ("found", "grn", "Yes"),
                   ("grn", "ent", ""), ("ent", "refuse", "No"), ("ent", "pdf", "Yes"), ("pdf", "apply", ""),
                   ("apply", "old", ""), ("old", "takes", ""), ("takes", "sold", ""),
                   ("takes", "loc", "GRN has location"), ("sold", "rts", "Yes"), ("sold", "same", "No"),
-                  ("rts", "hist", ""), ("same", "hist", ""), ("loc", "hist", "")],
+                  ("rts", "hist", ""), ("same", "hist", ""), ("loc", "hist", ""),
+                  ("hist", "cont", ""), ("cont", "pipe", ""), ("pipe", "l34", "L3/L4 needed"), ("pipe", "fqc", ""),
+                  ("fqc", "rts2", "Pass"), ("rts", "rts2", "sell again"), ("rts2", "sale", ""), ("rts2", "rent", "Rental"),
+                  ("sale", "after", ""), ("l34", "scr", "Scrap")],
+    },
+    # 2026-11-09 (Pankaj): Spare Parts — new / harvest stock, requests, consumption, part sales
+    "parts": {
+        # Lane order keeps every arrow clear of other boxes (2026-11-09).
+        "lanes": [("Parts GRN / Part Master", "bi-box-seam"), ("Part Sales (New parts)", "bi-cart-check"),
+                  ("Parts Manager — Requests", "bi-person-gear"), ("Engineer (Device Profile)", "bi-tools"),
+                  ("Consumption & Cost", "bi-graph-down"), ("Faulty & Sourcing", "bi-exclamation-triangle")],
+        "nodes": [
+            ("grn", 0, 0, 0, "Parts GRN|vendor, invoice, PO", "step"),
+            ("harv", 0, 0, 1, "Add Harvest Part|internal GRN", "step"),
+            ("newstk", 0, 1, 0, "New stock|New crate row", "ok"),
+            ("harvstk", 0, 1, 1, "Harvest stock|lowest GRN price", "ok"),
+            ("rtsp", 1, 2, 0, "Ready to Sale Parts|New parts only", "step"),
+            ("psr", 1, 3, 0, "Sale Request|pending", "warn"),
+            ("papp", 1, 4, 0, "Approved?", "decision"),
+            ("psale", 1, 5, 0, "New Parts Sale|one per approval", "ok"),
+            ("prej", 1, 5, 1, "Rejected|reason kept", "bad"),
+            ("psold", 1, 6, 0, "Spare Part Sales|sold qty up", "end"),
+            ("req", 3, 2, 0, "Raise request|on the tag", "step"),
+            ("pna", 3, 2, 1, "PNA|part not available", "warn"),
+            ("type", 2, 3, 0, "Faulty|request?", "decision"),
+            ("act", 2, 4, 0, "Manager|decides", "decision"),
+            ("hand", 2, 5, 0, "Handover|New or Harvest crate", "ok"),
+            ("nis", 2, 5, 1, "Not In Stock", "bad"),
+            ("recv", 3, 6, 0, "Validate Receiving|status Received", "step"),
+            ("cons", 4, 7, 0, "Parts Consumption|tag × part", "ok"),
+            ("cost", 4, 8, 0, "Parts cost|in device P&L", "end"),
+            ("fault", 5, 4, 1, "Faulty Request|tab", "warn"),
+            ("proc", 5, 5, 0, "Procure|Sourcing Request", "warn"),
+            ("fscrap", 5, 5, 1, "Scrap|Scrapped Parts", "bad"),
+            ("fwar", 5, 5, 2, "Warranty Replace|received → stock", "ok"),
+            ("srcc", 5, 6, 0, "Sales Manager|closes sourcing", "step"),
+        ],
+        "edges": [("grn", "newstk", ""), ("harv", "harvstk", ""), ("newstk", "req", "stock"), ("harvstk", "req", ""),
+                  ("req", "pna", "Mark PNA"), ("req", "type", ""), ("type", "act", "No"), ("type", "fault", "Yes"),
+                  ("act", "hand", "In stock"), ("act", "nis", "Not in stock"), ("act", "proc", "Procure"),
+                  ("fault", "fscrap", "Scrap"), ("fault", "fwar", "Warranty"), ("proc", "srcc", ""),
+                  ("hand", "recv", ""), ("recv", "cons", ""), ("cons", "cost", ""),
+                  ("newstk", "rtsp", "New only"), ("rtsp", "psr", "Request"), ("psr", "papp", ""),
+                  ("papp", "psale", "Yes"), ("papp", "prej", "No"), ("psale", "psold", "")],
     },
 }
 
@@ -1432,9 +1594,10 @@ for _f in WORKFLOW_FLOWS:
 # Each entry: key, title, stages (ordered list of stage names), and a detail
 # block describing what actually happens at each hop (used both on-screen in
 # the "Create Detail Workflow" modal and in the downloaded text file).
-STAGE_WORKFLOWS = [  # rewritten 2026-11-04 from the current stage handlers
+STAGE_WORKFLOWS = [  # rewritten 2026-11-04; after-sale, spare parts and CRM groups added 2026-11-09
+    # ── Device pipeline ──
     {
-        "key": "new_grn",
+        "key": "new_grn", "group": "Device pipeline",
         "title": "New GRN → IQC → Stock In",
         "stages": ["GRN", "IQC", "Stock In"],
         "detail": [
@@ -1442,10 +1605,11 @@ STAGE_WORKFLOWS = [  # rewritten 2026-11-04 from the current stage handlers
             ("IQC", "Tags enter through Bulk Upload, the manual IQC form or the OxyQC agent. A row with a valid GRN / invoice goes straight to Stock In; a row without a GRN stays in IQC; bad rows are skipped with a reason file; existing tags go to duplicate review."),
             ("Map GRN", "Tags in GRN Pending get their GRN (at upload or via Map this GRN) and move IQC → Stock In. GRN Stocked counts them and keeps the count after any ReGRN."),
             ("Stock In", "Move to L1/L2 or to TRC Production; Production Manager assigns L1/L2, Stress Test or Cosmetic Received."),
+            ("Onward", "Repair → Stress Test → Cosmetic → Final QC → Ready to Sale → Sold; after the sale the tag can come back as a Return, Replacement or Credit Note, or go On Rent (see After sale)."),
         ],
     },
     {
-        "key": "regrn",
+        "key": "regrn", "group": "Device pipeline",
         "title": "Re-GRN (Item ReGRN)",
         "stages": ["Any stage", "New GRN", "Same stage (Sold → Ready to Sale)"],
         "detail": [
@@ -1453,21 +1617,23 @@ STAGE_WORKFLOWS = [  # rewritten 2026-11-04 from the current stage handlers
             ("Choose GRN", "Change Entities → Move tags to GRN (must have an entity); invoice PDF optional."),
             ("Apply", "Old GRN keeps the tag in GRN Stocked; tag takes the new GRN number, invoice, entity and GRN location. Tag number never changes."),
             ("Stage", "Sold tags go back to Ready to Sale (old sale kept as history); every other stage is unchanged. A REGRN entry is added to the tag history."),
+            ("Onward", "The tag carries on from its stage exactly as in New GRN — repair, scrap at L3/L4, sale, return, replacement, credit note and rentals all work the same under the new GRN."),
         ],
     },
     {
-        "key": "repair",
+        "key": "repair", "group": "Device pipeline",
         "title": "L1/L2 ↔ L3/L4 Repair",
         "stages": ["L1/L2", "L3/L4", "L1/L2", "Stress Test"],
         "detail": [
-            ("L1/L2 Repair", "Engineer works the tag; parts requested against it. Mark Complete is blocked while PNA parts are open."),
+            ("L1/L2 Repair", "Engineer works the tag; parts requested against it (see Spare parts). Mark Complete is blocked while PNA parts are open."),
             ("Request L3/L4", "Escalates to L3/L4 with an L3L4 WorkID."),
-            ("L3/L4 Complete / Scrap", "Complete sends the tag back to L1/L2 (Returned from L3/L4). Scrap (Normal or Replacement, reason required) also returns to L1/L2, then Back to Inventory moves it to Tags Scrapped."),
+            ("L3/L4 Complete", "Complete sends the tag back to L1/L2 (Returned from L3/L4)."),
+            ("L3/L4 Scrap", "Normal or Replacement Scrap with a reason; the tag returns to L1/L2 and Back to Inventory moves it to Tags Scrapped (see Scrap from L3/L4)."),
             ("Mark Complete", "L1/L2 → Stress Test with a STRS WorkID. Exception: a customer return (Return for Repair / external tag) goes straight back to Sold."),
         ],
     },
     {
-        "key": "stress",
+        "key": "stress", "group": "Device pipeline",
         "title": "Stress Test",
         "stages": ["Stress Test", "Cosmetic Received", "L1/L2 (fail)"],
         "detail": [
@@ -1477,7 +1643,7 @@ STAGE_WORKFLOWS = [  # rewritten 2026-11-04 from the current stage handlers
         ],
     },
     {
-        "key": "cosmetic",
+        "key": "cosmetic", "group": "Device pipeline",
         "title": "Cosmetic & Paint",
         "stages": ["Cosmetic Received", "Cleaning", "Putty", "Dry Sanding", "Masking", "Painting", "Water Sanding", "Cosmetic Completed", "Final QC"],
         "detail": [
@@ -1488,7 +1654,7 @@ STAGE_WORKFLOWS = [  # rewritten 2026-11-04 from the current stage handlers
         ],
     },
     {
-        "key": "final_qc",
+        "key": "final_qc", "group": "Device pipeline",
         "title": "Final QC → Ready to Sale",
         "stages": ["Final QC", "Pass Hold / Fail Hold", "Ready to Sale"],
         "detail": [
@@ -1498,34 +1664,217 @@ STAGE_WORKFLOWS = [  # rewritten 2026-11-04 from the current stage handlers
         ],
     },
     {
-        "key": "ready_sold",
+        "key": "ready_sold", "group": "Device pipeline",
         "title": "Ready to Sale → Sold",
         "stages": ["Ready to Sale", "Pre-Sale QC", "Sold"],
         "detail": [
             ("Ready to Sale", "Listed on Ready to Sale (Tags / Lots). Pre-Sale QC is a WorkID queue — the tag stays in Ready to Sale; Mark Complete needs Pass or Fail (Fail needs a reason)."),
             ("Blocked / On Hold", "A flag, not a stage: a blocked tag cannot be sold."),
             ("Sold", "New Tag Sale creates the sale record. A sale is allowed from any stage unless the tag is blocked."),
-            ("On Rent", "Rentals move a tag Ready to Sale ↔ On Rent; return or cancel brings it back."),
+            ("Gate Pass", "Confirm Exit dispatches the sold tags with transport details."),
         ],
     },
+    # ── After sale ──
     {
-        "key": "customer_return",
+        "key": "customer_return", "group": "After sale",
         "title": "Customer Return → Return Stock",
         "stages": ["Sold", "Stock In (return)", "L1/L2", "Sold"],
         "detail": [
-            ("Return from Customer", "Tag goes to Stock In marked as a return — Return for Repair or Replaced by another tag. Replace Now sells a Ready to Sale replacement at ₹0. External tags can be returned too."),
-            ("Return Stock", "Assign Bucket, then Production Manager → L1/L2."),
+            ("Process Return", "Returns → Internal Tag (a tag we sold) or External Tag (walk-in). Reason, complaint and condition are required; warranty decides if the repair is paid. The tag moves to Stock In at once and shows on Inventory Manager → Return Stock."),
+            ("Manager approval", "Approve: the tag stays at Stock In. Reject (reason required): the tag goes back to Sold and leaves Return Stock (Return Rejected) — refused once repair has started."),
+            ("Return Stock", "Move to L1/L2 (repair), or Only Stock In (return completed, tag stays in stock, no re-sale)."),
             ("L1/L2 Mark Complete", "Return for Repair goes back to Sold — no new sale, no Stress WorkID."),
-            ("Verify Payment → Ready to Dispatch", "A receipt number is required when a paid repair cost is due; Ready to Dispatch is refused until payment is verified, then a new sale copied from the original is created and the tag shows on Gate Pass."),
+            ("Verify Payment → Ready to Dispatch", "A receipt number is required when a paid repair cost is due; Ready to Dispatch is refused until payment is verified, then a new sale copied from the original is created and the tag shows on Gate Pass → Return Complete."),
         ],
     },
     {
-        "key": "scrap",
-        "title": "Scrap → Scrap for Sale",
-        "stages": ["Scrapped / L3/L4 scrap", "Tags Scrapped", "Sold"],
+        "key": "replacement", "group": "After sale",
+        "title": "Replacement",
+        "stages": ["Sold (returned tag)", "Stock In", "Replacement tag: Ready to Sale → Sold"],
         "detail": [
-            ("Scrap decision", "From L3/L4 scrap (via L1/L2 Back to Inventory) or a scrapped tag's Move to Inventory, the tag lands in Tags Scrapped with grade Scrap."),
-            ("Scrap for Sale", "Sold through the Scrap-for-Sale custom sale."),
+            ("Replace Now = Yes", "On Process Return, pick a replacement tag. It must be at Ready to Sale and cannot be the returned tag."),
+            ("Replacement sale", "The replacement is sold to the same customer at ₹0 and takes over the original invoice."),
+            ("Returned tag", "Goes to Stock In / Return Stock and shows Replaced by <tag>; it is repaired and stocked like any return."),
+            ("Replacement Scrap", "At L3/L4, Replacement Scrap needs Replace (pick the replacement tag) before Verify on Scrap Products."),
+        ],
+    },
+    {
+        "key": "credit_note", "group": "After sale",
+        "title": "Credit Note",
+        "stages": ["Return Received", "Debit Note Verified", "Verify Payment", "Payment Invoice Done", "Restock Pending", "CN Complete"],
+        "detail": [
+            ("Send to Credit Note", "Returns → Credit Note tab: scan the tags and enter the Debit Note Number; each tag starts at Return Received."),
+            ("Move a step", "Credit Note page: move one tag or many to the next step — Debit Note Verified → Verify Payment → Payment Invoice Done → Restock Pending."),
+            ("Payment Invoice Done", "The old tag is closed as Sold at ₹0, Payment Mode Credit Note."),
+            ("CN Complete", "The return flag is cleared; the record is complete."),
+        ],
+    },
+    {
+        "key": "rentals", "group": "After sale",
+        "title": "Rentals",
+        "stages": ["Ready to Sale", "On Rent", "Ready to Sale"],
+        "detail": [
+            ("New Rental", "Rentals → New Rental: pick, scan or upload tags. Only Ready to Sale tags can go on rent. A RNT- record is created with customer, start date, duration and price; the tags move to On Rent."),
+            ("Mark Paid", "Invoice / UTR number required."),
+            ("Rental Return", "Returns → Rental Return: look up the rental, tick the tags coming back, choose Payment Due or Waive Off; the tags go back to Ready to Sale and a return receipt can be printed."),
+            ("Cancel / Return all", "From the rental record: every tag goes back to Ready to Sale."),
+        ],
+    },
+    {
+        "key": "scrap", "group": "After sale",
+        "title": "Scrap from L3/L4 → Scrap for Sale",
+        "stages": ["L3/L4 Scrap", "L1/L2 Back to Inventory", "Tags Scrapped", "Scrap ID", "Sold"],
+        "detail": [
+            ("Scrap at L3/L4", "L3/L4 Repair → Scrap: Normal Scrap or Replacement Scrap, Scrap Reason required. The tag returns to L1/L2."),
+            ("Back to Inventory", "L1/L2 sends the scrapped tag to Scrap Products → Scrapped Tags (grade Scrap)."),
+            ("Verify", "Single or bulk Verify on Scrapped Tags puts the verified tags into one new Scrap ID on Scrap for Sale (Assigned To: nobody, no WorkID). Replacement Scrap must be Replaced first."),
+            ("Sell", "Only from Scrap for Sale: set the price on the Scrap ID, then Sold / Custom Sale. Tags move to Sold and show on the Scrap Sale Report. Loose tags cannot be sold."),
+        ],
+    },
+    # ── Spare parts ──
+    {
+        "key": "part_new", "group": "Spare parts",
+        "title": "New Part (Parts GRN)",
+        "stages": ["Parts GRN", "New crate", "Stock"],
+        "detail": [
+            ("Parts GRN → New", "Vendor, PO, invoice, vehicle and quantities are required; tax is worked out on the server."),
+            ("Stock", "Each line's physical qty goes into the part's New crate row (created if missing)."),
+            ("Price", "The line price is applied to every crate of that Part Name + Make + Model."),
+        ],
+    },
+    {
+        "key": "part_harvest", "group": "Spare parts",
+        "title": "Harvest Part",
+        "stages": ["Add Harvest Part / Upload Harvest", "Internal Parts GRN", "Harvest crate"],
+        "detail": [
+            ("Add", "Parts Manager → Add Part → Add Harvest Part, or Upload Harvest for many."),
+            ("Internal GRN", "An internal Parts GRN (vendor Internal, PO Harvest) adds the qty to the part's Harvest crate row."),
+            ("Price", "Lowest Parts GRN price for the same part; the typed price is used only if the part never came on a GRN."),
+            ("Selling", "Harvest parts are used in repair only — they cannot be requested or sold on Part Sales."),
+        ],
+    },
+    {
+        "key": "part_request", "group": "Spare parts",
+        "title": "Part Requests",
+        "stages": ["Requested", "Handover / Not In Stock / Procure", "Received"],
+        "detail": [
+            ("Raise", "Device Profile → parts: New / Replace / Downgrade / Faulty for a tag at L1, L2 or L3, linked to the open WorkID. PNA (Part Not Available) can be marked on the tag."),
+            ("Handover", "Parts Manager → Part Requests: pick the New or Harvest crate; refused if the crate has less stock."),
+            ("Not In Stock / Procure", "Not In Stock closes the request; Procure opens a Sourcing Request that the Sales Manager closes."),
+            ("Faulty parts", "Faulty Request tab: Scrap (listed on Scrap Products → Scrapped Parts) or Warranty Replace → Received (qty added back)."),
+        ],
+    },
+    {
+        "key": "part_consumption", "group": "Spare parts",
+        "title": "Parts Consumption",
+        "stages": ["Handed over", "Validate Receiving", "Received / Consumed"],
+        "detail": [
+            ("Validate Receiving", "On the Device Profile the engineer confirms the part arrived; status becomes Received."),
+            ("Consumption", "The part shows on Parts Consumption; its cost (qty × unit price) counts in the device's P&L."),
+            ("Past Final QC", "RAM / HDD spec is written to the device at once."),
+        ],
+    },
+    {
+        "key": "part_sales", "group": "Spare parts",
+        "title": "Part Sales (New parts only)",
+        "stages": ["Ready to Sale Parts", "Parts Sale Request", "New Parts Sale"],
+        "detail": [
+            ("Request", "Ready to Sale Parts lists only New parts; Request raises a Sale Request (one pending per part). A request or sale for any other part is refused."),
+            ("Approve / Reject", "Parts Sale Request: Approve, or Reject with a reason. An approved request allows one sale."),
+            ("Sell", "New Parts Sale: sale price and margin; the part's sold qty goes up. Listed on Spare Part Sales (export available)."),
+        ],
+    },
+    # ── CRM & Accounts ──
+    {
+        "key": "accounts_kyc", "group": "CRM & Accounts",
+        "title": "Account → KYC & Credit",
+        "stages": ["Account added (Inactive)", "KYC verified", "Credit verified", "Active"],
+        "detail": [
+            ("Add account", "Accounts List → New: the account starts Inactive. Map Team sets the account team — VP/AVP, AM/DM/GM, Sales, Inventory and Finance Manager."),
+            ("KYC", "Accounts → Account KYC card: Verify KYC."),
+            ("Credit", "Activity Board → Account Verification: the mapped VP/AVP or AM/DM/GM (or admin) verifies Credit and can Map Manager."),
+            ("Active", "Active only when both KYC and Credit are verified; Blacklisted stays blacklisted. Every change shows in the account's History card."),
+        ],
+    },
+    {
+        "key": "supplier_deal", "group": "CRM & Accounts",
+        "title": "Supplier Deal (Sourcing)",
+        "stages": ["Lead Identified", "Contacted", "Inspection", "Quote", "Negotiations", "Purchase Order", "Payment", "Stock Received", "Closed — Won / Lost"],
+        "detail": [
+            ("Inspection", "Assign to Inspection; on Activity Board the inspector clicks Verify Inspection (Inspection Started) and uploads the Inspection Report (Inspection Done)."),
+            ("Quote / Negotiations", "Level 1 and Level 2 approvals plus the Quote file; Negotiations has a Level 1 approval and the Updated Quote. Only the assigned approver (or admin) can Approve / Reject."),
+            ("Purchase Order", "Generate PO from the deal; PO Level 1 and Level 2 approvals; the latest PO is the stage document (see Purchase Orders)."),
+            ("Payment", "Level 1 approval and the supplier Invoice; Accounts records and verifies the supplier payment."),
+            ("Stock Received", "Assign to Inventory; the deal is linked to its Lot. Then Closed — Won (or Lost at any point)."),
+            ("History", "Stage moves, approvals, edits, lot link and PO generation are listed in the deal's History card."),
+        ],
+    },
+    {
+        "key": "customer_deal", "group": "CRM & Accounts",
+        "title": "Customer Deal (Buyer)",
+        "stages": ["Lead / Enquiry", "Contacted", "Screening", "Quote", "Negotiations", "Sales Order", "Payment", "Stock Received", "Closed — Won / Lost"],
+        "detail": [
+            ("Screening", "Assign to Screening; on Activity Board the user starts it and uploads the Screening Report."),
+            ("Quote", "Level 1 and Level 2 approvals; the latest quote for the deal is the stage document."),
+            ("Quote Level 2 approved", "A Sales Order is created automatically from the quote (see Sales Orders)."),
+            ("Sales Order", "SO Level 1 approval plus the customer PO file."),
+            ("Payment → Stock Received", "Level 1 approval and the Invoice; Assign to Inventory; then Closed — Won (or Lost). Deal Info Upload holds Sales Invoice, PO, E-way Bill and Quote."),
+            ("History", "Creation, stage moves, approvals, edits and sale link are listed in the deal's History card."),
+        ],
+    },
+    {
+        "key": "quotations", "group": "CRM & Accounts",
+        "title": "Deal Quotations",
+        "stages": ["Added", "Negotiation", "Approved / Rejected / Expired"],
+        "detail": [
+            ("Create", "CRM → Quotes → New, or from a Lot; From Entity defaults to the creator's entity; number QT-DEAL-<MMYYYY><NNNN> (NNNN restarts each month); totals worked out on the server. Can be linked to a deal."),
+            ("Generate / Download", "Generate builds the PDF with the chosen terms; Download gets it."),
+            ("Status", "Added → Negotiation → Approved, Rejected or Expired (beside the status badge on the quote)."),
+            ("Approvals", "Unchanged: Quote Level 1 / Level 2 in the deal's Stage Progress; Level 2 creates the Sales Order."),
+            ("Accounts", "Quote Records card: Completed = Approved, converted to a Sales Order or Quote Level 2 approved; other open quotes are Pending; Rejected / Expired are left out. Customer payment (UTR) and invoice are recorded on Customer Payments."),
+        ],
+    },
+    {
+        "key": "tele_quotations", "group": "CRM & Accounts",
+        "title": "Telecalling Quotations",
+        "stages": ["Added", "Negotiation", "Level 1 Approved / Rejected", "Download Quote"],
+        "detail": [
+            ("Create", "Dealers → Quotation (or Quotations → Add Quote); number QT-TELE-<MMYYYY><NNNN>; status Added."),
+            ("Negotiation / Expired", "Quotations table: move Added to Negotiation, or mark Expired."),
+            ("Level 1", "TeleSales Dashboard → Telecalling Quotations → Pending Approval: the creator's Report To, anyone above them in Report To, or an admin clicks Approve or Reject."),
+            ("Download", "Approved quotations show 'Quote' in the Download column — a printable quotation (print / save as PDF)."),
+        ],
+    },
+    {
+        "key": "purchase_orders", "group": "CRM & Accounts",
+        "title": "Purchase Orders",
+        "stages": ["Draft", "Issued", "Paid", "Verified"],
+        "detail": [
+            ("Create", "Purchase Orders → New, or Generate PO from a Supplier Deal; number PO-<year>-NNNN."),
+            ("Issue", "Draft → Issued (managers). Issuing moves an earlier-stage linked deal to Purchase Order."),
+            ("Payment", "Supplier Payments: Complete Payment with UTR (snapshot optional) and upload the invoice."),
+            ("Verify", "Accounts → Purchase Order card: Verify moves it from Pending to Completed. History card on the PO."),
+        ],
+    },
+    {
+        "key": "sales_orders", "group": "CRM & Accounts",
+        "title": "Sales Orders",
+        "stages": ["Quote Level 2 approved", "SO Open", "Verified"],
+        "detail": [
+            ("Created", "Automatically when a Customer Deal's Quote Level 2 is approved — one open SO per quote; number SO-<year>-NNNN; header and lines copied from the quote so later quote edits never change it."),
+            ("View", "Sales Orders list and detail page with History."),
+            ("Verify", "Accounts → Sales Order card: Verify moves it from Pending to Completed."),
+        ],
+    },
+    {
+        "key": "accounts", "group": "CRM & Accounts",
+        "title": "Accounts (Finance)",
+        "stages": ["Pending", "Verified", "Completed"],
+        "detail": [
+            ("Six cards", "Account KYC, Purchase Order, Sales Order, Quote Records, Supplier Payment and Customer Payment — each with Pending and Completed pills (last 50 completed)."),
+            ("Verify", "Verify on a Pending row records who verified and when, and moves it to Completed."),
+            ("Payments", "Supplier and customer payments are recorded (UTR, mode, date, file) and then verified on their cards."),
+            ("Notifications", "Assignments and approvals notify the assignee, the assigner and both of their Report To managers in the app and by email."),
         ],
     },
 ]
@@ -1727,14 +2076,14 @@ async def srs_functional_spec_download(current_user: User = Depends(_view)):
 # plus the combined handbook, fixed PDFs in qa_docs/handbook/ (updated 6 Nov 2026).
 # (key, file, title, description, pages)
 SRS_HANDBOOK = [
-    ("handbook", "00_OxyPC_Handbook_All_Documents.pdf", "Complete Handbook", "All 7 documents in one file", 240),
+    ("handbook", "00_OxyPC_Handbook_All_Documents.pdf", "Complete Handbook", "All 7 documents in one file", 247),
     ("product-overview", "01_Product_Overview.pdf", "Product Overview", "Key findings, vision, roadmap and KPI definitions", 23),
     ("brd", "02_Business_Requirements_BRD.pdf", "Business Requirements (BRD)", "Objectives, scope, requirements, risks; business rules & SOPs", 29),
     ("personas", "03_Personas_and_Journeys.pdf", "Personas & Journeys", "The 12 roles, their journeys, and how a device moves through every stage", 34),
     ("permission-security", "04_Permission_and_Security_Rules.pdf", "Permission & Security Rules", "Who can see and do what, and how the app protects its data", 32),
     ("technical-architecture", "05_Technical_Architecture.pdf", "Technical Architecture", "System design, data model, integrations and decisions", 61),
     ("uat-dr", "06_UAT_and_Disaster_Recovery.pdf", "UAT & Disaster Recovery", "Test and sign-off, recovery runbook, deployment", 35),
-    ("design-system", "07_Design_System_v2.5.pdf", "Design System v2.5", "Colours, type, layout, components and their rules", 24),
+    ("design-system", "07_Design_System_v2.7.pdf", "Design System v2.7", "Colours, type, layout, components, menus and their rules", 31),
 ]
 _SRS_HANDBOOK_BY_KEY = {k: f for k, f, *_ in SRS_HANDBOOK}
 

@@ -467,6 +467,9 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
         dm_r = await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.id.in_(valid_ids)))
         for d in dm_r.scalars().all():
             deal_map[str(d.id)] = d
+    # Deal documents = the deal page's Documents card (2026-11-11)
+    from services.deal_documents import sourcing_deal_docs
+    deal_docs = await sourcing_deal_docs(db, list(deal_map.values()))
 
     # ── GRN mapping for Part Master (#new): PartsGRNLineItem.part_id stores the
     # SparePart.part_code (see routers/parts_grn.py _new_part_id upsert). Map
@@ -512,7 +515,7 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
         "stock_row_mode": stock_row_mode,
         "part_reqs": part_reqs, "faulty_reqs": faulty_reqs, "part_stock": part_stock,
         "part_meta": part_meta, "req_stock": req_stock, "sourcing": sourcing,
-        "deal_map": deal_map, "estimates_by_batch": estimates_by_batch,
+        "deal_map": deal_map, "deal_docs": deal_docs, "estimates_by_batch": estimates_by_batch,
         "grn_docs": {},
         "grn_by_part_code": grn_by_part_code,
         "harvest_categories": await master_values(db, "iqc_part_category"),

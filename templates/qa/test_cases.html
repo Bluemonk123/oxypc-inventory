@@ -4,33 +4,48 @@
 {% block content %}
 {% include 'qa/_tabs.html' %}
 
-<!-- Toolbar -->
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <form method="get" class="d-flex gap-2 flex-wrap">
-    <input name="module" value="{{ f_module }}" class="form-control form-control-sm" placeholder="Module…" style="width:130px">
-    <select name="type_" class="form-select form-select-sm" style="width:140px">
-      <option value="">All Types</option>
-      {% for t in tc_types %}
-      <option value="{{ t.value }}" {{ 'selected' if f_type == t.value }}>{{ t.value }}</option>
-      {% endfor %}
-    </select>
-    <select name="status" class="form-select form-select-sm" style="width:130px">
-      <option value="">All Statuses</option>
-      {% for s in tc_statuses %}
-      <option value="{{ s.value }}" {{ 'selected' if f_status == s.value }}>{{ s.value }}</option>
-      {% endfor %}
-    </select>
-    <button class="btn btn-sm btn-outline-secondary">Filter</button>
-  </form>
-  {% if can(current_user, 'qa_uat', 'add') %}
-  <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newTCModal">
-    <i class="bi bi-plus-circle me-1"></i>New Test Case
-  </button>
-  {% endif %}
-</div>
+
+<!-- Filters -->
+<form method="get" action="/qa/test-cases" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="module" value="{{ f_module }}" class="form-control form-control-sm" title="Module" placeholder="Search module…">
+    </div>
+    <div>
+      <select name="type_" class="form-select form-select-sm" title="Type">
+        <option value="">All Types</option>
+        {% for t in tc_types %}
+        <option value="{{ t.value }}" {{ 'selected' if f_type == t.value }}>{{ t.value }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="status" class="form-select form-select-sm" title="Status">
+        <option value="">All Statuses</option>
+        {% for s in tc_statuses %}
+        <option value="{{ s.value }}" {{ 'selected' if f_status == s.value }}>{{ s.value }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/qa/test-cases" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
+  </div>
+</form>
 
 <!-- Table -->
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-clipboard-check me-2"></i>Test Cases</span>
+    <div class="d-flex gap-2 align-items-center">
+      {% if can(current_user, 'qa_uat', 'add') %}
+      <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#newTCModal">
+        <i class="bi bi-plus-circle me-1"></i>Add Test Case
+      </button>
+      {% endif %}
+    </div>
+  </div>
   <div class="card-body p-0">
     <table id="qaTestCasesTable" class="table table-hover table-sm mb-0">
       <thead class="table-light">

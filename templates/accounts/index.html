@@ -8,105 +8,293 @@
 {% if request.query_params.get('error') %}
 <div class="alert alert-danger alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ request.query_params.get('error') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% endif %}
-{# ── Pending lists (2026-11-01) ── #}
-{% macro pend_card(title, count, col='col-lg-4') %}
+{# ── Pending / Completed cards (2026-11-01; pill tabs 2026-11-09, Pankaj) ──
+   Each card has the Global pill tabs Pending | Completed in its header.
+   Pending = not yet verified (Verify button); Completed = the latest
+   {{ done_limit }} verified, newest verification first. The old "Recent
+   Supplier Payments" / "Recent Customer Receipts" cards are now the Completed
+   tabs of Supplier Payment / Customer Payment. #}
+{% macro acc_card(key, title, pend_count, col='col-lg-4', labels=None) %}
+{# labels (2026-11-11): three pill tabs for the payment cards — Pending / Verified / Rejected #}
+{% set _lb = labels or ['Pending', 'Completed'] %}
 <div class="{{ col }}">
   <div class="card border-0 shadow-sm h-100 acc-pend">
-    <div class="card-header d-flex align-items-center gap-2" style="background:#e8f1fb">
-      <span class="badge bg-dark text-uppercase">{{ title }}</span>
-      <span class="text-muted small">Pending</span>
-      <span class="badge bg-success ms-auto">{{ count }}</span>
+    <div class="card-header bg-transparent d-flex align-items-center flex-nowrap gap-2 acc-head" data-show-header>
+      <span class="fw-semibold text-nowrap">{{ title }}</span>
+      {# Global pill tabs: .pill-tabs in app.css; no count badges. #}
+      {# Pills sit left, right after the title, on every card (2026-11-09). #}
+      <ul class="nav pill-tabs ms-1 flex-nowrap" role="tablist">
+        <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#acc_{{ key }}_p">{{ _lb[0] }}</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#acc_{{ key }}_c">{{ _lb[1] }}</button></li>
+        {% if _lb|length > 2 %}<li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#acc_{{ key }}_r">{{ _lb[2] }}</button></li>{% endif %}
+      </ul>
     </div>
-    <div class="card-body p-0" style="max-height:300px;overflow-y:auto">
-      {{ caller() }}
+    <div class="card-body p-0 tab-content" style="max-height:300px;overflow-y:auto">
+      <div class="tab-pane fade show active" id="acc_{{ key }}_p">{{ caller('p') }}</div>
+      <div class="tab-pane fade" id="acc_{{ key }}_c">{{ caller('c') }}</div>
+      {% if _lb|length > 2 %}<div class="tab-pane fade" id="acc_{{ key }}_r">{{ caller('r') }}</div>{% endif %}
     </div>
   </div>
 </div>
 {% endmacro %}
+{# one-line card headers (2026-11-11): tighter pills so title + 3 pills fit #}
+<style>
+  .acc-head .pill-tabs .nav-link { padding: .2rem .55rem; white-space: nowrap; font-size: .85rem; }
+</style>
 {% macro verify_btn(action, label) %}
-<button type="button" class="btn btn-sm btn-success py-0 acc-verify" data-action="{{ action }}" data-label="{{ label }}"><i class="bi bi-check2-circle me-1"></i>Verify</button>
+<button type="button" class="btn btn-sm btn-success py-0 text-nowrap acc-verify" data-action="{{ action }}" data-label="{{ label }}"><i class="bi bi-check2-circle me-1"></i>Verify</button>
+{% endmacro %}
+{% macro dmy(d) %}{{ d.strftime('%d-%m-%Y') if d else '—' }}{% endmacro %}
+{% macro none_row(cols, text) %}<tr><td colspan="{{ cols }}" class="text-center text-muted py-3">{{ text }}</td></tr>{% endmacro %}
+{% import "accounts/_deal_payment_requests.html" as dpr with context %}
+{# Purchase Order / Sales Order cards (2026-11-11): one table — the deal's
+   Level 1 approval rows and the order records Accounts verifies, told apart
+   by the Type column. #}
+{% macro order_rows(appr, orders, mode, olabel, ourl, verify_kind) %}
+<table class="table table-sm table-hover mb-0 small" style="font-size:.8rem">
+  <thead class="table-light"><tr><th>{{ olabel }} ID</th><th>Deal ID</th><th>Type</th>
+    {% if mode == 'pending' %}<th>Approver</th><th class="text-end">Action</th>
+    {% else %}<th>Status</th><th>On</th>{% endif %}</tr></thead>
+  <tbody>
+  {% for r in appr %}
+    <tr><td class="text-nowrap">{% if r.order %}<a href="{{ r.order.url }}" class="fw-semibold text-decoration-none">{{ r.order.number }}</a>{% else %}—{% endif %}
+        {% if r.account %}<div><a href="/crm/contacts/{{ r.account.id }}" class="text-muted text-decoration-none small">{{ r.account.company_name }}</a></div>{% endif %}</td>
+      <td style="word-break:break-word"><a href="{{ r.url }}" class="text-decoration-none">{{ r.number }}</a></td>
+      <td><span class="badge bg-primary" title="Level 1 approval on the deal's Stage Progress">Level 1</span></td>
+      {% if mode == 'pending' %}
+      <td title="Approver">{{ user_names.get(r.assignee, r.assignee) }}</td>
+      <td class="text-end text-nowrap">
+        {% if r.can_decide %}
+        <button type="button" class="btn btn-sm btn-success py-0 text-nowrap acc-appr" data-action="{{ r.decide }}" data-decision="approved" data-title="Verify — {{ r.number }} (Level 1)"><i class="bi bi-check2-circle me-1"></i>Verify</button>
+        <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 acc-appr" title="Reject" data-action="{{ r.decide }}" data-decision="rejected" data-title="Reject — {{ r.number }} (Level 1)"><i class="bi bi-x-lg"></i></button>
+        {% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
+      </td>
+      {% else %}
+      <td>{% if r.status == 'approved' %}<span class="badge bg-success">Verified</span>{% else %}<span class="badge bg-danger" title="{{ r.note or '' }}">Rejected</span>{% endif %}</td>
+      <td title="by {{ user_names.get(r.acted_by, r.acted_by or '—') }}">{{ dmy(r.acted_at) }}</td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  {% for o in orders %}
+    {% set _num = o.po_number if olabel == 'PO' else o.so_number %}
+    {% set _deal = o.deal %}
+    <tr><td class="text-nowrap"><a href="{{ ourl }}{{ o.id }}" class="fw-semibold text-decoration-none">{{ _num }}</a>
+        {% if o.contact %}<div><a href="/crm/contacts/{{ o.contact.id }}" class="text-muted text-decoration-none small">{{ o.contact.company_name }}</a></div>{% endif %}</td>
+      <td style="word-break:break-word">{% if _deal %}<a href="{{ '/crm/sourcing/' if olabel == 'PO' else '/crm/sales/' }}{{ _deal.id }}" class="text-decoration-none">{{ _deal.deal_number if olabel == 'PO' else _deal.opp_number }}</a>{% else %}—{% endif %}</td>
+      <td><span class="badge bg-secondary" title="Accounts verifies the order record">Accounts</span></td>
+      {% if mode == 'pending' %}
+      <td title="Added {{ dmy(o.created_at) }}">{{ user_names.get(o.created_by, o.created_by or '—') }}</td>
+      <td class="text-end text-nowrap">{% if can_fin %}{{ verify_btn('/accounts/verify/' ~ verify_kind ~ '/' ~ o.id, ('Purchase Order ' if olabel == 'PO' else 'Sales Order ') ~ _num) }}{% endif %}</td>
+      {% else %}
+      <td><span class="badge bg-success">Verified</span></td>
+      <td title="by {{ user_names.get(o.verified_by, o.verified_by or '—') }}">{{ dmy(o.verified_at) }}</td>
+      {% endif %}
+    </tr>
+  {% endfor %}
+  {% if not appr and not orders %}{{ none_row(5, 'Nothing pending' if mode == 'pending' else 'Nothing completed yet') }}{% endif %}
+  </tbody>
+</table>
 {% endmacro %}
 {% set can_fin = can(current_user, 'finance', 'edit') %}
 {% set can_kyc = can(current_user, 'crm_contacts', 'edit') %}
+{% set pv_sup = can(current_user, 'finance_supplier', 'pricing') %}
+{% set pv_cus = can(current_user, 'finance_customer', 'pricing') %}
 <div class="row g-3 mb-3">
-  {% call pend_card('Account KYC', pend_kyc|length) %}
+  {% call(tab) acc_card('kyc', 'Account KYC', pend_kyc|length) %}
   <table class="table table-sm table-hover mb-0 small">
-    <thead class="table-light"><tr><th>Account Name</th><th>Added On</th><th>Added By</th><th>Action</th></tr></thead>
+    {% if tab == 'p' %}
+    <thead class="table-light"><tr><th>Account Name</th><th>Added On</th><th>Approver</th><th>Action</th></tr></thead>
     <tbody>
     {% for c in pend_kyc %}
-      <tr><td><a href="/crm/contacts/{{ c.id }}" class="fw-semibold text-decoration-none">{{ c.company_name }}</a></td>
-        <td>{{ c.created_at.strftime('%d-%m-%Y') if c.created_at else '—' }}</td>
+      <tr><td><a href="/crm/contacts/{{ c.id }}" class="fw-semibold text-decoration-none">{{ c.company_name }}</a>
+          <div><span class="badge bg-warning text-dark">KYC Pending</span></div></td>
+        <td>{{ dmy(c.created_at) }}</td>
         <td>{{ user_names.get(c.created_by, c.created_by or '—') }}</td>
-        <td>{% if can_kyc %}{{ verify_btn('/accounts/verify-kyc/' ~ c.id, 'KYC of ' ~ c.company_name) }}{% endif %}</td></tr>
-    {% else %}<tr><td colspan="4" class="text-center text-muted py-3">Nothing pending</td></tr>{% endfor %}
+        {# Verify KYC (2026-11-10, Pankaj): opens the KYC documents pop-up #}
+        <td>{% if can_kyc %}<button type="button" class="btn btn-sm btn-success py-0 acc-kyc-verify" data-id="{{ c.id }}" data-company="{{ c.company_name }}"><i class="bi bi-check2-circle me-1"></i>Verify</button>{% endif %}</td></tr>
+    {% else %}{{ none_row(4, 'Nothing pending') }}{% endfor %}
     </tbody>
-  </table>
-  {% endcall %}
-  {% call pend_card('Purchase Order', pend_po|length) %}
-  <table class="table table-sm table-hover mb-0 small">
-    <thead class="table-light"><tr><th>PO ID</th><th>Added On</th><th>Added By</th><th>Action</th></tr></thead>
+    {% else %}
+    <thead class="table-light"><tr><th>Account Name</th><th>On</th><th>Approver</th></tr></thead>
     <tbody>
-    {% for po in pend_po %}
-      <tr><td><a href="/crm/purchase-orders/{{ po.id }}" class="fw-semibold text-decoration-none">{{ po.po_number }}</a></td>
-        <td>{{ po.created_at.strftime('%d-%m-%Y') if po.created_at else '—' }}</td>
-        <td>{{ user_names.get(po.created_by, po.created_by or '—') }}</td>
-        <td>{% if can_fin %}{{ verify_btn('/accounts/verify/po/' ~ po.id, 'Purchase Order ' ~ po.po_number) }}{% endif %}</td></tr>
-    {% else %}<tr><td colspan="4" class="text-center text-muted py-3">Nothing pending</td></tr>{% endfor %}
+    {% for c in done_kyc %}
+      <tr><td><a href="/crm/contacts/{{ c.id }}" class="fw-semibold text-decoration-none">{{ c.company_name }}</a>
+          <div><span class="badge bg-success">KYC Approved</span></div></td>
+        <td>{{ dmy(c.kyc_verified_at) }}</td>
+        <td>{{ user_names.get(c.kyc_verified_by, c.kyc_verified_by or '—') }}</td></tr>
+    {% else %}{{ none_row(3, 'Nothing completed yet') }}{% endfor %}
     </tbody>
+    {% endif %}
   </table>
   {% endcall %}
-  {% call pend_card('Sales Order', pend_so|length) %}
+  {# Supplier Payment (2026-11-11, Pankaj): Supplier Deal Payment requests —
+     Deal ID first; Verify opens Complete Payment; pills Pending / Verified / Rejected #}
+  {% call(tab) acc_card('sp', 'Supplier Payment', sp_req.pending|length + pend_sp|length, labels=['Pending', 'Verified', 'Rejected']) %}
+  {% if tab == 'p' %}
+  {{ dpr.table(sp_req.pending, 'pending', 'supplier', '/accounts', show_amount=false) }}
+  {% if pend_sp %}
+  <div class="px-2 pt-2 small text-muted fw-semibold">Recorded payments awaiting verification</div>
   <table class="table table-sm table-hover mb-0 small">
-    <thead class="table-light"><tr><th>SO ID</th><th>Added On</th><th>Added By</th><th>Action</th></tr></thead>
-    <tbody>
-    {% for so in pend_so %}
-      <tr><td><a href="/crm/sales-orders/{{ so.id }}" class="fw-semibold text-decoration-none">{{ so.so_number }}</a></td>
-        <td>{{ so.created_at.strftime('%d-%m-%Y') if so.created_at else '—' }}</td>
-        <td>{{ user_names.get(so.created_by, so.created_by or '—') }}</td>
-        <td>{% if can_fin %}{{ verify_btn('/accounts/verify/so/' ~ so.id, 'Sales Order ' ~ so.so_number) }}{% endif %}</td></tr>
-    {% else %}<tr><td colspan="4" class="text-center text-muted py-3">Nothing pending</td></tr>{% endfor %}
-    </tbody>
-  </table>
-  {% endcall %}
-</div>
-<div class="row g-3 mb-4">
-  {% call pend_card('Supplier Payment', pend_sp|length, 'col-lg-6') %}
-  <table class="table table-sm table-hover mb-0 small">
-    <thead class="table-light"><tr><th>Supplier Name</th><th>Added On</th><th>Added By</th><th>Action</th></tr></thead>
+    <thead class="table-light"><tr><th>Deal ID</th><th>Supplier</th><th>Added On</th><th>Approver</th><th>Action</th></tr></thead>
     <tbody>
     {% for p in pend_sp %}
-      <tr><td>{{ p.contact.company_name if p.contact else '—' }}
-          {% if p.po %}<span class="badge bg-light text-dark border ms-1">{{ p.po.po_number }}</span>{% endif %}</td>
-        <td>{{ p.created_at.strftime('%d-%m-%Y') if p.created_at else '—' }}</td>
+      <tr><td>{% if p.sourcing_deal %}<a href="/crm/sourcing/{{ p.sourcing_deal.id }}" class="fw-semibold text-decoration-none font-monospace">{{ p.sourcing_deal.deal_number }}</a>{% else %}—{% endif %}</td>
+        <td>{{ p.contact.company_name if p.contact else '—' }}</td>
+        <td>{{ dmy(p.created_at) }}</td>
         <td>{{ user_names.get(p.created_by, p.created_by or '—') }}</td>
         <td>{% if can_fin %}{{ verify_btn('/accounts/verify/supplier/' ~ p.id, 'payment to ' ~ (p.contact.company_name if p.contact else 'supplier')) }}{% endif %}</td></tr>
-    {% else %}<tr><td colspan="4" class="text-center text-muted py-3">Nothing pending</td></tr>{% endfor %}
+    {% endfor %}
     </tbody>
   </table>
-  {% endcall %}
-  {% call pend_card('Customer Payment', pend_cr|length, 'col-lg-6') %}
+  {% endif %}
+  {% elif tab == 'c' %}
   <table class="table table-sm table-hover mb-0 small">
-    <thead class="table-light"><tr><th>Buyer Name</th><th>Added On</th><th>Added By</th><th>Action</th></tr></thead>
+    <thead class="table-light"><tr><th>Deal ID</th><th>Supplier</th><th>Document</th><th>Status</th><th>On</th></tr></thead>
+    <tbody>
+    {% for p in done_sp %}
+      <tr><td>{% if p.sourcing_deal %}<a href="/crm/sourcing/{{ p.sourcing_deal.id }}" class="fw-semibold text-decoration-none font-monospace">{{ p.sourcing_deal.deal_number }}</a>{% else %}—{% endif %}</td>
+        <td>{{ p.contact.company_name if p.contact else '—' }}</td>
+        <td class="text-nowrap">{{ dpr.doc(p) }}</td>
+        <td><span class="badge bg-success">Verified</span></td>
+        <td title="Verified by {{ user_names.get(p.verified_by, p.verified_by or '—') }}">{{ dmy(p.verified_at) }}</td></tr>
+    {% else %}{{ none_row(6, 'No verified payments yet.') }}{% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  {{ dpr.table(sp_req.rejected, 'rejected', 'supplier', '/accounts') }}
+  {% endif %}
+  {% endcall %}
+  {# Customer Payment (2026-11-11, Pankaj): Customer Deal Payment requests, Deal ID first #}
+  {% call(tab) acc_card('cr', 'Customer Payment', cr_req.pending|length + pend_cr|length, labels=['Pending', 'Verified', 'Rejected']) %}
+  {% if tab == 'p' %}
+  {{ dpr.table(cr_req.pending, 'pending', 'customer', '/accounts', show_amount=false) }}
+  {% if pend_cr %}
+  <div class="px-2 pt-2 small text-muted fw-semibold">Recorded receipts awaiting verification</div>
+  <table class="table table-sm table-hover mb-0 small">
+    <thead class="table-light"><tr><th>Deal ID</th><th>Buyer</th><th>Added On</th><th>Approver</th><th>Action</th></tr></thead>
     <tbody>
     {% for r in pend_cr %}
       {% set buyer = r.contact.company_name if r.contact else (r.dealer.business_name if r.dealer else '—') %}
-      <tr><td>{{ buyer }}
-          {% if r.sales_order %}<span class="badge bg-light text-dark border ms-1">{{ r.sales_order.so_number }}</span>
-          {% elif r.opportunity %}<span class="badge bg-light text-dark border ms-1" title="Buyer Deal (no SO linked)">{{ r.opportunity.opp_number }}</span>{% endif %}</td>
-        <td>{{ r.created_at.strftime('%d-%m-%Y') if r.created_at else '—' }}</td>
+      <tr><td>{% if r.opportunity %}<a href="/crm/sales/{{ r.opportunity.id }}" class="fw-semibold text-decoration-none font-monospace">{{ r.opportunity.opp_number }}</a>{% else %}—{% endif %}</td>
+        <td>{{ buyer }}</td>
+        <td>{{ dmy(r.created_at) }}</td>
         <td>{{ user_names.get(r.created_by, r.created_by or '—') }}</td>
         <td>{% if can_fin %}{{ verify_btn('/accounts/verify/customer/' ~ r.id, 'payment from ' ~ buyer) }}{% endif %}</td></tr>
-    {% else %}<tr><td colspan="4" class="text-center text-muted py-3">Nothing pending</td></tr>{% endfor %}
+    {% endfor %}
     </tbody>
   </table>
+  {% endif %}
+  {% elif tab == 'c' %}
+  <table class="table table-sm table-hover mb-0 small">
+    <thead class="table-light"><tr><th>Deal ID</th><th>Buyer</th><th>Document</th><th>Status</th><th>On</th></tr></thead>
+    <tbody>
+    {% for r in done_cr %}
+      {% set buyer = r.contact.company_name if r.contact else (r.dealer.business_name if r.dealer else '—') %}
+      <tr><td>{% if r.opportunity %}<a href="/crm/sales/{{ r.opportunity.id }}" class="fw-semibold text-decoration-none font-monospace">{{ r.opportunity.opp_number }}</a>{% else %}—{% endif %}</td>
+        <td>{{ buyer }}</td>
+        <td class="text-nowrap">{{ dpr.doc(r) }}</td>
+        <td><span class="badge bg-success">Verified</span></td>
+        <td title="Verified by {{ user_names.get(r.verified_by, r.verified_by or '—') }}">{{ dmy(r.verified_at) }}</td></tr>
+    {% else %}{{ none_row(6, 'No verified receipts yet.') }}{% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  {{ dpr.table(cr_req.rejected, 'rejected', 'customer', '/accounts') }}
+  {% endif %}
   {% endcall %}
 </div>
+<div class="row g-3 mb-4">
+  {# Quote Records (2026-11-09, Pankaj): Completed = Approved, converted to a
+     Sales Order, or Quote Level 2 approved on its deal; Pending = other open
+     quotes. Approvers = the deal's Quote Level 1 / Level 2 in Stage Progress.
+     Approval happens on the deal, so there is no Verify button here. #}
+  {% call(tab) acc_card('qt', 'Quote Records', pend_qt|length) %}
+  <table class="table table-sm table-hover mb-0 small">
+    {% if tab == 'p' %}
+    <thead class="table-light"><tr><th>Quote ID</th><th>Added On</th><th>Approver</th></tr></thead>
+    <tbody>
+    {% for r in pend_qt %}
+      {% set q = r.quote %}
+      <tr><td><a href="/crm/quotes/{{ q.id }}" class="fw-semibold text-decoration-none">{{ q.quote_number }}</a>
+          <div class="text-muted">{{ q.contact.company_name if q.contact else '—' }}{% if r.deal_kind %} · {{ r.deal_kind }}{% endif %}</div></td>
+        <td>{{ dmy(q.created_at) }}</td>
+        <td>{% for lvl, st in r.approvers %}<div class="text-nowrap"><span class="text-muted">{{ lvl }}:</span> {{ user_names.get(st.assigned_to, st.assigned_to) }}
+            {% if st.status == 'approved' %}<span class="badge bg-success">Approved</span>{% elif st.status == 'rejected' %}<span class="badge bg-danger">Rejected</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</div>
+          {% else %}<span class="text-muted">Not assigned</span>{% endfor %}</td></tr>
+    {% else %}{{ none_row(3, 'Nothing pending') }}{% endfor %}
+    </tbody>
+    {% else %}
+    <thead class="table-light"><tr><th>Quote ID</th><th>Approver</th><th>On</th></tr></thead>
+    <tbody>
+    {% for r in done_qt %}
+      {% set q = r.quote %}
+      <tr><td><a href="/crm/quotes/{{ q.id }}" class="fw-semibold text-decoration-none">{{ q.quote_number }}</a>
+          {% if r.so_number %}<span class="badge bg-light text-dark border ms-1" title="Sales Order created from this quote">{{ r.so_number }}</span>{% endif %}
+          <div class="text-muted">{{ q.contact.company_name if q.contact else '—' }}{% if r.deal_kind %} · {{ r.deal_kind }}{% endif %}</div></td>
+        <td>{{ user_names.get(r.approved_by, r.approved_by) if r.approved_by else ('Approved' if q.status == 'approved' else '—') }}</td>
+        <td>{{ dmy(r.completed_at) }}</td></tr>
+    {% else %}{{ none_row(3, 'Nothing completed yet') }}{% endfor %}
+    </tbody>
+    {% endif %}
+  </table>
+  {% endcall %}
+  {% call(tab) acc_card('po', 'Purchase Order', pend_po|length + po_appr.pending|length) %}
+  {% if tab == 'p' %}{{ order_rows(po_appr.pending, pend_po, 'pending', 'PO', '/crm/purchase-orders/', 'po') }}
+  {% else %}{{ order_rows(po_appr.done, done_po, 'done', 'PO', '/crm/purchase-orders/', 'po') }}{% endif %}
+  {% endcall %}
+  {% call(tab) acc_card('so', 'Sales Order', pend_so|length + so_appr.pending|length) %}
+  {% if tab == 'p' %}{{ order_rows(so_appr.pending, pend_so, 'pending', 'SO', '/crm/sales-orders/', 'so') }}
+  {% else %}{{ order_rows(so_appr.done, done_so, 'done', 'SO', '/crm/sales-orders/', 'so') }}{% endif %}
+  {% endcall %}
+</div>
+{{ dpr.modals(payment_modes) }}
+<div class="modal fade" id="accApprModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form method="post" class="modal-content" id="accApprForm">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+  <input type="hidden" name="decision" value=""><input type="hidden" name="return_to" value="/accounts">
+  <div class="modal-header py-2"><h6 class="modal-title" id="accApprTitle"></h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body"><label class="form-label small fw-semibold">Remark <span class="text-muted fw-normal" id="accApprOpt">(optional)</span></label>
+    <textarea name="note" class="form-control" rows="2" maxlength="500"></textarea></div>
+  <div class="modal-footer py-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+    <button type="submit" class="btn btn-sm" id="accApprBtn"></button></div>
+</form></div></div>
+<script>
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('.acc-appr'); if (!b) return;
+  var f = document.getElementById('accApprForm'); f.reset(); f.action = b.dataset.action;
+  f.querySelector('[name=decision]').value = b.dataset.decision; f.querySelector('[name=return_to]').value = '/accounts';
+  var rej = b.dataset.decision === 'rejected';
+  document.getElementById('accApprTitle').textContent = b.dataset.title;
+  f.querySelector('[name=note]').required = rej;
+  document.getElementById('accApprOpt').textContent = rej ? '(required)' : '(optional)';
+  var btn = document.getElementById('accApprBtn'); btn.className = 'btn btn-sm ' + (rej ? 'btn-danger' : 'btn-success'); btn.textContent = rej ? 'Reject' : 'Verify';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('accApprModal')).show();
+});
+</script>
 <div class="modal fade" id="accVerifyModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form method="post" class="modal-content" id="accVerifyForm">
   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
   <div class="modal-header"><h5 class="modal-title"><i class="bi bi-patch-check me-2"></i>Verify</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
   <div class="modal-body"><p class="mb-0">Are You Sure? This marks <strong id="accVerifyLabel"></strong> as verified.</p></div>
   <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Confirm</button></div>
 </form></div></div>
+{# Verify KYC pop-up (2026-11-10, Pankaj): the Account's KYC documents with
+   View links; Cancel / Zip Download (all uploaded files) / Confirm. #}
+<div class="modal fade" id="accKycModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered modal-lg"><form method="post" class="modal-content" id="accKycForm">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+  <div class="modal-header"><h5 class="modal-title"><i class="bi bi-patch-check me-2"></i>Verify KYC — <span id="accKycCompany"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <table class="table table-sm align-middle mb-2">
+      <thead class="table-light"><tr><th>Document</th><th>Number</th><th class="text-end">File</th></tr></thead>
+      <tbody id="accKycRows"></tbody>
+    </table>
+    <p class="mb-0 small text-muted">Confirm marks this Account's KYC as verified.</p>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+    {% if can(current_user, 'crm_contacts', 'export') %}<a href="#" class="btn btn-outline-primary" id="accKycZip"><i class="bi bi-file-earmark-zip me-1"></i>Zip Download</a>{% endif %}
+    <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Confirm</button>
+  </div>
+</form></div></div>
+<script type="application/json" id="accKycDocs">{{ kyc_docs | tojson }}</script>
 <div class="row g-3 mb-4">
   <div class="col-md-6">
     <div class="card border-0 shadow-sm">
@@ -127,52 +315,6 @@
     </div>
   </div>
 </div>
-<div class="row g-3">
-  <div class="col-md-6">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-arrow-up-circle-fill text-danger me-2"></i>Recent Supplier Payments</div>
-      <div class="card-body p-0">
-        <table class="table table-hover mb-0 small">
-          <thead class="table-light"><tr><th>Date</th><th>Supplier</th><th>Mode</th><th>Amount</th></tr></thead>
-          <tbody>
-            {% for p in recent_payments %}
-            <tr>
-              <td>{{ p.payment_date.strftime('%d-%m-%Y') if p.payment_date else '&mdash;' }}</td>
-              <td>{{ p.contact.company_name if p.contact else '&mdash;' }}</td>
-              <td><span class="badge bg-secondary">{{ p.payment_mode or '&mdash;' }}</span></td>
-              <td class="fw-semibold text-danger">{% if can(current_user, 'finance_supplier', 'pricing') %}&#8377;{{ ((p.amount) | inr) }}{% else %}—{% endif %}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="4" class="text-center text-muted py-3">No payments yet.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  <div class="col-md-6">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-arrow-down-circle-fill text-success me-2"></i>Recent Customer Receipts</div>
-      <div class="card-body p-0">
-        <table class="table table-hover mb-0 small">
-          <thead class="table-light"><tr><th>Date</th><th>Contact</th><th>Mode</th><th>Amount</th></tr></thead>
-          <tbody>
-            {% for r in recent_receipts %}
-            <tr>
-              <td>{{ r.receipt_date.strftime('%d-%m-%Y') if r.receipt_date else '&mdash;' }}</td>
-              <td>{{ r.contact.company_name if r.contact else '&mdash;' }}</td>
-              <td><span class="badge bg-secondary">{{ r.payment_mode or '&mdash;' }}</span></td>
-              <td class="fw-semibold text-success">{% if can(current_user, 'finance_customer', 'pricing') %}&#8377;{{ ((r.amount) | inr) }}{% else %}—{% endif %}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="4" class="text-center text-muted py-3">No receipts yet.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-</div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -181,6 +323,28 @@ document.addEventListener('click', function (e) {
   document.getElementById('accVerifyForm').action = b.dataset.action;
   document.getElementById('accVerifyLabel').textContent = b.dataset.label;
   bootstrap.Modal.getOrCreateInstance(document.getElementById('accVerifyModal')).show();
+});
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('.acc-kyc-verify'); if (!b) return;
+  var docs = {};
+  try { docs = JSON.parse(document.getElementById('accKycDocs').textContent || '{}'); } catch (x) {}
+  var list = docs[b.dataset.id] || [];
+  var esc = function (s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; };
+  document.getElementById('accKycForm').action = '/accounts/verify-kyc/' + b.dataset.id;
+  document.getElementById('accKycCompany').textContent = b.dataset.company;
+  document.getElementById('accKycRows').innerHTML = list.map(function (d) {
+    return '<tr><td class="fw-semibold small">' + esc(d.label) + '</td><td class="small font-monospace">' + (esc(d.number) || '<span class="text-muted">—</span>') + '</td>'
+      + '<td class="text-end">' + (d.url ? '<a href="' + esc(d.url) + '" target="_blank" class="btn btn-sm btn-outline-primary py-0"><i class="bi bi-eye me-1"></i>View</a>'
+                                         : '<span class="badge bg-light text-muted border">Not uploaded</span>') + '</td></tr>';
+  }).join('');
+  var zip = document.getElementById('accKycZip');
+  if (zip) {
+    var any = list.some(function (d) { return d.url; });
+    zip.href = any ? '/accounts/kyc-zip/' + b.dataset.id : '#';
+    zip.classList.toggle('disabled', !any);
+    zip.title = any ? 'Download all uploaded KYC documents' : 'No KYC documents uploaded';
+  }
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('accKycModal')).show();
 });
 </script>
 {% endblock %}

@@ -19,7 +19,7 @@
   <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
     <span class="fw-semibold"><i class="bi bi-file-earmark-ruled me-1 text-primary"></i>Quotes Generated ({{ quote_rows|length }})</span>
     <button {% if not can(current_user, _qm, 'add') or not can(current_user, 'crm_quotes', 'pricing_add') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-primary" id="newQuoteBtn">
-      <i class="bi bi-plus-lg me-1"></i>New Quote
+      <i class="bi bi-plus-circle me-1"></i>Add Quote
     </button>
   </div>
   <div class="card-body p-0">
@@ -28,47 +28,36 @@
       <table class="table table-sm table-hover mb-0">
         <thead class="table-light">
           <tr>
+            {# Quotation ID first, linking to the quote (2026-11-11, Pankaj) #}
+            <th>Quotation ID</th>
             {% if show_opp_column|default(true) %}<th>Opportunity ID</th>{% endif %}
             <th class="text-end">Total Models</th>
             <th class="text-end">Total Quantity</th>
             <th class="text-end">Total Price</th>
             <th class="text-center">Download</th>
-            <th class="text-center">Action</th>
           </tr>
         </thead>
         <tbody>
           {% for r in quote_rows %}
           <tr>
+            <td class="small"><a href="/crm/quotes/{{ r.quote.id }}" class="text-decoration-none fw-semibold font-monospace">{{ r.quote.quote_number }}</a></td>
             {% if show_opp_column|default(true) %}
             <td class="small">
               {% if r.opp_id %}
               <a href="/crm/sales/{{ r.opp_id }}" class="text-decoration-none fw-semibold">{{ r.opp_number }}</a>
               {% else %}<span class="text-muted">—</span>{% endif %}
-              <div class="text-muted font-monospace" style="font-size:.72rem">{{ r.quote.quote_number }}</div>
             </td>
             {% endif %}
             <td class="small text-end">{{ r.total_models }}</td>
             <td class="small text-end">{{ r.total_qty }}</td>
             <td class="small text-end">{% if can(current_user, _qm, 'pricing') %}₹{{ ((r.total_price) | inr) }}{% else %}—{% endif %}</td>
             <td class="text-center">
-              {# Only a document actually produced by Generate is downloadable —
-                 an empty cell here means nobody has generated one yet. #}
-              {% if r.has_pdf %}
+              {# The quote document is made when the quote is added and refreshed on
+                 every edit (2026-11-11) — no Generate step. #}
               {% if can(current_user, _qm, 'export') %}<a href="/crm/quotes/{{ r.quote.id }}/download"
-                 class="btn btn-sm btn-outline-secondary py-0 px-2" title="Download the generated quote">
-                <i class="bi bi-file-earmark-pdf"></i>
-              </a>{% endif %}
-              {% else %}
-              <span class="text-muted small" title="Not generated yet">—</span>
-              {% endif %}
-            </td>
-            <td class="text-center">
-              {% if can(current_user, _qm, 'export') %}
-              <button type="button" class="btn btn-sm btn-success py-0 px-2 generate-quote-btn"
-                      data-quote-id="{{ r.quote.id }}" data-quote-number="{{ r.quote.quote_number }}">
-                <i class="bi bi-gear me-1"></i>Generate
-              </button>
-              {% endif %}
+                 class="btn btn-sm btn-outline-success py-0 px-2" title="Download {{ r.quote.quote_number }}">
+                <i class="bi bi-download me-1"></i>Quote
+              </a>{% else %}<span class="text-muted small">—</span>{% endif %}
             </td>
           </tr>
           {% endfor %}
@@ -179,62 +168,6 @@
 </form>
 {% endif %}
 
-<!-- Generate: choose sections + which policies to print -->
-<div class="modal fade" id="generateQuoteModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form method="post" id="generateQuoteForm" class="modal-content">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
-      <div class="modal-header py-2">
-        <h6 class="modal-title">Generate Quote <span class="text-muted small" id="gqNumber"></span></h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="text-muted small mb-2">Pick the sections to include, then download the document.</div>
-        <div class="form-check"><input class="form-check-input" type="checkbox" name="include_account" id="gqAccount" checked><label class="form-check-label" for="gqAccount">Account details</label></div>
-        <div class="form-check"><input class="form-check-input" type="checkbox" name="include_company" id="gqCompany" checked><label class="form-check-label" for="gqCompany">Company details</label></div>
-        <div class="form-check mb-3"><input class="form-check-input" type="checkbox" name="include_items" id="gqItems" checked><label class="form-check-label" for="gqItems">Buyer Deal Line Items</label></div>
-
-        <label class="form-label small fw-semibold mb-1">Company Details</label>
-        <select name="company_id" class="form-select form-select-sm mb-3">
-          {% for c in companies %}
-          <option value="{{ c.id }}">{{ c.company_name }}</option>
-          {% endfor %}
-        </select>
-
-        {# Titles come from the Terms &amp; Condition page; leaving one blank
-           omits that block from the document entirely. #}
-        <label class="form-label small fw-semibold mb-1">Payment Terms</label>
-        <select name="payment_term_id" class="form-select form-select-sm mb-2">
-          <option value="">— None —</option>
-          {% for t in terms_by_type.get('payment', []) %}
-          <option value="{{ t.id }}">{{ t.title }}</option>
-          {% endfor %}
-        </select>
-
-        <label class="form-label small fw-semibold mb-1">Delivery Terms</label>
-        <select name="delivery_term_id" class="form-select form-select-sm mb-2">
-          <option value="">— None —</option>
-          {% for t in terms_by_type.get('delivery', []) %}
-          <option value="{{ t.id }}">{{ t.title }}</option>
-          {% endfor %}
-        </select>
-
-        <label class="form-label small fw-semibold mb-1">Disclaimer</label>
-        <select name="disclaimer_term_id" class="form-select form-select-sm">
-          <option value="">— None —</option>
-          {% for t in terms_by_type.get('disclaimer', []) %}
-          <option value="{{ t.id }}">{{ t.title }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="modal-footer py-2">
-        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-success btn-sm"><i class="bi bi-download me-1"></i>Generate &amp; Download</button>
-      </div>
-    </form>
-  </div>
-</div>
-
 <script>
 (function () {
   var newBtn = document.getElementById('newQuoteBtn');
@@ -262,13 +195,5 @@
     });
   }
 
-  document.querySelectorAll('.generate-quote-btn').forEach(function (btn) {
-    btn.addEventListener('click', function () {
-      document.getElementById('generateQuoteForm').action =
-        '/crm/quotes/' + btn.getAttribute('data-quote-id') + '/generate';
-      document.getElementById('gqNumber').textContent = btn.getAttribute('data-quote-number');
-      new bootstrap.Modal(document.getElementById('generateQuoteModal')).show();
-    });
-  });
 })();
 </script>

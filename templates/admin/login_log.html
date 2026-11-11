@@ -3,9 +3,12 @@
 {% block page_title %}Login Activity Log{% endblock %}
 {% block content %}
 <div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
-    <table id="logTable" class="table table-hover mb-0 small">
-      <thead class="table-dark"><tr><th>Date/Time</th><th>Username</th><th>Full Name</th><th>Action</th><th>IP Address</th></tr></thead>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-box-arrow-in-right me-2"></i>Login Activity</span>
+  </div>
+  <div class="card-body">
+    <table id="logTable" class="table table-hover align-middle mb-0">
+      <thead><tr><th>Date/Time</th><th>Username</th><th>Full Name</th><th>Action</th><th>IP Address</th></tr></thead>
       <tbody>
         {% for log, username, full_name in logs %}
         <tr>
@@ -22,5 +25,12 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>$(document).ready(function(){ $('#logTable').DataTable({pageLength: 12, order:[[0,'desc']]}); });</script>
+<script>
+$(document).ready(function(){
+  initGlobalTable('#logTable', {
+    order: [[0, 'desc']],
+    language: { emptyTable: 'No login activity recorded.' },
+  }, { clamp: false });  // thousands of short rows: skip the per-cell clamp renderer (see global-table.js)
+});
+</script>
 {% endblock %}

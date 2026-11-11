@@ -52,7 +52,7 @@
     </div>
     {% include "_date_range_fields.html" %}
     <div>
-      <button type="submit" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
       <a href="/transfers" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Clear</a>
     </div>
   </div>
@@ -71,7 +71,7 @@
       </button>
     </form>
     {% endif %}
-    {% if can(current_user, 'transfers', 'add') %}<a href="/transfers/new" class="btn btn-sm btn-success text-nowrap"><i class="bi bi-plus-circle me-1"></i>New Transfer</a>{% endif %}
+    {% if can(current_user, 'transfers', 'add') %}<a href="/transfers/new" class="btn btn-sm btn-success text-nowrap"><i class="bi bi-plus-circle me-1"></i>Add Transfer</a>{% endif %}
     <a {% if not can(current_user, 'transfers', 'export') %}hidden {% endif %}id="exportCsvLink" class="btn btn-sm btn-outline-success text-nowrap"
        href="/transfers/export?q={{ q | urlencode }}&transfer_type={{ transfer_type | urlencode }}&transferred_by={{ transferred_by | urlencode }}&location_id={{ location_id | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}&entity={{ entity | urlencode }}">
       <i class="bi bi-download me-1"></i>Export

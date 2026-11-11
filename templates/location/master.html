@@ -69,10 +69,13 @@
 </div>
 
 <!-- Location table -->
-<div class="card shadow-sm border-0">
-  <div class="card-body p-0">
-    <table class="table table-hover table-sm mb-0" id="locTable">
-      <thead class="table-light">
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-geo-alt me-2"></i>Storage Locations</span>
+  </div>
+  <div class="card-body">
+    <table class="table table-hover align-middle mb-0" id="locTable">
+      <thead>
         <tr>
           <th>Location ID</th>
           <th>Zone</th>
@@ -82,7 +85,7 @@
           <th>Current Devices</th>
           <th>Description</th>
           <th>Status</th>
-          <th></th>
+          <th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -259,7 +262,12 @@
 {% block scripts %}
 {{ dz.script(input_id='locCsvFile', zone_id='locDropZone', icon_id='locDropIcon', status_id='locDropStatus') }}
 <script>
-$(document).ready(function(){ $('#locTable').DataTable({pageLength: 12, order:[[0,'asc']]}); });
+$(document).ready(function(){
+  initGlobalTable('#locTable', {
+    order: [[0, 'asc']],
+    language: { emptyTable: 'No storage locations yet.' },
+  });
+});
 
 function openEditLocationModal(loc){
   document.getElementById('editLocationForm').action = '/locations/master/' + loc.id + '/edit';

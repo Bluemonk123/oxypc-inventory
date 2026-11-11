@@ -3,33 +3,30 @@
 {% block page_title %}Tickets Raised{% endblock %}
 {% block content %}
 
-<div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
-    {% if not tickets %}
-    <div class="text-center text-muted py-5">
-      <i class="bi bi-ticket-detailed fs-1 d-block mb-2 opacity-25"></i>
-      <p class="mb-1">No tickets raised yet.</p>
-      <p class="small">Click <strong>Raise Ticket</strong> in the top bar to log a new feedback.</p>
-    </div>
-    {% else %}
-    <div class="table-responsive">
-      <table class="table table-sm table-hover mb-0 align-middle" style="font-size:.84rem">
-        <thead class="table-light">
-          <tr>
-            <th class="ps-3" style="width:110px">Ticket ID</th>
-            <th style="width:90px">Status</th>
-            <th style="width:170px">Raised On</th>
-            <th style="min-width:150px">Raised By</th>
-            <th>Feedback</th>
-            <th style="width:110px">Photos</th>
-            <th style="min-width:160px">Notes</th>
-            <th style="width:80px">Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {% for t in tickets %}
+{% import "_tiles.html" as tl %}
+{# 2026-11-10 (Pankaj): dark tiles, one global card with Open | Closed pill
+   tabs in the header, the standard table in each tab, and Add Ticket (same
+   modal as the top bar's Raise Ticket). Non-admins see their own tickets. #}
+<div class="oxt-row mb-3">
+  {{ tl.single(stats.total, 'Total Tickets', '#0d6efd', 'bi-ticket-detailed', variant='dark') }}
+  {{ tl.single(stats.open, 'Open Tickets', '#198754', 'bi-envelope-open', variant='dark') }}
+  {{ tl.single(stats.closed, 'Closed Tickets', '#6c757d', 'bi-check2-circle', variant='dark') }}
+  {{ tl.single(stats.avg_age ~ 'd', 'Average Aging', '#fd7e14', 'bi-hourglass-split', variant='dark',
+               title_attr='Average days since raised, over the open tickets') }}
+</div>
+
+{% macro ticket_table(tid, items) %}
+<table class="table table-hover mb-0 align-middle" id="{{ tid }}">
+  <thead class="table-dark">
+    <tr>
+      <th>Ticket ID</th><th>Status</th><th>Raised On</th><th>Raised By</th><th>Feedback</th>
+      <th>Photos</th><th>Notes</th><th>Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in items %}
           <tr id="row-{{ t.ticket_id }}">
-            <td class="ps-3 font-monospace fw-semibold text-secondary">{{ t.ticket_id }}</td>
+            <td class="font-monospace fw-semibold text-secondary">{{ t.ticket_id }}</td>
             <td>
               {% if t.status == 'Open' %}
               <span class="badge bg-success">Open</span>
@@ -37,7 +34,7 @@
               <span class="badge bg-secondary">Closed</span>
               {% endif %}
             </td>
-            <td>
+            <td data-order="{{ t.raised_iso }}">
               {{ t.raised_on }}
               <span class="badge bg-{{ t.age_cls }} ms-1 small">{{ t.age_label }}</span>
             </td>
@@ -101,11 +98,30 @@
               {% endif %}
             </td>
           </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% set open_items = tickets | selectattr('status', 'equalto', 'Open') | list %}
+{% set closed_items = tickets | rejectattr('status', 'equalto', 'Open') | list %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <div class="d-flex align-items-center gap-3 flex-wrap">
+      <span class="fw-semibold"><i class="bi bi-ticket-detailed me-2"></i>Tickets Raised</span>
+      <ul class="nav pill-tabs" role="tablist">
+        <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#tkOpenPane" data-tk="open">Open</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#tkClosedPane" data-tk="closed">Closed</button></li>
+      </ul>
     </div>
-    {% endif %}
+    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#raiseTicketModal"
+            title="Raise a support ticket"><i class="bi bi-plus-lg me-1"></i>Add Ticket</button>
+  </div>
+  <div class="card-body p-0">
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="tkOpenPane">{{ ticket_table('tkOpenTable', open_items) }}</div>
+      <div class="tab-pane fade" id="tkClosedPane">{{ ticket_table('tkClosedTable', closed_items) }}</div>
+    </div>
   </div>
 </div>
 
@@ -132,6 +148,24 @@
 </div>
 
 <script>
+// Standard tables, newest first; the Closed table is measured when shown.
+// (DOMContentLoaded: jQuery loads at the end of base.html.)
+document.addEventListener('DOMContentLoaded', function () {
+  var opts = { order: [[2, 'desc']], columnDefs: [{ orderable: false, targets: [5, 7] }] };
+  initGlobalTable('#tkOpenTable', $.extend(true, {}, opts, { language: { emptyTable: 'No open tickets.' } }));
+  initGlobalTable('#tkClosedTable', $.extend(true, {}, opts, { language: { emptyTable: 'No closed tickets.' } }));
+  var KEY = 'tkTab';
+  document.querySelectorAll('.pill-tabs [data-tk]').forEach(function (b) {
+    b.addEventListener('shown.bs.tab', function () {
+      try { sessionStorage.setItem(KEY, b.dataset.tk); } catch (e) {}
+      $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    });
+  });
+  var want; try { want = sessionStorage.getItem(KEY); } catch (e) {}
+  var wb = want && document.querySelector('.pill-tabs [data-tk="' + want + '"]');
+  if (wb) { bootstrap.Tab.getOrCreateInstance(wb).show(); setTimeout(function () { $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust(); }, 250); }
+});
+
 function csrfToken() {
   return document.cookie.split('; ').find(c => c.startsWith('csrf_token='))?.split('=')[1] || '';
 }

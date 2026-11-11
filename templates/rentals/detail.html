@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ r.rental_number }} — Rentals — OxyPC{% endblock %}
 {% block page_title %}Rental {{ r.rental_number }}{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ r.rental_number }}{% endblock %}{% block record_parent %}/rentals{% endblock %}{% block record_parent_label %}Rental Records{% endblock %}
 
 {% block content %}
 {% set csrf = request.cookies.get('csrf_token', '') %}

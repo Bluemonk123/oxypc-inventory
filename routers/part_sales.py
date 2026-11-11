@@ -233,6 +233,13 @@ async def ready_to_sale_parts_data(request: Request,
     })
 
 
+def _sellable_new(part) -> bool:
+    """Only New parts (not Harvest, not in Trash) can be sold — the Ready to
+    Sale Parts list shows only these, and the server now checks it too when a
+    Sale Request or a New Parts Sale is saved (2026-11-09, Pankaj)."""
+    return (part.source or "new") == "new" and not getattr(part, "is_trashed", False)
+
+
 @router.post("/ready-to-sale-parts/{part_id}/request")
 async def raise_sale_request(part_id: str, request: Request,
                              qty: str = Form("1"),
@@ -243,6 +250,8 @@ async def raise_sale_request(part_id: str, request: Request,
     )).scalar_one_or_none()
     if not part:
         raise HTTPException(404, "Part not found")
+    if not _sellable_new(part):   # same rule as the Ready to Sale Parts list (2026-11-09)
+        return RedirectResponse(url="/ready-to-sale-parts?error=Only+New+parts+can+be+sold", status_code=302)
     dup = (await db.execute(
         select(PartSaleRequest.id).where(PartSaleRequest.part_id == part.id,
                                          PartSaleRequest.status == "pending")
@@ -405,6 +414,8 @@ async def create_part_sale(request: Request,
     )).scalar_one_or_none()
     if not part:
         raise HTTPException(404, "Part not found")
+    if not _sellable_new(part):   # same rule as the Ready to Sale Parts list (2026-11-09)
+        return RedirectResponse(url="/part-sales/new?error=Only+New+parts+can+be+sold", status_code=302)
 
     consumed = await _consumed_map(db)
     available = _stock_of(part, consumed)

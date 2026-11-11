@@ -3,30 +3,6 @@
 {% block page_title %}Attendance History{% endblock %}
 {% block content %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <div class="d-flex align-items-center gap-3">
-    <a href="/attendance/history?month={{ prev_month }}&year={{ prev_year }}{% if is_privileged and user_id_param %}&user_id={{ user_id_param }}{% endif %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-left"></i></a>
-    <h5 class="mb-0 fw-bold">{{ month_name }} {{ year }}</h5>
-    {% if not (month == today.month and year == today.year) %}
-    <a href="/attendance/history?month={{ next_month }}&year={{ next_year }}{% if is_privileged and user_id_param %}&user_id={{ user_id_param }}{% endif %}" class="btn btn-outline-secondary btn-sm"><i class="bi bi-chevron-right"></i></a>
-    {% endif %}
-  </div>
-  <div class="d-flex gap-2 align-items-center">
-    {% if is_privileged %}
-    <form method="get" class="d-flex gap-2">
-      <input type="hidden" name="month" value="{{ month }}">
-      <input type="hidden" name="year" value="{{ year }}">
-      <select name="user_id" class="form-select form-select-sm" onchange="this.form.submit()">
-        {% for u in users %}
-        <option value="{{ u.id }}" {% if user_id_param == u.id|string %}selected{% endif %}>{{ u.full_name }}</option>
-        {% endfor %}
-      </select>
-    </form>
-    {% endif %}
-    <a href="/attendance" class="btn btn-sm btn-outline-primary">Today</a>
-  </div>
-</div>
-
 <!-- Summary Badges -->
 <div class="d-flex flex-wrap gap-2 mb-4">
   {% for s, color in [('present','success'),('late','warning'),('half_day','info'),('wfh','primary'),('absent','danger')] %}
@@ -36,6 +12,29 @@
 
 <!-- Calendar Grid -->
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold d-flex align-items-center gap-2">
+      <a href="/attendance/history?month={{ prev_month }}&year={{ prev_year }}{% if is_privileged and user_id_param %}&user_id={{ user_id_param }}{% endif %}" class="btn btn-outline-secondary btn-sm" title="Previous month"><i class="bi bi-chevron-left"></i></a>
+      <span><i class="bi bi-calendar3 me-2"></i>{{ month_name }} {{ year }}</span>
+      {% if not (month == today.month and year == today.year) %}
+      <a href="/attendance/history?month={{ next_month }}&year={{ next_year }}{% if is_privileged and user_id_param %}&user_id={{ user_id_param }}{% endif %}" class="btn btn-outline-secondary btn-sm" title="Next month"><i class="bi bi-chevron-right"></i></a>
+      {% endif %}
+    </span>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      {% if is_privileged %}
+      <form method="get" action="/attendance/history" class="d-flex gap-2 flex-wrap align-items-center mb-0">
+        <input type="hidden" name="month" value="{{ month }}">
+        <input type="hidden" name="year" value="{{ year }}">
+        <select name="user_id" class="form-select form-select-sm" style="width:200px" title="Employee">
+          {% for u in users %}
+          <option value="{{ u.id }}" {% if user_id_param == u.id|string %}selected{% endif %}>{{ u.full_name }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% endif %}
+      <a href="/attendance" class="btn btn-sm btn-outline-primary">Today</a>
+    </div>
+  </div>
   <div class="card-body">
     <div class="row row-cols-7 g-1 mb-1">
       {% for d in day_names %}

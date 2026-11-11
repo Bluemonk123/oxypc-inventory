@@ -21,8 +21,7 @@
         {% endfor %}
       </select>
     </form>
-    <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" onclick="openSearchTagsModal()">
-      <i class="bi bi-clock-history me-1"></i>Search Tags</button>
+    {# Search Tags button removed (2026-11-09): the top-bar search opens the same modal. #}
   </div>
 </div>
 
@@ -498,7 +497,7 @@
 </script>
 {# Pencil next to the Tag Number: quick spec edit (2026-10-26). #}
 {{ spec_edit_modal() }}
-{% include "_search_tags_modal.html" %}
+{# Search Tags modal is included once by base.html (2026-11-08). #}
 {% endblock %}
 {% block scripts %}
 <script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>

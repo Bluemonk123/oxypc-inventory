@@ -6,60 +6,46 @@
 {% if success %}<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ error }}</div>{% endif %}
 
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-2">
-      <span class="text-muted small">
-        <i class="bi bi-shield-check me-1"></i>
-        Sold tag numbers ready to exit. Verify the physical goods against the tag
-        number, open the Delivery Challan, then confirm the exit.
-      </span>
-      <input type="text" id="gpSearch" class="form-control form-control-sm font-monospace" style="max-width:320px"
-             placeholder="Scan or type tag / sale / invoice number…">
+<form method="get" action="/gate-pass" id="filterForm" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="search" value="{{ search }}" placeholder="Search any detail in the table…"
+             title="Tag, Sale No, Invoice, Lot, Device (brand / model), Customer"
+             class="form-control form-control-sm">
     </div>
-    <form class="d-flex flex-wrap gap-2 align-items-center" method="get" action="/gate-pass" id="filterForm">
-      <div>
-        <label class="form-label small fw-semibold mb-1">Sale Date From</label>
-        <input type="date" name="sale_date_from" value="{{ sale_date_from }}" class="form-control form-control-sm">
-      </div>
-      <div>
-        <label class="form-label small fw-semibold mb-1">Sale Date To</label>
-        <input type="date" name="sale_date_to" value="{{ sale_date_to }}" class="form-control form-control-sm">
-      </div>
-      <div>
-        <label class="form-label small fw-semibold mb-1">Lot Number</label>
-        <input type="text" name="lot_number" value="{{ lot_number }}" placeholder="Lot Number"
-               class="form-control form-control-sm" style="width:150px">
-      </div>
-      <div>
-        <label class="form-label small fw-semibold mb-1">Search</label>
-        <input type="text" name="search" value="{{ search }}" placeholder="Any detail in the table"
-               title="Tag, Sale No, Invoice, Lot, Device (brand / model), Customer"
-               class="form-control form-control-sm" style="width:220px">
-      </div>
-      <div class="align-self-end">
-        <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-        <a href="/gate-pass" class="btn btn-sm btn-outline-secondary">Reset</a>
-      </div>
-      <div class="ms-auto align-self-end">
-        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#gpTagModal">
-          <i class="bi bi-upload me-1"></i>Upload Tags
-        </button>
-        <button type="button" id="gpClearSel" class="btn btn-sm btn-outline-secondary d-none" onclick="gpClearSelection()">Clear</button>
-        <button {% if not can(current_user, 'gate_pass', 'edit') %}hidden {% endif %}type="button" id="bulkExitBtn" class="btn btn-sm btn-success" onclick="bulkConfirmExit()" disabled>
-          <i class="bi bi-box-arrow-right me-1"></i>Confirm Exit
-        </button>
-      </div>
-    </form>
-    {# Hidden forms — single-row exit reuses the existing /exit route; bulk
-       posts a comma-separated list of selected sale ids to /bulk-exit. #}
-
+    <div><input type="date" name="sale_date_from" value="{{ sale_date_from }}" class="form-control form-control-sm" title="Sale Date From"></div>
+    <div><input type="date" name="sale_date_to" value="{{ sale_date_to }}" class="form-control form-control-sm" title="Sale Date To"></div>
+    <div>
+      <input type="text" name="lot_number" value="{{ lot_number }}" placeholder="Lot Number" title="Lot Number"
+             class="form-control form-control-sm">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/gate-pass" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
+</form>
 
 <div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
-    <div class="table-responsive">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-shield-check me-2"></i>Gate Pass
+      <span class="text-muted fw-normal small ms-1" title="Verify the physical goods against the tag number, open the Delivery Challan, then confirm the exit.">Sold tag numbers ready to exit</span></span>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      {# Scan box (not a filter): narrows the table and auto-selects an exact
+         Tag / Sale / Invoice match for Confirm Exit. #}
+      <input type="text" id="gpSearch" class="form-control form-control-sm font-monospace" style="width:300px"
+             placeholder="Scan or type tag / sale / invoice number…">
+      <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" data-bs-toggle="modal" data-bs-target="#gpTagModal">
+        <i class="bi bi-upload me-1"></i>Upload Tags
+      </button>
+      <button type="button" id="gpClearSel" class="btn btn-sm btn-outline-secondary d-none" onclick="gpClearSelection()">Clear</button>
+      <button {% if not can(current_user, 'gate_pass', 'edit') %}hidden {% endif %}type="button" id="bulkExitBtn" class="btn btn-sm btn-success text-nowrap" onclick="bulkConfirmExit()" disabled>
+        <i class="bi bi-box-arrow-right me-1"></i>Confirm Exit
+      </button>
+    </div>
+  </div>
+  <div class="card-body">
+    <div>
       <table id="gpTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
@@ -223,10 +209,9 @@ document.addEventListener('click', function (e) {
 
 // ── DataTable (server-side) ─────────────────────────────────────────────────
 $(document).ready(function () {
-  var dt = $('#gpTable').DataTable({
+  var dt = initGlobalTable('#gpTable', {
     serverSide: true,
     processing: true,
-    pageLength: 25,
     order: [[2, 'desc']],   // Date (Sold At), newest first
     searchDelay: 400,
     ajax: {

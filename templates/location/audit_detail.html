@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Audit {{ audit.audit_number }} — OxyPC{% endblock %}
 {% block page_title %}Audit — {{ audit.audit_number }}{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ audit.audit_number }}{% endblock %}{% block record_parent %}/locations/audit{% endblock %}{% block record_parent_label %}Physical Inventory Audits{% endblock %}
 
 {% block content %}
 <!-- Header status bar -->

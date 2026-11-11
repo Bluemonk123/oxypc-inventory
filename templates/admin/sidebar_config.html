@@ -24,19 +24,17 @@
     </div>
 
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent d-flex align-items-center gap-2 py-2">
-        <i class="bi bi-list-ul text-primary"></i>
-        <span class="fw-semibold">Sidebar Items</span>
-        <span class="badge bg-secondary ms-auto">{{ items|length }} items</span>
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="fw-semibold"><i class="bi bi-list-ul me-2"></i>Sidebar Items</span>
+        <span class="badge bg-secondary">{{ items|length }} items</span>
       </div>
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm table-hover mb-0" id="sidebarConfigTable">
-            <thead class="table-light">
+      <div class="card-body">
+          <table class="table table-hover align-middle mb-0" id="sidebarConfigTable">
+            <thead>
               <tr>
-                <th style="width:30%">Module Key</th>
-                <th style="width:40%">Sidebar Label</th>
-                <th style="width:30%">Actions</th>
+                <th>Module Key</th>
+                <th>Sidebar Label</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -57,7 +55,7 @@
                          value="{{ m.current_label }}"
                          placeholder="Enter sidebar label">
                 </td>
-                <td class="align-middle">
+                <td class="text-nowrap">
                   <div id="btns-view-{{ m.key }}" class="d-flex gap-1">
                     <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
                             onclick="startEdit('{{ m.key }}')">
@@ -93,7 +91,6 @@
               {% endfor %}
             </tbody>
           </table>
-        </div>
       </div>
     </div>
   </div>
@@ -101,7 +98,12 @@
 {% endblock %}
 {% block scripts %}
 <script>
-$(document).ready(function(){ $('#sidebarConfigTable').DataTable({ pageLength: 12, order: [] }); });
+$(document).ready(function(){
+  initGlobalTable('#sidebarConfigTable', {
+    order: [],
+    language: { emptyTable: 'No sidebar items.' },
+  });
+});
 
 function startEdit(key) {
   document.getElementById('label-view-' + key).classList.add('d-none');
@@ -119,11 +121,11 @@ function cancelEdit(key, original) {
   document.getElementById('btns-view-' + key).classList.remove('d-none');
 }
 
-document.querySelectorAll('[id^="form-"]').forEach(function(form) {
-  form.addEventListener('submit', function() {
-    var key = form.id.replace('form-', '');
-    document.getElementById('hidden-' + key).value = document.getElementById('label-input-' + key).value;
-  });
+// Delegated: the Global Table rewrites cell HTML at init (and pages rows), so
+// a listener bound directly on each form would be lost.
+$(document).on('submit', 'form[id^="form-"]', function() {
+  var key = this.id.replace('form-', '');
+  document.getElementById('hidden-' + key).value = document.getElementById('label-input-' + key).value;
 });
 </script>
 {% endblock %}

@@ -1,6 +1,7 @@
 """CRM Contacts router — unified buyer/supplier registry."""
 from utils.price_export import credit_new as _credit_new, credit_edit as _credit_edit   # Pricing Add (2026-11-03)
 from utils.price_export import strip_price_columns as _strip_prices   # Pricing Export (2026-11-03)
+import re
 import csv
 import io
 import json
@@ -32,6 +33,23 @@ from services.crm_team import ROLE_BUCKETS, BUCKET_LABELS, eligible_users_for_bu
 PERSON_ROLES = ["Directors", "Finance", "Manager", "Other"]
 
 
+def _kyc_up(v):
+    """KYC numbers are stored upper-case (2026-11-10, Pankaj)."""
+    v = (v or "").strip().upper()
+    return v or None
+
+
+def _credit_days(v):
+    """Credit Days dropdown value -> whole number of days, or None (2026-11-10)."""
+    m = re.search(r"\d+", v or "")
+    return int(m.group()) if m else None
+
+
+async def _latest_deal_stage(db, ids):
+    from services.deal_stage_status import latest_deal_stage
+    return await latest_deal_stage(db, ids)
+
+
 def _parse_locations(form) -> list[dict]:
     """Extract Location rows (email, address, city, state) from the repeating
     Locations section on the form, along with each location's own nested
@@ -56,8 +74,6 @@ def _parse_locations(form) -> list[dict]:
         ad = (addresses[i] if i < len(addresses) else "").strip()
         ci = (cities[i] if i < len(cities) else "").strip()
         st = (states[i] if i < len(states) else "").strip()
-        if not (em or ad or ci or st):
-            continue
         numbers: list[tuple[str, str, str, str]] = []
         for j in range(len(cn_indexes)):
             try:
@@ -72,6 +88,10 @@ def _parse_locations(form) -> list[dict]:
             em2 = (cn_emails[j] if j < len(cn_emails) else "").strip()
             if rl or nm or ph or em2:
                 numbers.append((rl, nm, ph, em2))
+        # 2026-11-10: the location's own email field is gone from the form, so
+        # a location with only Contact Numbers filled in is kept too.
+        if not (em or ad or ci or st or numbers):
+            continue
         locations.append({"email": em, "address": ad, "city": ci, "state": st, "numbers": numbers})
     return locations
 
@@ -112,6 +132,7 @@ async def _next_code(db: AsyncSession) -> str:
 async def list_contacts(
     request: Request,
     q: str = Query(default=""),
+    from_entity: str = Query(default=""),      # Entity filter (2026-11-10)
     contact_type: str = Query(default=""),
     source_type: str = Query(default=""),
     buyer_type: str = Query(default=""),
@@ -151,6 +172,8 @@ async def list_contacts(
             CRMContact.state.ilike(like),
             CRMContact.gstin.ilike(like),
         ))
+    if from_entity:
+        query = query.where(CRMContact.from_entity == from_entity)
     if contact_type:
         query = query.where(CRMContact.contact_type == contact_type)
     if source_type:
@@ -295,6 +318,7 @@ async def list_contacts(
         "contacts": contacts, "counts": counts,
         "trashed_contacts": trashed_contacts,
         "activity_map": activity_map,
+        "deal_stage_map": await _latest_deal_stage(db, [c.id for c in contacts]),   # Last Activity (2026-11-10)
         "locations_map": locations_map,
         "numbers_map": numbers_map,
         "team_map": team_map,
@@ -307,6 +331,7 @@ async def list_contacts(
         "source_type": source_type, "buyer_type": buyer_type,
         "contacted": contacted,
         "created_by_filter": created_by_filter,
+        "from_entity": from_entity,
         "crm_users": crm_users,
         "added_by": added_by,
         "source_types": SOURCE_TYPES, "buyer_types": BUYER_TYPES,
@@ -503,7 +528,7 @@ async def upload_contacts_csv(
                         buyer_type=buyer_type,
                         city=loc_city or None,
                         state=loc_state or None,
-                        gstin=(row.get("gstin") or "").strip() or None,
+                        gstin=_kyc_up(row.get("gstin")),
                         status=status,
                         created_by=current_user.username,
                     )
@@ -590,10 +615,13 @@ async def save_team_mapping(
     bucket_manager: str = Form(default=""),
     bucket_am_dm_gm: str = Form(default=""),
     bucket_executive: str = Form(default=""),
+    bucket_finance: str = Form(default=""),
+    return_to: str = Form(default=""),   # deal pages' Team Mapping Edit (2026-11-11)
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_module_perm("crm_contacts", "edit")),
 ):
     from services.crm_team import replace_team_buckets
+    _rt = return_to.strip() if return_to.strip().startswith("/crm/") and "//" not in return_to else ""
 
     def _parse_ids(s: str) -> list:
         out = []
@@ -610,6 +638,7 @@ async def save_team_mapping(
     raw_buckets = {
         "vp_avp": bucket_vp_avp, "manager": bucket_manager,
         "am_dm_gm": bucket_am_dm_gm, "executive": bucket_executive,
+        "finance": bucket_finance,
     }
     if mode == "single":
         bucket_user_ids = {b: _parse_ids(v) for b, v in raw_buckets.items()}
@@ -646,7 +675,8 @@ async def save_team_mapping(
                     old_value=old_value, new_value=new_value, request=request)
 
     await db.commit()
-    return RedirectResponse(url="/crm/contacts?success=Team+mapping+updated", status_code=302)
+    return RedirectResponse(url=(_rt or "/crm/contacts") + ("&" if "?" in (_rt or "") else "?") + "success=Team+mapping+updated",
+                            status_code=302)
 
 
 @router.get("/team-mapping/sample-csv")
@@ -660,9 +690,9 @@ async def team_mapping_sample_csv(
 
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["gstin", "company_name", "vp_avp", "manager", "am_dm_gm", "executive"])
+    writer.writerow(["gstin", "company_name", "manager", "executive", "vp_avp", "am_dm_gm", "finance"])   # Team Mapping order (2026-11-11)
     for c in contacts:
-        writer.writerow([c.gstin or "", c.company_name, "", "", "", ""])
+        writer.writerow([c.gstin or "", c.company_name, "", "", "", "", ""])
 
     return StreamingResponse(
         iter([buf.getvalue().encode("utf-8-sig")]),
@@ -899,7 +929,7 @@ async def import_csv_confirm(
             buyer_type=buyer_type or None,
             city=(row.get("city") or "").strip() or None,
             state=(row.get("state") or "").strip() or None,
-            gstin=(row.get("gstin") or "").strip() or None,
+            gstin=_kyc_up(row.get("gstin")),
             tags=(row.get("tags") or "").strip() or None,
             created_by=current_user.username,
         )
@@ -918,6 +948,7 @@ async def import_csv_confirm(
 async def export_contacts_csv(
     request: Request,
     q: str = Query(default=""),
+    from_entity: str = Query(default=""),      # Entity filter (2026-11-10)
     contact_type: str = Query(default=""),
     source_type: str = Query(default=""),
     buyer_type: str = Query(default=""),
@@ -944,6 +975,8 @@ async def export_contacts_csv(
             CRMContact.state.ilike(like),
             CRMContact.gstin.ilike(like),
         ))
+    if from_entity:
+        query = query.where(CRMContact.from_entity == from_entity)
     if contact_type:
         query = query.where(CRMContact.contact_type == contact_type)
     if source_type:
@@ -1286,6 +1319,7 @@ async def new_contact_form(
 async def create_contact(
     request: Request,
     contact_type:   str = Form(default="supplier"),
+    from_entity:    str = Form(default=""),
     company_name:   str = Form(...),
     email:          str = Form(default=None),
     gstin:          str = Form(default=None),
@@ -1297,6 +1331,7 @@ async def create_contact(
     source_type:    str = Form(default=None),
     buyer_type:     str = Form(default=None),
     credit_limit:   str = Form(default=""),   # str: an Add-only role sends it blank (2026-11-03)
+    credit_days:    str = Form(default=""),   # Credit Days (2026-11-10)
     tags:           str = Form(default=None),
     notes:          str = Form(default=None),
     status:         str = Form(default="active"),
@@ -1317,22 +1352,25 @@ async def create_contact(
 ):
     # Contact person / phone / whatsapp now live per-person in each Location's Contact Numbers.
     location_rows = _parse_locations(await request.form())
+    from utils.master_data import clean_from_entity
+    from_entity = await clean_from_entity(db, from_entity)   # From Entity (2026-11-10)
     for _attempt in range(3):
         code = await _next_code(db)
         contact = CRMContact(
-            contact_code=code, contact_type=contact_type,
+            contact_code=code, contact_type=contact_type, from_entity=from_entity,
             company_name=company_name,
-            email=email or None, gstin=gstin or None, pan=pan or None,
+            email=email or None, gstin=_kyc_up(gstin), pan=_kyc_up(pan),
             address=address or None, city=city or None,
             state=state or None, pincode=pincode or None,
             source_type=source_type or None, buyer_type=buyer_type or None,
             credit_limit=_credit_new(current_user, 'crm_contacts', credit_limit),
+            credit_days=_credit_days(credit_days),
             tags=tags or None, notes=notes or None, status=status,
             assigned_to=assigned_to or current_user.username,
-            bank_cheque_number=bank_cheque_number or None,
-            msme_number=msme_number or None,
-            director1_id_number=director1_id_number or None,
-            director2_id_number=director2_id_number or None,
+            bank_cheque_number=_kyc_up(bank_cheque_number),
+            msme_number=_kyc_up(msme_number),
+            director1_id_number=_kyc_up(director1_id_number),
+            director2_id_number=_kyc_up(director2_id_number),
             gstin_doc_path=await _save_kyc_upload(gstin_doc),
             pan_doc_path=await _save_kyc_upload(pan_doc),
             bank_cheque_doc_path=await _save_kyc_upload(bank_cheque_doc),
@@ -1365,6 +1403,9 @@ async def create_contact(
                     person_role=rl or None, person_name=nm or None,
                     phone=ph or None, email=em or None, sort_order=j,
                 ))
+        await audit(db, user=current_user, action="ACCOUNT_CREATED", table_name="crm_contacts",
+                    record_id=str(contact.id), new_value={"company_name": contact.company_name,
+                    "contact_type": contact.contact_type}, request=request)
         await db.commit()
         return RedirectResponse(url="/crm/contacts?success=Contact+created", status_code=302)
     return RedirectResponse(url="/crm/contacts?error=Failed+to+generate+unique+contact+code,+please+retry", status_code=302)
@@ -1513,7 +1554,10 @@ async def contact_profile(
 
     _can_vc = await can_verify_credit(db, contact.id, current_user)
     _vc_tot = await credit_deal_totals(db, contact.id)
+    from services.record_history import record_history   # History card (2026-11-09)
+    _history = await record_history(db, contact.id)
     return templates.TemplateResponse("crm/contacts/profile.html", {
+        "history": _history,
         "can_verify_credit": _can_vc, "credit_totals": _vc_tot,
         "request": request, "current_user": current_user,
         "contact": contact, "activities": activities,
@@ -1564,6 +1608,7 @@ async def update_contact(
     request: Request,
     contact_id: str,
     contact_type:   str = Form(default="supplier"),
+    from_entity:    str = Form(default=""),
     company_name:   str = Form(...),
     email:          str = Form(default=None),
     gstin:          str = Form(default=None),
@@ -1575,6 +1620,7 @@ async def update_contact(
     source_type:    str = Form(default=None),
     buyer_type:     str = Form(default=None),
     credit_limit:   str = Form(default=""),   # str: an Add-only role sends it blank (2026-11-03)
+    credit_days:    str = Form(default=""),   # Credit Days (2026-11-10)
     tags:           str = Form(default=None),
     notes:          str = Form(default=None),
     status:         str = Form(default="active"),
@@ -1598,12 +1644,14 @@ async def update_contact(
         return RedirectResponse(url="/crm/contacts?error=Not+found", status_code=302)
 
     contact.contact_type = contact_type
+    from utils.master_data import clean_from_entity
+    contact.from_entity = await clean_from_entity(db, from_entity, contact.from_entity)
     contact.company_name = company_name
     contact.email = email or None
     # contact_person / phone / whatsapp are no longer on the form (they live in
     # Contact Numbers now) — existing DB values are left untouched, not wiped.
-    contact.gstin = gstin or None
-    contact.pan = pan or None
+    contact.gstin = _kyc_up(gstin)
+    contact.pan = _kyc_up(pan)
     contact.address = address or None
     contact.city = city or None
     contact.state = state or None
@@ -1611,15 +1659,16 @@ async def update_contact(
     contact.source_type = source_type or None
     contact.buyer_type = buyer_type or None
     contact.credit_limit = _credit_edit(current_user, 'crm_contacts', credit_limit, contact.credit_limit)
+    contact.credit_days = _credit_days(credit_days)
     contact.tags = tags or None
     contact.notes = notes or None
     contact.status = status
     contact.apply_account_status()
     contact.assigned_to = assigned_to
-    contact.bank_cheque_number = bank_cheque_number or None
-    contact.msme_number = msme_number or None
-    contact.director1_id_number = director1_id_number or None
-    contact.director2_id_number = director2_id_number or None
+    contact.bank_cheque_number = _kyc_up(bank_cheque_number)
+    contact.msme_number = _kyc_up(msme_number)
+    contact.director1_id_number = _kyc_up(director1_id_number)
+    contact.director2_id_number = _kyc_up(director2_id_number)
     # Uploads only overwrite the stored document when a new file is actually
     # selected — leaving the existing one in place otherwise.
     gstin_name = await _save_kyc_upload(gstin_doc)
@@ -1669,6 +1718,9 @@ async def update_contact(
                 person_role=rl or None, person_name=nm or None,
                 phone=ph or None, email=em or None, sort_order=j,
             ))
+    await audit(db, user=current_user, action="ACCOUNT_EDITED", table_name="crm_contacts",
+                record_id=str(contact.id), new_value={"company_name": contact.company_name,
+                "status": contact.status}, request=request)
     await db.commit()
     return RedirectResponse(url="/crm/contacts?success=Contact+updated", status_code=302)
 
@@ -1697,7 +1749,7 @@ async def verify_kyc(
 
 async def can_verify_credit(db, contact_id, user) -> bool:
     """Verify Credit (2026-11-06, Pankaj): the account's mapped VP/AVP or
-    AM/DM/GM (Map Team), or an admin."""
+    DM/GM/CTO/CEO (Map Team), or an admin."""
     role = getattr(user.role, "value", user.role)
     if role == "admin":
         return True
@@ -1740,14 +1792,14 @@ async def verify_credit(
 ):
     """Verify Credit modal (2026-11-06): New Credit Limit + Reason; the old
     limit is kept on the account. Allowed for the account's mapped VP/AVP or
-    AM/DM/GM, or an admin. Same route from Account Detail and Activity Board."""
+    DM/GM/CTO/CEO, or an admin. Same route from Account Detail and Activity Board."""
     from decimal import Decimal, InvalidOperation
     contact = (await db.execute(select(CRMContact).where(CRMContact.id == contact_id))).scalar_one_or_none()
     if not contact:
         return RedirectResponse(url="/crm/contacts?error=Not+found", status_code=302)
     if not await can_verify_credit(db, contact.id, current_user):
         return _credit_back(contact_id, return_to,
-                            "Only this account's mapped VP/AVP or AM/DM/GM can verify credit", ok=False)
+                            "Only this account's mapped VP/AVP or DM/GM/CTO/CEO can verify credit", ok=False)
     try:
         new_limit = Decimal((new_credit_limit or "").replace(",", "").strip())
         if new_limit < 0:
@@ -1776,6 +1828,7 @@ async def verify_credit(
 
 @router.post("/{contact_id}/trash")
 async def trash_contact(
+    request: Request,
     contact_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1784,12 +1837,15 @@ async def trash_contact(
     contact = result.scalar_one_or_none()
     if contact:
         contact.is_trashed = True
+        await audit(db, user=current_user, action="ACCOUNT_TRASHED", table_name="crm_contacts",
+                    record_id=str(contact.id), request=request)
         await db.commit()
     return RedirectResponse(url="/crm/contacts?success=Contact+moved+to+trash", status_code=302)
 
 
 @router.post("/{contact_id}/restore")
 async def restore_contact(
+    request: Request,
     contact_id: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -1798,5 +1854,7 @@ async def restore_contact(
     contact = result.scalar_one_or_none()
     if contact:
         contact.is_trashed = False
+        await audit(db, user=current_user, action="ACCOUNT_RESTORED", table_name="crm_contacts",
+                    record_id=str(contact.id), request=request)
         await db.commit()
     return RedirectResponse(url="/crm/contacts?success=Contact+restored", status_code=302)

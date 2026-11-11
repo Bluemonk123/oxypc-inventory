@@ -6,6 +6,11 @@
   --sidebar-text: #f0f4f8;   /* same as the page background (2026-10-15) */
   --sidebar-active: #0377c2;
   --brand-blue: #0e3a7a;  /* was #0377c2 (changed 2026-10-18) */
+  /* System Colors tokens (2026-11-08) — defaults; base.html renders the
+     admin's saved values (services/system_colors.py) for Light and Dark. */
+  --oxy-sky: #d9ebf6; --oxy-light: #f0f4f8; --oxy-page-bg: #f0f4f8; --oxy-surface: #fff;
+  --oxy-text-main: #212529; --oxy-border: #ced4da; --oxy-disabled: #d8d8d8; --oxy-sidebar-header: #129042;
+  --oxy-label: #343a40; --oxy-hover: #f1f3f5; --oxy-user-box: #e7f1ff;
   --topbar-height: 56px;
   /* Global UI scale. Anything sized in vh must divide by this, since zoom shrinks
      the CSS pixel but not the viewport unit — 100vh would render 10% short. */
@@ -33,7 +38,7 @@ html::-webkit-scrollbar { width: 0; height: 0; }
 body.modal-open ~ #pageScrollThumb { display: none !important; }
 body {
   font-family: 'Segoe UI', Arial, sans-serif;
-  background: #f0f4f8;
+  background: var(--oxy-page-bg);
   zoom: var(--app-zoom);
 }
 
@@ -81,7 +86,7 @@ body {
 }
 
 #sidebar .nav-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
-#sidebar .nav-link.active { background: #0377c2; color: #fff; }  /* sidebar kept as before (not --brand-blue) */
+#sidebar .nav-link.active { background: var(--sidebar-active); color: #fff; }  /* sidebar kept as before (not --brand-blue) */
 
 .nav-section {
   color: #576d87;
@@ -109,14 +114,20 @@ body {
 
 .sidebar-footer {
   border-top: 1px solid rgba(255,255,255,0.15);
-  background: #0e3a7a; /* navy — same as the filter-bar rule and table card titles */
+  background: var(--brand-blue); /* navy — same as the filter-bar rule and table card titles */
   color: #fff;
 }
 .sidebar-footer small { color: rgba(255,255,255,0.85) !important; }
+/* Fixed sidebar header and footer (2026-11-08, Pankaj): the logo header stays
+   at the top and the version footer at the bottom while the menu scrolls
+   between them. Sticky inside #sidebar (the scroll box), so the saved sidebar
+   scroll position keeps working. */
+#sidebar > .sidebar-brand { position: sticky; top: 0; z-index: 3; flex-shrink: 0; }
+#sidebar > .sidebar-footer { position: sticky; bottom: 0; z-index: 3; flex-shrink: 0; }
 
 /* Topbar */
 .topbar {
-  background: #fff;
+  background: var(--oxy-surface);
   border-bottom: 1px solid #e5e7eb;
   height: var(--topbar-height);
   /* Darker shadow (2026-10-27, Pankaj; was 0 1px 3px rgba(0,0,0,.05)). */
@@ -148,7 +159,7 @@ body {
 }
 .nav-history-btn i { line-height: 1; }
 .nav-history-btn:not(:disabled) { color: var(--brand-blue); }
-.nav-history-btn:not(:disabled):hover { color: #0e3a7a; }
+.nav-history-btn:not(:disabled):hover { color: var(--brand-blue); }
 .nav-history-btn:disabled { cursor: default; }
 /* Beat the app-wide grey disabled-button rule further down (it uses
    !important) — a disabled chevron is just a pale chevron, no grey box. */
@@ -196,14 +207,75 @@ body {
 
 /* Card header spacing + card-body tables (applies across all cards app-wide) */
 .card-header { padding: 0.5em 1em; }
+
+/* ── Global Card (2026-11-08, Pankaj) ─────────────────────────────────────
+   The container. Applies to every .card automatically; a table card is
+   Global Card + Global Table (static/js/global-table.js), a form / info /
+   chart card is Global Card alone.
+   - Corners 16px (version C); the header's top corners follow.
+   - Header: when it has no colour of its own (no bg-*, or bg-transparent /
+     bg-white / bg-light), the light sky-blue header with a navy semi-bold
+     title, 1px border, padding .5rem 1rem. Coloured headers (bg-danger,
+     bg-warning, bg-primary bg-opacity-10, the dark Stage Progress card …)
+     keep their colour.
+   - Header controls: toggle switches, dropdown filters, selected-count
+     badge, buttons (outline buttons on white).
+   - Body: padding 1rem (Bootstrap's own); a card body that sets its own
+     padding utility keeps it, and a body holding a table is always 1rem.
+   - .card-plain opts a card out of the header style. */
+.card { --bs-card-border-radius: 16px; --bs-card-inner-border-radius: 15px; }
+/* A card at the top of tab content sits flush under the tab bar: square
+   top corners (with or without its header), rounded bottom (2026-11-08). */
+.tab-pane > .card:first-child { border-top-left-radius: 0; border-top-right-radius: 0; }
+.tab-pane > .card:first-child > .card-header:first-child { border-top-left-radius: 0; border-top-right-radius: 0; }
+/* Card header inside tab content uses the Light Colour (#f0f4f8,
+   --sidebar-text in the Design System) instead of the sky-blue header, so
+   it reads as part of the tab (2026-11-08, Pankaj). Coloured headers that
+   carry meaning keep their colour. */
+.tab-pane .card:not(.card-plain) > .card-header:is(:not([class*="bg-"]), .bg-transparent, .bg-white, .bg-light) {
+  background: var(--oxy-light) !important; border-bottom-color: #dde3ea;
+}
+/* A bordered tab-content box rounds its bottom like the cards (16px). */
+.tab-content.border.rounded-bottom { border-bottom-left-radius: 16px !important; border-bottom-right-radius: 16px !important; }
+/* Tab content box has the same shadow as a Global Card (the app-wide
+   .shadow-sm below, used on cards everywhere) (2026-11-08); a card inside it
+   adds no second shadow. */
+.tab-content.border { box-shadow: 0 .25rem .5rem rgba(0, 0, 0, .5); }
+.tab-content.border > .tab-pane > .card { box-shadow: none !important; }
+.tab-content.border.rounded-bottom > .tab-pane > .card:first-child { border-bottom-left-radius: 15px; border-bottom-right-radius: 15px; }
+.card:not(.card-plain) > .card-header:is(:not([class*="bg-"]), .bg-transparent, .bg-white, .bg-light) {
+  background: var(--oxy-sky) !important; color: var(--brand-blue); border-bottom: 1px solid #c0ddf0; padding: .5rem 1rem;
+}
+/* Title text navy — but not badges (2026-11-09): a badge directly in the header kept its
+   own white text only by luck; bg-dark pills turned navy-on-black (Accounts Overview). */
+.card:not(.card-plain) > .card-header:is(:not([class*="bg-"]), .bg-transparent, .bg-white, .bg-light) > :is(.fw-semibold, span, h5, h6, strong):not(.badge) { color: var(--brand-blue); }
+.card:not(.card-plain) > .card-header:is(:not([class*="bg-"]), .bg-transparent, .bg-white, .bg-light) [class*="btn-outline-"]:not(.btn-outline-light):not(:hover):not(:active):not(.active):not(.show) { background-color: var(--oxy-surface); }
+/* Card header name (2026-11-09, Pankaj): every card's title is upper case
+   with a slightly tighter letter spacing. The title is the header's own
+   .fw-semibold / h5 / h6 / strong / .card-title, or the first .fw-semibold
+   in its first block (title + pills, e.g. Activity Board). Badges, counts
+   and pills beside it keep their own case. */
+.card > .card-header > :is(.fw-semibold, h5, h6, strong, .card-title):not(.badge):not(.btn),
+.card > .card-header > div:first-child > .fw-semibold:first-child:not(.badge):not(.btn),
+.card > .card-header:is(.fw-semibold, .fw-bold) {   /* title written straight in the header */
+  text-transform: uppercase; letter-spacing: -0.2px;
+}
+.card > .card-header:is(.fw-semibold, .fw-bold) :is(.btn, .badge, input, select, textarea, label, .form-control, .form-select,
+  .nav, .dropdown-menu, small, .small, .text-muted, .form-text) { text-transform: none; letter-spacing: normal; }
+.card > .card-header > :is(.fw-semibold, h5, h6, strong, .card-title) :is(.badge, .text-muted, small),
+.card > .card-header > div:first-child > .fw-semibold:first-child :is(.badge, .text-muted, small) { text-transform: none; letter-spacing: normal; }
+.card > .card-header .badge { display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: .4em .65em .3em; }
+.card > .card-header .form-switch { display: inline-flex; align-items: center; gap: .5rem; padding-left: 0; margin: 0; min-height: 0; white-space: nowrap; }
+.card > .card-header .form-switch .form-check-input { float: none; margin: 0; flex-shrink: 0; }
+.card > .card-header .form-switch .form-check-label { margin: 0; }
 /* !important needed: many card-body elements use Bootstrap's .p-0 (itself
    !important) for edge-to-edge tables — this rule intentionally overrides
    that so every card-body containing a table gets p-3-equivalent padding. */
 .card-body:has(table) { padding: 1rem !important; }
-.card-body table { border-radius: 0.5em; overflow: hidden; }
+.card-body table { border-radius: 12px; overflow: hidden; }  /* inside a 16px card (2026-11-08) */
 
 /* P&L colors */
-.profit-positive { color: #129042; font-weight: 600; }
+.profit-positive { color: var(--oxy-forest); font-weight: 600; }
 .profit-negative { color: #d63031; font-weight: 600; }
 .profit-zero { color: #888; }
 
@@ -211,7 +283,7 @@ body {
 .form-label { font-size: 0.875rem; }
 
 /* DataTables override */
-.dataTables_wrapper .dataTables_filter input {
+.dataTables_wrapper .dataTables_filter input:not([type="checkbox"]):not([type="radio"]) {
   border: 1px solid #dee2e6;
   border-radius: 6px;
   padding: 0.3rem 0.6rem;
@@ -284,9 +356,9 @@ table.dataTable {
 button:disabled,
 button[disabled],
 fieldset:disabled .btn {
-  background-color: #D8D8D8 !important;
-  border-color: #D8D8D8 !important;
-  color: #212529 !important;
+  background-color: var(--oxy-disabled) !important;
+  border-color: var(--oxy-disabled) !important;
+  color: var(--oxy-text-main) !important;
   opacity: 1 !important;
 }
 
@@ -314,13 +386,20 @@ fieldset:disabled .btn {
   font-size: 14px;
 }
 
-/* Last column (Action buttons) is the established convention across this
-   app's tables — centering it reads better than the left-alignment that
-   suits every text column before it. Applies to every Global Table
-   regardless of what column 1 is. */
+/* Last column (Action buttons): right-aligned, every button on one line
+   (2026-11-08, Pankaj — was centred). Applies to every Global Table
+   regardless of what column 1 is. A page's flex wrapper in the cell
+   (d-flex ... justify-content-center) is pushed to the right as well, and
+   never wraps. */
 .gtable thead th:last-child,
 .gtable tbody td:last-child {
-  text-align: center;
+  text-align: right;
+}
+.gtable tbody td:last-child > .d-flex,
+.gtable tbody td:last-child > .d-inline-flex,
+.gtable tbody td:last-child > .btn-group {
+  justify-content: flex-end !important;
+  flex-wrap: nowrap !important;
 }
 
 /* First column centers ONLY when it's a checkbox (global-table.js adds
@@ -369,6 +448,31 @@ fieldset:disabled .btn {
   white-space: nowrap;
 }
 
+/* Checkbox filters just before the search box (2026-11-08, Pankaj): the
+   standard square checkbox with a gap before its label. The search-box
+   styling above used to reach these checkboxes too and squash them into a
+   pill, with the label touching the box. */
+.dataTables_wrapper .dataTables_filter { display: flex; align-items: center; justify-content: flex-end; flex-wrap: nowrap; }
+.dataTables_wrapper .dataTables_filter .form-check {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding-left: 0; margin: 0 .75rem 0 0; min-height: 0; white-space: nowrap;
+}
+.dataTables_wrapper .dataTables_filter .form-check-input[type="checkbox"] {
+  float: none; margin: 0; padding: 0; width: 1em; height: 1em;
+  border-radius: .25em; flex-shrink: 0;
+}
+.dataTables_wrapper .dataTables_filter .form-check-label { margin: 0 !important; }
+
+/* Toggle switches in a table card header (2026-11-08, e.g. Audits
+   "Upload Tag" / "No Tags"): switch and label centred on one line, with
+   the same gap as the toolbar checkboxes. */
+:is(.gtable-card, .hdr-card) > .card-header .form-switch {
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding-left: 0; margin: 0; min-height: 0; white-space: nowrap;
+}
+:is(.gtable-card, .hdr-card) > .card-header .form-switch .form-check-input { float: none; margin: 0; flex-shrink: 0; }
+:is(.gtable-card, .hdr-card) > .card-header .form-switch .form-check-label { margin: 0; }
+
 /* The app-wide ".card-body table { overflow: hidden }" rule above (rounded
    card corners) clips the table's own box — and position:sticky's nearest
    "scrolling ancestor" search stops at ANY ancestor with non-visible
@@ -396,10 +500,10 @@ fieldset:disabled .btn {
    clip-path rather than border-radius + overflow, because the frozen
    (sticky) first column escapes an overflow clip in Chrome. */
 .gtable-scroll-wrap .dataTables_scrollHead {
-  clip-path: inset(0 round .5em .5em 0 0);
+  clip-path: inset(0 round 12px 12px 0 0);
 }
 .gtable-scroll-wrap .dataTables_scrollBody {
-  clip-path: inset(0 round 0 0 .5em .5em);
+  clip-path: inset(0 round 0 0 12px 12px);
 }
 /* DataTables gives the header table a 6px top margin, which put the rounded
    edge on empty space above the dark header; the space moves outside. */
@@ -476,7 +580,7 @@ fieldset:disabled .btn {
   position: sticky !important;
   left: 0;
   z-index: 2;
-  background-color: #fff;
+  background-color: var(--oxy-surface);
 }
 .gtable-scroll-wrap thead th:first-child {
   z-index: 3;
@@ -488,7 +592,7 @@ fieldset:disabled .btn {
   background-color: var(--bs-table-bg, #212529);
 }
 .gtable-scroll-wrap tbody tr:hover td:first-child {
-  background-color: #f1f3f5; /* keep the frozen cell in step with .table-hover */
+  background-color: var(--oxy-hover); /* keep the frozen cell in step with .table-hover */
 }
 
 /* Second frozen column — only active when global-table.js detects a checkbox
@@ -507,14 +611,14 @@ fieldset:disabled .btn {
   position: sticky !important;
   left: var(--gtable-col2-left, 40px);
   z-index: 2;
-  background-color: #fff;
+  background-color: var(--oxy-surface);
 }
 .gtable-scroll-wrap[data-freeze-cols="2"] thead th:nth-child(2) {
   z-index: 3;
   background-color: #212529;
 }
 .gtable-scroll-wrap[data-freeze-cols="2"] tbody tr:hover td:nth-child(2) {
-  background-color: #f1f3f5;
+  background-color: var(--oxy-hover);
 }
 
 /* Row-count badge, placed next to the page-length ("Page view") dropdown —
@@ -549,69 +653,147 @@ fieldset:disabled .btn {
        </div>
      </form>
    - no box: sits on the page, with a 1px navy separator line below
-   - all filters + buttons on ONE row; fields share the width and shrink together
+   - up to 8 filters on ONE row (fields stretch, max 200px each);
+     more than 8 wrap 6 per row (see below)
    - white fields with black text (multi-select buttons included)
    - no overflow clipping, so dropdown menus open fully */
-.filter-bar { margin-bottom: 1rem; padding-bottom: 12px; border-bottom: 1px solid #0e3a7a; }
+.filter-bar { margin-bottom: 1rem; padding-bottom: 12px; border-bottom: 1px solid var(--brand-blue); }
 .filter-bar-row { display: flex; flex-wrap: nowrap; align-items: center; gap: .5rem; }
 .filter-bar-row > div { flex: 1 1 0; min-width: 70px; width: auto; }
 .filter-bar-row > div:last-child { flex: 0 0 auto; min-width: 0; white-space: nowrap; }
 .filter-bar .form-label { display: none; }
-.filter-bar .form-select, .filter-bar .form-control { background-color: #fff; color: #212529; }
+.filter-bar .form-select, .filter-bar .form-control { background-color: var(--oxy-surface); color: var(--oxy-text-main); }
 /* !important: the multi-select is a btn-outline-secondary, whose grey text and
    grey hover fill would otherwise win over this sheet. */
 .filter-bar .ms-filter .btn,
 .filter-bar .ms-filter .btn:hover, .filter-bar .ms-filter .btn:focus,
-.filter-bar .ms-filter .btn.show { background-color: #fff !important; color: #212529 !important; border-color: #ced4da !important; }
+.filter-bar .ms-filter .btn.show { background-color: var(--oxy-surface) !important; color: var(--oxy-text-main) !important; border-color: var(--oxy-border) !important; }
 .filter-bar .ms-filter .btn { width: 100%; min-width: 0 !important; }
 /* One look for every field in a filter bar (2026-10-26): white background,
-   the same 1px #ced4da border and the same height, whether it is a text box,
+   the same 1px var(--oxy-border) border and the same height, whether it is a text box,
    the scan box, a date, a select or a multi-select button. The scan box uses
    the same font, size and 1px border as the rest here; corners are rounded
    8px (2026-10-26). */
 .filter-bar .form-control:not(:disabled),
 .filter-bar .form-select:not(:disabled),
-.filter-bar .ms-filter .btn { background-color: #fff !important; border: 1px solid #ced4da !important; height: 31px !important;
+.filter-bar .ms-filter .btn { background-color: var(--oxy-surface) !important; border: 1px solid var(--oxy-border) !important; height: 31px !important;
   border-radius: 8px !important; }
 /* Same font as the other fields (the scan box's monospace dropped here). */
 .filter-bar .barcode-field { font-family: inherit !important; font-size: .875rem; }
+/* One text style for every global filter field (2026-11-08), in filter bars
+   and in Global Card headers: same font (no monospace search boxes), 14px,
+   #212529 text, grey placeholder; checkbox labels normal weight, same colour. */
+.filter-bar .form-control, .filter-bar .form-select, .filter-bar .ss-btn, .filter-bar .ms-filter .btn,
+.card-header .form-control, .card-header .form-select, .card-header .ss-btn {
+  font-family: inherit !important; font-size: .875rem; color: var(--oxy-text-main); font-weight: 400; }
+.filter-bar .form-control::placeholder, .card-header .form-control::placeholder { color: rgba(33,37,41,.6); opacity: 1; }
+.filter-bar .filter-bar-check label, .filter-bar .form-check-label { font-weight: 400 !important; color: var(--oxy-text-main); font-size: .875rem; }
+/* Same box in Global Card headers as in filter bars: white, 1px #ced4da,
+   31px high, 8px corners (fields inside an input-group keep its joined corners). */
+.card-header .form-control:not(:disabled):not(textarea),
+.card-header .form-select:not(:disabled),
+.card-header .ss-btn,
+.card-header .ms-filter .btn { height: 31px !important; min-height: 31px; padding-top: .25rem; padding-bottom: .25rem;
+  background-color: var(--oxy-surface) !important; border: 1px solid var(--oxy-border) !important; border-radius: 8px !important; line-height: 1.5; }
+.card-header .input-group > .form-control, .card-header .input-group > .form-select { border-radius: 0 !important; }
+.card-header .input-group > :first-child { border-top-left-radius: 8px !important; border-bottom-left-radius: 8px !important; }
+.card-header .input-group > :last-child { border-top-right-radius: 8px !important; border-bottom-right-radius: 8px !important; }
 .filter-bar .ms-label { overflow: hidden; text-overflow: ellipsis; }
 /* A free-text search box gets double the share of the row; a checkbox keeps its
    natural width so its label never truncates. */
 .filter-bar-row > .filter-bar-search { flex: 2 1 0; min-width: 120px; }
 .filter-bar-row > .filter-bar-check { flex: 0 0 auto; min-width: 0; white-space: nowrap; }
-/* Busy pages: fixed 6 items per row, wrapping onto further rows.
-   Use <form class="filter-bar filter-bar-6">. Every item gets an equal
-   column; the buttons share one column. */
-.filter-bar-6 .filter-bar-row { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); }
-.filter-bar-6 .filter-bar-row > div,
-.filter-bar-6 .filter-bar-row > .filter-bar-search,
-.filter-bar-6 .filter-bar-row > .filter-bar-check { min-width: 0; width: auto; }
-.filter-bar-6 .filter-bar-row > div:last-child .btn { flex: 1 1 0; }
+/* Date range (2026-11-08): one box replaces each From / To pair
+   (static/js/filter-fields.js). Calendar icon on the right; a cross clears it. */
+/* The range text ("28 Oct – 08 Nov 2026") needs ~175px, so this cell never
+   shrinks below that; the other fields give way first. */
+.filter-bar-row > .filter-bar-daterange { flex: 1.5 1 0; min-width: 175px; }
+.dr-wrap { position: relative; }
+.dr-cell { display: inline-block; vertical-align: middle; flex: 0 0 auto; }
+.dr-wrap .dr-input { cursor: pointer; padding-right: 1.6rem; text-overflow: ellipsis; }
+.dr-wrap .dr-icon { position: absolute; right: .35rem; top: 50%; transform: translateY(-50%);
+  border: 0; background: transparent; color: #6c757d; padding: 0 .2rem; line-height: 1; font-size: .8rem; }
+.dr-wrap .dr-icon:hover { color: var(--brand-blue); }
+.flatpickr-calendar { font-family: inherit; box-shadow: 0 .25rem .75rem rgba(0,0,0,.25); }
+.flatpickr-day.selected, .flatpickr-day.startRange, .flatpickr-day.endRange,
+.flatpickr-day.selected:hover, .flatpickr-day.startRange:hover, .flatpickr-day.endRange:hover {
+  background: var(--brand-blue); border-color: var(--brand-blue); }
+.flatpickr-day.inRange { background: var(--oxy-sky); border-color: var(--oxy-sky); box-shadow: -5px 0 0 var(--oxy-sky), 5px 0 0 var(--oxy-sky); }
+.flatpickr-day.today { border-color: var(--brand-blue); }
+.flatpickr-day.startRange.endRange { border-radius: 50px; }
+/* Search box at the top of a multi-select menu (7+ options). */
+.ms-filter .ms-search, .dropdown-menu .ms-search { height: 28px; font-size: .8rem; border-radius: 6px; }
+/* Single-select with search (filter-fields.js): a button drawn like the
+   select, plus a menu like the multi-select's. The real <select> stays hidden. */
+.ss-filter { position: relative; }
+.ss-filter.ss-inline { display: inline-block; vertical-align: middle; }
+.ss-inline .ss-btn { max-width: 100%; }
+.ss-filter .ss-native { display: none !important; }
+.ss-btn { text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.ss-btn:focus, .ss-btn.show { border-color: #86b7fe !important; box-shadow: 0 0 0 .2rem rgba(13,110,253,.15); }
+.ss-menu { max-height: 280px; overflow-y: auto; font-size: .875rem; z-index: 1080; }
+.ss-item { padding: .3rem .5rem; border-radius: 6px; cursor: pointer; white-space: nowrap; }
+.ss-item:hover { background: var(--oxy-light); }
+.ss-item.ss-sel { color: var(--brand-blue); font-weight: 600; }
+.ss-item.ss-sel::after { content: "\F26E"; font-family: bootstrap-icons; float: right; margin-left: .75rem; }
+/* Highlighted match while searching (both kinds); Enter picks it. */
+.ss-item.dd-hi, .form-check.dd-hi { background: var(--oxy-sky); border-radius: 6px; }
+/* Card-header Reset (filter-fields.js): grey, icon only, same 31px height. */
+.card-header .hdr-reset { color: #6c757d !important; border-color: var(--oxy-border) !important; background: var(--oxy-surface) !important;
+  width: 31px; height: 31px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
+.card-header .hdr-reset:hover { color: var(--oxy-label) !important; background: var(--oxy-light) !important; }
+.hdr-btn-other.bg-white:hover { background-color: var(--oxy-light) !important; }
+/* Stays at the top while the options scroll (see the standard menu rules at the end). */
+.dropdown-menu .ms-search { position: sticky; top: -.5rem; z-index: 2; }
+/* One filter bar for every page (2026-11-08, Pankaj) — no variants to pick:
+   - Every field stretches to share the space but never grows past 200px;
+     checkboxes keep their natural width; the buttons sit at the right edge.
+   - Up to 8 filters: ONE row.
+   - More than 8 filters: 6 per row, wrapping (each up to 200px); the
+     buttons sit at the right edge of the last row. Counted by CSS (9+
+     filters + the buttons item = 10+ children), so a page needs no class.
+   (.filter-bar-6 is no longer needed; it does nothing now.) */
+.filter-bar-row > div:not(:last-child),
+.filter-bar-row > .filter-bar-search { flex: 1 1 0; max-width: 200px; }
+.filter-bar-row > div.filter-bar-check:not(:last-child) { flex: 0 0 auto; max-width: none; }
+.filter-bar-row:has(> :nth-child(10)) { display: grid; grid-template-columns: repeat(6, minmax(0, 200px)) 1fr; }
+.filter-bar-row:has(> :nth-child(10)) > div,
+.filter-bar-row:has(> :nth-child(10)) > .filter-bar-search,
+.filter-bar-row:has(> :nth-child(10)) > .filter-bar-check { min-width: 0; width: auto; max-width: none; }
+/* every 7th filter starts a new row, so the 7th (1fr) column is only ever
+   used by the buttons */
+.filter-bar-row:has(> :nth-child(10)) > :not(:last-child):nth-child(6n+1) { grid-column: 1; }
 /* Buttons (always the last item) sit at the right edge of the filter section. */
 .filter-bar-row > div:last-child { display: flex; justify-content: flex-end; gap: .5rem; margin-left: auto; }
-.filter-bar-6 .filter-bar-row > div:last-child { grid-column: -2 / -1; }
+.filter-bar-row:has(> :nth-child(10)) > div:last-child { grid-column: 7; justify-content: flex-end; }
 
-/* Global Table card header: light sky blue with navy title. The card is tagged
-   .gtable-card by initGlobalTable() (static/js/global-table.js). !important
+/* Global Table card header: light sky blue with navy title. Since the Global
+   Card (2026-11-08, top of this file) every plain card header gets this look;
+   these .gtable-card / .hdr-card rules stay for headers that carry another
+   bg-* class. The card is tagged .gtable-card by initGlobalTable(). !important
    because these headers carry bg-transparent / bg-white utility classes. */
 /* .hdr-card (2026-10-27): the same header on any plain card that is not a
    Global Table — e.g. every card on the Supplier / Customer Deal pages. */
-.gtable-card > .card-header, .hdr-card > .card-header { background: #d9ebf6 !important; color: #0e3a7a; border-bottom: 1px solid #c0ddf0; }
-.gtable-card > .card-header > .fw-semibold, .gtable-card > .card-header > span,
+.gtable-card > .card-header, .hdr-card > .card-header { background: var(--oxy-sky) !important; color: var(--brand-blue); border-bottom: 1px solid #c0ddf0; }
+.gtable-card > .card-header > .fw-semibold:not(.badge), .gtable-card > .card-header > span:not(.badge),
 .gtable-card > .card-header > h5, .gtable-card > .card-header > h6,
-.hdr-card > .card-header > .fw-semibold, .hdr-card > .card-header > span,
-.hdr-card > .card-header > h5, .hdr-card > .card-header > h6 { color: #0e3a7a; }
+.hdr-card > .card-header > .fw-semibold:not(.badge), .hdr-card > .card-header > span:not(.badge),
+.hdr-card > .card-header > h5, .hdr-card > .card-header > h6 { color: var(--brand-blue); }   /* badges keep their own colour (2026-11-09) */
 /* Outline buttons in a Global Table card header sit on plain white so they
    stand out on the blue header (2026-10-16). Beats the app-wide 5% tint
    below; hover/active/open keep Bootstrap's solid fill; outline-light (meant
    for dark backgrounds) is left alone. */
-.gtable-card > .card-header [class*="btn-outline-"]:not(.btn-outline-light):not(:hover):not(:active):not(.active):not(.show) { background-color: #fff; }
-.hdr-card > .card-header [class*="btn-outline-"]:not(.btn-outline-light):not(:hover):not(:active):not(.active):not(.show) { background-color: #fff; }
+.gtable-card > .card-header [class*="btn-outline-"]:not(.btn-outline-light):not(:hover):not(:active):not(.active):not(.show) { background-color: var(--oxy-surface); }
+.hdr-card > .card-header [class*="btn-outline-"]:not(.btn-outline-light):not(:hover):not(:active):not(.active):not(.show) { background-color: var(--oxy-surface); }
+/* Badges in a table card header (e.g. "2 selected") sit vertically centred
+   with the buttons and dropdowns beside them (2026-11-08). */
+.gtable-card > .card-header .badge, .hdr-card > .card-header .badge { display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: .4em .65em .3em; }
 /* Dark card (2026-11-06, Pankaj): the whole Stage Progress card on the
    Supplier / Customer Deal pages — Bluemonk Navy, light text. */
 .hdr-card.sd-dark { background: #0b2f63; color: #e8eef7; }
-.hdr-card.sd-dark > .card-header { background: #072250 !important; color: #fff !important; border-bottom: 1px solid #1d4a8a; }
+/* .card prefix (2026-11-10): the global light-blue card-header rule (.card:not(.card-plain) > .card-header:is(...))
+   out-ranked this, so open deals showed light blue; navy for every stage but Won (green) / Lost (red). */
+.card.hdr-card.sd-dark > .card-header { background: #0b2a5b !important; color: #fff !important; border-bottom: 1px solid #1d4a8a; }
 .hdr-card.sd-dark > .card-header, .hdr-card.sd-dark > .card-header > span, .hdr-card.sd-dark > .card-header .bi { color: #fff !important; }
 .sd-dark .text-muted { color: #a9bbd6 !important; }
 .sd-dark a:not(.btn) { color: #8cc4ff; }
@@ -631,8 +813,8 @@ fieldset:disabled .btn {
 .sd-dark .btn-outline-danger { color: #ff9a9a; border-color: #ff9a9a; background: transparent; }
 .sd-dark .btn-outline-danger:hover { background: #ff9a9a; color: #072250; }
 .sd-dark .btn-outline-success { color: #8ff0b4; border-color: #8ff0b4; background: transparent; }
-.hdr-card.sd-dark.sd-won > .card-header { background: #198754 !important; border-bottom-color: #198754; }
-.hdr-card.sd-dark.sd-lost > .card-header { background: #dc3545 !important; border-bottom-color: #dc3545; }
+.card.hdr-card.sd-dark.sd-won > .card-header { background: #198754 !important; border-bottom-color: #198754; }
+.card.hdr-card.sd-dark.sd-lost > .card-header { background: #dc3545 !important; border-bottom-color: #dc3545; }
 .sd-closed-label { font-size: .9rem; font-weight: 700; letter-spacing: .02em; }
 
 /* App-wide small shadow (Bootstrap .shadow-sm, used on cards everywhere):
@@ -652,15 +834,15 @@ fieldset:disabled .btn {
 
 /* Global Table inside a tab (tagged by initGlobalTable): the tab already
    names the table, so a button-less card header is hidden. Tables in a tab,
-   or in a card without a .card-body, get .gtable-tab-wrap: the same 1rem
-   padding a .card-body gives. */
+   or in a card, that have no .card-body around them get .gtable-tab-wrap:
+   the same 1rem padding a .card-body gives (never both — 2026-11-08). */
 .gtable-tab-hidden-header { display: none !important; }
 
 /* Active tab in Design System navy (2026-10-19), every tab bar in the app:
    navy background and border, white text and icon. Badges keep their own
    colours. Inactive tabs are unchanged. */
 .nav-tabs .nav-link.active,
-.nav-tabs .nav-item.show .nav-link { background-color: #0e3a7a; border-color: #0e3a7a; color: #fff; }
+.nav-tabs .nav-item.show .nav-link { background-color: var(--brand-blue); border-color: var(--brand-blue); color: #fff; }
 .nav-tabs .nav-link.active i, .nav-tabs .nav-link.active .bi { color: #fff; }
 
 /* ── Global tab design (2026-11-03), as /spare-parts ─────────────────────
@@ -678,13 +860,13 @@ fieldset:disabled .btn {
 :is(.card-body, .tab-pane, .modal-body, .accordion-body) .nav-tabs:not(.main-tabs) .nav-link.active,
 :is(.card-body, .tab-pane, .modal-body, .accordion-body) .nav-tabs:not(.main-tabs) .nav-item.show .nav-link,
 .nav-tabs.sub-tabs .nav-link.active, .nav-tabs.sub-tabs .nav-item.show .nav-link {
-  background-color: #fff; color: #0e3a7a; font-weight: 600;
-  border: 1.5px solid #0e3a7a; border-bottom-color: #fff;
+  background-color: var(--oxy-surface); color: var(--brand-blue); font-weight: 600;
+  border: 1.5px solid var(--brand-blue); border-bottom-color: #fff;
 }
 :is(.card-body, .tab-pane, .modal-body, .accordion-body) .nav-tabs:not(.main-tabs) .nav-link.active .bi,
-.nav-tabs.sub-tabs .nav-link.active .bi { color: #0e3a7a; }
+.nav-tabs.sub-tabs .nav-link.active .bi { color: var(--brand-blue); }
 :is(.card-body, .tab-pane, .modal-body, .accordion-body) .nav-tabs:not(.main-tabs),
-.nav-tabs.sub-tabs { border-bottom: 1.5px solid #0e3a7a; }
+.nav-tabs.sub-tabs { border-bottom: 1.5px solid var(--brand-blue); }
 .dataTables_wrapper.gtable-tab-wrap { padding: 1rem; }
 
 /* ── Global: every field has a white background (2026-10-15) ─────────────
@@ -697,15 +879,15 @@ fieldset:disabled .btn {
    every state (hover / focus / open). */
 .form-control:not(:disabled),
 .form-select:not(:disabled) {
-  background-color: #fff;
-  color: #212529;
+  background-color: var(--oxy-surface);
+  color: var(--oxy-text-main);
 }
 .ms-filter .btn,
 .ms-filter .btn:hover, .ms-filter .btn:focus,
 .ms-filter .btn:active, .ms-filter .btn.show {
-  background-color: #fff !important;
-  color: #212529 !important;
-  border-color: #ced4da !important;
+  background-color: var(--oxy-surface) !important;
+  color: var(--oxy-text-main) !important;
+  border-color: var(--oxy-border) !important;
 }
 
 /* ── Global: dark shadow on a field on hover / focus / typing (2026-11-02) ──
@@ -752,19 +934,26 @@ fieldset:disabled .btn {
    (Started as "soft cards"; the tray colour and row gaps were removed on
    request — plain rows read better for long lists.) Opt-in first (All
    Inventory) so it can be reviewed before it becomes the default. */
-.gtable-cards .gtable-scroll-wrap .dataTables_scrollHead,
-.gtable-cards .gtable-scroll-wrap .dataTables_scrollBody { clip-path: none; }
+.gtable-cards .gtable-scroll-wrap .dataTables_scrollHead { clip-path: none; }
+/* Bottom corners round to match the 16px Global Card (2026-11-08): the rows
+   are clipped to the wrapper's 12px curve. clip-path, not overflow, so the
+   frozen first column still sticks. */
+.gtable-cards .gtable-scroll-wrap .dataTables_scrollBody { clip-path: inset(0 round 0 0 12px 12px); }
 /* Soft shadow behind the whole table (header + rows) */
 .gtable-cards .gtable-scroll-wrap {
-  border-radius: 10px;
-  background: #fff;
+  border-radius: 12px;
+  background: var(--oxy-surface);
   box-shadow: 0 4px 18px rgba(14, 58, 122, .26);  /* stronger (2026-10-17, was 0 2px 10px .14) */
   margin-bottom: 14px;
 }
+/* In a card the card body's 1rem padding is the space under the table —
+   no extra 14px gap above the card's bottom edge (2026-11-08). */
+.card-body .gtable-cards .gtable-scroll-wrap,
+.gtable-tab-wrap.gtable-cards .gtable-scroll-wrap { margin-bottom: 0; }
 /* Header bar */
 .gtable-cards table.gtable thead { --bs-table-bg: #0e3a7a; --bs-table-color: #fff; }
 .gtable-cards table.gtable thead th {
-  background-color: #0e3a7a !important; color: #fff !important;
+  background-color: var(--brand-blue) !important; color: #fff !important;
   font-weight: 600; border: 0 !important; box-shadow: none !important;
 }
 .gtable-cards table.gtable thead th:first-child { border-radius: 8px 0 0 8px; }
@@ -809,7 +998,7 @@ fieldset:disabled .btn {
 .gtable-cards .dataTables_scrollBody thead th .dataTables_sizing { display: inline-block !important; vertical-align: top; }
 /* Rows */
 .gtable-cards table.gtable tbody td {
-  background-color: #fff;
+  background-color: var(--oxy-surface);
   border-top: 0 !important; border-bottom: 1px solid #e3eef7 !important;
   box-shadow: none !important;
 }
@@ -841,15 +1030,19 @@ fieldset:disabled .btn {
   bottom: 100%; height: 5px;
   background: linear-gradient(rgba(14, 58, 122, 0), rgba(14, 58, 122, .14));
 }
+/* Last row (2026-11-08): no strip below it — it reached past the bottom of
+   the scroll body, which then showed a vertical scrollbar and pushed every
+   column left while the row was hovered. */
+.gtable-cards table.gtable tbody tr:last-child:hover td::after { content: none !important; }
 
 /* Hovered row: 8px accent on its left edge in Bluemonk blue #0377c2
    (2026-10-26). An inset shadow on the first cell, not a border, so nothing
    shifts. Card tables have the cell shadows cleared above, so the accent is
    the only one there; a Global Table outside a card keeps Bootstrap's hover
    tint (also an inset shadow) alongside it. */
-.gtable-cards table.gtable tbody tr:hover > td:first-child { box-shadow: inset 8px 0 0 #0377c2 !important; }
+.gtable-cards table.gtable tbody tr:hover > td:first-child { box-shadow: inset 8px 0 0 var(--sidebar-active) !important; }
 table.gtable tbody tr:hover > td:first-child {
-  box-shadow: inset 8px 0 0 #0377c2, inset 0 0 0 9999px var(--bs-table-bg-state, var(--bs-table-bg-type, var(--bs-table-accent-bg)));
+  box-shadow: inset 8px 0 0 var(--sidebar-active), inset 0 0 0 9999px var(--bs-table-bg-state, var(--bs-table-bg-type, var(--bs-table-accent-bg)));
 }
 /* Empty / "No data" / no-search-match row (DataTables' td.dataTables_empty,
    2026-10-27): no hover at all — no tint, no lift shadow, no left accent.
@@ -857,7 +1050,7 @@ table.gtable tbody tr:hover > td:first-child {
 table.gtable tbody tr:hover > td.dataTables_empty,
 .gtable-cards table.gtable tbody tr:hover > td.dataTables_empty,
 .gtable-scroll-wrap tbody tr:hover > td.dataTables_empty {
-  background-color: #fff !important; box-shadow: none !important; cursor: default; }
+  background-color: var(--oxy-surface) !important; box-shadow: none !important; cursor: default; }
 .gtable-cards table.gtable tbody tr:hover > td.dataTables_empty::before,
 .gtable-cards table.gtable tbody tr:hover > td.dataTables_empty::after { content: none !important; }
 
@@ -929,9 +1122,9 @@ table.gtable tbody td .gtable-clamp2 {
    Bluemonk navy/blue stay the main colours; OxyPC's logo greens replace
    Bootstrap's default green everywhere "success" is used:
      Leaf   #54BA48  accents only (too light for text)
-     Forest #129042  buttons, solid fills, chart bars
-     Text   #0F7A37  green words on white (readable)
-     Mint   #E8F5E6  green label backgrounds */
+     Forest var(--oxy-forest)  buttons, solid fills, chart bars
+     Text   var(--oxy-text)  green words on white (readable)
+     Mint   var(--oxy-mint)  green label backgrounds */
 :root {
   --oxy-leaf: #54BA48; --oxy-forest: #129042; --oxy-text: #0F7A37; --oxy-mint: #E8F5E6;
   /* App "success" colour = #0F7A37 (2026-10-18) */
@@ -939,22 +1132,22 @@ table.gtable tbody td .gtable-clamp2 {
   --bs-success-text-emphasis: #0F7A37; --bs-success-bg-subtle: #E8F5E6; --bs-success-border-subtle: #b9e2b4;
 }
 .btn-success {
-  --bs-btn-bg: #0F7A37; --bs-btn-border-color: #0F7A37;
+  --bs-btn-bg: var(--oxy-text); --bs-btn-border-color: var(--oxy-text);
   --bs-btn-hover-bg: #0B6B30; --bs-btn-hover-border-color: #0B6B30;
   --bs-btn-active-bg: #095A28; --bs-btn-active-border-color: #095A28;
-  --bs-btn-disabled-bg: #0F7A37; --bs-btn-disabled-border-color: #0F7A37;
+  --bs-btn-disabled-bg: var(--oxy-text); --bs-btn-disabled-border-color: var(--oxy-text);
   --bs-btn-focus-shadow-rgb: 15, 122, 55;
 }
 .btn-outline-success {
-  --bs-btn-color: #0F7A37; --bs-btn-border-color: #0F7A37;
-  --bs-btn-hover-bg: #0F7A37; --bs-btn-hover-border-color: #0F7A37;
+  --bs-btn-color: var(--oxy-text); --bs-btn-border-color: var(--oxy-text);
+  --bs-btn-hover-bg: var(--oxy-text); --bs-btn-hover-border-color: var(--oxy-text);
   --bs-btn-active-bg: #0B6B30; --bs-btn-active-border-color: #0B6B30;
   --bs-btn-focus-shadow-rgb: 15, 122, 55;
 }
-.text-success { color: #0F7A37 !important; }
+.text-success { color: var(--oxy-text) !important; }
 /* Success badge: solid #0F7A37 with white text (2026-10-18) */
 .badge.bg-success, .badge.text-bg-success {
-  background-color: #0F7A37 !important; color: #fff !important;
+  background-color: var(--oxy-text) !important; color: #fff !important;
 }
 /* Sidebar now uses the same success green (2026-10-18). */
 
@@ -966,11 +1159,11 @@ table.gtable tbody td .gtable-clamp2 {
 .lt-tiles-row{display:flex; flex-wrap:wrap; gap:.75rem; overflow:visible; padding:4px 6px 10px; margin-bottom:1rem}
 .lt-tiles-row > div{flex:1 1 0; min-width:130px}
 .lt-tile{position:relative; overflow:hidden; border-radius:10px; padding:1.1rem 1rem; min-height:96px;
-         background:color-mix(in srgb, var(--tc) 8%, #fff) !important;
-         border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
+         background:color-mix(in srgb, var(--tc) 8%, var(--oxy-surface)) !important;
+         border:1px solid color-mix(in srgb, var(--tc) 25%, var(--oxy-surface));
          box-shadow:0 .25rem .5rem rgba(0,0,0,.5)}
 .lt-tile-count{font-size:1.6rem; font-weight:700; line-height:1.1; color:var(--tc); position:relative; z-index:1; white-space:nowrap}
-.lt-tile-label{font-size:.72rem; white-space:nowrap; color:#343a40; position:relative; z-index:1; margin-top:.35rem}
+.lt-tile-label{font-size:.72rem; white-space:nowrap; color:var(--oxy-label); position:relative; z-index:1; margin-top:.35rem}
 .lt-tile-wm{position:absolute; right:-4px; bottom:-10px; font-size:3.4rem; line-height:1;
             color:color-mix(in srgb, var(--tc) 8%, transparent); pointer-events:none}
 /* Dark variant (2026-10-27): solid tile colour, white count and label,
@@ -1027,11 +1220,17 @@ table.gtable tbody td .gtable-clamp2 {
    templates/_tiles.html macros. Set the colour with --tc (done by the macro).
    * Single count  .oxt-tile.oxt-single — count + label; optional title on top,
      secondary lines ("In TRC: 3,155") and a download button.
-   * Double count  .oxt-tile.oxt-double — title, two counts each with a label.
-   * Both: .oxt-tint = light wash of the colour, coloured count, shadow;
+   * Single and Multi: .oxt-tint = light wash of the colour, coloured count, shadow;
            .oxt-dark = solid colour, white text, no shadow.
    * Surface       .oxt-surface — count, label under it, on a colour wash with a left
-     accent; no border, no shadow, one look only. */
+     accent; no border, no shadow, one look only.
+   * Multi count   .oxt-tile.oxt-multi — title, then two or more equal count +
+     label lines; a line can be split ("12 Pass | 3 Fail"). Tint or dark.
+     (Replaced the Double count tile, 2026-11-07.)
+   * Parent count  .oxt-parent — light (white card, coloured left edge) or
+     dark (.oxt-p-dark, solid colour, white text): small caps
+     title, big total, a breakdown list (icon, label, value) and a grey
+     "Excluded" line ("In Rent 0 | In Sold 37,409"). Beside a block of tiles (Dashboard). */
 .oxt-row{display:flex; flex-wrap:wrap; gap:.75rem; overflow:visible; padding:4px 6px 10px; margin-bottom:1rem}
 .oxt-row > div{flex:1 1 0; min-width:150px}
 .oxt-row.oxt-row-surface{gap:.6rem}
@@ -1040,10 +1239,8 @@ table.gtable tbody td .gtable-clamp2 {
 .oxt-tile{position:relative; overflow:hidden; border-radius:10px; padding:1rem 1rem .8rem; min-height:96px; height:100%;
           display:flex; flex-direction:column; transition:transform .15s, box-shadow .15s}
 .oxt-title{font-size:.8rem; font-weight:600; position:relative; z-index:1; margin-bottom:.35rem}
-.oxt-count{font-size:1.6rem; font-weight:700; line-height:1.1; position:relative; z-index:1; white-space:nowrap}
+.oxt-count{font-size:1.6rem; font-weight:700; line-height:1.1; letter-spacing:-1px; position:relative; z-index:1; white-space:nowrap}
 .oxt-label{font-size:.72rem; position:relative; z-index:1; margin-top:.3rem; white-space:nowrap}
-.oxt-pair + .oxt-pair{margin-top:.55rem}
-.oxt-pair .oxt-label{margin-top:.1rem}
 .oxt-secondary{font-size:.75rem; line-height:1.55; margin-top:.55rem; position:relative; z-index:1}
 .oxt-actions{margin-top:auto; padding-top:.55rem; position:relative; z-index:2}
 .oxt-dl{font-size:.7rem; padding:.05rem .45rem; border:1px solid currentColor; background:transparent}
@@ -1051,9 +1248,9 @@ table.gtable tbody td .gtable-clamp2 {
 /* single count with nothing under the label: label sits at the bottom (as #3) */
 .oxt-single .oxt-label:last-child, .oxt-single .oxt-label:has(+ .oxt-wm:last-child){margin-top:auto; padding-top:.55rem}
 /* tint */
-.oxt-tint{background:color-mix(in srgb, var(--tc) 8%, #fff); border:1px solid color-mix(in srgb, var(--tc) 25%, #fff);
+.oxt-tint{background:color-mix(in srgb, var(--tc) 8%, var(--oxy-surface)); border:1px solid color-mix(in srgb, var(--tc) 25%, var(--oxy-surface));
           box-shadow:0 .25rem .5rem rgba(0,0,0,.35)}
-.oxt-tint .oxt-title, .oxt-tint .oxt-label{color:#343a40}
+.oxt-tint .oxt-title, .oxt-tint .oxt-label{color:var(--oxy-label)}
 .oxt-tint .oxt-count{color:var(--tc)}
 .oxt-tint .oxt-secondary{color:#495057}
 .oxt-tint .oxt-dl{color:var(--tc)}
@@ -1068,12 +1265,193 @@ table.gtable tbody td .gtable-clamp2 {
 .oxt-dark .oxt-dl:hover{background:#fff; color:var(--tc)}
 .oxt-dark .oxt-wm{color:rgba(255,255,255,.2)}
 .oxt-link:hover .oxt-tile, .oxt-tile:has(.oxt-dl):hover{transform:translateY(-3px);
-  box-shadow:0 10px 30px 4px rgba(0,0,0,.30), inset 0 -6px 0 #212529}
+  box-shadow:0 10px 30px 4px rgba(0,0,0,.30), 0 4px 0 #212529}   /* hover (2026-11-09, Pankaj) */
+/* multi count */
+.oxt-multi .oxt-title{font-size:.85rem; font-weight:700}
+.oxt-tint.oxt-multi .oxt-title{color:var(--tc)}
+.oxt-mline{display:flex; align-items:baseline; gap:.35rem; position:relative; z-index:1; white-space:nowrap}
+.oxt-mline + .oxt-mline{margin-top:.15rem}
+.oxt-mcount{font-size:1.45rem; font-weight:700; line-height:1.15; letter-spacing:-1px}
+.oxt-mlabel{font-size:.72rem}
+.oxt-msep{font-size:.9rem; margin:0 .15rem; opacity:.5}
+.oxt-tint .oxt-mcount{color:var(--tc)}
+.oxt-tint .oxt-mlabel, .oxt-tint .oxt-msep{color:var(--oxy-label)}
+.oxt-dark .oxt-mcount{color:#fff}
+.oxt-dark .oxt-mlabel, .oxt-dark .oxt-msep{color:rgba(255,255,255,.88)}
+/* parent count (2026-11-08) */
+.oxt-parent-wrap{height:100%}
+.oxt-parent{height:100%; display:flex; flex-direction:column; background:var(--oxy-surface); border-radius:10px; border-left:5px solid var(--tc);
+            box-shadow:0 .125rem .25rem rgba(0,0,0,.075); padding:1rem; font-size:.85rem; color:var(--oxy-text-main)}
+.oxt-p-title{white-space:nowrap; font-size:.72rem; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:#6c757d}
+.oxt-p-count{font-size:2.3rem; font-weight:700; line-height:1.1; letter-spacing:-1px; color:var(--tc)}
+.oxt-p-rows{margin-top:.5rem}
+.oxt-p-row{display:flex; align-items:center; padding:.25rem 0; border-bottom:1px solid #dee2e6}
+.oxt-p-ic{width:24px; height:24px; border-radius:8px; display:inline-flex; align-items:center; justify-content:center; font-size:.8rem;
+          flex-shrink:0; color:var(--ic); background:color-mix(in srgb, var(--ic) 10%, transparent)}
+.oxt-p-label{margin-left:.5rem; white-space:nowrap}
+.oxt-p-val{margin-left:auto; padding-left:.5rem; white-space:nowrap}
+.oxt-p-excl{margin-top:auto; padding-top:.5rem}
+.oxt-p-sub{font-size:.7rem; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:#6c757d; margin-bottom:.25rem}
+.oxt-p-exrow{display:flex; flex-wrap:wrap; align-items:baseline; gap:0 .45rem; font-size:.78rem; color:#6c757d}
+.oxt-p-ex{white-space:nowrap}
+.oxt-p-ex b{font-weight:600; color:#6c757d}
+.oxt-p-sep{color:#adb5bd}
+.oxt-link:hover .oxt-parent{box-shadow:0 10px 30px 4px rgba(0,0,0,.18)}
+/* parent count, dark: solid colour card, white text */
+.oxt-parent.oxt-p-dark{background:var(--tc); color:#fff; box-shadow:none}
+.oxt-p-dark .oxt-p-title, .oxt-p-dark .oxt-p-sub{color:rgba(255,255,255,.75)}
+.oxt-p-dark .oxt-p-count{color:#fff}
+.oxt-p-dark .oxt-p-row{border-bottom-color:rgba(255,255,255,.18)}
+.oxt-p-dark .oxt-p-ic{color:#fff; background:color-mix(in srgb, var(--ic) 55%, transparent)}
+.oxt-p-dark .oxt-p-exrow, .oxt-p-dark .oxt-p-ex b{color:rgba(255,255,255,.72)}
+.oxt-p-dark .oxt-p-sep{color:rgba(255,255,255,.4)}
+@media (max-width:1440px){
+  .oxt-parent{font-size:.76rem; padding:.75rem}
+  .oxt-p-ic{width:18px; height:18px; font-size:.65rem}
+  .oxt-p-label{margin-left:.35rem}
+  .oxt-p-title{font-size:.64rem; letter-spacing:.5px}
+  .oxt-p-count{font-size:2rem}
+}
 /* surface */
-.oxt-surface{border-radius:.5rem; padding:.6rem .75rem; height:100%; color:#343a40;
-             background:#fff linear-gradient(color-mix(in srgb, var(--tc) 9%, transparent), color-mix(in srgb, var(--tc) 9%, transparent));
+.oxt-surface{border-radius:.5rem; padding:.6rem .75rem; height:100%; color:var(--oxy-label);
+             background:var(--oxy-surface) linear-gradient(color-mix(in srgb, var(--tc) 9%, transparent), color-mix(in srgb, var(--tc) 9%, transparent));
              border-left:4px solid var(--tc)}
 .oxt-surface.oxt-zero{opacity:.5}
-.oxt-s-label{font-size:.72rem; color:#343a40; margin-top:.1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
-.oxt-s-count{font-size:1.35rem; font-weight:700; line-height:1.15; color:var(--tc)}
-.oxt-link:hover .oxt-surface{background:#fff linear-gradient(color-mix(in srgb, var(--tc) 16%, transparent), color-mix(in srgb, var(--tc) 16%, transparent))}
+.oxt-s-label{font-size:.72rem; color:var(--oxy-label); margin-top:.1rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.oxt-s-count{font-size:1.35rem; font-weight:700; line-height:1.15; letter-spacing:-1px; color:var(--tc)}
+.oxt-link:hover .oxt-surface{background:var(--oxy-surface) linear-gradient(color-mix(in srgb, var(--tc) 16%, transparent), color-mix(in srgb, var(--tc) 16%, transparent))}
+
+
+/* ── Standard dropdown menu (multi-select + searchable single-select),
+   2026-11-08, Pankaj: the WorkID Status look everywhere ──────────────────
+   The menu looks the same whether it opens inside a filter bar, a card
+   header or on <body>: flat search box (no shadow), "All" / "Clear" as plain
+   links (All blue, Clear grey), never drawn like field buttons. Placed last
+   so it wins over the filter-bar / card-header field rules. */
+.dropdown-menu .ms-search,
+.dropdown-menu .ms-search:hover,
+.dropdown-menu .ms-search:focus { box-shadow: 0 -.55rem 0 .05rem #fff !important; height: 31px !important;
+  border: 1px solid var(--oxy-border) !important; border-radius: 6px !important; background-color: var(--oxy-surface) !important; font-size: .875rem; }
+.dropdown-menu .ms-search:focus { border-color: #86b7fe !important; }
+.dropdown-menu .btn.ms-all, .dropdown-menu .btn.ms-none,
+.dropdown-menu .btn.ms-all:hover, .dropdown-menu .btn.ms-none:hover,
+.dropdown-menu .btn.ms-all:focus, .dropdown-menu .btn.ms-none:focus {
+  background: transparent !important; border: 0 !important; box-shadow: none !important;
+  height: auto !important; min-height: 0 !important; width: auto !important; padding: 0 !important;
+  font-size: .875rem; line-height: 1.5; text-decoration: underline; border-radius: 0 !important; }
+.dropdown-menu .btn.ms-all { color: #0d6efd !important; }
+.dropdown-menu .btn.ms-none { color: #6c757d !important; }
+
+
+/* ── Dark mode (2026-11-08, Pankaj) ─────────────────────────────────────────
+   <html data-bs-theme="dark"> (each user's Light / Dark switch in the top
+   bar). Bootstrap 5.3 darkens its own components; the colour tokens above get
+   their Dark values from System Colors; these rules cover the app's own
+   pieces that need more than a token. */
+[data-bs-theme=dark] { --oxy-label: #c3c9d1; --oxy-hover: #262c33; --oxy-user-box: #1f2c3b; color-scheme: dark; }
+[data-bs-theme=dark] .card:not(.card-plain) > .card-header > :is(.fw-semibold, span, h5, h6, strong),
+[data-bs-theme=dark] .gtable-card > .card-header, [data-bs-theme=dark] .hdr-card > .card-header > :is(h5, h6) { color: #dbe6f5; }
+[data-bs-theme=dark] .form-control::placeholder { color: rgba(228,231,235,.5) !important; }
+[data-bs-theme=dark] #tbSearchMenu .tbs-row.active, [data-bs-theme=dark] #tbSearchMenu .tbs-row:hover { background: var(--oxy-hover); }
+[data-bs-theme=dark] body { color: var(--oxy-text-main); }
+[data-bs-theme=dark] .card { --bs-card-bg: var(--oxy-surface); --bs-card-border-color: var(--oxy-border); --bs-card-cap-bg: var(--oxy-sky); }
+[data-bs-theme=dark] .card > .card-header { color: #dbe6f5 !important; border-bottom-color: var(--oxy-border) !important; }
+[data-bs-theme=dark] .bg-white { background-color: var(--oxy-surface) !important; }
+[data-bs-theme=dark] .bg-light, [data-bs-theme=dark] .table-light { background-color: var(--oxy-light) !important; --bs-table-bg: var(--oxy-light); }
+[data-bs-theme=dark] .topbar { border-bottom-color: var(--oxy-border); }
+[data-bs-theme=dark] .topbar .text-dark, [data-bs-theme=dark] .topbar .btn-link.text-dark { color: var(--oxy-text-main) !important; }
+[data-bs-theme=dark] .gtable tbody td, [data-bs-theme=dark] .gtable-cards table.gtable { --bs-table-bg: var(--oxy-surface); border-color: var(--oxy-border); }
+[data-bs-theme=dark] .gtable tbody tr td { border-bottom-color: #2b3139 !important; }
+[data-bs-theme=dark] .text-muted { color: #9aa3ad !important; }
+[data-bs-theme=dark] .nav-tabs .nav-link:not(.active) { color: #c3cfdd; }
+[data-bs-theme=dark] .oxt-parent, [data-bs-theme=dark] .oxt-surface { color: var(--oxy-text-main); }
+[data-bs-theme=dark] .flatpickr-calendar { background: var(--oxy-surface); color: var(--oxy-text-main); box-shadow: 0 .25rem .75rem rgba(0,0,0,.6); }
+[data-bs-theme=dark] .flatpickr-day, [data-bs-theme=dark] .flatpickr-weekday, [data-bs-theme=dark] .flatpickr-current-month,
+[data-bs-theme=dark] .flatpickr-months .flatpickr-month { color: var(--oxy-text-main); fill: var(--oxy-text-main); }
+[data-bs-theme=dark] .flatpickr-day:hover { background: var(--oxy-hover); }
+
+/* Global Filter Apply = yellow (2026-11-08, Pankaj). In a filter bar the only
+   primary button is Apply, so every .btn-primary there takes the Warning
+   colour (follows System Colors → Warning). */
+.filter-bar .btn-primary {
+  --bs-btn-color: #000; --bs-btn-bg: var(--bs-warning); --bs-btn-border-color: var(--bs-warning);
+  --bs-btn-hover-color: #000; --bs-btn-hover-bg: color-mix(in srgb, var(--bs-warning) 88%, #fff);
+  --bs-btn-hover-border-color: color-mix(in srgb, var(--bs-warning) 92%, #fff);
+  --bs-btn-active-color: #000; --bs-btn-active-bg: color-mix(in srgb, var(--bs-warning) 82%, #fff);
+  --bs-btn-active-border-color: color-mix(in srgb, var(--bs-warning) 88%, #fff);
+  --bs-btn-focus-shadow-rgb: var(--bs-warning-rgb);
+  --bs-btn-disabled-color: #000; --bs-btn-disabled-bg: var(--bs-warning); --bs-btn-disabled-border-color: var(--bs-warning);
+}
+
+/* Quick Add "+" in the top bar (2026-11-08) — base.html #quickAddWrap,
+   laid out by static/js/quick-add.js: columns filled top to bottom. */
+#quickAddWrap .qa-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 2.4rem; }  /* Raise Ticket shape (btn-sm) */
+#quickAddWrap .qa-menu { width: max-content; max-width: calc(100vw - 1.5rem); padding: .25rem .35rem; border-radius: 12px;
+  max-height: 75vh; overflow: auto; }
+#quickAddWrap .qa-cols { display: flex; flex-direction: row-reverse; align-items: flex-start; }  /* 1st column on the right, under "+" */
+#quickAddWrap .qa-col { width: 210px; padding: 0 .2rem; }
+#quickAddWrap .qa-groups { padding: 0 .2rem; }
+#quickAddWrap .qa-section { padding: .5rem 0; }      /* same space above and below every section (2026-11-08) */                 /* before the script builds the columns */
+#quickAddWrap .qa-group-title { font-size: .7rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--bs-primary); margin: 0 .55rem .3rem; padding-bottom: .3rem;   /* blue, like the item icons */
+  border-bottom: 1px solid var(--oxy-border, #dee2e6); }
+#quickAddWrap .qa-item { font-size: .875rem; padding: .38rem .6rem; border-radius: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#quickAddWrap .qa-item .bi { color: var(--bs-primary); }
+#quickAddWrap .qa-item:hover, #quickAddWrap .qa-item:focus { background: var(--oxy-sky, #d9ebf6); }
+#quickAddWrap .qa-foot { display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  margin: .25rem -.35rem -.25rem; padding: .6rem .9rem; border-top: 1px solid var(--oxy-border, #dee2e6);
+  background: var(--oxy-light, #f0f4f8); border-radius: 0 0 12px 12px; }
+#quickAddWrap .qa-foot-label { font-size: .8rem; color: var(--bs-secondary); }
+@media (max-width: 767.98px) { #quickAddWrap .qa-cols { flex-wrap: wrap; } #quickAddWrap .qa-col { width: 50%; } }
+
+/* Standard dropdown menu (2026-11-08, Pankaj) — every Bootstrap dropdown of
+   links / actions (profile menu, row action menus, export menus…): roomier
+   items, rounded hover, fixed-width icons. Bootstrap variables, so pages that
+   set their own still win. Multi-select / search filter menus (WorkID look,
+   above) don't use .dropdown-item and are unaffected. */
+.dropdown-menu {
+  --bs-dropdown-border-radius: 10px;
+  --bs-dropdown-border-color: var(--oxy-border, #ced4da);
+  --bs-dropdown-item-padding-y: .5rem;
+  --bs-dropdown-item-padding-x: .85rem;
+  --bs-dropdown-item-border-radius: 6px;
+  --bs-dropdown-link-hover-bg: var(--oxy-sky, #d9ebf6);
+  --bs-dropdown-link-active-bg: var(--bs-primary);
+  --bs-dropdown-divider-margin-y: .4rem;
+}
+.dropdown-menu:has(> li > .dropdown-item, > li > form > .dropdown-item, > .dropdown-item) {
+  padding-left: .35rem; padding-right: .35rem; min-width: 12rem;
+}
+.dropdown-menu .dropdown-item { line-height: 1.35; }
+.dropdown-menu > li + li > .dropdown-item, .dropdown-menu > li + li > form > .dropdown-item,
+.dropdown-menu > .dropdown-item + .dropdown-item { margin-top: 2px; }
+.dropdown-menu .dropdown-item > .bi:first-child { display: inline-block; width: 1.15rem; text-align: center; }
+.dropdown-menu .dropdown-item.text-danger:hover, .dropdown-menu .dropdown-item.text-danger:focus { background: rgba(var(--bs-danger-rgb), .1); }
+[data-bs-theme=dark] .dropdown-menu { --bs-dropdown-link-hover-bg: var(--oxy-hover); }
+
+/* Profile menu Light ⟷ Dark switch (2026-11-08): the current mode is bold and
+   coloured, the other one muted. */
+#themeToggle .tm-light, #themeToggle .tm-dark { color: var(--bs-secondary); transition: color .15s; }
+/* Same icon-to-label gap as the other menu items (1.15rem icon + .5rem). */
+#themeToggle .tm-ico { display: inline-block; width: 1.15rem; text-align: center; }
+#themeToggle .form-switch { padding-left: 0; min-height: 0; display: inline-flex; }
+#themeToggle .form-switch .form-check-input { width: 2.2em; float: none; margin: 0 .35rem !important; }
+:root:not([data-bs-theme=dark]) #themeToggle .tm-light { color: var(--bs-primary); font-weight: 600; }
+[data-bs-theme=dark] #themeToggle .tm-dark { color: var(--bs-primary); font-weight: 600; }
+
+/* Global Tabs — pill tabs (2026-11-09, Pankaj). A compact tab row for a card
+   header (or anywhere): <ul class="nav pill-tabs"> with .nav-link buttons.
+   Active = solid Primary pill, white text; the others plain Primary text, no
+   box. No count badges. Use it to switch views of ONE card's table (e.g.
+   Received / Completed); use the full-width Global Tabs (.nav-tabs) to switch
+   between different panels. The page decides — nothing applies it on its own. */
+.nav.pill-tabs { gap: .25rem; flex-wrap: wrap; }
+.nav.pill-tabs .nav-link { padding: .25rem 1rem; border: 0; border-radius: var(--bs-border-radius); background: transparent;
+  color: var(--bs-primary); font-weight: 500; line-height: 1.5; transition: background-color .15s, color .15s; }
+.nav.pill-tabs .nav-link:hover:not(.active) { background: rgba(var(--bs-primary-rgb), .08); }
+.nav.pill-tabs .nav-link.active, .nav.pill-tabs .nav-item.show .nav-link { background: var(--bs-primary); color: #fff; }
+.nav.pill-tabs .nav-link:focus-visible { box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .25); }
+
+/* Entity count badges beside the row-count badge (Renew Circuits: 2037 …) —
+   one size app-wide (2026-11-09; was only on All Inventories). */
+#entityBadges .badge { font-size: .75rem; vertical-align: middle; }

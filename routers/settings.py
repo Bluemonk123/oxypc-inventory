@@ -20,16 +20,22 @@ from utils.master_data import entity_values
 router = APIRouter(prefix="/settings", tags=["settings"])
 
 
-async def get_company_settings(db: AsyncSession, company_id: str = None) -> dict:
+async def get_company_settings(db: AsyncSession, company_id: str = None, entity: str = None) -> dict:
     """Load a company profile dict. If company_id is given, fetch that row;
-    otherwise fall back to the first active company (back-compat for any
-    caller that hasn't been updated to pass a specific company_id yet)."""
+    else (2026-11-10) the active company whose Entity matches `entity` (a
+    record's From Entity); otherwise the first active company (back-compat for
+    any caller that hasn't been updated to pass a specific company_id yet)."""
     company = None
     if company_id:
         try:
             company = await db.get(Company, uuid.UUID(company_id))
         except (ValueError, TypeError):
             company = None
+    if not company and entity:
+        company = (await db.execute(
+            select(Company).where(Company.is_active == True, Company.company_entity == entity)
+            .order_by(Company.created_at)
+        )).scalars().first()
     if not company:
         company = (await db.execute(
             select(Company).where(Company.is_active == True).order_by(Company.created_at)

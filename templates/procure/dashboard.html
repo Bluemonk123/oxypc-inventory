@@ -29,7 +29,7 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i>Sourcing Funnel</span>
-        {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary"><i class="bi bi-plus"></i> New Deal</a>{% endif %}
+        {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle"></i> Add Deal</a>{% endif %}
       </div>
       <div class="card-body py-2">
         {% set stages_to_show = [('lead','Lead'), ('contacted','Contacted'), ('inspection','Inspection'), ('quote','Quote'), ('negotiation','Negotiations'), ('purchase_order','Purchase Order'), ('payment','Payment'), ('received','Stock Received')] %}
@@ -55,7 +55,7 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-graph-up-arrow me-1 text-info"></i>Sales Funnel</span>
-        {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-sm btn-info text-white"><i class="bi bi-plus"></i> New Opp</a>{% endif %}
+        {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-sm btn-info text-white"><i class="bi bi-plus-circle"></i> Add Opp</a>{% endif %}
       </div>
       <div class="card-body py-2">
         {% set sstages = [('lead','Lead'), ('contacted','Contacted'), ('screening','Screening'), ('quote','Quote'), ('negotiation','Negotiations'), ('sales_order','Invoice / SO'), ('purchase_order','Purchase Order'), ('payment','Payment'), ('received','Stock Received')] %}
@@ -127,11 +127,11 @@
 <div class="row g-2 mb-4">
   <div class="col-12">
     <div class="d-flex gap-2 flex-wrap">
-      {% if can(current_user, 'crm_contacts', 'add') %}<a href="/crm/contacts/new" class="btn btn-outline-secondary btn-sm"><i class="bi bi-person-plus me-1"></i>Add Contact</a>{% endif %}
-      {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>New Supplier Deals</a>{% endif %}
-      {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-outline-info btn-sm"><i class="bi bi-graph-up me-1"></i>New Customer Deals</a>{% endif %}
-      {% if can(current_user, 'crm_quotes', 'add') %}<a href="/crm/quotes/new" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-text me-1"></i>New Quote</a>{% endif %}
-      {% if can(current_user, 'crm_purchase_orders', 'add') %}<a href="/crm/purchase-orders/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-cart-plus me-1"></i>New Purchase Order</a>{% endif %}
+      {% if can(current_user, 'crm_contacts', 'add') %}<a href="/crm/contacts/new" class="btn btn-outline-secondary btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Contact</a>{% endif %}
+      {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Supplier Deals</a>{% endif %}
+      {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-outline-info btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Customer Deals</a>{% endif %}
+      {% if can(current_user, 'crm_quotes', 'add') %}<a href="/crm/quotes/new" class="btn btn-outline-success btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Quote</a>{% endif %}
+      {% if can(current_user, 'crm_purchase_orders', 'add') %}<a href="/crm/purchase-orders/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Purchase Order</a>{% endif %}
       <a href="/crm/activities/followups" class="btn btn-outline-warning btn-sm"><i class="bi bi-bell me-1"></i>All Follow-ups</a>
     </div>
   </div>
@@ -139,149 +139,125 @@
 
 <h5 class="fw-bold mb-3">Pending Requests</h5>
 
-<ul class="nav nav-tabs mb-3" id="pendingReqTabs" role="tablist">
+{# Pending Requests (2026-11-11, Pankaj): Parts Sourcing first; each tab has
+   pill tabs Pending Request / Closed Request; Global Tabs, Global Card
+   (gtable-card header), Global Table (initGlobalTable). #}
+{% set _dev_open = ('open', 'partially_fulfilled') %}
+{% set ps_pend = part_sourcing | rejectattr('status', 'equalto', 'closed') | list %}
+{% set ps_done = part_sourcing | selectattr('status', 'equalto', 'closed') | list %}
+{% set ds_pend = device_sourcing | selectattr('status', 'in', _dev_open) | list %}
+{% set ds_done = device_sourcing | rejectattr('status', 'in', _dev_open) | list %}
+
+{% macro part_table(rows, tid) %}
+<table class="table table-hover mb-0 small align-middle pr-table" id="{{ tid }}">
+  <thead><tr>
+    <th>Status</th><th>Part Name</th><th>Qty Requested</th><th>Qty Sourced</th><th>Added On</th><th>Raised By</th><th>Action</th>
+  </tr></thead>
+  <tbody>
+  {% for s in rows %}
+  <tr>
+    <td>{% if s.status == 'closed' %}<span class="badge bg-success">Closed</span>{% else %}<span class="badge bg-warning text-dark">Open</span>{% endif %}</td>
+    {# Part Name (2026-11-11): "<part name> - <model> - <make>", or for a whole-lot
+       request from Part Estimation "<lot number> - <estimate file(s)>" #}
+    <td class="fw-semibold">
+      {% if s.source == 'production' %}
+      <div class="d-flex flex-wrap align-items-center gap-1">
+        {% if s.lot_number %}<a href="/lots?q={{ s.lot_number | urlencode }}" class="fw-semibold">{{ s.lot_number }}</a>{% else %}<span class="text-muted">Lot —</span>{% endif %}
+        <span class="text-muted">-</span>
+        {% set _files = estimates_by_batch.get(s.id | string, []) %}
+        {% for f in _files %}
+        <a class="btn btn-sm btn-outline-success py-0 px-1" href="/part-estimation/download/{{ f.id }}" title="{{ f.file_name }}">
+          <i class="bi bi-file-earmark-excel me-1"></i>{{ f.grade or 'Estimate' }}</a>
+        {% else %}<span class="text-muted fw-normal">No file attached</span>{% endfor %}
+      </div>
+      {% else %}
+      {% set _p = part_map.get(s.part_id | string) if s.part_id else none %}
+      {{ [s.part_name, _p.model if _p else none, _p.make if _p else none] | select | join(' - ') }}
+      {% endif %}
+    </td>
+    <td>{{ s.qty_requested }}</td>
+    <td>{{ s.qty_sourced }}
+      {% if s.source_deal_id %}{% set _linked_deal = deal_map.get(s.source_deal_id) %}
+      {% if _linked_deal %}<a href="/crm/sourcing/{{ s.source_deal_id }}" class="small">({{ _linked_deal.deal_number }})</a>
+      {% else %}<span class="text-muted small">({{ s.source_deal_id }})</span>{% endif %}{% endif %}
+    </td>
+    <td data-order="{{ s.created_at.strftime('%Y%m%d%H%M') if s.created_at else '' }}">{{ s.created_at.strftime('%d-%m-%Y') if s.created_at else '—' }}</td>
+    <td>{{ s.raised_by or '—' }}</td>
+    <td>
+      {% if s.status == 'closed' %}<span class="badge bg-success">Closed</span>
+      {% elif is_sm and can(current_user, 'crm_dashboard', 'edit') %}
+      <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#closeDealModal"
+              data-sr="{{ s.id }}" data-part="{{ s.part_name }}">Close Deal</button>
+      {% else %}<span class="text-muted">—</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro device_table(rows, tid) %}
+<table class="table table-hover mb-0 small align-middle pr-table" id="{{ tid }}">
+  <thead><tr><th>Requested</th><th>By</th><th>Config</th><th>Grade</th><th>Qty</th><th>Status</th><th>Notes</th><th>Action</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr>
+    <td class="text-muted" data-order="{{ r.created_at.strftime('%Y%m%d%H%M') if r.created_at else '' }}">{{ r.created_at.strftime('%d-%m-%Y %H:%M') if r.created_at else '—' }}</td>
+    <td><div class="fw-semibold">{{ r.requested_by_name or r.requested_by }}</div>
+      <div class="text-muted" style="font-size:0.72rem">{{ (r.requested_by_role or '') | replace('_',' ') | title }}</div></td>
+    <td><div class="fw-semibold">{{ r.sub_category or 'Any' }} — {{ r.brand or '' }} {{ r.model or '' }}</div>
+      <div class="text-muted" style="font-size:0.72rem">{{ r.cpu or '' }}{% if r.ram_gb %} · {{ r.ram_gb }} GB RAM{% endif %}{% if r.storage_gb %} · {{ r.storage_gb }} GB {{ r.storage_type or '' }}{% endif %}{% if r.screen_size %} · {{ r.screen_size }}{% endif %}</div></td>
+    <td><span class="badge bg-secondary">{{ r.grade or 'Any' }}</span></td>
+    <td><span class="fw-semibold">{{ r.qty_fulfilled }}</span> / {{ r.qty_requested }}</td>
+    <td><span class="badge bg-{{ status_badge.get(r.status, 'secondary') }}">{{ r.status | replace('_',' ') | title }}</span></td>
+    <td class="text-muted" style="max-width:180px; white-space:normal;">{{ r.notes or r.sourcing_notes or '—' }}</td>
+    <td>
+      {% if is_sm and r.status in ('open', 'partially_fulfilled') and can(current_user, 'crm_dashboard', 'edit') %}
+      <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#closeSourcingDealModal"
+              data-req="{{ r.id }}" data-model="{{ r.sub_category or 'Any' }} — {{ r.brand or '' }} {{ r.model or '' }}">Close Deal</button>
+      {% else %}<span class="text-muted">—</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro req_card(key, icon, title, pend, done, table) %}
+<div class="card border-0 shadow-sm gtable-card">
+  <div class="card-header bg-white border-0 d-flex align-items-center flex-wrap gap-3">
+    <span class="fw-semibold"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
+    <ul class="nav pill-tabs" role="tablist">
+      <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#{{ key }}_p">Pending Request</button></li>
+      <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#{{ key }}_c">Closed Request</button></li>
+    </ul>
+  </div>
+  <div class="card-body">
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="{{ key }}_p">{{ table(pend, key ~ '_tp') }}</div>
+      <div class="tab-pane fade" id="{{ key }}_c">{{ table(done, key ~ '_tc') }}</div>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+<ul class="nav nav-tabs mb-0" id="pendingReqTabs" role="tablist">
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="deviceSourcing-tab" data-bs-toggle="tab" data-bs-target="#deviceSourcingTab"
-            type="button" role="tab">Device Sourcing</button>
+    <button class="nav-link active" id="partSourcing-tab" data-bs-toggle="tab" data-bs-target="#partSourcingTab" type="button" role="tab">
+      <i class="bi bi-box-seam me-1"></i>Parts Sourcing <span class="badge rounded-pill bg-warning text-dark ms-1">{{ ps_pend | length }}</span></button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" id="partSourcing-tab" data-bs-toggle="tab" data-bs-target="#partSourcingTab"
-            type="button" role="tab">Parts Sourcing</button>
+    <button class="nav-link" id="deviceSourcing-tab" data-bs-toggle="tab" data-bs-target="#deviceSourcingTab" type="button" role="tab">
+      <i class="bi bi-laptop me-1"></i>Device Sourcing <span class="badge rounded-pill bg-warning text-dark ms-1">{{ ds_pend | length }}</span></button>
   </li>
 </ul>
-
-<div class="tab-content">
-
-  <!-- ═══ TAB: Device Sourcing (Telecaller Model Request queue, no Matching
-       Stock column, procurement-only Close Deal action) ═══ -->
-  <div class="tab-pane fade show active" id="deviceSourcingTab" role="tabpanel">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white border-0 fw-semibold">
-        <i class="bi bi-laptop me-2"></i>Pending Requests For Device Sourcing
-        <span class="badge bg-warning text-dark ms-1">{{ device_sourcing|selectattr('status','equalto','open')|list|length }} open</span>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-hover mb-0 small align-middle">
-          <thead class="table-light">
-            <tr>
-              <th class="ps-3">Requested</th>
-              <th>By</th>
-              <th>Config</th>
-              <th>Grade</th>
-              <th>Qty</th>
-              <th>Status</th>
-              <th>Notes</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {% for r in device_sourcing %}
-            <tr>
-              <td class="ps-3 text-muted">{{ r.created_at.strftime('%d-%m-%Y %H:%M') if r.created_at else '—' }}</td>
-              <td>
-                <div class="fw-semibold">{{ r.requested_by_name or r.requested_by }}</div>
-                <div class="text-muted" style="font-size:0.72rem">{{ (r.requested_by_role or '') | replace('_',' ') | title }}</div>
-              </td>
-              <td>
-                <div class="fw-semibold">{{ r.sub_category or 'Any' }} — {{ r.brand or '' }} {{ r.model or '' }}</div>
-                <div class="text-muted" style="font-size:0.72rem">
-                  {{ r.cpu or '' }}{% if r.ram_gb %} · {{ r.ram_gb }} GB RAM{% endif %}{% if r.storage_gb %} · {{ r.storage_gb }} GB {{ r.storage_type or '' }}{% endif %}{% if r.screen_size %} · {{ r.screen_size }}{% endif %}
-                </div>
-              </td>
-              <td><span class="badge bg-secondary">{{ r.grade or 'Any' }}</span></td>
-              <td><span class="fw-semibold">{{ r.qty_fulfilled }}</span> / {{ r.qty_requested }}</td>
-              <td><span class="badge bg-{{ status_badge.get(r.status, 'secondary') }}">{{ r.status | replace('_',' ') | title }}</span></td>
-              <td class="text-muted" style="max-width:180px; white-space:normal;">{{ r.notes or r.sourcing_notes or '—' }}</td>
-              <td>
-                {% if is_sm and r.status in ('open', 'partially_fulfilled') %}
-                {% if can(current_user, 'crm_dashboard', 'edit') %}
-                <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#closeSourcingDealModal"
-                        data-req="{{ r.id }}"
-                        data-model="{{ r.sub_category or 'Any' }} — {{ r.brand or '' }} {{ r.model or '' }}">Close Deal</button>
-                {% endif %}
-                {% else %}<span class="text-muted">—</span>{% endif %}
-              </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="8" class="text-center text-muted py-4">No device sourcing requests.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
+<div class="tab-content mb-4">
+  <div class="tab-pane fade show active" id="partSourcingTab" role="tabpanel">
+    {{ req_card('psr', 'bi-box-seam', 'Requests For Part Sourcing', ps_pend, ps_done, part_table) }}
   </div>
-
-  <!-- ═══ TAB: Parts Sourcing (identical to CRM Dashboard's table) ═══ -->
-  <div class="tab-pane fade" id="partSourcingTab" role="tabpanel">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white border-0 fw-semibold">
-        <i class="bi bi-box-seam me-2"></i>Pending Requests For Part Sourcing
-        <span class="badge bg-warning text-dark ms-1">{{ part_sourcing|selectattr('status','equalto','open')|list|length }} open</span>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-hover mb-0 small align-middle">
-          <thead class="table-light"><tr>
-            <th class="ps-3">Status</th><th>Part Code</th><th>Part Name</th><th>Qty Requested</th>
-            <th>Qty Sourced</th><th>Raised By</th><th>Action</th>
-          </tr></thead>
-          <tbody>
-            {% for s in part_sourcing %}
-            <tr>
-              <td class="ps-3">{% if s.status == 'closed' %}<span class="badge bg-success">Closed</span>{% else %}<span class="badge bg-warning text-dark">Open</span>{% endif %}</td>
-              {# Requests raised from the Part Estimation modal cover a whole
-                 lot and have no part code — show the clickable lot number. #}
-              <td>
-                {% if s.source == 'production' and s.lot_number %}
-                <a href="/lots?q={{ s.lot_number | urlencode }}" class="fw-semibold">{{ s.lot_number }}</a>
-                {% else %}<code>{{ s.part_code or '—' }}</code>{% endif %}
-              </td>
-              <td class="fw-semibold">
-                {% if s.source == 'production' %}
-                {% set _files = estimates_by_batch.get(s.id | string, []) %}
-                {% if _files %}
-                <div class="d-flex flex-wrap gap-1">
-                  {% for f in _files %}
-                  <a class="btn btn-sm btn-outline-success py-0 px-1"
-                     href="/part-estimation/download/{{ f.id }}" title="{{ f.file_name }}">
-                    <i class="bi bi-file-earmark-excel me-1"></i>{{ f.grade or 'Estimate' }}
-                  </a>
-                  {% endfor %}
-                </div>
-                {% else %}<span class="text-muted">No file attached</span>{% endif %}
-                {% else %}{{ s.part_name }}{% endif %}
-              </td>
-              <td>{{ s.qty_requested }}</td>
-              <td>{{ s.qty_sourced }}
-                {% if s.source_deal_id %}
-                  {% set _linked_deal = deal_map.get(s.source_deal_id) %}
-                  {% if _linked_deal %}
-                    <a href="/crm/sourcing/{{ s.source_deal_id }}" class="small">({{ _linked_deal.deal_number }})</a>
-                  {% else %}
-                    <span class="text-muted small">({{ s.source_deal_id }})</span>
-                  {% endif %}
-                {% endif %}
-              </td>
-              <td>{{ s.raised_by or '—' }}</td>
-              <td>
-                {% if s.status == 'closed' %}
-                <span class="badge bg-success">Closed</span>
-                {% elif is_sm %}
-                {% if can(current_user, 'crm_dashboard', 'edit') %}
-                <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#closeDealModal"
-                        data-sr="{{ s.id }}" data-part="{{ s.part_name }}">Close Deal</button>
-                {% endif %}
-                {% else %}<span class="text-muted">—</span>{% endif %}
-              </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="7" class="text-center text-muted py-4">No part sourcing requests.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
+  <div class="tab-pane fade" id="deviceSourcingTab" role="tabpanel">
+    {{ req_card('dsr', 'bi-laptop', 'Requests For Device Sourcing', ds_pend, ds_done, device_table) }}
   </div>
-
 </div>
 
 <!-- Close Sourcing Deal modal — Device Sourcing tab -->
@@ -347,6 +323,16 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// Global Table on every Pending Requests table; re-fit when a tab / pill is shown
+(function () {
+  document.querySelectorAll('.pr-table').forEach(function (t) {
+    if (window.initGlobalTable) initGlobalTable('#' + t.id, { order: [], columnDefs: [{ orderable: false, targets: [-1] }],
+                                                            language: { emptyTable: 'Nothing here' } });
+  });
+  document.querySelectorAll('#pendingReqTabs [data-bs-toggle="tab"], .pill-tabs [data-bs-toggle="tab"]').forEach(function (b) {
+    b.addEventListener('shown.bs.tab', function () { if (window.$ && $.fn.dataTable) $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust(); });
+  });
+})();
 var _csd = document.getElementById('closeSourcingDealModal');
 if (_csd) {
   _csd.addEventListener('show.bs.modal', function (e) {

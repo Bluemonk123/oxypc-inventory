@@ -2,24 +2,6 @@
 {% block title %}Devices in Production — OxyPC{% endblock %}
 {% block page_title %}Devices in Production{% endblock %}
 {% block content %}
-{# This page has no other server-side filters, so the date range gets its own
-   filter row card — same shape as every other page's filter bar. #}
-<form method="get" action="/trc-production" class="filter-bar">
-  <div class="filter-bar-row">
-    <div>
-      <input type="date" name="date_from" title="Date From" class="form-control form-control-sm"
-             value="{{ request.query_params.get('date_from', '') }}">
-    </div>
-    <div>
-      <input type="date" name="date_to" title="Date To" class="form-control form-control-sm"
-             value="{{ request.query_params.get('date_to', '') }}">
-    </div>
-    <div>
-      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filter</button>
-      <a href="/trc-production" class="btn btn-outline-secondary btn-sm">Reset</a>
-    </div>
-  </div>
-</form>
 <!-- Summary card tiles (shared tile macros, templates/_tiles.html — tint look) -->
 {% import "_tiles.html" as tl %}
 {% set can_export = can(current_user, 'production_manager', 'export') %}
@@ -35,15 +17,27 @@
   {{ tl.single(tags_final_qc, 'Total Tags in Final QC', '#0F7A37', 'bi-patch-check', download=('/trc-production/summary/final-qc' if can_export else None), download_label='Summary') }}
   {{ tl.single(tags_returned, 'Tags Returned', '#6c757d', 'bi-arrow-return-left', download=('/trc-production/summary/returned' if can_export else None), download_label='Summary') }}
 </div>
+{# Filters below the count tiles (2026-11-09, Pankaj: tiles first, then filters, on every page). #}
+{# This page has no other server-side filters, so the date range gets its own
+   filter row card — same shape as every other page's filter bar. #}
+<form method="get" action="/trc-production" class="filter-bar">
+  <div class="filter-bar-row">
+    <div>
+      <input type="date" name="date_from" title="Date From" class="form-control form-control-sm"
+             value="{{ request.query_params.get('date_from', '') }}">
+    </div>
+    <div>
+      <input type="date" name="date_to" title="Date To" class="form-control form-control-sm"
+             value="{{ request.query_params.get('date_to', '') }}">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+      <a href="/trc-production" class="btn btn-outline-secondary btn-sm">Reset</a>
+    </div>
+  </div>
+</form>
 
-<div class="d-flex justify-content-end gap-2 mb-2">
-  {% if can(current_user, 'production_manager', 'edit') %}
-  <button type="button" class="btn btn-sm btn-primary" onclick="openChangeEngineerModal()">
-    <i class="bi bi-signpost-split me-1"></i>Change/Move to Stage</button>
-  {% endif %}
-  <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
-    <i class="bi bi-clock-history me-1"></i>Search Tags</button>
-</div>
+{# Search Tags button removed (2026-11-09): the top-bar search opens the same modal. #}
 <!-- Tag Number Allocation / Bucket Allocation tabs -->
 <ul class="nav nav-tabs" id="prodTabs" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tagAllocTab" type="button">
@@ -60,6 +54,22 @@
 </ul>
 <div class="tab-content border border-top-0 rounded-bottom bg-white mb-3">
   <div class="tab-pane fade show active p-0" id="tagAllocTab">
+    {# Card header added (2026-11-08): title + Move to Stage. #}
+    <div class="card border-0 shadow-sm">
+    {# 2026-11-09: Bulk Assign moved here from the table toolbar, before Move to
+       Stage; Move to Stage is the primary button (data-hdr-keep keeps these
+       styles — the shared card-header rules would make it outline). #}
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2" data-show-header data-hdr-keep>
+      <span class="fw-semibold"><i class="bi bi-upc-scan me-2"></i>Tag Number Allocation</span>
+      <div class="d-flex gap-2 align-items-center">
+        <button {% if not can(current_user, 'production_manager', 'add') %}hidden {% endif %}type="button" id="trcBulkAssignBtn"
+                class="btn btn-sm btn-outline-primary bg-white text-nowrap" disabled><i class="bi bi-person-check me-1"></i>Bulk Assign</button>
+        {% if can(current_user, 'production_manager', 'edit') %}
+        <button type="button" class="btn btn-sm btn-primary text-nowrap" onclick="openChangeEngineerModal()">
+          <i class="bi bi-signpost-split me-1"></i>Move to Stage</button>
+        {% endif %}
+      </div>
+    </div>
     <div>
       <table id="trcTable" class="table table-hover mb-0 small">
         <thead class="table-dark"><tr>
@@ -101,10 +111,11 @@
         </tbody>
       </table>
     </div>
+    </div>
   </div>
   <div class="tab-pane fade p-0" id="bucketAllocTab">
 <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold"><i class="bi bi-box me-2"></i>Bucket Allocation</span></div>
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2" data-show-header><span class="fw-semibold"><i class="bi bi-box me-2"></i>Bucket Allocation</span></div>
       <div>
       <table id="trcBucketTable" class="table table-hover mb-0 small">
         <thead class="table-dark">
@@ -169,7 +180,6 @@
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#rlFqcFailTab" type="button">Final QC Fail (Bucket)</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#rlTagNumTab" type="button">Tag Number in Repair Line</button></li>
   <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#rlBucketsTab" type="button">Buckets in Repair Line</button></li>
-  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#rlScrapTab" type="button">Scrap from Repair Line</button></li>
 </ul>
 <div class="tab-content border border-top-0 rounded-bottom bg-white">
 
@@ -237,44 +247,6 @@
           <tr><th>Bucket Name</th><th>Bucket ID</th><th>Location ID</th><th>Total Pass</th><th>Total Fail</th><th>Count of Tag Numbers</th><th>Assigned To</th><th>Action</th></tr>
         </thead>
         <tbody id="prodAllocationTbody"></tbody>
-      </table>
-      </div>
-    </div>
-  </div>
-
-  <!-- Scrap Products from Repair Line (moved here from All Inventory) -->
-  <div class="tab-pane fade p-0" id="rlScrapTab">
-<div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2"><span class="fw-semibold"><i class="bi bi-trash me-2"></i>Scrap from Repair Line</span></div>
-      <div>
-      <table id="rlScrapTable" class="table table-hover mb-0 small">
-        <thead class="table-dark"><tr>
-          <th>Tag Number</th><th>Lot</th><th>Brand</th><th>Model</th><th>Grade</th><th>Notes</th><th>Action</th>
-        </tr></thead>
-        <tbody>
-          {% for device, lot_number in scrap_devices %}
-          <tr>
-            <td><a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none">{{ device.barcode }}</a></td>
-            <td><span class="badge bg-info text-dark">{{ lot_number }}</span></td>
-            <td>{{ device.brand or '—' }}</td>
-            <td>{{ device.model or '—' }}</td>
-            <td>{{ device.grade or '—' }}</td>
-            <td class="text-muted small">{{ device.replaced or device.notes or '—' }}</td>
-            <td class="text-nowrap">
-              {% if can(current_user, 'production_manager', 'edit') %}
-              <form method="post" action="/scrap-products/{{ device.barcode }}/move-to-inventory" class="d-inline">
-                <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2"><i class="bi bi-box-arrow-in-left"></i> Move to Inventory</button>
-              </form>
-              {% endif %}
-              {% if can(current_user, 'production_manager', 'edit') %}
-              <button type="button" class="btn btn-sm btn-outline-warning py-0 px-2 replace-scrap-btn"
-                      data-barcode="{{ device.barcode }}"><i class="bi bi-arrow-repeat"></i> Replace With Another</button>
-              {% endif %}
-            </td>
-          </tr>
-          {% endfor %}
-        </tbody>
       </table>
       </div>
     </div>
@@ -398,31 +370,7 @@
   </div>
 </div>
 
-<!-- Replace With Another modal -->
-<div class="modal fade" id="replaceScrapModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog">
-    <form method="post" id="replaceScrapForm" class="modal-content">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-arrow-repeat me-2"></i>Replace With Another</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="mb-2"><span class="text-muted small">Scrapped Tag Number:</span> <strong id="replaceScrapBarcode">—</strong></div>
-        <div class="mb-2">
-          <label class="form-label fw-semibold">Replacement Tag Number</label>
-          <input type="text" name="replacement_barcode" class="form-control font-monospace" placeholder="Scan or type replacement tag" required>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-warning"><i class="bi bi-check-lg me-1"></i>Record Replacement</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-{% include "_search_tags_modal.html" %}
+{# Search Tags modal is included once by base.html (2026-11-08). #}
 
 {# Change Engineer — search a tag from ANY stage (same system-wide lookup as
    Search Tags above), pick a User + target Stage (default L1), submit moves
@@ -432,7 +380,7 @@
   <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-signpost-split me-2"></i>Change/Move to Stage</h5>
+        <h5 class="modal-title"><i class="bi bi-signpost-split me-2"></i>Move to Stage</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
@@ -487,16 +435,6 @@
 
 <script src="/static/js/tag-scan-autocheck.js?v={{ ASSET_VERSION }}"></script>
 <script>
-// Scrap Products — Replace With Another (moved here from All Inventory)
-document.querySelectorAll('.replace-scrap-btn').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    var bc = this.getAttribute('data-barcode');
-    document.getElementById('replaceScrapBarcode').textContent = bc;
-    document.getElementById('replaceScrapForm').action = '/scrap-products/' + bc + '/replace';
-    new bootstrap.Modal(document.getElementById('replaceScrapModal')).show();
-  });
-});
-
 // "Failed from Final QC" checkbox filter — works alongside DataTables' own
 // search box (both apply together) rather than replacing it.
 $.fn.dataTable.ext.search.push(function(settings, data, dataIndex) {
@@ -547,10 +485,8 @@ $(document).ready(function(){
       $(this.api().table().container()).find('.dataTables_filter').prepend(failedFqcFilter);
       $('#trcFailedFqcFilter').on('change', function() { trcDt.draw(); });
 
-      var bulkBtn = $('<button {% if not can(current_user, 'production_manager', 'add') %}hidden {% endif %}type="button" id="trcBulkAssignBtn" class="btn btn-sm btn-primary me-2" disabled>' +
-                      '<i class="bi bi-person-check me-1"></i>Bulk Assign</button>');
-      bulkBtn.on('click', openTrcBulkAssignModal);
-      $(this.api().table().container()).find('.dataTables_filter').prepend(bulkBtn);
+      // Bulk Assign lives in the card header now (2026-11-09).
+      $('#trcBulkAssignBtn').on('click', openTrcBulkAssignModal);
     },
     // Re-apply checked state from the Set on every redraw — a row that was
     // ticked, filtered out by a later search, then brought back by clearing
@@ -1028,10 +964,6 @@ var rlFqcFailDt = initGlobalTable('#rlFqcFailTable', {
 var rlTagNumDt = initGlobalTable('#rlTagNumTable', {
   order: [],
   language: { emptyTable: 'No devices currently in the repair line.' },
-});
-var rlScrapDt = initGlobalTable('#rlScrapTable', {
-  order: [],
-  language: { emptyTable: 'No scrapped devices from the repair line.' },
 });
 
 // Most tables here start inside a hidden tab-pane / collapsed accordion, so

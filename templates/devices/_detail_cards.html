@@ -1,0 +1,8 @@
+{# Search Tags / top-bar search modal body (2026-11-08) — rendered by
+   /devices/api/detail-cards. The same cards Device Detail shows, in three
+   columns: Asset History | Identity & Location | Hardware Specification. #}
+<div class="row g-3 sv-cards">
+  <div class="col-12 sv-col-hist">{% include "devices/_asset_history_card.html" %}</div>
+  <div class="col-12 sv-col-id">{% include "devices/_identity_card.html" %}</div>
+  <div class="col-12 sv-col-hw">{% include "devices/_iqc_full_report.html" %}</div>
+</div>

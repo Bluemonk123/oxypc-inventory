@@ -75,9 +75,21 @@ async def part_estimation_page(
     _pvblk = _pvb(current_user, "part_estimation", "/dashboard")
     if _pvblk is not None:
         return _pvblk
-    lots = (await db.execute(
-        select(Lot).where(Lot.is_trashed == False).order_by(desc(Lot.purchase_date))  # noqa: E712
-    )).scalars().all()
+    # Card-header Date filter on Date of Purchase (2026-11-09), inclusive.
+    from datetime import date as _date, datetime as _dt, timedelta as _td
+    def _d(s):
+        try:
+            return _date.fromisoformat((s or "").strip())
+        except ValueError:
+            return None
+    date_from = _d(request.query_params.get("from"))
+    date_to = _d(request.query_params.get("to"))
+    lot_q = select(Lot).where(Lot.is_trashed.isnot(True))
+    if date_from:
+        lot_q = lot_q.where(Lot.purchase_date >= _dt.combine(date_from, _dt.min.time()))
+    if date_to:
+        lot_q = lot_q.where(Lot.purchase_date < _dt.combine(date_to + _td(days=1), _dt.min.time()))
+    lots = (await db.execute(lot_q.order_by(desc(Lot.purchase_date)))).scalars().all()
 
     tag_counts = await device_counts_by_lot(db)
     parts_counts = await required_counts_by_lot(db)
@@ -120,6 +132,8 @@ async def part_estimation_page(
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
         "pna_tag_count": pna_tag_count,
+        "date_from": date_from.isoformat() if date_from else "",
+        "date_to": date_to.isoformat() if date_to else "",
     })
 
 

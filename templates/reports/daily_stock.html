@@ -4,49 +4,46 @@
 {% block page_title %}Daily Stock{% endblock %}
 {% block content %}
 
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-3">
-    <form class="d-flex flex-wrap gap-2 align-items-end" method="get" action="/reports/daily-stock" id="dsFilterForm">
-      {{ ms.multiselect('entity', 'Entity', entity_options, selected_entity, 'flex-shrink-0') }}
-      <div>
-        <label class="form-label small fw-semibold mb-1">Date</label>
-        <input type="date" name="date" value="{{ selected_date }}" class="form-control form-control-sm" style="width:160px">
-      </div>
-      <div class="form-check pb-1">
+<form method="get" action="/reports/daily-stock" id="dsFilterForm" class="filter-bar">
+  <div class="filter-bar-row">
+    {{ ms.multiselect('entity', 'Entity', entity_options, selected_entity, '') }}
+    <div><input type="date" name="date" value="{{ selected_date }}" class="form-control form-control-sm" title="Date"></div>
+    <div class="filter-bar-check">
+      <div class="form-check mb-0">
         <input type="checkbox" name="exclude_admin" value="1" id="dsExcludeAdmin" class="form-check-input" {% if exclude_admin %}checked{% endif %}>
-        <label class="form-check-label small" for="dsExcludeAdmin">Exclude Admin User</label>
+        <label class="form-check-label" for="dsExcludeAdmin">Exclude Admin User</label>
       </div>
-      <button type="submit" class="btn btn-sm btn-primary">View</button>
-      <a href="/reports/daily-stock" class="btn btn-sm btn-outline-secondary">Today</a>
-      <div class="ms-auto d-flex gap-2">
-        {# One workbook, three sheets: Overall / Tag Based / Location Based (2026-10-21) #}
-        <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportDailyReport" href="#" class="btn btn-sm btn-success" title="Overall, Tag Based and Location Based as three sheets of one Excel file">
-          <i class="bi bi-download me-1"></i>Daily Report
-        </a>
-        <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportOverall" href="#" class="btn btn-sm btn-outline-success">
-          <i class="bi bi-download me-1"></i>Overall Export
-        </a>
-        <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportTags" href="#" class="btn btn-sm btn-outline-success">
-          <i class="bi bi-download me-1"></i>Tag Based Export
-        </a>
-        <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportLocation" href="#" class="btn btn-sm btn-outline-success">
-          <i class="bi bi-download me-1"></i>Location Export
-        </a>
-      </div>
-    </form>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/reports/daily-stock" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
+</form>
 
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex align-items-center justify-content-between flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Stock on {{ selected_date }}
       <span class="text-muted fw-normal small ms-2"
             title="Returned, Scrapped and Scrap for Sale are counted as stock">Excludes: GRN Receipt, Sold</span></span>
-    <div class="d-flex align-items-center gap-2">
+    <div class="d-flex align-items-center gap-2 flex-wrap">
       {% if not is_today %}
       <span class="badge bg-warning text-dark">Historical — reconstructed from the Stage Movement log</span>
       {% endif %}
       <span class="text-muted small">Opening = stock at 00:00 this day, excluding tags sold on or before the previous day · Closing = Opening − tags sold this day</span>
+      {# One workbook, three sheets: Overall / Tag Based / Location Based (2026-10-21) #}
+      <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportDailyReport" href="#" class="btn btn-sm btn-success" title="Overall, Tag Based and Location Based as three sheets of one Excel file">
+        <i class="bi bi-download me-1"></i>Daily Report
+      </a>
+      <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportOverall" href="#" class="btn btn-sm btn-outline-success">
+        <i class="bi bi-download me-1"></i>Overall Export
+      </a>
+      <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportTags" href="#" class="btn btn-sm btn-outline-success">
+        <i class="bi bi-download me-1"></i>Tag Based Export
+      </a>
+      <a {% if not can(current_user, 'report_daily_stock', 'export') %}hidden {% endif %}id="dsExportLocation" href="#" class="btn btn-sm btn-outline-success">
+        <i class="bi bi-download me-1"></i>Location Export
+      </a>
     </div>
   </div>
   {# Reconciliation: Closing is Opening minus this day's sale records. Sold tags and

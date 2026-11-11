@@ -1,0 +1,72 @@
+{# Log Call pop-up (2026-11-10, Pankaj): any "Log Call" link to
+   /dealers/<id>/call on the page opens the form here instead of a new page.
+   The form loads from /dealers/<id>/call?modal=1 and saves with the same POST
+   route; on success the pop-up closes and the page refreshes its data
+   (Dealers table: just the table; dealer page: the page). Ctrl/Cmd-click
+   still opens the full page. #}
+<div class="modal fade" id="callLogModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-telephone-plus me-2 text-success"></i>Log New Call</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="callLogBody">
+        <div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var CALL_RE = /^\/dealers\/[0-9a-f-]{36}\/call$/i;
+  function csrf() { return (document.cookie.split('; ').find(function (c) { return c.indexOf('csrf_token=') === 0; }) || '').split('=')[1] || ''; }
+  function body() { return document.getElementById('callLogBody'); }
+  function modal() { return bootstrap.Modal.getOrCreateInstance(document.getElementById('callLogModal')); }
+  function toast(kind, msg) { if (window.showTopToast) window.showTopToast(kind, msg); }
+
+  function afterSave() {
+    if (window.dealersDt && window.dealersDt.ajax) { window.dealersDt.ajax.reload(null, false); }
+    else { setTimeout(function () { location.reload(); }, 600); }
+  }
+
+  function open(url) {
+    body().innerHTML = '<div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>';
+    modal().show();
+    fetch(url + '?modal=1', { credentials: 'same-origin' })
+      .then(function (r) { if (!r.ok || r.redirected) throw new Error('Could not open the call form'); return r.text(); })
+      .then(function (html) { body().innerHTML = html; })
+      .catch(function (e) { body().innerHTML = '<div class="alert alert-danger mb-0">' + e.message + '</div>'; });
+  }
+
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a[href]');
+    if (!a || e.ctrlKey || e.metaKey || e.shiftKey || e.button === 1) return;
+    var path;
+    try { path = new URL(a.getAttribute('href'), location.href).pathname; } catch (x) { return; }
+    if (!CALL_RE.test(path)) return;
+    e.preventDefault();
+    open(path);
+  });
+
+  document.addEventListener('submit', function (e) {
+    var f = e.target;
+    if (!f.classList || !f.classList.contains('dealer-call-form') || !f.closest('#callLogModal')) return;
+    e.preventDefault();
+    if (!f.reportValidity()) return;
+    var btn = f.querySelector('button[type=submit]');
+    if (btn) btn.disabled = true;
+    fetch(f.action, { method: 'POST', body: new FormData(f), headers: { 'X-CSRF-Token': csrf() }, credentials: 'same-origin' })
+      .then(function (r) {
+        var u = new URL(r.url, location.href);
+        var err = u.searchParams.get('error');
+        if (!r.ok || err) throw new Error(err || ('Could not save the call (' + r.status + ')'));
+        modal().hide();
+        toast('success', u.searchParams.get('success') || 'Call logged');
+        afterSave();
+      })
+      .catch(function (x) { toast('danger', x.message); })
+      .finally(function () { if (btn) btn.disabled = false; });
+  });
+})();
+</script>

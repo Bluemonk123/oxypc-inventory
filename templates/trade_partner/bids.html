@@ -12,14 +12,13 @@
 
 {# ── Total Bids Created — one row per lot ───────────────────────────────── #}
 <div class="card border-0 shadow-sm mb-4">
-  <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-    <span class="fw-semibold"><i class="bi bi-list-columns me-2 text-primary"></i>Total Bids Created</span>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-list-columns me-2"></i>Total Bids Created</span>
     <span class="badge bg-primary">{{ summary | length }}</span>
   </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-sm table-hover align-middle mb-0" id="summaryTable">
-        <thead class="table-light">
+  <div class="card-body">
+      <table class="table table-hover align-middle mb-0" id="summaryTable">
+        <thead>
           <tr>
             <th class="ps-2">Lot No</th><th>Total Bids</th><th>Lowest Bid</th><th>Highest Bid</th>
             <th>Account Name (Highest Bidder)</th><th>Account Manager</th><th>Download</th><th>Action</th>
@@ -57,19 +56,20 @@
               {% endif %}
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="8" class="text-center text-muted py-3">No live bids yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
-    </div>
   </div>
 </div>
 
-{% macro bid_table(rows, table_id, mode) %}
-<div class="table-responsive">
-  <table class="table table-sm table-hover align-middle mb-0" id="{{ table_id }}">
-    <thead class="table-light">
+{% macro bid_table(rows, table_id, mode, title, icon) %}
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
+  </div>
+  <div class="card-body">
+  <table class="table table-hover align-middle mb-0" id="{{ table_id }}">
+    <thead>
       <tr>
         <th>Bid Amount</th>
         <th>Bid ID</th>
@@ -178,11 +178,10 @@
         </td>
         {% endif %}
       </tr>
-      {% else %}
-      <tr><td colspan="{{ 11 if mode == 'won' else 9 }}" class="text-center text-muted py-3">No bids here yet.</td></tr>
       {% endfor %}
     </tbody>
   </table>
+  </div>
 </div>
 {% endmacro %}
 
@@ -200,19 +199,19 @@
 </ul>
 <div class="tab-content border border-top-0 rounded-bottom bg-white">
   <div class="tab-pane fade show active" id="openTab">
-    {{ bid_table(captured, 'capturedTable', 'active') }}
+    {{ bid_table(captured, 'capturedTable', 'active', 'Open Bids', 'bi-hammer') }}
     <div class="p-2 small text-muted border-top">
       Sorted by highest bid amount. Includes custom-price requests, which are not held to the 10% step.
     </div>
   </div>
   <div class="tab-pane fade" id="wonTab">
-    {{ bid_table(won, 'wonTable', 'won') }}
+    {{ bid_table(won, 'wonTable', 'won', 'Won Bids', 'bi-trophy') }}
     <div class="p-2 small text-muted border-top">
       Each of these created a Buyer Deal. Click a Bid ID to see the partner's payment details.
     </div>
   </div>
   <div class="tab-pane fade" id="lostTab">
-    {{ bid_table(lost, 'lostTable', 'lost') }}
+    {{ bid_table(lost, 'lostTable', 'lost', 'Lost Bids', 'bi-x-circle') }}
     <div class="p-2 small text-muted border-top">
       Runner-up bids on lots already awarded — the prices to fall back on if a won deal does not complete.
     </div>
@@ -517,10 +516,16 @@ document.querySelectorAll('.payment-link').forEach(function(a){
 });
 
 $(document).ready(function(){
+  var bidDts = {};
   ['#summaryTable', '#capturedTable', '#wonTable', '#lostTable'].forEach(function(sel){
-    if ($(sel + ' tbody tr').length && !$(sel + ' tbody td[colspan]').length) {
-      $(sel).DataTable({ order: [], pageLength: 25, lengthChange: false });
-    }
+    bidDts[sel] = initGlobalTable(sel, {
+      order: [],
+      language: { emptyTable: sel === '#summaryTable' ? 'No live bids yet.' : 'No bids here yet.' },
+    });
+  });
+  // Tables in hidden tabs were measured at zero width — re-measure on show.
+  $('#bidTabs button[data-bs-toggle="tab"]').on('shown.bs.tab', function () {
+    Object.keys(bidDts).forEach(function (k) { bidDts[k].columns.adjust(); });
   });
 });
 </script>

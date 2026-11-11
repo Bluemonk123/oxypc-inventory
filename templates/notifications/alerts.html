@@ -4,36 +4,21 @@
 {% block content %}
 
 <!-- Filter bar -->
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <form method="get" action="/notifications/alerts" class="d-flex flex-wrap gap-2 align-items-end">
-      <div>
-        <label class="form-label small fw-semibold mb-1">Tag Number</label>
-        <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm font-monospace" placeholder="Search tag…" style="width:140px">
-      </div>
-      <div>
-        <label class="form-label small fw-semibold mb-1">Brand / Model</label>
-        <input type="text" name="brand" value="{{ brand }}" class="form-control form-control-sm" placeholder="Brand or model…" style="width:160px">
-      </div>
-      <div>
-        <label class="form-label small fw-semibold mb-1">Stage</label>
-        <input type="text" name="stage" value="{{ stage }}" class="form-control form-control-sm" placeholder="Stage…" style="width:130px">
-      </div>
-      <div>
-        <label class="form-label small fw-semibold mb-1">From</label>
-        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" style="width:140px">
-      </div>
-      <div>
-        <label class="form-label small fw-semibold mb-1">To</label>
-        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" style="width:140px">
-      </div>
-      <button type="submit" class="btn btn-sm btn-primary">
-        <i class="bi bi-funnel me-1"></i>Filter
-      </button>
-      <a href="/notifications/alerts" class="btn btn-sm btn-outline-secondary">Clear</a>
-    </form>
+<form method="get" action="/notifications/alerts" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm font-monospace" title="Tag Number" placeholder="Search tag…">
+    </div>
+    <div><input type="text" name="brand" value="{{ brand }}" class="form-control form-control-sm" title="Brand / Model" placeholder="Brand or model…"></div>
+    <div><input type="text" name="stage" value="{{ stage }}" class="form-control form-control-sm" title="Stage" placeholder="Stage…"></div>
+    <div><input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" title="From"></div>
+    <div><input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" title="To"></div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/notifications/alerts" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
+</form>
 
 <!-- Alerts table -->
 <div class="card border-0 shadow-sm">

@@ -2,6 +2,7 @@
 {% block title %}{{ 'Edit' if opp else 'New' }} Sales Opportunity — OxyPC{% endblock %}
 {% block page_title %}{{ 'Edit Opportunity' if opp else 'New Sales Opportunity' }}{% endblock %}
 {% block content %}
+{% import "_from_entity_field.html" as fe with context %}
 
 <div class="row justify-content-center">
 <div class="col-xl-10">
@@ -11,16 +12,17 @@
   <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-graph-up me-2 text-info"></i>Opportunity Details</div>
   <div class="card-body">
     <div class="row g-3">
-      <div class="col-12">
+      {{ fe.field(opp.from_entity if opp else None, 'col-md-4') }}
+      <div class="col-md-8">
         <label class="form-label fw-semibold">Title <span class="text-danger">*</span></label>
         <input type="text" name="title" class="form-control" required value="{{ opp.title if opp else '' }}" placeholder="e.g. 30 Refurbished Laptops for XYZ Corp">
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
         <label class="form-label fw-semibold">Contact (Buyer)</label>
-        <select name="contact_id" class="form-select">
+        <select name="contact_id" class="form-select" data-type-target="buyer_type">
           <option value="">— Select Contact —</option>
           {% for c in contacts %}
-          <option value="{{ c.id }}"
+          <option value="{{ c.id }}" data-type="{{ c.buyer_type or '' }}"
             {% if opp and opp.contact_id == c.id %}selected
             {% elif preselect and preselect|string == c.id|string %}selected
             {% endif %}>
@@ -29,7 +31,7 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
         <label class="form-label fw-semibold">Buyer Type</label>
         <select name="buyer_type" class="form-select">
           <option value="">— Select —</option>
@@ -39,52 +41,21 @@
         </select>
       </div>
       <div class="col-md-4">
-        <label class="form-label fw-semibold">Device Type</label>
-        <input type="text" name="device_type" class="form-control" value="{{ opp.device_type or '' if opp else '' }}" placeholder="e.g. Laptop, Desktop, Mix">
-      </div>
-      <div class="col-md-4">
-        <label class="form-label fw-semibold">Required Qty</label>
-        <input type="number" name="required_qty" id="required_qty" class="form-control" min="0"
-          value="{{ opp.required_qty or '' if opp else '' }}" placeholder="0"
-          oninput="calcEstValue()">
-      </div>
-      <div class="col-md-4">
-        <label class="form-label fw-semibold">Material Type</label>
-        <select name="material_type" class="form-select">
-          <option value="">— Select —</option>
-          {% for val, label in material_types %}
-          <option value="{{ val }}" {% if opp and opp.material_type==val %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-4">
-        <label class="form-label fw-semibold">Grade Required</label>
-        <select name="grade_required" class="form-select">
-          <option value="">— Any Grade —</option>
-          {% for g in grades %}
-          <option value="{{ g }}" {% if opp and opp.grade_required==g %}selected{% endif %}>{{ g }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      {% if price_field_shown(current_user, 'crm_sales_opp') %}
-      <div class="col-md-4">
-        <label class="form-label fw-semibold">Budget Per Unit (₹)</label>
-        <input type="number" name="budget_per_unit" id="budget_per_unit" class="form-control" step="0.01" min="0"
-          {{ price_input_attrs(current_user, 'crm_sales_opp', opp.budget_per_unit or '' if opp else '', '0.00') }}
-          oninput="calcEstValue()">
-      </div>
-      <div class="col-md-4">
-        <label class="form-label fw-semibold">Estimated Value (₹)</label>
-        <input type="number" name="estimated_value" id="estimated_value" class="form-control" step="0.01" min="0"
-          {{ price_input_attrs(current_user, 'crm_sales_opp', opp.estimated_value or '' if opp else '', 'Auto-calculated') }} readonly>
-      </div>
-      {% endif %}
-      <div class="col-md-4">
         <label class="form-label fw-semibold">Expected Close Date</label>
         <input type="date" name="expected_close_date" class="form-control"
           value="{{ opp.expected_close_date.strftime('%Y-%m-%d') if opp and opp.expected_close_date else '' }}">
       </div>
     </div>
+  </div>
+</div>
+
+{# Pricing (2026-11-10, Pankaj): Device Type, Material Type, Grade Required,
+   Required Qty, Budget Per Unit, Estimated Value — 3 per row. Also editable
+   on the deal page (Pricing card). #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-currency-rupee me-2 text-success"></i>Pricing</div>
+  <div class="card-body">
+    {% include "crm/sales/_pricing_fields.html" %}
   </div>
 </div>
 
@@ -134,14 +105,6 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>
-function calcEstValue() {
-  if (!document.getElementById('budget_per_unit') || !document.getElementById('estimated_value')) return;   // no price fields for this role
-  var qty    = parseFloat(document.getElementById('required_qty').value)    || 0;
-  var budget = parseFloat(document.getElementById('budget_per_unit').value) || 0;
-  if (qty > 0 && budget > 0) {
-    document.getElementById('estimated_value').value = (qty * budget).toFixed(2);
-  }
-}
-</script>
+{% include "crm/sales/_pricing_js.html" %}
+{% include "crm/_contact_type_autoselect.html" %}
 {% endblock %}

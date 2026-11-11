@@ -3,8 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <title>OxyPC Inventory Lifecycle — Design System v2.2</title>
-<!-- 2026-11-06: section 05 (Summary tiles) updated to the four tile types.
-     The published v2.5 PDF (qa_docs/handbook/07_Design_System_v2.5.pdf) is the
+<!-- 2026-11-09 (v2.7): new chapter 12 Menus (mega menu for the top-bar "+",
+     simple menu for every other dropdown); screenshots img/menu_*.png. The
+     published v2.7 PDF (qa_docs/handbook/07_Design_System_v2.7.pdf) is the
+     v2.6 PDF with these three pages added before Appendix A.
+     2026-11-06: section 05 (Summary tiles) updated to the five tile types.
+     2026-11-08 (v2.6): chapters 05–08 rewritten for the consolidated global
+     elements (tiles, filters, Global Card / Table / Tabs, card-header and Add
+     buttons); screenshots in img/. The published v2.6 PDF
+     (qa_docs/handbook/07_Design_System_v2.6.pdf) is the v2.4 PDF with pages
+     12–17 replaced by these four chapters.
+     Earlier: the published v2.5 PDF (qa_docs/handbook/07_Design_System_v2.5.pdf) is the
      v2.4 PDF with its two tile pages replaced by this section; the v2.3/v2.4
      changes (logo, spacing) exist only in the PDF, not in this file. -->
 <!-- Source of OxyPC_Inventory_Lifecycle_Design_System PDF (2026-10-18).
@@ -114,13 +123,14 @@
     <a><span class="no">02</span>Colour<span class="d">Brand, semantic, tile and stage colours</span></a>
     <a><span class="no">03</span>Typography, spacing and icons<span class="d">Type scale, radius, shadow, icon set</span></a>
     <a><span class="no">04</span>Page layout<span class="d">Sidebar, top bar, page anatomy</span></a>
-    <a><span class="no">05</span>Summary tiles<span class="d">Light-tint, solid, pipeline, stat cards</span></a>
-    <a><span class="no">06</span>Filter bar<span class="d">One-row filters, busy-page grid</span></a>
-    <a><span class="no">07</span>Global Table<span class="d">Table card, toolbar, behaviours</span></a>
-    <a><span class="no">08</span>Buttons and badges<span class="d">Hierarchy, states, stage badges</span></a>
+    <a><span class="no">05</span>Summary tiles<span class="d">Five tile types, Lakh / Crore counts</span></a>
+    <a><span class="no">06</span>Filters<span class="d">Filter bar, field types, card headers</span></a>
+    <a><span class="no">07</span>Global Card, Table and Tabs<span class="d">Containers, settings, placements</span></a>
+    <a><span class="no">08</span>Buttons and badges<span class="d">Hierarchy, card-header and Add buttons</span></a>
     <a><span class="no">09</span>Forms, modals and feedback<span class="d">Inputs, dialogs, alerts</span></a>
     <a><span class="no">10</span>Patterns<span class="d">Permissions, partial refresh, breadcrumbs</span></a>
     <a><span class="no">11</span>Checklist and change process<span class="d">From idea to production</span></a>
+    <a><span class="no">12</span>Menus<span class="d">Mega menu (+), simple menu, profile menu</span></a>
     <a><span class="no">A</span>Token and file reference<span class="d">CSS variables, class names, locations</span></a>
   </div>
 </div>
@@ -332,19 +342,26 @@
 </div>
 
 <!-- ============================== 05 ============================== -->
-<!-- v2.5 (2026-11-06): four tile types from templates/_tiles.html replace the
-     older light-tint / solid / stat-card tiles. -->
-<style>.sample .oxt-row{flex-wrap:nowrap; padding:2px 2px 8px} .sample .oxt-row > div{min-width:0}</style>
+<!-- v2.6 (2026-11-08): chapters 05–08 rewritten for the consolidated global
+     elements: tiles, filters (bar, fields, card-header filters), Global Card,
+     Global Table, Global Tabs, and card-header buttons. Screenshots live in
+     qa_docs/design_system/img/. -->
+<style>.sample .oxt-row{flex-wrap:nowrap; padding:2px 2px 8px} .sample .oxt-row > div{min-width:0}
+  img.shot{display:block; max-width:100%; border:1px solid #dee2e6; border-radius:8px; margin:1.5mm 0 1mm}
+  img.shot.nob{border:0}
+  .shots2{display:grid; grid-template-columns:1fr 1fr; gap:3mm; align-items:start}
+  table.doc td img.shot{margin:0}</style>
 <div class="page">
   <div class="chap-no">05</div>
   <h1 class="chap">Summary tiles <span class="tag chg">UPDATED</span></h1>
-  <p class="lead">Every summary tile in the app is one of four types, drawn by the macros in <code>templates/_tiles.html</code>. Types 1 and 2 come in two looks, tint and dark, each with or without a download button. A page picks one look and keeps it for all its tiles.</p>
+  <p class="lead">Every summary tile in the app is one of five types, drawn by the macros in <code>templates/_tiles.html</code>. Types 1 and 2 come in two looks, tint and dark, each with or without a download button. A page picks one look and keeps it for all its tiles.</p>
   <table class="doc">
     <tr><th style="width:5%">#</th><th style="width:27%">Type</th><th style="width:30%">Macro</th><th>Looks</th></tr>
     <tr><td>1</td><td>Single count</td><td><code>tl.single(count, label, colour, icon)</code></td><td>Tint or dark · download optional</td></tr>
-    <tr><td>2</td><td>Double count</td><td><code>tl.double(title, n1, label1, n2, label2, colour, icon)</code></td><td>Tint or dark · download optional</td></tr>
+    <tr><td>2</td><td>Multi count</td><td><code>tl.multi(title, lines, colour, icon)</code></td><td>Tint or dark · download optional</td></tr>
     <tr><td>3</td><td>Single count with secondary counts</td><td><code>tl.single(…, title=, secondary=[…])</code></td><td>Tint or dark</td></tr>
     <tr><td>4</td><td>Surface count</td><td><code>tl.surface(label, count, colour)</code></td><td>One look</td></tr>
+    <tr><td>5</td><td>Parent count</td><td><code>tl.parent(title, count, rows, excluded)</code></td><td>Light or dark</td></tr>
   </table>
   <h2>1 · Single count</h2>
   <div class="sample"><div class="oxt-row mb-0">
@@ -362,46 +379,44 @@
 </div></div>
   </div></div>
   <div class="cap">Tint without and with download, then dark without and with download. Shown together only to compare. Used on Stock Inwards, Hardware, Dealers, CRM lists, TRC Production and the Dashboard stat cards.</div>
-  <h2>2 · Double count</h2>
+  <h2>2 · Multi count</h2>
   <div class="sample"><div class="oxt-row mb-0">
-    <div><div class="oxt-tile oxt-double oxt-tint" style="--tc:#0d6efd" >
+    <div><div class="oxt-tile oxt-multi oxt-tint" style="--tc:#0d6efd" >
   <div class="oxt-title">Total Quantities</div>
-  <div class="oxt-pair">
-    <div class="oxt-count" >18,186</div><div class="oxt-label">New</div>
+  <div class="oxt-mline"><span class="oxt-mcount" >18,186</span><span class="oxt-mlabel">New</span>
   </div>
-  <div class="oxt-pair">
-    <div class="oxt-count oxt-count-2" >21</div><div class="oxt-label">Harvest</div>
+  <div class="oxt-mline"><span class="oxt-mcount" >21</span><span class="oxt-mlabel">Harvest</span>
   </div><i class="bi bi-boxes oxt-wm" aria-hidden="true"></i>
 </div></div>
-    <div><div class="oxt-tile oxt-double oxt-tint" style="--tc:#0aa2c0" >
-  <div class="oxt-title">Consumed</div>
-  <div class="oxt-pair">
-    <div class="oxt-count" >2,134</div><div class="oxt-label">New</div>
+    <div><div class="oxt-tile oxt-multi oxt-tint" style="--tc:#fd7e14" >
+  <div class="oxt-title">Stress</div>
+  <div class="oxt-mline"><span class="oxt-mcount" >14</span><span class="oxt-mlabel">Started</span>
   </div>
-  <div class="oxt-pair">
-    <div class="oxt-count oxt-count-2" >158</div><div class="oxt-label">Harvest</div>
-  </div><div class="oxt-actions"><a href="#" class="btn btn-sm oxt-dl" onclick="event.stopPropagation()" title="Download"><i class="bi bi-download me-1"></i>Download</a></div><i class="bi bi-tools oxt-wm" aria-hidden="true"></i>
+  <div class="oxt-mline"><span class="oxt-mcount" >9</span><span class="oxt-mlabel">Completed</span>
+  </div>
+  <div class="oxt-mline"><span class="oxt-mcount" >7</span><span class="oxt-mlabel">Pass</span><span class="oxt-msep">|</span><span class="oxt-mcount" >2</span><span class="oxt-mlabel">Fail</span>
+  </div><i class="bi bi-speedometer2 oxt-wm" aria-hidden="true"></i>
 </div></div>
-    <div><div class="oxt-tile oxt-double oxt-dark" style="--tc:#6f42c1" >
-  <div class="oxt-title">Total Sold</div>
-  <div class="oxt-pair">
-    <div class="oxt-count" >1</div><div class="oxt-label">New</div>
+    <div><div class="oxt-tile oxt-multi oxt-tint" style="--tc:#0aa2c0" >
+  <div class="oxt-title">Cosmetic</div>
+  <div class="oxt-mline"><span class="oxt-mcount" >5</span><span class="oxt-mlabel">Received</span>
   </div>
-  <div class="oxt-pair">
-    <div class="oxt-count oxt-count-2" >0</div><div class="oxt-label">Harvest</div>
-  </div><i class="bi bi-cart-check oxt-wm" aria-hidden="true"></i>
+  <div class="oxt-mline"><span class="oxt-mcount" >38</span><span class="oxt-mlabel">Pending</span>
+  </div>
+  <div class="oxt-mline"><span class="oxt-mcount" >4</span><span class="oxt-mlabel">Pass</span><span class="oxt-msep">|</span><span class="oxt-mcount" >1</span><span class="oxt-mlabel">Fail</span>
+  </div><div class="oxt-actions"><a href="#" class="btn btn-sm oxt-dl" onclick="event.stopPropagation()" title="Summary"><i class="bi bi-download me-1"></i>Summary</a></div><i class="bi bi-droplet oxt-wm" aria-hidden="true"></i>
 </div></div>
-    <div><div class="oxt-tile oxt-double oxt-dark" style="--tc:#0F7A37" >
-  <div class="oxt-title">Parts Types</div>
-  <div class="oxt-pair">
-    <div class="oxt-count" >699</div><div class="oxt-label">New</div>
+    <div><div class="oxt-tile oxt-multi oxt-dark" style="--tc:#198754" >
+  <div class="oxt-title">Final QC</div>
+  <div class="oxt-mline"><span class="oxt-mcount" >21</span><span class="oxt-mlabel">Started</span>
   </div>
-  <div class="oxt-pair">
-    <div class="oxt-count oxt-count-2" >12</div><div class="oxt-label">Harvest</div>
-  </div><div class="oxt-actions"><a href="#" class="btn btn-sm oxt-dl" onclick="event.stopPropagation()" title="Download"><i class="bi bi-download me-1"></i>Download</a></div><i class="bi bi-diagram-3 oxt-wm" aria-hidden="true"></i>
+  <div class="oxt-mline"><span class="oxt-mcount" >18</span><span class="oxt-mlabel">Completed</span>
+  </div>
+  <div class="oxt-mline"><span class="oxt-mcount" >16</span><span class="oxt-mlabel">Pass</span><span class="oxt-msep">|</span><span class="oxt-mcount" >2</span><span class="oxt-mlabel">Fail</span>
+  </div><i class="bi bi-patch-check oxt-wm" aria-hidden="true"></i>
 </div></div>
   </div></div>
-  <div class="cap">A title and two counts, each with its own label. Used on Parts Manager, Create GRN and Business P&amp;L.</div>
+  <div class="cap">A title in the tile's colour, then several count lines of equal weight, each count with its label beside it. A line can be split into two counts, "16 Pass | 2 Fail". Lines are a list; each line is a list of <code>(count, label)</code> parts, or a dict with <code>parts</code> and a tooltip <code>title</code>. Used for the WorkID Status stage tiles, Parts Manager (New / Harvest) and the Ready for Sale tiles. It replaced the Double count tile.</div>
   <h2>3 · Single count with secondary counts</h2>
   <div class="sample"><div class="oxt-row mb-0">
     <div><div class="oxt-tile oxt-single oxt-tint" style="--tc:#fd7e14" ><div class="oxt-title">TFT Monitor</div>
@@ -439,168 +454,321 @@
   </div></div>
   <div class="cap">Count with the label under it, as in types 1–3, on a light colour wash with a coloured left edge; no border, no shadow. A zero count fades to 50%. Used for the Dashboard parts counts.</div>
 </div>
-<div class="page">
+
+<div>
+  <h2>5 · Parent count</h2>
+  <div class="sample"><div class="d-flex gap-3">
+    <div style="width:220px"><div class="oxt-parent-wrap"><div class="oxt-parent oxt-p-light" style="--tc:#0e3a7a" >
+  <div class="oxt-p-title">Total Inventory</div>
+  <div class="oxt-p-count">13,601</div><div class="oxt-p-rows">
+    <div class="oxt-p-row">
+      <span class="oxt-p-ic" style="--ic:#0d6efd"><i class="bi bi-tools"></i></span>
+      <span class="oxt-p-label">In TRC</span><b class="oxt-p-val">5,541</b>
+    </div>
+    <div class="oxt-p-row">
+      <span class="oxt-p-ic" style="--ic:#6f42c1"><i class="bi bi-shop"></i></span>
+      <span class="oxt-p-label">In Showroom</span><b class="oxt-p-val">8,057</b>
+    </div>
+    <div class="oxt-p-row">
+      <span class="oxt-p-ic" style="--ic:#198754"><i class="bi bi-check2-circle"></i></span>
+      <span class="oxt-p-label">In Ready for Sale</span><b class="oxt-p-val">11,245</b>
+    </div>
+    <div class="oxt-p-row">
+      <span class="oxt-p-ic" style="--ic:#dc3545"><i class="bi bi-recycle"></i></span>
+      <span class="oxt-p-label">In Scrapped</span><b class="oxt-p-val">576</b>
+    </div>
+    <div class="oxt-p-row">
+      <span class="oxt-p-ic" style="--ic:#fd7e14"><i class="bi bi-arrow-return-left"></i></span>
+      <span class="oxt-p-label">In Returned</span><b class="oxt-p-val">0</b>
+    </div>
+  </div><div class="oxt-p-excl">
+    <div class="oxt-p-sub">Excluded</div>
+    <div class="oxt-p-exrow"><span class="oxt-p-ex">In Rent <b>0</b></span><span class="oxt-p-sep">|</span><span class="oxt-p-ex">In Sold <b>37,409</b></span>
+    </div>
+  </div>
+</div></div></div>
+    <div style="width:220px"><div class="oxt-parent-wrap"><div class="oxt-parent oxt-p-dark" style="--tc:#0e3a7a" >
+  <div class="oxt-p-title">Total Parts in Stock</div>
+  <div class="oxt-p-count"><span title="1,25,430">1.254 Lk</span></div><div class="oxt-p-rows">
+    <div class="oxt-p-row">
+      <span class="oxt-p-ic" style="--ic:#0d6efd"><i class="bi bi-box-seam"></i></span>
+      <span class="oxt-p-label">New</span><b class="oxt-p-val">98,210</b>
+    </div>
+    <div class="oxt-p-row">
+      <span class="oxt-p-ic" style="--ic:#198754"><i class="bi bi-recycle"></i></span>
+      <span class="oxt-p-label">Harvest</span><b class="oxt-p-val">27,220</b>
+    </div>
+    <div class="oxt-p-row">
+      <span class="oxt-p-ic" style="--ic:#6f42c1"><i class="bi bi-upc-scan"></i></span>
+      <span class="oxt-p-label">Part SKUs</span><b class="oxt-p-val">699</b>
+    </div>
+    <div class="oxt-p-row">
+      <span class="oxt-p-ic" style="--ic:#dc3545"><i class="bi bi-exclamation-triangle"></i></span>
+      <span class="oxt-p-label">Low Stock SKUs</span><b class="oxt-p-val">232</b>
+    </div>
+    <div class="oxt-p-row">
+      <span class="oxt-p-ic" style="--ic:#fd7e14"><i class="bi bi-hourglass-split"></i></span>
+      <span class="oxt-p-label">Requested (open)</span><b class="oxt-p-val">18</b>
+    </div>
+  </div><div class="oxt-p-excl">
+    <div class="oxt-p-sub">Excluded</div>
+    <div class="oxt-p-exrow"><span class="oxt-p-ex">Handed <b>12</b></span><span class="oxt-p-sep">|</span><span class="oxt-p-ex">Trashed <b>355</b></span>
+    </div>
+  </div>
+</div></div></div>
+  </div></div>
+  <div class="cap">Light (left): a white card with a coloured left edge (default navy <code>#0e3a7a</code>). Dark (right, <code>variant='dark'</code>): the card filled with that colour, white text. Both have a small-caps title, a big total, a breakdown list (icon in a soft square, label, value) and a grey "Excluded" line in plain text with "|" separators. It sits at the left of a block of other tiles and stretches to their height. <code>rows = [(icon, label, value, colour)]</code>, <code>excluded = [(label, value)]</code>. Used for the Dashboard's Total Inventory and Total Parts in Stock.</div>
   <h2>Specification</h2>
   <table class="doc">
     <tr><th style="width:22%">Part</th><th>Spec</th></tr>
-    <tr><td>Colour</td><td>One variable, <code>--tc</code>, set by the macro from its colour argument. Pick the colour from what the tile counts (section 02, Tile colours).</td></tr>
+    <tr><td>Colour</td><td>One variable, <code>--tc</code>, set by the macro from its colour argument. Pick the colour from what the tile counts (chapter 02, Tile colours).</td></tr>
     <tr><td>Tint look</td><td>Background 8% of the colour over white; 1px border at 25%; coloured count; dark label <code>#343a40</code>; shadow.</td></tr>
     <tr><td>Dark look</td><td>Solid colour background and border; white count and title; label at 88% white; no shadow.</td></tr>
     <tr><td>Box</td><td>Radius 10px · padding <code>1rem 1rem .8rem</code> · min-height 96px · all tiles in a row stretch to the same height.</td></tr>
-    <tr><td>Text</td><td>Count 1.6rem, weight 700, one line, thousands grouped · label .72rem, one line · title .8rem, weight 600 · secondary lines .75rem.</td></tr>
+    <tr><td>Text</td><td>Count 1.6rem, weight 700, one line, letter-spacing −1px · label .72rem, one line · title .8rem, weight 600 · secondary lines .75rem.</td></tr>
+    <tr><td>Large numbers <span class="tag">NEW</span></td><td>Indian grouping (12,34,567). From 1 lakh up a count shows as <b>x.xxx Lk</b>, from 1 crore as <b>x.xxx Cr</b> (3 decimals); hovering shows the full figure. Jinja: <code>tile_num(n)</code> (the macros use it); JS: <code>oxtShort(n, rupee)</code>.</td></tr>
     <tr><td>Watermark</td><td>Optional Bootstrap icon, 3.4rem, bottom-right, partly cut off: 10% of the colour (tint) or 20% white (dark).</td></tr>
-    <tr><td>Download</td><td><code>download=URL</code> adds a small outline button at the bottom (<code>download_label</code>, default "Download"); it fills on hover. Pass <code>None</code> when the user lacks the Export permission.</td></tr>
+    <tr><td>Download</td><td><code>download=URL</code> adds a small outline button at the bottom (<code>download_label</code>, default "Download"). Pass <code>None</code> when the user lacks the Export permission.</td></tr>
     <tr><td>Link</td><td><code>href=</code> makes the whole tile a link; it lifts 3px on hover.</td></tr>
-    <tr><td>Row</td><td><code>&lt;div class="oxt-row"&gt;</code>: a flex row, gap .75rem, tiles share the width (min 150px) and wrap. Surface tiles use <code>oxt-row oxt-row-surface</code> (gap .6rem, min 130px).</td></tr>
-    <tr><td>Page hooks</td><td><code>cls=</code> extra classes and <code>extra=</code> raw attributes (id, data-*) on the tile; <code>count_attrs=</code> / <code>label_attrs=</code> on the count and label (double: <code>count1_attrs</code> / <code>count2_attrs</code>).</td></tr>
+    <tr><td>Row</td><td><code>&lt;div class="oxt-row"&gt;</code>: flex row, gap .75rem, tiles share the width (min 150px) and wrap. Surface tiles use <code>oxt-row oxt-row-surface</code>.</td></tr>
+    <tr><td>Page hooks</td><td><code>cls=</code> extra classes and <code>extra=</code> raw attributes on the tile; <code>count_attrs=</code> / <code>label_attrs=</code> on the count and label (multi: a third item in each part).</td></tr>
   </table>
   <pre class="codeblk">{% import "_tiles.html" as tl %}
 &lt;div class="oxt-row"&gt;
   {{ tl.single(devices_in_iqc, 'Devices in IQC', '#2F6DB5', 'bi-clipboard-check') }}
   {{ tl.single(pna, 'Total Tags in PNA', '#dc3545', 'bi-exclamation-triangle',
                download=pna_url if can_export else None, download_label='Summary') }}
-  {{ tl.double('Total Quantities', qty_new, 'New', qty_harvest, 'Harvest', '#0d6efd', 'bi-boxes') }}
-&lt;/div&gt;
-&lt;div class="oxt-row oxt-row-surface"&gt;{{ tl.surface('Bezel', 3966, '#0d6efd') }}&lt;/div&gt;</pre>
+  {{ tl.multi('Total Quantities', [[(qty_new, 'New')], [(qty_harvest, 'Harvest')]], '#0d6efd', 'bi-boxes') }}
+&lt;/div&gt;</pre>
   <div class="two">
     <div class="note"><div class="t">Do</div>Use the macros for every tile, one look per page. One count per label that names it ("Total Tags in L1/L2"). Tiles sit above the filter bar, in one row.</div>
     <div class="note dont"><div class="t">Don't</div>Hand-write tile markup or add a new tile class, mix tint and dark on one page, or put tiles below the filter bar.</div>
   </div>
-  <h2>Dashboard pipeline (unchanged)</h2>
-  <p>The Dashboard's stage pipeline stays its own component: a white card per stage with a coloured title strip and the count below, joined by green arrows, all ten stages on one row. It is not a summary tile and is not drawn by <code>_tiles.html</code>.</p>
-  <h2>Retired tile classes</h2>
-  <p><code>lt-tile</code>, <code>pm-tile</code>, <code>hw-tile</code>, <code>prod-tile</code>, <code>inv-tile</code>, <code>dash-tile</code>, <code>part-tile</code> and <code>stat-card</code> are replaced by the four types above. Don't use them on new or changed pages.</p>
+  <p class="cap mt-2">Retired: <code>lt-tile</code>, <code>pm-tile</code>, <code>hw-tile</code>, <code>prod-tile</code>, <code>inv-tile</code>, <code>dash-tile</code>, <code>part-tile</code>, <code>stat-card</code>, <code>sum-card</code> and the Double count tile. The Dashboard stage pipeline stays its own component.</p>
 </div>
 
 <!-- ============================== 06 ============================== -->
 <div class="page">
   <div class="chap-no">06</div>
-  <h1 class="chap">Filter bar</h1>
-  <p class="lead">One row of small controls sitting on the page, with no box, and a Bluemonk Navy rule underneath. Every list page uses it.</p>
-  <div class="sample">
-    <form class="filter-bar mb-0" onsubmit="return false"><div class="filter-bar-row">
-      <div class="filter-bar-search"><input class="form-control form-control-sm" placeholder="GRN / Invoice / Tag Number / Model"></div>
-      <div><select class="form-select form-select-sm"><option>All Device Types</option></select></div>
-      <div><input class="form-control form-control-sm" value="01-10-2026"></div>
-      <div><button class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filter</button> <a class="btn btn-outline-secondary btn-sm">Reset</a></div>
-    </div></form>
-  </div>
-  <div class="cap">Rendered with the app's <code>.filter-bar</code> CSS.</div>
-  <pre class="codeblk">&lt;form method="get" action="/stock" class="filter-bar"&gt;
-  &lt;div class="filter-bar-row"&gt;
-    &lt;div class="filter-bar-search"&gt;&lt;input class="form-control form-control-sm" title="Search" placeholder="GRN / Invoice / Tag / Model"&gt;&lt;/div&gt;
-    &lt;div&gt;&lt;select name="device_type" class="form-select form-select-sm" title="Device Type"&gt;…&lt;/select&gt;&lt;/div&gt;
-    &lt;div&gt;&lt;input type="date" name="date_from" class="form-control form-control-sm" title="Date From"&gt;&lt;/div&gt;
-    &lt;div&gt;
-      &lt;button class="btn btn-primary btn-sm"&gt;&lt;i class="bi bi-funnel me-1"&gt;&lt;/i&gt;Filter&lt;/button&gt;
-      &lt;a href="/stock" class="btn btn-outline-secondary btn-sm"&gt;Reset&lt;/a&gt;
-    &lt;/div&gt;
-  &lt;/div&gt;
-&lt;/form&gt;</pre>
+  <h1 class="chap">Filters <span class="tag chg">UPDATED</span></h1>
+  <p class="lead">One set of filter fields for the whole app, used in the filter bar on a list page and in Global Card headers. Every field looks and behaves the same wherever it sits.</p>
+  <h2>Filter bar</h2>
+  <img class="shot" src="img/filter_bar_10.png">
+  <div class="cap">All Devices: 10 fields, so 6 per row, Apply / Reset at the right. Screenshot of the live page.</div>
   <table class="doc">
-    <tr><th style="width:26%">Rule</th><th>Detail</th></tr>
-    <tr><td>One row</td><td>Fields share the width and shrink together (min 70px). The last item, the buttons, sits at the right edge.</td></tr>
-    <tr><td>Search box</td><td><code>filter-bar-search</code> takes a double share (min 120px).</td></tr>
-    <tr><td>Checkbox</td><td><code>filter-bar-check</code> keeps its natural width so its label never truncates.</td></tr>
-    <tr><td>No labels</td><td>Each field has a <code>title=</code> tooltip and a placeholder or "All …" first option.</td></tr>
-    <tr><td>Fields</td><td><code>-sm</code> sizes; white background, black text, including multi-select (<code>ms-filter</code>).</td></tr>
-    <tr><td>Busy pages</td><td>More than ~6 filters: <code>filter-bar filter-bar-6</code>, a 6-column grid that wraps; buttons share the last column.</td></tr>
+    <tr><th style="width:24%">Rule</th><th>Detail</th></tr>
+    <tr><td>Place</td><td>Below the tiles and above the table, on the page (no box), with a Bluemonk Navy rule underneath: <code>&lt;form method="get" class="filter-bar"&gt;&lt;div class="filter-bar-row"&gt;…</code></td></tr>
+    <tr><td>Width</td><td>Fields stretch to share the row, <b>max 200px each</b>. A checkbox (<code>filter-bar-check</code>) keeps its natural width. A date range never goes below 175px.</td></tr>
+    <tr><td>Rows</td><td><b>Up to 8 filters:</b> one row. <b>9 or more:</b> 6 per row (automatic grid), Apply / Reset at the right of the first row. No class needed (<code>filter-bar-6</code> is retired).</td></tr>
+    <tr><td>Buttons</td><td>Last cell: <b>Apply</b> (<code>btn btn-primary btn-sm</code>, no icon) and <b>Reset</b> (<code>btn btn-outline-secondary btn-sm</code>, a link to the page with no filters).</td></tr>
+    <tr><td>Applying</td><td>Nothing applies on its own. Filters apply only when Apply is pressed, or Enter in a text box. (Card-header filters are different: they apply at once.)</td></tr>
+    <tr><td>Labels</td><td>No label above a field: each has a <code>title=</code> tooltip and a placeholder or an "All …" first option.</td></tr>
+  </table>
+  <h2>Field types</h2>
+  <table class="doc">
+    <tr><th style="width:20%">Type</th><th style="width:33%">Look</th><th>Rules</th></tr>
+    <tr><td>1 · Dropdown<br><span class="cap">single choice</span></td><td><img class="shot" src="img/field_single.png" style="width:30mm"></td><td>A plain <code>&lt;select class="form-select form-select-sm"&gt;</code>. With <b>4 or more items</b> (counting "All …") it opens a menu with a <b>search box</b> (see below). The real select stays in the form, so the server and page scripts see no change.</td></tr>
+    <tr><td>2 · Date range <span class="tag">NEW</span></td><td><img class="shot" src="img/field_date.png" style="width:56mm"></td><td>One box replaces each From / To pair. Click one day = that day only; click two days = the range. × clears it. The two original inputs stay as hidden fields with the same names, so the server needs no change. A date box on its own uses the same box in single-day mode.</td></tr>
+    <tr><td>3 · Multi-select</td><td><img class="shot" src="img/field_multi.png" style="width:29mm"></td><td><code>{{ ms.multiselect(name, label, options, selected) }}</code> from <code>_multiselect_filter.html</code>. Shows "2 selected"; All / Clear; search box with 4 or more options. Sends one comma-separated value.</td></tr>
+    <tr><td>4 · Search box<br><span class="cap">scan-ready</span></td><td><img class="shot" src="img/field_search.png" style="width:36mm"></td><td>Text box in <code>filter-bar-search</code>. Type, or scan a barcode (a scanner types and presses Enter, which applies). Same font as the other fields, never monospace.</td></tr>
+    <tr><td>5 · Checkbox</td><td><img class="shot nob" src="img/field_check.png" style="width:24mm"></td><td>In <code>filter-bar-check</code>. Label normal weight, same font, size and colour as the fields.</td></tr>
+  </table>
+</div>
+
+<div>
+  <div class="two">
+    <div>
+      <h2>Search in dropdowns <span class="tag">NEW</span></h2>
+      <ul class="doc">
+        <li>Any dropdown, single or multi, with <b>4 or more items</b> gets a search box at the top of its menu.</li>
+        <li>Typing filters the list and highlights the first match.</li>
+        <li>When <b>only one item matches it is picked automatically</b> (single: chosen; multi: ticked, and unticked again if the typing moves on to another single match).</li>
+        <li><b>Enter</b> picks the highlighted item (multi: ticks it, menu stays open) · ↑ ↓ move · Esc closes. Enter never submits the form from the menu.</li>
+        <li>With a search typed, <b>All</b> ticks only the items showing.</li>
+        <li>Opt out for one select: <code>data-no-search</code>.</li>
+      </ul>
+      <h2>Date range text</h2>
+      <table class="doc">
+        <tr><th>Picked</th><th>Shows</th></tr>
+        <tr><td>One day</td><td>05 Nov 2026</td></tr>
+        <tr><td>Range this year</td><td>01 – 08 Nov · 28 Oct – 08 Nov</td></tr>
+        <tr><td>Range, other year</td><td>01 – 09 Mar 25</td></tr>
+        <tr><td>Across two years</td><td>28.12.25 – 08.01.26</td></tr>
+      </table>
+      <div class="cap">The full dates are in the box's tooltip.</div>
+    </div>
+    <div><img class="shot" src="img/filter_calendar.png" style="width:66mm;margin-top:6mm"><div class="cap">Calendar: Monday first, range in sky blue, ends in navy.</div></div>
+  </div>
+  <h2>Filters in a card header</h2>
+  <img class="shot" src="img/hdr_filters_blocked.png">
+  <ul class="doc">
+    <li>Same five field types, same look, same search, as in the filter bar.</li>
+    <li><b>They apply at once</b> when changed (a text box on Enter or when you leave it). No Filter / Apply button: one in a header form is hidden automatically.</li>
+    <li>A header with filters always has <b>one Reset: a grey icon-only button</b> (<i class="bi bi-arrow-counterclockwise"></i>) right after the last filter. An existing Reset / Clear keeps its own action and is restyled; otherwise one is added.</li>
+  </ul>
+  <h2>Field specification</h2>
+  <table class="doc">
+    <tr><th style="width:24%">Part</th><th>Spec (filter bar and card header)</th></tr>
+    <tr><td>Box</td><td>White · 1px <code>#ced4da</code> border · <b>31px</b> high · <b>8px</b> corners · padding .25rem .5rem</td></tr>
+    <tr><td>Text</td><td>App font (never monospace) · 14px · weight 400 · <code>#212529</code> · placeholder 60% · text vertically centred</td></tr>
+    <tr><td>Menus</td><td>Open below the field, as wide as it, max 260–280px tall, scrolling with the search box fixed at the top</td></tr>
+    <tr><td>Building a page</td><td>Write plain <code>&lt;select&gt;</code>, <code>&lt;input type="date"&gt;</code> pairs and the multiselect macro; the shared script turns them into the global fields. Don't auto-submit a filter bar, style a field by hand, add labels above fields, or build your own date picker or searchable dropdown.</td></tr>
+    <tr><td>Files</td><td><code>static/js/filter-fields.js</code> (date range, search, card-header rules) · <code>static/vendor/flatpickr</code> (calendar, MIT) · <code>templates/_multiselect_filter.html</code> · <code>templates/_date_range_fields.html</code> · CSS in <code>app.css</code> (<code>.filter-bar</code>, <code>.dr-*</code>, <code>.ss-*</code>, <code>.ms-*</code>)</td></tr>
   </table>
 </div>
 
 <!-- ============================== 07 ============================== -->
 <div class="page">
   <div class="chap-no">07</div>
-  <h1 class="chap">Global Table <span class="tag chg">UPDATED</span></h1>
-  <p class="lead"><code>initGlobalTable('#id', dtOptions, opts)</code> wraps a server-side DataTable with the app's shared behaviour and look. It's used on 40+ pages. Never hand-build a list table.</p>
-  <div class="card gtable-card border-0 shadow-sm">
-    <div class="card-header d-flex justify-content-between align-items-center"><span class="fw-semibold"><i class="bi bi-archive me-2"></i>Inventory Stock</span><span><a class="btn btn-sm btn-outline-success"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export CSV</a> <a class="btn btn-sm btn-primary"><i class="bi bi-arrow-right-circle me-1"></i>Bulk Move to L1/L2</a></span></div>
-    <div class="card-body">
-      <div class="d-flex justify-content-between align-items-center mb-2 gtable-top"><span>Page view <select class="form-select form-select-sm d-inline-block w-auto"><option>12</option></select> <span class="badge bg-warning text-dark">3,518</span></span><span><input class="form-control form-control-sm d-inline-block" style="width:45mm" placeholder="Scan or Search"></span></div>
-      <div class="dataTables_wrapper gtable-cards"><div class="dataTables_scroll gtable-scroll-wrap" style="box-shadow:0 4px 18px rgba(14,58,122,.26)">
-      <table class="table gtable gtable-checkbox-first mb-0">
-        <thead><tr><th><input type="checkbox" class="form-check-input"></th><th>TAG NUMBER</th><th>MODEL</th><th>CPU</th><th>STAGE</th><th>LOT</th><th>ACTION</th></tr></thead>
-        <tbody>
-          <tr><td><input type="checkbox" class="form-check-input"></td><td>OXY-2026-004512</td><td>Dell Latitude 5490</td><td>i5 8th Gen</td><td><span class="badge bg-info">Stock In</span></td><td>LOT-042</td><td><a class="btn btn-sm btn-outline-primary">View</a></td></tr>
-          <tr><td><input type="checkbox" class="form-check-input" checked></td><td>OXY-2026-004513</td><td>HP EliteBook 840 G5</td><td>i7 8th Gen</td><td><span class="badge bg-warning">L1</span></td><td>LOT-042</td><td><a class="btn btn-sm btn-outline-primary">View</a></td></tr>
-          <tr><td><input type="checkbox" class="form-check-input"></td><td>OXY-2026-004517</td><td>Lenovo ThinkPad T480</td><td>i5 8th Gen</td><td><span class="badge bg-success">Ready to Sale</span></td><td>LOT-043</td><td><a class="btn btn-sm btn-outline-primary">View</a></td></tr>
-        </tbody>
-      </table></div></div>
+  <h1 class="chap">Global Card, Table and Tabs <span class="tag chg">UPDATED</span></h1>
+  <p class="lead">Three containers used together: the Global Card holds content, the Global Table lists records, Global Tabs switch between views. A table card is a Global Card with a Global Table inside.</p>
+  <h2>Global Card</h2>
+  <div class="shots2">
+    <div><img class="shot nob" src="img/card_1.png"><div class="cap">Title only</div></div>
+    <div><img class="shot nob" src="img/card_2.png"><div class="cap">No header</div></div>
+  </div>
+  <img class="shot nob" src="img/card_3.png"><div class="cap">Header with controls: title, toggle switches, dropdown filter, selected-count badge and buttons, all vertically centred</div>
+  <div class="shots2">
+    <div><img class="shot nob" src="img/card_4.png"><div class="cap">Coloured header kept (it carries meaning)</div></div>
+    <div><img class="shot nob" src="img/card_5.png"><div class="cap">Under tabs: square top corners, light header</div></div>
+  </div>
+  <table class="doc">
+    <tr><th style="width:24%">Part</th><th>Spec</th></tr>
+    <tr><td>Box</td><td><code>card border-0 shadow-sm</code> · 16px corners · shadow <code>0 .25rem .5rem rgba(0,0,0,.5)</code> · white body, padding 1rem</td></tr>
+    <tr><td>Header</td><td>A header with no colour of its own (none, <code>bg-transparent</code>, <code>bg-white</code>, <code>bg-light</code>) turns Sky Blue <code>#d9ebf6</code> with a navy semi-bold title, padding .5rem 1rem. Coloured headers that carry meaning (e.g. red PNA) keep their colour. <code>card-plain</code> opts out.</td></tr>
+    <tr><td>Header content</td><td>Left: icon + title. Right: this card's filters (chapter 06) and buttons (chapter 08). Badges and switches are centred on the row.</td></tr>
+    <tr><td>Under tabs</td><td>First card in a tab pane: square top corners, header Light Colour <code>#f0f4f8</code>. A bordered tab content gets 16px bottom corners and the card shadow; the card inside has none.</td></tr>
+    <tr><td>Table inside</td><td>The table has 12px rounded corners top and bottom and no extra gap below it.</td></tr>
+  </table>
+</div>
+
+<div>
+  <h2>Global Table</h2>
+  <p><code>initGlobalTable('#id', dtOptions, opts)</code> wraps a server-side DataTable with the shared look and behaviour. Never hand-build a list table.</p>
+  <img class="shot nob" src="img/table_2.png">
+  <div class="cap">Checkbox selection with Search: dropdown filters, selected count and buttons in the card header; checkbox filter just before the search box.</div>
+  <table class="doc">
+    <tr><th style="width:24%">Always on</th><th>Detail</th></tr>
+    <tr><td>Look</td><td>Navy <code>#0e3a7a</code> header row, white uppercase labels on one line, rounded ends; white rows with a thin <code>#e3eef7</code> divider; soft navy shadow</td></tr>
+    <tr><td>Columns</td><td>First column frozen when scrolling sideways (first two with a checkbox). The checkbox column is not sortable. Action column right-aligned, all buttons on one line.</td></tr>
+    <tr><td>Text</td><td>14px; cells stay on one line; 32+ characters clamp to 2 lines with the full value on hover</td></tr>
+    <tr><td>Toolbar</td><td>Left: "Page view" + yellow row-count badge. Right: search box + pagination. 12 rows per page. Built-in empty-state picture.</td></tr>
+    <tr><td>Toolbar filters</td><td>Checkbox filters sit just before the search box: square box, .4rem gap before the label</td></tr>
+  </table>
+  <table class="doc">
+    <tr><th style="width:24%">Setting (per table)</th><th>Options</th></tr>
+    <tr><td>Checkbox selection</td><td>Off · On (<code>opts.selectAll</code>): checkbox column first with Select All; Tag Number fixed with it</td></tr>
+    <tr><td>Search box</td><td>"Search" · "Scan or Search" (<code>opts.scan</code>): scanning a tag ticks its row</td></tr>
+    <tr><td>Placement (automatic)</td><td>In a card · in main tabs · in sub-tabs · without a card. Same padding everywhere; in a tab without a card body it adds its own.</td></tr>
+  </table>
+  <div class="shots2">
+    <div><img class="shot nob" src="img/table_5.png"><div class="cap">In main tabs (page level)</div></div>
+    <div><img class="shot nob" src="img/table_6.png"><div class="cap">In sub-tabs (inside a card)</div></div>
+  </div>
+  <h2>Global Tabs</h2>
+  <img class="shot nob" src="img/tabs_1.png">
+  <img class="shot nob" src="img/tabs_3.png">
+  <ul class="doc">
+    <li>Every tab bar spans the full width; tabs share the row, labels centred; optional icon before and count badge after the label.</li>
+    <li><b>Main tabs</b> (page level): <b>filled</b>, the active tab navy with white text. The card under them has square top corners, flush with the bar.</li>
+    <li><b>Sub-tabs</b> (a tab bar inside a card body, tab pane, pop-up or accordion): <b>outline</b>, the active tab white with a navy border and navy text.</li>
+    <li>Picked automatically from where the bar sits. <code>.main-tabs</code> forces filled, <code>.sub-tabs</code> forces outline.</li>
+  </ul>
+</div>
+
+<!-- ============================== 07 (cont.) ============================== -->
+<!-- v2.7 (2026-11-09): Global Tabs — pill tabs, the compact variant for a
+     card header. Screenshot img/tabs_pills.png. CSS: .pill-tabs in app.css. -->
+<div class="page">
+  <h2>Global Tabs — pill tabs <span class="tag">NEW</span></h2>
+  <p class="lead">A compact tab row that sits on the card-header line, next to the card's title. Use it when one card's table has a few views — the page decides; nothing applies it on its own.</p>
+  <img class="shot nob" src="img/tabs_pills.png" style="width:75mm">
+  <div class="cap">Inventory Manager → Return Stock: Received active (top), Completed active (bottom).</div>
+  <div class="sample">
+    <div class="card border-0 shadow-sm m-0">
+      <div class="card-header bg-transparent d-flex align-items-center gap-3">
+        <span class="fw-semibold"><i class="bi bi-clipboard-check me-2"></i>Requests</span>
+        <ul class="nav pill-tabs">
+          <li class="nav-item"><button type="button" class="nav-link active">Pending</button></li>
+          <li class="nav-item"><button type="button" class="nav-link">Approved</button></li>
+          <li class="nav-item"><button type="button" class="nav-link">Rejected</button></li>
+        </ul>
+      </div>
     </div>
   </div>
-  <div class="cap">A static rendering of a Global Table card with sample rows, using the app's CSS. The second row is ticked.</div>
-  <h2>Built-in behaviour</h2>
+  <div class="cap">Live sample (app.css).</div>
   <table class="doc">
-    <tr><th style="width:26%">Behaviour</th><th>Default</th></tr>
-    <tr><td>Look <span class="tag">NEW</span></td><td>Bluemonk Navy <code>#0e3a7a</code> header with white labels and rounded ends; plain white rows with a thin <code>#e3eef7</code> divider; soft Bluemonk Navy shadow behind the table. Added automatically (<code>.gtable-cards</code> on the DataTables wrapper); <code>opts.plainStyle:true</code> opts out.</td></tr>
-    <tr><td>Selection and hover <span class="tag">NEW</span></td><td>Ticked row: pale blue <code>#eef6fc</code>, blue left edge, light shadow. Row under the mouse: deeper shadow, always above a ticked row.</td></tr>
-    <tr><td>Header separators <span class="tag">NEW</span></td><td>Thin white line (25%) between header labels; 12px left/right padding in header and body cells (first column keeps 16px left)</td></tr>
-    <tr><td>Sorting <span class="tag">NEW</span></td><td>Sort arrows sit 12px after the label (soft white; the active direction turns bright white). Every data column sorts, on the server for server-side tables: dates by date, numbers by number, text A–Z, Stage in workflow order, empty values last. Action columns (header "Action"/"Actions" or blank) never sort. Lists, counts worked out per row and button columns stay unsortable.</td></tr>
-    <tr><td>Rows per page</td><td>12</td></tr>
-    <tr><td>Text</td><td>14px; headers one line, uppercase; columns size around their header</td></tr>
-    <tr><td>Long cells <span class="tag chg">UPDATED</span></td><td>Cells stay on one line (the table scrolls sideways instead of squashing). 32+ characters clamp to 2 lines within 160–260px; full value in a hover tooltip (<code>title=</code>)</td></tr>
-    <tr><td>Wide tables</td><td>Scroll sideways inside the card; first column frozen (first two when column 1 is a checkbox)</td></tr>
-    <tr><td>Toolbar</td><td>Left: "Page view" dropdown + yellow row-count badge. Right: search / scan box + pagination</td></tr>
-    <tr><td>First / last column</td><td>First has 16px left padding, left-aligned (centred only when a checkbox); last is Actions, centred, never wraps</td></tr>
-    <tr><td>Footer total row</td><td>Grey <code>#e9ecef</code> (disabled colour), so it reads as a computed summary</td></tr>
-    <tr><td>Empty state</td><td>Built-in image and caption. Never hand-write a placeholder <code>&lt;tr&gt;</code>, which crashes DataTables</td></tr>
-    <tr><td>Options</td><td><code>opts.selectAll</code> header checkbox; <code>opts.scan</code> barcode scan-to-select; <code>opts.freeze:false</code> to opt out of scrolling</td></tr>
+    <tr><th style="width:24%">Part</th><th>Rule</th></tr>
+    <tr><td>Markup</td><td><code>&lt;ul class="nav pill-tabs"&gt;</code> with <code>.nav-link</code> buttons; the current one has <code>.active</code>. Put it right after the card title in the card header.</td></tr>
+    <tr><td>Active</td><td>Solid Primary pill (<code>--bs-primary</code>), white text, standard rounded corners.</td></tr>
+    <tr><td>Others</td><td>Plain Primary text — no box, border or underline. Hover: a faint Primary tint.</td></tr>
+    <tr><td>Size</td><td>Padding .25rem 1rem, weight 500 — no taller than the header's buttons, so the header keeps its height.</td></tr>
+    <tr><td>Labels</td><td>Short words; <b>no count badges</b> and no icons.</td></tr>
   </table>
-  <h2>Card rules</h2>
-  <ul class="doc">
-    <li><b>Header:</b> <code>card-header bg-transparent d-flex justify-content-between align-items-center</code>. It turns Sky Blue <code>#d9ebf6</code> with a Bluemonk Navy title automatically.</li>
-    <li><b>Left:</b> icon + title. <b>Right:</b> only this table's own actions or filters. Never a count badge, because the toolbar already shows the count.</li>
-    <li><b>Header row:</b> styled by <code>initGlobalTable</code> (Bluemonk Navy, rounded); <code>table-light</code> for small static tables in forms and detail pages.</li>
-    <li>A last column that holds text rather than buttons: add <code>gtable-last-col-text</code>.</li>
-    <li>After editing <code>global-table.js</code>, keep it in <code>_VERSIONED_ASSETS</code> (<code>templates_config.py</code>) so browsers fetch the new copy.</li>
-  </ul>
+  <h3>Pill tabs or Global Tabs?</h3>
+  <table class="doc">
+    <tr><th style="width:24%"></th><th style="width:38%">Pill tabs</th><th>Global Tabs (main / sub)</th></tr>
+    <tr><td>Switches</td><td>Views of <b>one</b> card's table (a filter): Received / Completed, Pending / Done</td><td>Between <b>different</b> panels or tables</td></tr>
+    <tr><td>Sits</td><td>Inside the card header, after the title</td><td>Full-width bar above a card, or inside a card body</td></tr>
+    <tr><td>Counts</td><td>None</td><td>Optional count badge after the label</td></tr>
+    <tr><td>Class</td><td><code>.nav.pill-tabs</code></td><td><code>.nav-tabs</code> (<code>.main-tabs</code> / <code>.sub-tabs</code>)</td></tr>
+  </table>
 </div>
 
 <!-- ============================== 08 ============================== -->
 <div class="page">
   <div class="chap-no">08</div>
-  <h1 class="chap">Buttons and badges</h1>
+  <h1 class="chap">Buttons and badges <span class="tag chg">UPDATED</span></h1>
   <h2>Button hierarchy</h2>
   <div class="sample d-flex flex-wrap gap-2">
+    <button class="btn btn-primary"><i class="bi bi-plus-circle me-1"></i>Add Lot</button>
     <button class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save</button>
     <button class="btn btn-success"><i class="bi bi-check-circle me-1"></i>Pass</button>
+    <button class="btn btn-outline-primary bg-white"><i class="bi bi-download me-1"></i>Export</button>
+    <button class="btn btn-outline-primary bg-white"><i class="bi bi-sliders me-1"></i>Customise</button>
     <button class="btn btn-outline-secondary">Cancel</button>
-    <button class="btn btn-outline-primary"><i class="bi bi-sliders me-1"></i>Customise</button>
-    <button class="btn btn-outline-success"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export CSV</button>
-    <button class="btn btn-outline-info"><i class="bi bi-upload me-1"></i>Upload Tags</button>
-    <button class="btn btn-warning"><i class="bi bi-pause-circle me-1"></i>Hold</button>
     <button class="btn btn-danger"><i class="bi bi-trash3 me-1"></i>Delete</button>
     <button class="btn btn-outline-danger">Fail</button>
     <button class="btn btn-link">View details</button>
     <button class="btn btn-secondary" disabled>Disabled</button>
   </div>
-  <div class="cap">Rendered with the app's CSS, including its outline-button tint, grey disabled style and the v2.2 success green <code>#0F7A37</code>.</div>
   <table class="doc">
-    <tr><th style="width:28%">Use</th><th style="width:32%">Class</th><th>Examples</th></tr>
-    <tr><td>Main action</td><td><code>btn btn-primary</code></td><td>Save, Filter, Create Lot</td></tr>
-    <tr><td>Positive step</td><td><code>btn btn-success</code> (#0F7A37, hover #0B6B30)</td><td>Pass, Move to Ready, Approve, Sell</td></tr>
-    <tr><td>Secondary / cancel</td><td><code>btn btn-outline-secondary</code></td><td>Reset, Cancel, Back</td></tr>
-    <tr><td>Supporting actions</td><td><code>btn-outline-primary / -success / -info</code></td><td>Export, Upload, Customise</td></tr>
-    <tr><td>Needs attention</td><td><code>btn btn-warning</code></td><td>Hold, Return</td></tr>
-    <tr><td>Destructive</td><td><code>btn-danger</code> / <code>btn-outline-danger</code></td><td>Delete, Fail, Scrap. Always confirm first</td></tr>
-    <tr><td>Inline link</td><td><code>btn btn-link</code></td><td>View details</td></tr>
+    <tr><th style="width:26%">Use</th><th style="width:34%">Class</th><th>Examples</th></tr>
+    <tr><td>Main action</td><td><code>btn btn-primary</code></td><td>Add …, Save, Apply</td></tr>
+    <tr><td>Positive step</td><td><code>btn btn-success</code> (#0F7A37)</td><td>Pass, Move to Ready, Approve, Sell</td></tr>
+    <tr><td>Export <span class="tag">NEW</span></td><td><code>btn btn-outline-primary</code> on white, icon <code>bi-download</code></td><td>Export, Export (61), Export GRN Summary. Always outline.</td></tr>
+    <tr><td>Supporting actions</td><td><code>btn btn-outline-primary</code> on white</td><td>Customise, Login Log, Bulk Upload</td></tr>
+    <tr><td>Cancel / filter-bar Reset</td><td><code>btn btn-outline-secondary</code></td><td>Cancel, Back, Reset</td></tr>
+    <tr><td>Destructive</td><td><code>btn-danger</code> / <code>btn-outline-danger</code></td><td>Delete, Fail, Scrap. Always confirm first, with the count.</td></tr>
   </table>
+  <h2>Card header buttons <span class="tag">NEW</span></h2>
+  <img class="shot" src="img/btn_hdr_create_grn.png">
+  <img class="shot" src="img/btn_hdr_dealers.png">
+  <img class="shot" src="img/btn_hdr_upload.png">
+  <img class="shot" src="img/btn_hdr_grn_pending.png">
+  <div class="cap">Add button primary and far right · Add wins over Upload · no Add: Upload is primary · no Add / Upload / Backup: no primary.</div>
+  <table class="doc">
+    <tr><th style="width:24%">Rule</th><th>Detail</th></tr>
+    <tr><td>Primary</td><td>Only an <b>Add</b> button is primary (solid blue), and it sits at the <b>far right</b>. With no Add button, an <b>Upload</b> or <b>Backup</b> button is primary. Otherwise no button is primary. At most one primary per header.</td></tr>
+    <tr><td>Other buttons</td><td>Blue outline on white (<code>btn-outline-primary bg-white</code>). Red (Delete …) stays red outline. On / off toggles (Split Entity) keep their own look.</td></tr>
+    <tr><td>Export</td><td>Always outline, icon <code>bi-download</code>.</td></tr>
+    <tr><td>Reset</td><td>Grey icon-only (<i class="bi bi-arrow-counterclockwise"></i>), 31px square, right after the last filter (chapter 06). No Filter / Apply button in a card header.</td></tr>
+    <tr><td>Automatic</td><td>Applied by <code>filter-fields.js</code> to every plain card header. Opt out: <code>data-hdr-keep</code> on the card-header (Dashboard's Financial Summary). Coloured headers are left alone.</td></tr>
+  </table>
+  <h2>Add buttons <span class="tag">NEW</span></h2>
+  <p>Every add button, in page and card headers, says <b>Add …</b> (never "New …" or "Add New …") and uses the circled plus icon: <code>&lt;i class="bi bi-plus-circle me-1"&gt;&lt;/i&gt;Add Deal</code>.</p>
   <ul class="doc">
     <li><b>Size:</b> <code>btn-sm</code> everywhere except the submit button at the bottom of a full form.</li>
     <li><b>Labels</b> are a verb + object ("Move to Final QC"), never wrap, and have an icon with <code>me-1</code>. Icon-only buttons need <code>title=</code>.</li>
-    <li><b>Outline buttons</b> sit on a 5% tint of their colour and fill solid on hover (app-wide).</li>
     <li><b>Disabled</b> is always grey <code>#D8D8D8</code> with dark text. Don't restyle it.</li>
-    <li><b>Destructive</b> actions confirm with the count: <code>return confirm('Delete 3 lots?')</code>.</li>
   </ul>
-  <h2>Badges <span class="tag chg">UPDATED</span></h2>
-  <div class="sample"><span class="badge bg-success">Active</span> <span class="badge bg-warning text-dark">Pending</span> <span class="badge bg-danger">Failed</span> <span class="badge bg-secondary">Inactive</span> <span class="badge bg-teal">Cosmetic Completed</span> <span class="badge bg-purple">Final QC</span> <span class="badge rounded-pill bg-danger">5</span> <span class="badge bg-warning text-dark">3,518</span> <span class="badge bg-success">Ready to Sale</span> <span class="badge rounded-pill bg-success">3775</span></div>
+  <h2>Badges</h2>
+  <div class="sample"><span class="badge bg-success">Active</span> <span class="badge bg-warning text-dark">Pending</span> <span class="badge bg-danger">Failed</span> <span class="badge bg-secondary">Inactive</span> <span class="badge bg-teal">Cosmetic Completed</span> <span class="badge bg-purple">Final QC</span> <span class="badge rounded-pill bg-danger">5</span> <span class="badge bg-warning text-dark">3,518</span></div>
   <table class="doc">
-    <tr><th style="width:28%">Badge</th><th>Rule</th></tr>
+    <tr><th style="width:26%">Badge</th><th>Rule</th></tr>
     <tr><td>Stage</td><td><code>badge bg-{{ device.stage_color }}</code> + <code>stage_label</code>; never chosen by hand</td></tr>
-    <tr><td>Success</td><td><code>badge bg-success</code>: solid <b>#0F7A37</b> with white text (v2.2)</td></tr>
-    <tr><td>Status</td><td>Done/active green · pending yellow with <code>text-dark</code> · failed red · inactive grey</td></tr>
-    <tr><td>Notification count</td><td><code>badge rounded-pill bg-danger</code></td></tr>
-    <tr><td>Row count</td><td>Yellow toolbar badge from the Global Table; not repeated in the card header</td></tr>
+    <tr><td>Status</td><td>Done/active green <b>#0F7A37</b> · pending yellow with <code>text-dark</code> · failed red · inactive grey</td></tr>
+    <tr><td>Counts</td><td>Notification: <code>badge rounded-pill bg-danger</code> · row count: yellow toolbar badge from the Global Table, not repeated in the card header</td></tr>
   </table>
 </div>
 
@@ -734,6 +902,83 @@
     <tr><td>5</td><td>Production</td><td>Merge to GitHub <code>main</code> (<code>Bluemonk123/oxypc-inventory</code>). Production at <code>http://10.199.206.109</code> updates within 2–5 minutes.</td></tr>
     <tr><td>6</td><td>Keep this document current</td><td>Edit <code>qa_docs/design_system/design_system.html</code> in the same change and rebuild the PDF.</td></tr>
   </table>
+</div>
+
+<!-- ============================== 12 ============================== -->
+<!-- v2.7 (2026-11-09): new chapter — the two global menus (mega menu for the
+     top-bar "+", simple menu for every other dropdown). Screenshots in
+     qa_docs/design_system/img/menu_*.png. -->
+<style>
+  img.shot{display:block; max-width:100%; border:1px solid #dee2e6; border-radius:8px; margin:1.5mm 0 1mm}
+  .shots3{display:grid; grid-template-columns:1fr 1fr 1.15fr; gap:4mm; align-items:start}
+  .sample .dropdown-menu.ds-static{position:static; display:block; float:none; box-shadow:0 .25rem .75rem rgba(0,0,0,.12)}
+</style>
+<div class="page">
+  <div class="chap-no">12</div>
+  <h1 class="chap">Menus <span class="tag">NEW</span></h1>
+  <p class="lead">The app has two global menus. The <b>mega menu</b> is the top bar's <b>+</b>: every Add action a user may do, in sections. The <b>simple menu</b> is every other dropdown of links or actions, such as the profile menu. Filter dropdowns are a third, separate standard (chapter 06).</p>
+  <table class="doc">
+    <tr><th style="width:18%">Menu</th><th style="width:27%">Used for</th><th>Look</th></tr>
+    <tr><td><b>Mega menu</b></td><td>Top-bar <b>+</b> (Quick Add)</td><td>Sections with blue headings and a line under each; several columns, filled top to bottom; first column under the button, more columns open to the left</td></tr>
+    <tr><td><b>Simple menu</b></td><td>Profile menu, row action menus, export / download menus — any <code>.dropdown-menu</code> of <code>.dropdown-item</code>s</td><td>One column, roomy rows, rounded light-blue hover, icons in a fixed column, dividers between groups</td></tr>
+    <tr><td>Filter dropdown</td><td>Single / multi select in filter bars and card headers</td><td>WorkID look: search box, All / Clear links, checkboxes (chapter 06)</td></tr>
+  </table>
+
+  <h2>Mega menu — the top-bar +</h2>
+  <img class="shot" src="img/menu_mega.png" style="width:150mm">
+  <div class="cap">Admin: every Add action. The first column (Intake, Inventory, Store Manager) sits under the + button; the other columns open to its left.</div>
+  <table class="doc">
+    <tr><th style="width:22%">Part</th><th>Rule</th></tr>
+    <tr><td>Button</td><td>Blue circle (<code>btn btn-primary rounded-circle</code>, 32 px, <code>bi-plus-lg</code>) right of the bell. <b>Hidden when the user has nothing to add.</b></td></tr>
+    <tr><td>Which items</td><td>An item shows only when the role may open the module (Permission Matrix <i>enable</i>, module not hidden) <b>and</b> may add in it — <code>can(user, module, 'add')</code>, the same check as the page's own Add button (Price Matrix uses <i>pricing_add</i>). List: <code>services/quick_add.py</code>.</td></tr>
+    <tr><td>Names and sections</td><td>Taken from the <b>sidebar</b> in the browser: each item's label, icon and section are its sidebar link's, in sidebar order. Renaming a sidebar item (Sidebar Config) renames it here. Items with no sidebar link of their own keep their label and join the section of the link given in <code>SIDE</code>.</td></tr>
+    <tr><td>Columns</td><td>Whole sections go top to bottom, up to <b>10 rows</b> per column (a heading counts as a row), then the next column; at most <b>4 columns</b>, then columns get taller. A section never splits; a section longer than a column gets its own column. Column 1 is on the right, under the button (<code>flex-direction: row-reverse</code>). No vertical dividers.</td></tr>
+    <tr><td>Section heading</td><td>0.7rem, bold, upper case, letter-spacing .04em, <b>Primary blue</b> (same as the item icons), 1px line under it.</td></tr>
+    <tr><td>Spacing</td><td>Every section has the same 8 px above and below. Items 0.875rem, padding .38rem .6rem, radius 6px, icon in Primary blue, light-blue hover.</td></tr>
+    <tr><td>Opening an item</td><td>An item with its own page goes there (<code>/lots/new</code>). An item whose Add is a modal on a list page links to <code>/page#add=&lt;button text&gt;</code>; <code>static/js/quick-add.js</code> clicks that Add button once the page has loaded and removes the hash.</td></tr>
+  </table>
+  <h3>A role with fewer rights</h3>
+  <img class="shot" src="img/menu_mega_role.png" style="width:135mm">
+  <div class="cap">Same rules, fewer items. A user with only a few items gets one short column; a user with none gets no + button at all.</div>
+  <h3>Adding an item to the + menu</h3>
+  <ul class="doc">
+    <li>Add one line to <code>CATALOG</code> in <code>services/quick_add.py</code>: <code>(label, icon, url, module, action)</code>. The label and group are only fallbacks — the sidebar provides the real ones.</li>
+    <li>If the Add opens a modal, use <code>/page#add=Add Thing</code> with the button's exact text. If the list page is not <code>url</code> minus <code>/new</code>, add it to <code>SIDE</code>.</li>
+    <li>The module and action must be the ones the page's own Add button checks, so the menu never offers what the page would refuse.</li>
+  </ul>
+
+</div>
+
+<div class="page">
+  <h2>Simple menu — every other dropdown</h2>
+  <div class="shots3">
+    <div><img class="shot" src="img/menu_profile.png" style="width:48mm"><div class="cap">Profile menu, light mode, hovering Password.</div></div>
+    <div><img class="shot" src="img/menu_profile_dark.png" style="width:48mm"><div class="cap">The same menu in dark mode.</div></div>
+    <div><div class="sample m-0" style="padding:3mm">
+      <ul class="dropdown-menu ds-static">
+        <li><a class="dropdown-item" href="#"><i class="bi bi-file-earmark-text me-2"></i>Generated PO</a></li>
+        <li><a class="dropdown-item" href="#"><i class="bi bi-receipt me-2"></i>Purchase Invoice</a></li>
+        <li><a class="dropdown-item" href="#"><i class="bi bi-truck me-2"></i>E-way Bill</a></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item text-danger" href="#"><i class="bi bi-trash me-2"></i>Delete</a></li>
+      </ul></div>
+      <div class="cap">Live sample (app.css): a row action menu, destructive item last.</div></div>
+  </div>
+  <table class="doc">
+    <tr><th style="width:22%">Part</th><th>Rule</th></tr>
+    <tr><td>Menu</td><td>Radius 10px, border <code>--oxy-border</code>, 0.35rem side padding, min-width 12rem.</td></tr>
+    <tr><td>Items</td><td>Padding .5rem .85rem, radius 6px, 2px between rows. Icon first, fixed 1.15rem wide, then <code>me-2</code> — every label starts at the same place.</td></tr>
+    <tr><td>Hover</td><td>Sky Blue <code>--oxy-sky</code> (dark mode: <code>--oxy-hover</code>). A <code>text-danger</code> item (Logout, Delete) gets a light red hover.</td></tr>
+    <tr><td>Groups</td><td><code>dropdown-divider</code> between groups, .4rem above and below. Destructive items last.</td></tr>
+    <tr><td>How</td><td>Global — Bootstrap's <code>--bs-dropdown-*</code> variables set on <code>.dropdown-menu</code> in <code>app.css</code>. Write plain Bootstrap markup; no extra classes.</td></tr>
+  </table>
+  <h3>Profile menu</h3>
+  <ul class="doc">
+    <li>Order: <b>My Profile</b>, <b>Password</b> (opens <code>/auth/profile#password</code> at the Reset Password card), <b>Logout</b>; then a divider and the <b>Light ⟷ Dark</b> switch as the footer.</li>
+    <li>The switch names both modes; the current one is bold Primary blue, the other grey. Each user's choice is kept in the <code>oxy_theme</code> cookie; the admin sets the default in Master Data → System Colors.</li>
+  </ul>
+  <div class="note"><div class="t">Do</div>Use the simple menu for any list of links or actions. Keep labels short, icon first, destructive actions last in red.</div>
+  <div class="note dont"><div class="t">Don't</div>Add search boxes, card-header colour or vertical dividers to the + menu, or build a one-off dropdown style on a page.</div>
 </div>
 
 <!-- ============================== APPENDIX ============================== -->

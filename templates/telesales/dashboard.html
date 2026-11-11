@@ -2,6 +2,7 @@
 {% block title %}TeleSales Dashboard — OxyPC{% endblock %}
 {% block page_title %}TeleSales Dashboard{% endblock %}
 {% block content %}
+{% import "_download_cell.html" as dl %}
 
 <!-- Business Snapshot — Dealers / Device Requests / Sales / Returns -->
 <div class="d-flex align-items-center justify-content-between mt-1 mb-2">
@@ -103,42 +104,82 @@
   </div>
 </div>
 
-<!-- Quotation Shared -->
+<!-- Telecalling Quotations (2026-11-10, Pankaj): Pending Approval | Shared.
+     Pending Approval = Added / Negotiation quotations raised by people below
+     you in Report To (admin: all) - Level 1 Approve / Reject here. -->
+{% set _price = can(current_user, 'telesales_dashboard', 'pricing') %}
 <div class="card border-0 shadow-sm mt-3">
-  <div class="card-header bg-transparent py-2">
-    <span class="fw-semibold small"><i class="bi bi-file-earmark-text me-1"></i>Quotation Shared</span>
+  <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-3">
+    <span class="fw-semibold"><i class="bi bi-file-earmark-text me-2"></i>Telecalling Quotations</span>
+    <ul class="nav pill-tabs" role="tablist">
+      <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#tsqPendingPane">Pending Approval</button></li>
+      <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#tsqSharedPane">Shared</button></li>
+    </ul>
   </div>
-  <div class="table-responsive">
-    <table class="table table-hover mb-0" style="font-size:0.78rem">
-      <thead class="table-light">
-        <tr>
-          <th class="ps-3">Customer Name</th>
-          <th>Customer Type</th>
-          <th>Total Quantity</th>
-          {% if can(current_user, 'telesales_dashboard', 'pricing') %}<th>Total Quotation Price</th>{% endif %}
-          <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for q in recent_quotations %}
-        <tr>
-          <td class="ps-3">{{ q.customer_name }}</td>
-          <td><span class="badge bg-secondary">{{ (q.customer_type or '—') | title }}</span></td>
-          <td>{{ q.total_quantity }}</td>
-          {% if can(current_user, 'telesales_dashboard', 'pricing') %}<td>₹{{ ((q.total_price or 0) | inr) }}</td>{% endif %}
-          <td>
-            {% if q.status == 'confirmed' %}
-            <span class="badge bg-success">Confirmed</span>
-            {% else %}
-            <span class="badge bg-warning text-dark">Shared</span>
-            {% endif %}
-          </td>
-        </tr>
-        {% else %}
-        <tr><td colspan="5" class="text-center text-muted py-3">No quotations shared yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+  <div class="card-body p-0">
+    <div class="tab-content">
+      <div class="tab-pane fade show active" id="tsqPendingPane">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 align-middle" style="font-size:0.8rem">
+            <thead class="table-dark"><tr>
+              <th class="ps-3">Quote No</th><th>Customer Name</th><th>Customer Type</th><th>Total Quantity</th>
+              {% if _price %}<th>Total Quotation Price</th>{% endif %}<th>Status</th><th>Raised By</th><th class="text-end pe-3">Level 1</th>
+            </tr></thead>
+            <tbody>
+              {% for q in pending_quotations %}
+              <tr>
+                <td class="ps-3 font-monospace"><a href="/dealer-quotations/{{ q.id }}" class="text-decoration-none fw-semibold">{{ q.quote_number }}</a></td>
+                <td>{{ q.customer_name }}</td>
+                <td><span class="badge bg-secondary">{{ (q.customer_type or '—') | title }}</span></td>
+                <td>{{ q.total_quantity }}</td>
+                {% if _price %}<td>₹{{ ((q.total_price or 0) | inr) }}</td>{% endif %}
+                <td><span class="badge bg-{{ QUOTE_STATUS_COLORS.get(q.status, 'secondary') }}">{{ q.status | title }}</span></td>
+                <td>{{ q.created_by or '—' }}</td>
+                <td class="text-end pe-3 text-nowrap">
+                  {% for d, cls, ic, lbl in [('approve', 'success', 'bi-check-lg', 'Approve'), ('reject', 'danger', 'bi-x-lg', 'Reject')] %}
+                  <form method="post" action="/dealer-quotations/{{ q.id }}/decision" class="d-inline"
+                        {% if d == 'reject' %}onsubmit="return confirm('Reject {{ q.quote_number }}?');"{% endif %}>
+                    <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+                    <input type="hidden" name="return_to" value="/telesales-dashboard">
+                    <input type="hidden" name="decision" value="{{ d }}">
+                    <button type="submit" class="btn btn-sm btn-outline-{{ cls }} py-0 px-2"><i class="bi {{ ic }} me-1"></i>{{ lbl }}</button>
+                  </form>
+                  {% endfor %}
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="8" class="text-center text-muted py-3">Nothing is waiting for your approval.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div class="tab-pane fade" id="tsqSharedPane">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0 align-middle" style="font-size:0.8rem">
+            <thead class="table-dark"><tr>
+              <th class="ps-3">Quote No</th><th>Customer Name</th><th>Customer Type</th><th>Total Quantity</th>
+              {% if _price %}<th>Total Quotation Price</th>{% endif %}<th>Status</th><th class="pe-3">Download</th>
+            </tr></thead>
+            <tbody>
+              {% for q in recent_quotations %}
+              <tr>
+                <td class="ps-3 font-monospace"><a href="/dealer-quotations/{{ q.id }}" class="text-decoration-none fw-semibold">{{ q.quote_number }}</a></td>
+                <td>{{ q.customer_name }}</td>
+                <td><span class="badge bg-secondary">{{ (q.customer_type or '—') | title }}</span></td>
+                <td>{{ q.total_quantity }}</td>
+                {% if _price %}<td>₹{{ ((q.total_price or 0) | inr) }}</td>{% endif %}
+                <td><span class="badge bg-{{ QUOTE_STATUS_COLORS.get(q.status, 'secondary') }}">{{ (q.status or 'added') | title }}</span></td>
+                <td class="pe-3">{{ dl.cell([{'label': 'Quote', 'url': '/dealer-quotations/' ~ q.id ~ '/print', 'newtab': True}] if q.status == 'approved' and (can(current_user, 'quotations', 'export') or can(current_user, 'dealers', 'export')) else []) }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="7" class="text-center text-muted py-3">No quotations shared yet.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
 {% endblock %}

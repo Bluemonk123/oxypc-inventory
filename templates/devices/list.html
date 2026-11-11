@@ -20,11 +20,11 @@
 
 <!-- Filter Bar -->
 {% import "_multiselect_filter.html" as ms %}
-<form method="get" action="/devices" class="filter-bar filter-bar-6">
+<form method="get" action="/devices" class="filter-bar">
   <div>
     <div class="filter-bar-row">
       <div class="filter-bar-search">
-        <input type="text" name="q" title="Search" value="{{ q }}" class="form-control form-control-sm barcode-field font-monospace"
+        <input type="text" name="q" title="Search" value="{{ q }}" class="form-control form-control-sm barcode-field"
                placeholder="Tag, make, model, CPU, RAM, storage, invoice no. — e.g. Dell i5 8GB">
       </div>
       {{ ms.multiselect('entity', 'Entity', entity_options, entity) }}
@@ -69,9 +69,7 @@
         {# Marks the form as submitted so the server can tell "first load"
            (default the checkbox ON) from "user unticked it". #}
         <input type="hidden" name="fs" value="1">
-        <button type="submit" class="btn btn-primary btn-sm">
-          <i class="bi bi-search me-1"></i>Search
-        </button>
+        <button type="submit" class="btn btn-primary btn-sm">Apply</button>
         <a href="/devices" class="btn btn-outline-secondary bg-white btn-sm">Reset</a>
       </div>
     </div>

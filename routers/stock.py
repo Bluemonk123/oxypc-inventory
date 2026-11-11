@@ -1338,9 +1338,32 @@ async def stock_in_list(
     flag_users = sorted({(u.full_name or u.username) for u in (await db.execute(
         select(User).where(User.status == True)
     )).scalars().all() if (u.full_name or u.username)})
+    # Supplier Deal section (2026-11-10, Pankaj): deals at Stock Received
+    # (Pending) or closed Won after it (Received), with Download + Assigned to.
+    sd_pending, sd_received, sd_files, sd_assignee = [], [], {}, {}
+    from models.role_permissions import has_perm as _hp
+    _rv = getattr(current_user.role, "value", current_user.role)
+    if _hp(_rv, "crm_sourcing", "enable"):
+        from models.crm import CRMSourcingDeal, CRMSourcingStep
+        from services.doc_downloads import sourcing_downloads
+        _deals = (await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.stage.in_(("received", "won")))
+                                   .order_by(CRMSourcingDeal.updated_at.desc().nullslast()))).scalars().all()
+        if _deals:
+            sd_files = await sourcing_downloads(db, _deals)
+            for st in (await db.execute(select(CRMSourcingStep).where(
+                    CRMSourcingStep.deal_id.in_([d.id for d in _deals]),
+                    CRMSourcingStep.step_key == "received_assign"))).scalars().all():
+                if st.assigned_to:
+                    sd_assignee[str(st.deal_id)] = st.assigned_to
+        sd_pending = [d for d in _deals if d.stage == "received"]
+        sd_received = [d for d in _deals if d.stage == "won"]
+    sd_names = {u.username: (u.full_name or u.username) for u in (await db.execute(select(User))).scalars().all()} \
+        if (sd_pending or sd_received) else {}
     return templates.TemplateResponse("lots/stock_in.html", {
         "request": request, "current_user": current_user,
         "flag_users": flag_users,
+        "sd_pending": sd_pending, "sd_received": sd_received, "sd_files": sd_files,
+        "sd_assignee": sd_assignee, "sd_names": sd_names,
         "analytics": analytics,
         "departments": STOCK_DEPARTMENTS,
         "total": total,
@@ -2095,16 +2118,6 @@ async def trc_production_list(
             if key not in assigned_name_map and name:
                 assigned_name_map[key] = name
 
-    # Scrap Products from Repair Line — moved here from All Inventory (that
-    # page now only handles active/searchable inventory, not scrap triage).
-    scrap_devices = (await db.execute(
-        select(Device, Lot.lot_number)
-        .join(Lot, Device.lot_id == Lot.id)
-        .where(Device.grade == DeviceGrade.scrap, Device.current_stage == DeviceStage.scrapped,
-               Device.is_active == True)
-        .order_by(Device.updated_at.desc())
-    )).all()
-
     # ── Final QC Fail (Bucket): buckets whose devices arrived here via Final
     #    QC's "Move to Production" action — l1 stage, not yet assigned
     #    (assigned_to_production still False). Once "Assign" is used they
@@ -2235,7 +2248,7 @@ async def trc_production_list(
         "assigned_dept_map": assigned_dept_map, "bucket_map": bucket_map, "departments": STOCK_DEPARTMENTS,
         "cost_parts_map": cost_parts_map, "location_map": location_map,
         "repair_line_devices": repair_line_devices, "assigned_name_map": assigned_name_map,
-        "total": total, "scrap_devices": scrap_devices,
+        "total": total,
         "fqc_fail_buckets": fqc_fail_buckets,
         "as_is_trc": as_is_trc, "as_is_bucket_map": as_is_bucket_map,
         "as_is_assigned_map": as_is_assigned_map, "as_is_make_map": as_is_make_map,
@@ -2565,57 +2578,9 @@ async def _move_to_stage_unassigned(db, device, target_stage: str, current_user)
     return JSONResponse({"ok": True, "work_id": wo.work_id if wo else None, "stage": label})
 
 
-@router.post("/scrap-products/{barcode}/move-to-inventory")
-async def scrap_move_to_inventory(
-    barcode: str, request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allowed),
-):
-    """Scrap Products from Repair Line — 'Move to Inventory' (Batch 8 item 26):
-    the device was mis-scrapped or found reusable on review, so send it back
-    to Inventory Manager's stock_in stage."""
-    device = (await db.execute(
-        select(Device).where(Device.barcode == barcode, Device.is_active == True)
-    )).scalar_one_or_none()
-    if not device:
-        raise HTTPException(404, "Device not found")
-    prev_stage = device.current_stage
-    device.current_stage = DeviceStage.scrap_for_sale
-    device.updated_at = app_now()
-    db.add(StageMovement(
-        device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.scrap_for_sale,
-        moved_by=current_user.username, notes="Moved from Scrap to Scrap for Sale",
-    ))
-    await db.commit()
-    return RedirectResponse(url="/trc-production?success=Moved+to+Scrap+for+Sale", status_code=302)
-
-
-@router.post("/scrap-products/{barcode}/replace")
-async def scrap_replace_with_another(
-    barcode: str, request: Request,
-    replacement_barcode: str = Form(...),
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allowed),
-):
-    """Scrap Products from Repair Line — 'Replace With Another' (Batch 8 item
-    26): record which tag number replaced this scrapped unit, on both sides,
-    using the existing Device.replaced field (no new schema needed)."""
-    device = (await db.execute(
-        select(Device).where(Device.barcode == barcode, Device.is_active == True)
-    )).scalar_one_or_none()
-    if not device:
-        raise HTTPException(404, "Device not found")
-    replacement = (await db.execute(
-        select(Device).where(Device.barcode == replacement_barcode, Device.is_active == True)
-    )).scalar_one_or_none()
-    if not replacement:
-        return RedirectResponse(
-            url=f"/trc-production?error=Replacement+tag+{replacement_barcode}+not+found", status_code=302)
-
-    device.replaced = f"Replaced by {replacement.barcode}"
-    replacement.replaced = f"Replaced from {device.barcode}"
-    await db.commit()
-    return RedirectResponse(url="/trc-production?success=Replacement+recorded", status_code=302)
+# "Scrap Products from Repair Line" (Production Manager) and its two actions —
+# Move to Inventory, Replace With Another — removed 2026-11-09 (Pankaj): scrapped
+# tags go L1/L2 Back to Inventory -> Tags Scrapped -> Transfers -> Scrap for Sale.
 
 
 # ── Lot Line Items (Invoice Breakdown) ─────────────────────────────────────

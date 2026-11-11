@@ -59,7 +59,7 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i>Sourcing Funnel</span>
-        {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary"><i class="bi bi-plus"></i> New Deal</a>{% endif %}
+        {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-sm btn-primary"><i class="bi bi-plus-circle"></i> Add Deal</a>{% endif %}
       </div>
       <div class="card-body py-2">
         {% set stages_to_show = [('lead','Lead'), ('contacted','Contacted'), ('inspection','Inspection'), ('quote','Quote'), ('negotiation','Negotiations'), ('purchase_order','Purchase Order'), ('payment','Payment'), ('received','Stock Received')] %}
@@ -85,7 +85,7 @@
     <div class="card border-0 shadow-sm h-100">
       <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-graph-up-arrow me-1 text-info"></i>Sales Funnel</span>
-        {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-sm btn-info text-white"><i class="bi bi-plus"></i> New Opp</a>{% endif %}
+        {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-sm btn-info text-white"><i class="bi bi-plus-circle"></i> Add Opp</a>{% endif %}
       </div>
       <div class="card-body py-2">
         {% set sstages = [('lead','Lead'), ('contacted','Contacted'), ('screening','Screening'), ('quote','Quote'), ('negotiation','Negotiations'), ('sales_order','Invoice / SO'), ('purchase_order','Purchase Order'), ('payment','Payment'), ('received','Stock Received')] %}
@@ -157,10 +157,10 @@
 <div class="row g-2 mt-3">
   <div class="col-12">
     <div class="d-flex gap-2 flex-wrap">
-      {% if can(current_user, 'crm_contacts', 'add') %}<a href="/crm/contacts/new" class="btn btn-outline-secondary btn-sm"><i class="bi bi-person-plus me-1"></i>Add Contact</a>{% endif %}
-      {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-box-arrow-in-down me-1"></i>New Sourcing Deal</a>{% endif %}
-      {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-outline-info btn-sm"><i class="bi bi-graph-up me-1"></i>New Sales Opportunity</a>{% endif %}
-      {% if can(current_user, 'crm_quotes', 'add') %}<a href="/crm/quotes/new" class="btn btn-outline-success btn-sm"><i class="bi bi-file-earmark-text me-1"></i>New Quote</a>{% endif %}
+      {% if can(current_user, 'crm_contacts', 'add') %}<a href="/crm/contacts/new" class="btn btn-outline-secondary btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Contact</a>{% endif %}
+      {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new" class="btn btn-outline-primary btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Sourcing Deal</a>{% endif %}
+      {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new" class="btn btn-outline-info btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Sales Opportunity</a>{% endif %}
+      {% if can(current_user, 'crm_quotes', 'add') %}<a href="/crm/quotes/new" class="btn btn-outline-success btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Quote</a>{% endif %}
       <a href="/crm/activities/followups" class="btn btn-outline-warning btn-sm"><i class="bi bi-bell me-1"></i>All Follow-ups</a>
     </div>
   </div>

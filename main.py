@@ -189,6 +189,8 @@ from routers.master import router as master_router
 import models.role_permissions  # ensures tables are in Base.metadata for db_validator
 import models.ticket  # ensures tickets table is created on startup
 import services.repair_location  # noqa: F401  repair stages -> TRC Floor location (2026-10-31)
+import services.email_notify as _email_notify   # every notification also emailed (2026-11-09)
+_email_notify.install()
 from routers.bulk_upload import router as bulk_upload_router
 from routers.cosmetic import router as cosmetic_router
 from routers.workid_status import router as workid_status_router
@@ -246,6 +248,7 @@ from routers.gate_pass import router as gate_pass_router
 from routers.part_sales import router as part_sales_router
 from routers.partner_payments import router as partner_payments_router
 from routers.crm_purchase_orders import router as crm_purchase_orders_router
+from routers.crm_pickups import router as crm_pickups_router   # Pickup Process (2026-11-11)
 from routers.deals import router as deals_router
 from routers.accounts import router as accounts_router
 from routers.crm_reports import router as crm_reports_router
@@ -337,6 +340,7 @@ app.include_router(gate_pass_router)
 app.include_router(part_sales_router)
 app.include_router(partner_payments_router)
 app.include_router(crm_purchase_orders_router)
+app.include_router(crm_pickups_router)
 app.include_router(deals_router)
 app.include_router(accounts_router)
 app.include_router(crm_reports_router)
@@ -643,6 +647,11 @@ async def startup_event():
             await _migrate_sales_stages_once(_sess)
             await _drop_buyer_po_stage_once(_sess)
             await _backfill_quote_opportunity_once(_sess)
+            await _quotations_v2_once(_sess)
+            await _deal_ids_v2_once(_sess)
+            await _deal_lead_stage_once(_sess)
+            await _order_ids_v2_once(_sess)
+            await _backfill_from_entity_once(_sess)
             await load_all_permissions_to_cache(_sess)
         print("  [Perms] Role permission cache loaded")
     except Exception as _pe:
@@ -873,6 +882,11 @@ async def startup_event():
         async with _ASL7() as _sess7:
             await load_module_visibility_to_cache(_sess7)
         print("  [MasterData] Global Visibility cache loaded")
+        # System Colors (2026-11-08): colour tokens + default Light/Dark mode.
+        from services.system_colors import load_system_colors_to_cache
+        async with _ASL7() as _sess7:
+            await load_system_colors_to_cache(_sess7)
+        print("  [MasterData] System Colors cache loaded")
     except Exception as _gve:
         print(f"  [MasterData] Could not load Global Visibility cache: {_gve}")
 
@@ -909,6 +923,9 @@ async def startup_event():
                 from routers.master import load_module_visibility_to_cache as _gv
                 async with _ASL_periodic() as _sess:
                     await _gv(_sess)
+                from services.system_colors import load_system_colors_to_cache as _sc
+                async with _ASL_periodic() as _sess:
+                    await _sc(_sess)
                 from services.control_engine import invalidate_transitions_cache as _itc
                 _itc()  # lazy-reloads on next call in this worker
             except Exception as _rce:
@@ -1184,6 +1201,199 @@ async def _backfill_quote_opportunity_once(sess) -> None:
         {"v": str(res.rowcount)})
     await sess.commit()
     print(f"  [CRM] {res.rowcount} quote(s) linked to their Buyer Deal")
+
+
+async def _backfill_from_entity_once(sess) -> None:
+    """One-time (2026-11-10, Pankaj): From Entity on existing accounts, deals,
+    quotes and POs filled from the creator's profile entity (users.entity).
+    Rows whose creator has no entity (or no longer exists) stay blank."""
+    import json as _json
+    from sqlalchemy import text as _t
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'from_entity_backfill_v1'"))).first()
+    if done:
+        return
+    counts = {}
+    for table in ("crm_contacts", "crm_sourcing_deals", "crm_sales_opportunities", "crm_quotes", "crm_purchase_orders"):
+        res = await sess.execute(_t(
+            f"UPDATE {table} t SET from_entity = u.entity FROM users u "
+            f"WHERE t.from_entity IS NULL AND t.created_by = u.username AND u.entity IS NOT NULL AND u.entity <> ''"))
+        counts[table] = res.rowcount
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('from_entity_backfill_v1', :v, 'From Entity filled from the creator''s profile entity', 'system', now())"),
+        {"v": _json.dumps(counts)})
+    await sess.commit()
+    print(f"  [CRM] From Entity backfilled: {counts}")
+
+
+async def _quotations_v2_once(sess) -> None:
+    """One-time (2026-11-10, Pankaj): both quotation kinds move to one status
+    flow (Added -> Negotiation -> Approved / Rejected / Expired) and new
+    numbers: Deal Quotes QT-DEAL-<MMYYYY><NNNN>, Telecalling Quotations
+    QT-TELE-<MMYYYY><NNNN>. Existing rows are mapped and renumbered (oldest
+    first, NNNN per month of the quote date); each renumber is written to the
+    audit log so the record's History shows the old number."""
+    import json as _json
+    from sqlalchemy import text as _t
+    from utils.quote_numbers import OLD_STATUS_MAP, month_prefix
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'quotations_v2'"))).first()
+    if done:
+        return
+    counts = {}
+    for table, kind, date_sql, audit_action in (
+            ("crm_quotes", "DEAL", "COALESCE(quote_date, created_at::date, CURRENT_DATE)", "CRM_QUOTE_RENUMBERED"),
+            ("dealer_quotations", "TELE", "COALESCE(created_at::date, CURRENT_DATE)", "DEALER_QUOTATION_RENUMBERED")):
+        for old, new in OLD_STATUS_MAP.items():
+            await sess.execute(_t(f"UPDATE {table} SET status = :n WHERE status = :o"), {"n": new, "o": old})
+        await sess.execute(_t(f"UPDATE {table} SET status = 'added' WHERE status IS NULL OR status = ''"))
+        rows = (await sess.execute(_t(
+            f"SELECT id, quote_number, {date_sql} AS d FROM {table} "
+            f"WHERE quote_number NOT LIKE 'QT-{kind}-%' ORDER BY {date_sql}, created_at, quote_number"))).all()
+        seq = {}
+        for rid, old_no, d in rows:
+            prefix = month_prefix(kind, d)
+            if prefix not in seq:
+                last = (await sess.execute(_t(f"SELECT MAX(quote_number) FROM {table} WHERE quote_number LIKE :p"),
+                                           {"p": prefix + "%"})).scalar()
+                seq[prefix] = int(last[len(prefix):]) if last and last[len(prefix):].isdigit() else 0
+            seq[prefix] += 1
+            new_no = f"{prefix}{seq[prefix]:04d}"
+            await sess.execute(_t(f"UPDATE {table} SET quote_number = :n WHERE id = :i"), {"n": new_no, "i": rid})
+            await sess.execute(_t(
+                "INSERT INTO audit_logs (id, username, action, table_name, record_id, old_value, new_value, notes, timestamp) "
+                "VALUES (gen_random_uuid(), 'system', :a, :t, :r, :o, :n, :nt, now())"),
+                {"a": audit_action, "t": table, "r": str(rid), "o": _json.dumps({"quote_number": old_no}),
+                 "n": _json.dumps({"quote_number": new_no}), "nt": f"Renumbered {old_no} -> {new_no}"})
+        counts[table] = len(rows)
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('quotations_v2', :v, 'Quotation statuses mapped and numbers moved to QT-DEAL / QT-TELE', 'system', now())"),
+        {"v": _json.dumps(counts)})
+    await sess.commit()
+    print(f"  [CRM] Quotations v2: renumbered {counts}")
+
+
+async def _deal_ids_v2_once(sess) -> None:
+    """One-time (2026-11-10, Pankaj): existing deals move to the new IDs —
+    Supplier Deals SUPP-DEAL-<MMYYYY><NNNN> (were SD-<year>-<n>), Customer
+    Deals CUST-DEAL-<MMYYYY><NNNN> (were OPP-<year>-<n>). Oldest first, NNNN
+    per month the deal was created; each renumber is written to the audit log
+    so the deal's History shows the old ID."""
+    import json as _json
+    from sqlalchemy import text as _t
+    from utils.quote_numbers import SUPPLIER_DEAL_BASE, CUSTOMER_DEAL_BASE
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'deal_ids_v2'"))).first()
+    if done:
+        return
+    counts = {}
+    for table, col, base, audit_action in (
+            ("crm_sourcing_deals", "deal_number", SUPPLIER_DEAL_BASE, "CRM_SOURCING_DEAL_RENUMBERED"),
+            ("crm_sales_opportunities", "opp_number", CUSTOMER_DEAL_BASE, "CRM_SALES_DEAL_RENUMBERED")):
+        date_sql = "COALESCE(created_at::date, CURRENT_DATE)"
+        rows = (await sess.execute(_t(
+            f"SELECT id, {col}, {date_sql} AS d FROM {table} "
+            f"WHERE {col} NOT LIKE '{base}-%' ORDER BY {date_sql}, created_at, {col}"))).all()
+        seq = {}
+        for rid, old_no, d in rows:
+            prefix = f"{base}-{d.month:02d}{d.year}"
+            if prefix not in seq:
+                last = (await sess.execute(_t(f"SELECT MAX({col}) FROM {table} WHERE {col} LIKE :p"),
+                                           {"p": prefix + "%"})).scalar()
+                seq[prefix] = int(last[len(prefix):]) if last and last[len(prefix):].isdigit() else 0
+            seq[prefix] += 1
+            new_no = f"{prefix}{seq[prefix]:04d}"
+            await sess.execute(_t(f"UPDATE {table} SET {col} = :n WHERE id = :i"), {"n": new_no, "i": rid})
+            await sess.execute(_t(
+                "INSERT INTO audit_logs (id, username, action, table_name, record_id, old_value, new_value, notes, timestamp) "
+                "VALUES (gen_random_uuid(), 'system', :a, :t, :r, :o, :n, :nt, now())"),
+                {"a": audit_action, "t": table, "r": str(rid), "o": _json.dumps({col: old_no}),
+                 "n": _json.dumps({col: new_no}), "nt": f"Renumbered {old_no} -> {new_no}"})
+        counts[table] = len(rows)
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('deal_ids_v2', :v, 'Deal IDs moved to SUPP-DEAL / CUST-DEAL', 'system', now())"),
+        {"v": _json.dumps(counts)})
+    await sess.commit()
+    print(f"  [CRM] Deal IDs v2: renumbered {counts}")
+
+
+async def _order_ids_v2_once(sess) -> None:
+    """One-time (2026-11-10, Pankaj): existing orders move to the new IDs —
+    Sales Orders SO-DEAL-<MMYYYY><NNNN> (were SO-<year>-<n>), Purchase Orders
+    PO-DEAL-<MMYYYY><NNNN> (were PO-<year>-<n>). Oldest first, NNNN per month
+    of the order date; each renumber is written to the audit log so the
+    order's History shows the old ID. Text already written elsewhere (notes,
+    payment remarks) keeps the old ID as history."""
+    import json as _json
+    from sqlalchemy import text as _t
+    from utils.quote_numbers import SALES_ORDER_BASE, PURCHASE_ORDER_BASE
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'order_ids_v2'"))).first()
+    if done:
+        return
+    counts = {}
+    for table, col, base, date_sql, audit_action in (
+            ("crm_sales_orders", "so_number", SALES_ORDER_BASE,
+             "COALESCE(so_date, created_at::date, CURRENT_DATE)", "CRM_SALES_ORDER_RENUMBERED"),
+            ("crm_purchase_orders", "po_number", PURCHASE_ORDER_BASE,
+             "COALESCE(po_date, created_at::date, CURRENT_DATE)", "CRM_PO_RENUMBERED")):
+        rows = (await sess.execute(_t(
+            f"SELECT id, {col}, {date_sql} AS d FROM {table} "
+            f"WHERE {col} NOT LIKE '{base}-%' ORDER BY {date_sql}, created_at, {col}"))).all()
+        seq = {}
+        for rid, old_no, d in rows:
+            prefix = f"{base}-{d.month:02d}{d.year}"
+            if prefix not in seq:
+                last = (await sess.execute(_t(f"SELECT MAX({col}) FROM {table} WHERE {col} LIKE :p"),
+                                           {"p": prefix + "%"})).scalar()
+                seq[prefix] = int(last[len(prefix):]) if last and last[len(prefix):].isdigit() else 0
+            seq[prefix] += 1
+            new_no = f"{prefix}{seq[prefix]:04d}"
+            await sess.execute(_t(f"UPDATE {table} SET {col} = :n WHERE id = :i"), {"n": new_no, "i": rid})
+            await sess.execute(_t(
+                "INSERT INTO audit_logs (id, username, action, table_name, record_id, old_value, new_value, notes, timestamp) "
+                "VALUES (gen_random_uuid(), 'system', :a, :t, :r, :o, :n, :nt, now())"),
+                {"a": audit_action, "t": table, "r": str(rid), "o": _json.dumps({col: old_no}),
+                 "n": _json.dumps({col: new_no}), "nt": f"Renumbered {old_no} -> {new_no}"})
+        counts[table] = len(rows)
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('order_ids_v2', :v, 'Order IDs moved to SO-DEAL / PO-DEAL', 'system', now())"),
+        {"v": _json.dumps(counts)})
+    await sess.commit()
+    print(f"  [CRM] Order IDs v2: renumbered {counts}")
+
+
+async def _deal_lead_stage_once(sess) -> None:
+    """One-time (2026-11-10, Pankaj): Lead Generated is always done once a deal
+    exists. Deals still sitting at "lead" move to Contacted when they already
+    have prices (Pricing Added done), else to Pricing Added. Each move is
+    written to the audit log."""
+    import json as _json
+    from sqlalchemy import text as _t
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'deal_lead_stage_v1'"))).first()
+    if done:
+        return
+    counts = {}
+    for table, priced, action in (
+            ("crm_sourcing_deals", "COALESCE(asking_price_unit, our_offer_unit, asking_price_total, our_offer_total, 0) > 0",
+             "CRM_SOURCING_STAGE_MOVED"),
+            ("crm_sales_opportunities", "COALESCE(budget_per_unit, estimated_value, 0) > 0", "CRM_SALES_STAGE_MOVED")):
+        rows = (await sess.execute(_t(
+            f"UPDATE {table} SET stage = CASE WHEN {priced} THEN 'contacted' ELSE 'pricing' END "
+            f"WHERE stage = 'lead' RETURNING id, stage"))).all()
+        for rid, st in rows:
+            await sess.execute(_t(
+                "INSERT INTO audit_logs (id, username, action, table_name, record_id, old_value, new_value, notes, timestamp) "
+                "VALUES (gen_random_uuid(), 'system', :a, :t, :r, :o, :n, :nt, now())"),
+                {"a": action, "t": table, "r": str(rid), "o": _json.dumps({"stage": "lead"}),
+                 "n": _json.dumps({"stage": st}), "nt": f"Lead Generated done -> {st}"})
+        counts[table] = len(rows)
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('deal_lead_stage_v1', :v, 'Deals at Lead moved to Pricing Added / Contacted', 'system', now())"),
+        {"v": _json.dumps(counts)})
+    await sess.commit()
+    print(f"  [CRM] Deals at Lead moved on: {counts}")
 
 
 async def _drop_buyer_po_stage_once(sess) -> None:

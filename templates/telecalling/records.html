@@ -3,31 +3,35 @@
 {% block page_title %}Telecalling Records{% endblock %}
 {% block content %}
 
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body">
-    <form method="get" class="row g-2 align-items-end">
-      <div class="col-md-2"><label class="form-label small">From</label><input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm"></div>
-      <div class="col-md-2"><label class="form-label small">To</label><input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm"></div>
-      <div class="col-md-2">
-        <label class="form-label small">Outcome</label>
-        <select name="outcome" class="form-select form-select-sm">
-          <option value="">All</option>
-          {% for o in ['interested','order_placed','callback','not_interested','no_answer','do_not_call'] %}
-          <option value="{{ o }}" {% if o==outcome %}selected{% endif %}>{{ o | replace('_',' ') | title }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2 d-flex gap-1 align-items-end">
-        <button class="btn btn-primary btn-sm">Filter</button>
-        {% if can(current_user, 'telecalling', 'add') %}<a href="/telecalling/add" class="btn btn-success btn-sm"><i class="bi bi-plus"></i> Log Call</a>{% endif %}
-      </div>
-    </form>
+{# Global filter bar (app.css .filter-bar, 2026-11-08) — labels live in title=. #}
+<form method="get" action="/telecalling/records" class="filter-bar">
+  <div class="filter-bar-row">
+    <div><input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" title="Date From"></div>
+    <div><input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" title="Date To"></div>
+    <div>
+      <select name="outcome" class="form-select form-select-sm" title="Outcome">
+        <option value="">All Outcomes</option>
+        {% for o in ['interested','order_placed','callback','not_interested','no_answer','do_not_call'] %}
+        <option value="{{ o }}" {% if o==outcome %}selected{% endif %}>{{ o | replace('_',' ') | title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/telecalling/records" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
+</form>
 
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-telephone me-2"></i>Telecalling Records</span>
+    <div class="d-flex gap-2 align-items-center">
+      {% if can(current_user, 'telecalling', 'add') %}<a href="/telecalling/add" class="btn btn-success btn-sm text-nowrap"><i class="bi bi-plus"></i> Log Call</a>{% endif %}
+    </div>
+  </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
+    <div>
       <table class="table table-hover mb-0 small" id="tcTable">
         <thead class="table-light">
           <tr><th>Date/Time</th><th>Dealer / Customer</th><th>Phone</th><th>Agent</th><th>Outcome</th><th>Products</th><th>Qty</th><th>Budget</th><th>Follow-up</th><th>WA</th></tr>
@@ -35,7 +39,7 @@
         <tbody>
           {% for rec in records %}
           <tr>
-            <td class="text-muted">{{ rec.call_date.strftime('%d-%m-%Y %H:%M') }}</td>
+            <td class="text-muted" data-order="{{ rec.call_date.isoformat() }}">{{ rec.call_date.strftime('%d-%m-%Y %H:%M') }}</td>
             <td>
               {{ rec.dealer_name or rec.customer_name or '—' }}
               {% if rec.dealer_name and rec.customer_name %}
@@ -54,8 +58,6 @@
             <td>{% if rec.next_followup %}<span class="{% if rec.next_followup.date() <= today %}text-danger fw-semibold{% endif %}">{{ rec.next_followup.strftime('%d-%m-%Y') }}</span>{% else %}—{% endif %}</td>
             <td>{% if rec.whatsapp_sent %}<i class="bi bi-check-circle-fill text-success"></i>{% else %}—{% endif %}</td>
           </tr>
-          {% else %}
-          <tr><td colspan="10" class="text-center text-muted py-4">No records found</td></tr>
           {% endfor %}
         </tbody>
       </table>
@@ -64,5 +66,15 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>$(document).ready(function(){ if($('#tcTable tbody tr').length>1)$('#tcTable').DataTable({order:[[0,'desc']],pageLength: 12,searching:false}); });</script>
+<script>
+// Global Table module (static/js/global-table.js, 2026-11-08). Empty tables are
+// handled by language.emptyTable (no colspan placeholder row in the markup).
+$(document).ready(function(){
+  initGlobalTable('#tcTable', {
+    order: [[0, 'desc']],
+    searching: false,
+    language: { emptyTable: 'No records found' },
+  });
+});
+</script>
 {% endblock %}

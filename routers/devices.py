@@ -7,6 +7,7 @@ from utils.price_export import strip_price_columns as _strip_prices   # Pricing 
 from services.parts_changed import changed_parts_by_device, parts_badge_map, parts_display_map, spec_cell
 from templates_config import templates
 import csv, io, re, uuid as uuid_module
+from typing import Optional
 from datetime import datetime
 from utils.timezone import app_now
 from utils.csv_decode import decode_csv_bytes
@@ -128,6 +129,8 @@ async def device_brief(barcode: str, require_stage: str = "", db: AsyncSession =
         "model": device.model or "—",
         "cpu": device.cpu or "—",
         "lot_number": lot_number,
+        # Stock Type (2026-11-08) — Extended Warranty shows it after Lot Number.
+        "stock_type": STOCK_TYPE_LABELS.get(stock_type_key(device.current_stage, device.sub_lot_number), "—"),
         "ram": ram,
         "storage": storage,
         "location": loc,
@@ -268,6 +271,90 @@ async def device_asset_history(barcode: str, db: AsyncSession = Depends(get_db),
             }
             for mv in movements
         ],
+    })
+
+
+def _warranty_label(device, sale) -> str:
+    """Warranty Status on Identity & Location (Device Detail + Search Tags modal)."""
+    w = effective_warranty_for_sale(sale)
+    if device.current_stage != DeviceStage.sold:
+        return "Not Sold Yet"
+    if w and w["status"] == "active":
+        return "Within Warranty"
+    return "Out of Warranty"
+
+
+def _repair_status(device, repairs):
+    """Repair Status (item 9): current stage + repair jobs (newest first)."""
+    lvl = {DeviceStage.l1: 1, DeviceStage.l2: 2, DeviceStage.l3: 3}.get(device.current_stage)
+    if not lvl:
+        return None
+    req = ("Request to L2", "Request to L3", "Escalate to L2", "Escalate to L3")
+    in_prog = any(r.stage == f"L{lvl}" and r.status == RepairStatus.in_progress for r in repairs)
+    latest = repairs[0] if repairs else None
+    if latest and (latest.final_status or "") in req and not in_prog:
+        return f"Request to L{lvl}"
+    if in_prog:
+        return f"In Progress at L{lvl}"
+    return f"Pending at L{lvl}"
+
+
+@router.get("/api/detail-cards")
+async def device_detail_cards(barcode: str, request: Request, db: AsyncSession = Depends(get_db),
+                              current_user: User = Depends(view_allowed)):
+    """Search Tags / top-bar search modal (2026-11-08): the tag's Asset History,
+    Identity & Location and Hardware Specification cards — the same partials
+    Device Detail renders — as an HTML fragment in three columns. Read-only.
+    Matches Tag Number or Serial No., case-insensitive (like /api/asset-history)."""
+    bc = (barcode or "").strip()
+    if not bc:
+        return JSONResponse({"found": False})
+    device = (await db.execute(
+        select(Device).where(or_(Device.barcode.ilike(bc), Device.serial_no.ilike(bc)))
+        .order_by(Device.is_trashed.asc(), Device.updated_at.desc())
+    )).scalars().first()
+    if not device:
+        return JSONResponse({"found": False})
+    lot = (await db.execute(select(Lot).where(Lot.id == device.lot_id))).scalar_one_or_none()
+    movements = (await db.execute(
+        select(StageMovement).where(StageMovement.device_id == device.id)
+        .order_by(StageMovement.moved_at.desc().nullslast())
+    )).scalars().all()
+    repairs = (await db.execute(
+        select(RepairJob).where(RepairJob.device_id == device.id).order_by(RepairJob.started_at.desc())
+    )).scalars().all()
+    current_location = (await _build_location_map(db, [device.id])).get(str(device.id))
+    assigned_location = None
+    loc_id = (current_location.get("location_id") if current_location else None) or device.location_id
+    if loc_id:
+        assigned_location = (await db.execute(
+            select(StorageLocation).where(StorageLocation.id == loc_id))).scalar_one_or_none()
+    iqc_inspection = (await db.execute(
+        select(IQCInspection).where(IQCInspection.device_id == device.id))).scalar_one_or_none()
+    movers = {m.moved_by for m in movements if m.moved_by}
+    mover_names = {}
+    if movers:
+        mover_names = {u: (fn or u) for u, fn in (await db.execute(
+            select(User.username, User.full_name).where(User.username.in_(movers)))).all()}
+    sale = (await db.execute(
+        select(Sale).where(Sale.device_id == device.id).order_by(Sale.sold_at.desc()).limit(1)
+    )).scalars().first()
+    html = templates.get_template("devices/_detail_cards.html").render({
+        "request": request, "current_user": current_user,
+        "device": device, "lot": lot, "movements": movements, "mover_names": mover_names,
+        "stage_labels": STAGE_LABELS, "current_location": current_location,
+        "assigned_location": assigned_location, "iqc": iqc_inspection,
+        "warranty_label": _warranty_label(device, sale),
+        "repair_status": _repair_status(device, repairs),
+        "changed_parts": (await changed_parts_by_device(db, [device.id])).get(str(device.id)),
+        "hw_only": True,
+    })
+    return JSONResponse({
+        "found": True, "barcode": device.barcode,
+        "current_stage": str(device.stage_label),
+        "stage_color": getattr(device, "stage_color", "primary"),
+        "make_model": " ".join(x for x in [device.brand, device.model] if x) or "",
+        "html": html,
     })
 
 
@@ -2030,27 +2117,10 @@ async def device_detail(
     _sale_for_warranty = (await db.execute(
         select(Sale).where(Sale.device_id == device.id).order_by(Sale.sold_at.desc()).limit(1)
     )).scalars().first()
-    _w = effective_warranty_for_sale(_sale_for_warranty)
-    if device.current_stage != DeviceStage.sold:
-        warranty_label = "Not Sold Yet"
-    elif _w and _w["status"] == "active":
-        warranty_label = "Within Warranty"
-    else:
-        warranty_label = "Out of Warranty"
+    warranty_label = _warranty_label(device, _sale_for_warranty)
 
     # ── Repair Status (item 9): derived from current stage + repair jobs ──────
-    repair_status = None
-    _lvl = {DeviceStage.l1: 1, DeviceStage.l2: 2, DeviceStage.l3: 3}.get(device.current_stage)
-    if _lvl:
-        _REQ = ("Request to L2", "Request to L3", "Escalate to L2", "Escalate to L3")
-        in_prog = any(r.stage == f"L{_lvl}" and r.status == RepairStatus.in_progress for r in repairs)
-        latest = repairs[0] if repairs else None
-        if latest and (latest.final_status or "") in _REQ and not in_prog:
-            repair_status = f"Request to L{_lvl}"
-        elif in_prog:
-            repair_status = f"In Progress at L{_lvl}"
-        else:
-            repair_status = f"Pending at L{_lvl}"
+    repair_status = _repair_status(device, repairs)
 
     return templates.TemplateResponse("devices/detail.html", {
         "request": request, "current_user": current_user,
@@ -2235,8 +2305,10 @@ async def device_edit_save(
     notes: str = Form(""),
     qty: str = Form(""),
     device_price_input: str = Form(""),
-    min_selling_price_input: str = Form(""),
-    max_selling_price_input: str = Form(""),
+    # Min / Max Selling Price (2026-11-08): no longer on the edit form — when a
+    # field is not sent at all (None) the stored price is kept untouched.
+    min_selling_price_input: Optional[str] = Form(None),
+    max_selling_price_input: Optional[str] = Form(None),
     barcode_new: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(edit_allowed),
@@ -2247,8 +2319,10 @@ async def device_edit_save(
     from utils.price_export import price_unchanged as _pu
     if _pu(current_user, "devices", device_price_input):
         device_price_input = ""
-    _keep_min = _pu(current_user, "devices", min_selling_price_input)
-    _keep_max = _pu(current_user, "devices", max_selling_price_input)
+    _keep_min = min_selling_price_input is None or _pu(current_user, "devices", min_selling_price_input)
+    _keep_max = max_selling_price_input is None or _pu(current_user, "devices", max_selling_price_input)
+    min_selling_price_input = min_selling_price_input or ""
+    max_selling_price_input = max_selling_price_input or ""
     device = await _get_device_or_404(barcode, db)
 
     # ── Editable Tag Number (up to 100 chars). Check uniqueness BEFORE mutating

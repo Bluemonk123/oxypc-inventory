@@ -121,6 +121,19 @@ async def telesales_dashboard(
         quotations_stmt = quotations_stmt.where(Dealer.assigned_to == current_user.username)
     recent_quotations = (await db.execute(quotations_stmt)).scalars().all()
 
+    # Telecalling Quotations waiting for Level 1 approval (2026-11-10):
+    # Added / Negotiation quotations raised by someone below this user in
+    # Report To (any depth); admin sees all of them.
+    from services.report_chain import subordinates
+    _role = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    pending_stmt = (select(DealerQuotation)
+                    .where(DealerQuotation.status.in_(["added", "negotiation"]))
+                    .order_by(DealerQuotation.created_at.desc()))
+    if _role != "admin":
+        _below = await subordinates(db, current_user.username)
+        pending_stmt = pending_stmt.where(DealerQuotation.created_by.in_(_below or {"__none__"}))
+    pending_quotations = (await db.execute(pending_stmt)).scalars().all()
+
     return templates.TemplateResponse("telesales/dashboard.html", {
         "request": request,
         "current_user": current_user,
@@ -133,4 +146,5 @@ async def telesales_dashboard(
         "returns_month_count": returns_month_count,
         "recent_returns": recent_returns,
         "recent_quotations": recent_quotations,
+        "pending_quotations": pending_quotations,
     })

@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Sale {{ sale.sale_number }} — OxyPC{% endblock %}
 {% block page_title %}Sale Detail{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ sale.sale_number }}{% endblock %}{% block record_parent %}/sales{% endblock %}{% block record_parent_label %}Sales List{% endblock %}
 {% block content %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">

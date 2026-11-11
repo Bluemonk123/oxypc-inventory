@@ -22,14 +22,15 @@ from models.sales import Sale
 from models.device import Device
 from models.lot import Lot
 
+from services.crm_team import team_modal_context as _team_modal_ctx   # Team Mapping Edit (2026-11-11)
+
 router = APIRouter(prefix="/crm/sales", tags=["crm-sales"], dependencies=[Depends(verify_csrf)])
 
 
 async def _next_opp_number(db: AsyncSession) -> str:
-    result = await db.execute(select(func.count(CRMSalesOpportunity.id)))
-    n = (result.scalar() or 0) + 1
-    year = app_now().year
-    return f"OPP-{year}-{n:04d}"
+    """Customer Deal ID CUST-DEAL-<MMYYYY><NNNN> (2026-11-10, was OPP-<year>-<n>)."""
+    from utils.quote_numbers import next_monthly_number, CUSTOMER_DEAL_BASE
+    return await next_monthly_number(db, CRMSalesOpportunity.opp_number, CUSTOMER_DEAL_BASE, app_now().date())
 
 
 # ── LIST ─────────────────────────────────────────────────────────────────────
@@ -107,8 +108,10 @@ async def list_opportunities(
                         "lot_id": str(lot.id), "lot_number": lot.lot_number,
                     }
 
+    from services.doc_downloads import sales_downloads   # Download column (2026-11-10)
+    downloads = await sales_downloads(db, opps)
     return templates.TemplateResponse("crm/sales/list.html", {
-        "request": request, "current_user": current_user,
+        "request": request, "current_user": current_user, "downloads": downloads,
         "opps": opps, "contacts_map": contacts_map, "opp_lots": opp_lots,
         "pipeline_value": pipeline_value, "overdue_count": overdue_count,
         "q": q, "stage": stage, "buyer_type": buyer_type,
@@ -157,6 +160,7 @@ async def create_opp(
     priority:            str = Form(default="medium"),
     assigned_to:         str = Form(default=None),
     notes:               str = Form(default=None),
+    from_entity:         str = Form(default=""),
     product_records:     UploadFile = File(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -192,8 +196,10 @@ async def create_opp(
     est = _n(estimated_value) or (round(qty * bpu, 2) if qty and bpu else None)
 
     opp_number = await _next_opp_number(db)
+    from utils.master_data import clean_from_entity
     opp = CRMSalesOpportunity(
         opp_number=opp_number,
+        from_entity=await clean_from_entity(db, from_entity),
         contact_id=contact_id or None,
         title=title,
         buyer_type=buyer_type or None,
@@ -209,9 +215,19 @@ async def create_opp(
         notes=notes or None,
         product_records_file=saved_filename,
         created_by=current_user.username,
-        stage="lead",
+        # 2026-11-10: Lead Generated is done on creation; Pricing Added too when
+        # a price was entered here (deal opens at Contacted), else it opens at Pricing Added.
+        stage="contacted" if (bpu or est) else "pricing",
     )
     db.add(opp)
+    await db.flush()
+    if bpu or est:   # Pricing entered on the Add page -> "Pricing Added" (2026-11-10)
+        from services.deal_pricing import record_pricing_saved
+        await record_pricing_saved(db, CRMSalesStep, opp, current_user, prices_changed=False)
+    from services.audit_engine import audit
+    await audit(db, action="CRM_SALES_DEAL_CREATED", user=current_user,
+                table_name="crm_sales_opportunities", record_id=str(opp.id),
+                new_value={"opp_number": opp.opp_number, "title": opp.title}, request=request)
     await db.commit()
     return RedirectResponse(url=f"/crm/sales/{opp.id}?success=Opportunity+created", status_code=302)
 
@@ -303,7 +319,10 @@ async def opp_detail(
     if opp.stage in open_keys and opp.stage != open_keys[-1]:
         next_stage = open_keys[open_keys.index(opp.stage) + 1]
 
+    from services.record_history import record_history   # History card (2026-11-09)
+    _history = await record_history(db, opp.id)
     return templates.TemplateResponse("crm/sales/detail.html", {
+        "history": _history,
         "request": request, "current_user": current_user,
         "opp": opp, "contact": contact, "quote": quote, "activities": activities,
         "lot": lot,
@@ -318,6 +337,9 @@ async def opp_detail(
         "stage_steps": SALES_STAGE_STEPS, "steps": steps, "latest_quote": latest_quote,
         "staff": staff, "user_names": user_names,
         "buyer_map": dict(BUYER_TYPES), "material_map": dict(MATERIAL_TYPES),
+        "material_types": MATERIAL_TYPES, "grades": GRADES,   # Pricing card (2026-11-10)
+        "deal_team": await _deal_team(db, opp.contact_id),
+        **(await _team_modal_ctx(db, opp.contact_id)),   # Team Mapping Edit (2026-11-11)    # Team Mapping section (2026-11-10)
         "now": app_now(),
     })
 
@@ -337,6 +359,7 @@ async def move_stage(
     opp = result.scalar_one_or_none()
     if not opp:
         return RedirectResponse(url="/crm/sales?error=Not+found", status_code=302)
+    _old_stage = opp.stage
     opp.stage = new_stage
     if win_loss_reason:
         opp.win_loss_reason = win_loss_reason
@@ -347,6 +370,11 @@ async def move_stage(
         performed_by=current_user.username, outcome="done",
     )
     db.add(activity)
+    from services.audit_engine import audit
+    await audit(db, action="CRM_SALES_STAGE_MOVED", user=current_user,
+                table_name="crm_sales_opportunities", record_id=str(opp.id),
+                old_value={"stage": _old_stage},
+                new_value={"stage": new_stage, "win_loss_reason": opp.win_loss_reason}, request=request)
     await db.commit()
     return RedirectResponse(url=f"/crm/sales/{opp_id}?success=Stage+updated", status_code=302)
 
@@ -433,19 +461,25 @@ async def decide_step(
     request: Request, opp_id: str, step_key: str,
     decision: str = Form(...),
     note: str = Form(default=""),
+    return_to: str = Form(default=""),   # Activity Board approvals tabs (2026-11-10)
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Approve / Reject — only the assigned approver or an admin."""
+    """Approve / Reject — only the assigned approver or an admin. A rejected
+    Negotiation Level 1 sends the deal back to Pricing Approval
+    (services/deal_pricing.py)."""
     from services.audit_engine import audit
+    from services.deal_pricing import on_step_decided, safe_return, back_to
+    _ret = safe_return(return_to)
+    _bk = (lambda _id, msg, ok=True: back_to(_ret, msg, ok)) if _ret else _back
     opp, step = await _opp_and_step(db, opp_id, step_key)
     if not opp or not step or SALES_STEP_INDEX[step_key][2] != "approval":
-        return _back(opp_id, "Approval not found", ok=False)
+        return _bk(opp_id, "Approval not found", ok=False)
     role = getattr(current_user.role, "value", current_user.role)
     if step.assigned_to != current_user.username and role != "admin":
-        return _back(opp_id, "Only the assigned approver can approve or reject", ok=False)
+        return _bk(opp_id, "Only the assigned approver can approve or reject", ok=False)
     if decision not in ("approved", "rejected"):
-        return _back(opp_id, "Choose Approve or Reject", ok=False)
+        return _bk(opp_id, "Choose Approve or Reject", ok=False)
     old = {"status": step.status, "note": step.note}
     step.status = decision
     step.note = (note or "").strip() or None
@@ -458,13 +492,34 @@ async def decide_step(
                 record_id=str(opp.id), old_value=old,
                 new_value={"step": step_key, "status": decision, "note": step.note}, request=request)
     so_msg = ""
-    if step_key == "quote_l2" and decision == "approved":
+    moved = await on_step_decided(db, CRMSalesStep, opp, step_key, decision, current_user)
+    if moved:
+        db.add(_note(opp, current_user, "Negotiation rejected — deal moved back to Pricing Approval"))
+        so_msg = " — back to Pricing Approval"
+    # Approved on the Activity Board and every level of the stage approved ->
+    # the stage is Done and the deal moves on (2026-11-11)
+    if _ret and decision == "approved":
+        from services.stage_advance import advance, all_approvals_done
+        _stage = SALES_STEP_INDEX.get(step_key, (None,))[0]
+        if _stage and await all_approvals_done(db, CRMSalesStep, opp.id, _stage, SALES_STAGE_STEPS):
+            _mv = advance(opp, _stage, SALES_STAGES)
+            if _mv:
+                db.add(_note(opp, current_user, f"Stage moved to: {dict(SALES_STAGES).get(_mv[1], _mv[1])} (approved on Activity Board)"))
+                from services.stage_advance import reopen_approvals
+                if await reopen_approvals(db, CRMSalesStep, opp.id, _mv[1], SALES_STAGE_STEPS):
+                    db.add(_note(opp, current_user, f"{dict(SALES_STAGES).get(_mv[1], _mv[1])} approvals reset to Pending — approve again"))
+                so_msg = f" — moved to {dict(SALES_STAGES).get(_mv[1], _mv[1])}"
+    # Sales Order once BOTH quote levels have approved, in either order (2026-11-11)
+    _other = {"quote_l1": "quote_l2", "quote_l2": "quote_l1"}.get(step_key)
+    _other_ok = bool(_other) and (await db.execute(select(CRMSalesStep.status).where(
+        CRMSalesStep.deal_id == opp.id, CRMSalesStep.step_key == _other))).scalar_one_or_none() == "approved"
+    if _other and decision == "approved" and _other_ok:
         from services.sales_orders import create_sales_order_from_deal
         so = await create_sales_order_from_deal(db, opp, current_user, request)
         if so:
             so_msg = f" — Sales Order {so.so_number} created"
     await db.commit()
-    return _back(opp_id, f"{label} {decision}{so_msg}")
+    return _bk(opp_id, f"{label} {decision}{so_msg}")
 
 
 @router.post("/{opp_id}/steps/{step_key}/attach")
@@ -546,6 +601,11 @@ async def next_stage(
     opp.stage = new
     labels = dict(SALES_STAGES)
     text = f"Stage moved to: {labels.get(new, new)}"
+    # entering a stage asks its approvals again (2026-11-11)
+    from services.stage_advance import reopen_approvals
+    from models.crm import SALES_STAGE_STEPS as _SSS
+    if new not in ("won", "lost") and await reopen_approvals(db, CRMSalesStep, opp.id, new, _SSS):
+        text += " — its approvals reset to Pending"
     if new in ("won", "lost") and opp.win_loss_reason:
         text += f" — {opp.win_loss_reason}"
     db.add(CRMActivity(contact_id=opp.contact_id, deal_id=opp.id, deal_type="sales",
@@ -604,6 +664,7 @@ async def update_opp(
     priority:            str = Form(default="medium"),
     assigned_to:         str = Form(default=None),
     notes:               str = Form(default=None),
+    from_entity:         str = Form(default=""),
     product_records:     UploadFile = File(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -635,8 +696,11 @@ async def update_opp(
             opp.product_records_file = safe_name
 
     opp.title = title
+    from utils.master_data import clean_from_entity
+    opp.from_entity = await clean_from_entity(db, from_entity, opp.from_entity)
     opp.contact_id = contact_id or None
     opp.buyer_type = buyer_type or None
+    _before = _price_snapshot(opp)
     opp.device_type = device_type or None
     opp.required_qty = _i(required_qty)
     opp.material_type = material_type or None
@@ -650,8 +714,81 @@ async def update_opp(
     opp.priority = priority
     opp.assigned_to = assigned_to
     opp.notes = notes or None
+    if _price_snapshot(opp) != _before or opp.budget_per_unit:
+        from services.deal_pricing import record_pricing_saved
+        await record_pricing_saved(db, CRMSalesStep, opp, current_user,
+                                   prices_changed=_price_snapshot(opp) != _before)
+    from services.audit_engine import audit
+    await audit(db, action="CRM_SALES_DEAL_EDITED", user=current_user,
+                table_name="crm_sales_opportunities", record_id=str(opp.id),
+                new_value={"title": opp.title, "priority": opp.priority,
+                           "assigned_to": opp.assigned_to, "from_entity": opp.from_entity}, request=request)
     await db.commit()
     return RedirectResponse(url=f"/crm/sales/{opp_id}?success=Opportunity+updated", status_code=302)
+
+
+def _price_snapshot(opp):
+    """The pricing values that resubmit Pricing Approval when they change."""
+    f = lambda v: None if v is None else round(float(v), 2)  # noqa: E731
+    return (opp.required_qty, f(opp.budget_per_unit), f(opp.estimated_value))
+
+
+@router.post("/{opp_id}/pricing")
+async def save_pricing(
+    request: Request, opp_id: str,
+    device_type:     str = Form(default=None),
+    material_type:   str = Form(default=None),
+    grade_required:  str = Form(default=None),
+    required_qty:    str = Form(default=None),
+    budget_per_unit: str = Form(default=None),
+    estimated_value: str = Form(default=None),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Pricing card on the deal page (2026-11-10, Pankaj): same fields as the
+    Add page's Pricing card. Saving marks "Pricing Added"; a price change
+    resubmits Pricing Approval to its approver (services/deal_pricing.py)."""
+    opp = (await db.execute(select(CRMSalesOpportunity).where(CRMSalesOpportunity.id == opp_id))).scalar_one_or_none()
+    if not opp:
+        return RedirectResponse(url="/crm/sales?error=Not+found", status_code=302)
+
+    def _n(v):
+        try:
+            return round(float(v), 2) if v and v.strip() else None
+        except ValueError:
+            return None
+
+    def _i(v):
+        try:
+            return int(float(v)) if v and v.strip() else None
+        except ValueError:
+            return None
+
+    before = _price_snapshot(opp)
+    opp.device_type = device_type or None
+    opp.material_type = material_type or None
+    opp.grade_required = grade_required or None
+    opp.required_qty = _i(required_qty)
+    from utils.price_export import price_unchanged as _pu
+    if not _pu(current_user, 'crm_sales_opp', budget_per_unit):
+        opp.budget_per_unit = _n(budget_per_unit)
+    # Estimated Value follows Qty x Budget Per Unit (server-side)
+    if opp.budget_per_unit is not None and opp.required_qty:
+        opp.estimated_value = round(float(opp.budget_per_unit) * opp.required_qty, 2)
+    elif not _pu(current_user, 'crm_sales_opp', estimated_value):
+        opp.estimated_value = _n(estimated_value)
+    changed = _price_snapshot(opp) != before
+    from services.deal_pricing import record_pricing_saved
+    from services.audit_engine import audit
+    resubmitted = await record_pricing_saved(db, CRMSalesStep, opp, current_user, prices_changed=changed)
+    db.add(_note(opp, current_user, "Pricing updated" + (" — resubmitted for Pricing Approval" if resubmitted else "")))
+    await audit(db, action="CRM_SALES_PRICING_SAVED", user=current_user,
+                table_name="crm_sales_opportunities", record_id=str(opp.id),
+                old_value={"pricing": [str(x) for x in before]},
+                new_value={"pricing": [str(x) for x in _price_snapshot(opp)], "resubmitted": resubmitted},
+                request=request)
+    await db.commit()
+    return _back(opp_id, "Pricing saved" + (" — sent for Pricing Approval again" if resubmitted else ""))
 
 
 # ── LINK SALE RECORD ──────────────────────────────────────────────────────────
@@ -725,5 +862,14 @@ async def link_sale_submit(
         performed_by=current_user.username, outcome="done",
     )
     db.add(activity)
+    from services.audit_engine import audit
+    await audit(db, action="CRM_SALES_SALE_LINKED", user=current_user,
+                table_name="crm_sales_opportunities", record_id=str(opp.id),
+                new_value={"linked": len(sale_ids), "stage": opp.stage}, request=request)
     await db.commit()
     return RedirectResponse(url=f"/crm/sales/{opp_id}?success=Sale+records+linked", status_code=302)
+
+
+async def _deal_team(db, contact_id):
+    from services.crm_team import deal_team
+    return await deal_team(db, contact_id)

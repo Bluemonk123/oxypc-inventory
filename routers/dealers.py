@@ -257,6 +257,7 @@ def _dealer_base_query(
     followup_from: str = "", followup_to: str = "",
     dealer_type: str = "", sub_category: str = "",
     assign_from: str = "", assign_to: str = "", not_contacted: str = "",
+    quotes_shared: str = "",
 ):
     """Builds the filtered Dealer select — shared by the page (for its count
     cards) and /dealers/data (for the paginated rows), so the two can never
@@ -354,6 +355,13 @@ def _dealer_base_query(
                     aon <= datetime.strptime(assign_to, "%Y-%m-%d").replace(hour=23, minute=59, second=59))
         except ValueError:
             pass
+
+    # Quotes Shared filter (2026-11-10): yes = at least one telecalling
+    # quotation for the dealer, no = none.
+    if quotes_shared in ("yes", "no"):
+        from models.dealer_quotation import DealerQuotation
+        has_q = select(DealerQuotation.dealer_id)
+        base_query = base_query.where(Dealer.id.in_(has_q) if quotes_shared == "yes" else Dealer.id.notin_(has_q))
 
     # "Not Contacted Yet" (2026-11-03): the table's Status column is empty —
     # no call yet, or the latest call has no outcome (Status shows "—").
@@ -485,6 +493,7 @@ async def list_dealers(
     sub_category: str = Query(default=""),
     assign_from: str = Query(default=""), assign_to: str = Query(default=""),
     not_contacted: str = Query(default=""),
+    quotes_shared: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_sales),
 ):
@@ -493,6 +502,7 @@ async def list_dealers(
         filter_qty, filter_purchase_qty, filter_sale_qty, filter_whom_to_sell,
         filter_deals_in, followup_from, followup_to, dealer_type, sub_category,
         assign_from=assign_from, assign_to=assign_to, not_contacted=not_contacted,
+        quotes_shared=quotes_shared,
     )
 
     # Total count
@@ -624,6 +634,7 @@ async def list_dealers(
         "sub_category": sub_category,
         "assign_from": assign_from,
         "assign_to": assign_to,
+        "quotes_shared": quotes_shared,
         "dealer_type_options": await master_values(db, "dealer_dealer_type"),
         "total_count": total_count,
         "active_count": active_count,
@@ -672,6 +683,7 @@ async def dealers_data(
     search_value: str = Query(default="", alias="search[value]"),
     assign_from: str = Query(default=""), assign_to: str = Query(default=""),
     not_contacted: str = Query(default=""),
+    quotes_shared: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_sales),
 ):
@@ -683,6 +695,7 @@ async def dealers_data(
         filter_qty, filter_purchase_qty, filter_sale_qty, filter_whom_to_sell,
         filter_deals_in, followup_from, followup_to, dealer_type, sub_category,
         assign_from=assign_from, assign_to=assign_to, not_contacted=not_contacted,
+        quotes_shared=quotes_shared,
     )
     # The table's own search box narrows the page's filtered set further.
     base_query = _dealer_text_search(base_query, search_value)
@@ -719,6 +732,18 @@ async def dealers_data(
             select(Dealer.id, _assigned_on_expr()).where(Dealer.id.in_(dealer_ids)))).all())
     can_manage_dealers = await _can_manage_dealers(db, current_user, "/dealers")
     today = app_now().date()
+    # Quotes Shared under the Status pill (2026-11-10): the dealer's telecalling
+    # quotations as Quote No links to the detail page (newest first, 3 shown +
+    # "+n more"); Approved ones also get a download icon for the Quote.
+    quote_map: dict = {}
+    if dealer_ids:
+        for _q in (await db.execute(
+                select(DealerQuotation.dealer_id, DealerQuotation.id, DealerQuotation.quote_number, DealerQuotation.status)
+                .where(DealerQuotation.dealer_id.in_(dealer_ids))
+                .order_by(DealerQuotation.created_at.desc()))).all():
+            quote_map.setdefault(_q.dealer_id, []).append(_q)
+    from templates_config import _can as _tcan
+    _can_dl_quote = _tcan(current_user, ["dealers", "quotations"], "export")
 
     data = []
     for d in dealers:
@@ -749,6 +774,24 @@ async def dealers_data(
             f'<span class="badge bg-{_OC_COLORS.get(outcome, "secondary")} bg-opacity-75">'
             f'{esc(OUTCOME_LABELS.get(outcome, (outcome or "").replace("_", " ").title()))}</span>'
         ) if outcome else '<span class="text-muted small">—</span>'
+        _qs = quote_map.get(d.id, [])
+        if _qs:
+            _links = []
+            for _q in _qs[:3]:
+                _l = (f'<a href="/dealer-quotations/{_q.id}" class="text-decoration-none font-monospace" '
+                      f'title="{esc((_q.status or "added").title())} - open quotation">{esc(_q.quote_number or "")}</a>')
+                if _q.status == "approved" and _can_dl_quote:
+                    _l += (f' <a href="/dealer-quotations/{_q.id}/print" target="_blank" class="text-success" '
+                           f'title="Download Quote"><i class="bi bi-download"></i></a>')
+                _links.append(f'<div class="text-nowrap">{_l}</div>')
+            if len(_qs) > 3:
+                _links.append(f'<a href="/dealers/{d.id}" class="text-muted text-decoration-none">+{len(_qs) - 3} more</a>')
+            status_cell += ('<div class="small mt-1" title="Telecalling quotations shared">'
+                            '<div class="text-success text-nowrap"><i class="bi bi-file-earmark-check me-1"></i>Quotes Shared:</div>'
+                            + "".join(_links) + '</div>')
+        else:
+            status_cell += ('<div class="small mt-1 text-muted text-nowrap" title="No telecalling quotation shared yet">'
+                            'Quotes Shared: No</div>')
 
         if next_fu:
             fu_cls = "bg-danger" if next_fu.date() <= today else "bg-info text-dark"
@@ -836,6 +879,7 @@ async def dealers_ids(
     search_value: str = Query(default="", alias="search[value]"),
     assign_from: str = Query(default=""), assign_to: str = Query(default=""),
     not_contacted: str = Query(default=""),
+    quotes_shared: str = Query(default=""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_sales),
 ):
@@ -847,6 +891,7 @@ async def dealers_ids(
         filter_qty, filter_purchase_qty, filter_sale_qty, filter_whom_to_sell,
         filter_deals_in, followup_from, followup_to, dealer_type, sub_category,
         assign_from=assign_from, assign_to=assign_to, not_contacted=not_contacted,
+        quotes_shared=quotes_shared,
     )
     base_query = _dealer_text_search(base_query, search_value)
     sub = base_query.subquery()
@@ -2758,8 +2803,11 @@ async def call_form(
             User.status == True,
         ).order_by(User.full_name)
     )
-    return templates.TemplateResponse("dealers/call_form.html", {
-        "request": request, "current_user": current_user, "dealer": dealer,
+    # ?modal=1 (2026-11-10): just the form, for the Log Call pop-up on the
+    # dealer page and the Dealers table.
+    _modal = request.query_params.get("modal") == "1"
+    return templates.TemplateResponse("dealers/_call_form_body.html" if _modal else "dealers/call_form.html", {
+        "request": request, "current_user": current_user, "dealer": dealer, "modal": _modal,
         "sales_users": su_result.scalars().all(),
         "tc_options": await _tc_field_options(db),
         "call_mode_options": await master_values(db, "call_mode"),

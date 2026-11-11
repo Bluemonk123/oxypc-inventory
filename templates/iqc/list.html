@@ -7,7 +7,7 @@
 <form method="get" action="/iqc" class="filter-bar">
   <div class="filter-bar-row">
     <div class="filter-bar-search">
-      <input type="text" name="q" value="{{ q }}" title="Search" class="form-control form-control-sm font-monospace"
+      <input type="text" name="q" value="{{ q }}" title="Search" class="form-control form-control-sm"
              placeholder="Tag Number, model, brand, serial number…">
     </div>
     <div>
@@ -44,7 +44,7 @@
     </div>
     {% include "_date_range_fields.html" %}
     <div>
-      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-search me-1"></i>Search</button>
+      <button type="submit" class="btn btn-primary btn-sm">Apply</button>
       <a href="/iqc" class="btn btn-outline-secondary bg-white btn-sm">Reset</a>
     </div>
   </div>
@@ -100,7 +100,7 @@
       {% endif %}
       {% if can(current_user, 'iqc', 'add') %}
       <a href="/iqc/new" class="btn btn-primary btn-sm text-nowrap">
-        <i class="bi bi-plus-circle me-1"></i>Add New Asset
+        <i class="bi bi-plus-circle me-1"></i>Add Asset
       </a>
       {% endif %}
     </div>

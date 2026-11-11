@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}GRN {{ g.grn_number }} — OxyPC{% endblock %}
 {% block page_title %}GRN: {{ g.grn_number }}{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ g.grn_number }}{% endblock %}{% block record_parent %}/grn/records{% endblock %}{% block record_parent_label %}GRN Records{% endblock %}
 {% block content %}
 {# GRN Detail (2026-10-31): read-only — same layout as Lot Detail without
    the Lot P&L section and without edit / add / validate buttons. Tags and

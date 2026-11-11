@@ -4,7 +4,7 @@
 {% block content %}
 
 {# Global filter bar (app.css .filter-bar). #}
-<form method="get" action="/part-sales" id="psFilterForm" class="filter-bar filter-bar-6">
+<form method="get" action="/part-sales" id="psFilterForm" class="filter-bar">
   <div class="filter-bar-row">
     <div>
       <input type="date" name="date_from" value="{{ date_from }}" title="Date From" class="form-control form-control-sm">
@@ -13,7 +13,7 @@
       <input type="date" name="date_to" value="{{ date_to }}" title="Date To" class="form-control form-control-sm">
     </div>
     <div>
-      <button type="submit" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-search me-1"></i>Search</button>
+      <button type="submit" class="btn btn-primary btn-sm text-nowrap">Apply</button>
       <a href="/part-sales" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</a>
     </div>
   </div>
@@ -29,7 +29,7 @@
       </a>{% endif %}
       {% if can(current_user, 'part_sales', 'add') %}
       <a href="/part-sales/new" class="btn btn-success btn-sm text-nowrap">
-        <i class="bi bi-plus-circle me-1"></i>New Parts Sale
+        <i class="bi bi-plus-circle me-1"></i>Add Parts Sale
       </a>
       {% endif %}
     </div>

@@ -165,16 +165,16 @@
   <!-- Audit Records -->
   <div class="col-12">
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span class="fw-semibold"><i class="bi bi-table me-2"></i>Audit Records</span>
         <div class="d-flex gap-2 align-items-center flex-wrap">
           <input type="date" id="auditRecordsDateFilter" class="form-control form-control-sm" style="width:auto">
-          <button {% if not can(current_user, 'physical_audits', 'export') %}hidden {% endif %}type="button" id="auditExportBtn" class="btn btn-sm btn-outline-success"
+          <button {% if not can(current_user, 'physical_audits', 'export') %}hidden {% endif %}type="button" id="auditExportBtn" class="btn btn-sm btn-outline-success text-nowrap"
                   title="Excel workbook: Physical Tags, Difference Tags (not scanned), Missing Tags (not in system), Stage Summary and Location Summary sheets (the date picked, or all dates)">
             <i class="bi bi-file-earmark-excel me-1"></i>Export
           </button>
           {# Zip (2026-10-24): every row now shown, each row's Download file, in one zip. #}
-          <button {% if not can(current_user, 'physical_audits', 'export') %}hidden {% endif %}type="button" id="auditZipBtn" class="btn btn-sm btn-outline-primary"
+          <button {% if not can(current_user, 'physical_audits', 'export') %}hidden {% endif %}type="button" id="auditZipBtn" class="btn btn-sm btn-outline-primary text-nowrap"
                   title="Download every row shown in the table (each row's Download file) in one .zip">
             <i class="bi bi-download me-1"></i>Zip
           </button>
@@ -184,10 +184,9 @@
           </form>
         </div>
       </div>
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-hover table-sm mb-0" id="auditRecordsTable">
-            <thead class="table-light">
+      <div class="card-body">
+          <table class="table table-hover align-middle mb-0" id="auditRecordsTable">
+            <thead>
               <tr>
                 <th>Report Date</th>
                 <th>Audit/Physical Stage</th>
@@ -197,24 +196,22 @@
                 <th title="Tags the system has at the scanned Audit/Physical Stage / Location that were not scanned">Difference</th>
                 <th title="Scanned Tag Numbers not found in the system">Missing</th>
                 <th>Notes</th>
-                <th>Download</th>
-                <th>Delete</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody></tbody>
             {# Total row (2026-10-24): the rows shown (date filter + search). #}
-            <tfoot class="table-light fw-semibold">
+            <tfoot class="fw-semibold">
               <tr>
                 <td colspan="3" class="text-end">Total (<span id="auditTotRows">0</span> rows)</td>
                 <td class="text-center" id="auditTotCurrent">0</td>
                 <td class="text-center" id="auditTotPhysical">0</td>
                 <td class="text-center" id="auditTotDifference">0</td>
                 <td class="text-center" id="auditTotMissing">0</td>
-                <td colspan="3"></td>
+                <td colspan="2"></td>
               </tr>
             </tfoot>
           </table>
-        </div>
       </div>
     </div>
   </div>
@@ -560,9 +557,9 @@ function auditCountCell(td, bg) {
   td.style.textAlign = 'center';
 }
 $(function () {
-  window.auditRecordsDt = $('#auditRecordsTable').DataTable({
-    pageLength: 15,
+  window.auditRecordsDt = initGlobalTable('#auditRecordsTable', {
     order: [[0, 'desc']],
+    language: { emptyTable: 'No audit records yet.' },
     footerCallback: function () {
       var api = this.api(), rows = api.rows({ search: 'applied' }).data().toArray();
       var sum = function (k) { return rows.reduce(function (a, r) { return a + (Number(r[k]) || 0); }, 0); };
@@ -604,19 +601,19 @@ $(function () {
         },
       },
       {
-        data: null, orderable: false,
+        // Actions: Download + Delete on one line (each gated as before).
+        data: null, orderable: false, className: 'text-nowrap',
         render: function (data, type, row) {
-          {% if not can(current_user, 'physical_audits', 'export') %}return '';{% endif %}
-          return '<a class="btn btn-sm btn-outline-secondary" href="/audits/records/' + row.id + '/download" title="Excel: Physical, Difference, Missing tags, Stage and Location summary">' +
-                 '<i class="bi bi-download"></i></a>';
-        },
-      },
-      {
-        data: null, orderable: false,
-        render: function (data, type, row) {
-          {% if not can(current_user, 'physical_audits', 'delete') %}return '';{% endif %}
-          return '<button type="button" class="btn btn-sm btn-outline-danger audit-delete-btn" data-id="' + row.id + '">' +
-                 '<i class="bi bi-trash3"></i></button>';
+          var html = '';
+          {% if can(current_user, 'physical_audits', 'export') %}
+          html += '<a class="btn btn-sm btn-outline-secondary" href="/audits/records/' + row.id + '/download" title="Excel: Physical, Difference, Missing tags, Stage and Location summary">' +
+                  '<i class="bi bi-download"></i></a>';
+          {% endif %}
+          {% if can(current_user, 'physical_audits', 'delete') %}
+          html += ' <button type="button" class="btn btn-sm btn-outline-danger audit-delete-btn" data-id="' + row.id + '">' +
+                  '<i class="bi bi-trash3"></i></button>';
+          {% endif %}
+          return html;
         },
       },
     ],

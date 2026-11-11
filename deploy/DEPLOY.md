@@ -108,6 +108,39 @@ chmod 600 /opt/oxypc/.env     # readable only by owner
 chown -R www-data:www-data /opt/oxypc
 ```
 
+### New columns (2026-11-10/11)
+
+From Entity (accounts, deals, quotes, POs), Expected Close Date (Supplier Deals) and Credit Days (accounts) are added
+automatically on startup (`OXYPC_AUTO_FIX=1`, the default), and the one-time startup steps map old quotation statuses
+(shared → added, confirmed → approved) and fill From Entity from the creator's profile. Only if the server runs with
+`OXYPC_AUTO_FIX=0`: run `python migrate_from_entity_credit_days.py` before starting the new version.
+
+### Email notifications (optional, 2026-11-09)
+
+Every personal notification is also emailed to the user's email: the
+Assignee, the Assigner (who did the action), and both of their Report To
+managers — each person once. Broadcasts stay in-app only. One company mailbox sends them all and
+can reach any address (Gmail, Outlook, company mail). Easiest (2026-11-11): **Master Data → Email** — fill in the
+mailbox, Save (written to `.env`, works at once, no restart), then **Send test email**. Or add these to `.env` by hand
+and restart OxyPC. Leave these out and no email is sent.
+
+```bash
+OXYPC_SMTP_HOST=smtp.office365.com      # or smtp.gmail.com (needs an App Password)
+OXYPC_SMTP_PORT=587                     # 465 = SSL
+OXYPC_SMTP_USER=erp@oxypc.in
+OXYPC_SMTP_PASSWORD=...                 # stays in .env, never in the database
+OXYPC_SMTP_FROM=OxyPC ERP <erp@oxypc.in>   # optional, defaults to SMTP_USER
+OXYPC_SMTP_SECURITY=starttls            # optional: starttls | ssl | none
+OXYPC_PUBLIC_URL=http://192.168.1.100:8000   # optional link in each email
+
+# Optional backup mailbox — used automatically when the main one fails
+OXYPC_SMTP2_HOST=smtp.gmail.com
+OXYPC_SMTP2_PORT=587
+OXYPC_SMTP2_USER=oxypc.erp.backup@gmail.com
+OXYPC_SMTP2_PASSWORD=...
+OXYPC_SMTP2_FROM=OxyPC ERP <oxypc.erp.backup@gmail.com>
+```
+
 ---
 
 ## 5. Run as a service

@@ -47,7 +47,10 @@ asyncio.run(main())
         _login(app_client, u, p)
         html = app_client.get("/dealers").text
         assert "<th>Assigned On</th>" in html and 'name="assign_from"' in html and "dlNotContacted" in html
-        assert html.index('name="assign_from"') < html.index('name="calling_date_from"')
+        # 2026-11-10: the Calling Date range is hidden from the filter bar (kept
+        # only as a hidden input when a link already carries it)
+        assert 'name="calling_date_from"' not in html
+        assert 'name="quotes_shared"' in html
 
         def rows(q):
             j = app_client.get(f"/dealers/data?draw=1&start=0&length=200&search[value]=ZZAON&{q}").json()

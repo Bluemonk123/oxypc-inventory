@@ -84,12 +84,14 @@ asyncio.run(main())
 """)
 
 
-def test_button_and_modal_present_on_all_six_pages(app_client, make_user):  # noqa: F811
+def test_modal_present_on_all_six_pages_without_the_old_button(app_client, make_user):  # noqa: F811
+    # 2026-11-09: the per-page Search Tags button was removed — the top-bar
+    # search opens this same modal (base.html includes it once for every page).
     username, password = make_user("admin")
     _login(app_client, username, password)
     for url, label in PAGES:
         html = app_client.get(url, follow_redirects=True).text
-        assert 'onclick="openSearchTagsModal()"' in html, f"{label} ({url}) missing Search Tags button"
+        assert 'onclick="openSearchTagsModal()"' not in html, f"{label} ({url}) still has the Search Tags button"
         assert 'id="searchTagsModal"' in html, f"{label} ({url}) missing the modal itself"
         assert 'id="stModal_search"' in html, f"{label} ({url}) missing the modal's search input"
 

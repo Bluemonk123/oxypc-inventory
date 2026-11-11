@@ -1,13 +1,39 @@
+{#- Page name (2026-11-10, Pankaj) — one name for the top bar AND the browser tab:
+    * list / normal pages: the Landing Pages custom title for the path, else the
+      page's own {% block page_title %};
+    * record detail pages set {% block record_id %} (+ record_parent = the list
+      URL, record_parent_label = that list's default name) and show
+      "<list page name> > <record id>", where the list page name is the same
+      Landing Pages custom title the list page itself shows.
+    The tab shows exactly the top bar name; {% block title %} is only a fallback
+    for pages with no page name at all. -#}
+{%- set _record_id %}{% block record_id %}{% endblock %}{% endset -%}
+{%- set _record_parent_url %}{% block record_parent %}{% endblock %}{% endset -%}
+{%- set _record_parent_label %}{% block record_parent_label %}{% endblock %}{% endset -%}
+{%- set _default_page_title %}{% block page_title %}{% endblock %}{% endset -%}
+{%- set _rid = _record_id | striptags | trim -%}
+{%- set _purl = _record_parent_url | trim -%}
+{%- if _rid -%}
+  {%- set _ptitle = ((resolve_page_title(_purl) if _purl else None) or (_record_parent_label | striptags | trim) or (_default_page_title | striptags | trim)) -%}
+  {%- set _top_title = (_ptitle ~ ' > ' ~ _rid) if _ptitle else _rid -%}
+{%- else -%}
+  {%- set _ptitle = '' -%}
+  {%- set _top_title = (resolve_page_title(request.url.path) or (_default_page_title | striptags)) | trim -%}
+{%- endif -%}
+{%- set _tab_fallback %}{% block title %}OxyPC Inventory Lifecycle{% endblock %}{% endset -%}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-bs-theme="{{ theme_mode(request) }}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>{% block title %}OxyPC Inventory Lifecycle{% endblock %}</title>
+  <title>{{ _top_title or (_tab_fallback | striptags | trim) }}</title>
   <link rel="stylesheet" href="/static/vendor/bootstrap/css/bootstrap.min.css">
   <link rel="stylesheet" href="/static/vendor/bootstrap-icons/bootstrap-icons.css">
   <link rel="stylesheet" href="/static/vendor/datatables/css/dataTables.bootstrap5.min.css">
+  <link rel="stylesheet" href="/static/vendor/flatpickr/flatpickr.min.css">
   <link rel="stylesheet" href="/static/css/app.css?v={{ ASSET_VERSION }}">
+  {# System Colors (2026-11-08): Admin → Master Data → System Colors tokens, Light and Dark. #}
+  <style id="systemColors">{{ system_colors_css() | safe }}</style>
   <style>
     /* Clamp long notes/remarks/comment cells to 2 lines; full text on hover (title). */
     .note-clamp { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; max-width:260px; }
@@ -17,7 +43,7 @@
     #tbSearchWrap { position:relative; flex:1 1 300px; width:300px; max-width:300px; min-width:160px; }
     #tbSearchWrap .tbs-ico { position:absolute; left:.6rem; top:50%; transform:translateY(-50%); color:#6c757d; pointer-events:none; }
     /* Light Colour from the design system (--sidebar-text #f0f4f8, the page background). */
-    #tbSearch { padding-left:2rem; background-color:var(--sidebar-text, #f0f4f8); }
+    #tbSearch { padding-left:2rem; background-color:var(--oxy-light, #f0f4f8); }
     #tbSearchMenu { position:absolute; top:calc(100% + 4px); left:50%; transform:translateX(-50%);
       width:max-content; min-width:380px; max-width:calc(100vw - 24px); max-height:420px; overflow-y:auto;
       background:#fff; border:1px solid #dee2e6; border-radius:.5rem; box-shadow:0 .5rem 1rem rgba(0,0,0,.15);
@@ -36,7 +62,7 @@
       display:inline-flex; align-items:center; white-space:nowrap;
       padding:.3rem .75rem; border-radius:999px; border:1px solid #dee2e6; background:#f1f3f5; }
     /* Status pill (2026-10-24): light tint + border in the state's colour. */
-    #serverStatusBadge[data-state="up"] { background:#E8F5E6; border-color:#b9e2b4; }
+    #serverStatusBadge[data-state="up"] { background:transparent; border-color:transparent; }  /* plain text + icon (2026-11-10) */
     #serverStatusBadge[data-state="down"] { background:#fdeaea; border-color:#f1aeb5;
       box-shadow:0 0 0 3px rgba(220,53,69,.12); }
     /* Disconnected animation (2026-10-27): soft red stripes drift across the
@@ -68,7 +94,7 @@
 <div class="d-flex" id="wrapper">
   <!-- Sidebar -->
   <nav id="sidebar" class="sidebar-nav d-flex flex-column flex-shrink-0 p-0">
-    <div class="sidebar-brand d-flex align-items-center px-3 py-3" style="background:#129042;color:#fff;">
+    <div class="sidebar-brand d-flex align-items-center px-3 py-3" style="background:var(--oxy-sidebar-header, #129042);color:#fff;">
       {# App logo (2026-10-21, OxyPC box C2 Round): oxypc-box-light.svg — the
          white-box version made for this Forest green header. The green-box
          oxypc-box-dark.svg is the browser-tab icon and login badge. 28 px ≈
@@ -363,8 +389,28 @@
       </li>
       {% endif %}
 
+      {# ── CUSTOMER CARE AGENT (post-sale warranty/diagnostics/ticketing) ─ #}
+      {% if has_perm(role,'care_support','enable') and not module_hidden('care_support') %}
+      <li class="nav-section">CUSTOMER CARE</li>
+      <li><a href="/care-support/tickets" class="nav-link {% if request.url.path.startswith('/care-support/tickets') %}active{% endif %}">
+        <i class="bi bi-ticket-perforated me-2"></i> {{ sidebar_label('care_support', 'Ticket Queue') }}
+      </a></li>
+      <li><a href="/care-support/pairings" class="nav-link {% if request.url.path.startswith('/care-support/pairings') %}active{% endif %}">
+        <i class="bi bi-hdd-network me-2"></i> Device Pairings
+      </a></li>
+      <li><a href="/care-support/provision" class="nav-link {% if request.url.path.startswith('/care-support/provision') %}active{% endif %}">
+        <i class="bi bi-usb-plug me-2"></i> Provision Device
+      </a></li>
+      <li><a href="/care-support/offers" class="nav-link {% if request.url.path.startswith('/care-support/offers') %}active{% endif %}">
+        <i class="bi bi-tags me-2"></i> Offers
+      </a></li>
+      <li><a href="/care-support/pilot" class="nav-link {% if request.url.path.startswith('/care-support/pilot') %}active{% endif %}">
+        <i class="bi bi-graph-up me-2"></i> Pilot Dashboard
+      </a></li>
+      {% endif %}
+
       {# ── CRM ─────────────────────────────────────────────────────────── #}
-      {% if any_perm(role,'crm_dashboard','crm_contacts','crm_sourcing','crm_sales_opp','crm_price_matrix','crm_purchase_orders','crm_analytics','crm_assign_leads') %}
+      {% if any_perm(role,'crm_dashboard','crm_contacts','crm_sourcing','crm_sales_opp','crm_price_matrix','crm_purchase_orders','crm_pickups','crm_analytics','crm_assign_leads') %}
       <li class="nav-section">CRM</li>
       {% if has_perm(role,'crm_dashboard','enable') and not module_hidden('crm_dashboard') %}
       <li><a href="/procure-dashboard" class="nav-link {% if request.url.path == '/procure-dashboard' %}active{% endif %}">
@@ -408,6 +454,12 @@
         <i class="bi bi-file-earmark-text me-2"></i> {{ sidebar_label('crm_purchase_orders', 'Purchase Orders') }}
       </a></li>
       {% endif %}
+      {# Pickup Process (2026-11-11, Pankaj): below PO Records; default disabled #}
+      {% if has_perm(role,'crm_pickups','enable') and not module_hidden('crm_pickups') %}
+      <li><a href="/crm/pickups" class="nav-link {% if request.url.path.startswith('/crm/pickups') %}active{% endif %}">
+        <i class="bi bi-truck me-2"></i> {{ sidebar_label('crm_pickups', 'Pickup Process') }}
+      </a></li>
+      {% endif %}
       {% if has_perm(role,'crm_analytics','enable') and not module_hidden('crm_analytics') %}
       <li><a href="/crm/reports" class="nav-link {% if request.url.path.startswith('/crm/reports') %}active{% endif %}">
         <i class="bi bi-bar-chart me-2"></i> {{ sidebar_label('crm_analytics', 'CRM Analytics') }}
@@ -420,87 +472,50 @@
       {% endif %}
       {% endif %}
 
-      {# ── EXTERNAL PARTNER (dealer-facing B2B portal admin) ────────────────── #}
-      {# Split (2026-09-22) into one has_perm()/module_hidden() check per page
-         — was one wrapper on 'trade_partner' gating the whole section, now
-         each link gates on its own page-specific module key so they can be
-         enabled independently. #}
-      {% if (has_perm(role,'trade_partner_partners','enable') and not module_hidden('trade_partner_partners'))
-            or (has_perm(role,'trade_partner_listings','enable') and not module_hidden('trade_partner_listings'))
-            or (has_perm(role,'trade_partner_bookings','enable') and not module_hidden('trade_partner_bookings'))
-            or (has_perm(role,'trade_partner_my_desk','enable') and not module_hidden('trade_partner_my_desk'))
-            or (has_perm(role,'trade_partner_floors','enable') and not module_hidden('trade_partner_floors'))
-            or (has_perm(role,'trade_partner_settings','enable') and not module_hidden('trade_partner_settings'))
-            or (has_perm(role,'trade_partner_manage_lots','enable') and not module_hidden('trade_partner_manage_lots'))
-            or (has_perm(role,'trade_partner_all_deals','enable') and not module_hidden('trade_partner_all_deals'))
-            or (has_perm(role,'trade_partner_bids','enable') and not module_hidden('trade_partner_bids')) %}
-      <li class="nav-section">EXTERNAL PARTNER</li>
+      {# ── FINANCE ─────────────────────────────────────────────────────── #}
+      {% if has_perm(role,'finance','enable') and not module_hidden('finance') or has_perm(role,'finance_supplier','enable') and not module_hidden('finance_supplier') or has_perm(role,'finance_customer','enable') and not module_hidden('finance_customer') or role == 'admin' %}
+      <li class="nav-section">FINANCE</li>
       {% endif %}
-      {% if has_perm(role,'trade_partner_partners','enable') and not module_hidden('trade_partner_partners') %}
-      <li><a href="/trade-partner/partners" class="nav-link {% if request.url.path.startswith('/trade-partner/partners') %}active{% endif %}">
-        <i class="bi bi-shop me-2"></i> {{ sidebar_label('trade_partner_partners', 'Partner Accounts') }}
+      {% if has_perm(role,'finance','enable') and not module_hidden('finance') %}
+      <li><a href="/accounts" class="nav-link {% if request.url.path == '/accounts' %}active{% endif %}">
+        <i class="bi bi-wallet2 me-2"></i> {{ sidebar_label('finance', 'Accounts') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'trade_partner_listings','enable') and not module_hidden('trade_partner_listings') %}
-      <li><a href="/trade-partner/listings" class="nav-link {% if request.url.path.startswith('/trade-partner/listings') %}active{% endif %}">
-        <i class="bi bi-megaphone me-2"></i> {{ sidebar_label('trade_partner_listings', 'Listings Manager') }}
+      {% if has_perm(role,'finance_supplier','enable') and not module_hidden('finance_supplier') %}
+      <li><a href="/accounts/supplier-payments" class="nav-link {% if '/accounts/supplier-payments' in request.url.path %}active{% endif %}">
+        <i class="bi bi-arrow-up-circle me-2"></i> {{ sidebar_label('finance_supplier', 'Supplier Payments') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'trade_partner_bids','enable') and not module_hidden('trade_partner_bids') %}
-      <li><a href="/trade-partner/bids" class="nav-link {% if request.url.path.startswith('/trade-partner/bids') %}active{% endif %}">
-        <i class="bi bi-hammer me-2"></i> {{ sidebar_label('trade_partner_bids', 'Bids Created') }}
+      {% if has_perm(role,'finance_customer','enable') and not module_hidden('finance_customer') %}
+      <li><a href="/accounts/customer-receipts" class="nav-link {% if '/accounts/customer-receipts' in request.url.path %}active{% endif %}">
+        <i class="bi bi-arrow-down-circle me-2"></i> {{ sidebar_label('finance_customer', 'Customer Receipts') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'trade_partner_manage_lots','enable') and not module_hidden('trade_partner_manage_lots') %}
-      <li><a href="/trade-partner/manage-lots" class="nav-link {% if request.url.path.startswith('/trade-partner/manage-lots') %}active{% endif %}">
-        <i class="bi bi-box-seam me-2"></i> {{ sidebar_label('trade_partner_manage_lots', 'Manage Lots') }}
+      {% if has_perm(role,'partner_payments','enable') and not module_hidden('partner_payments') %}
+      <li><a href="/partner-payments" class="nav-link {% if '/partner-payments' in request.url.path %}active{% endif %}">
+        <i class="bi bi-cash-coin me-2"></i> {{ sidebar_label('partner_payments', 'Partner Payments') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'trade_partner_all_deals','enable') and not module_hidden('trade_partner_all_deals') %}
-      <li><a href="/deals" class="nav-link {% if request.url.path.startswith('/deals') %}active{% endif %}">
-        <i class="bi bi-briefcase me-2"></i> {{ sidebar_label('trade_partner_all_deals', 'All Deals') }}
+      {# Terms & Conditions moved here — directly before Company Setting —
+         per the requested nav order. Admin-only by default; grantable to
+         sub_admin (or any role) via has_explicit_perm(), same as the Admin
+         Settings items. #}
+      {% if (role == 'admin' or has_explicit_perm(role, 'terms_conditions')) and not module_hidden('terms_conditions') %}
+      <li><a href="/admin/terms-conditions" class="nav-link {% if '/admin/terms-conditions' in request.url.path %}active{% endif %}">
+        <i class="bi bi-file-text me-2"></i> {{ sidebar_label('terms_conditions', 'Terms & Conditions') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'trade_partner_bookings','enable') and not module_hidden('trade_partner_bookings') %}
-      <li><a href="/trade-partner/bookings" class="nav-link {% if request.url.path.startswith('/trade-partner/bookings') %}active{% endif %}">
-        <i class="bi bi-bookmark-check me-2"></i> {{ sidebar_label('trade_partner_bookings', 'Bookings Queue') }}
+      {% if role == 'admin' %}
+      <li><a href="/settings" class="nav-link {% if request.url.path == '/settings' %}active{% endif %}">
+        <i class="bi bi-gear me-2"></i> Company Setting
       </a></li>
       {% endif %}
-      {% if has_perm(role,'trade_partner_my_desk','enable') and not module_hidden('trade_partner_my_desk') %}
-      <li><a href="/trade-partner/my-desk" class="nav-link {% if request.url.path.startswith('/trade-partner/my-desk') %}active{% endif %}">
-        <i class="bi bi-person-workspace me-2"></i> {{ sidebar_label('trade_partner_my_desk', 'My Desk') }}
-      </a></li>
-      {% endif %}
-      {% if role_allowed(role, 'admin') and has_perm(role,'trade_partner_floors','enable') and not module_hidden('trade_partner_floors') %}
-      <li><a href="/trade-partner/floors" class="nav-link {% if request.url.path.startswith('/trade-partner/floors') %}active{% endif %}">
-        <i class="bi bi-shield-lock me-2"></i> {{ sidebar_label('trade_partner_floors', 'Margin Floors') }}
-      </a></li>
-      {% endif %}
-      {% if has_perm(role,'trade_partner_settings','enable') and not module_hidden('trade_partner_settings') %}
-      <li><a href="/trade-partner/settings" class="nav-link {% if request.url.path.startswith('/trade-partner/settings') %}active{% endif %}">
-        <i class="bi bi-gear me-2"></i> {{ sidebar_label('trade_partner_settings', 'Portal Settings') }}
+      {% if has_perm(role,'cost_config','enable') and not module_hidden('cost_config') %}
+      <li><a href="/admin/cost-config" class="nav-link {% if '/admin/cost-config' in request.url.path %}active{% endif %}">
+        <i class="bi bi-calculator me-2"></i> {{ sidebar_label('cost_config', 'Cost Config') }}
       </a></li>
       {% endif %}
 
-      {# ── CUSTOMER CARE AGENT (post-sale warranty/diagnostics/ticketing) ─ #}
-      {% if has_perm(role,'care_support','enable') and not module_hidden('care_support') %}
-      <li class="nav-section">CUSTOMER CARE</li>
-      <li><a href="/care-support/tickets" class="nav-link {% if request.url.path.startswith('/care-support/tickets') %}active{% endif %}">
-        <i class="bi bi-ticket-perforated me-2"></i> {{ sidebar_label('care_support', 'Ticket Queue') }}
-      </a></li>
-      <li><a href="/care-support/pairings" class="nav-link {% if request.url.path.startswith('/care-support/pairings') %}active{% endif %}">
-        <i class="bi bi-hdd-network me-2"></i> Device Pairings
-      </a></li>
-      <li><a href="/care-support/provision" class="nav-link {% if request.url.path.startswith('/care-support/provision') %}active{% endif %}">
-        <i class="bi bi-usb-plug me-2"></i> Provision Device
-      </a></li>
-      <li><a href="/care-support/offers" class="nav-link {% if request.url.path.startswith('/care-support/offers') %}active{% endif %}">
-        <i class="bi bi-tags me-2"></i> Offers
-      </a></li>
-      <li><a href="/care-support/pilot" class="nav-link {% if request.url.path.startswith('/care-support/pilot') %}active{% endif %}">
-        <i class="bi bi-graph-up me-2"></i> Pilot Dashboard
-      </a></li>
-      {% endif %}
 
       {# ── SALES & CRM (Overdue Orders removed — now on Sales List page) ─ #}
       {% if any_perm(role,'dealers','telecalling','quotations','model_requests','whatsapp','assign_dealer_leads','telesales_dashboard') %}
@@ -613,50 +628,67 @@
       {% endif %}
       {% endif %}
 
-      {# ── FINANCE ─────────────────────────────────────────────────────── #}
-      {% if has_perm(role,'finance','enable') and not module_hidden('finance') or has_perm(role,'finance_supplier','enable') and not module_hidden('finance_supplier') or has_perm(role,'finance_customer','enable') and not module_hidden('finance_customer') or role == 'admin' %}
-      <li class="nav-section">FINANCE</li>
+      {# ── EXTERNAL PARTNER (dealer-facing B2B portal admin) ────────────────── #}
+      {# Split (2026-09-22) into one has_perm()/module_hidden() check per page
+         — was one wrapper on 'trade_partner' gating the whole section, now
+         each link gates on its own page-specific module key so they can be
+         enabled independently. #}
+      {% if (has_perm(role,'trade_partner_partners','enable') and not module_hidden('trade_partner_partners'))
+            or (has_perm(role,'trade_partner_listings','enable') and not module_hidden('trade_partner_listings'))
+            or (has_perm(role,'trade_partner_bookings','enable') and not module_hidden('trade_partner_bookings'))
+            or (has_perm(role,'trade_partner_my_desk','enable') and not module_hidden('trade_partner_my_desk'))
+            or (has_perm(role,'trade_partner_floors','enable') and not module_hidden('trade_partner_floors'))
+            or (has_perm(role,'trade_partner_settings','enable') and not module_hidden('trade_partner_settings'))
+            or (has_perm(role,'trade_partner_manage_lots','enable') and not module_hidden('trade_partner_manage_lots'))
+            or (has_perm(role,'trade_partner_all_deals','enable') and not module_hidden('trade_partner_all_deals'))
+            or (has_perm(role,'trade_partner_bids','enable') and not module_hidden('trade_partner_bids')) %}
+      <li class="nav-section">EXTERNAL PARTNER</li>
       {% endif %}
-      {% if has_perm(role,'finance','enable') and not module_hidden('finance') %}
-      <li><a href="/accounts" class="nav-link {% if request.url.path == '/accounts' %}active{% endif %}">
-        <i class="bi bi-wallet2 me-2"></i> {{ sidebar_label('finance', 'Accounts') }}
+      {% if has_perm(role,'trade_partner_partners','enable') and not module_hidden('trade_partner_partners') %}
+      <li><a href="/trade-partner/partners" class="nav-link {% if request.url.path.startswith('/trade-partner/partners') %}active{% endif %}">
+        <i class="bi bi-shop me-2"></i> {{ sidebar_label('trade_partner_partners', 'Partner Accounts') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'finance_supplier','enable') and not module_hidden('finance_supplier') %}
-      <li><a href="/accounts/supplier-payments" class="nav-link {% if '/accounts/supplier-payments' in request.url.path %}active{% endif %}">
-        <i class="bi bi-arrow-up-circle me-2"></i> {{ sidebar_label('finance_supplier', 'Supplier Payments') }}
+      {% if has_perm(role,'trade_partner_listings','enable') and not module_hidden('trade_partner_listings') %}
+      <li><a href="/trade-partner/listings" class="nav-link {% if request.url.path.startswith('/trade-partner/listings') %}active{% endif %}">
+        <i class="bi bi-megaphone me-2"></i> {{ sidebar_label('trade_partner_listings', 'Listings Manager') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'finance_customer','enable') and not module_hidden('finance_customer') %}
-      <li><a href="/accounts/customer-receipts" class="nav-link {% if '/accounts/customer-receipts' in request.url.path %}active{% endif %}">
-        <i class="bi bi-arrow-down-circle me-2"></i> {{ sidebar_label('finance_customer', 'Customer Receipts') }}
+      {% if has_perm(role,'trade_partner_bids','enable') and not module_hidden('trade_partner_bids') %}
+      <li><a href="/trade-partner/bids" class="nav-link {% if request.url.path.startswith('/trade-partner/bids') %}active{% endif %}">
+        <i class="bi bi-hammer me-2"></i> {{ sidebar_label('trade_partner_bids', 'Bids Created') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'partner_payments','enable') and not module_hidden('partner_payments') %}
-      <li><a href="/partner-payments" class="nav-link {% if '/partner-payments' in request.url.path %}active{% endif %}">
-        <i class="bi bi-cash-coin me-2"></i> {{ sidebar_label('partner_payments', 'Partner Payments') }}
+      {% if has_perm(role,'trade_partner_manage_lots','enable') and not module_hidden('trade_partner_manage_lots') %}
+      <li><a href="/trade-partner/manage-lots" class="nav-link {% if request.url.path.startswith('/trade-partner/manage-lots') %}active{% endif %}">
+        <i class="bi bi-box-seam me-2"></i> {{ sidebar_label('trade_partner_manage_lots', 'Manage Lots') }}
       </a></li>
       {% endif %}
-      {# Terms & Conditions moved here — directly before Company Setting —
-         per the requested nav order. Admin-only by default; grantable to
-         sub_admin (or any role) via has_explicit_perm(), same as the Admin
-         Settings items. #}
-      {% if (role == 'admin' or has_explicit_perm(role, 'terms_conditions')) and not module_hidden('terms_conditions') %}
-      <li><a href="/admin/terms-conditions" class="nav-link {% if '/admin/terms-conditions' in request.url.path %}active{% endif %}">
-        <i class="bi bi-file-text me-2"></i> {{ sidebar_label('terms_conditions', 'Terms & Conditions') }}
+      {% if has_perm(role,'trade_partner_all_deals','enable') and not module_hidden('trade_partner_all_deals') %}
+      <li><a href="/deals" class="nav-link {% if request.url.path.startswith('/deals') %}active{% endif %}">
+        <i class="bi bi-briefcase me-2"></i> {{ sidebar_label('trade_partner_all_deals', 'All Deals') }}
       </a></li>
       {% endif %}
-      {% if role == 'admin' %}
-      <li><a href="/settings" class="nav-link {% if request.url.path == '/settings' %}active{% endif %}">
-        <i class="bi bi-gear me-2"></i> Company Setting
+      {% if has_perm(role,'trade_partner_bookings','enable') and not module_hidden('trade_partner_bookings') %}
+      <li><a href="/trade-partner/bookings" class="nav-link {% if request.url.path.startswith('/trade-partner/bookings') %}active{% endif %}">
+        <i class="bi bi-bookmark-check me-2"></i> {{ sidebar_label('trade_partner_bookings', 'Bookings Queue') }}
       </a></li>
       {% endif %}
-      {% if has_perm(role,'cost_config','enable') and not module_hidden('cost_config') %}
-      <li><a href="/admin/cost-config" class="nav-link {% if '/admin/cost-config' in request.url.path %}active{% endif %}">
-        <i class="bi bi-calculator me-2"></i> {{ sidebar_label('cost_config', 'Cost Config') }}
+      {% if has_perm(role,'trade_partner_my_desk','enable') and not module_hidden('trade_partner_my_desk') %}
+      <li><a href="/trade-partner/my-desk" class="nav-link {% if request.url.path.startswith('/trade-partner/my-desk') %}active{% endif %}">
+        <i class="bi bi-person-workspace me-2"></i> {{ sidebar_label('trade_partner_my_desk', 'My Desk') }}
       </a></li>
       {% endif %}
-
+      {% if role_allowed(role, 'admin') and has_perm(role,'trade_partner_floors','enable') and not module_hidden('trade_partner_floors') %}
+      <li><a href="/trade-partner/floors" class="nav-link {% if request.url.path.startswith('/trade-partner/floors') %}active{% endif %}">
+        <i class="bi bi-shield-lock me-2"></i> {{ sidebar_label('trade_partner_floors', 'Margin Floors') }}
+      </a></li>
+      {% endif %}
+      {% if has_perm(role,'trade_partner_settings','enable') and not module_hidden('trade_partner_settings') %}
+      <li><a href="/trade-partner/settings" class="nav-link {% if request.url.path.startswith('/trade-partner/settings') %}active{% endif %}">
+        <i class="bi bi-gear me-2"></i> {{ sidebar_label('trade_partner_settings', 'Portal Settings') }}
+      </a></li>
+      {% endif %}
 
       {# ── PRODUCT MASTER (2026-10-14) — each page OFF by default for every role
          until enabled in Master Data -> Permission Matrix; admin always sees them. #}
@@ -993,11 +1025,17 @@
         </button>
       </div>
       {% endif %}
-      <span class="navbar-brand mb-0 h1 fw-bold text-primary">{% set _default_page_title %}{% block page_title %}{% endblock %}{% endset %}{{ resolve_page_title(request.url.path) or _default_page_title }}</span>
+      <span class="navbar-brand mb-0 h1 fw-bold text-primary">{% if _rid and _ptitle %}{% if _purl %}<a href="{{ _purl }}" class="text-decoration-none">{{ _ptitle }}</a>{% else %}{{ _ptitle }}{% endif %}<span class="text-muted fw-normal mx-2">&gt;</span>{{ _rid }}{% else %}{{ _top_title }}{% endif %}</span>
       {# Optional page-specific badge right after the title (e.g. User
          Management's "Today Login"). Empty on every other page. #}
       {% block page_title_extra %}{% endblock %}
       <div class="ms-auto d-flex align-items-center gap-3">
+        {# Order (2026-11-10, Pankaj): status, search, bell, "+", Raise Ticket. #}
+        <!-- Server connection status — real /health polling, see watchdog
+             script near the closing </body>. Not a decorative indicator. -->
+        <span id="serverStatusBadge" style="color:#6c757d" title="Live connection to the application server">
+          <i class="bi bi-arrow-repeat me-1"></i>CONNECTING
+        </span>
         <!-- Search / Scan Tag Number (2026-10-24) — static/js/topbar-search.js -->
         <div id="tbSearchWrap">
           <i class="bi bi-upc-scan tbs-ico"></i>
@@ -1005,17 +1043,6 @@
                  placeholder="Search - Tag or Serial" autocomplete="off" spellcheck="false"
                  aria-label="Search a Tag Number or Serial Number">
         </div>
-        <!-- Server connection status — real /health polling, see watchdog
-             script near the closing </body>. Not a decorative indicator. -->
-        <span id="serverStatusBadge" style="color:#6c757d" title="Live connection to the application server">
-          <i class="bi bi-arrow-repeat me-1"></i>CONNECTING
-        </span>
-        <!-- Raise Ticket sits before the bell (2026-10-21) -->
-        <button type="button" class="btn btn-warning btn-sm fw-semibold"
-                data-bs-toggle="modal" data-bs-target="#raiseTicketModal"
-                title="Raise a support ticket">
-          Raise Ticket
-        </button>
         <!-- Notification Bell -->
         <div class="position-relative d-inline-block">
           <button type="button" class="btn btn-link text-dark p-1 text-decoration-none" title="Alerts" onclick="openNotifPanel()">
@@ -1028,6 +1055,43 @@
             </span>
           </button>
         </div>
+        {# Quick Add "+" (2026-11-08): every Add this user's Permission Matrix
+           allows (services/quick_add.py). Hidden when there is none. #}
+        {% set _qa = quick_add_menu(current_user) %}
+        {% if _qa %}
+        <div class="dropdown" id="quickAddWrap">
+          {# Same shape as Raise Ticket (btn-sm, standard rounded corners), blue (2026-11-09). #}
+          <button type="button" class="btn btn-primary btn-sm fw-semibold qa-btn" id="quickAddBtn"
+                  data-bs-toggle="dropdown" aria-expanded="false"
+                  title="Add" aria-label="Add new">
+            <i class="bi bi-plus-lg"></i>
+          </button>
+          <div class="dropdown-menu dropdown-menu-end shadow qa-menu" aria-labelledby="quickAddBtn">
+            <div class="qa-groups">
+              {% for group, items in _qa %}
+              <div class="qa-group">
+                <div class="qa-group-title">{{ group }}</div>
+                {% for it in items %}
+                <a class="dropdown-item qa-item" href="{{ it.url }}" data-side="{{ it.side }}"{% if it.keep %} data-keep="1"{% endif %}><i class="bi {{ it.icon }} me-2"></i><span>{{ it.label }}</span></a>
+                {% endfor %}
+              </div>
+              {% endfor %}
+            </div>
+            {# Footer (2026-11-09): Raise Ticket on the right. #}
+            <div class="qa-foot">
+              <span class="qa-foot-label">You can raise ticket for issue/feedback</span>
+              <button type="button" class="btn btn-warning btn-sm fw-semibold"
+                      data-bs-toggle="modal" data-bs-target="#raiseTicketModal" title="Raise a support ticket">Raise Ticket</button>
+            </div>
+          </div>
+        </div>
+        {% endif %}
+        <!-- Raise Ticket last, after "+" (2026-11-10) -->
+        <button type="button" class="btn btn-warning btn-sm fw-semibold"
+                data-bs-toggle="modal" data-bs-target="#raiseTicketModal"
+                title="Raise a support ticket">
+          Raise Ticket
+        </button>
         <!-- Username + role, stacked (role badge below the name). Since
              2026-10-19 the name opens a menu with My Profile and Logout —
              Logout moved here from its own button in the header. -->
@@ -1039,21 +1103,38 @@
         <div class="dropdown d-flex" style="height:calc(var(--topbar-height) - 1px); margin-right:-1rem">
           <a href="#" class="d-flex align-items-center gap-2 px-3 text-decoration-none dropdown-toggle"
              id="userMenuToggle" data-bs-toggle="dropdown" aria-expanded="false" title="Account"
-             style="background-color:#e7f1ff">
+             style="background-color:var(--oxy-user-box, #e7f1ff)">
             <span class="d-flex flex-column align-items-center lh-1">
               <span class="fw-bold text-dark text-uppercase" style="font-size:.95rem">{{ current_user.full_name }}</span>
               {# Role (2026-10-27): plain coloured text — no badge border or background. #}
               <span class="text-primary fw-semibold" style="font-size:.72rem; margin-top:.2rem">{{ role_display(role) }}</span>
             </span>
           </a>
+          {# Profile menu (2026-11-08): My Profile, Password, Logout; Dark mode
+             sits in the footer. Uses the standard dropdown look (app.css). #}
           <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="userMenuToggle">
             <li><a class="dropdown-item" href="/auth/profile"><i class="bi bi-person-circle me-2"></i>My Profile</a></li>
-            <li><hr class="dropdown-divider"></li>
+            <li><a class="dropdown-item" href="/auth/profile#password"><i class="bi bi-key me-2"></i>Password</a></li>
             <li>
               <form action="/auth/logout" method="post" class="m-0">
                 <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
                 <button type="submit" class="dropdown-item text-danger"><i class="bi bi-box-arrow-right me-2"></i>Logout</button>
               </form>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            {# Light / Dark switch: each user's own choice, kept in the oxy_theme
+               cookie; the admin sets the default in System Colors. #}
+            <li>
+              {# Light ⟷ Dark (2026-11-08): both modes named, the current one
+                 highlighted (app.css #themeToggle .tm-*). #}
+              <button type="button" class="dropdown-item d-flex align-items-center justify-content-center gap-2" id="themeToggle"
+                      aria-label="Switch Light / Dark mode">
+                <span class="tm-light"><i class="bi bi-sun tm-ico me-2"></i>Light</span>
+                <span class="form-check form-switch m-0 pe-none">
+                  <input class="form-check-input m-0" type="checkbox" tabindex="-1" {{ 'checked' if theme_mode(request) == 'dark' else '' }}>
+                </span>
+                <span class="tm-dark">Dark<i class="bi bi-moon-stars tm-ico ms-2"></i></span>
+              </button>
             </li>
           </ul>
         </div>
@@ -1151,7 +1232,10 @@ $.extend(true, $.fn.dataTable.defaults, {
 });
 </script>
 <script src="/static/js/toast.js?v={{ ASSET_VERSION }}"></script>
-<script src="/static/js/app.js"></script>
+<script src="/static/js/app.js?v={{ ASSET_VERSION }}"></script>
+<!-- Global Filter fields: one-box date range + search in multi-selects. -->
+<script src="/static/vendor/flatpickr/flatpickr.min.js"></script>
+<script src="/static/js/filter-fields.js?v={{ ASSET_VERSION }}"></script>
 <script src="/static/js/barcode.js"></script>
 <!-- Form draft auto-save: persists in-progress form entry to the browser so a
      crash / network drop / accidental reload doesn't lose typed data. Loads on
@@ -1163,8 +1247,10 @@ $.extend(true, $.fn.dataTable.defaults, {
      page calls initGlobalTable(...) from its own page-specific scripts block below. -->
 <script src="/static/js/date-export.js?v={{ ASSET_VERSION }}"></script>{# shared date + export format (2026-11-04) #}
 <script src="/static/js/global-table.js?v={{ ASSET_VERSION }}"></script>
+<script src="/static/js/pill-counts.js?v={{ ASSET_VERSION }}"></script>{# "<tab> - <count>" on every pill tab (2026-11-11) #}
 <!-- Top-bar Search / Scan Tag Number (2026-10-24). -->
 <script src="/static/js/topbar-search.js?v={{ ASSET_VERSION }}"></script>
+<script src="/static/js/quick-add.js?v={{ ASSET_VERSION }}"></script>{# top-bar "+" menu (2026-11-08) #}
 {% block scripts %}{% endblock %}
 <script>
 /* Save the sidebar's scroll position continuously (and right before a
@@ -1181,6 +1267,9 @@ $.extend(true, $.fn.dataTable.defaults, {
   });
 })();
 </script>
+{# Search Tags modal (2026-11-08): one shared copy for every page — the
+   Search Tags buttons and the top-bar search open it. #}
+{% if current_user is defined and current_user %}{% include "_search_tags_modal.html" %}{% endif %}
 <!-- Raise Ticket Modal (global — available on every page) -->
 <div class="modal fade" id="raiseTicketModal" tabindex="-1" aria-labelledby="raiseTicketModalLabel">
   <div class="modal-dialog modal-lg">
@@ -1271,6 +1360,8 @@ $.extend(true, $.fn.dataTable.defaults, {
         bootstrap.Modal.getInstance(document.getElementById('raiseTicketModal'))?.hide();
         // Success: the shared top-right toast (static/js/toast.js, 2026-10-31).
         window.showTopToast('success', 'Ticket ' + data.ticket_id + ' raised successfully.');
+        // On the Tickets page show the new ticket straight away (2026-11-10).
+        if (/^\/tickets\/?$/.test(location.pathname)) setTimeout(function () { location.reload(); }, 900);
       } else {
         errEl.textContent = data.error || 'Failed to submit ticket. Please try again.';
       }
@@ -1564,6 +1655,25 @@ $.extend(true, $.fn.dataTable.defaults, {
   // Exposed so the session-extend flow can refresh already-rendered forms'
   // csrf_token inputs in place instead of doing a full page reload.
   window.refreshCsrfTokens = injectCsrf;
+  // Forms added after page load (DataTables server-side rows, AJAX partials)
+  // are missed by injectCsrf, and a token rendered into them goes stale the
+  // moment "Stay Logged In" rotates the cookie — the POST then fails CSRF and
+  // lands on /auth/login (Inventory Manager row "Move to L1/L2", 2026-11-09).
+  // So every POST form also takes the current cookie value as it submits.
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form || form.tagName !== 'FORM') return;
+    if ((form.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+    var token = getCsrfToken();
+    if (!token) return;
+    var inp = form.querySelector('input[name="csrf_token"]');
+    if (!inp) {
+      inp = document.createElement('input');
+      inp.type = 'hidden'; inp.name = 'csrf_token';
+      form.appendChild(inp);
+    }
+    inp.value = token;
+  }, true);
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', injectCsrf);
   } else {
@@ -1862,6 +1972,24 @@ function closeNotifPanel() {
   thumb.addEventListener('pointerup', end);
   thumb.addEventListener('pointercancel', end);
   place();
+})();
+</script>
+<script>
+/* Light / Dark switch (2026-11-08): flips <html data-bs-theme> at once and
+   remembers it for this user in the oxy_theme cookie (1 year). */
+(function () {
+  var b = document.getElementById('themeToggle');
+  if (!b) return;
+  b.addEventListener('click', function (e) {
+    e.stopPropagation();   // keep the menu open so the switch is seen to flip
+    var html = document.documentElement;
+    var next = html.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+    html.setAttribute('data-bs-theme', next);
+    document.cookie = 'oxy_theme=' + next + '; path=/; max-age=31536000; SameSite=Lax';
+    var c = b.querySelector('input');
+    if (c) c.checked = (next === 'dark');
+    document.dispatchEvent(new CustomEvent('oxy:theme', { detail: next }));
+  });
 })();
 </script>
 </body>

@@ -2,21 +2,30 @@
 {% block title %}Scrap Products — OxyPC{% endblock %}
 {% block page_title %}Scrap Products{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-2">
-  <span class="text-muted small">{{ items|length }} scrapped product(s)</span>
-</div>
-{# Bulk action, moved next to the table's search box once the table is ready. #}
-<div id="scrapBulkBtns" class="d-none align-items-center gap-2 me-2">
-  <button {% if not can(current_user, 'scrap_products', 'edit') %}hidden {% endif %}type="button" id="scrapBulkVerifyBtn" class="btn btn-warning btn-sm text-nowrap" disabled>
-    <i class="bi bi-clipboard-check me-1"></i>Verify (<span id="scrapBulkCount">0</span>)
-  </button>
-  <button {% if not can(current_user, 'scrap_products', 'add') %}hidden {% endif %}type="button" id="scrapBulkSellBtn" class="btn btn-success btn-sm text-nowrap" disabled>
-    <i class="bi bi-cart-plus me-1"></i>Sell (<span id="scrapSellCount">0</span>)
-  </button>
-</div>
+{# Two tabs (2026-11-09): Scrapped Tags | Scrapped Parts — global tabs, each a
+   global card (header + Global Table). The last tab reopens after a reload. #}
+<ul class="nav nav-tabs mb-0" id="scrapTabs">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#scrapTagsTab" type="button">
+    <i class="bi bi-trash3 me-1"></i>Scrapped Tags</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#scrapPartsTab" type="button">
+    <i class="bi bi-tools me-1"></i>Scrapped Parts</button></li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="scrapTagsTab">
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2" data-show-header>
+    <span class="fw-semibold"><i class="bi bi-trash3 me-2"></i>Scrapped Tags</span>
+    {# Bulk action in the card header (2026-11-09), the primary button.
+       No Sell here: Verify puts the tags into a Scrap ID on Scrap for Sale,
+       and selling happens only there. #}
+    <div id="scrapBulkBtns" class="d-flex align-items-center gap-2">
+      <button {% if not can(current_user, 'scrap_products', 'edit') %}hidden {% endif %}type="button" id="scrapBulkVerifyBtn" data-hdr-primary class="btn btn-primary btn-sm text-nowrap" disabled>
+        <i class="bi bi-clipboard-check me-1"></i>Verify (<span id="scrapBulkCount">0</span>)
+      </button>
+    </div>
+  </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
+    <div>
       <table id="scrapTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark"><tr>
           <th><input type="checkbox" class="form-check-input" id="scrapSelectAll" title="Select all on this page"></th>
@@ -26,8 +35,9 @@
         </tr></thead>
         <tbody>
           {% for it in items %}
-          {# Checkbox where the row offers Verify or Sell: Verify (n) acts on
-             the ticked unverified tags, Sell (n) on the ticked verified ones. #}
+          {# Checkbox where the row offers Verify. A tag verified before
+             2026-11-09 but never put in a Scrap ID still offers Verify, which
+             now puts it into one. #}
           {% set can_verify = it.can_verify or it.scrap_verified %}
           <tr data-tag="{{ it.barcode }}">
             <td>{% if can_verify %}<input type="checkbox" class="form-check-input scrapChk" value="{{ it.barcode }}">{% endif %}</td>
@@ -62,37 +72,33 @@
               {% endif %}
               {% endif %}
               {% if it.l34_status != 'Replacement Scrap' or it.replace_with_barcode %}
-              {% if not it.scrap_verified %}
               {% if can(current_user, 'scrap_products', 'edit') %}
               <button type="button" class="btn btn-sm btn-warning py-0 px-2"
                       onclick="openVerifyModal('{{ it.barcode }}', '{{ it.brand }} {{ it.model }}')"
-                      title="Verify received quantity">
+                      title="Verify received, and send to Scrap for Sale with a new Scrap ID">
                 <i class="bi bi-clipboard-check"></i> Verify
               </button>
-              {% endif %}
-              {% else %}
-              {% if can(current_user, 'scrap_products', 'add') %}<button type="button" class="btn btn-sm btn-success py-0 px-2" onclick="openScrapSale({tags: ['{{ it.barcode }}']})"><i class="bi bi-cart-plus"></i> Sell</button>{% endif %}
               {% endif %}
               <a href="/devices/{{ it.barcode }}" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="bi bi-eye"></i> View</a>
               {% endif %}
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="11" class="text-center text-muted py-4">No scrapped products.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
 </div>
+</div>
 
 <!-- Scrapped Spare Parts (from Parts Dashboard's Faulty Request tab) -->
-<div class="d-flex justify-content-between align-items-center mb-2 mt-4">
-  <span class="text-muted small">{{ scrapped_parts|length }} scrapped spare part(s)</span>
-</div>
+<div class="tab-pane fade" id="scrapPartsTab">
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2" data-show-header>
+    <span class="fw-semibold"><i class="bi bi-tools me-2"></i>Scrapped Parts</span>
+  </div>
   <div class="card-body p-0">
-    <div class="table-responsive">
+    <div>
       <table id="scrapPartsTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark"><tr>
           <th>Tag Number</th><th>Part Name</th><th>Category</th><th>Qty</th>
@@ -109,16 +115,15 @@
             <td>{{ p.actioned_by or '—' }}</td>
             <td class="text-muted small">{{ p.actioned_at.strftime('%d-%m-%Y %H:%M') if p.actioned_at else '—' }}</td>
           </tr>
-          {% else %}
-          <tr><td colspan="7" class="text-center text-muted py-4">No scrapped spare parts.</td></tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
   </div>
 </div>
+</div>
+</div>
 
-{% include "scrap/_sale_modal.html" %}
 
 <!-- Bulk Verify Modal (2026-10-23) -->
 <div class="modal fade" id="bulkVerifyModal" tabindex="-1">
@@ -130,7 +135,7 @@
       </div>
       <form id="bulkVerifyForm">
         <div class="modal-body">
-          <div class="mb-2 small text-muted">Each tag below is marked Received = Yes, and its Sell button appears.</div>
+          <div class="mb-2 small text-muted">Each tag below is marked Received = Yes and goes to Scrap for Sale under one new Scrap ID, where it is priced and sold.</div>
           <div id="bvTags" class="border rounded p-2 mb-3 font-monospace small" style="max-height:160px;overflow:auto"></div>
           <div class="mb-1">
             <label class="form-label fw-semibold">Notes <span class="text-muted fw-normal">(added to every selected tag)</span></label>
@@ -167,6 +172,7 @@
             <label class="form-label fw-semibold">Notes</label>
             <textarea name="notes" class="form-control" rows="2" placeholder="Condition, remarks..."></textarea>
           </div>
+          <div class="small text-muted">The tag goes to Scrap for Sale with a new Scrap ID, where it is priced and sold.</div>
         </div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -226,31 +232,25 @@
 // Selected tags live in this Set (not just the checkboxes) so a selection on
 // one page survives paging and the scan box narrowing the table.
 var scrapSelected = new Set();
-var SCRAP_VERIFIED = {{ verified_map | tojson }};
-function selVerify() { return Array.from(scrapSelected).filter(function (b) { return !SCRAP_VERIFIED[b]; }); }
-function selSell() { return Array.from(scrapSelected).filter(function (b) { return SCRAP_VERIFIED[b]; }); }
+// Every ticked tag is one Verify can act on (only those rows have a checkbox).
+function selVerify() { return Array.from(scrapSelected); }
 function updateScrapSel() {
-  var nv = selVerify().length, ns = selSell().length;
+  var nv = selVerify().length;
   document.getElementById('scrapBulkCount').textContent = nv;
   document.getElementById('scrapBulkVerifyBtn').disabled = nv === 0;
-  document.getElementById('scrapSellCount').textContent = ns;
-  document.getElementById('scrapBulkSellBtn').disabled = ns === 0;
   var boxes = document.querySelectorAll('#scrapTable tbody .scrapChk');
   var all = boxes.length > 0 && Array.prototype.every.call(boxes, function (c) { return c.checked; });
   var sa = document.getElementById('scrapSelectAll');
   if (sa) sa.checked = all;
 }
 $(document).ready(function(){
-  if ($('#scrapTable tbody tr td').length > 1) {
+  {
     // Global Table with scan-to-select: scanning a Tag Number in the table's
     // own search box narrows the table and ticks that tag.
     initGlobalTable('#scrapTable', {
       pageLength: 12, order: [],
       columnDefs: [{ orderable: false, targets: [0, -1] }],
-      initComplete: function () {
-        $('#scrapBulkBtns').removeClass('d-none').addClass('d-flex')
-          .insertBefore($(this.api().table().container()).find('.dataTables_filter'));
-      },
+      language: { emptyTable: 'No scrapped tags.' },
       drawCallback: function () {
         document.querySelectorAll('#scrapTable tbody .scrapChk').forEach(function (c) {
           c.checked = scrapSelected.has(c.value);
@@ -262,8 +262,27 @@ $(document).ready(function(){
               onChange: updateScrapSel, placeholder: 'Scan Tag Number, or search…' },
     });
   }
-  if ($('#scrapPartsTable tbody tr td').length > 1) $('#scrapPartsTable').DataTable({pageLength: 12, order:[]});
+  initGlobalTable('#scrapPartsTable', { pageLength: 12, order: [], language: { emptyTable: 'No scrapped parts.' } });
 });
+
+/* Tabs (2026-11-09): reopen the last tab after a reload, and re-measure the
+   tables when a tab is shown (a table set up in a hidden tab has zero-width
+   columns until adjusted). */
+(function () {
+  var KEY = 'scrapTab';
+  document.querySelectorAll('#scrapTabs [data-bs-toggle="tab"]').forEach(function (btn) {
+    btn.addEventListener('shown.bs.tab', function () {
+      try { sessionStorage.setItem(KEY, btn.getAttribute('data-bs-target')); } catch (e) {}
+      if (window.jQuery && $.fn.dataTable) $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+    });
+  });
+  var saved = null;
+  try { saved = sessionStorage.getItem(KEY); } catch (e) {}
+  if (saved && saved !== '#scrapTagsTab') {
+    var b = document.querySelector('#scrapTabs [data-bs-target="' + saved + '"]');
+    if (b && window.bootstrap) bootstrap.Tab.getOrCreateInstance(b).show();
+  }
+})();
 
 $('#scrapTable').on('change', '.scrapChk', function () {
   if (this.checked) scrapSelected.add(this.value); else scrapSelected.delete(this.value);
@@ -278,10 +297,6 @@ $(document).on('change', '#scrapSelectAll', function () {
     if (ck) scrapSelected.add(c.value); else scrapSelected.delete(c.value);
   });
   updateScrapSel();
-});
-document.getElementById('scrapBulkSellBtn').addEventListener('click', function () {
-  var tags = selSell();
-  if (tags.length) openScrapSale({tags: tags});
 });
 document.getElementById('scrapBulkVerifyBtn').addEventListener('click', function () {
   var tags = selVerify();
@@ -304,7 +319,8 @@ document.getElementById('bulkVerifyForm').addEventListener('submit', function (e
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (!d.ok) { err.textContent = d.error || 'Verify failed.'; err.classList.remove('d-none'); btn.disabled = false; return; }
-      var msg = d.verified.length + ' tag(s) verified' + (d.skipped.length ? ', ' + d.skipped.length + ' skipped (already verified or not in Scrap for Sale)' : '');
+      var msg = d.verified.length + ' tag(s) verified' + (d.scrap_id ? ' and sent to Scrap for Sale as Scrap ID ' + d.scrap_id : '') +
+                (d.skipped.length ? ', ' + d.skipped.length + ' skipped (not on Tags Scrapped, or replacement tag not set)' : '');
       window.location.href = '/scrap-products?success=' + encodeURIComponent(msg);
     })
     .catch(function () { err.textContent = 'Network error — please try again.'; err.classList.remove('d-none'); btn.disabled = false; });
@@ -330,25 +346,9 @@ document.getElementById('verifyScrapForm').addEventListener('submit', function(e
   .then(function(r) { return r.json(); })
   .then(function(d) {
     if (d.ok) {
-      // Update the row in the table without page reload
-      document.querySelectorAll('#scrapTable tbody tr').forEach(function(row) {
-        var tagCell = row.querySelector('td:first-child a');
-        if (tagCell && tagCell.href.endsWith('/' + barcode)) {
-          // Update Received badge (2nd-to-last cell)
-          SCRAP_VERIFIED[barcode] = true;   // the row's checkbox now counts toward Sell
-          updateScrapSel();
-          var receivedCell = row.querySelector('td:nth-last-child(2)');
-          if (receivedCell) receivedCell.innerHTML = '<span class="badge bg-success">Yes</span>';
-          // Update Action cell (last cell)
-          var actionCell = row.querySelector('td:last-child');
-          if (actionCell) {
-            actionCell.innerHTML =
-{% if can(current_user, 'scrap_products', 'add') %}              '<button type="button" class="btn btn-sm btn-success py-0 px-2" onclick="openScrapSale({tags: [\'' + barcode + '\']})"><i class="bi bi-cart-plus"></i> Sell</button> ' +{% endif %}
-              '<a href="/devices/' + barcode + '" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="bi bi-eye"></i> View</a>';
-          }
-        }
-      });
-      bootstrap.Modal.getInstance(document.getElementById('verifyScrapModal')).hide();
+      // The tag is now in a Scrap ID on Scrap for Sale, so it leaves this table.
+      window.location.href = '/scrap-products?success=' + encodeURIComponent(
+        barcode + ' verified and sent to Scrap for Sale as Scrap ID ' + d.scrap_id);
     } else {
       alert('Verification failed: ' + (d.error || 'Unknown error'));
     }

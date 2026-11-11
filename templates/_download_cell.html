@@ -1,0 +1,18 @@
+{# Download cell (2026-11-10, Pankaj): files = list of {label, url, newtab}
+   from services/doc_downloads.py. None -> "—", one -> a direct button,
+   several -> a Download dropdown. #}
+{% macro cell(files) -%}
+{% if not files %}<span class="text-muted">—</span>
+{% elif files|length == 1 %}{% set f = files[0] %}
+<a href="{{ f.url }}" class="btn btn-sm btn-outline-success text-nowrap" {% if f.newtab %}target="_blank" rel="noopener"{% endif %} title="Download {{ f.label }}"><i class="bi bi-download me-1"></i>{{ f.label }}</a>
+{% else %}
+<div class="dropdown">
+  <button class="btn btn-sm btn-outline-success dropdown-toggle text-nowrap" type="button" data-bs-toggle="dropdown" data-bs-boundary="viewport" aria-expanded="false">
+    <i class="bi bi-download me-1"></i>Download <span class="badge bg-success ms-1">{{ files|length }}</span>
+  </button>
+  <ul class="dropdown-menu dropdown-menu-end">
+    {% for f in files %}<li><a class="dropdown-item small" href="{{ f.url }}" {% if f.newtab %}target="_blank" rel="noopener"{% endif %}><i class="bi bi-file-earmark-arrow-down me-2"></i>{{ f.label }}</a></li>{% endfor %}
+  </ul>
+</div>
+{% endif %}
+{%- endmacro %}

@@ -1,83 +1,103 @@
-{# Search Tags — "Search to View Asset History" (2026-09-14), shared by 6 Tag
-   table pages: L1/L2, L3/L4, Stress Test, All Tags (Cosmetic), Final QC,
-   Production Manager. {% include "_search_tags_modal.html" %} on each, plus
-   a button calling openSearchTagsModal() — see those templates for the exact
-   button placement (each page's own header shape differs).
+{# Search Tags modal — one shared modal, included once by base.html (2026-11-08).
+   Opened by the top-bar Search / Scan box (the per-page Search Tags buttons
+   were removed 2026-11-09; openSearchTagsModal() with no tag still opens it
+   empty):
+     • the top-bar Search / Scan box — openSearchTagsModal('<tag>') opens it
+       straight on that tag (static/js/topbar-search.js), so the details show
+       on the current page with no redirect.
 
-   Type-ahead search via the EXISTING /devices/api/search-tags endpoint (any
-   tag system-wide, not scoped to the current page's own device list — same
-   endpoint the Scrap Products "Replace" modal already uses), then on pick,
-   /devices/api/asset-history — current stage + the device's most recent
-   stage movements, read-only, entirely inside this modal. Neither endpoint
-   nor this modal changes any device state. #}
-<div class="modal fade" id="searchTagsModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
+   Search: type-ahead via /devices/api/search-tags. Pick a tag →
+   /devices/api/detail-cards renders the same cards Device Detail shows, in
+   three columns: Asset History | Identity & Location | Hardware Specification.
+   Read-only — nothing here changes a device. #}
+<style>
+  #searchTagsModal .modal-dialog { max-width: min(1400px, calc(100vw - 2rem)); }
+  #searchTagsModal .modal-body { background: var(--oxy-page-bg, #f0f4f8); }
+  /* Search box fills the space between the title and the close button (2026-11-08). */
+  #searchTagsModal .modal-header { flex-wrap: nowrap; }
+  #searchTagsModal .st-search-wrap { position: relative; flex: 1 1 auto; min-width: 0; margin: 0 1.5rem; }
+  /* Cards 40% / 30% / 30% (2026-11-08). */
+  @media (min-width: 992px) {
+    #searchTagsModal .sv-cards > .sv-col-hist { flex: 0 0 40%; max-width: 40%; }
+    #searchTagsModal .sv-cards > .sv-col-id,
+    #searchTagsModal .sv-cards > .sv-col-hw { flex: 0 0 30%; max-width: 30%; }
+  }
+  #searchTagsModal #stModal_results { position: absolute; left: 0; right: 0; top: calc(100% + 2px); z-index: 5;
+    max-height: 240px; overflow-y: auto; box-shadow: 0 .25rem .75rem rgba(0,0,0,.12); }
+  #searchTagsModal .sv-cards .card { height: calc(100% - 1rem); }
+  #searchTagsModal .sv-cards .card > .card-header { background: var(--oxy-sky, #d9ebf6) !important; color: var(--brand-blue, #0e3a7a); }
+  #searchTagsModal .sv-cards .card-body[style*="max-height"] { max-height: 62vh !important; }
+  #searchTagsModal .sv-cards .table th.w-40 { width: 40%; }
+</style>
+<div class="modal fade" id="searchTagsModal" tabindex="-1" aria-hidden="true" aria-labelledby="stModalTitle">
+  <div class="modal-dialog modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-clock-history me-2"></i>Search to View Asset History</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+        <h5 class="modal-title" id="stModalTitle"><i class="bi bi-clock-history me-2"></i>Search View History</h5>
+        <div class="st-search-wrap">
+          <div class="input-group input-group-sm">
+            <span class="input-group-text bg-primary text-white border-primary"><i class="bi bi-search"></i></span>
+            <input type="text" id="stModal_search" class="form-control font-monospace"
+                   placeholder="Search or scan Tag / Serial (2+ characters)" autocomplete="off" spellcheck="false">
+          </div>
+          <div id="stModal_results" class="list-group"></div>
+        </div>
+        <button type="button" class="btn-close m-0" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <label class="form-label fw-semibold">Search Tag Number</label>
-        <input type="text" id="stModal_search" class="form-control font-monospace"
-               placeholder="Type at least 2 characters…" autocomplete="off">
-        <div id="stModal_results" class="list-group mt-1" style="max-height:180px; overflow-y:auto;"></div>
-
-        <div id="stModal_detail" class="mt-3 d-none">
-          <div class="d-flex align-items-center gap-2 mb-2">
-            <span class="font-monospace fw-semibold" id="stModal_barcode">—</span>
-            <span class="text-muted small">Current Stage:</span>
-            <span class="badge bg-primary" id="stModal_stage">—</span>
-          </div>
-          <div class="small fw-semibold text-muted mb-1">Asset History <small class="text-muted">(most recent)</small></div>
-          <div style="max-height:320px; overflow-y:auto;">
-            <table class="table table-sm mb-0">
-              <thead class="table-light" style="position:sticky; top:0; z-index:2">
-                <tr><th>From</th><th>To</th><th>By</th><th>When</th><th>Notes</th></tr>
-              </thead>
-              <tbody id="stModal_history"></tbody>
-            </table>
-          </div>
+        <div id="stModal_head" class="d-none"><div class="d-flex align-items-center flex-wrap gap-2 mb-3">
+          <span class="font-monospace fw-bold fs-5" id="stModal_barcode">—</span>
+          <span class="text-muted" id="stModal_model"></span>
+          <span class="badge bg-primary" id="stModal_stage">—</span>
+          <a href="#" id="stModal_full" class="btn btn-sm btn-outline-primary ms-auto">
+            <i class="bi bi-box-arrow-up-right me-1"></i>Open Device Page</a>
+        </div></div>
+        <div id="stModal_detail"></div>
+        <div id="stModal_msg"></div>
+        <div id="stModal_hint" class="text-center text-muted py-5">
+          <i class="bi bi-upc-scan fs-1 d-block mb-2"></i>Search or scan a tag to see its history and details.
         </div>
-        <div id="stModal_msg" class="mt-2"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
       </div>
     </div>
   </div>
 </div>
 
 <script>
-function openSearchTagsModal() {
-  var search = document.getElementById('stModal_search');
-  search.value = '';
-  document.getElementById('stModal_results').innerHTML = '';
-  document.getElementById('stModal_detail').classList.add('d-none');
-  document.getElementById('stModal_msg').innerHTML = '';
-  new bootstrap.Modal(document.getElementById('searchTagsModal')).show();
-  setTimeout(function(){ search.focus(); }, 300);
-}
-
 (function(){
+  var modalEl = document.getElementById('searchTagsModal');
+  if (!modalEl) return;
   var input = document.getElementById('stModal_search');
   var resultsBox = document.getElementById('stModal_results');
+  var head = document.getElementById('stModal_head');
   var detail = document.getElementById('stModal_detail');
   var msg = document.getElementById('stModal_msg');
-  var debounceTimer = null;
-  if (!input) return;
+  var hint = document.getElementById('stModal_hint');
+  var debounceTimer = null, seq = 0;
 
-  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
   function clearResults() { resultsBox.innerHTML = ''; }
+  function reset() {
+    input.value = ''; clearResults(); detail.innerHTML = ''; msg.innerHTML = '';
+    head.classList.add('d-none'); hint.classList.remove('d-none');
+  }
 
-  function doSearch() {
+  function doSearch(enter) {
     var q = input.value.trim();
     clearResults();
     if (q.length < 2) return;
+    var my = ++seq;
     fetch('/devices/api/search-tags?q=' + encodeURIComponent(q))
       .then(function(r) { return r.json(); })
-      .then(function(d) { renderResults(d.results || []); })
+      .then(function(d) {
+        if (my !== seq) return;
+        var res = d.results || [];
+        var exact = res.filter(function(r){ return (r.barcode || '').toUpperCase() === q.toUpperCase(); });
+        // Enter (or a scanner): an exact or single match opens straight away;
+        // a serial number goes to the detail lookup, which also matches serials.
+        if (enter && (exact.length || res.length === 1)) { loadDetail((exact[0] || res[0]).barcode); return; }
+        if (enter && !res.length) { loadDetail(q); return; }
+        renderResults(res);
+      })
       .catch(function() { clearResults(); });
   }
 
@@ -93,47 +113,64 @@ function openSearchTagsModal() {
     }).join('');
   }
 
-  function loadHistory(barcode) {
+  function loadDetail(barcode) {
+    clearResults();
     msg.innerHTML = '';
-    fetch('/devices/api/asset-history?barcode=' + encodeURIComponent(barcode))
-      .then(function(r) { return r.json(); })
+    hint.classList.add('d-none');
+    detail.innerHTML = '<div class="text-center text-muted py-5"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>';
+    var my = ++seq;
+    fetch('/devices/api/detail-cards?barcode=' + encodeURIComponent(barcode))
+      .then(function(r) { return r.ok ? r.json() : { found: false }; })
       .then(function(d) {
+        if (my !== seq) return;
         if (!d.found) {
-          detail.classList.add('d-none');
+          detail.innerHTML = ''; head.classList.add('d-none');
           msg.innerHTML = '<div class="alert alert-danger py-2 px-3 small mb-0">' + esc(barcode) + ' not found.</div>';
           return;
         }
-        clearResults();
         input.value = d.barcode;
+        input.select();                       // next scan overwrites it
         document.getElementById('stModal_barcode').textContent = d.barcode;
-        document.getElementById('stModal_stage').textContent = d.current_stage;
-        var tbody = document.getElementById('stModal_history');
-        if (!d.movements.length) {
-          tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-3 small">No stage movements recorded</td></tr>';
-        } else {
-          tbody.innerHTML = d.movements.map(function(mv) {
-            return '<tr>' +
-              '<td class="small text-muted">' + esc(mv.from_stage) + '</td>' +
-              '<td class="small fw-semibold">' + esc(mv.to_stage) + '</td>' +
-              '<td class="small">' + esc(mv.moved_by) + '</td>' +
-              '<td class="small text-muted">' + esc(mv.moved_at) + '</td>' +
-              '<td class="small text-muted">' + esc(mv.notes) + '</td>' +
-            '</tr>';
-          }).join('');
-        }
-        detail.classList.remove('d-none');
+        document.getElementById('stModal_model').textContent = d.make_model || '';
+        var st = document.getElementById('stModal_stage');
+        st.textContent = d.current_stage;
+        st.className = 'badge bg-' + (d.stage_color || 'primary');
+        document.getElementById('stModal_full').href = '/devices/' + encodeURIComponent(d.barcode);
+        head.classList.remove('d-none');
+        detail.innerHTML = d.html;
       })
       .catch(function() {
-        msg.innerHTML = '<div class="alert alert-danger py-2 px-3 small mb-0">Failed to load history.</div>';
+        if (my !== seq) return;
+        detail.innerHTML = '';
+        msg.innerHTML = '<div class="alert alert-danger py-2 px-3 small mb-0">Failed to load the tag details.</div>';
       });
   }
 
+  // openSearchTagsModal() — empty search; openSearchTagsModal('TAG') — opens on that tag.
+  window.openSearchTagsModal = function(barcode) {
+    reset();
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    if (barcode) { input.value = barcode; loadDetail(barcode); }
+    else setTimeout(function(){ input.focus(); }, 300);
+  };
+
   resultsBox.addEventListener('click', function(e) {
     var btn = e.target.closest('.st-result-item');
-    if (!btn) return;
-    loadHistory(btn.dataset.barcode);
+    if (btn) loadDetail(btn.dataset.barcode);
   });
-  input.addEventListener('input', function() { clearTimeout(debounceTimer); debounceTimer = setTimeout(doSearch, 300); });
-  input.addEventListener('keydown', function(e) { if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
+  input.addEventListener('input', function() { clearTimeout(debounceTimer); debounceTimer = setTimeout(function(){ doSearch(false); }, 300); });
+  input.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); clearTimeout(debounceTimer); doSearch(true); }
+    else if (e.key === 'Escape' && resultsBox.innerHTML) { e.stopPropagation(); clearResults(); }
+  });
+  document.addEventListener('mousedown', function(e) {
+    if (!e.target.closest('#searchTagsModal .st-search-wrap')) clearResults();
+  });
+  // Back to the top-bar box after closing, ready for the next scan.
+  modalEl.addEventListener('hidden.bs.modal', function() {
+    var tb = document.getElementById('tbSearch');
+    if (tb && modalEl.dataset.fromTopbar === '1') { tb.focus(); tb.select(); }
+    modalEl.dataset.fromTopbar = '';
+  });
 })();
 </script>

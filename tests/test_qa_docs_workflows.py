@@ -57,7 +57,9 @@ def test_workflow_and_stage_workflows(app_client, make_user):  # noqa: F811
     html = app_client.get("/qa/workflow").text
     assert "Flow 1 — New GRN" in html and "Flow 2 — Re-GRN" in html and "₹50,000" in html
     # Flow diagrams (2026-11-04): one swimlane SVG per flow, above the step journey
-    assert html.count('class="wf-dg"') == 2 and "Product IQC</text>" in html and "Move-to-GRN modal</text>" in html
+    # Three built-in diagrams since 2026-11-09: New GRN, Re-GRN, Spare Parts.
+    assert html.count('class="wf-dg"') == 3 and "Product IQC</text>" in html and "Move-to-GRN modal</text>" in html
+    assert "Faulty &amp; Sourcing</text>" in html or "Faulty & Sourcing</text>" in html
     assert html.index('class="wf-dg"') < html.index('class="wf-steps"')
     # Stage Flows now a tab of Workflow (2026-11-04); the old page redirects there
     r = app_client.get("/qa/stage-workflows", follow_redirects=False)

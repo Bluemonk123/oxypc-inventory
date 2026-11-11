@@ -37,7 +37,7 @@ class DealerQuotation(Base):
     total_quantity = Column(Integer, nullable=False, default=0)
     total_price = Column(Numeric(14, 2), nullable=False, default=0)
 
-    status = Column(String(20), nullable=False, default="shared")  # shared, confirmed
+    status = Column(String(20), nullable=False, default="added")  # added / negotiation / approved / rejected / expired (2026-11-10; was shared / confirmed)
     created_by = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=app_now)
     confirmed_by = Column(String(50), nullable=True)

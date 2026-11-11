@@ -88,7 +88,7 @@ ACCORDION_SECTIONS = [
         "id": "crm", "label": "CRM", "icon": "bi-diagram-3",
         "cat_keys": [
             "crm_source_type", "crm_material_type", "crm_buyer_type",
-            "crm_priority", "crm_activity_type", "crm_activity_outcome",
+            "crm_priority", "crm_activity_type", "crm_activity_outcome", "crm_credit_days",
         ],
     },
     {
@@ -181,6 +181,7 @@ PERM_MODULES = [
     # purely so Sidebar Config / Module Page Titles have a row for its label.
     ("crm_quotes",           "Quotes"),
     ("crm_purchase_orders",  "Purchase Orders"),
+    ("crm_pickups",          "Pickup Process"),        # 2026-11-11, default disabled
     ("crm_analytics",        "CRM Analytics"),
     ("crm_assign_leads",     "Assign Social Leads"),
     # ── EXTERNAL PARTNER ──────────────────────────────────────────────
@@ -518,6 +519,7 @@ CATEGORIES = [
     ("crm_priority",        "CRM: Deal Priority",           "crm"),
     ("crm_activity_type",   "CRM: Activity Type",           "crm"),
     ("crm_activity_outcome","CRM: Activity Outcome",        "crm"),
+    ("crm_credit_days",     "CRM: Credit Days (Accounts)",  "crm"),
     # ── WhatsApp / Market / Attendance / QA ───────────────────────
     ("whatsapp_message_type", "WhatsApp: Message Type",     "other_modules"),
     ("whatsapp_group_category", "WhatsApp: Group Category", "other_modules"),
@@ -678,7 +680,184 @@ async def master_list(
         "sub_admin_role": SUB_ADMIN_ROLE,
         # Global Visibility tab data
         "global_visibility_rows": global_visibility_rows,
+        # System Colors tab data (2026-11-08)
+        **_system_colors_ctx(),
+        # Email tab data (2026-11-09)
+        **((await _email_ctx(db)) if main_tab == "email" else {}),
     })
+
+
+# ── System Colors tab (2026-11-08, Pankaj) ─────────────────────────────────
+def _system_colors_ctx() -> dict:
+    from services import system_colors as sc
+    values = sc.current_values()
+    groups = []
+    for gkey, glabel in sc.GROUPS:
+        rows = [{"key": t[0], "label": t[1], "vars": t[3], "usage": t[6],
+                 "light": values[t[0]]["light"], "dark": values[t[0]]["dark"],
+                 "def_light": t[4].lower(), "def_dark": t[5].lower()}
+                for t in sc.TOKENS if t[2] == gkey]
+        groups.append({"key": gkey, "label": glabel, "rows": rows})
+    return {"sc_groups": groups, "sc_default_mode": sc.default_mode(),
+            "sc_reference": sc.DESIGN_REFERENCE}
+
+
+async def _save_setting(db: AsyncSession, key: str, value: str, description: str, username: str) -> None:
+    row = (await db.execute(select(AppSetting).where(AppSetting.key == key))).scalar_one_or_none()
+    if row:
+        row.value = value
+        row.updated_by = username
+    else:
+        db.add(AppSetting(key=key, value=value, description=description, updated_by=username))
+
+
+@router.post("/system-colors/save")
+async def save_system_colors(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only),
+):
+    """Save every colour token (Light and Dark) and the default mode for users.
+    Applies app-wide at once (in-memory cache + AppSetting rows)."""
+    from services import system_colors as sc
+    form = await request.form()
+    values, bad = {}, []
+    for key in sc.DEFAULTS:
+        values[key] = {}
+        for mode in ("light", "dark"):
+            v = (form.get(f"c_{key}_{mode}") or "").strip().lower()
+            if not v:
+                v = sc.DEFAULTS[key][mode]
+            if not sc.valid_hex(v):
+                bad.append(f"{key} ({mode})")
+                v = sc.DEFAULTS[key][mode]
+            values[key][mode] = v
+    if bad:
+        return RedirectResponse(url="/admin/master?main_tab=system_colors&error=Not+a+colour:+" + "+".join(bad)[:150],
+                                status_code=302)
+    mode = (form.get("default_mode") or "light").strip().lower()
+    mode = mode if mode in ("light", "dark") else "light"
+    raw = sc.overrides_json(values)
+    await _save_setting(db, sc.SETTING_KEY, raw, "System Colors: changed colour tokens (Light/Dark)", current_user.username)
+    await _save_setting(db, sc.MODE_KEY, mode, "System Colors: default Light/Dark mode for users", current_user.username)
+    await db.commit()
+    sc.apply_loaded(raw, mode)
+    return RedirectResponse(url="/admin/master?main_tab=system_colors&success=System+colours+saved", status_code=302)
+
+
+@router.post("/system-colors/reset")
+async def reset_system_colors(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only),
+):
+    """Reset every colour to the Design System default (keeps the default mode)."""
+    from services import system_colors as sc
+    await _save_setting(db, sc.SETTING_KEY, "{}", "System Colors: changed colour tokens (Light/Dark)", current_user.username)
+    await db.commit()
+    sc.apply_loaded("{}", sc.default_mode())
+    return RedirectResponse(url="/admin/master?main_tab=system_colors&success=Colours+reset+to+the+Design+System",
+                            status_code=302)
+
+
+# ── Email tab (2026-11-09, Pankaj): notifications also go by email ──────────
+async def _email_ctx(db: AsyncSession) -> dict:
+    """Mail server status for the Email tab — never the password."""
+    from services import email_notify as en
+    from sqlalchemy import func as _f
+    active = (await db.execute(select(_f.count()).select_from(User).where(User.status == True))).scalar() or 0  # noqa: E712
+    with_email = (await db.execute(select(_f.count()).select_from(User).where(
+        User.status == True, User.email.isnot(None), User.email.like("%@%")))).scalar() or 0  # noqa: E712
+    boxes = []
+    for key, label, prefix, cfg in (("main", "Main mailbox", "OXYPC_SMTP", en.settings()),
+                                    ("backup", "Backup mailbox", "OXYPC_SMTP2", en.backup_settings())):
+        boxes.append({"key": key, "label": label, "prefix": prefix, "ready": en.is_configured(cfg),
+                      "host": cfg["host"], "port": cfg["port"], "user": cfg["user"], "from": cfg["from"],
+                      "security": cfg["security"], "has_password": bool(cfg["password"])})
+    return {"em_configured": en.is_configured(), "em_boxes": boxes,
+            "em_public_url": en.settings()["public_url"],
+            "em_active": active, "em_with_email": with_email}
+
+
+@router.post("/email/test")
+async def send_test_email(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only),
+):
+    """Send one test email to the address typed (default: the admin's own)."""
+    from urllib.parse import quote_plus
+    from services import email_notify as en
+    form = await request.form()
+    to = (form.get("to") or current_user.email or "").strip()
+    box = "backup" if form.get("box") == "backup" else "main"
+    back = "/admin/master?main_tab=email"
+    if not to or "@" not in to:
+        return RedirectResponse(url=back + "&error=" + quote_plus(
+            "Enter an email address (your profile has none)."), status_code=302)
+    try:
+        await en.send_now([to], f"Test email ({box} mailbox)",
+                          f"This is a test from OxyPC ERP through the {box} mailbox, sent by "
+                          f"{current_user.full_name or current_user.username}. "
+                          "If you can read this, email notifications are working.", box=box)
+    except Exception as e:
+        return RedirectResponse(url=back + "&error=" + quote_plus(f"Test email ({box} mailbox) not sent: {e}"[:300]),
+                                status_code=302)
+    return RedirectResponse(url=back + "&success=" + quote_plus(f"Test email sent to {to} through the {box} mailbox"),
+                            status_code=302)
+
+
+@router.post("/email/settings")
+async def save_email_settings(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only),
+):
+    """Save one mailbox's settings into the server's .env (2026-11-11, Pankaj).
+    Only the SMTP keys — services/env_settings.py refuses anything else. The
+    password box is never pre-filled: left empty = keep the current one."""
+    import os
+    from urllib.parse import quote_plus
+    from services.audit_engine import audit
+    from services.env_settings import update_env
+    form = await request.form()
+    box = "backup" if form.get("box") == "backup" else "main"
+    prefix = "OXYPC_SMTP2" if box == "backup" else "OXYPC_SMTP"
+    back = "/admin/master?main_tab=email"
+    g = lambda k: (form.get(k) or "").strip()  # noqa: E731
+    host, port, security, user, sender = g("host"), g("port"), g("security").lower(), g("user"), g("from")
+    if form.get("turn_off") == "1":
+        host = port = security = user = sender = ""
+    if port and not (port.isdigit() and 0 < int(port) < 65536):
+        return RedirectResponse(url=back + "&error=" + quote_plus("Port must be a number, e.g. 587 or 465"), status_code=302)
+    if security not in ("", "starttls", "ssl", "none"):
+        security = ""
+    if host and not (user or sender):
+        return RedirectResponse(url=back + "&error=" + quote_plus("Enter the mailbox (login) or Sent from address"), status_code=302)
+    changes = {f"{prefix}_HOST": host, f"{prefix}_PORT": port, f"{prefix}_SECURITY": security,
+               f"{prefix}_USER": user, f"{prefix}_FROM": sender}
+    pw = form.get("password") or ""
+    if form.get("turn_off") == "1" or form.get("clear_password") == "1":
+        changes[f"{prefix}_PASSWORD"] = ""
+    elif pw:
+        changes[f"{prefix}_PASSWORD"] = pw
+    if box == "main" and "public_url" in form:
+        changes["OXYPC_PUBLIC_URL"] = g("public_url").rstrip("/")
+    old = {k: ("(set)" if k.endswith("_PASSWORD") and os.environ.get(k) else os.environ.get(k) or "") for k in changes}
+    try:
+        changed = update_env(changes)
+    except (ValueError, OSError) as e:
+        return RedirectResponse(url=back + "&error=" + quote_plus(f"Not saved: {e}"[:300]), status_code=302)
+    if not changed:
+        return RedirectResponse(url=back + "&success=" + quote_plus("Nothing changed"), status_code=302)
+    new = {k: ("(set)" if k.endswith("_PASSWORD") and v else v) for k, v in changes.items()}
+    await audit(db, action="EMAIL_SETTINGS_SAVED", user=current_user, table_name=".env",
+                record_id=box, old_value={k: old[k] for k in changed},
+                new_value={k: new[k] for k in changed}, request=request)   # never the password itself
+    await db.commit()
+    label = "Backup" if box == "backup" else "Main"
+    msg = f"{label} mailbox turned off" if form.get("turn_off") == "1" else f"{label} mailbox saved — send a test email to check it"
+    return RedirectResponse(url=back + "&success=" + quote_plus(msg), status_code=302)
 
 
 @router.post("/global-visibility/toggle")
@@ -1023,6 +1202,9 @@ async def permissions_matrix(
         # Dropdown config tab data (needed for base template render)
         "grouped": {},
         "categories": CATEGORIES,
+        # The Dropdown Config script needs this on every render (2026-11-08:
+        # its absence made this Permissions page a 500).
+        "parent_categories": PARENT_CATEGORIES,
         "tabs": TABS,
         "accordion_data": [],
         # Permission tab data

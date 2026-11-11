@@ -1,0 +1,47 @@
+{# Customer Deal Pricing fields (2026-11-10, Pankaj) — shared by the Add/Edit
+   page and the Pricing card on the deal page. Needs `opp` (or None).
+   Device Type, Material Type, Grade Required / Required Qty, Budget Per Unit,
+   Estimated Value — 3 per row. Estimated Value = Qty x Budget Per Unit. #}
+<div class="cs-pricing">
+  <div class="row g-3">
+    <div class="col-md-4">
+      <label class="form-label fw-semibold">Device Type</label>
+      <input type="text" name="device_type" class="form-control" value="{{ opp.device_type or '' if opp else '' }}" placeholder="e.g. Laptop, Desktop, Mix">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-semibold">Material Type</label>
+      <select name="material_type" class="form-select">
+        <option value="">— Select —</option>
+        {% for val, label in material_types %}
+        <option value="{{ val }}" {% if opp and opp.material_type==val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-semibold">Grade Required</label>
+      <select name="grade_required" class="form-select">
+        <option value="">— Any Grade —</option>
+        {% for g in grades %}
+        <option value="{{ g }}" {% if opp and opp.grade_required==g %}selected{% endif %}>{{ g }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-semibold">Required Qty</label>
+      <input type="number" name="required_qty" class="form-control cs-qty" min="0"
+        value="{{ opp.required_qty or '' if opp else '' }}" placeholder="0">
+    </div>
+    {% if price_field_shown(current_user, 'crm_sales_opp') %}
+    <div class="col-md-4">
+      <label class="form-label fw-semibold">Budget Per Unit (₹)</label>
+      <input type="number" name="budget_per_unit" class="form-control cs-budget" step="0.01" min="0"
+        {{ price_input_attrs(current_user, 'crm_sales_opp', opp.budget_per_unit or '' if opp else '', '0.00') }}>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-semibold">Estimated Value (₹)</label>
+      <input type="number" name="estimated_value" class="form-control cs-est" step="0.01" min="0"
+        {{ price_input_attrs(current_user, 'crm_sales_opp', opp.estimated_value or '' if opp else '', 'Auto-calculated') }} readonly>
+    </div>
+    {% endif %}
+  </div>
+</div>

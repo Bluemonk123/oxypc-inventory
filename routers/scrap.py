@@ -32,7 +32,7 @@ async def scrap_products(request: Request, db: AsyncSession = Depends(get_db),
         # grade == Scrap too, so tags moved there by a bulk stage move with
         # grade A/B/C (or none) were missing here (185 shown vs 469).
         .where(Device.current_stage == DeviceStage.scrap_for_sale,
-               Device.is_trashed == False)
+               Device.is_trashed.isnot(True))
         .order_by(Device.updated_at.desc())
     )).all()
     # A tag leaves Tags Scrapped once it is in a live Scrap ID batch (made
@@ -95,38 +95,47 @@ async def scrap_products(request: Request, db: AsyncSession = Depends(get_db),
         .order_by(PartRequest.actioned_at.desc())
     )).scalars().all()
 
-    # Sell opens the scrap sale form here too (2026-10-23) — the sale lands on
-    # the Scrap Sale Report and the tags move to Sold.
-    from routers.scrap_for_sale import _custom_sale_form_context
+    # No Sell here any more (2026-11-09): Verify sends tags to a Scrap ID on
+    # Scrap for Sale, and selling happens only there.
     return templates.TemplateResponse("scrap/list.html", {
         "request": request, "current_user": current_user, "items": items,
-        "scrapped_parts": scrapped_parts, "cs_back": "scrap-products",
-        "verified_map": {it["barcode"]: bool(it["scrap_verified"]) for it in items},
-        **(await _custom_sale_form_context(db)),
+        "scrapped_parts": scrapped_parts,
+        "success": request.query_params.get("success"),
+        "error": request.query_params.get("error"),
     })
 
 
 @router.post("/scrap/{barcode}/verify")
 async def verify_scrap(
     barcode: str,
+    request: Request,
     verified_qty: int = Form(...),
     notes: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
-    """Mark a scrapped device as quantity-verified. Enables the Sell button."""
-    result = await db.execute(select(Device).where(Device.barcode == barcode))
-    device = result.scalar_one_or_none()
+    """Verify one tag on Tags Scrapped: marks it received AND puts it into a
+    new Scrap ID on Scrap for Sale, like a Transfers "Scrap for Sale"
+    submission (2026-11-09). It then leaves Tags Scrapped; it is sold from
+    Scrap for Sale only."""
+    from services.audit_engine import audit
+    from services.scrap_flow import batched_device_ids, verify_eligible, verify_into_scrap_batch
+    device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
     if device is None:
         return JSONResponse({"ok": False, "error": "Device not found"}, status_code=404)
-
-    device.scrap_verified = True
-    if notes:
-        existing = device.notes or ""
-        device.notes = (existing + "\n[Verify] " + notes).strip()
-
+    in_batch = await batched_device_ids(db, [device.id])
+    if not verify_eligible(device, in_batch):
+        why = (f"already in Scrap ID {in_batch[device.id]}" if device.id in in_batch
+               else "set its replacement tag first" if (device.l34_status or "") == "Replacement Scrap"
+               and not device.replace_with_barcode else "not on Tags Scrapped")
+        return JSONResponse({"ok": False, "error": f"{device.barcode}: {why}."}, status_code=400)
+    batch = await verify_into_scrap_batch(db, [device], current_user, notes)
+    await audit(db, user=current_user, action="SCRAP_VERIFIED", table_name="devices",
+                record_id=str(device.id),
+                new_value={"scrap_verified": True, "scrap_id": batch.scrap_id, "notes": notes.strip() or None},
+                notes=f"Verified on Tags Scrapped -> Scrap ID {batch.scrap_id}", request=request)
     await db.commit()
-    return JSONResponse({"ok": True})
+    return JSONResponse({"ok": True, "scrap_id": batch.scrap_id})
 
 
 @router.post("/scrap/bulk-verify")
@@ -137,12 +146,13 @@ async def bulk_verify_scrap(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
-    """Tags Scrapped page "Verify (n)" (2026-10-23): the row Verify for many
-    tags at once. Only tags the row button would offer it for are changed —
-    in Scrap for Sale, not trashed, not yet verified; a Replacement Scrap tag
-    only once its replacement is set. The rest are reported as skipped."""
+    """Tags Scrapped page "Verify (n)": verifies the ticked tags and puts them
+    all into ONE new Scrap ID on Scrap for Sale (2026-11-09) — one Scrap ID per
+    Verify, like one Transfers submission. Only tags the row Verify would act
+    on are taken (see services.scrap_flow.verify_eligible); the rest are
+    reported as skipped."""
     from services.audit_engine import audit
-    from services.scrap_flow import can_verify
+    from services.scrap_flow import batched_device_ids, verify_eligible, verify_into_scrap_batch
     wanted, seen = [], set()
     for b in barcodes.replace("\n", ",").split(","):
         b = b.strip()
@@ -154,26 +164,27 @@ async def bulk_verify_scrap(
     devices = (await db.execute(
         select(Device).where(func.upper(Device.barcode).in_([w.upper() for w in wanted]))
     )).scalars().all()
-    done, skipped = [], []
     by_upper = {d.barcode.upper(): d for d in devices}
-    note = notes.strip()
+    in_batch = await batched_device_ids(db, [d.id for d in devices])
+    take, skipped = [], []
     for w in wanted:
         d = by_upper.get(w.upper())
-        if (d is None or d.is_trashed or d.current_stage != DeviceStage.scrap_for_sale
-                or not can_verify(d)):
+        if verify_eligible(d, in_batch):
+            take.append(d)
+        else:
             skipped.append(w)
-            continue
-        d.scrap_verified = True
-        if note:
-            d.notes = ((d.notes or "") + "\n[Verify] " + note).strip()
-        done.append(d.barcode)
-    if done:
+    batch = await verify_into_scrap_batch(db, take, current_user, notes)
+    done = [d.barcode for d in take]
+    if batch:
         await audit(db, user=current_user, action="SCRAP_BULK_VERIFIED", table_name="devices",
                     record_id=f"{len(done)} tags",
-                    new_value={"scrap_verified": True, "barcodes": done, "notes": note or None},
-                    notes=f"Bulk Verify on Tags Scrapped: {len(done)} tag(s)", request=request)
+                    new_value={"scrap_verified": True, "scrap_id": batch.scrap_id, "barcodes": done,
+                               "notes": notes.strip() or None},
+                    notes=f"Bulk Verify on Tags Scrapped: {len(done)} tag(s) -> Scrap ID {batch.scrap_id}",
+                    request=request)
     await db.commit()
-    return JSONResponse({"ok": True, "verified": done, "skipped": skipped})
+    return JSONResponse({"ok": True, "verified": done, "skipped": skipped,
+                         "scrap_id": batch.scrap_id if batch else None})
 
 
 @router.post("/scrap-products/{barcode}/set-replacement")

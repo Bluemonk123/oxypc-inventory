@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sales Order {{ so.so_number }}</title>
+  {# Sales Order print / save as PDF (2026-11-10). Company: Company Setting
+     company of the quote's From Entity. Lines are the SO's own copy of the quote. #}
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; color: #222; background: #fff; padding: 30px 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0377c2; padding-bottom: 14px; margin-bottom: 18px; }
+    .company-name { font-size: 20pt; font-weight: bold; color: #0377c2; }
+    .sub { font-size: 9.5pt; color: #555; margin-top: 2px; }
+    .title { text-align: right; }
+    .title h2 { font-size: 17pt; color: #0377c2; }
+    .title .num { font-size: 11pt; color: #555; font-family: monospace; }
+    .meta { display: flex; gap: 40px; margin-bottom: 20px; }
+    .meta > div { flex: 1; }
+    .meta h4 { font-size: 8.5pt; text-transform: uppercase; color: #888; letter-spacing: .5px; border-bottom: 1px solid #eee; padding-bottom: 4px; margin-bottom: 6px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+    th { background: #0377c2; color: #fff; text-align: left; font-size: 9.5pt; padding: 7px 8px; }
+    td { border-bottom: 1px solid #e5e5e5; padding: 7px 8px; font-size: 10pt; }
+    .r { text-align: right; }
+    tfoot td { font-weight: bold; border-top: 2px solid #0377c2; }
+    .print-bar { text-align: right; margin-bottom: 16px; }
+    .print-bar button { background: #0377c2; color: #fff; border: 0; border-radius: 4px; padding: 6px 14px; cursor: pointer; }
+    @media print { .print-bar { display: none; } body { padding: 0 10px; } }
+  </style>
+</head>
+<body>
+  {% set _price = can(current_user, 'crm_quotes', 'pricing') %}
+  <div class="print-bar"><button onclick="window.print()">Print / Save as PDF</button></div>
+  <div class="header">
+    <div>
+      <div class="company-name">{{ company.name or 'OxyPC' }}</div>
+      {% if company.address %}<div class="sub">{{ company.address }}</div>{% endif %}
+      <div class="sub">{% if company.gstin %}GSTIN: {{ company.gstin }}{% endif %}{% if company.phone %} &middot; {{ company.phone }}{% endif %}{% if company.email %} &middot; {{ company.email }}{% endif %}</div>
+    </div>
+    <div class="title">
+      <h2>SALES ORDER</h2>
+      <div class="num">{{ so.so_number }}</div>
+      <div class="sub">Date: {{ so.so_date.strftime('%d %b %Y') if so.so_date else '' }}</div>
+      {% if so.quote %}<div class="sub">Quote: {{ so.quote.quote_number }}</div>{% endif %}
+    </div>
+  </div>
+  <div class="meta">
+    <div>
+      <h4>Buyer</h4>
+      {% if so.contact %}
+      <div><strong>{{ so.contact.company_name }}</strong></div>
+      {% if so.contact.address %}<div class="sub">{{ so.contact.address }}{% if so.contact.city %}, {{ so.contact.city }}{% endif %}</div>{% endif %}
+      {% if so.contact.gstin %}<div class="sub">GSTIN: {{ so.contact.gstin }}</div>{% endif %}
+      {% else %}<div>—</div>{% endif %}
+    </div>
+    <div>
+      <h4>Terms</h4>
+      <div class="sub">Payment: {{ so.payment_terms or '—' }}</div>
+      {% if so.deal %}<div class="sub">Buyer Deal: {{ so.deal.opp_number }}</div>{% endif %}
+    </div>
+  </div>
+  <table>
+    <thead><tr><th>#</th><th>Device</th><th>Material</th><th>Grade</th><th>Category</th><th class="r">Qty</th>{% if _price %}<th class="r">Unit Price (Rs)</th><th class="r">Total (Rs)</th>{% endif %}</tr></thead>
+    <tbody>
+      {% for it in so.items %}
+      <tr>
+        <td>{{ it.line_number }}</td>
+        <td>{{ it.device_type }}{% if it.specs_note %}<div class="sub">{{ it.specs_note }}</div>{% endif %}</td>
+        <td>{{ material_map.get(it.material_type, it.material_type or '—') }}</td>
+        <td>{{ it.grade or '—' }}</td><td>{{ it.po_category or '—' }}</td>
+        <td class="r">{{ it.quantity }}</td>
+        {% if _price %}<td class="r">{{ (it.unit_price or 0) | inr }}</td><td class="r">{{ (it.total_price or 0) | inr }}</td>{% endif %}
+      </tr>
+      {% endfor %}
+    </tbody>
+    {% if _price %}<tfoot><tr><td colspan="7">Grand Total</td><td class="r">{{ (so.total_amount or 0) | inr }}</td></tr></tfoot>{% endif %}
+  </table>
+</body>
+</html>

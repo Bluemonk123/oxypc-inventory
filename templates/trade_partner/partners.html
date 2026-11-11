@@ -49,45 +49,53 @@
 </div>
 {% endif %}
 
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <form method="get" class="d-flex flex-wrap gap-2 align-items-center">
-    <select name="location" class="form-select form-select-sm" style="width:160px"
-            onchange="this.form.submit()">
-      <option value="">All Locations</option>
-      {% for loc in location_options %}
-      <option value="{{ loc }}" {% if loc == f_location %}selected{% endif %}>{{ loc }}</option>
-      {% endfor %}
-    </select>
-    <select name="segment" class="form-select form-select-sm" style="width:150px"
-            onchange="this.form.submit()">
-      <option value="">All Segments</option>
-      {% for s in price_segments %}
-      <option value="{{ s }}" {% if s == f_segment %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
-      {% endfor %}
-    </select>
-    <select name="sales_owner" class="form-select form-select-sm" style="width:170px"
-            onchange="this.form.submit()">
-      <option value="">All Sales Owners</option>
-      {% for u in sales_users %}
-      <option value="{{ u.username }}" {% if u.username == f_sales_owner %}selected{% endif %}>{{ u.full_name or u.username }}</option>
-      {% endfor %}
-    </select>
-    <input type="text" name="q" value="{{ q }}" placeholder="Search partners…" class="form-control form-control-sm" style="width:220px">
-    <button class="btn btn-sm btn-outline-primary">Search</button>
-    {% if q or f_location or f_segment or f_sales_owner %}
-    <a href="/trade-partner/partners" class="btn btn-sm btn-outline-secondary">Clear</a>
-    {% endif %}
-  </form>
-  {% if can(current_user, 'trade_partner_partners', 'add') %}
-  <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#enableModal">
-    <i class="bi bi-person-plus me-1"></i>Generate Access
-  </button>
-  {% endif %}
-</div>
+{# Global filter bar (app.css .filter-bar, 2026-11-08) — labels live in title=. #}
+<form method="get" action="/trade-partner/partners" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" value="{{ q }}" title="Search" placeholder="Search partners…" class="form-control form-control-sm">
+    </div>
+    <div>
+      <select name="location" class="form-select form-select-sm" title="Location">
+        <option value="">All Locations</option>
+        {% for loc in location_options %}
+        <option value="{{ loc }}" {% if loc == f_location %}selected{% endif %}>{{ loc }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="segment" class="form-select form-select-sm" title="Price Segment">
+        <option value="">All Segments</option>
+        {% for s in price_segments %}
+        <option value="{{ s }}" {% if s == f_segment %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="sales_owner" class="form-select form-select-sm" title="Sales Owner">
+        <option value="">All Sales Owners</option>
+        {% for u in sales_users %}
+        <option value="{{ u.username }}" {% if u.username == f_sales_owner %}selected{% endif %}>{{ u.full_name or u.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/trade-partner/partners" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
+  </div>
+</form>
 
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent fw-semibold">
-    <i class="bi bi-shop me-2"></i>Accounts as External Partner
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-shop me-2"></i>Accounts as External Partner</span>
+    {% if can(current_user, 'trade_partner_partners', 'add') %}
+    <div class="d-flex gap-2 align-items-center">
+      <button class="btn btn-sm btn-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#enableModal">
+        <i class="bi bi-person-plus me-1"></i>Generate Access
+      </button>
+    </div>
+    {% endif %}
   </div>
   <div class="card-body p-0">
       <table id="externalPartnerAccountsTable" class="table table-hover mb-0">

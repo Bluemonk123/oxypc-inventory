@@ -56,6 +56,67 @@ async def split_scrap_transfer(db: AsyncSession, devices) -> tuple[list, list]:
     return ok, refused
 
 
+def verify_eligible(device, in_batch: dict) -> bool:
+    """Tags Scrapped Verify (single or bulk) may act on this tag: on Tags
+    Scrapped (Scrap for Sale stage, not trashed, not in a live batch) and
+    either verifiable now, or verified earlier but never batched (tags
+    verified before Verify started making Scrap IDs, 2026-11-09)."""
+    if device is None or device.is_trashed or device.current_stage != DeviceStage.scrap_for_sale:
+        return False
+    if device.id in in_batch:
+        return False
+    return bool(device.scrap_verified) or can_verify(device)
+
+
+async def verify_into_scrap_batch(db: AsyncSession, devices, current_user, notes: str = ""):
+    """Tags Scrapped Verify (2026-11-09, Pankaj): mark the tags verified and put
+    them into ONE new Scrap ID on Scrap for Sale — the same ScrapForSale +
+    StockTransfer(scrap_for_sale) rows a Transfers "Scrap for Sale"
+    submission makes, so Scrap for Sale lists, prices and sells it the same
+    way. No Assigned To and no WorkIDs (Pankaj's choice); no location move.
+    Returns the new ScrapForSale (None when devices is empty). The caller
+    commits."""
+    from models.stock_transfer import StockTransfer
+    from models.lot import Lot
+    from routers.transfers import _next_scrap_id
+    from utils.timezone import app_now
+    devices = list(devices)
+    if not devices:
+        return None
+    batch = ScrapForSale(scrap_id=await _next_scrap_id(db), assigned_to_user_id=None,
+                         created_by=current_user.username)
+    db.add(batch)
+    await db.flush()
+    lot_ids = {d.lot_id for d in devices if getattr(d, "lot_id", None)}
+    lot_map = {}
+    if lot_ids:
+        lot_map = dict((await db.execute(select(Lot.id, Lot.lot_number).where(Lot.id.in_(lot_ids)))).all())
+    now = app_now()
+    note = (notes or "").strip()
+    for d in devices:
+        d.scrap_verified = True
+        if note:
+            d.notes = ((d.notes or "") + "\n[Verify] " + note).strip()
+        d.updated_at = now
+        wh = getattr(d, "warehouse", None) or "—"
+        db.add(StockTransfer(
+            device_id=d.id, move_kind="device", transfer_type="scrap_for_sale",
+            scrap_for_sale_id=batch.id, source="tags_scrapped_verify",
+            from_warehouse=wh, to_warehouse=wh,
+            transferred_by=current_user.username,
+            barcode=d.barcode, serial_no=d.serial_no, make=d.brand, model=d.model,
+            cpu=getattr(d, "cpu", None), generation=getattr(d, "generation", None),
+            ram=f"{d.ram_gb} GB" if d.ram_gb else None,
+            hdd=f"{d.storage_gb} GB" if d.storage_gb else None,
+            category=d.sub_category, lot_number=lot_map.get(d.lot_id),
+            product_stage=d.current_stage.value if d.current_stage else None,
+            transfer_date=now, notes=f"Verified on Tags Scrapped{(' — ' + note) if note else ''}",
+            created_by=current_user.username,
+        ))
+    await db.flush()
+    return batch
+
+
 def refused_text(refused) -> str:
     """'A (not verified), B (already in Scrap ID 0003)' — first 10, then a count."""
     parts = [f"{bc} ({why})" for bc, why in refused[:10]]

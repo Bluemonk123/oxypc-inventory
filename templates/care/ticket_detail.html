@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}{{ ticket.ticket_number }} — Customer Care — OxyPC{% endblock %}
 {% block page_title %}Ticket {{ ticket.ticket_number }}{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ ticket.ticket_number }}{% endblock %}{% block record_parent %}/care-support/tickets{% endblock %}{% block record_parent_label %}Customer Care — Ticket Queue{% endblock %}
 {% block content %}
 
 {% if success %}<div class="alert alert-success py-2"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>{% endif %}

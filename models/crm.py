@@ -39,10 +39,15 @@ BUYER_TYPES = [
 # Reworked 2026-10-27 (old keys quoted / agreed / po_raised are mapped once at
 # startup by main._migrate_sourcing_stages_once: quoted -> quote,
 # agreed -> negotiation, po_raised -> purchase_order).
+# 2026-11-10 (Pankaj): "Lead Identified" -> "Lead Generated"; new "Pricing
+# Added" (2nd) and "Pricing Approval" (Level 1, before Quote). A Negotiation
+# Level 1 rejection sends the deal back to Pricing Approval.
 SOURCING_STAGES = [
-    ("lead",           "Lead Identified"),
+    ("lead",           "Lead Generated"),
+    ("pricing",        "Pricing Added"),
     ("contacted",      "Contacted"),
     ("inspection",     "Inspection"),
+    ("pricing_approval", "Pricing Approval"),
     ("quote",          "Quote"),
     ("negotiation",    "Negotiations"),
     ("purchase_order", "Purchase Order"),
@@ -60,6 +65,9 @@ SOURCING_STAGES = [
 # Purchase Order's document is the latest PO generated from the deal — shown
 # automatically, nothing to attach.
 SOURCING_STAGE_STEPS = {
+    "pricing_approval": [
+        ("pricing_l1", "Level 1", "approval"),
+    ],
     "inspection": [
         ("inspection_assign", "Assign to Inspection", "user"),
         ("inspection_report", "Inspection Report", "file"),
@@ -75,7 +83,7 @@ SOURCING_STAGE_STEPS = {
     ],
     "purchase_order": [
         ("po_l1", "Level 1", "approval"),
-        ("po_l2", "Level 2", "approval"),
+        # Level 2 removed (2026-11-11, Pankaj): Level 1 only
     ],
     "payment": [
         ("payment_l1", "Level 1", "approval"),
@@ -83,6 +91,12 @@ SOURCING_STAGE_STEPS = {
     ],
     "received": [
         ("received_assign", "Assign to Inventory", "user"),
+    ],
+    # Documents card on the deal page (2026-11-11, Pankaj): not a stage — the
+    # other documents there reuse the stage files (Inspection Report, Quote, Invoice)
+    "documents": [
+        ("doc_purchase_order", "Purchase Order", "file"),
+        ("doc_product_data_sheet", "Product Data Sheet", "file"),
     ],
 }
 SOURCING_STEP_INDEX = {key: (stage, label, kind)
@@ -95,15 +109,17 @@ SOURCING_STEP_INDEX = {key: (stage, label, kind)
 # requirement / availability -> screening, quoted -> quote,
 # confirmed / invoiced -> sales_order, delivered -> received.
 SALES_STAGES = [
-    ("lead",           "Lead / Enquiry"),
+    ("lead",           "Lead Generated"),        # was "Lead / Enquiry" (2026-11-10)
+    ("pricing",        "Pricing Added"),          # 2026-11-10
     ("contacted",      "Contacted"),
     ("screening",      "Screening"),
+    ("pricing_approval", "Pricing Approval"),     # 2026-11-10: Level 1, before Quote
     ("quote",          "Quote"),
     ("negotiation",    "Negotiations"),
-    ("sales_order",    "Invoice / Sales Order"),
+    ("sales_order",    "Sales Order"),   # was "Invoice / Sales Order" (2026-11-11)
     # "purchase_order" removed 2026-11-01 — customer PO stage dropped from Buyer Deals
     ("payment",        "Payment"),
-    ("received",       "Stock Received"),
+    ("received",       "Stock Handover"),         # was "Stock Received" (2026-11-10)
     ("won",            "Closed — Won"),
     ("lost",           "Closed — Lost"),
 ]
@@ -112,6 +128,9 @@ SALES_STAGES = [
 # SOURCING_STAGE_STEPS. Quote's document is the latest quote generated for the
 # deal — shown automatically. "documents" holds the Deal Info Upload section.
 SALES_STAGE_STEPS = {
+    "pricing_approval": [
+        ("pricing_l1", "Level 1", "approval"),
+    ],
     "screening": [
         ("screening_assign", "Assign to Screening", "user"),   # was "Assign to Inspection" (2026-11-06)
         ("screening_report", "Screening Report", "file"),      # was "Inspection Report"
@@ -126,7 +145,7 @@ SALES_STAGE_STEPS = {
     ],
     "sales_order": [
         ("so_l1", "Level 1", "approval"),
-        ("so_l2", "Level 2", "approval"),
+        # Level 2 removed (2026-11-11, Pankaj): Level 1 only
         ("so_file", "PO", "file"),
     ],
     "payment": [
@@ -141,6 +160,8 @@ SALES_STAGE_STEPS = {
         ("doc_purchase_order", "Purchase Order", "file"),
         ("doc_eway_bill", "E-way Bill", "file"),
         ("doc_quote", "Quote", "file"),
+        ("doc_sales_order", "Sales Order", "file"),               # Documents card (2026-11-11)
+        ("doc_product_data_sheet", "Product Data Sheet", "file"),
     ],
 }
 SALES_STEP_INDEX = {key: (stage, label, kind)
@@ -170,6 +191,7 @@ class CRMContact(Base):
     __tablename__ = "crm_contacts"
 
     id               = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    from_entity      = Column(String(100), nullable=True)  # From Entity (2026-11-10, approved): issuing company entity, defaults to the creator's entity
     contact_code     = Column(String(20), unique=True, nullable=False, index=True)  # CRM0001
     contact_type     = Column(String(20), default="supplier")  # supplier / buyer / both
     company_name     = Column(String(200), nullable=False, index=True)
@@ -188,6 +210,7 @@ class CRMContact(Base):
     # buyer classification
     buyer_type       = Column(String(30),  nullable=True)   # corp_buyer/dealer/online_seller/export/retail/gov
     credit_limit     = Column(Numeric(14, 2), default=0)
+    credit_days      = Column(Integer,     nullable=True)   # Credit Days (2026-11-10, Master Data crm_credit_days)
     outstanding      = Column(Numeric(14, 2), default=0)
     tags             = Column(String(300), nullable=True)   # comma-separated
     notes            = Column(Text,        nullable=True)
@@ -309,6 +332,7 @@ class CRMSourcingDeal(Base):
     __tablename__ = "crm_sourcing_deals"
 
     id                   = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    from_entity          = Column(String(100), nullable=True)  # From Entity (2026-11-10, approved): issuing company entity, defaults to the creator's entity
     deal_number          = Column(String(30), unique=True, nullable=False, index=True)  # SD-2025-0001
     contact_id           = Column(UUID(as_uuid=True), ForeignKey("crm_contacts.id"), nullable=True, index=True)
     title                = Column(String(300), nullable=False)
@@ -331,6 +355,7 @@ class CRMSourcingDeal(Base):
     inspection_notes     = Column(Text,        nullable=True)
     # logistics
     expected_pickup_date = Column(Date,        nullable=True)
+    expected_close_date  = Column(Date,        nullable=True)   # Expected Close Date (2026-11-10, approved)
     payment_advance_pct  = Column(Integer,     default=0)
     payment_terms        = Column(Text,        nullable=True)
     # outcome
@@ -408,6 +433,7 @@ class CRMSalesOpportunity(Base):
     __tablename__ = "crm_sales_opportunities"
 
     id                 = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    from_entity        = Column(String(100), nullable=True)  # From Entity (2026-11-10, approved): issuing company entity, defaults to the creator's entity
     opp_number         = Column(String(30), unique=True, nullable=False, index=True)  # OPP-2025-0001
     contact_id         = Column(UUID(as_uuid=True), ForeignKey("crm_contacts.id"), nullable=True, index=True)
     title              = Column(String(300), nullable=False)
@@ -446,6 +472,7 @@ class CRMQuote(Base):
     __tablename__ = "crm_quotes"
 
     id              = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    from_entity     = Column(String(100), nullable=True)  # From Entity (2026-11-10, approved): issuing company entity, defaults to the creator's entity
     quote_number    = Column(String(30), unique=True, nullable=False, index=True)  # QT-2025-0001
     contact_id      = Column(UUID(as_uuid=True), ForeignKey("crm_contacts.id"), nullable=True, index=True)
     # Supplier quote raised from a Sourcing Deal (2026-11-01); null = buyer quote
@@ -550,6 +577,7 @@ class CRMPurchaseOrder(Base):
     __tablename__ = "crm_purchase_orders"
 
     id                    = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    from_entity           = Column(String(100), nullable=True)  # From Entity (2026-11-10, approved): issuing company entity, defaults to the creator's entity
     po_number             = Column(String(30),  unique=True, nullable=False, index=True)  # PO-2025-0001
     deal_id               = Column(UUID(as_uuid=True), ForeignKey("crm_sourcing_deals.id"), nullable=True)
     contact_id            = Column(UUID(as_uuid=True), ForeignKey("crm_contacts.id"), nullable=True, index=True)

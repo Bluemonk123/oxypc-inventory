@@ -47,17 +47,20 @@
 </div>
 
 {% macro grade_rows(label, items) %}
-<div class="table-responsive">
-<table id="gradeTable{{ label }}" class="table table-hover mb-0 small">
-  <thead class="table-light"><tr>
-    <th class="ps-3">Tag Number</th><th>Model Name</th><th>Quantities</th>
+{# Global Table card; the accordion button above already names the table, so
+   the card carries no header of its own. #}
+<div class="card border-0 shadow-sm">
+<div class="card-body">
+<table id="gradeTable{{ label }}" class="table table-hover align-middle mb-0">
+  <thead><tr>
+    <th>Tag Number</th><th>Model Name</th><th>Quantities</th>
     <th>Dispatched</th><th>Pending</th><th>Sold</th>
     <th title="Days since the device became Ready to Sale">Aging</th><th>Warranty</th>
   </tr></thead>
   <tbody>
     {% for it in items %}
     <tr>
-      <td class="ps-3"><a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a></td>
+      <td><a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a></td>
       <td>{{ it.model }}</td>
       <td>{{ it.qty }}</td>
       <td><span class="badge bg-success">{{ it.dispatched }}</span></td>
@@ -69,6 +72,7 @@
     {% endfor %}
   </tbody>
 </table>
+</div>
 </div>
 {% endmacro %}
 
@@ -175,12 +179,13 @@
 {% block scripts %}
 <script>
 $(document).ready(function(){
-  // ── Grade tables: 6 rows + pagination, keep the server's order ──
+  // ── Grade tables: Global Table, keep the server's order ──
   ['A','B','C'].forEach(function(g){
-    var $t = $('#gradeTable' + g);
-    if ($t.length && $t.find('tbody tr').length){
-      $t.DataTable({ pageLength: 12, ordering:false, searching:false,
-                     lengthChange:false, info:true });
+    if ($('#gradeTable' + g).length){
+      initGlobalTable('#gradeTable' + g, {
+        ordering: false,
+        language: { emptyTable: 'No Grade ' + g + ' devices.' },
+      });
     }
   });
   // Re-fit grade-table columns when an accordion opens (tables start hidden)

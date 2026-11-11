@@ -1,0 +1,28 @@
+<script>
+// Supplier Deal Pricing (2026-11-10): totals = unit x Est. Quantity;
+// Margin % = (Total Asking - Total Offer) / Total Asking x 100, both ways.
+(function () {
+  function num(el) { return el ? (parseFloat(el.value) || 0) : 0; }
+  function set(el, v) { if (el && !el.disabled) el.value = (v || v === 0) && isFinite(v) ? (Math.round(v * 100) / 100).toFixed(2) : ''; }
+  function recalc(box, src) {
+    var q = box.querySelector('.sp-qty'), au = box.querySelector('.sp-au'), at = box.querySelector('.sp-at'),
+        ou = box.querySelector('.sp-ou'), ot = box.querySelector('.sp-ot'), mg = box.querySelector('.sp-margin');
+    var qty = num(q);
+    if (src === mg) {
+      if (!au || !ou || au.value === '' || mg.value === '') return;
+      set(ou, num(au) * (1 - num(mg) / 100));
+    }
+    if (au && au.value !== '' && qty > 0) set(at, num(au) * qty);
+    if (ou && ou.value !== '' && qty > 0) set(ot, num(ou) * qty);
+    if (mg && src !== mg) {
+      var A = num(at) || num(au) * qty, O = num(ot) || num(ou) * qty;
+      mg.value = A > 0 && O > 0 ? (Math.round((A - O) / A * 10000) / 100).toFixed(2) : '';
+    }
+  }
+  document.addEventListener('input', function (e) {
+    var box = e.target.closest && e.target.closest('.sp-pricing');
+    if (!box || !e.target.matches('.sp-qty, .sp-au, .sp-ou, .sp-margin')) return;
+    recalc(box, e.target);
+  });
+})();
+</script>

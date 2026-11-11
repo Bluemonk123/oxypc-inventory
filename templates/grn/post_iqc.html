@@ -117,7 +117,20 @@
 {# Page heading and the Upload Invoice form were removed on request; Add GRN
    now sits in the table card's header. #}
 
-<!-- Filter bar (shared .filter-bar design; filters apply as you type) -->
+
+{# Count cards (above the filter bar since 2026-11-09) are derived from the rows
+   the filter leaves visible, so they always describe the same slice of data as
+   the table below rather than the whole dataset. #}
+{# Shared tile macros (templates/_tiles.html, 2026-11-06), light tint.
+   IDs kept on the counts — the filter script fills the numbers. #}
+{% import "_tiles.html" as tl %}
+<div class="oxt-row">
+  {{ tl.single(0, 'Total GRN Quantities', '#0d6efd', 'bi-receipt', count_attrs='id="cardTotalQty"') }}
+  {{ tl.single(0, 'Total Devices Added', '#0F7A37', 'bi-check2-square', count_attrs='id="cardDevicesAdded"') }}
+  {{ tl.single(0, 'Total Devices Pending', '#fd7e14', 'bi-hourglass-split', count_attrs='id="cardDevicesPending"') }}
+</div>
+{# Filters below the count tiles (2026-11-09, Pankaj: tiles first, then filters, on every page). #}
+<!-- Filter bar (shared .filter-bar design; filters apply on Apply, 2026-11-08) -->
 <div class="filter-bar">
   <div class="filter-bar-row">
     <div><input type="text" id="fGrn" title="Search GRN" class="form-control form-control-sm font-monospace" placeholder="Search GRN…"></div>
@@ -131,21 +144,8 @@
     </select></div>
     <div><input type="date" id="fFrom" title="Date of Invoice — From" class="form-control form-control-sm"></div>
     <div><input type="date" id="fTo" title="Date of Invoice — To" class="form-control form-control-sm"></div>
-    <div><button type="button" id="fReset" class="btn btn-outline-secondary btn-sm">Reset Filters</button></div>
+    <div><button type="button" id="fApply" class="btn btn-primary btn-sm text-nowrap">Apply</button><button type="button" id="fReset" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</button></div>
   </div>
-</div>
-
-{# Count cards sit under the filter bar and are derived from the rows the filter
-   leaves visible, so they always describe the same slice of data as the table
-   below rather than the whole dataset — same pattern as GRN with Invoice's
-   (templates/grn/import.html) cards. #}
-{# Shared tile macros (templates/_tiles.html, 2026-11-06), light tint.
-   IDs kept on the counts — the filter script fills the numbers. #}
-{% import "_tiles.html" as tl %}
-<div class="oxt-row">
-  {{ tl.single(0, 'Total GRN Quantities', '#0d6efd', 'bi-receipt', count_attrs='id="cardTotalQty"') }}
-  {{ tl.single(0, 'Total Devices Added', '#0F7A37', 'bi-check2-square', count_attrs='id="cardDevicesAdded"') }}
-  {{ tl.single(0, 'Total Devices Pending', '#fd7e14', 'bi-hourglass-split', count_attrs='id="cardDevicesPending"') }}
 </div>
 
 <div class="card border-0 shadow-sm mb-4">
@@ -543,9 +543,17 @@ $(document).ready(function(){
       if (to && d > to) return false;
       return true;
     });
-    document.getElementById('fGrn').addEventListener('input', function(){ dt.column(0).search(this.value).draw(); });
-    document.getElementById('fInvoice').addEventListener('input', function(){ dt.column(2).search(this.value).draw(); });
-    document.getElementById('fVendor').addEventListener('input', function(){ dt.column(4).search(this.value).draw(); });
+    // Filters apply only on Apply (2026-11-08, global filter bar rule);
+    // Enter in a text box counts as Apply.
+    function grnApplyFilters() {
+      dt.column(0).search(document.getElementById('fGrn').value)
+        .column(2).search(document.getElementById('fInvoice').value)
+        .column(4).search(document.getElementById('fVendor').value).draw();
+    }
+    document.getElementById('fApply').addEventListener('click', grnApplyFilters);
+    ['fGrn','fInvoice','fVendor'].forEach(function(id){
+      document.getElementById(id).addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); grnApplyFilters(); } });
+    });
     // Entity filter: the GRN row's own Entity ("Not set" = empty).
     $.fn.dataTable.ext.search.push(function(settings, data, idx){
       if (settings.nTable.id !== 'grnTable') return true;
@@ -555,7 +563,6 @@ $(document).ready(function(){
       var ent = tr ? (tr.getAttribute('data-entity') || '') : '';
       return want === '__none__' ? ent === '' : ent === want;
     });
-    document.getElementById('fEntity').addEventListener('change', function(){ dt.draw(); });
     // Export: the rows the filters leave, as CSV (UTF-8 BOM so Excel opens it;
     // dates as stored, year-first, so Excel reads them as dates).
     function grnExportRows() { return dt.rows({search: 'applied'}).nodes().toArray(); }
@@ -582,8 +589,6 @@ $(document).ready(function(){
       document.body.appendChild(a); a.click(); a.remove();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
     });
-    document.getElementById('fFrom').addEventListener('change', function(){ dt.draw(); });
-    document.getElementById('fTo').addEventListener('change', function(){ dt.draw(); });
     document.getElementById('fReset').addEventListener('click', function(){
       ['fGrn','fInvoice','fVendor','fFrom','fTo','fEntity'].forEach(function(id){ document.getElementById(id).value=''; });
       dt.column(0).search('').column(2).search('').column(4).search('').draw();
@@ -788,17 +793,17 @@ document.querySelectorAll('.grn-tax-in').forEach(function (el) {
 (function () { var ae = document.getElementById('a_entity_val'); if (ae) ae.addEventListener('change', function () { grnTax('a_'); }); })();
 
 
-// Stocked popup (2026-10-31)
+// Stocked popup (2026-10-31; Global Tables since 2026-11-08, same as grn/_tabs.html)
 window.grnTabsInit = window.grnTabsInit || function (root) {
   root.querySelectorAll('table.grn-dev-table').forEach(function (t) {
-    if (!$.fn.dataTable.isDataTable(t)) $(t).DataTable({ pageLength: 12, order: [[0, 'asc']] });
+    if (!$.fn.dataTable.isDataTable(t)) initGlobalTable(t, { order: [[0, 'asc']] });
   });
   root.querySelectorAll('button[data-bs-toggle="tab"]').forEach(function (b) {
     b.addEventListener('shown.bs.tab', function () {
       var pane = document.querySelector(b.getAttribute('data-bs-target'));
       if (!pane) return;
       pane.querySelectorAll('table.grn-model-table').forEach(function (t) {
-        if (!$.fn.dataTable.isDataTable(t)) $(t).DataTable({ pageLength: 25, order: [[10, 'desc']] });
+        if (!$.fn.dataTable.isDataTable(t)) initGlobalTable(t, { order: [[10, 'desc']] });
         else $(t).DataTable().columns.adjust();
       });
       pane.querySelectorAll('table.grn-dev-table').forEach(function (t) { if ($.fn.dataTable.isDataTable(t)) $(t).DataTable().columns.adjust(); });

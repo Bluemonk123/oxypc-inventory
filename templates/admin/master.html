@@ -50,6 +50,18 @@
       <i class="bi bi-eye-slash me-1"></i>Global Visibility
     </a>
   </li>
+  <li class="nav-item">
+    <a class="nav-link {{ 'active' if main_tab == 'system_colors' else '' }}"
+       href="/admin/master?main_tab=system_colors">
+      <i class="bi bi-palette me-1"></i>System Colors
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link {{ 'active' if main_tab == 'email' else '' }}"
+       href="/admin/master?main_tab=email">
+      <i class="bi bi-envelope me-1"></i>Email
+    </a>
+  </li>
 </ul>
 
 {# ═══════════════════════════════════════════════════════════════════════════ #}
@@ -828,6 +840,273 @@ document.querySelectorAll('.global-visibility-toggle').forEach(function (sw) {
 
 {% endif %}
 
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{# TAB — SYSTEM COLORS (2026-11-08, Pankaj)                                   #}
+{# services/system_colors.py: tokens, Light + Dark values, default mode.      #}
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{% if main_tab == 'system_colors' %}
+<style>
+  .sc-swatch { width: 34px; height: 26px; padding: 2px; border-radius: 6px; border: 1px solid var(--oxy-border); cursor: pointer; background: var(--oxy-surface); }
+  .sc-hex { width: 88px; font-family: inherit; text-transform: lowercase; }
+  .sc-row-changed td:first-child { box-shadow: inset 3px 0 0 var(--bs-warning); }
+  .sc-ref { position: sticky; top: calc(var(--topbar-height) + 1rem); }
+  .sc-ref .sc-dot { width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(0,0,0,.12); flex-shrink: 0; }
+  .sc-ref .sc-item { cursor: pointer; border-radius: 6px; padding: .15rem .3rem; }
+  .sc-ref .sc-item:hover { background: var(--oxy-hover); }
+  .sc-mode .btn-check:checked + .btn { background: var(--brand-blue) !important; border-color: var(--brand-blue) !important; color: #fff !important; }
+</style>
+<div class="row g-3">
+  <div class="col-xl-9 col-lg-8">
+    <form method="post" action="/admin/master/system-colors/save" id="scForm">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span class="fw-semibold"><i class="bi bi-circle-half me-2"></i>Mode</span>
+        </div>
+        <div class="card-body d-flex flex-wrap gap-4 align-items-center">
+          <div>
+            <div class="small text-muted mb-1">Your mode (only you, this browser)</div>
+            <div class="btn-group sc-mode" role="group" aria-label="Your mode">
+              <input type="radio" class="btn-check" name="sc_my_mode" id="scMyLight" value="light" autocomplete="off" {% if theme_mode(request) == 'light' %}checked{% endif %}>
+              <label class="btn btn-sm btn-outline-secondary" for="scMyLight"><i class="bi bi-sun me-1"></i>Light</label>
+              <input type="radio" class="btn-check" name="sc_my_mode" id="scMyDark" value="dark" autocomplete="off" {% if theme_mode(request) == 'dark' %}checked{% endif %}>
+              <label class="btn btn-sm btn-outline-secondary" for="scMyDark"><i class="bi bi-moon-stars me-1"></i>Dark</label>
+            </div>
+          </div>
+          <div>
+            <div class="small text-muted mb-1">Default for users who haven't chosen (saved with Save)</div>
+            <div class="btn-group sc-mode" role="group" aria-label="Default mode">
+              <input type="radio" class="btn-check" name="default_mode" id="scDefLight" value="light" autocomplete="off" {% if sc_default_mode|default('light') == 'light' %}checked{% endif %}>
+              <label class="btn btn-sm btn-outline-secondary" for="scDefLight">Light</label>
+              <input type="radio" class="btn-check" name="default_mode" id="scDefDark" value="dark" autocomplete="off" {% if sc_default_mode|default('light') == 'dark' %}checked{% endif %}>
+              <label class="btn btn-sm btn-outline-secondary" for="scDefDark">Dark</label>
+            </div>
+          </div>
+          <div class="small text-muted ms-auto" style="max-width:340px">Everyone can also switch with <b>Dark mode</b> in their profile menu (top right).</div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span class="fw-semibold"><i class="bi bi-palette me-2"></i>Colours in use</span>
+          <div class="d-flex gap-2 align-items-center">
+            <span class="small text-muted d-none" id="scChanged">Unsaved changes</span>
+            <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="small text-muted mb-3">Each colour has a Light and a Dark value. Picking a colour previews it on this page in the mode you are in; <b>Save</b> applies it to every user at once. <i class="bi bi-arrow-counterclockwise"></i> sets one colour back to the Design System value.</p>
+          {% for g in sc_groups|default([]) %}
+          <h6 class="fw-semibold mt-3 mb-2" style="color:var(--brand-blue)">{{ g.label }}</h6>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-2">
+              <thead><tr class="small text-muted"><th style="width:22%">Colour</th><th>Used for</th><th style="width:150px">Light</th><th style="width:150px">Dark</th><th style="width:40px"></th></tr></thead>
+              <tbody>
+              {% for r in g.rows %}
+                <tr class="sc-row{% if r.light != r.def_light or r.dark != r.def_dark %} sc-row-changed{% endif %}" data-key="{{ r.key }}" data-vars="{{ r.vars|join(',') }}" data-semantic="{{ '1' if g.key == 'semantic' else '' }}">
+                  <td><div class="fw-semibold small">{{ r.label }}</div><code class="small">{{ r.vars|join(' ') }}</code></td>
+                  <td class="small text-muted">{{ r.usage }}</td>
+                  {% for m in ['light', 'dark'] %}
+                  <td>
+                    <div class="d-flex gap-1 align-items-center">
+                      <input type="color" class="sc-swatch" data-mode="{{ m }}" value="{{ r[m] }}" title="{{ r.label }} ({{ m|capitalize }})">
+                      <input type="text" class="form-control form-control-sm sc-hex" name="c_{{ r.key }}_{{ m }}" data-mode="{{ m }}" data-default="{{ r['def_' ~ m] }}" value="{{ r[m] }}" maxlength="7" pattern="#[0-9a-fA-F]{6}">
+                    </div>
+                  </td>
+                  {% endfor %}
+                  <td><button type="button" class="btn btn-sm btn-link text-secondary p-0 sc-reset-one" title="Back to Design System value"><i class="bi bi-arrow-counterclockwise"></i></button></td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </form>
+    <form method="post" action="/admin/master/system-colors/reset" class="mt-2 text-end"
+          onsubmit="return confirm('Reset every colour to the Design System values for all users?');">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset all to Design System</button>
+    </form>
+  </div>
+
+  {# Slim right panel: the Design System v2.6 palette (read-only; click copies the hex). #}
+  <div class="col-xl-3 col-lg-4">
+    <div class="card border-0 shadow-sm sc-ref">
+      <div class="card-header bg-transparent"><span class="fw-semibold"><i class="bi bi-journal-richtext me-2"></i>Design System colours</span></div>
+      <div class="card-body py-2" style="max-height:calc(var(--full-vh) - 9rem); overflow-y:auto">
+        {% for title, items in sc_reference|default([]) %}
+        <div class="small fw-semibold text-muted text-uppercase mt-2 mb-1" style="font-size:.7rem;letter-spacing:.5px">{{ title }}</div>
+        {% for name, hexv in items %}
+        <div class="d-flex align-items-center gap-2 sc-item" data-hex="{{ hexv }}" title="Click to copy {{ hexv }}">
+          <span class="sc-dot" style="background:{{ hexv }}"></span>
+          <span class="small flex-grow-1">{{ name }}</span>
+          <code class="small">{{ hexv }}</code>
+        </div>
+        {% endfor %}
+        {% endfor %}
+        <div class="small text-muted mt-2">Design System v2.6, chapter 02.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('scForm');
+  if (!form) return;
+  var html = document.documentElement;
+  function mode() { return html.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'light'; }
+  function rgb(h) { return [1, 3, 5].map(function (i) { return parseInt(h.substr(i, 2), 16); }).join(', '); }
+  // Preview: put the row's value for the current mode on <html> as inline vars.
+  function preview(row) {
+    var m = mode();
+    var hex = row.querySelector('.sc-hex[data-mode="' + m + '"]').value;
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+    row.dataset.vars.split(',').forEach(function (v) { html.style.setProperty(v, hex); });
+    if (row.dataset.semantic) html.style.setProperty('--bs-' + row.dataset.key + '-rgb', rgb(hex));
+  }
+  function markChanged(row) {
+    var changed = Array.prototype.some.call(row.querySelectorAll('.sc-hex'), function (i) { return i.value.toLowerCase() !== i.dataset.default; });
+    row.classList.toggle('sc-row-changed', changed);
+    document.getElementById('scChanged').classList.remove('d-none');
+  }
+  form.querySelectorAll('.sc-row').forEach(function (row) {
+    row.querySelectorAll('.sc-swatch').forEach(function (sw) {
+      sw.addEventListener('input', function () {
+        var t = row.querySelector('.sc-hex[data-mode="' + sw.dataset.mode + '"]');
+        t.value = sw.value.toLowerCase(); markChanged(row); preview(row);
+      });
+    });
+    row.querySelectorAll('.sc-hex').forEach(function (t) {
+      t.addEventListener('input', function () {
+        var v = t.value.trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+          row.querySelector('.sc-swatch[data-mode="' + t.dataset.mode + '"]').value = v.toLowerCase();
+          preview(row);
+        }
+        markChanged(row);
+      });
+    });
+    row.querySelector('.sc-reset-one').addEventListener('click', function () {
+      row.querySelectorAll('.sc-hex').forEach(function (t) {
+        t.value = t.dataset.default;
+        row.querySelector('.sc-swatch[data-mode="' + t.dataset.mode + '"]').value = t.dataset.default;
+      });
+      markChanged(row); preview(row);
+    });
+  });
+  // Your mode: same as the top-bar switch (cookie, this browser only).
+  document.querySelectorAll('input[name="sc_my_mode"]').forEach(function (r) {
+    r.addEventListener('change', function () {
+      if (r.value !== mode()) { var t = document.getElementById('themeToggle'); if (t) t.click(); }
+    });
+  });
+  document.addEventListener('oxy:theme', function (e) {
+    var r = document.getElementById(e.detail === 'dark' ? 'scMyDark' : 'scMyLight'); if (r) r.checked = true;
+    html.removeAttribute('style');
+    form.querySelectorAll('.sc-row').forEach(preview);
+  });
+  // Right panel: click copies the hex.
+  document.querySelectorAll('.sc-ref .sc-item').forEach(function (it) {
+    it.addEventListener('click', function () {
+      if (navigator.clipboard) navigator.clipboard.writeText(it.dataset.hex);
+      var c = it.querySelector('code'), old = c.textContent; c.textContent = 'copied';
+      setTimeout(function () { c.textContent = old; }, 900);
+    });
+  });
+})();
+</script>
+{% endif %}
+
+{# ═══ EMAIL (2026-11-09, Pankaj): personal notifications also emailed;
+     main + backup mailbox, set in the server .env ═══ #}
+{% if main_tab == 'email' %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent d-flex align-items-center gap-2" data-show-header>
+    <span class="fw-semibold"><i class="bi bi-envelope me-2"></i>Email Notifications</span>
+    {% if em_configured %}<span class="badge bg-success ms-auto">On</span>{% else %}<span class="badge bg-secondary ms-auto">Not set up</span>{% endif %}
+  </div>
+  <div class="card-body">
+    <p class="mb-2">Every personal notification is also emailed (User Management → Email) to: the <b>Assignee</b>, the <b>Assigner</b>
+      (who did the action), the Assignee's <b>Report To</b> manager and the Assigner's <b>Report To</b> manager — each person once.
+      Notifications for everyone stay in the app only.</p>
+    <p class="mb-0 text-muted small">One mailbox can send to any address (Gmail, Outlook / Microsoft 365, company mail). The backup mailbox is
+      used automatically when the main one fails to send. {{ em_with_email }} of {{ em_active }} active users have an email.
+      {% if em_public_url %}Emails link to {{ em_public_url }}.{% endif %}</p>
+  </div>
+</div>
+<div class="row g-3">
+  {% for b in em_boxes %}
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent d-flex align-items-center gap-2" data-show-header>
+        <span class="fw-semibold"><i class="bi bi-{{ 'envelope-check' if b.key == 'main' else 'envelope-arrow-up' }} me-2"></i>{{ b.label }}</span>
+        {% if b.ready %}<span class="badge bg-success ms-auto">Connected</span>{% else %}<span class="badge bg-secondary ms-auto">Not set up</span>{% endif %}
+      </div>
+      <div class="card-body">
+        {% if b.ready %}
+        <table class="table table-sm mb-3">
+          <tr><th class="text-muted fw-normal" style="width:40%">Mail server</th><td>{{ b.host }}:{{ b.port }} · {{ b.security | upper }}</td></tr>
+          <tr><th class="text-muted fw-normal">Mailbox (login)</th><td>{{ b.user or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal">Password</th><td>{{ 'Set' if b.has_password else 'Not set' }}</td></tr>
+          <tr><th class="text-muted fw-normal">Sent from</th><td>{{ b.from }}</td></tr>
+        </table>
+        <form method="post" action="/admin/master/email/test" class="d-flex flex-wrap gap-2 align-items-center">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <input type="hidden" name="box" value="{{ b.key }}">
+          <input type="email" name="to" id="emTo_{{ b.key }}" class="form-control form-control-sm" style="max-width:280px"
+                 value="{{ current_user.email or '' }}" placeholder="Send the test to…">
+          <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-send me-1"></i>Send test email</button>
+        </form>
+        <a class="small text-decoration-none" data-bs-toggle="collapse" href="#emEdit_{{ b.key }}" role="button"><i class="bi bi-pencil-square me-1"></i>Edit settings</a>
+        {% else %}
+        <p class="small mb-2">{{ 'Fill in the company mailbox and Save — emails start at once, no restart.' if b.key == 'main' else 'Optional. Used only when the main mailbox fails to send.' }}</p>
+        {% endif %}
+        {# Saved into the server's .env (services/env_settings.py, 2026-11-11). The password is never shown. #}
+        <form method="post" action="/admin/master/email/settings" class="{{ 'collapse mt-3' if b.ready else '' }} border-top pt-3" id="emEdit_{{ b.key }}" autocomplete="off">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <input type="hidden" name="box" value="{{ b.key }}">
+          <div class="row g-2">
+            <div class="col-8"><label class="form-label small fw-semibold mb-0">Mail server</label>
+              <input type="text" name="host" class="form-control form-control-sm" value="{{ b.host }}" list="emHosts" placeholder="smtp.office365.com / smtp.gmail.com" required></div>
+            <div class="col-4"><label class="form-label small fw-semibold mb-0">Port</label>
+              <input type="number" name="port" class="form-control form-control-sm" value="{{ b.port if b.host else 587 }}" min="1" max="65535"></div>
+            <div class="col-6"><label class="form-label small fw-semibold mb-0">Mailbox (login)</label>
+              <input type="text" name="user" class="form-control form-control-sm" value="{{ b.user }}" placeholder="erp@oxypc.in" autocomplete="off"></div>
+            <div class="col-6"><label class="form-label small fw-semibold mb-0">Password</label>
+              <input type="password" name="password" class="form-control form-control-sm" autocomplete="new-password"
+                     placeholder="{{ 'Leave empty to keep the current one' if b.has_password else 'Mailbox / App Password' }}"></div>
+            <div class="col-8"><label class="form-label small fw-semibold mb-0">Sent from</label>
+              <input type="text" name="from" class="form-control form-control-sm" value="{{ b.from if b.from != b.user else '' }}" placeholder="OxyPC ERP &lt;erp@oxypc.in&gt; (optional)"></div>
+            <div class="col-4"><label class="form-label small fw-semibold mb-0">Security</label>
+              <select name="security" class="form-select form-select-sm">
+                {% for v, l in [('', 'Auto'), ('starttls', 'STARTTLS'), ('ssl', 'SSL'), ('none', 'None')] %}
+                <option value="{{ v }}" {{ 'selected' if b.host and v == b.security else '' }}>{{ l }}</option>{% endfor %}
+              </select></div>
+            {% if b.key == 'main' %}
+            <div class="col-12"><label class="form-label small fw-semibold mb-0">Link in emails</label>
+              <input type="text" name="public_url" class="form-control form-control-sm" value="{{ em_public_url }}" placeholder="http://192.168.1.100:8000 (optional)"></div>
+            {% endif %}
+          </div>
+          {% if b.has_password %}<div class="form-check small mt-2"><input class="form-check-input" type="checkbox" name="clear_password" value="1" id="emClr_{{ b.key }}">
+            <label class="form-check-label" for="emClr_{{ b.key }}">Remove the saved password</label></div>{% endif %}
+          <div class="d-flex flex-wrap gap-2 mt-2 align-items-center">
+            <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-save me-1"></i>Save</button>
+            {% if b.ready %}<button type="submit" name="turn_off" value="1" formnovalidate class="btn btn-sm btn-outline-danger"><i class="bi bi-power me-1"></i>Turn off</button>{% endif %}
+            <span class="small text-muted">Saved in the server's .env file; the password is never shown again.</span>
+          </div>
+          <p class="small text-muted mb-0 mt-2">Microsoft 365: smtp.office365.com · Gmail / Google Workspace: smtp.gmail.com with an App Password. Port 465 uses SSL automatically.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+<datalist id="emHosts"><option value="smtp.office365.com"><option value="smtp.gmail.com"></datalist>
+{% endif %}
+
 {% endblock %}
 {% block scripts %}
 {% set main_tab = request.query_params.get('main_tab', 'dropdowns') %}
@@ -986,4 +1265,5 @@ function checkEditRoleNameExists(input) {
 
 {% endif %}
 </script>
+
 {% endblock %}

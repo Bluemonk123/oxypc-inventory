@@ -1,5 +1,18 @@
 // OxyPC Inventory — General JS
 
+// Tile counts (2026-11-08): Indian short form from one lakh up, same rule as
+// templates_config.tile_num -- oxtShort(125000) -> "1.250 Lk",
+// oxtShort(24000000, true) -> "₹2.400 Cr". Below a lakh: plain grouping
+// (en-US for counts, en-IN for rupees). Use for numbers page JS writes into
+// .oxt-* tiles; set el.title = full figure if wanted.
+window.oxtShort = function (n, rupee) {
+  n = Number(n) || 0;
+  var a = Math.abs(n), sign = n < 0 ? '-' : '', cur = rupee ? '\u20B9' : '';
+  if (a < 1e5) return sign + cur + Math.round(a).toLocaleString(rupee ? 'en-IN' : 'en-US');
+  var big = a >= 1e7, v = (a / (big ? 1e7 : 1e5)).toFixed(3);   // always 3 decimals (2026-11-08)
+  return sign + cur + v + (big ? ' Cr' : ' Lk');
+};
+
 // Auto-dismiss alerts after 4 seconds — excludes .no-autohide, used by
 // persistent status banners (e.g. Attendance's Check-In/Check-Out card)
 // that happen to reuse alert-success/alert-info styling but aren't a

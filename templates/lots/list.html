@@ -10,58 +10,20 @@
 <div class="alert alert-warning alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ request.query_params.get('warning') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% endif %}
 
-<form method="get" action="/lots" class="row g-2 mb-3 align-items-end">
-  <div class="col-md-4">
-    <label class="form-label small fw-semibold">Search Supplier / Lot</label>
-    <input type="text" name="q" class="form-control form-control-sm"
-           placeholder="Supplier name, lot number…" value="{{ q }}">
-  </div>
-  <div class="col-md-3">
-    <label class="form-label small fw-semibold">Purchase From</label>
-    <input type="date" name="date_from" class="form-control form-control-sm" value="{{ date_from }}">
-  </div>
-  <div class="col-md-3">
-    <label class="form-label small fw-semibold">Purchase To</label>
-    <input type="date" name="date_to" class="form-control form-control-sm" value="{{ date_to }}">
-  </div>
-  <div class="col-auto">
-    <button type="submit" class="btn btn-sm btn-primary">
-      <i class="bi bi-funnel me-1"></i>Filter
-    </button>
-    <a href="/lots" class="btn btn-sm btn-outline-secondary ms-1">Clear</a>
+<form method="get" action="/lots" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" class="form-control form-control-sm" title="Search Supplier / Lot"
+             placeholder="Search supplier name, lot number…" value="{{ q }}">
+    </div>
+    <div><input type="date" name="date_from" class="form-control form-control-sm" title="Purchase From" value="{{ date_from }}"></div>
+    <div><input type="date" name="date_to" class="form-control form-control-sm" title="Purchase To" value="{{ date_to }}"></div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/lots" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
 </form>
-
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <span class="text-muted">
-    {{ lot_stats|length }} lot(s)
-    {% if q or date_from or date_to %}
-    <span class="badge bg-warning text-dark ms-1">Filtered</span>
-    {% endif %}
-  </span>
-  <div class="d-flex gap-2 flex-wrap">
-    {# Export respects current filters: passes q / date_from / date_to as query params #}
-    {% if can(current_user, 'lots', 'export') %}<a href="/lots/export-all-csv?q={{ q }}&date_from={{ date_from }}&date_to={{ date_to }}"
-       class="btn btn-outline-info btn-sm"
-       title="{% if q or date_from or date_to %}Export filtered lots{% else %}Export all lots{% endif %}">
-      <i class="bi bi-file-earmark-arrow-down me-1"></i>
-      {% if q or date_from or date_to %}Export Filtered CSV{% else %}Export All CSV{% endif %}
-    </a>{% endif %}
-    <button {% if not can(current_user, 'lots', 'export') %}hidden {% endif %}type="button" class="btn btn-outline-success btn-sm" id="exportSelectedBtn" onclick="submitExportSelected()" disabled>
-      <i class="bi bi-download me-1"></i>Export Selected
-    </button>
-    {% if can(current_user, 'lots', 'upload') %}
-    <a href="/bulk-upload?type=lots" class="btn btn-outline-success btn-sm">
-      <i class="bi bi-cloud-upload me-1"></i>Bulk Upload Lots
-    </a>
-    {% endif %}
-    {% if can(current_user, 'lots', 'add') %}
-    <a href="/lots/new" class="btn btn-primary btn-sm">
-      <i class="bi bi-plus-circle me-1"></i>New Lot
-    </a>
-    {% endif %}
-  </div>
-</div>
 
 {# Hidden form used to POST selected lot IDs for CSV export #}
 <form id="exportSelectedForm" method="post" action="/lots/export-csv" style="display:none">
@@ -69,8 +31,36 @@
 </form>
 
 <div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
-    <div class="table-responsive">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Lots
+      <span class="text-muted fw-normal small ms-1">{{ lot_stats|length }} lot(s)</span>
+      {% if q or date_from or date_to %}<span class="badge bg-warning text-dark ms-1">Filtered</span>{% endif %}
+    </span>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      {# Export respects current filters: passes q / date_from / date_to as query params #}
+      {% if can(current_user, 'lots', 'export') %}<a href="/lots/export-all-csv?q={{ q }}&date_from={{ date_from }}&date_to={{ date_to }}"
+         class="btn btn-outline-info btn-sm"
+         title="{% if q or date_from or date_to %}Export filtered lots{% else %}Export all lots{% endif %}">
+        <i class="bi bi-file-earmark-arrow-down me-1"></i>
+        {% if q or date_from or date_to %}Export Filtered CSV{% else %}Export All CSV{% endif %}
+      </a>{% endif %}
+      <button {% if not can(current_user, 'lots', 'export') %}hidden {% endif %}type="button" class="btn btn-outline-success btn-sm" id="exportSelectedBtn" onclick="submitExportSelected()" disabled>
+        <i class="bi bi-download me-1"></i>Export Selected
+      </button>
+      {% if can(current_user, 'lots', 'upload') %}
+      <a href="/bulk-upload?type=lots" class="btn btn-outline-success btn-sm">
+        <i class="bi bi-cloud-upload me-1"></i>Bulk Upload Lots
+      </a>
+      {% endif %}
+      {% if can(current_user, 'lots', 'add') %}
+      <a href="/lots/new" class="btn btn-primary btn-sm">
+        <i class="bi bi-plus-circle me-1"></i>Add Lot
+      </a>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body">
+    <div>
       <table id="lotsTable" class="table table-hover mb-0 small">
         <thead class="table-dark">
           <tr>
@@ -204,8 +194,9 @@
 {% block scripts %}
 <script>
 $(document).ready(function(){
-  $('#lotsTable').DataTable({ pageLength: 12, order:[[1,'desc']],
-    columnDefs:[{visible:false, targets:{% if can(current_user, 'lots', 'pricing') %}[4,6,8,9,10,11]{% else %}[4,6]{% endif %}}] });
+  initGlobalTable('#lotsTable', { order:[[1,'desc']],
+    columnDefs:[{visible:false, targets:{% if can(current_user, 'lots', 'pricing') %}[4,6,8,9,10,11]{% else %}[4,6]{% endif %}}] },
+    { selectAll: { headerSelector: '#selectAllLots', rowSelector: '.lot-checkbox', onChange: updateExportBtn } });
 });
 
 // Pre-fill GRN modal from row data attributes
@@ -218,11 +209,7 @@ document.getElementById('grnModal').addEventListener('show.bs.modal', function(e
   document.getElementById('grnReceived').focus();
 });
 
-// Checkbox select-all logic
-document.getElementById('selectAllLots').addEventListener('change', function() {
-  document.querySelectorAll('.lot-checkbox').forEach(cb => cb.checked = this.checked);
-  updateExportBtn();
-});
+// Header select-all is wired by initGlobalTable (opts.selectAll above).
 document.addEventListener('change', function(e) {
   if (e.target.classList.contains('lot-checkbox')) updateExportBtn();
 });

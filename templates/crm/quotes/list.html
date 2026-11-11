@@ -2,10 +2,11 @@
 {% block title %}Quotes — OxyPC{% endblock %}
 {% block page_title %}Quotes{% endblock %}
 {% block content %}
+{% import "_download_cell.html" as dl %}
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="text-muted small">{{ quotes | length }} quote(s) total</div>
-  {% if can(current_user, 'crm_quotes', 'add') %}<a href="/crm/quotes/new" class="btn btn-sm btn-success"><i class="bi bi-file-earmark-plus me-1"></i>New Quote</a>{% endif %}
+  {% if can(current_user, 'crm_quotes', 'add') %}<a href="/crm/quotes/new" class="btn btn-sm btn-success"><i class="bi bi-plus-circle me-1"></i>Add Quote</a>{% endif %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -22,15 +23,12 @@
             <th>Valid Until</th>
             <th>Total Amount</th>
             <th>Status</th>
-            <th>Actions</th>
+            <th>Download</th><th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {% for qt in quotes %}
-          {% set status_colors = {
-            'draft': 'secondary', 'sent': 'info', 'negotiating': 'warning',
-            'accepted': 'success', 'rejected': 'danger', 'expired': 'secondary'
-          } %}
+          {% set status_colors = QUOTE_STATUS_COLORS %}
           <tr>
             <td><a href="/crm/quotes/{{ qt.id }}" class="fw-semibold text-decoration-none"><code>{{ qt.quote_number }}</code></a>{% if qt.sourcing_deal_id %} <a href="/crm/sourcing/{{ qt.sourcing_deal_id }}" class="badge bg-info text-dark text-decoration-none" title="Supplier quote from a Sourcing Deal">Supplier</a>{% elif not opps_map.get(qt.id|string) %} <span class="badge bg-secondary" title="Not linked to any deal">Not linked</span>{% endif %}</td>
             <td>
@@ -48,7 +46,7 @@
             <td class="small" data-order="{{ qt.quote_date.isoformat() if qt.quote_date else '' }}">{{ qt.quote_date.strftime('%d %b %Y') if qt.quote_date else '—' }}</td>
             <td class="small">
               {% if qt.valid_until %}
-              <span class="{% if qt.valid_until < now.date() and qt.status not in ['accepted','rejected'] %}text-danger{% endif %}">
+              <span class="{% if qt.valid_until < now.date() and qt.status not in ['approved','rejected'] %}text-danger{% endif %}">
                 {{ qt.valid_until.strftime('%d %b %Y') }}
               </span>
               {% else %}—{% endif %}
@@ -57,6 +55,7 @@
             <td>
               <span class="badge bg-{{ status_colors.get(qt.status,'secondary') }}">{{ qt.status | title }}</span>
             </td>
+            <td>{{ dl.cell(downloads.get(qt.id|string) if can(current_user, 'crm_quotes', 'export') else []) }}</td>
             <td>
               <div class="btn-group btn-group-sm">
                 <a href="/crm/quotes/{{ qt.id }}" class="btn btn-outline-primary" title="View"><i class="bi bi-eye"></i></a>

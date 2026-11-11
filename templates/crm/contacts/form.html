@@ -2,6 +2,7 @@
 {% block title %}{{ 'Edit' if contact else 'New' }} Account — OxyPC{% endblock %}
 {% block page_title %}{{ 'Edit Account' if contact else 'Add Account' }}{% endblock %}
 {% block content %}
+{% import "_from_entity_field.html" as fe with context %}
 
 <div class="row justify-content-center">
 <div class="col-xl-9">
@@ -13,6 +14,7 @@
   <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-building me-2 text-primary"></i>Company Details</div>
   <div class="card-body">
     <div class="row g-3">
+      {{ fe.field(contact.from_entity if contact else None, 'col-md-4') }}
       <div class="col-md-4">
         <label class="form-label fw-semibold">Contact Type <span class="text-danger">*</span></label>
         <select name="contact_type" class="form-select" required id="contactTypeSelect">
@@ -81,7 +83,7 @@
     <div class="row g-3 align-items-end">
       <div class="col-md-6">
         <label class="form-label fw-semibold">GSTIN</label>
-        <input type="text" name="gstin" class="form-control" value="{{ contact.gstin or '' if contact else '' }}" placeholder="15-char GSTIN" maxlength="15">
+        <input type="text" name="gstin" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.gstin or '' if contact else '' }}" placeholder="15-char GSTIN" maxlength="15">
       </div>
       <div class="col-md-6">
         <label class="form-label fw-semibold">Upload GSTIN Document</label>
@@ -91,7 +93,7 @@
 
       <div class="col-md-6">
         <label class="form-label fw-semibold">PAN</label>
-        <input type="text" name="pan" class="form-control" value="{{ contact.pan or '' if contact else '' }}" placeholder="10-char PAN" maxlength="10">
+        <input type="text" name="pan" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.pan or '' if contact else '' }}" placeholder="10-char PAN" maxlength="10">
       </div>
       <div class="col-md-6">
         <label class="form-label fw-semibold">Upload PAN Document</label>
@@ -101,7 +103,7 @@
 
       <div class="col-md-6">
         <label class="form-label fw-semibold">Bank Cheque</label>
-        <input type="text" name="bank_cheque_number" class="form-control" value="{{ contact.bank_cheque_number or '' if contact else '' }}" placeholder="Cheque / account number">
+        <input type="text" name="bank_cheque_number" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.bank_cheque_number or '' if contact else '' }}" placeholder="Cheque / account number">
       </div>
       <div class="col-md-6">
         <label class="form-label fw-semibold">Upload Bank Cheque</label>
@@ -111,7 +113,7 @@
 
       <div class="col-md-6">
         <label class="form-label fw-semibold">MSME/UDHYOG Certificate</label>
-        <input type="text" name="msme_number" class="form-control" value="{{ contact.msme_number or '' if contact else '' }}" placeholder="MSME / Udhyog registration number">
+        <input type="text" name="msme_number" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.msme_number or '' if contact else '' }}" placeholder="MSME / Udhyog registration number">
       </div>
       <div class="col-md-6">
         <label class="form-label fw-semibold">Upload MSME/UDHYOG Certificate</label>
@@ -121,7 +123,7 @@
 
       <div class="col-md-6">
         <label class="form-label fw-semibold">Director 1 Aadhar/PAN</label>
-        <input type="text" name="director1_id_number" class="form-control" value="{{ contact.director1_id_number or '' if contact else '' }}" placeholder="Aadhar / PAN number">
+        <input type="text" name="director1_id_number" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.director1_id_number or '' if contact else '' }}" placeholder="Aadhar / PAN number">
       </div>
       <div class="col-md-6">
         <label class="form-label fw-semibold">Upload Aadhar/PAN <span class="text-muted small">(single PDF)</span></label>
@@ -131,7 +133,7 @@
 
       <div class="col-md-6">
         <label class="form-label fw-semibold">Director 2 Aadhar/PAN</label>
-        <input type="text" name="director2_id_number" class="form-control" value="{{ contact.director2_id_number or '' if contact else '' }}" placeholder="Aadhar / PAN number">
+        <input type="text" name="director2_id_number" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.director2_id_number or '' if contact else '' }}" placeholder="Aadhar / PAN number">
       </div>
       <div class="col-md-6">
         <label class="form-label fw-semibold">Upload Aadhar/PAN <span class="text-muted small">(single PDF)</span></label>
@@ -168,12 +170,25 @@
   <div class="card-body">
     <div class="row g-3">
       {% if price_field_shown(current_user, 'crm_contacts') %}
-      <div class="col-md-4">
+      <div class="col-md-3">
         <label class="form-label fw-semibold">Credit Limit (₹)</label>
         <input type="number" name="credit_limit" class="form-control" step="1000" min="0" {{ price_input_attrs(current_user, 'crm_contacts', contact.credit_limit or 0 if contact else 0) }}>
       </div>
       {% endif %}
-      <div class="col-md-4">
+      {# Credit Days (2026-11-10, Pankaj): Master Data -> CRM: Credit Days #}
+      <div class="col-md-3">
+        <label class="form-label fw-semibold">Credit Days</label>
+        <select name="credit_days" class="form-select">
+          <option value="">— Select —</option>
+          {% set _cd = (contact.credit_days | string) if contact and contact.credit_days is not none else '' %}
+          {% set _cd_opts = master_options('crm_credit_days') %}
+          {% for d in _cd_opts %}
+          <option value="{{ d }}" {% if _cd == d %}selected{% endif %}>{{ d }} days</option>
+          {% endfor %}
+          {% if _cd and _cd not in _cd_opts %}<option value="{{ _cd }}" selected>{{ _cd }} days</option>{% endif %}
+        </select>
+      </div>
+      <div class="col-md-3">
         <label class="form-label fw-semibold">Assigned To</label>
         <select name="assigned_to" class="form-select">
           {% for u in users %}
@@ -185,7 +200,7 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-4">
+      <div class="col-md-3">
         <label class="form-label fw-semibold">Status</label>
         <select name="status" class="form-select">
           <option value="active"      {% if not contact or contact.status=='active'      %}selected{% endif %}>Active</option>
@@ -236,6 +251,13 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// KYC numbers auto upper-case (2026-11-10, Pankaj); the server stores them upper-case too.
+document.addEventListener('input', function (e) {
+  var el = e.target;
+  if (!el.classList || !el.classList.contains('kyc-upper')) return;
+  var pos = el.selectionStart, up = el.value.toUpperCase();
+  if (up !== el.value) { el.value = up; try { el.setSelectionRange(pos, pos); } catch (x) {} }
+});
 function addLocationBlock() {
   var tpl = document.getElementById('locationBlockTemplate');
   var clone = tpl.content.cloneNode(true);

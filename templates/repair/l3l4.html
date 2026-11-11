@@ -33,9 +33,7 @@
           <button {% if not can(current_user, 'repair_l3', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l34ExportBtn"
                   title="Export the rows shown (current filters / search) to CSV">
             <i class="bi bi-download me-1"></i>Export (<span id="l34ExportBtnCount">0</span>)</button>
-          {# Search Tags after Export (2026-10-26). #}
-          <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
-            <i class="bi bi-clock-history me-1"></i>Search Tags</button>
+          {# Search Tags button removed (2026-11-09): the top-bar search opens the same modal. #}
         </div>
       </div>
       <div class="card-body p-0">
@@ -203,7 +201,7 @@
     </form>
   </div>
 </div>
-{% include "_search_tags_modal.html" %}
+{# Search Tags modal is included once by base.html (2026-11-08). #}
 {% endblock %}
 {% block scripts %}
 <script>

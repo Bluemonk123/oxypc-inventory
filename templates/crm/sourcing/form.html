@@ -2,6 +2,7 @@
 {% block title %}{{ 'Edit' if deal else 'New' }} Sourcing Deal — OxyPC{% endblock %}
 {% block page_title %}{{ 'Edit Sourcing Deal' if deal else 'New Sourcing Deal' }}{% endblock %}
 {% block content %}
+{% import "_from_entity_field.html" as fe with context %}
 
 <div class="row justify-content-center">
 <div class="col-xl-10">
@@ -12,16 +13,17 @@
   <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-info-circle me-2 text-primary"></i>Deal Details</div>
   <div class="card-body">
     <div class="row g-3">
-      <div class="col-12">
+      {{ fe.field(deal.from_entity if deal else None, 'col-md-4') }}
+      <div class="col-md-8">
         <label class="form-label fw-semibold">Title <span class="text-danger">*</span></label>
         <input type="text" name="title" class="form-control" required value="{{ deal.title if deal else '' }}" placeholder="e.g. 50 Laptops from Sharma Traders, Delhi">
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
         <label class="form-label fw-semibold">Contact (Supplier)</label>
-        <select name="contact_id" class="form-select">
+        <select name="contact_id" class="form-select" data-type-target="source_type">
           <option value="">— Select Contact —</option>
           {% for c in contacts %}
-          <option value="{{ c.id }}"
+          <option value="{{ c.id }}" data-type="{{ c.source_type or '' }}"
             {% if deal and deal.contact_id == c.id %}selected
             {% elif preselect and preselect|string == c.id|string %}selected
             {% endif %}>
@@ -30,8 +32,8 @@
           {% endfor %}
         </select>
       </div>
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">Source Type</label>
+      <div class="col-md-4">
+        <label class="form-label fw-semibold">Supplier Type</label>
         <select name="source_type" class="form-select">
           <option value="">— Select —</option>
           {% for val, label in source_types %}
@@ -39,69 +41,23 @@
           {% endfor %}
         </select>
       </div>
+      {# Expected Close Date (2026-11-10, Pankaj) #}
       <div class="col-md-4">
-        <label class="form-label fw-semibold">Device Type</label>
-        {% set _dt = deal.device_type if deal else '' %}
-        <select name="device_type" class="form-select">
-          <option value="">— Select —</option>
-          {% for dt in master_options('device_type') %}
-          <option value="{{ dt }}" {% if _dt == dt %}selected{% endif %}>{{ dt }}</option>
-          {% endfor %}
-          {% if _dt and _dt not in master_options('device_type') %}
-          <option value="{{ _dt }}" selected>{{ _dt }} (current)</option>
-          {% endif %}
-        </select>
-      </div>
-      <div class="col-md-4">
-        <label class="form-label fw-semibold">Est. Quantity</label>
-        <input type="number" name="est_quantity" id="est_quantity" class="form-control" min="0" value="{{ deal.est_quantity or '' if deal else '' }}" placeholder="0">
-      </div>
-      <div class="col-md-4">
-        <label class="form-label fw-semibold">Condition Type</label>
-        <select name="material_type" class="form-select">
-          <option value="">— Select —</option>
-          {% for val, label in material_types %}
-          <option value="{{ val }}" {% if deal and deal.material_type==val %}selected{% endif %}>{{ label }}</option>
-          {% endfor %}
-        </select>
+        <label class="form-label fw-semibold">Expected Close Date</label>
+        <input type="date" name="expected_close_date" class="form-control"
+          value="{{ deal.expected_close_date.strftime('%Y-%m-%d') if deal and deal.expected_close_date else '' }}">
       </div>
     </div>
   </div>
 </div>
 
+{# Pricing (2026-11-10, Pankaj): Device Type / Est. Quantity / Condition Type
+   moved here, Payment Advance % removed, Margin % added. Also editable on the
+   deal page (Pricing card). #}
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-currency-rupee me-2 text-success"></i>Pricing</div>
   <div class="card-body">
-    {# Asking Price, Asking Price Total, Our Offer, Our Offer Total, Payment Advance — one row #}
-    <div class="row g-3 row-cols-1 row-cols-md-5">
-      <div class="col">
-        <label class="form-label fw-semibold">Asking Price / Unit (₹)</label>
-        <input type="number" name="asking_price_unit" id="asking_unit" class="form-control" step="0.01" min="0"
-          {{ price_input_attrs(current_user, 'crm_sourcing', deal.asking_price_unit or '' if deal else '', '0.00') }}
-          onblur="calcTotal('asking_unit','est_quantity','asking_total')">
-      </div>
-      <div class="col">
-        <label class="form-label fw-semibold">Asking Price Total (₹)</label>
-        <input type="number" name="asking_price_total" id="asking_total" class="form-control" step="0.01" min="0"
-          {{ price_input_attrs(current_user, 'crm_sourcing', deal.asking_price_total or '' if deal else '', 'Auto-calculated') }} readonly>
-      </div>
-      <div class="col">
-        <label class="form-label fw-semibold">Our Offer / Unit (₹)</label>
-        <input type="number" name="our_offer_unit" id="offer_unit" class="form-control" step="0.01" min="0"
-          {{ price_input_attrs(current_user, 'crm_sourcing', deal.our_offer_unit or '' if deal else '', '0.00') }}
-          onblur="calcTotal('offer_unit','est_quantity','offer_total')">
-      </div>
-      <div class="col">
-        <label class="form-label fw-semibold">Our Offer Total (₹)</label>
-        <input type="number" name="our_offer_total" id="offer_total" class="form-control" step="0.01" min="0"
-          {{ price_input_attrs(current_user, 'crm_sourcing', deal.our_offer_total or '' if deal else '', 'Auto-calculated') }} readonly>
-      </div>
-      <div class="col">
-        <label class="form-label fw-semibold">Payment Advance %</label>
-        <input type="number" name="payment_advance_pct" class="form-control" min="0" max="100"
-          value="{{ deal.payment_advance_pct or 0 if deal else 0 }}">
-      </div>
-    </div>
+    {% include "crm/sourcing/_pricing_fields.html" %}
   </div>
 </div>
 
@@ -155,13 +111,6 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>
-function calcTotal(unitId, qtyId, totalId) {
-  var unit = parseFloat(document.getElementById(unitId).value) || 0;
-  var qty  = parseFloat(document.getElementById(qtyId).value)  || 0;
-  if (unit > 0 && qty > 0) {
-    document.getElementById(totalId).value = (unit * qty).toFixed(2);
-  }
-}
-</script>
+{% include "crm/sourcing/_pricing_js.html" %}
+{% include "crm/_contact_type_autoselect.html" %}
 {% endblock %}

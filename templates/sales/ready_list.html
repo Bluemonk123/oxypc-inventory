@@ -29,7 +29,7 @@
    tab badges and each table's count badge already show the counts.
 <div class="d-flex justify-content-between align-items-center mb-3">
   <span class="text-muted">{{ devices|length }} device(s) ready</span>
-  <a href="/sales/new" class="btn btn-success"><i class="bi bi-cart-plus me-2"></i>New Sale</a>
+  <a href="/sales/new" class="btn btn-success"><i class="bi bi-plus-circle me-2"></i>Add Sale</a>
 </div>
 #}
 
@@ -192,7 +192,7 @@
          page (per-tag prices, no quantity cap). Multi-Sell above is unchanged. #}
       <button {% if _ps or not can(current_user, _pm, 'add') or not can(current_user, _pm, 'pricing_add') %}hidden {% endif %}type="button" id="newBulkSaleBtn" class="btn btn-sm btn-success d-none" disabled
               title="Open the New Tag Sale page with the selected tags">
-        <i class="bi bi-cart-plus me-1"></i>New Bulk Sale (<span id="readySelCount4">0</span>)
+        <i class="bi bi-plus-circle me-1"></i>Add Bulk Sale (<span id="readySelCount4">0</span>)
       </button>
       {# Assign to Pre-Sale (2026-10-29): queues the ticked tags for Pre-Sale
          IQC; nothing changes on this page. Shown to everyone on Ready for

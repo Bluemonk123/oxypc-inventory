@@ -1,7 +1,7 @@
 """Global Table property: the first column centers ONLY when it's a
 checkbox; every other first column (Model Names, Tag Number, WorkID, ...)
 stays left-aligned like any other text column. The last (Action) column
-always centers regardless.
+is always right-aligned regardless (2026-11-08; was centred).
 
 Found 2026-09-03: the original CSS rule
 (.gtable thead th:first-child, .gtable tbody td:first-child) centered every
@@ -24,7 +24,7 @@ def _js():
     return (pathlib.Path(ROOT) / "static" / "js" / "global-table.js").read_text(encoding="utf-8")
 
 
-def test_last_column_centers_unconditionally():
+def test_last_column_right_aligned_unconditionally():
     css = _css()
     assert ".gtable thead th:last-child,\n.gtable tbody td:last-child" in css
 

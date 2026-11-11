@@ -4,30 +4,32 @@
 {% block content %}
 {% include 'qa/_tabs.html' %}
 
-<!-- Toolbar -->
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <form method="get" class="d-flex gap-2">
-    <select name="status" class="form-select form-select-sm" style="width:180px">
-      <option value="">All Statuses</option>
-      {% for s in uat_statuses %}
-      <option value="{{ s.value }}" {{ 'selected' if f_status == s.value }}>{{ s.value }}</option>
-      {% endfor %}
-    </select>
-    <button class="btn btn-sm btn-outline-secondary">Filter</button>
-  </form>
-  {% if can(current_user, 'qa_uat', 'add') %}
-  <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#newUATModal">
-    <i class="bi bi-plus-circle me-1"></i>New UAT Scenario
-  </button>
-  {% endif %}
-</div>
-
 <!-- UAT Entry Criteria reminder -->
 <div class="alert alert-info alert-sm border py-2 mb-3 small">
   <strong>UAT Entry Criteria:</strong> QA sign-off completed &bull; 0 open critical defects &bull; Stable build deployed to UAT environment
 </div>
 
 <!-- Kanban-style status columns -->
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-kanban me-2"></i>UAT Scenarios</span>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      <form method="get" action="/qa/uat" class="d-flex gap-2 flex-wrap align-items-center mb-0">
+        <select name="status" class="form-select form-select-sm" style="width:180px" title="Status">
+          <option value="">All Statuses</option>
+          {% for s in uat_statuses %}
+          <option value="{{ s.value }}" {{ 'selected' if f_status == s.value }}>{{ s.value }}</option>
+          {% endfor %}
+        </select>
+      </form>
+      {% if can(current_user, 'qa_uat', 'add') %}
+      <button class="btn btn-sm btn-success" data-bs-toggle="modal" data-bs-target="#newUATModal">
+        <i class="bi bi-plus-circle me-1"></i>Add UAT Scenario
+      </button>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body">
 <div class="row g-3">
   {% set col_map = [
     ('Pending Execution', 'warning', 'bi-hourglass'),
@@ -130,6 +132,8 @@
     </div>
   </div>
   {% endfor %}
+</div>
+  </div>
 </div>
 
 <!-- UAT Exit Criteria reminder -->

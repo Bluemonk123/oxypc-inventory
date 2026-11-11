@@ -573,25 +573,27 @@ MANUALS = [{'id': 1,
   'url': '/scrap-products',
   'icon': 'bi-trash3',
   'description': 'Scrap Products lists devices graded Scrap that are waiting to be sold as scrap, plus spare '
-                 'parts that were scrapped. Inventory, L3 and sales staff use it to verify scrap, record '
-                 'replacements and start a scrap sale.',
+                 'parts that were scrapped. Inventory and L3 staff use it to verify scrap and record '
+                 'replacements. Verify sends the tags to Scrap for Sale, where they are sold.',
   'steps': [('Open the page',
-             ['Go to Inventory -> Scrap Products.',
-              'The count above the first table shows how many scrapped products there are.',
+             ['Go to Inventory -> Scrap Products. The page has two tabs: Scrapped Tags and Scrapped Parts.',
+              'The yellow count badge above each table shows how many rows it has.',
               'Columns: Scrapped Tag Numbers, Brand, Model, Grade, Received User (the engineer who sent it '
               'to scrap), Amount (total cost of the device in Rs), Updated On, Notes, Received and Action.',
               "'Received' shows 'Yes' when the scrap was verified and 'No' when it is still waiting."]),
             ('Verify a scrapped device',
-             ["Click 'Verify' in the Action column of a row where Received is 'No'.",
+             ["Click 'Verify' in the Action column of a row.",
               "Enter the 'Verified Quantity' and any 'Notes' (condition, remarks).",
-              "Click 'Submit'. Received changes to 'Yes' and the 'Sell' button appears."]),
-            ('Sell or view a device',
-             ["After verification, click 'Sell' to open the new sale form with this Tag Number already "
-              'filled in.',
-              "Click 'View' to open the full device page.",
+              "Click 'Submit'. The tag goes to Selling -> Scrap for Sale under a new Scrap ID and leaves "
+              'this table. It is priced and sold there.',
+              "To verify many tags at once, tick them and click 'Verify (n)'. All of them go into one new "
+              'Scrap ID.']),
+            ('View a device',
+             ["Click 'View' to open the full device page.",
               'Click the Tag Number itself to open the device page too.']),
             ('Record a replacement scrap',
-             ["Rows marked as 'Replacement Scrap' show a 'Replace' button instead of Verify / Sell.",
+             ["Rows marked as 'Replacement Scrap' show only a 'Replace' button until the replacement tag is "
+              "set; then 'Verify' appears.",
               "Click 'Replace' and type at least 2 characters in 'Search Tag Number'.",
               "Pick the replacement tag from the list and click 'Submit'.",
               "The table then shows '(Replace with <tag>)' under the scrapped Tag Number. The replacement "
@@ -600,7 +602,7 @@ MANUALS = [{'id': 1,
              ['The second table lists spare parts that were marked Scrap on the Parts Dashboard.',
               'Columns: Tag Number, Part Name, Category, Qty, Requested By, Scrapped By and Scrapped On.',
               'This table is read-only.'])],
-  'tips': ['You cannot sell a scrap device until it is verified.',
+  'tips': ['Scrap is sold only from Selling -> Scrap for Sale, by Scrap ID - not from this page.',
            'Only admin, inventory manager, L3 engineer, sales and sales manager roles can open this page.',
            'If the device has no cost record, Amount uses the device price x quantity.']},
  {'id': 14,
@@ -727,15 +729,13 @@ MANUALS = [{'id': 1,
               'user gets a notification.',
               "Click 'Search Tags' to view the asset history of any tag without changing it."]),
             ('Use the Repair Line section',
-             ["Click 'Repair Line' to open it. It has four tabs.",
+             ["Click 'Repair Line' to open it. It has three tabs.",
               "'Final QC Fail (Bucket)': buckets that failed Final QC. Click 'Assign' to send them to L1/L2, "
               'QC or Stress, or Cosmetic.',
               "'Tag Number in Repair Line': tags now in L1, L2 or L3 repair, with the assigned engineer's "
               'name.',
               "'Buckets in Repair Line': assigned buckets with Total Pass and Total Fail. Click 'Release "
-              "Bucket' to un-link all tags from that bucket.",
-              "'Scrap from Repair Line': scrapped tags. Click 'Move to Inventory' to send the tag to Scrap "
-              "for Sale, or 'Replace With Another' to record which tag replaced it."])],
+              "Bucket' to un-link all tags from that bucket."])],
   'tips': ['Only admin, inventory manager, QC inspector and sales manager roles can open this page.',
            "The 'Assign' engineer list shows only L1 and L2 engineers. 'Change Engineer' shows all active "
            'users.',
@@ -790,7 +790,9 @@ MANUALS = [{'id': 1,
               "The 'Lots Summary' table lists every lot: Lot Number, Date of Purchase, Total Products, Total "
               'Parts Required, IQC Data, Download and Action.',
               'Click a Lot Number to open that lot in Lot Overview.',
-              "The red button at the top right, 'Recent PNA under L1/L2/L3/L4', shows how many tags have PNA "
+              'Use the Date box in the Lots Summary header to show only lots purchased in a date range; the '
+              'reset icon beside it clears the dates.',
+              "The 'Export PNA under L1/L2/L3/L4' button in the same header shows how many tags have PNA "
               'parts. Click it to download the PNA parts list.']),
             ('Download IQC data',
              ["Click 'IQC Data' on a lot row.",
@@ -835,7 +837,10 @@ MANUALS = [{'id': 1,
               'and Amount are entered.',
               'The steps are: Return Received -> Debit Note Verified -> Verify Payment -> Payment Invoice '
               'Done -> Restock Pending -> CN Complete.',
-              'The tiles at the top show how many records are at each step.']),
+              'The tiles at the top show how many records are at each step.',
+              "At 'Payment Invoice Done' the old tag is closed as Sold at Rs 0 with Payment Mode 'Credit "
+              "Note'.",
+              "At 'CN Complete' the tag's return flag is cleared and the record is finished."]),
             ('Find records',
              ['Go to Selling -> Credit Note.',
               "Type in 'Tag Number / Sale ID / Payment Invoice' to search.",
@@ -966,7 +971,9 @@ MANUALS = [{'id': 1,
             ('Handle a scrap decision from L3/L4',
              ["If L3/L4 Status shows 'Normal Scrap' or 'Replacement Scrap', the Action column shows 'Back to "
               "Inventory'.",
-              "Click 'Back to Inventory'. The tag gets grade Scrap and moves to the Tags Scrapped page."]),
+              "Click 'Back to Inventory'. The tag gets grade Scrap and moves to Scrap Products -> Scrapped "
+              'Tags.',
+              'There, Verify puts it into a new Scrap ID on Scrap for Sale, where it is priced and sold.']),
             ('Raise part requests for many tags at once',
              ["Scroll to 'Bulk Part Request'. Each row is one part with Total Quantity (tags that need it), "
               'Total Requested and Total Changed.',
@@ -1016,9 +1023,12 @@ MANUALS = [{'id': 1,
               "The L1/L2 engineer then does 'Mark Complete' there to send it to Stress Test."]),
             ('Scrap a device',
              ["Click 'Scrap' (only shown after the repair is started).",
-              "Choose 'Normal Scrap' or 'Replacement Scrap' and click 'Confirm Scrap'.",
+              "Choose 'Normal Scrap' or 'Replacement Scrap', pick the 'Scrap Reason' (required, from Master "
+              "Data), add notes if needed and click 'Confirm Scrap'.",
               "The tag goes back to the L1/L2 queue showing the scrap type. From there someone clicks 'Back "
-              "to Inventory' to send it to Tags Scrapped."])],
+              "to Inventory' to send it to Scrap Products -> Scrapped Tags.",
+              'On Scrapped Tags the tag is verified into a Scrap ID and can then be sold only from Scrap for '
+              'Sale.'])],
   'tips': ["'Mark Complete' and 'Scrap' only appear after you click 'Start Repair'.",
            'Scrap here does not scrap the tag at once - it records the decision and returns the tag to L1/L2 '
            "for the final 'Back to Inventory' step.",
@@ -1470,6 +1480,9 @@ MANUALS = [{'id': 1,
               "For 'Add Harvest Part', fill Lot Number, Part Category, Part Name, Part Brand, Part Model, "
               "Price, Physical Qty and Low Stock Alert, then click 'Save Harvest Part'. A Part ID is created "
               'automatically.',
+              'A Harvest part is added through an internal Parts GRN (vendor Internal, PO Harvest) into the '
+              "part's Harvest crate. Its price is the lowest Parts GRN price of the same part; the typed "
+              'Price is used only if that part never came on a GRN.',
               "To load many parts at once, click 'Upload New' or 'Upload Harvest', click 'Download Sample "
               "File', fill the CSV and click 'Upload'. A result page shows rows added and row errors.",
               "Click 'Edit' on a row to change name, category, make, model, crate number, unit price, In "
@@ -1483,14 +1496,15 @@ MANUALS = [{'id': 1,
              ['This tab lists New, Replace and Downgrade part requests raised by engineers, with WorkID, Tag '
               "Number, Engineer, Part Name, Qty Requested, Qty Handover and 'QTY Available'.",
               "'QTY Available' adds New and Harvest stock of the same part name.",
-              "Click 'Handover', check the part, engineer and quantity, then click 'Confirm Handover'. The "
-              'quantity handed over is always the requested quantity.',
+              "Click 'Handover', pick the crate (New or Harvest), check the part, engineer and quantity, "
+              "then click 'Confirm Handover'. The quantity handed over is always the requested quantity; it "
+              'is refused if that crate has less stock.',
               "'Handover' is greyed out when there is no stock. Click 'Procure' to send the request to "
               "sourcing; status becomes 'Sent for Sourcing'.",
               "Tick several rows and click 'Handover Selected' or 'Delete Selected' to act in bulk. Rows "
               'already handed over are skipped and the count is shown.',
-              'After handover, the engineer confirms receipt on Device Detail; the part then counts as '
-              'Consumed.']),
+              'After handover, the engineer confirms receipt on Device Detail (Validate Receiving); the part '
+              "then counts as Consumed and its cost (qty x unit price) is added to the device's P&L."]),
             ('Faulty Request tab - handle faulty parts',
              ['This tab lists parts that engineers marked as faulty from Device Detail.',
               "Use 'Handover' to give a replacement part from stock, the same way as Part Requests.",
@@ -1558,6 +1572,7 @@ MANUALS = [{'id': 1,
              ["Click 'Save GRN'. The saved GRN opens in read-only view.",
               'Each line item is added to Part Master as a New part with the Physical Qty (or Invoice Qty if '
               'Physical Qty is empty) as stock.',
+              'The line price is applied to every crate of the same Part Name + Make + Model.',
               'On Parts Manager, the GRN column of the part links back to this GRN.']),
             ('Delete a GRN',
              ['Click the red bin icon on the GRN list and confirm.',
@@ -1592,7 +1607,8 @@ MANUALS = [{'id': 1,
              ["Click 'Reject'.",
               "Optionally type a reason in the window, then click 'Reject Request'.",
               "The status changes to 'Rejected'. Hover on the 'Rejected' badge to see the reason."])],
-  'tips': ['Only one pending request is allowed per part. A new request for the same part is blocked until '
+  'tips': ['Only New parts can be requested for sale; Harvest parts are used in repair only.',
+           'Only one pending request is allowed per part. A new request for the same part is blocked until '
            'the first one is approved or rejected.',
            'Approve only when there is enough stock - the page does not stop you from approving more than '
            "'In Stock'.",
@@ -1999,12 +2015,23 @@ MANUALS = [{'id': 1,
               "From the list Actions you can also start a 'New Sourcing Deal' or 'New Sales Opp' for that "
               'account.']),
             ('Map the account team',
-             ['Click the person-badge (Map Team) icon on a row to set who handles the account in each level: '
-              'VP/AVP, Manager, AM/DM/GM, Executive/Sr Executive. Leaving a level blank clears it for that '
-              'account.',
+             ['Click the person-badge (Map Team) icon on a row to set who handles the account in each of '
+              'five levels: VP/AVP, Manager, AM/DM/GM, Executive/Sr Executive and Finance Manager. Leaving a '
+              'level blank clears it for that account.',
+              'Each dropdown lists the users whose designation or role matches that level. Finance Manager '
+              'lists users with Finance or Accounts in their designation or role.',
               "For many accounts at once, tick the row checkboxes and click 'Bulk Team Mapping'. Only the "
               'levels where you pick at least one person are changed.',
-              "To load team mapping from a file, click 'Team Mapping CSV'."]),
+              "To load team mapping from a file, click 'Team Mapping CSV'. The file has a finance column for "
+              'the Finance Manager.']),
+            ('Account status, KYC, Credit and History',
+             ['A new account is Inactive. It becomes Active only when KYC is verified (Finance -> Accounts, '
+              "Account KYC card, or the profile's KYC card) and Credit is verified (Activity Board -> "
+              "Account Verification, by the account's VP/AVP or AM/DM/GM, or an admin). Blacklisted stays "
+              'blacklisted.',
+              "Deal pages show a 'KYC Pending' or 'KYC Verified' badge for the account.",
+              "The profile's 'History' card lists every change to the account - create, edit, trash, "
+              'restore, verify - with Taken By and Taken On.']),
             ('Bulk upload, export and trash',
              ["Click 'Bulk Upload CSV' to create accounts from a CSV file. The file must have a company_name "
               'column. Extra rows with the same company add more locations and contact people.',
@@ -2017,7 +2044,9 @@ MANUALS = [{'id': 1,
            'for Contact Leads.',
            "'Export CSV' and the 'Agent' filter are admin only.",
            'Adding an account needs add permission for Contact Leads.',
-           'Trash is a soft delete - nothing is lost and the account can be restored at any time.']},
+           'Trash is a soft delete - nothing is lost and the account can be restored at any time.',
+           "'From Entity' on the form is the company entity issuing the record. It defaults to your own "
+           'profile entity and can be changed; it shows on the detail page.']},
  {'id': 47,
   'key': 'crm_sourcing',
   'section': 'CRM',
@@ -2048,13 +2077,27 @@ MANUALS = [{'id': 1,
               'asking price per unit and quantity, the total is calculated for you.']),
             ('Move the deal through stages',
              ['Open the deal (eye icon or title).',
-              "In 'Stage Progress' choose 'Move to Stage', optionally enter 'Final Price / Unit' and "
-              "'Win/Loss Reason', and click 'Update Stage'.",
-              'Stages are: Lead Identified, Initial Contact Made, Inspection Arranged, Quote Received, '
-              'Negotiation, Deal Agreed, PO Raised, Stock Received, Closed - Won, Closed - Lost.',
-              "Each stage change is saved automatically in the 'Activity Log'.",
-              "Use 'Log Activity' to record calls and set follow-ups; click 'Mark Done' when a follow-up is "
-              'finished.']),
+              'Stages are: Lead Identified, Contacted, Inspection, Quote, Negotiations, Purchase Order, '
+              'Payment, Stock Received, Closed - Won, Closed - Lost.',
+              "Click 'Next Stage' in Stage Progress to move one stage on. It is never blocked by open items. "
+              "At Stock Received it opens 'Close Deal' to choose Won or Lost and type the Win/Loss Reason.",
+              "'Mark WON' and 'Mark LOST' close the deal at any time. A closed deal shows 'Deal Won' (green) "
+              "or 'Deal Lost' (red) on the Stage Progress header.",
+              "Each stage change is saved in the 'Activity Log'. Use 'Log Activity' to record calls and set "
+              "follow-ups; click 'Mark Done' when a follow-up is finished."]),
+            ('Stage Progress items - assign, approve, attach',
+             ['Under each stage, Stage Progress lists its items: Inspection - Assign to Inspection, '
+              'Inspection Report; Quote - Level 1, Level 2, Quote; Negotiations - Level 1, Updated Quote; '
+              'Purchase Order - Level 1, Level 2; Payment - Level 1, Invoice; Stock Received - Assign to '
+              'Inventory.',
+              'Click the user icon on an item to assign a person or an approver. They get a notification in '
+              'the app and by email.',
+              "Only the assigned approver (or an admin) can click 'Approve' or 'Reject'; an optional note is "
+              'saved with the decision.',
+              'Click the attach icon to add a file (PDF, image, Excel or Word, up to 20 MB). A new file '
+              'replaces the old one. The Purchase Order item shows the latest PO generated from the deal.',
+              "The inspector starts the inspection ('Verify Inspection') and uploads the report on the "
+              'Activity Board; the status shows here too.']),
             ('Add PO line items and generate a PO',
              ["In 'PO Line Items' click 'Add PO Items'. Enter 'Model Name' (required), Description, PO "
               "Category, Qty and Unit Price, then click 'Add Item'.",
@@ -2065,29 +2108,36 @@ MANUALS = [{'id': 1,
               "click 'Generate & Download'.",
               'A new PO number is created as a Draft purchase order and the PDF downloads. It also appears '
               'in CRM -> Purchase Orders.']),
-            ('Upload documents and close the deal',
-             ["In 'Upload Documents' attach the Purchase Invoice, Purchase Order, E-way Bill or Quote "
-              "Received and click 'Upload'.",
-              "Click 'Create Lot & Mark WON' to open the new lot form filled with this deal's supplier, "
-              'quantity, price and deal number. When the lot is saved, the deal is linked to it and marked '
-              'Closed - Won.',
-              "Use 'Mark WON (no lot)' or 'Mark LOST' if no lot is needed.",
+            ('Documents, lot and payment',
+             ["In 'Deal Info' open 'Upload Documents' to attach the Purchase Invoice, Purchase Order, E-way "
+              "Bill or Quote Received and click 'Upload'.",
+              "'Linked Lot' shows the lot created for this deal once stock is received.",
+              "Supplier payments for the deal's PO are recorded on Finance -> Supplier Payments and verified "
+              'on Finance -> Accounts.',
               "The 'Deal Profitability Calculator' lets you test margin with acquisition, pickup, transport, "
-              'processing and expected sell prices. It does not save anything.'])],
+              'processing and expected sell prices. It does not save anything.']),
+            ('History',
+             ["The 'History' card at the bottom of the deal lists every change - stage moves, approvals, "
+              'edits, lot link and PO generated - with Taken By and Taken On.'])],
   'tips': ['Creating a deal needs add permission for Sourcing Deals.',
-           "Use 'Create Lot & Mark WON' instead of creating the lot separately, so the lot stays linked to "
-           'the deal.',
            "Re-downloading a PO from the 'Download' menu rebuilds it from the PO's own saved lines, not the "
            'current deal lines.',
-           "Issuing a draft PO in Purchase Orders moves an early-stage deal to 'PO Raised' automatically."]},
+           'Issuing a draft PO in Purchase Orders moves an early-stage deal (up to Negotiations) to '
+           "'Purchase Order' automatically.",
+           "Linking a quote moves a deal still at Lead Identified, Contacted or Inspection to 'Quote'.",
+           'Next Stage does not wait for approvals - check Stage Progress before you move on.',
+           "'From Entity' on the form is the company entity issuing the record. It defaults to your own "
+           'profile entity and can be changed; it shows on the detail page.',
+           "Generate PO's Company Details defaults to the deal's From Entity company."]},
  {'id': 48,
   'key': 'crm_sales_opp',
   'section': 'CRM',
   'module': 'Sales Opportunities',
   'url': '/crm/sales',
   'icon': 'bi-graph-up-arrow',
-  'description': 'Tracks every chance to sell stock to a buyer, from enquiry to payment, with quotes and '
-                 'linked sale records. Used by sales, telecallers and the Sales Manager.',
+  'description': 'Tracks every chance to sell stock to a buyer, from enquiry to payment, with stage '
+                 'approvals, quotes, the Sales Order raised at Quote Level 2 and linked sale records. Used '
+                 'by sales, telecallers and the Sales Manager.',
   'steps': [('Open the list',
              ['Go to CRM -> Sales Opportunities.',
               'Cards show Open Opportunities, Pipeline Value (Rs) and Overdue Follow-ups.',
@@ -2108,26 +2158,48 @@ MANUALS = [{'id': 1,
               "Save. The opportunity gets an OPP number and starts at 'Lead / Enquiry'. If Estimated Value "
               'is empty, it is Required Qty x Budget Per Unit.']),
             ('Move stages and log activity',
-             ["Open the opportunity and use 'Stage Progress' -> 'Move to Stage', with an optional 'Win/Loss "
-              "Reason', then click 'Update'.",
-              'Stages are: Lead / Enquiry, Contacted, Requirement Understood, Availability Confirmed, Quote '
-              'Sent, Negotiation, Order Confirmed, Invoice Raised, Delivered, Payment Received, Closed - '
-              'Won, Closed - Lost.',
+             ['Open the opportunity (eye icon or title).',
+              'Stages are: Lead / Enquiry, Contacted, Screening, Quote, Negotiations, Invoice / Sales Order, '
+              'Payment, Stock Received, Closed - Won, Closed - Lost.',
+              "Click 'Next Stage' in Stage Progress to move one stage on. At Stock Received it asks Won or "
+              'Lost and the Win/Loss Reason.',
               "Use 'Mark WON' or 'Mark LOST' for a quick close.",
               "Use 'Log Activity' to record calls and follow-ups. Stage changes are logged automatically."]),
-            ('Create a quote and link sales',
-             ["Click 'Create Quote' to open a new quote for this buyer. If the opportunity came from a won "
-              'lot, the lines are filled from that lot. Saving the quote moves an early-stage opportunity to '
-              "'Quote Sent'.",
-              "If a quote already exists, the button shows 'View Quote' and the 'Linked Quote' card shows "
-              'its number.',
+            ('Stage Progress items and the Sales Order',
+             ['Items per stage: Screening - Assign to Screening, Screening Report; Quote - Level 1, Level 2; '
+              'Negotiations - Level 1, Updated Quote; Invoice / Sales Order - Level 1, Level 2, PO; Payment '
+              '- Level 1, Invoice; Stock Received - Assign to Inventory.',
+              'Assign a person or approver with the user icon; only the assigned approver (or an admin) can '
+              'Approve or Reject. Attach files with the attach icon.',
+              'When Quote Level 2 is approved, a Sales Order (SO-<year>-NNNN) is created automatically from '
+              "the deal's quote. The message shows its number and the SO ID shows on the deal.",
+              "'Documents' (Deal Info Upload) holds the Sales Invoice, Purchase Order, E-way Bill and Quote "
+              'files.',
+              'Screening is started and its report uploaded on the Activity Board.']),
+            ('Quote and linked sales',
+             ["Make the quote in CRM -> Quotes ('New Quote') for this buyer and link it to the deal. The "
+              "deal's latest quote shows under Quote, with 'View Quote'.",
+              "Linking a quote moves a deal still at Lead / Enquiry, Contacted or Screening to 'Quote'.",
               "Click 'Link Sale' to attach real sale records. Search by Tag Number, brand, model or sale "
               'number, tick the sales and save.',
-              "Linking sales moves an opportunity that is still at Order Confirmed or earlier to 'Invoice "
-              "Raised'."])],
+              "Linking sales moves a deal still at Negotiations or earlier to 'Invoice / Sales Order'."]),
+            ('Sales Orders',
+             ['Go to CRM -> Sales Orders to see every SO: SO number, Buyer, Buyer Deal, Quote, Date, Total '
+              'Amount, Status and Accounts (Pending or Verified).',
+              'Open an SO to see its line items and its History card. The header and lines are a copy of the '
+              'quote taken when the SO was created, so later quote changes never change the SO.',
+              'Only one open SO is made per quote. Finance verifies the SO on Finance -> Accounts (Sales '
+              'Order card).']),
+            ('History',
+             ["The 'History' card at the bottom of the deal lists every change - creation, stage moves, "
+              'approvals, edits and sale link - with Taken By and Taken On.'])],
   'tips': ['Creating an opportunity needs add permission for Sales Opportunities.',
            'Linked sales are added to the ones already linked - linking again does not remove earlier sales.',
-           'Only open opportunities (not Won or Lost) count in the pipeline value.']},
+           'Only open opportunities (not Won or Lost) count in the pipeline value.',
+           'Sales Orders have no separate permission - anyone who can log in can open the list; verifying is '
+           'done by Finance on Accounts.',
+           "'From Entity' on the form is the company entity issuing the record. It defaults to your own "
+           'profile entity and can be changed; it shows on the detail page.']},
  {'id': 49,
   'key': 'crm_price_matrix',
   'section': 'CRM',
@@ -2184,29 +2256,48 @@ MANUALS = [{'id': 1,
               'tab.']),
             ('Create a quote',
              ["Click 'New Quote' (or 'Create Quote' on a sales opportunity).",
-              "Pick 'Contact (Buyer)' and 'Quote Date'. 'Valid Until' defaults to 15 days ahead. Add Payment "
-              'Terms and Special Conditions if needed.',
+              "Pick 'From Entity' (defaults to your own entity), 'Contact Type', 'For Account Name' and "
+              "'Quote Date'. 'Valid Until' defaults to 15 days ahead. Add Payment Terms and Special "
+              'Conditions if needed.',
               "Under line items click 'Add Line' for each item and enter Model Name, Grade, PO Category, Qty "
               'and Unit Price (Rs). Total is calculated for each line.',
               "Use the bin icon to remove a line, then click 'Create Quote'.",
               'When opened from an opportunity that came from a won lot, the lines are filled from that '
-              "lot's stock."]),
+              "lot's stock.",
+              'The quote number (QT-DEAL-<MMYYYY><NNNN>, e.g. QT-DEAL-1120260001; NNNN restarts each month) '
+              'and all totals are worked out by the system.']),
             ('Review and print',
              ["Open the quote to see the buyer, dates, payment terms, 'Line Items' and 'Special Conditions'.",
-              'A Valid Until date shown in red means the quote has expired and is not yet accepted or '
+              'A Valid Until date shown in red means the quote has expired and is not yet approved or '
               'rejected.',
               "Click 'Print Quote' to open a printable copy.",
               "Click 'Back to Opportunity' or 'All Quotes' to return."]),
             ('Update the status',
-             ["In 'Update Status' pick Draft, Sent, Negotiating, Accepted, Rejected or Expired and click "
-              "'Update'.",
-              'Choosing Sent records the time the quote was sent.'])],
+             ["Next to the status badge, pick the new status and click 'Update'. The flow is Added -> "
+              'Negotiation -> Approved, Rejected or Expired.',
+              'A new quote starts as Added. Moving it to Negotiation the first time records when it went to '
+              'the customer.',
+              "Level 1 / Level 2 approval of a deal's quote is still done in the deal's Stage Progress; "
+              'Quote Level 2 approval creates the Sales Order.',
+              "On Finance -> Accounts, the 'Quote Records' card lists the quote as Completed when it is "
+              "Approved, converted to a Sales Order or its deal's Quote Level 2 is approved. Other open "
+              'quotes are Pending (with their Level 1 / Level 2 approvers). Rejected and Expired quotes are '
+              'not listed.',
+              'Customer payment against the quote (UTR) and the invoice are recorded on Finance -> Customer '
+              'Receipts.']),
+            ('History',
+             ["The 'History' card at the bottom of the quote lists creation, PDF generation and status "
+              'changes with Taken By and Taken On.'])],
   'tips': ['A quote must have at least one line with a Model Name, otherwise it will not save.',
            "Only active buyer accounts (type Buyer or Both) appear in the 'Contact (Buyer)' list.",
-           "Linking a quote to an opportunity moves an early-stage opportunity to 'Quote Sent'.",
+           "Linking a quote to a deal moves an early-stage deal (up to Screening / Inspection) to 'Quote'.",
+           'Quotes appear in the sidebar only for roles that have Sales Opportunities enabled.',
+           'Quotes made before 10 Nov 2026 were renumbered to the QT-DEAL format; the History card shows the '
+           'old number.',
            'Editing a saved quote is not available yet - the Edit button is disabled. Create a new quote if '
            'prices change.',
-           'Quotes appear in the sidebar only for roles that have Sales Opportunities enabled.']},
+           'Printed and generated documents show the company set up for the From Entity in Admin -> Company '
+           'Setting (the first active company if none matches). Generate lets you pick another company.']},
  {'id': 51,
   'key': 'crm_purchase_orders',
   'section': 'CRM',
@@ -2236,16 +2327,27 @@ MANUALS = [{'id': 1,
               "Click 'Print PO' to print it.",
               "When the PO is final, click 'Issue PO'. The status changes from Draft to Issued and the "
               'issuing user and time are saved.',
-              'If the PO is linked to a sourcing deal at an early stage (up to Deal Agreed), that deal moves '
-              "to 'PO Raised'."]),
+              'If the PO is linked to a sourcing deal at an early stage (up to Negotiations), that deal '
+              "moves to 'Purchase Order'."]),
             ('POs from sourcing deals',
              ["POs made with 'Generate PO' on a sourcing deal also appear here as Draft, linked to that "
               'deal.',
-              'Open them here to print or issue them like any other PO.'])],
+              'Open them here to print or issue them like any other PO.']),
+            ('Payment, verification and History',
+             ["Finance -> Supplier Payments lists the POs generated: click 'Complete Payment', enter the UTR "
+              "number (payment snapshot optional), and use 'Upload Invoice' for the supplier invoice.",
+              'Finance verifies the PO on Finance -> Accounts (Purchase Order card); it then moves from '
+              'Pending to Completed.',
+              "The 'History' card on the PO lists creation, issue, payment and invoice upload with Taken By "
+              'and Taken On.'])],
   'tips': ["A PO needs at least one line item - otherwise you see 'At least one line item is required.'",
            'Only a Draft PO can be issued. Trying to issue any other status shows an error.',
            "Only admin, Sales Manager and Inventory Manager see 'New PO' and 'Issue PO'.",
-           'Unit Price and Total columns on the PO detail are shown only to users allowed to see pricing.']},
+           'Unit Price and Total columns on the PO detail are shown only to users allowed to see pricing.',
+           "'From Entity' on the form is the company entity issuing the record. It defaults to your own "
+           'profile entity and can be changed; it shows on the detail page.',
+           'Printed and generated documents show the company set up for the From Entity in Admin -> Company '
+           'Setting (the first active company if none matches).']},
  {'id': 52,
   'key': 'crm_analytics',
   'section': 'CRM',
@@ -2757,7 +2859,7 @@ MANUALS = [{'id': 1,
               "Look at the badge next to 'Business Snapshot': 'My Data Only' means you see only your own "
               "dealers, requests and sales. 'All Agents' means you see everyone (Admin and Sales Manager "
               'only).',
-              'The page is read-only. Nothing can be edited here.']),
+              'The page is read-only except Level 1 approval of telecalling quotations.']),
             ('Read the four snapshot cards',
              ["'My Dealers' shows how many dealers are assigned to you, and how many are active. Click it to "
               'open the Dealers page filtered to your dealers.',
@@ -2772,12 +2874,15 @@ MANUALS = [{'id': 1,
               'Click a Tag Number to open that device.',
               "'Recent Sales' lists the last 8 sales with customer, amount (if you can see prices) and date.",
               "'Recent Returns' lists the last 8 returns with sale number, reason and date."]),
-            ('Review shared quotations',
-             ["The 'Quotation Shared' table at the bottom shows the latest 20 dealer quotations.",
-              'Each row shows Customer Name, Customer Type, Total Quantity, Total Quotation Price (if you '
-              "can see prices) and Status ('Shared' or 'Confirmed').",
-              "To confirm or delete a quotation, use the Dealers page, the dealer's own page or the "
-              'Quotations page.'])],
+            ('Approve telecalling quotations',
+             ["The 'Telecalling Quotations' card at the bottom has two pills: 'Pending Approval' and "
+              "'Shared'. The badge next to the title is the number waiting for you.",
+              'Pending Approval lists Added / Negotiation quotations raised by people below you in Report To '
+              '(any level). Admins see all of them.',
+              "Click 'Approve' or 'Reject' (Level 1). The quotation leaves the list and its status changes "
+              'everywhere.',
+              'Shared lists the latest 20 quotations with Quote No, customer, quantity, price (if you can '
+              "see prices), Status and Download ('Quote' once Approved)."])],
   'tips': ['Access to this page is controlled by a module permission. If you cannot open it, ask an Admin.',
            'Prices and amounts are hidden if your role is not allowed to view pricing.',
            'Numbers are based on records linked to your username (dealers assigned to you, requests you '
@@ -2900,17 +3005,24 @@ MANUALS = [{'id': 1,
                  'or delete quotations that were created from the Dealers page.',
   'steps': [('Open the list',
              ['Go to Sales & CRM -> Quotations.',
-              "The 'Quotation Shared' table shows every quotation, newest first, with a count badge.",
-              'Each row shows Customer Name (with the quote number), Customer Type, Total Quantity, Total '
-              'Quotation Price in Rs, Status and Action.']),
+              "The 'Quotation Shared' table shows every telecalling quotation, newest first, with a count "
+              'badge.',
+              'Columns: Quote No (QT-TELE-<MMYYYY><NNNN>), Customer Name, Customer Type, Total Quantity, '
+              'Total Quotation Price in Rs, Status, Download and Action.']),
             ('Filter the list',
              ["Use 'Search' to find by customer name, quote number or phone.",
-              "Choose 'Status': Shared or Confirmed.",
+              "Choose 'Status': Added, Negotiation, Approved, Rejected or Expired.",
               "Choose 'Created By' to see quotations made by one user.",
               "Set 'From' and 'To' dates, then click 'Filter'. Click 'Reset' to clear."]),
-            ('Confirm or delete a quotation',
-             ["Click the tick ('Confirm') button when the customer accepts. The status changes to "
-              "'Confirmed' and the button disappears.",
+            ('Move status, approve and download',
+             ['Status flow: Added -> Negotiation -> Approved or Rejected (Level 1) or Expired.',
+              'Click the chat button to move an Added quotation to Negotiation, or the hourglass button to '
+              'mark it Expired.',
+              'Level 1 Approve / Reject is done on the TeleSales Dashboard (Pending Approval tab) by the '
+              "creator's Report To manager, anyone above them in Report To, or an admin. The status cell "
+              "then shows 'L1:' and who decided.",
+              "Once Approved, the Download column shows 'Quote'. Click it to open the quotation and print or "
+              'save it as PDF.',
               "Click the bin ('Delete') button to remove a quotation. Confirm the message. This cannot be "
               'undone.']),
             ('Create a new quotation',
@@ -2918,9 +3030,11 @@ MANUALS = [{'id': 1,
               "Go to Sales & CRM -> Dealers and click the 'Quotation' button on the dealer row, or open the "
               "dealer's page."])],
   'tips': ["This page shows the same quotations as the 'Quotation Shared' table on the Dealers page and the "
-           'TeleSales Dashboard.',
+           'Shared tab of the TeleSales Dashboard.',
            'Access is controlled by a module permission. If you cannot open the page, ask an Admin.',
-           'Totals are calculated by the system from the line items when the quotation is created.']},
+           'Totals are calculated by the system from the line items when the quotation is created.',
+           'Quotations made before 10 Nov 2026 were renumbered from QTN-NNNN to the QT-TELE format; Shared '
+           'became Added and Confirmed became Approved.']},
  {'id': 68,
   'key': 'model_requests',
   'section': 'Sales & CRM',
@@ -3099,7 +3213,9 @@ MANUALS = [{'id': 1,
               'active.',
               "Click 'Sell' to open New Parts Sale for that part and complete the sale.",
               "If the request was rejected, a red 'Rejected' badge shows. Raise a new request if needed."])],
-  'tips': ['You cannot raise a second request for a part while one is still pending.',
+  'tips': ['Only New parts can be sold. Harvest parts are never listed here, and a request for one is '
+           'refused.',
+           'You cannot raise a second request for a part while one is still pending.',
            'One approved request allows exactly one sale.',
            'This page is open to Admin, Sales, Sales Manager and Spare Parts Manager.',
            'Stock shown = quantity in stock minus quantity handed over minus quantity sold.']},
@@ -3114,8 +3230,9 @@ MANUALS = [{'id': 1,
                  'managers and sales managers.',
   'steps': [('Open the page and read the batch table',
              ['Go to Selling -> Scrap for Sale.',
-              'Each row is one Scrap ID batch. A batch is created from Inventory -> Move Device when the '
-              "Transfer Type is 'Scrap for Sale'. You cannot create a batch on this page.",
+              'Each row is one Scrap ID batch. A batch is created when tags are verified on Scrap Products '
+              "(one Scrap ID per Verify), or from Inventory -> Move Device when the Transfer Type is 'Scrap "
+              "for Sale'. You cannot create a batch on this page. Scrap is sold only from here.",
               "Columns: 'Scrap ID', 'Device Type', 'Total Quantities', 'Min Selling Price', 'Max Selling "
               "Price', 'Assigned To' and 'Action'.",
               "In 'Device Type', click the 'Tags' button to see the Tag Numbers grouped by Model Name, or "
@@ -3176,8 +3293,8 @@ MANUALS = [{'id': 1,
                  'details of each sale. It is OFF by default for every role except admin until it is enabled '
                  'in the Permission Matrix.',
   'steps': [('Open the report',
-             ["Go to Selling -> Scrap Sale Report, or click 'Scrap Sale Report' in the header of the "
-              'Scrap for Sale page.',
+             ["Go to Selling -> Scrap Sale Report, or click 'Scrap Sale Report' in the header of the Scrap "
+              'for Sale page.',
               "If you cannot see it, ask an admin to enable 'Scrap Sale Report' for your role in Master Data "
               '-> Permission Matrix.',
               "The header shows the 'Total Sale Price' of all saved custom scrap sales. Click 'Scrap for "
@@ -3196,8 +3313,7 @@ MANUALS = [{'id': 1,
               'Below it, the item table shows each item with its Category and either Total Weight (kg) and '
               "Unit Price (Weight), or Quantity and Unit Price, plus the line Total Price and the 'Total "
               "Sale Price'."])],
-  'tips': ["This page only shows sales. To add a new one, use 'Custom Sale' on Selling -> Scrap for "
-           'Sale.',
+  'tips': ["This page only shows sales. To add a new one, use 'Custom Sale' on Selling -> Scrap for Sale.",
            'There is no edit, delete or export button on this report.',
            'These sales are stand-alone records. They are not part of Business P&L and do not change any Tag '
            'Number or Scrap ID batch.',
@@ -3277,7 +3393,8 @@ MANUALS = [{'id': 1,
               'Use the table search box to find a part, sale or invoice.',
               "Click 'Export' to download the rows that match your date filter as CSV (maximum 5000 rows)."]),
             ('Before you can sell: get an approved request',
-             ['A part can be sold only after a sale request for it is approved.',
+             ['Only New parts can be sold. A sale or request for a Harvest part is refused.',
+              'A part can be sold only after a sale request for it is approved.',
               "Raise the request on Ready to Sale Parts with the 'Request' button.",
               'A manager approves or rejects it on Parts Sale Request.',
               'One approval allows exactly one sale.']),
@@ -3384,16 +3501,27 @@ MANUALS = [{'id': 1,
               "'Return Received By'.",
               "Click 'Submit (n tag(s))'. The tags enter the Credit Note pipeline; follow them on the Credit "
               'Note page.']),
+            ('Take back rented tags (Rental Return)',
+             ["Open the 'Rental Return' tab, or click the return icon on a row of Selling -> Rentals.",
+              'Scan the Tag Numbers coming back. Return one rental at a time.',
+              "Pick the 'Received Date'. It cannot be before the rental's Start Date.",
+              "Choose 'Payment Due' or 'Waive Off' (an optional waiver reason). Return Reason and Complaint "
+              'Description are optional.',
+              'Submit. The tags go back to Ready to Sale and a Rental Return receipt (RRT-...) is created. '
+              'See the Rentals manual.']),
             ('Approve or reject (managers)',
              ["Admins and sales managers click 'Pending Approvals'.",
-              'Approve a return to move the tag to IQC for repair.',
-              'Reject a return with a reason. Rejecting does not move the tag.']),
+              "Approve a return: the tag stays at Stock In. On Inventory Manager -> Return Stock, use 'Move "
+              "to L1/L2' to repair it, or 'Only Stock In' to complete the return and keep it in stock.",
+              'Reject a return with a reason: the tag goes back to Sold and leaves Return Stock. A return '
+              'cannot be rejected once repair has started on the tag.']),
             ('Print a return receipt',
              ["Click 'Receipt' on a return row to see entity, customer, reason, condition, Tag Number, "
               'serial, make, model and Paid Repair.',
               "Click 'Download / Print' to open a printable receipt. Use the browser's Print -> Save as PDF "
               'to keep a copy.'])],
-  'tips': ['Only one return is allowed per sale. A second one for the same sale is blocked.',
+  'tips': ['Only one return is allowed per sale. A second one for the same sale is blocked - a rejected '
+           'return does not count.',
            'The replacement tag must be in Ready to Sale and must be different from the returned tag.',
            "'Return Received By' must be an active user; it is shown as Sales Person on the Rs 0 sale it "
            'creates.',
@@ -3451,24 +3579,36 @@ MANUALS = [{'id': 1,
   'module': 'Accounts',
   'url': '/accounts',
   'icon': 'bi-wallet2',
-  'description': 'A quick money summary: total paid to suppliers, total received from customers, and the 10 '
-                 'latest entries of each. Used by admins, inventory managers and sales managers.',
+  'description': 'Accounts Overview: everything waiting for Finance to verify - account KYC, purchase '
+                 'orders, sales orders, quotes and payments - plus total paid and received. Used by admins, '
+                 'inventory managers and sales managers.',
   'steps': [('Open the page',
-             ['Go to Finance -> Accounts.',
+             ["Go to Finance -> Accounts. The page is 'Accounts Overview'.",
               'Only Admin, Inventory Manager and Sales Manager can open this page. Other users are sent back '
-              "to the home page with 'Access denied'."]),
-            ('Read the summary cards',
-             ["'Total Paid to Suppliers' (red) is the sum of every supplier payment ever recorded.",
-              "'Total Received from Customers' (green) is the sum of every customer receipt ever recorded.",
-              "Click 'View All' under a card to open Supplier Payments or Customer Receipts."]),
-            ('Check recent entries',
-             ["'Recent Supplier Payments' shows the 10 newest payments: Date, Supplier, Mode and Amount.",
-              "'Recent Customer Receipts' shows the 10 newest receipts: Date, Contact, Mode and Amount.",
-              'A dash in a column means the value was not entered.'])],
-  'tips': ['This page is read-only. To add a payment or receipt, use Supplier Payments or Customer Receipts.',
-           'The totals are all-time totals. There is no date filter on this page.',
-           "Receipts added from the 'Record New Receipt' form or by bulk CSV have no contact, so the Contact "
-           'column shows a dash for them.']},
+              "to the home page with 'Access denied'.",
+              'Six cards: Account KYC, Purchase Order, Sales Order, Quote Records, Supplier Payment and '
+              'Customer Payment.',
+              "Each card has 'Pending' and 'Completed' pills next to its title. The green badge on the right "
+              'is the pending count. Completed shows the latest 50, newest first.']),
+            ('Verify a pending item',
+             ["On a Pending row click 'Verify', then 'Confirm'. Your name and the time are saved and the row "
+              'moves to Completed.',
+              "Account KYC: verify after checking the account's KYC documents. The account becomes Active "
+              'only when Credit is also verified on the Activity Board.',
+              'Purchase Order and Sales Order: verify the order. Supplier Payment and Customer Payment: '
+              'verify the recorded payment.']),
+            ('Read Quote Records',
+             ['Pending lists open quotes with their Quote Level 1 / Level 2 approvers and status.',
+              "Completed lists quotes that were Accepted, converted to a Sales Order, or whose deal's Quote "
+              'Level 2 was approved.',
+              'Rejected and Expired quotes are not listed.']),
+            ('Totals and payment pages',
+             ["'Total Paid to Suppliers' and 'Total Received from Customers' are all-time totals.",
+              "Click 'View All' to open Supplier Payments or Customer Receipts, where payments are recorded "
+              'and PO / quote payments are completed with a UTR number.'])],
+  'tips': ['Verify buttons show only to roles with edit permission (Accounts; Contact Leads for KYC).',
+           'A verify cannot be undone from this page.',
+           "Every verify is written to the audit log and shows in the record's History card."]},
  {'id': 80,
   'key': 'finance_supplier',
   'section': 'Finance',
@@ -4467,4 +4607,87 @@ MANUALS = [{'id': 1,
            'Manuals describe the standard screens. If your role cannot see a button mentioned in a manual, '
            'ask your admin about permissions.',
            "PDFs are rebuilt automatically whenever a manual's text is updated, so a download is always the "
-           'latest version.']}]
+           'latest version.']},
+ {'id': 106,
+  'key': 'rentals',
+  'section': 'Selling',
+  'module': 'Rentals',
+  'url': '/rentals',
+  'icon': 'bi-calendar2-range',
+  'description': 'Rent Ready to Sale devices to a customer for a set period, see what is out, take tags back '
+                 'and collect the rent. Used by sales and the Sales Manager.',
+  'steps': [('Open the page',
+             ["Go to Selling -> Rentals. The page is 'Rental Records'.",
+              'Tabs: Active, Complete, Cancelled and Payment Due, each with a count.',
+              'Each row shows the Rental ID (RNT-...), billing details, Duration, Quantity, Price and '
+              'Status. Click the Quantity to see the tags and a model summary.',
+              'Overdue rentals are flagged; Payment Due rows show the amount due.']),
+            ('Create a rental',
+             ["Click 'Add Rental'.",
+              "Search by Tag Number, Serial, Make or Model, or upload tags. Tick tags and click 'Add "
+              "ticked', or 'Add all'. Only Ready to Sale tags that are not blocked can be added.",
+              'Pick the Billing Entity and Bill Type (Business or Individual) and fill the customer: '
+              'company, GSTIN, person, phone, email, city, state and address.',
+              "Enter the duration (for example 6 months), 'Start Date' and the price, add notes, then click "
+              "'Create Rental'.",
+              'A Rental ID is created and the tags move to On Rent.']),
+            ('Take tags back',
+             ["Click the Rental Return icon on the row, or 'Rental Return' on the rental page. It opens "
+              'Returns -> Rental Return for that rental.',
+              "Scan the tags coming back and pick the 'Received Date' (not before the Start Date).",
+              "Choose 'Payment Due' or 'Waive Off' and submit. The tags go back to Ready to Sale and a "
+              'return receipt (RRT-...) is created.',
+              'Any amount still owed, including extra days after the end date at the daily rate, is worked '
+              'out for you. When all tags are back the rental moves to Complete, or to Payment Due if money '
+              'is owed; it stays Active while tags are still out.']),
+            ('Collect payment',
+             ["On the Payment Due tab click 'Mark Paid'.",
+              'Enter the Invoice or UTR number (required) and submit. The rental moves to Complete, or back '
+              'to Active if tags are still out.']),
+            ('Cancel, download or delete',
+             ["'Cancel Rental' on the rental page sends every tag still On Rent back to Ready to Sale.",
+              "The Download menu has 'Summary (PDF)', 'Tags CSV' and the return receipts. 'Export' downloads "
+              'the listed rentals.',
+              'Delete removes the rental for good; tags still On Rent from it go back to Ready to Sale '
+              'first, and the record is kept in the audit log.'])],
+  'tips': ['A blocked tag, or a tag that is not at Ready to Sale, cannot be rented.',
+           'Return one rental at a time - tags from two rentals in one return are refused.',
+           'Price columns show only to roles with the Rentals pricing permission.',
+           'Add, edit (Mark Paid, Cancel, Delete) and export are set separately in the Permission Matrix.']},
+ {'id': 107,
+  'key': 'activity_board',
+  'section': 'CRM',
+  'module': 'Activity Board',
+  'url': '/activity-board',
+  'icon': 'bi-kanban',
+  'description': 'One page for CRM work waiting on people: account credit checks, supplier inspections and '
+                 'customer screenings. Used by the account team, inspectors and managers.',
+  'steps': [('Open the page',
+             ["Click 'Activity Board' in the left menu.",
+              'Three cards, in this order: Account Verification, Supplier Deals and Customer Deals. Each has '
+              "Pending / Completed pills, its own date filter and 'Export' in the card header.",
+              'Admins and roles with Activity Board -> Edit see every row. Account team members (VP/AVP or '
+              'AM/DM/GM mapped on an account) see the accounts they are on and the deals assigned to them. '
+              'Everyone else sees only the deals assigned to them.']),
+            ('Account Verification',
+             ['Lists accounts with their Place, KYC, Credit, Manager, Team and Status.',
+              "Click 'Verify Credit' to verify the account's credit. Only the account's mapped VP/AVP or "
+              'AM/DM/GM, or an admin, can do this.',
+              'An account becomes Active only when both KYC (verified on Finance -> Accounts) and Credit are '
+              'verified.',
+              "Click 'Map Manager', pick the manager and click 'Save Manager'."]),
+            ('Supplier Deals - inspection',
+             ['Lists Sourcing Deals at stage Inspection with someone assigned to Inspection.',
+              "Click 'Verify Inspection' when you start. The status becomes 'Inspection Started'.",
+              "Click 'Upload' to attach the Inspection Report. The status becomes 'Inspection Done'. "
+              "'Reupload' replaces the file.",
+              "The same status and file show on the deal's Stage Progress."]),
+            ('Customer Deals - screening',
+             ['Lists Buyer Deals at stage Screening with someone assigned to Screening.',
+              "Click 'Verify Screening' to start, then 'Upload' the Screening Report. 'Reupload' replaces "
+              'it.',
+              "The status and file show on the deal's Stage Progress."])],
+  'tips': ['People are assigned to Inspection / Screening on the deal page, in Stage Progress.',
+           'Export downloads the rows of that card for the chosen dates.',
+           'Assignments send a notification in the app and by email to the assignee, the assigner and both '
+           'of their Report To managers.']}]

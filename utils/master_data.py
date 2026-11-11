@@ -73,7 +73,8 @@ async def report_year_values(db: AsyncSession) -> list:
 # server start, but only while the category has no rows at all (active or not).
 # MASTER_SEED otherwise seeds brand-new installs only, so a category added later
 # would ship with an empty dropdown everywhere until an admin typed every value.
-ENSURE_SEEDED_CATEGORIES = ("dealer_state", "storage_size", "ram_size", "transport_mode", "delivery_courier")
+ENSURE_SEEDED_CATEGORIES = ("dealer_state", "storage_size", "ram_size", "transport_mode", "delivery_courier",
+                            "crm_credit_days")   # Accounts: Credit Days (2026-11-10)
 
 
 async def ensure_master_defaults(db: AsyncSession, categories=ENSURE_SEEDED_CATEGORIES) -> int:
@@ -171,3 +172,14 @@ def master_children(category: str, parent) -> list:
 def master_options(category: str) -> list:
     """Synchronous Jinja-global accessor — reads the warm cache, never hits the DB."""
     return _MASTER_CACHE.get(category, [])
+
+
+async def clean_from_entity(db: AsyncSession, value: str | None, current: str | None = None) -> str | None:
+    """From Entity value from a form (2026-11-10): a known entity (or the
+    record's existing value) is kept; blank or unknown -> None."""
+    v = (value or "").strip()
+    if not v:
+        return None
+    if v == (current or "") or v in await entity_values(db):
+        return v[:100]
+    return None

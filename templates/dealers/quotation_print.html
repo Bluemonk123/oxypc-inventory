@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quotation {{ q.quote_number }}</title>
+  {# Telecalling Quotation print / save as PDF (2026-11-10). Uses the dealer and
+     company details saved on the quotation when it was created. Opened from
+     the Download column ("Quote") once the quotation is Approved. #}
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; color: #222; background: #fff; padding: 30px 40px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #0377c2; padding-bottom: 14px; margin-bottom: 18px; }
+    .company-name { font-size: 20pt; font-weight: bold; color: #0377c2; }
+    .sub { font-size: 9.5pt; color: #555; margin-top: 2px; }
+    .title { text-align: right; }
+    .title h2 { font-size: 17pt; color: #0377c2; }
+    .title .num { font-size: 11pt; color: #555; font-family: monospace; }
+    .meta { display: flex; gap: 40px; margin-bottom: 20px; }
+    .meta > div { flex: 1; }
+    .meta h4 { font-size: 8.5pt; text-transform: uppercase; color: #888; letter-spacing: .5px; border-bottom: 1px solid #eee; padding-bottom: 4px; margin-bottom: 6px; }
+    table { width: 100%; border-collapse: collapse; margin-bottom: 18px; }
+    th { background: #0377c2; color: #fff; text-align: left; font-size: 9.5pt; padding: 7px 8px; }
+    td { border-bottom: 1px solid #e5e5e5; padding: 7px 8px; font-size: 10pt; }
+    .r { text-align: right; }
+    tfoot td { font-weight: bold; border-top: 2px solid #0377c2; }
+    .notes { font-size: 9.5pt; color: #444; margin-bottom: 10px; white-space: pre-wrap; }
+    .approved { display: inline-block; border: 1px solid #198754; color: #198754; border-radius: 4px; padding: 2px 8px; font-size: 9pt; margin-top: 6px; }
+    .print-bar { text-align: right; margin-bottom: 16px; }
+    .print-bar button { background: #0377c2; color: #fff; border: 0; border-radius: 4px; padding: 6px 14px; cursor: pointer; }
+    @media print { .print-bar { display: none; } body { padding: 0 10px; } }
+  </style>
+</head>
+<body>
+  <div class="print-bar"><button onclick="window.print()">Print / Save as PDF</button></div>
+  <div class="header">
+    <div>
+      <div class="company-name">{{ company.name or 'OxyPC' }}</div>
+      {% if company.address %}<div class="sub">{{ company.address }}</div>{% endif %}
+      <div class="sub">{% if company.gstin %}GSTIN: {{ company.gstin }}{% endif %}{% if company.phone %} &middot; {{ company.phone }}{% endif %}{% if company.email %} &middot; {{ company.email }}{% endif %}</div>
+    </div>
+    <div class="title">
+      <h2>QUOTATION</h2>
+      <div class="num">{{ q.quote_number }}</div>
+      <div class="sub">Date: {{ q.created_at.strftime('%d %b %Y') if q.created_at else '' }}</div>
+      <div class="approved">Approved{% if q.confirmed_by %} by {{ q.confirmed_by }}{% endif %}</div>
+    </div>
+  </div>
+
+  <div class="meta">
+    <div>
+      <h4>Quotation For</h4>
+      <div><strong>{{ q.customer_name }}</strong>{% if q.customer_type %} ({{ q.customer_type | title }}){% endif %}</div>
+      {% if q.dealer_address %}<div class="sub">{{ q.dealer_address }}</div>{% endif %}
+      <div class="sub">{% if q.dealer_phone %}{{ q.dealer_phone }}{% endif %}{% if q.dealer_email %} &middot; {{ q.dealer_email }}{% endif %}</div>
+      {% if q.dealer_gstin %}<div class="sub">GSTIN: {{ q.dealer_gstin }}</div>{% endif %}
+    </div>
+    <div>
+      <h4>Terms</h4>
+      <div class="sub">Payment: {{ q.payment_terms or '—' }}</div>
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>#</th><th>Product</th><th>Model</th><th>PO Category</th><th class="r">Qty</th><th class="r">Unit Price (Rs)</th><th class="r">Total (Rs)</th></tr></thead>
+    <tbody>
+      {% for it in items %}
+      <tr>
+        <td>{{ loop.index }}</td><td>{{ it.product_name }}</td><td>{{ it.model_name or '—' }}</td><td>{{ it.po_category or '—' }}</td>
+        <td class="r">{{ it.quantity }}</td><td class="r">{{ (it.unit_price or 0) | inr }}</td><td class="r">{{ (it.total_price or 0) | inr }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot><tr><td colspan="4">Total</td><td class="r">{{ q.total_quantity }}</td><td></td><td class="r">{{ (q.total_price or 0) | inr }}</td></tr></tfoot>
+  </table>
+
+  {% if q.additional_notes %}<div class="notes"><strong>Notes:</strong> {{ q.additional_notes }}</div>{% endif %}
+</body>
+</html>

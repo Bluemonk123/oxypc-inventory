@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}{{ q.quote_number }} — Quotation — OxyPC{% endblock %}
+{% block page_title %}Quotation {{ q.quote_number }}{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ q.quote_number }}{% endblock %}{% block record_parent %}/quotations{% endblock %}{% block record_parent_label %}Quotations{% endblock %}
+{% block content %}
+{# Telecalling Quotation detail (2026-11-10, Pankaj). Opened from the Quote No
+   link on the Quotations page, Dealer Management (Quotation Shared tab and the
+   Status column), Dealer Detail and the TeleSales Dashboard.
+   Header: Download Quote (only once Approved) + back to the dealer.
+   Status: Negotiation / Expired for edit permission; Approve / Reject for the
+   creator's Report To managers (or admin). #}
+{% set _qsm = ['dealers', 'quotations'] %}
+{% set _price = can(current_user, _qsm, 'pricing') %}
+{% set _back = request.url.path %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-file-earmark-text me-2"></i>Quotation Detail</span>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      {% if q.status == 'approved' and can(current_user, _qsm, 'export') %}
+      <a href="/dealer-quotations/{{ q.id }}/print" class="btn btn-sm btn-outline-success" target="_blank">
+        <i class="bi bi-download me-1"></i>Download Quote
+      </a>
+      {% endif %}
+      <a href="/quotations" class="btn btn-sm btn-outline-secondary"><i class="bi bi-list-ul me-1"></i>All Quotations</a>
+      <a href="/dealers/{{ q.dealer_id }}" class="btn btn-sm btn-primary" data-hdr-primary>
+        <i class="bi bi-arrow-left me-1"></i>Dealer
+      </a>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="row align-items-start g-3">
+      <div class="col-md-8">
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+          <h5 class="mb-0 fw-bold font-monospace">{{ q.quote_number }}</h5>
+          <span class="badge bg-{{ QUOTE_STATUS_COLORS.get(q.status, 'secondary') }} fs-6">{{ (q.status or 'added') | title }}</span>
+          {% if q.status in ('added', 'negotiation') %}
+          {% if can(current_user, _qsm, 'edit') %}
+          {% for ns, ic, lbl, cls in ([('negotiation', 'bi-chat-left-dots', 'Move to Negotiation', 'warning')] if q.status == 'added' else []) + [('expired', 'bi-hourglass-bottom', 'Mark Expired', 'secondary')] %}
+          <form method="post" action="/dealer-quotations/{{ q.id }}/status" class="d-inline mb-0">
+            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+            <input type="hidden" name="return_to" value="{{ _back }}">
+            <input type="hidden" name="new_status" value="{{ ns }}">
+            <button type="submit" class="btn btn-sm btn-outline-{{ cls }}"><i class="bi {{ ic }} me-1"></i>{{ lbl }}</button>
+          </form>
+          {% endfor %}
+          {% endif %}
+          {% if can_decide %}
+          {% for dec, ic, lbl, cls in [('approve', 'bi-check-circle', 'Approve', 'success'), ('reject', 'bi-x-circle', 'Reject', 'danger')] %}
+          <form method="post" action="/dealer-quotations/{{ q.id }}/decision" class="d-inline mb-0">
+            <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+            <input type="hidden" name="return_to" value="{{ _back }}">
+            <input type="hidden" name="decision" value="{{ dec }}">
+            <button type="submit" class="btn btn-sm btn-{{ cls }}"{% if dec == 'reject' %} onclick="return confirm('Reject {{ q.quote_number }}?')"{% endif %}><i class="bi {{ ic }} me-1"></i>{{ lbl }}</button>
+          </form>
+          {% endfor %}
+          {% endif %}
+          {% endif %}
+        </div>
+        <div class="mb-1"><i class="bi bi-shop me-2 text-muted"></i>
+          <a href="/dealers/{{ q.dealer_id }}" class="fw-semibold text-decoration-none">{{ q.customer_name }}</a>
+          {% if q.customer_type %}<span class="badge bg-secondary ms-1">{{ q.customer_type | title }}</span>{% endif %}
+        </div>
+        {% if q.dealer_phone %}<div class="small text-muted mb-1"><i class="bi bi-telephone me-2"></i>{{ q.dealer_phone }}</div>{% endif %}
+        {% if q.dealer_email %}<div class="small text-muted mb-1"><i class="bi bi-envelope me-2"></i>{{ q.dealer_email }}</div>{% endif %}
+        {% if q.dealer_address %}<div class="small text-muted mb-1"><i class="bi bi-geo-alt me-2"></i>{{ q.dealer_address }}</div>{% endif %}
+        {% if q.dealer_gstin %}<div class="small text-muted mb-1"><i class="bi bi-receipt me-2"></i>GSTIN: {{ q.dealer_gstin }}</div>{% endif %}
+      </div>
+      <div class="col-md-4 text-md-end">
+        <div class="small text-muted mb-1">Created</div>
+        <div class="fw-semibold mb-2">{{ q.created_at | ist_datetime if q.created_at else '—' }}<div class="small text-muted fw-normal">{{ creator_name or q.created_by or '—' }}</div></div>
+        <div class="small text-muted mb-1">Level 1 Decision</div>
+        <div class="fw-semibold mb-2">
+          {% if q.status in ('approved', 'rejected') and q.confirmed_by %}
+          {{ q.status | title }} by {{ q.confirmed_by }}
+          <div class="small text-muted fw-normal">{{ q.confirmed_at | ist_datetime if q.confirmed_at else '' }}</div>
+          {% elif q.status in ('added', 'negotiation') %}<span class="text-warning">Pending</span>
+          {% else %}—{% endif %}
+        </div>
+        <div class="small text-muted mb-1">Company</div>
+        <div class="fw-semibold">{{ q.company_name or '—' }}</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent py-2"><span class="fw-semibold small"><i class="bi bi-list-check me-2"></i>Line Items</span></div>
+  <div class="table-responsive">
+    <table class="table table-hover mb-0 small">
+      <thead class="table-light">
+        <tr><th class="ps-3">#</th><th>Product</th><th>Model</th><th>PO Category</th><th class="text-end">Qty</th>
+          {% if _price %}<th class="text-end">Unit Price</th><th class="text-end pe-3">Total</th>{% endif %}</tr>
+      </thead>
+      <tbody>
+        {% for it in items %}
+        <tr>
+          <td class="ps-3">{{ loop.index }}</td><td>{{ it.product_name }}</td><td>{{ it.model_name or '—' }}</td><td>{{ it.po_category or '—' }}</td>
+          <td class="text-end">{{ it.quantity }}</td>
+          {% if _price %}<td class="text-end">₹{{ (it.unit_price or 0) | inr }}</td><td class="text-end pe-3">₹{{ (it.total_price or 0) | inr }}</td>{% endif %}
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="text-center text-muted py-3">No line items.</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot class="fw-semibold">
+        <tr><td class="ps-3" colspan="4">Total</td><td class="text-end">{{ q.total_quantity }}</td>
+          {% if _price %}<td></td><td class="text-end pe-3">₹{{ (q.total_price or 0) | inr }}</td>{% endif %}</tr>
+      </tfoot>
+    </table>
+  </div>
+</div>
+
+{% if q.payment_terms or q.additional_notes %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent py-2"><span class="fw-semibold small"><i class="bi bi-card-text me-2"></i>Terms &amp; Notes</span></div>
+  <div class="card-body small">
+    {% if q.payment_terms %}<div class="mb-2"><span class="text-muted">Payment Terms:</span> <span style="white-space:pre-wrap">{{ q.payment_terms }}</span></div>{% endif %}
+    {% if q.additional_notes %}<div><span class="text-muted">Notes:</span> <span style="white-space:pre-wrap">{{ q.additional_notes }}</span></div>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% include "_history_card.html" %}
+{% endblock %}

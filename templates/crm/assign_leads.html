@@ -82,49 +82,41 @@
   </div>
 </div>
 
-{# ── Filter bar ──────────────────────────────────────────────────────────── #}
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2 px-3">
-    <form method="get" action="/crm/assign-social-leads" class="row g-2 align-items-end" id="filterForm">
-      <div class="col-sm-2">
-        <input type="text" name="q" id="filterQ" class="form-control form-control-sm"
-               placeholder="Search Ad Name" value="{{ q }}">
-      </div>
-      <div class="col-sm-3">
-        <input type="text" name="customer" id="filterCustomer" class="form-control form-control-sm"
-               placeholder="Search Customer (name/phone/email)" value="{{ customer }}">
-      </div>
-      <div class="col-sm-2">
-        <select name="assigned" id="filterAssigned" class="form-select form-select-sm">
-          <option value="">All Assigned Users</option>
-          {% for u in all_users %}
-          <option value="{{ u.username }}" {% if assigned == u.username %}selected{% endif %}>
-            {{ u.full_name }}
-          </option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-sm-2">
-        <select name="status" id="filterStatus" class="form-select form-select-sm">
-          <option value="">All Statuses</option>
-          {% for o in outcomes %}
-          <option value="{{ o }}" {% if status == o %}selected{% endif %}>{{ o | replace('_',' ') | title }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div class="col-sm-3 d-flex gap-2 align-items-center">
-        <button type="submit" class="btn btn-sm btn-primary">Filter</button>
-        <a href="/crm/assign-social-leads" class="btn btn-sm btn-outline-secondary">Clear</a>
-        {% if can(current_user, 'crm_assign_leads', 'add') %}
-        <button type="button" class="btn btn-sm btn-success ms-auto"
-                onclick="showAddGroupModal()">
-          <i class="bi bi-plus-lg me-1"></i>Add Lead Group
-        </button>
-        {% endif %}
-      </div>
-    </form>
+{# ── Filter bar — Global filter bar (app.css .filter-bar, 2026-11-08); labels live in title= ── #}
+<form method="get" action="/crm/assign-social-leads" class="filter-bar" id="filterForm">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" id="filterQ" class="form-control form-control-sm" title="Search Ad Name"
+             placeholder="Search Ad Name" value="{{ q }}">
+    </div>
+    <div>
+      <input type="text" name="customer" id="filterCustomer" class="form-control form-control-sm" title="Search Customer"
+             placeholder="Search Customer (name/phone/email)" value="{{ customer }}">
+    </div>
+    <div>
+      <select name="assigned" id="filterAssigned" class="form-select form-select-sm" title="Assigned User">
+        <option value="">All Assigned Users</option>
+        {% for u in all_users %}
+        <option value="{{ u.username }}" {% if assigned == u.username %}selected{% endif %}>
+          {{ u.full_name }}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="status" id="filterStatus" class="form-select form-select-sm" title="Status">
+        <option value="">All Statuses</option>
+        {% for o in outcomes %}
+        <option value="{{ o }}" {% if status == o %}selected{% endif %}>{{ o | replace('_',' ') | title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/crm/assign-social-leads" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
+</form>
 
 {# ── Empty state ─────────────────────────────────────────────────────────── #}
 {% if not groups %}
@@ -152,7 +144,7 @@
     {% if can(current_user, 'crm_assign_leads', 'add') %}
     <button type="button" class="btn btn-outline-success btn-sm"
             onclick="var s=document.getElementById('aslGroupSelect'); showAddLeadModal(s.value, s.selectedOptions[0].dataset.name)">
-      <i class="bi bi-plus-lg me-1"></i>Add Lead
+      <i class="bi bi-plus-circle me-1"></i>Add Lead
     </button>
     {% endif %}
     {% if can(current_user, 'crm_assign_leads', 'edit') %}
@@ -170,6 +162,14 @@
   <div class="card-header bg-transparent fw-semibold d-flex align-items-center gap-2">
     <i class="bi bi-megaphone me-1"></i>Social Media Leads
     <span class="badge bg-secondary fw-normal">{{ all_leads_flat | length }} lead{{ 's' if all_leads_flat | length != 1 else '' }}</span>
+    {% if can(current_user, 'crm_assign_leads', 'add') %}
+    <div class="d-flex gap-2 align-items-center ms-auto fw-normal">
+      <button type="button" class="btn btn-sm btn-success text-nowrap"
+              onclick="showAddGroupModal()">
+        <i class="bi bi-plus-circle me-1"></i>Add Lead Group
+      </button>
+    </div>
+    {% endif %}
   </div>
   <div class="table-responsive">
     <table class="table table-sm table-hover mb-0 align-middle asl-sortable-table" style="font-size:.82rem" id="aslFlatTable">

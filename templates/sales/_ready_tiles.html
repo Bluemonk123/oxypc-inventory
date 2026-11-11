@@ -9,8 +9,7 @@
 
     Dark row: the six device types of the Dashboard / All Inventory tiles.
     2026-11-06: built from the shared tile macros (_tiles.html) — dark
-    single-count tiles + tint tiles (single with secondary lines, or double
-    for two one-count lines). The data-rfs-type / data-rfs hooks that
+    single-count tiles + tint Multi count tiles (2026-11-07). The data-rfs-type / data-rfs hooks that
     rfsFill() writes into are unchanged. -#}
 {% import "_tiles.html" as tl %}
 
@@ -39,24 +38,14 @@
 </div>
 {% endmacro %}
 
-{# One tint tile. lines: list of [(label, data-key), ...] per line; each
-   count is filled by rfsFill() through data-rfs="key". Two lines of one
-   count each -> double-count tile; otherwise single-count tile: the first
-   count is the big count (its label under it), the rest are secondary lines.
-   head is the tile's title. #}
+{# One tint tile (2026-11-07: Multi count). lines: list of [(label, data-key), ...]
+   per line; a line with two or more counts shows split ("12 A | 4 B"). Each
+   count is filled by rfsFill() through data-rfs="key". head is the title. #}
 {% macro tint(head, color, icon, lines, href='', title='') %}
-{%- set items = [] -%}
-{%- for line in lines %}{% for label, key in line %}{% set _ = items.append((label, key)) %}{% endfor %}{% endfor -%}
-{%- if lines | length == 2 and lines[0] | length == 1 and lines[1] | length == 1 -%}
-{{ tl.double(head, '…', items[0][0], '…', items[1][0], color, icon, href=href or None, title_attr=title or (head if href else ''),
-             count1_attrs='data-rfs="' ~ items[0][1] ~ '"', count2_attrs='data-rfs="' ~ items[1][1] ~ '"') }}
-{%- else -%}
-{%- set sec = [] -%}
-{%- for label, key in items[1:] %}{% set _ = sec.append((label, ('<span data-rfs="' ~ key ~ '">…</span>') | safe)) %}{% endfor -%}
-{{ tl.single('…', items[0][0], color, icon, title=head, secondary=sec, href=href or None, title_attr=title or (head if href else ''),
-             count_attrs='data-rfs="' ~ items[0][1] ~ '"') }}
-{%- endif -%}
-{% endmacro %}
+{%- set ml = [] -%}
+{%- for line in lines %}{% set parts = [] %}{% for label, key in line %}{% set _ = parts.append(('…', label, 'data-rfs="' ~ key ~ '"')) %}{% endfor %}{% set _ = ml.append(parts) %}{% endfor -%}
+{{ tl.multi(head, ml, color, icon, href=href or None, title_attr=title or (head if href else '')) }}
+{%- endmacro %}
 
 {% macro script() %}
 <script>

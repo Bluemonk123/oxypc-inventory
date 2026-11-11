@@ -1,12 +1,26 @@
 {% extends "base.html" %}
 {% block title %}{{ contact.company_name }} — CRM{% endblock %}
 {% block page_title %}{{ contact.company_name }}{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ contact.contact_code or contact.company_name }}{% endblock %}{% block record_parent %}/crm/contacts{% endblock %}{% block record_parent_label %}CRM Contacts{% endblock %}
 {% block content %}
 
 <div class="row g-4">
   <!-- Left: Contact Info -->
   <div class="col-xl-4">
+    {# Account Details (2026-11-10, Pankaj): Account Info, KYC, Credit and Notes
+       merged into one card; Edit / Add Deal / Add Opp moved to the header. #}
     <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="fw-semibold text-nowrap"><i class="bi bi-person-vcard me-1 text-primary"></i>Account Details</span>
+        <div class="d-flex gap-1 flex-nowrap acct-hdr-btns ms-auto">
+          {% if can(current_user, 'crm_contacts', 'edit') %}<a href="/crm/contacts/{{ contact.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
+          {# By Account Type (2026-11-10, Pankaj): Supplier -> Supplier Deal,
+             Buyer -> Customer Deal, Both (or unset, shown as Supplier + Buyer) -> both. #}
+          {% if contact.contact_type != 'buyer' and can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new?contact_id={{ contact.id }}" class="btn btn-sm btn-outline-secondary" title="Add Supplier Deal"><i class="bi bi-plus-circle me-1"></i>Supplier Deal</a>{% endif %}
+          {% if contact.contact_type != 'supplier' and can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new?contact_id={{ contact.id }}" class="btn btn-sm btn-outline-info" title="Add Customer Deal"><i class="bi bi-plus-circle me-1"></i>Customer Deal</a>{% endif %}
+        </div>
+      </div>
+      <style>.acct-hdr-btns .btn{padding:.2rem .45rem;white-space:nowrap}</style>
       <div class="card-body">
         <div class="d-flex justify-content-between align-items-start mb-3">
           <div>
@@ -36,30 +50,16 @@
         {% if contact.email %}<div class="mb-1 small"><i class="bi bi-envelope me-2 text-muted"></i>{{ contact.email }}</div>{% endif %}
         {% if contact.city or contact.state %}<div class="mb-1 small"><i class="bi bi-geo-alt me-2 text-muted"></i>{{ contact.city or '' }}{% if contact.state %}, {{ contact.state }}{% endif %}</div>{% endif %}
         {% if contact.gstin %}<div class="mb-1 small"><i class="bi bi-file-text me-2 text-muted"></i>GST: {{ contact.gstin }}</div>{% endif %}
+        <div class="mb-1 small"><i class="bi bi-building-gear me-2 text-muted"></i>From Entity: {{ contact.from_entity or '—' }}</div>
         {% if contact.tags %}<div class="mb-1 small"><i class="bi bi-tags me-2 text-muted"></i>{{ contact.tags }}</div>{% endif %}
+        {# Credit Limit / Outstanding removed from Account Details (2026-11-10, Pankaj) #}
+
+        <!-- KYC -->
         <hr class="my-2">
-        <div class="row g-2 text-center">
-          <div class="col-6"><div class="small text-muted">Credit Limit</div><div class="fw-semibold small">{% if can(current_user, 'crm_contacts', 'pricing') %}₹{{ ((contact.credit_limit or 0) | inr) }}{% else %}—{% endif %}</div></div>
-          <div class="col-6"><div class="small text-muted">Outstanding</div><div class="fw-semibold small {% if contact.outstanding > 0 %}text-danger{% endif %}">{% if can(current_user, 'crm_contacts', 'pricing') %}₹{{ ((contact.outstanding or 0) | inr) }}{% else %}—{% endif %}</div></div>
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="fw-semibold small"><i class="bi bi-patch-check me-1 text-primary"></i>KYC</span>
+          {% if contact.kyc_verified %}<span class="badge bg-success">Verified</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
         </div>
-        <div class="mt-3 d-flex gap-2 flex-wrap">
-          {% if can(current_user, 'crm_contacts', 'edit') %}<a href="/crm/contacts/{{ contact.id }}/edit" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil me-1"></i>Edit</a>{% endif %}
-          {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new?contact_id={{ contact.id }}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-box-arrow-in-down me-1"></i>New Deal</a>{% endif %}
-          {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new?contact_id={{ contact.id }}" class="btn btn-sm btn-outline-info"><i class="bi bi-graph-up me-1"></i>New Opp</a>{% endif %}
-        </div>
-      </div>
-    </div>
-    <!-- KYC -->
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-        <span class="fw-semibold"><i class="bi bi-patch-check me-1 text-primary"></i>KYC</span>
-        {% if contact.kyc_verified %}
-        <span class="badge bg-success">Verified</span>
-        {% else %}
-        <span class="badge bg-warning text-dark">Pending</span>
-        {% endif %}
-      </div>
-      <div class="card-body">
         {% if contact.kyc_verified %}
         <div class="small text-muted">Verified by {{ contact.kyc_verified_by or '—' }}{% if contact.kyc_verified_at %} on {{ contact.kyc_verified_at.strftime('%d-%m-%Y %H:%M') }}{% endif %}</div>
         {% else %}
@@ -69,26 +69,19 @@
         </button>
         {% endif %}
         {% endif %}
-      </div>
-    </div>
 
-    <!-- Credit (Management) -->
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-        <span class="fw-semibold"><i class="bi bi-cash-coin me-1 text-primary"></i>Credit</span>
-        {% if contact.credit_verified %}
-        <span class="badge bg-success">Verified</span>
-        {% else %}
-        <span class="badge bg-warning text-dark">Pending</span>
-        {% endif %}
-      </div>
-      <div class="card-body">
+        <!-- Credit (Management) -->
+        <hr class="my-2">
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span class="fw-semibold small"><i class="bi bi-cash-coin me-1 text-primary"></i>Credit</span>
+          {% if contact.credit_verified %}<span class="badge bg-success">Verified</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
+        </div>
         {% if contact.credit_verified %}
         <div class="small text-muted">Verified by {{ contact.credit_verified_by or '—' }}{% if contact.credit_verified_at %} on {{ contact.credit_verified_at.strftime('%d-%m-%Y %H:%M') }}{% endif %}</div>
         {% if contact.credit_verify_reason %}<div class="small mt-1"><span class="text-muted">Reason:</span> {{ contact.credit_verify_reason }}</div>{% endif %}
         {% if contact.credit_old_limit is not none and can(current_user, 'crm_contacts', 'pricing') %}<div class="small"><span class="text-muted">Old limit:</span> ₹{{ (contact.credit_old_limit | inr) }} → ₹{{ ((contact.credit_limit or 0) | inr) }}</div>{% endif %}
         {% else %}
-        {# Verify Credit (2026-11-06): the account's mapped VP/AVP or AM/DM/GM, or admin #}
+        {# Verify Credit (2026-11-06): the account's mapped VP/AVP or DM/GM/CTO/CEO, or admin #}
         {% if can_verify_credit %}
         <button type="button" class="btn btn-sm btn-success"
                 data-vc-id="{{ contact.id }}" data-vc-company="{{ contact.company_name }}"
@@ -97,15 +90,17 @@
                 data-vc-po="{{ credit_totals.po_total }}" data-vc-po-n="{{ credit_totals.po_count }}">
           <i class="bi bi-check-circle me-1"></i>Verify Credit
         </button>
-        {% else %}<div class="small text-muted">Verified by the account's VP/AVP or AM/DM/GM (Map Team).</div>
+        {% else %}<div class="small text-muted">Verified by the account's VP/AVP or DM/GM/CTO/CEO (Map Team).</div>
         {% endif %}
+        {% endif %}
+
+        {% if contact.notes %}
+        <hr class="my-2">
+        <div class="fw-semibold small mb-1"><i class="bi bi-sticky me-1 text-primary"></i>Notes</div>
+        <p class="mb-0 small" style="white-space:pre-wrap">{{ contact.notes }}</p>
         {% endif %}
       </div>
     </div>
-
-    {% if contact.notes %}
-    <div class="card border-0 shadow-sm mb-3"><div class="card-body"><div class="small text-muted fw-semibold mb-1">Notes</div><p class="mb-0 small">{{ contact.notes }}</p></div></div>
-    {% endif %}
 
     <!-- Scorecard -->
     <div class="card border-0 shadow-sm mb-3">
@@ -198,7 +193,7 @@
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-header bg-white border-0 d-flex justify-content-between">
         <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1 text-primary"></i>Sourcing Deals ({{ sourcing_deals|length }})</span>
-        {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new?contact_id={{ contact.id }}" class="btn btn-xs btn-outline-primary btn-sm">+ New Deal</a>{% endif %}
+        {% if can(current_user, 'crm_sourcing', 'add') %}<a href="/crm/sourcing/new?contact_id={{ contact.id }}" class="btn btn-xs btn-outline-primary btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Deal</a>{% endif %}
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
@@ -226,7 +221,7 @@
     <div class="card border-0 shadow-sm mb-3">
       <div class="card-header bg-white border-0 d-flex justify-content-between">
         <span class="fw-semibold"><i class="bi bi-graph-up me-1 text-info"></i>Sales Opportunities ({{ sales_opps|length }})</span>
-        {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new?contact_id={{ contact.id }}" class="btn btn-xs btn-outline-info btn-sm">+ New Opp</a>{% endif %}
+        {% if can(current_user, 'crm_sales_opp', 'add') %}<a href="/crm/sales/new?contact_id={{ contact.id }}" class="btn btn-xs btn-outline-info btn-sm"><i class="bi bi-plus-circle me-1"></i>Add Opp</a>{% endif %}
       </div>
       <div class="card-body p-0">
         <div class="table-responsive">
@@ -367,4 +362,7 @@
 </div>
 <!-- Verify Credit modal (2026-11-06): shared with Activity Board -->
 {% include "crm/contacts/_verify_credit_modal.html" %}
+
+{# History card (2026-11-09, Pankaj) #}
+{% include "_history_card.html" %}
 {% endblock %}

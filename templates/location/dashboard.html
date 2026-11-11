@@ -3,54 +3,38 @@
 {% block page_title %}Live Location Dashboard{% endblock %}
 
 {% block content %}
-<!-- Header bar -->
-<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
-  <form method="get" class="row g-2 align-items-end">
-    <div class="col-auto">
-      <label class="form-label small mb-0">Location Zone</label>
-      <select name="zone" class="form-select form-select-sm" onchange="this.form.submit()">
+<!-- Filters: Zone / Type reload the page (GET); the two search boxes filter
+     the rendered card grid client-side (no name, never sent to the server). -->
+<form method="get" action="/locations/dashboard" id="locFilterForm" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" id="locIdSearch" class="form-control form-control-sm" title="Location ID" placeholder="Search Location ID…">
+    </div>
+    <div>
+      <input type="text" id="binLocSearch" class="form-control form-control-sm" title="Bin Location" placeholder="Search Bin Location…">
+    </div>
+    <div>
+      <select name="zone" class="form-select form-select-sm" title="Location Zone">
         <option value="">All Zones</option>
         {% for z in zone_types %}
         <option value="{{ z.value }}" {% if selected_zone == z.value %}selected{% endif %}>{{ zone_labels[z] }}</option>
         {% endfor %}
       </select>
     </div>
-    <div class="col-auto">
-      <label class="form-label small mb-0">Location Type</label>
-      <select name="unit_type" class="form-select form-select-sm" onchange="this.form.submit()">
+    <div>
+      <select name="unit_type" class="form-select form-select-sm" title="Location Type">
         <option value="">All Types</option>
         {% for t in unit_types %}
         <option value="{{ t.value }}" {% if selected_unit_type == t.value %}selected{% endif %}>{{ t.value|title }}</option>
         {% endfor %}
       </select>
     </div>
-    {% if selected_zone or selected_unit_type %}
-    <div class="col-auto"><a href="/locations/dashboard" class="btn btn-sm btn-outline-danger">Clear</a></div>
-    {% endif %}
-  </form>
-  <div class="d-flex gap-2">
-    <a href="/locations/gaps" class="btn btn-sm btn-outline-danger">
-      <i class="bi bi-exclamation-triangle me-1"></i>
-      Gaps
-      {% if gap_count > 0 %}
-      <span class="badge bg-danger ms-1">{{ gap_count }}</span>
-      {% endif %}
-    </a>
-    <a href="/locations/master" class="btn btn-sm btn-outline-secondary">
-      <i class="bi bi-gear me-1"></i> Manage Locations
-    </a>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/locations/dashboard" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
-
-<!-- Card search boxes -->
-<div class="row g-2 mb-3">
-  <div class="col-auto">
-    <input type="text" id="locIdSearch" class="form-control form-control-sm" placeholder="Search Location ID…" style="width:220px">
-  </div>
-  <div class="col-auto">
-    <input type="text" id="binLocSearch" class="form-control form-control-sm" placeholder="Search Bin Location…" style="width:220px">
-  </div>
-</div>
+</form>
 
 <!-- In-hand summary banner -->
 {% if in_hand_detail %}
@@ -69,6 +53,19 @@
   </span>
 </div>
 {% endif %}
+
+<div class="d-flex justify-content-end gap-2 mb-2">
+  <a href="/locations/gaps" class="btn btn-sm btn-outline-danger">
+    <i class="bi bi-exclamation-triangle me-1"></i>
+    Gaps
+    {% if gap_count > 0 %}
+    <span class="badge bg-danger ms-1">{{ gap_count }}</span>
+    {% endif %}
+  </a>
+  <a href="/locations/master" class="btn btn-sm btn-outline-secondary">
+    <i class="bi bi-gear me-1"></i> Manage Locations
+  </a>
+</div>
 
 <!-- Location cards grid -->
 {% if locations %}
@@ -185,9 +182,19 @@ function filterLocationCards() {
     card.style.display = (idMatch && slotMatch) ? '' : 'none';
   });
 }
-var _locIdSearchEl = document.getElementById('locIdSearch');
-var _binLocSearchEl = document.getElementById('binLocSearch');
-if (_locIdSearchEl) _locIdSearchEl.addEventListener('input', filterLocationCards);
-if (_binLocSearchEl) _binLocSearchEl.addEventListener('input', filterLocationCards);
+// Applied only from Apply / Enter (no filter-as-you-type). When Zone / Type are
+// unchanged, Apply just re-filters the cards in place; otherwise the form
+// submits normally so the server reloads the grid for the new Zone / Type.
+(function () {
+  var form = document.getElementById('locFilterForm');
+  if (!form) return;
+  var initial = { zone: form.elements.zone.value, unit_type: form.elements.unit_type.value };
+  form.addEventListener('submit', function (e) {
+    if (form.elements.zone.value === initial.zone && form.elements.unit_type.value === initial.unit_type) {
+      e.preventDefault();
+      filterLocationCards();
+    }
+  });
+})();
 </script>
 {% endblock %}

@@ -8,9 +8,14 @@ from tests.test_iqc_new_user import _login, make_user  # noqa: F401  (fixture)
 
 
 def _tiles(html):
-    # Counts are thousands-formatted by the tile macro (2026-11-06): drop the commas.
-    return {k: (v if k.startswith("value-") else v.replace(",", ""))
-            for k, v in re.findall(r'data-tile="([a-z]+-(?:new|harvest))">\s*([^<]*?)\s*<', html)}
+    # Counts are thousands-formatted by the tile macro (2026-11-06): drop the
+    # commas. From one lakh up the tile shows "1.25 Lk" with the full figure
+    # in a title attribute (2026-11-08): read that instead.
+    out = {}
+    for k, full, v in re.findall(r'data-tile="([a-z]+-(?:new|harvest))">\s*(?:<span title="([^"]*)">)?([^<]*?)\s*<', html):
+        v = full or v
+        out[k] = v if k.startswith("value-") else v.replace(",", "")
+    return out
 
 
 def test_tiles_split_and_match_rows(app_client, make_user):  # noqa: F811

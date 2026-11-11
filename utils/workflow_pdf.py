@@ -155,8 +155,12 @@ def stage_flows_pdf(workflows: list) -> bytes:
     st = _styles()
     buf = io.BytesIO()
     story = [Paragraph("Stage Flows", st["h1"]),
-             Paragraph("Each part of the device pipeline as it works today.", st["sub"])]
+             Paragraph("Device pipeline, after sale, spare parts and CRM &amp; Accounts as they work today.", st["sub"])]
+    group = None
     for wf in workflows:
+        if wf.get("group") and wf["group"] != group:   # group headings (2026-11-09)
+            group = wf["group"]
+            story.append(Paragraph(_esc(group), st["h1"]))
         block = [Paragraph(_esc(wf["title"]), st["t"]),
                  Paragraph(" → ".join(_esc(x) for x in wf["stages"]), st["w"]), Spacer(1, 3)]
         rows = [[Paragraph(f"<b>{_esc(a)}</b>", st["br"]), Paragraph(_esc(b), st["br"])] for a, b in wf["detail"]]

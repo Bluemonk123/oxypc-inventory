@@ -2,7 +2,8 @@
  *
  * Type part of a Tag Number or Serial Number: a one-line-per-device dropdown
  * (Tag | Lot | CPU | RAM | Storage | Grade | Stage) opens centred under the
- * box. Click a row or press Enter to open /devices/{tag}. Arrow keys move the
+ * box. Click a row or press Enter to open the tag in the Search Tags modal
+ * (templates/_search_tags_modal.html) on the current page. Arrow keys move the
  * highlight, Esc / click outside closes.
  *
  * Scanner: types the tag and Enter faster than the dropdown loads, so Enter
@@ -41,10 +42,20 @@
   function stored() {
     try { return sessionStorage.getItem(KEY) || ''; } catch (e) { return ''; }
   }
+  // Opens the tag in the shared Search Tags modal on the current page
+  // (2026-11-08) — no redirect. Falls back to the device page if the modal
+  // isn't on this page.
   function open(tag) {
     if (!tag) return;
     store(tag);
     close();
+    if (typeof window.openSearchTagsModal === 'function') {
+      var m = document.getElementById('searchTagsModal');
+      if (m) m.dataset.fromTopbar = '1';
+      input.blur();
+      window.openSearchTagsModal(tag);
+      return;
+    }
     window.location.href = '/devices/' + encodeURIComponent(tag);
   }
   function close() {

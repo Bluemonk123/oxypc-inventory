@@ -28,8 +28,7 @@
          the header's right side stays empty. #}
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-list-check me-2"></i>All Tags — Cosmetic Pipeline</span>
-        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="openSearchTagsModal()">
-          <i class="bi bi-clock-history me-1"></i>Search Tags</button>
+        {# Search Tags button removed (2026-11-09): the top-bar search opens the same modal. #}
       </div>
       <div class="card-body p-0">
         <table id="cosmeticAllTagsTable" class="table table-hover mb-0 small">
@@ -155,7 +154,7 @@
   </tr>
 </template>
 {% endif %}
-{% include "_search_tags_modal.html" %}
+{# Search Tags modal is included once by base.html (2026-11-08). #}
 {% endblock %}
 {% block scripts %}
 <script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>

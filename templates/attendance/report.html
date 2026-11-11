@@ -3,39 +3,6 @@
 {% block page_title %}Attendance Report{% endblock %}
 {% block content %}
 
-<div class="card border-0 shadow-sm mb-4">
-  <div class="card-body">
-    <form method="get" class="row g-2 align-items-end">
-      <div class="col-md-3">
-        <label class="form-label small">From</label>
-        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm">
-      </div>
-      <div class="col-md-3">
-        <label class="form-label small">To</label>
-        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm">
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small">Employee</label>
-        <select name="user_id" class="form-select form-select-sm">
-          <option value="">All Employees</option>
-          {% for u in users %}<option value="{{ u.id }}" {% if u.id|string == user_id %}selected{% endif %}>{{ u.full_name }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2">
-        <label class="form-label small">Status</label>
-        <select name="status_filter" class="form-select form-select-sm">
-          <option value="">All</option>
-          {% for s in status_choices %}<option value="{{ s }}" {% if s == status_filter %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>{% endfor %}
-        </select>
-      </div>
-      <div class="col-md-2 d-flex gap-1">
-        <button class="btn btn-primary btn-sm">Filter</button>
-        {% if can(current_user, 'attendance_report', 'export') %}<a href="?date_from={{ date_from }}&date_to={{ date_to }}&user_id={{ user_id }}&status_filter={{ status_filter }}&export=csv" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>CSV</a>{% endif %}
-      </div>
-    </form>
-  </div>
-</div>
-
 <div class="d-flex flex-wrap gap-2 mb-3">
   {% for s, color in [('present','success'),('late','warning'),('half_day','info'),('wfh','primary'),('absent','danger')] %}
   <span class="badge bg-{{ color }}">{{ s | replace('_',' ') | title }}: {{ summary.get(s, 0) }}</span>
@@ -44,9 +11,38 @@
   <span class="badge bg-secondary">Total Hours: {{ total_hours }}h</span>
 </div>
 
+<form method="get" action="/attendance/report" class="filter-bar">
+  <div class="filter-bar-row">
+    <div><input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" title="From"></div>
+    <div><input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" title="To"></div>
+    <div>
+      <select name="user_id" class="form-select form-select-sm" title="Employee">
+        <option value="">All Employees</option>
+        {% for u in users %}<option value="{{ u.id }}" {% if u.id|string == user_id %}selected{% endif %}>{{ u.full_name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="status_filter" class="form-select form-select-sm" title="Status">
+        <option value="">All Statuses</option>
+        {% for s in status_choices %}<option value="{{ s }}" {% if s == status_filter %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/attendance/report" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
+  </div>
+</form>
+
 <div class="card border-0 shadow-sm">
-  <div class="card-body p-0">
-    <div class="table-responsive">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-file-earmark-bar-graph me-2"></i>Attendance Records</span>
+    <div class="d-flex gap-2 align-items-center">
+      {% if can(current_user, 'attendance_report', 'export') %}<a href="?date_from={{ date_from }}&date_to={{ date_to }}&user_id={{ user_id }}&status_filter={{ status_filter }}&export=csv" class="btn btn-outline-success btn-sm"><i class="bi bi-download me-1"></i>CSV</a>{% endif %}
+    </div>
+  </div>
+  <div class="card-body">
+    <div>
       <table class="table table-hover mb-0 small" id="reportTable">
         <thead class="table-light">
           <tr><th>Date</th><th>Employee</th><th>Role</th><th>Check In</th><th>Check Out</th><th>Duration</th><th>Status</th><th>Notes</th><th>Marked By</th></tr>
@@ -78,5 +74,8 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>$(document).ready(function(){ if($('#reportTable tbody tr').length>1)$('#reportTable').DataTable({order:[[0,'desc']],pageLength: 12}); });</script>
+<script>
+// Global Table (skipped on the colspan "No records found" row).
+$(document).ready(function(){ if ($('#reportTable tbody tr td').length > 1) initGlobalTable('#reportTable', { order: [[0,'desc']] }); });
+</script>
 {% endblock %}

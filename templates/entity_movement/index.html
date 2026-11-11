@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% import "_csv_dropzone.html" as dz %}
+{% import "_tiles.html" as tl %}
 {% block title %}Entity Movement — OxyPC{% endblock %}
 {% block page_title %}Entity Movement{% endblock %}
 {% block content %}
@@ -7,31 +8,14 @@
 {# ?success= / ?error= are shown once by base.html's flash area — the success
    one as a top-right toast (flashAsToast below), errors as the banner. #}
 
-<div class="row g-3 mb-4">
+{# Global tint tiles (2026-11-09, Pankaj): one Single count tile per entity + Unassigned. #}
+{% set _tile_colors = ['#0d6efd', '#198754', '#6f42c1', '#fd7e14', '#20c997', '#d63384'] %}
+<div class="oxt-row mb-3">
   {% for e in entity_values %}
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-building fs-2 text-primary"></i>
-        <div>
-          <div class="fs-4 fw-bold">{{ counts.get(e, 0) }}</div>
-          <div class="text-muted small">{{ e }}</div>
-        </div>
-      </div>
-    </div>
-  </div>
+  {{ tl.single(counts.get(e, 0), e, _tile_colors[loop.index0 % _tile_colors|length], 'bi-building',
+               title_attr='Live tags in entity ' ~ e) }}
   {% endfor %}
-  <div class="col-md-3">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body d-flex align-items-center gap-3">
-        <i class="bi bi-question-circle fs-2 text-muted"></i>
-        <div>
-          <div class="fs-4 fw-bold">{{ unassigned }}</div>
-          <div class="text-muted small">Unassigned</div>
-        </div>
-      </div>
-    </div>
-  </div>
+  {{ tl.single(unassigned, 'Unassigned', '#6c757d', 'bi-question-circle', title_attr='Live tags with no entity') }}
 </div>
 
 <div class="card border-0 shadow-sm mb-4">
@@ -64,8 +48,7 @@
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent fw-semibold"><i class="bi bi-clock-history me-2"></i>Tag Number Movement</div>
   <div class="card-body p-0">
-    <div class="table-responsive">
-      <table class="table table-hover mb-0 small">
+      <table class="table table-hover mb-0" id="movementTable">
         <thead class="table-dark">
           <tr>
             <th>Movement ID</th><th>Date of Movement</th><th>Total Tag Counts</th>
@@ -76,7 +59,7 @@
           {% for m in movements %}
           <tr>
             <td class="font-monospace small">{{ m.id|string|truncate(8, True, '') }}</td>
-            <td>{{ m.moved_at.strftime('%Y-%m-%d %H:%M') if m.moved_at else '—' }}</td>
+            <td data-order="{{ m.moved_at.isoformat() if m.moved_at else '' }}">{{ m.moved_at|ist_datetime if m.moved_at else '—' }}</td>
             <td>{{ m.tag_count }}</td>
             <td>{{ m.from_entity or '—' }}{% if m.notes %} <span class="text-muted small">({{ m.notes }})</span>{% endif %}</td>
             {% set _regrn = (m.notes or '').startswith('ReGRN') %}
@@ -88,12 +71,9 @@
               {% else %}—{% endif %}
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="7" class="text-center text-muted py-4">No entity movements recorded yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
-    </div>
   </div>
 </div>
 
@@ -259,6 +239,13 @@ document.getElementById('tagsTemplateLink').addEventListener('click', function (
   var a = document.createElement('a'); a.href = url; a.download = 'regrn_tags_template.csv';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+});
+
+// Global Table (2026-11-09): standard toolbar, search, pager; newest first.
+initGlobalTable('#movementTable', {
+  order: [[1, 'desc']],
+  columnDefs: [{ orderable: false, targets: [6] }],
+  language: { emptyTable: 'No entity movements recorded yet.' }
 });
 
 document.getElementById('openChangeEntitiesBtn').addEventListener('click', function () {

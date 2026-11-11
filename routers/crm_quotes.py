@@ -41,10 +41,9 @@ async def link_quote_to_deal(db, quote, kind: str, deal) -> None:
 
 
 async def _next_quote_number(db: AsyncSession) -> str:
-    result = await db.execute(select(func.count(CRMQuote.id)))
-    n = (result.scalar() or 0) + 1
-    year = app_now().year
-    return f"QT-{year}-{n:04d}"
+    """QT-DEAL-<MMYYYY><NNNN> (2026-11-10, utils/quote_numbers.py)."""
+    from utils.quote_numbers import next_quote_number
+    return await next_quote_number(db, CRMQuote.quote_number, "DEAL", app_now().date())
 
 
 # ── LIST ─────────────────────────────────────────────────────────────────────
@@ -93,8 +92,10 @@ async def list_quotes(
                   or (qt.contact_id and contacts_map.get(str(qt.contact_id)) and
                       q.lower() in contacts_map[str(qt.contact_id)].company_name.lower())]
 
+    from services.doc_downloads import quote_downloads   # Download column (2026-11-10)
+    downloads = await quote_downloads(db, quotes)
     return templates.TemplateResponse("crm/quotes/list.html", {
-        "request": request, "current_user": current_user,
+        "request": request, "current_user": current_user, "downloads": downloads,
         "quotes": quotes, "contacts_map": contacts_map, "opps_map": opps_map,
         "q": q, "status": status,
         "today": date.today(), "now": app_now(),
@@ -316,6 +317,17 @@ async def lot_quote_lines(db: AsyncSession, lot, amount=None) -> list[dict]:
     } for r in rows]
 
 
+async def _line_fields(request, device_type, grade, po_category, quantity, unit_price):
+    """The quote form posts its line items as device_type[] / grade[] / … (the
+    browser keeps the brackets), which the plain Form() params never saw — so
+    quotes saved with no line items (fixed 2026-11-11). Accept either spelling."""
+    form = await request.form()
+    def g(name, given):
+        return form.getlist(name + "[]") or list(given or [])
+    return (g("device_type", device_type), g("grade", grade), g("po_category", po_category),
+            g("quantity", quantity), g("unit_price", unit_price))
+
+
 @router.post("/new")
 async def create_quote(
     request: Request,
@@ -328,6 +340,7 @@ async def create_quote(
     valid_until:        str = Form(default=None),
     payment_terms:      str = Form(default=None),
     special_conditions: str = Form(default=None),
+    from_entity:        str = Form(default=""),
     # line items sent as repeating fields
     device_type:        list = Form(default=[]),
     grade:              list = Form(default=[]),
@@ -343,15 +356,19 @@ async def create_quote(
             except: return None
         return None
 
+    device_type, grade, po_category, quantity, unit_price = await _line_fields(
+        request, device_type, grade, po_category, quantity, unit_price)
     quote_number = await _next_quote_number(db)
+    from utils.master_data import clean_from_entity
     quote = CRMQuote(
         quote_number=quote_number,
+        from_entity=await clean_from_entity(db, from_entity),
         contact_id=contact_id or None,
         quote_date=_d(quote_date) or date.today(),
         valid_until=_d(valid_until),
         payment_terms=payment_terms or None,
         special_conditions=special_conditions or None,
-        status="draft",
+        status="added",
         created_by=current_user.username,
     )
     if sourcing_deal_id and sourcing_deal_id.strip():
@@ -362,6 +379,9 @@ async def create_quote(
             pass
     db.add(quote)
     await db.flush()  # get quote.id
+    from services.audit_engine import audit
+    await audit(db, action="CRM_QUOTE_CREATED", user=current_user, table_name="crm_quotes",
+                record_id=str(quote.id), new_value={"quote_number": quote.quote_number}, request=request)
 
     grand_total = 0.0
     for i, dt in enumerate(device_type):
@@ -403,21 +423,26 @@ async def create_quote(
             from models.crm import CRMSourcingDeal
             from routers.crm_sourcing import _next_deal_number
             deal = CRMSourcingDeal(deal_number=await _next_deal_number(db), contact_id=quote.contact_id,
+                                   from_entity=quote.from_entity,
                                    title=title, stage="quote", created_by=current_user.username,
                                    assigned_to=current_user.username)
             db.add(deal); await db.flush()
             await link_quote_to_deal(db, quote, "supplier", deal)
+            await save_quote_pdf(db, quote)
             await db.commit()
             return RedirectResponse(url=f"/crm/sourcing/{deal.id}?success=Sourcing+Deal+{deal.deal_number}+created+with+quote+{quote_number}", status_code=302)
         from routers.crm_sales import _next_opp_number
         opp = CRMSalesOpportunity(opp_number=await _next_opp_number(db), contact_id=quote.contact_id,
+                                  from_entity=quote.from_entity,
                                   title=title, stage="quote", created_by=current_user.username,
                                   assigned_to=current_user.username)
         db.add(opp); await db.flush()
         await link_quote_to_deal(db, quote, "buyer", opp)
+        await save_quote_pdf(db, quote)
         await db.commit()
         return RedirectResponse(url=f"/crm/sales/{opp.id}?success=Buyer+Deal+{opp.opp_number}+created+with+quote+{quote_number}", status_code=302)
 
+    await save_quote_pdf(db, quote)   # the downloadable quote (2026-11-11)
     await db.commit()
     if quote.sourcing_deal_id:
         return RedirectResponse(url=f"/crm/sourcing/{quote.sourcing_deal_id}?success=Quote+{quote_number}+created", status_code=302)
@@ -468,14 +493,19 @@ async def create_quote_from_lot(
 
     quote = CRMQuote(
         quote_number=await _next_quote_number(db),
+        from_entity=getattr(current_user, "entity", None),   # From Entity: the creator's (2026-11-10)
         contact_id=contact_id or None,
         quote_date=date.today(),
         valid_until=date.today() + timedelta(days=15),
-        status="draft",
+        status="added",
         created_by=current_user.username,
     )
     db.add(quote)
     await db.flush()
+    from services.audit_engine import audit
+    await audit(db, action="CRM_QUOTE_CREATED", user=current_user, table_name="crm_quotes",
+                record_id=str(quote.id), new_value={"quote_number": quote.quote_number, "from": "lot"},
+                request=request)
 
     grand_total = 0.0
     for i, ln in enumerate(lines):
@@ -494,6 +524,7 @@ async def create_quote_from_lot(
     if opp:
         await link_quote_to_deal(db, quote, "buyer", opp)
 
+    await save_quote_pdf(db, quote)   # the downloadable quote (2026-11-11)
     await db.commit()
     dest = return_to or f"/crm/quotes/{quote.id}"
     sep = "&" if "?" in dest else "?"
@@ -555,14 +586,164 @@ async def quote_detail(
     material_map = dict(MATERIAL_TYPES)
     today = date.today()
     is_expired = (quote.valid_until and quote.valid_until < today and
-                  quote.status not in ("accepted", "rejected"))
+                  quote.status not in ("approved", "rejected"))
 
+    from services.record_history import record_history   # History card (2026-11-09)
+    _history = await record_history(db, quote.id)
     return templates.TemplateResponse("crm/quotes/detail.html", {
+        "history": _history,
         "request": request, "current_user": current_user,
         "quote": quote, "items": items, "contact": contact, "opp": opp,
         "material_map": material_map, "is_expired": is_expired, "today": today,
         "sdeal": sdeal, "link_kind": link_kind, "link_deals": link_deals,
     })
+
+
+# ── EDIT (2026-11-11, Pankaj) ────────────────────────────────────────────────
+# Edit Quote on the quote page opens the New Quote form prefilled with this
+# quote. The quote keeps its number, deal link and status; its line items are
+# replaced by the ones submitted. Approved / Rejected quotes are final.
+QUOTE_LOCKED = ("approved", "rejected")
+
+
+@router.get("/{quote_id}/edit", response_class=HTMLResponse)
+async def edit_quote_form(
+    request: Request,
+    quote_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from sqlalchemy.orm import selectinload
+    from utils.price_export import price_add_block
+    _blk = price_add_block(current_user, "crm_quotes", f"/crm/quotes/{quote_id}")
+    if _blk is not None:
+        return _blk
+    try:
+        quote = (await db.execute(select(CRMQuote).options(selectinload(CRMQuote.items))
+                                  .where(CRMQuote.id == quote_id))).scalar_one_or_none()
+    except Exception:
+        quote = None
+    if not quote:
+        return RedirectResponse(url="/crm/quotes?error=Quote+not+found", status_code=302)
+    if (quote.status or "") in QUOTE_LOCKED:
+        return RedirectResponse(url=f"/crm/quotes/{quote.id}?error=An+{quote.status}+quote+cannot+be+edited", status_code=302)
+    contacts = (await db.execute(
+        select(CRMContact).where(CRMContact.is_trashed.isnot(True),
+                                 func.coalesce(CRMContact.status, "") != "blacklisted")
+        .order_by(CRMContact.company_name))).scalars().all()
+    if quote.contact_id and all(c.id != quote.contact_id for c in contacts):
+        dc = (await db.execute(select(CRMContact).where(CRMContact.id == quote.contact_id))).scalar_one_or_none()
+        if dc:
+            contacts = [dc] + list(contacts)   # keep the quote's own account selectable
+    today = date.today()
+    return templates.TemplateResponse("crm/quotes/form.html", {
+        "request": request, "current_user": current_user,
+        "quote": quote, "contacts": contacts, "preselect": None,
+        "opp_id": "", "sourcing_deal_id": None, "edit_kind": "supplier" if quote.sourcing_deal_id else "buyer",
+        "prefill_items": [], "from_opp": False, "source_lot": None,
+        "material_types": MATERIAL_TYPES, "grades": GRADES,
+        "today": today.isoformat(), "valid_until": (today + timedelta(days=15)).isoformat(),
+    })
+
+
+@router.post("/{quote_id}/edit")
+async def update_quote(
+    request: Request,
+    quote_id: str,
+    contact_id:         str = Form(default=None),
+    quote_date:         str = Form(default=None),
+    valid_until:        str = Form(default=None),
+    payment_terms:      str = Form(default=None),
+    special_conditions: str = Form(default=None),
+    from_entity:        str = Form(default=""),
+    device_type:        list = Form(default=[]),
+    grade:              list = Form(default=[]),
+    po_category:        list = Form(default=[]),
+    quantity:           list = Form(default=[]),
+    unit_price:         list = Form(default=[]),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from utils.price_export import price_add_block
+    _blk = price_add_block(current_user, "crm_quotes", f"/crm/quotes/{quote_id}")
+    if _blk is not None:
+        return _blk
+    try:
+        quote = (await db.execute(select(CRMQuote).where(CRMQuote.id == quote_id))).scalar_one_or_none()
+    except Exception:
+        quote = None
+    if not quote:
+        return RedirectResponse(url="/crm/quotes?error=Quote+not+found", status_code=302)
+    if (quote.status or "") in QUOTE_LOCKED:
+        return RedirectResponse(url=f"/crm/quotes/{quote.id}?error=An+{quote.status}+quote+cannot+be+edited", status_code=302)
+
+    def _d(v):
+        try:
+            return datetime.strptime(v.strip(), "%Y-%m-%d").date() if v and v.strip() else None
+        except ValueError:
+            return None
+
+    device_type, grade, po_category, quantity, unit_price = await _line_fields(
+        request, device_type, grade, po_category, quantity, unit_price)
+    lines = []
+    for i, dt in enumerate(device_type):
+        if not dt or not dt.strip():
+            continue
+        try:
+            qty = int(quantity[i]) if i < len(quantity) and str(quantity[i]).strip() else 1
+        except ValueError:
+            qty = 1
+        try:
+            uprc = float(unit_price[i]) if i < len(unit_price) and str(unit_price[i]).strip() else 0.0
+        except ValueError:
+            uprc = 0.0
+        lines.append((dt.strip(), grade[i] if i < len(grade) and grade[i] else None,
+                      (po_category[i].strip() or None) if i < len(po_category) and po_category[i] else None,
+                      max(qty, 1), max(uprc, 0.0)))
+    if not lines:
+        return RedirectResponse(url=f"/crm/quotes/{quote.id}/edit?error=Add+at+least+one+line+item", status_code=302)
+
+    old_items = (await db.execute(select(CRMQuoteItem).where(CRMQuoteItem.quote_id == quote.id))).scalars().all()
+    old = {"contact_id": str(quote.contact_id) if quote.contact_id else None, "from_entity": quote.from_entity,
+           "quote_date": str(quote.quote_date) if quote.quote_date else None,
+           "valid_until": str(quote.valid_until) if quote.valid_until else None,
+           "payment_terms": quote.payment_terms, "special_conditions": quote.special_conditions,
+           "total_amount": float(quote.total_amount or 0),
+           "items": [{"model": it.device_type, "grade": it.grade, "po_category": it.po_category,
+                      "qty": it.quantity, "unit_price": float(it.unit_price or 0)} for it in old_items]}
+
+    from utils.master_data import clean_from_entity
+    if contact_id and contact_id.strip():
+        try:
+            from uuid import UUID as _U
+            quote.contact_id = _U(contact_id.strip())
+        except ValueError:
+            pass
+    quote.from_entity = await clean_from_entity(db, from_entity)
+    quote.quote_date = _d(quote_date) or quote.quote_date or date.today()
+    quote.valid_until = _d(valid_until)
+    quote.payment_terms = (payment_terms or "").strip() or None
+    quote.special_conditions = (special_conditions or "").strip() or None
+
+    # audit first (old items are in old_value), then replace the line items
+    grand_total = round(sum(q * u for _m, _g, _c, q, u in lines), 2)
+    from services.audit_engine import audit
+    await audit(db, action="CRM_QUOTE_UPDATED", user=current_user, table_name="crm_quotes",
+                record_id=str(quote.id), old_value=old,
+                new_value={"quote_number": quote.quote_number, "total_amount": grand_total,
+                           "items": [{"model": m, "grade": g, "po_category": c, "qty": q, "unit_price": u}
+                                     for m, g, c, q, u in lines]},
+                request=request)
+    for it in old_items:
+        await db.delete(it)
+    await db.flush()
+    for n, (m, g, c, q, u) in enumerate(lines):
+        db.add(CRMQuoteItem(quote_id=quote.id, line_number=n + 1, device_type=m, grade=g, po_category=c,
+                            quantity=q, unit_price=u, total_price=round(q * u, 2), sort_order=n))
+    quote.total_amount = grand_total
+    await save_quote_pdf(db, quote)   # edit refreshes the downloadable quote
+    await db.commit()
+    return RedirectResponse(url=f"/crm/quotes/{quote.id}?success=Quote+{quote.quote_number}+updated", status_code=302)
 
 
 # ── PRINT VIEW (no sidebar — for printing) ───────────────────────────────────
@@ -598,8 +779,10 @@ async def quote_print(
         cr = await db.execute(select(CRMContact).where(CRMContact.id == quote.contact_id))
         contact = cr.scalar_one_or_none()
 
+    from routers.settings import get_company_settings
+    company = await get_company_settings(db, entity=quote.from_entity)   # From Entity's company (2026-11-10)
     return templates.TemplateResponse("crm/quotes/print.html", {
-        "request": request, "current_user": current_user,
+        "request": request, "current_user": current_user, "company": company,
         "quote": quote, "items": items, "contact": contact,
         "material_map": dict(MATERIAL_TYPES),
     })
@@ -620,10 +803,62 @@ class _QuoteLine:
         self.total_price = item.total_price
 
 
+async def _quote_entity(db: AsyncSession, quote):
+    """The company on the document follows the deal's From Entity (2026-11-11),
+    else the quote's own."""
+    from models.crm import CRMSourcingDeal
+    deal = None
+    if quote.sourcing_deal_id:
+        deal = (await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.id == quote.sourcing_deal_id))).scalar_one_or_none()
+    elif quote.opportunity_id:
+        deal = (await db.execute(select(CRMSalesOpportunity).where(CRMSalesOpportunity.id == quote.opportunity_id))).scalar_one_or_none()
+    return (getattr(deal, "from_entity", None) if deal else None) or quote.from_entity
+
+
+QUOTE_DOC_SECTIONS = {"account": True, "company": True, "items": True,
+                      "payment": True, "delivery": True, "conditions": True}
+
+
+async def save_quote_pdf(db: AsyncSession, quote) -> bool:
+    """Quote document, made automatically (2026-11-11, Pankaj) whenever a quote
+    is added or edited — no Generate step: Company (deal's entity), Account,
+    Line Items and the active Payment / Delivery / Disclaimer terms. Stored at
+    quote_pdf_path(); every Download link serves it. Never raises: a failed
+    render must not lose the quote itself."""
+    try:
+        await db.flush()
+        pdf_bytes = await _render_quote_pdf(db, quote, sections=QUOTE_DOC_SECTIONS)
+        path = quote_pdf_path(quote.id)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as fh:
+            fh.write(pdf_bytes)
+        return True
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Quote document for %s not written", getattr(quote, "quote_number", "?"))
+        return False
+
+
 async def _quote_pdf(db: AsyncSession, quote, *, sections, term_ids=None, company_id=None):
-    """Build the quote PDF. term_ids maps 'payment'/'delivery'/'disclaimer' to a
+    """Build, store and return the quote PDF (Generate route, kept for old links)."""
+    pdf_bytes = await _render_quote_pdf(db, quote, sections=sections, term_ids=term_ids, company_id=company_id)
+    try:
+        path = quote_pdf_path(quote.id)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "wb") as fh:
+            fh.write(pdf_bytes)
+    except OSError:
+        pass
+    return Response(
+        content=pdf_bytes, media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{quote.quote_number}.pdf"'},
+    )
+
+
+async def _render_quote_pdf(db: AsyncSession, quote, *, sections, term_ids=None, company_id=None) -> bytes:
+    """Build the quote PDF bytes. term_ids maps 'payment'/'delivery'/'disclaimer' to a
     single chosen TermsCondition id; absent or blank means include every active
-    policy of that type (which is what the plain Download link does)."""
+    policy of that type."""
     import io
     from models.terms import TermsCondition
     from routers.settings import get_company_settings
@@ -651,8 +886,8 @@ async def _quote_pdf(db: AsyncSession, quote, *, sections, term_ids=None, compan
             return [row] if row else []
         return await get_active_terms(db, kind)
 
-    company = await get_company_settings(db, company_id)
-    pdf_bytes: bytes = build_po_pdf(
+    company = await get_company_settings(db, company_id, entity=await _quote_entity(db, quote))
+    return build_po_pdf(
         po_number=quote.quote_number,
         po_date=quote.quote_date.strftime("%d %b %Y") if quote.quote_date else "",
         company=company, contact=contact,
@@ -661,23 +896,8 @@ async def _quote_pdf(db: AsyncSession, quote, *, sections, term_ids=None, compan
         delivery_terms=await _terms("delivery",  sections.get("delivery")),
         disclaimers=await _terms("disclaimer",   sections.get("conditions")),
         sections=sections, total_amount=float(quote.total_amount or 0),
-        doc_title="QUOTATION", account_label="Account Details (Buyer)",
-    )
-
-    # Keep the generated document so the Download column serves this exact file
-    # later. A failure to persist must not cost the user their download, so the
-    # response goes out regardless.
-    try:
-        path = quote_pdf_path(quote.id)
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        with open(path, "wb") as fh:
-            fh.write(pdf_bytes)
-    except OSError:
-        pass
-
-    return Response(
-        content=pdf_bytes, media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{quote.quote_number}.pdf"'},
+        doc_title="QUOTATION",
+        account_label="Account Details (Supplier)" if quote.sourcing_deal_id else "Account Details (Buyer)",
     )
 
 
@@ -710,6 +930,10 @@ async def generate_quote_doc(
         "conditions": bool(term_ids["disclaimer"]),
     }
     company_id = (form.get("company_id") or "").strip()
+    from services.audit_engine import audit
+    await audit(db, action="CRM_QUOTE_DOCUMENT_GENERATED", user=current_user, table_name="crm_quotes",
+                record_id=str(quote.id), new_value={"quote_number": quote.quote_number}, request=request)
+    await db.commit()
     return await _quote_pdf(db, quote, sections=sections, term_ids=term_ids, company_id=company_id)
 
 
@@ -751,10 +975,9 @@ async def download_quote_doc(
         return RedirectResponse(url="/crm/quotes?error=Quote+not+found", status_code=302)
 
     path = quote_pdf_path(quote.id)
-    if not os.path.isfile(path):
-        return RedirectResponse(
-            url=f"/crm/quotes/{quote_id}?error=No+document+generated+yet+-+use+Generate+first",
-            status_code=302)
+    if not os.path.isfile(path) and not await save_quote_pdf(db, quote):
+        # quotes saved before auto-documents (2026-11-11) get theirs on first download
+        return RedirectResponse(url=f"/crm/quotes/{quote_id}?error=Quote+document+could+not+be+made", status_code=302)
     return FileResponse(path, media_type="application/pdf",
                         filename=f"{quote.quote_number}.pdf")
 
@@ -773,9 +996,17 @@ async def update_status(
     quote = result.scalar_one_or_none()
     if not quote:
         return RedirectResponse(url="/crm/quotes?error=Not+found", status_code=302)
+    from utils.quote_numbers import QUOTE_STATUS_KEYS
+    if new_status not in QUOTE_STATUS_KEYS:   # Added / Negotiation / Approved / Rejected / Expired (2026-11-10)
+        return RedirectResponse(url=f"/crm/quotes/{quote_id}?error=Unknown+status", status_code=302)
+    _old_status = quote.status
     quote.status = new_status
-    if new_status == "sent":
-        quote.sent_at = app_now()
+    if new_status == "negotiation" and not quote.sent_at:
+        quote.sent_at = app_now()   # first time it went to the customer for negotiation
+    from services.audit_engine import audit
+    await audit(db, action="CRM_QUOTE_STATUS_CHANGED", user=current_user, table_name="crm_quotes",
+                record_id=str(quote.id), old_value={"status": _old_status},
+                new_value={"status": new_status}, request=request)
     await db.commit()
     return RedirectResponse(url=f"/crm/quotes/{quote_id}?success=Status+updated+to+{new_status}", status_code=302)
 
@@ -808,5 +1039,6 @@ async def link_deal(
     num = getattr(deal, "deal_number", None) or getattr(deal, "opp_number", "")
     await audit(db, action="CRM_QUOTE_LINKED_TO_DEAL", user=current_user, table_name="crm_quotes",
                 record_id=str(quote.id), new_value={"deal": num, "kind": deal_kind}, request=request)
+    await save_quote_pdf(db, quote)   # the deal's entity may change the company block
     await db.commit()
     return RedirectResponse(url=f"/crm/quotes/{quote_id}?success=Linked+to+{num}", status_code=302)

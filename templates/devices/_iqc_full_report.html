@@ -131,6 +131,8 @@
   </div>
 </div>
 
+{# hw_only (2026-11-08): the Search Tags modal shows Hardware Specification only. #}
+{% if not (hw_only is defined and hw_only) %}
 <!-- Cosmetics — cosmetic condition, matching the IQC Entry form's own
      "Cosmetics" section heading -->
 <div class="accordion mb-3" id="bodyPanelAcc{{ id_suffix }}">
@@ -208,3 +210,4 @@
     </div>
   </div>
 </div>
+{% endif %}

@@ -3,20 +3,21 @@
 {% block page_title %}Physical Inventory Audits{% endblock %}
 
 {% block content %}
-<div class="d-flex justify-content-between align-items-center mb-4">
-  <p class="text-muted mb-0">Monthly physical audits — compare system records vs actual floor count</p>
-  {% if can(current_user, 'location_audit', 'add') %}
-  <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#newAuditModal">
-    <i class="bi bi-clipboard-plus me-1"></i> Initiate New Audit
-  </button>
-  {% endif %}
-</div>
+<p class="text-muted mb-3">Monthly physical audits — compare system records vs actual floor count</p>
 
 <!-- Audit history table -->
-<div class="card shadow-sm border-0">
-  <div class="card-body p-0">
-    <table class="table table-hover table-sm mb-0" id="auditTable">
-      <thead class="table-light">
+<div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-clipboard-check me-2"></i>Audit History</span>
+    {% if can(current_user, 'location_audit', 'add') %}
+    <button class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#newAuditModal">
+      <i class="bi bi-clipboard-plus me-1"></i> Initiate New Audit
+    </button>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    <table class="table table-hover align-middle mb-0" id="auditTable">
+      <thead>
         <tr>
           <th>Audit #</th>
           <th>Zone Scope</th>
@@ -28,7 +29,7 @@
           <th>Missing</th>
           <th>Extra</th>
           <th>Accuracy</th>
-          <th></th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody>
@@ -73,7 +74,7 @@
               <span class="text-muted">—</span>
             {% endif %}
           </td>
-          <td>
+          <td class="text-nowrap">
             <a href="/locations/audit/{{ audit.id }}" class="btn btn-sm btn-outline-primary py-0">
               {% if audit.status.value == 'in_progress' %}Continue{% else %}View{% endif %}
             </a>
@@ -129,6 +130,11 @@
 
 {% block scripts %}
 <script>
-$(document).ready(function(){ $('#auditTable').DataTable({pageLength: 12, order:[[4,'desc']]}); });
+$(document).ready(function(){
+  initGlobalTable('#auditTable', {
+    order: [[4, 'desc']],
+    language: { emptyTable: 'No audits yet.' },
+  });
+});
 </script>
 {% endblock %}

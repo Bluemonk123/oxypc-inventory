@@ -49,10 +49,12 @@
   </div>
 </div>
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent fw-semibold">Consumption Log</div>
-  <div class="card-body p-0">
-    <table id="consumeTable" class="table table-hover mb-0 small">
-      <thead class="table-dark"><tr><th>Date</th><th>Part</th><th>Qty</th><th>Unit Cost</th><th>Total Cost</th><th>Device</th><th>Stage</th><th>By</th></tr></thead>
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-dash-circle me-2"></i>Consumption Log</span>
+  </div>
+  <div class="card-body">
+    <table id="consumeTable" class="table table-hover align-middle mb-0">
+      <thead><tr><th>Date</th><th>Part</th><th>Qty</th><th>Unit Cost</th><th>Total Cost</th><th>Device</th><th>Stage</th><th>By</th></tr></thead>
       <tbody>
         {% for con, part_name, barcode in consumptions %}
         <tr>
@@ -72,5 +74,10 @@
 </div>
 {% endblock %}
 {% block scripts %}
-<script>$(document).ready(function(){ $('#consumeTable').DataTable({pageLength: 12, order:[[0,'desc']]}); });</script>
+<script>$(document).ready(function(){
+  initGlobalTable('#consumeTable', {
+    order: [[0, 'desc']],
+    language: { emptyTable: 'No consumption recorded yet.' },
+  });
+});</script>
 {% endblock %}

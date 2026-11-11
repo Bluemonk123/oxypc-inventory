@@ -6,28 +6,35 @@
 {% if success %}<div class="alert alert-success py-2"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger py-2"><i class="bi bi-exclamation-circle me-2"></i>{{ error }}</div>{% endif %}
 
-<div class="d-flex justify-content-between align-items-center mb-3">
-  <form method="get" class="d-flex gap-2 flex-wrap">
-    <select name="status" class="form-select form-select-sm" style="width:170px" onchange="this.form.submit()">
-      <option value="">All Status</option>
-      {% for s in statuses %}
-      <option value="{{ s }}" {% if f_status==s %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
-      {% endfor %}
-    </select>
-    <select name="priority" class="form-select form-select-sm" style="width:140px" onchange="this.form.submit()">
-      <option value="">All Priority</option>
-      {% for p in priorities %}
-      <option value="{{ p }}" {% if f_priority==p %}selected{% endif %}>{{ p | title }}</option>
-      {% endfor %}
-    </select>
-    <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" style="width:220px"
-           placeholder="Search ticket / serial / model…">
-    <button class="btn btn-sm btn-outline-primary">Filter</button>
-  </form>
-  <a href="/care-support/pairings" class="btn btn-sm btn-outline-secondary">
-    <i class="bi bi-hdd-network me-1"></i> Device Pairings
-  </a>
-</div>
+{# Global filter bar (app.css .filter-bar, 2026-11-08) — labels live in title=. #}
+<form method="get" action="/care-support/tickets" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" value="{{ q }}" class="form-control form-control-sm" title="Search"
+             placeholder="Search ticket / serial / model…">
+    </div>
+    <div>
+      <select name="status" class="form-select form-select-sm" title="Status">
+        <option value="">All Status</option>
+        {% for s in statuses %}
+        <option value="{{ s }}" {% if f_status==s %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="priority" class="form-select form-select-sm" title="Priority">
+        <option value="">All Priority</option>
+        {% for p in priorities %}
+        <option value="{{ p }}" {% if f_priority==p %}selected{% endif %}>{{ p | title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/care-support/tickets" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
+  </div>
+</form>
 
 {% set status_colors = {
   'open':'warning', 'assigned':'info', 'in_progress':'primary', 'awaiting_customer':'secondary',
@@ -35,6 +42,14 @@
 {% set priority_colors = {'low':'secondary', 'medium':'info', 'high':'warning', 'critical':'danger'} %}
 
 <div class="card border-0 shadow-sm">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-ticket-detailed me-2"></i>Tickets</span>
+    <div class="d-flex gap-2 align-items-center">
+      <a href="/care-support/pairings" class="btn btn-sm btn-outline-secondary text-nowrap">
+        <i class="bi bi-hdd-network me-1"></i> Device Pairings
+      </a>
+    </div>
+  </div>
   <div class="card-body p-0">
     <div class="table-responsive">
       <table class="table table-hover mb-0 align-middle">

@@ -1,0 +1,67 @@
+{# Place / Person / Team pop-ups (2026-11-11, Pankaj) — same as the Accounts
+   list's Locations / Contacts / Team pop-ups, for pages that show those
+   cells elsewhere (Activity Board Inspection / Screening cards). Buttons:
+   .ac-loc-btn[data-locations], .ac-num-btn[data-groups], .ac-team-btn[data-team],
+   each with data-company. Data: services/account_cells.py. #}
+<div class="modal fade" id="acNumModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-people me-2"></i><span class="ac-co"></span> — Contacts</h6>
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body p-0"><table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>Role</th><th>Name</th><th>Email</th><th>Phone</th></tr></thead><tbody></tbody></table></div>
+  </div></div>
+</div>
+<div class="modal fade" id="acLocModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-geo-alt me-2"></i><span class="ac-co"></span> — Locations</h6>
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body p-0"><table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>Full Address</th><th>City</th><th>State</th></tr></thead><tbody></tbody></table></div>
+  </div></div>
+</div>
+<div class="modal fade" id="acTeamModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg"><div class="modal-content">
+    <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-person-badge me-2"></i><span class="ac-co"></span> — Team</h6>
+      <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body p-0"><table class="table table-sm mb-0">
+      <thead class="table-light"><tr><th>Name</th><th>Designation</th><th>Role</th><th>Bucket</th></tr></thead><tbody></tbody></table></div>
+  </div></div>
+</div>
+<script>
+(function () {
+  var LABELS = {manager: 'Manager', executive: 'Executive/Sr Executive', vp_avp: 'VP/AVP', am_dm_gm: 'DM/GM/CTO/CEO', finance: 'Finance Manager'};
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function data(btn, attr, dflt) { try { return JSON.parse(btn.getAttribute(attr) || dflt); } catch (e) { return JSON.parse(dflt); } }
+  function open(id, btn, html, empty, cols) {
+    var m = document.getElementById(id);
+    m.querySelector('.ac-co').textContent = btn.getAttribute('data-company') || '';
+    m.querySelector('tbody').innerHTML = html || '<tr><td colspan="' + cols + '" class="text-muted text-center py-3">' + empty + '</td></tr>';
+    bootstrap.Modal.getOrCreateInstance(m).show();
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest && e.target.closest('.ac-loc-btn, .ac-num-btn, .ac-team-btn');
+    if (!b) return;
+    if (b.classList.contains('ac-loc-btn')) {
+      open('acLocModal', b, data(b, 'data-locations', '[]').map(function (l) {
+        return '<tr><td>' + (esc(l.address) || '—') + '</td><td>' + (esc(l.city) || '—') + '</td><td>' + (esc(l.state) || '—') + '</td></tr>';
+      }).join(''), 'No locations.', 3);
+    } else if (b.classList.contains('ac-num-btn')) {
+      open('acNumModal', b, data(b, 'data-groups', '[]').map(function (g) {
+        var rows = (g.numbers || []).map(function (n) {
+          return '<tr><td>' + (esc(n.role) || '—') + '</td><td>' + (esc(n.name) || '—') + '</td><td>' + (esc(n.email) || '—') + '</td><td>' + (esc(n.phone) || '—') + '</td></tr>';
+        }).join('');
+        return '<tr class="table-light"><td colspan="4" class="fw-semibold small">' + esc(g.location) + '</td></tr>' +
+               (rows || '<tr><td colspan="4" class="text-muted text-center py-2">No contact numbers.</td></tr>');
+      }).join(''), 'No locations.', 4);
+    } else {
+      var tm = data(b, 'data-team', '{}'), rows = [];
+      Object.keys(LABELS).forEach(function (k) {
+        (tm[k] || []).forEach(function (m) {
+          rows.push('<tr><td>' + esc(m.name) + '</td><td>' + esc(m.designation || '—') + '</td><td>' + esc(m.role || '—') + '</td><td>' + esc(LABELS[k]) + '</td></tr>');
+        });
+      });
+      open('acTeamModal', b, rows.join(''), 'No team mapped.', 4);
+    }
+  });
+})();
+</script>

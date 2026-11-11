@@ -164,8 +164,10 @@
 <!-- Header -->
 <div class="header">
   <div>
-    <div class="company-name">OxyPC Inventory</div>
-    <div class="company-sub">Refurbished IT Asset Specialists</div>
+    {# Company of the quote's From Entity (Company Setting), 2026-11-10 #}
+    <div class="company-name">{{ company.name or 'OxyPC Inventory' }}</div>
+    {% if company.address %}<div class="company-sub">{{ company.address }}</div>{% endif %}
+    {% if company.gstin or company.phone or company.email %}<div class="company-sub">{% if company.gstin %}GSTIN: {{ company.gstin }}{% endif %}{% if company.phone %} &middot; {{ company.phone }}{% endif %}{% if company.email %} &middot; {{ company.email }}{% endif %}</div>{% endif %}
   </div>
   <div class="quotation-title">
     <h2>QUOTATION</h2>

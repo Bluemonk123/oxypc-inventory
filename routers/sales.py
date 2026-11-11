@@ -3137,9 +3137,12 @@ async def process_return(
                     new_value={"sale_number": sale_num, "reason": "sold stage with no sale record"},
                     request=request)
 
-    # Guard: prevent duplicate return for the same sale
+    # Guard: prevent duplicate return for the same sale. A rejected return
+    # doesn't count (2026-11-09): the tag went back to Sold, so the customer
+    # can raise a new return later.
     existing_return = (await db.execute(
-        select(Return).where(Return.sale_id == sale.id)
+        select(Return).where(Return.sale_id == sale.id,
+                             func.coalesce(Return.approval_status, "pending") != "rejected")
     )).scalars().first()
     if existing_return:
         return await _return_form_response(db, {
@@ -4229,15 +4232,20 @@ async def approve_return(
             url=f"/returns/pending?error=Return+already+{ret.approval_status}", status_code=302
         )
 
-    # Move device to intended stage
+    # Approved (2026-11-09, Pankaj): the tag stays at Stock In — the Return Stock
+    # tab then takes it on (Move to L1/L2, or Only Stock In to complete the
+    # return and keep it in stock). It used to move to IQC, which disabled
+    # those Return Stock actions. Only a tag still at Sold is moved (to Stock
+    # In); a tag already moved on (e.g. to L1/L2) is left where it is.
     dev_result = await db.execute(select(Device).where(Device.id == ret.device_id))
     device = dev_result.scalar_one_or_none()
+    to_stage = None
     if device:
         if ret.reentered_stage == "scrapped":
             to_stage = DeviceStage.scrapped
-        else:
-            to_stage = DeviceStage.iqc
-
+        elif device.current_stage == DeviceStage.sold:
+            to_stage = DeviceStage.stock_in
+    if device and to_stage is not None and device.current_stage != to_stage:
         prev = device.current_stage
         prev_mv = (await db.execute(
             select(StageMovement)
@@ -4290,11 +4298,39 @@ async def reject_return(
             url=f"/returns/pending?error=Return+already+{ret.approval_status}", status_code=302
         )
 
+    # Rejected (2026-11-09, Pankaj): the tag goes back to Sold and leaves the
+    # Return Stock tab. Submitting the return had already moved it to Stock In;
+    # if repair has started since (it left Stock In), rejecting is refused.
+    device = (await db.execute(select(Device).where(Device.id == ret.device_id))).scalar_one_or_none()
+    if device and device.current_stage not in (DeviceStage.stock_in, DeviceStage.sold):
+        return RedirectResponse(
+            url="/returns/pending?error=" + quote_plus(
+                f"{device.barcode} is already at {device.current_stage.value.replace('_', ' ').title()} "
+                "— repair has started, so the return can no longer be rejected."), status_code=302)
+    if device:
+        if device.current_stage != DeviceStage.sold:
+            prev = device.current_stage
+            prev_mv = (await db.execute(
+                select(StageMovement)
+                .where(StageMovement.device_id == device.id,
+                       StageMovement.to_stage  == prev,
+                       StageMovement.exited_at == None)  # noqa: E711
+                .order_by(StageMovement.moved_at.desc())
+            )).scalars().first()
+            if prev_mv:
+                prev_mv.exited_at = app_now()
+            device.current_stage = DeviceStage.sold
+            db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=DeviceStage.sold,
+                                 moved_by=current_user.username,
+                                 notes=f"Return rejected — back to Sold: {rejection_reason or 'no reason given'}"))
+        device.return_status = False
+        device.tag_return_status = "Return Rejected"
+        device.updated_at = app_now()
+
     ret.approval_status  = 'rejected'
     ret.approved_by      = current_user.username
     ret.approved_at      = app_now()
     ret.rejection_reason = rejection_reason or None
-    # Device stays sold — no stage change on rejection
 
     await audit(db, user=current_user, action="RETURN_REJECTED",
                 table_name="returns", record_id=str(ret.id),

@@ -31,22 +31,10 @@ VIEW_ROLES  = (UserRole.admin, UserRole.sales_manager, UserRole.inventory_manage
 
 
 async def _next_po_number(db: AsyncSession) -> str:
-    # Derive from the highest existing suffix for this year, NOT count(*):
-    # count-based numbering collides whenever a PO has ever been deleted (gap),
-    # producing a duplicate po_number and an IntegrityError on insert.
-    prefix = f"PO-{app_now().year}-"
-    result = await db.execute(
-        select(func.max(CRMPurchaseOrder.po_number))
-        .where(CRMPurchaseOrder.po_number.like(prefix + "%"))
-    )
-    mx = result.scalar()
-    n = 1
-    if mx:
-        try:
-            n = int(str(mx).rsplit("-", 1)[-1]) + 1
-        except (ValueError, IndexError):
-            n = 1
-    return f"{prefix}{n:04d}"
+    """Purchase Order ID PO-DEAL-<MMYYYY><NNNN> (2026-11-10, was PO-<year>-<n>).
+    Highest existing NNNN in the month + 1, so a deleted PO never causes a duplicate."""
+    from utils.quote_numbers import next_monthly_number, PURCHASE_ORDER_BASE
+    return await next_monthly_number(db, CRMPurchaseOrder.po_number, PURCHASE_ORDER_BASE, app_now().date())
 
 
 @router.get("", response_class=HTMLResponse)
@@ -70,8 +58,10 @@ async def list_pos(
         q = q.where(CRMPurchaseOrder.status == status)
     result = await db.execute(q)
     pos = result.scalars().all()
+    from services.doc_downloads import po_downloads   # Download column (2026-11-10)
+    downloads = await po_downloads(db, pos)
     return templates.TemplateResponse("crm/purchase_orders/list.html", {
-        "request": request, "current_user": current_user,
+        "request": request, "current_user": current_user, "downloads": downloads,
         "pos": pos, "status": status,
         "can_edit": current_user.role in ADMIN_ROLES,
     })
@@ -117,6 +107,7 @@ async def new_po_form(
         "prefill_contact_id": str(prefill_contact.id) if prefill_contact else "",
         "prefill_gstin": (prefill_contact.gstin or "") if prefill_contact else "",
         "prefill_advance": "0" if pre_cid else "",
+        "prefill_from_entity": (deal.from_entity if deal else None),   # PO from a deal keeps its entity
     })
 
 
@@ -143,10 +134,13 @@ async def create_po(
         except ValueError:
             return date.today()
 
+    from utils.master_data import clean_from_entity
+    from_entity = await clean_from_entity(db, form.get("from_entity"))   # From Entity (2026-11-10)
     for attempt in range(3):
         try:
             po = CRMPurchaseOrder(
                 po_number=await _next_po_number(db),
+                from_entity=from_entity,
                 deal_id=form.get("deal_id") or None,
                 contact_id=form.get("contact_id") or None,
                 po_date=_d(form.get("po_date")),
@@ -165,6 +159,9 @@ async def create_po(
             )
             db.add(po)
             await db.flush()
+            from services.audit_engine import audit
+            await audit(db, action="CRM_PO_CREATED", user=current_user, table_name="crm_purchase_orders",
+                        record_id=str(po.id), new_value={"po_number": po.po_number}, request=request)
 
             # Line items now come from the "Add PO Line Items" modal as JSON.
             try:
@@ -222,7 +219,10 @@ async def view_po(
     po = r.scalar_one_or_none()
     if not po:
         return RedirectResponse(url="/crm/purchase-orders?error=Not+found", status_code=302)
+    from services.record_history import record_history   # History card (2026-11-09)
+    _history = await record_history(db, po.id)
     return templates.TemplateResponse("crm/purchase_orders/detail.html", {
+        "history": _history,
         "request": request, "current_user": current_user,
         "po": po, "can_edit": current_user.role in ADMIN_ROLES,
     })
@@ -235,23 +235,23 @@ async def issue_po(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Issue PO (2026-11-11): also Verifies it for Accounts and marks the deal's
+    Purchase Order stage Done (services/po_complete.py) — same as Verify on the
+    Accounts page."""
     if current_user.role not in ADMIN_ROLES:
         return RedirectResponse(url=f"/crm/purchase-orders/{po_id}?error=Permission+denied", status_code=302)
-    r = await db.execute(select(CRMPurchaseOrder).where(CRMPurchaseOrder.id == po_id))
-    po = r.scalar_one_or_none()
-    if po and po.status == "draft":
-        po.status = "issued"
-        po.issued_by = current_user.username
-        po.issued_at = app_now()
-        if po.deal_id:
-            dr = await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.id == po.deal_id))
-            deal = dr.scalar_one_or_none()
-            if deal and deal.stage in ("lead", "contacted", "inspection", "quote", "negotiation"):
-                deal.stage = "purchase_order"
-        await db.commit()
-        return RedirectResponse(url=f"/crm/purchase-orders/{po_id}?success=PO+issued", status_code=302)
-    status_val = po.status if po else "unknown"
-    return RedirectResponse(url=f"/crm/purchase-orders/{po_id}?error=Cannot+issue+a+{status_val}+PO", status_code=302)
+    po = (await db.execute(select(CRMPurchaseOrder).where(CRMPurchaseOrder.id == po_id))).scalar_one_or_none()
+    if not po:
+        return RedirectResponse(url="/crm/purchase-orders?error=Not+found", status_code=302)
+    if po.status == "cancelled":
+        return RedirectResponse(url=f"/crm/purchase-orders/{po_id}?error=Cannot+issue+a+cancelled+PO", status_code=302)
+    from services.po_complete import complete_po
+    done = await complete_po(db, po, current_user, request, via="issued on PO page")
+    await db.commit()
+    if not done:
+        return RedirectResponse(url=f"/crm/purchase-orders/{po_id}?success=PO+is+already+issued+and+verified", status_code=302)
+    return RedirectResponse(url=f"/crm/purchase-orders/{po_id}?success=PO+issued+and+verified"
+                                + ("+%E2%80%94+Purchase+Order+stage+Done" if "stage" in done else ""), status_code=302)
 
 
 @router.get("/{po_id}/print", response_class=HTMLResponse)
@@ -281,7 +281,7 @@ async def print_po(
     po = r.scalar_one_or_none()
     if not po:
         return RedirectResponse(url="/crm/purchase-orders?error=Not+found", status_code=302)
-    company = await get_company_settings(db)
+    company = await get_company_settings(db, entity=po.from_entity)   # From Entity's company (2026-11-10)
     return templates.TemplateResponse("crm/purchase_orders/print.html", {
         "request": request, "current_user": current_user, "po": po, "company": company,
     })

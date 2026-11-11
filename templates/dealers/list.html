@@ -3,114 +3,10 @@
 {% block page_title %}Dealer Management{% endblock %}
 {% block content %}
 
-{# Filter bar: fields flex to share the available width so the whole row —
-   including the Filter/Clear buttons — fits on one line. Fixed pixel widths
-   were what pushed it onto a second row. Wraps only below 1200px. #}
 <style>
   /* Business Name at most 200px wide; longer names wrap (2026-11-03). */
   #dealersTable th.dl-biz, #dealersTable td.dl-biz { max-width: 200px; white-space: normal !important; overflow-wrap: anywhere; }
-  #dealerFilterForm { flex-wrap: nowrap; }
-  #dealerFilterForm .flt { flex: 1 1 0; min-width: 0; }
-  #dealerFilterForm .flt-sm { flex: 0 1 92px; min-width: 0; }
-  #dealerFilterForm .flt label { white-space: nowrap; }
-  #dealerFilterForm .flt-btns { flex: 0 0 auto; }
-  @media (max-width: 1199.98px) {
-    #dealerFilterForm { flex-wrap: wrap; }
-    #dealerFilterForm .flt, #dealerFilterForm .flt-sm { flex: 0 0 auto; min-width: 130px; }
-  }
 </style>
-<div class="d-flex flex-wrap gap-2 align-items-start mb-3">
-  <form method="get" id="dealerFilterForm" class="d-flex gap-2 align-items-end flex-grow-1">
-    <div class="flt" style="flex-grow:2">
-      <label class="form-label form-label-sm mb-1 text-muted small">Search</label>
-      <input type="text" name="q" value="{{ q }}" placeholder="Company, city, state, phone, email…"
-             class="form-control form-control-sm">
-    </div>
-
-    <div class="flt">
-      <label class="form-label form-label-sm mb-1 text-muted small">Status</label>
-      <select name="status" class="form-select form-select-sm">
-        <option value="">All Status</option>
-        <option value="active" {% if status=='active' %}selected{% endif %}>Active</option>
-        <option value="inactive" {% if status=='inactive' %}selected{% endif %}>Inactive</option>
-        <option value="blacklisted" {% if status=='blacklisted' %}selected{% endif %}>Blacklisted</option>
-      </select>
-    </div>
-
-    {# Admin and Sourcing Sales see every executive; an Attendance Group manager
-       sees just their own group members (sales_users is scoped to them in the
-       route); sales_manager gets Mine Only; everyone else is auto-scoped and
-       gets no dropdown at all. #}
-    {% if sales_users %}
-    <div class="flt">
-      <label class="form-label form-label-sm mb-1 text-muted small">Assigned To</label>
-      <select name="assigned" class="form-select form-select-sm">
-        <option value="">All Executives</option>
-        {% for u in sales_users %}
-        <option value="{{ u.username }}" {% if assigned == u.username %}selected{% endif %}>
-          {{ u.full_name }} ({{ u.role.value }})
-        </option>
-        {% endfor %}
-      </select>
-    </div>
-    {% elif current_user.role.value == 'sales_manager' %}
-    <div class="flt">
-      <label class="form-label form-label-sm mb-1 text-muted small">Assigned To</label>
-      <select name="assigned" class="form-select form-select-sm">
-        <option value="">All My Team</option>
-        <option value="{{ current_user.username }}" {% if assigned==current_user.username %}selected{% endif %}>Mine Only</option>
-      </select>
-    </div>
-    {% endif %}
-
-    {# City filter removed: the Search box already matches City. #}
-    {% set wrapper_class = 'flt' %}
-    {% include "dealers/_type_subcat_filters.html" %}
-
-    {# Assign Date filter (2026-11-03): on the table's "Assigned On" date. #}
-    <div class="flt">
-      <label class="form-label form-label-sm mb-1 text-muted small">Assign From</label>
-      <input type="date" name="assign_from" class="form-control form-control-sm"
-             value="{{ assign_from }}">
-    </div>
-    <div class="flt">
-      <label class="form-label form-label-sm mb-1 text-muted small">Assign To</label>
-      <input type="date" name="assign_to" class="form-control form-control-sm"
-             value="{{ assign_to }}">
-    </div>
-    <div class="flt">
-      <label class="form-label form-label-sm mb-1 text-muted small">Calling From</label>
-      <input type="date" name="calling_date_from" class="form-control form-control-sm"
-             value="{{ calling_date_from }}">
-    </div>
-    <div class="flt">
-      <label class="form-label form-label-sm mb-1 text-muted small">Calling To</label>
-      <input type="date" name="calling_date_to" class="form-control form-control-sm"
-             value="{{ calling_date_to }}">
-    </div>
-
-    <div class="flt-sm">
-      <label class="form-label form-label-sm mb-1 text-muted small">Req Qty</label>
-      <input type="number" name="filter_qty" min="0" value="{{ filter_qty }}"
-             class="form-control form-control-sm">
-    </div>
-    <div class="flt-sm">
-      <label class="form-label form-label-sm mb-1 text-muted small">Purch Qty</label>
-      <input type="number" name="filter_purchase_qty" min="0" value="{{ filter_purchase_qty }}"
-             class="form-control form-control-sm">
-    </div>
-    <div class="flt-sm">
-      <label class="form-label form-label-sm mb-1 text-muted small">Sell Qty</label>
-      <input type="number" name="filter_sale_qty" min="0" value="{{ filter_sale_qty }}"
-             class="form-control form-control-sm">
-    </div>
-    <div class="flt-btns d-flex gap-1">
-      <button class="btn btn-sm btn-outline-primary">Filter</button>
-      <a href="/dealers" class="btn btn-sm btn-outline-secondary">Clear</a>
-    </div>
-  </form>
-
-</div>
 
 <!-- Summary tiles — top 4: dark single-count tiles (2026-11-06, _tiles.html) -->
 {% import "_tiles.html" as tl %}
@@ -141,6 +37,87 @@
   {% endfor %}
 </div>
 
+
+{# Global filter bar (app.css .filter-bar, 2026-11-08) — labels live in title=. #}
+<form method="get" action="/dealers" id="dealerFilterForm" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" value="{{ q }}" title="Search" placeholder="Company, city, state, phone, email…"
+             class="form-control form-control-sm">
+    </div>
+
+    <div>
+      <select name="status" class="form-select form-select-sm" title="Status">
+        <option value="">All Status</option>
+        <option value="active" {% if status=='active' %}selected{% endif %}>Active</option>
+        <option value="inactive" {% if status=='inactive' %}selected{% endif %}>Inactive</option>
+        <option value="blacklisted" {% if status=='blacklisted' %}selected{% endif %}>Blacklisted</option>
+      </select>
+    </div>
+
+    {# Admin and Sourcing Sales see every executive; an Attendance Group manager
+       sees just their own group members (sales_users is scoped to them in the
+       route); sales_manager gets Mine Only; everyone else is auto-scoped and
+       gets no dropdown at all. #}
+    {% if sales_users %}
+    <div>
+      <select name="assigned" class="form-select form-select-sm" title="Assigned To">
+        <option value="">All Executives</option>
+        {% for u in sales_users %}
+        <option value="{{ u.username }}" {% if assigned == u.username %}selected{% endif %}>
+          {{ u.full_name }} ({{ u.role.value }})
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+    {% elif current_user.role.value == 'sales_manager' %}
+    <div>
+      <select name="assigned" class="form-select form-select-sm" title="Assigned To">
+        <option value="">All My Team</option>
+        <option value="{{ current_user.username }}" {% if assigned==current_user.username %}selected{% endif %}>Mine Only</option>
+      </select>
+    </div>
+    {% endif %}
+
+    {# City filter removed: the Search box already matches City. #}
+    {% set wrapper_class = '' %}
+    {% include "dealers/_type_subcat_filters.html" %}
+    {# Quotes Shared (2026-11-10): dealers with / without a telecalling quotation #}
+    <div>
+      <select name="quotes_shared" class="form-select form-select-sm" title="Quotes Shared">
+        <option value="">All Quotes Shared</option>
+        <option value="yes" {% if quotes_shared == 'yes' %}selected{% endif %}>Quotes Shared: Yes</option>
+        <option value="no" {% if quotes_shared == 'no' %}selected{% endif %}>Quotes Shared: No</option>
+      </select>
+    </div>
+
+    {# Assign Date filter (2026-11-03): on the table's "Assigned On" date. #}
+    <div><input type="date" name="assign_from" class="form-control form-control-sm" title="Assign Date From" data-dr-placeholder="Assign Date" value="{{ assign_from }}"></div>
+    <div><input type="date" name="assign_to" class="form-control form-control-sm" title="Assign Date To" value="{{ assign_to }}"></div>
+    {# Hidden on request (2026-11-10): Calling Date range, Req / Purch / Sell Qty.
+       Kept as hidden inputs so a link that already carries them still filters. #}
+    {% if calling_date_from %}<input type="hidden" name="calling_date_from" value="{{ calling_date_from }}">{% endif %}
+    {% if calling_date_to %}<input type="hidden" name="calling_date_to" value="{{ calling_date_to }}">{% endif %}
+    {% if filter_qty %}<input type="hidden" name="filter_qty" value="{{ filter_qty }}">{% endif %}
+    {% if filter_purchase_qty %}<input type="hidden" name="filter_purchase_qty" value="{{ filter_purchase_qty }}">{% endif %}
+    {% if filter_sale_qty %}<input type="hidden" name="filter_sale_qty" value="{{ filter_sale_qty }}">{% endif %}
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/dealers" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
+  </div>
+</form>
+
+{# Tabs (2026-11-10, Pankaj): Dealers | Quotation Shared; the last-open tab is
+   remembered per browser tab, so an action that reloads the page comes back to it. #}
+<ul class="nav nav-tabs mb-0" id="dlrTabs">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#dlrDealersTab" type="button" data-dt="dealers">
+    <i class="bi bi-people me-1"></i>Dealers</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#dlrQuotesTab" type="button" data-dt="quotes">
+    <i class="bi bi-file-earmark-text me-1"></i>Quotation Shared <span class="badge rounded-pill bg-warning text-dark ms-1">{{ quotations|length }}</span></button></li>
+</ul>
+<div class="tab-content">
+<div class="tab-pane fade show active" id="dlrDealersTab">
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-people me-2"></i>Dealers</span>
@@ -220,9 +197,12 @@
   </div>
 </div>
 
-{# Quotation section sits below the Dealers table. #}
+</div>
+<div class="tab-pane fade" id="dlrQuotesTab">
 {% set qs_global_table = true %}
 {% include "dealers/_quotation_shared_table.html" %}
+</div>
+</div>
 
 <!-- Dealer View Modal -->
 <div class="modal fade" id="dealerViewModal" tabindex="-1">
@@ -286,6 +266,7 @@
 </div>
 
 {% include "dealers/_quotation_modal.html" %}
+{% include "dealers/_call_log_modal.html" %}
 
 <!-- Bulk Upload Call Records modal -->
 <div class="modal fade" id="callBulkUploadModal" tabindex="-1" aria-hidden="true">
@@ -495,9 +476,23 @@ function exportDealers() {
 
 initGlobalTable('#quotationSharedTable', {
   order: [],
-  columnDefs: [{ orderable: false, targets: [5] }],
+  columnDefs: [{ orderable: false, targets: [6, 7] }],
   language: { emptyTable: 'No quotations shared yet.' },
 });
+
+// Dealers | Quotation Shared tabs (2026-11-10): re-measure tables when a tab
+// opens (registered before the remembered tab is restored), remember the tab.
+(function () {
+  function _adj() { $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust(); }
+  var KEY = 'dlrTab';
+  document.querySelectorAll('#dlrTabs [data-bs-toggle="tab"]').forEach(function (b) {
+    b.addEventListener('shown.bs.tab', function () { _adj(); try { sessionStorage.setItem(KEY, b.dataset.dt); } catch (e) {} });
+  });
+  var want = (location.hash === '#quotes') ? 'quotes' : null;
+  if (!want) { try { want = sessionStorage.getItem(KEY); } catch (e) {} }
+  var wb = want && document.querySelector('#dlrTabs [data-dt="' + want + '"]');
+  if (wb) { bootstrap.Tab.getOrCreateInstance(wb).show(); setTimeout(_adj, 250); }
+})();
 
 {% if _has_chk %}
 // ── Selection: every matching dealer, across all pages ─────────────────────

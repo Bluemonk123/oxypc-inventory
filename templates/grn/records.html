@@ -5,47 +5,44 @@
 {% if success %}<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ error }}</div>{% endif %}
 
-{# No other server-side filters on this page, so the date range gets its own
-   filter row card, matching the filter bar on every other page. #}
-<form method="get" action="/grn/records" class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <div class="row g-2 align-items-end">
-      {% include "_date_range_fields.html" %}
-      <div class="col-md-3 d-flex gap-2">
-        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filter</button>
-        <a href="/grn/records" class="btn btn-outline-secondary btn-sm">Reset</a>
-      </div>
+<form method="get" action="/grn/records" class="filter-bar">
+  <div class="filter-bar-row">
+    {% include "_date_range_fields.html" %}
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/grn/records" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
     </div>
   </div>
 </form>
 
-<div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent p-0">
-    <ul class="nav nav-tabs nav-fill card-header-tabs px-3 pt-2" id="grnBoardTabs" role="tablist">
-      <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="pendingtrc-tab" data-bs-toggle="tab" data-bs-target="#pendingTrcPane" type="button">
-          Pending for TRC <span class="badge bg-warning text-dark ms-1">{{ pending_trc_count }}</span>
-        </button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="assigned-tab" data-bs-toggle="tab" data-bs-target="#assignedPane" type="button">
-          GRN Assigned <span class="badge bg-success ms-1">{{ assigned_count }}</span>
-        </button>
-      </li>
-      <li class="nav-item" role="presentation">
-        <button class="nav-link" id="notmapped-tab" data-bs-toggle="tab" data-bs-target="#notMappedPane" type="button">
-          GRN Not Mapped <span class="badge bg-danger ms-1">{{ not_mapped_count }}</span>
-        </button>
-      </li>
-    </ul>
-  </div>
-  <div class="tab-content">
-    <div class="tab-pane fade show active" id="pendingTrcPane" role="tabpanel">
-      <form method="post" action="/grn/records/bulk-move-to-trc" id="pendingTrcForm">
-        <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
-        <input type="hidden" name="dest" id="pendingTrcDest" value="">
-        <div class="d-flex justify-content-between align-items-center p-2 border-bottom flex-wrap gap-2">
-          <div class="small text-muted">Select tag numbers below, or upload a list, then bulk-move them into TRC Production.</div>
+<!-- Pending for TRC / GRN Assigned / GRN Not Mapped tabs. Each table keeps its
+     own card and toolbar. -->
+<ul class="nav nav-tabs mb-0" id="grnBoardTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" id="pendingtrc-tab" data-bs-toggle="tab" data-bs-target="#pendingTrcPane" type="button">
+      Pending for TRC <span class="badge bg-warning text-dark ms-1">{{ pending_trc_count }}</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="assigned-tab" data-bs-toggle="tab" data-bs-target="#assignedPane" type="button">
+      GRN Assigned <span class="badge bg-success ms-1">{{ assigned_count }}</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" id="notmapped-tab" data-bs-toggle="tab" data-bs-target="#notMappedPane" type="button">
+      GRN Not Mapped <span class="badge bg-danger ms-1">{{ not_mapped_count }}</span>
+    </button>
+  </li>
+</ul>
+<div class="tab-content">
+  <div class="tab-pane fade show active" id="pendingTrcPane" role="tabpanel">
+    <form method="post" action="/grn/records/bulk-move-to-trc" id="pendingTrcForm">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
+      <input type="hidden" name="dest" id="pendingTrcDest" value="">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span class="fw-semibold small"><i class="bi bi-hourglass-split me-2"></i>Pending for TRC
+            <span class="text-muted fw-normal ms-1">Select tag numbers below, or upload a list, then bulk-move them into TRC Production.</span></span>
           <div class="d-flex align-items-center gap-2">
             <input type="file" id="pendingTrcCsvFile" accept=".csv,.txt" class="form-control form-control-sm" style="max-width:220px">
             {% if can(current_user, 'grn_records', 'export') %}<button type="button" class="btn btn-outline-secondary btn-sm" onclick="exportGrnTable('pendingTrcTable')">
@@ -56,7 +53,7 @@
             </button>
           </div>
         </div>
-        <div class="table-responsive">
+        <div class="card-body">
           <table id="pendingTrcTable" class="table table-hover mb-0 small align-middle">
             <thead class="table-dark">
               <tr>
@@ -67,15 +64,18 @@
             <tbody></tbody>
           </table>
         </div>
-      </form>
-    </div>
-    <div class="tab-pane fade" id="assignedPane" role="tabpanel">
-      <div class="d-flex justify-content-end p-2 border-bottom">
+      </div>
+    </form>
+  </div>
+  <div class="tab-pane fade" id="assignedPane" role="tabpanel">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="fw-semibold small"><i class="bi bi-check2-circle me-2"></i>GRN Assigned</span>
         {% if can(current_user, 'grn_records', 'export') %}<button type="button" class="btn btn-outline-secondary btn-sm" onclick="exportGrnTable('assignedTable')">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export page
         </button>{% endif %}
       </div>
-      <div class="table-responsive">
+      <div class="card-body">
         <table id="assignedTable" class="table table-hover mb-0 small align-middle">
           <thead class="table-dark">
             <tr>
@@ -86,13 +86,16 @@
         </table>
       </div>
     </div>
-    <div class="tab-pane fade" id="notMappedPane" role="tabpanel">
-      <div class="d-flex justify-content-end p-2 border-bottom">
+  </div>
+  <div class="tab-pane fade" id="notMappedPane" role="tabpanel">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <span class="fw-semibold small"><i class="bi bi-exclamation-octagon me-2"></i>GRN Not Mapped</span>
         {% if can(current_user, 'grn_records', 'export') %}<button type="button" class="btn btn-outline-secondary btn-sm" onclick="exportGrnTable('notMappedTable')">
           <i class="bi bi-file-earmark-arrow-down me-1"></i>Export page
         </button>{% endif %}
       </div>
-      <div class="table-responsive">
+      <div class="card-body">
         <table id="notMappedTable" class="table table-hover mb-0 small align-middle">
           <thead class="table-dark">
             <tr>
@@ -152,14 +155,13 @@ $(document).ready(function(){
   // server-side) — rendering every matching device straight into the HTML
   // froze the page once a tab reached a few thousand rows.
   //
-  // autoWidth:false + width:'100%' plus the shown.bs.tab handler below keep
+  // The shown.bs.tab handler below keeps
   // the non-active tabs' tables from mis-sizing themselves — a DataTable
   // initialized inside a display:none Bootstrap tab pane computes column
   // widths off a zero-width container, which is what made the two
   // background tabs look squeezed until you resized the window.
-  var dtPendingTrc = $('#pendingTrcTable').DataTable({
-    serverSide: true, processing: true, pageLength: 25, autoWidth: false, width: '100%',
-    lengthMenu: [[25, 50, 100, 500, 1000], [25, 50, 100, 500, 1000]],
+  var dtPendingTrc = initGlobalTable('#pendingTrcTable', {
+    serverSide: true, processing: true,
     order: [], searchDelay: 400,
     columnDefs: [{orderable: false, targets: 0}],
     ajax: {
@@ -167,14 +169,13 @@ $(document).ready(function(){
       data: function(d){ d.tab = 'pending_trc'; d.date_from = _grnDateFrom; d.date_to = _grnDateTo; },
       dataSrc: function(json){ return json.data; },
     },
-    drawCallback: function(){
-      document.getElementById('pendingTrcSelectAll').checked = false;
-      refreshSelection();
-    },
+    drawCallback: function(){ refreshSelection(); },
+  }, {
+    // Header select-all, delegated by the Global Table (scrollX moves <thead>).
+    selectAll: { headerSelector: '#pendingTrcSelectAll', rowSelector: '.pending-trc-cb', onChange: refreshSelection, resetOnDraw: true },
   });
-  var dtAssigned = $('#assignedTable').DataTable({
-    serverSide: true, processing: true, pageLength: 25, autoWidth: false, width: '100%',
-    lengthMenu: [[25, 50, 100, 500, 1000], [25, 50, 100, 500, 1000]],
+  var dtAssigned = initGlobalTable('#assignedTable', {
+    serverSide: true, processing: true,
     order: [], searchDelay: 400,
     ajax: {
       url: '/grn/records/data',
@@ -182,9 +183,8 @@ $(document).ready(function(){
       dataSrc: function(json){ return json.data; },
     },
   });
-  var dtNotMapped = $('#notMappedTable').DataTable({
-    serverSide: true, processing: true, pageLength: 25, autoWidth: false, width: '100%',
-    lengthMenu: [[25, 50, 100, 500, 1000], [25, 50, 100, 500, 1000]],
+  var dtNotMapped = initGlobalTable('#notMappedTable', {
+    serverSide: true, processing: true,
     order: [], searchDelay: 400,
     ajax: {
       url: '/grn/records/data',
@@ -227,7 +227,6 @@ function exportGrnTable(tableId) {
 
 // Pending for TRC — selection + bulk-move button count (event delegation so
 // this keeps working as DataTables redraws the tbody on every page/search).
-var selectAll = document.getElementById('pendingTrcSelectAll');
 var moveBtn = document.getElementById('bulkMoveToTrcBtn');
 var countEl = document.getElementById('pendingTrcSelCount');
 
@@ -239,12 +238,7 @@ function refreshSelection() {
 document.addEventListener('change', function(e){
   if (e.target.classList && e.target.classList.contains('pending-trc-cb')) refreshSelection();
 });
-if (selectAll) {
-  selectAll.addEventListener('change', function(){
-    document.querySelectorAll('.pending-trc-cb').forEach(function(cb){ cb.checked = selectAll.checked; });
-    refreshSelection();
-  });
-}
+// Header select-all is wired by initGlobalTable (opts.selectAll above).
 
 // Upload a list of Tag Numbers (CSV/TXT) — checks matching rows on the
 // currently-loaded page (server-side pagination means only that page's

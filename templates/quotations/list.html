@@ -3,46 +3,35 @@
 {% block page_title %}Quotations{% endblock %}
 {% block content %}
 
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-body py-2">
-    <form method="get" class="d-flex flex-wrap gap-2 align-items-end">
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Search</label>
-        <input type="text" name="q" value="{{ q }}" placeholder="Customer / Quote # / Phone..."
-               class="form-control form-control-sm" style="width:220px">
-      </div>
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Status</label>
-        <select name="status" class="form-select form-select-sm" style="width:140px">
-          <option value="">All</option>
-          <option value="shared" {% if status == 'shared' %}selected{% endif %}>Shared</option>
-          <option value="confirmed" {% if status == 'confirmed' %}selected{% endif %}>Confirmed</option>
-        </select>
-      </div>
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">Created By</label>
-        <select name="created_by" class="form-select form-select-sm" style="width:160px">
-          <option value="">All</option>
-          {% for c in creators %}
-          <option value="{{ c }}" {% if created_by == c %}selected{% endif %}>{{ c }}</option>
-          {% endfor %}
-        </select>
-      </div>
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">From</label>
-        <input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" style="width:150px">
-      </div>
-      <div>
-        <label class="form-label form-label-sm mb-1 text-muted small">To</label>
-        <input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" style="width:150px">
-      </div>
-      <div>
-        <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-funnel me-1"></i>Filter</button>
-        <a href="/quotations" class="btn btn-outline-secondary btn-sm">Reset</a>
-      </div>
-    </form>
+{# Global filter bar (app.css .filter-bar, 2026-11-08) — labels live in title=. #}
+<form method="get" action="/quotations" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" value="{{ q }}" title="Search" placeholder="Customer / Quote # / Phone..."
+             class="form-control form-control-sm">
+    </div>
+    <div>
+      <select name="status" class="form-select form-select-sm" title="Status">
+        <option value="">All Status</option>
+        {% for v, l in QUOTE_STATUSES %}<option value="{{ v }}" {% if status == v %}selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="created_by" class="form-select form-select-sm" title="Created By">
+        <option value="">All Created By</option>
+        {% for c in creators %}
+        <option value="{{ c }}" {% if created_by == c %}selected{% endif %}>{{ c }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div><input type="date" name="date_from" value="{{ date_from }}" class="form-control form-control-sm" title="Date From"></div>
+    <div><input type="date" name="date_to" value="{{ date_to }}" class="form-control form-control-sm" title="Date To"></div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/quotations" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
   </div>
-</div>
+</form>
 
 {% set qt_perm_module = 'quotations' %}
 {% include "dealers/_quotation_shared_table.html" %}

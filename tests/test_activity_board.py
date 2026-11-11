@@ -87,7 +87,10 @@ asyncio.run(main())
                                 follow_redirects=False)
             assert "success" in r.headers["location"], r.headers["location"]
         html = app_client.get("/activity-board").text
-        assert "Inspection Done" in html and "Reupload" in html
+        # the finished report moves the deal on (Inspection shows Done on the deal page);
+        # the Inspection card keeps it, with Reupload
+        assert "Reupload" in html
+        assert _q(f"select stage from crm_sourcing_deals where id='{did}'")[0] == "pricing_approval"
         st = _q(f"select status, file_path is not null from crm_sourcing_steps s join crm_sourcing_deals d on d.id=s.deal_id "
                 f"where d.deal_number='SD-IT{sfx}' and s.step_key='inspection_report'")[0]
         assert st == "done|True", st

@@ -4,13 +4,12 @@
 {% block content %}
 
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-transparent fw-semibold small">
-    <i class="bi bi-inbox me-2"></i>Sale Requests raised from Ready to Sale Parts
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-inbox me-2"></i>Sale Requests raised from Ready to Sale Parts</span>
   </div>
-  <div class="card-body p-0">
-    <div class="table-responsive">
-      <table id="psrTable" class="table table-hover mb-0 small align-middle">
-        <thead class="table-dark">
+  <div class="card-body">
+      <table id="psrTable" class="table table-hover align-middle mb-0">
+        <thead>
           <tr>
             <th class="ps-3">Code</th><th>Part Name</th><th>Make</th><th>Model</th>
             <th>Requested Quantity</th><th>In Stock</th><th>Requested By</th><th>Requested On</th>
@@ -54,12 +53,9 @@
               {% else %}<span class="text-muted small">—</span>{% endif %}
             </td>
           </tr>
-          {% else %}
-          <tr><td colspan="10" class="text-center text-muted py-4">No sale requests yet.</td></tr>
           {% endfor %}
         </tbody>
       </table>
-    </div>
   </div>
 </div>
 
@@ -86,15 +82,15 @@
 {% block scripts %}
 <script>
 $(document).ready(function(){
-  if ($('#psrTable tbody tr td').length > 1) {
-    $('#psrTable').DataTable({pageLength: 25, lengthChange: false, order: []});
-  }
-  document.querySelectorAll('.rejectBtn').forEach(function(b){
-    b.addEventListener('click', function(){
-      document.getElementById('rejectForm').action = '/parts-sale-request/' + this.dataset.id + '/reject';
-      document.getElementById('rjPart').textContent = this.dataset.part || '';
-      new bootstrap.Modal(document.getElementById('rejectModal')).show();
-    });
+  initGlobalTable('#psrTable', {
+    order: [],
+    language: { emptyTable: 'No sale requests yet.' },
+  });
+  // Delegated so Reject also works on rows DataTables pages in later.
+  $('#psrTable').on('click', '.rejectBtn', function(){
+    document.getElementById('rejectForm').action = '/parts-sale-request/' + this.dataset.id + '/reject';
+    document.getElementById('rjPart').textContent = this.dataset.part || '';
+    new bootstrap.Modal(document.getElementById('rejectModal')).show();
   });
 });
 </script>

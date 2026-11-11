@@ -1,56 +1,87 @@
 {% extends "base.html" %}
 {% block title %}{{ so.so_number }} — Sales Order{% endblock %}
 {% block page_title %}Sales Order {{ so.so_number }}{% endblock %}
+{# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ so.so_number }}{% endblock %}{% block record_parent %}/crm/sales-orders{% endblock %}{% block record_parent_label %}Sales Orders{% endblock %}
 {% block content %}
-<div class="mb-3"><a href="/crm/sales-orders" class="btn btn-sm btn-outline-secondary"><i class="bi bi-arrow-left me-1"></i>Sales Orders</a></div>
-<div class="row g-3">
-  <div class="col-lg-4">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-receipt me-2"></i>Details</div>
-      <div class="card-body small">
-        <dl class="row mb-0">
-          <dt class="col-5">SO #</dt><dd class="col-7"><code>{{ so.so_number }}</code></dd>
-          <dt class="col-5">Date</dt><dd class="col-7">{{ so.so_date.strftime('%d %b %Y') if so.so_date else '—' }}</dd>
-          <dt class="col-5">Buyer</dt><dd class="col-7">{% if so.contact %}<a href="/crm/contacts/{{ so.contact.id }}">{{ so.contact.company_name }}</a>{% else %}—{% endif %}</dd>
-          <dt class="col-5">Quote</dt><dd class="col-7">{% if so.quote %}<a href="/crm/quotes/{{ so.quote.id }}">{{ so.quote.quote_number }}</a>{% else %}—{% endif %}</dd>
-          <dt class="col-5">Buyer Deal</dt><dd class="col-7">{% if so.deal %}<a href="/crm/sales/{{ so.deal.id }}">{{ so.deal.opp_number }}</a>{% else %}—{% endif %}</dd>
-          <dt class="col-5">Payment Terms</dt><dd class="col-7">{{ so.payment_terms or '—' }}</dd>
-          <dt class="col-5">Status</dt><dd class="col-7"><span class="badge bg-{{ 'secondary' if so.status == 'cancelled' else 'primary' }}">{{ so.status | title }}</span></dd>
-          <dt class="col-5">Accounts</dt><dd class="col-7">{% if so.verified %}<span class="badge bg-success">Verified</span><div class="text-muted">by {{ so.verified_by or '—' }}{% if so.verified_at %} on {{ so.verified_at.strftime('%d-%m-%Y %H:%M') }}{% endif %}</div>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}</dd>
-          <dt class="col-5">Created By</dt><dd class="col-7">{{ so.created_by or '—' }}</dd>
-        </dl>
-      </div>
+{# Sales Order detail (2026-11-10, Pankaj): same layout as Quotation Detail —
+   header card (number, status, Accounts verification, Print, back to the deal),
+   buyer on the left, dates / links on the right; Line Items; History. #}
+{% set _price = can(current_user, 'crm_quotes', 'pricing') %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Sales Order Detail</span>
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      {% if can(current_user, 'crm_sales_opp', 'export') %}<a href="/crm/sales-orders/{{ so.id }}/print" class="btn btn-sm btn-outline-primary" target="_blank">
+        <i class="bi bi-printer me-1"></i>Print Sales Order</a>{% endif %}
+      <a href="/crm/sales-orders" class="btn btn-sm btn-outline-secondary"><i class="bi bi-list-ul me-1"></i>All Sales Orders</a>
+      {% if so.deal %}
+      <a href="/crm/sales/{{ so.deal.id }}" class="btn btn-sm btn-primary" data-hdr-primary><i class="bi bi-arrow-left me-1"></i>Customer Deal {{ so.deal.opp_number }}</a>
+      {% endif %}
     </div>
   </div>
-  <div class="col-lg-8">
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-transparent fw-semibold"><i class="bi bi-list-ul me-2"></i>Line Items</div>
-      <div class="card-body p-0">
-        <div class="table-responsive">
-          <table class="table table-sm mb-0">
-            <thead class="table-light"><tr><th>#</th><th>Device</th><th>Material</th><th>Grade</th><th>Category</th><th class="text-end">Qty</th>{% if can(current_user, 'crm_quotes', 'pricing') %}<th class="text-end">Unit Price</th><th class="text-end">Total</th>{% endif %}</tr></thead>
-            <tbody>
-              {% for it in so.items %}
-              <tr>
-                <td>{{ it.line_number }}</td>
-                <td>{{ it.device_type }}{% if it.specs_note %}<div class="small text-muted">{{ it.specs_note }}</div>{% endif %}</td>
-                <td>{{ material_map.get(it.material_type, it.material_type or '—') }}</td>
-                <td>{{ it.grade or '—' }}</td>
-                <td>{{ it.po_category or '—' }}</td>
-                <td class="text-end">{{ it.quantity }}</td>
-                {% if can(current_user, 'crm_quotes', 'pricing') %}<td class="text-end">₹{{ it.unit_price | inr }}</td><td class="text-end">₹{{ it.total_price | inr }}</td>{% endif %}
-              </tr>
-              {% else %}
-              <tr><td colspan="8" class="text-center text-muted py-3">No line items.</td></tr>
-              {% endfor %}
-            </tbody>
-            {% if can(current_user, 'crm_quotes', 'pricing') %}
-            <tfoot><tr><th colspan="7" class="text-end">Grand Total</th><th class="text-end">₹{{ (so.total_amount or 0) | inr }}</th></tr></tfoot>
-            {% endif %}
-          </table>
+  <div class="card-body">
+    <div class="row align-items-start g-3">
+      <div class="col-md-8">
+        <div class="d-flex align-items-center flex-wrap gap-2 mb-2">
+          <h5 class="mb-0 fw-bold font-monospace">{{ so.so_number }}</h5>
+          <span class="badge bg-{{ 'secondary' if so.status == 'cancelled' else 'primary' }} fs-6">{{ (so.status or 'open') | title }}</span>
+          {% if so.verified %}<span class="badge bg-success" title="Verified by Accounts"><i class="bi bi-patch-check me-1"></i>Accounts Verified</span>
+          {% else %}<span class="badge bg-warning text-dark" title="Awaiting Accounts verification">Accounts Pending</span>{% endif %}
         </div>
+        {% if so.contact %}
+        <div class="mb-1"><i class="bi bi-building me-2 text-muted"></i>
+          <a href="/crm/contacts/{{ so.contact.id }}" class="fw-semibold text-decoration-none">{{ so.contact.company_name }}</a>
+          {% if so.contact.contact_person %}<span class="text-muted small ms-1">· {{ so.contact.contact_person }}</span>{% endif %}
+        </div>
+        {% if so.contact.phone %}<div class="small text-muted mb-1"><i class="bi bi-telephone me-2"></i>{{ so.contact.phone }}</div>{% endif %}
+        {% if so.contact.email %}<div class="small text-muted mb-1"><i class="bi bi-envelope me-2"></i>{{ so.contact.email }}</div>{% endif %}
+        {% if so.contact.gstin %}<div class="small text-muted mb-1"><i class="bi bi-receipt me-2"></i>GSTIN: {{ so.contact.gstin }}</div>{% endif %}
+        {% else %}<div class="text-muted small">No buyer linked.</div>{% endif %}
+        {% if so.verified and so.verified_by %}<div class="small text-muted mt-2">Verified by {{ so.verified_by }}{% if so.verified_at %} on {{ so.verified_at.strftime('%d-%m-%Y %H:%M') }}{% endif %}</div>{% endif %}
+      </div>
+      <div class="col-md-4 text-md-end">
+        <div class="small text-muted mb-1">Sales Order Date</div>
+        <div class="fw-semibold mb-2">{{ so.so_date.strftime('%d %b %Y') if so.so_date else '—' }}</div>
+        <div class="small text-muted mb-1">Quote</div>
+        <div class="fw-semibold mb-2">{% if so.quote %}<a href="/crm/quotes/{{ so.quote.id }}" class="text-decoration-none">{{ so.quote.quote_number }}</a>{% else %}—{% endif %}</div>
+        <div class="small text-muted mb-1">Created By</div>
+        <div class="fw-semibold mb-2">{{ so.created_by or '—' }}</div>
+        {% if so.payment_terms %}<div class="small text-muted">Payment: {{ so.payment_terms }}</div>{% endif %}
+        {% if _price %}<div class="small text-muted mt-2">Grand Total</div><div class="fw-bold text-success fs-5">₹{{ (so.total_amount or 0) | inr }}</div>{% endif %}
       </div>
     </div>
   </div>
 </div>
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-list-ul me-1 text-primary"></i>Line Items</div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-bordered mb-0">
+        <thead class="table-light"><tr><th style="width:50px">#</th><th>Device Type</th><th>Material</th><th>Grade</th><th>PO Category</th><th class="text-center">Qty</th>
+          {% if _price %}<th class="text-end">Unit Price</th><th class="text-end">Total</th>{% endif %}</tr></thead>
+        <tbody>
+          {% for it in so.items %}
+          <tr>
+            <td>{{ it.line_number }}</td>
+            <td>{{ it.device_type }}{% if it.specs_note %}<div class="small text-muted">{{ it.specs_note }}</div>{% endif %}</td>
+            <td>{{ material_map.get(it.material_type, it.material_type or '—') }}</td>
+            <td>{{ it.grade or '—' }}</td>
+            <td>{{ it.po_category or '—' }}</td>
+            <td class="text-center">{{ it.quantity }}</td>
+            {% if _price %}<td class="text-end">₹{{ (it.unit_price or 0) | inr }}</td><td class="text-end fw-semibold">₹{{ (it.total_price or 0) | inr }}</td>{% endif %}
+          </tr>
+          {% else %}
+          <tr><td colspan="8" class="text-center text-muted py-3">No line items.</td></tr>
+          {% endfor %}
+        </tbody>
+        {% if _price and so.items %}
+        <tfoot class="table-light"><tr><td colspan="7" class="text-end fw-bold">Grand Total</td><td class="text-end fw-bold text-success">₹{{ (so.total_amount or 0) | inr }}</td></tr></tfoot>
+        {% endif %}
+      </table>
+    </div>
+  </div>
+</div>
+
+{% include "_history_card.html" %}
 {% endblock %}

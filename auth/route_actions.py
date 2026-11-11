@@ -80,8 +80,6 @@ ROUTE_ACTIONS = {
     ('POST', '/stock/move-to-l1l2'): ('stock', 'edit'),  # move_to_l1l2
     ('POST', '/stock/bulk-move-to-l1l2'): ('stock', 'edit'),  # bulk_move_to_l1l2
     ('POST', '/devices/change-engineer'): ('production_manager', 'edit'),  # change_engineer: Production Manager Change Engineer modal (path resolves to 'devices' by prefix - override)
-    ('POST', '/scrap-products/{barcode}/move-to-inventory'): ('scrap_products', 'edit'),  # scrap_move_to_inventory
-    ('POST', '/scrap-products/{barcode}/replace'): ('scrap_products', 'edit'),  # scrap_replace_with_another
     ('POST', '/lots/{lot_id}/line-items'): ('lots', 'add'),  # add_lot_line_item
     ('PUT', '/lots/{lot_id}/line-items/{item_id}'): ('lots', 'edit'),  # update_lot_line_item
     ('DELETE', '/lots/{lot_id}/line-items/{item_id}'): ('lots', 'delete'),  # delete_lot_line_item
@@ -175,6 +173,10 @@ ROUTE_ACTIONS = {
     ('GET', '/admin/master/export/{category}'): ('admin_master', 'export'),  # export_category_csv: Master Data category export
     ('GET', '/admin/master/template/{category}'): ('admin_master', 'export'),  # download_category_template: Master Data / Bulk Upload master template
     ('POST', '/admin/master/global-visibility/toggle'): None,  # toggle_global_visibility: admin-only master data / visibility config
+    ('POST', '/admin/master/system-colors/save'): None,  # save_system_colors: admin-only System Colors tab (2026-11-08)
+    ('POST', '/admin/master/system-colors/reset'): None,
+    ('POST', '/admin/master/email/settings'): None,  # save_email_settings: admin-only Email tab, writes SMTP keys to .env (2026-11-11)
+    ('POST', '/admin/master/email/test'): None,  # send_test_email: admin-only Email tab (2026-11-09)  # reset_system_colors: admin-only System Colors tab (2026-11-08)
     ('POST', '/admin/master/add'): None,  # add_master_value: admin-only master data
     ('POST', '/admin/master/{item_id}/edit'): None,  # edit_master_value: admin-only master data
     ('POST', '/admin/master/{item_id}/toggle'): None,  # toggle_master_value: admin-only master data
@@ -466,6 +468,7 @@ ROUTE_ACTIONS = {
     ('POST', '/activity-board/{kind}/{deal_id}/start'): None,  # start_check: gated in the route — the person assigned to Inspection / Screening, or admin / Activity Board Edit
     ('POST', '/activity-board/{kind}/{deal_id}/report'): None,  # upload_report: gated in the route — same as start_check
     ('POST', '/activity-board/accounts/{contact_id}/map-manager'): ('activity_board', 'edit'),  # map_manager
+    ('GET', '/activity-board/export/{kind}'): ('activity_board', 'export'),  # export_card: Export in each card header (2026-11-09)
     ('POST', '/crm/contacts/{contact_id}/trash'): ('crm_contacts', 'delete'),  # trash_contact: soft delete
     ('POST', '/crm/contacts/{contact_id}/restore'): ('crm_contacts', 'edit'),  # restore_contact: restore from trash
     # ===== routers/crm_sourcing.py =====
@@ -473,6 +476,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/sourcing/new'): ('crm_sourcing', 'add'),  # create_deal
     ('POST', '/crm/sourcing/{deal_id}/stage'): ('crm_sourcing', 'edit'),  # move_stage
     ('POST', '/crm/sourcing/{deal_id}/edit'): ('crm_sourcing', 'edit'),  # update_deal
+    ('POST', '/crm/sourcing/{deal_id}/pricing'): ('crm_sourcing', 'edit'),  # save_pricing: Pricing card (2026-11-10)
     ('POST', '/crm/sourcing/{deal_id}/upload'): ('crm_sourcing', 'upload'),  # upload_documents: Upload Documents in Deal Info (2026-10-27: was edit; its button is gated on upload)
     ('POST', '/crm/sourcing/{deal_id}/steps/{step_key}/assign'): ('crm_sourcing', 'edit'),  # assign_step: Stage Progress user icon (user / approver)
     ('POST', '/crm/sourcing/{deal_id}/steps/{step_key}/decide'): ('crm_sourcing', 'edit'),  # decide_step: Approve / Reject (assigned approver or admin)
@@ -491,6 +495,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/sales/{opp_id}/steps/{step_key}/decide'): ('crm_sales_opp', 'edit'),  # decide_step: Approve / Reject
     ('POST', '/crm/sales/{opp_id}/steps/{step_key}/attach'): ('crm_sales_opp', 'upload'),  # attach_step_file: stage files + Deal Info Upload
     ('POST', '/crm/sales/{opp_id}/edit'): ('crm_sales_opp', 'edit'),  # update_opp
+    ('POST', '/crm/sales/{opp_id}/pricing'): ('crm_sales_opp', 'edit'),  # save_pricing: Pricing card (2026-11-10)
     ('POST', '/crm/sales/{opp_id}/link-sale'): ('crm_sales_opp', 'edit'),  # link_sale_submit
     # ===== routers/crm_quotes.py =====
     ('GET', '/crm/quotes/{quote_id}/print'): (('crm_quotes', 'crm_sales_opp', 'crm_contacts'), 'export'),  # quote_print: quote list/detail + shared quotes include (nq_perm_module)
@@ -499,6 +504,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/quotes/from-lot'): ('crm_quotes', ('add', 'pricing_add')),  # create_quote_from_lot: Quotes row in the matrix
     ('POST', '/crm/quotes/{quote_id}/generate'): (('crm_quotes', 'crm_sales_opp', 'crm_contacts'), 'export'),  # generate_quote_doc: generate + download document
     ('POST', '/crm/quotes/{quote_id}/status'): ('crm_quotes', 'edit'),  # update_status: Quotes row in the matrix
+    ('POST', '/crm/quotes/{quote_id}/edit'): ('crm_quotes', 'edit'),  # update_quote: Edit Quote on the quote page (2026-11-11)
     ('POST', '/crm/quotes/{quote_id}/link-deal'): ('crm_quotes', 'edit'),  # link_deal: link a standalone quote to a deal
     # ===== routers/crm_activities.py =====
     ('POST', '/crm/activities/log'): ('crm_dashboard', 'add'),  # log_activity: activity log; path resolves to crm_dashboard (/crm/)
@@ -524,6 +530,7 @@ ROUTE_ACTIONS = {
     ('GET', '/crm/purchase-orders/{po_id}/print'): (('crm_purchase_orders', 'crm_sourcing', 'crm_contacts'), 'export'),  # print_po: PO list/detail + shared PO include (po_perm_module)
     ('POST', '/crm/purchase-orders/new'): ('crm_purchase_orders', ('add', 'pricing_add')),  # create_po
     ('POST', '/crm/purchase-orders/{po_id}/issue'): ('crm_purchase_orders', 'edit'),  # issue_po
+    ('POST', '/crm/pickups/{kind}/{deal_id}/advance'): None,  # Pickup Process: the assignee moves it on (checks inside: enabled + assignee or Edit)
     # ===== routers/deals.py =====
     ('POST', '/deals/new'): ('trade_partner_all_deals', ('add', 'pricing_add')),  # create_deal: deals.py MODULE
     ('POST', '/deals/{deal_id}/approve'): ('trade_partner_all_deals', 'edit'),  # approve_deal
@@ -540,8 +547,11 @@ ROUTE_ACTIONS = {
     ('POST', '/accounts/po/{po_id}/complete-payment'): ('finance', 'edit'),  # complete_po_payment
     ('POST', '/accounts/verify/{kind}/{record_id}'): ('finance', 'edit'),  # accounts_verify
     ('POST', '/accounts/verify-kyc/{contact_id}'): ('crm_contacts', 'edit'),  # accounts_verify_kyc
+    ('GET', '/accounts/kyc-zip/{contact_id}'): ('crm_contacts', 'export'),  # accounts_kyc_zip: KYC documents .zip (2026-11-10)
     ('POST', '/accounts/po/{po_id}/upload-invoice'): ('finance', 'edit'),  # upload_po_invoice: single invoice attachment
     ('POST', '/accounts/quote/{quote_id}/complete-payment'): ('finance', 'edit'),  # complete_quote_payment
+    ('POST', '/accounts/deal-payment/{kind}/{deal_id}/verify'): ('finance', 'edit'),  # verify_deal_payment: Payment stage request (2026-11-11)
+    ('POST', '/accounts/deal-payment/{kind}/{deal_id}/reject'): ('finance', 'edit'),  # reject_deal_payment
     ('POST', '/accounts/quote/{quote_id}/upload-invoice'): ('finance', 'edit'),  # upload_quote_invoice: single invoice attachment
     # ===== routers/crm_assign_leads.py =====
     ('GET', '/crm/assign-social-leads/sample'): ('crm_assign_leads', 'export'),  # download_sample: sample CSV (missed by path regex)
@@ -591,7 +601,10 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/terms-conditions/{term_id}/delete'): ('terms_conditions', 'delete'),  # delete_term
     # ===== routers/dealer_quotations.py =====
     ('POST', '/dealers/{dealer_id}/quotations'): ('dealers', ('add', 'pricing_add')),  # create_dealer_quotation: already require_module_perm('dealers','add')
-    ('POST', '/dealer-quotations/{quotation_id}/confirm'): (('dealers', 'quotations'), 'edit'),  # confirm_dealer_quotation: shared quotation table on Dealer page and Quotations list - pick by Referer (/dealers* -> dealers, /quotations -> quotations)
+    ('POST', '/dealer-quotations/{quotation_id}/status'): (('dealers', 'quotations'), 'edit'),  # set_dealer_quotation_status (2026-11-10, replaces /confirm): Negotiation / Expired from the shared quotation table
+    ('POST', '/dealer-quotations/{quotation_id}/decision'): None,  # decide_dealer_quotation: Level 1 Approve / Reject on TeleSales Dashboard - gated in code by the creator's Report To hierarchy (or admin), not the matrix
+    ('GET', '/dealer-quotations/{quotation_id}/print'): (('dealers', 'quotations'), 'export'),
+    ('GET', '/crm/sales-orders/{so_id}/print'): ('crm_sales_opp', 'export'),  # print_sales_order (2026-11-10): Download column on Sales Orders (no own module key - Customer Deals export)  # print_dealer_quotation: Download "Quote" of an approved quotation
     ('POST', '/dealer-quotations/{quotation_id}/delete'): (('dealers', 'quotations'), 'delete'),  # delete_dealer_quotation: same as confirm
     # ===== routers/sidebar_config.py =====
     ('POST', '/admin/sidebar-config/save'): ('sidebar_config', 'edit'),  # save_sidebar_label

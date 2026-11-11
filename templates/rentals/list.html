@@ -16,7 +16,7 @@
               title="Export the rows shown (current filter / search) to CSV">
         <i class="bi bi-download me-1"></i>Export (<span id="rentalExportCount">{{ rows | length }}</span>)
       </button>
-      {% if can(current_user, 'rentals', 'add') %}<a href="/rentals/new" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-plus-lg me-1"></i>New Rental</a>{% endif %}
+      {% if can(current_user, 'rentals', 'add') %}<a href="/rentals/new" class="btn btn-sm btn-primary text-nowrap"><i class="bi bi-plus-circle me-1"></i>Add Rental</a>{% endif %}
     </div>
   </div>
   <div class="card-body">

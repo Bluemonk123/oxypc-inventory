@@ -6,22 +6,31 @@
    f_vp_avp etc. so the two sets of checkbox-dropdown macro instances don't
    collide on element id. #}
 {% import "_multiselect_filter.html" as ms %}
+{# Deal pages (2026-11-11): one account, opened from Team Mapping's Edit button —
+   mt_contact_id / mt_selected ({bucket: "id,id"}) / mt_return come prefilled. #}
+{% set _mt_sel = mt_selected if mt_selected is defined else {} %}
 <div class="modal fade" id="mapTeamModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-lg">
     <form method="post" action="/crm/contacts/team-mapping" class="modal-content" id="mapTeamForm">
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
       <input type="hidden" name="mode" id="mapTeamMode" value="single">
-      <div id="mapTeamContactIds"></div>
+      <div id="mapTeamContactIds">{% if mt_contact_id is defined and mt_contact_id %}<input type="hidden" name="contact_ids" value="{{ mt_contact_id }}">{% endif %}</div>
+      {% if mt_return is defined and mt_return %}<input type="hidden" name="return_to" value="{{ mt_return }}">{% endif %}
       <div class="modal-header py-2">
         <h5 class="modal-title"><i class="bi bi-people-fill me-2"></i><span id="mapTeamHeader">Map Team</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <div class="row g-3">
-          <div class="col-md-6">{{ ms.multiselect('bucket_vp_avp', 'VP/AVP', bucket_options['vp_avp'], '', width='') }}</div>
-          <div class="col-md-6">{{ ms.multiselect('bucket_manager', 'Manager', bucket_options['manager'], '', width='') }}</div>
-          <div class="col-md-6">{{ ms.multiselect('bucket_am_dm_gm', 'AM/DM/GM', bucket_options['am_dm_gm'], '', width='') }}</div>
-          <div class="col-md-6">{{ ms.multiselect('bucket_executive', 'Executive/Sr Executive', bucket_options['executive'], '', width='') }}</div>
+          {# Order (2026-11-11, Pankaj): Manager, Executive/Sr Executive, VP/AVP,
+             DM/GM/CTO/CEO, then Finance Manager (shown only here, not on the deal pages). #}
+          <div class="col-md-6">{{ ms.multiselect('bucket_manager', 'Manager', bucket_options['manager'], _mt_sel.get('manager', ''), width='') }}</div>
+          <div class="col-md-6">{{ ms.multiselect('bucket_executive', 'Executive/Sr Executive', bucket_options['executive'], _mt_sel.get('executive', ''), width='') }}</div>
+          <div class="col-md-6">{{ ms.multiselect('bucket_vp_avp', 'VP/AVP', bucket_options['vp_avp'], _mt_sel.get('vp_avp', ''), width='') }}</div>
+          <div class="col-md-6">{{ ms.multiselect('bucket_am_dm_gm', 'DM/GM/CTO/CEO', bucket_options['am_dm_gm'], _mt_sel.get('am_dm_gm', ''), width='') }}</div>
+          {# Finance team member (2026-11-09, Pankaj): users whose Designation or
+             role name has the word Finance or Accounts (services/crm_team.py). #}
+          <div class="col-md-6">{{ ms.multiselect('bucket_finance', 'Finance Manager', bucket_options['finance'], _mt_sel.get('finance', ''), width='') }}</div>
         </div>
         <p class="small text-muted mt-3 mb-0" id="mapTeamHint">
           Leaving a bucket blank clears it for this account.

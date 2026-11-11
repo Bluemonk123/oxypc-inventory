@@ -1,0 +1,72 @@
+{# Supplier Deal Pricing fields (2026-11-10, Pankaj) — shared by the Add/Edit
+   page and the Pricing card on the deal page. Needs `deal` (or None).
+   Row 1: Device Type, Est. Quantity, Condition Type. Row 2: Asking / Offer
+   prices + Margin %. Margin % = (Asking Total - Offer Total) / Asking Total;
+   typing a Margin % keeps the Asking Price and recalculates the Offer.
+   Payment Advance % removed from this card. Script: _pricing_js.html. #}
+{% set _pv = can(current_user, 'crm_sourcing', 'pricing') %}
+{% set _at = (deal.asking_price_total or 0) if deal else 0 %}
+{% set _ot = (deal.our_offer_total or 0) if deal else 0 %}
+{% set _mg = ('%.2f' % (((_at - _ot) / _at) * 100)) if (_pv and _at and _ot) else '' %}
+<div class="sp-pricing">
+  <div class="row g-3 mb-1">
+    <div class="col-md-4">
+      <label class="form-label fw-semibold">Device Type</label>
+      {% set _dt = deal.device_type if deal else '' %}
+      <select name="device_type" class="form-select">
+        <option value="">— Select —</option>
+        {% for dt in master_options('device_type') %}
+        <option value="{{ dt }}" {% if _dt == dt %}selected{% endif %}>{{ dt }}</option>
+        {% endfor %}
+        {% if _dt and _dt not in master_options('device_type') %}
+        <option value="{{ _dt }}" selected>{{ _dt }} (current)</option>
+        {% endif %}
+      </select>
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-semibold">Est. Quantity</label>
+      <input type="number" name="est_quantity" class="form-control sp-qty" min="0" value="{{ deal.est_quantity or '' if deal else '' }}" placeholder="0">
+    </div>
+    <div class="col-md-4">
+      <label class="form-label fw-semibold">Condition Type</label>
+      <select name="material_type" class="form-select">
+        <option value="">— Select —</option>
+        {% for val, label in material_types %}
+        <option value="{{ val }}" {% if deal and deal.material_type==val %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+  <div class="row g-3 row-cols-1 row-cols-md-5 mt-0">
+    <div class="col">
+      <label class="form-label fw-semibold">Asking Price / Unit (₹)</label>
+      <input type="number" name="asking_price_unit" class="form-control sp-au" step="0.01" min="0"
+        {{ price_input_attrs(current_user, 'crm_sourcing', deal.asking_price_unit or '' if deal else '', '0.00') }}>
+    </div>
+    <div class="col">
+      <label class="form-label fw-semibold">Total Asking Price (₹)</label>
+      <input type="number" name="asking_price_total" class="form-control sp-at" step="0.01" min="0"
+        {{ price_input_attrs(current_user, 'crm_sourcing', deal.asking_price_total or '' if deal else '', 'Auto-calculated') }} readonly>
+    </div>
+    <div class="col">
+      <label class="form-label fw-semibold">Our Offer / Unit (₹)</label>
+      <input type="number" name="our_offer_unit" class="form-control sp-ou" step="0.01" min="0"
+        {{ price_input_attrs(current_user, 'crm_sourcing', deal.our_offer_unit or '' if deal else '', '0.00') }}>
+    </div>
+    <div class="col">
+      <label class="form-label fw-semibold">Total Offer Price (₹)</label>
+      <input type="number" name="our_offer_total" class="form-control sp-ot" step="0.01" min="0"
+        {{ price_input_attrs(current_user, 'crm_sourcing', deal.our_offer_total or '' if deal else '', 'Auto-calculated') }} readonly>
+    </div>
+    <div class="col">
+      <label class="form-label fw-semibold">Margin %</label>
+      {% if price_field_shown(current_user, 'crm_sourcing') %}
+      <input type="number" class="form-control sp-margin" step="0.01" max="100" value="{{ _mg }}" placeholder="0.00"
+             title="(Total Asking - Total Offer) / Total Asking. Type a margin to recalculate the Offer."
+             {% if not can(current_user, 'crm_sourcing', 'pricing_add') %}readonly tabindex="-1" style="background:#e9ecef"{% endif %}>
+      {% else %}
+      <input type="number" class="form-control" disabled placeholder="—">
+      {% endif %}
+    </div>
+  </div>
+</div>
