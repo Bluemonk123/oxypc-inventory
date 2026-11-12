@@ -8,6 +8,9 @@
    psiqc = True and pm = 'pre_sale_iqc': its own permission module, a Parts Requested column and
    Start / Mark Complete / Request Part / Cancel actions instead of selling. #}
 {% set _ps = psiqc is defined and psiqc %}{% set _pm = pm if pm is defined else 'sales' %}
+{# Opening tab (2026-11-12, Pankaj): Model Summary first; Counter Sales users
+   (they sell tag by tag) and Pre-Sale IQC open on the Tags tab. #}
+{% set _ms_first = not _ps and not (tags_first is defined and tags_first) %}
 <style>
   /* Tab sets on this page — same look as Final QC's Devices Passed/Failed
      tabs: tabs sit on the page, the active one joins a white bordered panel. */
@@ -23,7 +26,10 @@
      the card body and the wrapper each added 1rem while the header had none. */
   .ready-tab-content > .tab-pane > .card { border: 0; border-radius: 0 0 .5rem .5rem; }
   .ready-tab-content > .tab-pane > .card > .card-header { padding: .5rem 1rem !important; border-radius: 0; }
-  .ready-tab-content > .tab-pane > .card > .card-body { padding: 0 !important; }
+  /* Table spacing as the Global Card (2026-11-12, Pankaj): the card body
+     gives the table its 1rem on every side — it was 0, so the table ran to
+     the panel edge (the Global Table skips its own gutter inside a card body). */
+  .ready-tab-content > .tab-pane > .card > .card-body { padding: 1rem !important; }
 </style>
 {# "N device(s) ready" + New Sale row hidden by request (2026-10-13); the
    tab badges and each table's count badge already show the counts.
@@ -129,19 +135,32 @@
 </ul>
 {% endif %}
 <ul class="nav nav-tabs ready-tabs{{ ' d-none' if _ps else '' }}" id="readyTabs" role="tablist">
+{% if _ms_first %}
   <li class="nav-item" role="presentation">
-    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#readyTagsPane" type="button" role="tab">
+    <button class="nav-link{{ ' active' if _ms_first else '' }}" data-bs-toggle="tab" data-bs-target="#readyModelSumPane" type="button" role="tab">
+      <i class="bi bi-collection me-1"></i>Ready for Sale - Model Summary <span class="badge rounded-pill bg-secondary ms-1" id="msCountBadge">{{ model_summary_ready|length }}</span>
+    </button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link{{ '' if _ms_first else ' active' }}" data-bs-toggle="tab" data-bs-target="#readyTagsPane" type="button" role="tab">
+      <i class="bi bi-upc-scan me-1"></i>Ready for Sale - Tags <span class="badge rounded-pill bg-success ms-1">{{ ready_tag_count }}</span>
+    </button>
+  </li>
+{% else %}
+  <li class="nav-item" role="presentation">
+    <button class="nav-link{{ '' if _ms_first else ' active' }}" data-bs-toggle="tab" data-bs-target="#readyTagsPane" type="button" role="tab">
       <i class="bi bi-upc-scan me-1"></i>Ready for Sale - Tags <span class="badge rounded-pill bg-success ms-1">{{ ready_tag_count }}</span>
     </button>
   </li>
   <li class="nav-item" role="presentation">
-    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#readyModelSumPane" type="button" role="tab">
+    <button class="nav-link{{ ' active' if _ms_first else '' }}" data-bs-toggle="tab" data-bs-target="#readyModelSumPane" type="button" role="tab">
       <i class="bi bi-collection me-1"></i>Ready for Sale - Model Summary <span class="badge rounded-pill bg-secondary ms-1" id="msCountBadge">{{ model_summary_ready|length }}</span>
     </button>
   </li>
+{% endif %}
 </ul>
 <div class="tab-content ready-tab-content">
-  <div class="tab-pane fade show active" id="readyTagsPane" role="tabpanel">
+  <div class="tab-pane fade{{ '' if _ms_first else ' show active' }}" id="readyTagsPane" role="tabpanel">
   <div class="card">
     {# Filters sit on the right of the card header (2026-10-16). Each filter
        still reloads the table as soon as it changes (and Select All follows
@@ -234,7 +253,7 @@
   </div>
   </div>{# /card #}
   </div>{# /readyTagsPane #}
-  <div class="tab-pane fade" id="readyModelSumPane" role="tabpanel">
+  <div class="tab-pane fade{{ ' show active' if _ms_first else '' }}" id="readyModelSumPane" role="tabpanel">
   <div class="card">
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
       <span class="fw-semibold">Model Wise Table</span>

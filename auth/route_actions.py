@@ -122,6 +122,7 @@ ROUTE_ACTIONS = {
     ('POST', '/sales/new/block'): None,  # sale_new_from_block: renders prefilled New Sale form from a block; already gated sales/add; the real write is /sales/new
     ('POST', '/sales/new'): ('sales', ('add', 'pricing_add')),  # create_sale: create sale; existing code gates require_module_perm('sales','add') (path prefix would say sales_list)
     ('POST', '/sales/change-date'): ('sales_list', 'edit'),  # change_sale_date
+    ('POST', '/sales/sales-person-links'): ('sales_list', 'edit'),  # sales_person_links_save (2026-11-12)
     ('POST', '/sales/bulk-delete'): ('sales_list', 'delete'),  # bulk_delete_sales
     ('POST', '/sales/export-selected'): ('sales_list', 'export'),  # export_selected_sales: export
     ('POST', '/sales/parse-invoice-pdf'): None,  # parse_invoice_pdf: parse/preview helper for the New Sale form

@@ -4,105 +4,485 @@
 {% block content %}
 {% import "_download_cell.html" as dl %}
 
-<!-- Business Snapshot — Dealers / Device Requests / Sales / Returns -->
-<div class="d-flex align-items-center justify-content-between mt-1 mb-2">
-  <span class="fw-semibold text-muted small">
-    <i class="bi bi-speedometer2 me-1"></i>Business Snapshot
-    {% if not is_manager_view %}<span class="badge bg-light text-dark border ms-1">My Data Only</span>
-    {% else %}<span class="badge bg-light text-dark border ms-1">All Agents</span>{% endif %}
-  </span>
-</div>
-{# Dark single-count tiles with secondary lines (2026-11-06, _tiles.html). #}
-{% import "_tiles.html" as tl %}
-{% set _sales_sec = [('Today', '₹' ~ ((sales_stats.today_revenue) | inr)), ('MTD', '₹' ~ ((sales_stats.month_revenue) | inr))] if can(current_user, 'telesales_dashboard', 'pricing') else [] %}
-<div class="oxt-row">
-  {{ tl.single(dealer_stats.total, 'My Dealers', '#0d6efd', 'bi-building', variant='dark',
-               secondary=[('Active', dealer_stats.active)],
-               href='/dealers' ~ ('' if is_manager_view else '?assigned=' ~ current_user.username)) }}
-  {{ tl.single(device_request_stats.total, 'Device Requests', '#fd7e14', 'bi-box-seam', variant='dark',
-               secondary=[('Pending', device_request_stats.pending), ('Approved', device_request_stats.approved)]) }}
-  {{ tl.single(sales_stats.today_count, "Today's Sales", '#0F7A37', 'bi-receipt', variant='dark',
-               secondary=_sales_sec, href='/sales') }}
-  {{ tl.single(returns_month_count, 'Returns (MTD)', '#dc3545', 'bi-arrow-return-left', variant='dark',
-               secondary=[('Sales this month', sales_stats.month_count)], href='/returns') }}
+{# Sales analysis (2026-11-12, Pankaj): layout from the "Telecaller Dashboard"
+   page he shared — filters, KPI tiles, daily revenue, what stands out, then
+   ranked panels — built from this month's sales (routers/telesales_dashboard.py
+   _sales_month_data). Everything below the filters redraws in the browser.
+   Without Telesales Dashboard > Pricing, amounts are hidden and every ranking
+   uses units. Non-managers see only their own sales. #}
+<style>
+  .tsd-head { display:flex; flex-wrap:wrap; align-items:flex-end; justify-content:space-between; gap:.75rem 1.5rem; margin-bottom:1rem; }
+  .tsd-eyebrow { font-size:.72rem; letter-spacing:.06em; text-transform:uppercase; color:#6c757d; }
+  .tsd-title { font-size:1.5rem; font-weight:700; margin:.1rem 0 0; }
+  .tsd-scope { color:#6c757d; font-size:.85rem; }
+  .tsd-filters { display:flex; flex-wrap:wrap; gap:.5rem; align-items:flex-end; }
+  .tsd-filters label { display:flex; flex-direction:column; gap:.2rem; font-size:.68rem; letter-spacing:.05em; text-transform:uppercase; color:#6c757d; }
+  .tsd-filters select { min-width:150px; }
+  .tsd-card { height:100%; }
+  .tsd-card .card-body { display:flex; flex-direction:column; gap:.75rem; }
+  .tsd-sub { color:#6c757d; font-size:.78rem; font-weight:400; text-transform:none; letter-spacing:0; }
+  .tsd-legend { display:flex; flex-wrap:wrap; gap:.9rem; font-size:.78rem; color:#495057; font-weight:400; text-transform:none; letter-spacing:0; }
+  .tsd-legend i, .tsd-sw { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:.35rem; vertical-align:-1px; }
+  #tsdDaily { position:relative; width:100%; }
+  #tsdDaily svg { display:block; width:100%; overflow:visible; }
+  .tsd-tip { position:absolute; pointer-events:none; background:#212529; color:#fff; font-size:.75rem; padding:.45rem .6rem; border-radius:6px; line-height:1.5; white-space:nowrap; transform:translate(-50%,-100%); z-index:5; }
+  .tsd-tbl { width:100%; font-size:.82rem; font-variant-numeric:tabular-nums; }
+  .tsd-tbl th { font-size:.68rem; letter-spacing:.05em; text-transform:uppercase; color:#6c757d; font-weight:600; text-align:right; padding:.35rem .5rem; border-bottom:1px solid #dee2e6; white-space:nowrap; }
+  .tsd-tbl td { padding:.42rem .5rem; border-bottom:1px solid #f1f3f5; text-align:right; white-space:nowrap; }
+  .tsd-tbl th:first-child, .tsd-tbl td:first-child { text-align:left; padding-left:0; }
+  .tsd-tbl td.name { white-space:normal; min-width:120px; max-width:220px; text-align:left; }
+  .tsd-tbl th.name { text-align:left; }
+  .tsd-tbl tr:last-child td { border-bottom:0; }
+  .tsd-tbl tbody tr:hover td { background:#f8f9fa; }
+  .tsd-tbl td.bar { width:32%; min-width:110px; }
+  .tsd-b { position:relative; height:8px; border-radius:0 4px 4px 0; background:#e9eef3; }
+  .tsd-b > span { position:absolute; left:0; top:0; bottom:0; background:#0d6efd; border-radius:0 4px 4px 0; }
+  .tsd-hb { display:flex; flex-direction:column; gap:.55rem; }
+  .tsd-hb .row1 { display:grid; grid-template-columns:minmax(78px,32%) minmax(0,1fr) auto; gap:.6rem; align-items:center; font-variant-numeric:tabular-nums; }
+  .tsd-hb .k { font-size:.82rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tsd-hb .v { font-size:.78rem; color:#495057; min-width:92px; text-align:right; }
+  .tsd-hb .tsd-b { height:10px; }
+  .tsd-split { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.75rem; }
+  .tsd-split .cell { border:1px solid #dee2e6; border-radius:8px; padding:.75rem; display:flex; flex-direction:column; gap:.15rem; }
+  .tsd-split .t { font-size:.8rem; color:#495057; }
+  .tsd-split .n { font-size:1.3rem; font-weight:700; font-variant-numeric:tabular-nums; }
+  .tsd-split .s { font-size:.75rem; color:#6c757d; }
+  .tsd-stack { display:flex; height:14px; border-radius:4px; overflow:hidden; gap:2px; }
+  .tsd-stack span { display:block; height:100%; }
+  .tsd-ins { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:.6rem 1.75rem; margin:0; padding:0; list-style:none; }
+  @media (max-width:760px) { .tsd-ins { grid-template-columns:minmax(0,1fr); } }
+  .tsd-ins li { display:grid; grid-template-columns:auto minmax(0,1fr); gap:.6rem; font-size:.85rem; color:#495057; }
+  .tsd-ins b { color:#212529; }
+  .tsd-ins .tag { font-size:.65rem; letter-spacing:.05em; text-transform:uppercase; padding:.12rem .4rem; border-radius:4px; height:fit-content; margin-top:.15rem; background:#e9ecef; color:#495057; white-space:nowrap; }
+  .tsd-empty { color:#6c757d; font-size:.85rem; padding:.5rem 0; }
+  .tsd-kpi .oxt-count { font-size:1.45rem; }
+  .tsd-tbl th.tsd-sort { cursor:pointer; user-select:none; }
+  .tsd-tbl th.tsd-sort:hover { color:#212529; }
+  .tsd-arrow { font-size:.65rem; opacity:.45; }
+  .tsd-arrow.on { opacity:1; color:#0d6efd; }
+</style>
+
+<div class="tsd-head">
+  <div>
+    <div class="tsd-eyebrow">
+      TeleSales Dashboard · <span id="tsdInvRange"></span>
+      <span class="badge bg-light text-dark border ms-1">{{ {'all': 'All Salespeople', 'team': 'My Team', 'own': 'My Sales Only'}[sales_scope] }}</span>
+    </div>
+    <h1 class="tsd-title">{{ sales_data.label }} Sales</h1>
+    <div class="tsd-scope" id="tsdScope">All salespeople · all stock · all brands</div>
+  </div>
+  <div class="tsd-filters">
+    <label for="tsdMonth">Month
+      <select id="tsdMonth" class="form-select form-select-sm">
+        {% for v, l in month_options %}<option value="{{ v }}"{% if v == month_sel %} selected{% endif %}>{{ l }}</option>{% endfor %}
+      </select></label>
+    <label for="fRep">Salesperson<select id="fRep" class="form-select form-select-sm"></select></label>
+    <label for="fMat">Stock type<select id="fMat" class="form-select form-select-sm"></select></label>
+    <label for="fMake">Brand<select id="fMake" class="form-select form-select-sm"></select></label>
+    <button class="btn btn-sm btn-outline-secondary" id="tsdReset" type="button"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset</button>
+  </div>
 </div>
 
-<!-- Business Snapshot detail — Device Requests / Recent Sales / Recent Returns -->
+<div class="oxt-row" id="tsdKpis"></div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span class="fw-semibold" id="tsdDailyTitle">Daily revenue</span>
+    <div class="tsd-legend"><span><i style="background:#0d6efd"></i>Ready material</span><span><i style="background:#fd7e14"></i>As-is lot</span><span><i style="background:#adb5bd"></i>Monitors &amp; accessories</span></div>
+  </div>
+  <div class="card-body">
+    <div id="tsdDaily"></div>
+    <div class="tsd-sub" id="tsdDailyNote"></div>
+  </div>
+</div>
+
+<div class="card shadow-sm mb-3">
+  <div class="card-header d-flex justify-content-between align-items-center">
+    <span class="fw-semibold">What stands out</span><span class="tsd-sub">Full month, unfiltered</span>
+  </div>
+  <div class="card-body"><ul class="tsd-ins" id="tsdInsights"></ul></div>
+</div>
+
 <div class="row g-3 mb-3">
-  <div class="col-12 col-lg-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-transparent py-2">
-        <span class="fw-semibold small"><i class="bi bi-box-seam me-1"></i>Recent Device Requests</span>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-hover mb-0" style="font-size:0.78rem">
-          <thead class="table-light"><tr><th>Device</th><th>Status</th><th>By</th></tr></thead>
-          <tbody>
-            {% for r in recent_device_requests %}
-            <tr>
-              <td>
-                {% if r.device %}<a href="/devices/{{ r.device.barcode }}" class="text-decoration-none">{{ r.device.barcode }}</a>
-                {% else %}—{% endif %}
-                <div class="text-muted" style="font-size:0.68rem">{{ r.grade or '' }}</div>
-              </td>
-              <td><span class="badge bg-{{ 'success' if r.status == 'approved' else 'warning text-dark' }}">{{ r.status | title }}</span></td>
-              <td class="text-muted">{{ r.telecaller_name or r.telecaller_username or '—' }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="3" class="text-center text-muted py-3">No device requests yet.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm tsd-card">
+      <div class="card-header d-flex justify-content-between align-items-center"><span class="fw-semibold">Salesperson performance</span><span class="tsd-sub" id="tsdRepSub"></span></div>
+      <div class="card-body"><div class="table-responsive"><table class="tsd-tbl" id="tRep"></table></div></div>
     </div>
   </div>
-  <div class="col-12 col-lg-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-transparent py-2">
-        <span class="fw-semibold small"><i class="bi bi-receipt me-1"></i>Recent Sales</span>
-      </div>
-      <div class="table-responsive">
-        <table class="table table-hover mb-0" style="font-size:0.78rem">
-          <thead class="table-light"><tr><th>Customer</th>{% if can(current_user, 'telesales_dashboard', 'pricing') %}<th>Amount</th>{% endif %}<th>Date</th></tr></thead>
-          <tbody>
-            {% for s in recent_sales %}
-            <tr>
-              <td>{{ s.customer_name or '—' }}</td>
-              {% if can(current_user, 'telesales_dashboard', 'pricing') %}<td class="fw-semibold">₹{{ ((s.sale_price) | inr) }}</td>{% endif %}
-              <td class="text-muted">{{ s.sold_at.strftime('%d-%m-%Y') if s.sold_at else '—' }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="3" class="text-center text-muted py-3">No sales recorded yet.</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-      </div>
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm tsd-card">
+      <div class="card-header d-flex justify-content-between align-items-center"><span class="fw-semibold">Top customers</span><span class="tsd-sub" id="tsdCustNote"></span></div>
+      <div class="card-body"><div class="table-responsive"><table class="tsd-tbl" id="tCust"></table></div></div>
     </div>
   </div>
-  <div class="col-12 col-lg-4">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-header bg-transparent py-2">
-        <span class="fw-semibold small"><i class="bi bi-arrow-return-left me-1"></i>Recent Returns</span>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-lg-6">
+    <div class="card shadow-sm tsd-card">
+      <div class="card-header"><span class="fw-semibold">Top models</span></div>
+      <div class="card-body"><div class="table-responsive"><table class="tsd-tbl" id="tModel"></table></div></div>
+    </div>
+  </div>
+  <div class="col-12 col-lg-6 d-flex flex-column gap-3">
+    <div class="card shadow-sm">
+      <div class="card-header"><span class="fw-semibold">Ready material vs as-is lot</span></div>
+      <div class="card-body">
+        <div class="tsd-split" id="tsdStock"></div>
+        <div class="tsd-stack" id="tsdStockBar" aria-hidden="true"></div>
+        <div class="tsd-sub" id="tsdStockNote"></div>
       </div>
-      <div class="table-responsive">
-        <table class="table table-hover mb-0" style="font-size:0.78rem">
-          <thead class="table-light"><tr><th>Sale#</th><th>Reason</th><th>Date</th></tr></thead>
-          <tbody>
-            {% for ret, sale in recent_returns %}
-            <tr>
-              <td>{{ sale.sale_number if sale else '—' }}</td>
-              <td class="text-truncate" style="max-width:120px">{{ ret.reason or '—' }}</td>
-              <td class="text-muted">{{ ret.return_date.strftime('%d-%m-%Y') if ret.return_date else '—' }}</td>
-            </tr>
-            {% else %}
-            <tr><td colspan="3" class="text-center text-muted py-3">No returns this month.</td></tr>
-            {% endfor %}
-          </tbody>
+    </div>
+    <div class="card shadow-sm flex-grow-1">
+      <div class="card-header"><span class="fw-semibold" id="tsdBrandTitle">Revenue by brand</span></div>
+      <div class="card-body"><div class="tsd-hb" id="tsdBrand"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  {% for id, t in [('tsdCpu', 'Processor'), ('tsdRam', 'RAM'), ('tsdSsd', 'Storage')] %}
+  <div class="col-12 col-lg-4">
+    <div class="card shadow-sm tsd-card">
+      <div class="card-header d-flex justify-content-between align-items-center"><span class="fw-semibold">{{ t }}</span><span class="tsd-sub">Units · computers</span></div>
+      <div class="card-body"><div class="tsd-hb" id="{{ id }}"></div></div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="modal fade" id="tsdInvModal" tabindex="-1" aria-labelledby="tsdInvTitle">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title fw-semibold" id="tsdInvTitle">Invoices</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0">
+        <table class="table table-sm table-hover align-middle mb-0" style="font-size:.85rem">
+          <thead class="table-light"><tr><th class="ps-3">Invoice Number</th><th>Invoice Date</th><th>Customer Name</th><th class="text-end pe-3">View</th></tr></thead>
+          <tbody id="tsdInvBody"></tbody>
         </table>
       </div>
     </div>
   </div>
 </div>
+
+<script type="application/json" id="tsdData">{{ sales_data | tojson }}</script>
+<script>
+(function () {
+  var D = JSON.parse(document.getElementById('tsdData').textContent);
+  var P = !!D.price;                       // amounts allowed (Pricing tick)
+  var C = {}; D.cols.forEach(function (c, i) { C[c] = i; });
+  var dict = function (c, i) { return D.dicts[c][i]; };
+  var $ = function (id) { return document.getElementById(id); };
+  var esc = function (s) { return String(s).replace(/[&<>"]/g, function (ch) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]; }); };
+  var inr = function (v) { return '₹' + Math.round(v).toLocaleString('en-IN'); };
+  // Links into the Sales List (2026-11-12): one invoice, or one customer in
+  // this dashboard's month. They open in a new tab so the dashboard stays.
+  var pad2 = function (n) { return (n < 10 ? '0' : '') + n; };
+  var MONTH_FROM = D.year + '-' + pad2(D.month) + '-01', MONTH_TO = D.year + '-' + pad2(D.month) + '-' + pad2(D.days);
+  var invUrl = function (inv) { return '/sales?invoice=' + encodeURIComponent(inv); };
+  var custUrl = function (c) { return '/sales?customer=' + encodeURIComponent(c) + '&date_from=' + MONTH_FROM + '&date_to=' + MONTH_TO; };
+  var custLink = function (c) { return (c === 'Walk-in' || c === '—') ? esc(c)
+      : '<a href="' + custUrl(c) + '" target="_blank" rel="noopener" class="text-decoration-none" title="Open this customer\'s sales">' + esc(c) + '</a>'; };
+  var invCount = function (n, kind, key) {
+    return '<a href="#" class="tsd-inv fw-semibold text-decoration-none" data-kind="' + kind + '" data-key="' + esc(key) + '" title="List these invoices">' + n + '</a>'; };
+  function short(v) { var a = Math.abs(v);
+    if (a >= 1e7) return '₹' + (v / 1e7).toFixed(2) + ' Cr';
+    if (a >= 1e5) return '₹' + (v / 1e5).toFixed(a >= 1e6 ? 1 : 2) + ' L';
+    return inr(v); }
+  var num = function (v) { return Math.round(v).toLocaleString('en-IN'); };
+  var pct = function (a, b) { return b ? (a / b * 100).toFixed(a / b < 0.1 ? 1 : 0) + '%' : '—'; };
+  // the measure every ranking uses: revenue, or units without the Pricing tick
+  var val = function (r) { return P ? r[C.price] : 1; };
+  var fmtV = function (v) { return P ? short(v) : num(v) + ' units'; };
+
+  var MAT_LABEL = { 'Ready': 'Ready material', 'As-is lot': 'As-is lot', 'Other': 'Monitors & accessories' };
+  var MAT_COLOR = { 'Ready': '#0d6efd', 'As-is lot': '#fd7e14', 'Other': '#adb5bd' };
+  var MON = new Date(D.year, D.month - 1, 1).toLocaleString('en-IN', { month: 'short' });
+  var WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  var wd = function (d) { return WD[new Date(D.year, D.month - 1, d).getDay()]; };
+  var isComputer = function (r) { var m = dict('mat', r[C.mat]); return m === 'Ready' || m === 'As-is lot'; };
+
+  if (!P) { $('tsdDailyTitle').textContent = 'Daily units sold'; $('tsdBrandTitle').textContent = 'Units by brand'; }
+  $('tsdRepSub').textContent = 'By Report To · click a column to sort';
+  $('tsdInvRange').textContent = num(D.dicts.inv.length) + ' invoices · ' + num(D.rows.length) + ' units';
+
+  $('tsdMonth').addEventListener('change', function () { location.href = '/telesales-dashboard?month=' + encodeURIComponent(this.value); });
+
+  function fill(sel, col, order) {
+    var counts = {}; D.rows.forEach(function (r) { var k = dict(col, r[C[col]]); counts[k] = (counts[k] || 0) + val(r); });
+    var keys = order ? order.filter(function (k) { return counts[k]; }) : Object.keys(counts).sort(function (a, b) { return counts[b] - counts[a]; });
+    sel.innerHTML = '<option value="">All</option>' + keys.map(function (k) {
+      return '<option value="' + esc(k) + '">' + esc(col === 'mat' ? MAT_LABEL[k] : k) + '</option>'; }).join('');
+  }
+  fill($('fRep'), 'rep'); fill($('fMat'), 'mat', ['Ready', 'As-is lot', 'Other']); fill($('fMake'), 'make');
+
+  function agg(rows, key) {
+    var m = new Map();
+    rows.forEach(function (r) { var k = key(r); var o = m.get(k);
+      if (!o) { o = { k: k, v: 0, q: 0, inv: new Set(), cust: new Set() }; m.set(k, o); }
+      o.v += val(r); o.q += 1; o.inv.add(r[C.inv]); o.cust.add(r[C.party]); });
+    return Array.from(m.values());
+  }
+  function hbars(el, items, max, fmt) {
+    if (!items.length) { el.innerHTML = '<div class="tsd-empty">No sales match these filters.</div>'; return; }
+    el.innerHTML = items.map(function (it) {
+      return '<div class="row1" title="' + esc(it.k) + ': ' + esc(fmt(it)) + '"><span class="k">' + esc(it.k) + '</span>' +
+        '<div class="tsd-b"><span style="width:' + Math.max(.6, it.x / max * 100) + '%"></span></div><span class="v">' + fmt(it) + '</span></div>'; }).join('');
+  }
+  function barCell(v, max, tot) {
+    return '<td class="bar"><div class="d-flex align-items-center gap-2"><div class="tsd-b flex-grow-1"><span style="width:' + (v / max * 100) + '%"></span></div>' +
+      '<span class="text-muted" style="min-width:36px;font-size:.75rem">' + pct(v, tot) + '</span></div></td>';
+  }
+  var EMPTY = '<tbody><tr><td class="tsd-empty">No sales match these filters.</td></tr></tbody>';
+
+  function kpi(color, icon, label, value, note) {
+    return '<div><div class="oxt-tile oxt-single oxt-tint tsd-kpi" style="--tc:' + color + '">' +
+      '<div class="oxt-count">' + value + '</div><div class="oxt-label">' + label + '</div>' +
+      '<div class="oxt-secondary">' + note + '</div><i class="bi ' + icon + ' oxt-wm" aria-hidden="true"></i></div></div>';
+  }
+
+  // Click-to-sort tables (2026-11-12). Sort choice is kept per table while
+  // filters change; the first click on a number column sorts high → low.
+  var SORT = { rep: { i: 0, dir: 1 }, cust: { i: -1, dir: 1 } };   // rep: Manager hierarchy; cust: as ranked
+  function sortTable(el, cols, items, id) {
+    if (!items.length) { el.innerHTML = EMPTY; return; }
+    var st = SORT[id], list = items.slice();
+    if (st.i >= 0) {
+      var c = cols[st.i];
+      var f = c.cmp || (c.str ? function (a, b) { return String(a[c.key]).localeCompare(String(b[c.key])); }
+                              : function (a, b) { return (b[c.key] || 0) - (a[c.key] || 0); });
+      list.sort(function (a, b) { return st.dir * f(a, b); });
+    }
+    el.innerHTML = '<thead><tr>' + cols.map(function (c, i) {
+      var on = i === st.i, arrow = on ? (st.dir === 1 ? '▲' : '▼') : '↕';
+      if (on && !c.str && !c.cmp) arrow = st.dir === 1 ? '▼' : '▲';   // numbers: first click = high → low
+      return '<th data-i="' + i + '" class="' + (c.cls ? c.cls + ' ' : '') + 'tsd-sort" role="button" title="Sort by ' + c.label + '">' +
+        c.label + ' <span class="tsd-arrow' + (on ? ' on' : '') + '">' + arrow + '</span></th>'; }).join('') + '</tr></thead><tbody>' +
+      list.map(function (o) { return '<tr>' + cols.map(function (c) {
+        return c.cell ? c.cell(o) : '<td' + (c.cls === 'name' ? ' class="name"' : '') + '>' + c.html(o) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody>';
+    el.querySelectorAll('th[data-i]').forEach(function (th) {
+      th.addEventListener('click', function () {
+        var i = +th.dataset.i;
+        if (st.i === i) st.dir = -st.dir; else { st.i = i; st.dir = 1; }
+        sortTable(el, cols, items, id);
+      });
+    });
+  }
+
+  // Invoices modal: the invoices behind a salesperson's / customer's count,
+  // within the filters showing now.
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('.tsd-inv'); if (!a) return;
+    e.preventDefault();
+    var kind = a.dataset.kind, key = a.dataset.key, m = new Map();
+    current.forEach(function (r) {
+      if (dict(kind, r[C[kind]]) !== key) return;
+      var inv = dict('inv', r[C.inv]), o = m.get(inv);
+      if (!o) { o = { inv: inv, day: r[C.day], party: dict('party', r[C.party]) }; m.set(inv, o); }
+      o.day = Math.min(o.day, r[C.day]);
+    });
+    var list = Array.from(m.values()).sort(function (x, y) { return y.day - x.day || x.inv.localeCompare(y.inv); });
+    $('tsdInvTitle').textContent = (kind === 'rep' ? 'Invoices by ' : 'Invoices for ') + key + ' — ' + list.length;
+    $('tsdInvBody').innerHTML = list.map(function (o) {
+      var u = invUrl(o.inv);
+      return '<tr><td class="ps-3"><a href="' + u + '" target="_blank" rel="noopener" class="font-monospace text-decoration-none">' + esc(o.inv) + '</a></td>' +
+        '<td>' + pad2(o.day) + ' ' + MON + ' ' + D.year + '</td><td>' + custLink(o.party) + '</td>' +
+        '<td class="text-end pe-3"><a href="' + u + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary py-0 px-2"><i class="bi bi-eye me-1"></i>View</a></td></tr>';
+    }).join('') || '<tr><td colspan="4" class="text-center text-muted py-3">No invoices.</td></tr>';
+    bootstrap.Modal.getOrCreateInstance($('tsdInvModal')).show();
+  });
+
+  var state = { rep: '', mat: '', make: '' }, current = [];
+  function render() {
+    var rows = D.rows.filter(function (r) {
+      return (!state.rep || dict('rep', r[C.rep]) === state.rep) && (!state.mat || dict('mat', r[C.mat]) === state.mat) &&
+             (!state.make || dict('make', r[C.make]) === state.make); });
+    current = rows;
+    $('tsdScope').textContent = [state.rep || 'All salespeople', state.mat ? MAT_LABEL[state.mat] : 'all stock', state.make || 'all brands'].join(' · ');
+
+    var tot = rows.reduce(function (a, r) { return a + val(r); }, 0), units = rows.length;
+    var inv = new Set(rows.map(function (r) { return r[C.inv]; })).size, cust = new Set(rows.map(function (r) { return r[C.party]; })).size;
+    var lap = rows.filter(function (r) { return dict('cat', r[C.cat]).toLowerCase() === 'laptop' && r[C.price] > 0; });
+    var lapV = lap.reduce(function (a, r) { return a + r[C.price]; }, 0);
+    var days = new Set(rows.map(function (r) { return r[C.day]; })).size;
+    var laptops = rows.filter(function (r) { return dict('cat', r[C.cat]).toLowerCase() === 'laptop'; }).length;
+    var k = [];
+    if (P) k.push(kpi('#0d6efd', 'bi-currency-rupee', 'Revenue (incl. tax)', short(tot), inr(tot)));
+    k.push(kpi('#198754', 'bi-laptop', 'Units sold', num(units), num(laptops) + ' laptops'));
+    k.push(kpi('#6f42c1', 'bi-receipt', 'Invoices', num(inv), inv && P ? 'Avg ' + short(tot / inv) + ' per invoice' : num(days) + ' selling days'));
+    k.push(kpi('#fd7e14', 'bi-people', 'Customers', num(cust), num(days) + ' selling days'));
+    if (P) k.push(kpi('#0dcaf0', 'bi-tag', 'Avg laptop price', lap.length ? inr(lapV / lap.length) : '—', 'Per unit'));
+    $('tsdKpis').innerHTML = k.join('');
+
+    drawDaily(rows);
+
+    // Salespeople — Manager (Report To) first; opens in Report To order,
+    // higher levels first. Both tables sort on any column (click a header).
+    var repIx = {}; D.dicts.rep.forEach(function (n, i) { repIx[n] = i; });
+    var reps = agg(rows, function (r) { return dict('rep', r[C.rep]); });
+    reps.forEach(function (o) { var inf = (D.rep_info || [])[repIx[o.k]] || ['', 99]; o.mgr = inf[0]; o.depth = inf[1]; o.invN = o.inv.size; o.custN = o.cust.size; o.avg = o.q ? o.v / o.q : 0; });
+    var rmax = Math.max.apply(null, reps.map(function (o) { return o.v; }).concat([1]));
+    var repCols = [
+      { key: 'mgr', label: 'Manager', cls: 'name', html: function (o) { return o.mgr ? esc(o.mgr) : '<span class="text-muted">—</span>'; },
+        cmp: function (a, b) { return a.depth - b.depth || (a.mgr || '￿').localeCompare(b.mgr || '￿') || b.v - a.v; } },
+      { key: 'k', label: 'Name', cls: 'name', html: function (o) { return esc(o.k) + (o.k === 'Unassigned' ? ' <span class="badge bg-warning-subtle text-warning-emphasis">check</span>' : ''); }, str: true }];
+    if (P) repCols.push({ key: 'v', label: 'Revenue', html: function (o) { return short(o.v); } });
+    repCols.push({ key: 'v', label: 'Share', cls: 'bar', cell: function (o) { return barCell(o.v, rmax, tot); } });
+    repCols.push({ key: 'q', label: 'Units', html: function (o) { return num(o.q); } },
+                 { key: 'invN', label: 'Invoices', html: function (o) { return invCount(o.invN, 'rep', o.k); } },
+                 { key: 'custN', label: 'Customers', html: function (o) { return o.custN; } });
+    if (P) repCols.push({ key: 'avg', label: 'Avg / unit', html: function (o) { return o.q ? inr(o.avg) : '—'; } });
+    sortTable($('tRep'), repCols, reps, 'rep');
+
+    // Customers
+    var cs = agg(rows, function (r) { return dict('party', r[C.party]); }).sort(function (a, b) { return b.v - a.v; });
+    var top = cs.slice(0, 12), cmax = (top[0] || {}).v || 1;
+    var top5 = cs.slice(0, 5).reduce(function (a, o) { return a + o.v; }, 0);
+    top.forEach(function (o) { o.invN = o.inv.size; });
+    $('tsdCustNote').textContent = cs.length ? 'Top 5 = ' + pct(top5, tot) + ' of ' + (P ? 'revenue' : 'units') + ' · ' + cs.length + ' customers' : '';
+    var custCols = [{ key: 'k', label: 'Customer', cls: 'name', html: function (o) { return custLink(o.k); }, str: true }];
+    if (P) custCols.push({ key: 'v', label: 'Revenue', html: function (o) { return short(o.v); } });
+    custCols.push({ key: 'v', label: 'Share', cls: 'bar', cell: function (o) { return barCell(o.v, cmax, tot); } },
+                  { key: 'q', label: 'Units', html: function (o) { return num(o.q); } },
+                  { key: 'invN', label: 'Inv.', html: function (o) { return invCount(o.invN, 'party', o.k); } });
+    sortTable($('tCust'), custCols, top, 'cust');
+
+    // Models
+    var ms = agg(rows, function (r) { return dict('model', r[C.model]); }).sort(function (a, b) { return b.v - a.v; }).slice(0, 12);
+    var mmax = (ms[0] || {}).v || 1;
+    $('tModel').innerHTML = ms.length ? '<thead><tr><th>Model</th><th>Units</th>' + (P ? '<th>Revenue</th>' : '') + '<th class="bar">Share</th>' + (P ? '<th>Avg / unit</th>' : '') + '</tr></thead><tbody>' +
+      ms.map(function (o) { return '<tr><td class="name">' + esc(o.k) + '</td><td>' + num(o.q) + '</td>' + (P ? '<td>' + short(o.v) + '</td>' : '') +
+        barCell(o.v, mmax, tot) + (P ? '<td>' + inr(o.v / o.q) + '</td>' : '') + '</tr>'; }).join('') + '</tbody>' : EMPTY;
+
+    // Ready vs as-is
+    var sm = {}; agg(rows, function (r) { return dict('mat', r[C.mat]); }).forEach(function (o) { sm[o.k] = o; });
+    $('tsdStock').innerHTML = ['Ready', 'As-is lot'].map(function (k) { var o = sm[k];
+      return '<div class="cell"><span class="t"><span class="tsd-sw" style="background:' + MAT_COLOR[k] + '"></span>' + MAT_LABEL[k] + '</span>' +
+        '<span class="n">' + (o ? fmtV(o.v) : '—') + '</span><span class="s">' + (o ? num(o.q) + ' units · ' + pct(o.v, tot) + ' of ' + (P ? 'revenue' : 'units') : 'No sales') + '</span>' +
+        '<span class="s">' + (o && P ? 'Avg ' + inr(o.v / o.q) + ' / unit' : '') + '</span></div>'; }).join('');
+    $('tsdStockBar').innerHTML = ['Ready', 'As-is lot', 'Other'].filter(function (k) { return sm[k] && sm[k].v > 0; })
+      .map(function (k) { return '<span title="' + MAT_LABEL[k] + ': ' + fmtV(sm[k].v) + '" style="flex:' + sm[k].v + ';background:' + MAT_COLOR[k] + '"></span>'; }).join('');
+    var r = sm['Ready'], a = sm['As-is lot'];
+    $('tsdStockNote').textContent = (P && r && a) ? 'Ready units sell for ' + ((r.v / r.q) / (a.v / a.q)).toFixed(1) + '× the as-is price, and bring ' + pct(r.v, r.v + a.v) + ' of the computer revenue.'
+      : (sm['Other'] ? 'Monitors & accessories: ' + fmtV(sm['Other'].v) + ' from ' + num(sm['Other'].q) + ' units.' : '');
+
+    // Brand
+    var br = agg(rows, function (r) { return dict('make', r[C.make]); }).sort(function (a, b) { return b.v - a.v; }).map(function (o) { o.x = o.v; return o; });
+    hbars($('tsdBrand'), br, (br[0] || {}).v || 1, function (o) { return fmtV(o.v) + ' · ' + pct(o.v, tot); });
+
+    // Configuration (computers only)
+    var comp = rows.filter(isComputer), lq = comp.length;
+    var cpu = agg(comp, function (r) { return dict('cpu', r[C.cpu]); }).map(function (o) { o.x = o.q; return o; }).sort(function (a, b) { return b.q - a.q; });
+    var top6 = cpu.slice(0, 6), rest = cpu.slice(6);
+    if (rest.length) { var rq = rest.reduce(function (s, o) { return s + o.q; }, 0); top6.push({ k: 'Other', q: rq, x: rq }); }
+    var qfmt = function (o) { return num(o.q) + ' · ' + pct(o.q, lq); };
+    hbars($('tsdCpu'), top6, Math.max.apply(null, top6.map(function (o) { return o.q; }).concat([1])), qfmt);
+    var ord = function (list) { return function (a, b) { return list.indexOf(a.k) - list.indexOf(b.k); }; };
+    var ram = agg(comp, function (r) { return dict('ram', r[C.ram]); }).map(function (o) { o.x = o.q; return o; }).sort(ord(['32 GB+', '16 GB', '8 GB', '4 GB', 'Below 4 GB', 'None / —']));
+    hbars($('tsdRam'), ram, Math.max.apply(null, ram.map(function (o) { return o.q; }).concat([1])), qfmt);
+    var ssd = agg(comp, function (r) { return dict('ssd', r[C.ssd]); }).map(function (o) { o.x = o.q; return o; }).sort(ord(['512 GB+', '256 GB', '128 GB', 'Below 128 GB', 'None']));
+    hbars($('tsdSsd'), ssd, Math.max.apply(null, ssd.map(function (o) { return o.q; }).concat([1])), qfmt);
+  }
+
+  // Daily stacked bars (hand-built SVG, as in the source dashboard)
+  function drawDaily(rows) {
+    var box = $('tsdDaily'), W = Math.max(300, box.clientWidth), H = W < 560 ? 220 : 260, N = D.days;
+    var pad = { l: 56, r: 8, t: 12, b: 34 };
+    var byDay = []; for (var i = 0; i < N; i++) byDay.push({ d: i + 1, 'Ready': 0, 'As-is lot': 0, 'Other': 0, q: 0, inv: new Set() });
+    rows.forEach(function (r) { var o = byDay[r[C.day] - 1]; o[dict('mat', r[C.mat])] += val(r); o.q += 1; o.inv.add(r[C.inv]); });
+    byDay.forEach(function (o) { o.t = o['Ready'] + o['As-is lot'] + o['Other']; });
+    var maxV = Math.max.apply(null, byDay.map(function (o) { return o.t; }).concat([1]));
+    var steps = P ? [1e4, 2e4, 5e4, 1e5, 2e5, 5e5, 1e6, 2e6, 2.5e6, 5e6, 1e7, 2e7, 5e7] : [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+    var step = steps.filter(function (s) { return maxV / s <= 5; })[0] || steps[steps.length - 1];
+    var top = Math.ceil(maxV / step) * step;
+    var iw = W - pad.l - pad.r, ih = H - pad.t - pad.b, bw = iw / N, gap = Math.min(4, bw * .25);
+    var y = function (v) { return pad.t + ih - (v / top) * ih; };
+    var lbl = function (v) { return P ? (v === 0 ? '0' : short(v)) : num(v); };
+    var s = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" height="' + H + '" role="img" aria-label="Daily sales">';
+    for (var v = 0; v <= top + 0.001; v += step) {
+      s += '<line x1="' + pad.l + '" x2="' + (W - pad.r) + '" y1="' + y(v) + '" y2="' + y(v) + '" stroke="#e9ecef"/>';
+      s += '<text x="' + (pad.l - 8) + '" y="' + (y(v) + 4) + '" text-anchor="end" font-size="11" fill="#6c757d">' + lbl(v) + '</text>';
+    }
+    byDay.forEach(function (o, i) {
+      var x = pad.l + i * bw + gap / 2, w = bw - gap, base = 0;
+      var segs = ['Ready', 'As-is lot', 'Other'].filter(function (k) { return o[k] > 0; });
+      segs.forEach(function (k, j) { var h = (o[k] / top) * ih, yy = y(base + o[k]), hh = Math.max(0, h - (j > 0 ? 2 : 0));
+        var last = j === segs.length - 1;
+        if (last && hh > 4) { var rr = Math.min(4, w / 2);
+          s += '<path d="M' + x + ',' + (yy + hh) + ' V' + (yy + rr) + ' Q' + x + ',' + yy + ' ' + (x + rr) + ',' + yy + ' H' + (x + w - rr) + ' Q' + (x + w) + ',' + yy + ' ' + (x + w) + ',' + (yy + rr) + ' V' + (yy + hh) + ' Z" fill="' + MAT_COLOR[k] + '"/>'; }
+        else s += '<rect x="' + x + '" y="' + yy + '" width="' + w + '" height="' + hh + '" fill="' + MAT_COLOR[k] + '"/>';
+        base += o[k]; });
+      var sun = wd(o.d) === 'Sun';
+      if (W >= 760 || o.d === 1 || o.d % (W < 480 ? 7 : 3) === 1 || o.d === N)
+        s += '<text x="' + (x + w / 2) + '" y="' + (H - pad.b + 15) + '" text-anchor="middle" font-size="11" fill="#6c757d">' + o.d + '</text>';
+      if (W >= 760) s += '<text x="' + (x + w / 2) + '" y="' + (H - pad.b + 28) + '" text-anchor="middle" font-size="9.5" fill="' + (sun ? '#dc3545' : '#adb5bd') + '">' + (sun ? 'Sun' : wd(o.d)[0]) + '</text>';
+      s += '<rect data-i="' + i + '" x="' + (pad.l + i * bw) + '" y="' + pad.t + '" width="' + bw + '" height="' + ih + '" fill="transparent"/>';
+    });
+    s += '<line x1="' + pad.l + '" x2="' + (W - pad.r) + '" y1="' + y(0) + '" y2="' + y(0) + '" stroke="#adb5bd"/></svg><div class="tsd-tip" hidden></div>';
+    box.innerHTML = s;
+    var tip = box.querySelector('.tsd-tip');
+    box.querySelectorAll('rect[data-i]').forEach(function (el) {
+      var show = function () { var o = byDay[+el.dataset.i], bx = +el.getAttribute('x') + bw / 2;
+        tip.innerHTML = o.q ? '<b>' + wd(o.d) + ', ' + o.d + ' ' + MON + '</b><br>' + (P ? short(o.t) + ' · ' : '') + num(o.q) + ' units · ' + o.inv.size + ' inv.<br>' +
+          ['Ready', 'As-is lot', 'Other'].filter(function (k) { return o[k] > 0; }).map(function (k) { return '<span class="tsd-sw" style="background:' + MAT_COLOR[k] + '"></span>' + MAT_LABEL[k] + ': ' + fmtV(o[k]); }).join('<br>')
+          : '<b>' + wd(o.d) + ', ' + o.d + ' ' + MON + '</b><br>No sales';
+        tip.hidden = false; var tw = tip.offsetWidth, cx = Math.min(Math.max(bx, tw / 2 + 4), W - tw / 2 - 4);
+        tip.style.left = cx + 'px'; tip.style.top = (Math.min(y(o.t), pad.t + ih - 30) - 8) + 'px';
+        el.setAttribute('fill', 'rgba(0,0,0,.05)'); };
+      var hide = function () { tip.hidden = true; el.setAttribute('fill', 'transparent'); };
+      el.addEventListener('mouseenter', show); el.addEventListener('mouseleave', hide);
+      el.addEventListener('touchstart', show, { passive: true });
+    });
+    var best = byDay.slice().sort(function (a, b) { return b.t - a.t; }).slice(0, 3).filter(function (o) { return o.t > 0; });
+    var tot = byDay.reduce(function (a, o) { return a + o.t; }, 0);
+    $('tsdDailyNote').textContent = best.length ? 'Biggest days: ' + best.map(function (o) { return o.d + ' ' + MON + ' (' + fmtV(o.t) + ')'; }).join(', ') +
+      ' — together ' + pct(best.reduce(function (a, o) { return a + o.t; }, 0), tot) + ' of the month.' : 'No sales this month.';
+  }
+
+  // What stands out — worked out from the whole month, before any filter
+  (function insights() {
+    var rows = D.rows, el = $('tsdInsights');
+    if (!rows.length) { el.innerHTML = '<li><span class="tag">Sales</span><span>No sales recorded for ' + esc(D.label) + ' yet.</span></li>'; return; }
+    var tot = rows.reduce(function (a, r) { return a + val(r); }, 0), word = P ? 'revenue' : 'units';
+    var inv = new Set(rows.map(function (r) { return r[C.inv]; })).size, cust = new Set(rows.map(function (r) { return r[C.party]; })).size;
+    var comp = rows.filter(isComputer), compV = comp.reduce(function (a, r) { return a + val(r); }, 0);
+    var out = [];
+    out.push(['Sales', '<b>' + (P ? short(tot) + ' from ' : '') + num(rows.length) + ' units</b> on ' + num(inv) + ' invoices to ' + num(cust) + ' customers. Computers are ' + pct(compV, tot) + ' of ' + word + '.']);
+    var reps = agg(rows, function (r) { return dict('rep', r[C.rep]); }).sort(function (a, b) { return b.v - a.v; });
+    if (reps.length) { var t3 = reps.slice(0, 3);
+      out.push(['Team', '<b>' + (t3.length > 1 ? 'The top ' + t3.length + ' salespeople bring ' : esc(t3[0].k) + ' brings ') + pct(t3.reduce(function (a, o) { return a + o.v; }, 0), tot) + ' of ' + word + '.</b> ' +
+        t3.map(function (o) { return esc(o.k) + ' (' + fmtV(o.v) + ')'; }).join(', ') + '. Widest book: ' +
+        esc(reps.slice().sort(function (a, b) { return b.cust.size - a.cust.size; })[0].k) + '.']); }
+    var cs = agg(rows, function (r) { return dict('party', r[C.party]); }).sort(function (a, b) { return b.v - a.v; });
+    var c5 = cs.slice(0, 5);
+    out.push(['Customers', '<b>Top ' + c5.length + ' customers = ' + pct(c5.reduce(function (a, o) { return a + o.v; }, 0), tot) + ' of ' + word + '.</b> ' +
+      c5.map(function (o) { return esc(o.k) + ' (' + fmtV(o.v) + ')'; }).join(', ') + '.']);
+    var byDay = {}; rows.forEach(function (r) { byDay[r[C.day]] = (byDay[r[C.day]] || 0) + val(r); });
+    var dd = Object.keys(byDay).map(function (d) { return { d: +d, v: byDay[d] }; }).sort(function (a, b) { return b.v - a.v; }).slice(0, 3);
+    out.push(['Timing', '<b>' + dd.map(function (o) { return o.d + ' ' + MON + ' (' + fmtV(o.v) + ')'; }).join(', ') + '</b> made ' + pct(dd.reduce(function (a, o) { return a + o.v; }, 0), tot) + ' of the month across ' + Object.keys(byDay).length + ' selling days.']);
+    var ms = agg(rows, function (r) { return dict('model', r[C.model]); }).sort(function (a, b) { return b.v - a.v; });
+    var brs = agg(rows, function (r) { return dict('make', r[C.make]); }).sort(function (a, b) { return b.v - a.v; });
+    var cpus = agg(comp, function (r) { return dict('cpu', r[C.cpu]) + ' with ' + dict('ram', r[C.ram]); }).sort(function (a, b) { return b.q - a.q; });
+    if (ms.length) out.push(['Product', '<b>' + esc(ms[0].k) + ' leads with ' + num(ms[0].q) + ' units' + (P ? ' and ' + short(ms[0].v) : '') + '</b>, ' + pct(ms[0].v, tot) + ' of ' + word + '. ' +
+      esc(brs[0].k) + ' overall is ' + pct(brs[0].v, tot) + '.' + (cpus.length ? ' Most sold configuration: ' + esc(cpus[0].k) + '.' : '')]);
+    var sm = {}; agg(rows, function (r) { return dict('mat', r[C.mat]); }).forEach(function (o) { sm[o.k] = o; });
+    var r = sm['Ready'], a = sm['As-is lot'];
+    if (r && a) out.push(['Stock', P ? '<b>Ready material earns ' + inr(r.v / r.q) + ' a unit vs ' + inr(a.v / a.q) + ' as-is.</b> Units ' + num(r.q) + ' vs ' + num(a.q) + '; ready stock brings ' + pct(r.v, r.v + a.v) + ' of computer revenue.'
+                                : '<b>' + num(r.q) + ' ready units vs ' + num(a.q) + ' as-is.</b>']);
+    el.innerHTML = out.map(function (x) { return '<li><span class="tag">' + x[0] + '</span><span>' + x[1] + '</span></li>'; }).join('');
+  })();
+
+  ['fRep', 'fMat', 'fMake'].forEach(function (id, i) {
+    $(id).addEventListener('change', function (e) { state[['rep', 'mat', 'make'][i]] = e.target.value; render(); }); });
+  $('tsdReset').addEventListener('click', function () { state = { rep: '', mat: '', make: '' }; ['fRep', 'fMat', 'fMake'].forEach(function (id) { $(id).value = ''; }); render(); });
+  var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { drawDaily(current); }, 120); });
+  render();
+})();
+</script>
 
 <!-- Telecalling Quotations (2026-11-10, Pankaj): Pending Approval | Shared.
      Pending Approval = Added / Negotiation quotations raised by people below

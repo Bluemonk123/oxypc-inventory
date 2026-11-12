@@ -351,9 +351,11 @@
   // Single-select
   var openSS = null;
   function enhanceSelect(sel) {
-    var inHeader = !sel.closest('.filter-bar-row');
+    // <select data-search> in a form (2026-11-12): a full-width field.
+    var asField = sel.hasAttribute('data-search') && !sel.closest('.filter-bar-row, .card-header');
+    var inHeader = !asField && !sel.closest('.filter-bar-row');
     var wrap = document.createElement('div');
-    wrap.className = 'ss-filter' + (inHeader ? ' ss-inline' : '');
+    wrap.className = 'ss-filter' + (inHeader ? ' ss-inline' : '') + (asField ? ' ss-field' : '');
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'form-select form-select-sm ss-btn';
@@ -367,6 +369,7 @@
       if (w) btn.style.width = w + 'px'; else btn.style.minWidth = '150px';
       if (!/form-select/.test(btn.className)) btn.className += ' form-select form-select-sm';
     }
+    if (asField) btn.className = sel.className.replace(/\b(d-none|ss-native)\b/g, '') + ' ss-btn w-100';
     sel.parentNode.insertBefore(wrap, sel);
     wrap.appendChild(btn);
     wrap.appendChild(sel);
@@ -495,7 +498,13 @@
     bar.addEventListener('click', function () { setTimeout(label, 0); });
     label();
   }
+  // For selects a page builds later (e.g. in a modal): enhanced as a full-width field.
+  window.ssEnhance = function (sel) { if (sel && !sel.closest('.ss-filter')) { sel.setAttribute('data-search', ''); enhanceSelect(sel); } };
   function initSsSearch() {
+    // Opt-in anywhere (forms too), whatever the option count (2026-11-12).
+    document.querySelectorAll('select[data-search]').forEach(function (sel) {
+      if (!sel.multiple && !sel.disabled && !sel.closest('.ss-filter')) enhanceSelect(sel);
+    });
     // Filter bars and Global Card headers (header filters still apply instantly:
     // the page's own change handler runs on the hidden select as before).
     document.querySelectorAll('.filter-bar-row select, .card-header select').forEach(function (sel) {

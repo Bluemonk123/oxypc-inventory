@@ -102,11 +102,12 @@
                staff are credited but do not all have platform logins. #}
             <div class="col-md-4">
               <label class="form-label">Sales Person Name</label>
-              <input type="text" name="sales_person" class="form-control"
-                     list="salesPersonList" placeholder="Who made this sale">
-              <datalist id="salesPersonList">
-                {% for sp in sales_person_options | default([]) %}<option value="{{ sp }}">{% endfor %}
-              </datalist>
+              {# Sales Person = a user (2026-11-12): search + select; saved with the sale as
+                 sales_person_username so reports can track each person's sales. #}
+              <select name="sales_person_username" class="form-select" data-search>
+                <option value="">— Select sales person —</option>
+                {% for u, lbl in sales_person_users | default([]) %}<option value="{{ u }}"{% if u == current_user.username %} data-me="1"{% endif %}>{{ lbl }}</option>{% endfor %}
+              </select>
             </div>
             <div class="col-md-4">
               <label class="form-label">Invoice No.</label>

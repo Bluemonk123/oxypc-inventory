@@ -1094,6 +1094,8 @@ async def _sales_csv(db: AsyncSession, from_dt=None, to_dt=None, tags=None) -> R
     if tags:
         q = q.where(func.upper(Device.barcode).in_(list(tags)))
     result = await db.execute(q.order_by(Sale.sold_at.desc()).limit(MAX_EXPORT_ROWS))
+    from utils.sales_person import linked_name_map, sales_person_display
+    _sp_names = await linked_name_map(db)   # linked Sales Person → user's full name (2026-11-12)
     rows = [{
         "sale_number": s.Sale.sale_number, "sold_at": s.Sale.sold_at, "barcode": s.barcode,
         "brand": s.brand, "model": s.model, "lot_number": s.lot_number,
@@ -1101,7 +1103,7 @@ async def _sales_csv(db: AsyncSession, from_dt=None, to_dt=None, tags=None) -> R
         "customer_phone": s.Sale.customer_phone, "payment_mode": s.Sale.payment_mode,
         "sold_by": s.Sale.sold_by,
         "device_id": s.id, "sub_category": s.sub_category,
-        "invoice_no": s.Sale.invoice_no, "sales_person": s.Sale.sales_person,
+        "invoice_no": s.Sale.invoice_no, "sales_person": sales_person_display(s.Sale, _sp_names),
         "notes": s.Sale.notes,
     } for s in result.all()]
 

@@ -30,6 +30,10 @@ class Sale(Base):
     # rather than a user FK because the people credited (floor staff, walk-in
     # counter) do not all have platform logins.
     sales_person = Column(String(100), nullable=True, index=True)
+    # The user the Sales Person is (2026-11-12, Pankaj — approved schema change):
+    # picked from the user list on New Sale, or linked afterwards on the Sales
+    # report for old free-text names. Reports (TeleSales Dashboard) group by it.
+    sales_person_username = Column(String(50), nullable=True, index=True)
     sold_at = Column(DateTime, default=app_now)
     notes = Column(Text, nullable=True)
     # ── Transport ────────────────────────────────────────────────────────────────

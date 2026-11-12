@@ -633,7 +633,10 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
     # same default as the Dashboard / All Inventory.
     from utils.master_data import default_entity_selection
     return await _ready_page(request, db, current_user, "sales/ready_list.html",
-                             extra={"entity_default": await default_entity_selection(db)})
+                             extra={"entity_default": await default_entity_selection(db),
+                                    # Counter Sales opens on the Tags tab; everyone
+                                    # else on Model Summary (2026-11-12, Pankaj).
+                                    "tags_first": getattr(current_user.role, "value", current_user.role) == "counter_sales"})
 
 
 @router.get("/sales/lots", response_class=HTMLResponse)
@@ -1555,10 +1558,11 @@ async def _sale_new_response(request: Request, barcode: str, barcodes: str, qty:
                 approved_qty = appr.qty_requested
             stock_price = _unit_stock_price(device, lot)
     next_num = await _next_sale_number(db)
-    from utils.sales_person import sales_person_options
+    from utils.sales_person import sales_person_options, sales_person_user_options
     return templates.TemplateResponse(template, {
         "request": request, "device": device, "lot": lot,
         "sales_person_options": await sales_person_options(db),
+        "sales_person_users": await sales_person_user_options(db),
         "next_sale_number": next_num, "current_user": current_user,
         "error": stage_error, "approved_qty": approved_qty,
         "stock_price": stock_price, "prefill_barcode": prefill_barcode,
@@ -1684,6 +1688,7 @@ async def create_sale(
     sale_page: str = Form(""),
     customer_name: str = Form(""),
     sales_person: str = Form(""),
+    sales_person_username: str = Form(""),
     customer_phone: str = Form(""),
     customer_state: str = Form(default=None),
     customer_address: str = Form(""),
@@ -1705,6 +1710,9 @@ async def create_sale(
     # embedded page could only render into a frame the user then had to read.
     # Ordinary form posts are unaffected and still redirect/render as before.
     xhr = request.headers.get("x-requested-with", "").lower() == "xmlhttprequest"
+    # Sales Person: the picked user (name + username), else old typed text.
+    from utils.sales_person import resolve_sales_person, sales_person_user_options
+    sp_name, sp_username = await resolve_sales_person(db, sales_person_username, sales_person)
 
     # Sold from Block Tags "Sell": tags still blocked under THIS block may be
     # sold despite the hold (selling them is the point of the block); every
@@ -1726,6 +1734,7 @@ async def create_sale(
             "next_sale_number": await _next_sale_number(db),
             "current_user": current_user, "error": message,
             "today": app_today().isoformat(),
+            "sales_person_users": await sales_person_user_options(db),
             # New Tag Sale keeps the tags on the form after an error: re-picking
             # thousands of tags would be a punishing way to report "no price".
             "prefill_barcode": (barcode or None) if sale_page == "tag" else None,
@@ -1918,7 +1927,8 @@ async def create_sale(
             customer_name=customer_name or None, customer_phone=customer_phone or None,
             customer_state=customer_state or None, customer_address=customer_address or None,
             invoice_no=invoice_no or None, payment_mode=payment_mode,
-            sold_by=current_user.username, sales_person=sales_person.strip() or None,
+            sold_by=current_user.username, sales_person=sp_name,
+            sales_person_username=sp_username,
             notes=notes or None,
             invoice_file_path=invoice_file_path or None,
             sold_at=sold_at,
@@ -2273,6 +2283,8 @@ async def export_selected_sales(
     )
     rows = result.all()
     stage_by_device = await _latest_transfer_type_by_device(db, [row.device_id for row in rows])
+    from utils.sales_person import linked_name_map, sales_person_display as _sp_display
+    _sp_names = await linked_name_map(db)
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -2289,7 +2301,7 @@ async def export_selected_sales(
             row.grade.value if row.grade else "",
             float(s.sale_price or 0),
             s.customer_name or "", s.customer_phone or "",
-            s.payment_mode or "", s.sold_by or "", s.sales_person or "", row.sub_category or "",
+            s.payment_mode or "", s.sold_by or "", _sp_display(s, _sp_names), row.sub_category or "",
             (transfer_type or "").replace("_", " ").title(), s.notes or "",
         ])
     output.seek(0)
@@ -2356,7 +2368,7 @@ def _parse_simple_date(s: str):
 
 
 def _sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from="", date_to="",
-                   stock_type="", sale_type=""):
+                   stock_type="", sale_type="", invoice=""):
     """Filter clauses shared by the Sales list page, its data endpoint, and
     its CSV export, so none of the three can ever disagree about what the
     filters mean."""
@@ -2369,9 +2381,15 @@ def _sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_fro
     if sale_no:
         w.append(Sale.sale_number.ilike(f"%{sale_no}%"))
     if sold_by_filter:
-        w.append(Sale.sold_by == sold_by_filter)
+        # The users dropdown lists linked Sales Persons (2026-11-12, Pankaj):
+        # the sales credited to that user.
+        w.append(Sale.sales_person_username == sold_by_filter)
     if customer:
         w.append(Sale.customer_name.ilike(f"%{customer}%"))
+    if invoice:
+        # One invoice exactly (2026-11-12: links from the TeleSales Dashboard);
+        # sales without an invoice number go by their Sale#.
+        w.append(func.coalesce(func.nullif(func.trim(Sale.invoice_no), ""), Sale.sale_number) == invoice.strip())
     if grade:
         w.append(Device.grade == grade)
     if lot_id:
@@ -2415,6 +2433,9 @@ def _sales_search_filter(search: str):
         Device.barcode.ilike(like), Device.brand.ilike(like),
         Device.model.ilike(like), Sale.sale_number.ilike(like),
         Sale.customer_name.ilike(like), Sale.sales_person.ilike(like),
+        # a linked Sales Person matches on the user's full name / username too
+        Sale.sales_person_username.in_(select(User.username).where(
+            or_(User.full_name.ilike(like), User.username.ilike(like)))),
         Sale.sold_by.ilike(like), Lot.lot_number.ilike(like),
         Sale.invoice_no.ilike(like),
         # Block ID of a sale made from Block Tags "Sell".
@@ -2435,6 +2456,7 @@ async def sales_list_data(
     q: str = Query(default=""),
     sale_no: str = Query(default=""),
     sold_by_filter: str = Query(default=""),
+    invoice: str = Query(default=""),
     customer: str = Query(default=""),
     grade: str = Query(default=""),
     lot_id: str = Query(default=""),
@@ -2485,7 +2507,7 @@ async def sales_list_data(
     )
 
     page_filters = _sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to,
-                   stock_type, sale_type)
+                   stock_type, sale_type, invoice=invoice)
 
     # DataTables' own search box, on top of the page's filter bar.
     search = (request.query_params.get("search[value]") or "").strip()
@@ -2528,6 +2550,8 @@ async def sales_list_data(
 
     parts_badges = await parts_badge_map(db, [r.device_id for r in rows])
     block_by_sale = await block_id_by_sale_number(db, [r.Sale.sale_number for r in rows])
+    from utils.sales_person import linked_name_map, sales_person_display as _sp_display
+    _sp_names = await linked_name_map(db)
 
     def esc(v):
         from html import escape
@@ -2623,7 +2647,11 @@ async def sales_list_data(
              else '<span class="badge bg-warning text-dark">Credit Note</span>' if s.payment_mode == "Credit Note"
              else f'<span class="badge bg-secondary">{esc(s.payment_mode or "—")}</span>'),
             f'<span class="text-muted">{esc(s.sold_by or "—")}</span>',
-            esc(s.sales_person or "—"),
+            # Linked → the user's full name only (username on hover); typed
+            # text only for sales not linked yet (2026-11-12, Pankaj).
+            (f'<span title="@{esc(s.sales_person_username)}">{esc(_sp_display(s, _sp_names))}</span>' if s.sales_person_username
+             else (esc(s.sales_person.strip()) + '<div><span class="badge bg-warning-subtle text-warning-emphasis" style="font-size:.62rem">not linked</span></div>'
+                   if (s.sales_person or "").strip() else '—')),
             (f'<a href="/sales/{s.id}/download-invoice" class="btn btn-outline-secondary btn-sm py-0 px-1" '
              f'title="Download Invoice"><i class="bi bi-download"></i></a>'
              if s.invoice_file_path else '<span class="text-muted small">—</span>'),
@@ -2655,6 +2683,7 @@ async def export_sales_filtered(
     q: str = Query(default=""),
     sale_no: str = Query(default=""),
     sold_by_filter: str = Query(default=""),
+    invoice: str = Query(default=""),
     customer: str = Query(default=""),
     grade: str = Query(default=""),
     lot_id: str = Query(default=""),
@@ -2679,11 +2708,13 @@ async def export_sales_filtered(
         .join(Device, Sale.device_id == Device.id)
         .join(Lot, Device.lot_id == Lot.id)
         .where(*_sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to,
-                   stock_type, sale_type))
+                   stock_type, sale_type, invoice=invoice))
         .order_by(Sale.sold_at.desc())
         .limit(MAX_EXPORT_ROWS)
     )).all()
     stage_by_device = await _latest_transfer_type_by_device(db, [row.device_id for row in rows])
+    from utils.sales_person import linked_name_map, sales_person_display as _sp_display
+    _sp_names = await linked_name_map(db)
 
     output = io.StringIO()
     writer = csv.writer(output)
@@ -2698,7 +2729,7 @@ async def export_sales_filtered(
             row.grade.value if row.grade else "",
             float(s.sale_price or 0),
             s.customer_name or "", s.customer_phone or "",
-            s.payment_mode or "", s.sold_by or "", s.sales_person or "", row.sub_category or "",
+            s.payment_mode or "", s.sold_by or "", _sp_display(s, _sp_names), row.sub_category or "",
             (transfer_type or "").replace("_", " ").title(), s.notes or "",
         ])
     if len(rows) == MAX_EXPORT_ROWS:
@@ -2720,6 +2751,7 @@ async def sales_list_ids(
     q: str = Query(default=""),
     sale_no: str = Query(default=""),
     sold_by_filter: str = Query(default=""),
+    invoice: str = Query(default=""),
     customer: str = Query(default=""),
     grade: str = Query(default=""),
     lot_id: str = Query(default=""),
@@ -2744,7 +2776,7 @@ async def sales_list_ids(
         .join(Lot, Device.lot_id == Lot.id)
         .where(
             *_sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to,
-                   stock_type, sale_type),
+                   stock_type, sale_type, invoice=invoice),
             *_sales_search_filter(search.strip()),
         )
         .order_by(Sale.sold_at.desc())
@@ -2846,6 +2878,7 @@ async def sales_list(
     q: str = Query(default=""),
     sale_no: str = Query(default=""),
     sold_by_filter: str = Query(default=""),
+    invoice: str = Query(default=""),
     customer: str = Query(default=""),
     grade: str = Query(default=""),
     lot_id: str = Query(default=""),
@@ -2868,7 +2901,7 @@ async def sales_list(
         .join(Device, Sale.device_id == Device.id)
         .join(Lot, Device.lot_id == Lot.id)
         .where(*_sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, date_from, date_to,
-                   stock_type, sale_type))
+                   stock_type, sale_type, invoice=invoice))
     )).scalar() or 0
     sales = []
 
@@ -2884,10 +2917,12 @@ async def sales_list(
     total_available = total_registered - total_devices_sold
 
     # ── Sales-user dropdown ──────────────────────────────────────────────────
-    sellers_result = await db.execute(
-        select(Sale.sold_by).distinct().where(Sale.sold_by.isnot(None)).order_by(Sale.sold_by)
-    )
-    sellers = [r.sold_by for r in sellers_result]
+    # Linked Sales Persons only (2026-11-12, Pankaj): [(username, full name)].
+    from utils.sales_person import linked_name_map
+    _names = await linked_name_map(db)
+    sellers = sorted(((u, _names.get(u, u)) for u in (await db.execute(
+        select(Sale.sales_person_username).distinct().where(Sale.sales_person_username.isnot(None))
+    )).scalars().all()), key=lambda x: x[1].lower())
 
     # ── Lot dropdown ─────────────────────────────────────────────────────────
     lots_result = await db.execute(select(Lot).order_by(Lot.lot_number))
@@ -2906,7 +2941,7 @@ async def sales_list(
         "q": q,
         "sale_no": sale_no, "stock_type": stock_type, "sale_type": sale_type,
         "sold_by_filter": sold_by_filter,
-        "customer": customer,
+        "customer": customer, "invoice": invoice,
         "grade": grade,
         "date_from": date_from,
         "date_to": date_to,
@@ -4339,3 +4374,74 @@ async def reject_return(
                 request=request)
     await db.commit()
     return RedirectResponse(url="/returns/pending?success=Return+rejected", status_code=302)
+
+
+# ── Link Sales Person names to users (2026-11-12, Pankaj) ─────────────────────
+# Old sales carry the Sales Person as typed text. Sales report → "Link Sales
+# Person" lists each distinct name with its sale count and links it to a user;
+# every sale with that name (same letters, ignoring case and spaces) gets the
+# user's username in sales_person_username, which the TeleSales Dashboard uses.
+
+def _sp_key(name: str) -> str:
+    return " ".join((name or "").split()).lower()
+
+
+@router.get("/sales/sales-person-links/data")
+async def sales_person_links_data(db: AsyncSession = Depends(get_db),
+                                  current_user: User = Depends(require_module_perm("sales_list", "edit"))):
+    from utils.sales_person import sales_person_user_options
+    rows = (await db.execute(
+        select(Sale.sales_person, Sale.sales_person_username, func.count(Sale.id))
+        .where(Sale.sales_person.isnot(None), func.trim(Sale.sales_person) != "")
+        .group_by(Sale.sales_person, Sale.sales_person_username))).all()
+    users = (await db.execute(select(User.username, User.full_name).where(User.status.isnot(False)))).all()   # suggest active users only
+    by_name = {}
+    for u, f in users:
+        by_name.setdefault(_sp_key(f or ""), u)
+        by_name.setdefault(_sp_key(u), u)
+    names = {}
+    for name, uname, n in rows:
+        k = _sp_key(name)
+        o = names.setdefault(k, {"name": " ".join(name.split()), "sales": 0, "linked": 0, "users": set()})
+        o["sales"] += n
+        if uname:
+            o["linked"] += n
+            o["users"].add(uname)
+    out = []
+    for k, o in names.items():
+        current = sorted(o["users"])[0] if len(o["users"]) == 1 else ""
+        out.append({"name": o["name"], "sales": o["sales"], "linked": o["linked"],
+                    "username": current, "suggested": "" if current else by_name.get(k, "")})
+    out.sort(key=lambda x: (x["linked"] >= x["sales"], -x["sales"], x["name"].lower()))
+    return {"names": out, "users": await sales_person_user_options(db)}
+
+
+@router.post("/sales/sales-person-links")
+async def sales_person_links_save(request: Request, db: AsyncSession = Depends(get_db),
+                                  current_user: User = Depends(require_module_perm("sales_list", "edit"))):
+    from services.audit_engine import audit
+    form = await request.form()
+    names, unames = form.getlist("name"), form.getlist("username")
+    valid = set((await db.execute(select(User.username))).scalars().all())
+    changed, linked_names = 0, 0
+    for name, uname in zip(names, unames):
+        uname = (uname or "").strip()
+        k = _sp_key(name)
+        if not k or (uname and uname not in valid):
+            continue
+        res = await db.execute(
+            update(Sale)
+            .where(func.lower(func.regexp_replace(func.trim(Sale.sales_person), r"\s+", " ", "g")) == k,
+                   or_(Sale.sales_person_username.is_(None), Sale.sales_person_username != (uname or None))
+                   if uname else Sale.sales_person_username.isnot(None))
+            .values(sales_person_username=uname or None)
+            .execution_options(synchronize_session=False))
+        if res.rowcount:
+            changed += res.rowcount
+            linked_names += 1
+            await audit(db, action="SALES_PERSON_LINKED", user=current_user, table_name="sales",
+                        record_id=f"name:{k}"[:50], old_value=None,
+                        new_value={"sales_person": name, "username": uname or None, "sales": res.rowcount},
+                        request=request)
+    await db.commit()
+    return JSONResponse({"ok": True, "names": linked_names, "sales": changed})

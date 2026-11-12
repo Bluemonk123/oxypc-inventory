@@ -59,11 +59,23 @@
       <input type="text" name="customer" value="{{ customer }}" title="Customer" placeholder="Customer name"
              class="form-control form-control-sm">
     </div>
+    {# One invoice (2026-11-12): set by links from the TeleSales Dashboard. #}
+    {% if invoice %}
+    <div class="d-flex align-items-center">
+      <input type="hidden" name="invoice" value="{{ invoice }}">
+      <span class="badge bg-primary-subtle text-primary-emphasis border d-inline-flex align-items-center gap-1" style="font-size:.8rem">
+        Invoice: {{ invoice }}
+        <a href="#" class="text-reset text-decoration-none" title="Clear invoice filter"
+           onclick="var f=this.closest('form'); f.querySelector('[name=invoice]').remove(); f.submit(); return false;"><i class="bi bi-x-lg"></i></a>
+      </span>
+    </div>
+    {% endif %}
     <div>
-      <select name="sold_by_filter" class="form-select form-select-sm" title="Sold By">
-        <option value="">All Users</option>
-        {% for seller in sellers %}
-        <option value="{{ seller }}" {% if sold_by_filter == seller %}selected{% endif %}>{{ seller }}</option>
+      {# Linked Sales Persons (2026-11-12): value = username, shown by full name. #}
+      <select name="sold_by_filter" class="form-select form-select-sm" title="Sales Person (linked user)">
+        <option value="">All Sales Persons</option>
+        {% for u, name in sellers %}
+        <option value="{{ u }}" {% if sold_by_filter == u %}selected{% endif %}>{{ name }}</option>
         {% endfor %}
       </select>
     </div>
@@ -111,6 +123,89 @@
 {% if can_delete_sales %}
 {# Change Sale Date (2026-10-21, admin only) — corrects sales recorded on the
    wrong day. Time of day is kept; warranty expiry moves with it. #}
+{# Link Sales Person (2026-11-12, Pankaj): each typed Sales Person name → a
+   user, so every sale with that name counts for that person (TeleSales
+   Dashboard). Names a user's full name matches exactly are pre-picked. #}
+{% if can(current_user, 'sales_list', 'edit') %}
+<div class="modal fade" id="spLinkModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h6 class="modal-title fw-semibold"><i class="bi bi-person-check me-2"></i>Link Sales Person to User</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted mb-2">Pick the user each Sales Person name belongs to. Every sale with that name
+          (same letters, ignoring capitals and spaces) is linked. <span class="text-success">Green</span> = already linked;
+          <span class="text-primary">blue</span> = suggested from a matching user name.</p>
+        <input type="search" id="spLinkSearch" class="form-control form-control-sm mb-2" placeholder="Search names…">
+        <div id="spLinkBody" class="small text-muted">Loading…</div>
+      </div>
+      <div class="modal-footer">
+        <span class="small text-muted me-auto" id="spLinkMsg"></span>
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="spLinkSave" disabled><i class="bi bi-check2 me-1"></i>Save Links</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var modal = document.getElementById('spLinkModal'), body = document.getElementById('spLinkBody');
+  var saveBtn = document.getElementById('spLinkSave'), msg = document.getElementById('spLinkMsg');
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
+  var initial = {};
+  function dirty() {
+    var n = 0; body.querySelectorAll('select[data-name]').forEach(function (s) { if (s.value !== initial[s.dataset.name]) n++; });
+    saveBtn.disabled = !n; msg.textContent = n ? n + ' name(s) to save' : '';
+  }
+  modal.addEventListener('show.bs.modal', function () {
+    body.innerHTML = 'Loading…'; saveBtn.disabled = true; msg.textContent = '';
+    fetch('/sales/sales-person-links/data', { headers: { 'Accept': 'application/json' } }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.names.length) { body.innerHTML = '<div class="text-muted py-3 text-center">No Sales Person names on any sale yet.</div>'; return; }
+      var opts = '<option value="">— Not linked —</option>' + d.users.map(function (u) { return '<option value="' + esc(u[0]) + '">' + esc(u[1]) + '</option>'; }).join('');
+      initial = {};
+      body.innerHTML = '<table class="table table-sm align-middle mb-0"><thead><tr><th>Sales Person Name</th><th class="text-end">Sales</th><th style="width:45%">User</th></tr></thead><tbody>' +
+        d.names.map(function (n, i) {
+          return '<tr data-q="' + esc(n.name.toLowerCase()) + '"><td>' + esc(n.name) +
+            (n.linked && n.linked < n.sales ? ' <span class="badge bg-warning-subtle text-warning-emphasis">' + n.linked + ' of ' + n.sales + ' linked</span>' : '') + '</td>' +
+            '<td class="text-end">' + n.sales + '</td><td><select class="form-select form-select-sm" data-name="' + esc(n.name) + '" data-i="' + i + '">' + opts + '</select></td></tr>';
+        }).join('') + '</tbody></table>';
+      d.names.forEach(function (n, i) {
+        var s = body.querySelector('select[data-i="' + i + '"]');
+        s.value = n.username || n.suggested || '';
+        if (s.selectedIndex < 0) s.value = '';   // linked to a user who is no longer active
+        initial[n.name] = (n.linked >= n.sales) ? (n.username || '') : '';   // a pre-picked value counts as a change to save
+        if (n.username && n.linked >= n.sales) s.classList.add('border-success');
+        else if (n.suggested) s.classList.add('border-primary');
+        if (window.ssEnhance) window.ssEnhance(s);
+        s.addEventListener('change', dirty);
+      });
+      dirty();
+    }).catch(function () { body.innerHTML = '<div class="text-danger">Could not load the names. Refresh and try again.</div>'; });
+  });
+  document.getElementById('spLinkSearch').addEventListener('input', function () {
+    var q = this.value.trim().toLowerCase();
+    body.querySelectorAll('tr[data-q]').forEach(function (tr) { tr.style.display = !q || tr.dataset.q.indexOf(q) >= 0 ? '' : 'none'; });
+  });
+  saveBtn.addEventListener('click', function () {
+    var fd = new FormData();
+    fd.append('csrf_token', (document.cookie.match(/(?:^|; )csrf_token=([^;]*)/) || [])[1] || '');
+    body.querySelectorAll('select[data-name]').forEach(function (s) {
+      if (s.value !== initial[s.dataset.name]) { fd.append('name', s.dataset.name); fd.append('username', s.value); }
+    });
+    saveBtn.disabled = true;
+    fetch('/sales/sales-person-links', { method: 'POST', body: fd }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.ok) throw 0;
+      msg.textContent = 'Linked ' + d.sales + ' sale(s) for ' + d.names + ' name(s).';
+      if (window.showToast) window.showToast(msg.textContent, 'success');
+      setTimeout(function () { location.reload(); }, 900);
+    }).catch(function () { msg.textContent = 'Could not save. Refresh and try again.'; saveBtn.disabled = false; });
+  });
+})();
+</script>
+{% endif %}
+
 <div class="modal fade" id="changeSaleDateModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
     <form method="post" action="/sales/change-date" class="modal-content">
@@ -147,6 +242,11 @@
       <button {% if not can(current_user, 'sales_list', 'export') %}hidden {% endif %}type="button" id="exportSelectedBtn" class="btn btn-sm btn-outline-warning text-nowrap" onclick="exportSelected()" disabled>
         <i class="bi bi-download me-1"></i>Export Selected
       </button>
+      {% if can(current_user, 'sales_list', 'edit') %}
+      <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#spLinkModal">
+        <i class="bi bi-person-check me-1"></i>Link Sales Person
+      </button>
+      {% endif %}
       {% if can_delete_sales %}
       {% if can(current_user, 'sales_list', 'edit') %}
       <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#changeSaleDateModal">
@@ -158,7 +258,7 @@
       </button>
       {% endif %}
       <a {% if not can(current_user, 'sales_list', 'export') %}hidden {% endif %}id="exportFilteredBtn" class="btn btn-sm btn-outline-success text-nowrap"
-         href="/sales/export?q={{ q | urlencode }}&stock_type={{ stock_type | urlencode }}&sale_type={{ sale_type | urlencode }}&sold_by_filter={{ sold_by_filter | urlencode }}&customer={{ customer | urlencode }}&grade={{ grade | urlencode }}&lot_id={{ selected_lot | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
+         href="/sales/export?q={{ q | urlencode }}&stock_type={{ stock_type | urlencode }}&sale_type={{ sale_type | urlencode }}&sold_by_filter={{ sold_by_filter | urlencode }}&customer={{ customer | urlencode }}&invoice={{ invoice | urlencode }}&grade={{ grade | urlencode }}&lot_id={{ selected_lot | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}">
         <i class="bi bi-download me-1"></i>Export
       </a>
       {% if can(current_user, 'sales_list', 'export') %}<a href="/reports/export/sales" class="btn btn-sm btn-outline-secondary text-nowrap">
@@ -281,7 +381,7 @@ selectAll.addEventListener('change', async function() {
   if (ck) {
     const p = new URLSearchParams(window.location.search);
     const params = new URLSearchParams();
-    ['q', 'stock_type', 'sale_type', 'sold_by_filter', 'customer', 'grade', 'lot_id', 'date_from', 'date_to']
+    ['q', 'stock_type', 'sale_type', 'sold_by_filter', 'customer', 'invoice', 'grade', 'lot_id', 'date_from', 'date_to']
       .forEach(function (k) { params.set(k, p.get(k) || ''); });
     const dt = $('#salesTable').DataTable();
     params.set('search', dt.search() || '');
@@ -363,7 +463,7 @@ $(document).ready(function() {
         // Carry the page's own filter bar through to the server so the table
         // and the filter form always describe the same set of rows.
         var p = new URLSearchParams(window.location.search);
-        ['q', 'stock_type', 'sale_type', 'sold_by_filter', 'customer', 'grade', 'lot_id', 'date_from', 'date_to']
+        ['q', 'stock_type', 'sale_type', 'sold_by_filter', 'customer', 'invoice', 'grade', 'lot_id', 'date_from', 'date_to']
           .forEach(function (k) { d[k] = p.get(k) || ''; });
       },
       dataSrc: function (json) {
