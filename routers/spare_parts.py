@@ -490,8 +490,12 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
                     "is_harvest": li.is_harvest,
                 }
 
+    # Supplier Deal card (2026-11-12, Pankaj) — same card as Inventory Manager
+    from services.supplier_deals import supplier_deal_context
+    _sd = await supplier_deal_context(db, current_user)
     return templates.TemplateResponse("spare_parts/list.html", {
         "request": request, "parts": parts, "current_user": current_user,
+        **_sd,
         "purchases": purchases, "consumptions": consumptions,
         "psiqc_reqs": psiqc_reqs,
         "stock_by_name": stock_by_name,

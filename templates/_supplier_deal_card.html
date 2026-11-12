@@ -1,0 +1,98 @@
+{# Supplier Deal card (2026-11-10, Pankaj). On Inventory Manager (/stock) and
+   Parts Manager (/spare-parts) since 2026-11-12, col-lg-4 on the left of the
+   page's tabs. Supplier (sourcing) deals at stage Stock Received → "Pending";
+   closed Won → "Received". Pending rows have ✏ Received (closes the deal Won)
+   and ✕ Reject (closes it Lost with a reason) — POST
+   /crm/sourcing/{id}/stock-receipt. Context: services/supplier_deals.py.
+   Set sd_return_to before including (where the actions come back to). #}
+{% import "_download_cell.html" as dl %}
+{% set sd_can_act = can(current_user, 'crm_sourcing', 'edit') %}
+  <div class="card border-0 shadow-sm h-100" id="stkSupplierDeals">
+    <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
+      <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1"></i>Supplier Deal</span>
+      <ul class="nav pill-tabs ms-auto" role="tablist">
+        <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#stkSdPend">Pending <span class="badge bg-warning text-dark ms-1">{{ sd_pending|length }}</span></button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#stkSdRecv">Received - {{ sd_received|length }}</button></li>
+      </ul>
+    </div>
+    <div class="card-body p-0 tab-content" style="max-height:640px;overflow-y:auto">
+      {% for pane, rows, empty, acts in [('stkSdPend', sd_pending, 'Nothing pending', sd_can_act), ('stkSdRecv', sd_received, 'Nothing received yet', false)] %}
+      <div class="tab-pane fade{% if loop.first %} show active{% endif %}" id="{{ pane }}">
+        <table class="table table-sm table-hover mb-0 small align-middle">
+          <thead class="table-light"><tr><th>Deal</th><th>Date Added</th><th>Download</th>{% if acts %}<th class="text-end">Action</th>{% endif %}</tr></thead>
+          <tbody>
+          {% for d in rows %}{% set added = sd_added.get(d.id|string) %}
+            <tr>
+              <td>
+                <div class="text-truncate" style="max-width:170px" title="{{ d.title }}">{{ d.title }}</div>
+                <a href="/crm/sourcing/{{ d.id }}" class="fw-semibold text-decoration-none text-nowrap">{{ d.deal_number }}</a>
+              </td>
+              <td class="text-nowrap">{{ added.strftime('%d-%m-%Y') if added else '—' }}</td>
+              <td>{{ dl.cell(sd_files.get(d.id|string, [])) }}</td>
+              {% if acts %}
+              <td class="text-end text-nowrap">
+                <button type="button" class="btn btn-sm btn-outline-success py-0 px-1 sd-act" title="Confirm received"
+                        data-id="{{ d.id }}" data-num="{{ d.deal_number }}" data-decision="received"><i class="bi bi-pencil-square"></i></button>
+                <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 sd-act" title="Reject deal"
+                        data-id="{{ d.id }}" data-num="{{ d.deal_number }}" data-decision="reject"><i class="bi bi-x-lg"></i></button>
+              </td>
+              {% endif %}
+            </tr>
+          {% else %}
+            <tr><td colspan="{{ 4 if acts else 3 }}" class="text-center text-muted py-3">{{ empty }}</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+{% if sd_can_act and sd_pending %}
+<div class="modal fade" id="sdActModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" id="sdActForm" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+      <input type="hidden" name="decision" id="sdActDecision">
+      <input type="hidden" name="return_to" value="{{ sd_return_to|default('/stock') }}">
+      <div class="modal-header">
+        <h6 class="modal-title" id="sdActTitle"></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small mb-2" id="sdActText"></p>
+        <label class="form-label small mb-1" id="sdActLabel" for="sdActReason"></label>
+        <textarea name="reason" id="sdActReason" class="form-control form-control-sm" rows="2" maxlength="500"></textarea>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-sm" id="sdActSubmit"></button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  var modalEl = document.getElementById('sdActModal');
+  if (!modalEl) return;
+  var form = document.getElementById('sdActForm'), reason = document.getElementById('sdActReason'),
+      submit = document.getElementById('sdActSubmit');
+  document.querySelectorAll('#stkSupplierDeals .sd-act').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var rej = btn.dataset.decision === 'reject', num = btn.dataset.num;
+      form.action = '/crm/sourcing/' + btn.dataset.id + '/stock-receipt';
+      document.getElementById('sdActDecision').value = btn.dataset.decision;
+      document.getElementById('sdActTitle').textContent = (rej ? 'Reject ' : 'Confirm received — ') + num;
+      document.getElementById('sdActText').textContent = rej
+        ? 'The deal will be closed as Lost and removed from Pending.'
+        : 'The stock is received. The deal will be closed as Won and move to Received.';
+      document.getElementById('sdActLabel').textContent = rej ? 'Reason (required)' : 'Note (optional)';
+      reason.value = ''; reason.required = rej;
+      submit.className = 'btn btn-sm ' + (rej ? 'btn-danger' : 'btn-success');
+      submit.innerHTML = rej ? '<i class="bi bi-x-lg me-1"></i>Reject' : '<i class="bi bi-check2 me-1"></i>Mark Received';
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
+  });
+})();
+</script>
+{% endif %}

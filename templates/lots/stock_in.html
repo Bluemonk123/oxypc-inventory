@@ -134,44 +134,11 @@
    main). The last-open tab is remembered per browser tab (sessionStorage) so
    a filter submit or action reload comes back to it. The filter bar above
    filters Inventory Stock. #}
-{# Supplier Deal section (2026-11-10, Pankaj): col-lg-3 on the left of the
-   tabs — Supplier Deals whose Stock Received is Pending (stage Stock Received)
-   or Done (closed Won), in pill tabs Pending | Received. #}
-{% import "_download_cell.html" as dl %}
+{# Supplier Deal card (2026-11-10, Pankaj): col-lg-4 on the left of the tabs
+   (2026-11-12: shared partial, also on Parts Manager). #}
 <div class="row g-3">
-<div class="col-lg-3">
-  <div class="card border-0 shadow-sm h-100" id="stkSupplierDeals">
-    <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
-      <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1"></i>Supplier Deal</span>
-      <ul class="nav pill-tabs ms-auto" role="tablist">
-        <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#stkSdPend">Pending <span class="badge bg-warning text-dark ms-1">{{ sd_pending|length }}</span></button></li>
-        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#stkSdRecv">Received</button></li>
-      </ul>
-    </div>
-    <div class="card-body p-0 tab-content" style="max-height:640px;overflow-y:auto">
-      {% for pane, rows, empty in [('stkSdPend', sd_pending, 'Nothing pending'), ('stkSdRecv', sd_received, 'Nothing received yet')] %}
-      <div class="tab-pane fade{% if loop.first %} show active{% endif %}" id="{{ pane }}">
-        <table class="table table-sm table-hover mb-0 small align-middle">
-          <thead class="table-light"><tr><th>Deal</th><th>Title</th><th>Download</th><th>Assigned to</th></tr></thead>
-          <tbody>
-          {% for d in rows %}{% set who = sd_assignee.get(d.id|string) or d.assigned_to %}
-            <tr>
-              <td class="text-nowrap"><a href="/crm/sourcing/{{ d.id }}" class="fw-semibold text-decoration-none">{{ d.deal_number }}</a></td>
-              <td><div class="text-truncate" style="max-width:120px" title="{{ d.title }}">{{ d.title }}</div></td>
-              <td>{{ dl.cell(sd_files.get(d.id|string, [])) }}</td>
-              <td>{{ sd_names.get(who, who) if who else '—' }}</td>
-            </tr>
-          {% else %}
-            <tr><td colspan="4" class="text-center text-muted py-3">{{ empty }}</td></tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-      {% endfor %}
-    </div>
-  </div>
-</div>
-<div class="col-lg-9">
+{% if sd_enabled %}<div class="col-lg-4">{% set sd_return_to = '/stock' %}{% include "_supplier_deal_card.html" %}</div>{% endif %}
+<div class="{{ 'col-lg-8' if sd_enabled else 'col-12' }}">
 <ul class="nav nav-tabs mb-0" id="stkTabs">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#stkInvTab" type="button">
     <i class="bi bi-archive me-1"></i>Inventory Stock</button></li>
@@ -385,7 +352,7 @@
 </div>
 </div>
 </div>{# /.tab-content #}
-</div>{# /.col-lg-9 #}
+</div>{# /.col-lg-8 #}
 </div>{# /.row Supplier Deal + tabs #}
 
 

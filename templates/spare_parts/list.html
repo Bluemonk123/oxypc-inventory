@@ -107,6 +107,11 @@
   </div>
 </form>
 
+{# Supplier Deal card (2026-11-12, Pankaj): same card as Inventory Manager,
+   col-lg-4 on the left of the tabs. #}
+<div class="row g-3">
+{% if sd_enabled %}<div class="col-lg-4">{% set sd_return_to = '/spare-parts' %}{% include "_supplier_deal_card.html" %}</div>{% endif %}
+<div class="{{ 'col-lg-8' if sd_enabled else 'col-12' }}">
 <!-- ── Tab Navigation ── -->
 <ul class="nav nav-tabs mb-0 d-flex" id="sparePartsTabs" role="tablist">
   <li class="nav-item flex-fill text-center" role="presentation">
@@ -674,6 +679,8 @@
   </div>
 
 </div>
+</div>{# /.col-lg-8 #}
+</div>{# /.row Supplier Deal + tabs #}
 
 <!-- Sourcing Request Verify modal (#4) -->
 <div class="modal fade" id="sourcingVerifyModal" tabindex="-1" aria-hidden="true">

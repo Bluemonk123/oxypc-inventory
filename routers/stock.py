@@ -1338,32 +1338,13 @@ async def stock_in_list(
     flag_users = sorted({(u.full_name or u.username) for u in (await db.execute(
         select(User).where(User.status == True)
     )).scalars().all() if (u.full_name or u.username)})
-    # Supplier Deal section (2026-11-10, Pankaj): deals at Stock Received
-    # (Pending) or closed Won after it (Received), with Download + Assigned to.
-    sd_pending, sd_received, sd_files, sd_assignee = [], [], {}, {}
-    from models.role_permissions import has_perm as _hp
-    _rv = getattr(current_user.role, "value", current_user.role)
-    if _hp(_rv, "crm_sourcing", "enable"):
-        from models.crm import CRMSourcingDeal, CRMSourcingStep
-        from services.doc_downloads import sourcing_downloads
-        _deals = (await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.stage.in_(("received", "won")))
-                                   .order_by(CRMSourcingDeal.updated_at.desc().nullslast()))).scalars().all()
-        if _deals:
-            sd_files = await sourcing_downloads(db, _deals)
-            for st in (await db.execute(select(CRMSourcingStep).where(
-                    CRMSourcingStep.deal_id.in_([d.id for d in _deals]),
-                    CRMSourcingStep.step_key == "received_assign"))).scalars().all():
-                if st.assigned_to:
-                    sd_assignee[str(st.deal_id)] = st.assigned_to
-        sd_pending = [d for d in _deals if d.stage == "received"]
-        sd_received = [d for d in _deals if d.stage == "won"]
-    sd_names = {u.username: (u.full_name or u.username) for u in (await db.execute(select(User))).scalars().all()} \
-        if (sd_pending or sd_received) else {}
+    # Supplier Deal card (2026-11-10; shared with Parts Manager 2026-11-12)
+    from services.supplier_deals import supplier_deal_context
+    _sd = await supplier_deal_context(db, current_user)
     return templates.TemplateResponse("lots/stock_in.html", {
         "request": request, "current_user": current_user,
         "flag_users": flag_users,
-        "sd_pending": sd_pending, "sd_received": sd_received, "sd_files": sd_files,
-        "sd_assignee": sd_assignee, "sd_names": sd_names,
+        **_sd,
         "analytics": analytics,
         "departments": STOCK_DEPARTMENTS,
         "total": total,

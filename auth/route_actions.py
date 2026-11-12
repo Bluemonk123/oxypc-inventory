@@ -489,6 +489,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/sourcing/{deal_id}/steps/{step_key}/attach'): ('crm_sourcing', 'upload'),  # attach_step_file: Inspection Report / Quote / Updated Quote / Invoice
     ('POST', '/crm/sourcing/{deal_id}/next-stage'): ('crm_sourcing', 'edit'),  # next_stage: Next Stage button (Won / Lost from Stock Received)
     ('POST', '/crm/sourcing/{deal_id}/link-lot'): ('crm_sourcing', 'edit'),  # link_lot
+    ('POST', '/crm/sourcing/{deal_id}/stock-receipt'): ('crm_sourcing', 'edit'),  # stock_receipt: Supplier Deal card Received / Reject (2026-11-12)
     ('POST', '/crm/sourcing/{deal_id}/po-items/add'): ('crm_sourcing', ('add', 'pricing_add')),  # add_deal_po_item
     ('POST', '/crm/sourcing/{deal_id}/po-items/{item_id}/delete'): ('crm_sourcing', 'delete'),  # delete_deal_po_item
     ('POST', '/crm/sourcing/{deal_id}/po-items/{item_id}/offer'): ('crm_sourcing', 'pricing_add'),  # set_deal_po_item_offer: offer price

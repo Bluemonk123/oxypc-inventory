@@ -708,6 +708,57 @@ async def next_stage(
     return _back(deal_id, f"Moved to {labels.get(new, new)}")
 
 
+@router.post("/{deal_id}/stock-receipt")
+async def stock_receipt(
+    request: Request, deal_id: str,
+    decision: str = Form(...),
+    reason: str = Form(default=""),
+    return_to: str = Form(default="/stock"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Supplier Deal card actions (2026-11-12, Pankaj) on Inventory Manager /
+    Parts Manager: Received closes a Stock Received deal as Won; Reject closes
+    it as Lost with a reason. Same result as Next Stage on the deal page."""
+    from urllib.parse import quote_plus
+    back = return_to if return_to.startswith("/") and not return_to.startswith("//") else "/stock"
+
+    def _ret(msg, ok=True):
+        sep = "&" if "?" in back else "?"
+        return RedirectResponse(url=f"{back}{sep}{'success' if ok else 'error'}={quote_plus(msg)}",
+                                status_code=302)
+
+    deal = (await db.execute(
+        select(CRMSourcingDeal).where(CRMSourcingDeal.id == deal_id))).scalar_one_or_none()
+    if not deal:
+        return _ret("Deal not found", ok=False)
+    if deal.stage != "received":
+        return _ret(f"{deal.deal_number} is not at Stock Received", ok=False)
+    reason = (reason or "").strip()
+    if decision == "received":
+        new = "won"
+        if reason:
+            deal.win_loss_reason = reason
+    elif decision == "reject":
+        if not reason:
+            return _ret("Enter a reason to reject the deal", ok=False)
+        new = "lost"
+        deal.win_loss_reason = reason
+    else:
+        return _ret("Choose Received or Reject", ok=False)
+    old, deal.stage = deal.stage, new
+    text = ("Stock confirmed received — Closed Won" if new == "won" else "Stock rejected — Closed Lost")
+    if reason:
+        text += f" — {reason}"
+    db.add(_note(deal, current_user, text))
+    await audit(db, action="CRM_SOURCING_STOCK_RECEIPT", user=current_user,
+                table_name="crm_sourcing_deals", record_id=str(deal.id),
+                old_value={"stage": old}, new_value={"stage": new, "win_loss_reason": deal.win_loss_reason},
+                request=request)
+    await db.commit()
+    return _ret(f"{deal.deal_number} {'marked received' if new == 'won' else 'rejected'}")
+
+
 # ── EDIT ─────────────────────────────────────────────────────────────────────
 
 @router.get("/{deal_id}/edit", response_class=HTMLResponse)

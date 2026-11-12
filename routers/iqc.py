@@ -945,6 +945,7 @@ async def iqc_bulk_apply_grade_type(
     bin_location: str = Form(""),
     min_selling_price: str = Form(""),
     model_name: str = Form(""),
+    brand: str = Form(""),
     cpu: str = Form(""),
     cpu_make: str = Form(""),
     generation: str = Form(""),
@@ -1039,7 +1040,7 @@ async def iqc_bulk_apply_grade_type(
             and not total_hdd_count.strip() and not total_hdd_size.strip()
             and not hdd_summary.strip() and not touch_type.strip() and not to_stage
             and not stock_type.strip() and not bin_location and not screen_size.strip()
-            and not model_name.strip()):
+            and not model_name.strip() and not brand.strip()):
         return RedirectResponse(url=f"{return_to}?error=Select+a+field+to+apply", status_code=302)
 
     result = await db.execute(select(Device).where(Device.barcode.in_(barcodes)))
@@ -1165,6 +1166,9 @@ async def iqc_bulk_apply_grade_type(
         # Model Name (2026-11-04): top field of the Customise modal; column is 100 chars.
         if model_name.strip():
             device.model = model_name.strip()[:100]
+        # Brand (2026-11-12): picked from Master Data → Brand; column is 50 chars.
+        if brand.strip():
+            device.brand = brand.strip()[:50]
         if cpu.strip():
             device.cpu = cpu.strip()
         if cpu_make.strip():
@@ -1252,7 +1256,7 @@ async def iqc_bulk_apply_grade_type(
                            "stock_type": stock_type or None,
                            "sub_lot_number": new_sub_lot if stock_type == "as_is" else None,
                            "bin_location": bin_location or None,
-                           "model": model_name.strip() or None,
+                           "model": model_name.strip() or None, "brand": brand.strip() or None,
                            "cpu": cpu or None, "cpu_make": cpu_make or None,
                            "generation": generation or None,
                            "ram_gb": ram_gb or None, "storage_gb": storage_gb or None,

@@ -742,7 +742,14 @@ fieldset:disabled .btn {
 .card-header .hdr-reset { color: #6c757d !important; border-color: var(--oxy-border) !important; background: var(--oxy-surface) !important;
   width: 31px; height: 31px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; }
 .card-header .hdr-reset:hover { color: var(--oxy-label) !important; background: var(--oxy-light) !important; }
-.hdr-btn-other.bg-white:hover { background-color: var(--oxy-light) !important; }
+/* Header "other" buttons (blue / red outline on white, filter-fields.js) on
+   hover/press (2026-11-12, Pankaj): a light tint of their own colour with the
+   text kept in that colour. Before, the hover background stayed near-white
+   while Bootstrap turned the text white, so the label vanished. */
+.hdr-btn-other.bg-white:is(:hover, :focus-visible, :active, .active):not(:disabled):not(.disabled) {
+  background-color: rgba(var(--bs-primary-rgb), .12) !important; color: var(--bs-primary) !important; border-color: var(--bs-primary) !important; }
+.hdr-btn-other.btn-outline-danger.bg-white:is(:hover, :focus-visible, :active, .active):not(:disabled):not(.disabled) {
+  background-color: rgba(var(--bs-danger-rgb), .1) !important; color: var(--bs-danger) !important; border-color: var(--bs-danger) !important; }
 /* Stays at the top while the options scroll (see the standard menu rules at the end). */
 .dropdown-menu .ms-search { position: sticky; top: -.5rem; z-index: 2; }
 /* One filter bar for every page (2026-11-08, Pankaj) — no variants to pick:

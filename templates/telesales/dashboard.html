@@ -57,6 +57,7 @@
   .tsd-empty { color:#6c757d; font-size:.85rem; padding:.5rem 0; }
   .tsd-kpi .oxt-count { font-size:1.45rem; }
   .tsd-tbl th.tsd-sort { cursor:pointer; user-select:none; }
+  .tsd-tbl tfoot td { border-top:2px solid #dee2e6; border-bottom:0; font-weight:700; background:#f8f9fa; white-space:nowrap; }
   .tsd-tbl th.tsd-sort:hover { color:#212529; }
   .tsd-arrow { font-size:.65rem; opacity:.45; }
   .tsd-arrow.on { opacity:1; color:#0d6efd; }
@@ -248,7 +249,7 @@
   // Click-to-sort tables (2026-11-12). Sort choice is kept per table while
   // filters change; the first click on a number column sorts high → low.
   var SORT = { rep: { i: 0, dir: 1 }, cust: { i: -1, dir: 1 } };   // rep: Manager hierarchy; cust: as ranked
-  function sortTable(el, cols, items, id) {
+  function sortTable(el, cols, items, id, foot) {
     if (!items.length) { el.innerHTML = EMPTY; return; }
     var st = SORT[id], list = items.slice();
     if (st.i >= 0) {
@@ -263,12 +264,15 @@
       return '<th data-i="' + i + '" class="' + (c.cls ? c.cls + ' ' : '') + 'tsd-sort" role="button" title="Sort by ' + c.label + '">' +
         c.label + ' <span class="tsd-arrow' + (on ? ' on' : '') + '">' + arrow + '</span></th>'; }).join('') + '</tr></thead><tbody>' +
       list.map(function (o) { return '<tr>' + cols.map(function (c) {
-        return c.cell ? c.cell(o) : '<td' + (c.cls === 'name' ? ' class="name"' : '') + '>' + c.html(o) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody>';
+        return c.cell ? c.cell(o) : '<td' + (c.cls === 'name' ? ' class="name"' : '') + '>' + c.html(o) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody>' +
+      // Total row (2026-11-12): one cell per column, '' where it doesn't add up.
+      (foot ? '<tfoot><tr class="tsd-total">' + foot.map(function (f, i) {
+        return '<td' + (cols[i].cls === 'name' ? ' class="name"' : '') + '>' + f + '</td>'; }).join('') + '</tr></tfoot>' : '');
     el.querySelectorAll('th[data-i]').forEach(function (th) {
       th.addEventListener('click', function () {
         var i = +th.dataset.i;
         if (st.i === i) st.dir = -st.dir; else { st.i = i; st.dir = 1; }
-        sortTable(el, cols, items, id);
+        sortTable(el, cols, items, id, foot);
       });
     });
   }
@@ -295,6 +299,29 @@
     }).join('') || '<tr><td colspan="4" class="text-center text-muted py-3">No invoices.</td></tr>';
     bootstrap.Modal.getOrCreateInstance($('tsdInvModal')).show();
   });
+
+  // Totals for a table's rows: revenue/units add up; invoices and customers
+  // are counted once each (one invoice can't be counted twice).
+  function totals(items) {
+    var t = { v: 0, q: 0, inv: new Set(), cust: new Set() };
+    items.forEach(function (o) { t.v += o.v; t.q += o.q; o.inv.forEach(function (x) { t.inv.add(x); }); o.cust.forEach(function (x) { t.cust.add(x); }); });
+    return t;
+  }
+  function footCells(cols, t, tot, label) {
+    return cols.map(function (c, i) {
+      if (i === 0) return '<b>' + label + '</b>';
+      if (c.cls === 'name') return '';
+      if (c.cls === 'bar') return '<span class="text-muted" style="font-size:.75rem">' + pct(t.v, tot) + '</span>';
+      switch (c.label) {
+        case 'Revenue': return short(t.v);
+        case 'Units': return num(t.q);
+        case 'Invoices': case 'Inv.': return num(t.inv.size);
+        case 'Customers': return num(t.cust.size);
+        case 'Avg / unit': return t.q ? inr(t.v / t.q) : '—';
+      }
+      return '';
+    });
+  }
 
   var state = { rep: '', mat: '', make: '' }, current = [];
   function render() {
@@ -336,7 +363,7 @@
                  { key: 'invN', label: 'Invoices', html: function (o) { return invCount(o.invN, 'rep', o.k); } },
                  { key: 'custN', label: 'Customers', html: function (o) { return o.custN; } });
     if (P) repCols.push({ key: 'avg', label: 'Avg / unit', html: function (o) { return o.q ? inr(o.avg) : '—'; } });
-    sortTable($('tRep'), repCols, reps, 'rep');
+    sortTable($('tRep'), repCols, reps, 'rep', footCells(repCols, totals(reps), tot, 'Total'));
 
     // Customers
     var cs = agg(rows, function (r) { return dict('party', r[C.party]); }).sort(function (a, b) { return b.v - a.v; });
@@ -349,7 +376,8 @@
     custCols.push({ key: 'v', label: 'Share', cls: 'bar', cell: function (o) { return barCell(o.v, cmax, tot); } },
                   { key: 'q', label: 'Units', html: function (o) { return num(o.q); } },
                   { key: 'invN', label: 'Inv.', html: function (o) { return invCount(o.invN, 'party', o.k); } });
-    sortTable($('tCust'), custCols, top, 'cust');
+    sortTable($('tCust'), custCols, top, 'cust',
+              footCells(custCols, totals(top), tot, cs.length > top.length ? 'Top ' + top.length + ' total' : 'Total'));
 
     // Models
     var ms = agg(rows, function (r) { return dict('model', r[C.model]); }).sort(function (a, b) { return b.v - a.v; }).slice(0, 12);

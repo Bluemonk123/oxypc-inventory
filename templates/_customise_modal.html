@@ -21,11 +21,19 @@
         </div>
         <div class="modal-body">
           <p class="small text-muted mb-3"><span id="customiseModalCount">0</span> item(s) selected. Leave a field blank to leave it unchanged.</p>
-          {# Model Name (2026-11-04): full width, above every other field. #}
+          {# Model Name (2026-11-04) above every other field; Brand beside it
+             (2026-11-12) — Master Data → Brand, searchable. #}
           <div class="row g-2 mb-2">
-            <div class="col-12">
+            <div class="col-md-8">
               <label class="form-label small">Model Name</label>
               <input type="text" name="model_name" maxlength="100" class="form-control form-control-sm" placeholder="Leave blank to leave unchanged">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small">Brand</label>
+              <select name="brand" class="form-select form-select-sm" data-search>
+                <option value="">— Leave unchanged —</option>
+                {% for b in master_options('brand') %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+              </select>
             </div>
           </div>
           <div class="row g-2 mb-2">
