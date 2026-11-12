@@ -3,6 +3,7 @@
 {% block page_title %}TeleSales Dashboard{% endblock %}
 {% block content %}
 {% import "_download_cell.html" as dl %}
+{% import "_multiselect_filter.html" as ms %}
 
 {# Sales analysis (2026-11-12, Pankaj): layout from the "Telecaller Dashboard"
    page he shared — filters, KPI tiles, daily revenue, what stands out, then
@@ -16,7 +17,7 @@
   .tsd-title { font-size:1.5rem; font-weight:700; margin:.1rem 0 0; }
   .tsd-scope { color:#6c757d; font-size:.85rem; }
   .tsd-filters { display:flex; flex-wrap:wrap; gap:.5rem; align-items:flex-end; }
-  .tsd-filters label { display:flex; flex-direction:column; gap:.2rem; font-size:.68rem; letter-spacing:.05em; text-transform:uppercase; color:#6c757d; }
+  .tsd-filters label, .tsd-filters .tsd-fl { display:flex; flex-direction:column; gap:.2rem; font-size:.68rem; letter-spacing:.05em; text-transform:uppercase; color:#6c757d; }
   .tsd-filters select { min-width:150px; }
   .tsd-card { height:100%; }
   .tsd-card .card-body { display:flex; flex-direction:column; gap:.75rem; }
@@ -57,6 +58,9 @@
   .tsd-empty { color:#6c757d; font-size:.85rem; padding:.5rem 0; }
   .tsd-kpi .oxt-count { font-size:1.45rem; }
   .tsd-tbl th.tsd-sort { cursor:pointer; user-select:none; }
+  /* Global Tables (2026-11-12): Share bar column keeps room for its bar. */
+  table.gtable td.bar { min-width:120px; }
+  table.gtable td.name { white-space:normal; min-width:120px; }
   .tsd-tbl tfoot td { border-top:2px solid #dee2e6; border-bottom:0; font-weight:700; background:#f8f9fa; white-space:nowrap; }
   .tsd-tbl th.tsd-sort:hover { color:#212529; }
   .tsd-arrow { font-size:.65rem; opacity:.45; }
@@ -77,10 +81,13 @@
       <select id="tsdMonth" class="form-select form-select-sm">
         {% for v, l in month_options %}<option value="{{ v }}"{% if v == month_sel %} selected{% endif %}>{{ l }}</option>{% endfor %}
       </select></label>
+    {# Entity (2026-11-12): the tags' entity, opens on OxyPC + Renew Circuits. #}
+    <div class="tsd-fl">Entity{{ ms.multiselect_inline('entity', 'Entity', entity_choices, entity_sel) }}</div>
     <label for="fRep">Salesperson<select id="fRep" class="form-select form-select-sm"></select></label>
     <label for="fMat">Stock type<select id="fMat" class="form-select form-select-sm"></select></label>
     <label for="fMake">Brand<select id="fMake" class="form-select form-select-sm"></select></label>
-    <button class="btn btn-sm btn-outline-secondary" id="tsdReset" type="button"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset</button>
+    <button class="btn btn-sm btn-primary" id="tsdApply" type="button">Apply</button>
+    <button class="btn btn-sm btn-outline-secondary bg-white" id="tsdReset" type="button" title="Reset filters" aria-label="Reset filters"><i class="bi bi-arrow-counterclockwise"></i></button>
   </div>
 </div>
 
@@ -108,13 +115,13 @@
   <div class="col-12 col-lg-6">
     <div class="card shadow-sm tsd-card">
       <div class="card-header d-flex justify-content-between align-items-center"><span class="fw-semibold">Salesperson performance</span><span class="tsd-sub" id="tsdRepSub"></span></div>
-      <div class="card-body"><div class="table-responsive"><table class="tsd-tbl" id="tRep"></table></div></div>
+      <div class="card-body"><table class="table table-hover mb-0 small" id="tRep"></table></div>
     </div>
   </div>
   <div class="col-12 col-lg-6">
     <div class="card shadow-sm tsd-card">
       <div class="card-header d-flex justify-content-between align-items-center"><span class="fw-semibold">Top customers</span><span class="tsd-sub" id="tsdCustNote"></span></div>
-      <div class="card-body"><div class="table-responsive"><table class="tsd-tbl" id="tCust"></table></div></div>
+      <div class="card-body"><table class="table table-hover mb-0 small" id="tCust"></table></div>
     </div>
   </div>
 </div>
@@ -123,7 +130,7 @@
   <div class="col-12 col-lg-6">
     <div class="card shadow-sm tsd-card">
       <div class="card-header"><span class="fw-semibold">Top models</span></div>
-      <div class="card-body"><div class="table-responsive"><table class="tsd-tbl" id="tModel"></table></div></div>
+      <div class="card-body"><table class="table table-hover mb-0 small" id="tModel"></table></div>
     </div>
   </div>
   <div class="col-12 col-lg-6 d-flex flex-column gap-3">
@@ -208,10 +215,9 @@
   var isComputer = function (r) { var m = dict('mat', r[C.mat]); return m === 'Ready' || m === 'As-is lot'; };
 
   if (!P) { $('tsdDailyTitle').textContent = 'Daily units sold'; $('tsdBrandTitle').textContent = 'Units by brand'; }
-  $('tsdRepSub').textContent = 'By Report To · click a column to sort';
+  $('tsdRepSub').textContent = 'By Report To';
   $('tsdInvRange').textContent = num(D.dicts.inv.length) + ' invoices · ' + num(D.rows.length) + ' units';
 
-  $('tsdMonth').addEventListener('change', function () { location.href = '/telesales-dashboard?month=' + encodeURIComponent(this.value); });
 
   function fill(sel, col, order) {
     var counts = {}; D.rows.forEach(function (r) { var k = dict(col, r[C[col]]); counts[k] = (counts[k] || 0) + val(r); });
@@ -235,8 +241,8 @@
         '<div class="tsd-b"><span style="width:' + Math.max(.6, it.x / max * 100) + '%"></span></div><span class="v">' + fmt(it) + '</span></div>'; }).join('');
   }
   function barCell(v, max, tot) {
-    return '<td class="bar"><div class="d-flex align-items-center gap-2"><div class="tsd-b flex-grow-1"><span style="width:' + (v / max * 100) + '%"></span></div>' +
-      '<span class="text-muted" style="min-width:36px;font-size:.75rem">' + pct(v, tot) + '</span></div></td>';
+    return '<div class="d-flex align-items-center gap-2"><div class="tsd-b flex-grow-1"><span style="width:' + (v / max * 100) + '%"></span></div>' +
+      '<span class="text-muted" style="min-width:36px;font-size:.75rem">' + pct(v, tot) + '</span></div>';
   }
   var EMPTY = '<tbody><tr><td class="tsd-empty">No sales match these filters.</td></tr></tbody>';
 
@@ -246,36 +252,23 @@
       '<div class="oxt-secondary">' + note + '</div><i class="bi ' + icon + ' oxt-wm" aria-hidden="true"></i></div></div>';
   }
 
-  // Click-to-sort tables (2026-11-12). Sort choice is kept per table while
-  // filters change; the first click on a number column sorts high → low.
-  var SORT = { rep: { i: 0, dir: 1 }, cust: { i: -1, dir: 1 } };   // rep: Manager hierarchy; cust: as ranked
-  function sortTable(el, cols, items, id, foot) {
-    if (!items.length) { el.innerHTML = EMPTY; return; }
-    var st = SORT[id], list = items.slice();
-    if (st.i >= 0) {
-      var c = cols[st.i];
-      var f = c.cmp || (c.str ? function (a, b) { return String(a[c.key]).localeCompare(String(b[c.key])); }
-                              : function (a, b) { return (b[c.key] || 0) - (a[c.key] || 0); });
-      list.sort(function (a, b) { return st.dir * f(a, b); });
-    }
-    el.innerHTML = '<thead><tr>' + cols.map(function (c, i) {
-      var on = i === st.i, arrow = on ? (st.dir === 1 ? '▲' : '▼') : '↕';
-      if (on && !c.str && !c.cmp) arrow = st.dir === 1 ? '▼' : '▲';   // numbers: first click = high → low
-      return '<th data-i="' + i + '" class="' + (c.cls ? c.cls + ' ' : '') + 'tsd-sort" role="button" title="Sort by ' + c.label + '">' +
-        c.label + ' <span class="tsd-arrow' + (on ? ' on' : '') + '">' + arrow + '</span></th>'; }).join('') + '</tr></thead><tbody>' +
-      list.map(function (o) { return '<tr>' + cols.map(function (c) {
-        return c.cell ? c.cell(o) : '<td' + (c.cls === 'name' ? ' class="name"' : '') + '>' + c.html(o) + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody>' +
-      // Total row (2026-11-12): one cell per column, '' where it doesn't add up.
-      (foot ? '<tfoot><tr class="tsd-total">' + foot.map(function (f, i) {
-        return '<td' + (cols[i].cls === 'name' ? ' class="name"' : '') + '>' + f + '</td>'; }).join('') + '</tr></tfoot>' : '');
-    el.querySelectorAll('th[data-i]').forEach(function (th) {
-      th.addEventListener('click', function () {
-        var i = +th.dataset.i;
-        if (st.i === i) st.dir = -st.dir; else { st.i = i; st.dir = 1; }
-        sortTable(el, cols, items, id, foot);
-      });
-    });
+  // Global Tables (2026-11-12, Pankaj): each table is rebuilt and handed to
+  // initGlobalTable (static/js/global-table.js) whenever the filters apply —
+  // its search, page view, paging and column sort. Each cell carries a
+  // data-order so columns sort on the real value, not the ₹ text; Manager
+  // sorts by Report To level, then manager, then revenue.
+  function gt(el, cols, items, order, foot) {
+    var jq = window.jQuery;
+    if (jq && jq.fn.DataTable && jq.fn.DataTable.isDataTable(el)) jq(el).DataTable().destroy();
+    el.innerHTML = '<thead class="table-light"><tr>' + cols.map(function (c) { return '<th' + (c.cls ? ' class="' + c.cls + '"' : '') + '>' + c.label + '</th>'; }).join('') +
+      '</tr></thead><tbody>' + items.map(function (o) { return '<tr>' + cols.map(function (c) {
+        var ord = c.ord ? c.ord(o) : (c.str ? String(o[c.key]) : (o[c.key] || 0));
+        var inner = c.cell ? c.cell(o) : c.html(o);
+        return '<td data-order="' + esc(ord) + '"' + (c.cls ? ' class="' + c.cls + '"' : '') + '>' + inner + '</td>'; }).join('') + '</tr>'; }).join('') + '</tbody>' +
+      (foot && items.length ? '<tfoot><tr>' + foot.map(function (f, i) { return '<td' + (cols[i].cls ? ' class="' + cols[i].cls + '"' : '') + '>' + f + '</td>'; }).join('') + '</tr></tfoot>' : '');
+    if (window.initGlobalTable) initGlobalTable(el, { order: order, language: { emptyTable: 'No sales match these filters.' } }, { clamp: false, dates: false });
   }
+  var pad = function (n, w) { n = String(Math.max(0, Math.round(n))); while (n.length < w) n = '0' + n; return n; };
 
   // Invoices modal: the invoices behind a salesperson's / customer's count,
   // within the filters showing now.
@@ -343,6 +336,14 @@
     k.push(kpi('#6f42c1', 'bi-receipt', 'Invoices', num(inv), inv && P ? 'Avg ' + short(tot / inv) + ' per invoice' : num(days) + ' selling days'));
     k.push(kpi('#fd7e14', 'bi-people', 'Customers', num(cust), num(days) + ' selling days'));
     if (P) k.push(kpi('#0dcaf0', 'bi-tag', 'Avg laptop price', lap.length ? inr(lapV / lap.length) : '—', 'Per unit'));
+    // Entity tile (2026-11-12): tags sold per entity, within the filters.
+    var ent = { o: 0, r: 0 };
+    rows.forEach(function (r) { var e = dict('ent', r[C.ent]).toLowerCase().replace(/[^a-z]/g, '');
+      if (e.indexOf('oxypc') === 0) ent.o++; else if (e.indexOf('renewcircuit') === 0) ent.r++; });
+    k.push('<div><div class="oxt-tile oxt-multi oxt-tint" style="--tc:#20c997"><div class="oxt-title">Entity</div>' +
+      '<div class="oxt-mline"><span class="oxt-mcount">' + num(ent.o) + '</span><span class="oxt-mlabel">OxyPC Computers</span></div>' +
+      '<div class="oxt-mline"><span class="oxt-mcount">' + num(ent.r) + '</span><span class="oxt-mlabel">Renew Circuits</span></div>' +
+      '<i class="bi bi-building oxt-wm" aria-hidden="true"></i></div></div>');
     $('tsdKpis').innerHTML = k.join('');
 
     drawDaily(rows);
@@ -355,7 +356,7 @@
     var rmax = Math.max.apply(null, reps.map(function (o) { return o.v; }).concat([1]));
     var repCols = [
       { key: 'mgr', label: 'Manager', cls: 'name', html: function (o) { return o.mgr ? esc(o.mgr) : '<span class="text-muted">—</span>'; },
-        cmp: function (a, b) { return a.depth - b.depth || (a.mgr || '￿').localeCompare(b.mgr || '￿') || b.v - a.v; } },
+        ord: function (o) { return pad(o.depth, 2) + '|' + (o.mgr || '~').toLowerCase() + '|' + pad(1e12 - o.v, 13); } },
       { key: 'k', label: 'Name', cls: 'name', html: function (o) { return esc(o.k) + (o.k === 'Unassigned' ? ' <span class="badge bg-warning-subtle text-warning-emphasis">check</span>' : ''); }, str: true }];
     if (P) repCols.push({ key: 'v', label: 'Revenue', html: function (o) { return short(o.v); } });
     repCols.push({ key: 'v', label: 'Share', cls: 'bar', cell: function (o) { return barCell(o.v, rmax, tot); } });
@@ -363,11 +364,11 @@
                  { key: 'invN', label: 'Invoices', html: function (o) { return invCount(o.invN, 'rep', o.k); } },
                  { key: 'custN', label: 'Customers', html: function (o) { return o.custN; } });
     if (P) repCols.push({ key: 'avg', label: 'Avg / unit', html: function (o) { return o.q ? inr(o.avg) : '—'; } });
-    sortTable($('tRep'), repCols, reps, 'rep', footCells(repCols, totals(reps), tot, 'Total'));
+    gt($('tRep'), repCols, reps, [[0, 'asc']], footCells(repCols, totals(reps), tot, 'Total'));
 
     // Customers
     var cs = agg(rows, function (r) { return dict('party', r[C.party]); }).sort(function (a, b) { return b.v - a.v; });
-    var top = cs.slice(0, 12), cmax = (top[0] || {}).v || 1;
+    var top = cs, cmax = (top[0] || {}).v || 1;
     var top5 = cs.slice(0, 5).reduce(function (a, o) { return a + o.v; }, 0);
     top.forEach(function (o) { o.invN = o.inv.size; });
     $('tsdCustNote').textContent = cs.length ? 'Top 5 = ' + pct(top5, tot) + ' of ' + (P ? 'revenue' : 'units') + ' · ' + cs.length + ' customers' : '';
@@ -376,15 +377,18 @@
     custCols.push({ key: 'v', label: 'Share', cls: 'bar', cell: function (o) { return barCell(o.v, cmax, tot); } },
                   { key: 'q', label: 'Units', html: function (o) { return num(o.q); } },
                   { key: 'invN', label: 'Inv.', html: function (o) { return invCount(o.invN, 'party', o.k); } });
-    sortTable($('tCust'), custCols, top, 'cust',
-              footCells(custCols, totals(top), tot, cs.length > top.length ? 'Top ' + top.length + ' total' : 'Total'));
+    gt($('tCust'), custCols, top, [[P ? 1 : 2, 'desc']], footCells(custCols, totals(top), tot, 'Total'));
 
     // Models
-    var ms = agg(rows, function (r) { return dict('model', r[C.model]); }).sort(function (a, b) { return b.v - a.v; }).slice(0, 12);
+    var ms = agg(rows, function (r) { return dict('model', r[C.model]); }).sort(function (a, b) { return b.v - a.v; });
     var mmax = (ms[0] || {}).v || 1;
-    $('tModel').innerHTML = ms.length ? '<thead><tr><th>Model</th><th>Units</th>' + (P ? '<th>Revenue</th>' : '') + '<th class="bar">Share</th>' + (P ? '<th>Avg / unit</th>' : '') + '</tr></thead><tbody>' +
-      ms.map(function (o) { return '<tr><td class="name">' + esc(o.k) + '</td><td>' + num(o.q) + '</td>' + (P ? '<td>' + short(o.v) + '</td>' : '') +
-        barCell(o.v, mmax, tot) + (P ? '<td>' + inr(o.v / o.q) + '</td>' : '') + '</tr>'; }).join('') + '</tbody>' : EMPTY;
+    ms.forEach(function (o) { o.avg = o.q ? o.v / o.q : 0; });
+    var modCols = [{ key: 'k', label: 'Model', cls: 'name', html: function (o) { return esc(o.k); }, str: true },
+                   { key: 'q', label: 'Units', html: function (o) { return num(o.q); } }];
+    if (P) modCols.push({ key: 'v', label: 'Revenue', html: function (o) { return short(o.v); } });
+    modCols.push({ key: 'v', label: 'Share', cls: 'bar', cell: function (o) { return barCell(o.v, mmax, tot); } });
+    if (P) modCols.push({ key: 'avg', label: 'Avg / unit', html: function (o) { return inr(o.avg); } });
+    gt($('tModel'), modCols, ms, [[P ? 2 : 1, 'desc']], footCells(modCols, totals(ms), tot, 'Total'));
 
     // Ready vs as-is
     var sm = {}; agg(rows, function (r) { return dict('mat', r[C.mat]); }).forEach(function (o) { sm[o.k] = o; });
@@ -504,11 +508,28 @@
     el.innerHTML = out.map(function (x) { return '<li><span class="tag">' + x[0] + '</span><span>' + x[1] + '</span></li>'; }).join('');
   })();
 
-  ['fRep', 'fMat', 'fMake'].forEach(function (id, i) {
-    $(id).addEventListener('change', function (e) { state[['rep', 'mat', 'make'][i]] = e.target.value; render(); }); });
-  $('tsdReset').addEventListener('click', function () { state = { rep: '', mat: '', make: '' }; ['fRep', 'fMat', 'fMake'].forEach(function (id) { $(id).value = ''; }); render(); });
+  // Filters apply on Apply (2026-11-12). Month / Entity reload the page's
+  // data; Salesperson / Stock type / Brand filter in the browser and ride
+  // along in the URL so a reload keeps them. Reset = the page's defaults.
+  var FKEYS = [['fRep', 'rep'], ['fMat', 'mat'], ['fMake', 'make']];
+  var qs = new URLSearchParams(location.search);
+  FKEYS.forEach(function (f) { var v = qs.get(f[1]) || '', sel = $(f[0]);
+    if (v && Array.prototype.some.call(sel.options, function (o) { return o.value === v; })) { sel.value = v; state[f[1]] = v; } });
+  var INIT_MONTH = $('tsdMonth').value, entEl = $('ms_val_entity'), INIT_ENT = entEl ? entEl.value : '';
+  $('tsdApply').addEventListener('click', function () {
+    var m = $('tsdMonth').value, e = entEl ? entEl.value : '';
+    if (m !== INIT_MONTH || e !== INIT_ENT) {
+      var p = new URLSearchParams({ month: m, entity: e });
+      FKEYS.forEach(function (f) { if ($(f[0]).value) p.set(f[1], $(f[0]).value); });
+      location.href = '/telesales-dashboard?' + p.toString(); return;
+    }
+    FKEYS.forEach(function (f) { state[f[1]] = $(f[0]).value; });
+    render();
+  });
+  $('tsdReset').addEventListener('click', function () { location.href = '/telesales-dashboard'; });
   var rt; window.addEventListener('resize', function () { clearTimeout(rt); rt = setTimeout(function () { drawDaily(current); }, 120); });
-  render();
+  // jQuery / DataTables load at the end of the page, after this script.
+  document.addEventListener('DOMContentLoaded', render);
 })();
 </script>
 
@@ -590,4 +611,7 @@
     </div>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
 {% endblock %}

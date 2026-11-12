@@ -147,14 +147,23 @@ async def telesales_dashboard(
         team = set(await managed_usernames(db, current_user.username)) | {current_user.username}
     elif not is_manager_view:
         team = {current_user.username}
+    # Entity filter (2026-11-12, Pankaj): the tags' entity; with no Entity in
+    # the URL it opens on OxyPC + Renew Circuits (same default as Dashboard).
+    from utils.master_data import entity_values, default_entity_selection
+    if "entity" in request.query_params:
+        entity_sel = request.query_params.get("entity", "")
+    else:
+        entity_sel = await default_entity_selection(db)
+    entity_list = [e.strip() for e in entity_sel.split(",") if e.strip()]
     sales_data, month_options, month_sel = await _sales_month_data(
         db, request.query_params.get("month", ""), today, team,
-        with_price=can_pricing(current_user))
+        with_price=can_pricing(current_user), entities=entity_list)
     sales_scope = ("all" if team is None else "team" if len(team) > 1 else "own")
 
     return templates.TemplateResponse("telesales/dashboard.html", {
         "sales_data": sales_data, "month_options": month_options, "month_sel": month_sel,
         "sales_scope": sales_scope,
+        "entity_choices": await entity_values(db), "entity_sel": entity_sel,
         "request": request,
         "current_user": current_user,
         "is_manager_view": is_manager_view,
@@ -221,7 +230,7 @@ def _cpu_label(d) -> str:
     return f"{c.upper()} · {g.upper()}" if g else c.upper()
 
 
-async def _sales_month_data(db, month: str, today, team, with_price: bool):
+async def _sales_month_data(db, month: str, today, team, with_price: bool, entities=None):
     """Rows for one calendar month: [day, invoice, customer, salesperson,
     brand, model, category, stock type, cpu, ram, storage, price] with every
     text column as an index into its own list (like the source dashboard)."""
@@ -243,6 +252,8 @@ async def _sales_month_data(db, month: str, today, team, with_price: bool):
          .where(Sale.sold_at >= _dt.combine(start, _dt.min.time()),
                 Sale.sold_at < _dt.combine(end, _dt.min.time()))
          .order_by(Sale.sold_at))
+    if entities:
+        q = q.where(Device.entity.in_(entities))
     urows = (await db.execute(select(User.username, User.full_name, User.reports_to))).all()
     names = {u: (f or u) for u, f, _ in urows}
     boss = {u: r for u, _, r in urows if r}
@@ -275,7 +286,7 @@ async def _sales_month_data(db, month: str, today, team, with_price: bool):
         while boss.get(u) and boss[u] not in seen and n < 15:
             u = boss[u]; seen.add(u); n += 1
         return n
-    cols = ["inv", "party", "rep", "make", "model", "cat", "mat", "cpu", "ram", "ssd"]
+    cols = ["inv", "party", "rep", "make", "model", "cat", "mat", "cpu", "ram", "ssd", "ent"]
     dicts = {c: [] for c in cols}
     index = {c: {} for c in cols}
 
@@ -316,6 +327,7 @@ async def _sales_month_data(db, month: str, today, team, with_price: bool):
             ix("cpu", _cpu_label(d)),
             ix("ram", _ram_bucket(d.ram_gb)),
             ix("ssd", _ssd_bucket(d)),
+            ix("ent", d.entity),
             round(float(sale.sale_price or 0), 2) if with_price else 0,
         ])
     # Manager column (Report To) and hierarchy order for Salesperson

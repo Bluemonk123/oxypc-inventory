@@ -1066,6 +1066,14 @@ table.gtable tbody tr:hover > td.dataTables_empty,
    non-clickable summary rather than a data row (2026-10-17). Overrides each
    page's own tfoot class (table-light / table-dark) and the frozen first
    column's white background, so every Global Table total looks the same. */
+/* Total row sits flush on the table's bottom edge (2026-11-12): DataTables'
+   bootstrap5 CSS gives every table.dataTable a 6px bottom margin and only
+   zeroes it for the scroll head / body copies, so the footer copy left a
+   white strip under the Total row. With a footer, the footer (not the rows)
+   gets the rounded bottom corners. */
+.gtable-scroll-wrap .dataTables_scrollFoot > .dataTables_scrollFootInner > table { margin-bottom: 0 !important; }
+.gtable-cards .gtable-scroll-wrap:has(> .dataTables_scrollFoot) .dataTables_scrollBody { clip-path: none; }
+.gtable-cards .gtable-scroll-wrap .dataTables_scrollFoot { clip-path: inset(0 round 0 0 12px 12px); }
 .gtable-cards table.gtable tfoot { --bs-table-bg: #e9ecef; --bs-table-color: #212529; }
 .gtable-cards table.gtable tfoot td,
 .gtable-cards table.gtable tfoot th {
