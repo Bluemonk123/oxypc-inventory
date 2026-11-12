@@ -430,7 +430,10 @@
     function show() {
       if (openSS && openSS !== hide) openSS(false);
       build();
-      document.body.appendChild(menu);
+      // Inside a Bootstrap modal the menu must live in the modal: the modal
+      // keeps keyboard focus inside itself, so a search box attached to
+      // <body> could not be typed into (2026-11-12, Link Sales Person).
+      (sel.closest('.modal') || document.body).appendChild(menu);
       place();
       menu.classList.add('show');
       btn.classList.add('show');
