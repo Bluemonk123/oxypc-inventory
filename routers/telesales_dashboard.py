@@ -243,17 +243,31 @@ async def _sales_month_data(db, month: str, today, team, with_price: bool):
          .where(Sale.sold_at >= _dt.combine(start, _dt.min.time()),
                 Sale.sold_at < _dt.combine(end, _dt.min.time()))
          .order_by(Sale.sold_at))
-    if team is not None:
-        # The team's sales: credited to one of them as Sales Person, or (when
-        # no Sales Person is linked) recorded by one of them.
-        from sqlalchemy import or_, and_
-        q = q.where(or_(Sale.sales_person_username.in_(team),
-                        and_(Sale.sales_person_username.is_(None), Sale.sold_by.in_(team))))
-    rows = (await db.execute(q)).all()
-
     urows = (await db.execute(select(User.username, User.full_name, User.reports_to))).all()
     names = {u: (f or u) for u, f, _ in urows}
     boss = {u: r for u, _, r in urows if r}
+    # A typed Sales Person that spells a user's full name or username (ignoring
+    # capitals and spaces) counts as that user even before it is linked on
+    # the Sales report — old sales only have the typed name (2026-11-12).
+    key = lambda t: " ".join((t or "").split()).lower()
+    by_name = {}
+    for u, f, _ in urows:
+        by_name.setdefault(key(f), u)
+        by_name.setdefault(key(u), u)
+    by_name.pop("", None)
+
+    if team is not None:
+        # The team's sales: credited to one of them (linked Sales Person, or a
+        # typed Sales Person that is one of their names), or — with no Sales
+        # Person at all — recorded by one of them.
+        from sqlalchemy import or_, and_
+        typed = [k for k, u in by_name.items() if u in team]
+        sp_key = func.lower(func.regexp_replace(func.trim(Sale.sales_person), r"\s+", " ", "g"))
+        no_sp = or_(Sale.sales_person.is_(None), func.trim(Sale.sales_person) == "")
+        q = q.where(or_(Sale.sales_person_username.in_(team),
+                        and_(Sale.sales_person_username.is_(None), sp_key.in_(typed or ["\x00"])),
+                        and_(Sale.sales_person_username.is_(None), no_sp, Sale.sold_by.in_(team))))
+    rows = (await db.execute(q)).all()
 
     def depth(u):
         """Levels above this user in Report To (0 = top of the tree)."""
@@ -280,6 +294,10 @@ async def _sales_month_data(db, month: str, today, team, with_price: bool):
         if sale.sales_person_username:
             rep = names.get(sale.sales_person_username, sale.sales_person_username)
             rep_user.setdefault(rep, sale.sales_person_username)
+        elif by_name.get(key(sale.sales_person)):
+            u = by_name[key(sale.sales_person)]            # typed name = a user
+            rep = names.get(u, u)
+            rep_user.setdefault(rep, u)
         elif (sale.sales_person or "").strip():
             rep = sale.sales_person.strip()
         else:
