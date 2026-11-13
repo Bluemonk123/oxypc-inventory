@@ -96,6 +96,7 @@
   }
   #stockTable thead th.stock-sticky-col { z-index: 4; background: #0e3a7a; }
   #stockTable th { white-space: nowrap; }
+  .stock-total-bar { background: #e9ecef; border-top: 1px solid var(--bs-border-color); padding: .5rem .75rem; }
 </style>
 <div class="row g-3 cat-row"><div class="col-12 cat-left"><div class="cat-pane">
 
@@ -114,18 +115,24 @@
 
 {% if visible_lots %}
 <div class="card shadow-sm mb-3 cat-pane cat-card">
-  <div class="card-header flex-shrink-0"><span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Lots Available to You</span></div>
+  <div class="card-header flex-shrink-0"><span class="fw-semibold"><i class="bi bi-box-seam me-2"></i>Available Lots</span>
+    {# Category filter (2026-11-13, Pankaj) — placed right of the search box by the script. #}
+    <select id="lotCatFilter" class="form-select form-select-sm flex-shrink-0" style="width:auto;max-width:180px" aria-label="Category">
+      <option value="">All Categories</option>
+      {# Laptop selected by default (2026-11-13, Pankaj). #}
+      {% for c in lot_categories %}<option value="{{ c }}"{% if c|lower == 'laptop' %} selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select></div>
   <div class="cat-scroll cat-scroll-lots">
     <table class="table table-sm table-hover mb-0 align-middle" id="lotsTable" style="width:100%">
       <thead class="table-light">
         {# Headers (2026-11-11 PM, Pankaj): Lot, Category, Quantity, Price, Highest Bid, Action — never wrapped #}
-        <tr class="text-nowrap"><th class="ps-2">Lot</th><th>Category</th><th>Quantity</th>
+        <tr class="text-nowrap"><th class="ps-2">Lot</th><th>Category</th><th>QTY</th>
             <th>Price</th><th>Highest Bid</th><th>Actions</th></tr>
       </thead>
       <tbody>
         {% for l in visible_lots %}
         {% set b = lot_bids.get(l.id) %}
-        <tr>
+        <tr data-cats="{{ l.categories | map('first') | join('|') }}">
           <td class="ps-2">
             {# Clicking the lot opens its model-wise stock breakdown. #}
             <a href="#" class="font-monospace text-decoration-none lot-stock-link"
@@ -201,7 +208,7 @@
    left and by the search box. #}
 <div class="card shadow-sm cat-pane cat-card" id="availableStock">
   <div class="card-header flex-shrink-0">
-    <span class="fw-semibold">Available Stock</span>
+    <span class="fw-semibold">Stock in Selected Lot</span>
     <div class="d-flex align-items-center gap-2 stock-badges ms-auto">
       <span class="badge bg-secondary d-none" id="stockLotChip"></span>
       {# Selected lot / all lots visible to this dealer (unit counts). #}
@@ -215,14 +222,16 @@
     <table class="table table-sm table-hover mb-0 align-middle" id="stockTable" style="width:100%">
       <thead class="table-light">
         <tr>
-          <th class="ps-2 stock-sticky-col">Model</th><th>CPU</th><th>Generation</th>
-          <th>RAM</th><th>RAM Capacity</th><th>HDD</th><th>HDD Capacity</th><th>SSD Capacity</th>
-          <th class="text-end">Count of Model</th>
+          <th class="ps-2 stock-sticky-col">Model</th><th class="text-end">QTY</th><th>CPU</th><th>Generation</th>
+          <th>RAM</th><th>RAM Capacity</th><th>HDD</th><th>HDD Capacity</th><th>SSD Capacity</th><th>Screen Size</th>
         </tr>
       </thead>
       <tbody></tbody>{# grouped rows built from #stockData for the selected lot, see the script #}
-      <tfoot><tr class="fw-semibold"><td class="ps-2 stock-sticky-col">Grand Total</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="text-end" id="stockGrandTotal">0</td></tr></tfoot>
     </table>
+  </div>
+  {# Grand Total pinned to the bottom of the card (2026-11-13, Pankaj). #}
+  <div class="card-footer flex-shrink-0 d-flex align-items-center justify-content-between fw-semibold stock-total-bar">
+    <span>Grand Total</span><span><span id="stockGrandTotal">0</span> QTY</span>
   </div>
 {% else %}
   <div class="card-body text-center text-muted py-5">
@@ -371,8 +380,8 @@ document.addEventListener('click', function (e) {
   var selCountEl = document.getElementById('stockSelCount');
   var stockData = [];
   try { stockData = JSON.parse((document.getElementById('stockData') || {}).textContent || '[]'); } catch (e) {}
-  // Rows: [Model, CPU, Generation, RAM, RAM Capacity, HDD, HDD Capacity, SSD Capacity, lot_id]
-  var LOT_COL = 8;
+  // Rows: [Model, CPU, Generation, RAM, RAM Capacity, HDD, HDD Capacity, SSD Capacity, Screen Size, lot_id]
+  var LOT_COL = 9;
   var stocked = {};
   stockData.forEach(function (r) { stocked[r[LOT_COL]] = true; });
   var stockChip = document.getElementById('stockLotChip');
@@ -381,7 +390,22 @@ document.addEventListener('click', function (e) {
   var lotsDt = document.getElementById('lotsTable')
     ? initGlobalTable('#lotsTable', $.extend({}, GT_ALL, { info: false, order: [] }),   // newest lot first, as sent by the server (2026-11-13)
     { freeze: false, dates: false }) : null;
-  if (lotsDt) gtToolbarToCard('#lotsTable');
+  if (lotsDt) {
+    gtToolbarToCard('#lotsTable');
+    // Category filter: right of the search box; a lot matches if any of its
+    // categories is the one picked.
+    var catSel = document.getElementById('lotCatFilter');
+    if (catSel) {
+      $(catSel).insertAfter($('#lotsTable').closest('.cat-card').find('.card-header .dataTables_filter'));
+      $.fn.dataTable.ext.search.push(function (settings, data, idx) {
+        if (settings.nTable.id !== 'lotsTable' || !catSel.value) return true;
+        var tr = settings.aoData[idx].nTr;
+        return ((tr && tr.getAttribute('data-cats')) || '').split('|').indexOf(catSel.value) !== -1;
+      });
+      catSel.addEventListener('change', function () { lotsDt.draw(); });
+      lotsDt.draw();   // apply the default (Laptop) before a lot is picked below
+    }
+  }
 
   // Default view: pre-select the first lot (in the table's order) that ACTUALLY
   // HAS STOCK, so the summary opens on one lot.
@@ -407,14 +431,14 @@ document.addEventListener('click', function (e) {
     return out;
   }
   var txt = $.fn.dataTable.render.text();
-  var stockCols = [];
-  for (var ci = 0; ci < LOT_COL; ci++) stockCols.push({ data: ci, render: txt });
-  stockCols[0].className = 'ps-2 fw-semibold stock-sticky-col';
-  stockCols.push({ data: LOT_COL, className: 'text-end fw-semibold' });
+  // Shown: Model, QTY (the count, index LOT_COL of a grouped row), then the rest.
+  var stockCols = [{ data: 0, render: txt, className: 'ps-2 fw-semibold stock-sticky-col' },
+                   { data: LOT_COL, className: 'text-end fw-semibold' }];
+  for (var ci = 1; ci < LOT_COL; ci++) stockCols.push({ data: ci, render: txt });
   var stockDt = document.getElementById('stockTable')
     ? initGlobalTable('#stockTable', $.extend({}, GT_ALL, {
         data: stockGroups(), columns: stockCols, autoWidth: false, info: false,
-        paging: false, order: [[0, 'asc'], [1, 'asc'], [2, 'asc']],
+        paging: false, order: [[0, 'asc'], [2, 'asc'], [3, 'asc']],
         language: { zeroRecords: 'No stock in this lot.' } }),
       { freeze: false, dates: false, clamp: false }) : null;
   if (stockDt) {
@@ -470,7 +494,18 @@ document.addEventListener('click', function (e) {
   window.addEventListener('resize', sizeCatRow);
   window.addEventListener('orientationchange', sizeCatRow);
 
+  // Selected lot row: the Global Table selected-row style (tr.gt-selected).
+  function markLotRow() {
+    document.querySelectorAll('#lotsTable tbody tr').forEach(function (tr) {
+      var a = tr.querySelector('.lot-stock-link');
+      tr.classList.toggle('gt-selected', !!(a && activeLot && a.dataset.lotId === activeLot));
+    });
+  }
+  if (lotsDt) lotsDt.on('draw', markLotRow);
+  markLotRow();
+
   function applyStockFilter() {
+    markLotRow();
     // Regroup for the new lot; the pill's right half stays the all-lots total.
     if (stockDt) stockDt.clear().rows.add(stockGroups()).draw();
   }

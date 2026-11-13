@@ -1110,13 +1110,16 @@ table.gtable tbody td:first-child {
 /* Ticked-row shadow (2026-10-17): same per-cell gradient-strip technique as
    the hovered-row shadow above (works with the frozen columns), but lighter,
    so the row under the mouse always reads above a selected one. Skipped
-   while that row is hovered — the hover strips take over. */
-.gtable-cards table.gtable tbody tr:has(input[type=checkbox]:checked):not(:hover) td { position: relative; z-index: 1; }
-.gtable-cards .gtable-scroll-wrap table.gtable tbody tr:has(input[type=checkbox]:checked):not(:hover) td:first-child,
-.gtable-cards .gtable-scroll-wrap[data-freeze-cols="2"] table.gtable tbody tr:has(input[type=checkbox]:checked):not(:hover) td:nth-child(2) {
+   while that row is hovered — the hover strips take over.
+   Also for a row picked without a checkbox: add .gt-selected to its <tr>
+   (2026-11-13, e.g. the partner catalog's selected lot). */
+.gtable-cards table.gtable tbody tr.gt-selected td { background-color: rgba(14, 58, 122, .06); }
+.gtable-cards table.gtable tbody tr:is(:has(input[type=checkbox]:checked), .gt-selected):not(:hover) td { position: relative; z-index: 1; }
+.gtable-cards .gtable-scroll-wrap table.gtable tbody tr:is(:has(input[type=checkbox]:checked), .gt-selected):not(:hover) td:first-child,
+.gtable-cards .gtable-scroll-wrap[data-freeze-cols="2"] table.gtable tbody tr:is(:has(input[type=checkbox]:checked), .gt-selected):not(:hover) td:nth-child(2) {
   position: sticky !important; z-index: 3;
 }
-.gtable-cards table.gtable tbody tr:has(input[type=checkbox]:checked):not(:hover) td::after {
+.gtable-cards table.gtable tbody tr:is(:has(input[type=checkbox]:checked), .gt-selected):not(:hover) td::after {
   content: ""; position: absolute; left: 0; right: 0; pointer-events: none;
   top: 100%; height: 5px;
   background: linear-gradient(rgba(14, 58, 122, .12), rgba(14, 58, 122, 0));

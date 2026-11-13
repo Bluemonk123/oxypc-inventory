@@ -262,14 +262,15 @@ STOCK_KEYS = [
 
 def _pivot_cols(dev) -> list:
     """Model, CPU, Generation, RAM (Yes/No), RAM Capacity, HDD (Yes/No), HDD
-    Capacity, SSD Capacity — as in the External Partner IQC sheet."""
+    Capacity, SSD Capacity, Screen Size — as in the External Partner IQC
+    sheet (Screen Size added 2026-11-13)."""
     st = (dev.storage_type or "").upper()
     hdd_gb = dev.hdd_capacity_gb or (dev.storage_gb if "HDD" in st else None)
     ssd_gb = dev.storage_gb if (dev.storage_gb and "HDD" not in st) else None
     return [dev.model or "—", dev.cpu or "—", dev.generation or "—",
             "Yes" if dev.ram_gb else "No", f"{dev.ram_gb} GB" if dev.ram_gb else "",
             "Yes" if hdd_gb else "No", f"{hdd_gb} GB" if hdd_gb else "",
-            f"{ssd_gb} GB" if ssd_gb else ""]
+            f"{ssd_gb} GB" if ssd_gb else "", dev.screen_size or ""]
 
 
 @router.get("/catalog", response_class=HTMLResponse)
@@ -477,11 +478,13 @@ async def catalog(
     # Available Stock is a model-wise summary since 2026-11-13 (Pankaj: the
     # External Partner IQC sheet's "Sheet1" pivot) — only the grouping columns
     # ship: [Model, CPU, Generation, RAM, RAM Capacity, HDD, HDD Capacity,
-    # SSD Capacity, lot_id]; the page counts units per combination.
+    # SSD Capacity, Screen Size, lot_id]; the page counts units per combination.
     stock_rows = [d["pv"] + [d["lot_id"]] for d in lot_stock]
     return templates.TemplateResponse("partner/catalog.html", {
         "request": request, "dealer": dealer, "listings": listings,
         "lot_stock": lot_stock, "stock_rows": stock_rows,
+        # Category filter on the Available Lots card (2026-11-13)
+        "lot_categories": sorted({c for l in visible_lots for c, _n in l["categories"]}),
         "ageing": ageing, "incentive_text": settings.get("incentive_text") or "",
         "f_type": listing_type, "f_brand": brand, "f_grade": grade, "f_sort": sort,
         "partner_csrf": request.cookies.get(PARTNER_CSRF_COOKIE, ""),
