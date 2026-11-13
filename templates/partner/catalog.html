@@ -208,9 +208,8 @@
    left and by the search box. #}
 <div class="card shadow-sm cat-pane cat-card" id="availableStock">
   <div class="card-header flex-shrink-0">
-    <span class="fw-semibold">Stock in Selected Lot</span>
+    <span class="fw-semibold" id="stockTitle">Stocks in Lot</span>
     <div class="d-flex align-items-center gap-2 stock-badges ms-auto">
-      <span class="badge bg-secondary d-none" id="stockLotChip"></span>
       {# Selected lot / all lots visible to this dealer (unit counts). #}
       <span class="badge bg-primary">
         <span id="stockSelCount">{{ lot_stock | length }}</span>&nbsp;/&nbsp;<span id="stockTotCount">{{ lot_stock | length }}</span>&nbsp;units
@@ -384,7 +383,9 @@ document.addEventListener('click', function (e) {
   var LOT_COL = 9;
   var stocked = {};
   stockData.forEach(function (r) { stocked[r[LOT_COL]] = true; });
-  var stockChip = document.getElementById('stockLotChip');
+  // Card title names the selected lot (2026-11-13): "Stocks in Lot - 4582".
+  var stockTitle = document.getElementById('stockTitle');
+  function setStockTitle(num) { if (stockTitle) stockTitle.textContent = 'Stocks in Lot' + (num ? ' - ' + num : ''); }
   var activeLot = null;
 
   var lotsDt = document.getElementById('lotsTable')
@@ -413,17 +414,14 @@ document.addEventListener('click', function (e) {
     .filter(function (a) { return stocked[a.dataset.lotId]; })[0];
   if (firstLink) {
     activeLot = firstLink.dataset.lotId;
-    if (stockChip) {
-      stockChip.textContent = 'Lot ' + firstLink.dataset.lotNumber + ' — click again to clear';
-      stockChip.classList.remove('d-none');
-    }
+    setStockTitle(firstLink.dataset.lotNumber);
   }
   // Sheet1-style summary: count the units of the selected lot (or every lot)
   // per Model + CPU + Generation + RAM + HDD + SSD combination.
   function stockGroups() {
     var by = {}, out = [];
     stockData.forEach(function (r) {
-      if (activeLot && r[LOT_COL] !== activeLot) return;
+      if (r[LOT_COL] !== activeLot) return;   // always one lot (none picked = empty)
       var k = r.slice(0, LOT_COL).join('\u0001');
       if (!by[k]) { by[k] = r.slice(0, LOT_COL).concat([0]); out.push(by[k]); }
       by[k][LOT_COL] += 1;
@@ -512,29 +510,34 @@ document.addEventListener('click', function (e) {
 
   function selectLot(lotId, lotNumber){
     activeLot = lotId;
-    if (stockChip) {
-      stockChip.textContent = 'Lot ' + lotNumber + ' — click again to clear';
-      stockChip.classList.remove('d-none');
-    }
+    setStockTitle(lotNumber);
     applyStockFilter();
   }
+  // A lot stays selected until another is picked (no "clear"). When the
+  // Category filter hides it, the first shown lot with stock is picked; with
+  // no lot shown the stock card is empty.
+  function pickFirstShownLot() {
+    var shown = Array.prototype.slice.call(document.querySelectorAll('#lotsTable .lot-stock-link'));
+    if (shown.some(function (a) { return a.dataset.lotId === activeLot; })) return;
+    var a = shown.filter(function (x) { return stocked[x.dataset.lotId]; })[0];
+    if (a) selectLot(a.dataset.lotId, a.dataset.lotNumber);
+    else { activeLot = null; setStockTitle(''); applyStockFilter(); }
+  }
+  var _catSel = document.getElementById('lotCatFilter');
+  if (_catSel) _catSel.addEventListener('change', function () { setTimeout(pickFirstShownLot, 0); });
 
-  document.querySelectorAll('.lot-stock-link').forEach(function (a) {
-    a.addEventListener('click', function (e) {
-      e.preventDefault();
-      if (activeLot === a.dataset.lotId) {
-        activeLot = null;
-        if (stockChip) stockChip.classList.add('d-none');
-        applyStockFilter();
-      } else {
-        selectLot(a.dataset.lotId, a.dataset.lotNumber);
-      }
-      // Only jump on narrow screens — side by side the table is already visible.
-      if (window.innerWidth < 920) {
-        var anchor = document.getElementById('availableStock');
-        if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    });
+  // One page-level listener: rows hidden by the Category filter at load are
+  // not in the page then, so per-link listeners would miss them.
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('#lotsTable .lot-stock-link');
+    if (!a) return;
+    e.preventDefault();
+    if (activeLot !== a.dataset.lotId) selectLot(a.dataset.lotId, a.dataset.lotNumber);
+    // Only jump on narrow screens — side by side the table is already visible.
+    if (window.innerWidth < 920) {
+      var anchor = document.getElementById('availableStock');
+      if (anchor) anchor.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
   });
 
   // Default lot is picked above, before the stock table's first draw (taking
