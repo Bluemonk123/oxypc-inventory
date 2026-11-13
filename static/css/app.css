@@ -852,9 +852,11 @@ fieldset:disabled .btn {
 .nav-tabs .nav-item.show .nav-link { background-color: var(--brand-blue); border-color: var(--brand-blue); color: #fff; }
 .nav-tabs .nav-link.active i, .nav-tabs .nav-link.active .bi { color: #fff; }
 
-/* ── Global tab design (2026-11-03), as /spare-parts ─────────────────────
-   Every tab bar spans the full width; the tabs share the row (each grows
-   from its label width) with centred labels.
+/* ── Global tab design (2026-11-03, sizing changed 2026-11-13) ──────────
+   Each tab is as wide as its own label (2026-11-13, Pankaj — no longer
+   stretched across the row), and tabs never show counts: count badges
+   inside .nav-tabs are hidden. Counts belong to pill tabs (.pill-tabs),
+   which keep them.
    - Main tabs (page level, card header): FILLED — active tab navy with
      white text (rule above).
    - Sub-tabs (a tab bar inside an element: card body, tab pane, modal,
@@ -862,8 +864,11 @@ fieldset:disabled .btn {
    Opt-outs: .main-tabs forces filled (page tabs that sit in a card body),
    .sub-tabs forces outline. */
 .nav-tabs { display: flex; flex-wrap: wrap; }
-.nav-tabs > .nav-item, .nav-tabs > .nav-link { flex: 1 1 auto; text-align: center; }
-.nav-tabs > .nav-item > .nav-link { width: 100%; }
+.nav-tabs > .nav-item, .nav-tabs > .nav-link { flex: 0 0 auto; text-align: center; }
+.nav-tabs > .nav-item > .nav-link { width: auto; white-space: nowrap; }
+.nav-tabs .nav-link .badge { display: none !important; }
+.nav-tabs > .nav-item.flex-fill, .nav-tabs.nav-fill > .nav-item, .nav-tabs.nav-justified > .nav-item { flex: 0 0 auto !important; }
+.nav-tabs > .nav-item > .nav-link.w-100 { width: auto !important; }
 :is(.card-body, .tab-pane, .modal-body, .accordion-body) .nav-tabs:not(.main-tabs) .nav-link.active,
 :is(.card-body, .tab-pane, .modal-body, .accordion-body) .nav-tabs:not(.main-tabs) .nav-item.show .nav-link,
 .nav-tabs.sub-tabs .nav-link.active, .nav-tabs.sub-tabs .nav-item.show .nav-link {
@@ -1457,9 +1462,11 @@ table.gtable tbody td .gtable-clamp2 {
 /* Global Tabs — pill tabs (2026-11-09, Pankaj). A compact tab row for a card
    header (or anywhere): <ul class="nav pill-tabs"> with .nav-link buttons.
    Active = solid Primary pill, white text; the others plain Primary text, no
-   box. No count badges. Use it to switch views of ONE card's table (e.g.
-   Received / Completed); use the full-width Global Tabs (.nav-tabs) to switch
-   between different panels. The page decides — nothing applies it on its own. */
+   box. Count badges are shown here (since 2026-11-13 the only tab variant
+   that shows counts). Use it to switch views of ONE card's table (e.g.
+   Received / Completed); use the Global Tabs (.nav-tabs) to switch between
+   different panels. The page decides — nothing applies it on its own. */
+.nav.pill-tabs .nav-link .badge { margin-left: .35rem; }
 .nav.pill-tabs { gap: .25rem; flex-wrap: wrap; }
 .nav.pill-tabs .nav-link { padding: .25rem 1rem; border: 0; border-radius: var(--bs-border-radius); background: transparent;
   color: var(--bs-primary); font-weight: 500; line-height: 1.5; transition: background-color .15s, color .15s; }

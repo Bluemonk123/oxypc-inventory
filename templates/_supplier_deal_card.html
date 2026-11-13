@@ -12,7 +12,7 @@
       <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1"></i>Supplier Deal</span>
       <ul class="nav pill-tabs ms-auto" role="tablist">
         <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#stkSdPend">Pending <span class="badge bg-warning text-dark ms-1">{{ sd_pending|length }}</span></button></li>
-        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#stkSdRecv">Received - {{ sd_received|length }}</button></li>
+        <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#stkSdRecv">Received</button>{# " - N" added by static/js/pill-counts.js #}</li>
       </ul>
     </div>
     <div class="card-body p-0 tab-content" style="max-height:640px;overflow-y:auto">

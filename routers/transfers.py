@@ -351,14 +351,33 @@ async def bulk_delete_transfers(
         return RedirectResponse(url="/transfers?error=Select+at+least+one+row", status_code=302)
 
     rows = (await db.execute(select(StockTransfer).where(StockTransfer.id.in_(ids)))).scalars().all()
+    # Work orders opened from a transfer point back at it (source_transfer_id).
+    # The work order stays; only its link to the deleted transfer is cleared
+    # (2026-11-13 — the delete failed with a 500 on transfers that had one).
+    from models.work_order import WorkOrder
+    from sqlalchemy import update as _update
+    linked = dict((await db.execute(
+        select(WorkOrder.source_transfer_id, func.count()).where(WorkOrder.source_transfer_id.in_(ids))
+        .group_by(WorkOrder.source_transfer_id))).all())
     for row in rows:
         await audit(db, user=current_user, action="STOCK_TRANSFER_DELETED",
                     table_name="stock_transfers", record_id=str(row.id),
                     old_value={"barcode": row.barcode, "transfer_type": row.transfer_type,
-                               "transfer_date": row.transfer_date.isoformat() if row.transfer_date else None},
+                               "transfer_date": row.transfer_date.isoformat() if row.transfer_date else None,
+                               "work_orders_unlinked": linked.get(row.id, 0)},
                     request=request)
+    if linked:
+        await db.execute(_update(WorkOrder).where(WorkOrder.source_transfer_id.in_(ids))
+                         .values(source_transfer_id=None))
+    for row in rows:
         await db.delete(row)
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception as e:  # anything else still pointing at these rows
+        await db.rollback()
+        from urllib.parse import quote_plus as _qp
+        return RedirectResponse(url="/transfers?error=" + _qp(f"Could not delete — another record still uses it ({type(e).__name__})."),
+                                status_code=302)
 
     return RedirectResponse(url=f"/transfers?success=Deleted+{len(rows)}+transfer+record(s)", status_code=302)
 

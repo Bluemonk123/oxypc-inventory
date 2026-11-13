@@ -166,33 +166,48 @@ $(document).ready(function(){
   // is checked (rather than merely disabled), per explicit request.
   var deleteCount = document.getElementById('transfersDeleteSelCount');
   var deleteForm = document.getElementById('transfersBulkDeleteForm');
-  function rowChks() { return document.querySelectorAll('#transfersTable .transfers-row-chk'); }
-  function selectedIds() {
-    return Array.from(document.querySelectorAll('#transfersTable .transfers-row-chk:checked')).map(function (c) { return c.value; });
+  // Selection across every page (2026-11-13): ticked ids live in a Set, so
+  // paging / sorting keeps them, and Select All ticks every row that matches
+  // the current filter + search — not just the 12 rows on screen.
+  var picked = new Set(), tDt = null;
+  function matchingIds() {
+    if (!tDt) return [];
+    return tDt.rows({ search: 'applied' }).nodes().toArray().map(function (tr) {
+      var c = tr.querySelector('.transfers-row-chk'); return c ? c.value : null; }).filter(Boolean);
+  }
+  function selectedIds() { return Array.from(picked); }
+  function syncPage() {
+    document.querySelectorAll('#transfersTable .transfers-row-chk').forEach(function (c) { c.checked = picked.has(c.value); });
   }
   function updateSel() {
     if (!canBulk) return;
-    var n = selectedIds().length;
+    var n = picked.size, m = matchingIds();
     deleteCount.textContent = n;
     deleteBtn.classList.toggle('d-none', n === 0);
-    $('#transfersSelectAll').prop('checked', rowChks().length > 0 && n === rowChks().length);
+    $('#transfersSelectAll').prop('checked', m.length > 0 && m.every(function (id) { return picked.has(id); }));
   }
 
   // Global Table module (static/js/global-table.js). Empty tables are handled
   // by language.emptyTable (no colspan placeholder row in the markup).
-  initGlobalTable('#transfersTable', {
+  tDt = initGlobalTable('#transfersTable', {
     pageLength: 12,
     order: [[0 + off, 'desc']],
     columnDefs: [{ orderable: false, targets: (hasCheckboxCol ? [0] : []).concat(document.querySelector('#transfersTable .transfers-row-del, #transfersTable th.text-end') ? [-1] : []) }],
     language: { emptyTable: 'No transfers found.' },
-  }, canBulk ? {
-    selectAll: {
-      headerSelector: '#transfersSelectAll',
-      rowSelector: '.transfers-row-chk',
-      onChange: updateSel,
-      resetOnDraw: true,
-    },
-  } : {});
+  });
+  if (canBulk) {
+    if (!tDt || !tDt.rows) tDt = $('#transfersTable').DataTable();
+    $('#transfersTable').on('change', '.transfers-row-chk', function () {
+      if (this.checked) picked.add(this.value); else picked.delete(this.value);
+      updateSel();
+    });
+    $(document).on('change', '#transfersSelectAll', function () {
+      var on = this.checked;
+      matchingIds().forEach(function (id) { if (on) picked.add(id); else picked.delete(id); });
+      syncPage(); updateSel();
+    });
+    tDt.on('draw', function () { syncPage(); updateSel(); });
+  }
 
   // Per-row Delete: posts this one id to the Bulk Delete route.
   $('#transfersTable').on('click', '.transfers-row-del', function () {

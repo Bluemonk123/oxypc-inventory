@@ -175,6 +175,8 @@
       {{ ms.multiselect_inline('grade', 'Grades', summary_grade_options, '') }}
       {{ touch_select('readyTouch') }}
       {{ avail_select('readyAvail') }}
+      {# Location zone (2026-11-13, Pankaj) — Location ID column's zone. #}
+      {% if location_options is defined %}{{ ms.multiselect_inline('location', 'Locations', location_options, '') }}{% endif %}
       {# Search / Reset removed (2026-10-27): every filter already reloads the
          table as soon as it changes. #}
       {# Export (2026-10-27): every tag matching the filters above, in the
@@ -264,6 +266,8 @@
       {{ ms.multiselect_inline('ms_grade', 'Grades', summary_grade_options, f.ms_grade) }}
       {{ touch_select('msTouch', f.ms_touch) }}
       {{ avail_select('msAvail', f.ms_avail) }}
+      {# Location zone (2026-11-13, Pankaj) — the Location column's zones. #}
+      {% if location_options is defined %}{{ ms.multiselect_inline('ms_loc', 'Locations', location_options, f.ms_loc) }}{% endif %}
       {# Export (2026-10-27): the tags of every row the summary shows. #}
       {% if can(current_user, _pm, 'export') %}<button type="button" id="msExportAllBtn" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>{% endif %}
       <button type="button" id="modelSumRequestBtn" class="btn btn-sm btn-outline-primary d-none" {% if _ps %}hidden {% endif %}disabled>
@@ -609,6 +613,7 @@ $(document).ready(function(){
         d.device_type = (document.getElementById('ms_val_device_type') || {}).value || '';
         d.availability = (document.getElementById('readyAvail') || {}).value || '';
         d.grade = (document.getElementById('ms_val_grade') || {}).value || '';
+        d.location = (document.getElementById('ms_val_location') || {}).value || '';
         {% if _ps %}d.tile = window.psiqcTile || ''; d.view = window.psiqcView || 'assigned';{% endif %}
       },
       dataSrc: function (json) { rfsTiles(json.tiles); {% if _ps %}psiqcFill(json.psiqc_tiles);{% endif %} return json.data; },
@@ -667,6 +672,8 @@ $(document).ready(function(){
   document.getElementById('ms_val_grade').addEventListener('ms:change', function () {
     readyDt.ajax.reload(null, true);
   });
+  var _locEl = document.getElementById('ms_val_location');
+  if (_locEl) _locEl.addEventListener('ms:change', function () { readyDt.ajax.reload(null, true); });
   // (Search / Reset buttons removed 2026-10-27 — the filters auto-apply.)
 
 });
@@ -904,6 +911,7 @@ document.getElementById('readySelectAll').addEventListener('change', async funct
       + '&device_type=' + encodeURIComponent((document.getElementById('ms_val_device_type') || {}).value || '')
       + '&availability=' + encodeURIComponent((document.getElementById('readyAvail') || {}).value || '')
       + '&grade=' + encodeURIComponent((document.getElementById('ms_val_grade') || {}).value || '')
+      + '&location=' + encodeURIComponent((document.getElementById('ms_val_location') || {}).value || '')
       {% if _ps %}+ '&psiqc=1&tile=' + encodeURIComponent(window.psiqcTile || '') + '&view=' + encodeURIComponent(window.psiqcView || 'assigned'){% endif %});
     var d = await r.json();
     (d.barcodes || []).forEach(function(bc){ readySelected.add(bc); });
@@ -985,7 +993,7 @@ function readyPageUrl(){
   var p = new URLSearchParams();
   function v(id){ return (document.getElementById(id) || {}).value || ''; }
   [['ms_touch','msTouch'],['ms_avail','msAvail'],['ms_entity','ms_val_ms_entity'],['ms_dtype','ms_val_ms_dtype'],
-   ['ms_grade','ms_val_ms_grade']].forEach(function(x){
+   ['ms_grade','ms_val_ms_grade'],['ms_loc','ms_val_ms_loc']].forEach(function(x){
     if (v(x[1])) p.set(x[0], v(x[1]));
   });
   var q = p.toString();
@@ -1012,10 +1020,10 @@ function refreshSummaryTable(id, badgeId){
       }
     });
 }
-[['msTouch','ms_val_ms_entity','ms_val_ms_dtype', function(){ return refreshSummaryTable('readyModelSummaryTable', 'msCountBadge'); }, 'ms_val_ms_grade']].forEach(function(x){
+[['msTouch','ms_val_ms_entity','ms_val_ms_dtype', function(){ return refreshSummaryTable('readyModelSummaryTable', 'msCountBadge'); }, 'ms_val_ms_grade', 'ms_val_ms_loc']].forEach(function(x){
   var sel = document.getElementById(x[0]);
   if (sel) sel.addEventListener('change', x[3]);
-  [x[1], x[2], x[4]].forEach(function(id){
+  [x[1], x[2], x[4], x[5]].forEach(function(id){
     var el = document.getElementById(id);
     if (el) el.addEventListener('ms:change', x[3]);
   });
@@ -1034,7 +1042,7 @@ function postTagExport(tags) {
 $(document).on('click', '#readyExportBtn', function () {
   var btn = this, v = function (id) { return (document.getElementById(id) || {}).value || ''; };
   var qs = new URLSearchParams({ entity: v('ms_val_entity'), touch: v('readyTouch'), device_type: v('ms_val_device_type'),
-                                 availability: v('readyAvail'), grade: v('ms_val_grade') });
+                                 availability: v('readyAvail'), grade: v('ms_val_grade'), location: v('ms_val_location') });
   {% if _ps %}qs.set('psiqc', '1'); qs.set('tile', window.psiqcTile || ''); qs.set('view', window.psiqcView || 'assigned');{% endif %}
   btn.disabled = true;
   fetch('/sales/ready/barcodes?' + qs.toString(), { credentials: 'same-origin' })

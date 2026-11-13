@@ -169,6 +169,28 @@ def _avail_passes(device, availability: str) -> bool:
     return True
 
 
+def location_zone_options() -> list:
+    """Ready for Sale Location filter (2026-11-13): zone names + No Location."""
+    from models.location import ZONE_LABELS
+    return list(ZONE_LABELS.values()) + ["No Location"]
+
+
+def _location_clause(location: str):
+    """Tags whose Location ID sits in one of the picked zones ("No Location"
+    = no Location ID). None = no filter."""
+    from models.location import ZONE_LABELS
+    picked = set(_entity_values(location))
+    if not picked:
+        return None
+    zones = [z for z, label in ZONE_LABELS.items() if label in picked]
+    conds = []
+    if zones:
+        conds.append(Device.location_id.in_(select(StorageLocation.id).where(StorageLocation.zone.in_(zones))))
+    if "No Location" in picked:
+        conds.append(Device.location_id.is_(None))
+    return or_(*conds) if conds else Device.id.is_(None)
+
+
 def _row_passes(device, touch: str, entities: list, dtypes: list | None = None) -> bool:
     """Same Touch Type + Entity filter as _touch_clause, applied in Python to the
     already-loaded rows behind the Model Summary / As-Is Lot tables."""
@@ -223,6 +245,7 @@ async def ready_list_barcodes(
     psiqc: str = "",
     tile: str = "",
     view: str = "",
+    location: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(ready_allowed),
 ):
@@ -247,6 +270,7 @@ async def ready_list_barcodes(
             *([_device_type_expr.in_(_entity_values(device_type))] if _entity_values(device_type) else []),
             *([_avail_clause(availability)] if _avail_clause(availability) is not None else []),
             *([_grade_clause(grade)] if _grade_clause(grade) is not None else []),
+            *([_location_clause(location)] if _location_clause(location) is not None else []),
             # Pre-Sale IQC page (2026-10-29): only its queued tags
             *([Device.id.in_(_psiqc_queue())] if psiqc == "1" else []),
         )
@@ -326,6 +350,11 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
         entity_filter.append(_avail_clause(availability))
     if _grade_clause(grade) is not None:                 # Grades (2026-10-27)
         entity_filter.append(_grade_clause(grade))
+    # Location zone (2026-11-13) — read off the request so the Pre-Sale IQC
+    # feed, which shares this function, gets it too.
+    _loc_c = _location_clause(request.query_params.get("location", ""))
+    if _loc_c is not None:
+        entity_filter.append(_loc_c)
 
     psiqc_counts = None
     if psiqc:
@@ -662,6 +691,7 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
     am_grades = set(_entity_values(qp.get("am_grade", "")))
     ms_dtypes = _entity_values(qp.get("ms_dtype", ""))
     ms_avail = qp.get("ms_avail", "")     # Availability: open / blocked (2026-10-22)
+    ms_locs = set(_entity_values(qp.get("ms_loc", "")))   # Location zones (2026-11-13)
     al_dtypes = _entity_values(qp.get("al_dtype", ""))
     # As-Is Lot Grades + Availability filters (2026-10-28) — same as the Tag
     # table's: a lot shows only its tags that pass, like the other filters.
@@ -724,6 +754,10 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
         .where(Device.current_stage == DeviceStage.ready_to_sale, Device.is_trashed == False)
     )).all())
     _ZONE_MAIN = [ZONE_LABELS[ZoneType.showroom], ZONE_LABELS[ZoneType.workshop]]
+
+    def _zone_label(device):
+        _z = _zone_by_dev.get(device.id)
+        return ZONE_LABELS.get(_z, getattr(_z, "value", _z)) if _z else "No Location"
 
     def _build_model_summary(rows):
         summary: dict = {}
@@ -796,7 +830,8 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
         [r for r in devices if not (r[0].sub_lot_number or "").strip()
          and _row_passes(r[0], ms_touch, ms_entities, ms_dtypes)
          and _grade_passes(r[0], ms_grades)
-         and _avail_passes(r[0], ms_avail)])
+         and _avail_passes(r[0], ms_avail)
+         and (not ms_locs or _zone_label(r[0]) in ms_locs)])
     model_summary_as_is = _build_model_summary(
         [r for r in devices if (r[0].sub_lot_number or "").strip()
          and _row_passes(r[0], am_touch, am_entities, am_dtypes)
@@ -989,7 +1024,9 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
               "am_touch": am_touch, "am_entity": qp.get("am_entity", ""),
               "ms_dtype": qp.get("ms_dtype", ""), "al_dtype": qp.get("al_dtype", ""),
               "am_dtype": qp.get("am_dtype", ""),
-              "ms_grade": qp.get("ms_grade", ""), "am_grade": qp.get("am_grade", "")},
+              "ms_grade": qp.get("ms_grade", ""), "am_grade": qp.get("am_grade", ""),
+              "ms_loc": qp.get("ms_loc", "")},
+        "location_options": location_zone_options(),
         "summary_grade_options": [(code or "NG", label if code else "NG (No grade)")
                                   for code, label, _cls in _SUMMARY_GRADES],
         # Device Type filter options: the types actually present in Ready to Sale.
