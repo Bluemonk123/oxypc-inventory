@@ -1053,6 +1053,9 @@ fieldset:disabled .btn {
    the only one there; a Global Table outside a card keeps Bootstrap's hover
    tint (also an inset shadow) alongside it. */
 .gtable-cards table.gtable tbody tr:hover > td:first-child { box-shadow: inset 8px 0 0 var(--sidebar-active) !important; }
+/* Selected row (ticked checkbox, or tr.gt-selected) carries the same 8px
+   left accent as a hovered row (2026-11-13, Pankaj). */
+table.gtable tbody tr:is(:has(input[type=checkbox]:checked), .gt-selected) > td:first-child { box-shadow: inset 8px 0 0 var(--sidebar-active) !important; }
 table.gtable tbody tr:hover > td:first-child {
   box-shadow: inset 8px 0 0 var(--sidebar-active), inset 0 0 0 9999px var(--bs-table-bg-state, var(--bs-table-bg-type, var(--bs-table-accent-bg)));
 }
