@@ -98,7 +98,10 @@
     <small class="text-white-50">Dealer Buying Portal</small>
   </div>
   <div class="login-body">
-    {% if error %}
+    {% if changed %}
+    <div class="alert alert-success py-2 mb-3"><i class="bi bi-check-circle me-2"></i>Password changed. Sign in with your new password.</div>
+    {% endif %}
+    {% if error and not first_login %}
     <div class="alert alert-danger py-2 mb-3"><i class="bi bi-exclamation-circle me-2"></i>{{ error }}</div>
     {% endif %}
     <form action="/partner/login" method="post">
@@ -166,7 +169,66 @@
     </div>
   </div>
 </div>
+{% if first_login %}
+{# First sign-in (2026-11-13, Pankaj): the partner is already signed in.
+   Skip to Continue → catalog as usual; Confirm Change → POST
+   /partner/first-password, which signs out and comes back here to sign in
+   with the new password. Only on the very first sign-in. #}
+<div class="modal fade" id="firstPwModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false" aria-labelledby="firstPwTitle">
+  <div class="modal-dialog modal-dialog-centered">
+    <form class="modal-content" method="post" action="/partner/first-password" id="firstPwForm">
+      <input type="hidden" name="csrf_token" value="{{ login_csrf }}">
+      <div class="modal-header">
+        <h6 class="modal-title fw-semibold" id="firstPwTitle"><i class="bi bi-shield-lock me-2"></i>Change your password</h6>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted mb-3">This is your first sign-in. You can set your own password now, or skip and keep the current one.</p>
+        {% if error %}<div class="alert alert-danger py-2 small mb-3">{{ error }}</div>{% endif %}
+        <div class="mb-3">
+          <label class="form-label fw-semibold small" for="fpCurrent">Current Password</label>
+          <div class="input-group">
+            <input type="password" id="fpCurrent" name="current_password" class="form-control" value="{{ first_pw }}" autocomplete="current-password" required>
+            <button type="button" class="btn btn-outline-secondary fp-eye" data-for="fpCurrent" tabindex="-1" title="Show/hide password"><i class="bi bi-eye"></i></button>
+          </div>
+        </div>
+        <div class="mb-1">
+          <label class="form-label fw-semibold small" for="fpNew">New Password</label>
+          <div class="input-group">
+            <input type="password" id="fpNew" name="new_password" class="form-control" minlength="8" maxlength="128" autocomplete="new-password" placeholder="At least 8 characters">
+            <button type="button" class="btn btn-outline-secondary fp-eye" data-for="fpNew" tabindex="-1" title="Show/hide password"><i class="bi bi-eye"></i></button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer justify-content-between">
+        <a href="/partner/catalog" class="btn btn-outline-secondary">Skip to Continue</a>
+        <button type="submit" class="btn btn-primary fw-semibold"><i class="bi bi-check2 me-1"></i>Confirm Change</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 <script src="/static/vendor/bootstrap/js/bootstrap.bundle.min.js"></script>
+{% if first_login %}
+<script>
+(function () {
+  var el = document.getElementById('firstPwModal');
+  bootstrap.Modal.getOrCreateInstance(el).show();
+  el.addEventListener('shown.bs.modal', function () { document.getElementById('fpNew').focus(); });
+  document.getElementById('firstPwForm').addEventListener('submit', function (e) {
+    var n = document.getElementById('fpNew');
+    n.required = true;
+    if (!n.checkValidity()) { e.preventDefault(); n.reportValidity(); }
+  });
+  el.querySelectorAll('.fp-eye').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var i = document.getElementById(b.dataset.for), show = i.type === 'password';
+      i.type = show ? 'text' : 'password';
+      b.querySelector('i').className = show ? 'bi bi-eye-slash' : 'bi bi-eye';
+    });
+  });
+})();
+</script>
+{% endif %}
 <script>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/partner/sw.js').catch(function () {});

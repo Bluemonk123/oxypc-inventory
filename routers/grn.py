@@ -16,7 +16,7 @@ from sqlalchemy import select, func, or_, update, delete as sa_delete
 from database import get_db
 from models.user import User, UserRole
 from models.lot import Lot
-from models.master import EXTERNAL_PARTNER_TEST_LOT_PREFIX, EXTERNAL_PARTNER_TEST_GRN_SOURCE
+from models.master import EXTERNAL_PARTNER_TEST_LOT_PREFIX, EXTERNAL_PARTNER_TEST_GRN_SOURCE, EXTERNAL_PARTNER_TEST_ENTITY
 from models.device import Device, DeviceStage, StageMovement, stage_sort_expr
 from models.engines import AuditLog
 from models.grn_import import GRNImport, GRNLot
@@ -115,12 +115,22 @@ async def grn_import_list(request: Request, db: AsyncSession = Depends(get_db),
 
 # ── GRN post IQC (item 14): same import/validate/edit, plus Map-to-Tag ─────────
 
-def _pending_base_filters(device_type: str, pend_entity: str, pend_invoice: str, pend_po: str) -> list:
+def _scope_filter(scope: str):
+    """Manage Lots test tags vs live tags (2026-11-13): the test GRN & Lot tab
+    sees only Entity = External Partner Test; the live page never sees them."""
+    if scope == "test":
+        return Device.entity == EXTERNAL_PARTNER_TEST_ENTITY
+    return or_(Device.entity.is_(None), Device.entity != EXTERNAL_PARTNER_TEST_ENTITY)
+
+
+def _pending_base_filters(device_type: str, pend_entity: str, pend_invoice: str, pend_po: str,
+                          scope: str = "live") -> list:
     """GRN Pending table's filter clauses (Device Type / Entity / Invoice / PO)
     — shared by /grn/post-iqc/data and its Export, so the two never disagree."""
     base_filters = [Device.current_stage == DeviceStage.iqc,
                     or_(Device.grn_number.is_(None), Device.grn_number == ""),
-                    Device.is_active == True, Device.is_trashed == False]
+                    Device.is_active == True, Device.is_trashed == False,
+                    _scope_filter(scope)]
     if device_type:
         base_filters.append(Device.device_type == device_type)
     # Entity multi-select (comma-separated; "Unassigned" = no entity) — 2026-10-15.
@@ -164,13 +174,27 @@ def _pending_search_filters(search: str) -> list:
     return search_filters
 
 
+async def _piq_user(request: Request, scope: str = "live",
+                    current_user: User = Depends(get_current_user)) -> User:
+    """Live scope: the GRN post IQC page's own access rule. Test scope: the
+    Manage Lots page's (trade_partner_manage_lots)."""
+    if scope == "test":
+        from models.role_permissions import has_perm
+        rv = getattr(current_user.role, "value", current_user.role)
+        if not has_perm(str(rv), "trade_partner_manage_lots", "enable"):
+            raise HTTPException(status_code=403, detail="Access denied")
+        return current_user
+    return await allowed(request, current_user)
+
+
 @router.get("/post-iqc/data")
 async def grn_post_iqc_data(
     request: Request,
     draw: int = 1, start: int = 0, length: int = 25,
     device_type: str = "", pend_invoice: str = "", pend_po: str = "", pend_entity: str = "",
+    scope: str = "live",
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allowed),
+    current_user: User = Depends(_piq_user),
 ):
     """DataTables server-side feed for the GRN in TRC pending-devices table.
 
@@ -183,7 +207,7 @@ async def grn_post_iqc_data(
     from sqlalchemy import desc as _desc, asc as _asc
     from html import escape
 
-    base_filters = _pending_base_filters(device_type, pend_entity, pend_invoice, pend_po)
+    base_filters = _pending_base_filters(device_type, pend_entity, pend_invoice, pend_po, scope)
     count_q = select(func.count()).select_from(Device).where(*base_filters)
     total = (await db.execute(count_q)).scalar() or 0
 
@@ -241,8 +265,9 @@ async def grn_post_iqc_export(
     device_ids: str = Form(""),
     device_type: str = Form(""), pend_invoice: str = Form(""), pend_po: str = Form(""),
     pend_entity: str = Form(""), search: str = Form(""),
+    scope: str = "live",
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(allowed),
+    current_user: User = Depends(_piq_user),
 ):
     """GRN Pending table's Export button (2026-10-15): the ticked rows when
     any are ticked (device_ids), otherwise every row matching the table's
@@ -255,11 +280,11 @@ async def grn_post_iqc_export(
             ids.append(_u.UUID(x.strip()))
         except ValueError:
             pass
-    q = select(Device)
+    q = select(Device).where(_scope_filter(scope))
     if ids:
         q = q.where(Device.id.in_(ids))
     else:
-        q = q.where(*_pending_base_filters(device_type, pend_entity, pend_invoice, pend_po),
+        q = q.where(*_pending_base_filters(device_type, pend_entity, pend_invoice, pend_po, scope),
                     *_pending_search_filters((search or "").strip()))
     rows = (await db.execute(q.order_by(Device.barcode))).scalars().all()
 
@@ -276,23 +301,27 @@ async def grn_post_iqc_export(
                              headers={"Content-Disposition": f"attachment; filename={fname}"})
 
 
-@router.get("/post-iqc", response_class=HTMLResponse)
-async def grn_post_iqc(request: Request, db: AsyncSession = Depends(get_db),
-                       current_user: User = Depends(allowed),
-                       error: str = "", success: str = "", highlight_tag: str = ""):
+async def post_iqc_context(db: AsyncSession, current_user, scope: str = "live") -> dict:
+    """Everything templates/grn/_post_iqc_body.html needs. scope 'live' = GRN
+    post IQC; 'test' = Trade Partner → Manage Lots → GRN & Lot (2026-11-13):
+    its own GRNs (source ext_partner_test), lots (EPT- prefix) and tags
+    (Entity External Partner Test), never mixed with live ones."""
+    test = scope == "test"
+    src = EXTERNAL_PARTNER_TEST_GRN_SOURCE if test else "post_iqc"
     grns = (await db.execute(
-        select(GRNImport).where(GRNImport.source == "post_iqc",
+        select(GRNImport).where(GRNImport.source == src,
                                 GRNImport.is_deleted == False)
         .order_by(GRNImport.created_at.desc())
     )).scalars().all()
     # Pending = devices currently in IQC stage whose GRN field is still empty.
-    # Rows for that table now come from /grn/post-iqc/data (DataTables
+    # Rows for that table come from /grn/post-iqc/data (DataTables
     # server-side) — only the count is needed here, for the header badge.
     pending_count = (await db.execute(
         select(func.count()).select_from(Device).where(
             Device.current_stage == DeviceStage.iqc,
             or_(Device.grn_number.is_(None), Device.grn_number == ""),
             Device.is_active == True, Device.is_trashed == False,
+            _scope_filter(scope),
         )
     )).scalar() or 0
 
@@ -326,22 +355,34 @@ async def grn_post_iqc(request: Request, db: AsyncSession = Depends(get_db),
         user_names = {c: by_lower[c.lower()] for c in creators if c.lower() in by_lower}
 
     _locs = await _location_options(db)
-    return templates.TemplateResponse("grn/post_iqc.html", {
-        "request": request, "grns": grns, "pending_count": pending_count,
+    return {
+        "grns": grns, "pending_count": pending_count,
         "user_names": user_names,
         "stocked": await _stocked_map(db, grns),
         "as_is_lot": await _as_is_lot_map(db, grns),
         "all_users": all_users,
-        "current_user": current_user, "error": error, "success": success,
-        "highlight_tag": highlight_tag,
         "device_type_options": ["Laptop", "Desktop", "AIO", "Workstation", "Mini PC", "Server", "Tablet"],
-        "entity_options": await entity_values(db),
+        "entity_options": [EXTERNAL_PARTNER_TEST_ENTITY] if test else await entity_values(db),
         "state_options": await master_values(db, "dealer_state"),
         "gst_cfg": await _gst_cfg(db),
         "lots_by_grn": lots_by_grn,
         "lots_json": lots_json,
         "location_options": _locs,
         "location_by_id": {str(l.id): l for l in _locs},
+        "piq": {"scope": scope, "test": test, "source": src,
+                "mod": "trade_partner_manage_lots" if test else "grn_post_iqc",
+                "test_entity": EXTERNAL_PARTNER_TEST_ENTITY, "test_lot_prefix": EXTERNAL_PARTNER_TEST_LOT_PREFIX},
+    }
+
+
+@router.get("/post-iqc", response_class=HTMLResponse)
+async def grn_post_iqc(request: Request, db: AsyncSession = Depends(get_db),
+                       current_user: User = Depends(allowed),
+                       error: str = "", success: str = "", highlight_tag: str = ""):
+    return templates.TemplateResponse("grn/post_iqc.html", {
+        "request": request, "current_user": current_user, "error": error, "success": success,
+        "highlight_tag": highlight_tag,
+        **(await post_iqc_context(db, current_user, "live")),
     })
 
 
@@ -370,9 +411,18 @@ async def grn_map(request: Request, grn_id: str = Form(...),
             return JSONResponse({"ok": False, "message": "No tag numbers selected"},
                                 status_code=400)
         return RedirectResponse(url="/grn/post-iqc?error=No+tag+numbers+selected", status_code=302)
+    # Live GRNs map only live tags; Manage Lots test GRNs only test tags (2026-11-13).
+    is_test = g.source == EXTERNAL_PARTNER_TEST_GRN_SOURCE
     devices = (await db.execute(
-        select(Device).where(Device.id.in_(valid_ids))
+        select(Device).where(Device.id.in_(valid_ids), _scope_filter("test" if is_test else "live"))
     )).scalars().all()
+    if not devices:
+        msg = "Those tags belong to the other GRN set (test vs live) — nothing mapped"
+        if request.headers.get("x-requested-with") == "fetch":
+            return JSONResponse({"ok": False, "message": msg}, status_code=400)
+        return RedirectResponse(url=("/trade-partner/manage-lots" if is_test else "/grn/post-iqc") + "?error=" + quote(msg),
+                                status_code=302)
+    valid_ids = [d.id for d in devices]
     now = app_now()
     moved = 0
     # GRN Stocked is add-only: keep re-mapped tags counted under their old GRN.
@@ -913,6 +963,11 @@ async def _map_lots_to_grn(db: AsyncSession, g: GRNImport, numbers: list[str],
     linked, created, refused = [], [], []
     have = set((await db.execute(
         select(GRNLot.lot_id).where(GRNLot.grn_id == g.id))).scalars().all())
+    if g.source == EXTERNAL_PARTNER_TEST_GRN_SOURCE:
+        # Manage Lots test GRN (2026-11-13): its lots are test lots — "4782"
+        # becomes "EPT-4782", restricted from the live dealer catalog.
+        pre = EXTERNAL_PARTNER_TEST_LOT_PREFIX
+        numbers = [n if n.upper().startswith(pre.upper()) else pre + n for n in numbers]
     for number in numbers:
         lot = (await db.execute(
             select(Lot).where(func.lower(Lot.lot_number) == number.lower())
@@ -1100,7 +1155,8 @@ async def grn_create_manual(
 
     # Required fields (2026-10-31) — only for the new Add GRN form, which
     # sends vendor_state; other callers of this route are unchanged.
-    if vendor_state is not None:
+    # Manage Lots test GRN (2026-11-13): every field optional.
+    if vendor_state is not None and source != EXTERNAL_PARTNER_TEST_GRN_SOURCE:
         _miss = _missing_required({
             "lot_numbers": lot_numbers, "grn_date": grn_date, "location_id": location_id,
             "sender_name": sender_name, "vendor_state": vendor_state, "po_number": po_number,
@@ -1115,9 +1171,11 @@ async def grn_create_manual(
     entity = (entity or "").strip()
     # Entity comes from the signed-in user's own Entity (2026-10-31) — the
     # Add GRN field is locked to it; only a user with no Entity picks one.
-    if (getattr(current_user, "entity", None) or "").strip():
+    if source == EXTERNAL_PARTNER_TEST_GRN_SOURCE:
+        entity = EXTERNAL_PARTNER_TEST_ENTITY   # Manage Lots test GRN (2026-11-13)
+    elif (getattr(current_user, "entity", None) or "").strip():
         entity = current_user.entity.strip()
-    if entity and entity not in await entity_values(db):
+    if entity and entity != EXTERNAL_PARTNER_TEST_ENTITY and entity not in await entity_values(db):
         return RedirectResponse(url=f"{base}?error=" + quote(f"Unknown entity '{entity}'."),
                                 status_code=302)
     if source == "post_iqc" and not entity:
@@ -1271,7 +1329,7 @@ async def grn_edit(
         if source == "post_iqc" and not entity.strip():
             return RedirectResponse(url=f"{_base}?error=" + _q("Select the GRN's Entity."),
                                     status_code=302)
-    if vendor_state is not None:
+    if vendor_state is not None and source != EXTERNAL_PARTNER_TEST_GRN_SOURCE:
         _miss = _missing_required({
             "lot_numbers": lot_numbers, "grn_date": grn_date, "location_id": location_id,
             "sender_name": sender_name, "vendor_state": vendor_state, "po_number": po_number,

@@ -971,6 +971,15 @@
           <span id="sidebarNotifBadge" class="badge rounded-pill bg-danger ms-auto d-none" style="font-size:0.65rem">0</span>
         </a>
       </li>
+      {# Ticket Board (2026-11-13, Pankaj): helpdesk for raised tickets; admin
+         only unless ticked in the Permission Matrix. #}
+      {% if has_perm(role,'ticket_board','enable') and not module_hidden('ticket_board') %}
+      <li>
+        <a href="/ticket-board/dashboard" class="nav-link {% if request.url.path.startswith('/ticket-board') %}active{% endif %}">
+          <i class="bi bi-kanban me-2"></i> Ticket Board
+        </a>
+      </li>
+      {% endif %}
       <li>
         <a href="/tickets" class="nav-link {% if request.url.path.startswith('/tickets') %}active{% endif %}">
           <i class="bi bi-ticket-detailed me-2"></i> Tickets Raised

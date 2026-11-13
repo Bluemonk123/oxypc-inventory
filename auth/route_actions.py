@@ -24,6 +24,10 @@ ROUTE_ACTIONS = {
     ('POST', '/fieldops/api/auth/login'): None,  # fieldops_login: FieldOps login
     ('POST', '/tickets/raise-public'): None,  # raise_ticket_public: public ticket raise
     ('POST', '/partner/login'): None,  # login: partner portal login (external partners)
+    ('POST', '/partner/first-password'): None,
+    ('POST', '/ticket-board/new'): ('ticket_board', 'add'),  # new_ticket: Ticket Board agent-created ticket (2026-11-13)
+    ('POST', '/ticket-board/{ticket_id}/reply'): ('ticket_board', 'edit'),  # reply: public reply / internal note + Submit as status
+    ('POST', '/ticket-board/{ticket_id}/update'): ('ticket_board', 'edit'),  # update_field: assignee / group / type / priority / subject  # first_password: partner's own first sign-in password change (2026-11-13)
     ('POST', '/partner/contact-admin'): None,  # contact_admin: public ticket from the partner login page (2026-11-11)
     ('POST', '/care/api/v1/pair'): None,  # pair: care device-agent API (token auth)
     ('POST', '/care/api/v1/tickets'): None,  # create_ticket: care device-agent API
@@ -297,8 +301,8 @@ ROUTE_ACTIONS = {
     # ===== routers/grn.py =====
     ('GET', '/grn/download/{grn_id}'): (('grn', 'grn_post_iqc'), 'export'),  # grn_download: GRN document; GRN with Invoice and GRN post IQC
     ('GET', '/grn/download/{grn_id}/{kind}'): (('grn', 'grn_post_iqc'), 'export'),  # grn_download_doc: PO / E-Way Bill / Vehicle Image (2026-10-31)
-    ('POST', '/grn/post-iqc/export'): ('grn_post_iqc', 'export'),  # grn_post_iqc_export: export
-    ('POST', '/grn/map'): ('grn_post_iqc', 'edit'),  # grn_map: only on GRN post-IQC page
+    ('POST', '/grn/post-iqc/export'): (('grn_post_iqc', 'trade_partner_manage_lots'), 'export'),  # grn_post_iqc_export: export
+    ('POST', '/grn/map'): (('grn_post_iqc', 'trade_partner_manage_lots'), 'edit'),  # grn_map: only on GRN post-IQC page
     ('POST', '/grn/records/bulk-move-to-trc'): ('grn_records', 'edit'),  # grn_bulk_move_to_trc
     ('POST', '/grn/upload'): (('grn', 'grn_post_iqc'), 'upload'),  # grn_upload: form field source: 'post_iqc' -> grn_post_iqc, else grn
     ('POST', '/grn/{grn_id}/validate'): ('grn', 'edit'),  # grn_validate
@@ -306,7 +310,7 @@ ROUTE_ACTIONS = {
     ('POST', '/grn/create-manual'): (('grn', 'grn_post_iqc', 'trade_partner_manage_lots'), 'add'),  # grn_create_manual: form field source: external-partner test source -> trade_partner_manage_lots, 'post_iqc' -> grn_post_iqc, else grn
     ('POST', '/grn/{grn_id}/edit'): (('grn', 'grn_post_iqc', 'trade_partner_manage_lots'), 'edit'),  # grn_edit: GRNImport.source / form source, same rule as delete
     ('POST', '/grn/{grn_id}/add-lot'): (('grn_post_iqc', 'trade_partner_manage_lots'), 'add'),  # grn_add_lot: GRNImport.source external test -> trade_partner_manage_lots else grn_post_iqc
-    ('POST', '/grn/{grn_id}/as-is-lot'): ('grn_post_iqc', 'edit'),  # grn_as_is_lot: bulk sub-lot/assignee write
+    ('POST', '/grn/{grn_id}/as-is-lot'): (('grn_post_iqc', 'trade_partner_manage_lots'), 'edit'),  # grn_as_is_lot: bulk sub-lot/assignee write
     ('POST', '/grn/submit'): ('grn', 'add'),  # submit_grn: GRN for a lot (lots list/detail + GRN form)
     # ===== routers/entity_movement.py =====
     ('POST', '/entity-movement/change-entities'): ('entity_movement', 'edit'),  # change_entities
@@ -670,6 +674,8 @@ ROUTE_ACTIONS = {
     ('POST', '/trade-partner/floors/create'): ('trade_partner_floors', 'pricing_add'),  # create_floor: margin floor; also _is_floor_approver check
     ('POST', '/trade-partner/settings'): ('trade_partner_settings', 'edit'),  # settings_save
     ('POST', '/trade-partner/manage-lots/map-grn'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_map_grn
+    ('POST', '/trade-partner/manage-lots/asset-iqc-upload'): ('trade_partner_manage_lots', 'upload'),  # Asset IQC upload: External Partner IQC format sheet (2026-11-13)
+    ('GET', '/trade-partner/manage-lots/asset-iqc-sample'): ('trade_partner_manage_lots', 'export'),  # Asset IQC upload sample (.xlsx)
     ('POST', '/trade-partner/manage-lots/move-ready-for-sale'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_move_ready_for_sale
     ('POST', '/trade-partner/manage-lots/edit-device'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_edit_device
     ('POST', '/trade-partner/manage-lots/assign-visibility'): ('trade_partner_manage_lots', 'edit'),  # assign_lot_visibility_bulk

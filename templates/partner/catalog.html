@@ -194,11 +194,11 @@
 {% endif %}
 </div></div><div class="col-12 cat-right"><div class="cat-pane">
 
-{# ── Available Stock ───────────────────────────────────────────────────────
-   One row PER UNIT, carrying the full IQC record — hardware specification and
-   cosmetic condition. Cosmetics are recorded per device and cannot be
-   aggregated, so this is deliberately not a model-wise summary. The table
-   scrolls in both directions inside its pane; the page itself does not scroll. #}
+{# ── Available Stock (2026-11-13, Pankaj) ──────────────────────────────────
+   Model-wise summary in the layout of the External Partner IQC sheet's
+   "Sheet1" pivot: one row per Model + CPU + Generation + RAM + HDD + SSD,
+   with the unit count and a Grand Total. Narrowed by the lot picked on the
+   left and by the search box. #}
 <div class="card shadow-sm cat-pane cat-card" id="availableStock">
   <div class="card-header flex-shrink-0">
     <span class="fw-semibold">Available Stock</span>
@@ -215,19 +215,13 @@
     <table class="table table-sm table-hover mb-0 align-middle" id="stockTable" style="width:100%">
       <thead class="table-light">
         <tr>
-          <th class="ps-2 stock-sticky-col">Model Name</th><th>Lot No</th>
-          <th>Brand</th><th>Device Type</th><th>Grade</th><th>Colour</th>
-          <th>CPU</th><th>CPU Make</th><th>Generation</th>
-          <th>RAM</th><th>RAM Type</th><th>Total RAM</th>
-          <th>Storage</th><th>Total Storage</th><th>Screen</th><th>Battery</th>
-          <th>Display Scratch</th><th>Display Dent</th><th>Display Broken</th>
-          <th>Bezel Scratch</th><th>Base Scratch</th><th>Palmrest Scratch</th>
-          <th>Screen Dot</th><th>Screen Line</th><th>Screen Scratch</th>
-          <th>Touch Screen</th><th>Hinge</th><th>Keyboard</th><th>Touchpad</th>
-          <th>Speaker</th><th>Webcam</th>
+          <th class="ps-2 stock-sticky-col">Model</th><th>CPU</th><th>Generation</th>
+          <th>RAM</th><th>RAM Capacity</th><th>HDD</th><th>HDD Capacity</th><th>SSD Capacity</th>
+          <th class="text-end">Count of Model</th>
         </tr>
       </thead>
-      <tbody></tbody>{# rows come from #stockData — drawn per lot, see the script #}
+      <tbody></tbody>{# grouped rows built from #stockData for the selected lot, see the script #}
+      <tfoot><tr class="fw-semibold"><td class="ps-2 stock-sticky-col">Grand Total</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="text-end" id="stockGrandTotal">0</td></tr></tfoot>
     </table>
   </div>
 {% else %}
@@ -374,21 +368,23 @@ document.addEventListener('click', function (e) {
   // Rows arrive as JSON: [31 column values..., lot_id]. deferRender means a
   // row's <tr> is only built when it is shown, so the page draws one lot's
   // rows, not every unit of every lot (2026-11-11 PM speed fix).
+  var selCountEl = document.getElementById('stockSelCount');
   var stockData = [];
   try { stockData = JSON.parse((document.getElementById('stockData') || {}).textContent || '[]'); } catch (e) {}
-  var LOT_COL = 31, STOCK_STEP = 150;
+  // Rows: [Model, CPU, Generation, RAM, RAM Capacity, HDD, HDD Capacity, SSD Capacity, lot_id]
+  var LOT_COL = 8;
   var stocked = {};
   stockData.forEach(function (r) { stocked[r[LOT_COL]] = true; });
   var stockChip = document.getElementById('stockLotChip');
   var activeLot = null;
 
   var lotsDt = document.getElementById('lotsTable')
-    ? initGlobalTable('#lotsTable', $.extend({}, GT_ALL, { info: false, order: [[3, 'desc']] }),   // highest Price first (2026-11-11 PM)
+    ? initGlobalTable('#lotsTable', $.extend({}, GT_ALL, { info: false, order: [] }),   // newest lot first, as sent by the server (2026-11-13)
     { freeze: false, dates: false }) : null;
   if (lotsDt) gtToolbarToCard('#lotsTable');
 
   // Default view: pre-select the first lot (in the table's order) that ACTUALLY
-  // HAS STOCK, before the stock table first draws, so it opens on one lot.
+  // HAS STOCK, so the summary opens on one lot.
   var firstLink = Array.prototype.slice.call(document.querySelectorAll('.lot-stock-link'))
     .filter(function (a) { return stocked[a.dataset.lotId]; })[0];
   if (firstLink) {
@@ -398,67 +394,43 @@ document.addEventListener('click', function (e) {
       stockChip.classList.remove('d-none');
     }
   }
-  // The lot filter is a DataTables row filter, so the search box and the lot
-  // pick work together.
-  $.fn.dataTable.ext.search.push(function (settings, data, idx) {
-    if (settings.nTable.id !== 'stockTable' || !activeLot) return true;
-    return settings.aoData[idx]._aData[LOT_COL] === activeLot;
-  });
+  // Sheet1-style summary: count the units of the selected lot (or every lot)
+  // per Model + CPU + Generation + RAM + HDD + SSD combination.
+  function stockGroups() {
+    var by = {}, out = [];
+    stockData.forEach(function (r) {
+      if (activeLot && r[LOT_COL] !== activeLot) return;
+      var k = r.slice(0, LOT_COL).join('\u0001');
+      if (!by[k]) { by[k] = r.slice(0, LOT_COL).concat([0]); out.push(by[k]); }
+      by[k][LOT_COL] += 1;
+    });
+    return out;
+  }
   var txt = $.fn.dataTable.render.text();
   var stockCols = [];
   for (var ci = 0; ci < LOT_COL; ci++) stockCols.push({ data: ci, render: txt });
   stockCols[0].className = 'ps-2 fw-semibold stock-sticky-col';
-  // createdCell, not className: className would also restyle the header.
-  stockCols[1].createdCell = function (td) { td.className = 'font-monospace text-muted'; };
-  stockCols[4].render = function (v, type) {
-    return type === 'display' ? '<span class="badge bg-secondary">' + esc(v) + '</span>' : v;
-  };
+  stockCols.push({ data: LOT_COL, className: 'text-end fw-semibold' });
   var stockDt = document.getElementById('stockTable')
     ? initGlobalTable('#stockTable', $.extend({}, GT_ALL, {
-        data: stockData, columns: stockCols, deferRender: true, autoWidth: false, info: false,
-        // Still one continuous list — no page controls — but rows are drawn
-        // STOCK_STEP at a time and more are added as the list is scrolled
-        // (loadMoreStock below). Drawing thousands of 31-column rows at once
-        // froze the page for seconds.
-        paging: true, lengthChange: false, pageLength: STOCK_STEP,
+        data: stockGroups(), columns: stockCols, autoWidth: false, info: false,
+        paging: false, order: [[0, 'asc'], [1, 'asc'], [2, 'asc']],
         language: { zeroRecords: 'No stock in this lot.' } }),
       { freeze: false, dates: false, clamp: false }) : null;
   if (stockDt) {
     gtToolbarToCard('#stockTable');
-    var stockPane = document.querySelector('.cat-scroll-stock');
-    var stockTbl = document.getElementById('stockTable');
-    // Add the next STOCK_STEP rows when the bottom of the drawn rows comes
-    // within ~2 screens of the visible area (the pane scrolls on big screens,
-    // the page scrolls on phones — both are watched).
-    var growing = false;
-    var loadMoreStock = function () {
-      var shown = stockDt.rows({ page: 'current' }).count();
-      var total = stockDt.rows({ search: 'applied' }).count();
-      if (shown >= total) return;
-      var visBottom = Math.min(window.innerHeight, stockPane.getBoundingClientRect().bottom);
-      if (stockTbl.getBoundingClientRect().bottom - visBottom < 800) {
-        growing = true;
-        stockDt.page.len(stockDt.page.len() + STOCK_STEP).draw('page');
-        growing = false;
-      }
-    };
-    stockPane.addEventListener('scroll', loadMoreStock, { passive: true });
-    window.addEventListener('scroll', loadMoreStock, { passive: true });
-    // Any other redraw (new lot, search, sort) starts again from the first
-    // STOCK_STEP rows, back at the top.
-    stockDt.on('preDraw.dt', function (e, settings) {
-      if (!growing && settings._iDisplayLength !== STOCK_STEP) {
-        settings._iDisplayLength = STOCK_STEP;
-        settings._iDisplayStart = 0;
-        stockPane.scrollTop = 0;
-      }
-    });
+    // Grand Total and the left half of the units pill follow the rows shown
+    // (lot pick + search).
     stockDt.on('draw.dt', function () {
-      if (selCountEl) selCountEl.textContent = stockDt.rows({ search: 'applied' }).count();
+      var units = 0;
+      stockDt.rows({ search: 'applied' }).data().each(function (r) { units += r[LOT_COL]; });
+      var gt = document.getElementById('stockGrandTotal');
+      if (gt) gt.textContent = units;
+      if (selCountEl) selCountEl.textContent = units;
     });
+    stockDt.draw();
   }
 
-  var selCountEl = document.getElementById('stockSelCount');
 
   /* Pin the two panes to the space actually left in the viewport, so the page
      itself never scrolls and both columns finish level. Measured rather than
@@ -499,9 +471,8 @@ document.addEventListener('click', function (e) {
   window.addEventListener('orientationchange', sizeCatRow);
 
   function applyStockFilter() {
-    // Left half of the pill tracks the visible rows (draw handler above); the
-    // right half is the total across every lot, rendered server-side.
-    if (stockDt) stockDt.draw();
+    // Regroup for the new lot; the pill's right half stays the all-lots total.
+    if (stockDt) stockDt.clear().rows.add(stockGroups()).draw();
   }
 
   function selectLot(lotId, lotNumber){
@@ -533,7 +504,6 @@ document.addEventListener('click', function (e) {
 
   // Default lot is picked above, before the stock table's first draw (taking
   // a lot with no devices would open on an empty table).
-  if (selCountEl && stockDt) selCountEl.textContent = stockDt.rows({ search: 'applied' }).count();
 
   // ── Bid modal ────────────────────────────────────────────────────────────
   var bidModal = new bootstrap.Modal(document.getElementById('lotBidModal'));

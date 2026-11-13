@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block title %}Support dashboard — Ticket Board{% endblock %}
+{% block page_title %}Ticket Board{% endblock %}
+{% block content %}
+{% import "ticket_board/_common.html" as tc with context %}
+{% import "_tiles.html" as tl %}
+{# Support dashboard (2026-11-13, Pankaj): 8 cards (click one to filter the
+   table under them), then tickets by status / priority / engineer / group.
+   routers/ticket_board.py dashboard() #}
+{{ tc.styles() }}
+<style>.tb-cards { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:14px; } .tb-cards > div > div, .tb-cards .oxt-tile { width:100%; } @media (max-width:767px) { .tb-cards { grid-template-columns:repeat(2, minmax(0, 1fr)); } }</style>
+{{ tc.tabs(page='dashboard') }}
+
+<div class="tb-cards mb-3">
+  {% for key, label, color in cards %}
+  <div class="{{ 'tb-card-sel' if key == card else '' }}">{{ tl.single(counts[key], label, color, href='/ticket-board/dashboard?card=' ~ key, title_attr='Show ' ~ label ~ ' tickets') }}</div>
+  {% endfor %}
+</div>
+
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
+    <span class="fw-semibold">{{ card_label }}</span>
+    <span class="text-muted small ms-auto">{{ items|length }} ticket{{ '' if items|length == 1 else 's' }} · click a card above to filter</span>
+  </div>
+  <div class="card-body">{{ tc.ticket_table('tbDashTable', items) }}</div>
+</div>
+
+{% macro bars(rows, denom, colors={}, default='#1f73b7', labels={}) %}
+  {% for name, n in rows %}
+  <div class="tb-bar"><span class="lab" title="{{ labels.get(name, name) }}">{{ labels.get(name, name) }}</span>
+    <div class="track"><div class="fill" style="width:{{ (n / denom * 100) if denom else 0 }}%;background:{{ colors.get(name, default) }}"></div></div>
+    <span class="num">{{ n }}</span></div>
+  {% else %}
+  <div class="text-muted small">No tickets</div>
+  {% endfor %}
+{% endmacro %}
+<div class="row g-3">
+  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100">
+    <div class="card-header bg-transparent"><span class="fw-semibold">Tickets by status</span></div>
+    <div class="card-body">{{ bars(charts.status, total, tb.STATUS_COLOR, labels=tb.STATUS_LABEL) }}</div></div></div>
+  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100">
+    <div class="card-header bg-transparent"><span class="fw-semibold">Tickets by priority</span></div>
+    <div class="card-body">{{ bars(charts.priority, total, tb.PRIORITY_COLOR) }}</div></div></div>
+  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100">
+    <div class="card-header bg-transparent"><span class="fw-semibold">Open tickets per engineer</span></div>
+    <div class="card-body">{{ bars(charts.engineer, open_total) }}</div></div></div>
+  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100">
+    <div class="card-header bg-transparent"><span class="fw-semibold">Tickets by group</span></div>
+    <div class="card-body">{{ bars(charts.group, total, {'Development': '#6a27b8', 'Support': '#1f73b7'}) }}</div></div></div>
+</div>
+{% endblock %}

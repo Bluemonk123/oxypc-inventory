@@ -1,0 +1,560 @@
+{# GRN post-IQC scripts — see _post_iqc_body.html. #}
+<script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
+<script src="/static/js/tag-scan-autocheck.js?v={{ ASSET_VERSION }}"></script>
+<script>
+$(document).ready(function(){
+  // Cards are recomputed from the rows that survive the current filter, not from
+  // a server-side total — one code path keeps cards and table in agreement.
+  // Same pattern as GRN with Invoice's (templates/grn/import.html) cards.
+  function refreshCards(rows) {
+    var qty = 0, added = 0;
+    rows.forEach(function (tr) {
+      var cell = tr.querySelector ? tr.querySelector('.grn-stocked') : null;
+      if (!cell) return;
+      qty   += parseInt(cell.getAttribute('data-qty'), 10) || 0;
+      added += parseInt(cell.getAttribute('data-stocked'), 10) || 0;
+    });
+    document.getElementById('cardTotalQty').textContent = qty;
+    document.getElementById('cardDevicesAdded').textContent = added;
+    document.getElementById('cardDevicesPending').textContent = Math.max(0, qty - added);
+  }
+
+  {
+    var dt = window.dtGrn = initGlobalTable('#grnTable', {
+      order: [],
+      language: { emptyTable: 'No GRN imports yet. Upload an invoice to begin.' },
+    });
+    dt.on('draw.dt', function () {
+      refreshCards(dt.rows({search: 'applied'}).nodes().toArray());
+    });
+    refreshCards(dt.rows({search: 'applied'}).nodes().toArray());
+    $.fn.dataTable.ext.search.push(function(settings, data){
+      if (settings.nTable.id !== 'grnTable') return true;
+      var from = document.getElementById('fFrom').value;
+      var to   = document.getElementById('fTo').value;
+      if (!from && !to) return true;
+      // Global Table shows '04 Nov 2026' (2026-11-04); read it back as YYYY-MM-DD.
+      var d = window.gtIsoDate ? window.gtIsoDate(data[3] || '') : (data[3] || '').trim();  // Date of Invoice — column 3 (GRN, Lot, Invoice before it)
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+    // Filters apply only on Apply (2026-11-08, global filter bar rule);
+    // Enter in a text box counts as Apply.
+    function grnApplyFilters() {
+      dt.column(0).search(document.getElementById('fGrn').value)
+        .column(2).search(document.getElementById('fInvoice').value)
+        .column(4).search(document.getElementById('fVendor').value).draw();
+    }
+    document.getElementById('fApply').addEventListener('click', grnApplyFilters);
+    ['fGrn','fInvoice','fVendor'].forEach(function(id){
+      document.getElementById(id).addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); grnApplyFilters(); } });
+    });
+    // Entity filter: the GRN row's own Entity ("Not set" = empty).
+    $.fn.dataTable.ext.search.push(function(settings, data, idx){
+      if (settings.nTable.id !== 'grnTable') return true;
+      var want = document.getElementById('fEntity').value;
+      if (!want) return true;
+      var tr = settings.aoData[idx] && settings.aoData[idx].nTr;
+      var ent = tr ? (tr.getAttribute('data-entity') || '') : '';
+      return want === '__none__' ? ent === '' : ent === want;
+    });
+    // Export: the rows the filters leave, as CSV (UTF-8 BOM so Excel opens it;
+    // dates as stored, year-first, so Excel reads them as dates).
+    function grnExportRows() { return dt.rows({search: 'applied'}).nodes().toArray(); }
+    function grnExportCount() { document.getElementById('grnExportCount').textContent = grnExportRows().length; }
+    dt.on('draw.dt', grnExportCount);
+    grnExportCount();
+    document.getElementById('grnExportBtn').addEventListener('click', function () {
+      var cols = [['GRN', function (tr) { return tr.id.replace(/^grn-/, ''); }],
+                  ['Entity', 'entity'], ['Location ID', 'location'], ['Added By', 'added-by'],
+                  ['Lot Number(s)', 'lots'], ['Invoice Number', 'inv'], ['Date of Invoice', 'inv-date'],
+                  ['Vendor Name', 'vendor'], ['Quantity', 'qty'], ['Stocked', 'stocked'],
+                  ['Amount', 'amount'], ['As-Is Lot', 'asis']];
+      function q(v) { v = v == null ? '' : String(v); return /[",\n\r]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+      var lines = [cols.map(function (c) { return q(c[0]); }).join(',')];
+      grnExportRows().forEach(function (tr) {
+        lines.push(cols.map(function (c) {
+          return q(typeof c[1] === 'function' ? c[1](tr) : tr.getAttribute('data-' + c[1]));
+        }).join(','));
+      });
+      var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = '{{ 'manage_lots_grn_' if piq.test else 'grn_post_iqc_' }}' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+    });
+    document.getElementById('fReset').addEventListener('click', function(){
+      ['fGrn','fInvoice','fVendor','fFrom','fTo','fEntity'].forEach(function(id){ document.getElementById(id).value=''; });
+      dt.column(0).search('').column(2).search('').column(4).search('').draw();
+    });
+  }
+  // Server-side: the Invoice/PO/Device Type filters used to run as a
+  // client-side ext.search predicate over rows already in the DOM. They now
+  // travel to /grn/post-iqc/data as query params instead, since the row set
+  // itself is fetched a page at a time rather than filtered after the fact.
+  // True while the Search Invoice box or the table's own search has text.
+  function pendSearching(api) {
+    var inv = (document.getElementById('fPendInvoice').value || '').trim();
+    var q = api && api.search ? (api.search() || '').trim() : '';
+    return !!(inv || q);
+  }
+  var dtPend = window.dtPend = initGlobalTable('#pendingTable', {
+    serverSide: true,
+    processing: true,
+    pageLength: 12,
+    order: [],
+    searchDelay: 400,
+    ajax: {
+      url: '/grn/post-iqc/data?scope={{ piq.scope }}',
+      data: function (d) {
+        d.device_type = document.getElementById('fPendDeviceType').value || '';
+        d.pend_invoice = document.getElementById('fPendInvoice').value || '';
+        d.pend_po = document.getElementById('fPendPo').value || '';
+        d.pend_entity = (document.getElementById('ms_val_pend_entity') || {}).value || '';
+      },
+      dataSrc: function (json) { return json.data; },
+    },
+    columnDefs:[{orderable:false, targets:[0]}, {visible:false, targets:[9]}],
+    drawCallback: function () {
+      // Search Invoice or the table search box active -> every matching row
+      // is ticked automatically, ready for "Map this GRN" (2026-10-15).
+      var api = this.api();
+      var auto = pendSearching(api);
+      document.querySelectorAll('#pendingTable .pendChk').forEach(function (c) { c.checked = auto; });
+      document.getElementById('checkAll').checked = auto && document.querySelectorAll('#pendingTable .pendChk').length > 0;
+      updatePendCount();
+    },
+  }, {
+    selectAll: { headerSelector: '#checkAll', rowSelector: '.pendChk', onChange: function(){ updatePendCount(); }, resetOnDraw: false },  // drawCallback sets the header box (auto-select on search)
+  });
+  // GRN Pending accordion: DataTables measures columns while hidden, so
+  // re-measure when it opens; chevron points down while open.
+  var pc = document.getElementById('pendCollapse');
+  if (pc) {
+    pc.addEventListener('shown.bs.collapse', function () { dtPend.columns.adjust(); });
+  }
+  // While searching, show every match on one page so all of them can be
+  // ticked and mapped together; back to 12 per page when cleared.
+  var PEND_SEARCH_LEN = -1, PEND_PAGE_LEN = 12;   // -1 = every match, no cap
+  function pendSetLen(searching) {
+    var want = searching ? PEND_SEARCH_LEN : PEND_PAGE_LEN;
+    if (dtPend.page.len() !== want) dtPend.page.len(want);
+  }
+  $(dtPend.table().container()).find('input[type="search"]').first()
+    .attr('placeholder', 'Search or scan tags (comma separated)…');
+  // Page size is settled right before every filtered redraw ('search' fires
+  // ahead of the server request), so clearing a search reliably goes back
+  // to 12 per page.
+  dtPend.on('search.dt', function () { pendSetLen(pendSearching(dtPend)); });
+  dtPend.on('draw.dt', pendExportUpdate);
+  var entHidden = document.getElementById('ms_val_pend_entity');
+  if (entHidden) entHidden.addEventListener('ms:change', function () { dtPend.draw(); });
+  // Selected count sits in the table toolbar, just before its search box.
+  $(dtPend.table().container()).find('.dataTables_filter').first()
+    .prepend('<span class="badge bg-success me-2" id="pendSelCount">0 selected</span>');
+  updatePendCount();
+  ['fPendInvoice','fPendPo'].forEach(function(id){
+    document.getElementById(id).addEventListener('input', function(){
+      pendSetLen(pendSearching(dtPend));
+      dtPend.draw();
+    });
+  });
+  document.getElementById('fPendDeviceType').addEventListener('change', function(){ dtPend.draw(); });
+  document.getElementById('fPendReset').addEventListener('click', function(){
+    document.getElementById('fPendInvoice').value = '';
+    document.getElementById('fPendPo').value = '';
+    document.getElementById('fPendDeviceType').value = '';
+    var entClear = document.querySelector('[data-ms="pend_entity"] .ms-none');
+    if (entClear) entClear.click();          // clears Entity (and redraws)
+    pendSetLen(pendSearching(dtPend));
+    dtPend.draw();
+  });
+});
+
+// Scroll to + flash the highlighted tag (from "Assign GRN" on IQC Line Items)
+(function(){
+  var hl = {{ (highlight_tag or '')|tojson }};
+  if(!hl) return;
+  var row = document.getElementById('pend-' + hl);
+  if(row && row.scrollIntoView){ row.scrollIntoView({behavior:'smooth', block:'center'}); }
+})();
+
+// Select-all for pending tags
+var checkAll = document.getElementById('checkAll');
+function updatePendCount(){
+  var n = document.querySelectorAll('.pendChk:checked').length;
+  var el = document.getElementById('pendSelCount');
+  if(el) el.textContent = n + ' selected';
+  pendExportUpdate();
+}
+// Export count: ticked rows if any, else every row matching filters + search.
+function pendExportUpdate(){
+  var el = document.getElementById('pendExportCount');
+  if (!el) return;
+  var n = document.querySelectorAll('.pendChk:checked').length;
+  if (!n && window.dtPend) n = window.dtPend.page.info().recordsDisplay;
+  el.textContent = n;
+}
+document.getElementById('pendExportBtn').addEventListener('click', function(){
+  var ids = Array.from(document.querySelectorAll('.pendChk:checked')).map(function(c){ return c.value; });
+  var f = {
+    csrf_token: (document.cookie.match(/csrf_token=([^;]+)/) || [,''])[1],
+    device_ids: ids.join(','),
+    device_type: document.getElementById('fPendDeviceType').value,
+    pend_invoice: document.getElementById('fPendInvoice').value,
+    pend_po: document.getElementById('fPendPo').value,
+    pend_entity: (document.getElementById('ms_val_pend_entity') || {}).value || '',
+    search: window.dtPend ? (window.dtPend.search() || '') : '',
+  };
+  // A separate form (not #mapForm — forms can't nest), POST so any number of ids fits.
+  var form = document.createElement('form');
+  form.method = 'POST'; form.action = '/grn/post-iqc/export?scope={{ piq.scope }}';
+  Object.keys(f).forEach(function(k){
+    var i = document.createElement('input'); i.type = 'hidden'; i.name = k; i.value = f[k]; form.appendChild(i);
+  });
+  document.body.appendChild(form); form.submit(); form.remove();
+});
+if (checkAll) checkAll.addEventListener('change', function(){
+  document.querySelectorAll('.pendChk').forEach(function(c){ c.checked = checkAll.checked; });
+  updatePendCount();
+});
+document.addEventListener('change', function(e){
+  if(e.target && e.target.classList.contains('pendChk')){ updatePendCount(); }
+});
+updatePendCount();
+
+// Scan-to-select: comma-separated tag numbers auto-check matching rows
+// (shared component — also used on IQC List and Inventory Manager).
+// (The header scan box was removed on 2026-10-15; the table's own search box finds tags.)
+
+// Map this GRN — handler (used for both initial buttons and dynamically added ones)
+function mapGrnHandler(){
+  var checked = document.querySelectorAll('.pendChk:checked');
+  if (!checked.length) { alert('Tick at least one tag number below first.'); return; }
+  document.getElementById('mapGrnId').value = this.getAttribute('data-id');
+  if (confirm('Map GRN ' + this.getAttribute('data-grn') + ' to ' + checked.length + ' selected tag(s)?')) {
+    document.getElementById('mapForm').submit();
+  }
+}
+// Delegated (all four GRN-row buttons below): initGlobalTable re-renders the
+// GRN table's cells when it starts, which replaces every button after a
+// per-button listener was attached — and rows past page 1 are never in the
+// DOM at load at all. One document-level listener survives both.
+$(document).on('click', '.map-grn-btn', mapGrnHandler);
+
+// Tax Amount / Taxable Amount (2026-10-31) — live preview; the server
+// recomputes on save (services/grn_tax.py). Invoice Price includes GST:
+// Taxable = Price / (1 + GST%), Tax = Price - Taxable. GST% = Intra-State
+// (CGST+SGST) when Vendor State = the entity's company state, else IGST.
+var GRN_GST = {{ (gst_cfg if gst_cfg is defined else {"intra": 18, "inter": 18, "states": {}}) | tojson }};
+function grnTax(p) {
+  var price = parseFloat((document.getElementById(p + 'amount').value || '').replace(/,/g, ''));
+  var st = (document.getElementById(p + 'vendor_state').value || '').trim().toLowerCase();
+  var ent = p === 'a_' ? ((document.getElementById('a_entity_val') || {}).value || '')
+                       : (document.getElementById('editGrnModal').dataset.entity || '');
+  var home = (GRN_GST.states[ent] || GRN_GST.states[''] || '').trim().toLowerCase();
+  var tax = document.getElementById(p + 'tax'), txb = document.getElementById(p + 'taxable'), lbl = document.getElementById(p + 'gst_lbl');
+  if (isNaN(price) || !st) { tax.value = ''; txb.value = ''; lbl.textContent = ''; return; }
+  var intra = home && home === st, rate = intra ? GRN_GST.intra : GRN_GST.inter;
+  var taxable = Math.round(price / (1 + rate / 100) * 100) / 100;
+  var t = Math.round((price - taxable) * 100) / 100;
+  var f = function (v) { return v.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); };
+  tax.value = f(t); txb.value = f(taxable);
+  lbl.textContent = (intra ? 'CGST+SGST ' : 'GST ') + rate + '%';
+}
+// E-Way Bill required above 50,000 Invoice Price (2026-11-03), per form (prefix).
+function grnEwayReq(p) {
+  var a = document.getElementById(p + 'amount');
+  if (!a) return;
+  var amt = parseFloat(String(a.value || '').replace(/[,\u20b9\s]/g, '')) || 0;
+  var need = {{ 'false' if piq.test else 'true' }} && amt > 50000;   // Manage Lots test GRN: all optional
+  [p + 'eway', p + 'eway_date'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.required = need;
+    var star = el.parentElement.querySelector('.eway-star');
+    if (star) star.classList.toggle('d-none', !need);
+  });
+}
+document.querySelectorAll('input[name="amount"].grn-tax-in').forEach(function (el) {
+  var p = el.getAttribute('data-p') || '';
+  ['input', 'change'].forEach(function (ev) { el.addEventListener(ev, function () { grnEwayReq(p); }); });
+  grnEwayReq(p);
+});
+document.querySelectorAll('.grn-tax-in').forEach(function (el) {
+  ['input', 'change'].forEach(function (ev) { el.addEventListener(ev, function () { grnTax(el.dataset.p); }); });
+});
+(function () { var ae = document.getElementById('a_entity_val'); if (ae) ae.addEventListener('change', function () { grnTax('a_'); }); })();
+
+
+// Stocked popup (2026-10-31; Global Tables since 2026-11-08, same as grn/_tabs.html)
+window.grnTabsInit = window.grnTabsInit || function (root) {
+  root.querySelectorAll('table.grn-dev-table').forEach(function (t) {
+    if (!$.fn.dataTable.isDataTable(t)) initGlobalTable(t, { order: [[0, 'asc']] });
+  });
+  root.querySelectorAll('button[data-bs-toggle="tab"]').forEach(function (b) {
+    b.addEventListener('shown.bs.tab', function () {
+      var pane = document.querySelector(b.getAttribute('data-bs-target'));
+      if (!pane) return;
+      pane.querySelectorAll('table.grn-model-table').forEach(function (t) {
+        if (!$.fn.dataTable.isDataTable(t)) initGlobalTable(t, { order: [[10, 'desc']] });
+        else $(t).DataTable().columns.adjust();
+      });
+      pane.querySelectorAll('table.grn-dev-table').forEach(function (t) { if ($.fn.dataTable.isDataTable(t)) $(t).DataTable().columns.adjust(); });
+    });
+  });
+};
+$(document).on('click', '.grn-stocked-open', function (e) {
+  e.preventDefault();
+  var id = this.getAttribute('data-grn-id');
+  document.getElementById('stockedGrnNo').textContent = this.getAttribute('data-grn') || '';
+  document.getElementById('stockedGrnLink').href = '/grn/view/' + id;
+  var body = document.getElementById('stockedBody');
+  body.innerHTML = '<div class="text-muted small">Loading…</div>';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('stockedModal')).show();
+  fetch('/grn/view/' + id + '/tabs', { credentials: 'same-origin' })
+    .then(function (r) { return r.text(); })
+    .then(function (html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      doc.querySelectorAll('script').forEach(function (sc) { sc.remove(); });
+      body.innerHTML = doc.body.innerHTML;
+      grnTabsInit(body);
+    })
+    .catch(function () { body.innerHTML = '<div class="text-danger small">Could not load the tags.</div>'; });
+});
+
+// Edit modal wiring
+var em = document.getElementById('editGrnModal');
+if (em) { em.addEventListener('show.bs.modal', function(e){
+  var b = e.relatedTarget;
+  document.getElementById('editGrnForm').action = '/grn/' + b.getAttribute('data-id') + '/edit';
+  document.getElementById('e_grn_number').textContent = b.getAttribute('data-grn-number') || '';
+  document.getElementById('e_grn_label').textContent = b.getAttribute('data-grn-number') || '';
+  em.querySelector('input[name="invoice"]').value = '';
+  document.getElementById('e_file_hint').textContent = b.getAttribute('data-file')
+    ? 'Attached: ' + b.getAttribute('data-file') : '';
+  document.getElementById('e_entity').value = b.getAttribute('data-entity') || '';
+  document.getElementById('e_location').value = b.getAttribute('data-location') || '';
+  document.getElementById('e_lot_number').value = b.getAttribute('data-lot-number') || '';
+  document.getElementById('e_inv').value = b.getAttribute('data-inv') || '';
+  document.getElementById('e_date').value = b.getAttribute('data-date') || '';
+  document.getElementById('e_sender').value = b.getAttribute('data-sender') || '';
+  document.getElementById('e_qty').value = b.getAttribute('data-qty') || '';
+  document.getElementById('e_amount').value = b.getAttribute('data-amount') || '';
+  document.getElementById('e_purchase_date').value = b.getAttribute('data-purchase-date') || '';
+  document.getElementById('e_grn_date').value = b.getAttribute('data-grn-date') || '';
+  document.getElementById('e_po').value = b.getAttribute('data-po') || '';
+  document.getElementById('e_vehicle').value = b.getAttribute('data-vehicle') || '';
+  document.getElementById('e_eway').value = b.getAttribute('data-eway') || '';
+  document.getElementById('e_notes').value = b.getAttribute('data-notes') || '';
+  document.getElementById('e_eway_date').value = b.getAttribute('data-eway-date') || '';
+  document.getElementById('e_vendor_state').value = b.getAttribute('data-vendor-state') || '';
+  document.getElementById('e_po_qty').value = b.getAttribute('data-po-qty') || '';
+  document.getElementById('e_phys_qty').value = b.getAttribute('data-phys-qty') || '';
+  em.dataset.entity = b.getAttribute('data-entity') || '';
+  grnTax('e_');
+  em.querySelectorAll('input[type=file]').forEach(function (f) { f.value = ''; });
+  [['po', 'PO'], ['eway', 'E-Way Bill'], ['vehicle', 'Vehicle Image']].forEach(function (k) {
+    document.getElementById('e_' + k[0] + '_hint').textContent = b.getAttribute('data-has-' + k[0])
+      ? k[1] + ' attached' : '';
+  });
+});}
+
+// Mapped Lots popup — opened from the LOT column's "N Lots" count.
+// Keyed by grn_number rather than embedded per-button as a JSON attribute,
+// since tojson's escaping targets <script> contexts, not HTML attributes,
+// and a lot number could contain a double quote.
+var lotsByGrn = {{ (lots_json if lots_json is defined else {}) | tojson }};
+$(document).on('click', '.lot-count-btn', function(){
+  var lots = lotsByGrn[this.getAttribute('data-grn')] || [];
+  var list = document.getElementById('lotListItems');
+  list.innerHTML = '';
+  lots.forEach(function(l){
+    var li = document.createElement('li');
+    li.className = 'list-group-item';
+    var a = document.createElement('a');
+    a.href = '/lots/' + l.id;
+    a.className = 'text-decoration-none fw-semibold';
+    a.textContent = l.lot_number;
+    li.appendChild(a);
+    list.appendChild(li);
+  });
+  new bootstrap.Modal(document.getElementById('lotListModal')).show();
+});
+
+// Add/Edit Lot modal wiring — one row per Lot Number, so a GRN can map to
+// several Lots in one submit, created/merged the same way each row always
+// was individually. Edit Lot pre-fills a row per Lot already mapped to this
+// GRN so it's visible and editable, not just re-addable from scratch.
+function alMakeRow(lotNumber, isPrefilled) {
+  var row = document.createElement('div');
+  row.className = 'row g-2 align-items-start mb-2 al-row';
+  row.innerHTML =
+    '<div class="col-10">' +
+      '<input type="text" class="form-control form-control-sm al-lot-number" placeholder="Lot Number" required>' +
+      '<div class="alert alert-warning d-none py-1 px-2 mt-1 small al-existing-warning mb-0">' +
+        'This Lot Number already exists.' +
+        '<div class="form-check">' +
+          '<input class="form-check-input al-confirm-merge" type="checkbox">' +
+          '<label class="form-check-label">Are you sure want to add tags in this Lot</label>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="col-2 pt-1"><button type="button" class="btn btn-sm btn-outline-danger al-remove-row"><i class="bi bi-x-lg"></i></button></div>';
+  var input = row.querySelector('.al-lot-number');
+  var warn = row.querySelector('.al-existing-warning');
+  var confirmBox = row.querySelector('.al-confirm-merge');
+  input.value = lotNumber || '';
+  if (isPrefilled) {
+    // Already mapped to this GRN — resubmitting it unchanged is a no-op
+    // merge, so skip the "already exists" friction and pre-confirm it.
+    confirmBox.checked = true;
+    row.dataset.prefilled = '1';
+  }
+  input.addEventListener('input', function(){
+    if (row.dataset.prefilled === '1' && input.value.trim() !== (lotNumber || '')) {
+      row.dataset.prefilled = '';
+      confirmBox.checked = false;
+    }
+  });
+  input.addEventListener('blur', function(){
+    var v = input.value.trim();
+    warn.classList.add('d-none');
+    if (!v || row.dataset.prefilled === '1') return;
+    fetch('/grn/lots/check?lot_number=' + encodeURIComponent(v)).then(function(r){ return r.json(); }).then(function(resp){
+      warn.classList.toggle('d-none', !resp.exists);
+      if (!resp.exists) confirmBox.checked = false;
+    });
+  });
+  row.querySelector('.al-remove-row').addEventListener('click', function(){
+    if (document.querySelectorAll('#al_rows .al-row').length > 1) row.remove();
+  });
+  return row;
+}
+document.getElementById('al_add_row').addEventListener('click', function(){
+  document.getElementById('al_rows').appendChild(alMakeRow('', false));
+});
+$(document).on('click', '.add-lot-btn', function(){
+  document.getElementById('al_grn_id').value = this.getAttribute('data-grn-id');
+  var rowsBox = document.getElementById('al_rows');
+  rowsBox.innerHTML = '';
+  var existingNumbers = (this.getAttribute('data-lot-numbers') || '')
+    .split(',').map(function(s){ return s.trim(); }).filter(Boolean);
+  if (existingNumbers.length) {
+    existingNumbers.forEach(function(n){ rowsBox.appendChild(alMakeRow(n, true)); });
+  } else {
+    rowsBox.appendChild(alMakeRow('', false));
+  }
+  new bootstrap.Modal(document.getElementById('addLotModal')).show();
+});
+document.getElementById('addLotForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  var rows = document.querySelectorAll('#al_rows .al-row');
+  var lotNumbers = [];
+  var confirms = [];
+  var missing = false;
+  rows.forEach(function(row){
+    var v = row.querySelector('.al-lot-number').value.trim();
+    if (!v) { missing = true; return; }
+    lotNumbers.push(v);
+    confirms.push(row.querySelector('.al-confirm-merge').checked ? '1' : '');
+  });
+  if (missing || !lotNumbers.length) { alert('Enter at least one Lot Number.'); return; }
+  var fd = new FormData();
+  fd.append('csrf_token', document.querySelector('#editGrnForm input[name="csrf_token"]').value);
+  lotNumbers.forEach(function(n){ fd.append('lot_number', n); });
+  confirms.forEach(function(c){ fd.append('confirm_merge', c); });
+  fetch('/grn/' + document.getElementById('al_grn_id').value + '/add-lot', {method:'POST', body:fd})
+    .then(function(r){
+      if (!r.ok) { return r.json().then(function(j){ throw new Error(j.detail || 'Failed'); }); }
+      return r.json();
+    })
+    .then(function(resp){
+      if (!resp.ok) {
+        if (resp.conflicts && resp.conflicts.length) {
+          resp.conflicts.forEach(function(ln){
+            rows.forEach(function(row){
+              if (row.querySelector('.al-lot-number').value.trim() === ln) {
+                row.querySelector('.al-existing-warning').classList.remove('d-none');
+              }
+            });
+          });
+          alert('Some Lot Numbers already exist — tick the confirmation box for each and Save again.');
+          return;
+        }
+        alert(resp.error || resp.detail || 'Failed');
+        return;
+      }
+      location.reload();
+    })
+    .catch(function(err){ alert(err.message); });
+});
+
+// ── Yes As-Is — bulk Sub-Lot Number modal ──────────────────────────────────
+$(document).on('click', '.as-is-lot-btn', function(){
+  document.getElementById('ail_grn_id').value = this.getAttribute('data-grn-id');
+  document.getElementById('ail_grn_label').textContent = this.getAttribute('data-grn') || '';
+  document.getElementById('ail_sub_lot_number').value = '';
+  document.getElementById('ail_assigned_to').value = '';
+  new bootstrap.Modal(document.getElementById('asIsLotModal')).show();
+});
+document.getElementById('asIsLotForm').addEventListener('submit', function(e){
+  e.preventDefault();
+  var value = document.getElementById('ail_sub_lot_number').value.trim();
+  if (!value) { alert('Enter a Sub-Lot Number.'); return; }
+  var fd = new FormData();
+  fd.append('csrf_token', document.querySelector('#editGrnForm input[name="csrf_token"]').value);
+  fd.append('sub_lot_number', value);
+  fd.append('assigned_to_user_id', document.getElementById('ail_assigned_to').value);
+  fetch('/grn/' + document.getElementById('ail_grn_id').value + '/as-is-lot', {method:'POST', body:fd})
+    .then(function(r){
+      if (!r.ok) { return r.json().then(function(j){ throw new Error(j.detail || 'Failed'); }); }
+      return r.json();
+    })
+    .then(function(){ location.reload(); })
+    .catch(function(err){ alert(err.message); });
+});
+
+// ── Map tags without leaving the page ─────────────────────────────────────
+// A redirect reloaded the screen and discarded the invoice / PO / device-type
+// filters used to find these tags, so mapping a second batch meant rebuilding
+// the filter every time. Post over fetch, report inline, reload just the rows.
+document.getElementById('mapForm').addEventListener('submit', function (e) {
+  e.preventDefault();
+  var form = e.target;
+  var btns = form.querySelectorAll('button[type=submit]');
+  btns.forEach(function (b) { b.disabled = true; });
+  fetch(form.action, {
+    method: 'POST',
+    body: new FormData(form),
+    headers: { 'X-Requested-With': 'fetch' },
+  }).then(function (r) {
+    return r.json().then(function (d) { return { ok: r.ok, d: d }; });
+  }).then(function (res) {
+    grnMapNotice(res.d.message || (res.ok ? 'Mapped.' : 'Could not map those tags.'),
+                 res.ok && res.d.ok);
+    if (res.ok && res.d.ok) {
+      form.reset();
+      document.getElementById('mapGrnId').value = '';
+      if (window.dtPend) window.dtPend.ajax.reload(null, false);
+      if (window.dtGrn) window.dtGrn.ajax.reload(null, false);
+    }
+  }).catch(function () {
+    grnMapNotice('Network error — nothing was mapped. Try again.', false);
+  }).finally(function () {
+    btns.forEach(function (b) { b.disabled = false; });
+  });
+});
+
+function grnMapNotice(text, ok) {
+  var box = document.getElementById('mapNotice');
+  box.className = 'alert py-2 small no-autohide alert-' + (ok ? 'success' : 'danger');
+  box.textContent = text;
+  box.classList.remove('d-none');
+  box.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+</script>

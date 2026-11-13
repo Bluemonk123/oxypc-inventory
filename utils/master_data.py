@@ -74,7 +74,8 @@ async def report_year_values(db: AsyncSession) -> list:
 # MASTER_SEED otherwise seeds brand-new installs only, so a category added later
 # would ship with an empty dropdown everywhere until an admin typed every value.
 ENSURE_SEEDED_CATEGORIES = ("dealer_state", "storage_size", "ram_size", "transport_mode", "delivery_courier",
-                            "crm_credit_days")   # Accounts: Credit Days (2026-11-10)
+                            "crm_credit_days",   # Accounts: Credit Days (2026-11-10)
+                            "ticket_group")      # Ticket Board groups (2026-11-13)
 
 
 async def ensure_master_defaults(db: AsyncSession, categories=ENSURE_SEEDED_CATEGORIES) -> int:

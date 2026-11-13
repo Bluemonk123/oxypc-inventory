@@ -1,0 +1,156 @@
+{# Ticket Board shared bits (2026-11-13): styles, status pill macro, and the
+   strip of open-ticket tabs. The tabs are a per-viewer convenience kept in
+   this browser (localStorage), like a browser's own tabs. #}
+{% macro status_pill(st, short=False) -%}
+<span class="tb-pill tb-st-{{ st }}" title="{{ tb.STATUS_LABEL.get(st, st) }}">{{ (tb.STATUS_LABEL.get(st, st))[:1] if short else tb.STATUS_LABEL.get(st, st) }}</span>
+{%- endmacro %}
+
+{% macro prio(p) -%}
+<span class="tb-prio" style="color:{{ tb.PRIORITY_COLOR.get(p, '#68737d') }}">{{ p|capitalize }}</span>
+{%- endmacro %}
+
+{% macro sla_badge(sla) -%}
+{%- if sla %}<span class="tb-sla tb-sla-{{ sla.state }}">{{ sla.text }}</span>{% endif -%}
+{%- endmacro %}
+
+{# The ticket table (Views list and Dashboard). #}
+{% macro ticket_table(table_id, items) %}
+<table class="table table-hover mb-0 small align-middle" id="{{ table_id }}">
+  <thead class="table-light">
+    <tr><th>Status</th><th>Subject</th><th>Requester</th><th>Updated</th><th>Group</th><th>Assignee</th><th>Priority</th><th>SLA</th></tr>
+  </thead>
+  <tbody>
+  {% for it in items %}{% set t = it.t %}
+    <tr class="tb-row" data-href="/ticket-board/{{ t.ticket_id }}">
+      <td data-order="{{ ['new','open','pending','hold','solved'].index(t.status) if t.status in ['new','open','pending','hold','solved'] else 9 }}">{{ status_pill(t.status) }}</td>
+      <td>
+        {# Number above the subject, no preview line (2026-11-13, Pankaj). #}
+        <div class="text-muted" style="font-size:.75rem"><i class="bi {{ tb.CHANNEL_ICON[it.channel][0] }} me-1" title="via {{ tb.CHANNEL_ICON[it.channel][1] }}"></i>#{{ t.ticket_id }}</div>
+        <div class="tb-subj">{{ t.display_subject }}</div>
+      </td>
+      <td>{{ it.req.name }}{% if it.req.kind != 'Staff' %}<div class="text-muted" style="font-size:.72rem">{{ it.req.kind }}</div>{% endif %}</td>
+      {% set upd = t.updated_at or t.raised_on %}
+      <td data-order="{{ upd.isoformat() if upd else '' }}"><time data-ts="{{ upd.isoformat() if upd else '' }}"></time></td>
+      <td>{{ t.group_name or '—' }}</td>
+      <td>{% if it.assignee %}{{ it.assignee }}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+      <td data-order="{{ ['urgent','high','normal'].index(it.priority) }}">{{ prio(it.priority) }}</td>
+      <td data-order="{{ it.sla.left_s if it.sla and it.sla.left_s is not none else 99999999 }}">{{ sla_badge(it.sla) }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  initGlobalTable('#{{ table_id }}', { order: [[3, 'desc']], language: { emptyTable: 'No tickets here.' } }, { dates: false });
+  document.getElementById('{{ table_id }}').addEventListener('click', function (e) {
+    var tr = e.target.closest('tr.tb-row'); if (tr && !e.target.closest('a,button')) location.href = tr.dataset.href;
+  });
+});
+</script>
+{% endmacro %}
+
+{% macro styles() %}
+<style>
+  .tb-pill { display:inline-block; min-width:22px; padding:2px 8px; border-radius:4px; color:#fff; font-size:.7rem;
+             font-weight:600; text-align:center; line-height:1.4; }
+  .tb-st-new { background:#ffb648; color:#2f3941; } .tb-st-open { background:#e34f32; } .tb-st-pending { background:#3091ec; }
+  .tb-st-hold { background:#2f3941; } .tb-st-solved { background:#87929d; }
+  .tb-prio { font-size:.78rem; font-weight:600; }
+  .tb-sla { font-size:.72rem; font-weight:600; padding:2px 6px; border-radius:4px; white-space:nowrap; }
+  .tb-sla-ok { background:#edf8f4; color:#038153; } .tb-sla-warn { background:#fff7ed; color:#ad5918; }
+  .tb-sla-breach { background:#fff0f1; color:#cc3340; } .tb-sla-paused { background:#eef0f2; color:#68737d; }
+  .tb-card-sel .oxt-tile { outline:2px solid var(--bs-primary); outline-offset:2px; }
+  .tb-bar { display:flex; align-items:center; gap:10px; margin-bottom:10px; font-size:.85rem; }
+  .tb-bar .lab { width:120px; color:var(--bs-secondary-color); text-transform:capitalize; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tb-bar .track { flex:1; height:10px; background:#eef0f2; border-radius:5px; overflow:hidden; }
+  .tb-bar .fill { height:100%; border-radius:5px; }
+  .tb-bar .num { width:32px; text-align:right; font-weight:600; }
+  .tb-tabs { display:flex; gap:4px; overflow-x:auto; border-bottom:1px solid var(--bs-border-color); margin-bottom:12px; }
+  .tb-tab { display:flex; align-items:center; gap:6px; padding:6px 10px; border:1px solid transparent; border-bottom:0;
+            border-radius:6px 6px 0 0; color:var(--bs-secondary-color); white-space:nowrap; max-width:240px;
+            text-decoration:none; font-size:.85rem; background:transparent; }
+  .tb-tab:hover { color:var(--bs-body-color); background:rgba(var(--bs-primary-rgb), .05); }
+  .tb-tab.active { background:#fff; border-color:var(--bs-border-color); color:var(--bs-body-color); font-weight:600; margin-bottom:-1px; }
+  .tb-tab .t { overflow:hidden; text-overflow:ellipsis; }
+  .tb-tab .x { border:0; background:none; color:var(--bs-secondary-color); font-size:1rem; line-height:1; padding:0 2px; }
+  .tb-tab .x:hover { color:#e34f32; }
+  .tb-views .list-group-item { display:flex; justify-content:space-between; border:0; border-radius:6px !important;
+                               padding:.5rem .75rem; font-size:.9rem; }
+  .tb-views .list-group-item.active { background:rgba(var(--bs-primary-rgb), .1); color:var(--bs-primary); font-weight:600; }
+  .tb-views .list-group-item .n { color:var(--bs-secondary-color); font-weight:500; }
+  .tb-subj { font-weight:600; white-space:normal; min-width:220px; }
+  .tb-prev { color:var(--bs-secondary-color); font-size:.78rem; max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  tr.tb-row { cursor:pointer; }
+  .tb-thread { display:flex; flex-direction:column; gap:10px; max-height:62vh; overflow-y:auto; padding:4px 2px; }
+  .tb-msg { border:1px solid var(--bs-border-color); border-radius:8px; padding:10px 12px; display:flex; gap:10px; background:#fff; }
+  .tb-msg.note { background:#fff6e0; border-color:#f5d48a; }
+  .tb-msg.event { border:0; background:transparent; padding:0 12px; justify-content:center; color:var(--bs-secondary-color); font-size:.78rem; }
+  .tb-av { width:32px; height:32px; border-radius:50%; flex-shrink:0; display:grid; place-items:center; color:#fff; font-weight:600; font-size:.75rem; }
+  .tb-msg .who { font-weight:600; }
+  .tb-msg .when { color:var(--bs-secondary-color); font-size:.75rem; margin-left:6px; }
+  .tb-badge { font-size:.62rem; font-weight:700; text-transform:uppercase; background:#f5d48a; color:#6b4a00; border-radius:3px; padding:1px 5px; margin-left:6px; }
+  .tb-body { margin-top:3px; white-space:pre-wrap; line-height:1.5; word-break:break-word; }
+  .tb-owner { display:flex; align-items:center; gap:10px; padding:8px 10px; background:#f6f9fc; border:1px solid var(--bs-border-color); border-radius:8px; }
+  .tb-owner .lbl { font-size:.75rem; color:var(--bs-secondary-color); }
+  .tb-composer textarea.note { background:#fff6e0; border-color:#f5d48a; }
+  .tb-mode .btn.active:not(.note) { background:rgba(var(--bs-primary-rgb), .12) !important; color:var(--bs-primary) !important; }
+  .tb-mode .btn.active.note { background:#fff6e0 !important; color:#8a5d00 !important; border-color:#f5d48a !important; }
+  .tb-prop { display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); column-gap:12px; }
+  .tb-prop .tb-full { grid-column:1 / -1; }
+  .tb-prop label { font-size:.75rem; font-weight:600; color:var(--bs-secondary-color); margin-bottom:3px; }
+  .tb-kv { display:grid; grid-template-columns:96px 1fr; gap:4px 8px; font-size:.85rem; }
+  .tb-kv span:nth-child(odd) { color:var(--bs-secondary-color); }
+  .tb-files { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
+  .tb-files img { max-width:200px; max-height:140px; border-radius:6px; border:1px solid var(--bs-border-color); }
+</style>
+{% endmacro %}
+
+{% macro tabs(active_id='', page='views') %}
+<div class="tb-tabs" id="tbTabs" data-active="{{ active_id }}">
+  {# Dashboard first, then All Tickets (2026-11-13, Pankaj). #}
+  <a href="/ticket-board/dashboard" class="tb-tab{% if page == 'dashboard' %} active{% endif %}"><i class="bi bi-bar-chart"></i><span class="t">Dashboard</span></a>
+  <a href="/ticket-board" class="tb-tab{% if not active_id and page == 'views' %} active{% endif %}"><i class="bi bi-list-ul"></i><span class="t">All Tickets</span></a>
+</div>
+<script>
+// Open-ticket tabs (this browser only). Each: {id, s: subject, st: status}.
+(function () {
+  var KEY = 'tbOpenTabs', box = document.getElementById('tbTabs'), active = box.dataset.active;
+  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
+  function save(v) { try { localStorage.setItem(KEY, JSON.stringify(v.slice(-12))); } catch (e) {} }
+  var list = load();
+  window.tbRememberTab = function (id, s, st) {
+    list = list.filter(function (x) { return x.id !== id; }); list.push({ id: id, s: s, st: st }); save(list); draw();
+  };
+  var LBL = { new: 'N', open: 'O', pending: 'P', hold: 'H', solved: 'S' };
+  function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; }
+  function draw() {
+    box.querySelectorAll('.tb-tab[data-id]').forEach(function (n) { n.remove(); });
+    list.forEach(function (x) {
+      var a = document.createElement('a');
+      a.href = '/ticket-board/' + encodeURIComponent(x.id); a.dataset.id = x.id;
+      a.className = 'tb-tab' + (x.id === active ? ' active' : '');
+      a.innerHTML = '<span class="tb-pill tb-st-' + esc(x.st) + '">' + (LBL[x.st] || '?') + '</span>' +
+        '<span class="t">#' + esc(x.id) + ' ' + esc(x.s) + '</span><button type="button" class="x" title="Close tab" aria-label="Close tab">&times;</button>';
+      a.querySelector('.x').addEventListener('click', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        list = list.filter(function (y) { return y.id !== x.id; }); save(list);
+        if (x.id === active) location.href = '/ticket-board'; else draw();
+      });
+      box.appendChild(a);
+    });
+  }
+  draw();
+})();
+// Relative times: <time data-ts="ISO">.
+document.addEventListener('DOMContentLoaded', function () {
+  function ago(ts) {
+    var m = Math.round((Date.now() - new Date(ts).getTime()) / 60000);
+    if (isNaN(m)) return ''; if (m < 1) return 'just now'; if (m < 60) return m + 'm ago';
+    var h = Math.round(m / 60); if (h < 24) return h + 'h ago'; return Math.round(h / 24) + 'd ago';
+  }
+  document.querySelectorAll('time[data-ts]').forEach(function (el) {
+    el.textContent = ago(el.dataset.ts); el.title = new Date(el.dataset.ts).toLocaleString();
+  });
+});
+</script>
+{% endmacro %}

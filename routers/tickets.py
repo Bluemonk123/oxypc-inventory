@@ -115,7 +115,7 @@ def _ticket_ctx(t: Ticket, names: dict | None = None) -> dict:
     age_label, age_cls = _age_pill(t.raised_on)
     return {
         "ticket_id":  t.ticket_id,
-        "status":     t.status,
+        "status":     t.simple_status,   # Open / Closed (Ticket Board has the full status)
         "raised_on":  t.raised_on.strftime("%d-%m-%Y %H:%M") if t.raised_on else "—",
         "raised_by":  t.raised_by,
         # Full display name (2026-10-16); falls back to the stored username
@@ -188,6 +188,7 @@ async def raise_ticket(
             saved.append(path)
     ticket = Ticket(
         ticket_id=tid,
+        status="new", channel="web",
         raised_by=current_user.username,
         feedback=feedback.strip(),
         photo1_path=saved[0] if len(saved) > 0 else None,
@@ -248,6 +249,7 @@ async def create_public_ticket(db, raised_by, feedback, photos, source="login pa
             saved.append(path)
     ticket = Ticket(
         ticket_id=tid,
+        status="new", channel="web",
         raised_by=name,
         feedback=f"[From {source}] " + feedback.strip()[:5000],
         photo1_path=saved[0] if len(saved) > 0 else None,
@@ -303,9 +305,13 @@ async def close_ticket(
     ticket = result.scalar_one_or_none()
     if not ticket:
         return JSONResponse({"error": "Ticket not found."}, status_code=404)
-    if ticket.status == "Closed":
+    if ticket.simple_status == "Closed":
         return JSONResponse({"error": "Already closed."}, status_code=400)
-    ticket.status = "Closed"
+    # Close = Solved on the Ticket Board (2026-11-13), logged in its activity.
+    from services.ticket_board import set_status, add_event
+    set_status(db, ticket, "solved", current_user)
+    if notes.strip():
+        add_event(db, ticket, current_user, "Closed from Tickets Raised — " + notes.strip()[:500])
     # Closing notes are appended, never overwritten — an earlier note is part of
     # the ticket's history and a later closer should not silently erase it.
     if notes.strip():

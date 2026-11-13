@@ -255,6 +255,7 @@ from routers.crm_reports import router as crm_reports_router
 from routers.crm_assign_leads import router as crm_assign_leads_router
 from routers.assign_dealer_leads import router as assign_dealer_leads_router
 from routers.tickets import router as tickets_router
+from routers.ticket_board import router as ticket_board_router   # Ticket Board (2026-11-13)
 from routers.settings import router as settings_router
 from routers.trash import router as trash_router
 from routers.notifications import router as notifications_router
@@ -347,6 +348,7 @@ app.include_router(crm_reports_router)
 app.include_router(crm_assign_leads_router)
 app.include_router(assign_dealer_leads_router)
 app.include_router(tickets_router)
+app.include_router(ticket_board_router)
 app.include_router(settings_router)
 app.include_router(trash_router)
 app.include_router(notifications_router)
@@ -874,6 +876,17 @@ async def startup_event():
         print("  [MasterData] Dropdown options cache loaded")
     except Exception as _me:
         print(f"  [MasterData] Could not load dropdown-options cache: {_me}")
+
+    # ── Ticket Board (2026-11-13): old Open / Closed tickets -> new / solved ──
+    try:
+        from services.ticket_board import migrate_legacy_statuses
+        from database import AsyncSessionLocal as _ASL3
+        async with _ASL3() as _sess3:
+            _tm = await migrate_legacy_statuses(_sess3)
+        if _tm:
+            print(f"  [TicketBoard] Moved {_tm} ticket(s) to the new statuses")
+    except Exception as _te:
+        print(f"  [TicketBoard] Could not move ticket statuses: {_te}")
 
     # ── Warm Master Data Global Visibility cache from DB ──────────────────────
     try:

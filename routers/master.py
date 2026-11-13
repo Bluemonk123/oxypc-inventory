@@ -96,7 +96,7 @@ ACCORDION_SECTIONS = [
         "cat_keys": [
             "whatsapp_message_type", "whatsapp_group_category",
             "market_trade_type", "market_item_category", "market_condition",
-            "attendance_status", "qa_environment",
+            "attendance_status", "qa_environment", "ticket_group",
         ],
     },
     # Product Model Names (2026-11-06, Pankaj): one place for every model name,
@@ -245,6 +245,7 @@ PERM_MODULES = [
     ("qa",                   "QA Dashboard"),
     ("qa_uat",               "UAT Analysis"),
     ("qa_ux",                "UX Journeys"),
+    ("ticket_board",         "Ticket Board"),          # 2026-11-13: helpdesk for raised tickets
     ("manuals",              "Manuals"),
     # ── APPLICATION SETTINGS (admin-only by default; grantable via matrix) ─
     ("move_device_internal", "Move Device Internal"),
@@ -528,6 +529,7 @@ CATEGORIES = [
     ("market_condition",    "Market: Item Condition",       "other_modules"),
     ("attendance_status",   "Attendance: Status",           "other_modules"),
     ("qa_environment",      "QA: Test Environment",         "other_modules"),
+    ("ticket_group",        "Ticket Board: Group",          "other_modules"),   # 2026-11-13
     # ── Telecalling ────────────────────────────────────────────────
     ("tc_category",         "Telecalling: Category",         "sales"),
     ("tc_model",            "Telecalling: Model",            "sales"),

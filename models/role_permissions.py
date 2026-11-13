@@ -230,6 +230,7 @@ DEFAULT_DISABLED_MODULES = frozenset({
     "pre_sale_iqc",        # Pre-Sale IQC (2026-10-29)
     "qa", "qa_uat", "qa_ux",   # Product Management pages — admin only unless ticked (2026-11-05)
     "crm_pickups",             # Pickup Process (2026-11-11)
+    "ticket_board",            # Ticket Board (2026-11-13) — admin only unless ticked
 })
 
 

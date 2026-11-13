@@ -52,13 +52,15 @@ MAX_FAILED_ATTEMPTS = 5
 LOCKOUT_MINUTES = 15
 
 
-def _login_page(request: Request, error: str = None):
+def _login_page(request: Request, error: str = None, **extra):
     csrf_tok = new_partner_csrf()
     resp = templates.TemplateResponse("partner/login.html", {
         "request": request, "error": error, "login_csrf": csrf_tok,
+        "changed": request.query_params.get("changed") == "1", **extra,
     })
     resp.set_cookie(PARTNER_CSRF_COOKIE, csrf_tok, httponly=False,
                     samesite="strict", secure=COOKIE_SECURE)
+    request.state.partner_login_csrf = csrf_tok
     # Prevent the browser/bfcache from serving a stale copy of this page —
     # a cached page carries an old CSRF hidden field that no longer matches
     # the cookie, which fails with a confusing "Session expired" on submit.
@@ -129,6 +131,9 @@ async def login(
         await db.commit()
         return _login_page(request, "Invalid login ID or password")
 
+    # First sign-in (2026-11-13, Pankaj): never signed in before → the login
+    # page reopens signed in, with the Change Password modal.
+    first_login = dealer.portal_last_login_at is None
     token = create_partner_token(dealer)
     db.add(PartnerLoginLog(dealer_id=dealer.id, phone_attempted=norm,
                            ip_address=ip, user_agent=ua, success=True))
@@ -136,13 +141,50 @@ async def login(
                      .values(portal_last_login_at=app_now()))
     await db.commit()
 
-    csrf_tok = new_partner_csrf()
     _max_age = PARTNER_SESSION_MINUTES * 60
-    resp = RedirectResponse(url="/partner/catalog", status_code=302)
+    if first_login:
+        resp = _login_page(request, first_login=True, first_pw=password)
+        csrf_tok = request.state.partner_login_csrf
+    else:
+        csrf_tok = new_partner_csrf()
+        resp = RedirectResponse(url="/partner/catalog", status_code=302)
     resp.set_cookie(PARTNER_TOKEN_COOKIE, token, httponly=True, samesite="strict",
                     max_age=_max_age, secure=COOKIE_SECURE)
     resp.set_cookie(PARTNER_CSRF_COOKIE, csrf_tok, httponly=False, samesite="strict",
                     max_age=_max_age, secure=COOKIE_SECURE)
+    return resp
+
+
+@router.post("/first-password")
+async def first_password(
+    request: Request,
+    current_password: str = Form(...),
+    new_password: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    dealer: Dealer = Depends(get_current_partner),
+    _csrf=Depends(verify_partner_csrf),
+):
+    """First sign-in → Confirm Change (2026-11-13, Pankaj): sets the new
+    password, signs the partner out (password version bump) and sends them
+    back to the login page to sign in with it."""
+    def again(msg):
+        return _login_page(request, msg, first_login=True, first_pw=current_password)
+    if not await verify_password_async(current_password, dealer.portal_password_hash or ""):
+        return again("Current password is not correct.")
+    if not 8 <= len(new_password) <= 128:
+        return again("New password must be 8 to 128 characters.")
+    if new_password == current_password:
+        return again("New password must be different from the current one.")
+    from auth.dependencies import hash_password_async
+    dealer.portal_password_hash = await hash_password_async(new_password)
+    dealer.portal_password_version = (dealer.portal_password_version or 1) + 1   # signs this session out
+    await audit(db, action="PARTNER_PASSWORD_CHANGED", user=None, table_name="dealers",
+                record_id=str(dealer.id), new_value={"by": "partner", "when": "first sign-in"},
+                request=request)
+    await db.commit()
+    resp = RedirectResponse(url="/partner/login?changed=1", status_code=302)
+    resp.delete_cookie(PARTNER_TOKEN_COOKIE)
+    resp.delete_cookie(PARTNER_CSRF_COOKIE)
     return resp
 
 
@@ -217,6 +259,18 @@ STOCK_KEYS = [
     "bezel_scratch", "base_scratch", "palmrest_scratch", "screen_dot", "screen_line",
     "screen_scratch", "touch_screen", "hinge", "keyboard", "touchpad", "speaker", "webcam",
 ]
+
+def _pivot_cols(dev) -> list:
+    """Model, CPU, Generation, RAM (Yes/No), RAM Capacity, HDD (Yes/No), HDD
+    Capacity, SSD Capacity — as in the External Partner IQC sheet."""
+    st = (dev.storage_type or "").upper()
+    hdd_gb = dev.hdd_capacity_gb or (dev.storage_gb if "HDD" in st else None)
+    ssd_gb = dev.storage_gb if (dev.storage_gb and "HDD" not in st) else None
+    return [dev.model or "—", dev.cpu or "—", dev.generation or "—",
+            "Yes" if dev.ram_gb else "No", f"{dev.ram_gb} GB" if dev.ram_gb else "",
+            "Yes" if hdd_gb else "No", f"{hdd_gb} GB" if hdd_gb else "",
+            f"{ssd_gb} GB" if ssd_gb else ""]
+
 
 @router.get("/catalog", response_class=HTMLResponse)
 async def catalog(
@@ -345,7 +399,11 @@ async def catalog(
                 # matches the bid floor, where 0 is likewise treated as no reserve.
                 "price": float(lot.buying_price) if lot.buying_price else None,
                 "booking": booking_by_lot.get(lid),
+                "added": lot.created_at,
             })
+        # Newest lot first (2026-11-13, Pankaj): by when the lot was added.
+        from datetime import datetime as _dt
+        visible_lots.sort(key=lambda x: x["added"] or _dt.min, reverse=True)
 
     # ── Available Stock, rendered inline (this used to be a per-lot modal) ───
     # Model-wise breakdown across every lot this dealer can see. Lot No is part
@@ -409,12 +467,18 @@ async def catalog(
                 "touchpad":         _v(getattr(iqc, "touchpad_working", None)),
                 "speaker":          _v(getattr(iqc, "speaker_status", None)),
                 "webcam":           _v(getattr(iqc, "webcam_status", None)),
+                # Sheet1 summary columns (2026-11-13): RAM / HDD / SSD split out.
+                "pv": _pivot_cols(dev),
             })
 
     # Speed (2026-11-11 PM): the stock table ships as compact JSON rows in this
     # column order, not as ~4,000 rendered <tr>s (3.7 MB of HTML that took the
     # browser 10+ seconds). The page draws only the rows it shows.
-    stock_rows = [[d[k] for k in STOCK_KEYS] + [d["lot_id"]] for d in lot_stock]
+    # Available Stock is a model-wise summary since 2026-11-13 (Pankaj: the
+    # External Partner IQC sheet's "Sheet1" pivot) — only the grouping columns
+    # ship: [Model, CPU, Generation, RAM, RAM Capacity, HDD, HDD Capacity,
+    # SSD Capacity, lot_id]; the page counts units per combination.
+    stock_rows = [d["pv"] + [d["lot_id"]] for d in lot_stock]
     return templates.TemplateResponse("partner/catalog.html", {
         "request": request, "dealer": dealer, "listings": listings,
         "lot_stock": lot_stock, "stock_rows": stock_rows,

@@ -38,7 +38,7 @@
     <div class="card-body py-2">
       <div class="d-flex justify-content-between align-items-center mb-1">
         <span class="fw-semibold">{{ t.ticket_id }}</span>
-        {% if t.status == 'Closed' %}
+        {% if t.simple_status == 'Closed' %}
           <span class="badge rounded-pill bg-success-subtle text-success-emphasis">Closed</span>
         {% else %}
           <span class="badge rounded-pill bg-warning-subtle text-warning-emphasis">Open</span>

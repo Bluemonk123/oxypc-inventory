@@ -63,7 +63,7 @@
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span class="fw-semibold"><i class="bi bi-arrow-left-right me-2"></i>Floor Movements done so far</span>
     <div class="d-flex gap-2 align-items-center">
-    {% if has_perm(current_user.role.value, 'transfers', 'edit') %}
+    {% if can(current_user, 'transfers', 'delete') %}
     <form method="post" action="/transfers/bulk-delete" id="transfersBulkDeleteForm" class="mb-0">
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
       <button {% if not can(current_user, 'transfers', 'delete') %}hidden {% endif %}type="button" id="transfersBulkDeleteBtn" class="btn btn-sm btn-outline-danger d-none">
@@ -82,7 +82,7 @@
       <table id="transfersTable" class="table table-hover mb-0 small">
         <thead class="table-dark">
           <tr>
-            {% if has_perm(current_user.role.value, 'transfers', 'edit') %}
+            {% if can(current_user, 'transfers', 'delete') %}
             <th class="ps-3"><input type="checkbox" id="transfersSelectAll" class="form-check-input"></th>
             {% endif %}
             <th>Date</th>
@@ -98,12 +98,13 @@
             <th>Received By</th>
             <th>Type</th>
             <th>Stage</th>
+            {% if can(current_user, 'transfers', 'delete') %}<th class="text-end">Action</th>{% endif %}
           </tr>
         </thead>
         <tbody>
           {% for t in transfers %}
           <tr>
-            {% if has_perm(current_user.role.value, 'transfers', 'edit') %}
+            {% if can(current_user, 'transfers', 'delete') %}
             <td class="ps-3"><input type="checkbox" class="form-check-input transfers-row-chk" value="{{ t.id }}"></td>
             {% endif %}
             {# data-order carries the sortable ISO value; DataTables reads it
@@ -138,6 +139,11 @@
               {% endif %}
             </td>
             <td><span class="badge bg-secondary">{{ t._display_stage }}</span></td>
+            {# Per-row Delete (2026-11-13, Pankaj): permanent, same route as Bulk Delete. #}
+            {% if can(current_user, 'transfers', 'delete') %}
+            <td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger bg-white py-0 px-1 transfers-row-del" title="Delete this record permanently"
+                    data-id="{{ t.id }}" data-tag="{{ t.barcode or '' }}"><i class="bi bi-trash"></i></button></td>
+            {% endif %}
           </tr>
           {% endfor %}
         </tbody>
@@ -177,7 +183,7 @@ $(document).ready(function(){
   initGlobalTable('#transfersTable', {
     pageLength: 12,
     order: [[0 + off, 'desc']],
-    columnDefs: hasCheckboxCol ? [{ orderable: false, targets: [0] }] : [],
+    columnDefs: [{ orderable: false, targets: (hasCheckboxCol ? [0] : []).concat(document.querySelector('#transfersTable .transfers-row-del, #transfersTable th.text-end') ? [-1] : []) }],
     language: { emptyTable: 'No transfers found.' },
   }, canBulk ? {
     selectAll: {
@@ -187,6 +193,17 @@ $(document).ready(function(){
       resetOnDraw: true,
     },
   } : {});
+
+  // Per-row Delete: posts this one id to the Bulk Delete route.
+  $('#transfersTable').on('click', '.transfers-row-del', function () {
+    var id = this.dataset.id, tag = this.dataset.tag;
+    if (!confirm('Permanently delete the transfer record' + (tag ? ' for ' + tag : '') + '? This cannot be undone.')) return;
+    deleteForm.querySelectorAll('input[name="transfer_id"]').forEach(function (i) { i.remove(); });
+    var inp = document.createElement('input');
+    inp.type = 'hidden'; inp.name = 'transfer_id'; inp.value = id;
+    deleteForm.appendChild(inp);
+    deleteForm.submit();
+  });
 
   if (canBulk) {
     deleteBtn.addEventListener('click', function () {

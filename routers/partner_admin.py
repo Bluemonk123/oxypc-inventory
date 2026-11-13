@@ -1469,14 +1469,18 @@ async def manage_lots(
 
     total_lots = sum(len(lots) for lots in lots_by_grn.values())
 
+    # GRN & Lot tab = the GRN post IQC page scoped to test data (2026-11-13).
+    from routers.grn import post_iqc_context
+    piq_ctx = await post_iqc_context(db, current_user, "test")
     return templates.TemplateResponse("trade_partner/manage_lots.html", {
         "request": request, "current_user": current_user,
-        "test_grns": test_grns, "lots_by_grn": lots_by_grn, "stocked": stocked,
-        "lots_json": lots_json,
+        **piq_ctx,
+        "test_grns": test_grns,
         "test_devices": test_devices,
         "total_grns": len(test_grns), "total_lots": total_lots, "total_tags": len(test_devices),
         "test_entity_name": EXTERNAL_PARTNER_TEST_ENTITY,
         "test_lot_prefix": EXTERNAL_PARTNER_TEST_LOT_PREFIX,
+        "iqc_mapping": __import__("services.partner_iqc_upload", fromlist=["MAPPING"]).MAPPING,
         "test_grn_source": EXTERNAL_PARTNER_TEST_GRN_SOURCE,
         "stage_labels": STAGE_LABELS,
         "success": request.query_params.get("success"),
@@ -1517,6 +1521,62 @@ async def manage_lots_map_grn(
     return RedirectResponse(
         url=f"/trade-partner/manage-lots?tab=asset&success={quote_plus(f'{device.barcode} mapped to GRN {grn_number.strip()}')}",
         status_code=302)
+
+
+# ── Asset IQC upload (2026-11-13, Pankaj): the External Partner "IQC Formats"
+# sheet → test tags + their IQC records. Column mapping: services/partner_iqc_upload.py
+
+@router.get("/manage-lots/asset-iqc-sample")
+async def manage_lots_asset_iqc_sample(
+    current_user: User = Depends(require_module_perm("trade_partner_manage_lots", "export")),
+):
+    from fastapi.responses import Response
+    from services.partner_iqc_upload import sample_xlsx
+    return Response(content=sample_xlsx(),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="asset_iqc_sample.xlsx"'})
+
+
+@router.post("/manage-lots/asset-iqc-upload")
+async def manage_lots_asset_iqc_upload(
+    request: Request,
+    file: UploadFile = File(...),
+    _csrf=Depends(verify_csrf),
+    current_user: User = Depends(require_module_perm("trade_partner_manage_lots", "upload")),
+    db: AsyncSession = Depends(get_db),
+):
+    from services.partner_iqc_upload import read_rows, import_rows
+    back = "/trade-partner/manage-lots?tab=asset"
+    data = await file.read()
+    if len(data) > 20 * 1024 * 1024:
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("File is over 20 MB."), status_code=302)
+    try:
+        rows, problems = read_rows(file.filename or "", data)
+    except Exception as e:  # unreadable workbook
+        return RedirectResponse(url=f"{back}&error=" + quote_plus(f"Could not read the file: {e}"), status_code=302)
+    hard = [p for p in problems if not p.startswith("Columns not used")]
+    if hard:
+        return RedirectResponse(url=f"{back}&error=" + quote_plus(" ".join(hard)), status_code=302)
+    if not rows:
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("The sheet has no rows to upload."), status_code=302)
+    res = await import_rows(db, rows, current_user)
+    await audit(db, action="PARTNER_ASSET_IQC_UPLOAD", user=current_user, table_name="devices",
+                record_id=f"upload:{res['inserted']}",
+                new_value={"file": file.filename, "inserted": res["inserted"], "lots_created": res["created_lots"],
+                           "skipped": len(res["skipped"]), "errors": len(res["errors"])}, request=request)
+    await db.commit()
+    msg = f"Asset IQC upload: {res['inserted']} tag(s) added"
+    if res["created_lots"]:
+        msg += f" · New lot(s) created: {', '.join(res['created_lots'])}"
+    if res["skipped"]:
+        msg += f" · {len(res['skipped'])} skipped (already exist): " + "; ".join(res["skipped"][:10])
+    if res["errors"]:
+        msg += f" · {len(res['errors'])} not added: " + "; ".join(res["errors"][:10])
+    notes = [p for p in problems if p.startswith("Columns not used")]
+    if notes:
+        msg += " · " + notes[0]
+    kind = "success" if res["inserted"] else "error"
+    return RedirectResponse(url=f"{back}&{kind}=" + quote_plus(msg[:1800]), status_code=302)
 
 
 @router.post("/manage-lots/move-ready-for-sale")

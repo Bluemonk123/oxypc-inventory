@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+{% block title %}#{{ t.ticket_id }} {{ t.display_subject }} — Ticket Board{% endblock %}
+{% block page_title %}Ticket Board{% endblock %}
+{% block content %}
+{% import "ticket_board/_common.html" as tc with context %}
+{# Ticket screen (2026-11-13, Pankaj): conversation → properties → requester
+   context, left to right. routers/ticket_board.py #}
+{{ tc.styles() }}
+{{ tc.tabs(t.ticket_id, page='ticket') }}
+{% set can_edit = can(current_user, 'ticket_board', 'edit') %}
+{% set csrf = request.cookies.get('csrf_token', '') %}
+{% macro av(name) -%}
+{%- set palette = ['#5293c7','#c72a1c','#038153','#ad5918','#6a27b8','#1f73b7','#0f8a8a','#b8236b'] -%}
+{%- set n = (name or '?') -%}
+<div class="tb-av" style="background:{{ palette[(n|length * 3 + 'abcdefghijklmnopqrstuvwxyz'.find((n[:1])|lower)) % 8] }}">{{ (n.split()|map('first')|join)[:2]|upper }}</div>
+{%- endmacro %}
+
+<div class="row g-3">
+  {# ── Conversation ─────────────────────────────────────────────── #}
+  <div class="col-lg-7 col-xxl-8">
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent">
+        <div class="fw-semibold fs-6 mb-1">{{ t.display_subject }}</div>
+        <div class="d-flex flex-wrap gap-2 align-items-center small text-muted">
+          {{ tc.status_pill(t.status) }}<span>#{{ t.ticket_id }}</span>
+          <span><i class="bi {{ tb.CHANNEL_ICON[channel][0] }} me-1"></i>via {{ tb.CHANNEL_ICON[channel][1] }}</span>
+          {% if req.email %}<span>{{ req.email }}</span>{% endif %}
+          <span>Created <time data-ts="{{ t.raised_on.isoformat() if t.raised_on else '' }}"></time></span>
+          {{ tc.sla_badge(sla) }}
+        </div>
+      </div>
+      <div class="card-body">
+        <div class="tb-owner mb-3">
+          {% if t.assignee %}
+          {{ av(assignee_user.full_name if assignee_user else t.assignee) }}
+          <div><div class="lbl">Engineer handling this ticket{% if t.assignee == current_user.username %} (you){% endif %}</div>
+            <div class="fw-semibold">{{ (assignee_user.full_name if assignee_user else t.assignee) }}{% if t.group_name %} · {{ t.group_name }}{% endif %}</div></div>
+          {% else %}
+          <div class="tb-av" style="background:#c2c8cc">?</div>
+          <div><div class="lbl">Engineer handling this ticket</div><div class="fw-semibold" style="color:#e34f32">Unassigned</div></div>
+          {% if can_edit %}
+          <form method="post" action="/ticket-board/{{ t.ticket_id }}/update" class="ms-auto">
+            <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="field" value="assignee">
+            <input type="hidden" name="value" value="{{ current_user.username }}">
+            <button class="btn btn-sm btn-outline-primary bg-white">Take it</button>
+          </form>
+          {% endif %}
+          {% endif %}
+        </div>
+
+        <div class="tb-thread" id="tbThread">
+          {# The ticket's own text is its first message. #}
+          <div class="tb-msg">
+            {{ av(req.name) }}
+            <div style="min-width:0">
+              <div><span class="who">{{ req.name }}</span><time class="when" data-ts="{{ t.raised_on.isoformat() if t.raised_on else '' }}"></time></div>
+              <div class="tb-body">{{ t.feedback }}</div>
+              {% if first_files %}<div class="tb-files">
+                {% for f in first_files %}{% if f.kind == 'image' %}<a href="{{ f.path }}" target="_blank" rel="noopener"><img src="{{ f.path }}" alt="{{ f.name }}"></a>
+                {% else %}<a href="{{ f.path }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary bg-white"><i class="bi bi-paperclip me-1"></i>{{ f.name }}</a>{% endif %}{% endfor %}
+              </div>{% endif %}
+            </div>
+          </div>
+          {% for m in msgs %}
+            {% if m.author_type == 'system' %}
+            <div class="tb-msg event">{{ m.body }}{% if m.author_name %} · {{ m.author_name }}{% endif %} · <time class="ms-1" data-ts="{{ m.created_at.isoformat() }}"></time></div>
+            {% else %}
+            <div class="tb-msg{% if m.is_internal %} note{% endif %}">
+              {{ av(m.author_name or m.author_username) }}
+              <div style="min-width:0">
+                <div><span class="who">{{ m.author_name or m.author_username }}</span>{% if m.is_internal %}<span class="tb-badge">Internal note</span>{% endif %}<time class="when" data-ts="{{ m.created_at.isoformat() }}"></time></div>
+                {% if m.body %}<div class="tb-body">{{ m.body }}</div>{% endif %}
+              </div>
+            </div>
+            {% endif %}
+          {% endfor %}
+        </div>
+
+        {% if can_edit %}
+        <form method="post" action="/ticket-board/{{ t.ticket_id }}/reply" class="tb-composer border-top pt-3 mt-3" id="tbComposer">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="is_internal" id="tbInternal" value="">
+          <div class="btn-group btn-group-sm tb-mode mb-2" role="group" aria-label="Reply type">
+            <button type="button" class="btn btn-outline-primary bg-white active" data-mode="public">Public reply</button>
+            <button type="button" class="btn btn-outline-warning bg-white note" data-mode="note">Internal note</button>
+          </div>
+          <textarea name="body" id="tbReply" class="form-control form-control-sm" rows="4" maxlength="20000"
+                    placeholder="Reply to {{ req.name }}…"></textarea>
+          <div class="d-flex justify-content-between align-items-center mt-2 gap-2">
+            <span class="small text-muted" id="tbModeHint">{% if req.user %}{{ req.name }} gets an alert with your reply.{% else %}Visible on the ticket; this requester has no login to alert.{% endif %}</span>
+            <div class="input-group input-group-sm" style="width:auto">
+              <button type="submit" class="btn btn-dark">Submit as</button>
+              <select name="submit_status" class="form-select form-select-sm" aria-label="Status after submit" style="max-width:130px">
+                {% for s in STATUSES if s != 'new' %}<option value="{{ s }}"{% if s == ('open' if t.status == 'new' else t.status) %} selected{% endif %}>{{ tb.STATUS_LABEL[s] }}</option>{% endfor %}
+              </select>
+            </div>
+          </div>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Right column (2026-11-13, Pankaj): Properties, then Requester and Interaction history, stacked ── #}
+  <div class="col-lg-5 col-xxl-4">
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent"><span class="fw-semibold"><i class="bi bi-sliders me-1"></i>Properties</span></div>
+      <div class="card-body tb-prop">
+        <div class="mb-3 tb-full"><label class="d-block">Requester</label><input class="form-control form-control-sm" value="{{ req.name }}" disabled></div>
+        {% macro field_form(field, label) %}
+        <form method="post" action="/ticket-board/{{ t.ticket_id }}/update" class="mb-3 tb-autosave{{ ' tb-full' if field == 'subject' else '' }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="field" value="{{ field }}">
+          <label class="d-block" for="tbf_{{ field }}">{{ label }}</label>
+          {{ caller() }}
+        </form>
+        {% endmacro %}
+        {% call field_form('subject', 'Subject') %}
+          <input name="value" id="tbf_subject" class="form-control form-control-sm" maxlength="200" value="{{ t.display_subject }}" {% if not can_edit %}disabled{% endif %}>
+        {% endcall %}
+        {% call field_form('assignee', 'Assignee') %}
+          <select name="value" id="tbf_assignee" class="form-select form-select-sm" data-search {% if not can_edit %}disabled{% endif %}>
+            <option value="">— Unassigned —</option>
+            {% for e in engineers %}<option value="{{ e.username }}"{% if e.username == t.assignee %} selected{% endif %}>{{ e.name }}{% if e.username == current_user.username %} (you){% endif %} · {{ e.open }} open</option>{% endfor %}
+            {% if t.assignee and t.assignee not in engineers|map(attribute='username')|list %}<option value="{{ t.assignee }}" selected>{{ t.assignee }}</option>{% endif %}
+          </select>
+        {% endcall %}
+        {% call field_form('group_name', 'Group') %}
+          <select name="value" id="tbf_group_name" class="form-select form-select-sm" {% if not can_edit %}disabled{% endif %}>
+            {% if not t.group_name %}<option value="" selected>—</option>{% endif %}
+            {% for g in groups %}<option value="{{ g }}"{% if g == t.group_name %} selected{% endif %}>{{ g }}</option>{% endfor %}
+          </select>
+        {% endcall %}
+        {% call field_form('ticket_type', 'Type') %}
+          <select name="value" id="tbf_ticket_type" class="form-select form-select-sm" {% if not can_edit %}disabled{% endif %}>
+            {% if not t.ticket_type %}<option value="" selected>—</option>{% endif %}
+            {% for ty in TYPES %}<option value="{{ ty }}"{% if ty == t.ticket_type %} selected{% endif %}>{{ ty|capitalize }}</option>{% endfor %}
+          </select>
+        {% endcall %}
+        {% call field_form('priority', 'Priority') %}
+          <select name="value" id="tbf_priority" class="form-select form-select-sm" {% if not can_edit %}disabled{% endif %}>
+            {% for p in PRIORITIES %}<option value="{{ p }}"{% if p == priority %} selected{% endif %}>{{ p|capitalize }}</option>{% endfor %}
+          </select>
+        {% endcall %}
+        <div class="mb-1"><label class="d-block">SLA</label>{% if sla %}{{ tc.sla_badge(sla) }}{% else %}<span class="text-muted small">—</span>{% endif %}</div>
+      </div>
+    </div>
+
+
+
+
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header bg-transparent"><span class="fw-semibold"><i class="bi bi-person me-1"></i>Requester</span></div>
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-3">{{ av(req.name) }}
+          <div><div class="fw-semibold">{{ req.name }}</div><div class="text-muted small">{{ req.email or req.username or req.kind }}</div></div></div>
+        <div class="tb-kv">
+          <span>Type</span><span>{{ req.kind }}</span>
+          {% if req.username %}<span>Username</span><span>{{ req.username }}</span>{% endif %}
+          {% if req.detail %}<span>{{ 'Role' if req.kind == 'Staff' else 'Partner' }}</span><span>{{ req.detail }}</span>{% endif %}
+          <span>Tickets</span><span>{{ others|length + 1 }}</span>
+        </div>
+      </div>
+    </div>
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-transparent"><span class="fw-semibold"><i class="bi bi-clock-history me-1"></i>Interaction history</span></div>
+      <div class="card-body p-2">
+        {% for o in others %}
+        <a href="/ticket-board/{{ o.ticket_id }}" class="d-flex gap-2 align-items-center text-decoration-none text-body p-2 rounded small tb-hist">
+          {{ tc.status_pill(o.status, short=True) }}<span class="text-truncate">#{{ o.ticket_id }} {{ o.display_subject }}</span></a>
+        {% else %}
+        <div class="text-muted small p-2">No other tickets</div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+tbRememberTab({{ t.ticket_id|tojson }}, {{ t.display_subject|tojson }}, {{ t.status|tojson }});
+document.addEventListener('DOMContentLoaded', function () {
+  var th = document.getElementById('tbThread'); if (th) th.scrollTop = th.scrollHeight;
+  // Properties save on change (subject on blur / Enter).
+  document.querySelectorAll('.tb-autosave').forEach(function (f) {
+    var el = f.querySelector('[name=value]'), start = el.value;
+    el.addEventListener('change', function () { if (el.value !== start) f.submit(); });
+  });
+  var comp = document.getElementById('tbComposer');
+  if (comp) {
+    var ta = document.getElementById('tbReply'), hidden = document.getElementById('tbInternal'), hint = document.getElementById('tbModeHint'),
+        pubHint = hint.textContent, who = {{ req.name|tojson }};
+    comp.querySelectorAll('.tb-mode [data-mode]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var note = b.dataset.mode === 'note';
+        comp.querySelectorAll('.tb-mode [data-mode]').forEach(function (x) { x.classList.toggle('active', x === b); });
+        hidden.value = note ? '1' : ''; ta.classList.toggle('note', note);
+        ta.placeholder = note ? 'Add a note only your team can see…' : 'Reply to ' + who + '…';
+        hint.textContent = note ? 'Internal notes are never shown or sent to the requester.' : pubHint;
+      });
+    });
+  }
+});
+</script>
+{% endblock %}

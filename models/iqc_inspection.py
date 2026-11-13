@@ -122,6 +122,18 @@ class IQCInspection(Base):
     fan_sound_dba = Column(Integer, nullable=True)
     fan_working = Column(String(40), nullable=True)            # Yes / No
 
+    # ── Part conditions from the External Partner IQC format (2026-11-13,
+    # Pankaj — approved in chat). One condition word per part, as written in
+    # the sheet (Ok / Minor Scratch / Rubber Cut / NA / Not Checked …).
+    # Filled by Trade Partner → Manage Lots → Asset IQC upload. ──
+    bezel = Column(String(40), nullable=True)              # "Front Panel(Bazel)"
+    panel = Column(String(40), nullable=True)              # "Panel"
+    screen = Column(String(40), nullable=True)             # "Screen"
+    power = Column(String(40), nullable=True)              # "Power Panel"
+    bottom_base = Column(String(40), nullable=True)        # "Base"
+    external_battery = Column(String(40), nullable=True)   # "EXT Battery"
+    internal_battery = Column(String(40), nullable=True)   # "Int. Battery"
+
     # ── Overall Assessment ────────────────────────────────────────────────────
     r2v3_grade_category = Column(String(40), nullable=True)  # C0 / C3 / C4 / C5
     remarks = Column(Text, nullable=True)

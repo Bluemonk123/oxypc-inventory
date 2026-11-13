@@ -334,9 +334,10 @@ async def bulk_delete_transfers(
     request: Request,
     transfer_id: list[str] = Form(...),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_module_perm("transfers", "edit")),
+    current_user: User = Depends(require_module_perm("transfers", "delete")),
 ):
-    """Transfers list's checkbox-driven Bulk Delete — permanent delete (same
+    """Transfers list's checkbox-driven Bulk Delete (and, since 2026-11-13,
+    each row's Delete button with one id) — permanent delete (same
     semantics as Credit Note's own Bulk Delete), audit-logged per row before
     removal so the record survives in audit_logs even though the row itself
     doesn't."""

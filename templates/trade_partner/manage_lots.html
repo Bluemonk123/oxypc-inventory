@@ -60,145 +60,54 @@
 
 <div class="tab-content">
 <div class="tab-pane fade show active" id="grnLotTab">
+{# GRN & Lot (2026-11-13, Pankaj): the GRN post IQC page itself, scoped to
+   test data — test GRNs (source ext_partner_test), test lots (EPT- prefix)
+   and test tags (Entity External Partner Test). templates/grn/_post_iqc_body.html #}
+{% include "grn/_post_iqc_body.html" %}
+</div>
+<div class="tab-pane fade" id="assetIqcTab">
 
-  <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
-    <div style="max-width:320px" class="flex-fill">
-      <input type="text" id="grnLotSearchInput" class="form-control form-control-sm"
-             placeholder="Search GRN or Lot Number...">
+  {# Asset IQC upload (2026-11-13, Pankaj): the External Partner "IQC Formats"
+     sheet. Mapping: services/partner_iqc_upload.py COLUMNS. #}
+  {% if can(current_user, 'trade_partner_manage_lots', 'upload') %}
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
+      <span class="fw-semibold"><i class="bi bi-upload me-2"></i>Upload Asset IQC</span>
+      <div class="ms-auto d-flex gap-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary bg-white" data-bs-toggle="collapse" data-bs-target="#iqcMapCollapse" aria-expanded="false" aria-controls="iqcMapCollapse">
+          <i class="bi bi-diagram-3 me-1"></i>Column mapping</button>
+        {% if can(current_user, 'trade_partner_manage_lots', 'export') %}
+        <a href="/trade-partner/manage-lots/asset-iqc-sample" class="btn btn-sm btn-outline-success bg-white"><i class="bi bi-download me-1"></i>Download sample</a>
+        {% endif %}
+      </div>
     </div>
-    {% if can(current_user, 'trade_partner_manage_lots', 'add') %}
-    <button type="button" class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addGrnModal">
-      <i class="bi bi-plus-circle me-1"></i>Add GRN
-    </button>
-    {% endif %}
-  </div>
-
-  <div class="card border-0 shadow-sm">
-    <div class="card-header bg-transparent fw-semibold"><i class="bi bi-receipt me-2"></i>Test GRNs &amp; Lots</div>
-    <div class="card-body p-0">
-      <div class="table-responsive">
-        <table id="grnLotTable" class="table table-hover mb-0 small align-middle">
-          <thead class="table-dark">
-            <tr>
-              <th class="ps-3">GRN</th><th>Lot Number(s)</th><th>Invoice Number</th>
-              <th>Vendor Name</th><th>Quantity</th><th>Stocked</th><th>Amount</th><th style="width:230px">Action</th>
-            </tr>
-          </thead>
+    <div class="card-body">
+      <p class="small mb-3">Upload the IQC format (.xlsx, sheet <strong>IQC Formats</strong>, or .csv). Each tag gets Entity
+        <code>{{ test_entity_name }}</code> and stage IQC. <strong>LOT Number</strong> 4782 is saved as
+        <code>{{ test_lot_prefix }}4782</code>; a lot that doesn't exist yet is created and named in the result. Tags that
+        already exist are skipped.</p>
+      <form action="/trade-partner/manage-lots/asset-iqc-upload" method="post" enctype="multipart/form-data" class="row g-2 align-items-end">
+        <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+        <div class="col-md-6">
+          <input type="file" name="file" class="form-control" accept=".xlsx,.xlsm,.csv" required>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-2"></i>Upload</button>
+        </div>
+      </form>
+      <div class="collapse mt-3" id="iqcMapCollapse">
+        <table class="table table-sm table-bordered small mb-0 align-middle">
+          <thead class="table-light"><tr><th style="width:40px">#</th><th>Sheet column</th><th>Saved as</th></tr></thead>
           <tbody>
-            {% for g in test_grns %}
-            {% set _lots = lots_by_grn.get(g.grn_number, []) %}
-            <tr id="grn-{{ g.grn_number }}"
-                data-search="{{ (g.grn_number ~ ' ' ~ (_lots | map(attribute='lot_number') | join(' '))) | lower }}">
-              <td class="ps-3"><span class="font-monospace fw-bold">{{ g.grn_number }}</span></td>
-              <td>
-                {% if _lots %}
-                <button type="button" class="btn btn-sm btn-link p-0 fw-semibold text-decoration-none lot-count-btn"
-                        data-grn="{{ g.grn_number }}">
-                  {{ _lots | length }} Lot{{ 's' if _lots | length != 1 else '' }}
-                </button>
-                {% else %}<span class="text-muted">—</span>{% endif %}
-              </td>
-              <td>{{ g.invoice_number or '—' }}</td>
-              <td>{{ g.sender_name or '—' }}</td>
-              <td>{{ g.quantity if g.quantity is not none else '—' }}</td>
-              {% set _st = stocked.get(g.grn_number, 0) %}
-              <td><span class="badge bg-{{ 'success' if g.quantity and _st >= g.quantity else ('warning text-dark' if _st else 'secondary') }}">{{ _st }}</span></td>
-              <td>{% if can(current_user, 'trade_partner_manage_lots', 'pricing') %}{% if g.amount is not none %}&#8377;{{ ((g.amount) | inr(2)) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
-              <td class="text-nowrap">
-                {% if can(current_user, 'trade_partner_manage_lots', 'edit') %}
-                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
-                        data-bs-toggle="modal" data-bs-target="#editGrnModal"
-                        data-id="{{ g.id }}" data-grn-number="{{ g.grn_number }}"
-                        data-lot-number="{{ _lots | map(attribute='lot_number') | join(', ') }}"
-                        data-inv="{{ g.invoice_number or '' }}" data-date="{{ g.invoice_date or '' }}"
-                        data-sender="{{ g.sender_name or '' }}" data-qty="{{ g.quantity if g.quantity is not none else '' }}"
-                        data-amount="{{ g.amount if (g.amount is not none and can(current_user, ['grn', 'grn_post_iqc', 'trade_partner_manage_lots'], 'pricing')) else '' }}"
-                        data-purchase-date="{{ g.purchase_date.isoformat() if g.purchase_date else '' }}"
-                        data-grn-date="{{ g.grn_date.isoformat() if g.grn_date else '' }}"
-                        data-po="{{ g.po_number or '' }}" data-vehicle="{{ g.vehicle_number or '' }}"
-                        data-eway="{{ g.e_way_bill or '' }}" data-notes="{{ g.notes or '' }}">
-                  <i class="bi bi-pencil"></i> Edit
-                </button>
-                {% endif %}
-                {% if _lots %}
-                {% if can(current_user, 'trade_partner_manage_lots', 'edit') %}
-                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 add-lot-btn"
-                        data-grn-id="{{ g.id }}" data-lot-numbers="{{ _lots | map(attribute='lot_number') | join(',') }}">
-                  <i class="bi bi-box-seam"></i> Edit Lot
-                </button>
-                {% endif %}
-                {% else %}
-                {% if can(current_user, 'trade_partner_manage_lots', 'add') %}
-                <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 add-lot-btn" data-grn-id="{{ g.id }}">
-                  <i class="bi bi-box-seam"></i> Add Lot
-                </button>
-                {% endif %}
-                {% endif %}
-                {% if can(current_user, 'trade_partner_manage_lots', 'delete') %}
-                <form method="post" action="/grn/{{ g.id }}/delete" class="d-inline"
-                      onsubmit="return confirm('Delete GRN {{ g.grn_number }}?');">
-                  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                  <input type="hidden" name="source" value="{{ test_grn_source }}">
-                  <button type="submit" class="btn btn-sm btn-outline-danger py-0 px-2"><i class="bi bi-trash3"></i></button>
-                </form>
-                {% endif %}
-              </td>
-            </tr>
-            {% else %}
-            <tr><td colspan="8" class="text-center text-muted py-4">
-              No test GRNs yet. Click <strong>Add GRN</strong> to start, then use
-              <strong>Add Lot</strong> with a Lot Number starting <code>{{ test_lot_prefix }}</code>.
-            </td></tr>
-            {% endfor %}
+          {% for h, label in iqc_mapping %}
+            <tr><td class="text-muted">{{ loop.index }}</td><td class="fw-semibold">{{ h }}</td><td>{{ label }}</td></tr>
+          {% endfor %}
           </tbody>
         </table>
       </div>
     </div>
   </div>
-
-  <!-- Mapped Lots modal — opened from the Lot Number(s) column's "N Lots" count -->
-  <div class="modal fade" id="lotListModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 class="modal-title"><i class="bi bi-box-seam me-2"></i>Mapped Lots</h5>
-          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-        </div>
-        <div class="modal-body">
-          <ul class="list-group" id="lotListItems"></ul>
-        </div>
-        <div class="modal-footer">
-          <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-</div>
-<div class="tab-pane fade" id="assetIqcTab">
-
-  <div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-transparent fw-semibold">Upload Devices (IQC)</div>
-    <div class="card-body">
-      <p class="small mb-3">Entity is set to <code>{{ test_entity_name }}</code> automatically; the template has no
-        Entity column. <strong>Required columns:</strong> lot_number (must already exist — see GRN &amp; Lot tab), barcode, brand, model</p>
-      <form action="/bulk-upload/devices" method="post" enctype="multipart/form-data" class="row g-2 align-items-end">
-        <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
-        <input type="hidden" name="force_entity" value="{{ test_entity_name }}">
-        <div class="col-auto">
-          {% if can(current_user, 'trade_partner_manage_lots', 'export') %}<a href="/bulk-upload/template/devices_test_partner" class="btn btn-outline-secondary">
-            <i class="bi bi-download me-1"></i>Download CSV Template
-          </a>{% endif %}
-        </div>
-        <div class="col-md-5">
-          <input type="file" name="file" class="form-control" accept=".csv" required>
-        </div>
-        <div class="col-auto">
-          <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-2"></i>Upload Devices</button>
-        </div>
-      </form>
-    </div>
-  </div>
+  {% endif %}
 
   <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
     <div style="max-width:320px" class="flex-fill">
@@ -297,115 +206,6 @@
 </div>
 </div>
 
-<!-- Add GRN modal -->
-<div class="modal fade" id="addGrnModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <form method="post" action="/grn/create-manual" enctype="multipart/form-data" class="modal-content">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-      <input type="hidden" name="source" value="{{ test_grn_source }}">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-plus-circle me-2"></i>Add GRN</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="alert alert-info py-2 small no-autohide">
-          <i class="bi bi-info-circle me-1"></i>A 12-digit GRN number is generated on save. This GRN stays test-only.
-        </div>
-        <div class="row g-2">
-          <div class="col-md-4"><label class="form-label fw-semibold">Date of Invoice</label>
-            <input type="date" name="invoice_date" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Purchase Date</label>
-            <input type="date" name="purchase_date" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">GRN Date</label>
-            <input type="date" name="grn_date" class="form-control"></div>
-        </div>
-        <div class="row g-2 mt-1">
-          <div class="col-md-4"><label class="form-label fw-semibold">Invoice Number</label>
-            <input type="text" name="invoice_number" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Invoice Price</label>
-            <input type="text" name="amount" class="form-control" {% if not can(current_user, ['grn', 'grn_post_iqc', 'trade_partner_manage_lots'], 'pricing_add') %}disabled placeholder="No Pricing Add permission" title="Your role cannot set prices (Pricing Add)"{% endif %}></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Invoice Quantity</label>
-            <input type="number" name="quantity" class="form-control" min="0"></div>
-        </div>
-        <div class="row g-2 mt-1">
-          <div class="col-md-4"><label class="form-label fw-semibold">PO Number</label>
-            <input type="text" name="po_number" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Vehicle Number</label>
-            <input type="text" name="vehicle_number" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">E-Way Bill Number</label>
-            <input type="text" name="e_way_bill" class="form-control"></div>
-        </div>
-        <div class="row g-2 mt-1">
-          <div class="col-md-4"><label class="form-label fw-semibold">Vendor Name</label>
-            <input type="text" name="sender_name" class="form-control"></div>
-          <div class="col-md-8"><label class="form-label fw-semibold">Upload Invoice</label>
-            <input type="file" name="invoice" accept="application/pdf,.pdf" class="form-control">
-            <div class="form-text">Optional.</div></div>
-        </div>
-        <div class="mb-2 mt-2"><label class="form-label fw-semibold">Notes</label>
-          <textarea name="notes" class="form-control" rows="2"></textarea></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Create GRN</button>
-      </div>
-    </form>
-  </div>
-</div>
-
-<!-- Edit GRN modal -->
-<div class="modal fade" id="editGrnModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <form method="post" id="editGrnForm" class="modal-content">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit GRN</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <div class="row g-2">
-          <div class="col-md-4"><label class="form-label fw-semibold">GRN Number</label>
-            <input type="text" id="e_grn_number" class="form-control" readonly></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Lot Number</label>
-            <input type="text" id="e_lot_number" class="form-control" readonly placeholder="— Not mapped —"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Vendor Name</label>
-            <input type="text" name="sender_name" id="e_sender" class="form-control"></div>
-        </div>
-        <div class="row g-2 mt-1">
-          <div class="col-md-4"><label class="form-label fw-semibold">Date of Invoice</label>
-            <input type="date" name="invoice_date" id="e_date" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Purchase Date</label>
-            <input type="date" name="purchase_date" id="e_purchase_date" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">GRN Date</label>
-            <input type="date" name="grn_date" id="e_grn_date" class="form-control"></div>
-        </div>
-        <div class="row g-2 mt-1">
-          <div class="col-md-4"><label class="form-label fw-semibold">Invoice Number</label>
-            <input type="text" name="invoice_number" id="e_inv" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Invoice Price</label>
-            <input type="text" name="amount" id="e_amount" class="form-control" {% if not can(current_user, ['grn', 'grn_post_iqc', 'trade_partner_manage_lots'], 'pricing_add') %}disabled placeholder="No Pricing Add permission" title="Your role cannot set prices (Pricing Add)"{% endif %}></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Invoice Quantity</label>
-            <input type="number" name="quantity" id="e_qty" class="form-control" min="0"></div>
-        </div>
-        <div class="row g-2 mt-1">
-          <div class="col-md-4"><label class="form-label fw-semibold">PO Number</label>
-            <input type="text" name="po_number" id="e_po" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">Vehicle Number</label>
-            <input type="text" name="vehicle_number" id="e_vehicle" class="form-control"></div>
-          <div class="col-md-4"><label class="form-label fw-semibold">E-Way Bill Number</label>
-            <input type="text" name="e_way_bill" id="e_eway" class="form-control"></div>
-        </div>
-        <div class="mb-2 mt-2"><label class="form-label fw-semibold">Notes</label>
-          <textarea name="notes" id="e_notes" class="form-control" rows="2"></textarea></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-primary"><i class="bi bi-check-lg me-1"></i>Save</button>
-      </div>
-    </form>
-  </div>
-</div>
-
 <!-- Device Details modal — Tag Number click opens read-only; Edit button
      opens the same modal with inputs enabled. -->
 <div class="modal fade" id="deviceDetailsModal" tabindex="-1" aria-hidden="true">
@@ -463,33 +263,9 @@
   </div>
 </div>
 
-<!-- Add/Edit Lot modal -->
-<div class="modal fade" id="addLotModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-lg">
-    <form id="addLotForm" class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-box-seam me-2"></i>Add/Edit Lot</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="al_grn_id">
-        <div class="alert alert-info py-2 small">Lot Number must start with <code>{{ test_lot_prefix }}</code> to stay test-scoped.</div>
-        <label class="form-label fw-semibold">Lot Number(s)</label>
-        <div id="al_rows"></div>
-        <button type="button" id="al_add_row" class="btn btn-sm btn-outline-primary mt-1">
-          <i class="bi bi-plus-lg"></i> Add another Lot
-        </button>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-primary btn-sm">Save</button>
-      </div>
-    </form>
-  </div>
-</div>
-
 {% endblock %}
 {% block scripts %}
+{% include "grn/_post_iqc_scripts.html" %}
 <script>
 // Land back on Asset IQC after an action there (map-grn/edit-device redirect
 // with ?tab=asset) instead of always resetting to the default GRN & Lot tab.
@@ -530,172 +306,6 @@ document.querySelectorAll('.device-details-btn').forEach(function(btn){
     new bootstrap.Modal(document.getElementById('deviceDetailsModal')).show();
   });
 });
-
-// Edit modal wiring — populated from the row Edit button's data-* attributes.
-var em = document.getElementById('editGrnModal');
-if (em) { em.addEventListener('show.bs.modal', function(e){
-  var b = e.relatedTarget;
-  document.getElementById('editGrnForm').action = '/grn/' + b.getAttribute('data-id') + '/edit';
-  document.getElementById('e_grn_number').value = b.getAttribute('data-grn-number') || '';
-  document.getElementById('e_lot_number').value = b.getAttribute('data-lot-number') || '';
-  document.getElementById('e_inv').value = b.getAttribute('data-inv') || '';
-  document.getElementById('e_date').value = b.getAttribute('data-date') || '';
-  document.getElementById('e_sender').value = b.getAttribute('data-sender') || '';
-  document.getElementById('e_qty').value = b.getAttribute('data-qty') || '';
-  document.getElementById('e_amount').value = b.getAttribute('data-amount') || '';
-  document.getElementById('e_purchase_date').value = b.getAttribute('data-purchase-date') || '';
-  document.getElementById('e_grn_date').value = b.getAttribute('data-grn-date') || '';
-  document.getElementById('e_po').value = b.getAttribute('data-po') || '';
-  document.getElementById('e_vehicle').value = b.getAttribute('data-vehicle') || '';
-  document.getElementById('e_eway').value = b.getAttribute('data-eway') || '';
-  document.getElementById('e_notes').value = b.getAttribute('data-notes') || '';
-});}
-
-// Mapped Lots popup — opened from the Lot Number(s) column's "N Lots" count.
-// Each lot shows its per-lot Mapped device count (a breakdown of the
-// aggregate Stocked figure by which specific Lot the mapped device is in),
-// same "Mapped" definition the Asset IQC tab's own badge uses (grn_number set).
-var lotsByGrn = {{ (lots_json if lots_json is defined else {}) | tojson }};
-document.querySelectorAll('.lot-count-btn').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    var lots = lotsByGrn[this.getAttribute('data-grn')] || [];
-    var list = document.getElementById('lotListItems');
-    list.innerHTML = '';
-    lots.forEach(function(l){
-      var li = document.createElement('li');
-      li.className = 'list-group-item d-flex justify-content-between align-items-center';
-      var a = document.createElement('a');
-      a.href = '/lots/' + l.id;
-      a.className = 'text-decoration-none fw-semibold font-monospace';
-      a.textContent = l.lot_number;
-      var badge = document.createElement('span');
-      badge.className = 'badge ' + (l.mapped > 0 ? 'bg-success' : 'bg-secondary');
-      badge.textContent = l.mapped + ' mapped';
-      li.appendChild(a);
-      li.appendChild(badge);
-      list.appendChild(li);
-    });
-    new bootstrap.Modal(document.getElementById('lotListModal')).show();
-  });
-});
-
-// Add/Edit Lot modal — one row per Lot Number, same logic as GRN & Lot
-// (Post-IQC) page: create-or-merge per row, confirm-merge for an existing
-// Lot Number. Reuses the real /grn/{grn_id}/add-lot endpoint unchanged.
-function alMakeRow(lotNumber, isPrefilled) {
-  var row = document.createElement('div');
-  row.className = 'row g-2 align-items-start mb-2 al-row';
-  row.innerHTML =
-    '<div class="col-10">' +
-      '<input type="text" class="form-control form-control-sm al-lot-number" placeholder="{{ test_lot_prefix }}0001" required>' +
-      '<div class="alert alert-warning d-none py-1 px-2 mt-1 small al-existing-warning mb-0">' +
-        'This Lot Number already exists.' +
-        '<div class="form-check">' +
-          '<input class="form-check-input al-confirm-merge" type="checkbox">' +
-          '<label class="form-check-label">Are you sure want to add tags in this Lot</label>' +
-        '</div>' +
-      '</div>' +
-    '</div>' +
-    '<div class="col-2 pt-1"><button type="button" class="btn btn-sm btn-outline-danger al-remove-row"><i class="bi bi-x-lg"></i></button></div>';
-  var input = row.querySelector('.al-lot-number');
-  var warn = row.querySelector('.al-existing-warning');
-  var confirmBox = row.querySelector('.al-confirm-merge');
-  input.value = lotNumber || '';
-  if (isPrefilled) {
-    confirmBox.checked = true;
-    row.dataset.prefilled = '1';
-  }
-  input.addEventListener('input', function(){
-    if (row.dataset.prefilled === '1' && input.value.trim() !== (lotNumber || '')) {
-      row.dataset.prefilled = '';
-      confirmBox.checked = false;
-    }
-  });
-  input.addEventListener('blur', function(){
-    var v = input.value.trim();
-    warn.classList.add('d-none');
-    if (!v || row.dataset.prefilled === '1') return;
-    fetch('/grn/lots/check?lot_number=' + encodeURIComponent(v)).then(function(r){ return r.json(); }).then(function(resp){
-      warn.classList.toggle('d-none', !resp.exists);
-      if (!resp.exists) confirmBox.checked = false;
-    });
-  });
-  row.querySelector('.al-remove-row').addEventListener('click', function(){
-    if (document.querySelectorAll('#al_rows .al-row').length > 1) row.remove();
-  });
-  return row;
-}
-document.getElementById('al_add_row').addEventListener('click', function(){
-  document.getElementById('al_rows').appendChild(alMakeRow('', false));
-});
-document.querySelectorAll('.add-lot-btn').forEach(function(btn){
-  btn.addEventListener('click', function(){
-    document.getElementById('al_grn_id').value = this.getAttribute('data-grn-id');
-    var rowsBox = document.getElementById('al_rows');
-    rowsBox.innerHTML = '';
-    var existingNumbers = (this.getAttribute('data-lot-numbers') || '')
-      .split(',').map(function(s){ return s.trim(); }).filter(Boolean);
-    if (existingNumbers.length) {
-      existingNumbers.forEach(function(n){ rowsBox.appendChild(alMakeRow(n, true)); });
-    } else {
-      rowsBox.appendChild(alMakeRow('{{ test_lot_prefix }}', false));
-    }
-    new bootstrap.Modal(document.getElementById('addLotModal')).show();
-  });
-});
-document.getElementById('addLotForm').addEventListener('submit', function(e){
-  e.preventDefault();
-  var rows = document.querySelectorAll('#al_rows .al-row');
-  var lotNumbers = [];
-  var confirms = [];
-  var missing = false;
-  rows.forEach(function(row){
-    var v = row.querySelector('.al-lot-number').value.trim();
-    if (!v) { missing = true; return; }
-    lotNumbers.push(v);
-    confirms.push(row.querySelector('.al-confirm-merge').checked ? '1' : '');
-  });
-  if (missing || !lotNumbers.length) { alert('Enter at least one Lot Number.'); return; }
-  var fd = new FormData();
-  fd.append('csrf_token', document.querySelector('#editGrnForm input[name="csrf_token"]').value);
-  lotNumbers.forEach(function(n){ fd.append('lot_number', n); });
-  confirms.forEach(function(c){ fd.append('confirm_merge', c); });
-  fetch('/grn/' + document.getElementById('al_grn_id').value + '/add-lot', {method:'POST', body:fd})
-    .then(function(r){
-      if (!r.ok) { return r.json().then(function(j){ throw new Error(j.detail || 'Failed'); }); }
-      return r.json();
-    })
-    .then(function(resp){
-      if (!resp.ok) {
-        if (resp.conflicts && resp.conflicts.length) {
-          resp.conflicts.forEach(function(ln){
-            rows.forEach(function(row){
-              if (row.querySelector('.al-lot-number').value.trim() === ln) {
-                row.querySelector('.al-existing-warning').classList.remove('d-none');
-              }
-            });
-          });
-          alert('Some Lot Numbers already exist — tick the confirmation box for each and Save again.');
-          return;
-        }
-        alert(resp.detail || 'Failed');
-        return;
-      }
-      location.reload();
-    })
-    .catch(function(err){ alert(err.message); });
-});
-
-// GRN & Lot tab — client-side search over GRN / Lot Number (row's data-search).
-var grnLotSearch = document.getElementById('grnLotSearchInput');
-if (grnLotSearch) {
-  grnLotSearch.addEventListener('input', function(){
-    var q = this.value.trim().toLowerCase();
-    document.querySelectorAll('#grnLotTable tbody tr[data-search]').forEach(function(tr){
-      tr.style.display = (!q || tr.getAttribute('data-search').indexOf(q) !== -1) ? '' : 'none';
-    });
-  });
-}
 
 // Asset IQC tab — client-side search over Tag Number / Lot Number.
 var assetSearch = document.getElementById('assetSearchInput');
