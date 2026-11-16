@@ -395,6 +395,7 @@ ROUTE_ACTIONS = {
     ('POST', '/locations/master/{loc_id}/edit'): ('location_master', 'edit'),  # edit_location
     ('POST', '/locations/master/{loc_id}/toggle'): ('location_master', 'edit'),  # toggle_location
     ('POST', '/locations/master/{loc_id}/delete'): ('location_master', 'delete'),  # delete_location
+    ('POST', '/locations/master/bulk'): ('location_master', 'edit'),  # bulk_locations: activate/deactivate/zone (edit); delete also checks 'delete' inside (2026-11-16)
     ('POST', '/locations/device/{device_id}/pickup'): ('locations', 'edit'),  # pickup_device: device location page; also used from repair L2/L3 pages
     ('POST', '/locations/device/{device_id}/placeback'): ('locations', 'edit'),  # placeback_device
     ('POST', '/locations/device/{device_id}/assign'): ('locations', 'edit'),  # assign_device_location

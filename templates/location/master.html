@@ -27,7 +27,7 @@
 
   {% for zone_val, zone_name in zone_labels.items() %}
   {% set zone_locs = locations | selectattr("zone.value", "equalto", zone_val.value) | list %}
-  {% if zone_locs %}
+  {% if zone_locs and zone_val.value in active_zone_values %}
   <div class="col-md-3 col-6">
     <div class="card border-0 shadow-sm h-100">
       <div class="card-body py-2 px-3">
@@ -74,9 +74,48 @@
     <span class="fw-semibold"><i class="bi bi-geo-alt me-2"></i>Storage Locations</span>
   </div>
   <div class="card-body">
+    {% set removed = locations | rejectattr("zone.value", "in", active_zone_values) | list %}
+    {% if removed %}
+    {% set rz = namespace(names=[]) %}
+    {% for l in removed %}{% if zone_labels[l.zone] not in rz.names %}{% set rz.names = rz.names + [zone_labels[l.zone]] %}{% endif %}{% endfor %}
+    <div class="alert alert-warning py-2 small d-flex align-items-center gap-2 flex-wrap">
+      <i class="bi bi-exclamation-triangle"></i>
+      <span><b>{{ removed | length }}</b> location{{ '' if removed | length == 1 else 's' }} still use{{ 's' if removed | length == 1 else '' }}
+        a zone removed from Master Data ({{ rz.names | join(', ') }}). Removing a zone there only hides it from the dropdowns —
+        tick these rows and use <b>Change Zone</b>, <b>Deactivate</b> or <b>Delete</b>.</span>
+      <button type="button" class="btn btn-sm btn-outline-dark py-0 ms-auto" onclick="locSelectRemoved()">Select them</button>
+    </div>
+    {% endif %}
+    {% set can_bulk_edit = can(current_user, 'location_master', 'edit') %}
+    {% set can_bulk_del = can(current_user, 'location_master', 'delete') %}
+    {% if can_bulk_edit or can_bulk_del %}
+    <form id="locBulkForm" action="/locations/master/bulk" method="post"
+          class="d-none align-items-center gap-2 flex-wrap mb-2 p-2 rounded border bg-light">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+      <input type="hidden" name="ids" id="locBulkIds">
+      <input type="hidden" name="action" id="locBulkAction">
+      <span class="small fw-semibold"><span id="locBulkCount">0</span> selected</span>
+      {% if can_bulk_edit %}
+      <button type="button" class="btn btn-sm btn-outline-success" onclick="locBulk('activate')"><i class="bi bi-check-circle me-1"></i>Activate</button>
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="locBulk('deactivate')"><i class="bi bi-slash-circle me-1"></i>Deactivate</button>
+      <div class="input-group input-group-sm" style="width:auto">
+        <select name="zone" id="locBulkZone" class="form-select form-select-sm" style="min-width:150px">
+          <option value="">Change zone to…</option>
+          {% for z in zone_types %}<option value="{{ z.value }}">{{ zone_labels[z] }}</option>{% endfor %}
+        </select>
+        <button type="button" class="btn btn-outline-primary" onclick="locBulk('zone')">Apply</button>
+      </div>
+      {% endif %}
+      {% if can_bulk_del %}
+      <button type="button" class="btn btn-sm btn-outline-danger" onclick="locBulk('delete')"><i class="bi bi-trash3 me-1"></i>Delete</button>
+      {% endif %}
+      <button type="button" class="btn btn-sm btn-link text-muted ms-auto" onclick="locClearSel()">Clear selection</button>
+    </form>
+    {% endif %}
     <table class="table table-hover align-middle mb-0" id="locTable">
       <thead>
         <tr>
+          {% if can_bulk_edit or can_bulk_del %}<th style="width:28px" data-orderable="false"><input type="checkbox" class="form-check-input" id="locChkAll" title="Select all (filtered)"></th>{% endif %}
           <th>Location ID</th>
           <th>Zone</th>
           <th>Type</th>
@@ -90,9 +129,11 @@
       </thead>
       <tbody>
         {% for loc in locations %}
+        {% set zone_gone = loc.zone.value not in active_zone_values %}
         <tr class="{% if not loc.is_active %}table-secondary text-muted{% endif %}">
+          {% if can_bulk_edit or can_bulk_del %}<td><input type="checkbox" class="form-check-input loc-chk" value="{{ loc.id }}" data-removed="{{ 1 if zone_gone else 0 }}"></td>{% endif %}
           <td><span class="badge bg-dark">{{ loc.unit_id }}</span></td>
-          <td>{{ zone_labels[loc.zone] }}</td>
+          <td>{{ zone_labels[loc.zone] }}{% if zone_gone %} <span class="badge text-bg-warning" title="This zone was removed from Master Data → Dropdown Configuration. Change the zone, deactivate or delete this location.">removed</span>{% endif %}</td>
           <td>{{ unit_type_labels[loc.unit_type] }}</td>
           <td>{{ loc.slot or "—" }}</td>
           <td>{{ loc.capacity or "—" }}</td>
@@ -263,11 +304,50 @@
 {{ dz.script(input_id='locCsvFile', zone_id='locDropZone', icon_id='locDropIcon', status_id='locDropStatus') }}
 <script>
 $(document).ready(function(){
+  var hasChk = !!document.getElementById('locChkAll');
   initGlobalTable('#locTable', {
-    order: [[0, 'asc']],
+    order: [[hasChk ? 1 : 0, 'asc']],
+    columnDefs: hasChk ? [{ targets: 0, orderable: false, searchable: false }] : [],
     language: { emptyTable: 'No storage locations yet.' },
   });
 });
+
+// Bulk actions (2026-11-16): ticks survive paging/search (DataTables keeps the rows).
+function locDT(){ return $('#locTable').DataTable(); }
+function locChecked(){ return locDT().$('input.loc-chk:checked').map(function(){ return this.value; }).get(); }
+function locSync(){
+  var n = locChecked().length, f = document.getElementById('locBulkForm');
+  if (!f) return;
+  document.getElementById('locBulkCount').textContent = n;
+  f.classList.toggle('d-none', !n); f.classList.toggle('d-flex', !!n);
+  var vis = $(locDT().rows({search:'applied'}).nodes()).find('input.loc-chk');
+  var all = document.getElementById('locChkAll');
+  if (all) { all.checked = vis.length && vis.filter(':checked').length === vis.length; }
+}
+$(document).on('change', '#locChkAll', function(){
+  $(locDT().rows({search:'applied'}).nodes()).find('input.loc-chk').prop('checked', this.checked);
+  locSync();
+});
+$(document).on('change', 'input.loc-chk', locSync);
+function locClearSel(){ locDT().$('input.loc-chk').prop('checked', false); locSync(); }
+function locSelectRemoved(){
+  locDT().$('input.loc-chk').each(function(){ this.checked = this.dataset.removed === '1'; });
+  locSync();
+}
+function locBulk(action){
+  var ids = locChecked(); if (!ids.length) return;
+  var n = ids.length + ' location' + (ids.length === 1 ? '' : 's');
+  if (action === 'zone') {
+    var z = document.getElementById('locBulkZone');
+    if (!z.value) { z.focus(); return; }
+    if (!confirm('Move ' + n + ' to ' + z.options[z.selectedIndex].text + '?')) return;
+  } else if (action === 'delete') {
+    if (!confirm('Permanently delete ' + n + '?\n\nOnly locations that were never used are deleted; the rest are skipped and listed (deactivate those instead). This cannot be undone.')) return;
+  } else if (!confirm((action === 'activate' ? 'Activate ' : 'Deactivate ') + n + '?')) return;
+  document.getElementById('locBulkIds').value = ids.join(',');
+  document.getElementById('locBulkAction').value = action;
+  document.getElementById('locBulkForm').submit();
+}
 
 function openEditLocationModal(loc){
   document.getElementById('editLocationForm').action = '/locations/master/' + loc.id + '/edit';

@@ -17,7 +17,8 @@ import uuid
 from fastapi import APIRouter, Depends, Request, Form, HTTPException, UploadFile, File
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, and_, or_, desc
+from sqlalchemy import select, func, and_, or_, desc, delete as sa_delete
+from urllib.parse import urlencode
 
 from database import get_db
 from templates_config import templates
@@ -32,6 +33,7 @@ from models.location import (
 from models.audit_record import AuditRecord, AuditRecordItem
 from models.bucket import Bucket
 from models.stock_transfer import StockTransfer
+from models.grn_import import GRNImport
 from models.master import MasterData
 from sqlalchemy.exc import IntegrityError
 
@@ -225,16 +227,20 @@ async def location_master(
         for location_id, cnt in count_rows:
             loc_counts[str(location_id)] = cnt
 
+    zone_opts = await _zone_dropdown_options(db)
     return templates.TemplateResponse("location/master.html", {
         "request": request,
         "current_user": current_user,
         "locations": locations,
         "loc_counts": loc_counts,
-        "zone_types": await _zone_dropdown_options(db),
+        "zone_types": zone_opts,
+        # Zones still offered in Master Data; a location whose zone was
+        # removed there is flagged so it can be re-zoned or deleted (2026-11-16).
+        "active_zone_values": [z.value for z in zone_opts],
         "unit_types": list(UnitType),
         "zone_labels": ZONE_LABELS,
         "unit_type_labels": UNIT_TYPE_LABELS,
-        "add_location_zone_types": await _zone_dropdown_options(db),
+        "add_location_zone_types": zone_opts,
     })
 
 
@@ -423,59 +429,149 @@ async def toggle_location(
     return RedirectResponse("/locations/master?success=Location+updated", status_code=303)
 
 
+# Every FK to storage_locations.id (checked against the live DB 2026-11-16).
+# All nullable with no ON DELETE rule, so a referenced location can't be
+# deleted — it has to be deactivated instead.
+_LOCATION_REFS = (
+    (Device.location_id, "device(s)"),
+    (DeviceLocationLog.location_id, "location log entries"),
+    (AuditRecord.my_location_id, "Physical Audit record(s)"),
+    (AuditRecordItem.system_location_id, "Physical Audit item(s) (system location)"),
+    (AuditRecordItem.my_location_id, "Physical Audit item(s) (my location)"),
+    (AuditScanItem.location_id, "Zone Audit scan item(s)"),
+    (Bucket.location_id, "bucket(s)"),
+    (StockTransfer.to_location_id, "transfer record(s)"),
+    (GRNImport.location_id, "GRN import(s)"),
+)
+
+
+async def _locations_in_use(db: AsyncSession, ids: list) -> dict:
+    """{location id (str): first reason it is still referenced} for the ids
+    that can't be hard-deleted. One query per reference table, not per row."""
+    used = {}
+    if not ids:
+        return used
+    for column, label in _LOCATION_REFS:
+        rows = (await db.execute(select(column).where(column.in_(ids)).distinct())).scalars().all()
+        for r in rows:
+            used.setdefault(str(r), label)
+    return used
+
+
+async def _delete_locations(db: AsyncSession, locs: list, current_user, request) -> tuple:
+    """Hard-delete the unused ones (audit row first); returns (deleted unit
+    ids, {unit id: reason} skipped). A core DELETE, not db.delete(): the ORM
+    delete loads StorageLocation's lazy collections, which fails on an async
+    session."""
+    from services.audit_engine import audit
+    used = await _locations_in_use(db, [l.id for l in locs])
+    ok = [l for l in locs if str(l.id) not in used]
+    skipped = {l.unit_id: used[str(l.id)] for l in locs if str(l.id) in used}
+    for l in ok:
+        await audit(db, "LOCATION_DELETED", user=current_user, table_name="storage_locations", record_id=str(l.id),
+                    old_value={"unit_id": l.unit_id, "zone": l.zone.value if l.zone else None,
+                               "unit_type": l.unit_type.value if l.unit_type else None,
+                               "slot": l.slot, "is_active": l.is_active}, request=request)
+    names = [l.unit_id for l in ok]
+    if ok:
+        await db.execute(sa_delete(StorageLocation).where(StorageLocation.id.in_([l.id for l in ok])))
+    await db.commit()
+    return names, skipped
+
+
 @router.post("/master/{loc_id}/delete", response_class=HTMLResponse)
 async def delete_location(
     loc_id: str,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(require_roles(UserRole.admin, UserRole.inventory_manager)),
 ):
-    """Hard-delete a StorageLocation — only when nothing references it.
-    Every FK to storage_locations.id (devices, device_location_log,
-    audit_records, audit_record_items x2, audit_scan_item, buckets,
-    stock_transfers) is nullable with no ON DELETE rule, so a DELETE on a
-    referenced row would otherwise fail with an opaque IntegrityError (or
-    worse, silently orphan history if a cascade were ever added later).
-    Checked explicitly up front so the error is a clear, specific message —
-    "Deactivate" (toggle_location above) is the right tool for a location
-    that still has history; this is only for genuinely unused entries."""
-    result = await db.execute(select(StorageLocation).where(StorageLocation.id == loc_id))
-    loc = result.scalar_one_or_none()
+    """Hard-delete a StorageLocation — only when nothing references it
+    (_LOCATION_REFS). "Deactivate" is the right tool for a location that
+    still has history; this is only for genuinely unused entries.
+    2026-11-16: fixed a 500 on every delete (the check used a column that
+    AuditRecord doesn't have) and added the GRN import reference."""
+    loc = (await db.execute(select(StorageLocation).where(StorageLocation.id == loc_id))).scalar_one_or_none()
     if not loc:
         raise HTTPException(status_code=404)
-    unit_id = loc.unit_id  # captured now — rollback below would expire `loc`,
-                            # and an expired attribute can't be lazily reloaded
-                            # on an async session outside an await context.
-
-    reference_checks = (
-        (Device, Device.location_id, "device(s)"),
-        (DeviceLocationLog, DeviceLocationLog.location_id, "location log entries"),
-        (AuditRecord, AuditRecord.system_location_id, "Physical Audit record(s)"),
-        (AuditRecordItem, AuditRecordItem.system_location_id, "Physical Audit item(s) (system location)"),
-        (AuditRecordItem, AuditRecordItem.my_location_id, "Physical Audit item(s) (my location)"),
-        (AuditScanItem, AuditScanItem.location_id, "Zone Audit scan item(s)"),
-        (Bucket, Bucket.location_id, "bucket(s)"),
-        (StockTransfer, StockTransfer.to_location_id, "transfer record(s)"),
-    )
-    for model, column, label in reference_checks:
-        in_use = (await db.execute(
-            select(model.id).where(column == loc_id).limit(1)
-        )).scalar_one_or_none()
-        if in_use is not None:
-            return RedirectResponse(
-                f"/locations/master?error=Cannot+delete+{unit_id}+%E2%80%94+still+referenced+by+{label.replace(' ', '+')}.+Deactivate+it+instead.",
-                status_code=303,
-            )
-
+    unit_id = loc.unit_id
     try:
-        await db.delete(loc)
-        await db.commit()
+        deleted, skipped = await _delete_locations(db, [loc], current_user, request)
     except IntegrityError:
         await db.rollback()
-        return RedirectResponse(
-            f"/locations/master?error=Cannot+delete+{unit_id}+%E2%80%94+still+referenced+elsewhere.+Deactivate+it+instead.",
-            status_code=303,
-        )
-    return RedirectResponse(f"/locations/master?success={unit_id}+deleted", status_code=303)
+        skipped, deleted = {unit_id: "records elsewhere"}, []
+    if skipped:
+        return RedirectResponse("/locations/master?" + urlencode({"error": "Cannot delete %s — still referenced by %s. Deactivate it instead." % (unit_id, skipped[unit_id])}), status_code=303)
+    return RedirectResponse("/locations/master?" + urlencode({"success": "%s deleted" % unit_id}), status_code=303)
+
+
+@router.post("/master/bulk", response_class=HTMLResponse)
+async def bulk_locations(
+    request: Request,
+    action: str = Form(...),
+    ids: str = Form(""),
+    zone: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_roles(UserRole.admin, UserRole.inventory_manager)),
+):
+    """Bulk actions on the ticked rows (2026-11-16, Pankaj): activate,
+    deactivate, change zone, delete. `ids` is one comma-separated field
+    (Starlette caps a form at 1,000 fields). Delete removes the unused ones
+    and lists the ones it skipped."""
+    from services.audit_engine import audit
+    from templates_config import _can
+    id_list = []
+    for x in (ids or "").split(","):
+        try:
+            id_list.append(uuid.UUID(x.strip()))
+        except ValueError:
+            pass
+    need = "delete" if action == "delete" else "edit"
+    if action not in ("activate", "deactivate", "zone", "delete"):
+        return RedirectResponse("/locations/master?error=Unknown+bulk+action", status_code=303)
+    if not _can(current_user, "location_master", need):
+        return RedirectResponse("/locations/master?error=You+don%27t+have+permission+for+this+action", status_code=303)
+    if not id_list:
+        return RedirectResponse("/locations/master?error=Select+at+least+one+location", status_code=303)
+    locs = []
+    for i in range(0, len(id_list), 5000):
+        locs += (await db.execute(select(StorageLocation).where(StorageLocation.id.in_(id_list[i:i + 5000])))).scalars().all()
+    if not locs:
+        return RedirectResponse("/locations/master?error=No+matching+locations", status_code=303)
+
+    if action == "delete":
+        deleted, skipped = await _delete_locations(db, locs, current_user, request)
+        msg = "%d location%s deleted" % (len(deleted), "" if len(deleted) == 1 else "s")
+        if skipped:
+            sk = ", ".join("%s (%s)" % (k, v) for k, v in list(skipped.items())[:10])
+            more = " and %d more" % (len(skipped) - 10) if len(skipped) > 10 else ""
+            msg += ". %d skipped — still in use, deactivate instead: %s%s" % (len(skipped), sk, more)
+            return RedirectResponse("/locations/master?" + urlencode({"error" if not deleted else "success": msg}), status_code=303)
+        return RedirectResponse("/locations/master?" + urlencode({"success": msg}), status_code=303)
+
+    if action == "zone":
+        allowed = {z.value: z for z in await _zone_dropdown_options(db)}
+        z = allowed.get(zone)
+        if not z:
+            return RedirectResponse("/locations/master?error=Pick+a+zone+from+the+list", status_code=303)
+        changed = [l for l in locs if l.zone != z]
+        for l in changed:
+            l.zone = z
+        await audit(db, "LOCATION_BULK_ZONE", user=current_user, table_name="storage_locations",
+                    record_id=("bulk:%d" % len(changed))[:50], new_value={"zone": z.value, "unit_ids": [l.unit_id for l in changed][:200]},
+                    request=request)
+        await db.commit()
+        return RedirectResponse("/locations/master?" + urlencode({"success": "%d location%s moved to %s" % (len(changed), "" if len(changed) == 1 else "s", ZONE_LABELS.get(z, z.value))}), status_code=303)
+
+    want = action == "activate"
+    changed = [l for l in locs if bool(l.is_active) != want]
+    for l in changed:
+        l.is_active = want
+    await audit(db, "LOCATION_BULK_" + action.upper(), user=current_user, table_name="storage_locations",
+                record_id=("bulk:%d" % len(changed))[:50], new_value={"is_active": want, "unit_ids": [l.unit_id for l in changed][:200]},
+                request=request)
+    await db.commit()
+    return RedirectResponse("/locations/master?" + urlencode({"success": "%d location%s %sd" % (len(changed), "" if len(changed) == 1 else "s", action)}), status_code=303)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

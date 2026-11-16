@@ -131,3 +131,8 @@ html.dash-show-data .dash-data { display: block; }
 .dash-hero .dash-pipe-v { color: #fff; }
 .dash-hero .dash-pipe-s { color: rgba(255,255,255,.85) !important; }
 .dash-hero .dash-pipe-arrow { color: rgba(255,255,255,.55); }
+
+/* No Dashboard View permission (2026-11-16): data view only, no toggle */
+html.dash-off .dash-toggle { display: none !important; }
+html.dash-off .dash-body { display: none !important; }
+html.dash-off .dash-data { display: block !important; }

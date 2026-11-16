@@ -22,7 +22,8 @@
 {%- endif -%}
 {%- set _tab_fallback %}{% block title %}OxyPC Inventory Lifecycle{% endblock %}{% endset -%}
 <!DOCTYPE html>
-<html lang="en" data-bs-theme="{{ theme_mode(request) }}">
+{# Dashboard View off for this page (2026-11-16): open straight on the page's data (tables), no toggle #}
+<html lang="en" data-bs-theme="{{ theme_mode(request) }}"{% if dash_off is defined and dash_off %} class="dash-show-data dash-off"{% endif %}>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">

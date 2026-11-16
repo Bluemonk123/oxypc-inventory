@@ -47,6 +47,9 @@
   document.addEventListener('scroll', function () { if (tip) tip.classList.remove('show'); }, true);
 
   if (!document.querySelector('.dash-body')) return;
+  // No Dashboard View permission (server marks <html class="dash-off">): always
+  // the data view, never the empty dashboard (2026-11-16, Pankaj).
+  if (document.documentElement.classList.contains('dash-off')) { apply('data'); return; }
   apply(read());
   document.addEventListener('click', function (e) {
     var t = e.target.closest('[data-dash-toggle]');
