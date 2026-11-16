@@ -50,7 +50,7 @@
       <table class="table table-sm table-hover align-middle mb-0">
         <thead class="table-light">
           <tr><th class="ps-3">Lot Number</th><th>Dealer</th><th>Contact</th>
-              <th>Qty Requested</th><th>Status</th><th>Requested On</th></tr>
+              <th>Qty Requested</th><th>Status</th><th>Requested On</th><th class="text-end pe-3">Action</th></tr>
         </thead>
         <tbody>
           {% for b in lot_bookings %}
@@ -69,9 +69,25 @@
             <td class="small text-muted">
               {{ b.req.created_at.strftime('%d %b %Y %H:%M') if b.req.created_at else '—' }}
             </td>
+            {# Approve (2026-11-15, Pankaj): opens a Customer Deal at Quote with a Quotation #}
+            <td class="text-end pe-3 text-nowrap">
+              {% if b.req.status == 'requested' %}
+                {% if can(current_user, 'trade_partner_bookings', 'edit') %}
+                <form method="post" action="/trade-partner/bookings/lot/{{ b.req.id }}/approve" class="d-inline">
+                  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+                  <button type="submit" class="btn btn-sm btn-success"
+                          title="Approve — opens a Customer Deal at Quote with a Quotation"><i class="bi bi-check2-circle me-1"></i>Approve</button>
+                </form>
+                {% else %}<span class="text-muted small">—</span>{% endif %}
+              {% elif b.deal_id %}
+                <a href="/crm/sales/{{ b.deal_id }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-box-arrow-up-right me-1"></i>Customer Deal</a>
+                {% if b.quote %}<a href="/crm/quotes/{{ b.quote.id }}/download" class="btn btn-sm btn-outline-secondary" title="Quotation {{ b.quote.quote_number }}"><i class="bi bi-download me-1"></i>Quotation</a>{% endif %}
+                {% if b.so %}<a href="/crm/sales-orders/{{ b.so.id }}" class="btn btn-sm btn-outline-success" title="Sales Order {{ b.so.so_number }}"><i class="bi bi-receipt me-1"></i>Sales Order</a>{% endif %}
+              {% else %}<span class="text-muted small">—</span>{% endif %}
+            </td>
           </tr>
           {% else %}
-          <tr><td colspan="6" class="text-center text-muted py-3">
+          <tr><td colspan="7" class="text-center text-muted py-3">
             No lot bookings yet. These appear when a dealer taps Book on a lot in the catalog.
           </td></tr>
           {% endfor %}

@@ -444,6 +444,68 @@
       {% if steps.get(k) and steps.get(k).file_path %}{% set _ = dd_legacy.append((l, '/uploads/crm/' ~ steps.get(k).file_path)) %}{% endif %}
     {% endfor %}
     {% include "crm/_deal_documents.html" %}
+
+    {# Booking/Bidding Details (2026-11-15, Pankaj): only for a deal opened by an
+       External Partner booking that was approved or a bid that was won. #}
+    {% if partner_origin %}
+    {% set po_ = partner_origin %}
+    {% set pv_ = can(current_user, 'crm_sales_opp', 'pricing') %}
+    <div class="card border-0 shadow-sm hdr-card mb-3" id="partnerOriginCard">
+      <div class="card-header bg-white border-0 d-flex flex-wrap gap-2 justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-{{ 'hammer' if po_.kind == 'bid' else 'bookmark-check' }} me-1 text-primary"></i>{{ 'Bidding' if po_.kind == 'bid' else 'Booking' }} Details</span>
+        <span class="badge bg-success">{{ po_.label }}</span>
+      </div>
+      <div class="card-body pt-0">
+        <div class="row g-3 small">
+          <div class="col-sm-6 col-lg-3"><div class="text-muted">{{ 'Bid No.' if po_.kind == 'bid' else 'Booking' }}</div><div class="fw-semibold font-monospace">{{ po_.number }}</div></div>
+          <div class="col-sm-6 col-lg-3"><div class="text-muted">Partner</div><div class="fw-semibold">{{ po_.partner }}</div>
+            <div class="text-muted">{{ po_.partner_code }}{% if po_.login %} · {{ po_.login }}{% endif %}</div></div>
+          <div class="col-sm-6 col-lg-3"><div class="text-muted">{{ 'Lot' if po_.lot_number else 'Listing' }}</div>
+            <div class="fw-semibold">{% if po_.lot_id %}<a href="/lots/{{ po_.lot_id }}" class="text-decoration-none font-monospace">{{ po_.lot_number }}</a>{% else %}{{ po_.listing or '—' }}{% endif %}</div>
+            <div class="text-muted">{{ po_.items or '' }}</div></div>
+          <div class="col-sm-6 col-lg-3"><div class="text-muted">{{ 'Qty Booked' if po_.kind == 'booking' else 'Lot Qty' }}</div>
+            <div class="fw-semibold">{{ po_.qty if po_.kind == 'booking' else (po_.lot_qty or '—') }}{% if po_.kind == 'booking' and po_.lot_qty %} <span class="text-muted fw-normal">of {{ po_.lot_qty }}</span>{% endif %}</div></div>
+          <div class="col-sm-6 col-lg-3"><div class="text-muted">Base Price</div><div class="fw-semibold">{% if pv_ and po_.base_price is not none %}₹{{ po_.base_price | inr }}{% else %}—{% endif %}</div></div>
+          {% if po_.kind == 'bid' %}
+          <div class="col-sm-6 col-lg-3"><div class="text-muted">Winning Bid</div><div class="fw-semibold text-success">{% if pv_ and po_.amount is not none %}₹{{ po_.amount | inr }}{% else %}—{% endif %}</div><div class="text-muted">{{ po_.bid_type }}</div></div>
+          <div class="col-sm-6 col-lg-3"><div class="text-muted">Bid it beat / Runner-up</div><div class="fw-semibold">{% if pv_ and po_.previous is not none %}₹{{ po_.previous | inr }}{% else %}—{% endif %} / {% if pv_ and po_.runner_up is not none %}₹{{ po_.runner_up | inr }}{% else %}—{% endif %}</div></div>
+          {% endif %}
+          <div class="col-sm-6 col-lg-3"><div class="text-muted">{{ 'Bid placed' if po_.kind == 'bid' else 'Booked on' }}</div><div class="fw-semibold">{{ po_.placed_at.strftime('%d-%m-%Y %H:%M') if po_.placed_at else '—' }}</div></div>
+          <div class="col-sm-6 col-lg-3"><div class="text-muted">{{ 'Marked Won' if po_.kind == 'bid' else 'Approved' }}</div>
+            <div class="fw-semibold">{{ po_.decided_at.strftime('%d-%m-%Y %H:%M') if po_.decided_at else '—' }}</div>
+            <div class="text-muted">{{ user_names.get(po_.decided_by, po_.decided_by or '') }}</div></div>
+          {% if po_.kind == 'bid' and po_.notes %}<div class="col-12"><div class="text-muted">Partner's note</div><div>{{ po_.notes }}</div></div>{% endif %}
+        </div>
+        {% if po_.kind == 'booking' %}
+        <hr class="my-3">
+        <div class="small"><div class="text-muted mb-1">Documents shared with the partner</div>
+          {% if po_.quote %}<a href="/crm/quotes/{{ po_.quote.id }}/download" class="btn btn-sm btn-outline-secondary me-1 mb-1"><i class="bi bi-download me-1"></i>Quotation {{ po_.quote.quote_number }}</a>{% endif %}
+          {% if po_.so %}<a href="/crm/sales-orders/{{ po_.so.id }}" class="btn btn-sm btn-outline-secondary me-1 mb-1"><i class="bi bi-receipt me-1"></i>Sales Order {{ po_.so.so_number }}</a>{% endif %}
+          {% if not po_.quote and not po_.so %}<span class="text-muted">None yet</span>{% endif %}
+        </div>
+        {% endif %}
+        {% if po_.kind == 'bid' %}
+        <hr class="my-3">
+        <div class="row g-3 small">
+          <div class="col-md-6"><div class="text-muted mb-1">Documents shared with the partner</div>
+            {% for d in po_.documents %}<a href="/trade-partner/bids/document/{{ d.id }}" class="btn btn-sm btn-outline-secondary me-1 mb-1"><i class="bi bi-download me-1"></i>{{ {'so': 'Sales Order', 'po': 'Purchase Order', 'quote': 'Quotation', 'invoice': 'Invoice'}.get(d.doc_type, d.doc_type|upper) }}</a>
+            {% else %}<span class="text-muted">None yet</span>{% endfor %}</div>
+          <div class="col-md-6"><div class="text-muted mb-1">Partner payment</div>
+            {% set pay_ = po_.payment %}
+            {% if pay_ %}
+              <div><span class="badge {{ 'bg-success' if pay_.verified else 'bg-info text-dark' }}">{{ 'Verified' if pay_.verified else 'Waiting for Accounts to verify' }}</span></div>
+              <div class="mt-1">{{ (pay_.payment_mode or '') | replace('_', ' ') | title }}{% if pay_.payment_utr %} · UTR <span class="font-monospace">{{ pay_.payment_utr }}</span>{% endif %}
+                {% if pay_.payment_amount is not none %} · {% if pv_ and pay_.payment_amount is not none %}₹{{ pay_.payment_amount | inr }}{% else %}—{% endif %}{% endif %}
+                {% if pay_.payment_date %} · paid {{ pay_.payment_date.strftime('%d-%m-%Y') }}{% endif %}</div>
+              {% if pay_.verified %}<div class="text-muted">Verified by {{ user_names.get(pay_.verified_by, pay_.verified_by or '') }}{% if pay_.verified_at %} on {{ pay_.verified_at.strftime('%d-%m-%Y') }}{% endif %}</div>{% endif %}
+            {% else %}<span class="text-muted">Not submitted by the partner yet</span>{% endif %}
+          </div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
+
     {% if contact and can(current_user, 'crm_contacts', 'edit') %}
     {% set mt_return = '/crm/sales/' ~ opp.id %}
     {% include "crm/contacts/_map_team_modal.html" %}

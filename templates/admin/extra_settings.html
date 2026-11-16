@@ -1,0 +1,273 @@
+{% extends "base.html" %}
+{% block title %}Extra Settings — OxyPC{% endblock %}
+{% block page_title %}Extra Settings{% endblock %}
+{% block head %}
+<style>
+  /* Sidebar Alignment (2026-11-16) */
+  .sa-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+  .sa-list { list-style: none; margin: 0; padding: 6px; min-height: 38px; }
+  .sa-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; margin: 3px 0; border: 1px solid var(--bs-border-color);
+    border-radius: 8px; background: var(--bs-body-bg); cursor: grab; user-select: none; font-size: .88rem; }
+  .sa-item:active { cursor: grabbing; }
+  .sa-item.sa-dragging { opacity: .45; border-style: dashed; }
+  .sa-item .sa-handle { color: var(--bs-secondary-color); }
+  .sa-item .sa-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sa-item .sa-old { font-size: .74rem; color: var(--bs-secondary-color); }
+  .sa-item .btn-link { padding: 0 2px; line-height: 1; color: var(--bs-secondary-color); }
+  .sa-card.sa-dirty { box-shadow: 0 0 0 2px var(--bs-warning); }
+  .sa-sub { font-size: .74rem; color: var(--bs-secondary-color); }
+</style>
+{% endblock %}
+{% block content %}
+{% set can_edit = can(current_user, 'extra_settings', 'edit') %}
+{% if success %}<div class="alert alert-success alert-dismissible py-2 mb-3"><i class="bi bi-check-circle me-2"></i>{{ success }}<button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button></div>{% endif %}
+{% if error %}<div class="alert alert-danger alert-dismissible py-2 mb-3"><i class="bi bi-exclamation-triangle me-2"></i>{{ error }}<button type="button" class="btn-close btn-sm" data-bs-dismiss="alert"></button></div>{% endif %}
+
+<ul class="nav nav-tabs mb-4">
+  {% for key, label, icon in tabs %}
+  <li class="nav-item"><a class="nav-link {{ 'active' if tab == key }}" href="/admin/extra-settings?tab={{ key }}"><i class="bi {{ icon }} me-1"></i>{{ label }}</a></li>
+  {% endfor %}
+</ul>
+
+<fieldset {% if not can_edit %}disabled{% endif %} class="border-0 p-0 m-0 min-w-0">
+{% if tab == 'system_colors' %}
+  {% include "admin/_tab_system_colors.html" %}
+
+{% elif tab == 'email' %}
+  {% include "admin/_tab_email.html" %}
+
+{% elif tab == 'sidebar_config' %}
+  <div class="alert alert-info py-2 mb-3 small"><i class="bi bi-info-circle me-1"></i>
+    Listed like the Permission Matrix: <b>Section - current sidebar name</b>, in sidebar order. Renaming an item renames it in the sidebar and the Permission Matrix.</div>
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span class="fw-semibold"><i class="bi bi-list-ul me-2"></i>Sidebar Items</span>
+      <span class="badge bg-secondary">{{ items|length }} items</span>
+    </div>
+    <div class="card-body">
+      <table class="table table-hover align-middle mb-0" id="sidebarConfigTable">
+        <thead><tr><th>Sidebar Item</th><th>Default Name</th><th>Sidebar Label</th><th>Actions</th></tr></thead>
+        <tbody>
+          {% for m in items %}
+          <tr id="row-{{ m.key }}">
+            <td class="small fw-semibold">{{ m.name }}</td>
+            <td class="small text-muted">{{ m.default_label }}</td>
+            <td>
+              <span id="label-view-{{ m.key }}" class="small">{{ m.current_label }}{% if m.is_custom %} <span class="badge bg-primary ms-1" style="font-size:0.6rem">Custom</span>{% endif %}</span>
+              <input type="text" id="label-input-{{ m.key }}" class="form-control form-control-sm d-none" value="{{ m.current_label }}" placeholder="Enter sidebar label">
+            </td>
+            <td class="text-nowrap">
+              <div id="btns-view-{{ m.key }}" class="d-flex gap-1">
+                <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" onclick="startEdit('label', '{{ m.key }}')"><i class="bi bi-pencil me-1"></i>Edit</button>
+                {% if m.is_custom %}
+                <form method="post" action="/admin/sidebar-config/reset" class="d-inline">
+                  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+                  <input type="hidden" name="module_key" value="{{ m.key }}">
+                  <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Reset to default"><i class="bi bi-arrow-counterclockwise"></i></button>
+                </form>
+                {% endif %}
+              </div>
+              <div id="btns-edit-{{ m.key }}" class="d-flex gap-1 d-none">
+                <form method="post" action="/admin/sidebar-config/save" id="form-{{ m.key }}" data-field="label">
+                  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+                  <input type="hidden" name="module_key" value="{{ m.key }}">
+                  <input type="hidden" name="label" id="hidden-{{ m.key }}" value="{{ m.current_label }}">
+                  <button type="submit" class="btn btn-sm btn-success py-0 px-2"><i class="bi bi-check me-1"></i>Save</button>
+                </form>
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="cancelEdit('label', '{{ m.key }}', '{{ m.current_label|e }}')">Cancel</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+{% elif tab == 'page_titles' %}
+  <div class="alert alert-info py-2 mb-3 small"><i class="bi bi-info-circle me-1"></i>
+    Listed like the Permission Matrix: <b>Section - current sidebar name</b>, in sidebar order.</div>
+  <div class="card border-0 shadow-sm">
+    <div class="card-header bg-transparent d-flex align-items-center gap-2 py-2">
+      <i class="bi bi-layout-text-sidebar text-primary"></i><span class="fw-semibold">Module Landing Page Titles</span>
+      <span class="badge bg-secondary ms-auto">{{ modules|length }} modules</span>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light"><tr><th style="width:35%">Sidebar Item</th><th style="width:30%">Page Title</th><th style="width:15%">Breadcrumb</th><th style="width:20%">Actions</th></tr></thead>
+          <tbody>
+            {% for m in modules %}
+            <tr id="row-{{ m.key }}">
+              <td class="align-middle"><span class="fw-semibold small">{{ m.name }}</span>
+                <a href="{{ m.url }}" class="ms-2 text-muted small" target="_blank" title="Open page"><i class="bi bi-box-arrow-up-right"></i></a></td>
+              <td class="align-middle">
+                <span id="title-view-{{ m.key }}" class="small">{{ m.current_title }}{% if m.is_custom %} <span class="badge bg-primary ms-1" style="font-size:0.6rem">Custom</span>{% endif %}</span>
+                <input type="text" id="title-input-{{ m.key }}" class="form-control form-control-sm d-none" value="{{ m.current_title }}" placeholder="Enter page title">
+              </td>
+              <td class="align-middle">
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input breadcrumb-toggle" type="checkbox" role="switch" id="bc-{{ m.key }}" data-module-key="{{ m.key }}" {% if m.breadcrumb_enabled %}checked{% endif %}>
+                  <label class="form-check-label small" for="bc-{{ m.key }}"><span id="bc-label-{{ m.key }}">{{ "On" if m.breadcrumb_enabled else "Off" }}</span></label>
+                </div>
+              </td>
+              <td class="align-middle">
+                <div id="btns-view-{{ m.key }}" class="d-flex gap-1">
+                  <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" onclick="startEdit('title', '{{ m.key }}')"><i class="bi bi-pencil me-1"></i>Edit</button>
+                  {% if m.is_custom %}
+                  <form method="post" action="/admin/landing-pages/reset" class="d-inline">
+                    <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+                    <input type="hidden" name="module_key" value="{{ m.key }}">
+                    <button type="submit" class="btn btn-sm btn-outline-secondary py-0 px-2" title="Reset to default"><i class="bi bi-arrow-counterclockwise"></i></button>
+                  </form>
+                  {% endif %}
+                </div>
+                <div id="btns-edit-{{ m.key }}" class="d-flex gap-1 d-none">
+                  <form method="post" action="/admin/landing-pages/save" id="form-{{ m.key }}" data-field="title">
+                    <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+                    <input type="hidden" name="module_key" value="{{ m.key }}">
+                    <input type="hidden" name="page_title" id="hidden-{{ m.key }}" value="{{ m.current_title }}">
+                    <button type="submit" class="btn btn-sm btn-success py-0 px-2"><i class="bi bi-check me-1"></i>Save</button>
+                  </form>
+                  <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" onclick="cancelEdit('title', '{{ m.key }}', '{{ m.current_title|e }}')">Cancel</button>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+{% elif tab == 'sidebar_alignment' %}
+  <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+    <div class="alert alert-info py-2 mb-0 small flex-grow-1"><i class="bi bi-info-circle me-1"></i>
+      Drag an item up or down (or use the arrows) to change where it shows in the sidebar, then <b>Save</b>. Items move inside their own section; each section only shows to a role when one of its items is allowed.</div>
+    {% if can_edit %}<button type="button" class="btn btn-sm btn-outline-secondary" id="saResetAll"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset all to default</button>{% endif %}
+  </div>
+  <div class="sa-grid">
+    {% for g in sb_groups %}
+    <div class="card border-0 shadow-sm sa-card" data-group="{{ g.id }}">
+      <div class="card-header bg-transparent d-flex align-items-center gap-2 py-2">
+        <div class="min-w-0">
+          <div class="fw-semibold small">{% if g.nested %}<i class="bi bi-folder2-open me-1"></i>{% endif %}{{ g.title }}</div>
+          <div class="sa-sub">{% if g.nested %}Inside {{ g.section or 'the sidebar' }}{% else %}{{ g.rows|length }} item{{ '' if g.rows|length == 1 else 's' }}{% endif %}{% if g.custom %} · custom order{% endif %}</div>
+        </div>
+        {% if can_edit %}
+        <div class="ms-auto d-flex gap-1">
+          <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 sa-reset" title="Default order"{% if not g.custom %} hidden{% endif %}><i class="bi bi-arrow-counterclockwise"></i></button>
+          <button type="button" class="btn btn-sm btn-primary py-0 px-2 sa-save" disabled><i class="bi bi-save me-1"></i>Save</button>
+        </div>
+        {% endif %}
+      </div>
+      <ul class="sa-list">
+        {% for r in g.rows %}
+        <li class="sa-item" draggable="{{ 'true' if can_edit else 'false' }}" data-id="{{ r.id }}">
+          <i class="bi bi-grip-vertical sa-handle"></i>
+          <span class="sa-name">{% if r.is_group %}<i class="bi bi-folder2 me-1"></i>{% endif %}{% if g.nested or not g.section %}{{ r.current }}{% else %}{{ g.title }} - {{ r.current }}{% endif %}
+            {% if r.renamed %}<div class="sa-old">was {{ r.label }}</div>{% endif %}</span>
+          {% if can_edit %}
+          <button type="button" class="btn btn-link btn-sm sa-up" title="Move up"><i class="bi bi-chevron-up"></i></button>
+          <button type="button" class="btn btn-link btn-sm sa-down" title="Move down"><i class="bi bi-chevron-down"></i></button>
+          {% endif %}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% endfor %}
+  </div>
+{% endif %}
+</fieldset>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function startEdit(f, key) {
+  document.getElementById(f + '-view-' + key).classList.add('d-none');
+  document.getElementById('btns-view-' + key).classList.add('d-none');
+  document.getElementById(f + '-input-' + key).classList.remove('d-none');
+  document.getElementById('btns-edit-' + key).classList.remove('d-none');
+  document.getElementById(f + '-input-' + key).focus();
+}
+function cancelEdit(f, key, original) {
+  document.getElementById(f + '-input-' + key).value = original;
+  document.getElementById(f + '-input-' + key).classList.add('d-none');
+  document.getElementById('btns-edit-' + key).classList.add('d-none');
+  document.getElementById(f + '-view-' + key).classList.remove('d-none');
+  document.getElementById('btns-view-' + key).classList.remove('d-none');
+}
+document.addEventListener('submit', function (e) {
+  var form = e.target;
+  if (!form.id || form.id.indexOf('form-') !== 0 || !form.dataset.field) return;
+  var key = form.id.replace('form-', '');
+  document.getElementById('hidden-' + key).value = document.getElementById(form.dataset.field + '-input-' + key).value;
+});
+function csrfTok() { return (document.cookie.split('; ').find(function (r) { return r.indexOf('csrf_token=') === 0; }) || '').split('=')[1] || ''; }
+function toast(msg, bad) { if (window.showTopToast) showTopToast(msg, bad ? 'danger' : 'success'); }
+
+// Page Title Config: breadcrumb switches save at once
+document.querySelectorAll('.breadcrumb-toggle').forEach(function (sw) {
+  sw.addEventListener('change', function () {
+    var key = this.dataset.moduleKey, enabled = this.checked, label = document.getElementById('bc-label-' + key);
+    var body = new URLSearchParams(); body.set('module_key', key); body.set('enabled', enabled ? '1' : '0');
+    fetch('/admin/landing-pages/toggle-breadcrumb', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': csrfTok() }, body: body.toString() })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (!d.success) throw new Error('failed'); if (label) label.textContent = enabled ? 'On' : 'Off'; toast('Breadcrumb ' + (enabled ? 'on' : 'off')); })
+      .catch(function () { sw.checked = !enabled; toast('Could not update breadcrumb setting.', true); });
+  });
+});
+
+// Sidebar Alignment: drag and drop inside one card, Save per card
+(function () {
+  var dragged = null;
+  function card(el) { return el.closest('.sa-card'); }
+  function dirty(c) { c.classList.add('sa-dirty'); var b = c.querySelector('.sa-save'); if (b) b.disabled = false; }
+  document.querySelectorAll('.sa-item[draggable="true"]').forEach(function (it) {
+    it.addEventListener('dragstart', function (e) { dragged = it; it.classList.add('sa-dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', it.dataset.id); });
+    it.addEventListener('dragend', function () { it.classList.remove('sa-dragging'); dragged = null; });
+  });
+  document.querySelectorAll('.sa-list').forEach(function (list) {
+    list.addEventListener('dragover', function (e) {
+      if (!dragged || card(dragged) !== card(list)) return;   // only inside its own section
+      e.preventDefault();
+      var after = Array.prototype.find.call(list.querySelectorAll('.sa-item:not(.sa-dragging)'), function (el) {
+        var r = el.getBoundingClientRect(); return e.clientY < r.top + r.height / 2;
+      });
+      if (after) list.insertBefore(dragged, after); else list.appendChild(dragged);
+    });
+    list.addEventListener('drop', function (e) { if (dragged && card(dragged) === card(list)) { e.preventDefault(); dirty(card(list)); } });
+  });
+  document.addEventListener('click', function (e) {
+    var up = e.target.closest('.sa-up'), dn = e.target.closest('.sa-down');
+    if (up || dn) {
+      var it = (up || dn).closest('.sa-item');
+      if (up && it.previousElementSibling) it.parentNode.insertBefore(it, it.previousElementSibling);
+      if (dn && it.nextElementSibling) it.parentNode.insertBefore(it.nextElementSibling, it);
+      dirty(card(it)); return;
+    }
+    var sv = e.target.closest('.sa-save'), rs = e.target.closest('.sa-reset');
+    if (sv || rs) {
+      var c = card(sv || rs), g = c.dataset.group;
+      var order = Array.prototype.map.call(c.querySelectorAll('.sa-item'), function (x) { return x.dataset.id; });
+      (sv || rs).disabled = true;
+      fetch('/admin/extra-settings/sidebar-alignment/' + (sv ? 'save' : 'reset'), {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfTok() },
+        body: JSON.stringify(sv ? { group: g, order: order } : { group: g })
+      }).then(function (r) { return r.json(); }).then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'failed');
+        if (rs) { location.reload(); return; }
+        c.classList.remove('sa-dirty'); var r2 = c.querySelector('.sa-reset'); if (r2) r2.hidden = false;
+        toast('Sidebar order saved — refresh any page to see it');
+      }).catch(function (err) { (sv || rs).disabled = false; toast('Could not save: ' + err.message, true); });
+    }
+  });
+  var all = document.getElementById('saResetAll');
+  if (all) all.addEventListener('click', function () {
+    if (!confirm('Put every section back to the default order?')) return;
+    fetch('/admin/extra-settings/sidebar-alignment/reset', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': csrfTok() }, body: '{}' })
+      .then(function () { location.reload(); });
+  });
+})();
+</script>
+{% endblock %}

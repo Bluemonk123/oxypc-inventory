@@ -7,6 +7,11 @@
   <i class="bi bi-lock me-2"></i>Pricing visibility is disabled for your role. Contact an admin if you need access to this report.
 </div>
 {% else %}
+{# Option C dashboard (2026-11-14, Pankaj): header with the dates, KPIs and charts;
+   "View Data" swaps them for the sales table below. services/rptsales_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% call dash.hero('Sales Report', '', 'Invoices and buyers for any period, ready to share', view_data=True) %}
 <form method="get" class="filter-bar">
   <div class="filter-bar-row">
     <div><input type="date" name="from_date" value="{{ from_date }}" title="Sale Date From" class="form-control form-control-sm"></div>
@@ -15,6 +20,12 @@
          <a href="/reports/sales" class="btn btn-outline-secondary btn-sm">Reset</a></div>
   </div>
 </form>
+{% endcall %}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
+
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center gap-2">
     <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Sales Report</span>
@@ -41,6 +52,41 @@
   <input type="hidden" name="to_date" value="{{ to_date }}">
   <input type="hidden" name="tags" id="srExportTags" value="">
 </form>
+</div>{# /dash-data #}
+</div>{# /dash #}
+{# Daily revenue -> View all (2026-11-14): the financial year, April to this month, day by day. #}
+{% if dash_fy %}
+<div class="modal fade" id="srDailyModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-calendar3 me-2"></i>Daily revenue — {{ dash_fy.label }}
+        <span class="text-muted small ms-2">April to today · {{ dash_fy.total }} · darker = more revenue that day</span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body dash">
+        <div class="sr-fy-grid">
+        {% for mo in dash_fy.months %}
+          <div class="sr-fy-month">
+            <div class="d-flex justify-content-between small fw-semibold mb-1"><span>{{ mo.label }}</span><span class="text-muted">{{ mo.total }}</span></div>
+            <div class="sr-fy-days">
+              {% for w in ['M','T','W','T','F','S','S'] %}<span class="sr-fy-dow">{{ w }}</span>{% endfor %}
+              {% for c in mo.cells %}{% if c %}<span class="sr-fy-day{% if c.future %} is-future{% endif %}" style="background: {{ c.bg }}" data-tip="{{ c.tip }}">{{ c.n }}</span>{% else %}<span></span>{% endif %}{% endfor %}
+            </div>
+          </div>
+        {% endfor %}
+        </div>
+        <div class="small text-muted mt-2">Financial year runs April – March · days after today are greyed out</div>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+  .sr-fy-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
+  .sr-fy-days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+  .sr-fy-dow { font-size: 10px; text-align: center; color: var(--dk-muted, #94a3b8); }
+  .sr-fy-day { font-size: 10.5px; text-align: center; border-radius: 4px; padding: 5px 0; border: 1px solid var(--dk-border); }
+  .sr-fy-day.is-future { opacity: .45; }
+</style>
+{% endif %}
 {% endif %}
 {% endblock %}
 {% block scripts %}

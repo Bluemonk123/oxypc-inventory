@@ -12,24 +12,24 @@
 {% block content %}
 {% macro money(v) %}{% if v is none %}<span class="badge bg-warning text-dark">Pending</span>{% else %}{% if can(current_user, 'pm_product_master', 'pricing') %}₹{{ ((v) | inr(2)).rstrip('0').rstrip('.') }}{% else %}—{% endif %}{% endif %}{% endmacro %}
 
-{# Tiles (above the tabs, always visible): counts of the Status badges in the
-   Product Master table. Active = a row
-     showing Pricing Done; Inactive = every other row. #}
-  {% set n_all = products|length %}
-  {% set n_pp = products|rejectattr('price_complete')|list|length %}
-  {% set n_parts = products|rejectattr('parts_done')|list|length %}
-  {% set n_done = products|selectattr('price_complete')|selectattr('parts_done')|list|length %}
-  {% import "_tiles.html" as tl %}
-  <div class="oxt-row">
-    {% for label, n, bg, icon in [('All Records', n_all, '#343a40', 'bi-collection'),
-        ('Product Price Pending', n_pp, '#f0ad00', 'bi-hourglass-split'),
-        ('Parts Price Pending', n_parts, '#0aa2c0', 'bi-tools'),
-        ('Pricing Done', n_done, '#0F7A37', 'bi-check-circle'),
-        ('Active', n_done, '#0d6efd', 'bi-toggle-on'),
-        ('Inactive', n_all - n_done, '#6c757d', 'bi-toggle-off')] %}
-    {{ tl.single(n, label, bg, icon, variant='dark') }}
-    {% endfor %}
-  </div>
+{# Option C dashboard, Variant 2 (2026-11-16, Pankaj): light KPI tiles (the old
+   Status tile counts), make x generation, price bands,
+   gaps, competitive brands and recent price changes — services/pm_dash.py.
+   A pipeline strip (no card) sits under the header; the tabs use the global
+   tab design. #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{# Pipeline inside the page header (2026-11-16, Pankaj) #}
+{% call dash.hero('Product Master', '', 'Coverage by make and generation, price bands and gaps to fix', view_data=False) %}
+  {% if dash_pipe %}{{ dash.pipeline(dash_pipe) }}{% endif %}
+{% endcall %}
+<div class="dash-body">
+  {# Order (2026-11-16, Pankaj): pipeline under the header, KPI tiles, the
+     Make x Model / price bands row, then the tabs; gaps / competitive brands /
+     recent price changes sit below the tabs. #}
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets[:2]) }}{% endif %}
+</div>
+</div>
 <ul class="nav nav-tabs mb-0" role="tablist">
   <li class="nav-item"><button class="nav-link {{ 'active' if active_tab not in ('dropdowns', 'competitive') }}" data-bs-toggle="tab" data-bs-target="#pmProductsPane" type="button">
     <i class="bi bi-box-seam me-1"></i>Product Master Table</button></li>
@@ -200,6 +200,10 @@
     </div>
   </div>
 </div>
+
+{% if dash_kpis and dash_widgets|length > 2 %}
+<div class="dash mt-3">{{ dash.grid(dash_widgets[2:]) }}</div>
+{% endif %}
 
 {# Competitive List modal #}
 <div class="modal fade" id="pmCompModal" tabindex="-1"><div class="modal-dialog"><div class="modal-content">

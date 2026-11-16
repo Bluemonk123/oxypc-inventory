@@ -16,6 +16,9 @@
   [aria-expanded="true"] > .df-chev{transform:rotate(90deg)}
   .card-body .df-scroll table{overflow:visible}
   .df-scroll thead th{position:sticky; top:0; z-index:1; background:var(--bs-tertiary-bg, #f8f9fa)}
+  /* Product Names pick beside the Save-as box (2026-11-16) */
+  .mn-row .ss-filter{flex:0 0 240px !important; width:240px !important; max-width:240px; margin:0 !important}
+  .mn-row .mn-name{flex:1 1 auto; min-width:160px}
 </style>
 <div class="row g-3">
   {# ── Product Model Name consistency (2026-11-05) — stays on the page with a
@@ -78,8 +81,14 @@
                 <a href="/admin/system/model-name-fix/export?model={{ sp | urlencode }}&make={{ (g.make_names[0] if g.make_names else '') | urlencode }}"
                    class="btn btn-link btn-sm p-0 lh-1" title="Download these {{ n }} tags (CSV)"><i class="bi bi-download"></i></a>
                 <code>{{ sp }}</code> <span class="text-muted">({{ "{:,}".format(n) }})</span>{% if sp == g.final %} <span class="badge bg-light text-success border">kept</span>{% endif %}</div>{% endfor %}</td>
-              <td><input type="text" class="form-control form-control-sm mn-name" form="mnForm" name="mn_{{ g.key }}|{{ g.make }}"
-                         value="{{ g.final }}" data-key="{{ g.key }}" maxlength="100" style="max-width:340px">
+              <td><div class="d-flex align-items-start gap-2 flex-nowrap">
+                  <input type="text" class="form-control form-control-sm mn-name" form="mnForm" name="mn_{{ g.key }}|{{ g.make }}"
+                         value="{{ g.final }}" data-key="{{ g.key }}" maxlength="100" style="max-width:300px">
+                  {# Pick from Master Data → Product Model Names (2026-11-16, Pankaj): a search + select
+                     beside the box; the name picked goes into the box. Built on first click. #}
+                  <select class="form-select form-select-sm mn-pick" style="max-width:240px" data-make="{{ g.make_names[0] if g.make_names else '' }}"
+                          title="Pick from Product Model Names (Master Data)"><option value="">Pick from Product Names…</option></select>
+                  </div>
                   {% if g.typed %}<div class="text-muted" style="font-size:.75rem">Typed earlier (automatic: {{ g.auto }})</div>{% endif %}
                   <div class="text-warning-emphasis mn-warn d-none" style="font-size:.75rem"><i class="bi bi-pencil-square me-1"></i>Different name — every spelling in this row will be renamed to it</div>
                   {# Suggestions (2026-11-06): fuller names of this model found on other tags of the
@@ -1156,8 +1165,13 @@ $(document).ready(function () {
     var label = f._label || (btn && btn.innerHTML), col = f.closest('[data-df]');
     if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Working… please wait'; }
     var fd = new FormData(f); fd.append('ajax', '1');
-    if (f.id === 'mnForm') {          // ~1,000 boxes: send only the edited ones (unsent = pre-filled name)
-      document.querySelectorAll('.mn-name').forEach(function (i) { if (i.value === i.defaultValue) fd.delete(i.name); });
+    if (f.id === 'mnForm') {          // send only the edited boxes, as one JSON field (any number of rows)
+      var edited = {};
+      document.querySelectorAll('.mn-name').forEach(function (i) {
+        fd.delete(i.name);
+        if (i.value !== i.defaultValue) edited[i.name] = i.value;
+      });
+      fd.append('mn_json', JSON.stringify(edited));
     }
     try {
       var r = await fetch(f.action, { method: 'POST', body: fd, credentials: 'same-origin',
@@ -1198,7 +1212,7 @@ $(document).ready(function () {
     tr.querySelectorAll('.mn-sp').forEach(function (d) { if (d.dataset.sp !== name) n += +d.dataset.n || 0; });
     var cell = tr.querySelector('.mn-change'); if (cell) cell.textContent = n.toLocaleString('en-US');
     var k = name.toLowerCase().replace(/[^a-z0-9]/g, '');
-    i.parentNode.querySelector('.mn-warn').classList.toggle('d-none', !i.value.trim() || k === i.dataset.key);
+    i.closest('td').querySelector('.mn-warn').classList.toggle('d-none', !i.value.trim() || k === i.dataset.key);
   }
   function mnTotal() {
     var t = 0, out = document.getElementById('mnApplyCount'); if (!out) return;
@@ -1231,6 +1245,38 @@ $(document).ready(function () {
     i.dispatchEvent(new Event('input', { bubbles: true }));
   });
   mnFilter();
+  // Product Names pick (2026-11-16): fill the select on first use — this row's
+  // Make first, then every other name — make it a search + select and open it.
+  var PM_NAMES = {{ (pm_names or []) | tojson }};
+  function pmKey(v) { return String(v || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+  function mnPickBuild(sel) {
+    if (sel.dataset.built) return false;
+    sel.dataset.built = '1';
+    var mk = pmKey(sel.dataset.make), mine = [], rest = [];
+    PM_NAMES.forEach(function (n) { (mk && pmKey(n.m) === mk ? mine : rest).push(n); });
+    function add(list, label) {
+      if (!list.length) return;
+      var g = document.createElement('optgroup'); g.label = label;
+      list.forEach(function (n) { g.appendChild(new Option(n.v + (label === 'Other Makes' && n.m ? ' (' + n.m + ')' : ''), n.v)); });
+      sel.appendChild(g);
+    }
+    add(mine, sel.dataset.make || 'This Make'); add(rest, 'Other Makes');
+    if (window.ssEnhance) { window.ssEnhance(sel); return true; }
+    return false;
+  }
+  document.addEventListener('mousedown', function (e) {
+    var sel = e.target.closest && e.target.closest('select.mn-pick'); if (!sel || sel.dataset.built) return;
+    e.preventDefault();
+    if (mnPickBuild(sel)) { var b = sel.parentNode.querySelector('.ss-btn'); if (b) setTimeout(function () { b.click(); }, 0); }
+  }, true);
+  document.addEventListener('focusin', function (e) {
+    var sel = e.target.closest && e.target.closest('select.mn-pick'); if (sel && !sel.dataset.built) mnPickBuild(sel);
+  });
+  document.addEventListener('change', function (e) {
+    var sel = e.target.closest && e.target.closest('select.mn-pick'); if (!sel || !sel.value) return;
+    var i = sel.closest('td').querySelector('.mn-name'); i.value = sel.value;
+    i.dispatchEvent(new Event('input', { bubbles: true }));
+  });
   // Old GRNs without Tax: "Set all to" + the count on its Apply button
   function gtCount() {
     var c = document.getElementById('gtCount'); if (!c) return;

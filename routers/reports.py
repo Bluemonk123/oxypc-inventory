@@ -180,8 +180,17 @@ async def lot_pl_report(request: Request, db: AsyncSession = Depends(get_db), cu
             "lot_id":       lid,
             "last_updated": max([d for d in (lot.created_at, dev_upd_by_lot.get(lid)) if d] or [None]),
         })
+    # Option C dashboard (2026-11-14, Pankaj) — services/lotpl_dash.py, from the same rows.
+    dash_kpis, dash_widgets = [], []
+    try:
+        from services.lotpl_dash import build as _lotpl_dash
+        dash_kpis, dash_widgets = _lotpl_dash(lot_pl)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Lot P&L dashboard failed")
     return templates.TemplateResponse("reports/lot_pl.html", {
-        "request": request, "lot_pl": lot_pl, "current_user": current_user
+        "request": request, "lot_pl": lot_pl, "current_user": current_user,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
     })
 
 
@@ -830,7 +839,17 @@ async def sales_report(request: Request, db: AsyncSession = Depends(get_db), cur
         "p": float(r["sale_price"]) if r["sale_price"] is not None else None,
         "c": r["customer_name"] or "", "pm": r["payment_mode"] or "", "by": r["sold_by"] or "",
     } for r in rows]
+    # Option C dashboard (2026-11-14, Pankaj) — services/rptsales_dash.py, same period.
+    dash_kpis, dash_widgets, dash_fy = [], [], None
+    try:
+        from services.rptsales_dash import build as _rs_dash
+        dash_kpis, dash_widgets, dash_fy = await _rs_dash(db, from_dt, to_dt)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Sales Report dashboard failed")
+        await db.rollback()
     return templates.TemplateResponse("reports/sales_report.html", {
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets, "dash_fy": dash_fy,
         "request": request, "sales": rows, "sales_data": sales_data, "total": total, "current_user": current_user,
         "from_date": from_date_str, "to_date": to_date_str,
     })
@@ -1263,8 +1282,18 @@ async def business_pl(
     _years = {int(v) for v in await report_year_values(db) if str(v).isdigit()}
     fy_choices = [(y, fy_label(y)) for y in sorted(_years | {_current_fy(), fy})]
 
+    # Option C dashboard (2026-11-14, Pankaj) — services/bizpl_dash.py, from the same monthly rows.
+    dash_kpis, dash_widgets = [], []
+    try:
+        from services.bizpl_dash import build as _bizpl_dash
+        dash_kpis, dash_widgets = await _bizpl_dash(db, fy, month_rows, monthly_rev, monthly_device_cogs,
+                                                    monthly_parts_cogs, monthly_labour_cogs, inv_value)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Business P&L dashboard failed")
+        await db.rollback()
     return templates.TemplateResponse("reports/business_pl.html", {
-        "request": request, "current_user": current_user,
+        "request": request, "current_user": current_user, "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "fy": fy, "fy_text": fy_label(fy), "fy_choices": fy_choices,
         "month_rows":           month_rows,
         "monthly_rev":          monthly_rev,

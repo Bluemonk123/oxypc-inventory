@@ -240,6 +240,9 @@ class CRMContact(Base):
     director1_doc_path      = Column(String(255), nullable=True)
     director2_id_number     = Column(String(50),  nullable=True)
     director2_doc_path      = Column(String(255), nullable=True)
+    # Vendor Form (2026-11-15, Pankaj — approved): one more KYC document, hidden for Buyers.
+    vendor_form_number      = Column(String(50),  nullable=True)
+    vendor_form_doc_path    = Column(String(255), nullable=True)
 
     # ── KYC verification (Account Detail "Verify KYC" action) ───────────────
     kyc_verified    = Column(Boolean,  nullable=False, default=False, server_default="false")
@@ -524,6 +527,14 @@ class CRMQuoteItem(Base):
     total_price   = Column(Numeric(14, 2), nullable=False)
     specs_note    = Column(Text,        nullable=True)    # "i5 8th Gen, 8GB, 256SSD"
     sort_order    = Column(Integer,     default=0)
+    # Line specs (2026-11-16, Pankaj — approved schema change): the same fields
+    # as Telecaller quotations; also what Ready-for-Sale tags are matched on.
+    device_category = Column(String(50),  nullable=True)
+    make            = Column(String(100), nullable=True)
+    cpu             = Column(String(100), nullable=True)
+    cpu_gen         = Column(String(50),  nullable=True)
+    ram             = Column(String(30),  nullable=True)
+    storage         = Column(String(30),  nullable=True)
 
     quote = relationship("CRMQuote", back_populates="items")
 
@@ -843,3 +854,22 @@ class CRMLeadCall(Base):
     created_at        = Column(DateTime,    default=app_now)
 
     lead = relationship("CRMLead", back_populates="calls")
+
+
+
+class CRMContactKYCItem(Base):
+    """Per-document KYC check (2026-11-15, Pankaj — approved): Accounts' Verify
+    KYC pop-up verifies or rejects each document one by one (services/kyc_items.py).
+    A rejection notifies whoever added the Account; a new upload of that
+    document puts it back to pending. KYC is verified once every document the
+    Account has is verified."""
+    __tablename__ = "crm_contact_kyc_items"
+    __table_args__ = (UniqueConstraint("contact_id", "item", name="uq_crm_contact_kyc_item"),)
+
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    contact_id = Column(UUID(as_uuid=True), ForeignKey("crm_contacts.id", ondelete="CASCADE"), nullable=False, index=True)
+    item       = Column(String(20), nullable=False)            # gstin / pan / bank_cheque / msme / director1 / director2 / vendor_form
+    status     = Column(String(15), nullable=False, default="pending", server_default="pending")   # pending / verified / rejected
+    note       = Column(Text, nullable=True)                   # rejection note
+    checked_by = Column(String(50), nullable=True)
+    checked_at = Column(DateTime, nullable=True)

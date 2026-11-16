@@ -18,7 +18,7 @@ from database import get_db
 from models.user import User, UserRole
 from models.settings import AppSetting
 from models.role_permissions import set_cached_sidebar_label, _SIDEBAR_LABEL_CACHE
-from auth.dependencies import get_current_user, require_roles, verify_csrf
+from auth.dependencies import get_current_user, require_roles, verify_csrf, require_module_perm
 from routers.master import PERM_MODULES
 
 # Sidebar defaults that differ from the Permission Matrix row label: the
@@ -55,37 +55,19 @@ async def sidebar_config_list(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_only),
-):
-    rows = (await db.execute(
-        select(AppSetting).where(AppSetting.key.like(f"{SETTING_PREFIX}%"))
-    )).scalars().all()
-    custom_labels = {r.key[len(SETTING_PREFIX):]: r.value for r in rows}
+):  # noqa: ARG001
+    """Moved into Admin Settings → Extra Settings (2026-11-16, Pankaj)."""
+    from urllib.parse import urlencode
+    qs = urlencode(dict(request.query_params))
+    return RedirectResponse(url="/admin/extra-settings?tab=sidebar_config" + ("&" + qs if qs else ""), status_code=302)
 
-    items = [
-        {
-            "key": mod_key,
-            "default_label": default_label,
-            "current_label": custom_labels.get(mod_key, default_label),
-            "is_custom": mod_key in custom_labels,
-        }
-        for mod_key, default_label in (
-            (k, _SIDEBAR_DEFAULTS.get(k, lbl)) for k, lbl in PERM_MODULES)
-    ]
-
-    return templates.TemplateResponse("admin/sidebar_config.html", {
-        "request": request,
-        "current_user": current_user,
-        "items": items,
-        "success": request.query_params.get("success"),
-        "error": request.query_params.get("error"),
-    })
 
 
 @router.post("/save")
 async def save_sidebar_label(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_only),
+    current_user: User = Depends(require_module_perm("extra_settings", "edit")),
 ):
     form = await request.form()
     module_key = (form.get("module_key") or "").strip()
@@ -93,7 +75,7 @@ async def save_sidebar_label(
 
     if not module_key or not new_label:
         return RedirectResponse(
-            url="/admin/sidebar-config/?error=Module+key+and+label+are+required",
+            url="/admin/extra-settings?tab=sidebar_config&error=Module+key+and+label+are+required",
             status_code=302,
         )
 
@@ -117,7 +99,7 @@ async def save_sidebar_label(
     set_cached_sidebar_label(module_key, new_label)
 
     return RedirectResponse(
-        url=f"/admin/sidebar-config/?success=Label+saved+for+{module_key}",
+        url=f"/admin/extra-settings?tab=sidebar_config&success=Label+saved+for+{module_key}",
         status_code=302,
     )
 
@@ -126,12 +108,12 @@ async def save_sidebar_label(
 async def reset_sidebar_label(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_only),
+    current_user: User = Depends(require_module_perm("extra_settings", "edit")),
 ):
     form = await request.form()
     module_key = (form.get("module_key") or "").strip()
     if not module_key:
-        return RedirectResponse(url="/admin/sidebar-config/?error=Module+key+required", status_code=302)
+        return RedirectResponse(url="/admin/extra-settings?tab=sidebar_config&error=Module+key+required", status_code=302)
 
     setting_key = f"{SETTING_PREFIX}{module_key}"
     existing = (await db.execute(
@@ -143,6 +125,6 @@ async def reset_sidebar_label(
     _SIDEBAR_LABEL_CACHE.pop(module_key, None)
 
     return RedirectResponse(
-        url=f"/admin/sidebar-config/?success=Label+reset+for+{module_key}",
+        url=f"/admin/extra-settings?tab=sidebar_config&success=Label+reset+for+{module_key}",
         status_code=302,
     )

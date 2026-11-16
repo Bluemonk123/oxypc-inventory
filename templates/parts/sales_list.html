@@ -3,6 +3,11 @@
 {% block page_title %}Spare Part Sales{% endblock %}
 {% block content %}
 
+{# Option C dashboard (2026-11-14, Pankaj): header with the filters, KPIs and charts;
+   "View Data" swaps them for the table below. services/part_sales_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% call dash.hero('Part Sales', '', 'Spare parts sold to dealers and customers', view_data=True) %}
 {# Global filter bar (app.css .filter-bar). #}
 <form method="get" action="/part-sales" id="psFilterForm" class="filter-bar">
   <div class="filter-bar-row">
@@ -18,6 +23,12 @@
     </div>
   </div>
 </form>
+{% endcall %}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
+
 
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -75,6 +86,8 @@
       </table>
   </div>
 </div>
+</div>{# /dash-data #}
+</div>{# /dash #}
 {% endblock %}
 {% block scripts %}
 <script>

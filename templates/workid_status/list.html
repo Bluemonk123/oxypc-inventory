@@ -22,6 +22,82 @@
   .wid-tiles-active .wid-tile:not(.active) { opacity: .45; }
   .oxt-tile.wid-tile.active { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #0e3a7a; }
 </style>
+{# Option C dashboard (2026-11-14, Pankaj): header with the filters, KPIs and charts;
+   "View Data" swaps them for the tiles and WorkID table below. services/workid_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% call dash.hero('WorkID Status', '', 'Every open work ID, how old it is, and whether it will make its deadline', view_data=True) %}
+<form method="get" action="/workid-status" class="filter-bar" id="widFilterForm">
+  <div class="filter-bar-row">
+    {# Search WorkID / Tag Number boxes hidden (2026-10-28) — the table's own
+       search box finds both. Kept as hidden fields so links that carry them
+       (e.g. ?workid= from Data Fixes) still filter. #}
+    {% if f_workid %}<input type="hidden" name="workid" value="{{ f_workid }}">{% endif %}
+    {% if f_tag %}<input type="hidden" name="tag" value="{{ f_tag }}">{% endif %}
+    {# Order (2026-10-28): Date range → Stage → Engineer.
+       Work Date: completed in the range, or a PNA part marked
+       in the range while the WorkID was open — a day's full work. #}
+    <div>
+      <input type="date" name="work_from" value="{{ f_work_from }}" class="form-control form-control-sm"
+             title="From: WorkIDs completed, or with a PNA part marked, on or after this date">
+    </div>
+    <div>
+      <input type="date" name="work_to" value="{{ f_work_to }}" class="form-control form-control-sm"
+             title="To: WorkIDs completed, or with a PNA part marked, on or before this date">
+    </div>
+    {{ ms.multiselect('cosmetic_stage', 'Stage', cosmetic_stage_choices, f_cosmetic_stage, '') }}
+    {# Shown whenever there is more than one engineer in view — an
+       attendance-group manager needs it as much as an admin does. #}
+    {% if (engineers and engineers|length > 1) or f_engineer %}   {# stays while filtered (2026-11-02) #}
+    <div>
+      <select name="engineer" class="form-select form-select-sm" title="Engineer">
+        <option value="">All Engineers</option>
+        {% for uname, name in engineers %}
+        <option value="{{ uname }}" {% if f_engineer == uname %}selected{% endif %}>{{ name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
+    {# Completed From/To hidden (2026-10-28): Work Date above replaces it.
+       Old links with completed_from/to still filter (kept as hidden fields). #}
+    {% if f_completed_from %}<input type="hidden" name="completed_from" value="{{ f_completed_from }}">{% endif %}
+    {% if f_completed_to %}<input type="hidden" name="completed_to" value="{{ f_completed_to }}">{% endif %}
+    <div>
+      {# Scrap Type (2026-10-23): the L3/L4 Normal / Replacement Scrap decision
+         taken on a WorkID. Default All Scrap Types (2026-10-28). #}
+      <select name="scrap_type" class="form-select form-select-sm" title="Scrap Type">
+        {% for v, lbl in [('all', 'All Scrap Types'), ('normal', 'Normal Scrap'), ('replacement', 'Replacement Scrap'), ('none', 'No Scrap')] %}
+        <option value="{{ v }}" {% if f_scrap_type == v %}selected{% endif %}>{{ lbl }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="filter-bar-check">
+      <div class="form-check text-nowrap mb-0">
+        <input type="checkbox" class="form-check-input" id="excludeAdminChk" name="exclude_admin"
+               value="1" {% if f_exclude_admin %}checked{% endif %} title="Exclude Admin">
+        <label class="form-check-label small fw-semibold" for="excludeAdminChk">Exclude Admin</label>
+      </div>
+    </div>
+    <div class="filter-bar-check">
+      <div class="form-check text-nowrap mb-0">
+        <input type="checkbox" class="form-check-input" id="showReassignedChk" name="show_reassigned"
+               value="1" {% if f_show_reassigned %}checked{% endif %}
+               title="Also show WorkIDs taken off an engineer by Pick This, Change Engineer or a stage move">
+        <label class="form-check-label small fw-semibold" for="showReassignedChk">Show Reassigned</label>
+      </div>
+    </div>
+    {# Apply button (2026-11-08): filters apply only when it is pressed. #}
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm text-nowrap">Apply</button>
+      <a href="/workid-status" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</a>
+    </div>
+  </div>
+</form>
+{% endcall %}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
 <div class="oxt-row" id="widTiles">
   {# Open / Closed WorkIDs tiles hidden (2026-10-24); Total Scrap and Total
      Customer Return added. Total Scrap ignores the Scrap Type filter. #}
@@ -102,72 +178,6 @@
 </div>
 {# Filters below the count tiles (2026-11-09, Pankaj: tiles first, then filters, on every page). #}
 <!-- Filter bar -->
-<form method="get" action="/workid-status" class="filter-bar" id="widFilterForm">
-  <div class="filter-bar-row">
-    {# Search WorkID / Tag Number boxes hidden (2026-10-28) — the table's own
-       search box finds both. Kept as hidden fields so links that carry them
-       (e.g. ?workid= from Data Fixes) still filter. #}
-    {% if f_workid %}<input type="hidden" name="workid" value="{{ f_workid }}">{% endif %}
-    {% if f_tag %}<input type="hidden" name="tag" value="{{ f_tag }}">{% endif %}
-    {# Order (2026-10-28): Date range → Stage → Engineer.
-       Work Date: completed in the range, or a PNA part marked
-       in the range while the WorkID was open — a day's full work. #}
-    <div>
-      <input type="date" name="work_from" value="{{ f_work_from }}" class="form-control form-control-sm"
-             title="From: WorkIDs completed, or with a PNA part marked, on or after this date">
-    </div>
-    <div>
-      <input type="date" name="work_to" value="{{ f_work_to }}" class="form-control form-control-sm"
-             title="To: WorkIDs completed, or with a PNA part marked, on or before this date">
-    </div>
-    {{ ms.multiselect('cosmetic_stage', 'Stage', cosmetic_stage_choices, f_cosmetic_stage, '') }}
-    {# Shown whenever there is more than one engineer in view — an
-       attendance-group manager needs it as much as an admin does. #}
-    {% if (engineers and engineers|length > 1) or f_engineer %}   {# stays while filtered (2026-11-02) #}
-    <div>
-      <select name="engineer" class="form-select form-select-sm" title="Engineer">
-        <option value="">All Engineers</option>
-        {% for uname, name in engineers %}
-        <option value="{{ uname }}" {% if f_engineer == uname %}selected{% endif %}>{{ name }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    {% endif %}
-    {# Completed From/To hidden (2026-10-28): Work Date above replaces it.
-       Old links with completed_from/to still filter (kept as hidden fields). #}
-    {% if f_completed_from %}<input type="hidden" name="completed_from" value="{{ f_completed_from }}">{% endif %}
-    {% if f_completed_to %}<input type="hidden" name="completed_to" value="{{ f_completed_to }}">{% endif %}
-    <div>
-      {# Scrap Type (2026-10-23): the L3/L4 Normal / Replacement Scrap decision
-         taken on a WorkID. Default All Scrap Types (2026-10-28). #}
-      <select name="scrap_type" class="form-select form-select-sm" title="Scrap Type">
-        {% for v, lbl in [('all', 'All Scrap Types'), ('normal', 'Normal Scrap'), ('replacement', 'Replacement Scrap'), ('none', 'No Scrap')] %}
-        <option value="{{ v }}" {% if f_scrap_type == v %}selected{% endif %}>{{ lbl }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div class="filter-bar-check">
-      <div class="form-check text-nowrap mb-0">
-        <input type="checkbox" class="form-check-input" id="excludeAdminChk" name="exclude_admin"
-               value="1" {% if f_exclude_admin %}checked{% endif %} title="Exclude Admin">
-        <label class="form-check-label small fw-semibold" for="excludeAdminChk">Exclude Admin</label>
-      </div>
-    </div>
-    <div class="filter-bar-check">
-      <div class="form-check text-nowrap mb-0">
-        <input type="checkbox" class="form-check-input" id="showReassignedChk" name="show_reassigned"
-               value="1" {% if f_show_reassigned %}checked{% endif %}
-               title="Also show WorkIDs taken off an engineer by Pick This, Change Engineer or a stage move">
-        <label class="form-check-label small fw-semibold" for="showReassignedChk">Show Reassigned</label>
-      </div>
-    </div>
-    {# Apply button (2026-11-08): filters apply only when it is pressed. #}
-    <div>
-      <button type="submit" class="btn btn-primary btn-sm text-nowrap">Apply</button>
-      <a href="/workid-status" class="btn btn-outline-secondary btn-sm bg-white text-nowrap">Reset</a>
-    </div>
-  </div>
-</form>
 
 <div class="card border-0 shadow-sm">
   {# Global Table convention (static/js/global-table.js): no plain count
@@ -218,6 +228,8 @@
       </table>
   </div>
 </div>
+</div>{# .dash-data #}
+</div>{# .dash #}
 {% endblock %}
 {% block scripts %}
 <script>document.addEventListener('DOMContentLoaded', function () {

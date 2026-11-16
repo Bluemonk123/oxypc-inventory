@@ -18,33 +18,37 @@
   <option value="blocked" {{ 'selected' if value == 'blocked' }}>Blocked</option>
 </select>
 {% endmacro %}
-{% macro model_summary_table(table_id, rows, selectable, empty_text, show_location=false) %}
+{% macro model_summary_table(table_id, rows, selectable, empty_text, show_location=true) %}
+{# Columns (2026-11-16, Pankaj) — same order as All Inventory's Model Summary:
+   Model, Make, CPU, CPU Gen, RAM, Storage, Total Quantity, Touch Type, Grades,
+   Device Type, Location, then Min Selling Price and Action for these pages.
+   A row = Model + Make + CPU + CPU Gen + RAM + Storage; Touch / Grades /
+   Device Type / Location are counts inside it. show_location is kept for old
+   callers; Location always shows now. #}
+{% set _pmod = pm if pm is defined else 'sales' %}
 <table id="{{ table_id }}" class="table table-hover mb-0 small w-100">
   <thead class="table-dark">
     <tr>
       {% if selectable %}<th><input type="checkbox" id="modelSumSelectAll"></th>{% endif %}
-      <th>Model</th>{% if show_location %}<th>Location</th>{% endif %}<th>Make</th><th>Device Type</th><th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th>
-      {# Total Purchase Price hidden by request (2026-10-13). #}
-      <th>Total Quantity</th><th>Grades</th>
+      <th>Model</th><th>Make</th><th>CPU</th><th>CPU Gen</th><th>RAM</th><th>Storage</th>
+      <th>Total Quantity</th><th>Touch Type</th><th>Grades</th><th>Device Type</th><th>Location</th>
       <th title="Sum of each tag's Min Selling Price (saved Set price, else unit price + repair cost + margin)">Min Selling Price</th>
       <th>Action</th>
     </tr>
   </thead>
   <tbody>
     {% for g in rows %}
-    <tr data-qty="{{ g.total_count }}" data-min="{{ (g.min_total or 0) if can(current_user, (pm if pm is defined else 'sales'), 'pricing') else 0 }}"
-        data-open="{{ g.open_count }}" data-blocked="{{ g.blocked_count }}"{% if show_location %} data-zones='{{ g.zones | tojson }}'{% endif %}>
+    <tr data-qty="{{ g.total_count }}" data-min="{{ (g.min_total or 0) if can(current_user, _pmod, 'pricing') else 0 }}"
+        data-open="{{ g.open_count }}" data-blocked="{{ g.blocked_count }}" data-zones='{{ g.zones | tojson }}'
+        data-touch='{{ g.touch | tojson }}' data-dtypes='{{ g.dtypes | tojson }}'>
       {% if selectable %}
       <td><input type="checkbox" class="modelSumChk" value="{{ loop.index0 }}"
                  data-model="{{ g.model }}" data-make="{{ g.make }}"
                  data-barcodes='{{ g.barcodes | tojson }}'></td>
       {% endif %}
-      {# Model cell (2026-10-27): model name (semi-bold navy) on top; below it the
-         export icon, a separator, then tag counts per entity (forest green,
-         separated by thin lines): OXY = OxyPC Computers, RC = Renew Circuits,
-         DES = Deshwal, UN = none set. The icon exports this configuration's
-         tags in the All Inventory format. #}
-      {% set _can_exp = can(current_user, (pm if pm is defined else 'sales'), 'export') %}
+      {# Model cell (2026-10-27): model name on top; below it the export icon,
+         then tag counts per entity (OXY / RC / DES / UN). #}
+      {% set _can_exp = can(current_user, _pmod, 'export') %}
       <td class="text-nowrap"><span class="fw-semibold" style="color:#0e3a7a">{{ g.model }}</span>
         {% if _can_exp or g.entities %}<div class="d-flex flex-nowrap align-items-center mt-1 small fw-semibold" style="color:#129042">
           {% if _can_exp %}<button type="button" class="btn btn-sm btn-link text-success p-0 lh-1 ms-export-btn"
@@ -52,39 +56,31 @@
                   data-barcodes='{{ g.barcodes | tojson }}'><i class="bi bi-download"></i></button>{% if g.entities %}<span class="vr mx-2"></span>{% endif %}{% endif %}
           {% for short, cnt, full in g.entities %}{% if not loop.first %}<span class="vr mx-2"></span>{% endif %}<span title="{{ full }}">{{ short }} - {{ cnt }}</span>{% endfor %}
         </div>{% endif %}</td>
-      {# Location (2026-11-03): tags per location zone, one per line as plain
-         text — Showroom and TRC Floor always, then any other zone. #}
-      {% if show_location %}<td class="text-nowrap small">{% for z, n in g.zones %}<div{% if loop.index > 2 %} class="text-muted"{% endif %}>{{ z }} - {{ n }}</div>{% endfor %}</td>{% endif %}
       <td>{{ g.make }}</td>
-      <td>{{ g.device_type }}</td>
       <td>{{ g.cpu }}</td>
       <td class="text-nowrap">{{ g.gen }}</td>
       <td class="text-nowrap">{{ g.ram }}</td>
       <td class="text-nowrap">{{ g.storage }}</td>
       <td class="text-nowrap" data-order="{{ g.total_count }}">
-        {# Total as a plain count (no border / background), then the Open and
-           Blocked pills, all on one line (2026-10-27). Blocked = Block Tags
-           hold or assigned to a user. #}
         <div class="d-flex align-items-center gap-1 flex-nowrap">
           <span class="fw-semibold" title="Total Quantity">{{ g.total_count }}</span>
-          {% if selectable %}
           <span class="text-muted">-</span>
           <span class="badge rounded-pill bg-success" title="Open (not blocked)">Open {{ g.open_count }}</span>
           <span class="badge rounded-pill bg-danger" title="Blocked (Block Tags hold or assigned to a user)">Blocked {{ g.blocked_count }}</span>
-          {% endif %}
         </div>
       </td>
-      {# The same tags split by grade (A, B, C, D, E, NG). #}
+      <td class="text-nowrap">{% for k, n in g.touch %}<span class="badge bg-{{ 'primary' if k == 'T' else 'secondary' }} me-1" title="{{ 'Touch' if k == 'T' else 'Non-Touch' }}">{{ k }}-{{ n }}</span>{% endfor %}</td>
       <td class="text-nowrap">
-        {# Grades on one line (2026-10-27). #}
         <div class="d-flex flex-nowrap gap-1">
           {% for label, count, cls in g.grades %}
           <span class="badge {{ cls }} ms-grade" data-grade="{{ label }}" data-count="{{ count }}" title="{{ 'No grade' if label == 'NG' else 'Grade ' ~ label }}">{{ label }} {{ count }}</span>
           {% endfor %}
         </div>
       </td>
-      <td class="text-nowrap" data-order="{{ g.min_total if can(current_user, (pm if pm is defined else 'sales'), 'pricing') else 0 }}">
-        {% if not can(current_user, (pm if pm is defined else 'sales'), 'pricing') %}<span class="text-muted">—</span>
+      <td class="text-nowrap small">{% for t, n in g.dtypes %}<div>{{ t }} - {{ n }}</div>{% endfor %}</td>
+      <td class="text-nowrap small">{% for z, n in g.zones %}<div{% if loop.index > 2 %} class="text-muted"{% endif %}>{{ z }} - {{ n }}</div>{% endfor %}</td>
+      <td class="text-nowrap" data-order="{{ g.min_total if can(current_user, _pmod, 'pricing') else 0 }}">
+        {% if not can(current_user, _pmod, 'pricing') %}<span class="text-muted">—</span>
         {% elif g.min_lo is not none %}
           <span class="fw-semibold">₹{{ ((g.min_total) | inr) }}</span>
           <div class="text-muted" style="font-size:.7rem">
@@ -101,7 +97,7 @@
                   data-barcodes='{{ g.barcodes | tojson }}' data-max="{{ g.total_count }}">Request</button>
           {% endif %}
           {% if g.barcodes %}
-          {% if can(current_user, (pm if pm is defined else 'sales'), 'add') and not (psiqc is defined and psiqc) %}
+          {% if can(current_user, _pmod, 'add') and not (psiqc is defined and psiqc) %}
           <button type="button" class="btn btn-sm btn-outline-success py-0 model-sum-sell-btn"
                   data-barcodes='{{ g.barcodes | tojson }}'>Sell</button>
           {% endif %}
@@ -111,13 +107,14 @@
     </tr>
     {% endfor %}
   </tbody>
-  {# Totals of the rows the table currently shows (page filters + search),
-     filled in by SUMMARY_OPTS' footerCallback. #}
+  {# Totals of the rows the table currently shows (filters + search), filled
+     in by summaryFooter (ready_list.html / ready_lots.html). #}
   <tfoot class="table-light fw-semibold">
     <tr>
       {% if selectable %}<td></td>{% endif %}
-      <td>Total</td>{% if show_location %}<td class="ms-total-loc text-nowrap small"></td>{% endif %}<td></td><td></td><td></td><td></td><td></td><td></td>
-      <td class="ms-total-qty text-nowrap"></td><td class="ms-total-grades"></td>
+      <td>Total</td><td></td><td></td><td></td><td></td><td></td>
+      <td class="ms-total-qty text-nowrap"></td><td class="ms-total-touch text-nowrap"></td><td class="ms-total-grades"></td>
+      <td class="ms-total-dtype text-nowrap small"></td><td class="ms-total-loc text-nowrap small"></td>
       <td class="ms-total-min text-nowrap"></td><td></td>
     </tr>
   </tfoot>

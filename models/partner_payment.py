@@ -5,9 +5,13 @@ Status shown on Bids Created / My Bids / Partner Payments is DERIVED, never
 stored, so the three pages can never disagree:
 
     no PO document attached        -> PO Pending
-    PO attached, no payment row    -> Payment Pending
-    payment row, not verified      -> Payment Verifying
-    payment row, verified          -> Payment Done
+    SO / PO attached, no payment   -> Payment Due
+    receipt shared, not verified   -> Payment Pending   (waiting on Accounts)
+    payment row, verified          -> Payment Done      (approved on the Accounts board)
+
+2026-11-16 (Pankaj): once the partner shares the payment receipt it reads
+"Payment Pending" (the deal moves to its Payment stage); Accounts approving
+it makes it "Payment Done".
 """
 import uuid
 from sqlalchemy import (Column, String, Numeric, DateTime, Text, Boolean,
@@ -22,8 +26,9 @@ PAYMENT_MODES = ["bank_transfer", "upi"]
 
 # Derived status labels, in flow order.
 PS_PO_PENDING = "PO Pending"
+PS_PAYMENT_DUE = "Payment Due"
 PS_PAYMENT_PENDING = "Payment Pending"
-PS_PAYMENT_VERIFYING = "Payment Verifying"
+PS_PAYMENT_VERIFYING = PS_PAYMENT_PENDING   # old name, same state
 PS_PAYMENT_DONE = "Payment Done"
 
 
@@ -57,13 +62,13 @@ def payment_status(has_po: bool, payment) -> str:
     if not has_po:
         return PS_PO_PENDING
     if payment is None:
-        return PS_PAYMENT_PENDING
-    return PS_PAYMENT_DONE if payment.verified else PS_PAYMENT_VERIFYING
+        return PS_PAYMENT_DUE
+    return PS_PAYMENT_DONE if payment.verified else PS_PAYMENT_PENDING
 
 
 PAYMENT_STATUS_BADGE = {
     PS_PO_PENDING:        "bg-secondary",
-    PS_PAYMENT_PENDING:   "bg-warning text-dark",
-    PS_PAYMENT_VERIFYING: "bg-info text-dark",
+    PS_PAYMENT_DUE:       "bg-warning text-dark",
+    PS_PAYMENT_PENDING:   "bg-info text-dark",
     PS_PAYMENT_DONE:      "bg-success",
 }

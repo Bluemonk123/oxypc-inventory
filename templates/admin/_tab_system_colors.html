@@ -1,0 +1,175 @@
+{# System Colors tab (2026-11-08, Pankaj) — moved from Master Data to Extra
+   Settings (2026-11-16). services/system_colors.py #}
+<style>
+  .sc-swatch { width: 34px; height: 26px; padding: 2px; border-radius: 6px; border: 1px solid var(--oxy-border); cursor: pointer; background: var(--oxy-surface); }
+  .sc-hex { width: 88px; font-family: inherit; text-transform: lowercase; }
+  .sc-row-changed td:first-child { box-shadow: inset 3px 0 0 var(--bs-warning); }
+  .sc-ref { position: sticky; top: calc(var(--topbar-height) + 1rem); }
+  .sc-ref .sc-dot { width: 18px; height: 18px; border-radius: 5px; border: 1px solid rgba(0,0,0,.12); flex-shrink: 0; }
+  .sc-ref .sc-item { cursor: pointer; border-radius: 6px; padding: .15rem .3rem; }
+  .sc-ref .sc-item:hover { background: var(--oxy-hover); }
+  .sc-mode .btn-check:checked + .btn { background: var(--brand-blue) !important; border-color: var(--brand-blue) !important; color: #fff !important; }
+</style>
+<div class="row g-3">
+  <div class="col-xl-9 col-lg-8">
+    <form method="post" action="/admin/master/system-colors/save" id="scForm">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span class="fw-semibold"><i class="bi bi-circle-half me-2"></i>Mode</span>
+        </div>
+        <div class="card-body d-flex flex-wrap gap-4 align-items-center">
+          <div>
+            <div class="small text-muted mb-1">Your mode (only you, this browser)</div>
+            <div class="btn-group sc-mode" role="group" aria-label="Your mode">
+              <input type="radio" class="btn-check" name="sc_my_mode" id="scMyLight" value="light" autocomplete="off" {% if theme_mode(request) == 'light' %}checked{% endif %}>
+              <label class="btn btn-sm btn-outline-secondary" for="scMyLight"><i class="bi bi-sun me-1"></i>Light</label>
+              <input type="radio" class="btn-check" name="sc_my_mode" id="scMyDark" value="dark" autocomplete="off" {% if theme_mode(request) == 'dark' %}checked{% endif %}>
+              <label class="btn btn-sm btn-outline-secondary" for="scMyDark"><i class="bi bi-moon-stars me-1"></i>Dark</label>
+            </div>
+          </div>
+          <div>
+            <div class="small text-muted mb-1">Default for users who haven't chosen (saved with Save)</div>
+            <div class="btn-group sc-mode" role="group" aria-label="Default mode">
+              <input type="radio" class="btn-check" name="default_mode" id="scDefLight" value="light" autocomplete="off" {% if sc_default_mode|default('light') == 'light' %}checked{% endif %}>
+              <label class="btn btn-sm btn-outline-secondary" for="scDefLight">Light</label>
+              <input type="radio" class="btn-check" name="default_mode" id="scDefDark" value="dark" autocomplete="off" {% if sc_default_mode|default('light') == 'dark' %}checked{% endif %}>
+              <label class="btn btn-sm btn-outline-secondary" for="scDefDark">Dark</label>
+            </div>
+          </div>
+          <div class="small text-muted ms-auto" style="max-width:340px">Everyone can also switch with <b>Dark mode</b> in their profile menu (top right).</div>
+        </div>
+      </div>
+
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span class="fw-semibold"><i class="bi bi-palette me-2"></i>Colours in use</span>
+          <div class="d-flex gap-2 align-items-center">
+            <span class="small text-muted d-none" id="scChanged">Unsaved changes</span>
+            <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-check-lg me-1"></i>Save</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <p class="small text-muted mb-3">Each colour has a Light and a Dark value. Picking a colour previews it on this page in the mode you are in; <b>Save</b> applies it to every user at once. <i class="bi bi-arrow-counterclockwise"></i> sets one colour back to the Design System value.</p>
+          {% for g in sc_groups|default([]) %}
+          <h6 class="fw-semibold mt-3 mb-2" style="color:var(--brand-blue)">{{ g.label }}</h6>
+          <div class="table-responsive">
+            <table class="table table-sm align-middle mb-2">
+              <thead><tr class="small text-muted"><th style="width:22%">Colour</th><th>Used for</th><th style="width:150px">Light</th><th style="width:150px">Dark</th><th style="width:40px"></th></tr></thead>
+              <tbody>
+              {% for r in g.rows %}
+                <tr class="sc-row{% if r.light != r.def_light or r.dark != r.def_dark %} sc-row-changed{% endif %}" data-key="{{ r.key }}" data-vars="{{ r.vars|join(',') }}" data-semantic="{{ '1' if g.key == 'semantic' else '' }}">
+                  <td><div class="fw-semibold small">{{ r.label }}</div><code class="small">{{ r.vars|join(' ') }}</code></td>
+                  <td class="small text-muted">{{ r.usage }}</td>
+                  {% for m in ['light', 'dark'] %}
+                  <td>
+                    <div class="d-flex gap-1 align-items-center">
+                      <input type="color" class="sc-swatch" data-mode="{{ m }}" value="{{ r[m] }}" title="{{ r.label }} ({{ m|capitalize }})">
+                      <input type="text" class="form-control form-control-sm sc-hex" name="c_{{ r.key }}_{{ m }}" data-mode="{{ m }}" data-default="{{ r['def_' ~ m] }}" value="{{ r[m] }}" maxlength="7" pattern="#[0-9a-fA-F]{6}">
+                    </div>
+                  </td>
+                  {% endfor %}
+                  <td><button type="button" class="btn btn-sm btn-link text-secondary p-0 sc-reset-one" title="Back to Design System value"><i class="bi bi-arrow-counterclockwise"></i></button></td>
+                </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+    </form>
+    <form method="post" action="/admin/master/system-colors/reset" class="mt-2 text-end"
+          onsubmit="return confirm('Reset every colour to the Design System values for all users?');">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <button type="submit" class="btn btn-sm btn-outline-danger"><i class="bi bi-arrow-counterclockwise me-1"></i>Reset all to Design System</button>
+    </form>
+  </div>
+
+  {# Slim right panel: the Design System v2.6 palette (read-only; click copies the hex). #}
+  <div class="col-xl-3 col-lg-4">
+    <div class="card border-0 shadow-sm sc-ref">
+      <div class="card-header bg-transparent"><span class="fw-semibold"><i class="bi bi-journal-richtext me-2"></i>Design System colours</span></div>
+      <div class="card-body py-2" style="max-height:calc(var(--full-vh) - 9rem); overflow-y:auto">
+        {% for title, items in sc_reference|default([]) %}
+        <div class="small fw-semibold text-muted text-uppercase mt-2 mb-1" style="font-size:.7rem;letter-spacing:.5px">{{ title }}</div>
+        {% for name, hexv in items %}
+        <div class="d-flex align-items-center gap-2 sc-item" data-hex="{{ hexv }}" title="Click to copy {{ hexv }}">
+          <span class="sc-dot" style="background:{{ hexv }}"></span>
+          <span class="small flex-grow-1">{{ name }}</span>
+          <code class="small">{{ hexv }}</code>
+        </div>
+        {% endfor %}
+        {% endfor %}
+        <div class="small text-muted mt-2">Design System v2.6, chapter 02.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var form = document.getElementById('scForm');
+  if (!form) return;
+  var html = document.documentElement;
+  function mode() { return html.getAttribute('data-bs-theme') === 'dark' ? 'dark' : 'light'; }
+  function rgb(h) { return [1, 3, 5].map(function (i) { return parseInt(h.substr(i, 2), 16); }).join(', '); }
+  // Preview: put the row's value for the current mode on <html> as inline vars.
+  function preview(row) {
+    var m = mode();
+    var hex = row.querySelector('.sc-hex[data-mode="' + m + '"]').value;
+    if (!/^#[0-9a-fA-F]{6}$/.test(hex)) return;
+    row.dataset.vars.split(',').forEach(function (v) { html.style.setProperty(v, hex); });
+    if (row.dataset.semantic) html.style.setProperty('--bs-' + row.dataset.key + '-rgb', rgb(hex));
+  }
+  function markChanged(row) {
+    var changed = Array.prototype.some.call(row.querySelectorAll('.sc-hex'), function (i) { return i.value.toLowerCase() !== i.dataset.default; });
+    row.classList.toggle('sc-row-changed', changed);
+    document.getElementById('scChanged').classList.remove('d-none');
+  }
+  form.querySelectorAll('.sc-row').forEach(function (row) {
+    row.querySelectorAll('.sc-swatch').forEach(function (sw) {
+      sw.addEventListener('input', function () {
+        var t = row.querySelector('.sc-hex[data-mode="' + sw.dataset.mode + '"]');
+        t.value = sw.value.toLowerCase(); markChanged(row); preview(row);
+      });
+    });
+    row.querySelectorAll('.sc-hex').forEach(function (t) {
+      t.addEventListener('input', function () {
+        var v = t.value.trim();
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+          row.querySelector('.sc-swatch[data-mode="' + t.dataset.mode + '"]').value = v.toLowerCase();
+          preview(row);
+        }
+        markChanged(row);
+      });
+    });
+    row.querySelector('.sc-reset-one').addEventListener('click', function () {
+      row.querySelectorAll('.sc-hex').forEach(function (t) {
+        t.value = t.dataset.default;
+        row.querySelector('.sc-swatch[data-mode="' + t.dataset.mode + '"]').value = t.dataset.default;
+      });
+      markChanged(row); preview(row);
+    });
+  });
+  // Your mode: same as the top-bar switch (cookie, this browser only).
+  document.querySelectorAll('input[name="sc_my_mode"]').forEach(function (r) {
+    r.addEventListener('change', function () {
+      if (r.value !== mode()) { var t = document.getElementById('themeToggle'); if (t) t.click(); }
+    });
+  });
+  document.addEventListener('oxy:theme', function (e) {
+    var r = document.getElementById(e.detail === 'dark' ? 'scMyDark' : 'scMyLight'); if (r) r.checked = true;
+    html.removeAttribute('style');
+    form.querySelectorAll('.sc-row').forEach(preview);
+  });
+  // Right panel: click copies the hex.
+  document.querySelectorAll('.sc-ref .sc-item').forEach(function (it) {
+    it.addEventListener('click', function () {
+      if (navigator.clipboard) navigator.clipboard.writeText(it.dataset.hex);
+      var c = it.querySelector('code'), old = c.textContent; c.textContent = 'copied';
+      setTimeout(function () { c.textContent = old; }, 900);
+    });
+  });
+})();
+</script>

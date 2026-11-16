@@ -98,6 +98,17 @@
   #stockTable th { white-space: nowrap; }
   .stock-total-bar { background: #e9ecef; border-top: 1px solid var(--bs-border-color); padding: .5rem .75rem; }
 </style>
+{# Dark tiles (2026-11-16, Pankaj): lots / stock, bids, bookings, payments #}
+{% import "_tiles.html" as tl %}
+{% if tiles %}
+<div class="oxt-row partner-tiles">
+  {{ tl.single(tiles.lots, 'Lots Available', '#0e3a7a', 'bi-box-seam', variant='dark', secondary=[('Units', tiles.units)]) }}
+  {{ tl.single(tiles.live, 'Live Bids', '#6f42c1', 'bi-hammer', variant='dark', secondary=[('Won', tiles.won)], href='/partner/bids') }}
+  {{ tl.single(tiles.book_requested, 'Bookings Requested', '#0aa2c0', 'bi-bookmark-check', variant='dark', secondary=[('Approved', tiles.book_approved)], href='/partner/bookings') }}
+  {{ tl.single(tiles.pay_due, 'Payment Due', '#fd7e14', 'bi-hourglass-split', variant='dark', secondary=[('Amount', '₹' ~ (tiles.pay_due_value | inr))], href='/partner/bids', title_attr='Sales Order shared, payment receipt not shared yet') }}
+  {{ tl.single(tiles.pay_pending, 'Payment Pending', '#0F7A37', 'bi-cash-coin', variant='dark', secondary=[('Amount', '₹' ~ (tiles.pay_pending_value | inr))], href='/partner/bids', title_attr='Receipt shared, waiting for OxyPC Accounts') }}
+</div>
+{% endif %}
 <div class="row g-3 cat-row"><div class="col-12 cat-left"><div class="cat-pane">
 
 {% if incentive_text %}
@@ -162,7 +173,6 @@
           <td data-order="{{ b.highest if b and b.highest else -1 }}">
             {% if b and b.highest %}
               <span class="fw-semibold">&#8377;{{ ((b.highest) | inr) }}</span>
-              {% if b.leading %}<span class="badge bg-success ms-1">You</span>{% endif %}
             {% else %}<span class="text-muted">—</span>{% endif %}
           </td>
           <td class="text-nowrap">
@@ -187,9 +197,8 @@
             </form>
             {% endif %}
             {% if b and b.mine %}
-            <div class="small {{ 'text-success' if b.leading else 'text-muted' }} mt-1">
-              Your bid &#8377;{{ ((b.mine.bid_amount) | inr) }}{{ ' — leading' if b.leading else ' — outbid' }}
-            </div>
+            {# No leading / outbid wording for partners (2026-11-16, Pankaj) #}
+            <div class="small text-muted mt-1">Your bid &#8377;{{ ((b.mine.bid_amount) | inr) }}</div>
             {% endif %}
           </td>
         </tr>

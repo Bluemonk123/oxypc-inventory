@@ -8,7 +8,10 @@
   :root { --app-zoom: 1; }
   body { zoom: 1; background: #f4f6f9; }
   .bids-tiles { padding-left: 0; padding-right: 0; }
-  .bids-tiles > div { min-width: 140px; }
+  /* Six tiles on one row (2026-11-16, Pankaj; Won Value removed) */
+  .bids-tiles { flex-wrap: nowrap; }
+  .bids-tiles > div { min-width: 0; flex: 1 1 0; }
+  @media (max-width: 768px) { .bids-tiles { flex-wrap: wrap; } .bids-tiles > div { flex: 1 1 45%; } }
 </style>
 {% endblock %}
 {% block content %}
@@ -24,12 +27,17 @@
    losses would read worse the more actively you bid. #}
 {# Count tiles (2026-11-11 PM, Pankaj): the app's tint tiles (templates/_tiles.html). #}
 <div class="oxt-row bids-tiles">
-  {{ tl.single(stats.won, 'Won', '#198754', 'bi-trophy') }}
-  {{ tl.single(stats.lost, 'Lost', '#dc3545', 'bi-x-circle') }}
-  {{ tl.single('₹' ~ (stats.won_value | inr), 'Won Value', '#0d6efd', 'bi-currency-rupee') }}
-  {{ tl.single(stats.payment_due, 'Payment Due', '#fd7e14', 'bi-hourglass-split',
-               secondary=[('Amount', '₹' ~ (stats.payment_due_value | inr))],
-               title_attr='Won bids with the PO issued and no payment submitted yet') }}
+  {# Dark tiles (2026-11-16, Pankaj): bids and payments #}
+  {{ tl.single(tiles.live, 'Live Bids', '#6f42c1', 'bi-hammer', variant='dark', title_attr='Bids still open on the catalog') }}
+  {{ tl.single(stats.won, 'Won', '#198754', 'bi-trophy', variant='dark', secondary=[('Win rate', (stats.win_rate ~ '%') if stats.win_rate is not none else '—')]) }}
+  {{ tl.single(stats.lost, 'Lost', '#dc3545', 'bi-x-circle', variant='dark') }}
+  {{ tl.single(tiles.pay_due, 'Payment Due', '#fd7e14', 'bi-hourglass-split', variant='dark',
+               secondary=[('Amount', '₹' ~ (tiles.pay_due_value | inr))],
+               title_attr='Won bids with the Sales Order shared and no payment receipt yet') }}
+  {{ tl.single(tiles.pay_pending, 'Payment Pending', '#0aa2c0', 'bi-cash-coin', variant='dark',
+               secondary=[('Amount', '₹' ~ (tiles.pay_pending_value | inr))], title_attr='Receipt shared, waiting for OxyPC Accounts') }}
+  {{ tl.single(tiles.pay_done, 'Payment Done', '#0F7A37', 'bi-check-circle', variant='dark',
+               secondary=[('Amount', '₹' ~ (tiles.pay_done_value | inr))]) }}
 </div>
 
 {% if request.query_params.get('success') %}
@@ -93,7 +101,7 @@
           <a href="/partner/bids/{{ r.bid.id }}/document/{{ d.id }}"
              class="btn btn-sm btn-outline-secondary py-0 px-1"
              title="{{ d.original_name or d.filename }}">
-            <i class="bi bi-download"></i> {{ d.doc_type | upper }}
+            <i class="bi bi-download"></i> {{ {'so': 'Sales Order', 'po': 'Purchase Order', 'quote': 'Quotation', 'invoice': 'Invoice'}.get(d.doc_type, d.doc_type | upper) }}
           </a>
           {% else %}<span class="text-muted">—</span>{% endfor %}
         </td>
@@ -122,24 +130,25 @@
 </div>
 {% endmacro %}
 
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-header bg-transparent fw-semibold small">
-    <i class="bi bi-trophy me-2 text-success"></i>Won ({{ won | length }})
+{# Won / Lost as tabs (2026-11-16, Pankaj) #}
+<ul class="nav nav-tabs mb-0" role="tablist">
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#bidsWonPane" type="button" role="tab">
+    <i class="bi bi-trophy me-1 text-success"></i>Won ({{ won | length }})</button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#bidsLostPane" type="button" role="tab">
+    <i class="bi bi-x-circle me-1 text-danger"></i>Lost ({{ lost | length }})</button></li>
+</ul>
+<div class="tab-content mb-3">
+  <div class="tab-pane fade show active" id="bidsWonPane" role="tabpanel">
+    <div class="card border-0 shadow-sm">{{ bid_table(won, 'success', True) }}</div>
   </div>
-  {{ bid_table(won, 'success', True) }}
-</div>
-
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-header bg-transparent fw-semibold small">
-    <i class="bi bi-x-circle me-2 text-danger"></i>Lost ({{ lost | length }})
+  <div class="tab-pane fade" id="bidsLostPane" role="tabpanel">
+    <div class="card border-0 shadow-sm">{{ bid_table(lost, 'danger') }}</div>
   </div>
-  {{ bid_table(lost, 'danger') }}
 </div>
 
 <div class="text-muted small px-1 pb-2">
   Live bids are not listed here — you can see those on the
-  <a href="/partner/catalog" class="text-decoration-none">Catalog</a>, where each
-  lot shows whether you are currently leading.
+  <a href="/partner/catalog" class="text-decoration-none">Catalog</a>.
 </div>
 
 <!-- Submit Payment -->

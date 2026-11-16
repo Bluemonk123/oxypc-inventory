@@ -265,7 +265,7 @@
   </div>
 </div>
 
-{% include "dealers/_quotation_modal.html" %}
+{% set qc_mode = 'dealer' %}{% include "dealers/_quotation_modal.html" %}
 {% include "dealers/_call_log_modal.html" %}
 
 <!-- Bulk Upload Call Records modal -->
@@ -476,7 +476,7 @@ function exportDealers() {
 
 initGlobalTable('#quotationSharedTable', {
   order: [],
-  columnDefs: [{ orderable: false, targets: [6, 7] }],
+  columnDefs: [{ orderable: false, targets: [7, 8] }],
   language: { emptyTable: 'No quotations shared yet.' },
 });
 

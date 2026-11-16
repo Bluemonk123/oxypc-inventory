@@ -7,6 +7,15 @@
   <i class="bi bi-lock me-2"></i>Pricing visibility is disabled for your role. Contact an admin if you need access to this report.
 </div>
 {% else %}
+{# Option C dashboard (2026-11-14, Pankaj): KPIs and charts; "View Data" swaps them
+   for the lot table below. services/lotpl_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{{ dash.hero('Lot P&L', '', 'Which lots made money, which lost it, and how much is still locked up', view_data=True) }}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
 <div class="mb-3">
   <span class="small text-muted"><i class="bi bi-info-circle me-1"></i>Trashed lots/devices are excluded. Net Revenue = Gross Sales − Returns. <b>Profit</b> is for the whole lot; <b>Profit on Sold Units</b> compares Net Revenue with the cost of only the devices sold so far.</span>
 </div>
@@ -90,6 +99,8 @@
   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
   <input type="hidden" name="ids" id="plExportIds" value="">
 </form>
+</div>{# /dash-data #}
+</div>{# /dash #}
 {% endif %}
 {% endblock %}
 {% block scripts %}

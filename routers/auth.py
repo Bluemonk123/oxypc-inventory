@@ -40,8 +40,12 @@ LOCKOUT_MINUTES = 15
 
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request, error: str = None):
-    # Pre-issue a csrf_token cookie so the login form CSRF check works before session exists
-    csrf_tok = secrets.token_hex(32)
+    # Pre-issue a csrf_token cookie so the login form CSRF check works before session exists.
+    # Reuse the browser's existing token (2026-11-15): issuing a new one on every
+    # GET meant another tab, or a background request bounced to this page after
+    # the session expired, replaced the cookie under an open login form — its
+    # first Sign In then failed with no message.
+    csrf_tok = request.cookies.get("csrf_token") or secrets.token_hex(32)
     resp = templates.TemplateResponse("login.html", {
         "request": request,
         "error": error,
@@ -57,20 +61,30 @@ async def login(
     request: Request,
     username: str = Form(...),
     password: str = Form(...),
-    _csrf=Depends(verify_csrf),
+    csrf_token: str = Form(""),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(select(User).where(User.username == username))
-    user = result.scalar_one_or_none()
-
     def _login_error_resp(request, error_msg):
-        """Return login page with a fresh CSRF token on error (re-render for retry)."""
+        """Return login page with a fresh CSRF token on error (re-render for retry).
+        The username stays filled in (2026-11-15)."""
         tok = secrets.token_hex(32)
         resp = templates.TemplateResponse(
-            "login.html", {"request": request, "error": error_msg, "login_csrf": tok}
+            "login.html", {"request": request, "error": error_msg, "login_csrf": tok,
+                           "username": username}
         )
         resp.set_cookie("csrf_token", tok, httponly=False, samesite="strict", secure=COOKIE_SECURE)
         return resp
+
+    # CSRF double-submit check done here, not with verify_csrf (2026-11-15): that
+    # dependency answers a mismatch with a bare redirect to this page, so a login
+    # form left open (token replaced meanwhile) just reloaded empty with no
+    # message. Same check, but the user is told and can sign in straight away.
+    cookie_tok = request.cookies.get("csrf_token", "")
+    if not cookie_tok or not csrf_token or not secrets.compare_digest(cookie_tok, csrf_token):
+        return _login_error_resp(request, "The sign-in page had expired. Please sign in again.")
+
+    result = await db.execute(select(User).where(User.username == username))
+    user = result.scalar_one_or_none()
 
     if user:
         # Lockout: count failed attempts in the last LOCKOUT_MINUTES
@@ -108,7 +122,9 @@ async def login(
     await db.commit()
 
     csrf_tok = secrets.token_hex(32)
-    landing = _first_landing(user.role.value)
+    # Landing page set for the role in Master Data (2026-11-15), else the old rule
+    from services.landing import landing_for
+    landing = await landing_for(db, getattr(user.role, "value", None) or str(user.role))
     response = RedirectResponse(url=landing, status_code=302)
     _max_age = ACCESS_TOKEN_EXPIRE_MINUTES * 60
     _expires_epoch = int(time.time()) + _max_age

@@ -102,3 +102,13 @@ class PartSourcingRequest(Base):
     confirmed = Column(Boolean, nullable=False, default=False, server_default="false")
     confirmed_at = Column(DateTime, nullable=True)
     confirmed_by = Column(String(50), nullable=True)
+
+    # Activity Board review (2026-11-15, Pankaj — approved): a new request is
+    # "pending" until someone verifies or rejects it on Activity Board;
+    # Procurement Board only offers its actions once it's "verified". NULL =
+    # raised before this existed = treated as verified.
+    review_status = Column(String(15), nullable=True, default="pending")
+    review_note   = Column(Text, nullable=True)
+    reviewed_by   = Column(String(50), nullable=True)
+    reviewed_at   = Column(DateTime, nullable=True)
+

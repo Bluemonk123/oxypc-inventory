@@ -28,6 +28,20 @@ def levels_from(owner_level: str, owner_id, picks: dict) -> dict:
     return out
 
 
+def partner_eligibility(contact):
+    """(ok, reasons) — an Account may become an External Partner only when it
+    is Active and both KYC and Credit are verified (2026-11-15, Pankaj). Used
+    by Move to External Partner, Enable Portal Access and Generate Password."""
+    reasons = []
+    if (getattr(contact, "status", "") or "") != "active" or getattr(contact, "is_trashed", False):
+        reasons.append("Inactive")
+    if not getattr(contact, "kyc_verified", False):
+        reasons.append("KYC not verified")
+    if not getattr(contact, "credit_verified", False):
+        reasons.append("Credit not verified")
+    return (not reasons), reasons
+
+
 async def move_to_partner(db, contacts, user, *, owner, owner_level, picks,
                           partner_type, price_segment, request=None) -> dict:
     """Make each Account an External Partner (no login) and, when an owner is

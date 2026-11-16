@@ -121,80 +121,28 @@ async def procure_dashboard(
         for o in or2.scalars().all():
             sales_map[str(o.id)] = o
 
-    # ── Part Sourcing tab (same data as CRM Dashboard's table) ──────────────
-    # A production-sourced (Part Estimate) request only belongs here once the
-    # Spare Parts Manager has clicked Confirm Request on it, on Part Master ->
-    # Sourcing Requests — until then it's still theirs to review, not
-    # Procurement's to act on. 'procure'-sourced rows have no such gate and
-    # always show, same as before.
-    ps_r = await db.execute(
-        select(PartSourcingRequest)
-        .where(or_(PartSourcingRequest.source != "production",
-                  PartSourcingRequest.confirmed == True))  # noqa: E712
-        .order_by(PartSourcingRequest.created_at.desc()).limit(200)
-    )
-    part_sourcing = ps_r.scalars().all()
+    # ── Parts Sourcing / Device Sourcing requests (shared with Activity Board, 2026-11-15) ──
+    from services.sourcing_requests import requests_context
+    _src = await requests_context(db)
+    part_sourcing = _src["part_sourcing"]
 
-    # Every estimate file from the same Generate click as each production
-    # request shown here — mirrors the grouping on Part Master -> Sourcing
-    # Requests (routers/spare_parts.py) so the attachment shows the same way
-    # in both places.
-    lot_ids = {s.lot_id for s in part_sourcing if s.source == "production" and s.lot_id}
-    estimates_by_batch = {}
-    if lot_ids:
-        est_rows = (await db.execute(
-            select(PartEstimate).where(
-                PartEstimate.lot_id.in_(lot_ids), PartEstimate.file_name.isnot(None))
-        )).scalars().all()
-        by_lot_and_time = {}
-        for e in est_rows:
-            by_lot_and_time.setdefault((e.lot_id, e.created_at), []).append(e)
-        for s in part_sourcing:
-            if s.source == "production" and s.lot_id:
-                estimates_by_batch[str(s.id)] = by_lot_and_time.get((s.lot_id, s.created_at), [])
-
-    open_deals_r = await db.execute(
-        select(CRMSourcingDeal)
-        .where(CRMSourcingDeal.stage.notin_(["won", "lost"]))
-        .order_by(CRMSourcingDeal.created_at.desc())
-    )
-    sourcing_deals_for_close = open_deals_r.scalars().all()
-
-    deal_map = {}
-    linked_ids = [s.source_deal_id for s in part_sourcing if s.source_deal_id]
-    if linked_ids:
-        valid_ids = []
-        for lid in linked_ids:
-            try:
-                valid_ids.append(str(uuid.UUID(lid)))
-            except (ValueError, AttributeError, TypeError):
-                continue
-        if valid_ids:
-            dm_r = await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.id.in_(valid_ids)))
-            for d in dm_r.scalars().all():
-                deal_map[str(d.id)] = d
-
-    # ── Device Sourcing tab (Telecaller Model Request queue, without
-    #    Matching Stock, with a procurement-only Close Deal action) ─────────
-    dr_r = await db.execute(
-        select(ModelRequest)
-        .order_by(ModelRequest.created_at.desc())   # closed ones too: Closed Request pill (2026-11-11)
-        .limit(300)
-    )
-    device_sourcing = dr_r.scalars().all()
-    # Part Name shows "<part name> - <model> - <make>" (2026-11-11, Pankaj)
-    from models.spare_parts import SparePart
-    _pids = {s.part_id for s in part_sourcing if s.part_id}
-    part_map = {str(p.id): p for p in (await db.execute(select(SparePart).where(SparePart.id.in_(_pids)))).scalars().all()} if _pids else {}
-
+    # Option C dashboard (2026-11-14, Pankaj) — services/procure_dash.py
+    from services.procure_dash import build as _build_dash
+    try:
+        _pending_parts = sum(1 for s in part_sourcing if (s.status or "").lower() in ("pending", "open", "requested"))
+        from templates_config import _can
+        dash_kpis, dash_widgets = await _build_dash(db, overdue_count, today_count, all_due, _pending_parts,
+                                                    sp=_can(current_user, "crm_sourcing", "pricing"),
+                                                    cp=_can(current_user, "crm_sales_opp", "pricing"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("procurement dashboard failed")
+        await db.rollback()
+        dash_kpis, dash_widgets = [], []
     return templates.TemplateResponse("procure/dashboard.html", {
         "request": request, "current_user": current_user, "is_sm": is_sm,
-        "part_sourcing": part_sourcing,
-        "estimates_by_batch": estimates_by_batch,
-        "sourcing_deals_for_close": sourcing_deals_for_close,
-        "deal_map": deal_map,
-        "device_sourcing": device_sourcing,
-        "part_map": part_map,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
+        **_src,
         "status_badge": STATUS_BADGE,
         "success": request.query_params.get("success"),
         # contacts
@@ -237,6 +185,8 @@ async def close_device_sourcing(
     if not mr:
         raise HTTPException(404, "Request not found")
 
+    if (mr.review_status or "verified") != "verified":   # verify on Activity Board first (2026-11-15)
+        return RedirectResponse(url="/procure-dashboard?error=Verify+this+request+on+Activity+Board+first", status_code=302)
     mr.source_deal_id = source_deal_id.strip()
     mr.qty_fulfilled = max(0, qty_sourced)
     mr.sourcing_notes = sourcing_notes.strip() or None
@@ -249,3 +199,34 @@ async def close_device_sourcing(
                 new_value={"source_deal_id": source_deal_id, "qty_sourced": qty_sourced}, request=request)
     await db.commit()
     return RedirectResponse(url="/procure-dashboard?success=Sourcing+deal+closed", status_code=302)
+
+
+@router.post("/device-sourcing/{request_id}/link-deal")
+async def link_device_sourcing_deal(request_id: str, request: Request, source_deal_id: str = Form(""),
+                                    db: AsyncSession = Depends(get_db), current_user: User = Depends(sm_allowed)):
+    """Link Deal on a Device Sourcing request (2026-11-15, Pankaj): tie it to a
+    supplier deal without closing it. Empty source_deal_id removes the link."""
+    try:
+        rid = uuid.UUID(request_id)
+    except ValueError:
+        raise HTTPException(404, "Request not found")
+    mr = (await db.execute(select(ModelRequest).where(ModelRequest.id == rid))).scalar_one_or_none()
+    if not mr:
+        raise HTTPException(404, "Request not found")
+    if (mr.review_status or "verified") != "verified":
+        return RedirectResponse(url="/procure-dashboard?error=Verify+this+request+on+Activity+Board+first", status_code=302)
+    new = (source_deal_id or "").strip() or None
+    if new:
+        try:
+            deal = (await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.id == uuid.UUID(new)))).scalar_one_or_none()
+        except ValueError:
+            deal = None
+        if not deal:
+            return RedirectResponse(url="/procure-dashboard?error=Supplier+deal+not+found", status_code=302)
+        new = str(deal.id)
+    old = mr.source_deal_id
+    mr.source_deal_id = new
+    await audit(db, action="MODEL_REQUEST_DEAL_LINKED", user=current_user, table_name="model_requests",
+                record_id=str(mr.id), old_value={"source_deal_id": old}, new_value={"source_deal_id": new}, request=request)
+    await db.commit()
+    return RedirectResponse(url="/procure-dashboard?success=" + ("Deal+linked" if new else "Link+removed"), status_code=302)

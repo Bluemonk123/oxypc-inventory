@@ -20,13 +20,15 @@ from models.user import User, UserRole
 from models.partner import PartnerBid
 from models.partner_payment import PartnerBidPayment
 from services.audit_engine import audit
-from auth.dependencies import require_roles, verify_csrf
+from auth.dependencies import require_module_perm, verify_csrf
 
 router = APIRouter(prefix="/partner-payments", tags=["partner_payments"],
                    dependencies=[Depends(verify_csrf)])
 
-# Finance-gated: verifying money is not a trade-partner-desk action.
-allowed = require_roles(UserRole.admin, UserRole.sales_manager)
+# Page enabled per role in the Permission Matrix ("Partner Payments") —
+# 2026-11-15, Pankaj: was fixed to admin + sales_manager, so custom roles could
+# never be given it. Verify needs the page's Edit tick (auth/route_actions.py).
+allowed = require_module_perm("partner_payments")
 
 
 @router.get("", response_class=HTMLResponse)
@@ -75,6 +77,7 @@ async def payment_details(bid_id: str, db: AsyncSession = Depends(get_db),
 
 @router.post("/{bid_id}/verify")
 async def verify_payment(bid_id: str, request: Request, verify_notes: str = Form(""),
+                         return_to: str = Form(""),
                          db: AsyncSession = Depends(get_db),
                          current_user: User = Depends(allowed)):
     try:
@@ -92,13 +95,14 @@ async def verify_payment(bid_id: str, request: Request, verify_notes: str = Form
     if pay.verified:
         return RedirectResponse(url="/partner-payments?success=Payment+already+verified",
                                 status_code=302)
-    pay.verified = True
-    pay.verified_by = current_user.username
-    pay.verified_at = app_now()
-    pay.verify_notes = (verify_notes or "").strip() or None
-    await audit(db, user=current_user, action="PARTNER_PAYMENT_VERIFIED",
-                table_name="partner_bid_payments", record_id=str(pay.id),
-                new_value={"bid_id": str(bid_uuid), "utr": pay.payment_utr},
-                request=request)
+    # 2026-11-15 (Pankaj): verifying posts a Customer Receipt on the bid's
+    # Customer Deal and moves the deal to Stock Handover (services/partner_deals).
+    from services.partner_deals import post_partner_payment
+    bid = (await db.execute(select(PartnerBid).where(PartnerBid.id == bid_uuid))).scalar_one_or_none()
+    if not bid:
+        raise HTTPException(404)
+    _receipt, opp = await post_partner_payment(db, bid, pay, current_user, verify_notes, request)
     await db.commit()
-    return RedirectResponse(url="/partner-payments?success=Payment+verified", status_code=302)
+    msg = "Payment+verified" + (f"+-+receipt+posted+on+{opp.opp_number}" if opp else "")
+    base = "/accounts" if return_to == "accounts" else "/partner-payments"   # Accounts card (2026-11-15)
+    return RedirectResponse(url=f"{base}?success={msg}", status_code=302)

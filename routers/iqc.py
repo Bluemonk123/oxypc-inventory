@@ -806,8 +806,18 @@ async def iqc_list(
     # Model Based Summary — same builder used on Overall Inventory, scoped to
     # this page's currently-filtered device set (reuses base_filters as-is).
     model_summary = await _build_model_summary(db, base_filters)
+    # Option C dashboard (2026-11-14, Pankaj) — services/iqc_dash.py
+    from services.iqc_dash import build as _build_dash
+    try:
+        dash_kpis, dash_widgets = await _build_dash(db)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("IQC dashboard failed")
+        await db.rollback()
+        dash_kpis, dash_widgets = [], []
     return templates.TemplateResponse("iqc/list.html", {
         "request": request, "lots": lots, "current_user": current_user,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "total": total,
         "q": q, "stage": stage, "grade": grade, "lot": lot,
         "device_type": device_type, "device_type_options": await master_values(db, "device_type"),

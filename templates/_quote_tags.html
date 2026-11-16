@@ -1,0 +1,50 @@
+{# Tags column (2026-11-16, Pankaj): Ready-for-Sale tags of the same
+   configuration as a quotation's lines. Cells: <td data-qt-tags="tele|crm"
+   data-qt-id="<quote id>"></td>. One request per page fills them all
+   (/quotations/tags). Include once per page. #}
+<div class="modal fade" id="qtTagsModal" tabindex="-1" aria-labelledby="qtTagsTitle">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2"><h6 class="modal-title" id="qtTagsTitle"></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body small">
+        <p class="text-muted mb-2">Ready-for-Sale tags matching the quotation's lines (up to each line's quantity).</p>
+        <div id="qtTagsList" class="d-flex flex-wrap gap-1"></div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  function run() {
+    var cells = document.querySelectorAll('[data-qt-tags]');
+    if (!cells.length) return;
+    var groups = {};
+    cells.forEach(function (c) { (groups[c.getAttribute('data-qt-tags')] = groups[c.getAttribute('data-qt-tags')] || []).push(c); });
+    Object.keys(groups).forEach(function (kind) {
+      var list = groups[kind], ids = list.map(function (c) { return c.getAttribute('data-qt-id'); });
+      list.forEach(function (c) { c.innerHTML = '<span class="text-muted">…</span>'; });
+      fetch('/quotations/tags?kind=' + kind + '&ids=' + ids.join(','), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          list.forEach(function (c) {
+            var tags = d[c.getAttribute('data-qt-id')] || [];
+            c.setAttribute('data-order', tags.length);
+            if (!tags.length) { c.innerHTML = '<span class="text-muted">—</span>'; return; }
+            var b = document.createElement('button');
+            b.type = 'button'; b.className = 'btn btn-sm btn-outline-primary py-0';
+            b.textContent = tags.length + ' tag' + (tags.length === 1 ? '' : 's');
+            b.addEventListener('click', function () {
+              document.getElementById('qtTagsTitle').textContent = (c.getAttribute('data-qt-label') || 'Quotation') + ' — ' + tags.length + ' tag' + (tags.length === 1 ? '' : 's');
+              var box = document.getElementById('qtTagsList'); box.innerHTML = '';
+              tags.forEach(function (t) { var s = document.createElement('span'); s.className = 'badge text-bg-light border font-monospace'; s.textContent = t; box.appendChild(s); });
+              bootstrap.Modal.getOrCreateInstance(document.getElementById('qtTagsModal')).show();
+            });
+            c.innerHTML = ''; c.appendChild(b);
+          });
+        }).catch(function () { list.forEach(function (c) { c.innerHTML = '<span class="text-muted">—</span>'; }); });
+    });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+})();
+</script>

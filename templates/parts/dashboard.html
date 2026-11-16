@@ -2,6 +2,14 @@
 {% block title %}Parts Dashboard — OxyPC{% endblock %}
 {% block page_title %}Parts Dashboard{% endblock %}
 {% block content %}
+{# Option C dashboard (2026-11-14, Pankaj): this page is the dashboard — no View Data.
+   Built in routers/part_sales.py parts_dashboard; the old tiles/charts stay as a fallback. #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{{ dash.hero('Parts Dashboard', '', 'Spare parts on hand, what repairs are waiting for, and what to reorder', view_data=False) }}
+{% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+{% if not dash_kpis %}
 
 {# ── KPI cards ─────────────────────────────────────────────────────────── #}
 <div class="row g-2 mb-3">
@@ -72,8 +80,10 @@
     </div>
   </div>
 </div>
+{% endif %}
 {% endblock %}
 {% block scripts %}
+{% if not dash_kpis %}{# old charts only when the dashboard could not be built #}
 <script src="/static/vendor/chartjs/chart.umd.min.js"></script>
 <script src="/static/js/chart-zoom-fix.js"></script>
 <script>
@@ -99,4 +109,5 @@
   bar('chartMarkedSold',       'Marked Sold',       {{ series.marked_sold | tojson }},       'rgba(15,122,55,.75)');
 })();
 </script>
+{% endif %}
 {% endblock %}

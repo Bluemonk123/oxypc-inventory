@@ -20,6 +20,14 @@ async def lot_for_opportunity(db: AsyncSession, opp_id):
 
     bid = await winning_bid_for_opportunity(db, opp_id)
     if not bid:
+        # An approved lot booking opens a deal too (2026-11-15)
+        from models.partner import LotBookingRequest
+        bk = (await db.execute(select(LotBookingRequest).where(
+            LotBookingRequest.opportunity_id == opp_id))).scalars().first()
+        if not bk:
+            return None
+        return (await db.execute(select(Lot).where(Lot.id == bk.lot_id))).scalar_one_or_none()
+    if not bid.lot_id:
         return None
     return (await db.execute(select(Lot).where(Lot.id == bid.lot_id))).scalar_one_or_none()
 

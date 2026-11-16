@@ -2,7 +2,6 @@
 {% block title %}Stock Transfers — OxyPC{% endblock %}
 {% block page_title %}Stock Transfers{% endblock %}
 {% block content %}
-
 <!-- Filter Bar -->
 {% set transfer_type_arrow_labels = {
   'trc_to_showroom': 'TRC → Showroom',
@@ -13,6 +12,11 @@
   'ready_for_sale': 'Finish Good',
   'scrap_for_sale': 'Scrap for Sale',
 } %}
+{# Option C dashboard (2026-11-14, Pankaj): header with the filters, KPIs and charts;
+   "View Data" swaps them for the moves table below. services/transfers_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% call dash.hero('Floor Movement', '', 'Device moves between TRC Floor, 1st Floor and Showroom, and why', view_data=True) %}
 <form method="get" action="/transfers" id="transfersFilterForm" class="filter-bar">
   <div class="filter-bar-row">
     <div class="filter-bar-search">
@@ -57,6 +61,12 @@
     </div>
   </div>
 </form>
+{% endcall %}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
+
 
 <!-- Table -->
 <div class="card border-0 shadow-sm">
@@ -150,6 +160,8 @@
       </table>
   </div>
 </div>
+</div>{# .dash-data #}
+</div>{# .dash #}
 {% endblock %}
 {% block scripts %}
 <script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>

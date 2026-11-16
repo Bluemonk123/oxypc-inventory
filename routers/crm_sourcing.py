@@ -129,8 +129,19 @@ async def list_sourcing_deals(
 
     from services.doc_downloads import sourcing_downloads   # Download column (2026-11-10)
     downloads = await sourcing_downloads(db, deals)
+    # Option C dashboard (2026-11-14, Pankaj) — services/crm_dash.py.
+    dash_kpis, dash_top, dash_bottom = [], [], []
+    try:
+        from services.crm_dash import build_sourcing
+        from templates_config import _can
+        dash_kpis, dash_top, dash_bottom = await build_sourcing(db, current_user, _can(current_user, "crm_sourcing", "pricing"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("CRM Sourcing dashboard failed")
+        await db.rollback()
     return templates.TemplateResponse("crm/sourcing/list.html", {
         "request": request, "current_user": current_user, "downloads": downloads,
+        "dash_kpis": dash_kpis, "dash_top": dash_top, "dash_bottom": dash_bottom,
         "deals": deals, "contacts_map": contacts_map,
         "pipeline_value": pipeline_value, "overdue_count": overdue_count,
         "line_totals_map": line_totals_map, "latest_po_map": latest_po_map,

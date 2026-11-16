@@ -491,6 +491,7 @@ async def catalog(
         "visible_lots": visible_lots,
         "bids": await _bid_state(db, listings, dealer.id),
         "lot_bids": await _lot_bid_state(db, visible_lots, dealer.id),
+        "tiles": await _partner_tile_stats(db, dealer.id, visible_lots),
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
     })
@@ -1011,16 +1012,18 @@ async def book_lot(
     dealer: Dealer = Depends(get_current_partner),
     db: AsyncSession = Depends(get_db),
 ):
-    """Catalog page 'Book' button (item 28) — only for Lots this dealer has
-    been granted visibility on. Raises a lightweight LotBookingRequest, not a
-    priced PartnerBooking (Lots aren't priced/tokened like PartnerListings)."""
-    visible = (await db.execute(
-        select(LotDealerVisibility).where(
-            LotDealerVisibility.lot_id == lot_id, LotDealerVisibility.dealer_id == dealer.id,
-        )
-    )).scalar_one_or_none()
-    if not visible:
+    """Catalog page 'Book' button (item 28) — for any Lot this dealer can see.
+    Raises a lightweight LotBookingRequest, not a priced PartnerBooking (Lots
+    aren't priced/tokened like PartnerListings).
+
+    2026-11-15 (Pankaj): same visibility rule as Bid (_visible_lot_or_none) —
+    open lots for everyone, Restricted lots only for dealers granted them. It
+    used to demand an explicit grant even on open lots, so Book on any open lot
+    answered "Lot not available to you"."""
+    lot = await _visible_lot_or_none(db, lot_id, dealer.id)
+    if not lot:
         return RedirectResponse(url="/partner/catalog?error=Lot+not+available+to+you", status_code=302)
+    lot_id = lot.id
 
     existing = (await db.execute(
         select(LotBookingRequest).where(
@@ -1033,8 +1036,9 @@ async def book_lot(
 
     booking = LotBookingRequest(lot_id=lot_id, dealer_id=dealer.id, qty_requested=max(1, qty))
     db.add(booking)
+    await db.flush()   # booking.id for the audit row
     await audit(db, action="LOT_BOOKING_REQUESTED", table_name="lot_booking_requests",
-                record_id=str(booking.id), new_value={"lot_id": lot_id, "dealer": dealer.business_name, "qty": qty},
+                record_id=str(booking.id), new_value={"lot_id": str(lot_id), "dealer": dealer.business_name, "qty": qty},
                 notes=f"dealer:{dealer.business_name}", request=request)
     await db.commit()
     return RedirectResponse(url="/partner/catalog?success=Lot+booking+requested", status_code=302)
@@ -1119,12 +1123,90 @@ async def my_bookings(
         if str(lb.lot_id) not in lots_by_id:
             lots_by_id[str(lb.lot_id)] = await db.get(Lot, lb.lot_id)
 
+    # Quotation / Sales Order of an approved booking's Customer Deal (2026-11-16)
+    from services.partner_deals import deal_docs
+    lot_docs = {}
+    for lb in lot_bookings:
+        if lb.status == "approved" and lb.opportunity_id:
+            q, so = await deal_docs(db, lb.opportunity_id)
+            lot_docs[str(lb.id)] = {"quote": q, "so": so}
+
     return templates.TemplateResponse("partner/bookings.html", {
         "request": request, "dealer": dealer, "bookings": bookings,
-        "listings": listings,
+        "listings": listings, "lot_docs": lot_docs,
         "lot_bookings": lot_bookings, "lots_by_id": lots_by_id,
         "partner_csrf": request.cookies.get(PARTNER_CSRF_COOKIE, ""),
     })
+
+
+@router.get("/bookings/lot/{req_id}/doc/{kind}")
+async def lot_booking_doc(
+    req_id: str, kind: str,
+    dealer: Dealer = Depends(get_current_partner),
+    db: AsyncSession = Depends(get_db),
+):
+    """Download the Quotation or Sales Order of THIS partner's approved lot
+    booking (2026-11-16). Nothing of another dealer's is reachable."""
+    from fastapi.responses import FileResponse, Response
+    from services.partner_deals import deal_docs, so_pdf_bytes
+    try:
+        lb = (await db.execute(select(LotBookingRequest).where(
+            LotBookingRequest.id == uuid_mod.UUID(req_id), LotBookingRequest.dealer_id == dealer.id,
+            LotBookingRequest.status == "approved"))).scalar_one_or_none()
+    except (ValueError, AttributeError):
+        lb = None
+    if not lb or kind not in ("quote", "so"):
+        raise HTTPException(404)
+    q, so = await deal_docs(db, lb.opportunity_id)
+    if kind == "quote" and q is not None:
+        from routers.crm_quotes import quote_pdf_path, save_quote_pdf
+        path = quote_pdf_path(q.id)
+        if not os.path.isfile(path):
+            await save_quote_pdf(db, q)
+        if os.path.isfile(path):
+            return FileResponse(path, media_type="application/pdf", filename=f"{q.quote_number}.pdf")
+    if kind == "so" and so is not None:
+        return Response(await so_pdf_bytes(db, so), media_type="application/pdf",
+                        headers={"Content-Disposition": f'attachment; filename="{so.so_number}.pdf"'})
+    raise HTTPException(404)
+
+
+async def _partner_tile_stats(db: AsyncSession, dealer_id, visible_lots=None) -> dict:
+    """Counts for the dark tiles on Catalog and My Bids (2026-11-16, Pankaj):
+    lots / stock, bids, bookings, payments — this partner's own rows only."""
+    from models.partner import PartnerBidDocument, LotBookingRequest
+    from models.partner_payment import PartnerBidPayment, payment_status, PS_PAYMENT_DUE, PS_PAYMENT_PENDING, PS_PAYMENT_DONE
+    bids = (await db.execute(select(PartnerBid).where(PartnerBid.dealer_id == dealer_id))).scalars().all()
+    st = {"live": sum(1 for b in bids if b.status == "active"),
+          "won": sum(1 for b in bids if b.status == "won"),
+          "lost": sum(1 for b in bids if b.status == "lost")}
+    st["settled"] = st["won"] + st["lost"]
+    st["win_rate"] = round(st["won"] * 100 / st["settled"]) if st["settled"] else None
+    won = [b for b in bids if b.status == "won"]
+    st["won_value"] = sum((Decimal(str(b.bid_amount)) for b in won), Decimal("0"))
+    docs, pays = set(), {}
+    ids = [b.id for b in won]
+    if ids:
+        docs = {d.bid_id for d in (await db.execute(select(PartnerBidDocument).where(
+            PartnerBidDocument.bid_id.in_(ids), PartnerBidDocument.doc_type.in_(("po", "so"))))).scalars().all()}
+        for pmt in (await db.execute(select(PartnerBidPayment).where(PartnerBidPayment.bid_id.in_(ids))
+                                     .order_by(PartnerBidPayment.submitted_at.desc()))).scalars().all():
+            pays.setdefault(pmt.bid_id, pmt)
+    for k in ("due", "pending", "done"):
+        st["pay_" + k], st["pay_%s_value" % k] = 0, Decimal("0")
+    for b in won:
+        ps = payment_status(b.id in docs, pays.get(b.id))
+        k = {PS_PAYMENT_DUE: "due", PS_PAYMENT_PENDING: "pending", PS_PAYMENT_DONE: "done"}.get(ps)
+        if k:
+            st["pay_" + k] += 1
+            st["pay_%s_value" % k] += Decimal(str(b.bid_amount))
+    reqs = (await db.execute(select(LotBookingRequest.status).where(LotBookingRequest.dealer_id == dealer_id))).scalars().all()
+    st["book_requested"] = sum(1 for r in reqs if r == "requested")
+    st["book_approved"] = sum(1 for r in reqs if r == "approved")
+    if visible_lots is not None:
+        st["lots"] = len(visible_lots)
+        st["units"] = sum(int(l.get("available_quantity") or 0) for l in visible_lots)
+    return st
 
 
 @router.get("/bids", response_class=HTMLResponse)
@@ -1192,7 +1274,7 @@ async def my_bids_analysis(
     # download, and whatever payment the dealer has already submitted.
     from models.partner import PartnerBidDocument
     from models.partner_payment import (PartnerBidPayment, payment_status,
-                                        PAYMENT_STATUS_BADGE, PS_PAYMENT_PENDING)
+                                        PAYMENT_STATUS_BADGE, PS_PAYMENT_DUE)
     won_ids = [r["bid"].id for r in won]
     docs, pays = {}, {}
     if won_ids:
@@ -1208,19 +1290,20 @@ async def my_bids_analysis(
     for r in won:
         bid_key = str(r["bid"].id)
         r["documents"] = docs.get(bid_key, [])
-        r["has_po"] = any(d.doc_type == "po" for d in r["documents"])
+        r["has_po"] = any(d.doc_type in ("po", "so") for d in r["documents"])   # SO from Mark Won (2026-11-15)
         r["payment"] = pays.get(bid_key)
         r["payment_status"] = payment_status(r["has_po"], r["payment"])
         r["payment_badge"] = PAYMENT_STATUS_BADGE.get(r["payment_status"], "bg-secondary")
     # Payment Due tile (2026-11-11 PM): won bids whose PO is out and no payment
     # has been submitted yet — what the partner has to pay now.
-    due = [r for r in won if r["payment_status"] == PS_PAYMENT_PENDING]
+    due = [r for r in won if r["payment_status"] == PS_PAYMENT_DUE]
     stats["payment_due"] = len(due)
     stats["payment_due_value"] = sum((Decimal(str(r["bid"].bid_amount)) for r in due), Decimal("0"))
 
     return templates.TemplateResponse("partner/bids.html", {
         "request": request, "dealer": dealer,
         "won": won, "lost": lost, "stats": stats,
+        "tiles": await _partner_tile_stats(db, dealer.id),
         "partner_csrf": request.cookies.get(PARTNER_CSRF_COOKIE, ""),
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
@@ -1269,8 +1352,9 @@ async def submit_bid_payment(
 ):
     """Mark Paid — the dealer submits payment details against a won bid.
 
-    This moves the bid to "Payment Verifying" on both this page and the staff
-    side; finance confirms it on Partner Payments to reach "Payment Done".
+    This moves the bid to "Payment Pending" on both this page and the staff
+    side, and the Customer Deal to its Payment stage (Level 1 pending);
+    Accounts approving it makes it "Payment Done" (2026-11-16, Pankaj).
     """
     from models.partner_payment import PartnerBidPayment
     back = "/partner/bids"
@@ -1318,6 +1402,8 @@ async def submit_bid_payment(
                 new_value={"bid": bid.bid_number, "utr": target.payment_utr,
                            "amount": str(amt) if amt is not None else None},
                 notes=f"dealer:{dealer.business_name}", request=request)
+    from services.partner_deals import payment_receipt_shared
+    await payment_receipt_shared(db, bid, target, dealer)
     await db.commit()
     return RedirectResponse(
         url=f"{back}?success=Payment+details+submitted+for+{bid.bid_number}", status_code=302)
@@ -1488,6 +1574,42 @@ async def cancel_booking(
 
 def _ticket_tag(dealer) -> str:
     return f"[{dealer.dealer_code}] "
+
+
+# ── Bell + live toasts (2026-11-15, Pankaj) ────────────────────────────────
+@router.get("/notifications")
+async def partner_notifications(
+    dealer: Dealer = Depends(get_current_partner),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unread count + the 20 latest notes for the bell; the page polls this and
+    shows a toast for each unread note it has not shown before."""
+    from models.partner import PartnerNotification
+    rows = (await db.execute(select(PartnerNotification).where(PartnerNotification.dealer_id == dealer.id)
+                             .order_by(PartnerNotification.created_at.desc()).limit(20))).scalars().all()
+    unread = (await db.execute(select(func.count(PartnerNotification.id)).where(
+        PartnerNotification.dealer_id == dealer.id, PartnerNotification.is_read == False))).scalar() or 0  # noqa: E712
+    return JSONResponse({"unread": unread, "items": [{
+        "id": str(n.id), "title": n.title, "message": n.message or "", "kind": n.kind or "info",
+        "link": n.link or "", "read": bool(n.is_read),
+        "at": n.created_at.strftime("%d %b, %H:%M") if n.created_at else ""} for n in rows]},
+        headers={"Cache-Control": "no-store"})
+
+
+@router.post("/notifications/read")
+async def partner_notifications_read(
+    request: Request,
+    _csrf=Depends(verify_partner_csrf),
+    dealer: Dealer = Depends(get_current_partner),
+    db: AsyncSession = Depends(get_db),
+):
+    """Opening the bell marks this partner's notes read."""
+    from models.partner import PartnerNotification
+    await db.execute(update(PartnerNotification).where(
+        PartnerNotification.dealer_id == dealer.id, PartnerNotification.is_read == False)  # noqa: E712
+        .values(is_read=True))
+    await db.commit()
+    return JSONResponse({"ok": True})
 
 
 @router.get("/tickets", response_class=HTMLResponse)

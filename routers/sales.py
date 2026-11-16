@@ -431,8 +431,9 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
     col_map = {1: Device.barcode, 2: Lot.lot_number, 4: Device.brand, 5: Device.model, 8: Device.grade}
     if psiqc:   # Pre-Sale IQC: CPU + CPU Gen after Model (2026-10-29)
         # Status column after Tag (2026-11-03) shifts the rest by one.
-        col_map = {1: Device.barcode, 3: Lot.lot_number, 5: Device.brand, 6: Device.model,
-                   7: Device.cpu, 8: Device.generation, 11: Device.grade}
+        # Notes after Tag (2026-11-14) shifts the rest by one more.
+        col_map = {1: Device.barcode, 4: Lot.lot_number, 6: Device.brand, 7: Device.model,
+                   8: Device.cpu, 9: Device.generation, 12: Device.grade}
     try:
         order_col = int(request.query_params.get("order[0][column]", 0))
     except ValueError:
@@ -521,10 +522,15 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
     _worked, _l34 = await worked_and_l34_ids(db, device_ids)
 
     if psiqc:
-        from routers.pre_sale_iqc import psiqc_state_map, psiqc_parts_cell, psiqc_action_cell, psiqc_result_map
+        from routers.pre_sale_iqc import (psiqc_state_map, psiqc_parts_cell, psiqc_action_cell,
+                                          psiqc_result_map, psiqc_notes_map)
         _ps_state, _ps_parts = await psiqc_state_map(db, device_ids)
         _ps_result = await psiqc_result_map(db, _ps_state)
+        _ps_notes = await psiqc_notes_map(db, device_ids)
         _ps_edit = _hp(role, "pre_sale_iqc", "edit")
+        # Edit pencil next to the Tag Number, same as L1/L2 (2026-11-16, Pankaj)
+        from templates_config import templates as _tpl
+        _spec_btn = _tpl.env.get_template("_tag_spec_edit.html").module.spec_edit_btn
 
     data = []
     for d, lot_number, buying_price, lot_qty, selling_price in rows:
@@ -554,7 +560,8 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
             # monospace link, entity as small grey text underneath ("—" if none).
             (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="font-monospace fw-bold text-decoration-none">{esc(d.barcode)}</a>'
              + touch_badge_html(d.touch_type) + flag_badge_html(d)
-             + parts_badges.get(did, '') + '</span>'
+             + parts_badges.get(did, '')
+             + (str(_spec_btn(d, True)) if psiqc and _ps_edit else '') + '</span>'
              + f'<div style="color:#999999;font-size:12px;">{esc(d.entity) if d.entity else "—"}</div>'),
             (f'<a href="/devices?lot={esc(lot_number)}" class="btn btn-sm py-0 px-2 small text-decoration-none" '
              f'style="background-color:#ffffff;border:1px solid #6C757D;color:#6C757D;">{esc(lot_number)}</a>'),
@@ -566,6 +573,10 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
             cells.insert(2, '<span class="badge bg-success">Pass</span>' if _r == "pass"
                          else '<span class="badge bg-danger">Fail</span>' if _r == "fail"
                          else '<span class="text-muted">—</span>')
+            # Notes right after Tag (2026-11-14): from Send / Assign to Pre-Sale.
+            _n = _ps_notes.get(did)
+            cells.insert(2, (f'<div class="small text-wrap" style="max-width:220px;white-space:pre-wrap">{esc(_n)}</div>'
+                             if _n else '<span class="text-muted">—</span>'))
         if psiqc:   # CPU + CPU Gen after Model (2026-10-29)
             cells += [esc(d.cpu or "—"), esc(d.generation or "—")]
         cells += [
@@ -698,6 +709,10 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
     al_grades = set(_entity_values(qp.get("al_grade", "")))
     al_avail = qp.get("al_avail", "")
     am_dtypes = _entity_values(qp.get("am_dtype", ""))
+    ms_makes, am_makes = set(_entity_values(qp.get("ms_make", ""))), set(_entity_values(qp.get("am_make", "")))
+    ms_stocks, am_stocks = set(_entity_values(qp.get("ms_stock", ""))), set(_entity_values(qp.get("am_stock", "")))
+    am_avail = qp.get("am_avail", "")
+    am_locs = set(_entity_values(qp.get("am_loc", "")))
     result = await db.execute(
         select(Device, Lot.lot_number, Lot.buying_price, Lot.qty, Lot.selling_price)
         .join(Lot, Device.lot_id == Lot.id)
@@ -785,8 +800,13 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
                 "total_count": 0, "total_purchase_price": 0.0,
                 "min_total": 0.0, "min_units": [], "barcodes": [], "grade_counts": {},
                 "open_count": 0, "blocked_count": 0, "entity_counts": {},
-                "zone_counts": {},
+                "zone_counts": {}, "touch_counts": {}, "dtype_counts": {},
             })
+            # Touch Type + Device Type as counts in the row (2026-11-16, Pankaj)
+            _t = "T" if (device.touch_type or "").strip().lower() == "touch" else "NT"
+            g["touch_counts"][_t] = g["touch_counts"].get(_t, 0) + 1
+            _dt = _device_type_of(device) or "—"
+            g["dtype_counts"][_dt] = g["dtype_counts"].get(_dt, 0) + 1
             _z = _zone_by_dev.get(device.id)
             _zl = ZONE_LABELS.get(_z, getattr(_z, "value", _z)) if _z else "No Location"
             g["zone_counts"][_zl] = g["zone_counts"].get(_zl, 0) + 1
@@ -816,6 +836,10 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
                 ((k, v[0], v[1]) for k, v in ecs.items()),
                 key=lambda e: (_ENTITY_ORDER.index(e[0]) if e[0] in _ENTITY_ORDER else 99, e[0]))
             # Showroom and TRC Floor always (0 when none), then any other zone.
+            tc = g.pop("touch_counts")
+            g["touch"] = [(k, tc[k]) for k in ("T", "NT") if tc.get(k)]
+            dc = g.pop("dtype_counts")
+            g["dtypes"] = sorted(dc.items(), key=lambda e: (-e[1], e[0]))
             zc = g.pop("zone_counts")
             g["zones"] = [(z, zc.get(z, 0)) for z in _ZONE_MAIN] + sorted(
                 ((z, n) for z, n in zc.items() if z not in _ZONE_MAIN),
@@ -826,16 +850,30 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
             ]
         return out
 
+    # Make + Stock Type filters (2026-11-16, Pankaj): both Model Summaries now
+    # have the same 8 filters as All Inventory's.
+    from routers.devices import stock_type_key as _stk
+
+    def _ms_extra(d, makes, stocks):
+        if makes and (d.brand or "Unknown Make") not in makes:
+            return False
+        if stocks and _stk(d.current_stage, d.sub_lot_number) not in stocks:
+            return False
+        return True
     model_summary_ready = _build_model_summary(
         [r for r in devices if not (r[0].sub_lot_number or "").strip()
          and _row_passes(r[0], ms_touch, ms_entities, ms_dtypes)
          and _grade_passes(r[0], ms_grades)
          and _avail_passes(r[0], ms_avail)
-         and (not ms_locs or _zone_label(r[0]) in ms_locs)])
+         and (not ms_locs or _zone_label(r[0]) in ms_locs)
+         and _ms_extra(r[0], ms_makes, ms_stocks)])
     model_summary_as_is = _build_model_summary(
         [r for r in devices if (r[0].sub_lot_number or "").strip()
          and _row_passes(r[0], am_touch, am_entities, am_dtypes)
-         and _grade_passes(r[0], am_grades)])
+         and _grade_passes(r[0], am_grades)
+         and _avail_passes(r[0], am_avail)
+         and (not am_locs or _zone_label(r[0]) in am_locs)
+         and _ms_extra(r[0], am_makes, am_stocks)])
 
 
     # Dispatch-request state (approved/requested/rejected) and warranty used to
@@ -1025,7 +1063,12 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
               "ms_dtype": qp.get("ms_dtype", ""), "al_dtype": qp.get("al_dtype", ""),
               "am_dtype": qp.get("am_dtype", ""),
               "ms_grade": qp.get("ms_grade", ""), "am_grade": qp.get("am_grade", ""),
-              "ms_loc": qp.get("ms_loc", "")},
+              "ms_loc": qp.get("ms_loc", ""),
+              "ms_make": qp.get("ms_make", ""), "am_make": qp.get("am_make", ""),
+              "ms_stock": qp.get("ms_stock", ""), "am_stock": qp.get("am_stock", ""),
+              "am_avail": am_avail, "am_loc": qp.get("am_loc", "")},
+        "make_options": sorted({(r[0].brand or "Unknown Make") for r in devices}, key=str.lower),
+        "stock_type_options": [("finish_good", "Finish Good"), ("as_is", "As-Is"), ("in_progress", "In Progress")],
         "location_options": location_zone_options(),
         "summary_grade_options": [(code or "NG", label if code else "NG (No grade)")
                                   for code, label, _cls in _SUMMARY_GRADES],
@@ -2965,8 +3008,21 @@ async def sales_list(
     lots_result = await db.execute(select(Lot).order_by(Lot.lot_number))
     lots = lots_result.scalars().all()
 
+    # Option C dashboard (2026-11-14, Pankaj) — services/sales_dash.py: the
+    # page's filters apply; the date range sets the KPI period.
+    dash_kpis, dash_widgets = [], []
+    try:
+        from services.sales_dash import build as _sales_dash
+        from templates_config import _can
+        dash_kpis, dash_widgets = await _sales_dash(
+            db, _sales_filters(q, sale_no, sold_by_filter, customer, grade, lot_id, "", "", stock_type, sale_type, invoice=invoice),
+            _parse_simple_date(date_from), _parse_simple_date(date_to), _can(current_user, "sales_list", "pricing"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Sales dashboard failed")
+        await db.rollback()
     return templates.TemplateResponse("sales/list.html", {
-        "request": request,
+        "request": request, "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "sales": sales,
         "lots": lots,
         "sellers": sellers,
@@ -3020,9 +3076,19 @@ async def returns_list(request: Request, db: AsyncSession = Depends(get_db),
     )
     replacements = repl_result.all()
 
+    # Option C dashboard (2026-11-14, Pankaj) — services/returns_dash.py.
+    dash_kpis, dash_widgets = [], []
+    try:
+        from services.returns_dash import build as _ret_dash
+        from templates_config import _can
+        dash_kpis, dash_widgets = await _ret_dash(db, _can(current_user, "sales_list", "pricing"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Returns dashboard failed")
+        await db.rollback()
     return templates.TemplateResponse("sales/returns_list.html", {
         "request": request, "returns": returns, "replacements": replacements,
-        "current_user": current_user,
+        "current_user": current_user, "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
     })
 
 

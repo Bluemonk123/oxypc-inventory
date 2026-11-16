@@ -88,6 +88,7 @@
     btn.tabIndex = -1;
     wrap.appendChild(box);
     wrap.appendChild(btn);
+    wrap.setAttribute('data-label', title || 'Date range');
     cellA.insertBefore(wrap, cellA.firstChild);
 
     function fire(el) {
@@ -211,6 +212,7 @@
     box.title = inp.getAttribute('title') || 'Date';
     var btn = document.createElement('button');
     btn.type = 'button'; btn.className = 'dr-icon'; btn.tabIndex = -1;
+    wrap.setAttribute('data-label', (inp.getAttribute('title') || 'Date').replace(/\s*[:—-].*$/, ''));
     inp.parentNode.insertBefore(wrap, inp);
     wrap.appendChild(box); wrap.appendChild(btn); wrap.appendChild(inp);
     var d = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
@@ -524,7 +526,8 @@
   }
 
   // ── Global Card header: filters apply automatically + button colours ────
-  // (2026-11-08, Pankaj)
+  // (2026-11-08, Pankaj; kept as-is 2026-11-14 — card headers have no labels
+  //  and no Apply; only the main page filter bar has those)
   //  - Filters in a card header apply on change; a "Filter" / "Apply" /
   //    "Search" submit button there is hidden (a text box applies on Enter or
   //    when you leave it).
@@ -756,6 +759,87 @@
   }
   function initHeaders() { document.querySelectorAll('.card-header').forEach(tidyHeader); }
 
+  // ── Main page filter bar: labelled fields + Apply (2026-11-14, Pankaj) ──
+  // Two filter designs: the page filter bar (.filter-bar) has labels inside
+  // the boxes and an Apply button; Global Card header filters keep their
+  // plain look and apply on change (see above).
+  function makeApply(b) {
+    b.className = b.className.replace(/\bbtn-(outline-)?(?!sm\b|lg\b)[a-z]+\b/g, '').replace(/\b(bg-white|text-white|text-dark|d-none)\b/g, '').trim();
+    b.classList.add('btn', 'btn-sm', 'btn-primary', 'hdr-apply');
+    b.style.display = '';
+    b.textContent = 'Apply';
+  }
+  // Selects that submit their form the moment they change (onchange=
+  // "this.form.submit()") wait for Apply instead.
+  function noAutoSubmit(form) {
+    form.querySelectorAll('[onchange]').forEach(function (el) {
+      if (/^\s*(this\.)?form\.(request)?submit\(\)\s*;?\s*$/i.test(el.getAttribute('onchange') || '')) el.removeAttribute('onchange');
+    });
+  }
+  function cleanLabel(t) {
+    t = (t || '').replace(/\s*(—|:|\(|\|).*$/, '').replace(/^\s*(filter|select|choose)\s+(by\s+)?/i, '').trim();
+    return t.length > 26 ? '' : t;
+  }
+  function labelOf(el) {
+    var t = el.getAttribute('data-label') || cleanLabel(el.getAttribute('title')) || cleanLabel(el.getAttribute('aria-label'));
+    if (!t && el.id) { var l = document.querySelector('label[for="' + el.id + '"]'); if (l) { t = cleanLabel(l.textContent); l.classList.add('hf-hidden'); } }
+    if (!t && el.tagName === 'SELECT' && el.options.length) {
+      var m = /^\s*(all|any)\s+(.+?)\s*$/i.exec(el.options[0].text || '');
+      if (m) t = cleanLabel(m[2]);
+    }
+    if (!t && el.tagName === 'INPUT' && el.placeholder) t = /search|scan|tag|serial/i.test(el.placeholder) ? 'Search' : cleanLabel(el.placeholder);
+    if (!t && el.name) t = cleanLabel(el.name.replace(/[_\-]+/g, ' ').replace(/\b(id|ids)\b/gi, ''));
+    if (t) t = t.charAt(0).toUpperCase() + t.slice(1);
+    return t;
+  }
+  function labelFields(fields) {
+    fields.forEach(function (f) {
+      if (f.closest('.hf') || f.closest('.input-group') || f.querySelector('.hf')) return;
+      var host = f, text = '';
+      if (f.classList.contains('ms-filter')) {
+        text = f.getAttribute('data-label') || '';
+        var pl = f.parentNode && f.parentNode.querySelector(':scope > label.form-label');
+        if (pl) pl.classList.add('hf-hidden');
+        if (!text) { var m = /^\s*all\s+(.+?)\s*$/i.exec((f.querySelector('.ms-label') || {}).textContent || ''); text = m ? m[1] : ''; }
+      } else if (f.classList.contains('ss-filter')) {
+        text = labelOf(f.querySelector('select'));
+      } else if (f.classList.contains('dr-wrap')) {
+        text = f.getAttribute('data-label') || 'Date';
+      } else {
+        text = labelOf(f);
+        host = document.createElement('span');
+        f.parentNode.insertBefore(host, f);
+        host.appendChild(f);
+        if (f.style.width) { host.style.width = f.style.width; f.style.width = '100%'; }
+      }
+      if (!text) { if (host !== f) { host.parentNode.insertBefore(f, host); host.remove(); } return; }
+      host.classList.add('hf');
+      var lab = document.createElement('span');
+      lab.className = 'hf-label';
+      lab.textContent = text;
+      host.insertBefore(lab, host.firstChild);
+    });
+  }
+  // Filter bars: same labelled fields, Apply first, then an icon-only Reset.
+  function tidyFilterBars() {
+    document.querySelectorAll('.filter-bar').forEach(function (bar) {
+      if (bar.__hf) return;
+      bar.__hf = true;
+      var form = bar.tagName === 'FORM' ? bar : bar.querySelector('form');
+      if (form && !form.hasAttribute('data-auto-apply')) noAutoSubmit(form);
+      var row = bar.querySelector('.filter-bar-row') || bar;
+      var fields = Array.prototype.filter.call(row.querySelectorAll(FIELD_SEL), function (el) {
+        return !el.closest('.dropdown-menu') && !(el.matches('select') && el.closest('.ss-filter')) && !el.closest('.d-none, [hidden]');
+      });
+      labelFields(fields);
+      var btns = Array.prototype.slice.call(row.querySelectorAll('.btn')).filter(function (b) { return !b.closest('.ms-filter, .ss-filter, .dropdown-menu'); });
+      var apply = btns.filter(function (b) { return SUBMIT_RE.test(b.textContent || ''); })[0];
+      var reset = btns.filter(isReset)[0];
+      if (apply) makeApply(apply);
+      if (reset) { makeIconReset(reset); if (apply && apply.nextSibling !== reset) apply.parentNode.insertBefore(reset, apply.nextSibling); }
+    });
+  }
+
   // Re-apply the header rules after a page reveals or moves header buttons
   // itself (e.g. once its DataTable has loaded) — 2026-11-09.
   window.retidyCardHeader = function (h) {
@@ -766,7 +850,7 @@
 
   function init() {
     initDateRanges(); initMsSearch(); initSsSearch();
-    initHeaders(); tidyPageTop();
+    initHeaders(); tidyFilterBars(); tidyPageTop();
     // Buttons some pages add after load (permissions, DataTables): one more pass.
     window.addEventListener('load', function () { setTimeout(function () { initHeaders(); tidyPageTop(); }, 300); });
   }

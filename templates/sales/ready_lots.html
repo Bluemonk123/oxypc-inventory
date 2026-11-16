@@ -184,13 +184,18 @@
   <div class="tab-pane fade" id="asIsModelSumPane" role="tabpanel">
   <div class="card">
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <span class="fw-semibold"><i class="bi bi-collection me-2"></i>As-Is Model Summary</span>
+      <span class="fw-semibold"><i class="bi bi-collection me-1"></i>Model Table</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
+      {# Same 8 filters, same order, on All Inventory / Tags / Lots (2026-11-16, Pankaj) #}
       {{ ms.multiselect_inline('am_entity', 'Entity', entity_options, f.am_entity) }}
-      {{ touch_select('amTouch', f.am_touch) }}
-      {{ ms.multiselect_inline('am_grade', 'Grades', summary_grade_options, f.am_grade) }}
       {{ ms.multiselect_inline('am_dtype', 'Device Types', device_type_options, f.am_dtype) }}
-      {% if can(current_user, 'sales', 'export') %}<button type="button" id="amExportBtn" class="btn btn-primary btn-sm text-nowrap" title="Export the tags of the rows shown (filters and search) — All Inventory format"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>{% endif %}
+      {{ ms.multiselect_inline('am_grade', 'Grades', summary_grade_options, f.am_grade) }}
+      {{ ms.multiselect_inline('am_make', 'Make', make_options, f.am_make) }}
+      {{ touch_select('amTouch', f.am_touch) }}
+      {{ ms.multiselect_inline('am_stock', 'Stock Type', stock_type_options, f.am_stock) }}
+      {{ ms.multiselect_inline('am_loc', 'Locations', location_options, f.am_loc) }}
+      {{ avail_select('amAvail', f.am_avail) }}
+      {% if can(current_user, 'sales', 'export') %}<button type="button" id="amExportBtn" class="btn btn-primary btn-sm text-nowrap" title="Export the tags of the rows shown (filters and search) — All Inventory format"><i class="bi bi-file-earmark-arrow-down me-1"></i><span class="ms-export-count">0</span></button>{% endif %}
       </div>
     </div>
     <div class="card-body px-0 pb-0">
@@ -393,7 +398,8 @@ function readyPageUrl(){
   [['am_grade','ms_val_am_grade'],
    ['al_touch','alTouch'],['al_entity','ms_val_al_entity'],['al_dtype','ms_val_al_dtype'],
    ['al_grade','ms_val_al_grade'],['al_avail','alAvail'],
-   ['am_touch','amTouch'],['am_entity','ms_val_am_entity'],['am_dtype','ms_val_am_dtype']].forEach(function(x){
+   ['am_touch','amTouch'],['am_entity','ms_val_am_entity'],['am_dtype','ms_val_am_dtype'],
+   ['am_make','ms_val_am_make'],['am_stock','ms_val_am_stock'],['am_loc','ms_val_am_loc'],['am_avail','amAvail']].forEach(function(x){
     if (v(x[1])) p.set(x[0], v(x[1]));
   });
   var q = p.toString();
@@ -632,13 +638,28 @@ document.getElementById('asIsLotOpenForm').addEventListener('submit', function (
 
 // ── As-Is Model Summary ──
 var SUMMARY_OPTS = {
-  asIsModelSummaryTable: {pageLength:12, order:[[7,'desc']], language:{emptyTable:'No As-Is tags.'}, columnDefs:[{orderable:false, targets:[8,10]}]},
+  // Columns (2026-11-16): 0 Model, 1 Make, 2 CPU, 3 Gen, 4 RAM, 5 Storage, 6 Total Qty, 7 Touch,
+  // 8 Grades, 9 Device Type, 10 Location, 11 Min Selling Price, 12 Action.
+  asIsModelSummaryTable: {pageLength:12, order:[[6,'desc']], language:{emptyTable:'No As-Is tags.'}, columnDefs:[{orderable:false, targets:[7,8,9,10,12]}]},
 };
+var MIN_TEXT = function (min) { return {% if can(current_user, 'sales', 'pricing') %}'₹' + Math.round(min).toLocaleString('en-IN'){% else %}'—'{% endif %}; };
 var SUMMARY_GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'NG'];
+// Total row (2026-11-16): Total Quantity (Open / Blocked), Touch, Grades,
+// Device Type, Location and Min Selling Price over every row that passes the
+// filters and search (all pages). Same on Ready for Sale Tags and Lots.
 function summaryFooter() {
-  var api = this.api(), qty = 0, min = 0, grades = {}, cls = {};
+  var api = this.api(), qty = 0, min = 0, grades = {}, cls = {}, open = 0, blocked = 0;
+  var zones = {}, zoneOrder = [], touch = {}, dtypes = {};
+  function add(map, order, list) { (list || []).forEach(function (z) {
+    if (!(z[0] in map)) { map[z[0]] = 0; if (order) order.push(z[0]); }
+    map[z[0]] += Number(z[1]) || 0; }); }
   api.rows({ search: 'applied' }).nodes().each(function (tr) {
+    try { add(zones, zoneOrder, JSON.parse(tr.getAttribute('data-zones') || '[]')); } catch (e) {}
+    try { add(touch, null, JSON.parse(tr.getAttribute('data-touch') || '[]')); } catch (e) {}
+    try { add(dtypes, null, JSON.parse(tr.getAttribute('data-dtypes') || '[]')); } catch (e) {}
     qty += Number(tr.getAttribute('data-qty')) || 0;
+    open += Number(tr.getAttribute('data-open')) || 0;
+    blocked += Number(tr.getAttribute('data-blocked')) || 0;
     min += Number(tr.getAttribute('data-min')) || 0;
     tr.querySelectorAll('.ms-grade').forEach(function (b) {
       var g = b.getAttribute('data-grade');
@@ -646,13 +667,25 @@ function summaryFooter() {
       cls[g] = b.className.replace('ms-grade', '');
     });
   });
+  var esc = function (t) { return $('<span>').text(t).html(); };
   var foot = $(api.table().footer());
-  foot.find('.ms-total-qty').html('<span class="fw-semibold">' + qty + '</span>');
+  foot.find('.ms-total-qty').html('<div class="d-flex align-items-center gap-1 flex-nowrap">'
+    + '<span class="fw-semibold">' + qty + '</span><span class="text-muted">-</span><span class="badge rounded-pill bg-success">Open ' + open
+    + '</span><span class="badge rounded-pill bg-danger">Blocked ' + blocked + '</span></div>');
+  foot.find('.ms-total-touch').html(['T', 'NT'].filter(function (k) { return touch[k]; }).map(function (k) {
+    return '<span class="badge bg-' + (k === 'T' ? 'primary' : 'secondary') + ' me-1">' + k + '-' + touch[k] + '</span>'; }).join(''));
   foot.find('.ms-total-grades').html('<div class="d-flex flex-nowrap gap-1">' +
     SUMMARY_GRADE_ORDER.filter(function (g) { return grades[g]; }).map(function (g) {
       return '<span class="' + cls[g] + '">' + g + ' ' + grades[g] + '</span>';
     }).join('') + '</div>');
-  foot.find('.ms-total-min').text({% if can(current_user, 'sales', 'pricing') %}'₹' + Math.round(min).toLocaleString('en-IN'){% else %}'—'{% endif %});
+  foot.find('.ms-total-dtype').html(Object.keys(dtypes).sort(function (a, b) { return dtypes[b] - dtypes[a] || a.localeCompare(b); })
+    .map(function (k) { return '<div>' + esc(k) + ' - ' + dtypes[k] + '</div>'; }).join(''));
+  var zmain = zoneOrder.slice(0, 2), zrest = zoneOrder.slice(2).filter(function (z) { return zones[z]; }).sort(function (a, b) { return (a === 'No Location') - (b === 'No Location') || a.localeCompare(b); });
+  foot.find('.ms-total-loc').html(zmain.concat(zrest).map(function (z, i) {
+    return '<div' + (i > 1 ? ' class="text-muted"' : '') + '>' + esc(z) + ' - ' + zones[z] + '</div>';
+  }).join(''));
+  foot.find('.ms-total-min').text(MIN_TEXT(min));
+  $(api.table().node()).closest('.card').find('.ms-export-count').text(qty.toLocaleString('en-IN'));
 }
 function buildSummaryTable(id){
   if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();
@@ -673,15 +706,18 @@ function refreshSummaryTable(id, badgeId){
     });
 }
 // Per-tab filters: re-fetch this page and swap that one table's rows.
-[['amTouch','ms_val_am_entity','ms_val_am_dtype', function(){ return refreshSummaryTable('asIsModelSummaryTable', 'amCountBadge'); }, 'ms_val_am_grade'],
+[['amTouch','ms_val_am_entity','ms_val_am_dtype', function(){ return refreshSummaryTable('asIsModelSummaryTable', 'amCountBadge'); }, 'ms_val_am_grade', 'ms_val_am_make', 'ms_val_am_stock', 'ms_val_am_loc'],
  ['alTouch','ms_val_al_entity','ms_val_al_dtype', function(){ return refreshAsIsLotTable(); }, 'ms_val_al_grade']].forEach(function(x){
   var sel = document.getElementById(x[0]);
   if (sel) sel.addEventListener('change', x[3]);
-  [x[1], x[2], x[4]].forEach(function(id){
-    var el = document.getElementById(id);
+  [x[1], x[2], x[4], x[5], x[6], x[7]].forEach(function(id){
+    var el = id && document.getElementById(id);
     if (el) el.addEventListener('ms:change', x[3]);
   });
 });
+// As-Is Model Summary Availability (2026-11-16)
+(function(){ var el = document.getElementById('amAvail');
+  if (el) el.addEventListener('change', function(){ return refreshSummaryTable('asIsModelSummaryTable', 'amCountBadge'); }); })();
 // As-Is Lot Availability (2026-10-28): reloads the lot rows like the others.
 (function(){ var el = document.getElementById('alAvail');
   if (el) el.addEventListener('change', function(){ return refreshAsIsLotTable(); }); })();

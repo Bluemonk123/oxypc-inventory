@@ -233,7 +233,7 @@
       <thead class="table-dark">
         <tr>
           <th><input type="checkbox" id="readySelectAll" class="form-check-input"></th>
-          <th>Tag Number</th>{% if _ps %}<th title="Pre-Sale QC result picked in Mark Complete">Status</th>{% endif %}<th>Lot</th><th>Location ID</th><th>Brand</th><th>Model</th>
+          <th>Tag Number</th>{% if _ps %}<th title="Notes sent with Send / Assign to Pre-Sale">Notes</th><th title="Pre-Sale QC result picked in Mark Complete">Status</th>{% endif %}<th>Lot</th><th>Location ID</th><th>Brand</th><th>Model</th>
           {% if _ps %}<th>CPU</th><th>CPU Gen</th>{% endif %}
           <th>RAM</th><th>Storage</th><th>Grade</th>
           {% if can(current_user, _pm, 'pricing') %}
@@ -258,25 +258,27 @@
   <div class="tab-pane fade{{ ' show active' if _ms_first else '' }}" id="readyModelSumPane" role="tabpanel">
   <div class="card">
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
-      <span class="fw-semibold">Model Wise Table</span>
+      <span class="fw-semibold"><i class="bi bi-collection me-1"></i>Model Table</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
-      {# Order (2026-10-27): Entity, Device Type, Grade, Touch Type, Availability. #}
+      {# Same 8 filters, same order, on All Inventory / Tags / Lots (2026-11-16, Pankaj):
+         Entity, Device Type, Grades, Make, Touch Type, Stock Type, Location, Availability. #}
       {{ ms.multiselect_inline('ms_entity', 'Entity', entity_options, f.ms_entity) }}
       {{ ms.multiselect_inline('ms_dtype', 'Device Types', device_type_options, f.ms_dtype) }}
       {{ ms.multiselect_inline('ms_grade', 'Grades', summary_grade_options, f.ms_grade) }}
+      {{ ms.multiselect_inline('ms_make', 'Make', make_options, f.ms_make) }}
       {{ touch_select('msTouch', f.ms_touch) }}
-      {{ avail_select('msAvail', f.ms_avail) }}
-      {# Location zone (2026-11-13, Pankaj) — the Location column's zones. #}
+      {{ ms.multiselect_inline('ms_stock', 'Stock Type', stock_type_options, f.ms_stock) }}
       {% if location_options is defined %}{{ ms.multiselect_inline('ms_loc', 'Locations', location_options, f.ms_loc) }}{% endif %}
+      {{ avail_select('msAvail', f.ms_avail) }}
       {# Export (2026-10-27): the tags of every row the summary shows. #}
-      {% if can(current_user, _pm, 'export') %}<button type="button" id="msExportAllBtn" class="btn btn-primary btn-sm text-nowrap"><i class="bi bi-file-earmark-arrow-down me-1"></i>Export</button>{% endif %}
+      {% if can(current_user, _pm, 'export') %}<button type="button" id="msExportAllBtn" class="btn btn-primary btn-sm text-nowrap" title="Export the tags of the rows shown (filters and search) — All Inventory format"><i class="bi bi-file-earmark-arrow-down me-1"></i><span class="ms-export-count">0</span></button>{% endif %}
       <button type="button" id="modelSumRequestBtn" class="btn btn-sm btn-outline-primary d-none" {% if _ps %}hidden {% endif %}disabled>
         <i class="bi bi-telephone-outbound me-1"></i>Request Selected (<span id="modelSumSelCount">0</span>)
       </button>
       </div>
     </div>
     <div class="card-body px-0 pb-0">
-    {{ model_summary_table('readyModelSummaryTable', model_summary_ready, true, 'No Ready for Sale tags.', true) }}
+    {{ model_summary_table('readyModelSummaryTable', model_summary_ready, true, 'No Ready for Sale tags.') }}
     </div>
   </div>{# /card #}
   </div>
@@ -520,6 +522,36 @@
   </div>
 </div>
 {% endif %}
+{% if not _ps %}
+{# Assign to Pre-Sale notes (2026-11-14, Pankaj): optional notes go with the
+   tags to the Pre-Sale IQC page's Notes column. #}
+<div class="modal fade" id="assignPsiqcModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title"><i class="bi bi-clipboard2-check me-2"></i>Assign to Pre-Sale (<span id="assignPsiqcN">0</span>)</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold" for="assignPsiqcNotes">Notes <span class="text-muted fw-normal">(optional)</span></label>
+        <textarea id="assignPsiqcNotes" class="form-control form-control-sm" rows="3" maxlength="2000"
+                  placeholder="What should Pre-Sale QC check? e.g. customer wants keyboard and battery checked"></textarea>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-dark" id="assignPsiqcOk"><i class="bi bi-send me-1"></i>Send to Pre-Sale</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{# Pre-Sale QC: Edit pencil next to the Tag Number opens the same modal as
+   L1/L2 (2026-11-16, Pankaj); saving reloads only the table. #}
+{% if _ps and can(current_user, 'pre_sale_iqc', 'edit') %}
+{% from "_tag_spec_edit.html" import spec_edit_modal %}
+{{ spec_edit_modal() }}
+<script>window.specEditRefresh = function () { return new Promise(function (res) { if (window.readyDt) readyDt.ajax.reload(function () { res(true); }, false); else res(false); }); };</script>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 {% set _ps = psiqc is defined and psiqc %}{% set _pm = pm if pm is defined else 'sales' %}
@@ -573,7 +605,7 @@ function psiqcSetView(v) {
   readySelected.clear();
   var all = document.getElementById('readySelectAll'); if (all) all.checked = false;
   psiqcMark();
-  if (window.readyDt) readyDt.column(2).visible(v === 'completed', false);   // Status: Completed tab only
+  if (window.readyDt) readyDt.column(3).visible(v === 'completed', false);   // Status: Completed tab only
   if (window.readyDt) readyDt.ajax.reload(null, true);
 }
 document.addEventListener('DOMContentLoaded', function () {
@@ -627,9 +659,9 @@ $(document).ready(function(){
          Model, CPU, CPU Gen, RAM, Storage, Grade, Parts Requested, Action. Lot,
          Location ID, Unit Cost, Warranty, Assigned To, Min / Max Selling Price and
          QC Report hidden. #}
-      {# Status (col 2, 2026-11-03) shows on the Completed tab only (psiqcSetView). #}
-      { orderable: false, targets: [0, 2, -3, -2, -1] },
-      { visible: false, targets: [{{ '2, 3, 4, 12, 13, 14, 15, 16, 17' if can(current_user, _pm, 'pricing') else '2, 3, 4, 12, 13, 14, 15, 16' }}] },
+      {# Notes (col 2, 2026-11-14); Status (col 3, 2026-11-03) shows on the Completed tab only (psiqcSetView). #}
+      { orderable: false, targets: [0, 2, 3, -3, -2, -1] },
+      { visible: false, targets: [{{ '3, 4, 5, 13, 14, 15, 16, 17, 18' if can(current_user, _pm, 'pricing') else '3, 4, 5, 13, 14, 15, 16, 17' }}] },
       {% else %}
       { orderable: false, targets: [0, -2, -1] },
       { visible: false, targets: [{{ 10 if can(current_user, _pm, 'pricing') else 9 }}] },
@@ -850,12 +882,24 @@ document.getElementById('bulkQcBtn').addEventListener('click', async function(){
 (function () {
   var b = document.getElementById('assignPsiqcBtn');
   if (!b) return;
+  var modalEl = document.getElementById('assignPsiqcModal'), notesEl = document.getElementById('assignPsiqcNotes'),
+      okBtn = document.getElementById('assignPsiqcOk'), pending = [];
+  // The button opens the notes modal (2026-11-14); its Send button assigns.
   b.addEventListener('click', function () {
-    var bcs = selectedReadyBarcodes();
+    pending = selectedReadyBarcodes();
+    if (!pending.length || b.dataset.busy) return;
+    notesEl.value = ''; document.getElementById('assignPsiqcN').textContent = pending.length;
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+  });
+  modalEl.addEventListener('shown.bs.modal', function () { notesEl.focus(); });
+  okBtn.addEventListener('click', function () {
+    var bcs = pending;
     if (!bcs.length || b.dataset.busy) return;
-    b.dataset.busy = '1';
+    b.dataset.busy = '1'; okBtn.disabled = true;
+    bootstrap.Modal.getOrCreateInstance(modalEl).hide();
     var m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/), tok = m ? decodeURIComponent(m[1]) : '';
     var fd = new FormData(); fd.append('csrf_token', tok); fd.append('barcodes', bcs.join(','));
+    fd.append('notes', notesEl.value.trim());
     fetch('/pre-sale-iqc/assign', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': tok } })
       .then(function (r) { return r.json(); })
       .then(function (d) {
@@ -871,7 +915,7 @@ document.getElementById('bulkQcBtn').addEventListener('click', async function(){
         updateReadySel();
       })
       .catch(function () { if (window.showTopToast) window.showTopToast('danger', 'Could not assign. Please try again.'); })
-      .finally(function () { delete b.dataset.busy; });
+      .finally(function () { delete b.dataset.busy; okBtn.disabled = false; });
   });
 })();
 document.getElementById('multiSellBtn').addEventListener('click', function(){
@@ -936,22 +980,25 @@ document.getElementById('multiRequestBtn').addEventListener('click', function(){
 
 // ── Model Summary: checkboxes + per-row Request modal + Request Selected ──
 var SUMMARY_OPTS = {
-  // Location column (2026-11-03) after Model shifts the rest +1.
-  readyModelSummaryTable: {pageLength:12, order:[[9,'desc']], language:{emptyTable:'No Ready for Sale tags.', searchPlaceholder:'Model/Make/Type/CPU/RAM/Storage'}, columnDefs:[{orderable:false, targets:[0,2,10,12]}, {visible:false, targets:[0]}]},
+  // Columns (2026-11-16): 0 tick, 1 Model, 2 Make, 3 CPU, 4 Gen, 5 RAM, 6 Storage, 7 Total Qty,
+  // 8 Touch, 9 Grades, 10 Device Type, 11 Location, 12 Min Selling Price, 13 Action.
+  readyModelSummaryTable: {pageLength:12, order:[[7,'desc']], language:{emptyTable:'No Ready for Sale tags.', searchPlaceholder:'Model/Make/CPU/Gen/RAM/Storage'}, columnDefs:[{orderable:false, targets:[0,8,9,10,11,13]}, {visible:false, targets:[0]}]},
 };
-// Total row: sums Total Quantity, each Grade and Min Selling Price over every
-// row that passes the current filters and search (all pages, not just the
-// visible one).
+var MIN_TEXT = function (min) { return {% if can(current_user, _pm, 'pricing') %}'₹' + Math.round(min).toLocaleString('en-IN'){% else %}'—'{% endif %}; };
 var SUMMARY_GRADE_ORDER = ['A', 'B', 'C', 'D', 'E', 'NG'];
+// Total row (2026-11-16): Total Quantity (Open / Blocked), Touch, Grades,
+// Device Type, Location and Min Selling Price over every row that passes the
+// filters and search (all pages). Same on Ready for Sale Tags and Lots.
 function summaryFooter() {
   var api = this.api(), qty = 0, min = 0, grades = {}, cls = {}, open = 0, blocked = 0;
-  var split = api.table().node().id === 'readyModelSummaryTable';
-  var zones = {}, zoneOrder = [];
+  var zones = {}, zoneOrder = [], touch = {}, dtypes = {};
+  function add(map, order, list) { (list || []).forEach(function (z) {
+    if (!(z[0] in map)) { map[z[0]] = 0; if (order) order.push(z[0]); }
+    map[z[0]] += Number(z[1]) || 0; }); }
   api.rows({ search: 'applied' }).nodes().each(function (tr) {
-    try { JSON.parse(tr.getAttribute('data-zones') || '[]').forEach(function (z) {
-      if (!(z[0] in zones)) { zones[z[0]] = 0; zoneOrder.push(z[0]); }
-      zones[z[0]] += Number(z[1]) || 0;
-    }); } catch (e) {}
+    try { add(zones, zoneOrder, JSON.parse(tr.getAttribute('data-zones') || '[]')); } catch (e) {}
+    try { add(touch, null, JSON.parse(tr.getAttribute('data-touch') || '[]')); } catch (e) {}
+    try { add(dtypes, null, JSON.parse(tr.getAttribute('data-dtypes') || '[]')); } catch (e) {}
     qty += Number(tr.getAttribute('data-qty')) || 0;
     open += Number(tr.getAttribute('data-open')) || 0;
     blocked += Number(tr.getAttribute('data-blocked')) || 0;
@@ -962,21 +1009,25 @@ function summaryFooter() {
       cls[g] = b.className.replace('ms-grade', '');
     });
   });
+  var esc = function (t) { return $('<span>').text(t).html(); };
   var foot = $(api.table().footer());
   foot.find('.ms-total-qty').html('<div class="d-flex align-items-center gap-1 flex-nowrap">'
-    + '<span class="fw-semibold">' + qty + '</span>'
-    + (split ? '<span class="text-muted">-</span><span class="badge rounded-pill bg-success">Open ' + open
-      + '</span><span class="badge rounded-pill bg-danger">Blocked ' + blocked + '</span>' : '')
-    + '</div>');
+    + '<span class="fw-semibold">' + qty + '</span><span class="text-muted">-</span><span class="badge rounded-pill bg-success">Open ' + open
+    + '</span><span class="badge rounded-pill bg-danger">Blocked ' + blocked + '</span></div>');
+  foot.find('.ms-total-touch').html(['T', 'NT'].filter(function (k) { return touch[k]; }).map(function (k) {
+    return '<span class="badge bg-' + (k === 'T' ? 'primary' : 'secondary') + ' me-1">' + k + '-' + touch[k] + '</span>'; }).join(''));
   foot.find('.ms-total-grades').html('<div class="d-flex flex-nowrap gap-1">' +
     SUMMARY_GRADE_ORDER.filter(function (g) { return grades[g]; }).map(function (g) {
       return '<span class="' + cls[g] + '">' + g + ' ' + grades[g] + '</span>';
     }).join('') + '</div>');
+  foot.find('.ms-total-dtype').html(Object.keys(dtypes).sort(function (a, b) { return dtypes[b] - dtypes[a] || a.localeCompare(b); })
+    .map(function (k) { return '<div>' + esc(k) + ' - ' + dtypes[k] + '</div>'; }).join(''));
   var zmain = zoneOrder.slice(0, 2), zrest = zoneOrder.slice(2).filter(function (z) { return zones[z]; }).sort(function (a, b) { return (a === 'No Location') - (b === 'No Location') || a.localeCompare(b); });
   foot.find('.ms-total-loc').html(zmain.concat(zrest).map(function (z, i) {
-    return '<div' + (i > 1 ? ' class="text-muted"' : '') + '>' + $('<span>').text(z).html() + ' - ' + zones[z] + '</div>';
+    return '<div' + (i > 1 ? ' class="text-muted"' : '') + '>' + esc(z) + ' - ' + zones[z] + '</div>';
   }).join(''));
-  foot.find('.ms-total-min').text({% if can(current_user, _pm, 'pricing') %}'₹' + Math.round(min).toLocaleString('en-IN'){% else %}'—'{% endif %});
+  foot.find('.ms-total-min').text(MIN_TEXT(min));
+  $(api.table().node()).closest('.card').find('.ms-export-count').text(qty.toLocaleString('en-IN'));
 }
 function buildSummaryTable(id){
   if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();
@@ -993,7 +1044,7 @@ function readyPageUrl(){
   var p = new URLSearchParams();
   function v(id){ return (document.getElementById(id) || {}).value || ''; }
   [['ms_touch','msTouch'],['ms_avail','msAvail'],['ms_entity','ms_val_ms_entity'],['ms_dtype','ms_val_ms_dtype'],
-   ['ms_grade','ms_val_ms_grade'],['ms_loc','ms_val_ms_loc']].forEach(function(x){
+   ['ms_grade','ms_val_ms_grade'],['ms_loc','ms_val_ms_loc'],['ms_make','ms_val_ms_make'],['ms_stock','ms_val_ms_stock']].forEach(function(x){
     if (v(x[1])) p.set(x[0], v(x[1]));
   });
   var q = p.toString();
@@ -1020,10 +1071,10 @@ function refreshSummaryTable(id, badgeId){
       }
     });
 }
-[['msTouch','ms_val_ms_entity','ms_val_ms_dtype', function(){ return refreshSummaryTable('readyModelSummaryTable', 'msCountBadge'); }, 'ms_val_ms_grade', 'ms_val_ms_loc']].forEach(function(x){
+[['msTouch','ms_val_ms_entity','ms_val_ms_dtype', function(){ return refreshSummaryTable('readyModelSummaryTable', 'msCountBadge'); }, 'ms_val_ms_grade', 'ms_val_ms_loc', 'ms_val_ms_make', 'ms_val_ms_stock']].forEach(function(x){
   var sel = document.getElementById(x[0]);
   if (sel) sel.addEventListener('change', x[3]);
-  [x[1], x[2], x[4], x[5]].forEach(function(id){
+  [x[1], x[2], x[4], x[5], x[6], x[7]].forEach(function(id){
     var el = document.getElementById(id);
     if (el) el.addEventListener('ms:change', x[3]);
   });

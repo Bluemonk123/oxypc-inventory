@@ -2,8 +2,56 @@
 {% block title %}Create GRN — OxyPC{% endblock %}
 {% block page_title %}Create GRN{% endblock %}
 {% block content %}
+{# Option C dashboard (2026-11-14, Pankaj): KPIs and charts above; "View Data"
+   swaps them for the GRN page itself. services/grn_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{{ dash.hero('GRN', 'Procurement  ›  GRN', 'Did we receive what we paid for? GRN by GRN, lot by lot', view_data=True) }}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
 {% include "grn/_post_iqc_body.html" %}
+</div>
+</div>
+
+{# GRN received -> Lots count (2026-11-14): the lots on one GRN (/grn/lots-of). #}
+<div class="modal fade" id="grnLotsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2"><h6 class="modal-title" id="glTitle">Lots</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body p-2">
+        <div class="gtable2-wrap" style="max-height:60vh">
+          <table class="gtable2" id="glTable" data-total-label="Total">
+            <thead><tr><th data-total="count">Lot</th><th>Supplier</th><th data-total="sum">Lot qty</th><th data-total="sum">Devices</th></tr></thead>
+            <tbody id="glBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 {% block scripts %}
 {% include "grn/_post_iqc_scripts.html" %}
+<script>
+document.addEventListener('show.bs.modal', function (e) {
+  if (e.target.id !== 'grnLotsModal' || !e.relatedTarget) return;
+  var b = e.relatedTarget, body = document.getElementById('glBody');
+  document.getElementById('glTitle').textContent = (b.getAttribute('data-no') || 'GRN') + ' — lots';
+  body.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">Loading…</td></tr>';
+  var esc = function (s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+  fetch('/grn/lots-of?grn=' + encodeURIComponent(b.getAttribute('data-grn') || ''))
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      body.innerHTML = j.rows.length ? j.rows.map(function (r) {
+        return '<tr><td><a href="/devices?entity=&lot=' + encodeURIComponent(r.lot) + '" class="fw-semibold">' + esc(r.lot) + '</a></td><td>' +
+          esc(r.supplier) + '</td><td>' + esc(r.qty) + '</td><td>' + esc(r.devices) + '</td></tr>';
+      }).join('') : '<tr><td colspan="4" class="text-center text-muted py-3">No lots mapped to this GRN yet</td></tr>';
+      if (window.gt2Refresh) window.gt2Refresh(document.getElementById('glTable'));
+    })
+    .catch(function () { body.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-3">Could not load the lots</td></tr>'; });
+});
+</script>
 {% endblock %}

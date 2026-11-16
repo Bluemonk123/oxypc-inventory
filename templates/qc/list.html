@@ -123,15 +123,14 @@
 
       <div class="card-header bg-dark text-white d-flex align-items-center justify-content-between py-2">
         <span class="fw-semibold small"><i class="bi bi-lightning-charge-fill me-2 text-warning"></i>Stress Test</span>
-        {# Edit + Pick This for the tag on the panel (2026-10-28): copies of the
-           row's buttons, which stay hidden in the table. #}
-        <span class="d-flex align-items-center gap-2">
-          <span id="stressHeadActions" class="d-flex align-items-center gap-2"></span>
-          <span id="stressTagBadge" class="badge bg-secondary font-monospace">—</span>
-        </span>
+        <span id="stressTagBadge" class="badge bg-secondary font-monospace">—</span>
       </div>
 
       <div class="card-body p-3" id="stressPanelBody">
+        {# Pick This + Edit for the tag on the panel, below the tag number
+           (2026-11-16, Pankaj; were in the header beside it). Copies of the
+           row's buttons, which stay hidden in the table. #}
+        <div id="stressHeadActions" class="d-none align-items-center justify-content-end flex-wrap gap-2 mb-2 pb-2 border-bottom"></div>
 
         {# ── Idle state ── #}
         <div id="stressIdleMsg" class="text-center py-5 text-muted">
@@ -241,7 +240,7 @@
    row keeps hidden copies as the data source. */
 #qcTable .spec-edit-btn, #qcTable .stress-pick-btn { display:none !important; }
 .start-test-btn.active-test { background:#0F7A37 !important; color:#fff !important; border-color:#0F7A37 !important; }
-#qcTable tbody tr.stress-active-row { background:#fff9db !important; }
+#qcTable tbody tr.stress-active-row, #qcTable tbody tr.stress-active-row > td { background:#fff9db !important; --bs-table-bg:#fff9db; --bs-table-accent-bg:transparent; }
 </style>
 
 <script>
@@ -402,6 +401,7 @@ function activateStressTest(btn) {
   document.querySelectorAll('#qcTable tbody tr.stress-active-row').forEach(r => r.classList.remove('stress-active-row'));
   const activeRow = document.getElementById('row-' + _barcode);
   if (activeRow) activeRow.classList.add('stress-active-row');
+  markActiveRow();
 
   document.getElementById('stressIdleMsg').classList.add('d-none');
   document.getElementById('stressActiveArea').classList.remove('d-none');
@@ -421,16 +421,29 @@ function stressRowNode(bc) {
   }
   return document.getElementById('row-' + bc);
 }
+// The row whose Stress button is active stays highlighted (2026-11-16) —
+// also after paging / sorting / searching, which redraw the table rows.
+function markActiveRow() {
+  const dt = (window.jQuery && jQuery.fn.dataTable && jQuery.fn.dataTable.isDataTable('#qcTable')) ? jQuery('#qcTable').DataTable() : null;
+  const rows = dt ? dt.rows().nodes().toArray() : Array.from(document.querySelectorAll('#qcTable tbody tr'));
+  rows.forEach(r => {
+    const on = !!_barcode && r.id === 'row-' + _barcode;
+    r.classList.toggle('stress-active-row', on);
+    r.querySelectorAll('.start-test-btn').forEach(b => b.classList.toggle('active-test', on));
+  });
+}
 function renderHeadActions() {
   const box = document.getElementById('stressHeadActions');
   box.innerHTML = '';
+  box.classList.add('d-none'); box.classList.remove('d-flex');
   if (!_barcode) return;
   const row = stressRowNode(_barcode);
   if (!row) return;
+  box.classList.remove('d-none'); box.classList.add('d-flex');
   const owner = row.querySelector('.stress-owner');
   if (owner) {
     const o = document.createElement('span');
-    o.className = 'small text-white-50 text-nowrap';
+    o.className = 'small text-muted text-nowrap me-auto';
     o.textContent = owner.textContent;
     o.title = owner.title || '';
     box.appendChild(o);
@@ -441,7 +454,7 @@ function renderHeadActions() {
   if (edit) {
     // Same button (same data, same delegated handler) shown as an "Edit" label
     const c = edit.cloneNode(false);
-    c.className = 'btn btn-sm btn-light py-0 text-nowrap spec-edit-btn';
+    c.className = 'btn btn-sm btn-outline-secondary py-0 text-nowrap spec-edit-btn';
     c.removeAttribute('style');
     c.textContent = 'Edit';
     box.appendChild(c);
@@ -595,6 +608,7 @@ $(document).ready(function(){
     columnDefs: [{ visible: false, targets: [1, 10] }, { orderable: false, targets: [11, 12] }],
   });
   $('#qcFailedFqcFilter').on('change', function() { dt.draw(); });
+  $('#qcTable').on('draw.dt', function () { if (typeof markActiveRow === 'function') markActiveRow(); });
 
   // Fail Note tooltip on the "Failed from Final QC" badge's info icon —
   // rows are all present in the DOM at load (client-side DataTables), so a

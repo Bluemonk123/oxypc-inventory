@@ -13,14 +13,21 @@
 {% if request.query_params.get('error') %}
 <div class="alert alert-danger alert-dismissible fade show">{{ request.query_params.get('error') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% endif %}
-<!-- Financial Year tabs (Apr–Mar), e.g. 2025-26 — built from Master Data
-     "report_year" (2025 -> 2025-26), the same list the Dashboard's FY picker uses. -->
-<div class="d-flex gap-2 mb-3 flex-wrap">
+{# Option C dashboard (2026-11-14, Pankaj): FY tabs in the header, KPIs and charts;
+   "View Data" swaps them for the tiles, chart and monthly table below. services/bizpl_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% call dash.hero('Business P&L', '', 'Revenue to profit, month by month and category by category', view_data=True) %}
+<div class="d-flex gap-2 flex-wrap">
   {% for v, label in fy_choices %}
-  <a href="?fy={{ v }}" class="btn btn-sm {% if v == fy %}btn-primary{% else %}btn-outline-secondary{% endif %}">{{ label }}</a>
+  <a href="?fy={{ v }}" class="btn btn-sm {% if v == fy %}btn-light{% else %}btn-outline-light{% endif %}">FY {{ label }}</a>
   {% endfor %}
 </div>
-
+{% endcall %}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
 <!-- KPI Cards — shared tile macros (templates/_tiles.html, 2026-11-06),
      light tint; two rows of four as before. -->
 {% import "_tiles.html" as tl %}
@@ -203,5 +210,7 @@ new Chart(ctx, {
   }
 });
 </script>
+</div>{# /dash-data #}
+</div>{# /dash #}
 {% endif %}
 {% endblock %}

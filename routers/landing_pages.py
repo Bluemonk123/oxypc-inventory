@@ -9,7 +9,7 @@ from models.role_permissions import (
     set_cached_page_title, _PAGE_TITLE_CACHE,
     set_cached_breadcrumb_enabled, _BREADCRUMB_CACHE,
 )
-from auth.dependencies import get_current_user, require_roles, verify_csrf
+from auth.dependencies import get_current_user, require_roles, verify_csrf, require_module_perm
 from templates_config import templates
 
 router = APIRouter(
@@ -134,6 +134,7 @@ NAV_PAGE_TITLES = [
     ("quotations",           "Quotations",                    "Quotations",                    "/quotations"),
     ("model_requests",       "Model Requests",                "Model Requests",                "/model-requests"),
     ("whatsapp",             "WhatsApp",                      "WhatsApp",                      "/whatsapp"),
+    ("sales_coordinator",    "Sales Coordinator",             "Sales Coordinator",             "/sales-coordinator"),
     ("assign_dealer_leads",  "Assign Dealer Leads",           "Assign Dealer Leads",           "/assign-dealer-leads"),
     ("trade_partner_partners",    "Partner Accounts",       "Partner Accounts",       "/trade-partner/partners"),
     ("trade_partner_listings",    "Listings Manager",       "Listings Manager",       "/trade-partner/listings"),
@@ -171,8 +172,7 @@ NAV_PAGE_TITLES = [
     ("aging_tracker",        "Aging Tracker",                 "Aging Tracker",                 "/stage-control/aging"),
     ("stage_audit_log",      "Stage Audit Log",               "Stage Audit Log",               "/stage-control/audit"),
     ("system_audit_log",     "System Audit Log",              "System Audit Log",              "/admin/audit-log"),
-    ("sidebar_config",       "Sidebar Config",                "Sidebar Config",                "/admin/sidebar-config"),
-    ("landing_pages",        "Landing Pages",                 "Landing Pages",                 "/admin/landing-pages"),
+    ("extra_settings",       "Extra Settings",                "Extra Settings",                "/admin/extra-settings"),
     ("wa_audit_log",         "WA Audit Log",                  "WA Audit Log",                  "/whatsapp/audit"),
     # ── ADMIN SETTINGS accordion (admin-only by default; grantable to
     #    sub_admin — or any role — via the Module Permissions matrix) ────────
@@ -189,44 +189,19 @@ async def landing_pages_list(
     request: Request,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(admin_only),
-):
-    rows = (await db.execute(
-        select(AppSetting).where(AppSetting.key.like("page_title_%"))
-    )).scalars().all()
-    custom_titles = {r.key[len("page_title_"):]: r.value for r in rows}
+):  # noqa: ARG001
+    """Moved into Admin Settings → Extra Settings (2026-11-16, Pankaj)."""
+    from urllib.parse import urlencode
+    qs = urlencode(dict(request.query_params))
+    return RedirectResponse(url="/admin/extra-settings?tab=page_titles" + ("&" + qs if qs else ""), status_code=302)
 
-    bc_rows = (await db.execute(
-        select(AppSetting).where(AppSetting.key.like(f"{BREADCRUMB_PREFIX}%"))
-    )).scalars().all()
-    breadcrumb_overrides = {r.key[len(BREADCRUMB_PREFIX):]: (r.value == "1") for r in bc_rows}
-
-    modules = [
-        {
-            "key": mod_key,
-            "nav_label": nav_label,
-            "default_title": default_title,
-            "current_title": custom_titles.get(mod_key, default_title),
-            "is_custom": mod_key in custom_titles,
-            "url": url,
-            "breadcrumb_enabled": breadcrumb_overrides.get(mod_key, False),
-        }
-        for mod_key, nav_label, default_title, url in NAV_PAGE_TITLES
-    ]
-
-    return templates.TemplateResponse("admin/landing_pages.html", {
-        "request": request,
-        "current_user": current_user,
-        "modules": modules,
-        "success": request.query_params.get("success"),
-        "error": request.query_params.get("error"),
-    })
 
 
 @router.post("/save")
 async def save_landing_page_title(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_only),
+    current_user: User = Depends(require_module_perm("extra_settings", "edit")),
 ):
     form = await request.form()
     module_key = (form.get("module_key") or "").strip()
@@ -234,7 +209,7 @@ async def save_landing_page_title(
 
     if not module_key or not new_title:
         return RedirectResponse(
-            url="/admin/landing-pages/?error=Module+key+and+title+are+required",
+            url="/admin/extra-settings?tab=page_titles&error=Module+key+and+title+are+required",
             status_code=302,
         )
 
@@ -257,7 +232,7 @@ async def save_landing_page_title(
     await db.commit()
     set_cached_page_title(module_key, new_title)
     return RedirectResponse(
-        url=f"/admin/landing-pages/?success=Title+saved+for+{module_key}",
+        url=f"/admin/extra-settings?tab=page_titles&success=Title+saved+for+{module_key}",
         status_code=302,
     )
 
@@ -266,13 +241,13 @@ async def save_landing_page_title(
 async def reset_landing_page_title(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_only),
+    current_user: User = Depends(require_module_perm("extra_settings", "edit")),
 ):
     form = await request.form()
     module_key = (form.get("module_key") or "").strip()
 
     if not module_key:
-        return RedirectResponse(url="/admin/landing-pages/?error=Module+key+required", status_code=302)
+        return RedirectResponse(url="/admin/extra-settings?tab=page_titles&error=Module+key+required", status_code=302)
 
     setting_key = f"page_title_{module_key}"
     existing = (await db.execute(
@@ -285,7 +260,7 @@ async def reset_landing_page_title(
         _PAGE_TITLE_CACHE.pop(module_key, None)
 
     return RedirectResponse(
-        url=f"/admin/landing-pages/?success=Title+reset+to+default+for+{module_key}",
+        url=f"/admin/extra-settings?tab=page_titles&success=Title+reset+to+default+for+{module_key}",
         status_code=302,
     )
 
@@ -294,7 +269,7 @@ async def reset_landing_page_title(
 async def toggle_breadcrumb(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_only),
+    current_user: User = Depends(require_module_perm("extra_settings", "edit")),
 ):
     """AJAX toggle: enable/disable the breadcrumb trail for one page."""
     from fastapi.responses import JSONResponse

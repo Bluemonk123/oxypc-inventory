@@ -47,6 +47,17 @@ class PartEstimate(Base):
     # apart without re-deriving it from which lines table got rows.
     estimate_type = Column(String(20), nullable=False, default="flat")
 
+    # Open Estimate extras (2026-11-15, Pankaj — approved):
+    #   row_specs    JSON {part: chosen size} — the RAM / Storage / Screen Size
+    #                dropdown next to those part names (Master Data options)
+    #   store_inputs JSON {part: count} — entered on Part Master -> Sourcing
+    #                Requests -> Confirm Request (Store Inputs column)
+    #   status       "" until that confirm, then "Updated" (shown on both pages;
+    #                the attached sheet is rewritten with Difference / Store Inputs)
+    row_specs = Column(Text, nullable=True)
+    store_inputs = Column(Text, nullable=True)
+    status = Column(String(20), nullable=True)
+
     created_by = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=app_now)
 

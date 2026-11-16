@@ -1,0 +1,419 @@
+{# Shared dashboard kit (2026-11-14, Pankaj) — Option C design.
+   Widgets are built in services/dash_widgets.py (geometry worked out in
+   Python) and drawn here. Colours of light cards come from CSS variables in
+   static/css/dash.css, so light / dark theme both work.
+   Usage:
+     {% import "_dash.html" as dash %}
+     {% call dash.hero(title, crumb, sub, view_data=True) %} …filter bar… {% endcall %}
+     {{ dash.kpis(kpis) }}
+     {{ dash.grid(widgets) }}
+     <div class="dash-data"> …the page's existing content… </div>
+#}
+{% macro hero(title, crumb='', sub='', view_data=True, actions=None) -%}
+<header class="dash-hero">
+  <div class="dash-hero-top">
+    <div class="dash-hero-titles">
+      {# Breadcrumb: none here — the app's own breadcrumb (Module Page Titles
+         switch) shows above the page when it is turned on (2026-11-14). #}
+      <div class="dash-title-row">
+        <h1 class="dash-title">{{ title }}</h1>
+        {% if view_data %}<a href="#" class="dash-toggle" data-dash-toggle><i class="bi bi-table me-1"></i><span>View Data</span></a>{% endif %}
+      </div>
+      {% if sub %}<span class="dash-sub">{{ sub }}</span>{% endif %}
+    </div>
+    {% if actions %}<div class="dash-actions">{{ actions }}</div>{% endif %}
+  </div>
+  {% if caller is defined %}<div class="dash-hero-filters">{{ caller() }}</div>{% endif %}
+</header>
+{%- endmacro %}
+
+{% macro kpis(items) -%}
+<div class="dash-kpis" style="grid-template-columns: repeat({{ items|length }}, minmax(0, 1fr))">
+  {% for k in items %}
+  <div class="dash-kpi" style="background: {{ k.bg }}; border-color: {{ k.bd }}; color: {{ k.fg }}">
+    <span class="dash-kpi-l">{{ k.l }}</span>
+    <span class="dash-kpi-v">{{ k.v }}</span>
+    {% if k.d %}<span class="dash-kpi-d" style="background: {{ k.dbg }}; color: {{ k.dfg }}">{{ k.d }}</span>{% endif %}
+    {% if k.p %}<svg viewBox="0 0 120 36" preserveAspectRatio="none" class="dash-kpi-spark" aria-hidden="true">
+      <path d="{{ k.a }}" fill="{{ k.sc }}" fill-opacity="0.18"></path>
+      <path d="{{ k.p }}" fill="none" stroke="{{ k.sc }}" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+    </svg>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro pipeline(items) -%}
+{# Slim pipeline strip with no card or heading (2026-11-16, Product Master):
+   items from dash_widgets.slim(...)["slim"]. #}
+<div class="dash-pipeline">
+  {% for p in items %}
+  <div class="dash-pipe-step" {% if p.tip %}data-tip="{{ p.tip }}" {% endif %}style="background: {{ p.bg }}; border-color: {{ p.bd }}">
+    <span class="dash-pipe-dot" style="background: {{ p.c }}"></span>
+    <span class="dash-pipe-txt">
+      <span class="dash-pipe-l">{{ p.l }}</span>
+      <span class="dash-pipe-row"><span class="dash-pipe-v">{{ p.v }}</span>{% if p.s %}<span class="dash-pipe-s" style="color: {{ p.c }}">{{ p.s }}</span>{% endif %}</span>
+    </span>
+  </div>
+  {% if not loop.last %}<i class="bi bi-chevron-right dash-pipe-arrow"></i>{% endif %}
+  {% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro grid(widgets) -%}
+<div class="dash-grid">
+{% for w in widgets %}
+        <section class="dash-card" style="grid-column: span {{w.span}}; height: {{w.h}}px; box-sizing: border-box; background: {{w.cbg}}; border: 1px solid {{w.cbd}}; border-radius: 14px; padding: 16px 18px; display: flex; flex-direction: column; gap: 12px; overflow: hidden; color: {{w.tfg}}">
+          <div style="display: flex; align-items: flex-start; gap: 10px; height: 38px; flex: none">
+            <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+              <h3 style="margin: 0; font-size: 14.5px; font-weight: 700; white-space: nowrap">{% if w.href %}<a href="{{ w.href }}" class="dash-card-link">{{ w.title }}</a>{% else %}{{ w.title }}{% endif %}</h3>
+              <span style="font-size: 12px; color: {{w.mut}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{w.sub}}</span>
+            </div>
+            {% if w.hasTag %}
+              <span style="margin-left: auto; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: {{w.tagbg}}; color: {{w.tagfg}}; white-space: nowrap">{{w.tag}}</span>
+            {% endif %}
+            {% if w.hasBtn %}
+              <a href="{{ w.btnhref or '#' }}" class="dash-card-btn" {% if w.btnmodal %}data-bs-toggle="modal" data-bs-target="{{ w.btnmodal }}"{% endif %} style="margin-left: {{w.btnml}}">{{ w.btn }}</a>
+            {% endif %}
+          </div>
+
+          {% if w.isArea %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; gap: 8px">
+              <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: {{w.mut}}">
+                {% for l in w.leg %}
+                  <span style="display: flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 3px; background: {{l.c}}"></span>{{l.n}}<b style="color: {{w.tfg}}; font-weight: 600">{{l.v}}</b></span>
+                {% endfor %}
+              </div>
+              <div style="flex: 1; min-height: 0; display: flex; gap: 8px">
+                <div style="display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; color: {{w.mut}}; padding-bottom: 20px; text-align: right; min-width: 42px">
+                  {% for t in w.yt %}<span>{{t.x}}</span>{% endfor %}
+                </div>
+                <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+                  <div style="position: relative; flex: 1; min-height: 0; display: flex">
+                  <svg viewBox="0 0 600 200" preserveAspectRatio="none" style="width: 100%; height: 100%; display: block" aria-hidden="true">
+                    <path d="M0 1H600M0 50H600M0 100H600M0 150H600M0 199H600" fill="none" stroke="{{w.grid}}" stroke-width="1" vector-effect="non-scaling-stroke"></path>
+                    <path d="{{w.a3}}" fill="{{w.c3}}" fill-opacity="{{w.fo}}"></path>
+                    <path d="{{w.a2}}" fill="{{w.c2}}" fill-opacity="{{w.fo}}"></path>
+                    <path d="{{w.a1}}" fill="{{w.c1}}" fill-opacity="{{w.fo}}"></path>
+                    <path d="{{w.p3}}" fill="none" stroke="{{w.c3}}" stroke-width="2" vector-effect="non-scaling-stroke"></path>
+                    <path d="{{w.p2}}" fill="none" stroke="{{w.c2}}" stroke-width="2" stroke-dasharray="{{w.dash2}}" vector-effect="non-scaling-stroke"></path>
+                    <path d="{{w.p1}}" fill="none" stroke="{{w.c1}}" stroke-width="2.5" vector-effect="non-scaling-stroke"></path>
+                  </svg>
+                  {% if w.pts %}<div class="dash-hover-cols" style="left: -{{ w.hpad }}; right: -{{ w.hpad }}">{% for pt in w.pts %}<div data-tip="{{ pt.tip }}"></div>{% endfor %}</div>{% endif %}
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 11px; color: {{w.mut}}">
+                    {% for t in w.xl %}<span>{{t.x}}</span>{% endfor %}
+                  </div>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+
+          {% if w.isBars %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; gap: 8px">
+              <div style="display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: {{w.mut}}">
+                {% for l in w.leg %}
+                  <span style="display: flex; align-items: center; gap: 6px"><span style="width: 10px; height: 10px; border-radius: 3px; background: {{l.c}}"></span>{{l.n}}<b style="color: {{w.tfg}}; font-weight: 600">{{l.v}}</b></span>
+                {% endfor %}
+              </div>
+              <div style="flex: 1; min-height: 0; display: flex; gap: 8px">
+                <div style="display: flex; flex-direction: column; justify-content: space-between; font-size: 11px; color: {{w.mut}}; padding-bottom: 20px; text-align: right; min-width: 42px">
+                  {% for t in w.yt %}<span>{{t.x}}</span>{% endfor %}
+                </div>
+                <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px">
+                  <div style="flex: 1; min-height: 0; display: flex; align-items: flex-end; gap: {{w.ggap}}; background-image: linear-gradient(to bottom, {{w.grid}} 1px, transparent 1px); background-size: 100% 25%; border-bottom: 1px solid {{w.grid}}">
+                    {% for g in w.groups %}
+                      <div style="flex: 1; height: 100%; display: flex; align-items: flex-end; justify-content: center; gap: 3px">
+                        {% for s in g.stacks %}
+                          <div style="flex: 1; max-width: {{w.bmax}}; height: {{s.h}}; display: flex; flex-direction: column-reverse; border-radius: 5px 5px 0 0; overflow: hidden">
+                            {% for q in s.segs %}<div style="flex: {{q.f}} 1 0px; background: {{q.c}}; min-height: 0"{% if q.tip %} data-tip="{{ q.tip }}"{% endif %}></div>{% endfor %}
+                          </div>
+                        {% endfor %}
+                      </div>
+                    {% endfor %}
+                  </div>
+                  <div style="display: flex; gap: {{w.ggap}}; font-size: 11px; color: {{w.mut}}">
+                    {% for g in w.groups %}<span style="flex: 1; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{g.l}}</span>{% endfor %}
+                  </div>
+                </div>
+              </div>
+            </div>
+          {% endif %}
+
+          {% if w.isHbars %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; justify-content: space-around; gap: 6px">
+              {% for r in w.rows %}
+                <div style="display: flex; align-items: center; gap: 10px; font-size: 12.5px" data-tip="{{ r.tip }}">
+                  <span style="width: {{w.lw}}; flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.l}}</span>
+                  <div style="flex: 1; height: 10px; border-radius: 5px; background: {{w.track}}"><div style="width: {{r.w}}; height: 10px; border-radius: 5px; background: {{r.c}}"></div></div>
+                  <span style="width: 64px; text-align: right; font-weight: 600">{{r.v}}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isDonut %}
+            <div style="height: {{w.bh}}px; display: flex; align-items: center; gap: 20px">
+              <div data-tip="{{ w.donutTip }}" style="width: {{w.dsz}}; height: {{w.dsz}}; flex: none; border-radius: 50%; background: conic-gradient({{w.conic}}); display: flex; align-items: center; justify-content: center">
+                <div style="width: 64%; height: 64%; border-radius: 50%; background: {{w.hole}}; display: flex; flex-direction: column; align-items: center; justify-content: center">
+                  <span style="font-size: 22px; font-weight: 700">{{w.center}}</span>
+                  <span style="font-size: 11.5px; color: {{w.mut}}">{{w.centerSub}}</span>
+                </div>
+              </div>
+              <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 9px">
+                {% for l in w.leg %}
+                  <div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px" data-tip="{{ l.tip }}">
+                    <span style="width: 10px; height: 10px; border-radius: 3px; background: {{l.c}}; flex: none"></span>
+                    <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{l.n}}</span>
+                    <span style="margin-left: auto; font-weight: 600">{{l.v}}</span>
+                    <span style="width: 38px; text-align: right; color: {{w.mut}}">{{l.p}}</span>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+
+          {% if w.isGauge %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px">
+              <div style="position: relative; width: 240px; height: 140px">
+                <svg viewBox="0 0 220 130" style="width: 240px; height: 140px; display: block" aria-hidden="true">
+                  <path d="M 20 115 A 90 90 0 0 1 200 115" fill="none" stroke="{{w.track}}" stroke-width="18" stroke-linecap="round"></path>
+                  <path d="M 20 115 A 90 90 0 0 1 200 115" fill="none" stroke="{{w.gc}}" stroke-width="18" stroke-linecap="round" stroke-dasharray="{{w.dash}}"></path>
+                </svg>
+                <div style="position: absolute; left: 0; right: 0; bottom: 8px; text-align: center">
+                  <div style="font-size: 30px; font-weight: 700; line-height: 1.1">{{w.gval}}</div>
+                  <div style="font-size: 12px; color: {{w.mut}}">{{w.gsub}}</div>
+                </div>
+              </div>
+              <div style="display: flex; gap: 10px; width: 100%">
+                {% for m in w.mini %}
+                  <div style="flex: 1; background: {{w.track}}; border-radius: 10px; padding: 8px 10px; text-align: center">
+                    <div style="font-size: 15px; font-weight: 700">{{m.v}}</div>
+                    <div style="font-size: 11px; color: {{w.mut}}; white-space: nowrap">{{m.l}}</div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endif %}
+
+          {% if w.isStack %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; justify-content: center; gap: 12px">
+              <div style="display: flex; gap: 10px">
+                {% for b in w.big %}
+                  <div style="flex: 1; min-width: 0; border-left: 3px solid {{b.c}}; padding-left: 10px">
+                    <div style="font-size: 20px; font-weight: 700">{{b.v}}</div>
+                    <div style="font-size: 12px; color: {{w.mut}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{b.l}} · {{b.p}}</div>
+                  </div>
+                {% endfor %}
+              </div>
+              <div style="display: flex; height: 14px; border-radius: 7px; overflow: hidden; gap: 2px">
+                {% for s in w.segs %}<div style="width: {{s.w}}; background: {{s.c}}" data-tip="{{ s.tip }}"></div>{% endfor %}
+              </div>
+            </div>
+          {% endif %}
+
+          {% if w.isTable %}
+            <div style="height: {{w.bh}}px; box-sizing: border-box; overflow: hidden; border: 1px solid {{w.grid}}; border-radius: 10px; font-size: 12.5px">
+              <div style="display: grid; grid-template-columns: {{w.gtc}}; background: {{w.track}}; font-weight: 600; color: {{w.mut}}; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.03em">
+                {% for c in w.cols %}<span style="padding: 8px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.x}}</span>{% endfor %}
+              </div>
+              {% for r in w.trs %}
+                <div style="display: grid; grid-template-columns: {{w.gtc}}; border-top: 1px solid {{w.grid}}; align-items: center">
+                  {% for c in r.cells %}
+                    <span style="padding: 8px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: {{c.fw}}">
+                      {% if c.b %}<span style="display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: {{c.bc}}; color: {{c.bt}}">{{c.x}}</span>{% endif %}
+                      {% if c.nb %}{{c.x}}{% endif %}
+                      {% if c.lk %}<a href="{{ c.href or '#' }}" {% if c.modal %}data-bs-toggle="modal" data-bs-target="{{ c.modal }}" {% endif %}{% for k, v in (c.data or {}).items() %}data-{{ k }}="{{ v }}" {% endfor %}class="dash-link">{{c.x}}</a>{% endif %}
+                      {% if c.bt2 %}<a href="{{ c.href or '#' }}" {% if c.modal %}data-bs-toggle="modal" data-bs-target="{{ c.modal }}" {% endif %}{% for k, v in (c.data or {}).items() %}data-{{ k }}="{{ v }}" {% endfor %}class="dash-view-btn"><i class="bi bi-eye"></i> {{c.x}}</a>{% endif %}
+                    </span>
+                  {% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isFunnel %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; justify-content: space-around; gap: 6px">
+              {% for s in w.steps %}
+                <div style="display: flex; align-items: center; gap: 10px; font-size: 12.5px">
+                  <span style="width: {{w.lw}}; flex: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{s.l}}</span>
+                  <div style="flex: 1; display: flex; justify-content: center"><div data-tip="{{ s.tip }}" style="width: {{s.w}}; background: {{s.c}}; color: #ffffff; border-radius: 8px; padding: 7px 0; text-align: center; font-weight: 700; font-size: 13px">{{s.v}}</div></div>
+                  <span style="width: 54px; text-align: right; font-size: 12px; color: {{w.mut}}">{{s.p}}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isHeat %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; gap: 4px">
+              <div style="display: flex; gap: 4px; font-size: 11px; color: {{w.mut}}">
+                <span style="width: {{w.lw}}; flex: none"></span>
+                {% for c in w.hcols %}<span style="flex: 1; text-align: center; white-space: nowrap; overflow: hidden">{{c.x}}</span>{% endfor %}
+              </div>
+              {% for r in w.hrows %}
+                <div style="flex: 1; min-height: 0; display: flex; gap: 4px">
+                  <span style="width: {{w.lw}}; flex: none; font-size: 12px; display: flex; align-items: center; white-space: nowrap; overflow: hidden">{{r.l}}</span>
+                  {% for c in r.cells %}<div data-tip="{{ c.tip }}" style="flex: 1; border-radius: 5px; background: {{c.bg}}; color: {{c.fg}}; font-size: 11px; font-weight: 600; display: flex; align-items: center; justify-content: center">{{c.v}}</div>{% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isLanes %}
+            <div style="height: {{w.bh}}px; display: grid; grid-template-columns: repeat({{w.ln}}, minmax(0, 1fr)); gap: 12px">
+              {% for l in w.lanes %}
+                <div style="background: {{w.track}}; border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; overflow: hidden">
+                  <div style="display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700"><span style="width: 8px; height: 8px; border-radius: 50%; background: {{l.c}}"></span>{{l.n}}<span style="margin-left: auto; background: {{l.c}}; color: #ffffff; border-radius: 999px; padding: 1px 8px; font-size: 11.5px">{{l.k}}</span></div>
+                  <div style="height: 4px; border-radius: 2px; background: {{w.grid}}"><div style="width: {{l.w}}; height: 4px; border-radius: 2px; background: {{l.c}}"></div></div>
+                  {% if l.hasT %}<div style="font-size: 11px; color: {{w.mut}}; margin-top: -3px">{{l.t}}</div>{% endif %}
+                  {% for ch in l.chips %}
+                    <div style="background: {{w.cbg}}; border-radius: 8px; border-left: 3px solid {{l.c}}; padding: 7px 9px; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06)">
+                      <div style="font-size: 12.5px; font-weight: 600">{{ch.t}}</div>
+                      <div style="font-size: 11.5px; color: {{w.mut}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ch.s}}</div>
+                    </div>
+                  {% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isRings %}
+            <div style="height: {{w.bh}}px; display: grid; grid-template-columns: repeat({{w.rc}}, minmax(0, 1fr)); gap: 10px; align-content: center">
+              {% for r in w.rings %}
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 6px" data-tip="{{ r.l }}: {{ r.v }}">
+                  <div style="position: relative; width: 72px; height: 72px">
+                    <svg viewBox="0 0 56 56" style="width: 72px; height: 72px; transform: rotate(-90deg); display: block" aria-hidden="true">
+                      <circle cx="28" cy="28" r="22" fill="none" stroke="{{w.track}}" stroke-width="6"></circle>
+                      <circle cx="28" cy="28" r="22" fill="none" stroke="{{r.c}}" stroke-width="6" stroke-linecap="round" stroke-dasharray="{{r.dash}}"></circle>
+                    </svg>
+                    <span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700">{{r.v}}</span>
+                  </div>
+                  <span style="font-size: 12px; color: {{w.mut}}; text-align: center">{{r.l}}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isProg %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; justify-content: space-around; gap: 8px">
+              {% for p in w.pitems %}
+                <div style="display: flex; flex-direction: column; gap: 5px">
+                  <div style="display: flex; font-size: 12.5px"><span>{{p.l}}</span><span style="margin-left: auto; font-weight: 600">{{p.v}}</span></div>
+                  <div style="height: 8px; border-radius: 4px; background: {{w.track}}"><div style="width: {{p.w}}; height: 8px; border-radius: 4px; background: {{p.c}}"></div></div>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isFeed %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; overflow: hidden">
+              {% for f in w.fitems %}
+                <div style="display: flex; gap: 10px; padding: 7px 0; border-bottom: 1px solid {{w.grid}}">
+                  <span style="width: 9px; height: 9px; border-radius: 50%; background: {{f.c}}; margin-top: 4px; flex: none"></span>
+                  <div style="min-width: 0; flex: 1">
+                    <div style="font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.t}}</div>
+                    <div style="font-size: 11.5px; color: {{w.mut}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{f.s}}</div>
+                  </div>
+                  <span style="font-size: 11px; color: {{w.mut}}; white-space: nowrap">{{f.time}}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isCal %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; gap: 8px">
+              <div style="flex: 1; min-height: 0; display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, minmax(0, 1fr)); grid-template-columns: repeat({{w.calCols}}, minmax(0, 1fr)); gap: 3px">
+                {% for c in w.cells %}<div style="border-radius: 3px; background: {{c.bg}}"{% if c.tip %} data-tip="{{ c.tip }}"{% endif %}></div>{% endfor %}
+              </div>
+              <div style="display: flex; align-items: center; gap: 6px; font-size: 11px; color: {{w.mut}}">
+                <span>{{w.calL}}</span>
+                <span style="margin-left: auto">Less</span>
+                {% for s in w.scale %}<span style="width: 12px; height: 12px; border-radius: 3px; background: {{s.bg}}"></span>{% endfor %}
+                <span>More</span>
+              </div>
+            </div>
+          {% endif %}
+
+          {% if w.isStrip %}
+            <div style="height: {{w.bh}}px; display: grid; grid-template-columns: repeat({{w.sc}}, minmax(0, 1fr))">
+              {% for s in w.stats %}
+                <div style="padding: 0 14px; border-left: 1px solid {{w.grid}}; display: flex; flex-direction: column; gap: 4px; justify-content: center">
+                  <span style="font-size: 12px; color: {{w.mut}}; white-space: nowrap">{{s.l}}</span>
+                  <div style="display: flex; align-items: baseline; gap: 8px"><span style="font-size: 20px; font-weight: 700">{{s.v}}</span><span style="font-size: 11.5px; font-weight: 600; color: {{s.dc}}">{{s.d}}</span></div>
+                  <svg viewBox="0 0 100 30" preserveAspectRatio="none" style="width: 100%; height: 28px; display: block" aria-hidden="true"><path d="{{s.p}}" fill="none" stroke="{{s.c}}" stroke-width="2" vector-effect="non-scaling-stroke"></path></svg>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isTiles %}
+            <div style="height: {{w.bh}}px; display: grid; grid-template-columns: repeat({{w.tc}}, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); gap: 10px">
+              {% for t in w.tiles %}
+                <div style="position: relative; overflow: hidden; background: {{t.bg}}; color: {{t.fg}}; border-left: 4px solid {{t.bl}}; border-radius: 10px; padding: 9px 12px; display: flex; flex-direction: column; justify-content: center; gap: 2px; opacity: {{t.op}}">
+                  <span style="font-size: {{w.tvs}}; font-weight: 700; line-height: 1.1">{{t.v}}</span>
+                  <span style="font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: {{t.lc}}">{{t.l}}</span>
+                  {% for u in t.subs %}<span style="font-size: 11px; opacity: 0.9; white-space: nowrap">{{u.x}}</span>{% endfor %}
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isPipe %}
+            <div style="height: {{w.bh}}px; display: flex; align-items: stretch; gap: 0">
+              {% for p in w.pipe %}
+                <div style="flex: 1; min-width: 0; display: flex; align-items: center">
+                  <div style="flex: 1; min-width: 0; height: 100%; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; border: 1px solid {{w.grid}}">
+                    <div style="background: {{p.hc}}; color: #ffffff; font-size: 12px; font-weight: 700; text-align: center; padding: 6px 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.l}}</div>
+                    <div style="flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; background: {{w.cbg}}">
+                      <span style="font-size: 24px; font-weight: 700">{{p.v}}</span>
+                      <span style="font-size: 11px; color: {{p.sc}}; font-weight: 600; white-space: nowrap">{{p.s}}</span>
+                    </div>
+                  </div>
+                  <span style="width: 16px; flex: none; text-align: center; font-size: 13px; color: {{w.mut}}; opacity: {{p.ao}}">▶</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isSlim %}
+            <div style="height: {{w.bh}}px; display: flex; align-items: center; gap: 6px">
+              {% for p in w.slim %}
+                <div {% if p.tip %}data-tip="{{ p.tip }}" {% endif %}style="flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; height: 100%; max-height: 40px; padding: 0 12px; border-radius: 999px; background: {{p.bg}}; border: 1px solid {{p.bd}}">
+                  <span style="width: 8px; height: 8px; border-radius: 50%; background: {{p.c}}; flex: none"></span>
+                  <span style="font-size: 12px; color: {{w.mut}}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{p.l}}</span>
+                  <span style="margin-left: auto; font-size: 14px; font-weight: 700">{{p.v}}</span>
+                  <span style="font-size: 11px; font-weight: 600; color: {{p.c}}; white-space: nowrap">{{p.s}}</span>
+                </div>
+                <span style="font-size: 11px; color: {{w.mut}}; opacity: {{p.ao}}">▶</span>
+              {% endfor %}
+            </div>
+          {% endif %}
+
+          {% if w.isKv %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; gap: 6px; overflow: hidden">
+              {% if w.hasBig %}<div style="font-size: 32px; font-weight: 700; line-height: 1.1; margin-bottom: 4px">{{w.kvBig}}</div>{% endif %}
+              {% for r in w.kv %}
+                <div style="display: flex; align-items: center; gap: 8px; font-size: {{r.fs}}; padding: 6px 0; border-top: 1px solid {{r.bt}}">
+                  <span style="width: 8px; height: 8px; border-radius: 50%; background: {{r.dc}}; flex: none"></span>
+                  <span style="font-weight: {{r.fw}}">{{r.l}}</span>
+                  <span style="margin-left: auto; font-weight: 700; color: {{r.c}}">{{r.v}}</span>
+                </div>
+              {% endfor %}
+              <span style="margin-top: auto; font-size: 11.5px; color: {{w.mut}}">{{w.foot}}</span>
+            </div>
+          {% endif %}
+
+          {% if w.isInsight %}
+            <div style="height: {{w.bh}}px; display: flex; flex-direction: column; gap: 12px; overflow: hidden">
+              {% for i in w.ins %}
+                <div style="display: flex; gap: 10px; align-items: flex-start">
+                  <span style="width: 26px; height: 26px; border-radius: 8px; flex: none; background: {{i.bg}}; color: {{i.c}}; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 700">{{i.ic}}</span>
+                  <span style="font-size: 12.5px; line-height: 1.45">{{i.t}}</span>
+                </div>
+              {% endfor %}
+            </div>
+          {% endif %}
+        </section>
+      {% endfor %}
+</div>
+{%- endmacro %}

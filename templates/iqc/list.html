@@ -4,6 +4,11 @@
 {% block content %}
 {# Global filter bar (static/css/app.css .filter-bar) — one row, labels as
    title= tooltips, Search/Reset at the right edge (2026-10-15). #}
+{# Option C dashboard (2026-11-14, Pankaj): header with the filters, KPIs and charts;
+   "View Data" swaps them for the tables below. services/iqc_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% call dash.hero('IQC', 'Quality  ›  Incoming check', 'Every incoming item is checked and graded — how fast, and what grades come out', view_data=True) %}
 <form method="get" action="/iqc" class="filter-bar">
   <div class="filter-bar-row">
     <div class="filter-bar-search">
@@ -49,6 +54,11 @@
     </div>
   </div>
 </form>
+{% endcall %}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
 <!-- Tag Number / Model Summary / Lot Numbers tabs. Each table keeps its own
      card and toolbar — only the container changed. -->
 <ul class="nav nav-tabs mb-0" id="iqcTabs" role="tablist">
@@ -308,6 +318,8 @@
   </div>
 </div>
 
+</div>{# .dash-data #}
+</div>{# .dash #}
 {% endblock %}
 {% block scripts %}
 <script src="/static/js/tag-scan-autocheck.js?v={{ ASSET_VERSION }}"></script>

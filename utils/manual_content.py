@@ -2626,8 +2626,8 @@ MANUALS = [{'id': 1,
              ["Click the paperclip icon in 'Download' to attach a QUOTE, PO or INVOICE file, then click "
               "'Upload'.",
               "Click a download button (e.g. 'PO') to download an attached file.",
-              "'Payment Status' shows 'PO Pending' (no PO yet), 'Payment Pending' (PO sent, no payment), "
-              "'Payment Verifying' (partner submitted payment) or 'Payment Done' (verified).",
+              "'Payment Status' shows 'PO Pending' (no Sales Order yet), 'Payment Due' (Sales Order sent, no payment), "
+              "'Payment Pending' (partner shared the payment receipt) or 'Payment Done' (approved by Accounts).",
               "In the 'Won' tab click the 'Bid ID' to see the payment date, mode, UTR / reference, amount "
               'and whether finance has verified it.'])],
   'tips': ['Mark Won cannot be undone from this page. Check the lot and amount before you confirm.',
@@ -3723,10 +3723,10 @@ MANUALS = [{'id': 1,
              ['Columns: Bid Amount, Bid ID, Lot Number (click to open the lot), Account Name, Manager Name, '
               'Payment Status, Download and Action.',
               "'PO Pending' (grey): no PO document has been uploaded for the bid yet.",
-              "'Payment Pending' (yellow): PO is there, but the partner has not submitted payment details.",
-              "'Payment Verifying' (blue): the partner has submitted payment details and they are waiting "
-              'for you.',
-              "'Payment Done' (green): finance has verified the payment.",
+              "'Payment Due' (yellow): the Sales Order is there, but the partner has not shared a payment receipt.",
+              "'Payment Pending' (blue): the partner has shared the payment receipt and it is waiting "
+              'for Accounts; the Customer Deal is at its Payment stage.',
+              "'Payment Done' (green): Accounts has approved the payment.",
               "Use the 'Download' buttons to open the bid documents (for example the PO)."]),
             ('Verify a payment',
              ["Click 'Verify Payment' on the row.",

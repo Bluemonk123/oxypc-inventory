@@ -2,6 +2,15 @@
 {% block title %}Returns — OxyPC{% endblock %}
 {% block page_title %}Returns{% endblock %}
 {% block content %}
+{# Option C dashboard (2026-11-14, Pankaj): KPIs, return board and charts; "View Data"
+   swaps them for the returns table below. services/returns_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{{ dash.hero('Returns', '', 'What comes back, why, and how quickly it is sorted out', view_data=True) }}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex flex-wrap align-items-center justify-content-between gap-2">
     <span class="fw-semibold text-nowrap"><i class="bi bi-arrow-return-left me-2"></i>Returns</span>
@@ -193,6 +202,8 @@ document.getElementById('returnPaidModal').addEventListener('show.bs.modal', fun
   document.getElementById('returnPaidAmount').textContent = b.getAttribute('data-amount');
 });
 </script>
+</div>{# /dash-data #}
+</div>{# /dash #}
 {% endblock %}
 {% block scripts %}
 <script>

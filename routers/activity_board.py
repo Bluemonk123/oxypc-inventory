@@ -220,7 +220,11 @@ APPROVAL_TABS = {
 }
 LEVEL_LABELS = {"l1": "Level 1", "l2": "Level 2"}
 
-CARDS = ("accounts", "supplier", "customer", "negotiation", "pricing", "quotations")   # page order
+# Cards come from services/ab_cards.py (2026-11-15) — the same list Master Data's
+# Activity Board Cards permission shows. Tab bar + Negotiation / Quotations row;
+# Inspection / Screening are the stage cards (stage_cards below).
+from services.ab_cards import TAB_CARDS, ROW_CARDS, SOURCING as SOURCING_CARDS
+CARDS = TAB_CARDS + ROW_CARDS
 EXPORT_CARDS = ("accounts", "supplier", "customer")
 
 
@@ -268,8 +272,34 @@ def _ranges(request):
                          ("negotiation", "neg"), ("pricing", "prc"), ("quotations", "qtn"))}
 
 
+async def can_review_sourcing(db, user, card=None) -> bool:
+    """Verify / Reject Parts / Device Sourcing: admin, Activity Board -> Edit on a
+    role never set in Activity Board Cards, or the card ticked for the role
+    (Master Data -> Role Additional Permissions, 2026-11-15)."""
+    from services.ab_cards import role_cards
+    if _role(user) == "admin":
+        return True
+    allowed = await role_cards(db, _role(user))
+    if allowed is None:
+        return see_all(user)
+    return bool(allowed & ({card} if card else set(SOURCING_CARDS)))
+
+
 async def _visible(db, user):
-    """Which cards this user sees (see the module docstring)."""
+    """Which cards this user sees: the card's own rule (module docstring) AND the
+    role's ticks in Activity Board Cards when an admin has set them (2026-11-15).
+    Parts / Device Sourcing: whoever may verify them (can_review_sourcing)."""
+    from services.ab_cards import role_cards
+    allowed = None if _role(user) == "admin" else await role_cards(db, _role(user))
+    out = await _visible_by_rule(db, user)
+    out -= set(SOURCING_CARDS)
+    for k in SOURCING_CARDS:
+        if await can_review_sourcing(db, user, k):
+            out.add(k)
+    return out if allowed is None else out & allowed
+
+
+async def _visible_by_rule(db, user):
     if await account_user(db, user):
         return set(CARDS)
     out = set()
@@ -303,7 +333,11 @@ async def activity_board(request: Request, db: AsyncSession = Depends(get_db),
             if can_vc[c.id]:
                 totals[c.id] = await credit_deal_totals(db, c.id)
     stage_cards = {}
+    from services.ab_cards import role_cards as _rc
+    _allowed = None if _role(current_user) == "admin" else await _rc(db, _role(current_user))
     for kind, key in (("supplier", "inspection"), ("customer", "screening")):
+        if _allowed is not None and key not in _allowed:   # Activity Board Cards (2026-11-15)
+            continue
         rows, maps, _w = await _stage_card_rows(db, kind, current_user)
         if rows or see_all(current_user):      # a card shows only to the people it's assigned to
             locs, nums, tms = maps if maps else ({}, {}, {})
@@ -316,9 +350,44 @@ async def activity_board(request: Request, db: AsyncSession = Depends(get_db),
     _opts = await _bopts(db, sorted(users, key=lambda u: (u.full_name or u.username or "").lower()))
     managers = {"executive": _opts["executive"], "am_dm_gm": _opts["am_dm_gm"]}
     mgr_levels = designation_hierarchy(users)
+    _src = {}
+    if any(k in visible for k in SOURCING_CARDS):   # Parts / Device Sourcing (2026-11-15)
+        from services.sourcing_requests import requests_context
+        _src = await requests_context(db)
+    # V2 design (2026-11-15, Pankaj): deep hero + one KPI tile per visible group,
+    # counts = pending items on the cards this user sees.
+    def _n(rows, test):
+        return sum(1 for r in rows if test(r))
+    pend = lambda r: (r.get("status") if isinstance(r, dict) else getattr(r, "status", None)) == "pending"
+    groups = []
+    if "accounts" in visible:
+        groups.append(("Account Verification", sum(1 for c in contacts if not c.credit_verified), "violet", "credit to verify"))
+    _ap = [t for t in ("pricing", "negotiation", "quotations") if t in visible]
+    if _ap:
+        groups.append(("Approvals", sum(_n(approvals[t], pend) for t in _ap), "indigo",
+                       " · ".join({"pricing": "Pricing", "negotiation": "Negotiation", "quotations": "Quotations"}[t] for t in _ap)))
+    _dl = [k for k in ("supplier", "customer") if k in visible]
+    if _dl or stage_cards:
+        n = sum(_n(supplier if k == "supplier" else customer, lambda r: r.get("status") != "done") for k in _dl)
+        n += sum(_n(v["rows"], lambda r: r.get("status") == "pending") for v in stage_cards.values())
+        groups.append(("Deals", n, "blue", "Inspection · Screening"))
+    _sr = [(k, lst) for k, lst in (("partsrc", _src.get("part_sourcing") or []), ("devsrc", _src.get("device_sourcing") or [])) if k in visible]
+    if _sr:
+        groups.append(("Sourcing to verify", sum(_n(lst, lambda r: r.review_status == "pending") for _k, lst in _sr), "teal",
+                       " · ".join("Parts" if k == "partsrc" else "Device" for k, _l in _sr)))
+    ab_kpis = []
+    if groups:
+        from services import dash_widgets as dw
+        total = sum(g[1] for g in groups)
+        _nc = len([k for k in CARDS if k in visible]) + len(stage_cards)
+        ab_kpis = [dw.kpi("Waiting on you", "{:,}".format(total), "across %d card%s" % (_nc, "" if _nc == 1 else "s"),
+                          total == 0, "navy")]
+        ab_kpis += [dw.kpi(l, "{:,}".format(n), d, n == 0, col) for l, n, col, d in groups]
     return templates.TemplateResponse("activity_board/index.html", {
+        **_src, "sr_can_review": await can_review_sourcing(db, current_user), "ab_kpis": ab_kpis,
         "request": request, "current_user": current_user,
         "cards": [k for k in CARDS if k in visible], "qp": request.query_params,
+        "tab_cards": [k for k in TAB_CARDS if k in visible], "row_cards": [k for k in ROW_CARDS if k in visible],
         "supplier": supplier, "customer": customer, "contacts": contacts, "team": team,
         "approvals": approvals, "approval_tabs": APPROVAL_TABS, "stage_cards": stage_cards,
         "can_vc": can_vc, "totals": totals, "names": names, "managers": managers, "mgr_levels": mgr_levels,
@@ -524,3 +593,43 @@ async def map_manager(contact_id: str, request: Request, executive_id: str = For
     await db.commit()
     nm = by_id[owner].full_name or by_id[owner].username
     return _back("accounts", f"Team mapped for {contact.company_name} — Account Manager {nm}")
+
+
+@router.post("/sourcing/{kind}/{req_id}/{action}")
+async def review_sourcing_request(kind: str, req_id: str, action: str, request: Request,
+                                  db: AsyncSession = Depends(get_db),
+                                  current_user: User = Depends(get_current_user)):
+    """Verify / Reject a Parts Sourcing (kind=part) or Device Sourcing (kind=device)
+    request (2026-11-15, Pankaj). Only verified requests get Procurement Board's
+    Link Deal / Close Deal. Reject needs a reason."""
+    import uuid as _u
+    from urllib.parse import quote_plus as _qp
+    from models.part_request import PartSourcingRequest
+    from models.model_requests import ModelRequest
+    back = "/activity-board#ab-" + ("partsrc" if kind == "part" else "devsrc")
+    if not await can_review_sourcing(db, current_user, "partsrc" if kind == "part" else "devsrc"):
+        return RedirectResponse(url=back.replace("#", "?error=Not+allowed#"), status_code=302)
+    model = {"part": PartSourcingRequest, "device": ModelRequest}.get(kind)
+    if model is None or action not in ("verify", "reject"):
+        return RedirectResponse(url="/activity-board?error=Unknown+action", status_code=302)
+    try:
+        r = (await db.execute(select(model).where(model.id == _u.UUID(req_id)))).scalar_one_or_none()
+    except ValueError:
+        r = None
+    if not r:
+        return RedirectResponse(url="/activity-board?error=Request+not+found", status_code=302)
+    form = await request.form()
+    note = (form.get("note") or "").strip()[:1000]
+    if action == "reject" and not note:
+        return RedirectResponse(url="/activity-board?error=" + _qp("Write why the request is rejected") + back[len("/activity-board"):], status_code=302)
+    old = r.review_status
+    r.review_status = "verified" if action == "verify" else "rejected"
+    r.review_note = note if action == "reject" else None
+    r.reviewed_by, r.reviewed_at = current_user.username, app_now()
+    await audit(db, user=current_user, action="SOURCING_REQUEST_" + ("VERIFIED" if action == "verify" else "REJECTED"),
+                table_name=model.__tablename__, record_id=str(r.id),
+                old_value={"review_status": old}, new_value={"review_status": r.review_status, "note": note or None},
+                request=request)
+    await db.commit()
+    return RedirectResponse(url="/activity-board?success=" + ("Request+verified" if action == "verify" else "Request+rejected")
+                            + back[len("/activity-board"):], status_code=302)

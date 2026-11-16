@@ -4,6 +4,15 @@
 {% block content %}
 {# Custom scrap sales saved from the Scrap for Sale page's "Custom Sale" modal
    (routers/scrap_for_sale.py). Stand-alone records — not part of Business P&L. #}
+{# Option C dashboard (2026-11-14, Pankaj): KPIs and charts; "View Data" swaps them
+   for the sales table below. services/scrap_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{{ dash.hero('Scrap Sale Report', '', 'What we scrapped, and how much money we got back', view_data=True) }}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span><i class="bi bi-receipt-cutoff me-2"></i>Scrap Sale Report</span>
@@ -87,6 +96,8 @@
     </div>
   </div>
 </div>
+</div>{# /dash-data #}
+</div>{# /dash #}
 {% endblock %}
 {% block scripts %}
 <script>

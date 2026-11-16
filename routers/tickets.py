@@ -13,7 +13,7 @@ from templates_config import templates
 from database import get_db
 from auth.dependencies import get_current_user, verify_csrf
 from models.user import User
-from models.ticket import Ticket
+from models.ticket import Ticket, DEFAULT_GROUP
 from utils.timezone import app_now
 
 router = APIRouter(
@@ -172,6 +172,7 @@ async def list_tickets(
 @router.post("/raise")
 async def raise_ticket(
     feedback: str = Form(...),
+    subject: str = Form(""),          # 2026-11-14: Raise Ticket has a Subject line
     photos: list[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -188,8 +189,9 @@ async def raise_ticket(
             saved.append(path)
     ticket = Ticket(
         ticket_id=tid,
-        status="new", channel="web",
+        status="open", channel="web", group_name=DEFAULT_GROUP,
         raised_by=current_user.username,
+        subject=(subject or "").strip()[:200] or None,
         feedback=feedback.strip(),
         photo1_path=saved[0] if len(saved) > 0 else None,
         photo2_path=saved[1] if len(saved) > 1 else None,
@@ -249,7 +251,7 @@ async def create_public_ticket(db, raised_by, feedback, photos, source="login pa
             saved.append(path)
     ticket = Ticket(
         ticket_id=tid,
-        status="new", channel="web",
+        status="open", channel="web", group_name=DEFAULT_GROUP,
         raised_by=name,
         feedback=f"[From {source}] " + feedback.strip()[:5000],
         photo1_path=saved[0] if len(saved) > 0 else None,

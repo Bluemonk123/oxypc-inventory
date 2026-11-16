@@ -110,8 +110,8 @@
 {# Supplier Deal card (2026-11-12, Pankaj): same card as Inventory Manager,
    col-lg-4 on the left of the tabs. #}
 <div class="row g-3">
-{% if sd_enabled %}<div class="col-lg-4">{% set sd_return_to = '/spare-parts' %}{% include "_supplier_deal_card.html" %}</div>{% endif %}
-<div class="{{ 'col-lg-8' if sd_enabled else 'col-12' }}">
+{% if sd_enabled %}<div class="col-lg-3">{% set sd_return_to = '/spare-parts' %}{% include "_supplier_deal_card.html" %}</div>{% endif %}
+<div class="{{ 'col-lg-9' if sd_enabled else 'col-12' }}">
 <!-- ── Tab Navigation ── -->
 <ul class="nav nav-tabs mb-0 d-flex" id="sparePartsTabs" role="tablist">
   <li class="nav-item flex-fill text-center" role="presentation">
@@ -617,12 +617,13 @@
                    href="/part-estimation/download/{{ f.id }}" title="{{ f.file_name }}">
                   <i class="bi bi-file-earmark-excel me-1"></i>{{ f.grade or 'Estimate' }}
                 </a>{% endif %}
+                {% if f.status %}<span class="badge text-bg-success" title="Store inputs entered — sheet updated">{{ f.status }}</span>{% endif %}
                 {% endfor %}
               </div>
               {% else %}<span class="text-muted">No file attached</span>{% endif %}
               {% else %}{{ s.part_name }}{% endif %}
             </td>
-            <td>{{ s.qty_requested }}</td>
+            <td>{{ (prod_qty or {}).get(s.id|string, s.qty_requested) }}</td>
             <td>{{ s.qty_sourced }}</td>
             <td>{{ s.raised_by or '—' }}</td>
             <td>
@@ -661,6 +662,13 @@
               {% elif s.source == 'production' %}
                 {% if s.confirmed %}
                 <span class="badge bg-success"><i class="bi bi-patch-check"></i> Confirmed</span>
+                {% set _est = (estimates_by_batch.get(s.id | string, []) | selectattr('id', 'equalto', s.estimate_id) | list | first) %}
+                {% if _est and _est.status %}<span class="badge text-bg-primary">{{ _est.status }}</span>{% endif %}
+                {% if _est and _est.estimate_type == 'open' and can(current_user, 'spare_parts', 'edit') %}
+                {# Edit (2026-11-15): reopen the Part Estimation pop-up to change Store Inputs #}
+                <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-1" title="Edit Store Inputs"
+                        onclick="confirmProductionRequest('{{ s.id }}', this)"><i class="bi bi-pencil"></i></button>
+                {% endif %}
                 {% else %}
                 {% if can(current_user, 'spare_parts', 'edit') %}
                 <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
@@ -683,6 +691,49 @@
 </div>{# /.row Supplier Deal + tabs #}
 
 <!-- Sourcing Request Verify modal (#4) -->
+{# Confirm Request on an Open Estimate request (2026-11-15, Pankaj): the estimate as
+   saved on Part Estimation plus Total Parts / Difference / Store Inputs. Total Parts =
+   the tag counts of the models that have a value in the row (2026-11-15);
+   Difference = Total Parts − Store Inputs. Submitting confirms the request, marks the estimate
+   "Updated" and rewrites its attached sheet. #}
+<div class="modal fade" id="confirmEstimateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header bg-dark bg-opacity-10">
+        <h5 class="modal-title"><i class="bi bi-grid-3x3 me-2"></i>Part Estimation — <span id="ceq_lot">—</span> <span class="small text-muted" id="ceq_grade"></span></h5>
+        {# Estimate totals as saved on Part Estimation, read-only (2026-11-15) #}
+        <div class="ms-auto me-3 d-flex gap-4 flex-wrap text-end">
+          <div><div class="small text-muted">Total Part Amount</div><div class="fw-bold" id="ceq_t_amount">—</div></div>
+          <div><div class="small text-muted">Total Part Quantity</div><div class="fw-bold" id="ceq_t_qty">—</div></div>
+          <div><div class="small text-muted">Total Repair Cost</div><div class="fw-bold" id="ceq_t_repair">—</div></div>
+          <div><div class="small text-muted">Total Estimate</div><div class="fw-bold" id="ceq_t_est">—</div></div>
+        </div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div id="ceq_error" class="alert alert-danger d-none"></div>
+        <div class="small text-muted mb-2">Prices are as saved on Part Estimation. <b>Total Parts</b> = the tag counts of the models that have a value in the row.
+          Enter what the store has in <b>Store Inputs</b>; <b>Difference</b> = Total Parts − Store Inputs.</div>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered align-middle" id="ceq_table">
+            <thead class="small"></thead><tbody class="small"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="ceq_submit"><i class="bi bi-patch-check me-1"></i>Confirm Request</button>
+      </div>
+    </div>
+  </div>
+</div>
+<style>
+  #ceq_table thead th { background: var(--brand-blue, #0e3a7a); color: #f0f4f8; white-space: nowrap; text-align: center; }
+  #ceq_table thead th.ceq-x { background: #0F7A37; }
+  #ceq_table td:first-child { background: #e8f2fa; color: #0e3a7a; font-weight: 500; white-space: nowrap; position: sticky; left: 0; }
+  #ceq_table .ceq-diff, #ceq_table .ceq-total { font-weight: 600; text-align: center; min-width: 90px; }
+  #ceq_table .ceq-store { width: 110px; }
+</style>
 <div class="modal fade" id="sourcingVerifyModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -1501,21 +1552,81 @@ document.getElementById('sourcingVerifyForm').addEventListener('submit', functio
   .catch(function() { alert('Network error — please try again.'); });
 });
 
+function _spCsrf() {
+  var c = document.cookie.split('; ').find(function (x) { return x.startsWith('csrf_token='); });
+  return c ? decodeURIComponent(c.split('=')[1]) : '';
+}
+function _postConfirm(srId, storeInputs, btn) {
+  var body = new URLSearchParams({ csrf_token: _spCsrf() });
+  if (storeInputs) body.append('store_inputs', JSON.stringify(storeInputs));
+  if (btn) btn.disabled = true;
+  return fetch('/part-sourcing/' + srId + '/confirm', {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    if (d.ok) { location.reload(); return; }
+    if (btn) btn.disabled = false;
+    var e = document.getElementById('ceq_error');
+    if (storeInputs && e) { e.textContent = d.error || 'Could not confirm'; e.classList.remove('d-none'); }
+    else alert('Failed: ' + (d.error || 'Unknown error'));
+  }).catch(function () { if (btn) btn.disabled = false; alert('Network error — please try again.'); });
+}
+// Confirm Request (2026-11-15): Open Estimate requests open the Part Estimation
+// pop-up with Difference / Store Inputs; other estimate types confirm as before.
 function confirmProductionRequest(srId, btn) {
-  if (!confirm('Confirm this production part request?')) return;
-  var csrf = document.cookie.split('; ').find(function(c){ return c.startsWith('csrf_token='); });
   btn.disabled = true;
-  fetch('/part-sourcing/' + srId + '/confirm', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/x-www-form-urlencoded'},
-    body: new URLSearchParams({csrf_token: csrf ? csrf.split('=')[1] : ''})
-  })
-  .then(function(r) { return r.json(); })
-  .then(function(d) {
-    if (d.ok) { location.reload(); }
-    else { alert('Failed: ' + (d.error || 'Unknown error')); btn.disabled = false; }
-  })
-  .catch(function() { alert('Network error — please try again.'); btn.disabled = false; });
+  fetch('/part-sourcing/' + srId + '/estimate-data', { credentials: 'same-origin' })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      btn.disabled = false;
+      if (!d.ok) { alert('Failed: ' + (d.error || 'Unknown error')); return; }
+      if (!d.open) { if (confirm('Confirm this production part request?')) _postConfirm(srId, null, btn); return; }
+      var esc = function (t) { var x = document.createElement('div'); x.textContent = t == null ? '' : t; return x.innerHTML; };
+      document.getElementById('ceq_lot').textContent = d.lot_number || '';
+      document.getElementById('ceq_submit').innerHTML = d.status
+        ? '<i class="bi bi-save me-1"></i>Save Changes' : '<i class="bi bi-patch-check me-1"></i>Confirm Request';
+      document.getElementById('ceq_grade').textContent = d.grade ? '· Grade ' + d.grade : '';
+      document.getElementById('ceq_error').classList.add('d-none');
+      var money = function (n) { return n == null ? '—' : '₹' + (Number(n) || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 }); };
+      var tt = d.totals || {};
+      document.getElementById('ceq_t_amount').textContent = money(tt.amount);
+      document.getElementById('ceq_t_qty').textContent = (tt.part_qty || 0).toLocaleString('en-IN');
+      document.getElementById('ceq_t_repair').textContent = money(tt.repair);
+      document.getElementById('ceq_t_est').textContent = money(tt.estimate);
+      var head = '<tr><th>Part</th>' + d.models.map(function (m) { return '<th>' + esc(m.model) + ' (' + m.qty + ')</th>'; }).join('')
+        + '<th class="ceq-x">Total Parts</th><th class="ceq-x">Difference</th><th class="ceq-x">Store Inputs</th></tr>';
+      var rows = d.parts.map(function (p) {
+        var sum = 0, cells = d.models.map(function (m) {
+          var v = d.cells[p.part + '||' + m.key];
+          if (v) sum += (m.qty || 0);   // Total Parts: tag count of each model with a value
+          return '<td class="text-center">' + (v ? v : '') + '</td>';
+        }).join('');
+        var si = d.store_inputs[p.part];
+        return '<tr data-part="' + esc(p.part) + '" data-sum="' + sum + '"><td>' + esc(p.label) + '</td>' + cells
+          + '<td class="ceq-total">' + (sum ? (Math.round(sum * 100) / 100) : '') + '</td><td class="ceq-diff"></td><td><input type="number" min="0" step="1" class="form-control form-control-sm text-center ceq-store" value="' + (si == null ? '' : si) + '"></td></tr>';
+      }).join('');
+      var t = document.getElementById('ceq_table');
+      t.tHead.innerHTML = head; t.tBodies[0].innerHTML = rows;
+      var recalc = function () {
+        t.querySelectorAll('tbody tr').forEach(function (tr) {
+          var sum = parseFloat(tr.dataset.sum) || 0, raw = tr.querySelector('.ceq-store').value;
+          var diff = raw === '' ? sum : sum - (parseFloat(raw) || 0);
+          var cell = tr.querySelector('.ceq-diff');
+          cell.textContent = (sum || raw !== '') ? (Math.round(diff * 100) / 100) : '';
+          cell.className = 'ceq-diff ' + (diff > 0 ? 'text-danger' : diff < 0 ? 'text-primary' : 'text-success');
+        });
+      };
+      t.oninput = recalc; recalc();
+      document.getElementById('ceq_submit').onclick = function () {
+        var store = {};
+        t.querySelectorAll('tbody tr').forEach(function (tr) {
+          var v = tr.querySelector('.ceq-store').value;
+          if (v !== '') store[tr.dataset.part] = v;
+        });
+        _postConfirm(srId, store, this);
+      };
+      bootstrap.Modal.getOrCreateInstance(document.getElementById('confirmEstimateModal')).show();
+    })
+    .catch(function () { btn.disabled = false; alert('Network error — please try again.'); });
 }
 
 function submitSourcingReupload() {

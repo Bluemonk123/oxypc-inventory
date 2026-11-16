@@ -55,7 +55,7 @@ from .bucket import Bucket
 from .partner import (
     PartnerListing, PartnerListingDevice, PartnerFloorConfig,
     PartnerBooking, PartnerPaymentProof, PartnerSetting,
-    PartnerLoginLog, PartnerListingView,
+    PartnerLoginLog, PartnerListingView, PartnerNotification,
 )
 # Customer Care Agent (post-sale warranty/diagnostics/ticketing)
 from .care import (

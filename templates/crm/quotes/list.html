@@ -6,7 +6,7 @@
 
 <div class="d-flex justify-content-between align-items-center mb-3">
   <div class="text-muted small">{{ quotes | length }} quote(s) total</div>
-  {% if can(current_user, 'crm_quotes', 'add') %}<a href="/crm/quotes/new" class="btn btn-sm btn-success"><i class="bi bi-plus-circle me-1"></i>Add Quote</a>{% endif %}
+  {% if can(current_user, 'crm_quotes', 'add') %}<button type="button" class="btn btn-sm btn-success" onclick="openCreateQuotation({type: 'buyer'})"><i class="bi bi-plus-circle me-1"></i>Add Quote</button>{% endif %}
 </div>
 
 <div class="card border-0 shadow-sm">
@@ -23,6 +23,7 @@
             <th>Valid Until</th>
             <th>Total Amount</th>
             <th>Status</th>
+            <th title="Ready-for-Sale tags of the same configuration">Tags</th>
             <th>Download</th><th>Actions</th>
           </tr>
         </thead>
@@ -55,6 +56,7 @@
             <td>
               <span class="badge bg-{{ status_colors.get(qt.status,'secondary') }}">{{ qt.status | title }}</span>
             </td>
+            <td data-qt-tags="crm" data-qt-id="{{ qt.id }}" data-qt-label="{{ qt.quote_number }}"></td>
             <td>{{ dl.cell(downloads.get(qt.id|string) if can(current_user, 'crm_quotes', 'export') else []) }}</td>
             <td>
               <div class="btn-group btn-group-sm">
@@ -69,6 +71,9 @@
     </div>
   </div>
 </div>
+{# Create Quotation modal — the same one as Telecaller Quotations (2026-11-16) #}
+{% set qc_mode = 'crm' %}{% include "dealers/_quotation_modal.html" %}
+{% include "_quote_tags.html" %}
 {% endblock %}
 {% block scripts %}
 <script>

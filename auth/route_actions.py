@@ -66,6 +66,7 @@ ROUTE_ACTIONS = {
     # ===== routers/stock.py =====
     ('GET', '/lots/export-all-csv'): ('lots', 'export'),  # export_all_lots_csv: Lot Overview Export All
     ('GET', '/lots/{lot_id}/line-items/export'): ('lots', 'export'),  # export_line_items_csv: lot detail line-items export
+    ('POST', '/trc-production/targets'): ('production_manager', 'edit'),  # trc_production_targets: Production Board Set targets (2026-11-14)
     ('GET', '/trc-production/summary/{tile}'): ('production_manager', 'export'),  # trc_production_tile_summary: Production Manager tile summary CSV (missed by path regex)
     ('GET', '/trc-production/pna-summary'): (('production_manager', 'part_estimation'), 'export'),  # trc_production_pna_summary: PNA tag summary CSV; linked from Production Manager and Part Estimation (missed by path regex)
     ('POST', '/lots/export-csv'): ('lots', 'export'),  # export_selected_lots_csv: export/download
@@ -179,8 +180,8 @@ ROUTE_ACTIONS = {
     ('GET', '/admin/master/export/{category}'): ('admin_master', 'export'),  # export_category_csv: Master Data category export
     ('GET', '/admin/master/template/{category}'): ('admin_master', 'export'),  # download_category_template: Master Data / Bulk Upload master template
     ('POST', '/admin/master/global-visibility/toggle'): None,  # toggle_global_visibility: admin-only master data / visibility config
-    ('POST', '/admin/master/system-colors/save'): None,  # save_system_colors: admin-only System Colors tab (2026-11-08)
-    ('POST', '/admin/master/system-colors/reset'): None,
+    ('POST', '/admin/master/system-colors/save'): ('extra_settings', 'edit'),  # save_system_colors: Extra Settings → System Colors (2026-11-16)
+    ('POST', '/admin/master/system-colors/reset'): ('extra_settings', 'edit'),
     ('POST', '/admin/master/email/settings'): None,  # save_email_settings: admin-only Email tab, writes SMTP keys to .env (2026-11-11)
     ('POST', '/admin/master/email/test'): None,  # send_test_email: admin-only Email tab (2026-11-09)  # reset_system_colors: admin-only System Colors tab (2026-11-08)
     ('POST', '/admin/master/add'): None,  # add_master_value: admin-only master data
@@ -249,6 +250,9 @@ ROUTE_ACTIONS = {
     ('POST', '/part-requests/{req_id}/warranty-replace'): ('spare_parts', 'edit'),  # warranty_replace
     ('POST', '/part-requests/{req_id}/warranty-received'): ('spare_parts', 'edit'),  # warranty_received
     ('POST', '/part-sourcing/{sr_id}/close'): ('spare_parts', 'edit'),  # close_sourcing: Parts Manager list / Procure dashboard
+    ('POST', '/part-sourcing/{sr_id}/link-deal'): ('crm_dashboard', 'edit'),  # link_sourcing_deal: Procurement Board Link Deal (2026-11-15)
+    ('POST', '/procure-dashboard/device-sourcing/{request_id}/link-deal'): ('crm_dashboard', 'edit'),  # link_device_sourcing_deal: Device Sourcing Link Deal (2026-11-15)
+    ('POST', '/activity-board/sourcing/{kind}/{req_id}/{action}'): ('activity_board', 'edit'),  # review_sourcing_request: Verify / Reject on Activity Board (2026-11-15)
     ('POST', '/part-sourcing/{sr_id}/verify'): ('spare_parts', 'edit'),  # verify_sourcing
     ('POST', '/part-sourcing/{sr_id}/confirm'): ('spare_parts', 'edit'),  # confirm_production_sourcing
     ('POST', '/part-sourcing/{sr_id}/request-reupload'): ('spare_parts', 'edit'),  # request_sourcing_reupload
@@ -474,6 +478,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/contacts/new'): ('crm_contacts', 'add'),  # create_contact
     ('POST', '/crm/contacts/{contact_id}/edit'): ('crm_contacts', 'edit'),  # update_contact
     ('POST', '/crm/contacts/{contact_id}/verify-kyc'): ('crm_contacts', 'edit'),  # verify_kyc
+    ('POST', '/crm/contacts/kyc-sample/{item}'): None,  # upload_kyc_sample: admin only, checked in the handler (2026-11-15)
     ('POST', '/crm/contacts/{contact_id}/verify-credit'): None,  # verify_credit: gated in the route — the account's mapped AVP/VP or Team Leader, or admin (2026-11-06)
     ('POST', '/activity-board/{kind}/{deal_id}/start'): None,  # start_check: gated in the route — the person assigned to Inspection / Screening, or admin / Activity Board Edit
     ('POST', '/activity-board/{kind}/{deal_id}/report'): None,  # upload_report: gated in the route — same as start_check
@@ -500,6 +505,7 @@ ROUTE_ACTIONS = {
     ('POST', '/crm/sourcing/{deal_id}/generate-po'): ('crm_sourcing', 'add'),  # generate_po_from_deal: creates CRMPurchaseOrder
     # ===== routers/crm_sales.py =====
     ('POST', '/crm/sales/new'): ('crm_sales_opp', 'add'),  # create_opp
+    ('POST', '/crm/sales/targets'): ('crm_sales_opp', 'pricing'),  # save_sales_targets: CRM Sales Monthly target (2026-11-14)
     ('POST', '/crm/sales/{opp_id}/stage'): ('crm_sales_opp', 'edit'),  # move_stage
     ('POST', '/crm/sales/{opp_id}/next-stage'): ('crm_sales_opp', 'edit'),  # next_stage: Buyer Deal Next Stage (2026-10-27)
     ('POST', '/crm/sales/{opp_id}/steps/{step_key}/assign'): ('crm_sales_opp', 'edit'),  # assign_step: Buyer Deal Stage Progress user icon
@@ -558,6 +564,7 @@ ROUTE_ACTIONS = {
     ('POST', '/accounts/po/{po_id}/complete-payment'): ('finance', 'edit'),  # complete_po_payment
     ('POST', '/accounts/verify/{kind}/{record_id}'): ('finance', 'edit'),  # accounts_verify
     ('POST', '/accounts/verify-kyc/{contact_id}'): ('crm_contacts', 'edit'),  # accounts_verify_kyc
+    ('POST', '/accounts/kyc-item/{contact_id}/{item}/{action}'): ('crm_contacts', 'edit'),  # accounts_kyc_item: verify / reject one KYC document (2026-11-15)
     ('GET', '/accounts/kyc-zip/{contact_id}'): ('crm_contacts', 'export'),  # accounts_kyc_zip: KYC documents .zip (2026-11-10)
     ('POST', '/accounts/po/{po_id}/upload-invoice'): ('finance', 'edit'),  # upload_po_invoice: single invoice attachment
     ('POST', '/accounts/quote/{quote_id}/complete-payment'): ('finance', 'edit'),  # complete_quote_payment
@@ -600,9 +607,9 @@ ROUTE_ACTIONS = {
     ('GET', '/manuals/{mid}/download'): ('manuals', 'export'),  # download_manual
     ('POST', '/manuals/{mid}/share'): None,  # share_manual: share a static manual; no business record changed
     # ===== routers/landing_pages.py =====
-    ('POST', '/admin/landing-pages/save'): ('landing_pages', 'edit'),  # save_landing_page_title
-    ('POST', '/admin/landing-pages/reset'): ('landing_pages', 'edit'),  # reset_landing_page_title
-    ('POST', '/admin/landing-pages/toggle-breadcrumb'): ('landing_pages', 'edit'),  # toggle_breadcrumb
+    ('POST', '/admin/landing-pages/save'): ('extra_settings', 'edit'),  # save_landing_page_title
+    ('POST', '/admin/landing-pages/reset'): ('extra_settings', 'edit'),  # reset_landing_page_title
+    ('POST', '/admin/landing-pages/toggle-breadcrumb'): ('extra_settings', 'edit'),  # toggle_breadcrumb
     # ===== routers/procure_dashboard.py =====
     ('POST', '/procure-dashboard/device-sourcing/{request_id}/close'): ('spare_parts_purchase', 'edit'),  # close_device_sourcing: no own key: nav gated by crm_dashboard, alias procure-dashboard -> spare_parts_purchase (see notes s3)
     # ===== routers/terms_conditions.py =====
@@ -618,8 +625,10 @@ ROUTE_ACTIONS = {
     ('GET', '/crm/sales-orders/{so_id}/print'): ('crm_sales_opp', 'export'),  # print_sales_order (2026-11-10): Download column on Sales Orders (no own module key - Customer Deals export)  # print_dealer_quotation: Download "Quote" of an approved quotation
     ('POST', '/dealer-quotations/{quotation_id}/delete'): (('dealers', 'quotations'), 'delete'),  # delete_dealer_quotation: same as confirm
     # ===== routers/sidebar_config.py =====
-    ('POST', '/admin/sidebar-config/save'): ('sidebar_config', 'edit'),  # save_sidebar_label
-    ('POST', '/admin/sidebar-config/reset'): ('sidebar_config', 'edit'),  # reset_sidebar_label
+    ('POST', '/admin/sidebar-config/save'): ('extra_settings', 'edit'),  # save_sidebar_label
+    ('POST', '/admin/sidebar-config/reset'): ('extra_settings', 'edit'),  # reset_sidebar_label
+    ('POST', '/admin/extra-settings/sidebar-alignment/save'): ('extra_settings', 'edit'),  # Sidebar Alignment (2026-11-16)
+    ('POST', '/admin/extra-settings/sidebar-alignment/reset'): ('extra_settings', 'edit'),
     # ===== routers/stress_api.py =====
     ('POST', '/stress/{barcode}/run'): ('qc_check', 'edit'),  # run_stress: Stress Test page; starts in-memory run
     ('POST', '/stress/{barcode}/stop'): ('qc_check', 'edit'),  # stop_stress
@@ -643,6 +652,7 @@ ROUTE_ACTIONS = {
     ('POST', '/buckets/{bucket_id}/release-repair-line'): ('production_manager', 'edit'),  # release_bucket_from_repair_line
     # ===== routers/partner_portal.py =====
     ('POST', '/partner/logout'): None,  # logout: partner portal
+    ('POST', '/partner/notifications/read'): None,  # partner_notifications_read: partner bell (external, 2026-11-15)
     ('POST', '/partner/tickets'): None,  # raise_my_ticket: partner portal My Tickets (external, 2026-11-11)
     ('POST', '/partner/listings/{listing_id}/bid'): None,  # place_bid: partner portal (external)
     ('POST', '/partner/listings/{listing_id}/custom-price'): None,  # request_custom_price: partner portal (external)
@@ -666,6 +676,7 @@ ROUTE_ACTIONS = {
     ('POST', '/trade-partner/listings/{listing_id}/publish'): ('trade_partner_listings', 'edit'),  # publish_listing
     ('POST', '/trade-partner/listings/{listing_id}/pause'): ('trade_partner_listings', 'edit'),  # pause_listing
     ('POST', '/trade-partner/listings/{listing_id}/reprice'): ('trade_partner_listings', 'pricing_add'),  # reprice_listing
+    ('POST', '/trade-partner/bookings/lot/{req_id}/approve'): ('trade_partner_bookings', 'edit'),  # approve_lot_booking (2026-11-15)
     ('POST', '/trade-partner/bookings/{booking_id}/verify'): ('trade_partner_bookings', 'edit'),  # verify_token_proof
     ('POST', '/trade-partner/bookings/{booking_id}/reject'): ('trade_partner_bookings', 'edit'),  # reject_booking
     ('POST', '/trade-partner/bookings/{booking_id}/balance-verify'): ('trade_partner_bookings', 'edit'),  # verify_balance
@@ -706,6 +717,9 @@ ROUTE_ACTIONS = {
     # ===== routers/workid_status.py =====
     ('GET', '/workid-status/export'): ('workid_status', 'export'),  # workid_status_export
     ('POST', '/workid-status/delete'): ('workid_status', 'delete'),  # workid_status_delete: trash icon on the WorkID column; admin only (route refuses everyone else)
+    # ===== routers/sales_coordinator.py =====
+    ('GET', '/sales-coordinator/export-data'): ('sales_coordinator', 'export'),  # Export Report modal rows (JSON), downloaded as CSV in the browser
+    ('GET', '/sales-coordinator/invoice'): None,  # Sales Records 'Sales IDs' modal: JSON list of one invoice's sales (read only; page needs sales_coordinator enable)
     # ===== routers/pre_sale_iqc.py =====
     ('POST', '/pre-sale-iqc/assign'): None,  # Ready for Sale Tags bulk 'Assign to Pre-Sale': queues tags (pending PSQC WorkID); shown to every Ready for Sale user (2026-10-30), like the page itself
     ('POST', '/pre-sale-iqc/start'): ('pre_sale_iqc', 'edit'),  # pre_sale_iqc_start

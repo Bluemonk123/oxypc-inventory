@@ -1739,8 +1739,18 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                               if s.value not in _no_workid]
     cosmetic_stage_choices.append((PSIQC_STAGE, PSIQC_LABEL))      # Pre-Sale IQC (2026-10-29)
 
+    # Option C dashboard (2026-11-14, Pankaj) — services/workid_dash.py
+    from services.workid_dash import build as _build_dash
+    try:
+        dash_kpis, dash_widgets = await _build_dash(db)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("workid dashboard failed")
+        await db.rollback()
+        dash_kpis, dash_widgets = [], []
     return templates.TemplateResponse("workid_status/list.html", {
         "request": request, "current_user": current_user,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "items": items, "rows_json": _rows_json(items),
         "engineers": engineers, "is_admin": is_admin,
         "tile_counts": tile_counts, "cosmetic_stage_choices": cosmetic_stage_choices,

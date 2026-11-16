@@ -234,8 +234,19 @@ async def _render_partners(
                 "location": ", ".join(filter(None, [loc.city, loc.state])) if loc else ""})
     cell_locs, cell_nums, cell_team = await account_cell_maps(db, cids)
 
+    # Option C dashboard, Variant 1 (2026-11-16, Pankaj) — services/partners_dash.py.
+    dash_kpis, dash_widgets = [], []
+    try:
+        from services.partners_dash import build as _tp_dash
+        dash_kpis, dash_widgets = await _tp_dash(db, partners, scores, full_name_by_username)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Partners dashboard failed")
+        await db.rollback()
+
     return templates.TemplateResponse("trade_partner/partners.html", {
         "request": request, "current_user": current_user,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "accounts_by_id": accounts_by_id, "persons": persons,
         "cell_locs": cell_locs, "cell_nums": cell_nums, "cell_team": cell_team,
         "source_labels": dict(SOURCE_TYPES), "buyer_labels": dict(BUYER_TYPES),
@@ -328,6 +339,11 @@ async def enable_partner(
             failed.append({"name": cid, "reason": "Account not found"})
             continue
         label = contact.company_name or contact.contact_code
+        from services.partner_move import partner_eligibility
+        _ok, _why = partner_eligibility(contact)
+        if not _ok:   # Active + KYC + Credit verified only (2026-11-15)
+            failed.append({"name": label, "reason": ", ".join(_why)})
+            continue
 
         norm = override or normalize_phone(contact.phone or "")
         if len(norm) != 10:
@@ -496,6 +512,12 @@ async def set_partner_login(
         pid = uuid_mod.UUID(person_id)
     except ValueError:
         return RedirectResponse(url=back + "?error=" + quote_plus("Pick the person who will log in"), status_code=302)
+    from services.partner_move import partner_eligibility
+    _acct = (await db.execute(select(CRMContact).where(CRMContact.id == dealer.crm_contact_id))).scalar_one_or_none()
+    _ok, _why = partner_eligibility(_acct) if _acct else (False, ["Account not found"])
+    if not _ok and not dealer.portal_password_hash:   # first login only for Active + verified Accounts (2026-11-15)
+        return RedirectResponse(url=back + "?error=" + quote_plus(
+            f"{dealer.business_name}: no login until the Account is Active with KYC and Credit verified ({', '.join(_why)})"), status_code=302)
     person = (await db.execute(select(CRMContactNumber).where(
         CRMContactNumber.id == pid, CRMContactNumber.contact_id == dealer.crm_contact_id))).scalar_one_or_none()
     if not person:
@@ -1025,7 +1047,13 @@ async def bookings_queue(
                 "lot_number": lot.lot_number if lot else "—",
                 "dealer_name": dealer.business_name if dealer else "—",
                 "dealer_phone": (dealer.portal_phone or dealer.phone) if dealer else None,
+                "deal_id": str(r.opportunity_id) if r.opportunity_id else None,
             })
+        # Quotation / Sales Order of approved bookings' deals (2026-11-16)
+        from services.partner_deals import deal_docs
+        for row in lot_bookings:
+            if row["deal_id"]:
+                row["quote"], row["so"] = await deal_docs(db, row["req"].opportunity_id)
 
     scores = await compute_dealer_scores(db, [b.dealer_id for b in bookings])
     settings = await get_settings(db)
@@ -1058,6 +1086,39 @@ def _pending_proof(booking: PartnerBooking, proof_type: str):
     pending = [p for p in booking.proofs
                if p.proof_type == proof_type and p.status == "pending"]
     return pending[-1] if pending else None
+
+
+@router.post("/bookings/lot/{req_id}/approve")
+async def approve_lot_booking(
+    request: Request,
+    req_id: str,
+    _csrf=Depends(verify_csrf),
+    current_user: User = Depends(require_module_perm("trade_partner_bookings", "edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bookings Queue → Lot Bookings → Approve (2026-11-15, Pankaj): opens a
+    Customer Deal at stage Quote with a Quotation (Base Price × booked qty ÷
+    lot qty) and tells the partner and their Account Manager."""
+    from services.partner_deals import deal_from_booking
+    back = "/trade-partner/bookings"
+    try:
+        req = (await db.execute(select(LotBookingRequest).where(
+            LotBookingRequest.id == uuid_mod.UUID(req_id)).with_for_update())).scalar_one_or_none()
+    except (ValueError, AttributeError):
+        req = None
+    if not req:
+        return RedirectResponse(url=f"{back}?error=Booking+not+found", status_code=302)
+    if req.status != "requested":
+        return RedirectResponse(url=f"{back}?error=" + quote_plus(f"This booking is already {req.status}"), status_code=302)
+    lot = (await db.execute(select(Lot).where(Lot.id == req.lot_id))).scalar_one_or_none()
+    dealer = (await db.execute(select(Dealer).where(Dealer.id == req.dealer_id))).scalar_one_or_none()
+    if not lot or not dealer:
+        return RedirectResponse(url=f"{back}?error=Lot+or+partner+no+longer+exists", status_code=302)
+    opp, quote = await deal_from_booking(db, req, lot, dealer, current_user, request)
+    await db.commit()
+    return RedirectResponse(url=f"{back}?success=" + quote_plus(
+        f"Booking approved — Customer Deal {opp.opp_number} opened at Quote with Quotation {quote.quote_number}"),
+        status_code=302)
 
 
 @router.post("/bookings/{booking_id}/verify")
@@ -1927,7 +1988,7 @@ async def _payment_map(db: AsyncSession, bid_ids):
 def _decorate_payments(rows, payments):
     """Attach the derived four-state payment label to won rows."""
     for r in rows:
-        has_po = any(d.doc_type == "po" for d in r["documents"])
+        has_po = any(d.doc_type in ("po", "so") for d in r["documents"])   # SO from Mark Won (2026-11-15)
         pay = payments.get(str(r["bid"].id))
         r["payment"] = pay
         r["payment_status"] = payment_status(has_po, pay)
@@ -2234,6 +2295,9 @@ async def generate_bid_po(
     await audit(db, user=current_user, action="BID_PO_GENERATED",
                 table_name="partner_bids", record_id=str(bid.id),
                 new_value={"bid": bid.bid_number, "file": fname}, request=request)
+    from services.partner_deals import notify_partner
+    await notify_partner(db, bid.dealer_id, f"Purchase Order ready — {bid.bid_number}",
+                         "Download it from My Bids.", "info", "/partner/bids")
     await db.commit()
     return RedirectResponse(
         url=f"/trade-partner/bids?success=PO+generated+and+attached+to+{bid.bid_number}",
@@ -2308,6 +2372,9 @@ async def mark_bid_won(
 
     dealer = (await db.execute(
         select(Dealer).where(Dealer.id == bid.dealer_id))).scalar_one_or_none()
+    if not dealer:
+        return RedirectResponse(url="/trade-partner/bids?error=Partner+account+for+this+bid+not+found",
+                                status_code=302)
     listing = None
     if bid.listing_id:
         listing = (await db.execute(
@@ -2318,53 +2385,25 @@ async def mark_bid_won(
         lot = (await db.execute(
             select(Lot).where(Lot.id == bid.lot_id))).scalar_one_or_none()
 
-    # The bid names either a listing or a lot; the Buyer Deal has to describe
-    # whichever it actually was, not assume a listing exists.
-    what = (listing.title if listing
-            else (f"Lot {lot.lot_number}" if lot else "Lot"))
-    source_ref = (listing.listing_code if listing
-                  else (lot.lot_number if lot else "-"))
-
-    n = ((await db.execute(select(func.count(CRMSalesOpportunity.id)))).scalar() or 0) + 1
-    opp = CRMSalesOpportunity(
-        opp_number=f"OPP-{app_now().year}-{n:04d}",
-        # Links to the CRM Account behind the dealer when there is one, so the
-        # Buyer Deal lands on that account's profile rather than floating free.
-        contact_id=dealer.crm_contact_id if dealer else None,
-        title=f"{what} - won by "
-              f"{dealer.business_name if dealer else 'dealer'} ({bid.bid_number})",
-        buyer_type="dealer",
-        required_qty=(listing.qty_available if listing
-                      else (lot.qty if lot else None)),
-        grade_required=listing.grade_summary if listing else None,
-        stage="won",
-        estimated_value=bid.bid_amount,
-        assigned_to=dealer.sales_owner_username if dealer else None,
-        notes=(f"Created from External Partner bid {bid.bid_number} "
-               f"({bid.bid_type} price) on "
-               f"{'listing' if listing else 'lot'} {source_ref}."),
-        created_by=current_user.username,
-    )
-    db.add(opp)
-    await db.flush()
-
+    # 2026-11-16 (Pankaj): Customer Deal at stage Quote with a Quotation of the
+    # lot's tags (bid spread equally per unit), its PDF attached to the bid; the
+    # Sales Order follows from the deal's approval (services/partner_deals).
+    from services.partner_deals import deal_from_won_bid, notify_bid_lost
     bid.status = "won"
     bid.won_by = current_user.username
     bid.won_at = app_now()
-    bid.opportunity_id = opp.id
+    opp, _quote, _so = await deal_from_won_bid(db, bid, dealer, listing, lot, current_user, request)
 
     # Losers are the other live bids on the SAME target — matched on whichever
     # of the two columns this bid actually uses. Matching on listing_id alone
     # would, for a lot bid, compare NULL == NULL and mark nothing lost.
     same_target = (PartnerBid.lot_id == bid.lot_id if bid.lot_id
                    else PartnerBid.listing_id == bid.listing_id)
-    await db.execute(
-        update(PartnerBid)
-        .where(same_target,
-               PartnerBid.id != bid.id,
-               PartnerBid.status == "active")
-        .values(status="lost")
-    )
+    losers = (await db.execute(select(PartnerBid).where(
+        same_target, PartnerBid.id != bid.id, PartnerBid.status == "active"))).scalars().all()
+    for lb in losers:
+        lb.status = "lost"
+    await notify_bid_lost(db, losers, (listing.title if listing else (f"Lot {lot.lot_number}" if lot else "Lot")))
 
     await audit(db, action="PARTNER_BID_MARKED_WON", user=current_user,
                 table_name="partner_bids", record_id=str(bid.id),
@@ -2375,7 +2414,7 @@ async def mark_bid_won(
                 request=request)
     await db.commit()
     return RedirectResponse(
-        url=f"/trade-partner/bids?success=Buyer+Deal+{opp.opp_number}+created",
+        url=f"/trade-partner/bids?success=Customer+Deal+{opp.opp_number}+created+at+Quote+with+Quotation+{_quote.quote_number}",
         status_code=302)
 
 
@@ -2416,6 +2455,11 @@ async def upload_bid_document(
                 new_value={"bid": bid.bid_number, "type": doc_type,
                            "file": file.filename},
                 request=request)
+    if bid.status == "won":   # partner bell (2026-11-15)
+        from services.partner_deals import notify_partner
+        _lbl = {"so": "Sales Order", "po": "Purchase Order", "quote": "Quotation", "invoice": "Invoice"}.get(doc_type, doc_type.upper())
+        await notify_partner(db, bid.dealer_id, f"{_lbl} attached — {bid.bid_number}",
+                             "Download it from My Bids.", "info", "/partner/bids")
     await db.commit()
     return RedirectResponse(url="/trade-partner/bids?success=Document+attached",
                             status_code=302)

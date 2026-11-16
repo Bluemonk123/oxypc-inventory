@@ -1,0 +1,407 @@
+{% extends "base.html" %}
+{% block title %}Sales Coordinator — OxyPC{% endblock %}
+{% block page_title %}Sales Coordinator{% endblock %}
+{% block content %}
+{% import "_multiselect_filter.html" as ms %}
+{# Sales Coordinator (2026-11-14, Pankaj): four cards with pill tabs, in the
+   Activity Board card style. routers/sales_coordinator.py #}
+{% set can_edit = can(current_user, 'sales_coordinator', 'edit') %}
+{% set csrf = request.cookies.get('csrf_token', '') %}
+<style>
+  .sc-card .card-body { max-height:420px; overflow:auto; }
+  .sc-card table { margin-bottom:0; }
+  .sc-card thead th { position:sticky; top:0; background:var(--bs-tertiary-bg, #f8f9fa); z-index:1; font-size:.75rem; text-transform:uppercase; white-space:nowrap; }
+  .sc-spec { font-size:.75rem; color:var(--bs-secondary-color); }
+  .sc-tag { font-weight:700; font-family:var(--bs-font-monospace); text-decoration:none; }
+  .sc-notes { max-width:240px; white-space:pre-wrap; font-size:.8rem; }
+</style>
+
+{% macro empty(cols, text='Nothing here') %}<tr><td colspan="{{ cols }}" class="text-center text-muted py-3">{{ text }}</td></tr>{% endmacro %}
+{% macro tag_cell(d, spec) %}<a href="/devices/{{ d.barcode }}" class="sc-tag">{{ d.barcode }}</a><div class="sc-spec">{{ spec }}</div>{% endmacro %}
+{% macro tabs(prefix, items) %}
+  <ul class="nav pill-tabs" role="tablist">
+    {% for key, label in items %}
+    <li class="nav-item"><button type="button" class="nav-link{% if loop.first %} active{% endif %}" data-bs-toggle="tab" data-bs-target="#{{ prefix }}_{{ key }}">{{ label }}</button></li>
+    {% endfor %}
+  </ul>
+{% endmacro %}
+
+{# Option C dashboard (2026-11-14, Pankaj): header with the page filters
+   (labelled, Apply), KPI tiles and charts; "View Data" swaps them for the
+   four cards below. templates/_dash.html, routers/sales_coordinator.py _dashboard #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% set _actions %}{% if can(current_user, 'sales_coordinator', 'export') %}<button type="button" class="btn btn-sm btn-light" data-bs-toggle="modal" data-bs-target="#scExportModal"><i class="bi bi-download me-1"></i>Export Report</button>{% endif %}{% endset %}
+{% call dash.hero('Sales Coordinator', 'Sales  ›  Coordinator',
+                  ('Every tag from floor movement to the gate' if is_admin else 'Your Floor Movement tags, from showroom to the gate'),
+                  view_data=True, actions=_actions) %}
+  <form method="get" class="filter-bar" id="scFilters">
+    <div class="filter-bar-row">
+      <div>{{ ms.multiselect_inline('entity', 'Entities', entity_opts, f_entity) }}</div>
+      <div><input type="date" name="date_from" value="{{ f_from }}" class="form-control form-control-sm" title="Date From"></div>
+      <div><input type="date" name="date_to" value="{{ f_to }}" class="form-control form-control-sm" title="Date To"></div>
+      <div>{{ ms.multiselect_inline('category', 'Categories', category_opts, f_category) }}</div>
+      <div>{{ ms.multiselect_inline('sales_person', 'Sales Persons', person_opts, f_person) }}</div>
+      <div><button type="submit" class="btn btn-sm btn-primary">Apply</button>
+           <a href="{{ request.url.path }}" class="btn btn-sm btn-outline-secondary bg-white">Reset</a></div>
+    </div>
+  </form>
+{% endcall %}
+<div class="dash-body">
+  {{ dash.kpis(dash_kpis) }}
+  {{ dash.grid(dash_widgets) }}
+</div>
+<div class="dash-data">
+<div class="row g-3">
+  {# ── 1 Moved to Showroom ─────────────────────────────────────────── #}
+  <div class="col-xl-6">
+    <div class="card border-0 shadow-sm h-100 sc-card">
+      <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-3">
+        <span class="fw-semibold"><i class="bi bi-shop me-2"></i>Moved to Showroom</span>
+        {{ tabs('scShow', [('p', 'Pending'), ('d', 'Done')]) }}
+      </div>
+      <div class="card-body p-0 tab-content">
+        {% for key, rows in [('p', show_pending), ('d', show_done)] %}
+        <div class="tab-pane fade{% if loop.first %} show active{% endif %}" id="scShow_{{ key }}">
+          <table class="table table-sm table-hover align-middle small">
+            <thead><tr><th>Tag</th><th>Category</th><th>Location</th><th>Moved On</th>{% if key == 'p' %}<th class="text-end">Action</th>{% endif %}</tr></thead>
+            <tbody>
+            {% for r in rows %}
+              <tr>
+                <td>{{ tag_cell(r.d, r.spec) }}</td>
+                <td>{{ r.category }}</td>
+                <td class="font-monospace">{{ r.location or '—' }}</td>
+                <td class="text-nowrap">{{ r.moved_at.strftime('%d-%m-%Y %H:%M') if r.moved_at else '—' }}<div class="sc-spec">{{ r.moved_by or '—' }}</div></td>
+                {% if key == 'p' %}
+                <td class="text-end text-nowrap">
+                  {% if r.psiqc in ('pending', 'in_progress') %}
+                    <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Waiting at Pre-Sale</span>
+                  {% elif (r.d.current_stage.value if r.d.current_stage else '') != 'ready_to_sale' %}
+                    <span class="text-muted small" title="Only Ready for Sale tags can go to Pre-Sale">Not Ready for Sale</span>
+                  {% elif can_edit %}
+                    <button type="button" class="btn btn-sm btn-outline-primary bg-white py-0 sc-send" data-tag="{{ r.d.barcode }}">
+                      <i class="bi bi-send me-1"></i>Send to Pre-Sale</button>
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+                {% endif %}
+              </tr>
+            {% else %}{{ empty(5 if key == 'p' else 4) }}{% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {# ── 2 Pre-Sale QC (swapped with Sales Records, 2026-11-14) ────────────────────────────────────────────────── #}
+  <div class="col-xl-6">
+    <div class="card border-0 shadow-sm h-100 sc-card">
+      <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-3">
+        <span class="fw-semibold"><i class="bi bi-clipboard2-check me-2"></i>Pre-Sale QC</span>
+        {{ tabs('scPsqc', [('pending', 'Pending'), ('pass', 'Pass'), ('fail', 'Fail')]) }}
+      </div>
+      <div class="card-body p-0 tab-content">
+        {% for key in ('pending', 'pass', 'fail') %}
+        <div class="tab-pane fade{% if loop.first %} show active{% endif %}" id="scPsqc_{{ key }}">
+          <table class="table table-sm table-hover align-middle small">
+            <thead><tr><th>Tag</th><th>Notes</th><th>Status</th></tr></thead>
+            <tbody>
+            {% for r in psqc[key] %}
+              <tr>
+                <td>{{ tag_cell(r.d, r.spec) }}</td>
+                <td><div class="sc-notes">{{ r.notes or '—' }}</div></td>
+                <td class="text-nowrap">
+                  {% if r.wo.status == 'pending' %}<span class="badge bg-secondary">Queued</span>
+                  {% elif r.wo.status == 'in_progress' %}<span class="badge bg-primary">In progress</span>
+                    {% if r.wo.assigned_name %}<div class="sc-spec">{{ r.wo.assigned_name }}</div>{% endif %}
+                  {% elif r.result == 'fail' %}<span class="badge bg-danger">Fail</span>
+                  {% elif r.result == 'pass' %}<span class="badge bg-success">Pass</span>
+                  {% else %}<span class="badge bg-success bg-opacity-75" title="Completed without a Pass / Fail result">Completed</span>{% endif %}
+                  {% if r.wo.completed_at and r.wo.status == 'completed' %}<div class="sc-spec">{{ r.wo.completed_at.strftime('%d-%m-%Y') }}</div>{% endif %}
+                </td>
+              </tr>
+            {% else %}{{ empty(3) }}{% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+
+  {# ── 3 Sales Records (no Pending / Done) ─────────────────────────── #}
+  <div class="col-xl-6">
+    <div class="card border-0 shadow-sm h-100 sc-card">
+      <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-3">
+        <span class="fw-semibold"><i class="bi bi-receipt me-2"></i>Sales Records</span>
+        <span class="text-muted small">{{ sales|length }} invoice{{ '' if sales|length == 1 else 's' }}</span>
+      </div>
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover align-middle small">
+          <thead><tr><th>Invoice No</th><th>Invoice Date</th><th>Customer Name</th><th>Sales Person</th><th class="text-center">Sales IDs</th></tr></thead>
+          <tbody>
+          {% for r in sales %}
+            <tr>
+              <td class="font-monospace">{{ r.invoice }}</td>
+              <td class="text-nowrap">{{ r.date.strftime('%d-%m-%Y') if r.date else '—' }}</td>
+              <td>{{ r.customer or '—' }}</td>
+              <td>{{ r.person or '—' }}</td>
+              <td class="text-center"><button type="button" class="btn btn-sm btn-link py-0 fw-semibold sc-inv" data-inv="{{ r.invoice }}" title="Show the sales on this invoice">{{ r.count }}</button></td>
+            </tr>
+          {% else %}{{ empty(5, 'No invoices yet') }}{% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  {# ── 4 Waiting for Customer (Gate Pass) ──────────────────────────── #}
+  <div class="col-xl-6">
+    <div class="card border-0 shadow-sm h-100 sc-card">
+      <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-3">
+        <span class="fw-semibold"><i class="bi bi-person-check me-2"></i>Waiting for Customer</span>
+        {{ tabs('scGate', [('p', 'Pending'), ('c', 'Completed')]) }}
+      </div>
+      <div class="card-body p-0 tab-content">
+        {% for key, rows in [('p', gate_pending), ('c', gate_done)] %}
+        <div class="tab-pane fade{% if loop.first %} show active{% endif %}" id="scGate_{{ key }}">
+          <table class="table table-sm table-hover align-middle small">
+            <thead><tr><th>Tag Number</th><th>Invoice</th><th>Date</th><th>Device</th><th>Customer</th><th>DC</th><th class="text-end">Action</th></tr></thead>
+            <tbody>
+            {% for r in rows %}{% set s = r.sale %}
+              <tr>
+                <td><a href="/devices/{{ r.barcode }}" class="sc-tag">{{ r.barcode }}</a></td>
+                <td class="font-monospace">{{ s.invoice_no or '—' }}</td>
+                <td class="text-nowrap">{{ s.sold_at.strftime('%d-%b-%Y') if s.sold_at else '—' }}</td>
+                <td>{{ r.device }}</td>
+                <td>{{ s.customer_name or '—' }}</td>
+                <td class="text-nowrap"><a href="/invoices/waybill/{{ s.id }}" target="_blank" class="btn btn-sm btn-outline-primary bg-white py-0 px-2 text-nowrap"><i class="bi bi-file-earmark-text me-1"></i>DC</a></td>
+                <td class="text-end text-nowrap">
+                  {% if key == 'p' and can_edit %}
+                  <button type="button" class="btn btn-sm btn-success py-0 px-2 sc-exit" data-id="{{ s.id }}" data-tag="{{ r.barcode }}"><i class="bi bi-box-arrow-right me-1"></i>Confirm Exit</button>
+                  {% elif key == 'c' %}<span class="badge bg-{{ 'success' if s.delivery_status == 'delivered' else 'info text-dark' }}">{{ (s.delivery_status or '')|capitalize }}</span>
+                  {% else %}<span class="text-muted">—</span>{% endif %}
+                </td>
+              </tr>
+            {% else %}{{ empty(7) }}{% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>{# .dash-data #}
+</div>{# .dash #}
+
+{# Send to Pre-Sale: notes go with the tag to Pre-Sale IQC (/pre-sale-iqc/assign). #}
+<div class="modal fade" id="scSendModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-send me-2"></i>Send to Pre-Sale — <span id="scSendTag"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold" for="scSendNotes">Notes</label>
+        <textarea id="scSendNotes" class="form-control form-control-sm" rows="3" maxlength="2000"
+                  placeholder="What should Pre-Sale QC check? e.g. customer wants keyboard and battery checked"></textarea>
+        <div class="text-danger small mt-1" id="scSendErr"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="scSendOk"><i class="bi bi-send me-1"></i>Send to Pre-Sale</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Sales IDs on one invoice. #}
+<div class="modal fade" id="scInvModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-receipt me-2"></i>Invoice <span id="scInvNo"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body p-2">
+        <div class="gtable2-wrap" style="max-height:65vh">
+        <table class="gtable2" id="scInvTable" data-total-label="Total">
+          <thead><tr><th data-total="count">Sale ID</th><th>Customer Name</th><th>Category</th><th>Tag</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th>RAM</th><th>Storage</th><th>Grade</th></tr></thead>
+          <tbody id="scInvBody"></tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Confirm Exit — same as Gate Pass (posts to /gate-pass/{sale_id}/exit). #}
+<div class="modal fade" id="scExitModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <form id="scExitForm" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <div class="modal-header py-2"><h6 class="modal-title fw-semibold"><i class="bi bi-box-arrow-right me-2"></i>Confirm Exit — <span id="scExitTag"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <p class="small mb-3">Confirm the goods for <span id="scExitTag2"></span> have exited the gate.</p>
+        <div class="row g-3">
+          {% set tf_mode = '' %}{% set tf_via = '' %}{% set tf_tracking = '' %}
+          {% include "_transport_fields.html" %}
+        </div>
+        <div class="small text-muted mt-2">Transport details are optional — leave blank to confirm the exit only.</div>
+        <div class="text-danger small mt-1" id="scExitErr"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-box-arrow-right me-1"></i>Confirm Exit</button>
+      </div>
+    </form>
+  </div>
+</div>
+{# Export Report: the filtered sales; Delivery / Payment Status default to
+   Done when the tag has exited / has an invoice number, editable before
+   downloading (CSV, built in the browser). #}
+<div class="modal fade" id="scExportModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-fullscreen-lg-down" style="max-width:min(1500px, 96vw)">
+    <div class="modal-content">
+      <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-download me-2"></i>Export Report <span class="text-muted small fw-normal ms-2" id="scExportInfo"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body p-2">
+        <div class="gtable2-wrap" style="max-height:68vh">
+        <table class="gtable2" id="scExportTable">
+          <thead><tr>
+            <th>Sales Person</th><th>Invoice Number</th><th>Invoice Date</th><th>Entity</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th>
+            <th>RAM</th><th>Storage</th><th>Grade</th><th>Stock Type</th><th data-total="sum">Quantity</th><th>Exit Date</th><th>Delivery Status</th><th>Payment Status</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        </div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-sm btn-primary" id="scExportDl" disabled><i class="bi bi-download me-1"></i>Download CSV</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
+<script>
+(function () {
+  var csrf = {{ request.cookies.get('csrf_token', '')|tojson }};
+  function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; }
+  function post(url, fd) {
+    fd.append('csrf_token', csrf);
+    return fetch(url, { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': csrf } });
+  }
+
+  // Send to Pre-Sale
+  var sendTag = '', sendModal = document.getElementById('scSendModal');
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.sc-send'); if (!b) return;
+    sendTag = b.dataset.tag;
+    document.getElementById('scSendTag').textContent = sendTag;
+    document.getElementById('scSendNotes').value = ''; document.getElementById('scSendErr').textContent = '';
+    bootstrap.Modal.getOrCreateInstance(sendModal).show();
+  });
+  sendModal.addEventListener('shown.bs.modal', function () { document.getElementById('scSendNotes').focus(); });
+  document.getElementById('scSendOk').addEventListener('click', function () {
+    var btn = this, fd = new FormData();
+    fd.append('barcodes', sendTag); fd.append('notes', document.getElementById('scSendNotes').value.trim());
+    btn.disabled = true;
+    post('/pre-sale-iqc/assign', fd).then(function (r) { return r.json(); }).then(function (d) {
+      if (d.ok && (d.assigned || d.already)) {
+        if (window.showTopToast) window.showTopToast('success', sendTag + (d.assigned ? ' sent to Pre-Sale.' : ' is already waiting at Pre-Sale.'));
+        setTimeout(function () { location.reload(); }, 500);
+      } else {
+        document.getElementById('scSendErr').textContent = d.error || d.detail ||
+          (d.not_ready ? 'This tag is not in Ready for Sale.' : 'Could not send this tag.');
+        btn.disabled = false;
+      }
+    }).catch(function () { document.getElementById('scSendErr').textContent = 'Could not send. Please try again.'; btn.disabled = false; });
+  });
+
+  // Sales IDs → invoice modal
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.sc-inv'); if (!b) return;
+    var inv = b.dataset.inv, body = document.getElementById('scInvBody');
+    document.getElementById('scInvNo').textContent = inv;
+    body.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Loading…</td></tr>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('scInvModal')).show();
+    fetch('/sales-coordinator/invoice?no=' + encodeURIComponent(inv), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); }).then(function (d) {
+        body.innerHTML = (d.rows || []).map(function (x) {
+          return '<tr><td class="font-monospace">' + esc(x.sale_id) + '</td><td>' + esc(x.customer) + '</td><td>' + esc(x.category) +
+            '</td><td><a class="sc-tag" href="/devices/' + encodeURIComponent(x.tag) + '">' + esc(x.tag) + '</a></td><td>' + esc(x.make) +
+            '</td><td>' + esc(x.model) + '</td><td>' + esc(x.cpu) + '</td><td>' + esc(x.gen) + '</td><td>' + esc(x.ram) +
+            '</td><td>' + esc(x.storage) + '</td><td>' + esc(x.grade) + '</td></tr>';
+        }).join('') || '<tr class="gt2-empty"><td colspan="11" class="text-center text-muted py-3">No sales on this invoice</td></tr>';
+        gt2Refresh(document.getElementById('scInvTable'));
+      }).catch(function () { body.innerHTML = '<tr class="gt2-empty"><td colspan="11" class="text-center text-danger py-3">Could not load</td></tr>'; });
+  });
+
+  // Export Report: rows load when the modal opens (same filters as the
+  // page); Delivery / Payment Status dropdowns default to Done per the rules
+  // and their current choice goes into the CSV.
+  var X_HEAD = ['Sales Person', 'Invoice Number', 'Invoice Date', 'Entity', 'Make', 'Model', 'CPU', 'CPU Gen', 'RAM',
+                'Storage', 'Grade', 'Stock Type', 'Quantity', 'Exit Date', 'Delivery Status', 'Payment Status'];
+  var X_KEYS = ['person', 'invoice', 'invoice_date', 'entity', 'make', 'model', 'cpu', 'gen', 'ram', 'storage', 'grade',
+                'stock_type', 'qty', 'exit_date'];
+  var xModal = document.getElementById('scExportModal'), dl = document.getElementById('scExportDl');
+  function ddl(done) {
+    return '<select class="form-select form-select-sm sc-x" style="min-width:105px"><option' + (done ? '' : ' selected') +
+      '>Not Yet</option><option' + (done ? ' selected' : '') + '>Done</option></select>';
+  }
+  if (xModal) xModal.addEventListener('show.bs.modal', function () {
+    var t = document.getElementById('scExportTable'), body = t.tBodies[0], info = document.getElementById('scExportInfo');
+    body.innerHTML = '<tr class="gt2-empty"><td colspan="16" class="text-center text-muted py-3">Loading…</td></tr>';
+    info.textContent = ''; dl.disabled = true; delete t.dataset.gt2Sort;
+    fetch('/sales-coordinator/export-data' + location.search, { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); }).then(function (d) {
+        var rows = d.rows || [];
+        body.innerHTML = rows.map(function (x) {
+          return '<tr>' + X_KEYS.map(function (k) { return '<td' + (k === 'invoice' ? ' class="font-monospace"' : '') + '>' + esc(x[k]) + '</td>'; }).join('') +
+            '<td>' + ddl(x.delivery_done) + '</td><td>' + ddl(x.payment_done) + '</td></tr>';
+        }).join('') || '<tr class="gt2-empty"><td colspan="16" class="text-center text-muted py-3">No sales for these filters</td></tr>';
+        info.textContent = rows.length.toLocaleString('en-IN') + ' row' + (rows.length === 1 ? '' : 's') + (d.capped ? ' (latest 5,000)' : '');
+        dl.disabled = !rows.length;
+        gt2Refresh(t);
+      }).catch(function () { body.innerHTML = '<tr class="gt2-empty"><td colspan="16" class="text-center text-danger py-3">Could not load</td></tr>'; });
+  });
+  if (dl) dl.addEventListener('click', function () {
+    var cell = function (v) { v = String(v == null ? '' : v).trim(); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; };
+    var lines = [X_HEAD.join(',')];
+    document.querySelectorAll('#scExportTable tbody tr:not(.gt2-empty)').forEach(function (tr) {
+      lines.push(Array.prototype.map.call(tr.cells, function (td) {
+        var sel = td.querySelector('select'); return cell(sel ? sel.value : td.textContent);
+      }).join(','));
+    });
+    var blob = new Blob(['\ufeff' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a'), d = new Date();
+    a.href = URL.createObjectURL(blob);
+    a.download = 'sales_coordinator_report_' + d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2) + '.csv';
+    document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 500);
+  });
+
+  // Confirm Exit
+  var exitId = '', exitModal = document.getElementById('scExitModal'), exitForm = document.getElementById('scExitForm');
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.sc-exit'); if (!b) return;
+    exitId = b.dataset.id; exitForm.reset();
+    document.getElementById('scExitTag').textContent = b.dataset.tag;
+    document.getElementById('scExitTag2').textContent = b.dataset.tag;
+    document.getElementById('scExitErr').textContent = '';
+    bootstrap.Modal.getOrCreateInstance(exitModal).show();
+  });
+  exitForm.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var fd = new FormData(exitForm); fd.delete('csrf_token');
+    post('/gate-pass/' + encodeURIComponent(exitId) + '/exit', fd).then(function (r) {
+      if (r.ok) { if (window.showTopToast) window.showTopToast('success', 'Exit confirmed.'); setTimeout(function () { location.reload(); }, 500); }
+      else { document.getElementById('scExitErr').textContent = r.status === 403 ? 'You are not allowed to confirm exits (Gate Pass access needed).' : 'Could not confirm the exit.'; }
+    }).catch(function () { document.getElementById('scExitErr').textContent = 'Could not confirm the exit.'; });
+  });
+})();
+</script>
+{% endblock %}

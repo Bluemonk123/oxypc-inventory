@@ -1995,6 +1995,18 @@ def _make_cond(mk: str):
     return norm == mk if mk else or_(Device.brand.is_(None), norm == "")
 
 
+async def _product_model_names() -> list:
+    """[{"v": name, "m": make}] — active Product Model Names (Master Data)."""
+    from sqlalchemy import select
+    from database import AsyncSessionLocal
+    from models.master import MasterData
+    async with AsyncSessionLocal() as db:
+        rows = (await db.execute(select(MasterData.value, MasterData.parent).where(
+            MasterData.category == "product_model_name", MasterData.is_active.isnot(False))
+            .order_by(MasterData.parent, MasterData.value))).all()
+    return [{"v": v, "m": m or ""} for v, m in rows]
+
+
 def _mn_field(g) -> str:
     """Save-as box name for one card row (model key + Make)."""
     return f"mn_{g['key']}|{g['make']}"
@@ -2029,6 +2041,15 @@ async def _model_name_fix(request: Request, current_user: User):
     from services.audit_engine import audit
     from utils.model_name import OVERRIDE_CATEGORY, clear_cache, model_key, parse_override, rename_value, tidy
     form = await request.form()
+    # Edited boxes come as one JSON field "mn_json" {box name: value}
+    # (2026-11-16): any number of rows — 1,000, 10,000, 50,000 — saves in one
+    # Apply (separate fields stopped at the form's 1,000-field limit).
+    import json as _json
+    boxes = {}
+    try:
+        boxes = {str(k): str(v) for k, v in (_json.loads(form.get("mn_json") or "{}") or {}).items()}
+    except (ValueError, TypeError, AttributeError):
+        boxes = {}
     async with AsyncSessionLocal() as db:
         groups = await _model_name_groups(db)
         existing = (await db.execute(select(MasterData).where(
@@ -2048,7 +2069,8 @@ async def _model_name_fix(request: Request, current_user: User):
         def _boxed(g):
             # mn_<key>|<make> (2026-11-06); mn_<key> still accepted (older page / scripts).
             # None = box not sent / not changed.
-            v = tidy(form.get(_mn_field(g))) or tidy(form.get(f"mn_{g['key']}"))
+            v = (tidy(boxes.get(_mn_field(g))) or tidy(form.get(_mn_field(g)))
+                 or tidy(form.get(f"mn_{g['key']}")))
             return v[:100] if v else None
         # A row renamed to a model that already exists merges into it: that
         # model's rows (boxes left as they were) take the same name, so the
@@ -2106,8 +2128,10 @@ async def _model_name_fix(request: Request, current_user: User):
                 ids_by[(f"{old} -> {final}" + (f" [{'/'.join(g['make_names'])}]" if g["make_names"] else ""))[:200]] = [str(i) for i in ids]
                 total += len(ids)
                 # Core UPDATE: no ORM flush, so the on-save listener isn't involved.
-                await db.execute(update(Device).where(Device.id.in_(ids))
-                                 .values(model=final, updated_at=now).execution_options(synchronize_session=False))
+                # In chunks of 5,000 ids — one IN (...) is capped at 32,767 values.
+                for k in range(0, len(ids), 5000):
+                    await db.execute(update(Device).where(Device.id.in_(ids[k:k + 5000]))
+                                     .values(model=final, updated_at=now).execution_options(synchronize_session=False))
         await audit(db, user=current_user, action="MODEL_NAME_FIX", table_name="devices",
                     record_id=f"{total} tags",
                     new_value={"count": total, "spellings": len(ids_by), "typed_names": remembered,
@@ -2341,6 +2365,9 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "mname_total": sum(c for _o, _n, c in mname), "mname_spellings": len(mname),
         "mname_models": len({n for _o, n, _c in mname}),
         "mname_groups": mgroups,
+        # Product Names list for the per-row pick dropdown (2026-11-16, Pankaj):
+        # Master Data -> Dropdown Configuration -> Product Model Names (+ Make)
+        "pm_names": await _product_model_names(),
         "pname": [{"code": c, "old": o, "new": n, "m0": m0, "m1": m1} for _i, c, o, n, m0, m1 in pname],
         "pcrate": pcrate, "pclean": pclean, "pmulti": pmulti,
         "hvmatch": hvmatch,

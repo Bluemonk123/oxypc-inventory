@@ -35,6 +35,39 @@ async def _next_opp_number(db: AsyncSession) -> str:
 
 # ── LIST ─────────────────────────────────────────────────────────────────────
 
+@router.post("/targets")
+async def save_sales_targets(request: Request, db: AsyncSession = Depends(get_db),
+                             current_user: User = Depends(get_current_user)):
+    """CRM Sales -> Monthly target -> Set targets (2026-11-14, Pankaj): won value
+    each owner should reach in a month, kept in app_settings ("crm_sales_targets",
+    JSON {username: amount}). Needs the Customer Deals Pricing tick."""
+    import json
+    from models.settings import AppSetting
+    from services.crm_dash import SALES_TARGET_KEY
+    from templates_config import _can
+    if not _can(current_user, "crm_sales_opp", "pricing"):
+        return RedirectResponse("/crm/sales?error=Not+allowed", status_code=303)
+    form = await request.form()
+    data = {}
+    for k, v in form.multi_items():
+        if k.startswith("t_"):
+            v = (v or "").strip().replace(",", "")
+            if v.replace(".", "", 1).isdigit() and float(v) > 0:
+                data[k[2:][:50]] = round(float(v), 2)
+    row = (await db.execute(select(AppSetting).where(AppSetting.key == SALES_TARGET_KEY))).scalar_one_or_none()
+    old = row.value if row else None
+    if row:
+        row.value = json.dumps(data); row.updated_by = current_user.username
+    else:
+        db.add(AppSetting(key=SALES_TARGET_KEY, value=json.dumps(data), description="CRM Sales monthly targets",
+                          updated_by=current_user.username))
+    from services.audit_engine import audit
+    await audit(db, "CRM_SALES_TARGETS_SET", user=current_user, table_name="app_settings", record_id=SALES_TARGET_KEY,
+                old_value={"value": old}, new_value={"value": json.dumps(data)}, request=request)
+    await db.commit()
+    return RedirectResponse("/crm/sales?success=Targets+saved", status_code=303)
+
+
 @router.get("", response_class=HTMLResponse)
 async def list_opportunities(
     request: Request,
@@ -110,8 +143,21 @@ async def list_opportunities(
 
     from services.doc_downloads import sales_downloads   # Download column (2026-11-10)
     downloads = await sales_downloads(db, opps)
+    # Option C dashboard (2026-11-14, Pankaj) — services/crm_dash.py.
+    dash_kpis, dash_top, dash_bottom, sales_targets, target_owners = [], [], [], {}, []
+    try:
+        from services.crm_dash import build_sales
+        from templates_config import _can
+        dash_kpis, dash_top, dash_bottom, sales_targets, target_owners = await build_sales(
+            db, current_user, _can(current_user, "crm_sales_opp", "pricing"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("CRM Sales dashboard failed")
+        await db.rollback()
     return templates.TemplateResponse("crm/sales/list.html", {
         "request": request, "current_user": current_user, "downloads": downloads,
+        "dash_kpis": dash_kpis, "dash_top": dash_top, "dash_bottom": dash_bottom,
+        "sales_targets": sales_targets, "target_owners": target_owners,
         "opps": opps, "contacts_map": contacts_map, "opp_lots": opp_lots,
         "pipeline_value": pipeline_value, "overdue_count": overdue_count,
         "q": q, "stage": stage, "buyer_type": buyer_type,
@@ -321,8 +367,17 @@ async def opp_detail(
 
     from services.record_history import record_history   # History card (2026-11-09)
     _history = await record_history(db, opp.id)
+    # Booking/Bidding Details card (2026-11-15): deals opened from the partner portal
+    _partner_origin = None
+    try:
+        from services.partner_deals import deal_partner_origin
+        async with db.begin_nested():
+            _partner_origin = await deal_partner_origin(db, opp)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Booking/Bidding Details failed for %s", opp.id)
     return templates.TemplateResponse("crm/sales/detail.html", {
-        "history": _history,
+        "history": _history, "partner_origin": _partner_origin,
         "request": request, "current_user": current_user,
         "opp": opp, "contact": contact, "quote": quote, "activities": activities,
         "lot": lot,

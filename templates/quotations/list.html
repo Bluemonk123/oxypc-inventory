@@ -36,6 +36,6 @@
 {% set qt_perm_module = 'quotations' %}
 {% include "dealers/_quotation_shared_table.html" %}
 {# Create Quotation modal for Add Quote (2026-10-27), with a dealer picker. #}
-{% include "dealers/_quotation_modal.html" %}
+{% set qc_mode = 'dealer' %}{% include "dealers/_quotation_modal.html" %}
 
 {% endblock %}

@@ -454,6 +454,33 @@ async def warranty_received(req_id: str, request: Request,
                                 + ("+and+restocked" if restocked else ""), status_code=302)
 
 
+@router.post("/part-sourcing/{sr_id}/link-deal")
+async def link_sourcing_deal(sr_id: str, request: Request, source_deal_id: str = Form(...),
+                             db: AsyncSession = Depends(get_db), current_user: User = Depends(sm_allowed)):
+    """Link Deal (2026-11-15, Pankaj — Procurement Board, Pending Requests):
+    tie a Part Sourcing Request to an existing supplier deal without closing
+    it. The link decides which page's Supplier Deal card shows the deal
+    (services/supplier_deals.py). Empty source_deal_id removes the link."""
+    from models.crm import CRMSourcingDeal
+    sr = (await db.execute(select(PartSourcingRequest).where(PartSourcingRequest.id == _as_uuid(sr_id)))).scalar_one_or_none()
+    if not sr:
+        raise HTTPException(404, "Sourcing request not found")
+    if (sr.review_status or "verified") != "verified":   # verify on Activity Board first (2026-11-15)
+        return RedirectResponse(url="/procure-dashboard?error=Verify+this+request+on+Activity+Board+first", status_code=302)
+    new = (source_deal_id or "").strip() or None
+    if new:
+        deal = (await db.execute(select(CRMSourcingDeal).where(CRMSourcingDeal.id == _as_uuid(new)))).scalar_one_or_none()
+        if not deal:
+            return RedirectResponse(url="/procure-dashboard?error=Supplier+deal+not+found#partsSourcing", status_code=302)
+        new = str(deal.id)
+    old = sr.source_deal_id
+    sr.source_deal_id = new
+    await audit(db, user=current_user, action="SOURCING_DEAL_LINKED", table_name="part_sourcing_requests",
+                record_id=str(sr.id), old_value={"source_deal_id": old}, new_value={"source_deal_id": new}, request=request)
+    await db.commit()
+    return RedirectResponse(url="/procure-dashboard?success=" + ("Deal+linked" if new else "Link+removed"), status_code=302)
+
+
 @router.post("/part-sourcing/{sr_id}/close")
 async def close_sourcing(sr_id: str, request: Request,
                          source_deal_id: str = Form(...), qty_sourced: int = Form(...),
@@ -463,6 +490,8 @@ async def close_sourcing(sr_id: str, request: Request,
     )).scalar_one_or_none()
     if not sr:
         raise HTTPException(404, "Sourcing request not found")
+    if (sr.review_status or "verified") != "verified":   # verify on Activity Board first (2026-11-15)
+        return RedirectResponse(url="/procure-dashboard?error=Verify+this+request+on+Activity+Board+first", status_code=302)
     was_already_closed = sr.status == "closed"
     sr.status = "closed"
     sr.source_deal_id = source_deal_id
@@ -544,6 +573,46 @@ async def verify_sourcing(sr_id: str, request: Request,
     return JSONResponse({"ok": True})
 
 
+async def _sr_open_estimate(db, sr):
+    """The Open Estimate behind a production request, or None (other estimate types)."""
+    from models.part_estimate import PartEstimate
+    if not sr.estimate_id:
+        return None
+    est = (await db.execute(select(PartEstimate).where(PartEstimate.id == sr.estimate_id))).scalar_one_or_none()
+    return est if est and est.estimate_type == "open" else None
+
+
+def _totals_out(t, user):
+    """Header totals; money only with Part Master Pricing View."""
+    from templates_config import _can
+    pv = _can(user, "spare_parts", "pricing")
+    return {"amount": float(t["amount"]) if pv else None, "part_qty": t["part_qty"],
+            "repair": float(t["repair"]) if pv else None, "estimate": float(t["estimate"]) if pv else None}
+
+
+@router.get("/part-sourcing/{sr_id}/estimate-data")
+async def production_estimate_data(sr_id: str, db: AsyncSession = Depends(get_db),
+                                   current_user: User = Depends(spm_allowed)):
+    """Confirm Request pop-up (2026-11-15, Pankaj): the Open Estimate as saved on
+    Part Estimation — parts x models counts with the sizes picked — plus any
+    Store Inputs already entered. open=False for other estimate types, which
+    keep the plain confirm."""
+    from routers.part_estimation import open_estimate_view, part_label
+    sr = (await db.execute(select(PartSourcingRequest).where(PartSourcingRequest.id == _as_uuid(sr_id)))).scalar_one_or_none()
+    if not sr:
+        return JSONResponse({"ok": False, "error": "Sourcing request not found"}, status_code=404)
+    est = await _sr_open_estimate(db, sr)
+    if not est:
+        return JSONResponse({"ok": True, "open": False})
+    v = await open_estimate_view(db, est)
+    return JSONResponse({"ok": True, "open": True, "lot_number": sr.lot_number, "grade": est.grade,
+                         "parts": [{"part": p, "label": part_label(p, v["specs"])} for p in v["parts"]],
+                         "models": v["models"],
+                         "cells": {f"{p}||{m}": float(q) for (p, m), q in v["cells"].items()},
+                         "store_inputs": v["store_inputs"], "status": est.status or "",
+                         "totals": _totals_out(v["totals"], current_user)})
+
+
 @router.post("/part-sourcing/{sr_id}/confirm")
 async def confirm_production_sourcing(sr_id: str, request: Request,
                                       db: AsyncSession = Depends(get_db),
@@ -558,15 +627,48 @@ async def confirm_production_sourcing(sr_id: str, request: Request,
         return JSONResponse({"ok": False, "error": "Sourcing request not found"}, status_code=404)
     if sr.source != "production":
         return JSONResponse({"ok": False, "error": "Only production requests can be confirmed here"}, status_code=409)
-    if sr.confirmed:
+    est_open = await _sr_open_estimate(db, sr)
+    if sr.confirmed and not est_open:
         return JSONResponse({"ok": True})
+    # Already confirmed + Open Estimate: the Edit pencil re-saves the Store Inputs (2026-11-15).
 
-    sr.confirmed = True
-    sr.confirmed_at = app_now()
-    sr.confirmed_by = current_user.username
-    await audit(db, user=current_user, action="PRODUCTION_SOURCING_CONFIRMED",
+    # Open Estimate requests (2026-11-15): Store Inputs per part from the
+    # Confirm Request pop-up; the estimate becomes "Updated" and its attached
+    # sheet is rewritten with Difference / Store Inputs columns.
+    est = est_open
+    store = None
+    if est:
+        form = await request.form()
+        try:
+            raw = json.loads(form.get("store_inputs") or "{}")
+        except (ValueError, TypeError):
+            return JSONResponse({"ok": False, "error": "Malformed store inputs"}, status_code=400)
+        from routers.part_estimation import PART_LABELS, open_estimate_view, rebuild_open_workbook
+        store = {}
+        for part, val in (raw or {}).items():
+            if part not in PART_LABELS or val in (None, ""):
+                continue
+            try:
+                n = float(val)
+            except (TypeError, ValueError):
+                return JSONResponse({"ok": False, "error": f"Store input for {part} must be a number"}, status_code=400)
+            if n < 0:
+                return JSONResponse({"ok": False, "error": f"Store input for {part} can't be negative"}, status_code=400)
+            store[part] = int(n) if n == int(n) else n
+        est.store_inputs = json.dumps(store)
+        est.status = "Updated"
+        if est.file_path:
+            rebuild_open_workbook(est, await open_estimate_view(db, est), current_user.username)
+
+    _was_confirmed = sr.confirmed
+    if not sr.confirmed:
+        sr.confirmed = True
+        sr.confirmed_at = app_now()
+        sr.confirmed_by = current_user.username
+    await audit(db, user=current_user, action="PRODUCTION_SOURCING_STORE_INPUTS_EDITED" if _was_confirmed else "PRODUCTION_SOURCING_CONFIRMED",
                 table_name="part_sourcing_requests", record_id=str(sr.id),
-                new_value={"confirmed_by": current_user.username, "lot": sr.lot_number},
+                new_value={"confirmed_by": current_user.username, "lot": sr.lot_number,
+                           "store_inputs": store},
                 request=request)
     await db.commit()
     return JSONResponse({"ok": True})

@@ -7,6 +7,54 @@
 {% block content %}
 {% import "crm/contacts/_type_pills.html" as tp %}
 
+{# Option C dashboard, Variant 1 (2026-11-16, Pankaj): light KPI tiles, partner
+   journey, segments and sales owners — services/partners_dash.py. Filters sit in
+   the header and narrow the tiles too; the table below is unchanged. #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% call dash.hero('External Partners', '', 'From account to repeat buyer: who has access, who logs in, who books', view_data=False) %}
+{# Global filter bar (app.css .filter-bar, 2026-11-08) — labels live in title=. #}
+<form method="get" action="/trade-partner/partners" class="filter-bar">
+  <div class="filter-bar-row">
+    <div class="filter-bar-search">
+      <input type="text" name="q" value="{{ q }}" title="Search" placeholder="Search partners…" class="form-control form-control-sm">
+    </div>
+    <div>
+      <select name="location" class="form-select form-select-sm" title="Location">
+        <option value="">All Locations</option>
+        {% for loc in location_options %}
+        <option value="{{ loc }}" {% if loc == f_location %}selected{% endif %}>{{ loc }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="segment" class="form-select form-select-sm" title="Price Segment">
+        <option value="">All Segments</option>
+        {% for s in price_segments %}
+        <option value="{{ s }}" {% if s == f_segment %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <select name="sales_owner" class="form-select form-select-sm" title="Sales Owner">
+        <option value="">All Sales Owners</option>
+        {% for u in sales_users %}
+        <option value="{{ u.username }}" {% if u.username == f_sales_owner %}selected{% endif %}>{{ u.full_name or u.username }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div>
+      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
+      <a href="/trade-partner/partners" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
+    </div>
+  </div>
+</form>
+{% endcall %}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+</div>
+
 {% if success %}
 <div class="alert alert-success py-2"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>
 {% endif %}
@@ -50,42 +98,7 @@
 </div>
 {% endif %}
 
-{# Global filter bar (app.css .filter-bar, 2026-11-08) — labels live in title=. #}
-<form method="get" action="/trade-partner/partners" class="filter-bar">
-  <div class="filter-bar-row">
-    <div class="filter-bar-search">
-      <input type="text" name="q" value="{{ q }}" title="Search" placeholder="Search partners…" class="form-control form-control-sm">
-    </div>
-    <div>
-      <select name="location" class="form-select form-select-sm" title="Location">
-        <option value="">All Locations</option>
-        {% for loc in location_options %}
-        <option value="{{ loc }}" {% if loc == f_location %}selected{% endif %}>{{ loc }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <select name="segment" class="form-select form-select-sm" title="Price Segment">
-        <option value="">All Segments</option>
-        {% for s in price_segments %}
-        <option value="{{ s }}" {% if s == f_segment %}selected{% endif %}>{{ s | replace('_',' ') | title }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <select name="sales_owner" class="form-select form-select-sm" title="Sales Owner">
-        <option value="">All Sales Owners</option>
-        {% for u in sales_users %}
-        <option value="{{ u.username }}" {% if u.username == f_sales_owner %}selected{% endif %}>{{ u.full_name or u.username }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div>
-      <button type="submit" class="btn btn-sm btn-primary text-nowrap">Apply</button>
-      <a href="/trade-partner/partners" class="btn btn-sm btn-outline-secondary bg-white text-nowrap">Reset</a>
-    </div>
-  </div>
-</form>
+
 
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">

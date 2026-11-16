@@ -2,6 +2,33 @@
 {% block title %}Devices in Production — OxyPC{% endblock %}
 {% block page_title %}Devices in Production{% endblock %}
 {% block content %}
+{# Option C dashboard (2026-11-14, Pankaj): header with the filters, KPIs and charts;
+   "View Data" swaps them for the page below. services/production_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% set _actions %}{% if can(current_user, 'production_manager', 'edit') %}<button type="button" class="btn btn-sm btn-outline-light" data-bs-toggle="modal" data-bs-target="#prodTargetsModal"><i class="bi bi-bullseye me-1"></i>Set targets</button>{% endif %}{% endset %}
+{% call dash.hero('Production Board', '', 'Repair output against target for every repair stage', view_data=True, actions=_actions) %}
+<form method="get" action="/trc-production" class="filter-bar">
+  <div class="filter-bar-row">
+    <div>
+      <input type="date" name="date_from" title="Date From" class="form-control form-control-sm"
+             value="{{ request.query_params.get('date_from', '') }}">
+    </div>
+    <div>
+      <input type="date" name="date_to" title="Date To" class="form-control form-control-sm"
+             value="{{ request.query_params.get('date_to', '') }}">
+    </div>
+    <div>
+      <button type="submit" class="btn btn-primary btn-sm">Apply</button>
+      <a href="/trc-production" class="btn btn-outline-secondary btn-sm">Reset</a>
+    </div>
+  </div>
+</form>
+{% endcall %}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
 <!-- Summary card tiles (shared tile macros, templates/_tiles.html — tint look) -->
 {% import "_tiles.html" as tl %}
 {% set can_export = can(current_user, 'production_manager', 'export') %}
@@ -20,24 +47,13 @@
 {# Filters below the count tiles (2026-11-09, Pankaj: tiles first, then filters, on every page). #}
 {# This page has no other server-side filters, so the date range gets its own
    filter row card — same shape as every other page's filter bar. #}
-<form method="get" action="/trc-production" class="filter-bar">
-  <div class="filter-bar-row">
-    <div>
-      <input type="date" name="date_from" title="Date From" class="form-control form-control-sm"
-             value="{{ request.query_params.get('date_from', '') }}">
-    </div>
-    <div>
-      <input type="date" name="date_to" title="Date To" class="form-control form-control-sm"
-             value="{{ request.query_params.get('date_to', '') }}">
-    </div>
-    <div>
-      <button type="submit" class="btn btn-primary btn-sm">Apply</button>
-      <a href="/trc-production" class="btn btn-outline-secondary btn-sm">Reset</a>
-    </div>
-  </div>
-</form>
 
 {# Search Tags button removed (2026-11-09): the top-bar search opens the same modal. #}
+{# Supplier Deal card (2026-11-15, Pankaj): col-lg-4 on the left of the tabs, same
+   card as Inventory Manager / Parts Manager (services/supplier_deals.py, page="production"). #}
+<div class="row g-3 mb-3">
+{% if sd_enabled %}<div class="col-lg-3">{% set sd_return_to = '/trc-production' %}{% include "_supplier_deal_card.html" %}</div>{% endif %}
+<div class="{{ 'col-lg-9' if sd_enabled else 'col-12' }}">
 <!-- Tag Number Allocation / Bucket Allocation tabs -->
 <ul class="nav nav-tabs" id="prodTabs" role="tablist">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tagAllocTab" type="button">
@@ -52,7 +68,7 @@
     <span class="badge bg-warning text-dark ms-1">{{ as_is_trc | length }}</span>
   </button></li>
 </ul>
-<div class="tab-content border border-top-0 rounded-bottom bg-white mb-3">
+<div class="tab-content border border-top-0 rounded-bottom bg-white">
   <div class="tab-pane fade show active p-0" id="tagAllocTab">
     {# Card header added (2026-11-08): title + Move to Stage. #}
     <div class="card border-0 shadow-sm">
@@ -166,6 +182,8 @@
     </div>
   </div>
 </div>
+</div>{# /tabs column #}
+</div>{# /row with Supplier Deal card #}
 
 <div class="accordion mb-3 mt-4" id="repairLineAccordion">
   <div class="accordion-item">
@@ -427,6 +445,38 @@
           <i class="bi bi-check-lg me-1"></i>Move</button>
       </div>
     </div>
+  </div>
+</div>
+</div>{# .dash-data #}
+</div>{# .dash #}
+
+{# Set targets (2026-11-14, Pankaj) — POST /trc-production/targets, kept in app_settings. #}
+<div class="modal fade" id="prodTargetsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <form method="post" action="/trc-production/targets" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+      <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-bullseye me-2"></i>Set repair targets</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body">
+        <table class="table table-sm align-middle mb-2">
+          <thead><tr><th>Stage</th><th>Daily target</th><th>Weekly target</th><th>Per engineer / day</th><th>Max days in stage</th></tr></thead>
+          <tbody>
+          {% for code, label, col, key, left in prod_stages %}{% set t = prod_targets.get(code, {}) %}
+          <tr><td class="fw-semibold">{{ label }}</td>
+            <td><input type="number" min="0" name="{{ code }}_daily" value="{{ t.daily or '' }}" class="form-control form-control-sm"></td>
+            <td><input type="number" min="0" name="{{ code }}_weekly" value="{{ t.weekly or '' }}" class="form-control form-control-sm"></td>
+            <td><input type="number" min="0" name="{{ code }}_per_engineer" value="{{ t.per_engineer or '' }}" class="form-control form-control-sm"></td>
+            <td><input type="number" min="0" name="{{ code }}_max_days" value="{{ t.max_days or '' }}" class="form-control form-control-sm"></td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        <div class="small text-muted">Targets drive the Production Board's "Done today / target" bars and the Output vs target chart.</div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        {% if can(current_user, 'production_manager', 'edit') %}<button type="submit" class="btn btn-sm btn-primary">Save targets</button>{% endif %}
+      </div>
+    </form>
   </div>
 </div>
 {% endblock %}

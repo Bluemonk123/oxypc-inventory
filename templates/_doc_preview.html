@@ -1,0 +1,71 @@
+{# Document preview (2026-11-15, Pankaj): any element with
+   data-doc-preview="<url>" data-doc-name="<title>" opens the file in this modal
+   with Download and Print. PDFs show in a frame, images as a picture; other
+   files offer Download only. Include once per page. #}
+<div class="modal fade" id="docPreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title text-truncate"><i class="bi bi-file-earmark-text me-2"></i><span id="docPreviewTitle"></span></h6>
+        <div class="ms-auto d-flex gap-2 align-items-center">
+          <a href="#" class="btn btn-sm btn-outline-primary" id="docPreviewDownload" download><i class="bi bi-download me-1"></i>Download</a>
+          <button type="button" class="btn btn-sm btn-outline-secondary" id="docPreviewPrint"><i class="bi bi-printer me-1"></i>Print</button>
+          <button type="button" class="btn-close ms-1" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+      </div>
+      <div class="modal-body p-0" style="height: 75vh; background: var(--bs-tertiary-bg, #f1f5f9)">
+        <iframe id="docPreviewFrame" title="Document preview" style="width:100%; height:100%; border:0; display:none"></iframe>
+        <div id="docPreviewImgWrap" class="h-100 d-none align-items-center justify-content-center p-3 overflow-auto">
+          <img id="docPreviewImg" alt="" style="max-width:100%; max-height:100%; object-fit:contain">
+        </div>
+        <div id="docPreviewNone" class="h-100 d-none align-items-center justify-content-center text-muted small">
+          This file type can't be previewed here — use Download.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  if (window._docPreviewBound) return; window._docPreviewBound = true;
+  var kind = function (url) {
+    var u = (url || '').split('?')[0].toLowerCase();
+    if (/\.pdf$/.test(u)) return 'pdf';
+    if (/\.(png|jpe?g|gif|webp|bmp|svg)$/.test(u)) return 'img';
+    return 'other';
+  };
+  var cur = { url: '', kind: '' };
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest('[data-doc-preview]'); if (!t) return;
+    e.preventDefault();
+    var url = t.getAttribute('data-doc-preview'), name = t.getAttribute('data-doc-name') || 'Document';
+    var k = kind(url); cur = { url: url, kind: k };
+    document.getElementById('docPreviewTitle').textContent = name;
+    var dl = document.getElementById('docPreviewDownload');
+    dl.href = url; dl.setAttribute('download', name.replace(/[\\/:*?"<>|]+/g, '-') + (url.match(/\.[a-z0-9]+$/i) || [''])[0]);
+    var fr = document.getElementById('docPreviewFrame'), iw = document.getElementById('docPreviewImgWrap'),
+        none = document.getElementById('docPreviewNone');
+    fr.style.display = k === 'pdf' ? 'block' : 'none'; fr.src = k === 'pdf' ? url : 'about:blank';
+    iw.classList.toggle('d-none', k !== 'img'); iw.classList.toggle('d-flex', k === 'img');
+    if (k === 'img') document.getElementById('docPreviewImg').src = url;
+    none.classList.toggle('d-none', k !== 'other'); none.classList.toggle('d-flex', k === 'other');
+    document.getElementById('docPreviewPrint').disabled = k === 'other';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('docPreviewModal')).show();
+  });
+  document.getElementById('docPreviewPrint').addEventListener('click', function () {
+    if (cur.kind === 'pdf') {
+      try { var w = document.getElementById('docPreviewFrame').contentWindow; w.focus(); w.print(); return; } catch (x) {}
+      window.open(cur.url, '_blank');
+    } else if (cur.kind === 'img') {
+      var w2 = window.open('', '_blank');
+      if (!w2) return;
+      w2.document.write('<html><head><title>Print</title><style>body{margin:0;display:flex;justify-content:center}img{max-width:100%}</style></head>'
+        + '<body><img src="' + cur.url.replace(/"/g, '&quot;') + '" onload="window.focus();window.print();"></body></html>');
+      w2.document.close();
+    }
+  });
+  document.getElementById('docPreviewModal').addEventListener('hidden.bs.modal', function () {
+    document.getElementById('docPreviewFrame').src = 'about:blank';
+  });
+})();
+</script>

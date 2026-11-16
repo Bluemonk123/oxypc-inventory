@@ -960,6 +960,34 @@ async def device_upload_tags(
 
 # ── 1. INVENTORY SEARCH ──────────────────────────────────────────────────────
 
+@router.get("/recent-tags")
+async def recent_tags(model: str = "", grade: str = "", since: str = "", entity: str = "",
+                      db: AsyncSession = Depends(get_db), current_user: User = Depends(view_allowed)):
+    """Inventory Board dashboard, Recently added -> View (2026-11-14): the tags
+    of one model + grade added since `since`."""
+    from datetime import datetime as _dt
+    try:
+        since_dt = _dt.fromisoformat(since) if since else None
+    except ValueError:
+        since_dt = None
+    qy = (select(Device, Lot).join(Lot, Device.lot_id == Lot.id)
+          .where(Device.is_trashed == False, func.coalesce(Device.model, "") == model))  # noqa: E712
+    qy = qy.where(Device.grade == grade) if grade else qy.where(Device.grade.is_(None))
+    if since_dt:
+        qy = qy.where(Device.created_at >= since_dt)
+    ents = [e.strip() for e in entity.split(",") if e.strip()]
+    if ents:
+        qy = qy.where(Device.entity.in_(ents))
+    rows = (await db.execute(qy.order_by(Device.created_at.desc()).limit(1000))).all()
+    from utils.device_spec import gb_text_spaced
+    return JSONResponse({"rows": [{
+        "added": d.created_at.strftime("%Y-%m-%d %H:%M") if d.created_at else "", "tag": d.barcode,
+        "grn": d.grn_number or l.grn_number_new or l.grn_system_number or "", "lot": l.lot_number or "",
+        "make": d.brand or "", "model": d.model or "", "cpu": d.cpu or "", "gen": d.generation or "",
+        "ram": gb_text_spaced(d.ram_gb) or "", "storage": gb_text_spaced(d.storage_gb) or "",
+        "grade": (getattr(d.grade, "value", d.grade) or "") if d.grade else ""} for d, l in rows]})
+
+
 @router.get("", response_class=HTMLResponse)
 async def device_search(
     request: Request,
@@ -1047,8 +1075,20 @@ async def device_search(
         .order_by(StorageLocation.zone, StorageLocation.unit_id)
     )).scalars().all()
 
+    # Option C dashboard (2026-11-14, Pankaj) — services/devices_dash.py
+    from services.devices_dash import build as _build_dash
+    try:
+        _sold_filters = _device_search_filters(q, stage, lot, grade, category, device_type, date_from, date_to,
+                                               entity=entity, exclude_sold=False, stock_type=stock_type, pna=pna, zone=zone)
+        dash_kpis, dash_widgets = await _build_dash(db, filters, _sold_filters)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("devices dashboard failed")
+        await db.rollback()
+        dash_kpis, dash_widgets = [], []
     return templates.TemplateResponse("devices/list.html", {
         "request": request, "current_user": current_user,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "lots": lots,
         "stages": DeviceStage, "stage_labels": STAGE_LABELS,
         # (value, label) pairs for the multi-select filter dropdowns. All
@@ -1072,6 +1112,8 @@ async def device_search(
         "total": total,
         "lot_summary": lot_summary,
         "ms_make_options": ms_make_options,
+        # Model Summary Location filter (2026-11-16): zones + No Location
+        "ms_loc_options": list(ZONE_LABELS.values()) + ["No Location"],
         "ms_dtype_options": ms_dtype_options,
         "entity_counts": entity_counts,
     })
@@ -1369,13 +1411,44 @@ def _ms_key(model, brand, device_type, cpu, ram_summary, ram_gb, hdd_summary, st
             _ms_storage_text(hdd_summary, storage_gb, storage_type))
 
 
+def _ms_key2(model, brand, cpu, gen, ram_summary, ram_gb, hdd_summary, storage_gb, storage_type):
+    """Model Summary row (2026-11-16, Pankaj): Model + Make + CPU + CPU Gen +
+    RAM + Storage — the same grouping as Ready for Sale Tags / Lots; Device
+    Type, Touch, Grade, Location and Stock Type are counts inside a row."""
+    return (model or MS_UNKNOWN_MODEL, brand or MS_UNKNOWN_MAKE, (cpu or "").strip() or MS_NONE,
+            (gen or "").strip() or MS_NONE, _ms_ram_text(ram_summary, ram_gb),
+            _ms_storage_text(hdd_summary, storage_gb, storage_type))
+
+
+def _ms_loc_avail_filters(s_loc="", s_avail="") -> list:
+    """Location zone(s) ("No Location" = none) and Availability (open /
+    blocked: a Block Tags hold or assigned to a user) — same rules as Ready
+    for Sale (2026-11-16)."""
+    from models.location import ZONE_LABELS
+    w = []
+    picked = set(_multi(s_loc))
+    if picked:
+        zones = [z for z, label in ZONE_LABELS.items() if label in picked]
+        conds = []
+        if zones:
+            conds.append(Device.location_id.in_(select(StorageLocation.id).where(StorageLocation.zone.in_(zones))))
+        if "No Location" in picked:
+            conds.append(Device.location_id.is_(None))
+        w.append(or_(*conds) if conds else Device.id.is_(None))
+    av = set(_multi(s_avail)) & {"open", "blocked"}
+    if len(av) == 1:
+        held = or_(Device.is_blocked.is_(True), Device.assigned_to_user_id.isnot(None))
+        w.append(held if "blocked" in av else ~held)
+    return w
+
+
 @router.get("/model-summary/data")
 async def model_summary_data(
     q: str = "", stage: str = "", lot: str = "", grade: str = "", category: str = "",
     device_type: str = "", date_from: str = "", date_to: str = "", employee: str = "",
     entity: str = "", exclude_sold: str = "", fs: str = "", tsearch: str = "", stock_type: str = "", pna: str = "", zone: str = "",
     s_entity: str = "", s_make: str = "", s_device_type: str = "",
-    s_touch: str = "", s_stock: str = "", s_grade: str = "",
+    s_touch: str = "", s_stock: str = "", s_grade: str = "", s_loc: str = "", s_avail: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(view_allowed),
 ):
@@ -1389,7 +1462,8 @@ async def model_summary_data(
     page_scope = await _ms_page_scope(db, q, stage, lot, grade, category, device_type, date_from,
                                       date_to, employee, entity, exclude_sold, fs, tsearch, stock_type, pna, zone)
     scope = [Device.is_trashed == False, *page_scope]  # noqa: E712
-    own = _ms_own_filters(s_entity, s_make, s_device_type, s_touch, s_stock, s_grade)
+    own = _ms_own_filters(s_entity, s_make, s_device_type, s_touch, s_stock, s_grade) + _ms_loc_avail_filters(s_loc, s_avail)
+    from models.location import ZONE_LABELS
 
     costing = (
         select(DeviceCosting.device_id.label("device_id"),
@@ -1398,29 +1472,34 @@ async def model_summary_data(
     )
     # Raw columns only in GROUP BY — Postgres won't match an expression that
     # carries its own bind parameters (see _build_model_summary).
-    cols = (Device.model, Device.brand, Device.device_type, Device.cpu, Device.ram_summary,
+    cols = (Device.model, Device.brand, Device.device_type, Device.cpu, Device.generation, Device.ram_summary,
             Device.ram_gb, Device.hdd_summary, Device.storage_gb, Device.storage_type,
             Device.entity, Device.touch_type, Device.grade, Device.sub_lot_number,
-            Device.current_stage)
+            Device.current_stage, StorageLocation.zone)
     rows = (await db.execute(
         select(*cols, func.count(Device.id).label("n"),
                func.sum(_device_price_expr(costing)).label("price"))
         .select_from(Device).join(Lot, Device.lot_id == Lot.id)
         .outerjoin(costing, costing.c.device_id == Device.id)
+        .outerjoin(StorageLocation, Device.location_id == StorageLocation.id)
         .where(*scope, *own)
         .group_by(*cols)
     )).all()
 
     groups: dict = {}
     for r in rows:
-        key = _ms_key(r.model, r.brand, r.device_type, r.cpu, r.ram_summary, r.ram_gb,
-                      r.hdd_summary, r.storage_gb, r.storage_type)
+        key = _ms_key2(r.model, r.brand, r.cpu, r.generation, r.ram_summary, r.ram_gb,
+                       r.hdd_summary, r.storage_gb, r.storage_type)
         g = groups.get(key)
         if g is None:
-            g = groups[key] = {"model": key[0], "make": key[1], "device_type": key[2], "cpu": key[3],
+            g = groups[key] = {"model": key[0], "make": key[1], "cpu": key[2], "gen": key[3],
                                "ram": key[4], "storage": key[5], "total": 0, "price": 0.0,
-                               "entity": {}, "touch": {}, "stock": {}, "grade": {}}
+                               "entity": {}, "touch": {}, "stock": {}, "grade": {}, "dtype": {}, "zone": {}}
         n = r.n or 0
+        dt_ = (r.device_type or "").strip() or MS_NONE
+        g["dtype"][dt_] = g["dtype"].get(dt_, 0) + n
+        zl = ZONE_LABELS.get(r.zone, getattr(r.zone, "value", r.zone)) if r.zone else "No Location"
+        g["zone"][zl] = g["zone"].get(zl, 0) + n
         g["total"] += n
         g["price"] += float(r.price or 0)
         ent = (r.entity or "").strip() or "Unassigned"
@@ -1463,15 +1542,46 @@ async def model_summary_data(
     })
 
 
-@router.get("/model-summary/tags")
-async def model_summary_tags(
-    model: str = "", make: str = "", m_device_type: str = "", m_cpu: str = "",
-    m_ram: str = "", m_storage: str = "",
+@router.get("/model-summary/barcodes")
+async def model_summary_barcodes(
     q: str = "", stage: str = "", lot: str = "", grade: str = "", category: str = "",
     device_type: str = "", date_from: str = "", date_to: str = "", employee: str = "",
     entity: str = "", exclude_sold: str = "", fs: str = "", tsearch: str = "", stock_type: str = "", pna: str = "", zone: str = "",
     s_entity: str = "", s_make: str = "", s_device_type: str = "",
-    s_touch: str = "", s_stock: str = "", s_grade: str = "",
+    s_touch: str = "", s_stock: str = "", s_grade: str = "", s_loc: str = "", s_avail: str = "",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(view_allowed),
+):
+    """Tag Numbers per Model Summary row (2026-11-16, Pankaj) for the table's
+    Export button: {"groups": {"model|make|cpu|gen|ram|storage": [tags]}} —
+    same scope as /model-summary/data; the page keeps the rows its search
+    leaves visible and posts those tags to /devices/export."""
+    page_scope = await _ms_page_scope(db, q, stage, lot, grade, category, device_type, date_from,
+                                      date_to, employee, entity, exclude_sold, fs, tsearch, stock_type, pna, zone)
+    own = _ms_own_filters(s_entity, s_make, s_device_type, s_touch, s_stock, s_grade) + _ms_loc_avail_filters(s_loc, s_avail)
+    rows = (await db.execute(
+        select(Device.barcode, Device.model, Device.brand, Device.cpu, Device.generation, Device.ram_summary,
+               Device.ram_gb, Device.hdd_summary, Device.storage_gb, Device.storage_type)
+        .select_from(Device).join(Lot, Device.lot_id == Lot.id)
+        .where(Device.is_trashed == False, *page_scope, *own)  # noqa: E712
+    )).all()
+    groups: dict = {}
+    for r in rows:
+        key = "|".join(_ms_key2(r.model, r.brand, r.cpu, r.generation, r.ram_summary, r.ram_gb,
+                                r.hdd_summary, r.storage_gb, r.storage_type))
+        groups.setdefault(key, []).append(r.barcode)
+    return JSONResponse({"groups": groups})
+
+
+@router.get("/model-summary/tags")
+async def model_summary_tags(
+    model: str = "", make: str = "", m_device_type: str = "", m_cpu: str = "",
+    m_ram: str = "", m_storage: str = "", m_gen: str = "",
+    q: str = "", stage: str = "", lot: str = "", grade: str = "", category: str = "",
+    device_type: str = "", date_from: str = "", date_to: str = "", employee: str = "",
+    entity: str = "", exclude_sold: str = "", fs: str = "", tsearch: str = "", stock_type: str = "", pna: str = "", zone: str = "",
+    s_entity: str = "", s_make: str = "", s_device_type: str = "",
+    s_touch: str = "", s_stock: str = "", s_grade: str = "", s_loc: str = "", s_avail: str = "",
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(view_allowed),
 ):
@@ -1480,7 +1590,7 @@ async def model_summary_tags(
     matched on all six grouping fields."""
     page_scope = await _ms_page_scope(db, q, stage, lot, grade, category, device_type, date_from,
                                       date_to, employee, entity, exclude_sold, fs, tsearch, stock_type, pna, zone)
-    own = _ms_own_filters(s_entity, s_make, s_device_type, s_touch, s_stock, s_grade)
+    own = _ms_own_filters(s_entity, s_make, s_device_type, s_touch, s_stock, s_grade) + _ms_loc_avail_filters(s_loc, s_avail)
 
     def _match(col, value, unknown_label):
         if value == unknown_label:
@@ -1488,7 +1598,7 @@ async def model_summary_tags(
         return col == value
 
     rows = (await db.execute(
-        select(Device.barcode, Device.grade, Device.device_type, Device.cpu, Device.ram_summary,
+        select(Device.barcode, Device.grade, Device.device_type, Device.cpu, Device.generation, Device.ram_summary,
                Device.ram_gb, Device.hdd_summary, Device.storage_gb, Device.storage_type,
                Device.model, Device.brand, StorageLocation.unit_id, StorageLocation.unit_type)
         .select_from(Device)
@@ -1499,11 +1609,13 @@ async def model_summary_tags(
                _match(Device.brand, make, MS_UNKNOWN_MAKE))
         .order_by(Device.barcode)
     )).all()
-    want = (model, make, m_device_type, m_cpu, m_ram, m_storage)
+    want = (model, make, m_cpu, m_gen, m_ram, m_storage)
     tags = []
     for r in rows:
-        key = _ms_key(r.model, r.brand, r.device_type, r.cpu, r.ram_summary, r.ram_gb,
-                      r.hdd_summary, r.storage_gb, r.storage_type)
+        key = _ms_key2(r.model, r.brand, r.cpu, r.generation, r.ram_summary, r.ram_gb,
+                       r.hdd_summary, r.storage_gb, r.storage_type)
+        if m_device_type and not m_gen and ((r.device_type or "").strip() or MS_NONE) != m_device_type:
+            continue   # an older caller still matching on Device Type
         # Fields not sent (older callers) are not compared
         if any(w and k != w for k, w in zip(key, want)):
             continue
@@ -2503,7 +2615,7 @@ async def device_edit_save(
 # Hard Drive. Gated (auth/route_actions.py) on Edit for ANY of those three
 # modules, so the engineers on those pages can fix specs without the full
 # Device Edit (admin / inventory manager only).
-SPEC_EDIT_MODULES = ("repair_l1", "qc_check", "cosmetic_finalqc")
+SPEC_EDIT_MODULES = ("repair_l1", "qc_check", "cosmetic_finalqc", "pre_sale_iqc")   # + Pre-Sale QC (2026-11-16)
 
 
 @router.post("/{barcode}/specs")

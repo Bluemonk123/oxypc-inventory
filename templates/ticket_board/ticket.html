@@ -1,6 +1,44 @@
 {% extends "base.html" %}
 {% block title %}#{{ t.ticket_id }} {{ t.display_subject }} — Ticket Board{% endblock %}
 {% block page_title %}Ticket Board{% endblock %}
+{% block head %}
+{# Shown inside the Dashboard's side panel (an iframe) → hide the app's
+   sidebar / top bar / breadcrumb so only the ticket shows (2026-11-13). #}
+<script>if (window.self !== window.top) document.documentElement.classList.add('tb-embed');</script>
+<style>
+  html.tb-embed #sidebar, html.tb-embed .topbar, html.tb-embed nav[aria-label="breadcrumb"],
+  html.tb-embed #tbTabs, html.tb-embed #notifPanel, html.tb-embed #notifPanelBackdrop { display:none !important; }
+  html.tb-embed main { padding:.75rem 1rem !important; }
+  /* Full height (2026-11-14): on wide screens the row fills the window; the
+     thread scrolls with the reply box pinned at the bottom, and Interaction
+     history takes the right column's remaining height, scrolling. Height is
+     set by the script below (#tbFill). */
+  @media (min-width:992px) {
+    .tb-fill.sized { --bs-gutter-y:0; }
+    .tb-fill.sized > .tb-col { display:flex; flex-direction:column; height:100%; min-height:0; margin-top:0; }
+    .tb-fill.sized .tb-conv { flex:1; min-height:0; display:flex; flex-direction:column; }
+    .tb-fill.sized .tb-conv > .card-body { flex:1; min-height:0; }
+    .tb-fill.sized .tb-thread { flex:1; min-height:0; max-height:none; }
+    .tb-fill.sized .tb-histcard { flex:1; min-height:0; display:flex; flex-direction:column; }
+    .tb-fill.sized .tb-histbody { flex:1; min-height:0; overflow-y:auto; }
+  }
+  .tb-histbody { max-height:60vh; overflow-y:auto; }
+  .tb-ro { font-size:.85rem; background:var(--bs-tertiary-bg, #f8f9fa); border:1px solid var(--bs-border-color); border-radius:6px;
+           padding:.35rem .6rem; white-space:pre-wrap; word-break:break-word; }
+  .tb-ro-desc { max-height:7.5rem; overflow-y:auto; }
+  /* Narrower right column (2026-11-14): fixed 320px on wide screens, the
+     conversation takes the rest — so the side panel itself can be narrower. */
+  @media (min-width:992px) {
+    .tb-fill > .tb-col:first-child { flex:1 1 0; width:auto; max-width:none; }
+    .tb-fill > .tb-col:last-child { flex:0 0 400px; width:400px; max-width:400px; }
+  }
+  /* Requester line on one line; properties one field per line (2026-11-14). */
+  .tb-req-sub { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .tb-fill .tb-prop { grid-template-columns:1fr; }
+  .tb-fill.sized .tb-histbody { max-height:none; }
+  #tbReply { resize:vertical; }
+</style>
+{% endblock %}
 {% block content %}
 {% import "ticket_board/_common.html" as tc with context %}
 {# Ticket screen (2026-11-13, Pankaj): conversation → properties → requester
@@ -15,10 +53,10 @@
 <div class="tb-av" style="background:{{ palette[(n|length * 3 + 'abcdefghijklmnopqrstuvwxyz'.find((n[:1])|lower)) % 8] }}">{{ (n.split()|map('first')|join)[:2]|upper }}</div>
 {%- endmacro %}
 
-<div class="row g-3">
+<div class="row g-3 tb-fill" id="tbFill">
   {# ── Conversation ─────────────────────────────────────────────── #}
-  <div class="col-lg-7 col-xxl-8">
-    <div class="card border-0 shadow-sm">
+  <div class="col-lg-7 col-xxl-8 tb-col">
+    <div class="card border-0 shadow-sm tb-conv">
       <div class="card-header bg-transparent">
         <div class="fw-semibold fs-6 mb-1">{{ t.display_subject }}</div>
         <div class="d-flex flex-wrap gap-2 align-items-center small text-muted">
@@ -29,7 +67,7 @@
           {{ tc.sla_badge(sla) }}
         </div>
       </div>
-      <div class="card-body">
+      <div class="card-body d-flex flex-column">
         <div class="tb-owner mb-3">
           {% if t.assignee %}
           {{ av(assignee_user.full_name if assignee_user else t.assignee) }}
@@ -84,14 +122,14 @@
             <button type="button" class="btn btn-outline-primary bg-white active" data-mode="public">Public reply</button>
             <button type="button" class="btn btn-outline-warning bg-white note" data-mode="note">Internal note</button>
           </div>
-          <textarea name="body" id="tbReply" class="form-control form-control-sm" rows="4" maxlength="20000"
+          <textarea name="body" id="tbReply" class="form-control form-control-sm" rows="2" maxlength="20000"
                     placeholder="Reply to {{ req.name }}…"></textarea>
           <div class="d-flex justify-content-between align-items-center mt-2 gap-2">
             <span class="small text-muted" id="tbModeHint">{% if req.user %}{{ req.name }} gets an alert with your reply.{% else %}Visible on the ticket; this requester has no login to alert.{% endif %}</span>
             <div class="input-group input-group-sm" style="width:auto">
               <button type="submit" class="btn btn-dark">Submit as</button>
               <select name="submit_status" class="form-select form-select-sm" aria-label="Status after submit" style="max-width:130px">
-                {% for s in STATUSES if s != 'new' %}<option value="{{ s }}"{% if s == ('open' if t.status == 'new' else t.status) %} selected{% endif %}>{{ tb.STATUS_LABEL[s] }}</option>{% endfor %}
+                {% for s in STATUSES %}<option value="{{ s }}"{% if s == t.status %} selected{% endif %}>{{ tb.STATUS_LABEL[s] }}</option>{% endfor %}
               </select>
             </div>
           </div>
@@ -101,12 +139,21 @@
     </div>
   </div>
 
-  {# ── Right column (2026-11-13, Pankaj): Properties, then Requester and Interaction history, stacked ── #}
-  <div class="col-lg-5 col-xxl-4">
-    <div class="card border-0 shadow-sm mb-3">
+  {# ── Right column (2026-11-14, Pankaj): Properties (requester at the top),
+     then Interaction history filling the rest of the height, scrolling. ── #}
+  <div class="col-lg-5 col-xxl-4 tb-col">
+    <div class="card border-0 shadow-sm mb-3 flex-shrink-0">
       <div class="card-header bg-transparent"><span class="fw-semibold"><i class="bi bi-sliders me-1"></i>Properties</span></div>
       <div class="card-body tb-prop">
-        <div class="mb-3 tb-full"><label class="d-block">Requester</label><input class="form-control form-control-sm" value="{{ req.name }}" disabled></div>
+        {% set _role = (role_display(req.detail) if req.kind == 'Staff' and req.detail else req.kind) %}
+        <div class="mb-3 tb-full"><label class="d-block">Requester</label>
+          <div class="d-flex align-items-center gap-2 tb-req">{{ av(req.name) }}
+            <div style="min-width:0">
+              <div class="fw-semibold text-truncate" title="{{ req.email or req.username }}">{{ req.name }}</div>
+              <div class="small text-muted tb-req-sub" title="Role - {{ _role }} | Unsolved - {{ req_unsolved }} | Total - {{ req_total }}">Role - {{ _role }} | Unsolved - {{ req_unsolved }} | Total - {{ req_total }}</div>
+            </div>
+          </div>
+        </div>
         {% macro field_form(field, label) %}
         <form method="post" action="/ticket-board/{{ t.ticket_id }}/update" class="mb-3 tb-autosave{{ ' tb-full' if field == 'subject' else '' }}">
           <input type="hidden" name="csrf_token" value="{{ csrf }}"><input type="hidden" name="field" value="{{ field }}">
@@ -114,9 +161,9 @@
           {{ caller() }}
         </form>
         {% endmacro %}
-        {% call field_form('subject', 'Subject') %}
-          <input name="value" id="tbf_subject" class="form-control form-control-sm" maxlength="200" value="{{ t.display_subject }}" {% if not can_edit %}disabled{% endif %}>
-        {% endcall %}
+        {# Subject and Description: read-only (2026-11-14, Pankaj). #}
+        <div class="mb-3 tb-full"><label class="d-block">Subject</label><div class="tb-ro">{{ t.display_subject }}</div></div>
+        <div class="mb-3 tb-full"><label class="d-block">Description</label><div class="tb-ro tb-ro-desc">{{ t.feedback }}</div></div>
         {% call field_form('assignee', 'Assignee') %}
           <select name="value" id="tbf_assignee" class="form-select form-select-sm" data-search {% if not can_edit %}disabled{% endif %}>
             <option value="">— Unassigned —</option>
@@ -141,29 +188,16 @@
             {% for p in PRIORITIES %}<option value="{{ p }}"{% if p == priority %} selected{% endif %}>{{ p|capitalize }}</option>{% endfor %}
           </select>
         {% endcall %}
+        {% set _cr = t.raised_on or t.created_at %}
+        <div class="mb-3"><label class="d-block">Date Created</label>
+          <div class="small">{{ _cr.strftime('%d-%m-%Y %H:%M') if _cr else '—' }}{% if age.text %}
+            <span class="text-muted">· {{ ('Took ' ~ age.text ~ ' to solve') if age.stopped else ('Age ' ~ age.text) }}</span>{% endif %}</div></div>
         <div class="mb-1"><label class="d-block">SLA</label>{% if sla %}{{ tc.sla_badge(sla) }}{% else %}<span class="text-muted small">—</span>{% endif %}</div>
       </div>
     </div>
-
-
-
-
-    <div class="card border-0 shadow-sm mb-3">
-      <div class="card-header bg-transparent"><span class="fw-semibold"><i class="bi bi-person me-1"></i>Requester</span></div>
-      <div class="card-body">
-        <div class="d-flex align-items-center gap-2 mb-3">{{ av(req.name) }}
-          <div><div class="fw-semibold">{{ req.name }}</div><div class="text-muted small">{{ req.email or req.username or req.kind }}</div></div></div>
-        <div class="tb-kv">
-          <span>Type</span><span>{{ req.kind }}</span>
-          {% if req.username %}<span>Username</span><span>{{ req.username }}</span>{% endif %}
-          {% if req.detail %}<span>{{ 'Role' if req.kind == 'Staff' else 'Partner' }}</span><span>{{ req.detail }}</span>{% endif %}
-          <span>Tickets</span><span>{{ others|length + 1 }}</span>
-        </div>
-      </div>
-    </div>
-    <div class="card border-0 shadow-sm">
+    <div class="card border-0 shadow-sm tb-histcard">
       <div class="card-header bg-transparent"><span class="fw-semibold"><i class="bi bi-clock-history me-1"></i>Interaction history</span></div>
-      <div class="card-body p-2">
+      <div class="card-body p-2 tb-histbody">
         {% for o in others %}
         <a href="/ticket-board/{{ o.ticket_id }}" class="d-flex gap-2 align-items-center text-decoration-none text-body p-2 rounded small tb-hist">
           {{ tc.status_pill(o.status, short=True) }}<span class="text-truncate">#{{ o.ticket_id }} {{ o.display_subject }}</span></a>
@@ -176,6 +210,19 @@
 </div>
 
 <script>
+// Fit the ticket row to the window (wide screens only). body has a CSS zoom,
+// so screen pixels are divided by it to get CSS pixels.
+(function () {
+  var row = document.getElementById('tbFill');
+  function fit() {
+    if (window.innerWidth < 992) { row.classList.remove('sized'); row.style.height = ''; return; }
+    var z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+    var top = row.getBoundingClientRect().top + window.scrollY;
+    row.style.height = Math.max(420, (window.innerHeight - top) / z - 16) + 'px';
+    row.classList.add('sized');
+  }
+  window.addEventListener('resize', fit); document.addEventListener('DOMContentLoaded', fit); fit();
+})();
 tbRememberTab({{ t.ticket_id|tojson }}, {{ t.display_subject|tojson }}, {{ t.status|tojson }});
 document.addEventListener('DOMContentLoaded', function () {
   var th = document.getElementById('tbThread'); if (th) th.scrollTop = th.scrollHeight;

@@ -379,11 +379,41 @@ async def post_iqc_context(db: AsyncSession, current_user, scope: str = "live") 
 async def grn_post_iqc(request: Request, db: AsyncSession = Depends(get_db),
                        current_user: User = Depends(allowed),
                        error: str = "", success: str = "", highlight_tag: str = ""):
+    # Option C dashboard (2026-11-14, Pankaj) — services/grn_dash.py
+    from services.grn_dash import build as _build_dash
+    try:
+        from templates_config import _can
+        dash_kpis, dash_widgets = await _build_dash(db, can_price=_can(current_user, "grn_post_iqc", "pricing"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("GRN dashboard failed")
+        await db.rollback()
+        dash_kpis, dash_widgets = [], []
     return templates.TemplateResponse("grn/post_iqc.html", {
         "request": request, "current_user": current_user, "error": error, "success": success,
-        "highlight_tag": highlight_tag,
+        "highlight_tag": highlight_tag, "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         **(await post_iqc_context(db, current_user, "live")),
     })
+
+
+@router.get("/lots-of")
+async def grn_lots_of(grn: str, db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed)):
+    """GRN dashboard -> Lots count (2026-11-14): the lots on one GRN."""
+    import uuid as _u
+    from models.grn_import import GRNLot
+    from models.device import Device
+    try:
+        gid = _u.UUID(grn)
+    except ValueError:
+        raise HTTPException(404)
+    rows = (await db.execute(
+        select(Lot.lot_number, Lot.supplier_name, Lot.qty, func.count(Device.id))
+        .select_from(GRNLot).join(Lot, Lot.id == GRNLot.lot_id)
+        .outerjoin(Device, (Device.lot_id == Lot.id) & (Device.is_trashed == False))  # noqa: E712
+        .where(GRNLot.grn_id == gid).group_by(Lot.id, Lot.lot_number, Lot.supplier_name, Lot.qty)
+        .order_by(Lot.lot_number))).all()
+    return JSONResponse({"rows": [{"lot": ln or "", "supplier": sup or "", "qty": q or 0, "devices": n}
+                                  for ln, sup, q, n in rows]})
 
 
 @router.post("/map")

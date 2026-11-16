@@ -17,18 +17,22 @@
 {% macro ticket_table(table_id, items) %}
 <table class="table table-hover mb-0 small align-middle" id="{{ table_id }}">
   <thead class="table-light">
-    <tr><th>Status</th><th>Subject</th><th>Requester</th><th>Updated</th><th>Group</th><th>Assignee</th><th>Priority</th><th>SLA</th></tr>
+    <tr><th>Status</th><th>Subject</th><th>Requester</th><th>Created</th><th>Updated</th><th>Group</th><th>Assignee</th><th>Priority</th><th>SLA</th></tr>
   </thead>
   <tbody>
   {% for it in items %}{% set t = it.t %}
-    <tr class="tb-row" data-href="/ticket-board/{{ t.ticket_id }}">
-      <td data-order="{{ ['new','open','pending','hold','solved'].index(t.status) if t.status in ['new','open','pending','hold','solved'] else 9 }}">{{ status_pill(t.status) }}</td>
+    <tr class="tb-row" data-href="/ticket-board/{{ t.ticket_id }}" data-status="{{ t.status }}" data-priority="{{ it.priority }}" data-group="{{ t.group_name or '' }}">
+      <td data-order="{{ ['open','pending','solved','hold'].index(t.status) if t.status in ['open','pending','solved','hold'] else 9 }}">{{ status_pill(t.status) }}</td>
       <td>
         {# Number above the subject, no preview line (2026-11-13, Pankaj). #}
         <div class="text-muted" style="font-size:.75rem"><i class="bi {{ tb.CHANNEL_ICON[it.channel][0] }} me-1" title="via {{ tb.CHANNEL_ICON[it.channel][1] }}"></i>#{{ t.ticket_id }}</div>
         <div class="tb-subj">{{ t.display_subject }}</div>
       </td>
       <td>{{ it.req.name }}{% if it.req.kind != 'Staff' %}<div class="text-muted" style="font-size:.72rem">{{ it.req.kind }}</div>{% endif %}</td>
+      {# Date created + age until solved (2026-11-14, Pankaj). #}
+      {% set cr = t.raised_on or t.created_at %}
+      <td class="text-nowrap" data-order="{{ cr.isoformat() if cr else '' }}">{{ cr.strftime('%d-%m-%Y') if cr else '—' }}
+        {% if it.age.text %}<div class="text-muted" style="font-size:.72rem" title="{{ 'Took' if it.age.stopped else 'Open for' }} {{ it.age.text }}">{{ 'Took' if it.age.stopped else 'Age' }} {{ it.age.text }}</div>{% endif %}</td>
       {% set upd = t.updated_at or t.raised_on %}
       <td data-order="{{ upd.isoformat() if upd else '' }}"><time data-ts="{{ upd.isoformat() if upd else '' }}"></time></td>
       <td>{{ t.group_name or '—' }}</td>
@@ -41,9 +45,11 @@
 </table>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  initGlobalTable('#{{ table_id }}', { order: [[3, 'desc']], language: { emptyTable: 'No tickets here.' } }, { dates: false });
+  initGlobalTable('#{{ table_id }}', { order: [[4, 'desc']], language: { emptyTable: 'No tickets here.' } }, { dates: false });
   document.getElementById('{{ table_id }}').addEventListener('click', function (e) {
-    var tr = e.target.closest('tr.tb-row'); if (tr && !e.target.closest('a,button')) location.href = tr.dataset.href;
+    var tr = e.target.closest('tr.tb-row'); if (!tr || e.target.closest('a,button')) return;
+    // Dashboard opens the ticket in its right side panel (2026-11-13).
+    if (window.tbOpenPanel) window.tbOpenPanel(tr.dataset.href); else location.href = tr.dataset.href;
   });
 });
 </script>
@@ -53,7 +59,7 @@ document.addEventListener('DOMContentLoaded', function () {
 <style>
   .tb-pill { display:inline-block; min-width:22px; padding:2px 8px; border-radius:4px; color:#fff; font-size:.7rem;
              font-weight:600; text-align:center; line-height:1.4; }
-  .tb-st-new { background:#ffb648; color:#2f3941; } .tb-st-open { background:#e34f32; } .tb-st-pending { background:#3091ec; }
+  .tb-st-open { background:#e34f32; } .tb-st-pending { background:#3091ec; }
   .tb-st-hold { background:#2f3941; } .tb-st-solved { background:#87929d; }
   .tb-prio { font-size:.78rem; font-weight:600; }
   .tb-sla { font-size:.72rem; font-weight:600; padding:2px 6px; border-radius:4px; white-space:nowrap; }
@@ -78,7 +84,7 @@ document.addEventListener('DOMContentLoaded', function () {
                                padding:.5rem .75rem; font-size:.9rem; }
   .tb-views .list-group-item.active { background:rgba(var(--bs-primary-rgb), .1); color:var(--bs-primary); font-weight:600; }
   .tb-views .list-group-item .n { color:var(--bs-secondary-color); font-weight:500; }
-  .tb-subj { font-weight:600; white-space:normal; min-width:220px; }
+  .tb-subj { font-weight:600; white-space:normal; min-width:150px; }
   .tb-prev { color:var(--bs-secondary-color); font-size:.78rem; max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   tr.tb-row { cursor:pointer; }
   .tb-thread { display:flex; flex-direction:column; gap:10px; max-height:62vh; overflow-y:auto; padding:4px 2px; }
@@ -106,41 +112,17 @@ document.addEventListener('DOMContentLoaded', function () {
 {% endmacro %}
 
 {% macro tabs(active_id='', page='views') %}
-<div class="tb-tabs" id="tbTabs" data-active="{{ active_id }}">
-  {# Dashboard first, then All Tickets (2026-11-13, Pankaj). #}
-  <a href="/ticket-board/dashboard" class="tb-tab{% if page == 'dashboard' %} active{% endif %}"><i class="bi bi-bar-chart"></i><span class="t">Dashboard</span></a>
-  <a href="/ticket-board" class="tb-tab{% if not active_id and page == 'views' %} active{% endif %}"><i class="bi bi-list-ul"></i><span class="t">All Tickets</span></a>
+{# 2026-11-13 (Pankaj): All Tickets tab and the open-ticket tabs removed —
+   the Dashboard is the one list page and tickets open in a side panel
+   there. A full ticket page (e.g. from a notification link) gets a link
+   back to the Dashboard instead. Also holds the relative-time script. #}
+{% if page != 'dashboard' %}
+<div class="tb-tabs" id="tbTabs">
+  <a href="/ticket-board/dashboard" class="tb-tab"><i class="bi bi-arrow-left"></i><span class="t">Dashboard</span></a>
 </div>
+{% endif %}
 <script>
-// Open-ticket tabs (this browser only). Each: {id, s: subject, st: status}.
-(function () {
-  var KEY = 'tbOpenTabs', box = document.getElementById('tbTabs'), active = box.dataset.active;
-  function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
-  function save(v) { try { localStorage.setItem(KEY, JSON.stringify(v.slice(-12))); } catch (e) {} }
-  var list = load();
-  window.tbRememberTab = function (id, s, st) {
-    list = list.filter(function (x) { return x.id !== id; }); list.push({ id: id, s: s, st: st }); save(list); draw();
-  };
-  var LBL = { new: 'N', open: 'O', pending: 'P', hold: 'H', solved: 'S' };
-  function esc(v) { var d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; }
-  function draw() {
-    box.querySelectorAll('.tb-tab[data-id]').forEach(function (n) { n.remove(); });
-    list.forEach(function (x) {
-      var a = document.createElement('a');
-      a.href = '/ticket-board/' + encodeURIComponent(x.id); a.dataset.id = x.id;
-      a.className = 'tb-tab' + (x.id === active ? ' active' : '');
-      a.innerHTML = '<span class="tb-pill tb-st-' + esc(x.st) + '">' + (LBL[x.st] || '?') + '</span>' +
-        '<span class="t">#' + esc(x.id) + ' ' + esc(x.s) + '</span><button type="button" class="x" title="Close tab" aria-label="Close tab">&times;</button>';
-      a.querySelector('.x').addEventListener('click', function (e) {
-        e.preventDefault(); e.stopPropagation();
-        list = list.filter(function (y) { return y.id !== x.id; }); save(list);
-        if (x.id === active) location.href = '/ticket-board'; else draw();
-      });
-      box.appendChild(a);
-    });
-  }
-  draw();
-})();
+window.tbRememberTab = function () {};
 // Relative times: <time data-ts="ISO">.
 document.addEventListener('DOMContentLoaded', function () {
   function ago(ts) {

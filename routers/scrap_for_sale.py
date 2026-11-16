@@ -415,8 +415,18 @@ async def scrap_sale_report(request: Request, db: AsyncSession = Depends(get_db)
             "total": float(it.total_price or 0),
         } for it in s.items],
     } for s in sales]
+    # Option C dashboard (2026-11-14, Pankaj) — services/scrap_dash.py.
+    dash_kpis, dash_widgets = [], []
+    try:
+        from services.scrap_dash import build as _scrap_dash
+        dash_kpis, dash_widgets = await _scrap_dash(db, rows)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Scrap Sale Report dashboard failed")
+        await db.rollback()
     return templates.TemplateResponse("scrap/sale_report.html", {
         "request": request, "current_user": current_user, "rows": rows,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "grand_total": sum(r["total"] for r in rows),
     })
 

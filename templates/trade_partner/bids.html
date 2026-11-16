@@ -42,7 +42,7 @@
               {% if can(current_user, 'trade_partner_bids', 'export') %}<a href="/trade-partner/bids/document/{{ d.id }}"
                  class="btn btn-sm btn-outline-secondary py-0 px-1 mb-1"
                  title="{{ d.original_name or d.filename }}">
-                <i class="bi bi-download"></i> {{ d.doc_type | upper }}
+                <i class="bi bi-download"></i> {{ {'so': 'Sales Order', 'po': 'Purchase Order', 'quote': 'Quotation', 'invoice': 'Invoice'}.get(d.doc_type, d.doc_type | upper) }}
               </a>{% endif %}
               {% else %}<span class="text-muted small">—</span>{% endfor %}
             </td>
@@ -137,7 +137,7 @@
           {% if can(current_user, 'trade_partner_bids', 'export') %}<a href="/trade-partner/bids/document/{{ d.id }}"
              class="btn btn-sm btn-outline-secondary py-0 px-1 mb-1"
              title="{{ d.original_name or d.filename }}">
-            <i class="bi bi-download"></i> {{ d.doc_type | upper }}
+            <i class="bi bi-download"></i> {{ {'so': 'Sales Order', 'po': 'Purchase Order', 'quote': 'Quotation', 'invoice': 'Invoice'}.get(d.doc_type, d.doc_type | upper) }}
           </a>{% endif %}
           {% else %}<span class="text-muted small">—</span>{% endfor %}
           {% if can(current_user, 'trade_partner_bids', 'upload') %}

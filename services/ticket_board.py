@@ -3,26 +3,31 @@ Raise Ticket, the staff / partner login pages and the partner portal.
 Spec: TICKETING_MODULE_SPEC.md (phase 1: list + views, ticket screen,
 replies / internal notes, statuses, activity log).
 
-Status flow: new (just arrived, unassigned) -> open (being worked; set
-automatically when assigned or first replied) -> pending (waiting on the
-requester) / hold (waiting on someone else; SLA clock paused) -> solved.
+Status flow (2026-11-13): open (every new ticket) -> pending (waiting on
+the requester) / hold (waiting on someone else; SLA clock paused) -> solved.
 """
 from sqlalchemy import select, update, func, or_, and_
 
-from models.ticket import Ticket, TicketMessage, STATUSES
+from models.ticket import Ticket, TicketMessage, STATUSES, GROUPS, DEFAULT_GROUP
 from models.user import User
 from utils.timezone import app_now
 
-STATUS_LABEL = {"new": "New", "open": "Open", "pending": "Pending", "hold": "On hold", "solved": "Solved"}
-STATUS_COLOR = {"new": "#ffb648", "open": "#e34f32", "pending": "#3091ec", "hold": "#2f3941", "solved": "#87929d"}
+STATUS_LABEL = {"open": "Open", "pending": "Pending", "solved": "Solved", "hold": "Hold"}
+STATUS_COLOR = {"open": "#e34f32", "pending": "#3091ec", "solved": "#87929d", "hold": "#2f3941"}
 PRIORITY_COLOR = {"urgent": "#cc3340", "high": "#ed961c", "normal": "#68737d"}
 CHANNEL_ICON = {"web": ("bi-globe", "Web form"), "email": ("bi-envelope", "Email"), "agent": ("bi-headset", "Agent")}
 
 
 async def migrate_legacy_statuses(db) -> int:
-    """Open -> new, Closed -> solved (once; later runs find nothing).
-    Tickets set Closed keep their last update as the solved time."""
-    n1 = (await db.execute(update(Ticket).where(Ticket.status == "Open").values(status="new"))).rowcount or 0
+    """Open / new -> open, Closed -> solved, no group -> Support (once; later
+    runs find nothing). Tickets set Closed keep their last update as the
+    solved time. "new" was dropped as a status on 2026-11-13."""
+    n1 = (await db.execute(update(Ticket).where(Ticket.status.in_(("Open", "new"))).values(status="open"))).rowcount or 0
+    n1 += (await db.execute(update(Ticket).where(or_(Ticket.group_name.is_(None), Ticket.group_name == ""))
+                            .values(group_name=DEFAULT_GROUP))).rowcount or 0
+    for old in ("new issue", "new feedback", "new feature", "new task"):   # type renamed 2026-11-13
+        n1 += (await db.execute(update(Ticket).where(Ticket.ticket_type == old)
+                                .values(ticket_type=old[4:]))).rowcount or 0
     n2 = (await db.execute(update(Ticket).where(Ticket.status == "Closed")
                            .values(status="solved", solved_at=func.coalesce(Ticket.solved_at, Ticket.updated_at)))).rowcount or 0
     if n1 or n2:
@@ -102,17 +107,39 @@ def set_status(db, t, new: str, who) -> bool:
     return True
 
 
+ASSIGNEE_GROUP_WORDS = ("ticket", "support")
+
+
+async def assignee_usernames(db) -> set:
+    """Usernames in the Group Config groups whose name has "Ticket" or
+    "Support" in it (members + the group's manager), 2026-11-13 Pankaj.
+    Empty when no such group exists yet."""
+    from models.attendance_group import AttendanceGroup, AttendanceGroupMember
+    cond = or_(*[func.lower(AttendanceGroup.name).contains(w) for w in ASSIGNEE_GROUP_WORDS])
+    groups = (await db.execute(select(AttendanceGroup).where(AttendanceGroup.is_active == True, cond))).scalars().all()  # noqa: E712
+    if not groups:
+        return set()
+    names = {g.manager_username for g in groups if g.manager_username}
+    names |= set((await db.execute(select(AttendanceGroupMember.username).where(
+        AttendanceGroupMember.group_id.in_([g.id for g in groups])))).scalars())
+    return names
+
+
 async def engineers(db) -> list:
-    """Active users who can open the Ticket Board (admins + any role ticked
-    for it in the Permission Matrix), with their open-ticket count."""
+    """Who a ticket can be assigned to, with their open-ticket count: the
+    active users in the "Ticket" / "Support" groups of Group Config. Until
+    such a group has people in it, falls back to the users who can open the
+    Ticket Board (admins + roles ticked in the Permission Matrix)."""
     from models.role_permissions import has_perm
     users = (await db.execute(select(User).where(User.status == True).order_by(User.full_name))).scalars().all()  # noqa: E712
     load = dict((await db.execute(select(Ticket.assignee, func.count()).where(
         Ticket.status != "solved", Ticket.assignee.isnot(None)).group_by(Ticket.assignee))).all())
+    in_group = await assignee_usernames(db)
     out = []
     for u in users:
         rv = getattr(u.role, "value", u.role)
-        if has_perm(str(rv), "ticket_board", "enable"):
+        ok = (u.username in in_group) if in_group else has_perm(str(rv), "ticket_board", "enable")
+        if ok:
             out.append({"username": u.username, "name": u.full_name or u.username, "open": load.get(u.username, 0)})
     return out
 
@@ -153,3 +180,35 @@ def sla_info(t, hours: dict, now=None) -> dict | None:
         return {"state": "breach", "text": f"Breached {round(h)}h" if h >= 1 else f"Breached {round(-left / 60)}m", "left_s": left}
     h = left / 3600
     return {"state": "warn" if h < 2 else "ok", "text": (f"{round(left / 60)}m left" if h < 1 else f"{round(h)}h left"), "left_s": left}
+
+
+async def ensure_ticket_groups(db) -> int:
+    """Add any of Support / Development / Training / Research missing from
+    Master Data 'ticket_group' and keep them in that order (2026-11-13).
+    A value an admin deactivated is left as it is. Returns values added."""
+    from models.master import MasterData
+    rows = {m.value: m for m in (await db.execute(
+        select(MasterData).where(MasterData.category == "ticket_group"))).scalars()}
+    added = 0
+    for i, g in enumerate(GROUPS):
+        if g in rows:
+            rows[g].display_order = i
+        else:
+            db.add(MasterData(category="ticket_group", value=g, display_order=i))
+            added += 1
+    await db.commit()
+    return added
+
+
+def age_info(t, now=None) -> dict:
+    """Ticket age (2026-11-14, Pankaj): from creation until it is solved (or
+    now, while unsolved). text like "4h", "3d 5h"; stopped = solved."""
+    start = t.raised_on or t.created_at
+    if not start:
+        return {"text": "", "seconds": 0, "stopped": False}
+    stopped = t.status == "solved"
+    end = (t.solved_at or t.updated_at or now or app_now()) if stopped else (now or app_now())
+    secs = max(0, int((end - start).total_seconds()))
+    d, h = secs // 86400, (secs % 86400) // 3600
+    text = f"{d}d {h}h" if d else (f"{h}h" if h else f"{max(1, secs // 60)}m")
+    return {"text": text, "seconds": secs, "stopped": stopped}

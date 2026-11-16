@@ -20,6 +20,11 @@
 
 <!-- Filter Bar -->
 {% import "_multiselect_filter.html" as ms %}
+{# Option C dashboard (2026-11-14, Pankaj): header with the filters, KPIs and charts;
+   "View Data" swaps them for the tables below. services/devices_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% call dash.hero('Inventory Board', 'Inventory  ›  Devices', 'Every device the company has owned, and where it is now', view_data=True) %}
 <form method="get" action="/devices" class="filter-bar">
   <div>
     <div class="filter-bar-row">
@@ -44,8 +49,10 @@
       </div>
       {{ ms.multiselect('lot', 'Lot', lot_choices, lot) }}
       {# PNA Check (2026-10-22): Yes = in the PNA summary (active PNA part, in
-         L1/L2/L3) — same rule as the export's PNA column. #}
-      <div>
+         L1/L2/L3) — same rule as the export's PNA column.
+         Hidden (2026-11-14, Pankaj) so the filter bar fits on one row; a link
+         that carries ?pna=yes|no still filters. #}
+      <div class="d-none">
         <select name="pna" class="form-select form-select-sm" title="PNA Check">
           <option value="" {% if not pna %}selected{% endif %}>PNA Check: All</option>
           <option value="yes" {% if pna == 'yes' %}selected{% endif %}>PNA Check: Yes</option>
@@ -75,6 +82,12 @@
     </div>
   </div>
 </form>
+{% endcall %}
+<div class="dash-body">
+  {{ dash.kpis(dash_kpis) }}
+  {{ dash.grid(dash_widgets) }}
+</div>
+<div class="dash-data">
 
 {# Results Header: the "N device(s) total" count line was removed on request
    (the table toolbar already shows the row count). Only the 500-row cap
@@ -256,6 +269,9 @@
 </div>
 
 <div class="tab-pane fade" id="invModelTab">
+<form id="msExportForm" method="post" action="/devices/export" class="d-none">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+</form>
 <!-- Model Based Table -->
 {# Model Summary (2026-10-10): one row per Model + Make + Device Type + CPU +
    RAM + Storage, built from exactly the devices the Tag table above shows
@@ -269,15 +285,20 @@
     {# Title, the 6 filters and Reset stay on ONE line: the filters share the
        space left after the title and shrink together (text ends in "…"). #}
     <div class="d-flex justify-content-between align-items-center flex-nowrap gap-2">
-      <strong class="small text-nowrap flex-shrink-0"><i class="bi bi-collection me-1"></i>Model Based Summary</strong>
+      <strong class="small text-nowrap flex-shrink-0"><i class="bi bi-collection me-1"></i>Model Table</strong>
       <div id="msFilters" class="d-flex flex-nowrap gap-2 align-items-center">
+        {# Same 8 filters, same order, on All Inventory / Ready for Sale Tags / Lots (2026-11-16, Pankaj) #}
         {{ ms.multiselect_inline('s_entity', 'Entity', entity_options + ['Unassigned'], '') }}
-        {{ ms.multiselect_inline('s_make', 'Make', ms_make_options, '') }}
         {{ ms.multiselect_inline('s_device_type', 'Device Type', ms_dtype_options, '') }}
+        {{ ms.multiselect_inline('s_grade', 'Grades', grade_options() + [('NA', 'No Grade')], '') }}
+        {{ ms.multiselect_inline('s_make', 'Make', ms_make_options, '') }}
         {{ ms.multiselect_inline('s_touch', 'Touch Type', [('touch', 'Touch (T)'), ('non_touch', 'Non-Touch (NT)')], '') }}
         {{ ms.multiselect_inline('s_stock', 'Stock Type', [('finish_good', 'Finish Good'), ('as_is', 'As-Is'), ('in_progress', 'In Progress')], '') }}
-        {{ ms.multiselect_inline('s_grade', 'Grade', grade_options() + [('NA', 'No Grade')], '') }}
+        {{ ms.multiselect_inline('s_loc', 'Location', ms_loc_options, '') }}
+        {{ ms.multiselect_inline('s_avail', 'Availability', [('open', 'Open'), ('blocked', 'Blocked')], '') }}
         <button type="button" id="msResetBtn" class="btn btn-sm btn-outline-secondary bg-white flex-shrink-0" title="Clear these filters">Reset</button>
+        {# Export (2026-11-16): every tag of the rows shown (filters + search), All Inventory format #}
+        {% if can(current_user, 'devices', 'export') %}<button type="button" id="msExportAllBtn" class="btn btn-sm btn-primary text-nowrap flex-shrink-0" title="Export the tags of the rows shown — All Inventory format"><i class="bi bi-file-earmark-arrow-down me-1"></i><span class="ms-export-count">0</span></button>{% endif %}
       </div>
     </div>
   </div>
@@ -285,16 +306,20 @@
       <table id="modelSummaryTable" class="table table-hover table-sm mb-0" style="width:100%">
         <thead class="table-dark">
           <tr>
-            <th>Model Names</th>
-            <th>Model Make</th>
-            <th>Device Type</th>
+            {# Columns (2026-11-16, Pankaj): same order as Ready for Sale Tags / Lots,
+               then Stock Type, Total Price and View for this page. #}
+            <th>Model</th>
+            <th>Make</th>
             <th>CPU</th>
+            <th>CPU Gen</th>
             <th>RAM</th>
             <th>Storage</th>
+            <th>Total Quantity</th>
             <th>Touch Type</th>
-            <th>Grade</th>
+            <th>Grades</th>
+            <th>Device Type</th>
+            <th>Location</th>
             <th>Stock Type</th>
-            <th>Total Count</th>
             {% if can(current_user, 'devices', 'pricing') %}<th>Total Price</th>{% endif %}
             <th></th>
           </tr>
@@ -304,10 +329,12 @@
           <tr class="table-light fw-semibold" id="msTotalRow">
             <td class="fw-bold">Total</td>
             <td></td><td></td><td></td><td></td><td></td>
+            <td class="ms-foot-total"></td>
             <td class="ms-foot-touch"></td>
             <td class="ms-foot-grade"></td>
+            <td class="ms-foot-dtype"></td>
+            <td class="ms-foot-zone"></td>
             <td class="ms-foot-stock"></td>
-            <td class="ms-foot-total"></td>
             {% if can(current_user, 'devices', 'pricing') %}<td class="ms-foot-price"></td>{% endif %}
             <td></td>
           </tr>
@@ -461,6 +488,48 @@
 
 {% include "_customise_modal.html" %}
 
+</div>{# .dash-data #}
+</div>{# .dash #}
+
+{# Recently added -> View (2026-11-14): tags of one model + grade (/devices/recent-tags). #}
+<div class="modal fade" id="recentTagsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2"><h6 class="modal-title" id="rtTitle">Recently added</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body p-2">
+        <div class="gtable2-wrap" style="max-height:65vh">
+          <table class="gtable2" id="rtTable" data-total-label="Total">
+            <thead><tr><th>Date Added</th><th data-total="count">Tag Number</th><th>GRN</th><th>Lot</th><th>Make</th><th>Model</th><th>CPU</th><th>CPU Gen</th><th>RAM</th><th>Storage</th><th>Grade</th></tr></thead>
+            <tbody id="rtBody"><tr><td colspan="11" class="text-center text-muted py-3">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+document.addEventListener('show.bs.modal', function (e) {
+  if (e.target.id !== 'recentTagsModal' || !e.relatedTarget) return;
+  var b = e.relatedTarget, model = b.getAttribute('data-model') || '', grade = b.getAttribute('data-grade') || '';
+  document.getElementById('rtTitle').textContent = (model || '—') + ' · Grade ' + (grade || '—');
+  var body = document.getElementById('rtBody');
+  body.innerHTML = '<tr><td colspan="11" class="text-center text-muted py-3">Loading…</td></tr>';
+  var ent = new URLSearchParams(location.search).get('entity') || '';
+  var esc = function (s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; };
+  fetch('/devices/recent-tags?' + new URLSearchParams({ model: model, grade: grade, since: b.getAttribute('data-since') || '', entity: ent }))
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+      body.innerHTML = j.rows.length ? j.rows.map(function (r) {
+        return '<tr><td>' + esc(r.added) + '</td><td><a href="/devices/' + encodeURIComponent(r.tag) + '" class="fw-semibold">' + esc(r.tag) + '</a></td><td>' +
+          esc(r.grn) + '</td><td>' + esc(r.lot) + '</td><td>' + esc(r.make) + '</td><td>' + esc(r.model) + '</td><td>' + esc(r.cpu) + '</td><td>' +
+          esc(r.gen) + '</td><td>' + esc(r.ram) + '</td><td>' + esc(r.storage) + '</td><td>' + esc(r.grade) + '</td></tr>';
+      }).join('') : '<tr><td colspan="11" class="text-center text-muted py-3">No tags</td></tr>';
+      if (window.gt2Refresh) window.gt2Refresh(document.getElementById('rtTable'));
+    })
+    .catch(function () { body.innerHTML = '<tr><td colspan="11" class="text-center text-danger py-3">Could not load the tags</td></tr>'; });
+});
+</script>
 {% endblock %}
 {% block scripts %}
 <script src="/static/vendor/tom-select/js/tom-select.complete.min.js"></script>
@@ -682,8 +751,8 @@ $(document).ready(function() {
   // instead of targets:'_all' + override — '_all' is resolved last and would
   // win (found live 2026-09-03).
   var MS_PRICE = CAN_VIEW_PRICING;
-  var MS_TOTAL_COL = 9;
-  var MODEL_NOT_SEARCHABLE_COLS = MS_PRICE ? [2, 6, 7, 8, 9, 10, 11] : [2, 6, 7, 8, 9, 10];
+  var MS_TOTAL_COL = 6;
+  var MODEL_NOT_SEARCHABLE_COLS = MS_PRICE ? [6, 7, 8, 9, 10, 11, 12, 13] : [6, 7, 8, 9, 10, 11, 12];
   var MS = { abbr: {}, gradeOrder: [], tsearch: null, req: 0 };
   function msEsc(v) { return $('<div>').text(v == null ? '' : String(v)).html(); }
   function msGradeCls(g) {
@@ -722,19 +791,26 @@ $(document).ready(function() {
         return msBadge((MS.abbr[k] || k) + '-' + m[k], 'light text-dark border', k);
       }).join('') + '</span>';
   }
+  function msListHtml(m, order) {   // Device Type / Location: one per line, "Name - n"
+    return msOrdered(m, order).map(function (k) {
+      return '<div class="text-nowrap small">' + msEsc(k) + ' - ' + m[k] + '</div>';
+    }).join('');
+  }
   function msMoney(v) { return '₹' + Math.round(Number(v || 0)).toLocaleString('en-IN'); }
 
   var msColumns = [
     { data: 'model', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
     { data: 'make', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
-    { data: 'device_type', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
     { data: 'cpu', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
+    { data: 'gen', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
     { data: 'ram', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
     { data: 'storage', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
+    { data: 'total', render: function (d, t, row) { return t === 'display' ? msTotalHtml(d, row.entity) : d; } },
     { data: 'touch', orderable: false, render: function (d, t) { return t === 'display' ? msTouchHtml(d) : ''; } },
     { data: 'grade', orderable: false, render: function (d, t) { return t === 'display' ? msGradeHtml(d) : ''; } },
+    { data: 'dtype', orderable: false, render: function (d, t) { return t === 'display' ? msListHtml(d) : ''; } },
+    { data: 'zone', orderable: false, render: function (d, t) { return t === 'display' ? msListHtml(d, ['Showroom', 'TRC Floor']) : ''; } },
     { data: 'stock', orderable: false, render: function (d, t) { return t === 'display' ? msStockHtml(d) : ''; } },
-    { data: 'total', render: function (d, t, row) { return t === 'display' ? msTotalHtml(d, row.entity) : d; } },
   ];
   if (MS_PRICE) msColumns.push({ data: 'price', render: function (d, t) { return t === 'display' ? msMoney(d) : (d || 0); } });
   msColumns.push({ data: null, orderable: false, render: function (d, t, row, meta) {
@@ -755,11 +831,11 @@ $(document).ready(function() {
 
   // Total row: only the rows the search leaves visible (all pages)
   function msUpdateTotals(api) {
-    var sum = { total: 0, price: 0, entity: {}, touch: {}, stock: {}, grade: {} };
+    var sum = { total: 0, price: 0, entity: {}, touch: {}, stock: {}, grade: {}, dtype: {}, zone: {} };
     api.rows({ search: 'applied' }).data().each(function (r) {
       sum.total += r.total || 0;
       sum.price += Number(r.price || 0);
-      ['entity', 'touch', 'stock', 'grade'].forEach(function (k) {
+      ['entity', 'touch', 'stock', 'grade', 'dtype', 'zone'].forEach(function (k) {
         Object.keys(r[k] || {}).forEach(function (x) { sum[k][x] = (sum[k][x] || 0) + r[k][x]; });
       });
     });
@@ -767,8 +843,11 @@ $(document).ready(function() {
     $f.find('.ms-foot-touch').html(msTouchHtml(sum.touch));
     $f.find('.ms-foot-grade').html(msGradeHtml(sum.grade));
     $f.find('.ms-foot-stock').html(msStockHtml(sum.stock));
+    $f.find('.ms-foot-dtype').html(msListHtml(sum.dtype));
+    $f.find('.ms-foot-zone').html(msListHtml(sum.zone, ['Showroom', 'TRC Floor']));
     $f.find('.ms-foot-total').html(msTotalHtml(sum.total, sum.entity));
     $f.find('.ms-foot-price').html(msMoney(sum.price));
+    $('#msExportAllBtn .ms-export-count').text(sum.total.toLocaleString('en-IN'));
   }
 
   function msParams() {
@@ -777,7 +856,7 @@ $(document).ready(function() {
     ['q', 'stage', 'lot', 'grade', 'category', 'device_type', 'stock_type', 'pna', 'zone', 'entity', 'date_from', 'date_to', 'exclude_sold', 'fs']
       .forEach(function (k) { params.set(k, p.get(k) || ''); });
     params.set('tsearch', MS.tsearch || '');
-    ['s_entity', 's_make', 's_device_type', 's_touch', 's_stock', 's_grade'].forEach(function (k) {
+    ['s_entity', 's_make', 's_device_type', 's_touch', 's_stock', 's_grade', 's_loc', 's_avail'].forEach(function (k) {
       var el = document.getElementById('ms_val_' + k);
       params.set(k, el ? el.value : '');
     });
@@ -815,6 +894,26 @@ $(document).ready(function() {
   dt.on('draw', function () {
     var term = dt.search() || '';
     if (term !== MS.tsearch) { MS.tsearch = term; msLoad(); }
+  });
+  $('#msExportAllBtn').on('click', function () {
+    var btn = this, keys = {};
+    dtModel.rows({ search: 'applied' }).data().each(function (r) {
+      keys[[r.model, r.make, r.cpu, r.gen, r.ram, r.storage].join('|')] = 1;
+    });
+    if (!Object.keys(keys).length) { alert('No tags match the current filters.'); return; }
+    btn.disabled = true;
+    fetch('/devices/model-summary/barcodes?' + msParams().toString())
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (d) {
+        var tags = [];
+        Object.keys(keys).forEach(function (k) { tags = tags.concat((d.groups || {})[k] || []); });
+        var f = document.getElementById('msExportForm');
+        $(f).find('input[name="barcodes"]').remove();
+        tags.forEach(function (bc) { $('<input>').attr({ type: 'hidden', name: 'barcodes', value: bc }).appendTo(f); });
+        f.submit();
+      })
+      .catch(function () { alert('Could not export — please try again.'); })
+      .finally(function () { btn.disabled = false; });
   });
   $(dtModel.table().container()).on('click', '.ms-view-btn', function () {
     showModelDetail(dtModel.row(this.closest('tr')).data());
@@ -875,7 +974,7 @@ function openCustomiseModal(source){
 
 function showModelDetail(g){
   if (!g) return;
-  $('#modelDetailTitle').text(g.model + ' (' + g.make + ') — ' + [g.device_type, g.cpu, g.ram, g.storage].join(' · '));
+  $('#modelDetailTitle').text(g.model + ' (' + g.make + ') — ' + [g.cpu, g.gen, g.ram, g.storage].join(' · '));
   var gradeHtml = Object.keys(g.grade || {}).map(function (k) {
     return '<span class="badge bg-light text-dark border">Grade ' + (k === 'NA' ? 'none' : k) + ': ' + g.grade[k] + '</span>';
   }).join(' ');
@@ -894,8 +993,8 @@ function showModelDetail(g){
   var params = window._msParams ? window._msParams() : new URLSearchParams(window.location.search);
   params.set('model', g.model);
   params.set('make', g.make);
-  params.set('m_device_type', g.device_type);
   params.set('m_cpu', g.cpu);
+  params.set('m_gen', g.gen);
   params.set('m_ram', g.ram);
   params.set('m_storage', g.storage);
   fetch('/devices/model-summary/tags?' + params.toString())

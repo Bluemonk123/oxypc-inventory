@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from utils.timezone import app_now
-from sqlalchemy import Column, String, DateTime, ForeignKey, Integer
+from sqlalchemy import Column, String, DateTime, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from database import Base
@@ -33,6 +33,10 @@ class WorkOrder(Base):
     # Notes column on the L3/L4 Repair page). Null for ordinary stock-transfer WorkOrders.
     requested_by_name = Column(String(100), nullable=True)
     source_transfer_id = Column(UUID(as_uuid=True), ForeignKey("stock_transfers.id"), nullable=True)
+    # Pre-Sale IQC notes (2026-11-14, Pankaj — approved in chat): typed in
+    # Sales Coordinator's "Send to Pre-Sale" or Ready for Sale's "Assign to
+    # Pre-Sale"; shown as the Notes column on Pre-Sale IQC.
+    notes = Column(Text, nullable=True)
 
     assigned_at = Column(DateTime, nullable=False, default=app_now)
     started_at = Column(DateTime, nullable=True)

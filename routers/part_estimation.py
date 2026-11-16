@@ -48,6 +48,103 @@ allowed = require_module_perm("part_estimation")
 
 UPLOAD_DIR = "uploads/part_estimates"
 
+# Open Estimate size dropdowns (2026-11-15, Pankaj): part row -> Master Data
+# dropdown category (Master Data -> Dropdown configuration).
+SPEC_PARTS = {"RAM": ("ram_size", "RAM size"), "Hard Drive": ("storage_size", "Storage"),
+              "Screen": ("screen_size", "Screen size")}
+
+
+def spec_options() -> dict:
+    from utils.master_data import master_options
+    return {part: {"label": lbl, "options": master_options(cat) or []} for part, (cat, lbl) in SPEC_PARTS.items()}
+
+
+def _json_dict(text) -> dict:
+    import json
+    try:
+        v = json.loads(text) if text else {}
+        return v if isinstance(v, dict) else {}
+    except (ValueError, TypeError):
+        return {}
+
+
+def part_label(part, specs) -> str:
+    """"RAM (8 GB)" when a size was picked for that row."""
+    sp = (specs or {}).get(part)
+    return f"{part} ({sp})" if sp else part
+
+
+async def open_estimate_view(db, est) -> dict:
+    """An Open Estimate as saved: parts, the models it covered (with tag
+    counts), cells, repair charges, sizes and store inputs — for Part Master's
+    Confirm Request pop-up and for rewriting its sheet."""
+    lines = (await db.execute(select(PartEstimateOpenLine).where(PartEstimateOpenLine.estimate_id == est.id))).scalars().all()
+    models, seen, cells, charges = [], set(), {}, {}
+    for l in sorted(lines, key=lambda x: (x.model_name or "", x.model_key)):
+        if l.model_key not in seen:
+            seen.add(l.model_key)
+            models.append({"key": l.model_key, "model": l.model_name, "qty": int(l.model_count or 0)})
+        cells[(l.part_name, l.model_key)] = l.qty
+        if l.repair_charge:
+            charges[l.model_key] = l.repair_charge
+    manual = est.labour_cost if (not charges and est.labour_cost) else None
+    return {"parts": PART_LABELS, "models": models, "cells": cells, "charges": charges,
+            "specs": _json_dict(est.row_specs), "store_inputs": _json_dict(est.store_inputs),
+            "totals": open_totals(models, cells, charges, manual)}
+
+
+def open_totals(models, cells, charges, repair_manual=None) -> dict:
+    """Open Estimate totals (2026-11-15, Pankaj). Cells hold each part's price
+    for one device of that model:
+      Total Part Amount   = sum of price x the model's tag count
+      Total Part Quantity = sum of the model's tag count over every filled cell
+      Total Repair Cost   = the single figure typed in the header when given,
+                            else sum of Repair Charge x tag count for models with parts
+      Total Estimate      = amount + repair cost"""
+    qty_of = {m["key"]: int(m["qty"] or 0) for m in models}
+    amount = sum(_money(v) * qty_of.get(mk, 0) for (_p, mk), v in cells.items())
+    part_qty = sum(qty_of.get(mk, 0) for (_p, mk), v in cells.items() if v)
+    filled = {mk for (_p, mk), v in cells.items() if v}
+    model_estimates = {mk: _money(_money(charges[mk]) * qty_of.get(mk, 0)) for mk in filled if charges.get(mk)}
+    repair = _money(repair_manual) if repair_manual not in (None, "") else sum(model_estimates.values(), Decimal("0"))
+    return {"amount": _money(amount), "part_qty": int(part_qty), "repair": _money(repair),
+            "estimate": _money(amount + repair), "model_estimates": model_estimates,
+            "manual_repair": repair_manual not in (None, "")}
+
+
+async def production_part_qty(db, requests) -> dict:
+    """{sourcing request id: Total Part Quantity} for production requests raised
+    from an Open Estimate — worked out from the estimate's lines, so requests
+    saved before 2026-11-15 (when Qty Requested held the amount) read right too."""
+    est_ids = [r.estimate_id for r in requests if getattr(r, "source", "") == "production" and r.estimate_id]
+    if not est_ids:
+        return {}
+    opens = {e.id for e in (await db.execute(select(PartEstimate).where(
+        PartEstimate.id.in_(est_ids), PartEstimate.estimate_type == "open"))).scalars().all()}
+    if not opens:
+        return {}
+    by_est = {}
+    for l in (await db.execute(select(PartEstimateOpenLine).where(PartEstimateOpenLine.estimate_id.in_(opens)))).scalars().all():
+        if l.qty:
+            by_est[l.estimate_id] = by_est.get(l.estimate_id, 0) + int(l.model_count or 0)
+    return {str(r.id): by_est.get(r.estimate_id, 0) for r in requests if r.estimate_id in opens}
+
+
+def rebuild_open_workbook(est, view, generated_by) -> None:
+    """Rewrite an Open Estimate's attached sheet in place (same file name),
+    adding Difference / Store Inputs once the store counts are entered."""
+    models = view["models"]
+    t = view["totals"]
+    xlsx = _build_open_workbook(
+        lot_number=est.lot_number, generated_on=(est.created_at or app_now()).strftime("%d %b %Y %H:%M"),
+        generated_by=est.created_by or generated_by, grade=dict(grade_options()).get(est.grade, est.grade),
+        parts=PART_LABELS, models=models, cells=view["cells"], charges=view["charges"],
+        total_parts=t["part_qty"], model_estimates=t["model_estimates"], total_estimate=t["estimate"],
+        specs=view["specs"], store_inputs=view["store_inputs"], status=est.status, totals=t)
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    with open(os.path.join(UPLOAD_DIR, os.path.basename(est.file_path)), "wb") as fh:
+        fh.write(xlsx)
+
 
 def _as_uuid(val):
     try:
@@ -126,8 +223,18 @@ async def part_estimation_page(
         )
     )).scalar() or 0
 
+    # Option C dashboard (2026-11-14, Pankaj) — services/part_est_dash.py
+    from services.part_est_dash import build as _build_dash
+    try:
+        dash_kpis, dash_widgets = await _build_dash(db, pna_tag_count)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("part estimation dashboard failed")
+        await db.rollback()
+        dash_kpis, dash_widgets = [], []
     return templates.TemplateResponse("part_estimation/index.html", {
         "request": request, "current_user": current_user, "rows": rows,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "grade_options": grade_options(),
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
@@ -973,18 +1080,21 @@ async def lot_open_matrix_json(
         )).scalars().all()
         for l in prev_lines:
             prev_cells[f"{l.part_name}||{l.model_key}"] = str(l.qty)
-            prev_charges[l.model_key] = str(l.repair_charge)
+            if l.repair_charge:   # 0 = no charge (or a typed Total Repair Cost) — leave the cell blank
+                prev_charges[l.model_key] = str(l.repair_charge)
 
     return JSONResponse({
         "ok": True, "lot_number": lot.lot_number, "parts": PART_LABELS,
         "models": models, "prev_cells": prev_cells, "prev_charges": prev_charges,
         "grade_options": grade_options(),
+        "spec_options": spec_options(), "prev_specs": _json_dict(prev.row_specs) if prev else {},
+        "prev_repair_total": (str(prev.labour_cost) if prev and not prev_charges and prev.labour_cost else ""),
     })
 
 
 def _build_open_workbook(*, lot_number, generated_on, generated_by, grade, parts,
                          models, cells, charges, total_parts, model_estimates,
-                         total_estimate) -> bytes:
+                         total_estimate, specs=None, store_inputs=None, status=None, totals=None) -> bytes:
     """One sheet: Part rows x Model columns (with each model's tag count in
     the header), a Repair Charge row under the grid, then Total Parts / Total
     Estimate Value. Cells are the operator's free entry, not IQC-derived, so
@@ -1013,6 +1123,10 @@ def _build_open_workbook(*, lot_number, generated_on, generated_by, grade, parts
     ws["A3"].font = bold
     ws["A4"] = f"Generated On: {generated_on}"
     ws["A5"] = f"Generated By: {generated_by}"
+    if status:
+        ws["A6"] = f"Status: {status}"
+        ws["A6"].font = Font(bold=True, color="0F7A37")
+    with_store = store_inputs is not None
 
     header_row = 7
     ws.cell(row=header_row, column=1, value="Part").fill = head_fill
@@ -1022,17 +1136,33 @@ def _build_open_workbook(*, lot_number, generated_on, generated_by, grade, parts
         c = ws.cell(row=header_row, column=col, value=f"{m['model']} ({m['qty']})")
         c.fill, c.font, c.border = head_fill, head_font, border
         c.alignment = Alignment(horizontal="center", wrap_text=True)
+    if with_store:   # Confirm Request on Part Master (2026-11-15)
+        for off, title in ((0, "Total Parts"), (1, "Difference"), (2, "Store Inputs")):
+            c = ws.cell(row=header_row, column=len(models) + 2 + off, value=title)
+            c.fill, c.font, c.border = PatternFill("solid", fgColor="0F7A37"), head_font, border
+            c.alignment = Alignment(horizontal="center")
 
     r = header_row
     for part in parts:
         r += 1
-        ws.cell(row=r, column=1, value=part).border = border
+        ws.cell(row=r, column=1, value=part_label(part, specs)).border = border
+        row_sum = 0.0
         for col, m in enumerate(models, start=2):
             val = cells.get((part, m["key"]))
+            if val:
+                row_sum += float(m.get("qty") or 0)   # Total Parts: tag counts of the models with a value
             c = ws.cell(row=r, column=col, value=float(val) if val is not None else None)
             c.border = border
             if val is not None:
                 c.alignment = Alignment(horizontal="center")
+        if with_store:
+            si = store_inputs.get(part)
+            ct = ws.cell(row=r, column=len(models) + 2, value=row_sum or None)
+            cd = ws.cell(row=r, column=len(models) + 3,
+                         value=(row_sum - float(si)) if si not in (None, "") else (row_sum or None))
+            cs = ws.cell(row=r, column=len(models) + 4, value=float(si) if si not in (None, "") else None)
+            for c in (ct, cd, cs):
+                c.border, c.alignment = border, Alignment(horizontal="center")
 
     r += 1
     ws.cell(row=r, column=1, value="Repair Charge").font = bold
@@ -1057,10 +1187,10 @@ def _build_open_workbook(*, lot_number, generated_on, generated_by, grade, parts
             ec.number_format = money
 
     r += 2
-    for label, value, fmt in (
-        ("Total Parts", total_parts, "#,##0.##"),
-        ("Total Estimate Value", float(total_estimate), money),
-    ):
+    _tot = ((("Total Part Amount", float(totals["amount"]), money), ("Total Part Quantity", totals["part_qty"], "#,##0"),
+             ("Total Repair Cost", float(totals["repair"]), money), ("Total Estimate", float(totals["estimate"]), money))
+            if totals else (("Total Parts", total_parts, "#,##0.##"), ("Total Estimate Value", float(total_estimate), money)))
+    for label, value, fmt in _tot:
         ws.cell(row=r, column=1, value=label).font = bold
         c = ws.cell(row=r, column=2, value=value)
         c.font, c.number_format = bold, fmt
@@ -1128,6 +1258,9 @@ async def generate_open_estimate(
 
     raw_cells = data.get("cells") or {}
     raw_charges = data.get("charges") or {}
+    _opts = spec_options()
+    specs = {p: str(v) for p, v in (data.get("specs") or {}).items()
+             if p in _opts and str(v) in [str(o) for o in _opts[p]["options"]]}
 
     cells, filled_models, open_lines = {}, set(), []
     total_parts = Decimal("0")
@@ -1155,16 +1288,17 @@ async def generate_open_estimate(
         if charge > 0:
             charges[mkey] = charge
 
-    model_estimates = {}
-    total_estimate = Decimal("0")
-    for mkey in filled_models:
-        charge = charges.get(mkey)
-        if not charge:
-            continue
-        m = model_by_key[mkey]
-        value = _money(charge * m["qty"])
-        model_estimates[mkey] = value
-        total_estimate += value
+    # Total Repair Cost typed in the header (2026-11-15) replaces the per-model
+    # Repair Charge row: it is kept as one figure (labour_cost) and the row is empty.
+    repair_manual = data.get("repair_total")
+    if repair_manual not in (None, ""):
+        if _money(repair_manual) < 0:
+            return JSONResponse({"ok": False, "error": "Total Repair Cost can't be negative"}, status_code=400)
+        charges = {}
+    else:
+        repair_manual = None
+    _t = open_totals(models, cells, charges, repair_manual)
+    model_estimates, total_estimate = _t["model_estimates"], _t["estimate"]
 
     for (part, mkey), qty in cells.items():
         m = model_by_key[mkey]
@@ -1178,14 +1312,14 @@ async def generate_open_estimate(
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     safe_lot = "".join(ch for ch in (lot.lot_number or "lot") if ch.isalnum() or ch in "-_")
 
-    total_qty_int = int(total_parts.to_integral_value(rounding="ROUND_HALF_UP"))
+    total_qty_int = _t["part_qty"]
 
     xlsx = _build_open_workbook(
         lot_number=lot.lot_number, generated_on=stamp.strftime("%d %b %Y %H:%M"),
         generated_by=current_user.username, grade=grade_label, parts=PART_LABELS,
         models=[m for m in models if m["key"] in filled_models], cells=cells, charges=charges,
-        total_parts=float(total_parts), model_estimates=model_estimates,
-        total_estimate=total_estimate,
+        total_parts=_t["part_qty"], model_estimates=model_estimates,
+        total_estimate=total_estimate, specs=specs, totals=_t,
     )
     safe_grade = "".join(ch for ch in grade_label if ch.isalnum() or ch in "-_") or "grade"
     stored = f"{uuid.uuid4().hex}.xlsx"
@@ -1196,9 +1330,10 @@ async def generate_open_estimate(
     est = PartEstimate(
         lot_id=lid, lot_number=lot.lot_number, total_products=total_products,
         total_qty=total_qty_int,
-        parts_total_cost=total_estimate, labour_cost=Decimal("0"),
+        parts_total_cost=_t["amount"], labour_cost=_t["repair"],
         total_estimation=total_estimate, grade=grade, estimate_type="open",
         file_path=stored, file_name=download_name,
+        row_specs=__import__("json").dumps(specs) if specs else None,
         created_by=current_user.username, created_at=stamp,
     )
     db.add(est)
@@ -1218,7 +1353,8 @@ async def generate_open_estimate(
     await audit(db, user=current_user, action="PART_ESTIMATE_GENERATED",
                 table_name="part_estimates", record_id=str(est.id),
                 new_value={"lot": lot.lot_number, "mode": "open", "grade": grade,
-                           "models": len(filled_models), "total_parts": str(total_parts),
+                           "models": len(filled_models), "total_parts": str(_t["part_qty"]),
+                           "part_amount": str(_t["amount"]), "repair": str(_t["repair"]),
                            "total_estimation": str(total_estimate)},
                 request=request)
     await db.commit()

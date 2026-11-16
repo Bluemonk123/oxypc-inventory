@@ -14,7 +14,7 @@
 {% set sel = (selected or '').split(',') | map('trim') | select | list %}
 <div>
   <input type="hidden" name="{{ name }}" id="ms_val_{{ name }}" value="{{ selected or '' }}">
-  <div class="dropdown ms-filter" data-ms="{{ name }}">
+  <div class="dropdown ms-filter" data-ms="{{ name }}" data-label="{{ label }}">
     <button class="btn btn-sm btn-outline-secondary d-flex justify-content-between align-items-center gap-2"
             style="min-width:150px" type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside"
             id="ms_btn_{{ name }}">
@@ -47,7 +47,7 @@
 <div class="{{ width }}">
   <label class="form-label small fw-semibold mb-1">{{ label }}</label>
   <input type="hidden" name="{{ name }}" id="ms_val_{{ name }}" value="{{ selected or '' }}">
-  <div class="dropdown ms-filter" data-ms="{{ name }}">
+  <div class="dropdown ms-filter" data-ms="{{ name }}" data-label="{{ label }}">
     <button class="btn btn-sm btn-outline-secondary w-100 d-flex justify-content-between align-items-center"
             type="button" data-bs-toggle="dropdown" data-bs-auto-close="outside"
             id="ms_btn_{{ name }}">

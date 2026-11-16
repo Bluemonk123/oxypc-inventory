@@ -36,8 +36,16 @@ html::-webkit-scrollbar { width: 0; height: 0; }
    hidden while a modal is open — the page cannot scroll then. The thumb is
    appended after <body>, so it is body's later sibling. */
 body.modal-open ~ #pageScrollThumb { display: none !important; }
+/* Inter, self-hosted (2026-11-14, Pankaj): works on PCs with no internet.
+   SIL Open Font License 1.1 — static/fonts/inter/OFL.txt. Latin subset; any
+   glyph it lacks (e.g. ₹) falls back to Segoe UI / Arial. */
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 400; font-display: swap; src: url('/static/fonts/inter/inter-latin-400-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 500; font-display: swap; src: url('/static/fonts/inter/inter-latin-500-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 600; font-display: swap; src: url('/static/fonts/inter/inter-latin-600-normal.woff2') format('woff2'); }
+@font-face { font-family: 'Inter'; font-style: normal; font-weight: 700; font-display: swap; src: url('/static/fonts/inter/inter-latin-700-normal.woff2') format('woff2'); }
+:root { --bs-body-font-family: 'Inter', 'Segoe UI', Arial, sans-serif; --bs-font-sans-serif: 'Inter', 'Segoe UI', Arial, sans-serif; }
 body {
-  font-family: 'Segoe UI', Arial, sans-serif;
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
   background: var(--oxy-page-bg);
   zoom: var(--app-zoom);
 }
@@ -264,6 +272,13 @@ body {
   .nav, .dropdown-menu, small, .small, .text-muted, .form-text) { text-transform: none; letter-spacing: normal; }
 .card > .card-header > :is(.fw-semibold, h5, h6, strong, .card-title) :is(.badge, .text-muted, small),
 .card > .card-header > div:first-child > .fw-semibold:first-child :is(.badge, .text-muted, small) { text-transform: none; letter-spacing: normal; }
+/* Card header inside a tab (2026-11-16, Pankaj): the title keeps its own
+   case (no upper case) and one size — the All Inventory Model Table title. */
+.tab-pane .card > .card-header > :is(.fw-semibold, h5, h6, strong, .card-title):not(.badge):not(.btn),
+.tab-pane .card > .card-header > div:first-child > :is(.fw-semibold, strong):first-child:not(.badge):not(.btn),
+.tab-pane .card > .card-header:is(.fw-semibold, .fw-bold) {
+  text-transform: none; letter-spacing: normal; font-size: .875rem;
+}
 .card > .card-header .badge { display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: .4em .65em .3em; }
 .card > .card-header .form-switch { display: inline-flex; align-items: center; gap: .5rem; padding-left: 0; margin: 0; min-height: 0; white-space: nowrap; }
 .card > .card-header .form-switch .form-check-input { float: none; margin: 0; flex-shrink: 0; }
@@ -755,24 +770,26 @@ fieldset:disabled .btn {
 /* One filter bar for every page (2026-11-08, Pankaj) — no variants to pick:
    - Every field stretches to share the space but never grows past 200px;
      checkboxes keep their natural width; the buttons sit at the right edge.
-   - Up to 8 filters: ONE row.
-   - More than 8 filters: 6 per row, wrapping (each up to 200px); the
-     buttons sit at the right edge of the last row. Counted by CSS (9+
-     filters + the buttons item = 10+ children), so a page needs no class.
+   - Up to 9 filters + Apply + Reset: ONE row (2026-11-14, Pankaj; was 8).
+   - More than 9 filters: 6 per row, wrapping (each up to 200px); the
+     buttons sit at the right edge of the last row. Counted by CSS (10+
+     filters + the buttons item = 11+ children). Hidden cells (.d-none /
+     [hidden]) are not counted, so hiding a filter can bring the bar back
+     to one row. A page needs no class.
    (.filter-bar-6 is no longer needed; it does nothing now.) */
 .filter-bar-row > div:not(:last-child),
 .filter-bar-row > .filter-bar-search { flex: 1 1 0; max-width: 200px; }
 .filter-bar-row > div.filter-bar-check:not(:last-child) { flex: 0 0 auto; max-width: none; }
-.filter-bar-row:has(> :nth-child(10)) { display: grid; grid-template-columns: repeat(6, minmax(0, 200px)) 1fr; }
-.filter-bar-row:has(> :nth-child(10)) > div,
-.filter-bar-row:has(> :nth-child(10)) > .filter-bar-search,
-.filter-bar-row:has(> :nth-child(10)) > .filter-bar-check { min-width: 0; width: auto; max-width: none; }
+.filter-bar-row:has(> :nth-child(11 of :not(.d-none, [hidden]))) { display: grid; grid-template-columns: repeat(6, minmax(0, 200px)) 1fr; }
+.filter-bar-row:has(> :nth-child(11 of :not(.d-none, [hidden]))) > div,
+.filter-bar-row:has(> :nth-child(11 of :not(.d-none, [hidden]))) > .filter-bar-search,
+.filter-bar-row:has(> :nth-child(11 of :not(.d-none, [hidden]))) > .filter-bar-check { min-width: 0; width: auto; max-width: none; }
 /* every 7th filter starts a new row, so the 7th (1fr) column is only ever
    used by the buttons */
-.filter-bar-row:has(> :nth-child(10)) > :not(:last-child):nth-child(6n+1) { grid-column: 1; }
+.filter-bar-row:has(> :nth-child(11 of :not(.d-none, [hidden]))) > :not(:last-child):nth-child(6n+1 of :not(.d-none, [hidden])) { grid-column: 1; }
 /* Buttons (always the last item) sit at the right edge of the filter section. */
 .filter-bar-row > div:last-child { display: flex; justify-content: flex-end; gap: .5rem; margin-left: auto; }
-.filter-bar-row:has(> :nth-child(10)) > div:last-child { grid-column: 7; justify-content: flex-end; }
+.filter-bar-row:has(> :nth-child(11 of :not(.d-none, [hidden]))) > div:last-child { grid-column: 7; justify-content: flex-end; }
 
 /* Global Table card header: light sky blue with navy title. Since the Global
    Card (2026-11-08, top of this file) every plain card header gets this look;
@@ -1483,3 +1500,69 @@ table.gtable tbody td .gtable-clamp2 {
 /* Entity count badges beside the row-count badge (Renew Circuits: 2037 …) —
    one size app-wide (2026-11-09; was only on All Inventories). */
 #entityBadges .badge { font-size: .75rem; vertical-align: middle; }
+
+/* ── Global Secondary Table (2026-11-14, Pankaj) ──────────────────────────
+   The light table used in modals / small cards (first: Sales Coordinator's
+   invoice popup). <div class="gtable2-wrap"><table class="gtable2">.
+   Rounded corners, sticky header + frozen first column, click-to-sort
+   headers and an optional total row — static/js/secondary-table.js. */
+.gtable2-wrap { border:1px solid var(--bs-border-color); border-radius:10px; overflow:auto; background:var(--oxy-surface, #fff); }
+table.gtable2 { width:100%; margin:0; border-collapse:separate; border-spacing:0; font-size:.85rem; }
+table.gtable2 > thead th { position:sticky; top:0; z-index:2; background:var(--bs-tertiary-bg, #f8f9fa); color:var(--bs-body-color);
+  font-size:.75rem; font-weight:600; text-transform:uppercase; white-space:nowrap; padding:.55rem .75rem;
+  border-bottom:1px solid var(--bs-border-color); cursor:pointer; user-select:none; }
+table.gtable2 > thead th[data-nosort] { cursor:default; }
+table.gtable2 > thead th:not([data-nosort])::after { content:"\2195"; opacity:.25; margin-left:.35rem; font-size:.7rem; }
+table.gtable2 > thead th[aria-sort="ascending"]::after { content:"\2191"; opacity:.8; }
+table.gtable2 > thead th[aria-sort="descending"]::after { content:"\2193"; opacity:.8; }
+table.gtable2 > tbody td { white-space:nowrap; padding:.45rem .75rem; border-bottom:1px solid var(--bs-border-color-translucent, #eee); vertical-align:middle; background:var(--oxy-surface, #fff); }
+table.gtable2 > tbody tr:last-child td { border-bottom:0; }
+table.gtable2 > tbody tr:hover td { background:var(--bs-tertiary-bg, #f8f9fa); }
+/* Frozen first column. */
+table.gtable2 > thead th:first-child, table.gtable2 > tbody td:first-child, table.gtable2 > tfoot td:first-child
+  { position:sticky; left:0; z-index:1; box-shadow:inset -1px 0 0 var(--bs-border-color); }
+table.gtable2 > thead th:first-child { z-index:3; }
+/* Optional total row. */
+table.gtable2 > tfoot td { position:sticky; bottom:0; z-index:1; padding:.5rem .75rem; font-weight:700;
+  background:#eef2f6; border-top:2px solid var(--bs-border-color); white-space:nowrap; }
+table.gtable2 > tfoot td:first-child { z-index:2; }
+
+
+/* ── Labelled filter fields + Apply (2026-11-14, Pankaj) ──────────────────
+   static/js/filter-fields.js puts each filter's name inside its box (small
+   grey capitals above the value) in the main page filter bar only (Global
+   Card header filters keep their plain 31px look and apply on change), and
+   filters there wait for Apply (blue, before the icon-only Reset). 46px tall.
+   Dark theme: translucent boxes, white values, white Apply. */
+.hf { position: relative; }
+span.hf { display: inline-block; vertical-align: middle; }
+.filter-bar span.hf { display: block; }
+.hf-hidden { display: none !important; }
+.hf-label { position: absolute; left: 12px; top: 6px; z-index: 4; pointer-events: none; font-size: 10px; line-height: 1.1;
+  font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: #6b7280; white-space: nowrap;
+  max-width: calc(100% - 34px); overflow: hidden; text-overflow: ellipsis; }
+.hf :is(.form-control, .form-select, .ss-btn, .dr-input):not(.ms-search),
+.hf.ms-filter > .btn, .hf .ms-filter > .btn {
+  height: 46px !important; min-height: 46px !important; padding-top: 19px !important; padding-bottom: 4px !important;
+  padding-left: 12px !important; font-weight: 600 !important; border-radius: 10px !important; line-height: 1.3 !important;
+  color: var(--oxy-text-main) !important; }
+.hf .form-select, .hf .ss-btn { background-position: right .7rem top 62%; }
+.hf .dr-icon { top: 62%; }
+.hdr-apply { height: 46px; padding: 0 22px !important; font-weight: 700 !important; border-radius: 10px !important; font-size: .9rem; }
+.filter-bar .hdr-reset { width: 46px !important; height: 46px !important; border-radius: 10px !important;
+  display: inline-flex !important; align-items: center; justify-content: center; padding: 0 !important; font-size: 1rem; }
+.filter-bar .hdr-reset { color: #6c757d !important; border: 1px solid var(--oxy-border) !important; background: var(--oxy-surface) !important; }
+.filter-bar-row { align-items: center; }
+[data-bs-theme=dark] .hf :is(.form-control, .form-select, .ss-btn, .dr-input):not(.ms-search),
+[data-bs-theme=dark] .hf.ms-filter > .btn, [data-bs-theme=dark] .hf .ms-filter > .btn {
+  background-color: rgba(255,255,255,.05) !important; border-color: rgba(255,255,255,.2) !important; color: #f1f5f9 !important; }
+[data-bs-theme=dark] .hf-label { color: rgba(226,232,240,.68); }
+[data-bs-theme=dark] .hdr-apply { background: #ffffff !important; color: #0e3a7a !important; border-color: #ffffff !important; }
+[data-bs-theme=dark] .hdr-apply:hover { background: #e2e8f0 !important; }
+[data-bs-theme=dark] .filter-bar .hdr-reset {
+  background: rgba(255,255,255,.06) !important; color: #e2e8f0 !important; border-color: rgba(255,255,255,.22) !important; }
+
+/* Flash message area under the top bar (2026-11-14): hidden while empty —
+   when it actually holds a message, so an empty area leaves no gap above the
+   page (e.g. the full-width dashboard header). */
+#flashMessages:not(:has(.alert)) { display: none !important; }

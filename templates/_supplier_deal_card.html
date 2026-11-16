@@ -1,7 +1,8 @@
-{# Supplier Deal card (2026-11-10, Pankaj). On Inventory Manager (/stock) and
-   Parts Manager (/spare-parts) since 2026-11-12, col-lg-4 on the left of the
-   page's tabs. Supplier (sourcing) deals at stage Stock Received → "Pending";
-   closed Won → "Received". Pending rows have ✏ Received (closes the deal Won)
+{# Supplier Deal card (2026-11-10, Pankaj). On Inventory Manager (/stock),
+   Parts Manager (/spare-parts) since 2026-11-12 and Production Manager since 2026-11-15
+   (which deals each page sees: services/supplier_deals.py), col-lg-3 on the left of the
+   page's tabs. Supplier (sourcing) deals at any open stage → "Pending" (no stage
+   gating, 2026-11-15); closed Won → "Received"; Lost left out. Pending rows have ✓ Received (closes the deal Won)
    and ✕ Reject (closes it Lost with a reason) — POST
    /crm/sourcing/{id}/stock-receipt. Context: services/supplier_deals.py.
    Set sd_return_to before including (where the actions come back to). #}
@@ -9,7 +10,7 @@
 {% set sd_can_act = can(current_user, 'crm_sourcing', 'edit') %}
   <div class="card border-0 shadow-sm h-100" id="stkSupplierDeals">
     <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
-      <span class="fw-semibold"><i class="bi bi-box-arrow-in-down me-1"></i>Supplier Deal</span>
+      <span class="fw-semibold">Deals</span>{# renamed from "Supplier Deal", icon removed (2026-11-15) #}
       <ul class="nav pill-tabs ms-auto" role="tablist">
         <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#stkSdPend">Pending <span class="badge bg-warning text-dark ms-1">{{ sd_pending|length }}</span></button></li>
         <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#stkSdRecv">Received</button>{# " - N" added by static/js/pill-counts.js #}</li>
@@ -19,27 +20,30 @@
       {% for pane, rows, empty, acts in [('stkSdPend', sd_pending, 'Nothing pending', sd_can_act), ('stkSdRecv', sd_received, 'Nothing received yet', false)] %}
       <div class="tab-pane fade{% if loop.first %} show active{% endif %}" id="{{ pane }}">
         <table class="table table-sm table-hover mb-0 small align-middle">
-          <thead class="table-light"><tr><th>Deal</th><th>Date Added</th><th>Download</th>{% if acts %}<th class="text-end">Action</th>{% endif %}</tr></thead>
+          <thead class="table-light"><tr><th>Deal</th><th>Download</th>{% if acts %}<th class="text-end">Action</th>{% endif %}</tr></thead>
           <tbody>
           {% for d in rows %}{% set added = sd_added.get(d.id|string) %}
             <tr>
               <td>
                 <div class="text-truncate" style="max-width:170px" title="{{ d.title }}">{{ d.title }}</div>
-                <a href="/crm/sourcing/{{ d.id }}" class="fw-semibold text-decoration-none text-nowrap">{{ d.deal_number }}</a>
+                <a href="/crm/sourcing/{{ d.id }}" class="fw-semibold text-decoration-none text-nowrap" title="Added {{ added.strftime('%d-%m-%Y') if added else '—' }}">{{ d.deal_number }}</a>
+                {# Current stage under the Deal ID (2026-11-15; Date Added column removed) #}
+                <div><span class="badge {{ 'text-bg-success' if d.stage == 'won' else 'text-bg-info' }}">{{ sd_stage_labels.get(d.stage, d.stage) }}</span></div>
               </td>
-              <td class="text-nowrap">{{ added.strftime('%d-%m-%Y') if added else '—' }}</td>
-              <td>{{ dl.cell(sd_files.get(d.id|string, [])) }}</td>
+              <td>{{ dl.cell(sd_files.get(d.id|string, []), compact=True) }}</td>
               {% if acts %}
               <td class="text-end text-nowrap">
+                {% if d.stage == 'received' %}{# Confirm / Reject only at Stock Received (the route checks it too) #}
                 <button type="button" class="btn btn-sm btn-outline-success py-0 px-1 sd-act" title="Confirm received"
-                        data-id="{{ d.id }}" data-num="{{ d.deal_number }}" data-decision="received"><i class="bi bi-pencil-square"></i></button>
+                        data-id="{{ d.id }}" data-num="{{ d.deal_number }}" data-decision="received"><i class="bi bi-check-lg"></i></button>
                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 sd-act" title="Reject deal"
                         data-id="{{ d.id }}" data-num="{{ d.deal_number }}" data-decision="reject"><i class="bi bi-x-lg"></i></button>
+                {% else %}<span class="text-muted small" title="Confirm / Reject open at Stock Received">—</span>{% endif %}
               </td>
               {% endif %}
             </tr>
           {% else %}
-            <tr><td colspan="{{ 4 if acts else 3 }}" class="text-center text-muted py-3">{{ empty }}</td></tr>
+            <tr><td colspan="{{ 3 if acts else 2 }}" class="text-center text-muted py-3">{{ empty }}</td></tr>
           {% endfor %}
           </tbody>
         </table>
@@ -48,7 +52,7 @@
     </div>
   </div>
 
-{% if sd_can_act and sd_pending %}
+{% if sd_can_act and (sd_pending | selectattr('stage', 'equalto', 'received') | list) %}
 <div class="modal fade" id="sdActModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <form method="post" id="sdActForm" class="modal-content">

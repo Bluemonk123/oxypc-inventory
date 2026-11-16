@@ -58,9 +58,82 @@
 </style>
 {% endblock %}
 {% block content %}
-
 {% import "_multiselect_filter.html" as ms %}
-<!-- Dashboard Filters -->
+{% import "_dash.html" as dash %}
+{# Skeleton first (2026-11-15, Pankaj): /dashboard answers at once with this
+   outline (skeleton_mode) and fetches the real dashboard (?_part=1) in the
+   background while the global green bar runs, then swaps it in and runs its
+   scripts. Signing in no longer waits for every number to be counted. #}
+{% if skeleton_mode %}
+<style>
+  .sk { position: relative; overflow: hidden; background: var(--bs-secondary-bg, #e9ecef); border-radius: 10px; }
+  .sk::after { content: ""; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); animation: skShine 1.3s infinite; }
+  [data-bs-theme="dark"] .sk::after { background: linear-gradient(90deg, transparent, rgba(255,255,255,.08), transparent); }
+  @keyframes skShine { 100% { transform: translateX(100%); } }
+  @media (prefers-reduced-motion: reduce) { .sk::after { animation: none; } }
+  .sk-hero-pill { display: inline-block; height: 30px; width: 140px; border-radius: 6px; background: rgba(255,255,255,.12); margin-right: 8px; }
+  .sk-kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; margin: 1rem 0; }
+  .sk-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: 14px; }
+  @media (max-width: 1200px) { .sk-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } .sk-grid > * { grid-column: span 6 !important; } }
+  @media (max-width: 768px) { .sk-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .sk-grid > * { grid-column: span 12 !important; } }
+</style>
+<div id="dashMain" aria-busy="true">
+  <div class="dash">
+  {% call dash.hero('Overall Inventory Dashboard', 'Home', 'Stock, repair, sales and money on one screen', view_data=False) %}
+    <div class="py-1">{% for _ in range(6) %}<span class="sk-hero-pill"></span>{% endfor %}</div>
+  {% endcall %}
+  </div>
+  <div class="sk-kpis">{% for _ in range(6) %}<div class="sk" style="height: 96px"></div>{% endfor %}</div>
+  <div class="sk-grid">
+    {% for span, h in [(8, 300), (4, 300), (4, 260), (4, 260), (4, 260), (12, 340)] %}
+    <div class="sk" style="grid-column: span {{ span }}; height: {{ h }}px"></div>
+    {% endfor %}
+  </div>
+  <div id="dashLoadErr" class="alert alert-warning mt-3 d-none">
+    The dashboard took too long to load. <a href="" class="alert-link">Try again</a>
+  </div>
+</div>
+<script>
+(function () {
+  var url = new URL(location.href); url.searchParams.set('_part', '1');
+  function fail() { document.getElementById('dashLoadErr').classList.remove('d-none'); }
+  function runScripts(list, i) {
+    if (i >= list.length) { window.dispatchEvent(new Event('resize')); return; }
+    var old = list[i], s = document.createElement('script');
+    for (var a = 0; a < old.attributes.length; a++) s.setAttribute(old.attributes[a].name, old.attributes[a].value);
+    if (old.src) { s.onload = s.onerror = function () { runScripts(list, i + 1); }; document.body.appendChild(s); }
+    else { s.textContent = old.textContent; document.body.appendChild(s); runScripts(list, i + 1); }
+  }
+  // Start once the page has finished parsing: base.html wraps fetch() further
+  // down so the global green bar keeps running until the dashboard arrives.
+  function go() {
+  fetch(url.toString(), { credentials: 'same-origin', headers: { 'X-Requested-With': 'fetch' } })
+    .then(function (r) {
+      if (r.redirected && r.url.indexOf('/auth/login') !== -1) { location.href = r.url; throw 0; }
+      if (!r.ok) throw r.status; return r.text();
+    })
+    .then(function (html) {
+      var doc = new DOMParser().parseFromString(html, 'text/html');
+      var main = doc.getElementById('dashMain');
+      if (!main) return fail();
+      var scripts = Array.prototype.slice.call(main.querySelectorAll('script'));
+      scripts.forEach(function (sc) { sc.parentNode.removeChild(sc); });
+      scripts = scripts.concat(Array.prototype.slice.call(doc.querySelectorAll('script[data-dash-script]')));
+      var cur = document.getElementById('dashMain');
+      cur.innerHTML = main.innerHTML; cur.removeAttribute('aria-busy');
+      runScripts(scripts, 0);
+    })
+    .catch(function (e) { if (e !== 0) fail(); });
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go); else go();
+})();
+</script>
+{% else %}
+<div id="dashMain">
+{# Option C header (2026-11-14, Pankaj): dark header with the filters; no
+   View Data link — this page is the dashboard. #}
+{% call dash.hero('Overall Inventory Dashboard', 'Home', 'Stock, repair, sales and money on one screen', view_data=False) %}
 <form method="get" action="/dashboard" class="filter-bar">
 <div class="filter-bar-row">
   <div class="dash-filter-md">
@@ -109,6 +182,8 @@
   </div>
 </div>
 </form>
+{% endcall %}
+{% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{% endif %}
 
 <!-- ═══════════════════════════════════════════════════════════
      MY WORK QUEUE  (role-specific banner at top)
@@ -595,7 +670,7 @@
    Revenue / Profit) and the Financial Summary card. Without Financial
    Summary the Stage Pipeline takes the full width. #}
 {% set _dash_admin = (current_user.role.value if current_user.role.value is defined else current_user.role|string) == 'admin' %}
-{% if _dash_admin %}{{ summary_stat_cards() }}{% endif %}
+{# The four tint tiles were replaced by the KPI strip under the header (2026-11-14). #}
 
 <!-- 3/4 (Device Stage Pipeline) + 1/4 (Financial Summary), equal height —
      below the four tint tiles, above Analytics (2026-10-24, on request).
@@ -612,45 +687,18 @@
   {% endif %}
 </div>
 
+{# Option C analytics (2026-11-14): revenue and cost, inflow vs outflow, stock
+   health, stage ageing, device type x stage, needs attention — services/main_dash.py #}
+{% if dash_widgets %}<div class="dash dash-section">{{ dash.grid(dash_widgets) }}</div>{% endif %}
+
 {# Total Spare Parts below the tint tiles + Stage Pipeline (2026-10-31). #}
 {% if parts_card and has_perm(current_user.role.value if current_user.role.value is defined else current_user.role|string, 'spare_parts', 'enable') %}{{ spare_parts_cards() }}{% endif %}
 
-{% include "dashboard/_admin_analytics.html" %}
+{# Stage Distribution pie + Inventory by Category & Stage chart replaced by the heat maps above (2026-11-14). #}
 
-<!-- Weekly Sourcing Price + Weekly Sales Price (Sales Price is pricing-gated) -->
-<div class="row g-3 mb-4">
-  {% if can(current_user, 'dashboard', 'pricing') %}{# Pricing View (2026-11-03) #}
-  <div class="col-xl-6">
-    <div class="card gtable-card border-0 shadow-sm h-100 chart-card">
-      <div class="card-header bg-transparent fw-semibold small">Weekly Sourcing Price — Buyer PO / Seller PO</div>
-      <div class="card-body"><div class="chart-box"><canvas id="chartSourcingPriceWeekly"></canvas></div></div>
-    </div>
-  </div>
-  {% endif %}
-  {% if can(current_user, 'dashboard', 'pricing') %}
-  <div class="col-xl-6">
-    <div class="card gtable-card border-0 shadow-sm h-100 chart-card">
-      <div class="card-header bg-transparent fw-semibold small">Weekly Sales Price — Ready to Sale / Sold</div>
-      <div class="card-body"><div class="chart-box"><canvas id="chartSalesPriceWeekly"></canvas></div></div>
-    </div>
-  </div>
-  {% endif %}
-</div>
-
-<div class="row g-3 mb-4">
-  <div class="col-xl-6">
-    <div class="card gtable-card border-0 shadow-sm h-100 chart-card">
-      <div class="card-header bg-transparent fw-semibold small">Weekly: Products in IQC / GRN / In Stock</div>
-      <div class="card-body"><div class="chart-box"><canvas id="chartProductsWeekly"></canvas></div></div>
-    </div>
-  </div>
-  <div class="col-xl-6">
-    <div class="card gtable-card border-0 shadow-sm h-100 chart-card">
-      <div class="card-header bg-transparent fw-semibold small">Weekly: Spare Parts — Sourcing Request / GRN / Harvest</div>
-      <div class="card-body"><div class="chart-box"><canvas id="chartPartsWeekly"></canvas></div></div>
-    </div>
-  </div>
-</div>
+{# Weekly Sourcing Price / Weekly Sales Price / Weekly Products in IQC-GRN-Stock /
+   Weekly Spare Parts charts removed (2026-11-15, Pankaj) — the Option C cards
+   above cover inflow / outflow; their queries are gone from the route too. #}
 
 
 </div><!-- /tab-operations -->
@@ -707,7 +755,7 @@
 <script>
 (function(){
   const labels = {{ chart_labels | tojson }};
-  new Chart(document.getElementById('categoryChart'), {
+  if (document.getElementById('categoryChart')) new Chart(document.getElementById('categoryChart'), {
     type: 'bar',
     data: {
       labels: labels,
@@ -727,76 +775,13 @@
 })();
 </script>
 
-{% set ac = admin_charts %}
-<script>
-(function(){
-  const weekLabels = {{ ac.get('week_labels', []) | tojson }};
 
-  new Chart(document.getElementById('chartProductsWeekly'), {
-    type: 'bar',
-    data: {
-      labels: weekLabels,
-      datasets: [
-        { label: 'IQC',       data: {{ ac.get('products_iqc_weekly', []) | tojson }},   backgroundColor: 'rgba(108,117,125,.75)' },
-        { label: 'GRN',       data: {{ ac.get('products_grn_weekly', []) | tojson }},   backgroundColor: 'rgba(255,193,7,.75)' },
-        { label: 'In Stock',  data: {{ ac.get('products_stock_weekly', []) | tojson }}, backgroundColor: 'rgba(13,202,240,.75)' },
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
-  });
-
-  new Chart(document.getElementById('chartPartsWeekly'), {
-    type: 'bar',
-    data: {
-      labels: weekLabels,
-      datasets: [
-        { label: 'Sourcing Request', data: {{ ac.get('parts_sourcing_weekly', []) | tojson }}, backgroundColor: 'rgba(13,110,253,.75)' },
-        { label: 'GRN',              data: {{ ac.get('parts_grn_weekly', []) | tojson }},      backgroundColor: 'rgba(255,193,7,.75)' },
-        { label: 'Harvest',          data: {{ ac.get('parts_harvest_weekly', []) | tojson }},  backgroundColor: 'rgba(15,122,55,.75)' },
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
-  });
-
-  new Chart(document.getElementById('chartStagePie'), {
-    type: 'pie',
-    data: {
-      labels: {{ ac.get('stage_pie_labels', []) | tojson }},
-      datasets: [{ data: {{ ac.get('stage_pie_values', []) | tojson }},
-        backgroundColor: ['#6c757d','#0dcaf0','#ffc107','#fd7e14','#dc3545','#6f42c1','#0d6efd','#0F7A37'] }]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'right' } } }
-  });
-
-  if (document.getElementById('chartSalesPriceWeekly')) new Chart(document.getElementById('chartSalesPriceWeekly'), {
-    type: 'bar',
-    data: {
-      labels: weekLabels,
-      datasets: [
-        { label: 'Ready to Sale (count)', data: {{ ac.get('ready_to_sale_weekly', []) | tojson }}, backgroundColor: 'rgba(15,122,55,.55)', yAxisID: 'y1' },
-        { label: 'Product Sold (₹)',      data: {{ (ac.get('product_sold_price_weekly', []) if can(current_user, 'dashboard', 'pricing') else []) | tojson }}, backgroundColor: 'rgba(13,110,253,.75)', yAxisID: 'y' },
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } },
-      scales: { y: { beginAtZero: true, position: 'left' }, y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false } } } }
-  });
-
-  if (document.getElementById('chartSourcingPriceWeekly')) new Chart(document.getElementById('chartSourcingPriceWeekly'), {
-    type: 'bar',
-    data: {
-      labels: weekLabels,
-      datasets: [
-        { label: 'Buyer PO (₹)',  data: {{ (ac.get('buyer_po_weekly', []) if can(current_user, 'dashboard', 'pricing') else []) | tojson }},  backgroundColor: 'rgba(15,122,55,.75)' },
-        { label: 'Seller PO (₹)', data: {{ (ac.get('seller_po_weekly', []) if can(current_user, 'dashboard', 'pricing') else []) | tojson }}, backgroundColor: 'rgba(253,126,20,.75)' },
-      ]
-    },
-    options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
-  });
-})();
-</script>
+</div>{# /dashMain #}
+{% endif %}
 {% endblock %}
 {% block scripts %}
-<script>
+{% if not skeleton_mode %}
+<script data-dash-script>
 // Lot P&L table (Global Table module) — plain client-side table, all rows
 // already rendered server-side.
 if (document.getElementById('lotPlTable')) {
@@ -844,4 +829,5 @@ document.querySelectorAll('.accordion-collapse').forEach(function (el) {
   });
 })();
 </script>
+{% endif %}
 {% endblock %}

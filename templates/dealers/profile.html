@@ -325,7 +325,7 @@
   </div>
 </div>
 
-{% include "dealers/_quotation_modal.html" %}
+{% set qc_mode = 'dealer' %}{% include "dealers/_quotation_modal.html" %}
 {% include "dealers/_call_log_modal.html" %}
 
 {% endblock %}

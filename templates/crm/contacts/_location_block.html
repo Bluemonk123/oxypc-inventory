@@ -22,7 +22,8 @@
           <tr>
             <td><select name="cn_role[]" class="form-select form-select-sm">
               <option value="">— Select —</option>
-              {% for r in person_roles %}<option value="{{ r }}" {% if cn.person_role == r %}selected{% endif %}>{{ r }}</option>{% endfor %}
+              {# Old values Directors / Other show as Director / Others (2026-11-15) #}{% set _pr = {'Directors': 'Director', 'Other': 'Others'}.get(cn.person_role, cn.person_role) %}
+              {% for r in person_roles %}<option value="{{ r }}" {% if _pr == r %}selected{% endif %}>{{ r }}</option>{% endfor %}
             </select></td>
             <td><input type="text" name="cn_person[]" class="form-control form-control-sm" value="{{ cn.person_name or '' }}" placeholder="Name"></td>
             <td><input type="text" name="cn_phone[]" class="form-control form-control-sm" value="{{ cn.phone or '' }}" placeholder="Phone number"></td>

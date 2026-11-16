@@ -5,6 +5,13 @@
 {% import "_download_cell.html" as dl %}
 
 
+{# Option C dashboard (2026-11-14, Pankaj) — services/crm_dash.py. No View Data:
+   the deal list card below sits on the dashboard, under the deal board.
+   The old count tiles are kept only as a fallback if the dashboard fails. #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{{ dash.hero('CRM Sourcing', '', 'Supplier deals from first call to confirmed lot', view_data=False) }}
+{% if dash_kpis %}{{ dash.kpis(dash_kpis) }}<div class="mb-3">{{ dash.grid(dash_top) }}</div>{% else %}
 <!-- Summary tiles: dark single-count tiles (2026-11-06, _tiles.html) -->
 {% import "_tiles.html" as tl %}
 {% set _pipe = ('₹' ~ ((pipeline_value) | inr)) if can(current_user, 'crm_sourcing', 'pricing') else '—' %}
@@ -14,6 +21,7 @@
   {{ tl.single(_pipe, 'Pipeline Value', '#0F7A37', 'bi-currency-rupee', variant='dark') }}
   {{ tl.single(overdue_count, 'Overdue Follow-ups', '#dc3545' if overdue_count > 0 else '#0F7A37', 'bi-alarm', variant='dark') }}
 </div>
+{% endif %}
 
 <div class="card border-0 shadow-sm">
   {# Filters and the Add button sit in the card header, right of the title
@@ -116,6 +124,8 @@
       </table>
     </div>
   </div>
+</div>
+{% if dash_bottom %}<div class="mt-3">{{ dash.grid(dash_bottom) }}</div>{% endif %}
 </div>
 {% endblock %}
 {% block scripts %}

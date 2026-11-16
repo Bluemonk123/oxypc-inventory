@@ -83,3 +83,92 @@ async def list_quotations(
         "qtn_dealers": qtn_dealers,
         "company_settings": await get_company_settings(db),
     })
+
+
+@router.get("/modal-data")
+async def quotation_modal_data(
+    opp_id: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Create Quotation modal (2026-11-16, Pankaj) — ONE modal for CRM Quotes
+    and Telecaller Quotations. Dealers (Telecaller, scoped like the Dealers
+    page), Accounts (Buyer / Supplier), company profiles and the line-item
+    dropdown lists; with opp_id, lines prefilled from the deal's lot."""
+    from fastapi.responses import JSONResponse
+    from models.crm import CRMContact
+    from models.company import Company
+    from sqlalchemy import func
+    from services.quote_lines import options
+    dq = select(Dealer).where(Dealer.trashed_at.is_(None))
+    if current_user.role == UserRole.telecaller:
+        dq = dq.where(Dealer.assigned_to == current_user.username)
+    dealers = [{"id": str(d.id), "name": d.business_name or "", "type": (d.dealer_type or "").upper(),
+                "phone": d.phone or "", "email": d.email or "", "address": d.address or "", "gstin": d.gstin or ""}
+               for d in (await db.execute(dq.order_by(Dealer.business_name))).scalars().all()]
+    accounts = [{"id": str(c.id), "name": c.company_name or "", "type": (c.contact_type or "").lower(),
+                 "phone": c.phone or "", "email": c.email or "",
+                 "address": ", ".join(x for x in (c.address, c.city, c.state, c.pincode) if x), "gstin": c.gstin or ""}
+                for c in (await db.execute(select(CRMContact).where(
+                    CRMContact.is_trashed.isnot(True), func.coalesce(CRMContact.status, "") != "blacklisted")
+                    .order_by(CRMContact.company_name))).scalars().all()]
+    companies = [{"id": str(c.id), "name": c.company_name or "", "entity": c.company_entity or "",
+                  "address": c.company_address or "", "gstin": c.company_gstin or "",
+                  "phone": c.company_phone or "", "email": c.company_email or ""}
+                 for c in (await db.execute(select(Company).where(Company.is_active == True)  # noqa: E712
+                                            .order_by(Company.created_at))).scalars().all()]
+    prefill, contact_id = [], ""
+    if opp_id:
+        try:
+            from models.crm import CRMSalesOpportunity
+            from services.opportunity_lot import lot_for_opportunity, winning_bid_for_opportunity
+            from services.quote_lines import lot_lines
+            opp = (await db.execute(select(CRMSalesOpportunity).where(CRMSalesOpportunity.id == opp_id))).scalar_one_or_none()
+            if opp:
+                contact_id = str(opp.contact_id) if opp.contact_id else ""
+                lot = await lot_for_opportunity(db, opp.id)
+                if lot:
+                    bid = await winning_bid_for_opportunity(db, opp.id)
+                    prefill = [{k: (str(v) if k in ("unit_price", "total_price") else v) for k, v in ln.items() if k != "tags"}
+                               for ln in await lot_lines(db, lot, total=bid.bid_amount if bid else None,
+                                                         unit=None if bid else (lot.selling_price or 0) / max(1, lot.qty or 1))]
+        except Exception:
+            prefill = []
+    return JSONResponse({"dealers": dealers, "accounts": accounts, "companies": companies,
+                         "options": options(), "prefill": prefill, "contact_id": contact_id},
+                        headers={"Cache-Control": "no-store"})
+
+
+@router.get("/tags")
+async def quotation_tags(
+    kind: str = Query(default="tele"),
+    ids: str = Query(default=""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Tags column (2026-11-16, Pankaj): Ready-for-Sale tags whose configuration
+    matches each quotation's lines (services/quote_lines.line_matches) — up to
+    each line's quantity. kind = tele (Telecaller) | crm (CRM quotes)."""
+    import uuid as _u
+    from fastapi.responses import JSONResponse
+    from services.quote_lines import ready_devices, tags_for, item_dict
+    qids = []
+    for x in (ids or "").split(",")[:300]:
+        try:
+            qids.append(_u.UUID(x.strip()))
+        except ValueError:
+            pass
+    if not qids:
+        return JSONResponse({})
+    if kind == "crm":
+        from models.crm import CRMQuoteItem as Item
+        key = Item.quote_id
+    else:
+        from models.dealer_quotation import DealerQuotationItem as Item
+        key = Item.quotation_id
+    by_q = {}
+    for it in (await db.execute(select(Item).where(key.in_(qids)))).scalars().all():
+        by_q.setdefault(str(getattr(it, key.key)), []).append(item_dict(it))
+    devices = await ready_devices(db)
+    return JSONResponse({q: tags_for(lines, devices) for q, lines in by_q.items()},
+                        headers={"Cache-Control": "no-store"})

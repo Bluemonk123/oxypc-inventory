@@ -209,6 +209,12 @@ class LotBookingRequest(Base):
     dealer_id = Column(UUID(as_uuid=True), ForeignKey("dealers.id"), nullable=False, index=True)
     qty_requested = Column(Integer, nullable=False, default=1)
     status = Column(String(20), nullable=False, default="requested", index=True)  # requested | approved | withdrawn
+    # Approve in Bookings Queue (2026-11-15, Pankaj — approved schema change):
+    # the Customer Deal it opened (plain UUID like PartnerBid.opportunity_id —
+    # CRM is another bounded context) and who approved it.
+    opportunity_id = Column(UUID(as_uuid=True), nullable=True, index=True)
+    approved_by = Column(String(50), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=app_now)
     updated_at = Column(DateTime, default=app_now, onupdate=app_now)
 
@@ -313,4 +319,22 @@ class PartnerBidDocument(Base):
     bid = relationship("PartnerBid", back_populates="documents")
 
 
-BID_DOC_TYPES = ["quote", "po", "invoice"]
+BID_DOC_TYPES = ["quote", "so", "po", "invoice"]   # "so" = Sales Order from Mark Won (2026-11-15)
+
+
+class PartnerNotification(Base):
+    """Bell icon + live toast on the Trade Partner portal (2026-11-15, Pankaj —
+    approved schema change). Staff notifications (models/notification.py) hang
+    off users.id, so partners get their own table keyed by dealers.id: booking
+    approved, bid won / lost, Sales Order or PO attached, payment verified."""
+    __tablename__ = "partner_notifications"
+    __table_args__ = (Index("ix_partner_notifications_dealer_read", "dealer_id", "is_read"),)
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    dealer_id = Column(UUID(as_uuid=True), ForeignKey("dealers.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    message = Column(Text, nullable=True)
+    kind = Column(String(20), nullable=False, default="info")   # info / success / warning
+    link = Column(String(300), nullable=True)                   # portal page to open
+    is_read = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    created_at = Column(DateTime, default=app_now, index=True)

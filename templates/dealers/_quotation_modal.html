@@ -1,212 +1,290 @@
-{# Shared Quotation modal — included on both Dealer Management (list.html) and
-   Dealer Detail (profile.html). On list.html it's reused across every row via
-   openQuotationModal(rowData); on profile.html it's opened for the single
-   dealer already in context (see openQuotationModalForThisDealer()). #}
-<div class="modal fade" id="quotationModal" tabindex="-1">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
-    <form id="quotationForm" method="post" class="modal-content">
+{# Create Quotation modal (2026-11-16, Pankaj) — ONE modal for Telecaller
+   Quotations (Dealer) and CRM Quotes (Buyer / Supplier Account). Included on
+   Dealer Management, Dealer Detail, Quotations and CRM Quotes.
+
+   Contact Type decides where it saves: Dealer → /dealers/<id>/quotations;
+   Buyer / Supplier → /crm/quotes/new. Lists (dealers, accounts, companies,
+   line dropdowns) come from /quotations/modal-data when the modal opens.
+   Dropdowns use the global search + select (window.ssEnhance).
+
+   JS: openQuotationModal(dealerRow) · openQuotationModalPickDealer() ·
+       openCreateQuotation({type, contactId, oppId, sourcingDealId}) #}
+{% set _qc_dealer = can(current_user, 'dealers', 'add') %}
+{% set _qc_crm = can(current_user, 'crm_quotes', 'add') %}
+{# qc_mode (2026-11-16, Pankaj), set by the page before the include:
+   'dealer' (Telecaller Quotations / Dealer pages) = Contact Type fixed to
+   Dealer, read-only; 'crm' (CRM Quotes) = Buyer / Supplier only, no Dealer. #}
+{% set _qc_mode = qc_mode if qc_mode is defined else '' %}
+{% if _qc_mode == 'dealer' %}{% set _qc_crm = false %}{% set _qc_dealer = true %}{% elif _qc_mode == 'crm' %}{% set _qc_dealer = false %}{% set _qc_crm = true %}{% endif %}
+<style>
+  #quotationModal .qc-items th { white-space: nowrap; font-size: .72rem; text-transform: uppercase; letter-spacing: .02em; }
+  #quotationModal .qc-items td { padding: .25rem; vertical-align: middle; }
+  #quotationModal .qc-items .ss-btn, #quotationModal .qc-items .form-control { font-size: .8rem; }
+  #quotationModal .qc-items td.qc-sel { min-width: 118px; }
+  #quotationModal .qc-head .ss-filter { min-width: 220px; max-width: 60%; }
+</style>
+<div class="modal fade" id="quotationModal" tabindex="-1" aria-labelledby="qcTitle">
+  <div class="modal-dialog modal-fullscreen-lg-down modal-xl modal-dialog-scrollable" style="max-width: min(1320px, 96vw)">
+    <form id="quotationForm" method="post" class="modal-content" novalidate>
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
-      {% if qtn_dealers is defined %}<input type="hidden" name="return_to" value="/quotations">{% endif %}
+      <input type="hidden" name="return_to" id="qcReturnTo" value="">
+      <input type="hidden" name="opp_id" id="qcOppId" value="">
+      <input type="hidden" name="sourcing_deal_id" id="qcSourcingId" value="">
+      <input type="hidden" name="contact_id" id="qcContactId" value="">
+      <input type="hidden" name="quote_kind" id="qcQuoteKind" value="">
+      <input type="hidden" name="from_entity" id="qcFromEntity" value="">
       <div class="modal-header py-2">
-        <h6 class="modal-title"><i class="bi bi-file-earmark-text me-2 text-info"></i>Create Quotation</h6>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <h6 class="modal-title" id="qcTitle"><i class="bi bi-file-earmark-text me-2 text-info"></i>Create Quotation</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        {# Dealer picker (2026-10-27): only on the Quotations page, which has
-           no dealer in context. Picking one fills Dealer Details and points
-           the form at that dealer. #}
-        {% if qtn_dealers is defined %}
-        <div class="mb-3">
-          <label class="form-label small fw-semibold mb-1">Dealer <span class="text-danger">*</span></label>
-          <input type="text" id="qtnDealerPick" class="form-control form-control-sm" list="qtnDealerList"
-                 placeholder="Type to search a dealer by name or phone…" autocomplete="off">
-          <datalist id="qtnDealerList">
-            {% for d in qtn_dealers %}<option value="{{ d.business_name }}{% if d.phone %} — {{ d.phone }}{% endif %}"></option>{% endfor %}
-          </datalist>
-          <div class="form-text small" id="qtnDealerPickHelp">Pick a dealer from the list.</div>
-        </div>
-        {% endif %}
-        <div class="row g-3 mb-3">
-          <div class="col-md-6">
-            <div class="card border-0 bg-light h-100">
-              <div class="card-body py-2">
-                <div class="small fw-semibold text-uppercase text-muted mb-1">Dealer Details</div>
-                <div class="small"><strong>Business Name:</strong> <span id="qtnDealerName">—</span></div>
-                <div class="small"><strong>Type:</strong> <span id="qtnDealerType">—</span></div>
-                <div class="small"><strong>Phone:</strong> <span id="qtnDealerPhone">—</span></div>
-                <div class="small"><strong>Email:</strong> <span id="qtnDealerEmail">—</span></div>
-                <div class="small"><strong>Address:</strong> <span id="qtnDealerAddress">—</span></div>
-                <div class="small"><strong>GSTIN:</strong> <span id="qtnDealerGstin">—</span></div>
-              </div>
+        <div id="qcLoading" class="text-center text-muted small py-4"><span class="spinner-border spinner-border-sm me-2"></span>Loading…</div>
+        <div id="qcBody" class="d-none">
+          <div class="row g-2 mb-3">
+            <div class="col-6 col-md-2">
+              <label for="qcQuoteDate" class="form-label small fw-semibold mb-1">Quote Date <span class="text-danger">*</span></label>
+              <input type="date" name="quote_date" id="qcQuoteDate" class="form-control form-control-sm" required>
+            </div>
+            <div class="col-6 col-md-2">
+              <label for="qcContactType" class="form-label small fw-semibold mb-1">Contact Type <span class="text-danger">*</span></label>
+              {% if _qc_mode == 'dealer' %}
+              <select id="qcContactType" class="form-select form-select-sm" disabled title="Telecaller Quotations are for Dealers"><option value="dealer" selected>Dealer</option></select>
+              <input type="hidden" name="contact_type" value="dealer">
+              {% else %}
+              <select name="contact_type" id="qcContactType" class="form-select form-select-sm" data-search>
+                {% if _qc_crm %}<option value="buyer">Buyer</option><option value="supplier">Supplier</option>{% endif %}
+                {% if _qc_dealer %}<option value="dealer">Dealer</option>{% endif %}
+              </select>
+              {% endif %}
+            </div>
+            <div class="col-md-4">
+              <label for="qcPaymentTerms" class="form-label small fw-semibold mb-1">Payment Terms</label>
+              <input type="text" name="payment_terms" id="qcPaymentTerms" class="form-control form-control-sm" maxlength="200" placeholder="e.g. 50% advance, balance before dispatch">
+            </div>
+            <div class="col-md-4">
+              <label for="qcSpecial" class="form-label small fw-semibold mb-1">Special Conditions</label>
+              <input type="text" name="special_conditions" id="qcSpecial" class="form-control form-control-sm" maxlength="500" placeholder="Warranty, delivery or other terms">
             </div>
           </div>
-          <div class="col-md-6">
-            <div class="card border-0 bg-light h-100">
-              <div class="card-body py-2">
-                <div class="small fw-semibold text-uppercase text-muted mb-1">Company Detail</div>
-                <div class="small"><strong>Company Name:</strong> {{ company_settings.company_name or '—' }}</div>
-                <div class="small"><strong>Address:</strong> {{ company_settings.company_address or '—' }}</div>
-                <div class="small"><strong>GSTIN:</strong> {{ company_settings.company_gstin or '—' }}</div>
-                <div class="small"><strong>Phone:</strong> {{ company_settings.company_phone or '—' }}</div>
-                <div class="small"><strong>Email:</strong> {{ company_settings.company_email or '—' }}</div>
-                {% if not company_settings.company_name %}
-                <div class="small text-warning mt-1">
-                  <i class="bi bi-exclamation-triangle"></i> Not set —
-                  <a href="/admin/company-settings" target="_blank">configure Company Settings</a>
+
+          <div class="row g-3 mb-3">
+            <div class="col-md-6">
+              <div class="card border-0 bg-light h-100">
+                <div class="card-body py-2">
+                  <div class="d-flex align-items-center gap-2 mb-2 qc-head">
+                    <span class="small fw-semibold text-uppercase text-muted text-nowrap" id="qcPartyHead">Dealer Details</span>
+                    <select id="qcParty" class="form-select form-select-sm" data-search aria-label="Pick the dealer or account"></select>
+                  </div>
+                  <div class="small"><strong>Business Name:</strong> <span id="qcPName">—</span></div>
+                  <div class="small"><strong>Type:</strong> <span id="qcPType">—</span></div>
+                  <div class="small"><strong>Phone:</strong> <span id="qcPPhone">—</span></div>
+                  <div class="small"><strong>Email:</strong> <span id="qcPEmail">—</span></div>
+                  <div class="small"><strong>Address:</strong> <span id="qcPAddress">—</span></div>
+                  <div class="small"><strong>GSTIN:</strong> <span id="qcPGstin">—</span></div>
+                  <div class="invalid-feedback d-block small d-none" id="qcPartyErr">Pick who this quotation is for.</div>
                 </div>
-                {% endif %}
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="card border-0 bg-light h-100">
+                <div class="card-body py-2">
+                  <div class="d-flex align-items-center gap-2 mb-2 qc-head">
+                    <span class="small fw-semibold text-uppercase text-muted text-nowrap">Company Detail</span>
+                    <select name="company_id" id="qcCompany" class="form-select form-select-sm" data-search aria-label="Pick the issuing company"></select>
+                  </div>
+                  <div class="small"><strong>Company Name:</strong> <span id="qcCName">—</span></div>
+                  <div class="small"><strong>Address:</strong> <span id="qcCAddress">—</span></div>
+                  <div class="small"><strong>GSTIN:</strong> <span id="qcCGstin">—</span></div>
+                  <div class="small"><strong>Phone:</strong> <span id="qcCPhone">—</span></div>
+                  <div class="small"><strong>Email:</strong> <span id="qcCEmail">—</span></div>
+                  <div class="small text-warning mt-1 d-none" id="qcNoCompany"><i class="bi bi-exclamation-triangle"></i> No company set up —
+                    <a href="/admin/company-settings" target="_blank">configure Company Setting</a></div>
+                </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <div class="d-flex justify-content-between align-items-center mb-1">
-          <div class="small fw-semibold text-uppercase text-muted">Line Items</div>
-          <button type="button" class="btn btn-sm btn-outline-primary" onclick="qtnAddRow()">
-            <i class="bi bi-plus-lg me-1"></i>Add Item
-          </button>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-sm mb-0">
-            <thead class="table-light">
-              <tr>
-                <th style="width:18%">PO Category</th>
-                <th style="width:22%">Product Name</th>
-                <th style="width:18%">Model Name</th>
-                <th style="width:12%">Quantity</th>
-                <th style="width:14%">Unit Price</th>
-                <th style="width:14%">Total Price</th>
-                <th style="width:2%"></th>
-              </tr>
-            </thead>
-            <tbody id="qtnItemsBody"></tbody>
-            <tfoot>
-              <tr class="table-light">
-                <th colspan="3" class="text-end">Totals</th>
-                <th id="qtnTotalQty">0</th>
-                <th></th>
-                <th id="qtnTotalPrice">0.00</th>
-                <th></th>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-
-        <div class="row g-3 mt-1">
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold">Payment Terms</label>
-            <textarea name="payment_terms" id="qtnPaymentTerms" class="form-control form-control-sm" rows="3"></textarea>
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <div class="small fw-semibold text-uppercase text-muted">Line Items <span class="fw-normal text-lowercase" id="qcPrefillNote"></span></div>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="qcAddRow()"><i class="bi bi-plus-lg me-1"></i>Add Item</button>
           </div>
-          <div class="col-md-6">
-            <label class="form-label small fw-semibold">Additional Notes</label>
-            <textarea name="additional_notes" id="qtnAdditionalNotes" class="form-control form-control-sm" rows="3"></textarea>
+          <div class="table-responsive">
+            <table class="table table-sm mb-0 qc-items">
+              <thead class="table-light">
+                <tr><th>Device Category</th><th>Make</th><th>Model Name</th><th>CPU</th><th>CPU Gen</th><th>RAM</th>
+                    <th>Storage</th><th>Grade</th><th style="width:70px">Qty</th><th style="width:110px">Unit Price (₹)</th>
+                    <th style="width:120px">Total Price (₹)</th><th></th></tr>
+              </thead>
+              <tbody id="qtnItemsBody"></tbody>
+              <tfoot>
+                <tr class="table-light">
+                  <th colspan="8" class="text-end">Total Quotation Price</th>
+                  <th id="qtnTotalQty">0</th><th></th>
+                  <th id="qtnTotalPrice" class="text-end">0.00</th><th></th>
+                </tr>
+              </tfoot>
+            </table>
           </div>
         </div>
       </div>
       <div class="modal-footer py-2">
         <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-send-check me-1"></i>Create Quotation</button>
+        <button type="submit" class="btn btn-sm btn-primary" id="qcSubmit"><i class="bi bi-send-check me-1"></i>Create Quotation</button>
       </div>
     </form>
   </div>
 </div>
 
 <script>
-// PO Category options sourced from Master Data → Inventory Logistics group.
-var QTN_PO_CATEGORIES = {{ master_options('po_category') | tojson }};
+(function () {
+  var DATA = null, DATA_OPP = null, pending = null;
+  var F = ['device_category', 'make', 'model_name', 'cpu', 'cpu_gen', 'ram', 'storage', 'grade'];
+  function $(id) { return document.getElementById(id); }
+  function esc(t) { var d = document.createElement('div'); d.textContent = t == null ? '' : String(t); return d.innerHTML; }
+  function money(n) { return (Math.round((+n || 0) * 100) / 100).toFixed(2); }
+  function today() { var d = new Date(); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
+  function enhance(sel) { if (window.ssEnhance) window.ssEnhance(sel); }
 
-function qtnPoCategoryCellHtml(selected){
-  var opts = '<option value="">— Select —</option>';
-  QTN_PO_CATEGORIES.forEach(function(cat){
-    var sel = (cat === selected) ? ' selected' : '';
-    var safe = String(cat).replace(/"/g, '&quot;');
-    opts += '<option value="' + safe + '"' + sel + '>' + safe + '</option>';
-  });
-  return '<td><select name="po_category" class="form-select form-select-sm">' + opts + '</select></td>';
-}
-
-function qtnAddRow(name, model, qty, price, poCategory){
-  var tbody = document.getElementById('qtnItemsBody');
-  var tr = document.createElement('tr');
-  tr.innerHTML =
-    qtnPoCategoryCellHtml(poCategory) +
-    '<td><input type="text" name="product_name" class="form-control form-control-sm" value="' + (name || '').replace(/"/g, '&quot;') + '" required></td>' +
-    '<td><input type="text" name="model_name" class="form-control form-control-sm" value="' + (model || '').replace(/"/g, '&quot;') + '"></td>' +
-    '<td><input type="number" name="quantity" min="1" value="' + (qty || 1) + '" class="form-control form-control-sm qtnQty"></td>' +
-    '<td><input type="number" name="unit_price" min="0" step="0.01" value="' + (price || 0) + '" class="form-control form-control-sm qtnPrice"></td>' +
-    '<td class="qtnLineTotal small fw-semibold text-end pt-2">0.00</td>' +
-    '<td><button type="button" class="btn btn-sm btn-outline-danger" onclick="this.closest(\'tr\').remove(); qtnRecalc();"><i class="bi bi-trash"></i></button></td>';
-  tbody.appendChild(tr);
-  tr.querySelectorAll('.qtnQty,.qtnPrice').forEach(function(inp){ inp.addEventListener('input', qtnRecalc); });
-  qtnRecalc();
-}
-
-function qtnRecalc(){
-  var totalQty = 0, totalPrice = 0;
-  document.querySelectorAll('#qtnItemsBody tr').forEach(function(tr){
-    var qty = parseFloat(tr.querySelector('.qtnQty').value) || 0;
-    var price = parseFloat(tr.querySelector('.qtnPrice').value) || 0;
-    var lineTotal = qty * price;
-    tr.querySelector('.qtnLineTotal').textContent = lineTotal.toFixed(2);
-    totalQty += qty;
-    totalPrice += lineTotal;
-  });
-  document.getElementById('qtnTotalQty').textContent = totalQty;
-  document.getElementById('qtnTotalPrice').textContent = totalPrice.toFixed(2);
-}
-
-function qtnResetForm(dealerId){
-  document.getElementById('quotationForm').action = '/dealers/' + dealerId + '/quotations';
-  document.getElementById('qtnPaymentTerms').value = '';
-  document.getElementById('qtnAdditionalNotes').value = '';
-  document.getElementById('qtnItemsBody').innerHTML = '';
-  qtnAddRow();
-}
-
-{% if qtn_dealers is defined %}
-// Quotations page: open the modal with no dealer yet; the picker sets it.
-var QTN_DEALERS = {{ qtn_dealers | tojson }};
-function qtnDealerLabel(d){ return d.business_name + (d.phone ? ' — ' + d.phone : ''); }
-function qtnFillDealer(d){
-  ['Name','Type','Phone','Email','Address','Gstin'].forEach(function(k){
-    var v = d ? ({Name:d.business_name, Type:(d.dealer_type||'').toUpperCase(), Phone:d.phone, Email:d.email, Address:d.address, Gstin:d.gstin})[k] : '';
-    document.getElementById('qtnDealer' + k).textContent = v || '—';
-  });
-}
-function openQuotationModalPickDealer(){
-  qtnResetForm('');
-  document.getElementById('quotationForm').removeAttribute('action');
-  var pick = document.getElementById('qtnDealerPick');
-  pick.value = ''; pick.classList.remove('is-invalid'); qtnFillDealer(null);
-  new bootstrap.Modal(document.getElementById('quotationModal')).show();
-  setTimeout(function(){ pick.focus(); }, 300);
-}
-document.addEventListener('DOMContentLoaded', function(){
-  var pick = document.getElementById('qtnDealerPick'), form = document.getElementById('quotationForm');
-  if (!pick) return;
-  function match(){
-    var v = pick.value.trim();
-    return QTN_DEALERS.find(function(d){ return qtnDealerLabel(d) === v; })
-        || QTN_DEALERS.find(function(d){ return d.business_name === v; }) || null;
+  function fillSelect(sel, items, selected, blank) {
+    var html = blank ? '<option value="">' + esc(blank) + '</option>' : '';
+    var has = false;
+    items.forEach(function (o) {
+      var v = typeof o === 'string' ? o : o.value, l = typeof o === 'string' ? o : o.label;
+      if (String(v) === String(selected || '')) has = true;
+      html += '<option value="' + esc(v) + '"' + (String(v) === String(selected || '') ? ' selected' : '') + '>' + esc(l) + '</option>';
+    });
+    // a value from a lot / an old record that is not in the Master Data list
+    if (selected && !has) html += '<option value="' + esc(selected) + '" selected>' + esc(selected) + '</option>';
+    sel.innerHTML = html;
   }
-  pick.addEventListener('input', function(){
-    var d = match(); qtnFillDealer(d);
-    if (d) { form.action = '/dealers/' + d.id + '/quotations'; pick.classList.remove('is-invalid'); }
-    else { form.removeAttribute('action'); }
+
+  function partyList() {
+    var t = $('qcContactType').value;
+    if (t === 'dealer') return DATA.dealers;
+    return DATA.accounts.filter(function (a) { return a.type === t || a.type === 'both' || !a.type; });
+  }
+  function showParty() {
+    var t = $('qcContactType').value, id = $('qcParty').value;
+    var p = partyList().find(function (x) { return x.id === id; });
+    $('qcPartyHead').textContent = t === 'dealer' ? 'Dealer Details' : 'Account Details';
+    [['Name', 'name'], ['Type', 'type'], ['Phone', 'phone'], ['Email', 'email'], ['Address', 'address'], ['Gstin', 'gstin']].forEach(function (k) {
+      var v = p ? p[k[1]] : ''; if (k[0] === 'Type' && v) v = String(v).toUpperCase();
+      $('qcP' + k[0]).textContent = v || '—';
+    });
+    var f = $('quotationForm');
+    $('qcQuoteKind').value = t === 'dealer' ? '' : t;
+    $('qcContactId').value = t === 'dealer' ? '' : (id || '');
+    f.action = !id ? '' : (t === 'dealer' ? '/dealers/' + id + '/quotations' : '/crm/quotes/new');
+    $('qcPartyErr').classList.add('d-none');
+  }
+  function setPartyOptions(selected) {
+    var list = partyList();
+    fillSelect($('qcParty'), list.map(function (p) { return { value: p.id, label: p.name + (p.phone ? ' — ' + p.phone : '') }; }),
+               selected, $('qcContactType').value === 'dealer' ? '— Select dealer —' : '— Select account —');
+    showParty();
+  }
+  function showCompany() {
+    var c = DATA.companies.find(function (x) { return x.id === $('qcCompany').value; });
+    [['Name', 'name'], ['Address', 'address'], ['Gstin', 'gstin'], ['Phone', 'phone'], ['Email', 'email']].forEach(function (k) {
+      $('qcC' + k[0]).textContent = (c && c[k[1]]) || '—';
+    });
+    $('qcFromEntity').value = c ? (c.entity || '') : '';
+  }
+
+  function recalc() {
+    var q = 0, t = 0;
+    document.querySelectorAll('#qtnItemsBody tr').forEach(function (tr) {
+      q += +tr.querySelector('.qcQty').value || 0;
+      t += +tr.querySelector('.qcTotal').value || 0;
+    });
+    $('qtnTotalQty').textContent = q;
+    $('qtnTotalPrice').textContent = '₹' + Number(money(t)).toLocaleString('en-IN', { minimumFractionDigits: 2 });
+  }
+  window.qcAddRow = function (line) {
+    line = line || {};
+    var tr = document.createElement('tr');
+    var cells = F.map(function (k) {
+      if (k === 'model_name') return '<td><input type="text" name="model_name" class="form-control form-control-sm" value="' + esc(line.model_name || '') + '" placeholder="e.g. Latitude 5490"></td>';
+      return '<td class="qc-sel"><select name="' + k + '" class="form-select form-select-sm"></select></td>';
+    }).join('');
+    tr.innerHTML = cells +
+      '<td><input type="number" name="quantity" min="1" step="1" value="' + (line.quantity || 1) + '" class="form-control form-control-sm qcQty"></td>' +
+      '<td><input type="number" name="unit_price" min="0" step="0.01" value="' + (line.unit_price != null && line.unit_price !== '' ? money(line.unit_price) : '') + '" class="form-control form-control-sm qcUnit" placeholder="0.00"></td>' +
+      '<td><input type="number" name="total_price" min="0" step="0.01" value="' + (line.total_price != null && line.total_price !== '' ? money(line.total_price) : '') + '" class="form-control form-control-sm qcTotal" placeholder="0.00"></td>' +
+      '<td><button type="button" class="btn btn-sm btn-outline-danger" aria-label="Remove line"><i class="bi bi-trash"></i></button></td>';
+    $('qtnItemsBody').appendChild(tr);
+    F.forEach(function (k) {
+      if (k === 'model_name') return;
+      var sel = tr.querySelector('select[name="' + k + '"]');
+      fillSelect(sel, (DATA.options[k] || []), line[k] || '', '—');
+      enhance(sel);
+    });
+    var qty = tr.querySelector('.qcQty'), unit = tr.querySelector('.qcUnit'), tot = tr.querySelector('.qcTotal');
+    // Unit Price and Total Price fill each other through Quantity
+    unit.addEventListener('input', function () { tot.value = unit.value === '' ? '' : money((+unit.value || 0) * (+qty.value || 0)); recalc(); });
+    tot.addEventListener('input', function () { unit.value = tot.value === '' ? '' : money((+tot.value || 0) / Math.max(1, +qty.value || 1)); recalc(); });
+    qty.addEventListener('input', function () { if (unit.value !== '') tot.value = money((+unit.value || 0) * (+qty.value || 0)); recalc(); });
+    tr.querySelector('.btn-outline-danger').addEventListener('click', function () { tr.remove(); recalc(); });
+    recalc();
+  };
+
+  function render(o) {
+    $('qcQuoteDate').value = today();
+    $('qcPaymentTerms').value = ''; $('qcSpecial').value = '';
+    $('qcOppId').value = o.oppId || o.linkOpp || ''; $('qcSourcingId').value = o.sourcingDealId || '';
+    $('qcReturnTo').value = o.returnTo || '';
+    var ct = $('qcContactType');
+    var want = o.type && ct.querySelector('option[value="' + o.type + '"]') ? o.type : (ct.options[0] ? ct.options[0].value : 'dealer');
+    ct.value = want; if (!ct.disabled) enhance(ct);
+    setPartyOptions(o.partyId || (DATA.contact_id && want !== 'dealer' ? DATA.contact_id : ''));
+    enhance($('qcParty'));
+    fillSelect($('qcCompany'), DATA.companies.map(function (c) { return { value: c.id, label: c.name + (c.entity ? ' (' + c.entity + ')' : '') }; }),
+               DATA.companies.length ? DATA.companies[0].id : '', DATA.companies.length ? null : '— No company —');
+    enhance($('qcCompany')); showCompany();
+    $('qcNoCompany').classList.toggle('d-none', DATA.companies.length > 0);
+    $('qtnItemsBody').innerHTML = '';
+    if (DATA.prefill && DATA.prefill.length) { DATA.prefill.forEach(function (l) { qcAddRow(l); }); $('qcPrefillNote').textContent = '· filled from the deal\'s lot'; }
+    else { qcAddRow(); $('qcPrefillNote').textContent = ''; }
+    $('qcLoading').classList.add('d-none'); $('qcBody').classList.remove('d-none');
+  }
+
+  window.openCreateQuotation = function (o) {
+    o = o || {};
+    $('qcLoading').classList.remove('d-none'); $('qcBody').classList.add('d-none');
+    bootstrap.Modal.getOrCreateInstance($('quotationModal')).show();
+    var key = o.oppId || '';
+    if (DATA && DATA_OPP === key) { render(o); return; }
+    fetch('/quotations/modal-data' + (key ? '?opp_id=' + encodeURIComponent(key) : ''), { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { DATA = d; DATA_OPP = key; render(o); })
+      .catch(function () { $('qcLoading').textContent = 'Could not load the form. Close and try again.'; });
+  };
+  // Older entry points (Dealer Management / Dealer Detail / Quotations)
+  window.openQuotationModal = function (d) { openCreateQuotation({ type: 'dealer', partyId: d && d.id, returnTo: location.pathname }); };
+  window.openQuotationModalPickDealer = function () { openCreateQuotation({ type: 'dealer', returnTo: '/quotations' }); };
+
+  document.addEventListener('DOMContentLoaded', function () {
+    $('qcContactType').addEventListener('change', function () { setPartyOptions(''); });
+    $('qcParty').addEventListener('change', showParty);
+    $('qcCompany').addEventListener('change', showCompany);
+    $('quotationForm').addEventListener('submit', function (e) {
+      var ok = true;
+      if (!$('qcParty').value) { $('qcPartyErr').classList.remove('d-none'); ok = false; }
+      var lines = Array.prototype.filter.call(document.querySelectorAll('#qtnItemsBody tr'), function (tr) {
+        return F.some(function (k) { var el = tr.querySelector('[name="' + k + '"]'); return el && el.value; });
+      });
+      if (!lines.length) { ok = false; if (window.showFlash) showFlash('danger', 'Add at least one line item.'); }
+      if (!ok) { e.preventDefault(); return; }
+      $('qcSubmit').disabled = true;
+    });
+    // ?new=1 (CRM Quotes → Add Quote, or a deal's Create Quote link) opens the modal
+    try {
+      var u = new URLSearchParams(location.search);
+      if (u.get('new') === '1') {
+        openCreateQuotation({ type: u.get('type') || 'buyer', partyId: u.get('contact_id') || '',
+                              oppId: u.get('opp_id') || '', linkOpp: u.get('link_opp') || '', sourcingDealId: u.get('sourcing_deal_id') || '' });
+      }
+    } catch (x) {}
   });
-  form.addEventListener('submit', function(e){
-    if (!match()) { e.preventDefault(); pick.classList.add('is-invalid'); pick.focus(); }
-  });
-});
-{% endif %}
-function openQuotationModal(d){
-  qtnResetForm(d.id);
-  document.getElementById('qtnDealerName').textContent = d.business_name || '—';
-  document.getElementById('qtnDealerType').textContent = d.dealer_type ? d.dealer_type.toUpperCase() : '—';
-  document.getElementById('qtnDealerPhone').textContent = d.phone || '—';
-  document.getElementById('qtnDealerEmail').textContent = d.email || '—';
-  document.getElementById('qtnDealerAddress').textContent = d.address || '—';
-  document.getElementById('qtnDealerGstin').textContent = d.gstin || '—';
-  new bootstrap.Modal(document.getElementById('quotationModal')).show();
-}
+})();
 </script>

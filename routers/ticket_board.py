@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth.dependencies import get_current_user, verify_csrf, require_module_perm
 from database import get_db
-from models.ticket import Ticket, TicketMessage, STATUSES, PRIORITIES, TYPES
+from models.ticket import Ticket, TicketMessage, STATUSES, PRIORITIES, TYPES, GROUPS, DEFAULT_GROUP
 from models.user import User
 from services.audit_engine import audit
 from services import ticket_board as tb
@@ -28,7 +28,7 @@ page_perm = require_module_perm("ticket_board")
 
 
 def _groups():
-    return master_options("ticket_group") or ["Development", "Support"]
+    return master_options("ticket_group") or list(GROUPS)
 
 
 def _back(ticket_id, msg="", ok=True):
@@ -74,52 +74,35 @@ async def _items(db, rows) -> list:
         items.append({"t": t, "req": tb.requester_info(t, users),
                       "assignee": (a.full_name or a.username) if a else (t.assignee or ""),
                       "preview": (last.get(t.id) or t.feedback or "")[:160],
-                      "priority": tb.priority_of(t), "channel": tb.channel_of(t), "sla": tb.sla_info(t, hours, now)})
+                      "priority": tb.priority_of(t), "channel": tb.channel_of(t), "sla": tb.sla_info(t, hours, now),
+                      "age": tb.age_info(t, now)})
     return items
 
 
 @router.get("", response_class=HTMLResponse)
-async def board(request: Request, view: str = "", priority: str = "", group: str = "",
-                db: AsyncSession = Depends(get_db), current_user: User = Depends(page_perm)):
-    vs = tb.views(current_user.username)
-    counts = {}
-    for vid, _, cond in vs:
-        counts[vid] = (await db.execute(select(func.count()).select_from(Ticket).where(cond))).scalar() or 0
-    if not view:
-        view = "mine" if counts.get("mine") else "all"
-    cur = next((v for v in vs if v[0] == view), vs[2])
-    q = select(Ticket).where(cur[2])
-    if priority in PRIORITIES:
-        q = q.where(Ticket.priority == priority) if priority != "normal" else \
-            q.where(or_(Ticket.priority.is_(None), Ticket.priority == "normal"))
-    if group:
-        q = q.where(Ticket.group_name == group)
-    rows = (await db.execute(q.order_by(Ticket.updated_at.desc().nullslast()).limit(2000))).scalars().all()
-    items = await _items(db, rows)
-    all_users = (await db.execute(select(User.username, User.full_name, User.email).where(User.status == True)  # noqa: E712
-                                  .order_by(User.full_name))).all()
-    return templates.TemplateResponse("ticket_board/board.html", {
-        "request": request, "current_user": current_user, "views": [(v[0], v[1]) for v in vs], "counts": counts,
-        "view": cur[0], "view_label": cur[1], "items": items, "priority": priority, "group": group,
-        "groups": _groups(), "PRIORITIES": PRIORITIES, "TYPES": TYPES, "tb": tb, "all_users": all_users,
-    })
+async def board(request: Request, current_user: User = Depends(page_perm)):
+    """All Tickets was folded into the Dashboard (2026-11-13, Pankaj): old
+    links land there, keeping view / success / error."""
+    qs = "&".join(f"{k}={quote_plus(v)}" for k, v in request.query_params.items()
+                  if k in ("view", "success", "error") and v)
+    return RedirectResponse(url="/ticket-board/dashboard" + ("?" + qs if qs else ""), status_code=302)
 
 
 # ── DASHBOARD ────────────────────────────────────────────────────────────────
-# Support dashboard (2026-11-13, Pankaj; spec phase 4): 8 cards — Unsolved,
-# Unassigned, SLA breached, Solved, Total, Urgent / High / Normal (unsolved)
-# — the clicked card's tickets right under them, then 4 bar charts.
+# Support dashboard (2026-11-13, Pankaj): one row of 5 cards — Total,
+# Solved, Unsolved, Unassigned, SLA breached — one row of 3 bar charts
+# (status / priority / group), then the clicked card's tickets with
+# Group / Priority / Status multi-select filters.
 
 DASH_CARDS = [
+    ("total", "Total tickets", "#212529"), ("solved", "Solved", "#038153"),
     ("unsolved", "Unsolved tickets", "#0d6efd"), ("unassigned", "Unassigned", "#6c757d"),
-    ("breached", "SLA breached", "#cc3340"), ("solved", "Solved", "#038153"),
-    ("total", "Total tickets", "#212529"), ("urgent", "Urgent · unsolved", "#cc3340"),
-    ("high", "High · unsolved", "#ed961c"), ("normal", "Normal · unsolved", "#68737d"),
+    ("breached", "SLA breached", "#cc3340"),
 ]
 
 
 @router.get("/dashboard", response_class=HTMLResponse)
-async def dashboard(request: Request, card: str = "unsolved", db: AsyncSession = Depends(get_db),
+async def dashboard(request: Request, card: str = "", view: str = "", db: AsyncSession = Depends(get_db),
                     current_user: User = Depends(page_perm)):
     rows = (await db.execute(select(Ticket).order_by(Ticket.updated_at.desc().nullslast()))).scalars().all()
     hours, now = await tb.sla_hours(db), app_now()
@@ -131,28 +114,41 @@ async def dashboard(request: Request, card: str = "unsolved", db: AsyncSession =
         "breached": lambda t: (sla.get(t.id) or {}).get("state") == "breach",
         "solved": lambda t: t.status == "solved",
         "total": lambda t: True,
-        "urgent": lambda t: t.status != "solved" and tb.priority_of(t) == "urgent",
-        "high": lambda t: t.status != "solved" and tb.priority_of(t) == "high",
-        "normal": lambda t: t.status != "solved" and tb.priority_of(t) == "normal",
     }
-    if card not in tests:
-        card = "unsolved"
     counts = {k: sum(1 for t in rows if f(t)) for k, f in tests.items()}
-    chosen = [t for t in rows if tests[card](t)]
-    items = await _items(db, chosen[:2000])
+    # Table: a clicked card's tickets, otherwise the Views list on its left
+    # picks them, exactly like All Tickets (2026-11-13, Pankaj).
+    vs = tb.views(current_user.username)
+    view_counts = {vid: (await db.execute(select(func.count()).select_from(Ticket).where(cond))).scalar() or 0
+                   for vid, _, cond in vs}
+    if card in tests:
+        chosen, table_label, view = [t for t in rows if tests[card](t)], dict((c[0], c[1]) for c in DASH_CARDS)[card], ""
+    else:
+        card = ""
+        if not view:
+            view = "mine" if view_counts.get("mine") else "all"
+        cur = next((v for v in vs if v[0] == view), vs[2])
+        view, table_label = cur[0], cur[1]
+        chosen = (await db.execute(select(Ticket).where(cur[2]).order_by(Ticket.updated_at.desc().nullslast())
+                                   .limit(2000))).scalars().all()
+    items = await _items(db, list(chosen)[:2000])
+    all_users = (await db.execute(select(User.username, User.full_name, User.email).where(User.status == True)  # noqa: E712
+                                  .order_by(User.full_name))).all()
     total = len(rows) or 1
     by = lambda key, vals: [(v, sum(1 for t in rows if key(t) == v)) for v in vals]  # noqa: E731
-    engs = await tb.engineers(db)
     charts = {
-        "status": by(lambda t: t.status, ["new", "open", "pending", "hold", "solved"]),
+        "status": by(lambda t: t.status, list(STATUSES)),
         "priority": by(tb.priority_of, list(PRIORITIES)),
         "group": by(lambda t: t.group_name or "—", _groups() + (["—"] if any(not t.group_name for t in rows) else [])),
-        "engineer": sorted([(e["name"], e["open"]) for e in engs if e["open"]] or [], key=lambda x: -x[1]),
     }
     return templates.TemplateResponse("ticket_board/dashboard.html", {
         "request": request, "current_user": current_user, "tb": tb, "cards": DASH_CARDS, "counts": counts,
-        "card": card, "card_label": dict((c[0], c[1]) for c in DASH_CARDS)[card], "items": items,
-        "charts": charts, "total": total, "open_total": max(1, len(unsolved)),
+        "card": card, "card_label": table_label, "items": items,
+        "views": [(v[0], v[1]) for v in vs], "view_counts": view_counts, "view": view,
+        "all_users": all_users, "PRIORITIES": PRIORITIES, "TYPES": TYPES,
+        "charts": charts, "total": total, "groups": _groups(),
+        "priority_opts": [(p, p.capitalize()) for p in PRIORITIES],
+        "status_opts": [(s, tb.STATUS_LABEL[s]) for s in STATUSES],
     })
 
 
@@ -166,7 +162,7 @@ async def new_ticket(
     requester_email: str = Form(""),
     subject: str = Form(...),
     priority: str = Form("normal"),
-    ticket_type: str = Form("new issue"),
+    ticket_type: str = Form("issue"),
     group_name: str = Form(""),
     description: str = Form(...),
     db: AsyncSession = Depends(get_db),
@@ -185,10 +181,10 @@ async def new_ticket(
         return RedirectResponse(url="/ticket-board?error=" + quote_plus("Requester, subject and description are required"),
                                 status_code=302)
     t = Ticket(ticket_id=await _next_ticket_id(db), raised_by=raised_by, feedback=description.strip()[:5000],
-               subject=subject.strip()[:200], status="new", channel="agent",
+               subject=subject.strip()[:200], status="open", channel="agent",
                priority=priority if priority in PRIORITIES else "normal",
-               ticket_type=ticket_type if ticket_type in TYPES else "new issue",
-               group_name=group_name if group_name in _groups() else "Support",
+               ticket_type=ticket_type if ticket_type in TYPES else "issue",
+               group_name=group_name if group_name in _groups() else DEFAULT_GROUP,
                requester_email=(requester_email or "").strip()[:150] or None)
     db.add(t)
     await db.flush()
@@ -214,17 +210,21 @@ async def ticket_page(request: Request, ticket_id: str, db: AsyncSession = Depen
     msgs = (await db.execute(select(TicketMessage).where(TicketMessage.ticket_id == t.id)
                              .order_by(TicketMessage.created_at))).scalars().all()
     others = (await db.execute(select(Ticket).where(Ticket.raised_by == t.raised_by, Ticket.id != t.id)
-                               .order_by(Ticket.raised_on.desc()).limit(20))).scalars().all()
+                               .order_by(Ticket.raised_on.desc()).limit(200))).scalars().all()
+    # Requester line in Properties (2026-11-14): all their tickets, and unsolved.
+    req_total, req_unsolved = (await db.execute(select(
+        func.count(), func.count().filter(Ticket.status != "solved")).where(Ticket.raised_by == t.raised_by))).one()
     users = await tb.user_map(db, {t.raised_by, t.assignee} | {m.author_username for m in msgs})
     from routers.tickets import attachment_kind
     first_files = [{"path": p, "kind": attachment_kind(p), "name": p.rsplit("/", 1)[-1]}
                    for p in (t.photo1_path, t.photo2_path) if p]
     return templates.TemplateResponse("ticket_board/ticket.html", {
         "request": request, "current_user": current_user, "t": t, "msgs": msgs, "others": others,
+        "req_total": req_total, "req_unsolved": req_unsolved,
         "req": tb.requester_info(t, users), "users": users, "engineers": await tb.engineers(db),
         "groups": _groups(), "STATUSES": STATUSES, "PRIORITIES": PRIORITIES, "TYPES": TYPES, "tb": tb,
         "first_files": first_files, "priority": tb.priority_of(t), "channel": tb.channel_of(t),
-        "assignee_user": users.get(t.assignee), "sla": tb.sla_info(t, await tb.sla_hours(db)),
+        "assignee_user": users.get(t.assignee), "sla": tb.sla_info(t, await tb.sla_hours(db)), "age": tb.age_info(t),
     })
 
 
@@ -249,8 +249,6 @@ async def reply(request: Request, ticket_id: str, body: str = Form(""), is_inter
         t.assignee = current_user.username
         tb.add_event(db, t, current_user, f"Assigned to {me} (replied)")
     target = submit_status if submit_status in STATUSES else t.status
-    if target == "new" and (t.assignee or text):     # new moves to open once worked
-        target = "open"
     tb.set_status(db, t, target, current_user)
     t.updated_at = app_now()
     await db.commit()
@@ -282,7 +280,7 @@ async def update_field(request: Request, ticket_id: str, field: str = Form(...),
     users = {}
     if field == "assignee" and value:
         users = await tb.user_map(db, {value, t.assignee})
-        if value not in users:
+        if value not in users or value not in {e["username"] for e in await tb.engineers(db)}:
             return _back(ticket_id, "Pick an engineer", ok=False)
     if field == "subject":
         value = value[:200]
@@ -298,8 +296,6 @@ async def update_field(request: Request, ticket_id: str, field: str = Form(...),
         name = lambda u: (users[u].full_name or u) if u in users else (u or "Unassigned")  # noqa: E731
         tb.add_event(db, t, current_user, f"{label} changed from {name(old)} to {name(value)}" if old
                      else f"Assigned to {name(value)}")
-        if value and t.status == "new":
-            tb.set_status(db, t, "open", current_user)
     else:
         tb.add_event(db, t, current_user, f"{label} changed from {old or '—'} to {value}")
     await audit(db, action="TICKET_UPDATED", user=current_user, table_name="tickets", record_id=str(t.id),

@@ -145,6 +145,9 @@
     el.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function (t) { bootstrap.Tooltip.getOrCreateInstance(t); });
   }
   function refreshTag(tag) {
+    // A page whose rows come from an ajax feed (Pre-Sale QC, 2026-11-16)
+    // reloads its own table instead.
+    if (typeof window.specEditRefresh === 'function') return window.specEditRefresh(tag);
     // A frozen-column copy of the table may hold a second pencil for the
     // same tag; use the one in the real table row.
     var all = document.querySelectorAll('.spec-edit-btn[data-barcode="' + (window.CSS && CSS.escape ? CSS.escape(tag) : tag) + '"]');

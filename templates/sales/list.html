@@ -3,34 +3,11 @@
 {% block page_title %}Sales List{% endblock %}
 {% block content %}
 
-{# ── Registered Device Stats Bar ── #}
-<div class="row g-2 mb-3">
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-2">
-      <div class="fs-5 fw-bold text-primary">{{ total_registered }}</div>
-      <div class="small text-muted">Total Registered</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-2">
-      <div class="fs-5 fw-bold text-success">{{ total_devices_sold }}</div>
-      <div class="small text-muted">Sold</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-2">
-      <div class="fs-5 fw-bold text-warning">{{ total_available }}</div>
-      <div class="small text-muted">Available</div>
-    </div>
-  </div>
-  <div class="col-6 col-md-3">
-    <div class="card border-0 shadow-sm text-center py-2">
-      <div class="fs-5 fw-bold text-info">{{ total }}</div>
-      <div class="small text-muted">Filtered Sales</div>
-    </div>
-  </div>
-</div>
-
+{# Option C dashboard (2026-11-14, Pankaj): header with the filters, KPIs and charts;
+   "View Data" swaps them for the tables below. services/sales_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% call dash.hero('Sales', '', 'What we sold, to whom, at what price and margin', view_data=True) %}
 {# ── Global filter bar (app.css .filter-bar) — one row, labels as title=
    tooltips, Search/Reset at the right edge. #}
 <form method="get" action="/sales" id="filterForm" class="filter-bar">
@@ -107,6 +84,40 @@
     </div>
   </div>
 </form>
+{% endcall %}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
+{# ── Registered Device Stats Bar ── #}
+<div class="row g-2 mb-3">
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fs-5 fw-bold text-primary">{{ total_registered }}</div>
+      <div class="small text-muted">Total Registered</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fs-5 fw-bold text-success">{{ total_devices_sold }}</div>
+      <div class="small text-muted">Sold</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fs-5 fw-bold text-warning">{{ total_available }}</div>
+      <div class="small text-muted">Available</div>
+    </div>
+  </div>
+  <div class="col-6 col-md-3">
+    <div class="card border-0 shadow-sm text-center py-2">
+      <div class="fs-5 fw-bold text-info">{{ total }}</div>
+      <div class="small text-muted">Filtered Sales</div>
+    </div>
+  </div>
+</div>
+
+
 {# Hidden form for POST export-selected #}
 <form id="exportForm" action="/sales/export-selected" method="post" style="display:none">
   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
@@ -321,6 +332,8 @@
   </div>
 </div>
 
+</div>{# /dash-data #}
+</div>{# /dash #}
 {% endblock %}
 {% block scripts %}
 {% if can_delete_sales %}

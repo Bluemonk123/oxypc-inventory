@@ -5,6 +5,13 @@
 {% import "_download_cell.html" as dl %}
 
 
+{# Option C dashboard (2026-11-14, Pankaj) — services/crm_dash.py. No View Data:
+   the deal list card below sits on the dashboard, under the deal board.
+   The old count tiles are kept only as a fallback if the dashboard fails. #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{{ dash.hero('CRM Sales', '', 'Dealer and customer opportunities, calls and quotes', view_data=False) }}
+{% if dash_kpis %}{{ dash.kpis(dash_kpis) }}<div class="mb-3">{{ dash.grid(dash_top) }}</div>{% else %}
 <!-- Summary tiles: dark single-count tiles (2026-11-06, _tiles.html) -->
 {% import "_tiles.html" as tl %}
 {% set _pipe = ('₹' ~ ((pipeline_value) | inr)) if can(current_user, 'crm_sales_opp', 'pricing') else '—' %}
@@ -13,6 +20,7 @@
   {{ tl.single(_pipe, 'Pipeline Value', '#0F7A37', 'bi-currency-rupee', variant='dark') }}
   {{ tl.single(overdue_count, 'Overdue Follow-ups', '#dc3545' if overdue_count > 0 else '#0F7A37', 'bi-alarm', variant='dark') }}
 </div>
+{% endif %}
 
 <div class="card border-0 shadow-sm">
   {# Filters and the Add button sit in the card header, right of the title
@@ -122,6 +130,38 @@
     </div>
   </div>
 </div>
+{% if dash_bottom %}<div class="mt-3">{{ dash.grid(dash_bottom) }}</div>{% endif %}
+</div>
+{# Monthly target -> Set targets (2026-11-14, Pankaj): POST /crm/sales/targets, needs Pricing. #}
+{% if dash_kpis and can(current_user, 'crm_sales_opp', 'pricing') %}
+<div class="modal fade" id="salesTargetsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" action="/crm/sales/targets" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+      <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-bullseye me-2"></i>Monthly sales targets</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body">
+        <p class="small text-muted mb-2">Won value each owner should reach in a month (₹). Leave blank for no target.</p>
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Owner</th><th style="width:180px">Monthly target (₹)</th></tr></thead>
+          <tbody>
+          {% for u in target_owners %}
+          <tr><td class="fw-semibold">{{ u }}</td>
+            <td><input type="number" min="0" step="1000" name="t_{{ u }}" value="{{ (sales_targets.get(u) or '') and (sales_targets.get(u) | int) }}" class="form-control form-control-sm"></td></tr>
+          {% else %}
+          <tr><td colspan="2" class="text-muted small">No owners on opportunities in the last 90 days.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-sm btn-primary">Save targets</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 <script>

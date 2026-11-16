@@ -1,6 +1,6 @@
 import uuid
 from utils.timezone import app_now
-from sqlalchemy import Column, String, DateTime, ForeignKey, Text, Numeric, Integer
+from sqlalchemy import Date, Column, String, DateTime, ForeignKey, Text, Numeric, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from database import Base
@@ -33,6 +33,10 @@ class DealerQuotation(Base):
 
     payment_terms = Column(Text, nullable=True)
     additional_notes = Column(Text, nullable=True)
+    # Create Quotation header (2026-11-16, Pankaj — approved schema change)
+    quote_date = Column(Date, nullable=True)
+    contact_type = Column(String(30), nullable=True)
+    special_conditions = Column(Text, nullable=True)
 
     total_quantity = Column(Integer, nullable=False, default=0)
     total_price = Column(Numeric(14, 2), nullable=False, default=0)
@@ -60,5 +64,13 @@ class DealerQuotationItem(Base):
     unit_price = Column(Numeric(12, 2), nullable=False, default=0)
     total_price = Column(Numeric(14, 2), nullable=False, default=0)
     sort_order = Column(Integer, default=0)
+    # Line specs (2026-11-16, Pankaj — approved schema change), same as CRM quote lines
+    device_category = Column(String(50), nullable=True)
+    make = Column(String(100), nullable=True)
+    cpu = Column(String(100), nullable=True)
+    cpu_gen = Column(String(50), nullable=True)
+    ram = Column(String(30), nullable=True)
+    storage = Column(String(30), nullable=True)
+    grade = Column(String(20), nullable=True)
 
     quotation = relationship("DealerQuotation", back_populates="items")

@@ -2,6 +2,15 @@
 {% block title %}Procure Dashboard — OxyPC{% endblock %}
 {% block page_title %}Procure Dashboard{% endblock %}
 {% block content %}
+{# Option C dashboard (2026-11-14, Pankaj): Supplier Deals + Customer Deals; "View Data" swaps
+   the charts for the old KPI tiles, funnels and follow-ups. services/procure_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{{ dash.hero('Procurement Board', '', 'Supplier deals and customer deals — pipeline, wins, owners and follow-ups', view_data=True) }}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
 
 {% if success %}<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>{% endif %}
 
@@ -137,128 +146,16 @@
   </div>
 </div>
 
+</div>{# .dash-data #}
+</div>{# .dash #}
+{# Parts Sourcing / Device Sourcing tabs stay at the bottom in both views (2026-11-14, Pankaj). #}
 <h5 class="fw-bold mb-3">Pending Requests</h5>
 
-{# Pending Requests (2026-11-11, Pankaj): Parts Sourcing first; each tab has
-   pill tabs Pending Request / Closed Request; Global Tabs, Global Card
-   (gtable-card header), Global Table (initGlobalTable). #}
-{% set _dev_open = ('open', 'partially_fulfilled') %}
-{% set ps_pend = part_sourcing | rejectattr('status', 'equalto', 'closed') | list %}
-{% set ps_done = part_sourcing | selectattr('status', 'equalto', 'closed') | list %}
-{% set ds_pend = device_sourcing | selectattr('status', 'in', _dev_open) | list %}
-{% set ds_done = device_sourcing | rejectattr('status', 'in', _dev_open) | list %}
-
-{% macro part_table(rows, tid) %}
-<table class="table table-hover mb-0 small align-middle pr-table" id="{{ tid }}">
-  <thead><tr>
-    <th>Status</th><th>Part Name</th><th>Qty Requested</th><th>Qty Sourced</th><th>Added On</th><th>Raised By</th><th>Action</th>
-  </tr></thead>
-  <tbody>
-  {% for s in rows %}
-  <tr>
-    <td>{% if s.status == 'closed' %}<span class="badge bg-success">Closed</span>{% else %}<span class="badge bg-warning text-dark">Open</span>{% endif %}</td>
-    {# Part Name (2026-11-11): "<part name> - <model> - <make>", or for a whole-lot
-       request from Part Estimation "<lot number> - <estimate file(s)>" #}
-    <td class="fw-semibold">
-      {% if s.source == 'production' %}
-      <div class="d-flex flex-wrap align-items-center gap-1">
-        {% if s.lot_number %}<a href="/lots?q={{ s.lot_number | urlencode }}" class="fw-semibold">{{ s.lot_number }}</a>{% else %}<span class="text-muted">Lot —</span>{% endif %}
-        <span class="text-muted">-</span>
-        {% set _files = estimates_by_batch.get(s.id | string, []) %}
-        {% for f in _files %}
-        <a class="btn btn-sm btn-outline-success py-0 px-1" href="/part-estimation/download/{{ f.id }}" title="{{ f.file_name }}">
-          <i class="bi bi-file-earmark-excel me-1"></i>{{ f.grade or 'Estimate' }}</a>
-        {% else %}<span class="text-muted fw-normal">No file attached</span>{% endfor %}
-      </div>
-      {% else %}
-      {% set _p = part_map.get(s.part_id | string) if s.part_id else none %}
-      {{ [s.part_name, _p.model if _p else none, _p.make if _p else none] | select | join(' - ') }}
-      {% endif %}
-    </td>
-    <td>{{ s.qty_requested }}</td>
-    <td>{{ s.qty_sourced }}
-      {% if s.source_deal_id %}{% set _linked_deal = deal_map.get(s.source_deal_id) %}
-      {% if _linked_deal %}<a href="/crm/sourcing/{{ s.source_deal_id }}" class="small">({{ _linked_deal.deal_number }})</a>
-      {% else %}<span class="text-muted small">({{ s.source_deal_id }})</span>{% endif %}{% endif %}
-    </td>
-    <td data-order="{{ s.created_at.strftime('%Y%m%d%H%M') if s.created_at else '' }}">{{ s.created_at.strftime('%d-%m-%Y') if s.created_at else '—' }}</td>
-    <td>{{ s.raised_by or '—' }}</td>
-    <td>
-      {% if s.status == 'closed' %}<span class="badge bg-success">Closed</span>
-      {% elif is_sm and can(current_user, 'crm_dashboard', 'edit') %}
-      <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#closeDealModal"
-              data-sr="{{ s.id }}" data-part="{{ s.part_name }}">Close Deal</button>
-      {% else %}<span class="text-muted">—</span>{% endif %}
-    </td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% endmacro %}
-
-{% macro device_table(rows, tid) %}
-<table class="table table-hover mb-0 small align-middle pr-table" id="{{ tid }}">
-  <thead><tr><th>Requested</th><th>By</th><th>Config</th><th>Grade</th><th>Qty</th><th>Status</th><th>Notes</th><th>Action</th></tr></thead>
-  <tbody>
-  {% for r in rows %}
-  <tr>
-    <td class="text-muted" data-order="{{ r.created_at.strftime('%Y%m%d%H%M') if r.created_at else '' }}">{{ r.created_at.strftime('%d-%m-%Y %H:%M') if r.created_at else '—' }}</td>
-    <td><div class="fw-semibold">{{ r.requested_by_name or r.requested_by }}</div>
-      <div class="text-muted" style="font-size:0.72rem">{{ (r.requested_by_role or '') | replace('_',' ') | title }}</div></td>
-    <td><div class="fw-semibold">{{ r.sub_category or 'Any' }} — {{ r.brand or '' }} {{ r.model or '' }}</div>
-      <div class="text-muted" style="font-size:0.72rem">{{ r.cpu or '' }}{% if r.ram_gb %} · {{ r.ram_gb }} GB RAM{% endif %}{% if r.storage_gb %} · {{ r.storage_gb }} GB {{ r.storage_type or '' }}{% endif %}{% if r.screen_size %} · {{ r.screen_size }}{% endif %}</div></td>
-    <td><span class="badge bg-secondary">{{ r.grade or 'Any' }}</span></td>
-    <td><span class="fw-semibold">{{ r.qty_fulfilled }}</span> / {{ r.qty_requested }}</td>
-    <td><span class="badge bg-{{ status_badge.get(r.status, 'secondary') }}">{{ r.status | replace('_',' ') | title }}</span></td>
-    <td class="text-muted" style="max-width:180px; white-space:normal;">{{ r.notes or r.sourcing_notes or '—' }}</td>
-    <td>
-      {% if is_sm and r.status in ('open', 'partially_fulfilled') and can(current_user, 'crm_dashboard', 'edit') %}
-      <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#closeSourcingDealModal"
-              data-req="{{ r.id }}" data-model="{{ r.sub_category or 'Any' }} — {{ r.brand or '' }} {{ r.model or '' }}">Close Deal</button>
-      {% else %}<span class="text-muted">—</span>{% endif %}
-    </td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-{% endmacro %}
-
-{% macro req_card(key, icon, title, pend, done, table) %}
-<div class="card border-0 shadow-sm gtable-card">
-  <div class="card-header bg-white border-0 d-flex align-items-center flex-wrap gap-3">
-    <span class="fw-semibold"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
-    <ul class="nav pill-tabs" role="tablist">
-      <li class="nav-item"><button type="button" class="nav-link active" data-bs-toggle="tab" data-bs-target="#{{ key }}_p">Pending Request</button></li>
-      <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#{{ key }}_c">Closed Request</button></li>
-    </ul>
-  </div>
-  <div class="card-body">
-    <div class="tab-content">
-      <div class="tab-pane fade show active" id="{{ key }}_p">{{ table(pend, key ~ '_tp') }}</div>
-      <div class="tab-pane fade" id="{{ key }}_c">{{ table(done, key ~ '_tc') }}</div>
-    </div>
-  </div>
-</div>
-{% endmacro %}
-
-<ul class="nav nav-tabs mb-0" id="pendingReqTabs" role="tablist">
-  <li class="nav-item" role="presentation">
-    <button class="nav-link active" id="partSourcing-tab" data-bs-toggle="tab" data-bs-target="#partSourcingTab" type="button" role="tab">
-      <i class="bi bi-box-seam me-1"></i>Parts Sourcing <span class="badge rounded-pill bg-warning text-dark ms-1">{{ ps_pend | length }}</span></button>
-  </li>
-  <li class="nav-item" role="presentation">
-    <button class="nav-link" id="deviceSourcing-tab" data-bs-toggle="tab" data-bs-target="#deviceSourcingTab" type="button" role="tab">
-      <i class="bi bi-laptop me-1"></i>Device Sourcing <span class="badge rounded-pill bg-warning text-dark ms-1">{{ ds_pend | length }}</span></button>
-  </li>
-</ul>
-<div class="tab-content mb-4">
-  <div class="tab-pane fade show active" id="partSourcingTab" role="tabpanel">
-    {{ req_card('psr', 'bi-box-seam', 'Requests For Part Sourcing', ps_pend, ps_done, part_table) }}
-  </div>
-  <div class="tab-pane fade" id="deviceSourcingTab" role="tabpanel">
-    {{ req_card('dsr', 'bi-laptop', 'Requests For Device Sourcing', ds_pend, ds_done, device_table) }}
-  </div>
-</div>
+{# Pending Requests — shared with Activity Board since 2026-11-15
+   (templates/_sourcing_requests.html, services/sourcing_requests.py). Actions show
+   only on requests verified on Activity Board. #}
+{% set sr_mode = 'procure' %}
+{% include "_sourcing_requests.html" %}
 
 <!-- Close Sourcing Deal modal — Device Sourcing tab -->
 <div class="modal fade" id="closeSourcingDealModal" tabindex="-1" aria-hidden="true">
@@ -291,6 +188,42 @@
   </div>
 </div>
 
+<!-- Link Deal modal — Parts Sourcing tab (2026-11-15): POST /part-sourcing/<id>/link-deal -->
+<div class="modal fade" id="linkDealModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <form method="post" id="linkDealForm" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-link-45deg me-2"></i>Link Supplier Deal</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3"><span class="text-muted small">Request:</span> <strong id="ld_part">—</strong></div>
+        <label class="form-label fw-semibold" for="ld_deal">Supplier Deal ID</label>
+        <select name="source_deal_id" id="ld_deal" class="form-select">
+          <option value="">— No deal linked —</option>
+          {% for d in sourcing_deals_for_link %}
+          <option value="{{ d.id }}">{{ d.deal_number }} — {{ d.title[:55] }}{% if d.title|length > 55 %}…{% endif %}</option>
+          {% endfor %}
+        </select>
+        <div class="form-text">The request stays open. Linked deals show on the Supplier Deal card of the page that owns the request.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-link-45deg me-1"></i>Save Link</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+document.getElementById('linkDealModal').addEventListener('show.bs.modal', function (e) {
+  var b = e.relatedTarget; if (!b) return;
+  // Parts Sourcing -> /part-sourcing/<id>/link-deal; Device Sourcing -> /procure-dashboard/device-sourcing/<id>/link-deal
+  document.getElementById('linkDealForm').action = b.dataset.action || ('/part-sourcing/' + b.dataset.sr + '/link-deal');
+  document.getElementById('ld_part').textContent = b.dataset.part || '';
+  document.getElementById('ld_deal').value = b.dataset.deal || '';
+});
+</script>
 <!-- Close Deal modal — Parts Sourcing tab -->
 <div class="modal fade" id="closeDealModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">

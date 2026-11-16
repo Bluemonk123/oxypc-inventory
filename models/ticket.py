@@ -12,9 +12,14 @@ from utils.timezone import app_now
 # startup (services/ticket_board.migrate_legacy_statuses): Open -> new,
 # Closed -> solved. Tickets Raised and the partner portal still show just
 # Open / Closed (simple_status).
-STATUSES = ("new", "open", "pending", "hold", "solved")
+# 2026-11-13 (Pankaj): only Open, Pending, Solved, Hold — "new" dropped; new
+# tickets start Open, and existing "new" rows are moved to open at startup.
+STATUSES = ("open", "pending", "solved", "hold")
+# Groups (2026-11-13, Pankaj): a ticket with no group lands in Support.
+GROUPS = ("Support", "Development", "Training", "Research")
+DEFAULT_GROUP = "Support"
 PRIORITIES = ("urgent", "high", "normal")          # no "low", by spec
-TYPES = ("new issue", "new feedback", "new feature", "new task")
+TYPES = ("issue", "feedback", "feature", "task")    # was "new issue" etc. (renamed 2026-11-13)
 CHANNELS = ("web", "email", "agent")
 
 
@@ -22,7 +27,7 @@ class Ticket(Base):
     __tablename__ = "tickets"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     ticket_id = Column(String(10), unique=True, nullable=False, index=True)
-    status = Column(String(10), nullable=False, default="new")  # new | open | pending | hold | solved
+    status = Column(String(10), nullable=False, default="open")  # open | pending | solved | hold
     raised_by = Column(String(50), nullable=False, index=True)
     raised_on = Column(DateTime, nullable=False, default=app_now)
     feedback = Column(Text, nullable=False)
@@ -40,8 +45,8 @@ class Ticket(Base):
     # ── Ticket Board fields (2026-11-13), all optional ─────────────────────
     subject = Column(String(200), nullable=True)            # blank → first line of feedback
     priority = Column(String(10), nullable=True)            # urgent | high | normal (blank = normal)
-    ticket_type = Column(String(20), nullable=True)         # new issue | new feedback | new feature | new task
-    group_name = Column(String(50), nullable=True)          # Master Data 'ticket_group' (Development, Support)
+    ticket_type = Column(String(20), nullable=True)         # issue | feedback | feature | task
+    group_name = Column(String(50), nullable=True)          # Master Data 'ticket_group' (Support, Development, Training, Research)
     channel = Column(String(10), nullable=True)             # web | email | agent (blank = web)
     assignee = Column(String(50), nullable=True, index=True)  # username of the engineer handling it
     requester_email = Column(String(150), nullable=True)

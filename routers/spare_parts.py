@@ -492,7 +492,9 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
 
     # Supplier Deal card (2026-11-12, Pankaj) — same card as Inventory Manager
     from services.supplier_deals import supplier_deal_context
-    _sd = await supplier_deal_context(db, current_user)
+    _sd = await supplier_deal_context(db, current_user, page="parts")
+    from routers.part_estimation import production_part_qty   # Qty Requested = Total Part Quantity (2026-11-15)
+    _prod_qty = await production_part_qty(db, sourcing)
     return templates.TemplateResponse("spare_parts/list.html", {
         "request": request, "parts": parts, "current_user": current_user,
         **_sd,
@@ -518,7 +520,7 @@ async def parts_list(request: Request, db: AsyncSession = Depends(get_db),
         "live_by_part": live_by_part, "part_group": part_group,
         "stock_row_mode": stock_row_mode,
         "part_reqs": part_reqs, "faulty_reqs": faulty_reqs, "part_stock": part_stock,
-        "part_meta": part_meta, "req_stock": req_stock, "sourcing": sourcing,
+        "part_meta": part_meta, "req_stock": req_stock, "sourcing": sourcing, "prod_qty": _prod_qty,
         "deal_map": deal_map, "deal_docs": deal_docs, "estimates_by_batch": estimates_by_batch,
         "grn_docs": {},
         "grn_by_part_code": grn_by_part_code,

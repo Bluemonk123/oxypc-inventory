@@ -218,6 +218,7 @@ from routers.entity_movement import router as entity_movement_router
 from routers.part_estimation import router as part_estimation_router
 from routers.rentals import router as rentals_router
 from routers.pre_sale_iqc import router as pre_sale_iqc_router
+from routers.sales_coordinator import router as sales_coordinator_router
 from routers.system_health import router as system_health_router, record_startup as _record_schema_startup
 from routers.extended_warranty import router as extended_warranty_router
 from routers.parts_grn import router as parts_grn_router
@@ -266,6 +267,7 @@ from routers.terms_conditions import router as terms_conditions_router
 from routers.dealer_quotations import router as dealer_quotations_router
 from routers.quotations_list import router as quotations_list_router
 from routers.sidebar_config import router as sidebar_config_router
+from routers.extra_settings import router as extra_settings_router  # Extra Settings (2026-11-16)
 from routers.buckets import router as buckets_router
 from routers.partner_portal import router as partner_portal_router
 from routers.partner_admin import router as partner_admin_router
@@ -316,6 +318,7 @@ app.include_router(entity_movement_router)
 app.include_router(part_estimation_router)
 app.include_router(rentals_router)
 app.include_router(pre_sale_iqc_router)
+app.include_router(sales_coordinator_router)   # Sales Coordinator (2026-11-14)
 app.include_router(system_health_router)   # /admin/system/health (2026-10-22)
 app.include_router(extended_warranty_router)
 app.include_router(parts_grn_router)
@@ -360,6 +363,7 @@ app.include_router(terms_conditions_router)
 app.include_router(dealer_quotations_router)
 app.include_router(quotations_list_router)
 app.include_router(sidebar_config_router)
+app.include_router(extra_settings_router)
 app.include_router(stress_api_router)
 app.include_router(buckets_router)
 app.include_router(partner_portal_router)
@@ -654,6 +658,7 @@ async def startup_event():
             await _deal_lead_stage_once(_sess)
             await _order_ids_v2_once(_sess)
             await _backfill_from_entity_once(_sess)
+            await _dashboard_view_off_once(_sess)
             await load_all_permissions_to_cache(_sess)
         print("  [Perms] Role permission cache loaded")
     except Exception as _pe:
@@ -686,6 +691,10 @@ async def startup_event():
         async with _ASL3() as _sess3:
             await load_sidebar_labels_to_cache(_sess3)
         print("  [SidebarConfig] Custom label cache loaded")
+        from services.sidebar_layout import load_alignment_to_cache
+        async with _ASL3() as _sess3:
+            await load_alignment_to_cache(_sess3)
+        print("  [SidebarAlignment] Saved order loaded")
     except Exception as _se:
         print(f"  [SidebarConfig] Could not load label cache: {_se}")
 
@@ -872,6 +881,11 @@ async def startup_event():
             _seeded = await ensure_master_defaults(_sess2)
             if _seeded:
                 print(f"  [MasterData] Seeded {_seeded} default value(s) into empty categories")
+            # Ticket Board groups (2026-11-13): Support, Development, Training, Research
+            from services.ticket_board import ensure_ticket_groups
+            _tg = await ensure_ticket_groups(_sess2)
+            if _tg:
+                print(f"  [TicketBoard] Added {_tg} ticket group(s)")
             await refresh_master_cache(_sess2)
         print("  [MasterData] Dropdown options cache loaded")
     except Exception as _me:
@@ -927,6 +941,9 @@ async def startup_event():
                 from routers.landing_pages import load_page_titles_to_cache as _pt
                 async with _ASL_periodic() as _sess:
                     await _pt(_sess)
+                from services.sidebar_layout import load_alignment_to_cache as _sa
+                async with _ASL_periodic() as _sess:
+                    await _sa(_sess)
                 from routers.landing_pages import load_breadcrumb_settings_to_cache as _bc
                 async with _ASL_periodic() as _sess:
                     await _bc(_sess)
@@ -946,6 +963,15 @@ async def startup_event():
 
     asyncio.create_task(_refresh_all_caches_periodically())
     print("  [CacheRefresh] Periodic cache refresh started (60s interval)")
+
+    # ── Main Dashboard cache warm-up (2026-11-15): first load after a restart
+    #    no longer counts everything while the user waits ──────────────────────
+    try:
+        from services.dashboard_warmup import loop as _dash_warm
+        asyncio.create_task(_dash_warm(app))
+        print("  [DashWarmup] Dashboard warm-up scheduled (15s after start, then every 10 min)")
+    except Exception as _dwe:          # never block startup
+        print(f"  [DashWarmup] Not scheduled: {_dwe}")
 
     # ── Daily Report: Daily Stock exports generated every day at 9:00 PM ──────
     try:
@@ -1155,6 +1181,30 @@ async def _pricing_add_finance_once(sess) -> None:
         {"v": str(res.rowcount)})
     await sess.commit()
     print(f"  [Perms] Pricing Add on for finance_manager — {res.rowcount} matrix row(s)")
+
+
+async def _dashboard_view_off_once(sess) -> None:
+    """One-time (2026-11-14, Pankaj): Dashboard View off for every role. The
+    column (role_module_permissions.can_dashboard) may already have been added
+    with the earlier default of true, so clear it once; admins tick it per role
+    in the Permission Matrix afterwards. Admin always sees dashboards."""
+    from sqlalchemy import text as _t
+    done = (await sess.execute(_t("SELECT 1 FROM app_settings WHERE key = 'dashboard_view_off_v1'"))).first()
+    if done:
+        return
+    cols = (await sess.execute(_t("SELECT 1 FROM information_schema.columns WHERE table_name = 'role_module_permissions' "
+                                  "AND column_name = 'can_dashboard'"))).first()
+    if not cols:
+        return   # column not added yet (db_validator adds it); run again next start
+    await sess.execute(_t("ALTER TABLE role_module_permissions ALTER COLUMN can_dashboard SET DEFAULT false"))
+    res = await sess.execute(_t("UPDATE role_module_permissions SET can_dashboard = FALSE "
+                                "WHERE can_dashboard IS DISTINCT FROM FALSE"))
+    await sess.execute(_t(
+        "INSERT INTO app_settings (key, value, description, updated_by, updated_at) "
+        "VALUES ('dashboard_view_off_v1', :v, 'Dashboard View off for every role', 'system', now())"),
+        {"v": str(res.rowcount)})
+    await sess.commit()
+    print(f"  [Perms] Dashboard View off for every role — {res.rowcount} matrix row(s)")
 
 
 async def _apply_account_status_once(sess) -> None:

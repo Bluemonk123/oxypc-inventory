@@ -32,6 +32,10 @@
   <link rel="stylesheet" href="/static/vendor/datatables/css/dataTables.bootstrap5.min.css">
   <link rel="stylesheet" href="/static/vendor/flatpickr/flatpickr.min.css">
   <link rel="stylesheet" href="/static/css/app.css?v={{ ASSET_VERSION }}">
+  <link rel="stylesheet" href="/static/css/dash.css?v={{ ASSET_VERSION }}">
+  {# Option C dashboards (2026-11-14): open in the view this page was last left
+     in (dashboard or data) before first paint — static/js/dash.js #}
+  <script>try{var _dv=new URLSearchParams(location.search).get('view')||localStorage.getItem('oxyDashView:'+location.pathname);if(_dv==='data')document.documentElement.classList.add('dash-show-data');}catch(e){}</script>
   {# System Colors (2026-11-08): Admin → Master Data → System Colors tokens, Light and Dark. #}
   <style id="systemColors">{{ system_colors_css() | safe }}</style>
   <style>
@@ -104,15 +108,15 @@
     </div>
     <ul class="nav nav-pills flex-column mb-auto px-2" style="padding-top:1rem;padding-bottom:1rem;">
       {% set role = current_user.role.value %}
-      {% if has_perm(role,'dashboard','enable') and not module_hidden('dashboard') %}
-      <li class="nav-item">
+      {% if has_perm(role,'dashboard','enable') and has_perm(role,'dashboard','dashboard') and not module_hidden('dashboard') %}{# + Dashboard View (2026-11-14) #}
+      <li class="nav-item" data-sb="/dashboard" style="order: {{ sb_order('/dashboard') }}">
         <a href="/dashboard" class="nav-link {% if request.url.path == '/dashboard' %}active{% endif %}">
           <i class="bi bi-speedometer2 me-2"></i> {{ sidebar_label('dashboard', 'Admin Dashboard') }}
         </a>
       </li>
       {% endif %}
       {% if has_perm(role,'devices','enable') and not module_hidden('devices') %}
-      <li class="nav-item">
+      <li class="nav-item" data-sb="/devices" style="order: {{ sb_order('/devices') }}">
         <a href="/devices" class="nav-link {% if request.url.path.startswith('/devices') %}active{% endif %}">
           <i class="bi bi-search me-2"></i> {{ sidebar_label('devices', 'Inventory Search') }}
         </a>
@@ -120,14 +124,14 @@
       {% endif %}
       {# Activity Board (2026-11-06, Pankaj): routers/activity_board.py #}
       {% if has_perm(role,'activity_board','enable') and not module_hidden('activity_board') %}
-      <li class="nav-item">
+      <li class="nav-item" data-sb="/activity-board" style="order: {{ sb_order('/activity-board') }}">
         <a href="/activity-board" class="nav-link {% if request.url.path.startswith('/activity-board') %}active{% endif %}">
           <i class="bi bi-kanban me-2"></i> {{ sidebar_label('activity_board', 'Activity Board') }}
         </a>
       </li>
       {% endif %}
       {% if has_perm(role,'dispatch','enable') and not module_hidden('dispatch') %}
-      <li class="nav-item">
+      <li class="nav-item" data-sb="/dispatch" style="order: {{ sb_order('/dispatch') }}">
         <a href="/dispatch" class="nav-link {% if '/dispatch' in request.url.path %}active{% endif %}">
           <i class="bi bi-truck me-2"></i> {{ sidebar_label('dispatch', 'TRC Dashboard') }}
         </a>
@@ -137,49 +141,49 @@
 
       {# ── ATTENDANCE ──────────────────────────────────────────────────── #}
       {% if has_perm(role,'attendance','enable') and not module_hidden('attendance') or has_perm(role,'attendance_report','enable') and not module_hidden('attendance_report') %}
-      <li class="nav-section">ATTENDANCE</li>
+      <li class="nav-section" data-sb="sec:ATTENDANCE" style="order: {{ sb_order('sec:ATTENDANCE') }}">ATTENDANCE</li>
       {% endif %}
       {% if has_perm(role,'attendance','enable') and not module_hidden('attendance') %}
-      <li><a href="/attendance" class="nav-link {% if request.url.path.startswith('/attendance') and 'report' not in request.url.path %}active{% endif %}">
+      <li data-sb="/attendance" style="order: {{ sb_order('/attendance') }}"><a href="/attendance" class="nav-link {% if request.url.path.startswith('/attendance') and 'report' not in request.url.path %}active{% endif %}">
         <i class="bi bi-person-check me-2"></i> {{ sidebar_label('attendance', 'My Attendance') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'attendance_report','enable') and not module_hidden('attendance_report') %}
-      <li><a href="/attendance/report" class="nav-link {% if '/attendance/report' in request.url.path %}active{% endif %}">
+      <li data-sb="/attendance/report" style="order: {{ sb_order('/attendance/report') }}"><a href="/attendance/report" class="nav-link {% if '/attendance/report' in request.url.path %}active{% endif %}">
         <i class="bi bi-file-earmark-bar-graph me-2"></i> {{ sidebar_label('attendance_report', 'Attendance Report') }}
       </a></li>
       {% endif %}
 
       {# ── INTAKE ──────────────────────────────────────────────────────── #}
       {% if any_perm(role,'grn','lots','iqc','grn_post_iqc','grn_records','entity_movement') %}
-      <li class="nav-section">INTAKE</li>
+      <li class="nav-section" data-sb="sec:INTAKE" style="order: {{ sb_order('sec:INTAKE') }}">INTAKE</li>
       {% if has_perm(role,'grn','enable') and not module_hidden('grn') %}
-      <li><a href="/grn" class="nav-link {% if request.url.path == '/grn' %}active{% endif %}">
+      <li data-sb="/grn" style="order: {{ sb_order('/grn') }}"><a href="/grn" class="nav-link {% if request.url.path == '/grn' %}active{% endif %}">
         <i class="bi bi-receipt me-2"></i> {{ sidebar_label('grn', 'GRN with Invoice') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'grn_post_iqc','enable') and not module_hidden('grn_post_iqc') %}
-      <li><a href="/grn/post-iqc" class="nav-link {% if '/grn/post-iqc' in request.url.path %}active{% endif %}">
+      <li data-sb="/grn/post-iqc" style="order: {{ sb_order('/grn/post-iqc') }}"><a href="/grn/post-iqc" class="nav-link {% if '/grn/post-iqc' in request.url.path %}active{% endif %}">
         <i class="bi bi-clipboard2-check me-2"></i> {{ sidebar_label('grn_post_iqc', 'GRN post IQC') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'lots','enable') and not module_hidden('lots') %}
-      <li><a href="/lots" class="nav-link {% if '/lots' in request.url.path %}active{% endif %}">
+      <li data-sb="/lots" style="order: {{ sb_order('/lots') }}"><a href="/lots" class="nav-link {% if '/lots' in request.url.path %}active{% endif %}">
         <i class="bi bi-box-seam me-2"></i> {{ sidebar_label('lots', 'Lot Overview') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'iqc','enable') and not module_hidden('iqc') %}
-      <li><a href="/iqc" class="nav-link {% if '/iqc' in request.url.path %}active{% endif %}">
+      <li data-sb="/iqc" style="order: {{ sb_order('/iqc') }}"><a href="/iqc" class="nav-link {% if '/iqc' in request.url.path %}active{% endif %}">
         <i class="bi bi-clipboard-check me-2"></i> {{ sidebar_label('iqc', 'IQC Line Items') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'grn_records','enable') and not module_hidden('grn_records') %}
-      <li><a href="/grn/records" class="nav-link {% if '/grn/records' in request.url.path %}active{% endif %}">
+      <li data-sb="/grn/records" style="order: {{ sb_order('/grn/records') }}"><a href="/grn/records" class="nav-link {% if '/grn/records' in request.url.path %}active{% endif %}">
         <i class="bi bi-collection me-2"></i> {{ sidebar_label('grn_records', 'GRN Records') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'entity_movement','enable') and not module_hidden('entity_movement') %}
-      <li><a href="/entity-movement" class="nav-link {% if '/entity-movement' in request.url.path %}active{% endif %}">
+      <li data-sb="/entity-movement" style="order: {{ sb_order('/entity-movement') }}"><a href="/entity-movement" class="nav-link {% if '/entity-movement' in request.url.path %}active{% endif %}">
         <i class="bi bi-arrow-left-right me-2"></i> {{ sidebar_label('entity_movement', 'Entity Movement') }}
       </a></li>
       {% endif %}
@@ -187,52 +191,52 @@
 
       {# ── INVENTORY ───────────────────────────────────────────────────── #}
       {% if any_perm(role,'stock','production_manager','extended_warranty','part_estimation','credit_note','transfers','inventory_requests','model_requested','physical_audits','scrap_products') %}
-      <li class="nav-section">INVENTORY</li>
+      <li class="nav-section" data-sb="sec:INVENTORY" style="order: {{ sb_order('sec:INVENTORY') }}">INVENTORY</li>
       {% if has_perm(role,'stock','enable') and not module_hidden('stock') %}
-      <li><a href="/stock" class="nav-link {% if request.url.path == '/stock' %}active{% endif %}">
+      <li data-sb="/stock" style="order: {{ sb_order('/stock') }}"><a href="/stock" class="nav-link {% if request.url.path == '/stock' %}active{% endif %}">
         <i class="bi bi-archive me-2"></i> {{ sidebar_label('stock', 'Stock Inwards') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'inventory_requests','enable') and not module_hidden('inventory_requests') %}
-      <li><a href="/inventory-requests" class="nav-link {% if '/inventory-requests' in request.url.path %}active{% endif %}">
+      <li data-sb="/inventory-requests" style="order: {{ sb_order('/inventory-requests') }}"><a href="/inventory-requests" class="nav-link {% if '/inventory-requests' in request.url.path %}active{% endif %}">
         <i class="bi bi-inboxes me-2"></i> {{ sidebar_label('inventory_requests', 'Inventory Request') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'model_requested','enable') and not module_hidden('model_requested') %}
-      <li><a href="/model-requested" class="nav-link {% if '/model-requested' in request.url.path %}active{% endif %}">
+      <li data-sb="/model-requested" style="order: {{ sb_order('/model-requested') }}"><a href="/model-requested" class="nav-link {% if '/model-requested' in request.url.path %}active{% endif %}">
         <i class="bi bi-clipboard-data me-2"></i> {{ sidebar_label('model_requested', 'Model Requested') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'production_manager','enable') and not module_hidden('production_manager') %}
-      <li><a href="/trc-production" class="nav-link {% if '/trc-production' in request.url.path %}active{% endif %}">
+      <li data-sb="/trc-production" style="order: {{ sb_order('/trc-production') }}"><a href="/trc-production" class="nav-link {% if '/trc-production' in request.url.path %}active{% endif %}">
         <i class="bi bi-cpu me-2"></i> {{ sidebar_label('production_manager', 'Production Manager') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'extended_warranty','enable') and not module_hidden('extended_warranty') %}
-      <li><a href="/extended-warranty" class="nav-link {% if '/extended-warranty' in request.url.path %}active{% endif %}">
+      <li data-sb="/extended-warranty" style="order: {{ sb_order('/extended-warranty') }}"><a href="/extended-warranty" class="nav-link {% if '/extended-warranty' in request.url.path %}active{% endif %}">
         <i class="bi bi-shield-check me-2"></i> {{ sidebar_label('extended_warranty', 'Extended Warranty') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'part_estimation','enable') and not module_hidden('part_estimation') %}
-      <li><a href="/part-estimation" class="nav-link {% if '/part-estimation' in request.url.path %}active{% endif %}">
+      <li data-sb="/part-estimation" style="order: {{ sb_order('/part-estimation') }}"><a href="/part-estimation" class="nav-link {% if '/part-estimation' in request.url.path %}active{% endif %}">
         <i class="bi bi-calculator me-2"></i> {{ sidebar_label('part_estimation', 'Part Estimation') }}
       </a></li>
       {% endif %}
       {# Tags Scrapped sits directly above Floor Movement (Move Device) — 2026-10-28. #}
       {% if has_perm(role,'scrap_products','enable') and not module_hidden('scrap_products') %}
-      <li><a href="/scrap-products" class="nav-link {% if '/scrap-products' in request.url.path %}active{% endif %}">
+      <li data-sb="/scrap-products" style="order: {{ sb_order('/scrap-products') }}"><a href="/scrap-products" class="nav-link {% if '/scrap-products' in request.url.path %}active{% endif %}">
         <i class="bi bi-trash3 me-2"></i> {{ sidebar_label('scrap_products', 'Scrap Products') }}
       </a></li>
       {% endif %}
       {# Physical Audits moved here, directly above Floor Movement (Move Device),
          out of the Inventory Locations sub-menu — 2026-11-03. #}
       {% if has_perm(role,'physical_audits','enable') and not module_hidden('physical_audits') %}
-      <li><a href="/audits" class="nav-link {% if request.url.path.startswith('/audits') %}active{% endif %}">
+      <li data-sb="/audits" style="order: {{ sb_order('/audits') }}"><a href="/audits" class="nav-link {% if request.url.path.startswith('/audits') %}active{% endif %}">
         <i class="bi bi-clipboard2-check me-2"></i> {{ sidebar_label('physical_audits', 'Physical Audits') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'transfers','enable') and not module_hidden('transfers') %}
-      <li><a href="/transfers" class="nav-link {% if '/transfers' in request.url.path %}active{% endif %}">
+      <li data-sb="/transfers" style="order: {{ sb_order('/transfers') }}"><a href="/transfers" class="nav-link {% if '/transfers' in request.url.path %}active{% endif %}">
         <i class="bi bi-arrow-left-right me-2"></i> {{ sidebar_label('transfers', 'Move Device') }}
       </a></li>
       {% endif %}
@@ -240,22 +244,22 @@
 
       {# ── REPAIR (merged with former COSMETIC REFURB section) ──────────── #}
       {% if any_perm(role,'repair_l1','repair_l2','repair_l3','qc_check','cosmetic_received','cosmetic_cleaning','cosmetic_putty','cosmetic_dry_sanding','cosmetic_masking','cosmetic_painting','cosmetic_water_sanding','cosmetic_completed','cosmetic_finalqc','workid_status') %}
-      <li class="nav-section">REPAIR</li>
+      <li class="nav-section" data-sb="sec:REPAIR" style="order: {{ sb_order('sec:REPAIR') }}">REPAIR</li>
       {% endif %}
       {% if has_perm(role,'repair_l1','enable') and not module_hidden('repair_l1') %}
-      <li><a href="/repair/l1" class="nav-link {% if '/repair/l1' in request.url.path %}active{% endif %}">
+      <li data-sb="/repair/l1" style="order: {{ sb_order('/repair/l1') }}"><a href="/repair/l1" class="nav-link {% if '/repair/l1' in request.url.path %}active{% endif %}">
         <i class="bi bi-tools me-2"></i> {{ sidebar_label('repair_l1', 'L1 Repair') }}
       </a></li>
       {% endif %}
       {# L2 Repair and L3 Repair nav links retired — /repair/l2 and /repair/l3 are
          no longer routed. The L3/L4 link below keeps the same repair_l3 guard. #}
       {% if has_perm(role,'repair_l3','enable') and not module_hidden('repair_l3') %}
-      <li><a href="/repair/l3l4" class="nav-link {% if '/repair/l3l4' in request.url.path %}active{% endif %}">
+      <li data-sb="/repair/l3l4" style="order: {{ sb_order('/repair/l3l4') }}"><a href="/repair/l3l4" class="nav-link {% if '/repair/l3l4' in request.url.path %}active{% endif %}">
         <i class="bi bi-cpu-fill me-2"></i> {{ sidebar_label('repair_l3l4', 'L3/L4 Repair') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'qc_check','enable') and not module_hidden('qc_check') %}
-      <li><a href="/qc" class="nav-link {% if request.url.path.startswith('/qc') %}active{% endif %}">
+      <li data-sb="/qc" style="order: {{ sb_order('/qc') }}"><a href="/qc" class="nav-link {% if request.url.path.startswith('/qc') %}active{% endif %}">
         <i class="bi bi-patch-check me-2"></i> {{ sidebar_label('qc_check', 'Stress Test') }}
       </a></li>
       {% endif %}
@@ -290,7 +294,7 @@
          keeps the hub link (same rule as routers/cosmetic.py). #}
       {% set is_cosmetic_user_role = cosmetic_single_stage(role) and role not in ('admin','cosmetic_manager','qc_inspector','inventory_manager','sales_manager') %}
       {% if not is_cosmetic_user_role and any_perm(role,'cosmetic_received','cosmetic_cleaning','cosmetic_putty','cosmetic_dry_sanding','cosmetic_masking','cosmetic_painting','cosmetic_water_sanding','cosmetic_completed') %}
-      <li><a href="/cosmetic/cosmetic_received" class="nav-link {% if request.url.path.startswith('/cosmetic/') and request.url.path != '/cosmetic/final_qc' %}active{% endif %}">
+      <li data-sb="/cosmetic/cosmetic_received" style="order: {{ sb_order('/cosmetic/cosmetic_received') }}"><a href="/cosmetic/cosmetic_received" class="nav-link {% if request.url.path.startswith('/cosmetic/') and request.url.path != '/cosmetic/final_qc' %}active{% endif %}">
         <i class="bi bi-droplet me-2"></i> {{ sidebar_label('cosmetic_received', 'Cosmetic & Paint') }}
       </a></li>
       {% endif %}
@@ -305,43 +309,43 @@
           else '/cosmetic/masking' if has_perm(role,'cosmetic_masking','enable') and not module_hidden('cosmetic_masking')
           else '/cosmetic/painting' if has_perm(role,'cosmetic_painting','enable') and not module_hidden('cosmetic_painting')
           else '/cosmetic/water_sanding' %}
-      <li><a href="{{ cosmetic_page_url }}" class="nav-link {% if request.url.path == cosmetic_page_url %}active{% endif %}">
+      <li data-sb="cosmetic-page" style="order: {{ sb_order('cosmetic-page') }}"><a href="{{ cosmetic_page_url }}" class="nav-link {% if request.url.path == cosmetic_page_url %}active{% endif %}">
         <i class="bi bi-droplet-half me-2"></i> {{ sidebar_label('cosmetic_page', 'Cosmetic Stage') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'cosmetic_finalqc','enable') and not module_hidden('cosmetic_finalqc') %}
-      <li><a href="/cosmetic/final_qc" class="nav-link {% if request.url.path == '/cosmetic/final_qc' %}active{% endif %}">
+      <li data-sb="/cosmetic/final_qc" style="order: {{ sb_order('/cosmetic/final_qc') }}"><a href="/cosmetic/final_qc" class="nav-link {% if request.url.path == '/cosmetic/final_qc' %}active{% endif %}">
         <i class="bi bi-shield-check me-2"></i> {{ sidebar_label('cosmetic_finalqc', 'Final QC') }}
       </a></li>
       {% endif %}
       {# Pre-Sale IQC (2026-10-29): OFF by default (DEFAULT_DISABLED_MODULES). #}
       {% if has_perm(role,'pre_sale_iqc','enable') and not module_hidden('pre_sale_iqc') %}
-      <li><a href="/pre-sale-iqc" class="nav-link {% if request.url.path == '/pre-sale-iqc' %}active{% endif %}">
+      <li data-sb="/pre-sale-iqc" style="order: {{ sb_order('/pre-sale-iqc') }}"><a href="/pre-sale-iqc" class="nav-link {% if request.url.path == '/pre-sale-iqc' %}active{% endif %}">
         <i class="bi bi-clipboard2-check me-2"></i> {{ sidebar_label('pre_sale_iqc', 'Pre-Sale QC') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'workid_status','enable') and not module_hidden('workid_status') %}
-      <li><a href="/workid-status" class="nav-link {% if request.url.path == '/workid-status' %}active{% endif %}">
+      <li data-sb="/workid-status" style="order: {{ sb_order('/workid-status') }}"><a href="/workid-status" class="nav-link {% if request.url.path == '/workid-status' %}active{% endif %}">
         <i class="bi bi-clipboard-check me-2"></i> {{ sidebar_label('workid_status', 'WorkID Status') }}
       </a></li>
       {% endif %}
 
       {# ── STORE MANAGER ───────────────────────────────────────────────── #}
       {% if has_perm(role,'spare_parts','enable') and not module_hidden('spare_parts') %}
-      <li class="nav-section">STORE MANAGER</li>
-      {% if has_perm(role,'parts_dashboard','enable') and not module_hidden('parts_dashboard') %}
-      <li><a href="/parts-dashboard" class="nav-link {% if '/parts-dashboard' in request.url.path %}active{% endif %}">
+      <li class="nav-section" data-sb="sec:STORE MANAGER" style="order: {{ sb_order('sec:STORE MANAGER') }}">STORE MANAGER</li>
+      {% if has_perm(role,'parts_dashboard','enable') and has_perm(role,'parts_dashboard','dashboard') and not module_hidden('parts_dashboard') %}{# + Dashboard View #}
+      <li data-sb="/parts-dashboard" style="order: {{ sb_order('/parts-dashboard') }}"><a href="/parts-dashboard" class="nav-link {% if '/parts-dashboard' in request.url.path %}active{% endif %}">
         <i class="bi bi-speedometer2 me-2"></i> {{ sidebar_label('parts_dashboard', 'Parts Dashboard') }}
       </a></li>
       {% endif %}
-      <li><a href="/spare-parts" class="nav-link {% if request.url.path == '/spare-parts' %}active{% endif %}">
+      <li data-sb="/spare-parts" style="order: {{ sb_order('/spare-parts') }}"><a href="/spare-parts" class="nav-link {% if request.url.path == '/spare-parts' %}active{% endif %}">
         <i class="bi bi-gear me-2"></i> {{ sidebar_label('spare_parts', 'Parts Manager') }}
       </a></li>
-      <li><a href="/parts-grn" class="nav-link {% if '/parts-grn' in request.url.path %}active{% endif %}">
+      <li data-sb="/parts-grn" style="order: {{ sb_order('/parts-grn') }}"><a href="/parts-grn" class="nav-link {% if '/parts-grn' in request.url.path %}active{% endif %}">
         <i class="bi bi-receipt me-2"></i> Parts GRN
       </a></li>
       {% if has_perm(role,'parts_sale_request','enable') and not module_hidden('parts_sale_request') %}
-      <li><a href="/parts-sale-request" class="nav-link {% if '/parts-sale-request' in request.url.path %}active{% endif %}">
+      <li data-sb="/parts-sale-request" style="order: {{ sb_order('/parts-sale-request') }}"><a href="/parts-sale-request" class="nav-link {% if '/parts-sale-request' in request.url.path %}active{% endif %}">
         <i class="bi bi-inbox me-2"></i> {{ sidebar_label('parts_sale_request', 'Parts Sale Request') }}
       </a></li>
       {% endif %}
@@ -350,7 +354,7 @@
       {# ── INVENTORY LOCATIONS ──────────────────────────────────────────── #}
       {% set inv_loc_active = '/locations/' in request.url.path or request.url.path.startswith('/trash') %}
       {% if has_perm(role,'locations','enable') and not module_hidden('locations') or has_perm(role,'location_gaps','enable') and not module_hidden('location_gaps') or has_perm(role,'location_audit','enable') and not module_hidden('location_audit') or has_perm(role,'location_master','enable') and not module_hidden('location_master') or has_perm(role,'location_trash','enable') and not module_hidden('location_trash') %}
-      <li class="nav-item">
+      <li class="nav-item" data-sb="#invLocCollapse" style="order: {{ sb_order('#invLocCollapse') }}">
         <a href="#invLocCollapse" class="nav-link d-flex align-items-center {% if inv_loc_active %}active{% endif %}"
            data-bs-toggle="collapse" role="button"
            aria-expanded="{{ 'true' if inv_loc_active else 'false' }}" aria-controls="invLocCollapse">
@@ -360,27 +364,27 @@
         <div class="collapse {% if inv_loc_active %}show{% endif %}" id="invLocCollapse">
           <ul class="nav flex-column ps-3 pb-1">
             {% if has_perm(role,'locations','enable') and not module_hidden('locations') %}
-            <li><a href="/locations/dashboard" class="nav-link py-1 small {% if '/locations/dashboard' in request.url.path %}active{% endif %}">
+            <li data-sb="/locations/dashboard" style="order: {{ sb_order('/locations/dashboard') }}"><a href="/locations/dashboard" class="nav-link py-1 small {% if '/locations/dashboard' in request.url.path %}active{% endif %}">
               <i class="bi bi-boxes me-2"></i> {{ sidebar_label('locations', 'Location Map') }}
             </a></li>
             {% endif %}
             {% if has_perm(role,'location_gaps','enable') and not module_hidden('location_gaps') %}
-            <li><a href="/locations/gaps" class="nav-link py-1 small {% if '/locations/gaps' in request.url.path %}active{% endif %}">
+            <li data-sb="/locations/gaps" style="order: {{ sb_order('/locations/gaps') }}"><a href="/locations/gaps" class="nav-link py-1 small {% if '/locations/gaps' in request.url.path %}active{% endif %}">
               <i class="bi bi-exclamation-triangle me-2"></i> {{ sidebar_label('location_gaps', 'Gap Alerts') }}
             </a></li>
             {% endif %}
             {% if has_perm(role,'location_audit','enable') and not module_hidden('location_audit') %}
-            <li><a href="/locations/audit" class="nav-link py-1 small {% if '/locations/audit' in request.url.path %}active{% endif %}">
+            <li data-sb="/locations/audit" style="order: {{ sb_order('/locations/audit') }}"><a href="/locations/audit" class="nav-link py-1 small {% if '/locations/audit' in request.url.path %}active{% endif %}">
               <i class="bi bi-clipboard-check me-2"></i> {{ sidebar_label('location_audit', 'Zone Audit') }}
             </a></li>
             {% endif %}
             {% if has_perm(role,'location_master','enable') and not module_hidden('location_master') %}
-            <li><a href="/locations/master" class="nav-link py-1 small {% if '/locations/master' in request.url.path %}active{% endif %}">
+            <li data-sb="/locations/master" style="order: {{ sb_order('/locations/master') }}"><a href="/locations/master" class="nav-link py-1 small {% if '/locations/master' in request.url.path %}active{% endif %}">
               <i class="bi bi-geo-alt me-2"></i> {{ sidebar_label('location_master', 'Manage Locations') }}
             </a></li>
             {% endif %}
             {% if has_perm(role,'location_trash','enable') and not module_hidden('location_trash') %}
-            <li><a href="/trash" class="nav-link py-1 small {% if request.url.path.startswith('/trash') %}active{% endif %}">
+            <li data-sb="/trash" style="order: {{ sb_order('/trash') }}"><a href="/trash" class="nav-link py-1 small {% if request.url.path.startswith('/trash') %}active{% endif %}">
               <i class="bi bi-trash3 me-2 text-danger"></i> {{ sidebar_label('location_trash', 'Trash') }}
             </a></li>
             {% endif %}
@@ -391,49 +395,49 @@
 
       {# ── CUSTOMER CARE AGENT (post-sale warranty/diagnostics/ticketing) ─ #}
       {% if has_perm(role,'care_support','enable') and not module_hidden('care_support') %}
-      <li class="nav-section">CUSTOMER CARE</li>
-      <li><a href="/care-support/tickets" class="nav-link {% if request.url.path.startswith('/care-support/tickets') %}active{% endif %}">
+      <li class="nav-section" data-sb="sec:CUSTOMER CARE" style="order: {{ sb_order('sec:CUSTOMER CARE') }}">CUSTOMER CARE</li>
+      <li data-sb="/care-support/tickets" style="order: {{ sb_order('/care-support/tickets') }}"><a href="/care-support/tickets" class="nav-link {% if request.url.path.startswith('/care-support/tickets') %}active{% endif %}">
         <i class="bi bi-ticket-perforated me-2"></i> {{ sidebar_label('care_support', 'Ticket Queue') }}
       </a></li>
-      <li><a href="/care-support/pairings" class="nav-link {% if request.url.path.startswith('/care-support/pairings') %}active{% endif %}">
+      <li data-sb="/care-support/pairings" style="order: {{ sb_order('/care-support/pairings') }}"><a href="/care-support/pairings" class="nav-link {% if request.url.path.startswith('/care-support/pairings') %}active{% endif %}">
         <i class="bi bi-hdd-network me-2"></i> Device Pairings
       </a></li>
-      <li><a href="/care-support/provision" class="nav-link {% if request.url.path.startswith('/care-support/provision') %}active{% endif %}">
+      <li data-sb="/care-support/provision" style="order: {{ sb_order('/care-support/provision') }}"><a href="/care-support/provision" class="nav-link {% if request.url.path.startswith('/care-support/provision') %}active{% endif %}">
         <i class="bi bi-usb-plug me-2"></i> Provision Device
       </a></li>
-      <li><a href="/care-support/offers" class="nav-link {% if request.url.path.startswith('/care-support/offers') %}active{% endif %}">
+      <li data-sb="/care-support/offers" style="order: {{ sb_order('/care-support/offers') }}"><a href="/care-support/offers" class="nav-link {% if request.url.path.startswith('/care-support/offers') %}active{% endif %}">
         <i class="bi bi-tags me-2"></i> Offers
       </a></li>
-      <li><a href="/care-support/pilot" class="nav-link {% if request.url.path.startswith('/care-support/pilot') %}active{% endif %}">
+      <li data-sb="/care-support/pilot" style="order: {{ sb_order('/care-support/pilot') }}"><a href="/care-support/pilot" class="nav-link {% if request.url.path.startswith('/care-support/pilot') %}active{% endif %}">
         <i class="bi bi-graph-up me-2"></i> Pilot Dashboard
       </a></li>
       {% endif %}
 
       {# ── CRM ─────────────────────────────────────────────────────────── #}
       {% if any_perm(role,'crm_dashboard','crm_contacts','crm_sourcing','crm_sales_opp','crm_price_matrix','crm_purchase_orders','crm_pickups','crm_analytics','crm_assign_leads') %}
-      <li class="nav-section">CRM</li>
+      <li class="nav-section" data-sb="sec:CRM" style="order: {{ sb_order('sec:CRM') }}">CRM</li>
       {% if has_perm(role,'crm_dashboard','enable') and not module_hidden('crm_dashboard') %}
-      <li><a href="/procure-dashboard" class="nav-link {% if request.url.path == '/procure-dashboard' %}active{% endif %}">
+      <li data-sb="/procure-dashboard" style="order: {{ sb_order('/procure-dashboard') }}"><a href="/procure-dashboard" class="nav-link {% if request.url.path == '/procure-dashboard' %}active{% endif %}">
         <i class="bi bi-cart-check me-2"></i> {{ sidebar_label('crm_dashboard', 'Procure Dashboard') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'crm_contacts','enable') and not module_hidden('crm_contacts') %}
-      <li><a href="/crm/contacts" class="nav-link {% if request.url.path.startswith('/crm/contacts') %}active{% endif %}">
+      <li data-sb="/crm/contacts" style="order: {{ sb_order('/crm/contacts') }}"><a href="/crm/contacts" class="nav-link {% if request.url.path.startswith('/crm/contacts') %}active{% endif %}">
         <i class="bi bi-people me-2"></i> {{ sidebar_label('crm_contacts', 'Contact Leads') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'crm_sourcing','enable') and not module_hidden('crm_sourcing') %}
-      <li><a href="/crm/sourcing" class="nav-link {% if request.url.path.startswith('/crm/sourcing') %}active{% endif %}">
+      <li data-sb="/crm/sourcing" style="order: {{ sb_order('/crm/sourcing') }}"><a href="/crm/sourcing" class="nav-link {% if request.url.path.startswith('/crm/sourcing') %}active{% endif %}">
         <i class="bi bi-box-arrow-in-down me-2"></i> {{ sidebar_label('crm_sourcing', 'Sourcing Deals') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'crm_sales_opp','enable') and not module_hidden('crm_sales_opp') %}
-      <li><a href="/crm/sales" class="nav-link {% if request.url.path == '/crm/sales' or request.url.path.startswith('/crm/sales/') %}active{% endif %}">
+      <li data-sb="/crm/sales" style="order: {{ sb_order('/crm/sales') }}"><a href="/crm/sales" class="nav-link {% if request.url.path == '/crm/sales' or request.url.path.startswith('/crm/sales/') %}active{% endif %}">
         <i class="bi bi-graph-up-arrow me-2"></i> {{ sidebar_label('crm_sales_opp', 'Sales Opportunities') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'crm_price_matrix','enable') and not module_hidden('crm_price_matrix') %}
-      <li><a href="/crm/price-matrix" class="nav-link {% if request.url.path.startswith('/crm/price-matrix') %}active{% endif %}">
+      <li data-sb="/crm/price-matrix" style="order: {{ sb_order('/crm/price-matrix') }}"><a href="/crm/price-matrix" class="nav-link {% if request.url.path.startswith('/crm/price-matrix') %}active{% endif %}">
         <i class="bi bi-table me-2"></i> {{ sidebar_label('crm_price_matrix', 'Price Matrix') }}
       </a></li>
       {% endif %}
@@ -442,31 +446,31 @@
          deal order. Gated on crm_sales_opp rather than a new matrix key —
          quotes hang off Buyer Deals and share their access. #}
       {% if has_perm(role,'crm_sales_opp','enable') and not module_hidden('crm_sales_opp') %}
-      <li><a href="/crm/quotes" class="nav-link {% if request.url.path.startswith('/crm/quotes') %}active{% endif %}">
+      <li data-sb="/crm/quotes" style="order: {{ sb_order('/crm/quotes') }}"><a href="/crm/quotes" class="nav-link {% if request.url.path.startswith('/crm/quotes') %}active{% endif %}">
         <i class="bi bi-file-earmark-ruled me-2"></i> {{ sidebar_label('crm_quotes', 'Quotes') }}
       </a></li>
-      <li><a href="/crm/sales-orders" class="nav-link {% if request.url.path.startswith('/crm/sales-orders') %}active{% endif %}">
+      <li data-sb="/crm/sales-orders" style="order: {{ sb_order('/crm/sales-orders') }}"><a href="/crm/sales-orders" class="nav-link {% if request.url.path.startswith('/crm/sales-orders') %}active{% endif %}">
         <i class="bi bi-receipt me-2"></i> {{ sidebar_label('crm_sales_orders', 'Sales Orders') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'crm_purchase_orders','enable') and not module_hidden('crm_purchase_orders') %}
-      <li><a href="/crm/purchase-orders" class="nav-link {% if request.url.path.startswith('/crm/purchase-orders') %}active{% endif %}">
+      <li data-sb="/crm/purchase-orders" style="order: {{ sb_order('/crm/purchase-orders') }}"><a href="/crm/purchase-orders" class="nav-link {% if request.url.path.startswith('/crm/purchase-orders') %}active{% endif %}">
         <i class="bi bi-file-earmark-text me-2"></i> {{ sidebar_label('crm_purchase_orders', 'Purchase Orders') }}
       </a></li>
       {% endif %}
       {# Pickup Process (2026-11-11, Pankaj): below PO Records; default disabled #}
       {% if has_perm(role,'crm_pickups','enable') and not module_hidden('crm_pickups') %}
-      <li><a href="/crm/pickups" class="nav-link {% if request.url.path.startswith('/crm/pickups') %}active{% endif %}">
+      <li data-sb="/crm/pickups" style="order: {{ sb_order('/crm/pickups') }}"><a href="/crm/pickups" class="nav-link {% if request.url.path.startswith('/crm/pickups') %}active{% endif %}">
         <i class="bi bi-truck me-2"></i> {{ sidebar_label('crm_pickups', 'Pickup Process') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'crm_analytics','enable') and not module_hidden('crm_analytics') %}
-      <li><a href="/crm/reports" class="nav-link {% if request.url.path.startswith('/crm/reports') %}active{% endif %}">
+      <li data-sb="/crm/reports" style="order: {{ sb_order('/crm/reports') }}"><a href="/crm/reports" class="nav-link {% if request.url.path.startswith('/crm/reports') %}active{% endif %}">
         <i class="bi bi-bar-chart me-2"></i> {{ sidebar_label('crm_analytics', 'CRM Analytics') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'crm_assign_leads','enable') and not module_hidden('crm_assign_leads') %}
-      <li><a href="/crm/assign-social-leads" class="nav-link {% if request.url.path.startswith('/crm/assign-social-leads') %}active{% endif %}">
+      <li data-sb="/crm/assign-social-leads" style="order: {{ sb_order('/crm/assign-social-leads') }}"><a href="/crm/assign-social-leads" class="nav-link {% if request.url.path.startswith('/crm/assign-social-leads') %}active{% endif %}">
         <i class="bi bi-person-lines-fill me-2"></i> {{ sidebar_label('crm_assign_leads', 'Assign Social Leads') }}
       </a></li>
       {% endif %}
@@ -474,25 +478,25 @@
 
       {# ── FINANCE ─────────────────────────────────────────────────────── #}
       {% if has_perm(role,'finance','enable') and not module_hidden('finance') or has_perm(role,'finance_supplier','enable') and not module_hidden('finance_supplier') or has_perm(role,'finance_customer','enable') and not module_hidden('finance_customer') or role == 'admin' %}
-      <li class="nav-section">FINANCE</li>
+      <li class="nav-section" data-sb="sec:FINANCE" style="order: {{ sb_order('sec:FINANCE') }}">FINANCE</li>
       {% endif %}
       {% if has_perm(role,'finance','enable') and not module_hidden('finance') %}
-      <li><a href="/accounts" class="nav-link {% if request.url.path == '/accounts' %}active{% endif %}">
+      <li data-sb="/accounts" style="order: {{ sb_order('/accounts') }}"><a href="/accounts" class="nav-link {% if request.url.path == '/accounts' %}active{% endif %}">
         <i class="bi bi-wallet2 me-2"></i> {{ sidebar_label('finance', 'Accounts') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'finance_supplier','enable') and not module_hidden('finance_supplier') %}
-      <li><a href="/accounts/supplier-payments" class="nav-link {% if '/accounts/supplier-payments' in request.url.path %}active{% endif %}">
+      <li data-sb="/accounts/supplier-payments" style="order: {{ sb_order('/accounts/supplier-payments') }}"><a href="/accounts/supplier-payments" class="nav-link {% if '/accounts/supplier-payments' in request.url.path %}active{% endif %}">
         <i class="bi bi-arrow-up-circle me-2"></i> {{ sidebar_label('finance_supplier', 'Supplier Payments') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'finance_customer','enable') and not module_hidden('finance_customer') %}
-      <li><a href="/accounts/customer-receipts" class="nav-link {% if '/accounts/customer-receipts' in request.url.path %}active{% endif %}">
+      <li data-sb="/accounts/customer-receipts" style="order: {{ sb_order('/accounts/customer-receipts') }}"><a href="/accounts/customer-receipts" class="nav-link {% if '/accounts/customer-receipts' in request.url.path %}active{% endif %}">
         <i class="bi bi-arrow-down-circle me-2"></i> {{ sidebar_label('finance_customer', 'Customer Receipts') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'partner_payments','enable') and not module_hidden('partner_payments') %}
-      <li><a href="/partner-payments" class="nav-link {% if '/partner-payments' in request.url.path %}active{% endif %}">
+      <li data-sb="/partner-payments" style="order: {{ sb_order('/partner-payments') }}"><a href="/partner-payments" class="nav-link {% if '/partner-payments' in request.url.path %}active{% endif %}">
         <i class="bi bi-cash-coin me-2"></i> {{ sidebar_label('partner_payments', 'Partner Payments') }}
       </a></li>
       {% endif %}
@@ -501,17 +505,17 @@
          sub_admin (or any role) via has_explicit_perm(), same as the Admin
          Settings items. #}
       {% if (role == 'admin' or has_explicit_perm(role, 'terms_conditions')) and not module_hidden('terms_conditions') %}
-      <li><a href="/admin/terms-conditions" class="nav-link {% if '/admin/terms-conditions' in request.url.path %}active{% endif %}">
+      <li data-sb="/admin/terms-conditions" style="order: {{ sb_order('/admin/terms-conditions') }}"><a href="/admin/terms-conditions" class="nav-link {% if '/admin/terms-conditions' in request.url.path %}active{% endif %}">
         <i class="bi bi-file-text me-2"></i> {{ sidebar_label('terms_conditions', 'Terms & Conditions') }}
       </a></li>
       {% endif %}
       {% if role == 'admin' %}
-      <li><a href="/settings" class="nav-link {% if request.url.path == '/settings' %}active{% endif %}">
+      <li data-sb="/settings" style="order: {{ sb_order('/settings') }}"><a href="/settings" class="nav-link {% if request.url.path == '/settings' %}active{% endif %}">
         <i class="bi bi-gear me-2"></i> Company Setting
       </a></li>
       {% endif %}
       {% if has_perm(role,'cost_config','enable') and not module_hidden('cost_config') %}
-      <li><a href="/admin/cost-config" class="nav-link {% if '/admin/cost-config' in request.url.path %}active{% endif %}">
+      <li data-sb="/admin/cost-config" style="order: {{ sb_order('/admin/cost-config') }}"><a href="/admin/cost-config" class="nav-link {% if '/admin/cost-config' in request.url.path %}active{% endif %}">
         <i class="bi bi-calculator me-2"></i> {{ sidebar_label('cost_config', 'Cost Config') }}
       </a></li>
       {% endif %}
@@ -519,29 +523,29 @@
 
       {# ── SALES & CRM (Overdue Orders removed — now on Sales List page) ─ #}
       {% if any_perm(role,'dealers','telecalling','quotations','model_requests','whatsapp','assign_dealer_leads','telesales_dashboard') %}
-      <li class="nav-section">SALES & CRM</li>
+      <li class="nav-section" data-sb="sec:SALES & CRM" style="order: {{ sb_order('sec:SALES & CRM') }}">SALES & CRM</li>
       {% if has_perm(role,'telesales_dashboard','enable') and not module_hidden('telesales_dashboard') %}
-      <li><a href="/telesales-dashboard" class="nav-link {% if request.url.path.startswith('/telesales-dashboard') %}active{% endif %}">
+      <li data-sb="/telesales-dashboard" style="order: {{ sb_order('/telesales-dashboard') }}"><a href="/telesales-dashboard" class="nav-link {% if request.url.path.startswith('/telesales-dashboard') %}active{% endif %}">
         <i class="bi bi-speedometer2 me-2"></i> {{ sidebar_label('telesales_dashboard', 'TeleSales Dashboard') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'dealers','enable') and not module_hidden('dealers') %}
-      <li><a href="/dealers" class="nav-link {% if request.url.path.startswith('/dealers') and '/dealers/overdue' not in request.url.path %}active{% endif %}">
+      <li data-sb="/dealers" style="order: {{ sb_order('/dealers') }}"><a href="/dealers" class="nav-link {% if request.url.path.startswith('/dealers') and '/dealers/overdue' not in request.url.path %}active{% endif %}">
         <i class="bi bi-building me-2"></i> {{ sidebar_label('dealers', 'Dealers') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'telecalling','enable') and not module_hidden('telecalling') %}
-      <li><a href="/telecalling" class="nav-link {% if request.url.path.startswith('/telecalling') %}active{% endif %}">
+      <li data-sb="/telecalling" style="order: {{ sb_order('/telecalling') }}"><a href="/telecalling" class="nav-link {% if request.url.path.startswith('/telecalling') %}active{% endif %}">
         <i class="bi bi-telephone me-2"></i> {{ sidebar_label('telecalling', 'Telecalling') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'quotations','enable') and not module_hidden('quotations') %}
-      <li><a href="/quotations" class="nav-link {% if request.url.path.startswith('/quotations') %}active{% endif %}">
+      <li data-sb="/quotations" style="order: {{ sb_order('/quotations') }}"><a href="/quotations" class="nav-link {% if request.url.path.startswith('/quotations') %}active{% endif %}">
         <i class="bi bi-receipt me-2"></i> {{ sidebar_label('quotations', 'Quotations') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'model_requests','enable') and not module_hidden('model_requests') %}
-      <li><a href="/model-requests" class="nav-link {% if request.url.path.startswith('/model-requests') %}active{% endif %}">
+      <li data-sb="/model-requests" style="order: {{ sb_order('/model-requests') }}"><a href="/model-requests" class="nav-link {% if request.url.path.startswith('/model-requests') %}active{% endif %}">
         <i class="bi bi-clipboard-plus me-2"></i> {{ sidebar_label('model_requests', 'Model Requests') }}
       </a></li>
       {% endif %}
@@ -552,8 +556,14 @@
       </a></li>
       {% endif %}
       #}
+      {# Sales Coordinator (2026-11-14): OFF for every role until ticked in the Permission Matrix. #}
+      {% if has_perm(role,'sales_coordinator','enable') and not module_hidden('sales_coordinator') %}
+      <li data-sb="/sales-coordinator" style="order: {{ sb_order('/sales-coordinator') }}"><a href="/sales-coordinator" class="nav-link {% if request.url.path.startswith('/sales-coordinator') %}active{% endif %}">
+        <i class="bi bi-diagram-3 me-2"></i> {{ sidebar_label('sales_coordinator', 'Sales Coordinator') }}
+      </a></li>
+      {% endif %}
       {% if has_perm(role,'assign_dealer_leads','enable') and not module_hidden('assign_dealer_leads') %}
-      <li><a href="/assign-dealer-leads" class="nav-link {% if request.url.path.startswith('/assign-dealer-leads') %}active{% endif %}">
+      <li data-sb="/assign-dealer-leads" style="order: {{ sb_order('/assign-dealer-leads') }}"><a href="/assign-dealer-leads" class="nav-link {% if request.url.path.startswith('/assign-dealer-leads') %}active{% endif %}">
         <i class="bi bi-person-lines-fill me-2"></i> {{ sidebar_label('assign_dealer_leads', 'Assign Dealer Leads') }}
       </a></li>
       {% endif %}
@@ -563,66 +573,66 @@
          page in one section, moved out of Sales & CRM (and Credit Note out
          of Inventory), in the director's order. #}
       {% if any_perm(role,'sales','ready_to_sale_parts','scrap_for_sale','sales_list','part_sales','scrap_sale_report','block_tags','gate_pass','credit_note','returns','rentals') %}
-      <li class="nav-section">SELLING</li>
+      <li class="nav-section" data-sb="sec:SELLING" style="order: {{ sb_order('sec:SELLING') }}">SELLING</li>
       {% if has_perm(role,'sales','enable') and not module_hidden('sales') %}
-      <li><a href="/sales/ready" class="nav-link {% if '/sales/ready' in request.url.path %}active{% endif %}">
+      <li data-sb="/sales/ready" style="order: {{ sb_order('/sales/ready') }}"><a href="/sales/ready" class="nav-link {% if '/sales/ready' in request.url.path %}active{% endif %}">
         <i class="bi bi-check-circle me-2"></i> {{ sidebar_label('sales', 'Ready to Sale') }}
       </a></li>
       {# Ready for Sale - Lots (2026-10-27): the As-Is Lot section on its own
          page. Same "sales" permission as Ready to Sale (no separate matrix row). #}
-      <li><a href="/sales/lots" class="nav-link {% if '/sales/lots' in request.url.path %}active{% endif %}">
+      <li data-sb="/sales/lots" style="order: {{ sb_order('/sales/lots') }}"><a href="/sales/lots" class="nav-link {% if '/sales/lots' in request.url.path %}active{% endif %}">
         <i class="bi bi-box-seam me-2"></i> Ready for Sale - Lots
       </a></li>
       {% endif %}
       {% if has_perm(role,'ready_to_sale_parts','enable') and not module_hidden('ready_to_sale_parts') %}
-      <li><a href="/ready-to-sale-parts" class="nav-link {% if '/ready-to-sale-parts' in request.url.path %}active{% endif %}">
+      <li data-sb="/ready-to-sale-parts" style="order: {{ sb_order('/ready-to-sale-parts') }}"><a href="/ready-to-sale-parts" class="nav-link {% if '/ready-to-sale-parts' in request.url.path %}active{% endif %}">
         <i class="bi bi-box-seam me-2"></i> {{ sidebar_label('ready_to_sale_parts', 'Ready to Sale Parts') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'scrap_for_sale','enable') and not module_hidden('scrap_for_sale') %}
-      <li><a href="/scrap-for-sale" class="nav-link {% if '/scrap-for-sale' in request.url.path %}active{% endif %}">
+      <li data-sb="/scrap-for-sale" style="order: {{ sb_order('/scrap-for-sale') }}"><a href="/scrap-for-sale" class="nav-link {% if '/scrap-for-sale' in request.url.path %}active{% endif %}">
         <i class="bi bi-recycle me-2"></i> {{ sidebar_label('scrap_for_sale', 'Scrap for Sale') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'sales_list','enable') and not module_hidden('sales_list') %}
-      <li><a href="/sales" class="nav-link {% if request.url.path == '/sales' %}active{% endif %}">
+      <li data-sb="/sales" style="order: {{ sb_order('/sales') }}"><a href="/sales" class="nav-link {% if request.url.path == '/sales' %}active{% endif %}">
         <i class="bi bi-receipt me-2"></i> {{ sidebar_label('sales_list', 'Sales List') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'part_sales','enable') and not module_hidden('part_sales') %}
-      <li><a href="/part-sales" class="nav-link {% if '/part-sales' in request.url.path %}active{% endif %}">
+      <li data-sb="/part-sales" style="order: {{ sb_order('/part-sales') }}"><a href="/part-sales" class="nav-link {% if '/part-sales' in request.url.path %}active{% endif %}">
         <i class="bi bi-cart-check me-2"></i> {{ sidebar_label('part_sales', 'Spare Part Sales') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'scrap_sale_report','enable') and not module_hidden('scrap_sale_report') %}
-      <li><a href="/scrap-sale-report" class="nav-link {% if '/scrap-sale-report' in request.url.path %}active{% endif %}">
+      <li data-sb="/scrap-sale-report" style="order: {{ sb_order('/scrap-sale-report') }}"><a href="/scrap-sale-report" class="nav-link {% if '/scrap-sale-report' in request.url.path %}active{% endif %}">
         <i class="bi bi-receipt-cutoff me-2"></i> {{ sidebar_label('scrap_sale_report', 'Scrap Sale Report') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'block_tags','enable') and not module_hidden('block_tags') %}
-      <li><a href="/block-tags" class="nav-link {% if request.url.path.startswith('/block-tags') %}active{% endif %}">
+      <li data-sb="/block-tags" style="order: {{ sb_order('/block-tags') }}"><a href="/block-tags" class="nav-link {% if request.url.path.startswith('/block-tags') %}active{% endif %}">
         <i class="bi bi-lock me-2"></i> {{ sidebar_label('block_tags', 'Block Tags') }}
       </a></li>
       {% endif %}
       {# Create Rentals sits directly above Credit Note (2026-10-28); off by default for every role. #}
       {% if has_perm(role,'rentals','enable') and not module_hidden('rentals') %}
-      <li><a href="/rentals" class="nav-link {% if request.url.path.startswith('/rentals') %}active{% endif %}">
+      <li data-sb="/rentals" style="order: {{ sb_order('/rentals') }}"><a href="/rentals" class="nav-link {% if request.url.path.startswith('/rentals') %}active{% endif %}">
         <i class="bi bi-calendar2-range me-2"></i> {{ sidebar_label('rentals', 'Rentals') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'credit_note','enable') and not module_hidden('credit_note') %}
-      <li><a href="/credit-note" class="nav-link {% if '/credit-note' in request.url.path %}active{% endif %}">
+      <li data-sb="/credit-note" style="order: {{ sb_order('/credit-note') }}"><a href="/credit-note" class="nav-link {% if '/credit-note' in request.url.path %}active{% endif %}">
         <i class="bi bi-receipt-cutoff me-2"></i> {{ sidebar_label('credit_note', 'Credit Note') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'returns','enable') and not module_hidden('returns') %}
-      <li><a href="/returns" class="nav-link {% if '/returns' in request.url.path %}active{% endif %}">
+      <li data-sb="/returns" style="order: {{ sb_order('/returns') }}"><a href="/returns" class="nav-link {% if '/returns' in request.url.path %}active{% endif %}">
         <i class="bi bi-arrow-return-left me-2"></i> {{ sidebar_label('returns', 'Returns') }}
       </a></li>
       {% endif %}
       {# Exit Gate Pass after Return from Customer (2026-10-24). #}
       {% if has_perm(role,'gate_pass','enable') and not module_hidden('gate_pass') %}
-      <li><a href="/gate-pass" class="nav-link {% if '/gate-pass' in request.url.path %}active{% endif %}">
+      <li data-sb="/gate-pass" style="order: {{ sb_order('/gate-pass') }}"><a href="/gate-pass" class="nav-link {% if '/gate-pass' in request.url.path %}active{% endif %}">
         <i class="bi bi-shield-check me-2"></i> {{ sidebar_label('gate_pass', 'Gate Pass') }}
       </a></li>
       {% endif %}
@@ -642,50 +652,50 @@
             or (has_perm(role,'trade_partner_manage_lots','enable') and not module_hidden('trade_partner_manage_lots'))
             or (has_perm(role,'trade_partner_all_deals','enable') and not module_hidden('trade_partner_all_deals'))
             or (has_perm(role,'trade_partner_bids','enable') and not module_hidden('trade_partner_bids')) %}
-      <li class="nav-section">EXTERNAL PARTNER</li>
+      <li class="nav-section" data-sb="sec:EXTERNAL PARTNER" style="order: {{ sb_order('sec:EXTERNAL PARTNER') }}">EXTERNAL PARTNER</li>
       {% endif %}
       {% if has_perm(role,'trade_partner_partners','enable') and not module_hidden('trade_partner_partners') %}
-      <li><a href="/trade-partner/partners" class="nav-link {% if request.url.path.startswith('/trade-partner/partners') %}active{% endif %}">
+      <li data-sb="/trade-partner/partners" style="order: {{ sb_order('/trade-partner/partners') }}"><a href="/trade-partner/partners" class="nav-link {% if request.url.path.startswith('/trade-partner/partners') %}active{% endif %}">
         <i class="bi bi-shop me-2"></i> {{ sidebar_label('trade_partner_partners', 'Partner Accounts') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'trade_partner_listings','enable') and not module_hidden('trade_partner_listings') %}
-      <li><a href="/trade-partner/listings" class="nav-link {% if request.url.path.startswith('/trade-partner/listings') %}active{% endif %}">
+      <li data-sb="/trade-partner/listings" style="order: {{ sb_order('/trade-partner/listings') }}"><a href="/trade-partner/listings" class="nav-link {% if request.url.path.startswith('/trade-partner/listings') %}active{% endif %}">
         <i class="bi bi-megaphone me-2"></i> {{ sidebar_label('trade_partner_listings', 'Listings Manager') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'trade_partner_bids','enable') and not module_hidden('trade_partner_bids') %}
-      <li><a href="/trade-partner/bids" class="nav-link {% if request.url.path.startswith('/trade-partner/bids') %}active{% endif %}">
+      <li data-sb="/trade-partner/bids" style="order: {{ sb_order('/trade-partner/bids') }}"><a href="/trade-partner/bids" class="nav-link {% if request.url.path.startswith('/trade-partner/bids') %}active{% endif %}">
         <i class="bi bi-hammer me-2"></i> {{ sidebar_label('trade_partner_bids', 'Bids Created') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'trade_partner_manage_lots','enable') and not module_hidden('trade_partner_manage_lots') %}
-      <li><a href="/trade-partner/manage-lots" class="nav-link {% if request.url.path.startswith('/trade-partner/manage-lots') %}active{% endif %}">
+      <li data-sb="/trade-partner/manage-lots" style="order: {{ sb_order('/trade-partner/manage-lots') }}"><a href="/trade-partner/manage-lots" class="nav-link {% if request.url.path.startswith('/trade-partner/manage-lots') %}active{% endif %}">
         <i class="bi bi-box-seam me-2"></i> {{ sidebar_label('trade_partner_manage_lots', 'Manage Lots') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'trade_partner_all_deals','enable') and not module_hidden('trade_partner_all_deals') %}
-      <li><a href="/deals" class="nav-link {% if request.url.path.startswith('/deals') %}active{% endif %}">
+      <li data-sb="/deals" style="order: {{ sb_order('/deals') }}"><a href="/deals" class="nav-link {% if request.url.path.startswith('/deals') %}active{% endif %}">
         <i class="bi bi-briefcase me-2"></i> {{ sidebar_label('trade_partner_all_deals', 'All Deals') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'trade_partner_bookings','enable') and not module_hidden('trade_partner_bookings') %}
-      <li><a href="/trade-partner/bookings" class="nav-link {% if request.url.path.startswith('/trade-partner/bookings') %}active{% endif %}">
+      <li data-sb="/trade-partner/bookings" style="order: {{ sb_order('/trade-partner/bookings') }}"><a href="/trade-partner/bookings" class="nav-link {% if request.url.path.startswith('/trade-partner/bookings') %}active{% endif %}">
         <i class="bi bi-bookmark-check me-2"></i> {{ sidebar_label('trade_partner_bookings', 'Bookings Queue') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'trade_partner_my_desk','enable') and not module_hidden('trade_partner_my_desk') %}
-      <li><a href="/trade-partner/my-desk" class="nav-link {% if request.url.path.startswith('/trade-partner/my-desk') %}active{% endif %}">
+      <li data-sb="/trade-partner/my-desk" style="order: {{ sb_order('/trade-partner/my-desk') }}"><a href="/trade-partner/my-desk" class="nav-link {% if request.url.path.startswith('/trade-partner/my-desk') %}active{% endif %}">
         <i class="bi bi-person-workspace me-2"></i> {{ sidebar_label('trade_partner_my_desk', 'My Desk') }}
       </a></li>
       {% endif %}
       {% if role_allowed(role, 'admin') and has_perm(role,'trade_partner_floors','enable') and not module_hidden('trade_partner_floors') %}
-      <li><a href="/trade-partner/floors" class="nav-link {% if request.url.path.startswith('/trade-partner/floors') %}active{% endif %}">
+      <li data-sb="/trade-partner/floors" style="order: {{ sb_order('/trade-partner/floors') }}"><a href="/trade-partner/floors" class="nav-link {% if request.url.path.startswith('/trade-partner/floors') %}active{% endif %}">
         <i class="bi bi-shield-lock me-2"></i> {{ sidebar_label('trade_partner_floors', 'Margin Floors') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'trade_partner_settings','enable') and not module_hidden('trade_partner_settings') %}
-      <li><a href="/trade-partner/settings" class="nav-link {% if request.url.path.startswith('/trade-partner/settings') %}active{% endif %}">
+      <li data-sb="/trade-partner/settings" style="order: {{ sb_order('/trade-partner/settings') }}"><a href="/trade-partner/settings" class="nav-link {% if request.url.path.startswith('/trade-partner/settings') %}active{% endif %}">
         <i class="bi bi-gear me-2"></i> {{ sidebar_label('trade_partner_settings', 'Portal Settings') }}
       </a></li>
       {% endif %}
@@ -693,31 +703,31 @@
       {# ── PRODUCT MASTER (2026-10-14) — each page OFF by default for every role
          until enabled in Master Data -> Permission Matrix; admin always sees them. #}
       {% if has_perm(role,'pm_product_master','enable') and not module_hidden('pm_product_master') or has_perm(role,'pm_pricing_calculator','enable') and not module_hidden('pm_pricing_calculator') or has_perm(role,'pm_hardware','enable') and not module_hidden('pm_hardware') or has_perm(role,'pm_spare_parts','enable') and not module_hidden('pm_spare_parts') or has_perm(role,'pm_product_pricing','enable') and not module_hidden('pm_product_pricing') %}
-      <li class="nav-section">PRODUCT MASTER</li>
+      <li class="nav-section" data-sb="sec:PRODUCT MASTER" style="order: {{ sb_order('sec:PRODUCT MASTER') }}">PRODUCT MASTER</li>
       {% endif %}
       {% if has_perm(role,'pm_product_master','enable') and not module_hidden('pm_product_master') %}
-      <li><a href="/product-master" class="nav-link {% if request.url.path == '/product-master' %}active{% endif %}">
+      <li data-sb="/product-master" style="order: {{ sb_order('/product-master') }}"><a href="/product-master" class="nav-link {% if request.url.path == '/product-master' %}active{% endif %}">
         <i class="bi bi-box-seam me-2"></i> {{ sidebar_label('pm_product_master', 'Product Master') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'pm_hardware','enable') and not module_hidden('pm_hardware') %}
-      <li><a href="/product-master/hardware" class="nav-link {% if '/product-master/hardware' in request.url.path %}active{% endif %}">
+      <li data-sb="/product-master/hardware" style="order: {{ sb_order('/product-master/hardware') }}"><a href="/product-master/hardware" class="nav-link {% if '/product-master/hardware' in request.url.path %}active{% endif %}">
         <i class="bi bi-memory me-2"></i> {{ sidebar_label('pm_hardware', 'Hardware') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'pm_spare_parts','enable') and not module_hidden('pm_spare_parts') %}
-      <li><a href="/product-master/spare-parts" class="nav-link {% if '/product-master/spare-parts' in request.url.path %}active{% endif %}">
+      <li data-sb="/product-master/spare-parts" style="order: {{ sb_order('/product-master/spare-parts') }}"><a href="/product-master/spare-parts" class="nav-link {% if '/product-master/spare-parts' in request.url.path %}active{% endif %}">
         <i class="bi bi-tools me-2"></i> {{ sidebar_label('pm_spare_parts', 'Spare Parts') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'pm_product_pricing','enable') and not module_hidden('pm_product_pricing') %}
-      <li><a href="/product-master/pricing" class="nav-link {% if request.url.path == '/product-master/pricing' or request.url.path.startswith('/product-master/pricing/') %}active{% endif %}">
+      <li data-sb="/product-master/pricing" style="order: {{ sb_order('/product-master/pricing') }}"><a href="/product-master/pricing" class="nav-link {% if request.url.path == '/product-master/pricing' or request.url.path.startswith('/product-master/pricing/') %}active{% endif %}">
         <i class="bi bi-tags me-2"></i> {{ sidebar_label('pm_product_pricing', 'Product Pricing') }}
       </a></li>
       {% endif %}
       {# Pricing Calculator below Product Pricing (2026-11-04) #}
       {% if has_perm(role,'pm_pricing_calculator','enable') and not module_hidden('pm_pricing_calculator') %}
-      <li><a href="/product-master/pricing-calculator" class="nav-link {% if '/product-master/pricing-calculator' in request.url.path %}active{% endif %}">
+      <li data-sb="/product-master/pricing-calculator" style="order: {{ sb_order('/product-master/pricing-calculator') }}"><a href="/product-master/pricing-calculator" class="nav-link {% if '/product-master/pricing-calculator' in request.url.path %}active{% endif %}">
         <i class="bi bi-calculator me-2"></i> {{ sidebar_label('pm_pricing_calculator', 'Pricing Calculator') }}
       </a></li>
       {% endif %}
@@ -727,30 +737,30 @@
       {# Stock Aging / Overdue Devices / Receivables / Market Intel were moved
          out of this section into the Application Settings accordion below. #}
       {% if has_perm(role,'reports','enable') and not module_hidden('reports') or has_perm(role,'report_sales','enable') and not module_hidden('report_sales') or has_perm(role,'report_daily_stock','enable') and not module_hidden('report_daily_stock') or has_perm(role,'report_stage','enable') and not module_hidden('report_stage') or has_perm(role,'report_bizpl','enable') and not module_hidden('report_bizpl') %}
-      <li class="nav-section">REPORTS</li>
+      <li class="nav-section" data-sb="sec:REPORTS" style="order: {{ sb_order('sec:REPORTS') }}">REPORTS</li>
       {% endif %}
       {% if has_perm(role,'report_bizpl','enable') and not module_hidden('report_bizpl') %}
-      <li><a href="/reports/business-pl" class="nav-link {% if '/reports/business-pl' in request.url.path %}active{% endif %}">
+      <li data-sb="/reports/business-pl" style="order: {{ sb_order('/reports/business-pl') }}"><a href="/reports/business-pl" class="nav-link {% if '/reports/business-pl' in request.url.path %}active{% endif %}">
         <i class="bi bi-graph-up-arrow me-2"></i> {{ sidebar_label('report_bizpl', 'Business P&L') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'reports','enable') and not module_hidden('reports') %}
-      <li><a href="/reports/lot-pl" class="nav-link {% if '/reports/lot' in request.url.path %}active{% endif %}">
+      <li data-sb="/reports/lot-pl" style="order: {{ sb_order('/reports/lot-pl') }}"><a href="/reports/lot-pl" class="nav-link {% if '/reports/lot' in request.url.path %}active{% endif %}">
         <i class="bi bi-graph-up me-2"></i> {{ sidebar_label('reports', 'Lot P&L') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'report_sales','enable') and not module_hidden('report_sales') %}
-      <li><a href="/reports/sales" class="nav-link {% if '/reports/sales' in request.url.path %}active{% endif %}">
+      <li data-sb="/reports/sales" style="order: {{ sb_order('/reports/sales') }}"><a href="/reports/sales" class="nav-link {% if '/reports/sales' in request.url.path %}active{% endif %}">
         <i class="bi bi-bar-chart me-2"></i> {{ sidebar_label('report_sales', 'Sales Report') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'report_daily_stock','enable') and not module_hidden('report_daily_stock') %}
-      <li><a href="/reports/daily-stock" class="nav-link {% if '/reports/daily-stock' in request.url.path %}active{% endif %}">
+      <li data-sb="/reports/daily-stock" style="order: {{ sb_order('/reports/daily-stock') }}"><a href="/reports/daily-stock" class="nav-link {% if '/reports/daily-stock' in request.url.path %}active{% endif %}">
         <i class="bi bi-box-seam me-2"></i> {{ sidebar_label('report_daily_stock', 'Daily Stock') }}
       </a></li>
       {% endif %}
       {% if has_perm(role,'report_stage','enable') and not module_hidden('report_stage') %}
-      <li><a href="/reports/stage-movement" class="nav-link {% if '/reports/stage' in request.url.path %}active{% endif %}">
+      <li data-sb="/reports/stage-movement" style="order: {{ sb_order('/reports/stage-movement') }}"><a href="/reports/stage-movement" class="nav-link {% if '/reports/stage' in request.url.path %}active{% endif %}">
         <i class="bi bi-shuffle me-2"></i> {{ sidebar_label('report_stage', 'Stage Log') }}
       </a></li>
       {% endif %}
@@ -769,16 +779,14 @@
              or has_explicit_perm(role, 'admin_settings')
              or has_explicit_perm(role, 'admin_users')
              or has_explicit_perm(role, 'admin_master')
-             or has_explicit_perm(role, 'move_device_internal')
-             or has_explicit_perm(role, 'sidebar_config')
-             or has_explicit_perm(role, 'landing_pages')
+             or has_explicit_perm(role, 'extra_settings')
              or has_explicit_perm(role, 'company_settings')
              or has_explicit_perm(role, 'attendance_config')) and not module_hidden('admin_settings') %}
       {% if admin_settings_visible %}
-      <li class="nav-section">ADMIN</li>
+      <li class="nav-section" data-sb="sec:ADMIN" style="order: {{ sb_order('sec:ADMIN') }}">ADMIN</li>
 
-      {% set admin_settings_active = '/admin/users' in request.url.path or '/admin/master' in request.url.path or '/repair/move' in request.url.path or '/admin/sidebar-config' in request.url.path or '/admin/landing-pages' in request.url.path or '/admin/company-settings' in request.url.path or '/admin/attendance-config' in request.url.path %}
-      <li class="nav-item">
+      {% set admin_settings_active = '/admin/users' in request.url.path or '/admin/master' in request.url.path or '/admin/extra-settings' in request.url.path or '/admin/company-settings' in request.url.path or '/admin/attendance-config' in request.url.path %}
+      <li class="nav-item" data-sb="#adminSettingsCollapse" style="order: {{ sb_order('#adminSettingsCollapse') }}">
         <a href="#adminSettingsCollapse" class="nav-link d-flex align-items-center {% if admin_settings_active %}active{% endif %}"
            data-bs-toggle="collapse" role="button"
            aria-expanded="{{ 'true' if admin_settings_active else 'false' }}" aria-controls="adminSettingsCollapse">
@@ -788,7 +796,7 @@
         <div class="collapse {% if admin_settings_active %}show{% endif %}" id="adminSettingsCollapse">
           <ul class="nav flex-column ps-3 pb-1">
             {% if has_explicit_perm(role, 'admin_users') and not module_hidden('admin_users') %}
-            <li><a href="/admin/users" class="nav-link py-1 small {% if '/admin/users' in request.url.path %}active{% endif %}">
+            <li data-sb="/admin/users" style="order: {{ sb_order('/admin/users') }}"><a href="/admin/users" class="nav-link py-1 small {% if '/admin/users' in request.url.path %}active{% endif %}">
               <i class="bi bi-people me-2"></i> {{ sidebar_label('admin_users', 'Users') }}
             </a></li>
             {% endif %}
@@ -796,23 +804,16 @@
                page the Global Visibility toggle itself lives on, so hiding it
                would strand admin with no UI path to undo the hide. #}
             {% if has_explicit_perm(role, 'admin_master') %}
-            <li><a href="/admin/master" class="nav-link py-1 small {% if '/admin/master' in request.url.path %}active{% endif %}">
+            <li data-sb="/admin/master" style="order: {{ sb_order('/admin/master') }}"><a href="/admin/master" class="nav-link py-1 small {% if '/admin/master' in request.url.path %}active{% endif %}">
               <i class="bi bi-database-gear me-2"></i> {{ sidebar_label('admin_master', 'Master Data') }}
             </a></li>
             {% endif %}
-            {% if has_explicit_perm(role, 'move_device_internal') and not module_hidden('move_device_internal') %}
-            <li><a href="/repair/move/form" class="nav-link py-1 small {% if '/repair/move' in request.url.path %}active{% endif %}">
-              <i class="bi bi-arrow-left-right me-2"></i> {{ sidebar_label('move_device_internal', 'Move Device Internal') }}
-            </a></li>
-            {% endif %}
-            {% if has_explicit_perm(role, 'sidebar_config') and not module_hidden('sidebar_config') %}
-            <li><a href="/admin/sidebar-config/" class="nav-link py-1 small {% if '/admin/sidebar-config' in request.url.path %}active{% endif %}">
-              <i class="bi bi-list-ul me-2"></i> {{ sidebar_label('sidebar_config', 'Sidebar Config') }}
-            </a></li>
-            {% endif %}
-            {% if has_explicit_perm(role, 'landing_pages') and not module_hidden('landing_pages') %}
-            <li><a href="/admin/landing-pages" class="nav-link py-1 small {% if '/admin/landing-pages' in request.url.path %}active{% endif %}">
-              <i class="bi bi-layout-text-sidebar me-2"></i> {{ sidebar_label('landing_pages', 'Module Page Titles') }}
+            {# Extra Settings (2026-11-16, Pankaj): System Colors, Email, Sidebar
+               Config, Sidebar Alignment and Page Title Config in one page —
+               admin only unless ticked in the Permission Matrix. #}
+            {% if has_explicit_perm(role, 'extra_settings') and not module_hidden('extra_settings') %}
+            <li data-sb="/admin/extra-settings" style="order: {{ sb_order('/admin/extra-settings') }}"><a href="/admin/extra-settings" class="nav-link py-1 small {% if '/admin/extra-settings' in request.url.path %}active{% endif %}">
+              <i class="bi bi-gear-wide-connected me-2"></i> {{ sidebar_label('extra_settings', 'Extra Settings') }}
             </a></li>
             {% endif %}
             {# "/admin/company-settings" retired in favor of the multi-company
@@ -820,7 +821,7 @@
                having two separate Company Settings surfaces was the source of
                "added company not showing" confusion. #}
             {% if has_explicit_perm(role, 'attendance_config') and not module_hidden('attendance_config') %}
-            <li><a href="/admin/attendance-config" class="nav-link py-1 small {% if '/admin/attendance-config' in request.url.path %}active{% endif %}">
+            <li data-sb="/admin/attendance-config" style="order: {{ sb_order('/admin/attendance-config') }}"><a href="/admin/attendance-config" class="nav-link py-1 small {% if '/admin/attendance-config' in request.url.path %}active{% endif %}">
               <i class="bi bi-people me-2"></i> {{ sidebar_label('attendance_config', 'Group Config') }}
             </a></li>
             {% endif %}
@@ -844,8 +845,8 @@
       {% set _qa_uat = _qp.startswith('/qa/uat') or _qp.startswith('/qa/requirements') or _qp.startswith('/qa/test-cases') or _qp.startswith('/qa/defects') %}
       {% set _qa_ux = _qp.startswith('/qa/workflow') or _qp.startswith('/qa/journeys') or _qp.startswith('/qa/database-diagram') or _qp.startswith('/qa/stage-workflows') %}
       {% set _qa_on = _qp.startswith('/qa') %}
-      {% if not admin_settings_visible %}<li class="nav-section">PRODUCT</li>{% endif %}
-      <li class="nav-item">
+      {% if not admin_settings_visible %}<li class="nav-section" data-sb="sec:PRODUCT" style="order: {{ sb_order('sec:PRODUCT') }}">PRODUCT</li>{% endif %}
+      <li class="nav-item" data-sb="#productMgmtCollapse" style="order: {{ sb_order('#productMgmtCollapse') }}">
         <a href="#productMgmtCollapse" class="nav-link d-flex align-items-center {% if _qa_on %}active{% endif %}"
            data-bs-toggle="collapse" role="button"
            aria-expanded="{{ 'true' if _qa_on else 'false' }}" aria-controls="productMgmtCollapse">
@@ -854,13 +855,13 @@
         </a>
         <div class="collapse {% if _qa_on %}show{% endif %}" id="productMgmtCollapse">
           <ul class="nav flex-column ps-3 pb-1">
-            {% if _pm_dash %}<li><a href="/qa/" class="nav-link py-1 small {% if _qa_on and not _qa_uat and not _qa_ux %}active{% endif %}">
+            {% if _pm_dash %}<li data-sb="/qa/" style="order: {{ sb_order('/qa/') }}"><a href="/qa/" class="nav-link py-1 small {% if _qa_on and not _qa_uat and not _qa_ux %}active{% endif %}">
               <i class="bi bi-speedometer2 me-2"></i> QA Dashboard
             </a></li>{% endif %}
-            {% if _pm_uat %}<li><a href="/qa/uat" class="nav-link py-1 small {% if _qa_uat %}active{% endif %}">
+            {% if _pm_uat %}<li data-sb="/qa/uat" style="order: {{ sb_order('/qa/uat') }}"><a href="/qa/uat" class="nav-link py-1 small {% if _qa_uat %}active{% endif %}">
               <i class="bi bi-person-check me-2"></i> UAT Analysis
             </a></li>{% endif %}
-            {% if _pm_ux %}<li><a href="/qa/workflow" class="nav-link py-1 small {% if _qa_ux %}active{% endif %}">
+            {% if _pm_ux %}<li data-sb="/qa/workflow" style="order: {{ sb_order('/qa/workflow') }}"><a href="/qa/workflow" class="nav-link py-1 small {% if _qa_ux %}active{% endif %}">
               <i class="bi bi-signpost-2 me-2"></i> UX Journeys
             </a></li>{% endif %}
           </ul>
@@ -877,13 +878,13 @@
          here from the REPORTS section. Move Device Internal / Sidebar Config /
          Module Page Titles / Company Settings / Attendance Config moved to the
          Admin Settings accordion; Terms & Conditions moved to the CRM section. #}
-      {% set app_settings_active = '/stage-control' in request.url.path or '/admin/audit-log' in request.url.path or '/reports/stock-aging' in request.url.path or '/reports/overdue' in request.url.path or '/reports/receivables' in request.url.path or '/market' in request.url.path or '/purchase' in request.url.path or '/ram' in request.url.path or '/consume' in request.url.path %}
-      {% if role == 'admin' or has_perm(role,'spare_parts_purchase','enable') and not module_hidden('spare_parts_purchase') or has_perm(role,'parts_tracking','enable') and not module_hidden('parts_tracking') or has_perm(role,'parts_consumption','enable') and not module_hidden('parts_consumption')
+      {% set app_settings_active = '/repair/move' in request.url.path or '/stage-control' in request.url.path or '/admin/audit-log' in request.url.path or '/reports/stock-aging' in request.url.path or '/reports/overdue' in request.url.path or '/reports/receivables' in request.url.path or '/market' in request.url.path or '/purchase' in request.url.path or '/ram' in request.url.path or '/consume' in request.url.path %}
+      {% if role == 'admin' or has_explicit_perm(role, 'move_device_internal') and not module_hidden('move_device_internal') or has_perm(role,'spare_parts_purchase','enable') and not module_hidden('spare_parts_purchase') or has_perm(role,'parts_tracking','enable') and not module_hidden('parts_tracking') or has_perm(role,'parts_consumption','enable') and not module_hidden('parts_consumption')
             or has_perm(role,'stage_control','enable') and not module_hidden('stage_control') or has_perm(role,'aging_tracker','enable') and not module_hidden('aging_tracker')
             or has_perm(role,'stage_audit_log','enable') and not module_hidden('stage_audit_log') or has_perm(role,'system_audit_log','enable') and not module_hidden('system_audit_log')
             or has_perm(role,'report_aging','enable') and not module_hidden('report_aging') or has_perm(role,'report_overdue','enable') and not module_hidden('report_overdue')
             or has_perm(role,'report_receivables','enable') and not module_hidden('report_receivables') or has_perm(role,'market','enable') and not module_hidden('market') %}
-      <li class="nav-item">
+      <li class="nav-item" data-sb="#appSettingsCollapse" style="order: {{ sb_order('#appSettingsCollapse') }}">
         <a href="#appSettingsCollapse" class="nav-link d-flex align-items-center {% if app_settings_active %}active{% endif %}"
            data-bs-toggle="collapse" role="button"
            aria-expanded="{{ 'true' if app_settings_active else 'false' }}"
@@ -894,44 +895,50 @@
         </a>
         <div class="collapse {% if app_settings_active %}show{% endif %}" id="appSettingsCollapse">
           <ul class="nav flex-column ps-3 pb-1">
+            {# Move Device Internal ("Change Stages") moved here from Admin Settings (2026-11-16, Pankaj) #}
+            {% if has_explicit_perm(role, 'move_device_internal') and not module_hidden('move_device_internal') %}
+            <li data-sb="/repair/move/form" style="order: {{ sb_order('/repair/move/form') }}"><a href="/repair/move/form" class="nav-link py-1 small {% if '/repair/move' in request.url.path %}active{% endif %}">
+              <i class="bi bi-arrow-left-right me-2"></i> {{ sidebar_label('move_device_internal', 'Move Device Internal') }}
+            </a></li>
+            {% endif %}
             {% if role == 'admin' or has_perm(role,'stage_control','enable') and not module_hidden('stage_control') %}
-            <li><a href="/stage-control" class="nav-link py-1 small {% if request.url.path == '/stage-control' %}active{% endif %}">
+            <li data-sb="/stage-control" style="order: {{ sb_order('/stage-control') }}"><a href="/stage-control" class="nav-link py-1 small {% if request.url.path == '/stage-control' %}active{% endif %}">
               <i class="bi bi-diagram-3 me-2"></i> {{ sidebar_label('stage_control', 'Stage Control') }}
             </a></li>
             {% endif %}
             {% if role == 'admin' or has_perm(role,'aging_tracker','enable') and not module_hidden('aging_tracker') %}
-            <li><a href="/stage-control/aging" class="nav-link py-1 small {% if '/stage-control/aging' in request.url.path %}active{% endif %}">
+            <li data-sb="/stage-control/aging" style="order: {{ sb_order('/stage-control/aging') }}"><a href="/stage-control/aging" class="nav-link py-1 small {% if '/stage-control/aging' in request.url.path %}active{% endif %}">
               <i class="bi bi-hourglass-split me-2"></i> {{ sidebar_label('aging_tracker', 'Aging Tracker') }}
             </a></li>
             {% endif %}
             {% if role == 'admin' or has_perm(role,'stage_audit_log','enable') and not module_hidden('stage_audit_log') %}
-            <li><a href="/stage-control/audit" class="nav-link py-1 small {% if '/stage-control/audit' in request.url.path %}active{% endif %}">
+            <li data-sb="/stage-control/audit" style="order: {{ sb_order('/stage-control/audit') }}"><a href="/stage-control/audit" class="nav-link py-1 small {% if '/stage-control/audit' in request.url.path %}active{% endif %}">
               <i class="bi bi-journal-text me-2"></i> {{ sidebar_label('stage_audit_log', 'Stage Audit Log') }}
             </a></li>
             {% endif %}
             {% if role == 'admin' or has_perm(role,'system_audit_log','enable') and not module_hidden('system_audit_log') %}
-            <li><a href="/admin/audit-log" class="nav-link py-1 small {% if '/admin/audit-log' in request.url.path %}active{% endif %}">
+            <li data-sb="/admin/audit-log" style="order: {{ sb_order('/admin/audit-log') }}"><a href="/admin/audit-log" class="nav-link py-1 small {% if '/admin/audit-log' in request.url.path %}active{% endif %}">
               <i class="bi bi-shield-check me-2"></i> {{ sidebar_label('system_audit_log', 'System Audit Log') }}
             </a></li>
             {% endif %}
             {# ── Reports relocated from REPORTS section ── #}
             {% if has_perm(role,'report_aging','enable') and not module_hidden('report_aging') %}
-            <li><a href="/reports/stock-aging" class="nav-link py-1 small {% if '/reports/stock-aging' in request.url.path %}active{% endif %}">
+            <li data-sb="/reports/stock-aging" style="order: {{ sb_order('/reports/stock-aging') }}"><a href="/reports/stock-aging" class="nav-link py-1 small {% if '/reports/stock-aging' in request.url.path %}active{% endif %}">
               <i class="bi bi-hourglass-split me-2"></i> {{ sidebar_label('report_aging', 'Stock Aging') }}
             </a></li>
             {% endif %}
             {% if has_perm(role,'report_overdue','enable') and not module_hidden('report_overdue') %}
-            <li><a href="/reports/overdue" class="nav-link py-1 small {% if '/reports/overdue' in request.url.path %}active{% endif %}">
+            <li data-sb="/reports/overdue" style="order: {{ sb_order('/reports/overdue') }}"><a href="/reports/overdue" class="nav-link py-1 small {% if '/reports/overdue' in request.url.path %}active{% endif %}">
               <i class="bi bi-exclamation-triangle me-2"></i> {{ sidebar_label('report_overdue', 'Overdue Devices') }}
             </a></li>
             {% endif %}
             {% if has_perm(role,'report_receivables','enable') and not module_hidden('report_receivables') %}
-            <li><a href="/reports/receivables" class="nav-link py-1 small {% if '/reports/receivables' in request.url.path %}active{% endif %}">
+            <li data-sb="/reports/receivables" style="order: {{ sb_order('/reports/receivables') }}"><a href="/reports/receivables" class="nav-link py-1 small {% if '/reports/receivables' in request.url.path %}active{% endif %}">
               <i class="bi bi-hourglass-split me-2 text-warning"></i> {{ sidebar_label('report_receivables', 'Receivables') }}
             </a></li>
             {% endif %}
             {% if has_perm(role,'market','enable') and not module_hidden('market') %}
-            <li><a href="/market" class="nav-link py-1 small {% if request.url.path.startswith('/market') %}active{% endif %}">
+            <li data-sb="/market" style="order: {{ sb_order('/market') }}"><a href="/market" class="nav-link py-1 small {% if request.url.path.startswith('/market') %}active{% endif %}">
               <i class="bi bi-graph-up-arrow me-2"></i> {{ sidebar_label('market', 'Market Intel') }}
             </a></li>
             {% endif %}
@@ -943,17 +950,17 @@
             {% endif %}
             #}
             {% if has_perm(role,'spare_parts_purchase','enable') and not module_hidden('spare_parts_purchase') %}
-            <li><a href="/spare-parts/purchase" class="nav-link py-1 small {% if '/purchase' in request.url.path %}active{% endif %}">
+            <li data-sb="/spare-parts/purchase" style="order: {{ sb_order('/spare-parts/purchase') }}"><a href="/spare-parts/purchase" class="nav-link py-1 small {% if '/purchase' in request.url.path %}active{% endif %}">
               <i class="bi bi-bag-plus me-2"></i> {{ sidebar_label('spare_parts_purchase', 'Parts Purchased') }}
             </a></li>
             {% endif %}
             {% if has_perm(role,'parts_tracking','enable') and not module_hidden('parts_tracking') %}
-            <li><a href="/ram-tracking" class="nav-link py-1 small {% if '/ram' in request.url.path %}active{% endif %}">
+            <li data-sb="/ram-tracking" style="order: {{ sb_order('/ram-tracking') }}"><a href="/ram-tracking" class="nav-link py-1 small {% if '/ram' in request.url.path %}active{% endif %}">
               <i class="bi bi-memory me-2"></i> {{ sidebar_label('parts_tracking', 'Parts Tracking') }}
             </a></li>
             {% endif %}
             {% if has_perm(role,'parts_consumption','enable') and not module_hidden('parts_consumption') %}
-            <li><a href="/spare-parts/consume" class="nav-link py-1 small {% if '/consume' in request.url.path %}active{% endif %}">
+            <li data-sb="/spare-parts/consume" style="order: {{ sb_order('/spare-parts/consume') }}"><a href="/spare-parts/consume" class="nav-link py-1 small {% if '/consume' in request.url.path %}active{% endif %}">
               <i class="bi bi-dash-circle me-2"></i> {{ sidebar_label('parts_consumption', 'Parts Consumption') }}
             </a></li>
             {% endif %}
@@ -964,8 +971,8 @@
 
       {# ── SUPPORT — visible to all roles. Alerts sits first, before
          Tickets Raised (2026-10-31; it had its own NOTIFICATIONS section). ── #}
-      <li class="nav-section">SUPPORT</li>
-      <li>
+      <li class="nav-section" data-sb="sec:SUPPORT" style="order: {{ sb_order('sec:SUPPORT') }}">SUPPORT</li>
+      <li data-sb="/notifications/alerts" style="order: {{ sb_order('/notifications/alerts') }}">
         <a href="/notifications/alerts" class="nav-link {% if '/notifications/alerts' in request.url.path %}active{% endif %} d-flex align-items-center">
           <i class="bi bi-bell me-2"></i> Alerts
           <span id="sidebarNotifBadge" class="badge rounded-pill bg-danger ms-auto d-none" style="font-size:0.65rem">0</span>
@@ -974,18 +981,18 @@
       {# Ticket Board (2026-11-13, Pankaj): helpdesk for raised tickets; admin
          only unless ticked in the Permission Matrix. #}
       {% if has_perm(role,'ticket_board','enable') and not module_hidden('ticket_board') %}
-      <li>
+      <li data-sb="/ticket-board/dashboard" style="order: {{ sb_order('/ticket-board/dashboard') }}">
         <a href="/ticket-board/dashboard" class="nav-link {% if request.url.path.startswith('/ticket-board') %}active{% endif %}">
           <i class="bi bi-kanban me-2"></i> Ticket Board
         </a>
       </li>
       {% endif %}
-      <li>
+      <li data-sb="/tickets" style="order: {{ sb_order('/tickets') }}">
         <a href="/tickets" class="nav-link {% if request.url.path.startswith('/tickets') %}active{% endif %}">
           <i class="bi bi-ticket-detailed me-2"></i> Tickets Raised
         </a>
       </li>
-      <li>
+      <li data-sb="/manuals/" style="order: {{ sb_order('/manuals/') }}">
         <a href="/manuals/" class="nav-link {% if request.url.path.startswith('/manuals') %}active{% endif %}">
           <i class="bi bi-book me-2"></i> {{ sidebar_label('manuals', 'Manuals') }}
         </a>
@@ -1245,6 +1252,7 @@ $.extend(true, $.fn.dataTable.defaults, {
 <!-- Global Filter fields: one-box date range + search in multi-selects. -->
 <script src="/static/vendor/flatpickr/flatpickr.min.js"></script>
 <script src="/static/js/filter-fields.js?v={{ ASSET_VERSION }}"></script>
+<script src="/static/js/dash.js?v={{ ASSET_VERSION }}"></script>
 <script src="/static/js/barcode.js"></script>
 <!-- Form draft auto-save: persists in-progress form entry to the browser so a
      crash / network drop / accidental reload doesn't lose typed data. Loads on
@@ -1256,7 +1264,8 @@ $.extend(true, $.fn.dataTable.defaults, {
      page calls initGlobalTable(...) from its own page-specific scripts block below. -->
 <script src="/static/js/date-export.js?v={{ ASSET_VERSION }}"></script>{# shared date + export format (2026-11-04) #}
 <script src="/static/js/global-table.js?v={{ ASSET_VERSION }}"></script>
-<script src="/static/js/pill-counts.js?v={{ ASSET_VERSION }}"></script>{# "<tab> - <count>" on every pill tab (2026-11-11) #}
+<script src="/static/js/pill-counts.js?v={{ ASSET_VERSION }}"></script>
+<script src="/static/js/secondary-table.js?v={{ ASSET_VERSION }}"></script>{# Global Secondary Table: sort / total row (2026-11-14) #}{# "<tab> - <count>" on every pill tab (2026-11-11) #}
 <!-- Top-bar Search / Scan Tag Number (2026-10-24). -->
 <script src="/static/js/topbar-search.js?v={{ ASSET_VERSION }}"></script>
 <script src="/static/js/quick-add.js?v={{ ASSET_VERSION }}"></script>{# top-bar "+" menu (2026-11-08) #}
@@ -1295,6 +1304,12 @@ $.extend(true, $.fn.dataTable.defaults, {
           <input type="text" class="form-control form-control-sm bg-light"
                  value="{{ current_user.username }}" readonly>
         </div>
+        {# Subject (2026-11-14, Pankaj): a short title above the description. #}
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" for="ticketSubject">Subject <span class="text-danger">*</span></label>
+          <input type="text" id="ticketSubject" class="form-control form-control-sm" maxlength="200"
+                 placeholder="Short summary, e.g. Excel export missing rows">
+        </div>
         <div class="mb-1">
           <label class="form-label small fw-semibold">Feedback / Issue Description <span class="text-danger">*</span></label>
           <textarea id="ticketFeedback" class="form-control" rows="6"
@@ -1326,18 +1341,24 @@ $.extend(true, $.fn.dataTable.defaults, {
   // Clear modal state each time it opens
   document.getElementById('raiseTicketModal')?.addEventListener('show.bs.modal', function () {
     document.getElementById('ticketFeedback').value = '';
+    document.getElementById('ticketSubject').value = '';
     document.getElementById('ticketPhotos').value = '';
     document.getElementById('ticketError').textContent = '';
   });
   // Focus textarea after animation completes
   document.getElementById('raiseTicketModal')?.addEventListener('shown.bs.modal', function () {
-    document.getElementById('ticketFeedback').focus();
+    document.getElementById('ticketSubject').focus();
   });
 
   window.submitRaiseTicket = async function () {
     var feedback = (document.getElementById('ticketFeedback').value || '').trim();
+    var subject = (document.getElementById('ticketSubject').value || '').trim();
     var errEl = document.getElementById('ticketError');
     errEl.textContent = '';
+    if (!subject) {
+      errEl.textContent = 'Please enter a subject.';
+      return;
+    }
     if (!feedback) {
       errEl.textContent = 'Please enter feedback before submitting.';
       return;
@@ -1356,6 +1377,7 @@ $.extend(true, $.fn.dataTable.defaults, {
     }
     var fd = new FormData();
     fd.append('feedback', feedback);
+    fd.append('subject', subject);
     fd.append('csrf_token', csrfToken());
     for (var i = 0; i < files.length; i++) fd.append('photos', files[i]);
     try {
@@ -1741,6 +1763,8 @@ $.extend(true, $.fn.dataTable.defaults, {
    ?warning= query params render, for pages that save without reloading.
    type = 'success' | 'danger' | 'warning'. Text only (no HTML). */
 window.showFlash = function (type, message) {
+  // Success → toast top centre (2026-11-16, Pankaj); errors / warnings stay banners
+  if (type === 'success' && window.showTopToast) { window.showTopToast('success', message); return; }
   var box = document.getElementById('flashMessages');
   if (!box) return;
   var icon = { success: 'bi-check-circle', danger: 'bi-exclamation-circle', warning: 'bi-exclamation-triangle' }[type] || 'bi-info-circle';

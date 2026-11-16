@@ -285,7 +285,7 @@ async def pre_sale_iqc_data(request: Request, draw: int = 1, start: int = 0, len
 
 # ── Assign to Pre-Sale (Ready for Sale Tags bulk action, 2026-10-29) ────────
 @router.post("/pre-sale-iqc/assign", dependencies=[Depends(verify_csrf)])
-async def pre_sale_iqc_assign(request: Request, barcodes: str = Form(""),
+async def pre_sale_iqc_assign(request: Request, barcodes: str = Form(""), notes: str = Form(""),
                               db: AsyncSession = Depends(get_db),
                               current_user: User = Depends(get_current_user)):
     """Open to everyone who can see Ready for Sale (2026-10-30 — that page
@@ -294,8 +294,10 @@ async def pre_sale_iqc_assign(request: Request, barcodes: str = Form(""),
     unassigned PSQC- WorkID each. Tags already queued (pending / in
     progress) are skipped; a tag whose last Pre-Sale IQC is completed gets
     a new WorkID — a fresh start (back in the Assigned tab, no old parts).
-    Nothing else about the tag changes."""
+    Nothing else about the tag changes. notes (2026-11-14): optional text
+    from the assign modal, kept on each new WorkID (WorkOrder.notes)."""
     from routers.repair import _create_work_order_with_unique_id
+    notes = (notes or "").strip()[:2000] or None
     bcs = _barcode_list(barcodes)
     devs = {}
     for i in range(0, len(bcs), 5000):
@@ -320,7 +322,7 @@ async def pre_sale_iqc_assign(request: Request, barcodes: str = Form(""),
         else:
             await _create_work_order_with_unique_id(
                 db, WID_PREFIX, device_id=d.id, barcode=d.barcode, stage=STAGE_CODE,
-                status="pending", assigned_at=now,
+                status="pending", assigned_at=now, notes=notes,
                 requested_by_name=current_user.full_name or current_user.username,
                 created_by=current_user.username)
             queued.add(d.id)
@@ -328,7 +330,8 @@ async def pre_sale_iqc_assign(request: Request, barcodes: str = Form(""),
     if out["assigned"]:
         await audit(db, user=current_user, action="PRE_SALE_IQC_ASSIGNED", table_name="work_orders",
                     record_id=f"{len(out['assigned'])} tags",
-                    new_value={"tags": out["assigned"][:500], "count": len(out["assigned"])}, request=request)
+                    new_value={"tags": out["assigned"][:500], "count": len(out["assigned"]),
+                               **({"notes": notes} if notes else {})}, request=request)
     await db.commit()
     return JSONResponse({"ok": True, **{k: len(v) for k, v in out.items()},
                          "not_ready_tags": out["not_ready"][:50], "not_found_tags": out["not_found"][:50]})
@@ -586,3 +589,19 @@ async def pre_sale_iqc_cancel(request: Request, barcode: str = Form(...),
                 request=request)
     await db.commit()
     return JSONResponse({"ok": True, "cancelled": res.rowcount or 0})
+
+
+async def psiqc_notes_map(db: AsyncSession, device_ids) -> dict:
+    """{str(device_id): notes} — the newest Pre-Sale IQC WorkID notes per tag
+    (2026-11-14). "Start again" opens a WorkID without notes, so the newest
+    WorkID that has notes is used."""
+    out = {}
+    ids = [d for d in device_ids if d]
+    for i in range(0, len(ids), 5000):
+        for did, n in (await db.execute(
+                select(WorkOrder.device_id, WorkOrder.notes)
+                .where(WorkOrder.device_id.in_(ids[i:i + 5000]), WorkOrder.stage == STAGE_CODE,
+                       WorkOrder.notes.isnot(None), WorkOrder.notes != "")
+                .order_by(WorkOrder.created_at.asc()))).all():
+            out[str(did)] = n
+    return out

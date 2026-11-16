@@ -45,6 +45,11 @@ _VERSIONED_ASSETS = [
     # Global toast (2026-10-31) — tagged ?v= in base.html but was missing here,
     # so editing it alone never busted a browser cache (found 2026-11-04).
     os.path.join(BASE_DIR, "static", "js", "toast.js"),
+    # Option C dashboard kit (2026-11-16): tagged ?v= in base.html but missing
+    # here, so the Product Master pipeline strip showed unstyled from a cached
+    # dash.css after an update.
+    os.path.join(BASE_DIR, "static", "css", "dash.css"),
+    os.path.join(BASE_DIR, "static", "js", "dash.js"),
 ]
 try:
     ASSET_VERSION = str(int(max(
@@ -408,6 +413,9 @@ templates.env.globals["can_set_price"] = _can_set_price
 templates.env.globals["breadcrumb_enabled"] = _breadcrumb_enabled
 templates.env.globals["module_hidden"] = _module_hidden
 templates.env.globals["sidebar_label"] = _sidebar_label
+# Sidebar Alignment (2026-11-16): CSS order of each sidebar <li> — services/sidebar_layout.py
+from services.sidebar_layout import sb_order as _sb_order  # noqa: E402
+templates.env.globals["sb_order"] = _sb_order
 templates.env.globals["resolve_page_title"] = _resolve_page_title
 
 from models.qa_uat import get_cached_app_version as _get_cached_app_version
@@ -506,3 +514,32 @@ def _parts_badge(badges, device_id):
 
 
 templates.env.globals["parts_badge"] = _parts_badge
+
+
+# ── Dashboard View (2026-11-14, Pankaj) ─────────────────────────────────────
+# One place for all 22 Option C dashboards: when the Permission Matrix's
+# Dashboard View tick is off for the page's module, the dashboard data is left
+# out of the response (services/dash_access.py); the page's own content then
+# shows on its own (static/css/dash.css: a .dash with no .dash-kpis shows
+# .dash-data and hides the View Data toggle).
+_orig_template_response = templates.TemplateResponse
+
+
+def _dash_aware_template_response(*args, **kwargs):
+    try:
+        ctx = args[1] if len(args) > 1 and isinstance(args[1], dict) else kwargs.get("context")
+        if isinstance(ctx, dict) and any(k in ctx for k in ("dash_kpis", "dash_widgets")):
+            req, user = ctx.get("request"), ctx.get("current_user")
+            if req is not None and user is not None:
+                from services.dash_access import dashboard_allowed, DASH_KEYS
+                if not dashboard_allowed(user, req.url.path):
+                    for k in DASH_KEYS:
+                        if k in ctx:
+                            ctx[k] = []
+                    ctx["dash_off"] = True
+    except Exception:
+        pass
+    return _orig_template_response(*args, **kwargs)
+
+
+templates.TemplateResponse = _dash_aware_template_response

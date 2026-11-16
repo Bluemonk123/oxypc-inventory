@@ -1,0 +1,84 @@
+{# Email tab (2026-11-09, Pankaj) — moved from Master Data to Extra Settings
+   (2026-11-16). Personal notifications also emailed; main + backup mailbox. #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent d-flex align-items-center gap-2" data-show-header>
+    <span class="fw-semibold"><i class="bi bi-envelope me-2"></i>Email Notifications</span>
+    {% if em_configured %}<span class="badge bg-success ms-auto">On</span>{% else %}<span class="badge bg-secondary ms-auto">Not set up</span>{% endif %}
+  </div>
+  <div class="card-body">
+    <p class="mb-2">Every personal notification is also emailed (User Management → Email) to: the <b>Assignee</b>, the <b>Assigner</b>
+      (who did the action), the Assignee's <b>Report To</b> manager and the Assigner's <b>Report To</b> manager — each person once.
+      Notifications for everyone stay in the app only.</p>
+    <p class="mb-0 text-muted small">One mailbox can send to any address (Gmail, Outlook / Microsoft 365, company mail). The backup mailbox is
+      used automatically when the main one fails to send. {{ em_with_email }} of {{ em_active }} active users have an email.
+      {% if em_public_url %}Emails link to {{ em_public_url }}.{% endif %}</p>
+  </div>
+</div>
+<div class="row g-3">
+  {% for b in em_boxes %}
+  <div class="col-lg-6">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent d-flex align-items-center gap-2" data-show-header>
+        <span class="fw-semibold"><i class="bi bi-{{ 'envelope-check' if b.key == 'main' else 'envelope-arrow-up' }} me-2"></i>{{ b.label }}</span>
+        {% if b.ready %}<span class="badge bg-success ms-auto">Connected</span>{% else %}<span class="badge bg-secondary ms-auto">Not set up</span>{% endif %}
+      </div>
+      <div class="card-body">
+        {% if b.ready %}
+        <table class="table table-sm mb-3">
+          <tr><th class="text-muted fw-normal" style="width:40%">Mail server</th><td>{{ b.host }}:{{ b.port }} · {{ b.security | upper }}</td></tr>
+          <tr><th class="text-muted fw-normal">Mailbox (login)</th><td>{{ b.user or '—' }}</td></tr>
+          <tr><th class="text-muted fw-normal">Password</th><td>{{ 'Set' if b.has_password else 'Not set' }}</td></tr>
+          <tr><th class="text-muted fw-normal">Sent from</th><td>{{ b.from }}</td></tr>
+        </table>
+        <form method="post" action="/admin/master/email/test" class="d-flex flex-wrap gap-2 align-items-center">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <input type="hidden" name="box" value="{{ b.key }}">
+          <input type="email" name="to" id="emTo_{{ b.key }}" class="form-control form-control-sm" style="max-width:280px"
+                 value="{{ current_user.email or '' }}" placeholder="Send the test to…">
+          <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-send me-1"></i>Send test email</button>
+        </form>
+        <a class="small text-decoration-none" data-bs-toggle="collapse" href="#emEdit_{{ b.key }}" role="button"><i class="bi bi-pencil-square me-1"></i>Edit settings</a>
+        {% else %}
+        <p class="small mb-2">{{ 'Fill in the company mailbox and Save — emails start at once, no restart.' if b.key == 'main' else 'Optional. Used only when the main mailbox fails to send.' }}</p>
+        {% endif %}
+        {# Saved into the server's .env (services/env_settings.py, 2026-11-11). The password is never shown. #}
+        <form method="post" action="/admin/master/email/settings" class="{{ 'collapse mt-3' if b.ready else '' }} border-top pt-3" id="emEdit_{{ b.key }}" autocomplete="off">
+          <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+          <input type="hidden" name="box" value="{{ b.key }}">
+          <div class="row g-2">
+            <div class="col-8"><label class="form-label small fw-semibold mb-0">Mail server</label>
+              <input type="text" name="host" class="form-control form-control-sm" value="{{ b.host }}" list="emHosts" placeholder="smtp.office365.com / smtp.gmail.com" required></div>
+            <div class="col-4"><label class="form-label small fw-semibold mb-0">Port</label>
+              <input type="number" name="port" class="form-control form-control-sm" value="{{ b.port if b.host else 587 }}" min="1" max="65535"></div>
+            <div class="col-6"><label class="form-label small fw-semibold mb-0">Mailbox (login)</label>
+              <input type="text" name="user" class="form-control form-control-sm" value="{{ b.user }}" placeholder="erp@oxypc.in" autocomplete="off"></div>
+            <div class="col-6"><label class="form-label small fw-semibold mb-0">Password</label>
+              <input type="password" name="password" class="form-control form-control-sm" autocomplete="new-password"
+                     placeholder="{{ 'Leave empty to keep the current one' if b.has_password else 'Mailbox / App Password' }}"></div>
+            <div class="col-8"><label class="form-label small fw-semibold mb-0">Sent from</label>
+              <input type="text" name="from" class="form-control form-control-sm" value="{{ b.from if b.from != b.user else '' }}" placeholder="OxyPC ERP &lt;erp@oxypc.in&gt; (optional)"></div>
+            <div class="col-4"><label class="form-label small fw-semibold mb-0">Security</label>
+              <select name="security" class="form-select form-select-sm">
+                {% for v, l in [('', 'Auto'), ('starttls', 'STARTTLS'), ('ssl', 'SSL'), ('none', 'None')] %}
+                <option value="{{ v }}" {{ 'selected' if b.host and v == b.security else '' }}>{{ l }}</option>{% endfor %}
+              </select></div>
+            {% if b.key == 'main' %}
+            <div class="col-12"><label class="form-label small fw-semibold mb-0">Link in emails</label>
+              <input type="text" name="public_url" class="form-control form-control-sm" value="{{ em_public_url }}" placeholder="http://192.168.1.100:8000 (optional)"></div>
+            {% endif %}
+          </div>
+          {% if b.has_password %}<div class="form-check small mt-2"><input class="form-check-input" type="checkbox" name="clear_password" value="1" id="emClr_{{ b.key }}">
+            <label class="form-check-label" for="emClr_{{ b.key }}">Remove the saved password</label></div>{% endif %}
+          <div class="d-flex flex-wrap gap-2 mt-2 align-items-center">
+            <button type="submit" class="btn btn-sm btn-success"><i class="bi bi-save me-1"></i>Save</button>
+            {% if b.ready %}<button type="submit" name="turn_off" value="1" formnovalidate class="btn btn-sm btn-outline-danger"><i class="bi bi-power me-1"></i>Turn off</button>{% endif %}
+            <span class="small text-muted">Saved in the server's .env file; the password is never shown again.</span>
+          </div>
+          <p class="small text-muted mb-0 mt-2">Microsoft 365: smtp.office365.com · Gmail / Google Workspace: smtp.gmail.com with an App Password. Port 465 uses SSL automatically.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+<datalist id="emHosts"><option value="smtp.office365.com"><option value="smtp.gmail.com"></datalist>

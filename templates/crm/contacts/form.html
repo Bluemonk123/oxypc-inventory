@@ -77,73 +77,50 @@
 </div>
 
 <!-- ═══ SECTION 2: KYC Documents ═══ -->
+{# 2026-11-15 (Pankaj): Vendor Form added; MSME / Director 1 / Director 2 / Vendor Form
+   hidden for Buyers (.kyc-not-buyer); sample file next to each upload box (admin
+   uploads it, everyone downloads); each document's check from Accounts shown
+   under it (services/kyc_items.py). #}
+{% macro kyc_row(key, label, num_name, num_ph, file_name, doc_attr, accept='application/pdf,image/*', up_label=None, not_buyer=False, maxlen=None, extra='') %}
+{% set st = (kyc_status or {}).get(key) %}
+<div class="row g-3 align-items-end mb-3 kyc-row{% if not_buyer %} kyc-not-buyer{% endif %}" data-kyc="{{ key }}">
+  <div class="col-md-6">
+    <label class="form-label fw-semibold">{{ label }}</label>
+    <input type="text" name="{{ num_name }}" {{ extra }} class="form-control kyc-upper" style="text-transform:uppercase"
+           value="{{ (contact[num_name] or '') if contact else '' }}" placeholder="{{ num_ph }}"{% if maxlen %} maxlength="{{ maxlen }}"{% endif %}>
+    {% if num_name == 'gstin' %}<div class="invalid-feedback" id="gstinDup"></div>{% endif %}
+  </div>
+  <div class="col-md-6">
+    <label class="form-label fw-semibold d-flex align-items-center gap-2">
+      <span>{{ up_label or ('Upload ' ~ label) }}</span>
+      <span class="ms-auto d-inline-flex gap-1">
+        <a href="/crm/contacts/kyc-sample/{{ key }}" class="btn btn-sm btn-link p-0 kyc-sample-dl{% if not (kyc_samples or {}).get(key) %} d-none{% endif %}" title="Download sample file"><i class="bi bi-download"></i></a>
+        {% if kyc_is_admin %}<label class="btn btn-sm btn-link p-0 mb-0" title="Upload sample file (admin)"><i class="bi bi-cloud-upload"></i>
+          <input type="file" class="d-none kyc-sample-up" data-item="{{ key }}"></label>{% endif %}
+      </span>
+    </label>
+    <input type="file" name="{{ file_name }}" accept="{{ accept }}" class="form-control">
+    {% if contact and contact[doc_attr] %}<div class="form-text"><a href="/uploads/crm/{{ contact[doc_attr] }}" target="_blank">View current document</a></div>{% endif %}
+  </div>
+  {% if st and st.status == 'rejected' %}
+  <div class="col-12"><div class="alert alert-danger py-1 px-2 small mb-0"><i class="bi bi-x-circle me-1"></i><b>Rejected by Accounts</b>{% if st.note %}: {{ st.note }}{% endif %} — upload the document again to send it back for verification.</div></div>
+  {% elif st and st.status == 'verified' %}
+  <div class="col-12"><span class="badge text-bg-success"><i class="bi bi-check2 me-1"></i>Verified</span></div>
+  {% endif %}
+</div>
+{% endmacro %}
 <div class="card border-0 shadow-sm mb-3">
   <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-file-earmark-check me-2 text-primary"></i>KYC Documents</div>
   <div class="card-body">
-    <div class="row g-3 align-items-end">
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">GSTIN</label>
-        <input type="text" name="gstin" id="gstinInput" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.gstin or '' if contact else '' }}" placeholder="15-char GSTIN" maxlength="15"
-               data-exclude="{{ contact.id if contact else '' }}">
-        {# GST is unique per Account (2026-11-11): warned here, refused on save #}
-        <div class="invalid-feedback" id="gstinDup"></div>
-      </div>
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">Upload GSTIN Document</label>
-        <input type="file" name="gstin_doc" accept="application/pdf,image/*" class="form-control">
-        {% if contact and contact.gstin_doc_path %}<div class="form-text"><a href="/uploads/crm/{{ contact.gstin_doc_path }}" target="_blank">View current document</a></div>{% endif %}
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">PAN</label>
-        <input type="text" name="pan" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.pan or '' if contact else '' }}" placeholder="10-char PAN" maxlength="10">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">Upload PAN Document</label>
-        <input type="file" name="pan_doc" accept="application/pdf,image/*" class="form-control">
-        {% if contact and contact.pan_doc_path %}<div class="form-text"><a href="/uploads/crm/{{ contact.pan_doc_path }}" target="_blank">View current document</a></div>{% endif %}
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">Bank Cheque</label>
-        <input type="text" name="bank_cheque_number" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.bank_cheque_number or '' if contact else '' }}" placeholder="Cheque / account number">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">Upload Bank Cheque</label>
-        <input type="file" name="bank_cheque_doc" accept="application/pdf,image/*" class="form-control">
-        {% if contact and contact.bank_cheque_doc_path %}<div class="form-text"><a href="/uploads/crm/{{ contact.bank_cheque_doc_path }}" target="_blank">View current document</a></div>{% endif %}
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">MSME/UDHYOG Certificate</label>
-        <input type="text" name="msme_number" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.msme_number or '' if contact else '' }}" placeholder="MSME / Udhyog registration number">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">Upload MSME/UDHYOG Certificate</label>
-        <input type="file" name="msme_doc" accept="application/pdf,image/*" class="form-control">
-        {% if contact and contact.msme_doc_path %}<div class="form-text"><a href="/uploads/crm/{{ contact.msme_doc_path }}" target="_blank">View current document</a></div>{% endif %}
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">Director 1 Aadhar/PAN</label>
-        <input type="text" name="director1_id_number" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.director1_id_number or '' if contact else '' }}" placeholder="Aadhar / PAN number">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">Upload Aadhar/PAN <span class="text-muted small">(single PDF)</span></label>
-        <input type="file" name="director1_doc" accept="application/pdf" class="form-control">
-        {% if contact and contact.director1_doc_path %}<div class="form-text"><a href="/uploads/crm/{{ contact.director1_doc_path }}" target="_blank">View current document</a></div>{% endif %}
-      </div>
-
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">Director 2 Aadhar/PAN</label>
-        <input type="text" name="director2_id_number" class="form-control kyc-upper" style="text-transform:uppercase" value="{{ contact.director2_id_number or '' if contact else '' }}" placeholder="Aadhar / PAN number">
-      </div>
-      <div class="col-md-6">
-        <label class="form-label fw-semibold">Upload Aadhar/PAN <span class="text-muted small">(single PDF)</span></label>
-        <input type="file" name="director2_doc" accept="application/pdf" class="form-control">
-        {% if contact and contact.director2_doc_path %}<div class="form-text"><a href="/uploads/crm/{{ contact.director2_doc_path }}" target="_blank">View current document</a></div>{% endif %}
-      </div>
-    </div>
+    {# GST is unique per Account (2026-11-11): warned here, refused on save #}
+    {{ kyc_row('gstin', 'GSTIN', 'gstin', '15-char GSTIN', 'gstin_doc', 'gstin_doc_path', up_label='Upload GSTIN Document', maxlen=15,
+               extra='id="gstinInput" data-exclude="' ~ (contact.id if contact else '') ~ '"') }}
+    {{ kyc_row('pan', 'PAN', 'pan', '10-char PAN', 'pan_doc', 'pan_doc_path', up_label='Upload PAN Document', maxlen=10) }}
+    {{ kyc_row('bank_cheque', 'Bank Cheque', 'bank_cheque_number', 'Cheque / account number', 'bank_cheque_doc', 'bank_cheque_doc_path', up_label='Upload Bank Cheque') }}
+    {{ kyc_row('msme', 'MSME/UDHYOG Certificate', 'msme_number', 'MSME / Udhyog registration number', 'msme_doc', 'msme_doc_path', not_buyer=True) }}
+    {{ kyc_row('director1', 'Director 1 Aadhar/PAN', 'director1_id_number', 'Aadhar / PAN number', 'director1_doc', 'director1_doc_path', accept='application/pdf', up_label='Upload Aadhar/PAN (single PDF)', not_buyer=True) }}
+    {{ kyc_row('director2', 'Director 2 Aadhar/PAN', 'director2_id_number', 'Aadhar / PAN number', 'director2_doc', 'director2_doc_path', accept='application/pdf', up_label='Upload Aadhar/PAN (single PDF)', not_buyer=True) }}
+    {{ kyc_row('vendor_form', 'Vendor Form', 'vendor_form_number', 'Vendor form / reference number', 'vendor_form_doc', 'vendor_form_doc_path', up_label='Upload Vendor Form', not_buyer=True) }}
   </div>
 </div>
 
@@ -255,6 +232,31 @@
 {% endblock %}
 {% block scripts %}
 <script>
+// KYC (2026-11-15): Buyers skip MSME / Director 1 / Director 2 / Vendor Form;
+// admin uploads a sample file per document.
+(function () {
+  var sel = document.getElementById('contactTypeSelect');
+  function kycByType() {
+    var buyer = sel && sel.value === 'buyer';
+    document.querySelectorAll('.kyc-not-buyer').forEach(function (r) { r.classList.toggle('d-none', buyer); });
+  }
+  if (sel) { sel.addEventListener('change', kycByType); kycByType(); }
+  document.addEventListener('change', function (e) {
+    var inp = e.target.closest && e.target.closest('.kyc-sample-up');
+    if (!inp || !inp.files.length) return;
+    var fd = new FormData(); fd.append('sample', inp.files[0]);
+    fd.append('csrf_token', (document.cookie.match(/(?:^|; )csrf_token=([^;]*)/) || [])[1] || '');
+    fetch('/crm/contacts/kyc-sample/' + inp.dataset.item, { method: 'POST', body: fd, credentials: 'same-origin',
+          headers: { 'X-CSRF-Token': decodeURIComponent((document.cookie.match(/(?:^|; )csrf_token=([^;]*)/) || [])[1] || '') } })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok) { alert(j.error || 'Upload failed'); return; }
+        var row = inp.closest('.kyc-row'); var dl = row && row.querySelector('.kyc-sample-dl');
+        if (dl) dl.classList.remove('d-none');
+        inp.value = '';
+      }).catch(function () { alert('Upload failed'); });
+  });
+})();
 // KYC numbers auto upper-case (2026-11-10, Pankaj); the server stores them upper-case too.
 document.addEventListener('input', function (e) {
   var el = e.target;

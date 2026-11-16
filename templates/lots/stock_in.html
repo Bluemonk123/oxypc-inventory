@@ -2,32 +2,11 @@
 {% block title %}Stock In — OxyPC{% endblock %}
 {% block page_title %}Stock In{% endblock %}
 {% block content %}
-<!-- Slim entity total cards — one per entity, whole-inventory count (same
-     unfiltered scope as the analytics cards below), sitting above them. -->
-{% if entity_totals is defined %}
-<div class="row g-2 mb-2 d-none">
-  {% for e, c in entity_totals %}
-  <div class="col-4">
-    <div class="card border-0 shadow-sm px-3 py-2 d-flex flex-row justify-content-between align-items-center">
-      <span class="small text-muted">{{ e }}</span>
-      <span class="fw-bold">{{ c }}</span>
-    </div>
-  </div>
-  {% endfor %}
-</div>
-{% endif %}
-<!-- Analytics count cards (#17) -->
-{% if analytics is defined %}
-{# Summary tiles: shared tile macros (templates/_tiles.html), tint look. #}
-{% import "_tiles.html" as tl %}
-<div class="oxt-row">
-  {{ tl.single(analytics.iqc, 'Devices in IQC', '#0d6efd', 'bi-clipboard-check') }}
-  {{ tl.single(analytics.in_stock, 'Devices in Stock', '#0F7A37', 'bi-box-seam') }}
-  {{ tl.single(analytics.trc, 'Devices in TRC', '#fd7e14', 'bi-tools') }}
-  {{ tl.single(analytics.ready, 'Devices in Ready to Sell', '#0aa2c0', 'bi-bag-check') }}
-</div>
-{% endif %}
-<!-- Filter Bar -->
+{# Option C dashboard (2026-11-14, Pankaj): header with the filters, KPIs and charts;
+   "View Data" swaps them for the stock tables below. services/stock_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{% call dash.hero('Inventory Board', 'Inventory  ›  Stock', 'What the stock is worth, where it sits and what is not moving', view_data=True) %}
 <form method="get" action="/stock" class="filter-bar">
   <div class="filter-bar-row">
     {# One box covering GRN / Invoice / Tag Number / Model, sitting ahead of
@@ -75,6 +54,37 @@
     </div>
   </div>
 </form>
+{% endcall %}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
+<!-- Slim entity total cards — one per entity, whole-inventory count (same
+     unfiltered scope as the analytics cards below), sitting above them. -->
+{% if entity_totals is defined %}
+<div class="row g-2 mb-2 d-none">
+  {% for e, c in entity_totals %}
+  <div class="col-4">
+    <div class="card border-0 shadow-sm px-3 py-2 d-flex flex-row justify-content-between align-items-center">
+      <span class="small text-muted">{{ e }}</span>
+      <span class="fw-bold">{{ c }}</span>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+<!-- Analytics count cards (#17) -->
+{% if analytics is defined %}
+{# Summary tiles: shared tile macros (templates/_tiles.html), tint look. #}
+{% import "_tiles.html" as tl %}
+<div class="oxt-row">
+  {{ tl.single(analytics.iqc, 'Devices in IQC', '#0d6efd', 'bi-clipboard-check') }}
+  {{ tl.single(analytics.in_stock, 'Devices in Stock', '#0F7A37', 'bi-box-seam') }}
+  {{ tl.single(analytics.trc, 'Devices in TRC', '#fd7e14', 'bi-tools') }}
+  {{ tl.single(analytics.ready, 'Devices in Ready to Sell', '#0aa2c0', 'bi-bag-check') }}
+</div>
+{% endif %}
+<!-- Filter Bar -->
 <!-- hidden — moved into DataTables toolbar by JS -->
 <div id="entityBadges" class="d-none d-flex flex-wrap gap-2">
   {% for e, c in entity_counts.items() %}
@@ -137,8 +147,8 @@
 {# Supplier Deal card (2026-11-10, Pankaj): col-lg-4 on the left of the tabs
    (2026-11-12: shared partial, also on Parts Manager). #}
 <div class="row g-3">
-{% if sd_enabled %}<div class="col-lg-4">{% set sd_return_to = '/stock' %}{% include "_supplier_deal_card.html" %}</div>{% endif %}
-<div class="{{ 'col-lg-8' if sd_enabled else 'col-12' }}">
+{% if sd_enabled %}<div class="col-lg-3">{% set sd_return_to = '/stock' %}{% include "_supplier_deal_card.html" %}</div>{% endif %}
+<div class="{{ 'col-lg-9' if sd_enabled else 'col-12' }}">
 <ul class="nav nav-tabs mb-0" id="stkTabs">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#stkInvTab" type="button">
     <i class="bi bi-archive me-1"></i>Inventory Stock</button></li>
@@ -580,6 +590,8 @@
   </div>
 </div>
 
+</div>{# .dash-data #}
+</div>{# .dash #}
 {% endblock %}
 {% block scripts %}
 <script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>

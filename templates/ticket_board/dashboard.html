@@ -4,25 +4,39 @@
 {% block content %}
 {% import "ticket_board/_common.html" as tc with context %}
 {% import "_tiles.html" as tl %}
-{# Support dashboard (2026-11-13, Pankaj): 8 cards (click one to filter the
-   table under them), then tickets by status / priority / engineer / group.
+{% import "_multiselect_filter.html" as ms %}
+{# Support dashboard (2026-11-13, Pankaj): one row of 5 cards (click one to
+   filter the table), one row of 3 charts (status / priority / group), then
+   the chosen card's tickets with Group / Priority / Status multi-select
+   filters (in the browser, on the rows' data-* attributes).
    routers/ticket_board.py dashboard() #}
 {{ tc.styles() }}
-<style>.tb-cards { display:grid; grid-template-columns:repeat(4, minmax(0, 1fr)); gap:14px; } .tb-cards > div > div, .tb-cards .oxt-tile { width:100%; } @media (max-width:767px) { .tb-cards { grid-template-columns:repeat(2, minmax(0, 1fr)); } }</style>
+<style>
+  .tb-cards { display:grid; grid-template-columns:repeat(5, minmax(0, 1fr)); gap:14px; }
+  .tb-cards > div > div, .tb-cards .oxt-tile { width:100%; }
+  .tb-charts { display:grid; grid-template-columns:repeat(3, minmax(0, 1fr)); gap:14px; }
+  /* Chart cards: content on a tile-style tint of the card's colour (2026-11-13). */
+  /* No card header: the title sits in the content; white tracks and dark
+     text so bars and labels read clearly on the tint (2026-11-13). */
+  .tb-charts .card-body { background:color-mix(in srgb, var(--tc) 8%, var(--oxy-surface, #fff)); border-radius:var(--bs-card-inner-border-radius, 10px); padding:1rem 1.1rem .6rem; }
+  .tb-chart-title { font-weight:700; font-size:.85rem; text-transform:uppercase; letter-spacing:.02em; margin-bottom:.85rem;
+                    color:color-mix(in srgb, var(--tc) 70%, #000); }
+  .tb-charts .tb-bar .lab { color:#212529; font-weight:500; }
+  .tb-charts .tb-bar .track { height:12px; background:#fff; box-shadow:inset 0 0 0 1px rgba(0,0,0,.12); border-radius:6px; }
+  .tb-charts .tb-bar .fill { border-radius:6px; min-width:0; }
+  .tb-charts .tb-bar .num { color:#212529; }
+  /* Views column a fixed 260px so the 9-column table fits (2026-11-14). */
+  @media (min-width:992px) { #tbListRow > .col-lg-3 { flex:0 0 260px; width:260px; } #tbListRow > .col-lg-9 { flex:1 1 0; width:auto; min-width:0; } }
+  .tb-sep { border:0; border-top:1px solid rgba(14,58,122,.25); margin:1.25rem 0 1rem; opacity:1; }
+  @media (max-width:991px) { .tb-cards { grid-template-columns:repeat(3, minmax(0, 1fr)); } .tb-charts { grid-template-columns:1fr; } }
+  @media (max-width:575px) { .tb-cards { grid-template-columns:repeat(2, minmax(0, 1fr)); } }
+</style>
 {{ tc.tabs(page='dashboard') }}
 
 <div class="tb-cards mb-3">
   {% for key, label, color in cards %}
-  <div class="{{ 'tb-card-sel' if key == card else '' }}">{{ tl.single(counts[key], label, color, href='/ticket-board/dashboard?card=' ~ key, title_attr='Show ' ~ label ~ ' tickets') }}</div>
+  <div class="{{ 'tb-card-sel' if key == card else '' }}">{{ tl.single(counts[key], label, color, href='/ticket-board/dashboard?card=' ~ key, title_attr='Show ' ~ label ~ ' tickets', variant='dark') }}</div>
   {% endfor %}
-</div>
-
-<div class="card border-0 shadow-sm mb-3">
-  <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
-    <span class="fw-semibold">{{ card_label }}</span>
-    <span class="text-muted small ms-auto">{{ items|length }} ticket{{ '' if items|length == 1 else 's' }} · click a card above to filter</span>
-  </div>
-  <div class="card-body">{{ tc.ticket_table('tbDashTable', items) }}</div>
 </div>
 
 {% macro bars(rows, denom, colors={}, default='#1f73b7', labels={}) %}
@@ -34,18 +48,143 @@
   <div class="text-muted small">No tickets</div>
   {% endfor %}
 {% endmacro %}
-<div class="row g-3">
-  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100">
-    <div class="card-header bg-transparent"><span class="fw-semibold">Tickets by status</span></div>
-    <div class="card-body">{{ bars(charts.status, total, tb.STATUS_COLOR, labels=tb.STATUS_LABEL) }}</div></div></div>
-  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100">
-    <div class="card-header bg-transparent"><span class="fw-semibold">Tickets by priority</span></div>
-    <div class="card-body">{{ bars(charts.priority, total, tb.PRIORITY_COLOR) }}</div></div></div>
-  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100">
-    <div class="card-header bg-transparent"><span class="fw-semibold">Open tickets per engineer</span></div>
-    <div class="card-body">{{ bars(charts.engineer, open_total) }}</div></div></div>
-  <div class="col-lg-6"><div class="card border-0 shadow-sm h-100">
-    <div class="card-header bg-transparent"><span class="fw-semibold">Tickets by group</span></div>
-    <div class="card-body">{{ bars(charts.group, total, {'Development': '#6a27b8', 'Support': '#1f73b7'}) }}</div></div></div>
+<div class="tb-charts mb-3">
+  <div class="card border-0 shadow-sm h-100" style="--tc:#0d6efd">
+    <div class="card-body"><div class="tb-chart-title">Tickets by status</div>{{ bars(charts.status, total, tb.STATUS_COLOR, labels=tb.STATUS_LABEL) }}</div></div>
+  <div class="card border-0 shadow-sm h-100" style="--tc:#ed961c">
+    <div class="card-body"><div class="tb-chart-title">Tickets by priority</div>{{ bars(charts.priority, total, tb.PRIORITY_COLOR) }}</div></div>
+  <div class="card border-0 shadow-sm h-100" style="--tc:#6a27b8">
+    <div class="card-body"><div class="tb-chart-title">Tickets by group</div>{{ bars(charts.group, total, {'Support': '#1f73b7', 'Development': '#6a27b8', 'Training': '#038153', 'Research': '#ed961c'}) }}</div></div>
 </div>
+
+<hr class="tb-sep">
+
+{# Views on the left, the chosen view's (or clicked card's) tickets on the
+   right — same as All Tickets (2026-11-13, Pankaj). #}
+<div class="row g-3 mb-3" id="tbListRow">
+  <div class="col-lg-3">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent"><span class="fw-semibold"><i class="bi bi-funnel me-1"></i>Views</span></div>
+      <div class="card-body p-2">
+        <div class="list-group tb-views">
+          {% for vid, label in views %}
+          <a href="/ticket-board/dashboard?view={{ vid }}" class="list-group-item list-group-item-action{% if vid == view %} active{% endif %}">
+            <span>{{ label }}</span><span class="n">{{ view_counts[vid] }}</span>
+          </a>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-9">
+    <div class="card border-0 shadow-sm h-100">
+      <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
+        <div>
+          <span class="fw-semibold">{{ card_label }}</span>
+          <span class="text-muted small ms-2">{{ items|length }} ticket{{ '' if items|length == 1 else 's' }}</span>
+        </div>
+        <div class="ms-auto d-flex align-items-center flex-wrap gap-2">
+          {{ ms.multiselect_inline('tb_group', 'Groups', groups, '') }}
+          {{ ms.multiselect_inline('tb_priority', 'Priorities', priority_opts, '') }}
+          {{ ms.multiselect_inline('tb_status', 'Statuses', status_opts, '') }}
+          {% if can(current_user, 'ticket_board', 'add') %}
+          <button type="button" class="btn btn-sm btn-primary text-nowrap" data-hdr-primary data-bs-toggle="modal" data-bs-target="#tbNewModal"><i class="bi bi-plus-lg me-1"></i>New Ticket</button>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-body">{{ tc.ticket_table('tbDashTable', items) }}</div>
+    </div>
+  </div>
+</div>
+
+<script>
+// Views card and table card: same height (h-100 in one row), at least down
+// to the bottom of the window (2026-11-14). body has a CSS zoom.
+(function () {
+  var row = document.getElementById('tbListRow');
+  function fit() {
+    if (window.innerWidth < 992) { row.style.minHeight = ''; return; }
+    var z = parseFloat(getComputedStyle(document.body).zoom) || 1;
+    var top = row.getBoundingClientRect().top + window.scrollY;
+    row.style.minHeight = Math.max(300, (window.innerHeight - top) / z - 20) + 'px';
+  }
+  window.addEventListener('resize', fit); document.addEventListener('DOMContentLoaded', fit); fit();
+})();
+</script>
+
+{% include "ticket_board/_new_modal.html" %}
+
+{# Ticket side panel (2026-11-13, Pankaj): clicking a ticket opens it here,
+   from the right, instead of a separate page. The ticket screen loads in an
+   iframe and hides the app chrome itself (ticket.html, html.tb-embed). #}
+<div class="offcanvas offcanvas-end tb-panel" tabindex="-1" id="tbPanel" aria-labelledby="tbPanelTitle">
+  <div class="offcanvas-header py-2 border-bottom">
+    <h6 class="offcanvas-title fw-semibold mb-0" id="tbPanelTitle">Ticket</h6>
+    <div class="d-flex align-items-center gap-2 ms-auto">
+      <a href="#" id="tbPanelFull" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener" title="Open on its own page"><i class="bi bi-box-arrow-up-right"></i></a>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+  </div>
+  <div class="offcanvas-body p-0"><iframe id="tbPanelFrame" title="Ticket" src="about:blank"></iframe></div>
+</div>
+<style>
+  .tb-panel { --bs-offcanvas-width: min(1060px, 80vw); }
+  .tb-panel iframe { width:100%; height:100%; border:0; display:block; }
+  /* Above the app sidebar, with its backdrop dimming the whole page. */
+  #tbPanel { z-index:2045; }
+  body:has(#tbPanel.show, #tbPanel.showing) .offcanvas-backdrop { z-index:2040;
+    width:calc(100vw / var(--app-zoom, 1)); height:calc(100vh / var(--app-zoom, 1)); }
+  /* The (empty) alert-toast box sits over the panel's close button: let
+     clicks pass through it, toasts themselves stay clickable. */
+  #notifToastContainer { pointer-events:none; } #notifToastContainer > * { pointer-events:auto; }
+</style>
+<script>
+(function () {
+  var el = document.getElementById('tbPanel'), frame = document.getElementById('tbPanelFrame'),
+      title = document.getElementById('tbPanelTitle'), full = document.getElementById('tbPanelFull'), loads = 0;
+  window.tbOpenPanel = function (href) {
+    loads = 0; frame.src = href; full.href = href; title.textContent = 'Ticket #' + href.split('/').pop();
+    bootstrap.Offcanvas.getOrCreateInstance(el).show();
+  };
+  // A reply / status change inside the panel reloads the iframe; refresh the
+  // dashboard's counts and table when the panel closes after that.
+  frame.addEventListener('load', function () {
+    if (frame.src === 'about:blank') return;
+    loads++;
+  });
+  el.addEventListener('hidden.bs.offcanvas', function () {
+    var changed = loads > 1; frame.src = 'about:blank';
+    if (changed) location.reload();
+  });
+})();
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/multiselect-filter.js?v={{ ASSET_VERSION }}"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+  // Group / Priority / Status filters: keep rows whose data-* value is one of
+  // the ticked options (nothing ticked = all).
+  var keys = { group: 'tb_group', priority: 'tb_priority', status: 'tb_status' };
+  function picked(name) {
+    var v = (document.getElementById('ms_val_' + name) || {}).value || '';
+    return v.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+  $.fn.dataTable.ext.search.push(function (settings, data, idx) {
+    if (settings.nTable.id !== 'tbDashTable') return true;
+    var tr = settings.aoData[idx].nTr;
+    for (var k in keys) {
+      var p = picked(keys[k]);
+      if (p.length && p.indexOf(tr.dataset[k] || '') === -1) return false;
+    }
+    return true;
+  });
+  Object.keys(keys).forEach(function (k) {
+    document.getElementById('ms_val_' + keys[k]).addEventListener('ms:change', function () {
+      $('#tbDashTable').DataTable().draw();
+    });
+  });
+});
+</script>
 {% endblock %}

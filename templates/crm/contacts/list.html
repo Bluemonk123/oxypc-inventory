@@ -176,7 +176,9 @@
           {% set last_act_date = act.get('date', none) if act else none %}
           <tr>
             {% if has_perm(current_user.role.value, 'crm_contacts', 'edit') %}
-            <td class="ps-3"><input type="checkbox" class="form-check-input team-row-chk" value="{{ c.id }}" data-gst="{{ (c.gstin or '') | upper | trim }}"></td>
+            <td class="ps-3"><input type="checkbox" class="form-check-input team-row-chk" value="{{ c.id }}" data-gst="{{ (c.gstin or '') | upper | trim }}"
+                   data-name="{{ c.company_name or c.contact_code }}" data-active="{{ '1' if c.status == 'active' else '0' }}"
+                   data-kyc="{{ '1' if c.kyc_verified else '0' }}" data-credit="{{ '1' if c.credit_verified else '0' }}"></td>
             {% endif %}
             {# 1. Company + Contacted badge — no max-width (2026-11-11 PM) so the
                one-line pills fit; long names are still cut at 50 characters. #}
@@ -203,12 +205,17 @@
             <td style="min-width:150px">{{ tp.pills(c, cid in partner_contact_ids, source_labels, buyer_labels, wrap=True) }}</td>
             {# KYC — Finance verifies on Account Detail #}
             <td>
+              {% set _rej = (kyc_rejected or {}).get(c.id|string) %}
               {% if c.kyc_verified %}
               <span class="badge bg-success" title="Verified by {{ c.kyc_verified_by or '—' }}{% if c.kyc_verified_at %} on {{ c.kyc_verified_at.strftime('%d-%m-%Y') }}{% endif %}">Verified</span>
+              {% elif _rej %}
+              {# Rejected (2026-11-15): a KYC document was rejected by Accounts — names below #}
+              <span class="badge bg-danger">Rejected</span>
+              <div class="small text-danger" style="max-width:170px">{{ _rej | join(', ') }}</div>
               {% else %}
               <span class="badge bg-warning text-dark">Pending</span>
               {% endif %}
-              <div class="small text-muted">Finance</div>
+              {% if not _rej or c.kyc_verified %}<div class="small text-muted">Finance</div>{% endif %}
             </td>
             {# Credit — Management verifies on Account Detail #}
             <td>
@@ -488,13 +495,21 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p class="mb-2">Move <strong id="movePartnerCount"></strong> to External Partner?</p>
-        <p class="small text-muted mb-0">They will be listed on <b>Partner Accounts</b> without a portal login — create logins there with
-          <b>Generate Access</b>. Team mapping stays as it is.</p>
+        {# 2026-11-15 (Pankaj): each Account's status. Only Active Accounts with KYC
+           and Credit verified move; the others are listed and left out. #}
+        <p class="mb-2" id="movePartnerSummary"></p>
+        <div class="table-responsive border rounded mb-2" style="max-height:300px">
+          <table class="table table-sm align-middle mb-0 small">
+            <thead class="table-light"><tr><th>Account</th><th>Status</th><th>Verification</th><th class="text-end">Result</th></tr></thead>
+            <tbody id="movePartnerRows"></tbody>
+          </table>
+        </div>
+        <p class="small text-muted mb-0">Accounts that move are listed on <b>Partner Accounts</b> without a portal login — create logins there with
+          <b>Generate Access</b>. Team mapping stays as it is. Verify KYC on <b>Accounts</b> and Credit on <b>Activity Board</b> first.</p>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-primary"><i class="bi bi-check2 me-1"></i>Confirm</button>
+        <button type="submit" class="btn btn-primary" id="movePartnerConfirm"><i class="bi bi-check2 me-1"></i>Confirm</button>
       </div>
     </form>
   </div>
@@ -778,8 +793,26 @@ function wireContactsPageModals() {
       var ids = selectedIds();
       if (!ids.length) return;
       var box = document.getElementById('movePartnerIds'); box.innerHTML = '';
-      ids.forEach(function (id) { var i = document.createElement('input'); i.type = 'hidden'; i.name = 'contact_ids'; i.value = id; box.appendChild(i); });
-      document.getElementById('movePartnerCount').textContent = ids.length + ' selected account' + (ids.length === 1 ? '' : 's');
+      var rows = document.getElementById('movePartnerRows'); rows.innerHTML = '';
+      var byId = {}; rowChks(false).forEach(function (cb) { byId[cb.value] = cb; });
+      var ok = 0;
+      function esc(t) { var d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+      ids.forEach(function (id) {
+        var cb = byId[id] || {dataset: {}}, d = cb.dataset;
+        var active = d.active === '1', kyc = d.kyc === '1', credit = d.credit === '1', good = active && kyc && credit;
+        var why = []; if (!kyc) why.push('KYC pending'); if (!credit) why.push('Credit pending');
+        rows.insertAdjacentHTML('beforeend', '<tr><td>' + esc(d.name || id) + '</td>'
+          + '<td><span class="badge ' + (active ? 'bg-success' : 'bg-secondary') + '">' + (active ? 'Active' : 'Inactive') + '</span></td>'
+          + '<td>' + (kyc && credit ? '<span class="badge bg-success">Verified</span>'
+                     : '<span class="badge bg-warning text-dark">Not yet verified</span> <span class="text-muted">' + why.join(', ') + '</span>') + '</td>'
+          + '<td class="text-end">' + (good ? '<span class="text-success fw-semibold">Will move</span>' : '<span class="text-danger">Can\'t move</span>') + '</td></tr>');
+        if (good) { ok++; var i = document.createElement('input'); i.type = 'hidden'; i.name = 'contact_ids'; i.value = id; box.appendChild(i); }
+      });
+      var skip = ids.length - ok;
+      document.getElementById('movePartnerSummary').innerHTML = ok
+        ? 'Move <strong>' + ok + ' account' + (ok === 1 ? '' : 's') + '</strong> to External Partner?' + (skip ? ' <span class="text-danger">' + skip + ' can\'t move yet.</span>' : '')
+        : '<span class="text-danger fw-semibold">None of the selected accounts can move yet.</span> Each must be Active with KYC and Credit verified.';
+      document.getElementById('movePartnerConfirm').disabled = !ok;
       bootstrap.Modal.getOrCreateInstance(pmModalEl).show();
     });
   }

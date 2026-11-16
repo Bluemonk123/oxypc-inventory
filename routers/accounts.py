@@ -31,6 +31,15 @@ from models.lot import Lot
 router = APIRouter(prefix="/accounts", tags=["accounts"])
 
 FINANCE_ROLES = (UserRole.admin, UserRole.inventory_manager, UserRole.sales_manager)
+
+
+def _page_enabled(user, module) -> bool:
+    """Page enabled for the user's role in the Permission Matrix (2026-11-15,
+    Pankaj): Supplier Payments / Partner Payments are opened or closed per role
+    there — custom roles included — instead of a fixed list of roles."""
+    from models.role_permissions import has_perm
+    role = getattr(user.role, "value", None) or str(user.role)
+    return role == "admin" or has_perm(role, module, "enable")
 PAYMENT_MODES = ["cash", "upi", "neft", "rtgs", "cheque", "card"]
 
 
@@ -166,9 +175,51 @@ async def accounts_index(
     cr_req = await payment_requests(db, "customer")
     user_names = {u.username: (u.full_name or u.username)
                   for u in (await db.execute(select(User))).scalars().all()}
+    # Option C dashboard (2026-11-14, Pankaj) — services/accounts_dash.py.
+    from templates_config import _can
+    dash_kpis, dash_widgets, dash_dues = [], [], []
+    try:
+        from services.accounts_dash import build as _acc_dash
+        dash_kpis, dash_widgets, dash_dues = await _acc_dash(
+            db, _can(current_user, "finance_customer", "pricing"), _can(current_user, "finance_supplier", "pricing"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Accounts dashboard failed")
+        await db.rollback()
+    from services.kyc_items import status_map as _kyc_status_map
+    _kyc_st = await _kyc_status_map(db, [c.id for c in pend_kyc])
+    # Partner Payment card (2026-11-15, Pankaj): payments External Partners
+    # submitted against won bids. Verify posts a Customer Receipt on the bid's
+    # Customer Deal and moves it to Stock Handover (/partner-payments/{bid}/verify).
+    pend_pp, done_pp = [], []
+    if _page_enabled(current_user, "partner_payments"):
+        from models.partner import PartnerBid
+        from models.partner_payment import PartnerBidPayment
+        from models.dealers import Dealer as _Dealer
+        from models.crm import CRMSalesOpportunity as _Opp
+        _pays = (await db.execute(select(PartnerBidPayment).order_by(PartnerBidPayment.submitted_at.desc()).limit(300))).scalars().all()
+        _bids = {b.id: b for b in (await db.execute(select(PartnerBid).where(
+            PartnerBid.id.in_({p.bid_id for p in _pays})))).scalars().all()} if _pays else {}
+        _dls = {d.id: d for d in (await db.execute(select(_Dealer).where(
+            _Dealer.id.in_({b.dealer_id for b in _bids.values()})))).scalars().all()} if _bids else {}
+        _ops = {o.id: o for o in (await db.execute(select(_Opp).where(
+            _Opp.id.in_({b.opportunity_id for b in _bids.values() if b.opportunity_id})))).scalars().all()} if _bids else {}
+        _seen = set()
+        for _p in _pays:
+            if _p.bid_id in _seen:      # latest submission per bid only
+                continue
+            _seen.add(_p.bid_id)
+            _b = _bids.get(_p.bid_id)
+            if not _b:
+                continue
+            _row = {"pay": _p, "bid": _b, "dealer": _dls.get(_b.dealer_id), "deal": _ops.get(_b.opportunity_id)}
+            (done_pp if _p.verified else pend_pp).append(_row)
+        done_pp = sorted(done_pp, key=lambda r: r["pay"].verified_at or r["pay"].submitted_at, reverse=True)[:DONE_LIMIT]
     return templates.TemplateResponse("accounts/index.html", {
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets, "dash_dues": dash_dues, "today_date": app_now().date(),
         "pend_qt": pend_qt, "done_qt": done_qt, "sp_req": sp_req, "cr_req": cr_req, "po_appr": po_appr, "so_appr": so_appr,
         "payment_modes": PAYMENT_MODES,
+        "pend_pp": pend_pp, "done_pp": done_pp, "show_pp": _page_enabled(current_user, "partner_payments"),
         "request": request, "current_user": current_user,
         "pend_kyc": pend_kyc, "pend_po": pend_po, "pend_so": pend_so,
         "pend_sp": pend_sp, "pend_cr": pend_cr, "user_names": user_names,
@@ -177,19 +228,14 @@ async def accounts_index(
         "sp_total": float(sp_total or 0),
         "cr_total": float(cr_total or 0),
         "can_edit": current_user.role in FINANCE_ROLES,
-        "kyc_docs": {str(c.id): kyc_doc_list(c) for c in pend_kyc},
+        "kyc_docs": {str(c.id): kyc_doc_list(c, _kyc_st.get(str(c.id))) for c in pend_kyc},
     })
 
 
-# KYC documents of an Account, in the order of the Account form (2026-11-10).
-KYC_DOCS = [
-    ("GSTIN", "gstin", "gstin_doc_path"),
-    ("PAN", "pan", "pan_doc_path"),
-    ("Bank Cheque", "bank_cheque_number", "bank_cheque_doc_path"),
-    ("MSME/UDHYOG Certificate", "msme_number", "msme_doc_path"),
-    ("Director 1 Aadhar/PAN", "director1_id_number", "director1_doc_path"),
-    ("Director 2 Aadhar/PAN", "director2_id_number", "director2_doc_path"),
-]
+# KYC documents of an Account, in the order of the Account form (2026-11-10;
+# Vendor Form + per-document checks 2026-11-15 — services/kyc_items.py).
+from services.kyc_items import KYC_ITEMS as _KYC_ITEMS
+KYC_DOCS = [(l, n, p) for _k, l, n, p, _b in _KYC_ITEMS]
 
 
 def _kyc_file(name):
@@ -200,15 +246,10 @@ def _kyc_file(name):
     return path if os.path.isfile(path) else None
 
 
-def kyc_doc_list(c) -> list[dict]:
-    """[{label, number, url}] for the Verify KYC pop-up; url is None when no
-    file was uploaded (or the file is missing on disk)."""
-    out = []
-    for label, num_attr, path_attr in KYC_DOCS:
-        name = getattr(c, path_attr, None)
-        out.append({"label": label, "number": getattr(c, num_attr, None) or "",
-                    "url": f"/uploads/crm/{os.path.basename(name)}" if _kyc_file(name) else None})
-    return out
+def kyc_doc_list(c, st=None) -> list[dict]:
+    """Verify KYC pop-up rows — services/kyc_items.doc_list (shared with the Account card)."""
+    from services.kyc_items import doc_list
+    return doc_list(c, st)
 
 
 @router.get("/kyc-zip/{contact_id}")
@@ -332,7 +373,7 @@ async def supplier_payments(
     _pvblk = _pvb(current_user, "finance_supplier", "/accounts")
     if _pvblk is not None:
         return _pvblk
-    if current_user.role not in FINANCE_ROLES:
+    if not _page_enabled(current_user, "finance_supplier"):   # Permission Matrix, not a fixed role list (2026-11-15)
         return RedirectResponse(url="/?error=Access+denied", status_code=302)
     total = (await db.execute(
         select(func.coalesce(func.sum(SupplierPayment.amount), 0))
@@ -383,7 +424,7 @@ async def supplier_payments_data(
     only grows, so it was rendered in full on every page load."""
     from utils.price_export import can_view_prices as _cvp   # Pricing View (2026-11-03)
     _pv_sup = _cvp(current_user, "finance_supplier")
-    if current_user.role not in FINANCE_ROLES:
+    if not _page_enabled(current_user, "finance_supplier"):   # Permission Matrix, not a fixed role list (2026-11-15)
         return JSONResponse({"error": "Access denied"}, status_code=403)
     q = _supplier_payments_query(contact_id)
     total = (await db.execute(
@@ -443,7 +484,7 @@ async def create_supplier_payment(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if current_user.role not in FINANCE_ROLES:
+    if not _page_enabled(current_user, "finance_supplier"):   # Permission Matrix, not a fixed role list (2026-11-15)
         return RedirectResponse(url="/accounts/supplier-payments?error=Permission+denied", status_code=302)
     try:
         amt = float(amount)
@@ -1077,8 +1118,61 @@ async def accounts_verify(
         rec.verified_at = app_now()
         await audit(db, user=current_user, action=action, table_name=table,
                     record_id=str(rec.id), new_value={"verified": True}, request=request)
+        if kind == "so":   # partner deal: attach the SO + tell the partner (2026-11-16)
+            try:
+                from services.partner_deals import sales_order_approved
+                async with db.begin_nested():
+                    await sales_order_approved(db, rec, current_user)
+            except Exception:
+                import logging
+                logging.getLogger(__name__).exception("partner SO share failed for %s", rec.id)
         await db.commit()
     return RedirectResponse(url=f"/accounts?success={label.replace(' ', '+')}+verified", status_code=302)
+
+
+@router.post("/kyc-item/{contact_id}/{item}/{action}", dependencies=[Depends(verify_csrf)])
+async def accounts_kyc_item(
+    request: Request, contact_id: str, item: str, action: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Verify KYC pop-up (2026-11-15, Pankaj): verify or reject one document.
+    Reject needs a note and notifies whoever added the Account so they upload
+    it again (that upload puts it back to pending). JSON for the pop-up."""
+    from services.kyc_items import ITEM, set_status, outstanding
+    if action not in ("verify", "reject") or item not in ITEM:
+        return JSONResponse({"ok": False, "error": "Unknown action"}, status_code=400)
+    try:
+        c = (await db.execute(select(CRMContact).where(CRMContact.id == UUID(contact_id)))).scalar_one_or_none()
+    except ValueError:
+        c = None
+    if not c:
+        return JSONResponse({"ok": False, "error": "Account not found"}, status_code=404)
+    form = await request.form()
+    note = (form.get("note") or "").strip()[:1000]
+    if action == "reject" and not note:
+        return JSONResponse({"ok": False, "error": "Write why the document is rejected"}, status_code=400)
+    label = ITEM[item][1]
+    old = await set_status(db, c, item, "verified" if action == "verify" else "rejected", current_user, note if action == "reject" else None)
+    await audit(db, user=current_user, action="ACCOUNT_KYC_ITEM_" + ("VERIFIED" if action == "verify" else "REJECTED"),
+                table_name="crm_contact_kyc_items", record_id=str(c.id),
+                old_value={"item": item, "status": old}, new_value={"item": item, "status": action, "note": note or None},
+                request=request)
+    if action == "reject":
+        if c.kyc_verified:                     # a rejected document undoes an earlier KYC verification
+            c.kyc_verified, c.kyc_verified_by, c.kyc_verified_at = False, None, None
+            c.apply_account_status()
+        owner = (await db.execute(select(User).where(User.username == (c.created_by or "")))).scalar_one_or_none()
+        if owner:
+            from models.notification import Notification
+            db.add(Notification(user_id=owner.id, title="KYC document rejected — %s" % (c.company_name or "Account")[:120],
+                                message="%s was rejected by %s: %s. Open the Account, upload the document again and save — it goes back to Accounts for verification. /crm/contacts/%s/edit"
+                                        % (label, current_user.full_name or current_user.username, note, c.id),
+                                notification_type="warning"))
+    await db.commit()
+    left = await outstanding(db, c)
+    return JSONResponse({"ok": True, "status": "verified" if action == "verify" else "rejected", "note": note,
+                         "outstanding": left, "notified": bool(action == "reject" and c.created_by)})
 
 
 @router.post("/verify-kyc/{contact_id}", dependencies=[Depends(verify_csrf)])
@@ -1093,6 +1187,10 @@ async def accounts_verify_kyc(
         c = None
     if not c:
         return RedirectResponse(url="/accounts?error=Not+found", status_code=302)
+    from services.kyc_items import outstanding   # every document verified first (2026-11-15)
+    _left = await outstanding(db, c)
+    if _left:
+        return RedirectResponse(url="/accounts?error=" + quote_plus("Verify each document first: " + ", ".join(_left)), status_code=302)
     if not c.kyc_verified:
         c.kyc_verified = True
         c.kyc_verified_by = current_user.username

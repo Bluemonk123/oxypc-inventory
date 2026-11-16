@@ -60,6 +60,22 @@
           <span class="fw-semibold small"><i class="bi bi-patch-check me-1 text-primary"></i>KYC</span>
           {% if contact.kyc_verified %}<span class="badge bg-success">Verified</span>{% else %}<span class="badge bg-warning text-dark">Pending</span>{% endif %}
         </div>
+        {# Every KYC document with its check from Accounts and a preview (2026-11-15, Pankaj).
+           Buyers don't get MSME / Directors / Vendor Form. #}
+        <ul class="list-unstyled small mb-2">
+          {% for d in kyc_list or [] %}
+          <li class="d-flex align-items-center gap-2 py-1{% if not loop.last %} border-bottom{% endif %}">
+            <span class="flex-grow-1 text-truncate">{{ d.label }}{% if d.number %} <span class="text-muted font-monospace">· {{ d.number }}</span>{% endif %}
+              {% if d.status == 'rejected' and d.note %}<div class="text-danger" style="font-size:.75rem">{{ d.note }}</div>{% endif %}</span>
+            {% if not d.has %}<span class="badge bg-light text-muted border">Not given</span>
+            {% elif d.status == 'verified' %}<span class="badge text-bg-success">Verified</span>
+            {% elif d.status == 'rejected' %}<span class="badge text-bg-danger">Rejected</span>
+            {% else %}<span class="badge text-bg-warning">Pending</span>{% endif %}
+            {% if d.url %}<button type="button" class="btn btn-sm btn-outline-primary py-0 px-1" data-doc-preview="{{ d.url }}" data-doc-name="{{ contact.company_name }} — {{ d.label }}" title="Preview, download or print"><i class="bi bi-download"></i></button>
+            {% else %}<span class="btn btn-sm btn-outline-secondary py-0 px-1 disabled" title="No file uploaded"><i class="bi bi-download"></i></span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
         {% if contact.kyc_verified %}
         <div class="small text-muted">Verified by {{ contact.kyc_verified_by or '—' }}{% if contact.kyc_verified_at %} on {{ contact.kyc_verified_at.strftime('%d-%m-%Y %H:%M') }}{% endif %}</div>
         {% else %}
@@ -365,4 +381,5 @@
 
 {# History card (2026-11-09, Pankaj) #}
 {% include "_history_card.html" %}
+{% include "_doc_preview.html" %}
 {% endblock %}

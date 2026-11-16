@@ -160,13 +160,17 @@ async def _count(db: AsyncSession, *filters) -> int:
 
 
 @router.get("/", response_class=HTMLResponse)
-async def home(current_user: User = Depends(get_current_user)):
+async def home(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     """Application home page — My Attendance for everyone except admin, who
     keeps Inventory Search. Matches where login drops each role, so the app
     opens on the same page whether you sign in or hit the bare URL.
     no-store so browsers never cache this redirect across deploys/logins."""
     role_value = getattr(current_user.role, "value", None) or str(current_user.role)
     target = "/devices" if role_value == "admin" else NON_ADMIN_LANDING
+    # A landing page set for the role in Master Data wins (2026-11-15)
+    from services.landing import stored, landing_for
+    if await stored(db, role_value):
+        target = await landing_for(db, role_value)
     resp = RedirectResponse(url=target, status_code=302)
     resp.headers["Cache-Control"] = "no-store"
     return resp
@@ -197,6 +201,20 @@ async def dashboard(
     # year: 2025 = "2025-26" (2026-10-15; was a calendar Year in the top bar).
     fy: int = Query(default=None),
 ):
+    # Dashboard View (2026-11-14): this page is only a dashboard, so without
+    # the tick the page itself is refused (services/dash_access.py).
+    from services.dash_access import dashboard_allowed
+    if not dashboard_allowed(current_user, "/dashboard"):
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Access denied — Dashboard View is not enabled for your role")
+    # Skeleton first (2026-11-15, Pankaj): answer at once with the page outline;
+    # its script fetches this same URL with ?_part=1 for the real dashboard and
+    # swaps it in (templates/dashboard.html, skeleton_mode). Sign-in lands fast.
+    if request.query_params.get("_part") != "1":
+        _sk = templates.TemplateResponse("dashboard.html", {
+            "request": request, "current_user": current_user, "now": app_now(), "skeleton_mode": True})
+        _sk.headers["Cache-Control"] = "no-store"
+        return _sk
     _t0 = _time.perf_counter()
     _marks = []                      # (section, seconds) — logged when slow
     def _mark(name):
@@ -1285,160 +1303,11 @@ async def dashboard(
         _log.exception("financials failed")
     _mark("financials")
 
-    # ── Admin analytics: 12 stat cards + 5 weekly/pie charts ──────────────────
-    # Only computed for admin (the section is admin-gated in the template) —
-    # skips the extra query load for every other role's dashboard render.
+    # Admin analytics / weekly charts removed (2026-11-15, Pankaj): the four
+    # Weekly cards (Sourcing Price, Sales Price, Products IQC/GRN/Stock, Spare
+    # Parts) were taken off the page, and with them their ~10 queries per load.
     admin_analytics: dict = {}
     admin_charts: dict = {}
-    # Computed for every role that can reach this page. The dashboard is gated
-    # by the permission matrix, and a role with the page enabled is meant to see
-    # the same figures an admin does — previously these queries ran only for
-    # UserRole.admin, so everyone else got an empty analytics section.
-    #
-    # 24+ sequential queries live in this block — previously uncached, so it
-    # ran fresh on every single dashboard load (and for every role, per the
-    # note above), dominating page-load time. Cached on the same 30s/_now
-    # cycle as stage/category/pipeline above, since it's gated by the same
-    # Entity/Device Type/Location filters (_dash_filters_active).
-    # Own timestamp — same stale-forever issue as the pipeline cache above.
-    async def _compute_analytics(db=db):
-        admin_analytics: dict = {}
-        admin_charts: dict = {}
-        try:
-            def _week_key(dt):
-                # ISO 8601 week (isocalendar()) already runs Monday-Sunday, so
-                # this is the grouping key — see _week_range_label below for the
-                # human-readable Monday-Sunday range shown on the chart axis.
-                if not dt:
-                    return None
-                iso = dt.isocalendar()
-                return f"{iso[0]}-W{iso[1]:02d}"
-
-            def _week_range_label(dt):
-                from datetime import timedelta
-                iso_weekday = dt.isocalendar()[2]
-                monday = dt - timedelta(days=iso_weekday - 1)
-                sunday = monday + timedelta(days=6)
-                if monday.month == sunday.month:
-                    return f"{monday.day}-{sunday.day} {monday.strftime('%b')}"
-                return f"{monday.strftime('%d %b')} - {sunday.strftime('%d %b')}"
-
-            def _last_n_week_keys(n=8):
-                from datetime import timedelta
-                keys = []
-                labels = []
-                d = today
-                seen = set()
-                while len(seen) < n:
-                    dd = datetime(d.year, d.month, d.day)
-                    k = _week_key(dd)
-                    if k not in seen:
-                        seen.add(k)
-                        keys.append(k)
-                        labels.append(_week_range_label(dd))
-                    d -= timedelta(days=7)
-                return list(reversed(keys)), list(reversed(labels))
-
-            week_keys, week_labels = _last_n_week_keys(8)
-
-            # Every weekly-chart query below only ever buckets into these 8 weeks
-            # (_weekly_series discards anything outside week_keys) — cutting each
-            # query off at 9 weeks back (1 week of safety margin) avoids pulling
-            # a table's entire history into Python just to plot 8 bars.
-            from datetime import timedelta as _td
-            _weekly_cutoff = datetime(today.year, today.month, today.day) - _td(days=63)
-
-            def _weekly_series(rows, date_getter, value_getter=lambda r: 1):
-                buckets = {wk: 0 for wk in week_keys}
-                for r in rows:
-                    wk = _week_key(date_getter(r))
-                    if wk in buckets:
-                        buckets[wk] += value_getter(r)
-                return [buckets[wk] for wk in week_keys]
-
-            # ── Charts ─────────────────────────────────────────────────────────
-            admin_charts["week_labels"] = week_labels
-
-            # a. Weekly: Products in IQC / GRN / In Stock (via StageMovement into that stage)
-            sm_rows = (await db.execute(
-                select(StageMovement.to_stage, StageMovement.moved_at)
-                .where(StageMovement.to_stage.in_([DeviceStage.iqc, DeviceStage.grn, DeviceStage.stock_in]),
-                       StageMovement.moved_at >= _weekly_cutoff)
-            )).all()
-            admin_charts["products_iqc_weekly"] = _weekly_series([r for r in sm_rows if r[0] == DeviceStage.iqc], lambda r: r[1])
-            admin_charts["products_grn_weekly"] = _weekly_series([r for r in sm_rows if r[0] == DeviceStage.grn], lambda r: r[1])
-            admin_charts["products_stock_weekly"] = _weekly_series([r for r in sm_rows if r[0] == DeviceStage.stock_in], lambda r: r[1])
-
-            # a2. Weekly: Spare Parts in Sourcing Request / GRN / Harvest
-            psr_rows = (await db.execute(
-                select(PartSourcingRequest.created_at).where(PartSourcingRequest.created_at >= _weekly_cutoff)
-            )).scalars().all()
-            admin_charts["parts_sourcing_weekly"] = _weekly_series(psr_rows, lambda r: r)
-            grn_li_rows = (await db.execute(
-                select(PartsGRNLineItem.is_harvest, PartsGRNLineItem.created_at)
-                .where(PartsGRNLineItem.created_at >= _weekly_cutoff)
-            )).all()
-            admin_charts["parts_grn_weekly"] = _weekly_series([r for r in grn_li_rows if not r[0]], lambda r: r[1])
-            admin_charts["parts_harvest_weekly"] = _weekly_series([r for r in grn_li_rows if r[0]], lambda r: r[1])
-
-            # b. Pie: stage distribution — sourced from pipeline_counts (the
-            # same grouped counts the Stage Pipeline strip uses), not raw
-            # stage_counts, so L1/L2 and L3/L4 show as the same combined
-            # buckets used everywhere else on this page (e.g. the In Repair
-            # card), and Cosmetic (8 cosmetic stages combined) is included.
-            admin_charts["stage_pie_labels"] = ["IQC", "Stock In", "Production", "L1/L2", "L3/L4", "Stress", "Cosmetic", "Final QC"]
-            admin_charts["stage_pie_values"] = [
-                pipeline_counts.get("iqc", 0),
-                pipeline_counts.get("stock_in", 0),
-                pipeline_counts.get("production", 0),
-                pipeline_counts.get("l1l2", 0),
-                pipeline_counts.get("l3l4", 0),
-                pipeline_counts.get("qc_check", 0),
-                pipeline_counts.get("cosmetic", 0),
-                pipeline_counts.get("final_qc", 0),
-            ]
-
-            # c. Weekly: Sales Price — Ready to Sale (moved-in value proxy via count) vs Product Sold (₹)
-            rts_rows = (await db.execute(
-                select(StageMovement.moved_at).where(StageMovement.to_stage == DeviceStage.ready_to_sale,
-                                                      StageMovement.moved_at >= _weekly_cutoff)
-            )).scalars().all()
-            admin_charts["ready_to_sale_weekly"] = _weekly_series(rts_rows, lambda r: r)
-            sold_rows = (await db.execute(
-                select(Sale.sold_at, Sale.sale_price).where(Sale.sold_at >= _weekly_cutoff)
-            )).all()
-            admin_charts["product_sold_price_weekly"] = _weekly_series(sold_rows, lambda r: r[0], lambda r: float(r[1] or 0))
-
-            # e. Weekly: Sourcing Price — Buyer PO (DealerOrder, dealers buying from
-            # OxyPC) vs Seller PO (CRMPurchaseOrder, OxyPC buying from suppliers)
-            buyer_po_rows = (await db.execute(
-                select(DealerOrder.order_date, DealerOrder.total_amount)
-                .where(DealerOrder.order_date >= _weekly_cutoff)
-            )).all()
-            admin_charts["buyer_po_weekly"] = _weekly_series(buyer_po_rows, lambda r: r[0], lambda r: float(r[1] or 0))
-            seller_po_rows = (await db.execute(
-                select(CRMPurchaseOrder.created_at, CRMPurchaseOrder.total_amount)
-                .where(CRMPurchaseOrder.created_at >= _weekly_cutoff)
-            )).all()
-            admin_charts["seller_po_weekly"] = _weekly_series(seller_po_rows, lambda r: r[0], lambda r: float(r[1] or 0))
-        except Exception:
-            _log.exception("admin_analytics failed")
-        return admin_analytics, admin_charts
-
-    # Stale-while-revalidate (2026-10-31), same as the pipeline above.
-    _aa = _AGG.get("admin_analytics")
-    if (_cache_key is not None and not _pl_active and _AGG.get("analytics_key") == _cache_key
-            and _aa is not None):
-        admin_analytics, admin_charts = _aa
-        if (_now - _AGG.get("analytics_ts", 0.0)) >= _AGG_TTL and ("analytics", id(_AGG)) not in _REFRESHING:
-            _swr_refresh("analytics", _compute_analytics, _cache_key, _AGG)
-    else:
-        admin_analytics, admin_charts = await _compute_analytics()
-        if _cache_key is not None and not _pl_active:   # range counts are per-request
-            _AGG["admin_analytics"] = (admin_analytics, admin_charts)
-            _AGG["analytics_ts"] = _now
-            _AGG["analytics_key"] = _cache_key
-
     _mark("analytics")
     # ── Apply stage filter to stage_counts display ───────────────────────────
     if stage_filter:
@@ -1528,6 +1397,31 @@ async def dashboard(
 
     _year_choices = await report_year_values(db)
     _mark("work queue+follow-ups")
+    # Option C "V1" analytics + KPI strip (2026-11-14, Pankaj) — services/main_dash.py
+    from services.main_dash import build as _build_main_dash
+    # Money tiles / revenue chart follow Dashboard's Pricing View tick (2026-11-14,
+    # was admin only) — same tick as the Financial Summary card below.
+    from templates_config import _can
+    _is_admin = _can(current_user, "dashboard", "pricing")
+    # Cached per filter slot like the sections above (2026-11-15): served from
+    # memory, refreshed in the background once older than 30 s. Date-range
+    # (P&L) views compute fresh.
+    async def _main_dash(s, _stage=stage_counts, _cat=category_counts):
+        return await _build_main_dash(
+            s, [*_ent, *_dtype, *_loc], _stage, _cat, list(_cat.keys()),
+            admin=_is_admin, fy=fy, month_revenue=month_revenue, month_profit=month_profit,
+            fy_net_profit=fy_revenue - yearly_device_cost - yearly_parts_cost - yearly_labour_cost,
+            fy_revenue=fy_revenue, parts_card=parts_card)
+    try:
+        if _cache_key is not None and not _pl_active:
+            dash_kpis, dash_widgets = await _swr_get(_AGG, "main_dash_%d_%s" % (fy, int(bool(_is_admin))), _main_dash, db)
+        else:
+            dash_kpis, dash_widgets = await _main_dash(db)
+    except Exception:
+        _log.exception("main dashboard analytics failed")
+        await db.rollback()
+        dash_kpis, dash_widgets = [], []
+    _mark("option C analytics")
     _resp = templates.TemplateResponse("dashboard.html", {
         "request": request,
         "current_user": current_user,
@@ -1553,6 +1447,7 @@ async def dashboard(
         "category_counts": category_counts,
         "cat_split": cat_split,
         "inv_card": inv_card, "parts_card": parts_card,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "total_devices": total_devices,
         "in_repair_count": in_repair_count,
         "laptops_available": laptops_available,
@@ -1609,6 +1504,7 @@ async def dashboard(
             _prev = _t
         _log.warning("Dashboard slow load %.1fs (%s): %s", _total,
                      "filtered" if _dash_filters_active else "default", " | ".join(_parts))
+    _resp.headers["Cache-Control"] = "no-store"
     return _resp
 
 

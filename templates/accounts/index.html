@@ -8,6 +8,13 @@
 {% if request.query_params.get('error') %}
 <div class="alert alert-danger alert-dismissible fade show"><i class="bi bi-exclamation-triangle me-2"></i>{{ request.query_params.get('error') }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>
 {% endif %}
+{# Option C dashboard (2026-11-14, Pankaj) — services/accounts_dash.py. No View
+   Data: the six Pending / Completed cards below stay on the page, under it. #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{{ dash.hero('Accounts', '', 'Money coming in and going out, and who owes what', view_data=False) }}
+{% if dash_kpis %}{{ dash.kpis(dash_kpis) }}<div class="mb-3">{{ dash.grid(dash_widgets) }}</div>{% endif %}
+</div>
 {# ── Pending / Completed cards (2026-11-01; pill tabs 2026-11-09, Pankaj) ──
    Each card has the Global pill tabs Pending | Completed in its header.
    Pending = not yet verified (Verify button); Completed = the latest
@@ -247,6 +254,71 @@
   {% else %}{{ order_rows(so_appr.done, done_so, 'done', 'SO', '/crm/sales-orders/', 'so') }}{% endif %}
   {% endcall %}
 </div>
+{# Partner Payment (2026-11-15, Pankaj): payments External Partners submitted
+   against won bids. Verify posts a Customer Receipt on the Customer Deal and
+   moves it to Stock Handover. Shown when Partner Payments is enabled for the
+   role; Verify needs its Edit tick, amounts its Pricing tick. #}
+{% if show_pp %}
+{% set can_pp = can(current_user, 'partner_payments', 'edit') %}
+{% set pv_pp = can(current_user, 'partner_payments', 'pricing') %}
+<div class="row g-3 mb-4">
+  {% call(tab) acc_card('pp', 'Partner Payment', pend_pp|length, col='col-12') %}
+  <table class="table table-sm table-hover mb-0 small">
+    <thead class="table-light"><tr><th>Bid</th><th>Partner</th><th>Customer Deal</th><th>Paid On</th><th>Mode</th><th>UTR</th><th class="text-end">Amount</th>
+      <th>{{ 'Submitted' if tab == 'p' else 'Verified' }}</th><th class="text-end">{{ 'Action' if tab == 'p' else 'By' }}</th></tr></thead>
+    <tbody>
+    {% for r in (pend_pp if tab == 'p' else done_pp) %}
+      {% set pname = r.dealer.business_name if r.dealer else '—' %}
+      <tr><td class="font-monospace">{{ r.bid.bid_number }}</td>
+        <td>{{ pname }}</td>
+        <td>{% if r.deal %}<a href="/crm/sales/{{ r.deal.id }}" class="fw-semibold text-decoration-none font-monospace">{{ r.deal.opp_number }}</a>{% else %}—{% endif %}</td>
+        <td>{{ dmy(r.pay.payment_date) }}</td>
+        <td>{{ (r.pay.payment_mode or '—') | replace('_', ' ') | title }}</td>
+        <td class="font-monospace">{{ r.pay.payment_utr or '—' }}</td>
+        <td class="text-end">{% if pv_pp %}{% if r.pay.payment_amount is not none %}₹{{ r.pay.payment_amount | inr }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
+        <td>{{ dmy(r.pay.submitted_at if tab == 'p' else r.pay.verified_at) }}</td>
+        <td class="text-end text-nowrap">
+          {% if tab == 'p' %}
+            {% if can_pp %}<button type="button" class="btn btn-sm btn-success py-0 acc-pp-verify"
+              data-action="/partner-payments/{{ r.bid.id }}/verify" data-bid="{{ r.bid.bid_number }}" data-partner="{{ pname }}"
+              data-utr="{{ r.pay.payment_utr or '—' }}" data-amount="{% if pv_pp and r.pay.payment_amount is not none %}₹{{ r.pay.payment_amount | inr }}{% else %}—{% endif %}"
+              data-deal="{{ r.deal.opp_number if r.deal else '' }}"><i class="bi bi-check2-circle me-1"></i>Verify</button>{% else %}—{% endif %}
+          {% else %}{{ user_names.get(r.pay.verified_by, r.pay.verified_by or '—') }}{% endif %}
+        </td></tr>
+    {% else %}{{ none_row(9, 'No partner payments waiting.' if tab == 'p' else 'No verified partner payments yet.') }}{% endfor %}
+    </tbody>
+  </table>
+  {% endcall %}
+</div>
+<div class="modal fade" id="accPpModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form method="post" class="modal-content" id="accPpForm">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+  <input type="hidden" name="return_to" value="accounts">
+  <div class="modal-header"><h5 class="modal-title"><i class="bi bi-patch-check me-2"></i>Verify Partner Payment</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+  <div class="modal-body">
+    <dl class="row small mb-2">
+      <dt class="col-4">Bid</dt><dd class="col-8 font-monospace" id="accPpBid"></dd>
+      <dt class="col-4">Partner</dt><dd class="col-8" id="accPpPartner"></dd>
+      <dt class="col-4">UTR</dt><dd class="col-8 font-monospace" id="accPpUtr"></dd>
+      <dt class="col-4">Amount</dt><dd class="col-8" id="accPpAmount"></dd>
+    </dl>
+    <p class="small text-muted mb-2" id="accPpEffect"></p>
+    <label for="accPpNotes" class="form-label small">Note (optional)</label>
+    <textarea name="verify_notes" id="accPpNotes" class="form-control form-control-sm" rows="2"></textarea>
+  </div>
+  <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Verify Payment</button></div>
+</form></div></div>
+<script>
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('.acc-pp-verify'); if (!b) return;
+  document.getElementById('accPpForm').action = b.dataset.action;
+  ['Bid', 'Partner', 'Utr', 'Amount'].forEach(function (k) { document.getElementById('accPp' + k).textContent = b.dataset[k.toLowerCase()]; });
+  document.getElementById('accPpEffect').textContent = b.dataset.deal
+    ? 'A Customer Receipt is posted on ' + b.dataset.deal + ' and the deal moves to Stock Handover. The partner is notified.'
+    : 'This bid has no Customer Deal, so only the payment is marked verified. The partner is notified.';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('accPpModal')).show();
+});
+</script>
+{% endif %}
 {{ dpr.modals(payment_modes) }}
 <div class="modal fade" id="accApprModal" tabindex="-1"><div class="modal-dialog modal-dialog-centered"><form method="post" class="modal-content" id="accApprForm">
   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
@@ -283,15 +355,15 @@ document.addEventListener('click', function (e) {
   <div class="modal-header"><h5 class="modal-title"><i class="bi bi-patch-check me-2"></i>Verify KYC — <span id="accKycCompany"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
   <div class="modal-body">
     <table class="table table-sm align-middle mb-2">
-      <thead class="table-light"><tr><th>Document</th><th>Number</th><th class="text-end">File</th></tr></thead>
+      <thead class="table-light"><tr><th>Document</th><th>Number</th><th>Status</th><th class="text-end">Action</th></tr></thead>
       <tbody id="accKycRows"></tbody>
     </table>
-    <p class="mb-0 small text-muted">Confirm marks this Account's KYC as verified.</p>
+    <p class="mb-0 small text-muted" id="accKycHint">Verify or reject each document. Confirm marks this Account's KYC as verified once every document it has is verified.</p>
   </div>
   <div class="modal-footer">
     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
     {% if can(current_user, 'crm_contacts', 'export') %}<a href="#" class="btn btn-outline-primary" id="accKycZip"><i class="bi bi-file-earmark-zip me-1"></i>Zip Download</a>{% endif %}
-    <button type="submit" class="btn btn-success"><i class="bi bi-check-lg me-1"></i>Confirm</button>
+    <button type="submit" class="btn btn-success" id="accKycConfirm"><i class="bi bi-check-lg me-1"></i>Confirm</button>
   </div>
 </form></div></div>
 <script type="application/json" id="accKycDocs">{{ kyc_docs | tojson }}</script>
@@ -315,6 +387,36 @@ document.addEventListener('click', function (e) {
     </div>
   </div>
 </div>
+{# Payment due -> View all (2026-11-14): every unpaid PO, by due date. #}
+{% if dash_kpis %}{% set _pvs = can(current_user, 'finance_supplier', 'pricing') %}
+<div class="modal fade" id="accDuesModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-calendar3 me-2"></i>All payments due
+        <span class="text-muted small ms-2">{{ dash_dues|length }} unpaid POs{% if _pvs %} · &#8377;{{ (dash_dues | sum(attribute='bal')) | inr }} due{% endif %}</span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body p-0">
+        <table class="table table-sm table-hover mb-0 small">
+          <thead class="table-light"><tr><th>Due date</th><th>Supplier</th><th>PO</th><th class="text-end">Amount</th><th class="text-end">Paid</th><th class="text-end">Balance</th><th>Status</th></tr></thead>
+          <tbody>
+          {% for x in dash_dues %}{% set _dd = (x.due - today_date).days %}
+          <tr><td>{{ x.due.strftime('%d-%m-%Y') }}</td><td class="fw-semibold">{{ x.acct }}</td><td><code class="small">{{ x.no }}</code></td>
+            <td class="text-end">{% if _pvs %}&#8377;{{ x.tot | inr }}{% else %}—{% endif %}</td>
+            <td class="text-end">{% if _pvs and x.paid %}&#8377;{{ x.paid | inr }}{% else %}—{% endif %}</td>
+            <td class="text-end fw-semibold">{% if _pvs %}&#8377;{{ x.bal | inr }}{% else %}—{% endif %}</td>
+            <td>{% if _dd < 0 %}<span class="badge bg-danger">Overdue {{ -_dd }}d</span>{% elif _dd == 0 %}<span class="badge bg-warning text-dark">Due today</span>
+                {% elif _dd <= 7 %}<span class="badge bg-warning text-dark">Due in {{ _dd }}d</span>{% else %}<span class="badge bg-secondary">Due in {{ _dd }}d</span>{% endif %}</td></tr>
+          {% else %}
+          <tr><td colspan="7" class="text-center text-muted py-3">No unpaid purchase orders.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+{% include "_doc_preview.html" %}
 {% endblock %}
 {% block scripts %}
 <script>
@@ -326,17 +428,68 @@ document.addEventListener('click', function (e) {
 });
 document.addEventListener('click', function (e) {
   var b = e.target.closest('.acc-kyc-verify'); if (!b) return;
-  var docs = {};
-  try { docs = JSON.parse(document.getElementById('accKycDocs').textContent || '{}'); } catch (x) {}
+  var docs = window._accKycDocs || {};   // kept for the page so per-document checks survive closing the pop-up
+  if (!window._accKycDocs) { try { docs = window._accKycDocs = JSON.parse(document.getElementById('accKycDocs').textContent || '{}'); } catch (x) {} }
   var list = docs[b.dataset.id] || [];
   var esc = function (s) { var d = document.createElement('div'); d.textContent = s == null ? '' : s; return d.innerHTML; };
   document.getElementById('accKycForm').action = '/accounts/verify-kyc/' + b.dataset.id;
   document.getElementById('accKycCompany').textContent = b.dataset.company;
-  document.getElementById('accKycRows').innerHTML = list.map(function (d) {
-    return '<tr><td class="fw-semibold small">' + esc(d.label) + '</td><td class="small font-monospace">' + (esc(d.number) || '<span class="text-muted">—</span>') + '</td>'
-      + '<td class="text-end">' + (d.url ? '<a href="' + esc(d.url) + '" target="_blank" class="btn btn-sm btn-outline-primary py-0"><i class="bi bi-eye me-1"></i>View</a>'
-                                         : '<span class="badge bg-light text-muted border">Not uploaded</span>') + '</td></tr>';
-  }).join('');
+  // Per-document verify / reject (2026-11-15, Pankaj) — POST /accounts/kyc-item/<id>/<item>/<verify|reject>
+  var cid = b.dataset.id, canAct = {{ 'true' if can(current_user, 'crm_contacts', 'edit') else 'false' }};
+  var badge = function (d) {
+    if (!d.has) return '<span class="badge bg-light text-muted border">Not given</span>';
+    if (d.status === 'verified') return '<span class="badge text-bg-success">Verified</span>';
+    if (d.status === 'rejected') return '<span class="badge text-bg-danger" title="' + esc(d.note) + '">Rejected</span>' + (d.note ? '<div class="small text-danger">' + esc(d.note) + '</div>' : '');
+    return '<span class="badge text-bg-warning">Pending</span>';
+  };
+  var draw = function () {
+    document.getElementById('accKycRows').innerHTML = list.map(function (d, i) {
+      var act = '';
+      if (d.url) act += '<button type="button" class="btn btn-sm btn-outline-primary py-0" data-doc-preview="' + esc(d.url) + '" data-doc-name="' + esc(b.dataset.company + ' — ' + d.label) + '" title="Preview, download or print"><i class="bi bi-download"></i></button> ';
+      else if (d.has) act += '<span class="btn btn-sm btn-outline-secondary py-0 disabled" title="No file uploaded — only the number was entered"><i class="bi bi-download"></i></span> ';
+      if (d.has && canAct) {
+        act += '<button type="button" class="btn btn-sm btn-outline-success py-0 kyc-it" data-i="' + i + '" data-a="verify" title="Verify"' + (d.status === 'verified' ? ' disabled' : '') + '><i class="bi bi-check-lg"></i></button> '
+             + '<button type="button" class="btn btn-sm btn-outline-danger py-0 kyc-it" data-i="' + i + '" data-a="reject" title="Reject"' + (d.status === 'rejected' ? ' disabled' : '') + '><i class="bi bi-x-lg"></i></button>';
+      }
+      return '<tr><td class="fw-semibold small">' + esc(d.label) + '</td><td class="small font-monospace">' + (esc(d.number) || '<span class="text-muted">—</span>') + '</td>'
+        + '<td class="small">' + badge(d) + '</td><td class="text-end text-nowrap">' + (act || '<span class="text-muted small">—</span>') + '</td></tr>'
+        + '<tr class="kyc-rej d-none" data-i="' + i + '"><td colspan="4"><div class="input-group input-group-sm">'
+        + '<input type="text" class="form-control" maxlength="1000" placeholder="Why is ' + esc(d.label) + ' rejected? The user who added the account is notified.">'
+        + '<button type="button" class="btn btn-danger kyc-rej-send" data-i="' + i + '">Reject</button></div></td></tr>';
+    }).join('');
+    var left = list.filter(function (d) { return d.has && d.status !== 'verified'; });
+    var cb = document.getElementById('accKycConfirm');
+    cb.disabled = left.length > 0;
+    document.getElementById('accKycHint').textContent = left.length
+      ? 'Still to verify: ' + left.map(function (d) { return d.label; }).join(', ') + '. Confirm unlocks once every document is verified.'
+      : 'Every document is verified — Confirm marks this Account\'s KYC as verified.';
+  };
+  var send = function (i, action, note) {
+    var d = list[i], fd = new FormData();
+    fd.append('csrf_token', document.querySelector('#accKycForm [name=csrf_token]').value);
+    if (note) fd.append('note', note);
+    fetch('/accounts/kyc-item/' + cid + '/' + d.key + '/' + action, { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (!j.ok) { alert(j.error || 'Could not save'); return; }
+        d.status = j.status; d.note = j.note || '';
+        docs[cid] = list; draw();
+      }).catch(function () { alert('Could not save'); });
+  };
+  var rows = document.getElementById('accKycRows');
+  rows.onclick = function (ev) {
+    var t = ev.target.closest('.kyc-it, .kyc-rej-send'); if (!t) return;
+    var i = +t.dataset.i;
+    if (t.classList.contains('kyc-rej-send')) {
+      var note = rows.querySelector('.kyc-rej[data-i="' + i + '"] input').value.trim();
+      if (!note) { rows.querySelector('.kyc-rej[data-i="' + i + '"] input').focus(); return; }
+      send(i, 'reject', note); return;
+    }
+    if (t.dataset.a === 'verify') { send(i, 'verify'); return; }
+    var r = rows.querySelector('.kyc-rej[data-i="' + i + '"]');
+    r.classList.toggle('d-none'); if (!r.classList.contains('d-none')) r.querySelector('input').focus();
+  };
+  draw();
   var zip = document.getElementById('accKycZip');
   if (zip) {
     var any = list.some(function (d) { return d.url; });

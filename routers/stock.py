@@ -1341,8 +1341,20 @@ async def stock_in_list(
     # Supplier Deal card (2026-11-10; shared with Parts Manager 2026-11-12)
     from services.supplier_deals import supplier_deal_context
     _sd = await supplier_deal_context(db, current_user)
+    # Option C dashboard (2026-11-14, Pankaj) — services/stock_dash.py
+    from services.stock_dash import build as _build_dash
+    try:
+        from templates_config import _can
+        dash_kpis, dash_widgets = await _build_dash(db, entity, device_type, lot_number,
+                                                    can_price=_can(current_user, "stock", "pricing"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("stock dashboard failed")
+        await db.rollback()
+        dash_kpis, dash_widgets = [], []
     return templates.TemplateResponse("lots/stock_in.html", {
         "request": request, "current_user": current_user,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "flag_users": flag_users,
         **_sd,
         "analytics": analytics,
@@ -2011,6 +2023,37 @@ def _prod_tile_criteria():
     }
 
 
+@router.post("/trc-production/targets")
+async def trc_production_targets(request: Request, db: AsyncSession = Depends(get_db),
+                                 current_user: User = Depends(allowed)):
+    """Production Board -> Set targets (2026-11-14, Pankaj): daily / weekly /
+    per-engineer targets and max days per repair stage, kept in app_settings
+    ("prod_targets", JSON)."""
+    import json
+    from models.settings import AppSetting
+    from services.production_dash import STAGES, TARGET_KEY
+    form = await request.form()
+    data = {}
+    for code, *_ in STAGES:
+        data[code] = {}
+        for f in ("daily", "weekly", "per_engineer", "max_days"):
+            v = (form.get("%s_%s" % (code, f)) or "").strip()
+            if v.isdigit():
+                data[code][f] = int(v)
+    row = (await db.execute(select(AppSetting).where(AppSetting.key == TARGET_KEY))).scalar_one_or_none()
+    old = row.value if row else None
+    if row:
+        row.value = json.dumps(data); row.updated_by = current_user.username
+    else:
+        db.add(AppSetting(key=TARGET_KEY, value=json.dumps(data), description="Production Board stage targets",
+                          updated_by=current_user.username))
+    from services.audit_engine import audit
+    await audit(db, "PROD_TARGETS_SET", user=current_user, table_name="app_settings", record_id=TARGET_KEY,
+                old_value={"value": old}, new_value={"value": json.dumps(data)}, request=request)
+    await db.commit()
+    return RedirectResponse("/trc-production?success=Targets+saved", status_code=303)
+
+
 @router.get("/trc-production", response_class=HTMLResponse)
 async def trc_production_list(
     request: Request,
@@ -2225,8 +2268,22 @@ async def trc_production_list(
     tags_cosmetic = await _tile_count("cosmetic")
     tags_returned = await _tile_count("returned")
 
+    # Option C dashboard (2026-11-14, Pankaj) — services/production_dash.py
+    from services.production_dash import build as _build_dash
+    try:
+        dash_kpis, dash_widgets, prod_targets, prod_stages = await _build_dash(db, tile_criteria, tags_pna, tags_returned)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("production dashboard failed")
+        await db.rollback()
+        dash_kpis, dash_widgets, prod_targets, prod_stages = [], [], {}, []
+    # Supplier Deal card (2026-11-15, Pankaj): deals linked to Production's sourcing requests
+    from services.supplier_deals import supplier_deal_context
+    _sd = await supplier_deal_context(db, current_user, page="production")
     return templates.TemplateResponse("lots/trc_production.html", {
+        **_sd,
         "request": request, "devices": devices, "current_user": current_user,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets, "prod_targets": prod_targets, "prod_stages": prod_stages,
         "assigned_dept_map": assigned_dept_map, "bucket_map": bucket_map, "departments": STOCK_DEPARTMENTS,
         "cost_parts_map": cost_parts_map, "location_map": location_map,
         "repair_line_devices": repair_line_devices, "assigned_name_map": assigned_name_map,

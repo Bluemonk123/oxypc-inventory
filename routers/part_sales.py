@@ -526,8 +526,20 @@ async def part_sales_list(request: Request,
         select(PartSale).where(*_part_sales_filters(date_from, date_to))
         .order_by(PartSale.sold_at.desc())
     )).scalars().all()
+    # Option C dashboard (2026-11-14, Pankaj) — services/part_sales_dash.py.
+    dash_kpis, dash_widgets = [], []
+    try:
+        from services.part_sales_dash import build as _ps_dash
+        from templates_config import _can
+        dash_kpis, dash_widgets = await _ps_dash(db, _parse_simple_date(date_from), _parse_simple_date(date_to),
+                                                 _can(current_user, "part_sales", "pricing"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Part Sales dashboard failed")
+        await db.rollback()
     return templates.TemplateResponse("parts/sales_list.html", {
         "request": request, "current_user": current_user, "sales": sales,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "date_from": date_from, "date_to": date_to,
     })
 
@@ -600,6 +612,10 @@ def _bucket_counts(dates, bounds):
 @router.get("/parts-dashboard", response_class=HTMLResponse)
 async def parts_dashboard(request: Request, db: AsyncSession = Depends(get_db),
                           current_user: User = Depends(allowed)):
+    # Dashboard View (2026-11-14): this page is only a dashboard — no tick, no page.
+    from services.dash_access import dashboard_allowed
+    if not dashboard_allowed(current_user, "/parts-dashboard"):
+        raise HTTPException(status_code=403, detail="Access denied — Dashboard View is not enabled for your role")
     parts = (await db.execute(
         select(SparePart).where(SparePart.is_trashed.is_(False))
     )).scalars().all()
@@ -622,8 +638,65 @@ async def parts_dashboard(request: Request, db: AsyncSession = Depends(get_db),
                       (await db.execute(select(PartSourcingRequest))).scalars().all()]
     sold_dates = [s.sold_at for s in (await db.execute(select(PartSale))).scalars().all()]
 
+    # Option C dashboard (2026-11-14, Pankaj): this page IS the dashboard (no View Data).
+    from services import dash_widgets as dw
+    try:
+        stock = [(p, max(_stock_of(p, consumed), 0)) for p in parts]
+        low = sorted([(p, q) for p, q in stock if 0 < q <= int(p.min_stock_alert or 0)],
+                     key=lambda pq: pq[1] / max(1, int(pq[0].min_stock_alert or 1)))[:6]
+        by_cat = {}
+        for p, q in stock:
+            k = (p.category or "Other").strip() or "Other"
+            by_cat[k] = by_cat.get(k, 0) + q * float(p.unit_price or 0)
+        if not any(by_cat.values()):            # no prices: by units
+            by_cat = {}
+            for p, q in stock:
+                k = (p.category or "Other").strip() or "Other"
+                by_cat[k] = by_cat.get(k, 0) + q
+        cats = sorted(by_cat.items(), key=lambda kv: -kv[1])
+        cols = ["teal", "blue", "indigo", "cyan", "violet"]
+        dparts = [(k[:18], v, cols[i]) for i, (k, v) in enumerate(cats[:5]) if v] + (
+            [("Other", sum(v for _, v in cats[5:]), "grey")] if sum(v for _, v in cats[5:]) else [])
+        new_u = sum(q for p, q in stock if (p.source or "new") != "harvest")
+        harv_u = sum(q for p, q in stock if p.source == "harvest")
+        top = sorted(stock, key=lambda pq: -pq[1])[:7]
+        open_req = sum(1 for r in all_reqs if (r.status or "").lower() in ("pending", "open", "requested", "approved"))
+        healthy = part_types - below_min - out_of_stock
+        health = healthy * 100 / part_types if part_types else 0
+        from templates_config import _can
+        _pv = _can(current_user, "parts_dashboard", "pricing")   # money follows Pricing View (2026-11-14)
+        dash_kpis = [dw.kpi("Parts value", dw.inr(stock_value) if _pv else "—", "in stock", True, "teal", style="spark"),
+                     dw.kpi("Part numbers", dw.num(part_types), "in Part Master", True, "blue", style="spark"),
+                     dw.kpi("Units in stock", dw.num(total_qty), "new %s · harvest %s" % (dw.num(new_u), dw.num(harv_u)), True, "indigo", style="spark"),
+                     dw.kpi("Below minimum", dw.num(below_min), "reorder", not below_min, "red", style="spark"),
+                     dw.kpi("Out of stock", dw.num(out_of_stock), "part numbers", not out_of_stock, "amber", style="spark"),
+                     dw.kpi("Open part requests", dw.num(open_req), "not handed over", not open_req, "violet", style="spark")]
+        weekly = dw.area("Requests, sourcing and sales by week", 8, labels,
+                         [("Part requests", _bucket_counts(part_req_dates, bounds), "teal"),
+                          ("Sourcing requests", _bucket_counts(sourcing_dates, bounds), "blue"),
+                          ("Faulty", _bucket_counts(faulty_dates, bounds), "red")], legv="sum", sub="Per week")
+        gauge = dw.gauge("Stock health", 4, health, "%d%%" % round(health), "above minimum", "teal",
+                         [("Below min", dw.num(below_min)), ("Out", dw.num(out_of_stock)), ("OK", dw.num(max(healthy, 0)))])
+        low_w = (dw.hbars("Below minimum", 4, [((p.name or "—")[:20], q, "%d / %d" % (q, int(p.min_stock_alert or 0))) for p, q in low],
+                          color="red", lw="120px", sub="On hand / minimum")
+                 if low else dw.insight("Below minimum", 4, [("✓", "No parts below minimum.", "green")]))
+        donut = (dw.donut("Stock by category", 4, dparts, dw.inr(stock_value) if stock_value and _pv else dw.num(total_qty), "in stock" if _pv else "units in stock",
+                          kind="n") if dparts else dw.insight("Stock by category", 4, [("i", "No stock.", "slate")]))
+        src = dw.donut("New vs harvest", 4, [p for p in [("New", new_u, "blue"), ("Harvest", harv_u, "green")] if p[1]] or [("None", 1, "grey")],
+                       dw.num(new_u + harv_u), "units")
+        top_w = (dw.hbars("Most stock", 6, [((p.name or "—")[:22], q) for p, q in top], color="teal", lw="140px", sub="Units on hand")
+                 if top else dw.insight("Most stock", 6, [("i", "No stock.", "slate")]))
+        _sold = _bucket_counts(sold_dates, bounds)
+        sold_w = (dw.bars("Parts marked sold", 6, labels, [("Sold", _sold, "teal")], bmax="30px", sub="Per week")
+                  if any(_sold) else dw.insight("Parts marked sold", 6, [("i", "No parts marked sold in these weeks.", "slate")]))
+        dash_widgets = dw.layout([(360, [weekly, gauge]), (360, [low_w, donut, src]), (360, [top_w, sold_w])])
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("parts dashboard failed")
+        dash_kpis, dash_widgets = [], []
     return templates.TemplateResponse("parts/dashboard.html", {
         "request": request, "current_user": current_user,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "cards": {
             "total_qty": total_qty, "part_types": part_types,
             "below_min": below_min, "out_of_stock": out_of_stock,

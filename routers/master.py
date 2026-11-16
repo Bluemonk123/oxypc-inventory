@@ -16,7 +16,7 @@ from models.role_permissions import (
     DEFAULT_DISABLED_MODULES,
 )
 from models.settings import AppSetting
-from auth.dependencies import get_current_user, require_roles, verify_csrf
+from auth.dependencies import require_module_perm, get_current_user, require_roles, verify_csrf
 from routers.admin import _role_data
 from utils.master_data import refresh_master_cache
 from utils.size_units import space_size_unit, MASTER_SIZE_CATEGORIES
@@ -217,6 +217,7 @@ PERM_MODULES = [
     ("quotations",           "Quotations"),
     ("model_requests",       "Model Requests"),
     ("whatsapp",             "WhatsApp"),
+    ("sales_coordinator",    "Sales Coordinator"),   # OFF by default (DEFAULT_DISABLED_MODULES), 2026-11-14
     ("assign_dealer_leads",  "Assign Dealer Leads"),
     # ── FINANCE ────────────────────────────────────────────────────
     ("finance",              "Accounts"),
@@ -253,13 +254,15 @@ PERM_MODULES = [
     ("aging_tracker",        "Aging Tracker"),
     ("stage_audit_log",      "Stage Audit Log"),
     ("system_audit_log",     "System Audit Log"),
-    ("sidebar_config",       "Sidebar Config"),
-    ("landing_pages",        "Module Page Titles"),
     ("wa_audit_log",         "WA Audit Log"),
     # ── ADMIN SETTINGS accordion (admin-only by default; grantable to
     #    sub_admin — or any role — via this matrix / the Sub Admin Role tab) ─
     ("admin_users",          "Users"),
     ("admin_master",         "Master Data"),
+    # Extra Settings (2026-11-16, Pankaj): System Colors, Email, Sidebar
+    # Config, Sidebar Alignment, Page Title Config — replaces the separate
+    # Sidebar Config / Module Page Titles rows. OFF by default (admin only).
+    ("extra_settings",       "Extra Settings"),
     ("company_settings",     "Company Settings"),
     ("cost_config",          "Cost Config"),
     ("attendance_config",    "Attendance Config"),
@@ -305,7 +308,7 @@ def _sidebar_sections() -> dict:
         out, sec = {}, None
         try:
             for line in open(path, encoding="utf-8"):
-                m = re.search(r'<li class="nav-section">([^<]+)</li>', line)
+                m = re.search(r'<li class="nav-section"[^>]*>([^<]+)</li>', line)
                 if m:
                     sec = m.group(1).strip()
                 for k, d in re.findall(r"sidebar_label\('([a-z0-9_]+)',\s*'([^']*)'\)", line):
@@ -324,15 +327,22 @@ def perm_modules_in_sidebar_order() -> list:
     of its own sits right after the page it lives on (_SECTION_FROM); any
     other comes last, in its PERM_MODULES order."""
     _sidebar_sections()
-    big = len(_SIDEBAR_ORDER) + 1
+    # Follows Extra Settings → Sidebar Alignment when an order is saved
+    # (2026-11-16); base.html order otherwise.
+    try:
+        from services.sidebar_layout import effective_ranks
+        order = effective_ranks() or _SIDEBAR_ORDER
+    except Exception:
+        order = _SIDEBAR_ORDER
+    big = max(order.values(), default=0) + 1
 
     def pos(item):
         i, (key, _label) = item
-        if key in _SIDEBAR_ORDER:
-            return (_SIDEBAR_ORDER[key], 0, i)
+        if key in order:
+            return (order[key], 0, i)
         host = _SECTION_FROM.get(key)
-        if host in _SIDEBAR_ORDER:
-            return (_SIDEBAR_ORDER[host], 1, i)
+        if host in order:
+            return (order[host], 1, i)
         return (big, 0, i)
     return [m for _i, m in sorted(enumerate(PERM_MODULES), key=pos)]
 
@@ -396,6 +406,7 @@ async def load_module_visibility_to_cache(db: AsyncSession) -> None:
 
 PERM_ACTIONS = [
     ("can_enable", "Enable"),
+    ("can_dashboard", "Dashboard View"),      # Option C dashboard on the page (2026-11-14, services/dash_access.py)
     ("can_pricing", "Pricing View"),          # see prices (was "Pricing")
     ("can_pricing_add", "Pricing Add"),       # set / change prices (2026-11-03)
     ("can_pricing_export", "Pricing Export"), # price columns in exports (2026-11-03)
@@ -420,6 +431,9 @@ def module_action_map() -> dict:
         mods, action = entry
         for m in ((mods,) if isinstance(mods, str) else mods):
             out.setdefault(m, set()).update(action if isinstance(action, tuple) else (action,))
+    from services.dash_access import DASH_MODULES   # Dashboard View only where a page has a dashboard
+    for m in DASH_MODULES:
+        out.setdefault(m, set()).add("dashboard")
     return out
 
 # ── Role Additional Permissions — cross-cutting, not tied to any one module ──
@@ -570,6 +584,9 @@ async def master_list(
     Always loads the dropdown-config accordion data AND the permission-matrix
     data, so either tab renders correctly regardless of which one is active.
     """
+    if main_tab in ("system_colors", "email"):   # moved to Extra Settings (2026-11-16)
+        qs = "&".join(f"{k}={v}" for k, v in request.query_params.items() if k != "main_tab")
+        return RedirectResponse(url=f"/admin/extra-settings?tab={main_tab}" + (f"&{qs}" if qs else ""), status_code=302)
     result = await db.execute(
         select(MasterData).order_by(MasterData.category, MasterData.display_order, MasterData.value)
     )
@@ -623,6 +640,23 @@ async def master_list(
             select(RoleAdditionalPermission).where(RoleAdditionalPermission.role_name == selected_role)
         )).scalar_one_or_none()
 
+    # Activity Board Cards (2026-11-15): ticks per role, default = old behaviour
+    from services.ab_cards import grouped as ab_grouped, role_cards, default_cards
+    ab_cards_sel = None
+    if selected_role and selected_role != "admin":
+        ab_cards_sel = await role_cards(db, selected_role)
+        if ab_cards_sel is None:
+            ab_cards_sel = default_cards(selected_role)
+
+    # Default landing page (2026-11-15): pages this role can open
+    landing_opts, landing_sel, landing_default = [], "", ""
+    if selected_role:
+        from services import landing as _landing
+        landing_opts = _landing.options(selected_role)
+        landing_sel = await _landing.stored(db, selected_role)
+        landing_default = dict((u, l) for _m, l, u in _landing._pages()).get(
+            _landing.default_for(selected_role), _landing.default_for(selected_role))
+
     # ── Pricing Visibility data (Tab 4, Batch 9) ──────────────────────────────
     # One row per role (built-in + custom), default True (visible) when no
     # RoleAdditionalPermission row exists yet for that role — matches
@@ -674,6 +708,8 @@ async def master_list(
         # Additional permissions tab data
         "additional_perms": ADDITIONAL_PERMS,
         "additional_perm_row": additional_perm_row,
+        "landing_opts": landing_opts, "landing_sel": landing_sel, "landing_default": landing_default,
+        "ab_cards": ab_grouped(), "ab_cards_sel": ab_cards_sel or set(),
         # Pricing Visibility tab data
         "pricing_rows": pricing_rows,
         # Sub Admin Role tab data (item 7)
@@ -682,10 +718,6 @@ async def master_list(
         "sub_admin_role": SUB_ADMIN_ROLE,
         # Global Visibility tab data
         "global_visibility_rows": global_visibility_rows,
-        # System Colors tab data (2026-11-08)
-        **_system_colors_ctx(),
-        # Email tab data (2026-11-09)
-        **((await _email_ctx(db)) if main_tab == "email" else {}),
     })
 
 
@@ -717,7 +749,7 @@ async def _save_setting(db: AsyncSession, key: str, value: str, description: str
 async def save_system_colors(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_only),
+    current_user: User = Depends(require_module_perm("extra_settings", "edit")),
 ):
     """Save every colour token (Light and Dark) and the default mode for users.
     Applies app-wide at once (in-memory cache + AppSetting rows)."""
@@ -735,7 +767,7 @@ async def save_system_colors(
                 v = sc.DEFAULTS[key][mode]
             values[key][mode] = v
     if bad:
-        return RedirectResponse(url="/admin/master?main_tab=system_colors&error=Not+a+colour:+" + "+".join(bad)[:150],
+        return RedirectResponse(url="/admin/extra-settings?tab=system_colors&error=Not+a+colour:+" + "+".join(bad)[:150],
                                 status_code=302)
     mode = (form.get("default_mode") or "light").strip().lower()
     mode = mode if mode in ("light", "dark") else "light"
@@ -744,21 +776,21 @@ async def save_system_colors(
     await _save_setting(db, sc.MODE_KEY, mode, "System Colors: default Light/Dark mode for users", current_user.username)
     await db.commit()
     sc.apply_loaded(raw, mode)
-    return RedirectResponse(url="/admin/master?main_tab=system_colors&success=System+colours+saved", status_code=302)
+    return RedirectResponse(url="/admin/extra-settings?tab=system_colors&success=System+colours+saved", status_code=302)
 
 
 @router.post("/system-colors/reset")
 async def reset_system_colors(
     request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(admin_only),
+    current_user: User = Depends(require_module_perm("extra_settings", "edit")),
 ):
     """Reset every colour to the Design System default (keeps the default mode)."""
     from services import system_colors as sc
     await _save_setting(db, sc.SETTING_KEY, "{}", "System Colors: changed colour tokens (Light/Dark)", current_user.username)
     await db.commit()
     sc.apply_loaded("{}", sc.default_mode())
-    return RedirectResponse(url="/admin/master?main_tab=system_colors&success=Colours+reset+to+the+Design+System",
+    return RedirectResponse(url="/admin/extra-settings?tab=system_colors&success=Colours+reset+to+the+Design+System",
                             status_code=302)
 
 
@@ -793,7 +825,7 @@ async def send_test_email(
     form = await request.form()
     to = (form.get("to") or current_user.email or "").strip()
     box = "backup" if form.get("box") == "backup" else "main"
-    back = "/admin/master?main_tab=email"
+    back = "/admin/extra-settings?tab=email"
     if not to or "@" not in to:
         return RedirectResponse(url=back + "&error=" + quote_plus(
             "Enter an email address (your profile has none)."), status_code=302)
@@ -825,7 +857,7 @@ async def save_email_settings(
     form = await request.form()
     box = "backup" if form.get("box") == "backup" else "main"
     prefix = "OXYPC_SMTP2" if box == "backup" else "OXYPC_SMTP"
-    back = "/admin/master?main_tab=email"
+    back = "/admin/extra-settings?tab=email"
     g = lambda k: (form.get(k) or "").strip()  # noqa: E731
     host, port, security, user, sender = g("host"), g("port"), g("security").lower(), g("user"), g("from")
     if form.get("turn_off") == "1":
@@ -1001,6 +1033,7 @@ async def reload_product_model_names(
 
 @router.post("/{item_id}/edit")
 async def edit_master_value(
+    request: Request,
     item_id: str,
     value: str = Form(...),
     description: str = Form(""),
@@ -1012,16 +1045,51 @@ async def edit_master_value(
     item = result.scalar_one_or_none()
     if not item:
         raise HTTPException(404)
+    old_value, old_parent = item.value, item.parent
     item.value = value.strip()
     if item.category in MASTER_SIZE_CATEGORIES:  # "12GB" -> "12 GB" (2026-10-19)
         item.value = space_size_unit(item.value)
     item.description = description.strip() or None
     if item.category in PARENT_CATEGORIES and parent.strip():
         item.parent = parent.strip()[:200]
+    msg = "Updated"
+    # Product Model Names (2026-11-16, Pankaj): renaming a model renames it on
+    # the tags it came from — same model (capitals / spaces / punctuation
+    # ignored) under the same Make.
+    if item.category == "product_model_name" and item.value and item.value != old_value:
+        n = await _rename_model_on_tags(db, old_value, old_parent, item.value, current_user, request)
+        msg = f"Updated — {n:,} tag{'' if n == 1 else 's'} renamed to {item.value}" if n else "Updated (no tags had this name)"
     await db.commit()
     await refresh_master_cache(db)
     cat_tab = dict((c[0], c[2]) for c in CATEGORIES).get(item.category, 'laptop')
-    return RedirectResponse(url=f"/admin/master?success=Updated&tab={cat_tab}", status_code=302)
+    from urllib.parse import quote
+    return RedirectResponse(url=f"/admin/master?success={quote(msg)}&tab={cat_tab}", status_code=302)
+
+
+async def _rename_model_on_tags(db, old, old_make, new, user, request=None) -> int:
+    """Devices whose Model matches `old` (model_key) and whose Brand matches
+    the value's Make get Model = `new`. Audit row first; returns the count."""
+    from sqlalchemy import func as _f, update as _update
+    from models.device import Device
+    from services.audit_engine import audit
+    from utils.model_name import model_key, clear_cache
+    key = model_key(old)
+    if not key:
+        return 0
+    norm = lambda col: _f.regexp_replace(_f.lower(col), "[^a-z0-9]", "", "g")  # noqa: E731
+    cond = [Device.model.isnot(None), norm(Device.model) == key]
+    if old_make and model_key(old_make):
+        cond.append(norm(Device.brand) == model_key(old_make))
+    ids = (await db.execute(select(Device.id).where(*cond))).scalars().all()
+    if not ids:
+        return 0
+    await audit(db, user=user, action="MASTER_MODEL_RENAMED_ON_TAGS", table_name="devices",
+                record_id=f"bulk:{len(ids)}", old_value={"model": old, "make": old_make},
+                new_value={"model": new, "tags": len(ids)},
+                notes="Product Model Names edit: the new name copied to the tags with the old one.", request=request)
+    await db.execute(_update(Device).where(Device.id.in_(ids)).values(model=new[:100] if new else new))
+    clear_cache()
+    return len(ids)
 
 
 @router.post("/{item_id}/toggle")
@@ -1247,6 +1315,7 @@ async def load_role_permissions(
             "can_pricing_export": (True if r.can_pricing is None else r.can_pricing)
                                   if r.can_pricing_export is None else r.can_pricing_export,
             "can_export": True if r.can_export is None else r.can_export,
+            "can_dashboard": bool(r.can_dashboard),   # off until ticked
         }
         for r in rows
     }
@@ -1285,6 +1354,8 @@ async def save_role_permissions(
         can_pricing_add = f"perm_{mod_key}_can_pricing_add" in form
         can_pricing_export = f"perm_{mod_key}_can_pricing_export" in form
         can_export  = f"perm_{mod_key}_can_export"  in form
+        from services.dash_access import DASH_MODULES
+        can_dashboard = (f"perm_{mod_key}_can_dashboard" in form) if mod_key in DASH_MODULES else None
         db.add(RoleModulePermission(
             role_name  = role_name,
             module     = mod_key,
@@ -1297,6 +1368,7 @@ async def save_role_permissions(
             can_pricing_add = can_pricing_add,
             can_pricing_export = can_pricing_export,
             can_export  = can_export,
+            can_dashboard = can_dashboard,
             updated_by = current_user.username,
         ))
         new_perms[mod_key] = {
@@ -1304,7 +1376,7 @@ async def save_role_permissions(
             "edit":   can_edit,   "upload": can_upload,
             "delete": can_delete, "pricing": can_pricing,
             "pricing_add": can_pricing_add, "pricing_export": can_pricing_export,
-            "export": can_export,
+            "export": can_export, "dashboard": can_dashboard,
         }
 
     await db.commit()
@@ -1349,6 +1421,27 @@ async def save_additional_permissions(
         row.updated_by = current_user.username
     else:
         db.add(RoleAdditionalPermission(role_name=role_name, updated_by=current_user.username, **values))
+
+    # Default landing page (2026-11-15, Pankaj): only a page the role can open
+    if form.get("landing_present"):
+        from services import landing as _landing
+        _res = await _landing.save(db, role_name, (form.get("landing_page") or "").strip(), current_user.username)
+        if _res and _res[0] != _res[1]:
+            from services.audit_engine import audit as _audit
+            await _audit(db, user=current_user, action="LANDING_PAGE_SAVED", table_name="app_settings",
+                         record_id=("landing_page_" + role_name)[:50], old_value={"url": _res[0]},
+                         new_value={"url": _res[1]}, request=request)
+
+    # Activity Board Cards (2026-11-15, Pankaj): which cards the role sees
+    if form.get("ab_cards_present") and role_name != "admin":
+        from services.ab_cards import AB_KEYS, save_role_cards
+        old_cards, new_cards = await save_role_cards(
+            db, role_name, [k for k in AB_KEYS if f"ab_card_{k}" in form], current_user.username)
+        if old_cards != new_cards:
+            from services.audit_engine import audit as _audit
+            await _audit(db, user=current_user, action="AB_CARDS_SAVED", table_name="app_settings",
+                         record_id=("ab_cards_" + role_name)[:50], old_value={"cards": old_cards},
+                         new_value={"cards": new_cards}, request=request)
 
     await db.commit()
 
@@ -1404,6 +1497,7 @@ async def save_sub_admin_permissions(
             can_pricing_add = can_enable,
             can_pricing_export = can_enable,
             can_export  = can_enable,
+            can_dashboard = can_enable,
             updated_by = current_user.username,
         ))
         new_perms[mod_key] = {
@@ -1411,7 +1505,7 @@ async def save_sub_admin_permissions(
             "edit":   can_enable, "upload": can_enable,
             "delete": can_enable, "pricing": can_enable,
             "pricing_add": can_enable, "pricing_export": can_enable,
-            "export": can_enable,
+            "export": can_enable, "dashboard": can_enable,
         }
 
     await db.commit()
@@ -1514,7 +1608,7 @@ async def load_all_permissions_to_cache(db: AsyncSession) -> None:
             "edit":   r.can_edit,   "upload": r.can_upload,
             "delete": r.can_delete, "pricing": r.can_pricing,
             "pricing_add": r.can_pricing_add, "pricing_export": r.can_pricing_export,
-            "export": r.can_export,
+            "export": r.can_export, "dashboard": r.can_dashboard,
         }
     _PERM_CACHE.clear()
     _PERM_CACHE.update(tmp)

@@ -37,6 +37,10 @@ class RoleModulePermission(Base):
     # so nobody's access changed when these were added.
     can_pricing_add    = Column(Boolean, nullable=True)
     can_pricing_export = Column(Boolean, nullable=True)
+    # Dashboard View (2026-11-14, approved): who sees the page's Option C dashboard
+    # (services/dash_access.py). Off for everyone until ticked (Pankaj, 2026-11-14):
+    # NULL / no row = not allowed. Admin always allowed.
+    can_dashboard      = Column(Boolean, nullable=True, server_default="false")
     updated_at = Column(DateTime, default=app_now, onupdate=app_now)
     updated_by = Column(String(50), nullable=True)
 
@@ -231,10 +235,12 @@ DEFAULT_DISABLED_MODULES = frozenset({
     "qa", "qa_uat", "qa_ux",   # Product Management pages — admin only unless ticked (2026-11-05)
     "crm_pickups",             # Pickup Process (2026-11-11)
     "ticket_board",            # Ticket Board (2026-11-13) — admin only unless ticked
+    "sales_coordinator",       # Sales Coordinator (2026-11-14) — admin only unless ticked
+    "extra_settings",          # Extra Settings (2026-11-16) — admin only unless ticked
 })
 
 
-PERM_ACTIONS = ("add", "upload", "edit", "delete", "pricing", "pricing_add", "pricing_export", "export")
+PERM_ACTIONS = ("add", "upload", "edit", "delete", "pricing", "pricing_add", "pricing_export", "export", "dashboard")
 
 
 def has_perm(role_name: str, module: str, action: str = "enable") -> bool:
@@ -252,6 +258,11 @@ def has_perm(role_name: str, module: str, action: str = "enable") -> bool:
     """
     if role_name == "admin":
         return True
+    if action == "dashboard":
+        # Dashboard View is opt-in (2026-11-14): only an explicit tick allows it,
+        # and only while the module itself is enabled.
+        mp = (_PERM_CACHE.get(role_name) or {}).get(module) or {}
+        return bool(mp.get("dashboard")) and mp.get("enable", True) is not False
     role_perms = _PERM_CACHE.get(role_name)
     default = module not in DEFAULT_DISABLED_MODULES
     if not role_perms:

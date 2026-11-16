@@ -174,13 +174,27 @@ async def product_master_page(request: Request, db: AsyncSession = Depends(get_d
     rams = (await db.execute(select(HWRam).order_by(HWRam.ram_name))).scalars().all()
     stos = (await db.execute(select(HWStorage).order_by(HWStorage.storage_name))).scalars().all()
     by_id = {str(r.id): r for rows in dd.values() for r in rows}
+    products = await _product_rows(db)
+    comp_lists = await _comp_lists(db)
+    # Option C dashboard, Variant 2 (2026-11-16, Pankaj) — services/pm_dash.py.
+    dash_kpis, dash_widgets, dash_pipe = [], [], []
+    try:
+        from services.pm_dash import build as _pm_dash
+        from templates_config import _can
+        dash_kpis, dash_widgets, dash_pipe = await _pm_dash(db, products, comp_lists,
+                                                 _can(current_user, "pm_product_master", "pricing"))
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("Product Master dashboard failed")
+        await db.rollback()
     return templates.TemplateResponse("product_master/product_master.html", {
         "request": request, "current_user": current_user,
-        "products": await _product_rows(db),
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets, "dash_pipe": dash_pipe,
+        "products": products,
         "dropdowns": dd, "dropdown_json": _dropdown_json(dd), "dropdown_by_id": by_id,
         "categories": DROPDOWN_CATEGORIES, "dropdown_parent": DROPDOWN_PARENT,
         "part_fields": PART_FIELDS, "rams": rams, "storages": stos,
-        "comp_lists": await _comp_lists(db), "comp_method": await competitive_method(db),
+        "comp_lists": comp_lists, "comp_method": await competitive_method(db),
         "comp_methods": COMPETITIVE_METHODS,
         "active_tab": request.query_params.get("tab", "products"),
     })

@@ -1,0 +1,201 @@
+{# Parts Sourcing / Device Sourcing requests (2026-11-15, Pankaj) — shared by
+   Procurement Board (sr_mode='procure': Link Deal / Close Deal, only on verified
+   requests) and Activity Board (sr_mode='review': Verify / Reject).
+   Context: services/sourcing_requests.py requests_context() + sr_mode, is_sm,
+   status_badge, sr_can_review. Pills: Pending / Verified / Rejected.
+   Process Status = Open / Closed + Verified / Unverified / Rejected.
+   Set sr_tabs_id before including when the page has other tabs. #}
+{% set _dev_open = ('open', 'partially_fulfilled') %}
+{% set _csrf = request.cookies.get('csrf_token', '') %}
+
+{% macro proc_status(is_open, r) %}
+  {% set st = r.review_status or 'verified' %}
+  <div class="d-flex flex-column gap-1 align-items-start">
+    {% if is_open %}<span class="badge bg-warning text-dark">Open</span>{% else %}<span class="badge bg-success">Closed</span>{% endif %}
+    {% if st == 'verified' %}<span class="badge text-bg-light border border-success text-success" title="{% if r.reviewed_by %}Verified by {{ r.reviewed_by }}{% if r.reviewed_at %} on {{ r.reviewed_at.strftime('%d-%m-%Y') }}{% endif %}{% endif %}">Verified</span>
+    {% elif st == 'rejected' %}<span class="badge text-bg-danger" title="{{ r.review_note or '' }}">Rejected</span>
+    {% else %}<span class="badge text-bg-secondary">Unverified</span>{% endif %}
+  </div>
+{% endmacro %}
+
+{% macro review_actions(kind, r) %}
+  {% set st = r.review_status or 'verified' %}
+  {% if st == 'pending' and sr_can_review %}
+  <form method="post" action="/activity-board/sourcing/{{ kind }}/{{ r.id }}/verify" class="d-inline mb-0">
+    <input type="hidden" name="csrf_token" value="{{ _csrf }}">
+    <button class="btn btn-sm btn-outline-success py-0 px-2" title="Verify"><i class="bi bi-check-lg"></i> Verify</button>
+  </form>
+  <button type="button" class="btn btn-sm btn-outline-danger py-0 px-2" data-bs-toggle="modal" data-bs-target="#srRejectModal"
+          data-action="/activity-board/sourcing/{{ kind }}/{{ r.id }}/reject" title="Reject"><i class="bi bi-x-lg"></i> Reject</button>
+  {% elif st == 'rejected' %}
+  <span class="small text-danger" title="{{ r.reviewed_by or '' }}">{{ (r.review_note or 'Rejected')[:60] }}</span>
+  {% elif st == 'verified' and r.reviewed_by %}
+  <span class="small text-muted">{{ r.reviewed_by }}{% if r.reviewed_at %} · {{ r.reviewed_at.strftime('%d-%m-%Y') }}{% endif %}</span>
+  {% else %}<span class="text-muted">—</span>{% endif %}
+{% endmacro %}
+
+{% macro part_table(rows, tid) %}
+<table class="table table-hover mb-0 small align-middle pr-table" id="{{ tid }}">
+  <thead><tr>
+    <th>Process Status</th><th>Part Name</th><th>Qty Requested</th><th>Qty Sourced</th><th>Added On</th><th>Raised By</th><th>Notes</th><th>Action</th>
+  </tr></thead>
+  <tbody>
+  {% for s in rows %}
+  <tr>
+    <td>{{ proc_status(s.status != 'closed', s) }}</td>
+    <td class="fw-semibold">
+      {% if s.source == 'production' %}
+      <div class="d-flex flex-wrap align-items-center gap-1">
+        {% if s.lot_number %}<a href="/lots?q={{ s.lot_number | urlencode }}" class="fw-semibold">{{ s.lot_number }}</a>{% else %}<span class="text-muted">Lot —</span>{% endif %}
+        <span class="text-muted">-</span>
+        {% for f in estimates_by_batch.get(s.id | string, []) %}
+        <a class="btn btn-sm btn-outline-success py-0 px-1" href="/part-estimation/download/{{ f.id }}" title="{{ f.file_name }}">
+          <i class="bi bi-file-earmark-excel me-1"></i>{{ f.grade or 'Estimate' }}</a>
+        {% else %}<span class="text-muted fw-normal">No file attached</span>{% endfor %}
+      </div>
+      {% else %}
+      {% set _p = part_map.get(s.part_id | string) if s.part_id else none %}
+      {{ [s.part_name, _p.model if _p else none, _p.make if _p else none] | select | join(' - ') }}
+      {% endif %}
+    </td>
+    <td>{{ (prod_qty or {}).get(s.id|string, s.qty_requested) }}</td>
+    <td>{{ s.qty_sourced }}
+      {% if s.source_deal_id %}{% set _d = deal_map.get(s.source_deal_id) %}
+      {% if _d %}<a href="/crm/sourcing/{{ s.source_deal_id }}" class="small">({{ _d.deal_number }})</a>
+      {% else %}<span class="text-muted small">({{ s.source_deal_id }})</span>{% endif %}{% endif %}
+    </td>
+    <td data-order="{{ s.created_at.strftime('%Y%m%d%H%M') if s.created_at else '' }}">{{ s.created_at.strftime('%d-%m-%Y') if s.created_at else '—' }}</td>
+    <td>{{ s.raised_by or '—' }}</td>
+    <td class="text-muted" style="max-width:200px; white-space:normal;">{{ (part_notes or {}).get(s.id|string) or '—' }}</td>
+    <td class="text-nowrap">
+      {% if sr_mode == 'review' %}{{ review_actions('part', s) }}
+      {% elif s.status == 'closed' %}<span class="badge bg-success">Closed</span>
+      {% elif (s.review_status or 'verified') != 'verified' %}<span class="text-muted" title="Verify it on Activity Board first">—</span>
+      {% elif is_sm and can(current_user, 'crm_dashboard', 'edit') %}
+      <button class="btn btn-sm btn-outline-primary py-0 px-2 me-1" data-bs-toggle="modal" data-bs-target="#linkDealModal"
+              data-action="/part-sourcing/{{ s.id }}/link-deal" data-part="{{ s.part_name }}" data-deal="{{ s.source_deal_id or '' }}"
+              title="Link this request to a supplier deal"><i class="bi bi-link-45deg"></i> {{ 'Change Link' if s.source_deal_id else 'Link Deal' }}</button>
+      <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#closeDealModal"
+              data-sr="{{ s.id }}" data-part="{{ s.part_name }}">Close Deal</button>
+      {% else %}<span class="text-muted">—</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro device_table(rows, tid) %}
+<table class="table table-hover mb-0 small align-middle pr-table" id="{{ tid }}">
+  <thead><tr><th>Process Status</th><th>Config</th><th>Grade</th><th>Qty Requested</th><th>Added On</th><th>Raised By</th><th>Notes</th><th>Action</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  {% set _open = r.status in _dev_open %}
+  <tr>
+    <td>{{ proc_status(_open, r) }}</td>
+    <td><div class="fw-semibold">{{ r.sub_category or 'Any' }} — {{ r.brand or '' }} {{ r.model or '' }}</div>
+      <div class="text-muted" style="font-size:0.72rem">{{ r.cpu or '' }}{% if r.ram_gb %} · {{ r.ram_gb }} GB RAM{% endif %}{% if r.storage_gb %} · {{ r.storage_gb }} GB {{ r.storage_type or '' }}{% endif %}{% if r.screen_size %} · {{ r.screen_size }}{% endif %}</div>
+      {% if r.source_deal_id %}{% set _d = deal_map.get(r.source_deal_id) %}<a href="/crm/sourcing/{{ r.source_deal_id }}" class="small">{{ _d.deal_number if _d else r.source_deal_id }}</a>{% endif %}</td>
+    <td><span class="badge bg-secondary">{{ r.grade or 'Any' }}</span></td>
+    <td>{{ r.qty_requested }}{% if r.qty_fulfilled %} <span class="text-muted small">({{ r.qty_fulfilled }} sourced)</span>{% endif %}</td>
+    <td data-order="{{ r.created_at.strftime('%Y%m%d%H%M') if r.created_at else '' }}">{{ r.created_at.strftime('%d-%m-%Y') if r.created_at else '—' }}</td>
+    <td><div>{{ r.requested_by_name or r.requested_by }}</div>
+      <div class="text-muted" style="font-size:0.72rem">{{ (r.requested_by_role or '') | replace('_',' ') | title }}</div></td>
+    <td class="text-muted" style="max-width:200px; white-space:normal;">{{ r.notes or r.sourcing_notes or '' }}{% if r.review_status == 'rejected' and r.review_note %}{% if r.notes or r.sourcing_notes %} · {% endif %}<span class="text-danger">Rejected: {{ r.review_note }}</span>{% elif not (r.notes or r.sourcing_notes) %}—{% endif %}</td>
+    <td class="text-nowrap">
+      {% if sr_mode == 'review' %}{{ review_actions('device', r) }}
+      {% elif not _open %}<span class="badge bg-success">Closed</span>
+      {% elif (r.review_status or 'verified') != 'verified' %}<span class="text-muted" title="Verify it on Activity Board first">—</span>
+      {% elif is_sm and can(current_user, 'crm_dashboard', 'edit') %}
+      <button class="btn btn-sm btn-outline-primary py-0 px-2 me-1" data-bs-toggle="modal" data-bs-target="#linkDealModal"
+              data-action="/procure-dashboard/device-sourcing/{{ r.id }}/link-deal" data-part="{{ r.sub_category or 'Any' }} — {{ r.brand or '' }} {{ r.model or '' }}"
+              data-deal="{{ r.source_deal_id or '' }}" title="Link this request to a supplier deal"><i class="bi bi-link-45deg"></i> {{ 'Change Link' if r.source_deal_id else 'Link Deal' }}</button>
+      <button class="btn btn-sm btn-success py-0 px-2" data-bs-toggle="modal" data-bs-target="#closeSourcingDealModal"
+              data-req="{{ r.id }}" data-model="{{ r.sub_category or 'Any' }} — {{ r.brand or '' }} {{ r.model or '' }}">Close Deal</button>
+      {% else %}<span class="text-muted">—</span>{% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endmacro %}
+
+{% macro req_card(key, icon, title, rows, table) %}
+{% set _pend = rows | selectattr('review_status', 'equalto', 'pending') | list %}
+{% set _rej = rows | selectattr('review_status', 'equalto', 'rejected') | list %}
+{% set _ver = rows | rejectattr('review_status', 'in', ('pending', 'rejected')) | list %}
+<div class="card border-0 shadow-sm gtable-card">
+  <div class="card-header bg-white border-0 d-flex align-items-center flex-wrap gap-3">
+    <span class="fw-semibold"><i class="bi {{ icon }} me-2"></i>{{ title }}</span>
+    <ul class="nav pill-tabs" role="tablist">
+      <li class="nav-item"><button type="button" class="nav-link{% if sr_mode == 'review' %} active{% endif %}" data-bs-toggle="tab" data-bs-target="#{{ key }}_pe">Pending</button></li>
+      <li class="nav-item"><button type="button" class="nav-link{% if sr_mode != 'review' %} active{% endif %}" data-bs-toggle="tab" data-bs-target="#{{ key }}_ve">Verified</button></li>
+      <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#{{ key }}_re">Rejected</button></li>
+    </ul>
+  </div>
+  <div class="card-body">
+    <div class="tab-content">
+      <div class="tab-pane fade{% if sr_mode == 'review' %} show active{% endif %}" id="{{ key }}_pe">{{ table(_pend, key ~ '_tpe') }}</div>
+      <div class="tab-pane fade{% if sr_mode != 'review' %} show active{% endif %}" id="{{ key }}_ve">{{ table(_ver, key ~ '_tve') }}</div>
+      <div class="tab-pane fade" id="{{ key }}_re">{{ table(_rej, key ~ '_tre') }}</div>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+
+{% set _pfx = 'ab' if sr_mode == 'review' else 'pb' %}
+{% set _ps_n = (part_sourcing | selectattr('review_status', 'equalto', 'pending') | list | length) if sr_mode == 'review'
+               else (part_sourcing | rejectattr('status', 'equalto', 'closed') | rejectattr('review_status', 'in', ('pending', 'rejected')) | list | length) %}
+{% set _ds_n = (device_sourcing | selectattr('review_status', 'equalto', 'pending') | list | length) if sr_mode == 'review'
+               else (device_sourcing | selectattr('status', 'in', _dev_open) | rejectattr('review_status', 'in', ('pending', 'rejected')) | list | length) %}
+{% if not sr_single %}
+<ul class="nav nav-tabs mb-0" id="pendingReqTabs" role="tablist">
+  <li class="nav-item" role="presentation">
+    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#{{ _pfx }}PartSourcingTab" type="button" role="tab">
+      <i class="bi bi-box-seam me-1"></i>Parts Sourcing <span class="badge rounded-pill bg-warning text-dark ms-1">{{ _ps_n }}</span></button>
+  </li>
+  <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#{{ _pfx }}DeviceSourcingTab" type="button" role="tab">
+      <i class="bi bi-laptop me-1"></i>Device Sourcing <span class="badge rounded-pill bg-warning text-dark ms-1">{{ _ds_n }}</span></button>
+  </li>
+</ul>
+<div class="tab-content mb-4">
+  <div class="tab-pane fade show active" id="{{ _pfx }}PartSourcingTab" role="tabpanel">
+    {{ req_card(_pfx ~ 'psr', 'bi-box-seam', 'Requests For Part Sourcing', part_sourcing, part_table) }}
+  </div>
+  <div class="tab-pane fade" id="{{ _pfx }}DeviceSourcingTab" role="tabpanel">
+    {{ req_card(_pfx ~ 'dsr', 'bi-laptop', 'Requests For Device Sourcing', device_sourcing, device_table) }}
+  </div>
+</div>
+{% elif sr_single == 'part' %}
+{{ req_card(_pfx ~ 'psr', 'bi-box-seam', 'Requests For Part Sourcing', part_sourcing, part_table) }}
+{% else %}
+{{ req_card(_pfx ~ 'dsr', 'bi-laptop', 'Requests For Device Sourcing', device_sourcing, device_table) }}
+{% endif %}
+
+{% if sr_mode == 'review' and sr_single != 'device' %}{# once per page: the Parts pane carries it #}
+<div class="modal fade" id="srRejectModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" class="modal-content" id="srRejectForm">
+      <input type="hidden" name="csrf_token" value="{{ _csrf }}">
+      <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-x-circle me-2"></i>Reject request</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold" for="srRejectNote">Reason (required)</label>
+        <textarea name="note" id="srRejectNote" class="form-control form-control-sm" rows="3" maxlength="1000" required></textarea>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-sm btn-danger"><i class="bi bi-x-lg me-1"></i>Reject</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+document.getElementById('srRejectModal').addEventListener('show.bs.modal', function (e) {
+  if (!e.relatedTarget) return;
+  document.getElementById('srRejectForm').action = e.relatedTarget.getAttribute('data-action');
+  document.getElementById('srRejectNote').value = '';
+});
+</script>
+{% endif %}

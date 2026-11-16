@@ -6,6 +6,12 @@
 {% set csrf = request.cookies.get('csrf_token', '') %}
 <style>
   .ab-file{max-width:220px}
+  .ab-row-cards .card{flex:1 1 auto}   /* Negotiation / Quotations same height side by side */
+  /* Half-width cards scroll sideways: keep Status's neighbour, the Action column, pinned
+     on the right so Approve / Reject stay in view (2026-11-15). */
+  .ab-row-cards .ab-table th.ab-act, .ab-row-cards .ab-table td.ab-act{position:sticky; right:0; z-index:1;
+    background:var(--bs-body-bg, #fff); box-shadow:-6px 0 6px -6px rgba(0,0,0,.25)}
+  .ab-row-cards .ab-table thead th.ab-act{background:inherit}
   /* Action column: buttons on one line, right-aligned (2026-11-06) — beats
      the Global Table's centred last column */
   .ab-table th.ab-act, .ab-table td.ab-act{text-align:right !important; white-space:nowrap}
@@ -43,7 +49,14 @@
   </div>
 {% endmacro %}
 
-{% if not cards %}
+{# V2 design (2026-11-15, Pankaj): deep hero + one KPI tile per card group the
+   user sees (counts = pending), then tab bar, approval row, stage row. #}
+{% import "_dash.html" as dash %}
+<div class="dash mb-3">
+{{ dash.hero('Activity Board', '', 'Work waiting on you — the cards your role is set to see', view_data=False) }}
+{% if ab_kpis %}{{ dash.kpis(ab_kpis) }}{% endif %}
+</div>
+{% if not cards and not stage_cards %}
 <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>Nothing is waiting for you on the Activity Board.</div>
 {% endif %}
 
@@ -226,10 +239,17 @@
   'negotiation': ('bi-chat-left-dots', 'Negotiation', approvals['negotiation'] | selectattr('status', 'equalto', 'pending') | list | length),
   'pricing': ('bi-currency-rupee', 'Pricing Approvals', approvals['pricing'] | selectattr('status', 'equalto', 'pending') | list | length),
   'quotations': ('bi-file-earmark-text', 'Quotations', approvals['quotations'] | selectattr('status', 'equalto', 'pending') | list | length),
+  'partsrc': ('bi-box-seam', 'Parts Sourcing', (part_sourcing or []) | selectattr('review_status', 'equalto', 'pending') | list | length),
+  'devsrc': ('bi-laptop', 'Device Sourcing', (device_sourcing or []) | selectattr('review_status', 'equalto', 'pending') | list | length),
 } %}
-{% if cards %}
+{# 2026-11-15 (Pankaj): tab bar = Account Verification, Pricing Approvals, Supplier
+   Deals, Customer Deals, Parts Sourcing, Device Sourcing; Negotiation and
+   Quotations side by side below it; Inspection / Screening at the bottom. Which
+   cards show = Master Data -> Role Additional Permissions -> Activity Board
+   Cards (services/ab_cards.py). A hidden card gives its neighbour the full row. #}
+{% if tab_cards %}
 <ul class="nav nav-tabs mb-0" id="abTabs" role="tablist">
-  {% for kind in cards %}{% set ic, ttl, n = tab_meta[kind] %}
+  {% for kind in tab_cards %}{% set ic, ttl, n = tab_meta[kind] %}
   <li class="nav-item"><button class="nav-link{% if loop.first %} active{% endif %}" data-bs-toggle="tab" data-bs-target="#ab-{{ kind }}-tab"
           type="button" data-ab="{{ kind }}"><i class="bi {{ ic }} me-1"></i>{{ ttl }}
     <span class="badge rounded-pill bg-warning text-dark ms-1" title="Pending">{{ n }}</span></button></li>
@@ -237,7 +257,7 @@
 </ul>
 {% endif %}
 <div class="tab-content">
-{% for kind in cards %}
+{% for kind in tab_cards %}
 <div class="tab-pane fade{% if loop.first %} show active{% endif %}" id="ab-{{ kind }}-tab">
 {% if kind == 'accounts' %}
 <div class="card border-0 shadow-sm mb-4" id="ab-accounts">
@@ -258,19 +278,34 @@
 {% elif kind == 'customer' %}
 {{ deal_table('customer', customer, 'Screening', 'Customer Deal ID', 'bi-graph-up', 'Customer Deals',
               'Customer Deals at stage Screening with someone assigned to Screening.') }}
-{% elif kind == 'negotiation' %}
-{{ appr_card('negotiation', approvals['negotiation'], 'bi-chat-left-dots', 'Negotiation',
-             'Negotiation Level 1 approvals on Supplier and Customer Deals. A rejection sends the deal back to Pricing Approval.') }}
-{% elif kind == 'quotations' %}
-{{ appr_card('quotations', approvals['quotations'], 'bi-file-earmark-text', 'Quotations',
-             'Quote Level 1 and Level 2 approvals on Supplier and Customer Deals. Either level can approve first; once both approve, the Quote stage is Done and the deal moves to Negotiation.') }}
-{% else %}
+{% elif kind in ('partsrc', 'devsrc') %}
+{# Parts / Device Sourcing requests to verify (2026-11-15, Pankaj) — same tables as
+   Procurement Board (templates/_sourcing_requests.html); Verify / Reject here. #}
+{% set sr_mode = 'review' %}{% set sr_single = 'part' if kind == 'partsrc' else 'device' %}
+<div id="ab-{{ kind }}" class="mb-4">{% include "_sourcing_requests.html" %}</div>
+{% elif kind == 'pricing' %}
 {{ appr_card('pricing', approvals['pricing'], 'bi-currency-rupee', 'Pricing Approvals',
              'Pricing Approval Level 1 on Supplier and Customer Deals. A pricing change on the deal resubmits it here as Pending.') }}
 {% endif %}
 </div>
 {% endfor %}
 </div>
+
+{% if row_cards %}
+<div class="row g-3 mt-1 ab-row-cards">
+  {% for kind in row_cards %}
+  <div class="{{ 'col-xl-6' if row_cards | length > 1 else 'col-12' }} d-flex flex-column">
+  {% if kind == 'negotiation' %}
+  {{ appr_card('negotiation', approvals['negotiation'], 'bi-chat-left-dots', 'Negotiation',
+               'Negotiation Level 1 approvals on Supplier and Customer Deals. A rejection sends the deal back to Pricing Approval.') }}
+  {% elif kind == 'quotations' %}
+  {{ appr_card('quotations', approvals['quotations'], 'bi-file-earmark-text', 'Quotations',
+               'Quote Level 1 and Level 2 approvals on Supplier and Customer Deals. Either level can approve first; once both approve, the Quote stage is Done and the deal moves to Negotiation.') }}
+  {% endif %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
 
 {# Inspection / Screening cards (2026-11-10, Pankaj): side by side below the
    tabs, in the Accounts-page card style. Rows = deals whose Inspection
@@ -445,6 +480,18 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+// Parts / Device Sourcing tables (2026-11-15): Global Table, re-fit on tab / pill change
+(function () {
+  document.querySelectorAll('.pr-table').forEach(function (t) {
+    if (window.initGlobalTable) initGlobalTable('#' + t.id, { order: [], columnDefs: [{ orderable: false, targets: [-1] }],
+                                                            language: { emptyTable: 'Nothing here' } });
+  });
+  document.querySelectorAll('[data-bs-toggle="tab"]').forEach(function (b) {
+    b.addEventListener('shown.bs.tab', function () { if (window.$ && $.fn.dataTable) $.fn.dataTable.tables({ visible: true, api: true }).columns.adjust(); });
+  });
+})();
+</script>
 <script>
 // Map Manager: picking an Executive fills the Team Leader from their Report To chain (by designation)
 document.addEventListener('change', function (e) {

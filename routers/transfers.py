@@ -318,8 +318,18 @@ async def list_transfers(
     )).scalars().all()
     location_by_id = {str(loc.id): loc for loc in storage_locations}
 
+    # Option C dashboard (2026-11-14, Pankaj) — services/transfers_dash.py
+    from services.transfers_dash import build as _build_dash
+    try:
+        dash_kpis, dash_widgets = await _build_dash(db)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).exception("floor movement dashboard failed")
+        await db.rollback()
+        dash_kpis, dash_widgets = [], []
     return templates.TemplateResponse("transfers/list.html", {
         "request": request, "transfers": transfers, "q": q,
+        "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
         "transfer_type": transfer_type, "current_user": current_user,
         "transferred_by": transferred_by, "transferred_by_options": transferred_by_options,
         "location_id": location_id, "storage_locations": storage_locations,

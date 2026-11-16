@@ -2,6 +2,15 @@
 {% block title %}Part Estimation — OxyPC{% endblock %}
 {% block page_title %}Part Estimation{% endblock %}
 {% block content %}
+{# Option C dashboard (2026-11-14, Pankaj): KPIs and charts; "View Data" swaps them
+   for the Lots Summary below. services/part_est_dash.py #}
+{% import "_dash.html" as dash %}
+<div class="dash">
+{{ dash.hero('Part Estimation', '', 'Which parts devices need, what it costs, and what tags are waiting for', view_data=True) }}
+<div class="dash-body">
+  {% if dash_kpis %}{{ dash.kpis(dash_kpis) }}{{ dash.grid(dash_widgets) }}{% endif %}
+</div>
+<div class="dash-data">
 
 {% if success %}<div class="alert alert-success"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>{% endif %}
 {% if error %}<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>{{ error }}</div>{% endif %}
@@ -71,6 +80,7 @@
                    title="{{ est.file_name }}">
                   <i class="bi bi-file-earmark-excel me-1"></i>{{ est.grade or 'Estimate' }}
                 </a>{% endif %}
+                {% if est.status %}<span class="badge text-bg-success ms-1" title="Store inputs entered on Part Master — sheet updated">{{ est.status }}</span>{% endif %}
                 {% if can(current_user, 'part_estimation', 'delete') %}
                 <button type="button" class="btn btn-sm btn-outline-danger py-0 px-1 border-0"
                         title="Delete this file"
@@ -406,6 +416,23 @@
     <div class="modal-content">
       <div class="modal-header bg-dark bg-opacity-10">
         <h5 class="modal-title"><i class="bi bi-grid-3x3 me-2"></i>Open Estimate — <span id="oe_lot_label">—</span></h5>
+        {# Totals + Grade in the header (2026-11-15, Pankaj). Total Repair Cost fills
+           itself from the Repair Charge row; typing in it clears that row and the
+           typed figure is saved as one repair cost for the estimate. #}
+        <div class="ms-auto me-3 d-flex align-items-end gap-3 flex-wrap oe-head">
+          <div><label class="small text-muted d-block" for="oe_grade">Grade</label>
+            <select id="oe_grade" class="form-select form-select-sm" style="width:120px">
+              <option value="">Select</option>
+              {% for value, label in grade_options %}
+              <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select></div>
+          <div><label class="small text-muted d-block" for="oe_repair_total">Total Repair Cost</label>
+            <input type="number" min="0" step="0.01" id="oe_repair_total" class="form-control form-control-sm text-end" style="width:130px" placeholder="0.00"></div>
+          <div class="text-end"><div class="small text-muted">Total Part Quantity</div><div class="fw-bold" id="oe_h_qty">0</div></div>
+          <div class="text-end"><div class="small text-muted">Total Part Amount</div><div class="fw-bold" id="oe_h_amount">0.00</div></div>
+          <div class="text-end"><div class="small text-muted">Total Estimate</div><div class="fw-bold text-primary" id="oe_h_est">0.00</div></div>
+        </div>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
@@ -420,9 +447,9 @@
         <div id="oe_error" class="alert alert-danger d-none"></div>
         <div id="oe_body" class="d-none">
           <div class="small text-muted mb-2">
-            Every cell is free entry — type a quantity for any Part / Model combination
-            that needs it. Rows are every part; columns are every Model in this lot, with
-            its tag count in the header.
+            Every cell is free entry — type the part's price for one device of that Model.
+            Rows are every part; columns are every Model in this lot, with its tag count in
+            the header. Totals and Grade are at the top.
           </div>
           <div class="table-responsive" id="oe_table_wrap">
             <table class="table table-sm table-bordered align-middle mb-3" id="oe_table">
@@ -432,27 +459,6 @@
                 <tr class="table-secondary fw-semibold" id="oe_charge_row"></tr>
               </tfoot>
             </table>
-          </div>
-          <div class="row g-2 align-items-center mb-2">
-            <div class="col-md-2 text-end fw-semibold">Total Parts</div>
-            <div class="col-md-2" id="oe_total_parts">0</div>
-            <div class="col-md-3 text-end fw-semibold">Total Estimate Value</div>
-            <div class="col-md-2 fw-bold" id="oe_total_estimate">0.00</div>
-          </div>
-          <div class="row g-2 align-items-center mb-2">
-            <div class="col-md-3 text-end fw-semibold align-self-start">
-              Select Grade
-              <div class="small text-muted fw-normal">Generate writes one file for this grade.
-                Change the grade and click Generate again for the next file.</div>
-            </div>
-            <div class="col-md-2">
-              <select id="oe_grade" class="form-select form-select-sm">
-                <option value="">Select</option>
-                {% for value, label in grade_options %}
-                <option value="{{ value }}">{{ label }}</option>
-                {% endfor %}
-              </select>
-            </div>
           </div>
         </div>
       </div>
@@ -466,6 +472,8 @@
   </div>
 </div>
 
+</div>{# .dash-data #}
+</div>{# .dash #}
 {% endblock %}
 
 {% block scripts %}
@@ -1174,7 +1182,18 @@ function oeRenderTable(d) {
   var tbody = $('#oe_tbody').empty();
   d.parts.forEach(function (part) {
     var row = $('<tr>').attr('data-part', part);
-    row.append($('<td>').text(part));
+    // RAM / Hard Drive / Screen: size dropdown next to the part name, options
+    // from Master Data -> Dropdown configuration (2026-11-15, Pankaj).
+    var so = (d.spec_options || {})[part];
+    if (so) {
+      var sel = $('<select>').addClass('form-select form-select-sm d-inline-block w-auto ms-2 oe-spec')
+        .attr({ 'data-part': part, title: so.label }).append($('<option>').val('').text(so.label));
+      (so.options || []).forEach(function (o) { sel.append($('<option>').val(o).text(o)); });
+      sel.val((d.prev_specs || {})[part] || '');
+      row.append($('<td>').append($('<span>').text(part), sel));
+    } else {
+      row.append($('<td>').text(part));
+    }
     d.models.forEach(function (m) {
       var key = part + '||' + m.key;
       row.append($('<td>').addClass('oe-cell').append(
@@ -1198,35 +1217,47 @@ function oeRenderTable(d) {
   });
 }
 
+var oeRepairManual = false;
 function oeRecalc() {
   if (!oeData) return;
   var modelQty = {};
   oeData.models.forEach(function (m) { modelQty[m.key] = m.qty; });
-
-  var totalParts = 0;
-  var colHasData = {};
+  // Cells are each part's price for one device of that model (2026-11-15):
+  // amount = price x tag count; quantity = tag count of every filled cell.
+  var amount = 0, qty = 0, colHasData = {};
   $('#oe_tbody .oe-qty').each(function () {
     var raw = $(this).val();
     if (raw === '' || raw === null) return;
     var val = parseFloat(raw) || 0;
+    if (!val) return;
     var mkey = $(this).data('model');
     colHasData[mkey] = true;
-    totalParts += val * (modelQty[mkey] || 0);
+    amount += val * (modelQty[mkey] || 0);
+    qty += (modelQty[mkey] || 0);
   });
-
-  var totalEstimate = 0;
-  $('#oe_charge_row .oe-charge').each(function () {
-    var mkey = $(this).data('model');
-    if (!colHasData[mkey]) return;
-    var charge = parseFloat($(this).val()) || 0;
-    totalEstimate += charge * (modelQty[mkey] || 0);
-  });
-
-  $('#oe_total_parts').text(totalParts);
-  $('#oe_total_estimate').text(estMoney(totalEstimate));
-  return totalParts > 0;
+  if (!oeRepairManual) {
+    var repair = 0;
+    $('#oe_charge_row .oe-charge').each(function () {
+      var mkey = $(this).data('model');
+      if (!colHasData[mkey]) return;
+      repair += (parseFloat($(this).val()) || 0) * (modelQty[mkey] || 0);
+    });
+    $('#oe_repair_total').val(repair ? repair.toFixed(2) : '');
+  }
+  $('#oe_h_amount').text(estMoney(amount));
+  $('#oe_h_qty').text(qty);
+  // Total Estimate = Total Part Amount + Total Repair Cost (2026-11-15)
+  $('#oe_h_est').text(estMoney(amount + (parseFloat($('#oe_repair_total').val()) || 0)));
+  return amount > 0 || qty > 0;
 }
-
+// Typing a Total Repair Cost: one figure for the estimate — the Repair Charge row is cleared.
+$(document).on('input', '#oe_repair_total', function () {
+  oeRepairManual = true;
+  $('#oe_charge_row .oe-charge').val('');
+  oeRecalc();
+});
+// Typing in the Repair Charge row again goes back to the auto total.
+$(document).on('input', '.oe-charge', function () { oeRepairManual = false; });
 $(document).on('input', '.oe-qty, .oe-charge', oeRecalc);
 
 // Same reload-on-close pattern as Part Estimate: the Download column behind
@@ -1248,6 +1279,8 @@ function openOpenEstimateModal(lotId, lotNumber) {
   $('#oe_generated').addClass('d-none');
   $('#oe_generated_list').empty();
   $('#oe_grade').val('');
+  $('#oe_repair_total').val(''); oeRepairManual = false;
+  $('#oe_h_amount').text('0.00'); $('#oe_h_qty').text('0'); $('#oe_h_est').text('0.00');
   $('#oe_submit').prop('disabled', true);
   new bootstrap.Modal(document.getElementById('openEstimateModal')).show();
 
@@ -1261,6 +1294,7 @@ function openOpenEstimateModal(lotId, lotNumber) {
       }
       oeData = d;
       oeRenderTable(d);
+      if (d.prev_repair_total) { oeRepairManual = true; $('#oe_repair_total').val(d.prev_repair_total); }
       $('#oe_body').removeClass('d-none');
       $('#oe_submit').prop('disabled', false);
       oeRecalc();
@@ -1300,7 +1334,11 @@ function submitOpenEstimate() {
   });
 
   var fd = new FormData();
-  fd.append('payload', JSON.stringify({ cells: cells, charges: charges, grade: grade }));
+  var specs = {};
+  $('#oe_tbody .oe-spec').each(function () { if ($(this).val()) specs[$(this).data('part')] = $(this).val(); });
+  var pl = { cells: cells, charges: oeRepairManual ? {} : charges, grade: grade, specs: specs };
+  if (oeRepairManual) pl.repair_total = $('#oe_repair_total').val() || '0';
+  fd.append('payload', JSON.stringify(pl));
   fd.append('csrf_token', peCsrfToken());
 
   $('#oe_submit').prop('disabled', true);

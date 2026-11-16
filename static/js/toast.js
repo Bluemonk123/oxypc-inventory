@@ -1,8 +1,9 @@
 /* Global toast messages (2026-10-31) — loaded on every page by base.html.
  *
  * window.showTopToast(type, message, title)
- *   A toast in the top-right stack (#notifToastContainer, shared with the live
- *   notification pop-ups). type = success | danger | warning | primary.
+ *   success → a toast top centre (#centerToastContainer, made on first use;
+ *   2026-11-16). Other types → the top-right stack (#notifToastContainer,
+ *   shared with the live notification pop-ups). type = success | danger | warning | primary.
  *   Text only (no HTML). Closes itself after 6 s; ✕ closes it sooner.
  *   Pages call it for actions that don't reload the page.
  *
@@ -17,8 +18,23 @@
 (function () {
   function norm(s) { return String(s == null ? '' : s).replace(/\+/g, ' ').replace(/\s+/g, ' ').trim(); }
 
+  // Success messages sit top centre (2026-11-16, Pankaj), in their own stack;
+  // other types and the live notification pop-ups stay top-right.
+  function centreBox() {
+    var c = document.getElementById('centerToastContainer');
+    if (!c && document.body) {
+      c = document.createElement('div');
+      c.id = 'centerToastContainer';
+      c.className = 'toast-container position-fixed top-0 start-50 translate-middle-x p-3';
+      c.style.zIndex = '1095';
+      c.setAttribute('aria-live', 'polite');
+      document.body.appendChild(c);
+    }
+    return c;
+  }
+
   window.showTopToast = function (type, message, title) {
-    var box = document.getElementById('notifToastContainer');
+    var box = type === 'success' ? centreBox() : document.getElementById('notifToastContainer');
     if (!box || !message) return;
     var el = document.createElement('div');
     el.className = 'toast align-items-center text-bg-' + (type || 'primary') + ' border-0 show shadow mb-2';

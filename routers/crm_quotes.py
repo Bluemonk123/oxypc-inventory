@@ -120,6 +120,18 @@ async def new_quote_form(
     _blk = price_add_block(current_user, "crm_quotes", "/crm/quotes")
     if _blk is not None:
         return _blk
+    # 2026-11-16 (Pankaj): no separate page any more — the Create Quotation
+    # modal on the Quotes list (same modal as Telecaller Quotations) opens with
+    # these values; a deal's lot still prefills its lines.
+    from urllib.parse import urlencode
+    _q = {"new": "1", "type": "supplier" if (sourcing_deal_id or "").strip() else "buyer"}
+    for _k, _v in (("contact_id", contact_id), ("opp_id", "" if (direct or "").strip() not in ("", "0", "false") else opp_id),
+                   ("sourcing_deal_id", sourcing_deal_id)):
+        if (_v or "").strip():
+            _q[_k] = _v.strip()
+    if (direct or "").strip() not in ("", "0", "false") and (opp_id or "").strip():
+        _q["link_opp"] = opp_id.strip()
+    return RedirectResponse(url="/crm/quotes?" + urlencode(_q), status_code=302)
     # All accounts (any type) — the form filters them by Contact Type (2026-11-01).
     contacts_r = await db.execute(
         select(CRMContact)
@@ -360,6 +372,15 @@ async def create_quote(
         request, device_type, grade, po_category, quantity, unit_price)
     quote_number = await _next_quote_number(db)
     from utils.master_data import clean_from_entity
+    if not (from_entity or "").strip():   # Company Detail dropdown (2026-11-16): its entity
+        _cid = ((await request.form()).get("company_id") or "").strip()
+        if _cid:
+            from models.company import Company as _Co
+            try:
+                _co = await db.get(_Co, __import__("uuid").UUID(_cid))
+                from_entity = (_co.company_entity or "") if _co else ""
+            except ValueError:
+                pass
     quote = CRMQuote(
         quote_number=quote_number,
         from_entity=await clean_from_entity(db, from_entity),
@@ -384,6 +405,22 @@ async def create_quote(
                 record_id=str(quote.id), new_value={"quote_number": quote.quote_number}, request=request)
 
     grand_total = 0.0
+    # Create Quotation modal (2026-11-16, Pankaj): the full line (Device
+    # Category, Make, Model Name, CPU, CPU Gen, RAM, Storage, Grade, Qty, Unit /
+    # Total Price), same as Telecaller quotations — services/quote_lines.py.
+    from services.quote_lines import read_lines, title_of, spec_note
+    _form = await request.form()
+    _new = read_lines(_form) if (_form.getlist("device_category") or _form.getlist("device_category[]")) else []
+    for i, ln in enumerate(_new):
+        grand_total += float(ln["total_price"])
+        db.add(CRMQuoteItem(
+            quote_id=quote.id, line_number=i + 1, device_type=title_of(ln), grade=(ln["grade"] or None),
+            po_category=ln["device_category"], device_category=ln["device_category"], make=ln["make"],
+            cpu=ln["cpu"], cpu_gen=ln["cpu_gen"], ram=ln["ram"], storage=ln["storage"],
+            specs_note=spec_note(ln) or None, quantity=ln["quantity"], unit_price=ln["unit_price"],
+            total_price=ln["total_price"], sort_order=i))
+    if _new:
+        device_type = []
     for i, dt in enumerate(device_type):
         if not dt or not dt.strip():
             continue

@@ -9,7 +9,7 @@ import os
 import uuid as _uuid
 from datetime import datetime
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, JSONResponse
 from sqlalchemy import select, func, or_, delete
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -30,7 +30,8 @@ from models.crm import (
 from models.crm_team import CRMContactTeamMember
 from services.crm_team import ROLE_BUCKETS, BUCKET_LABELS, eligible_users_for_bucket
 
-PERSON_ROLES = ["Directors", "Finance", "Manager", "Other"]
+PERSON_ROLES = ["Director", "Finance", "Procurement", "Manager", "Others"]   # 2026-11-15, Pankaj (was Directors/Finance/Manager/Other)
+PERSON_ROLE_OLD = {"Directors": "Director", "Other": "Others"}   # values saved before 2026-11-15
 
 
 def _kyc_up(v):
@@ -112,6 +113,45 @@ async def _save_kyc_upload(upload: UploadFile):
     return safe_name
 
 router = APIRouter(prefix="/crm/contacts", tags=["crm-contacts"], dependencies=[Depends(verify_csrf)])
+
+
+# ── KYC: per-document status + sample files (2026-11-15, Pankaj) — services/kyc_items.py ──
+from services.kyc_items import KYC_ITEMS as _KYC_ITEMS
+
+
+async def _kyc_form_ctx(db, contact, user) -> dict:
+    from services.kyc_items import samples, status_map
+    st = (await status_map(db, [contact.id])).get(str(contact.id), {}) if contact else {}
+    return {"kyc_samples": await samples(db), "kyc_status": st,
+            "kyc_is_admin": (getattr(user.role, "value", user.role)) == "admin"}
+
+
+@router.post("/kyc-sample/{item}")
+async def upload_kyc_sample(item: str, request: Request, sample: UploadFile = File(...),
+                            db: AsyncSession = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Admin only: the sample file users download next to a KYC upload box."""
+    from services.kyc_items import ITEM, save_sample
+    if (getattr(current_user.role, "value", current_user.role)) != "admin":
+        return JSONResponse({"ok": False, "error": "Admin only"}, status_code=403)
+    if item not in ITEM or not sample or not sample.filename:
+        return JSONResponse({"ok": False, "error": "Choose a file"}, status_code=400)
+    old, name = await save_sample(db, item, sample, current_user)
+    await audit(db, user=current_user, action="KYC_SAMPLE_UPLOADED", table_name="app_settings",
+                record_id=("kyc_sample_" + item)[:50], old_value={"file": old}, new_value={"file": name}, request=request)
+    await db.commit()
+    return JSONResponse({"ok": True, "url": f"/crm/contacts/kyc-sample/{item}"})
+
+
+@router.get("/kyc-sample/{item}")
+async def download_kyc_sample(item: str, db: AsyncSession = Depends(get_db),
+                              current_user: User = Depends(get_current_user)):
+    from fastapi.responses import FileResponse
+    from services.kyc_items import ITEM, samples, sample_path
+    path = sample_path((await samples(db)).get(item)) if item in ITEM else None
+    if not path:
+        return JSONResponse({"ok": False, "error": "No sample file yet"}, status_code=404)
+    label = ITEM[item][1].replace("/", "-")
+    return FileResponse(path, filename="Sample - %s%s" % (label, os.path.splitext(path)[1]))
 
 CRM_ROLES = (
     UserRole.admin, UserRole.sales, UserRole.sales_manager,
@@ -294,7 +334,7 @@ async def list_contacts(
                 "location": ", ".join(filter(None, [loc.address, loc.city, loc.state])) or "Location",
                 "numbers": [
                     {
-                        "role": n.person_role or "",
+                        "role": PERSON_ROLE_OLD.get(n.person_role, n.person_role or ""),
                         "name": n.person_name or "",
                         "phone": n.phone or "",
                         "email": n.email or "",
@@ -313,8 +353,16 @@ async def list_contacts(
     from utils.user_lookup import added_by_display_map
     added_by = await added_by_display_map(db)
 
+    # KYC column: rejected documents per Account (2026-11-15, Pankaj)
+    from services.kyc_items import ITEM as _KYC_ITEM
+    from models.crm import CRMContactKYCItem as _KI
+    kyc_rejected = {}
+    if contacts:
+        for cid_, it_ in (await db.execute(select(_KI.contact_id, _KI.item).where(
+                _KI.contact_id.in_([c.id for c in contacts]), _KI.status == "rejected"))).all():
+            kyc_rejected.setdefault(str(cid_), []).append(_KYC_ITEM[it_][1] if it_ in _KYC_ITEM else it_)
     return templates.TemplateResponse("crm/contacts/list.html", {
-        "request": request, "current_user": current_user,
+        "request": request, "current_user": current_user, "kyc_rejected": kyc_rejected,
         "contacts": contacts, "counts": counts,
         "trashed_contacts": trashed_contacts,
         "activity_map": activity_map,
@@ -822,6 +870,18 @@ async def move_accounts_to_partner(
         CRMContact.id.in_(cids), CRMContact.is_trashed.isnot(True)))).scalars().all() if cids else []
     if not contacts:
         return RedirectResponse(url=back + "?error=" + quote_plus("Select at least one account"), status_code=302)
+    # Only Active Accounts with KYC and Credit verified (2026-11-15, Pankaj)
+    from services.partner_move import partner_eligibility
+    refused = []
+    for c in list(contacts):
+        ok, why = partner_eligibility(c)
+        if not ok:
+            refused.append(f"{c.company_name or c.contact_code} ({', '.join(why)})")
+    contacts = [c for c in contacts if partner_eligibility(c)[0]]
+    if not contacts:
+        return RedirectResponse(url=back + "?error=" + quote_plus(
+            "Not moved — only Active Accounts with KYC and Credit verified can become External Partners: "
+            + "; ".join(refused)[:1500]), status_code=302)
     picks = {"am_dm_gm": _uid(pick_am_dm_gm), "manager": _uid(pick_manager), "vp_avp": _uid(pick_vp_avp)}
     res = await move_to_partner(
         db, contacts, current_user, owner=owner, owner_level=owner_level, picks=picks,
@@ -836,6 +896,8 @@ async def move_accounts_to_partner(
         parts.append(f"{len(res['updated'])} already a partner")
     if owner:
         parts.append(f"Team mapped — Account Manager / Sales Owner: {owner.full_name or owner.username}")
+    if refused:
+        parts.append(f"{len(refused)} not moved (not Active or not verified): " + "; ".join(refused)[:800])
     parts.append("Create their logins with Generate Access")
     # Land on Partner Accounts, where the moved accounts are now listed (2026-11-11 PM)
     # (the route already needs the Partner Accounts "add" permission)
@@ -1557,6 +1619,7 @@ async def new_contact_form(
         "contact": None, "locations": [],
         "source_types": SOURCE_TYPES, "buyer_types": BUYER_TYPES,
         "users": users, "person_roles": PERSON_ROLES,
+        **(await _kyc_form_ctx(db, None, current_user)),
     })
 
 
@@ -1585,12 +1648,14 @@ async def create_contact(
     msme_number:         str = Form(default=None),
     director1_id_number: str = Form(default=None),
     director2_id_number: str = Form(default=None),
+    vendor_form_number:  str = Form(default=None),
     gstin_doc:      UploadFile = File(default=None),
     pan_doc:        UploadFile = File(default=None),
     bank_cheque_doc:UploadFile = File(default=None),
     msme_doc:       UploadFile = File(default=None),
     director1_doc:  UploadFile = File(default=None),
     director2_doc:  UploadFile = File(default=None),
+    vendor_form_doc: UploadFile = File(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     _perm: User = Depends(require_module_perm("crm_contacts", "add")),
@@ -1628,6 +1693,8 @@ async def create_contact(
             msme_doc_path=await _save_kyc_upload(msme_doc),
             director1_doc_path=await _save_kyc_upload(director1_doc),
             director2_doc_path=await _save_kyc_upload(director2_doc),
+            vendor_form_number=_kyc_up(vendor_form_number),
+            vendor_form_doc_path=await _save_kyc_upload(vendor_form_doc),
             created_by=current_user.username,
         )
         contact.apply_account_status()
@@ -1807,8 +1874,10 @@ async def contact_profile(
     _vc_tot = await credit_deal_totals(db, contact.id)
     from services.record_history import record_history   # History card (2026-11-09)
     _history = await record_history(db, contact.id)
+    from services.kyc_items import doc_list as _kyc_docs, status_map as _kyc_sm   # KYC list on the card (2026-11-15)
+    _kyc_list = _kyc_docs(contact, (await _kyc_sm(db, [contact.id])).get(str(contact.id), {}))
     return templates.TemplateResponse("crm/contacts/profile.html", {
-        "history": _history,
+        "history": _history, "kyc_list": _kyc_list,
         "can_verify_credit": _can_vc, "credit_totals": _vc_tot,
         "request": request, "current_user": current_user,
         "contact": contact, "activities": activities,
@@ -1851,6 +1920,7 @@ async def edit_contact_form(
         "contact": contact, "locations": locations,
         "source_types": SOURCE_TYPES, "buyer_types": BUYER_TYPES,
         "users": users, "person_roles": PERSON_ROLES,
+        **(await _kyc_form_ctx(db, contact, current_user)),
     })
 
 
@@ -1880,12 +1950,14 @@ async def update_contact(
     msme_number:         str = Form(default=None),
     director1_id_number: str = Form(default=None),
     director2_id_number: str = Form(default=None),
+    vendor_form_number:  str = Form(default=None),
     gstin_doc:      UploadFile = File(default=None),
     pan_doc:        UploadFile = File(default=None),
     bank_cheque_doc:UploadFile = File(default=None),
     msme_doc:       UploadFile = File(default=None),
     director1_doc:  UploadFile = File(default=None),
     director2_doc:  UploadFile = File(default=None),
+    vendor_form_doc: UploadFile = File(default=None),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -1903,6 +1975,9 @@ async def update_contact(
     contact.contact_type = contact_type
     from utils.master_data import clean_from_entity
     contact.from_entity = await clean_from_entity(db, from_entity, contact.from_entity)
+    # Per-document KYC (2026-11-15): a changed number or a new file puts that
+    # document back to pending for Accounts to check again.
+    _kyc_before = {k: (getattr(contact, n, None) or "") for k, _l, n, _p, _b in _KYC_ITEMS}
     contact.company_name = company_name
     contact.email = email or None
     # contact_person / phone / whatsapp are no longer on the form (they live in
@@ -1926,6 +2001,7 @@ async def update_contact(
     contact.msme_number = _kyc_up(msme_number)
     contact.director1_id_number = _kyc_up(director1_id_number)
     contact.director2_id_number = _kyc_up(director2_id_number)
+    contact.vendor_form_number = _kyc_up(vendor_form_number)
     # Uploads only overwrite the stored document when a new file is actually
     # selected — leaving the existing one in place otherwise.
     gstin_name = await _save_kyc_upload(gstin_doc)
@@ -1946,6 +2022,16 @@ async def update_contact(
     dir2_name = await _save_kyc_upload(director2_doc)
     if dir2_name:
         contact.director2_doc_path = dir2_name
+    vf_name = await _save_kyc_upload(vendor_form_doc)
+    if vf_name:
+        contact.vendor_form_doc_path = vf_name
+    _new_files = {"gstin": gstin_name, "pan": pan_name, "bank_cheque": cheque_name, "msme": msme_name,
+                  "director1": dir1_name, "director2": dir2_name, "vendor_form": vf_name}
+    _changed = {k for k, _l, n, _p, _b in _KYC_ITEMS
+                if _new_files.get(k) or (getattr(contact, n, None) or "") != _kyc_before[k]}
+    if _changed:
+        from services.kyc_items import reset_to_pending
+        await reset_to_pending(db, contact, _changed)
 
     # Replace the Locations (and their nested Contact Numbers) with whatever the form submitted.
     location_rows = _parse_locations(await request.form())
@@ -1994,6 +2080,12 @@ async def verify_kyc(
     contact = (await db.execute(select(CRMContact).where(CRMContact.id == contact_id))).scalar_one_or_none()
     if not contact:
         return RedirectResponse(url="/crm/contacts?error=Not+found", status_code=302)
+    from services.kyc_items import outstanding   # every document verified first (2026-11-15)
+    _left = await outstanding(db, contact)
+    if _left:
+        from urllib.parse import quote_plus as _qp
+        return RedirectResponse(url=f"/crm/contacts/{contact_id}?error=" + _qp("Verify each KYC document first (Accounts → Verify KYC): " + ", ".join(_left)),
+                                status_code=302)
     contact.kyc_verified = True
     contact.kyc_verified_by = current_user.username
     contact.kyc_verified_at = app_now()

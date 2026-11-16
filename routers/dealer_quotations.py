@@ -56,7 +56,8 @@ async def create_dealer_quotation(
     # 2026-10-27: the Quotations page's Add Quote opens this same modal and
     # sends return_to=/quotations so the user lands back there. Only that one
     # path is accepted (never an arbitrary URL).
-    back = "/quotations" if return_to == "/quotations" else f"/dealers/{dealer_id}"
+    back = "/quotations" if return_to == "/quotations" else (
+        _safe_back(return_to) if (return_to or "").startswith(("/dealers", "/crm/quotes", "/telecall")) else f"/dealers/{dealer_id}")
     dealer = (await db.execute(select(Dealer).where(Dealer.id == dealer_id))).scalar_one_or_none()
     if not dealer:
         return RedirectResponse(url=("/quotations" if back == "/quotations" else "/dealers") + "?error=Dealer+not+found", status_code=302)
@@ -64,7 +65,24 @@ async def create_dealer_quotation(
     items = []
     total_quantity = 0
     total_price = Decimal("0")
-    for i in range(len(product_name)):
+    # Create Quotation modal (2026-11-16, Pankaj): Device Category, Make, Model
+    # Name, CPU, CPU Gen, RAM, Storage, Grade, Qty, Unit / Total Price — the
+    # same lines as CRM quotes (services/quote_lines.py). Older posts with
+    # product_name[] still work below.
+    from services.quote_lines import read_lines, title_of, spec_note
+    form = await request.form()
+    new_lines = read_lines(form) if (form.getlist("device_category") or form.getlist("device_category[]")) else []
+    for i, ln in enumerate(new_lines):
+        items.append({
+            "product_name": " ".join(x for x in (ln["make"], ln["model_name"]) if x) or title_of(ln),
+            "model_name": ln["model_name"], "po_category": ln["device_category"],
+            "device_category": ln["device_category"], "make": ln["make"], "cpu": ln["cpu"], "cpu_gen": ln["cpu_gen"],
+            "ram": ln["ram"], "storage": ln["storage"], "grade": ln["grade"],
+            "quantity": ln["quantity"], "unit_price": ln["unit_price"], "total_price": ln["total_price"], "sort_order": i,
+        })
+        total_quantity += ln["quantity"]
+        total_price += ln["total_price"]
+    for i in range(0 if new_lines else len(product_name)):
         name = (product_name[i] or "").strip()
         if not name:
             continue
@@ -92,6 +110,19 @@ async def create_dealer_quotation(
     quote_number = await next_quote_number(db, DealerQuotation.quote_number, "TELE", app_now().date())
 
     company = await get_company_settings(db)
+    # Company Detail dropdown (2026-11-16): the chosen company profile
+    _cid = (form.get("company_id") or "").strip()
+    if _cid:
+        from routers.settings import get_company_settings as _company_profile
+        _cp = await _company_profile(db, _cid)
+        if _cp.get("name"):
+            company = {"company_name": _cp["name"], "company_address": _cp["address"], "company_gstin": _cp["gstin"],
+                       "company_phone": _cp["phone"], "company_email": _cp["email"]}
+    from datetime import datetime as _dt
+    try:
+        _qdate = _dt.strptime((form.get("quote_date") or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        _qdate = None
 
     quotation = DealerQuotation(
         quote_number=quote_number,
@@ -109,6 +140,9 @@ async def create_dealer_quotation(
         company_email=company["company_email"] or None,
         payment_terms=payment_terms or None,
         additional_notes=additional_notes or None,
+        quote_date=_qdate or app_now().date(),
+        contact_type=((form.get("contact_type") or "dealer").strip() or "dealer")[:30],
+        special_conditions=(form.get("special_conditions") or "").strip() or None,
         total_quantity=total_quantity,
         total_price=total_price,
         status="added",
