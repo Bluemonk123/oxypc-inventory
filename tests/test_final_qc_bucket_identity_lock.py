@@ -79,6 +79,7 @@ from sqlalchemy import select
 from database import AsyncSessionLocal
 from models.device import Device, StageMovement
 from models.work_order import WorkOrder
+from models.stock_transfer import StockTransfer
 
 async def main():
     async with AsyncSessionLocal() as db:
@@ -86,6 +87,11 @@ async def main():
         if dev:
             for wo in (await db.execute(select(WorkOrder).where(WorkOrder.device_id == dev.id))).scalars().all():
                 await db.delete(wo)
+            await db.flush()
+            # Fail now routes on at once (2026-11-16), which can log a location transfer.
+            for t in (await db.execute(select(StockTransfer).where(
+                    StockTransfer.device_id == dev.id))).scalars().all():
+                await db.delete(t)
             for m in (await db.execute(select(StageMovement).where(
                     StageMovement.device_id == dev.id))).scalars().all():
                 await db.delete(m)
@@ -151,13 +157,35 @@ def test_multiple_tags_same_bucket_different_reason_and_engineer_all_succeed(app
         assert r2.status_code == 302, r2.text[:400]
 
         state2 = _device_state(barcode_2)
-        assert state2["device.current_stage"] == "final_qc_fail_hold"
+        # Fail now routes straight on by Failure Reason (2026-11-16): Software -> Stress Test.
+        assert state2["device.current_stage"] == "qc_check"
         # Latest fail's resolution wins for the informational display.
         assert state2["bucket.fail_reason"] == "Software"
         assert state2["bucket.fail_engineer_username"] == eng_b
     finally:
         _cleanup_device(barcode_1)
         _cleanup_device(barcode_2)
+
+
+def _park_in_fail_hold(barcode):
+    """Put a tag back in Final QC — Fail Hold, like one failed before the
+    Fail decision started routing straight on (2026-11-16); such tags still
+    show in Devices Failed."""
+    _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import update
+from database import AsyncSessionLocal
+from models.device import Device, DeviceStage
+
+async def main():
+    async with AsyncSessionLocal() as db:
+        await db.execute(update(Device).where(Device.barcode == "{barcode}")
+                         .values(current_stage=DeviceStage.final_qc_fail_hold))
+        await db.commit()
+
+asyncio.run(main())
+""")
 
 
 def test_bucket_engineer_name_still_shown_as_fyi(app_client, make_user):  # noqa: F811
@@ -173,6 +201,7 @@ def test_bucket_engineer_name_still_shown_as_fyi(app_client, make_user):  # noqa
     try:
         r = _submit_fail(app_client, barcode, "Hardware", bucket_name)
         assert r.status_code == 302, r.text[:400]
+        _park_in_fail_hold(barcode)
 
         html = app_client.get("/cosmetic/final_qc", follow_redirects=True).text
         row = html.split(bucket_name, 1)[1].split("</tr>", 1)[0]

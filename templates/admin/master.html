@@ -143,6 +143,16 @@
                           onclick="openAddInline('{{ cat.key }}','{{ cat.label }}')" title="Add Value">
                     <i class="bi bi-plus"></i>
                   </button>
+                  {% if cat.key == 'brand' %}{# Reload from All Inventories (2026-11-16, Pankaj) #}
+                  <form action="/admin/master/brands/reload" method="post" class="d-inline"
+                        onsubmit="var b=this.querySelector('button'); b.disabled=true; b.innerHTML='<span class=&quot;spinner-border spinner-border-sm&quot;></span>';">
+                    <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+                    <button type="submit" class="btn btn-xs btn-sm py-0 px-1 btn-outline-primary"
+                            title="Reload: add every brand used in All Inventories that isn't in this list yet">
+                      <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                  </form>
+                  {% endif %}
                   {% if cat.key == 'product_model_name' %}
                   <form action="/admin/master/product-model-names/reload" method="post" class="d-inline"
                         onsubmit="var b=this.querySelector('button'); b.disabled=true; b.innerHTML='<span class=&quot;spinner-border spinner-border-sm&quot;></span> Loading…';">

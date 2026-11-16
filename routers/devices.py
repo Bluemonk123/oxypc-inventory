@@ -1888,6 +1888,7 @@ async def export_devices(
 @router.post("/export")
 async def export_devices_selected(
     barcodes: list[str] = Form(default=[]),
+    barcodes_csv: str = Form(""),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(view_allowed),
 ):
@@ -1896,7 +1897,11 @@ async def export_devices_selected(
     selection can run into the hundreds of tags — or, via "select all"
     against an unfiltered/lightly-filtered search, tens of thousands; chunked
     for the same 32767-bound-parameter reason _export_rows chunks device_ids."""
-    barcodes = [b for b in (barcodes or []) if b]
+    # barcodes_csv (2026-11-16): one comma-separated field — Starlette reads at
+    # most 1,000 form fields, so a Model Summary export of more tags than that
+    # sends them joined instead of one field each.
+    barcodes = [b for b in (barcodes or []) if b] + [b.strip() for b in (barcodes_csv or "").split(",") if b.strip()]
+    barcodes = list(dict.fromkeys(barcodes))
     if not barcodes:
         raise HTTPException(400, "No Tag Numbers selected")
     CHUNK = 20000

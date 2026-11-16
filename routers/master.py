@@ -1031,6 +1031,56 @@ async def reload_product_model_names(
     return RedirectResponse(url=f"/admin/master?success={quote(msg)}#section-product_models", status_code=302)
 
 
+@router.post("/brands/reload")
+async def reload_device_brands(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(admin_only),
+):
+    """Device Brands "Reload" (2026-11-16, Pankaj): adds every Brand used on
+    the tags in All Inventories that the list doesn't have yet. Spellings are
+    compared ignoring capitals / spaces / punctuation ("HP" = "h p"); a new
+    brand is added in the tags' most-used spelling. Entries already in the
+    list are left as they are (also if edited or disabled); nothing is deleted."""
+    from models.device import Device
+    from services.audit_engine import audit
+    from utils.model_name import model_key, tidy
+    cat = "brand"
+    rows = (await db.execute(
+        select(Device.brand, func.count()).where(Device.brand.isnot(None), Device.is_trashed.isnot(True))
+        .group_by(Device.brand))).all()
+    spellings: dict = {}
+    for b, n in rows:
+        t = tidy(b)
+        k = model_key(t)
+        if k:
+            spellings.setdefault(k, {}).setdefault(t, 0)
+            spellings[k][t] += int(n or 0)
+    have = {model_key(v) for v in (await db.execute(
+        select(MasterData.value).where(MasterData.category == cat))).scalars().all()}
+    added = []
+    for k, spells in sorted(spellings.items(), key=lambda kv: max(kv[1].items(), key=lambda x: x[1])[0].lower()):
+        if k in have:
+            continue
+        name = max(spells.items(), key=lambda x: x[1])[0][:200]
+        db.add(MasterData(category=cat, value=name, is_active=True))
+        added.append(name)
+        have.add(k)
+    if added:
+        await audit(db, user=current_user, action="MASTER_BRANDS_RELOAD", table_name="master_data",
+                    record_id=f"{len(added)} brands", new_value={"category": cat, "added": added[:500],
+                                                                 "count": len(added)},
+                    notes="Device Brands: brands used on the tags added to Master Data.",
+                    request=request)
+    await db.commit()
+    await refresh_master_cache(db)
+    from urllib.parse import quote
+    msg = (f"Device Brands reloaded: {len(added):,} new brand(s) added"
+           + (f" ({', '.join(added[:15])}{'…' if len(added) > 15 else ''})" if added else "")
+           + f", {len(spellings) - len(added):,} already in the list.")
+    return RedirectResponse(url=f"/admin/master?success={quote(msg)}#section-device", status_code=302)
+
+
 @router.post("/{item_id}/edit")
 async def edit_master_value(
     request: Request,

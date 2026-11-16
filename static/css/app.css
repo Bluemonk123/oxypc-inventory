@@ -179,6 +179,18 @@ body {
 .nav-history-btn:focus { outline: none; box-shadow: none; background: transparent; }
 .nav-history-btn:focus-visible { outline: 2px solid rgba(3,119,194,.35); outline-offset: 1px; border-radius: 4px; }
 .nav-history-divider { display: none; }
+/* Topbar left cluster (2026-11-16, Pankaj): sidebar icon 1.5rem (was fs-5,
+   1.25rem); 0.5rem gaps (was 1rem) — icon | arrows | title | extras — and
+   everything vertically centred on one line. */
+.topbar #sidebarToggle {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; height: 36px; line-height: 1;
+}
+.topbar #sidebarToggle .bi { font-size: 1.5rem; line-height: 1; }
+.topbar .navbar-brand {
+  display: inline-flex; align-items: center;
+  margin-right: .5rem; padding-top: 0; padding-bottom: 0; line-height: 1.2;
+}
 
 /* Cards */
 .stat-card { border-radius: 10px; }
@@ -1434,7 +1446,9 @@ table.gtable tbody td .gtable-clamp2 {
 
 /* Quick Add "+" in the top bar (2026-11-08) — base.html #quickAddWrap,
    laid out by static/js/quick-add.js: columns filled top to bottom. */
-#quickAddWrap .qa-btn { display: inline-flex; align-items: center; justify-content: center; min-width: 2.4rem; }  /* Raise Ticket shape (btn-sm) */
+/* Round "+" (2026-11-16, Pankaj; was the Raise Ticket btn-sm rectangle). */
+#quickAddWrap .qa-btn { display: inline-flex; align-items: center; justify-content: center;
+  width: 2rem; height: 2rem; min-width: 0; padding: 0; border-radius: 50% !important; }
 #quickAddWrap .qa-menu { width: max-content; max-width: calc(100vw - 1.5rem); padding: .25rem .35rem; border-radius: 12px;
   max-height: 75vh; overflow: auto; }
 #quickAddWrap .qa-cols { display: flex; flex-direction: row-reverse; align-items: flex-start; }  /* 1st column on the right, under "+" */

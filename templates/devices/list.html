@@ -751,6 +751,7 @@ $(document).ready(function() {
   // instead of targets:'_all' + override — '_all' is resolved last and would
   // win (found live 2026-09-03).
   var MS_PRICE = CAN_VIEW_PRICING;
+  var MS_EXPORT = {{ 'true' if can(current_user, 'devices', 'export') else 'false' }};   // row Download icon (2026-11-16)
   var MS_TOTAL_COL = 6;
   var MODEL_NOT_SEARCHABLE_COLS = MS_PRICE ? [6, 7, 8, 9, 10, 11, 12, 13] : [6, 7, 8, 9, 10, 11, 12];
   var MS = { abbr: {}, gradeOrder: [], tsearch: null, req: 0 };
@@ -785,8 +786,10 @@ $(document).ready(function() {
       return msBadge(k + '-' + m[k], k === 'As-Is' ? 'warning text-dark' : (k === 'In Progress' ? 'secondary' : 'success'));
     }).join('') + '</span>';
   }
-  function msTotalHtml(total, m) {
-    return '<span class="text-nowrap"><strong class="me-1">' + total + '</strong>' +
+  function msTotalHtml(total, m, dl) {
+    // Download icon (2026-11-16, Pankaj): every tag of this row, All Inventory format.
+    return '<span class="text-nowrap">' + (dl && MS_EXPORT ? '<button type="button" class="btn btn-link p-0 me-1 align-baseline ms-row-dl" title="Download all ' + total + ' tags of this model"><i class="bi bi-download"></i></button>' : '') +
+      '<strong class="me-1">' + total + '</strong>' +
       msOrdered(m).map(function (k) {
         return msBadge((MS.abbr[k] || k) + '-' + m[k], 'light text-dark border', k);
       }).join('') + '</span>';
@@ -805,7 +808,7 @@ $(document).ready(function() {
     { data: 'gen', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
     { data: 'ram', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
     { data: 'storage', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
-    { data: 'total', render: function (d, t, row) { return t === 'display' ? msTotalHtml(d, row.entity) : d; } },
+    { data: 'total', render: function (d, t, row) { return t === 'display' ? msTotalHtml(d, row.entity, true) : d; } },
     { data: 'touch', orderable: false, render: function (d, t) { return t === 'display' ? msTouchHtml(d) : ''; } },
     { data: 'grade', orderable: false, render: function (d, t) { return t === 'display' ? msGradeHtml(d) : ''; } },
     { data: 'dtype', orderable: false, render: function (d, t) { return t === 'display' ? msListHtml(d) : ''; } },
@@ -895,6 +898,28 @@ $(document).ready(function() {
     var term = dt.search() || '';
     if (term !== MS.tsearch) { MS.tsearch = term; msLoad(); }
   });
+  // Submit tags to /devices/export as one comma-joined field (no 1,000-field cap).
+  function msSubmitTags(tags) {
+    var f = document.getElementById('msExportForm');
+    $(f).find('input[name="barcodes"],input[name="barcodes_csv"]').remove();
+    $('<input>').attr({ type: 'hidden', name: 'barcodes_csv', value: tags.join(',') }).appendTo(f);
+    f.submit();
+  }
+  $(dtModel.table().container()).on('click', '.ms-row-dl', function () {
+    var btn = this, r = dtModel.row(this.closest('tr')).data();
+    if (!r) return;
+    var key = [r.model, r.make, r.cpu, r.gen, r.ram, r.storage].join('|');
+    btn.disabled = true;
+    fetch('/devices/model-summary/barcodes?' + msParams().toString())
+      .then(function (x) { return x.ok ? x.json() : Promise.reject(x.status); })
+      .then(function (d) {
+        var tags = (d.groups || {})[key] || [];
+        if (!tags.length) { alert('No tags found for this model.'); return; }
+        msSubmitTags(tags);
+      })
+      .catch(function () { alert('Could not download — please try again.'); })
+      .finally(function () { btn.disabled = false; });
+  });
   $('#msExportAllBtn').on('click', function () {
     var btn = this, keys = {};
     dtModel.rows({ search: 'applied' }).data().each(function (r) {
@@ -907,10 +932,7 @@ $(document).ready(function() {
       .then(function (d) {
         var tags = [];
         Object.keys(keys).forEach(function (k) { tags = tags.concat((d.groups || {})[k] || []); });
-        var f = document.getElementById('msExportForm');
-        $(f).find('input[name="barcodes"]').remove();
-        tags.forEach(function (bc) { $('<input>').attr({ type: 'hidden', name: 'barcodes', value: bc }).appendTo(f); });
-        f.submit();
+        msSubmitTags(tags);
       })
       .catch(function () { alert('Could not export — please try again.'); })
       .finally(function () { btn.disabled = false; });

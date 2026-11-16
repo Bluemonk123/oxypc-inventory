@@ -1037,9 +1037,21 @@ async def advance_stage(
                 notes=f"Final QC Failed — {failure_reason or 'Rework'}. {notes}"
             )
             db.add(movement)
+            # No waiting in Fail Hold (2026-11-16, Pankaj): route the tag on
+            # by its Failure Reason now, same as the Devices Failed "Move".
+            # A tag that can't be routed stays in Fail Hold for a manual Move.
+            await db.flush()
+            why = await _route_failed_device(db, device, current_user, " (auto on Fail)")
             await db.commit()
+            from urllib.parse import quote as _q
+            from models.device import STAGE_LABELS as _ALL_LABELS
+            if why:
+                return RedirectResponse(
+                    url="/cosmetic/final_qc?warning=" + _q(f"Final QC Failed for {barcode} — kept in Devices Failed: {why}"),
+                    status_code=302)
             return RedirectResponse(
-                url="/cosmetic/final_qc?warning=Final+QC+Failed+for+" + barcode + "+%E2%80%94+recorded+successfully",
+                url="/cosmetic/final_qc?warning=" + _q(f"Final QC Failed for {barcode} — moved to "
+                                                      f"{_ALL_LABELS.get(device.current_stage, str(getattr(device.current_stage, 'value', device.current_stage)))}"),
                 status_code=302
             )
 
@@ -1105,9 +1117,13 @@ async def advance_stage(
             moved_by=current_user.username,
             notes=f"Final QC Passed — {pass_notes or ''}".strip(),
         ))
+        # No waiting in Pass Hold (2026-11-16, Pankaj): straight to Ready to
+        # Sale, same as the Devices Passed "Move to Inventory".
+        await db.flush()
+        await _release_passed_device(db, device, current_user, "Moved to Inventory on Final QC Pass (auto)")
         await db.commit()
         return RedirectResponse(
-            url="/cosmetic/final_qc?success=Final+QC+Passed+for+" + barcode,
+            url="/cosmetic/final_qc?success=Final+QC+Passed+for+" + barcode + "+%E2%80%94+moved+to+Ready+for+Sale",
             status_code=302
         )
 
@@ -1268,6 +1284,57 @@ async def fqc_pick(
     return JSONResponse({"ok": True, "work_id": wo.work_id})
 
 
+async def _route_failed_device(db, device, current_user, note_suffix: str = ""):
+    """Final QC — Fail Hold -> the stage the tag's Failure Reason routes to
+    (FAIL_REASON_TO_DEPT; see fqc_move_failed). Shared by the Devices Failed
+    Move buttons and, since 2026-11-16 (Pankaj), the Fail decision itself so
+    a failed tag no longer waits in Fail Hold. Returns None when moved, else
+    the reason it stayed in Fail Hold. Does not commit."""
+    reason = (device.fqc_failure_reason or "").strip()
+    department = FAIL_REASON_TO_DEPT.get(reason)
+    if not department:
+        return "No recognized Failure Reason to route by."
+
+    engineer_info = await _resolve_fail_engineer(db, device.id, reason)
+    engineer = None
+    if engineer_info and engineer_info.get("user_id"):
+        engineer = (await db.execute(
+            select(User).where(User.id == engineer_info["user_id"], User.status == True)  # noqa: E712
+        )).scalar_one_or_none()
+
+    if not engineer and reason == "Hardware":
+        # Hardware only: nobody resolved to hand it to — park it in
+        # Production Manager's Tag Number Allocation queue instead of
+        # moving it to L1/L2 Repair with no owner.
+        device.current_stage = DeviceStage.trc_production
+        device.updated_at = app_now()
+        db.add(StageMovement(
+            device_id=device.id, from_stage=DeviceStage.final_qc_fail_hold,
+            to_stage=DeviceStage.trc_production, moved_by=current_user.username,
+            notes=f"Final QC Fail — {reason}: no engineer resolved, sent to Tag Number Allocation{note_suffix}",
+        ))
+        return None
+
+    if await _apply_department_move(db, device, department, engineer, current_user):
+        return None
+    return "Could not resolve a destination stage."
+
+
+async def _release_passed_device(db, device, current_user, notes: str = "Moved to Inventory from Final QC Pass"):
+    """Final QC — Pass Hold -> Ready to Sale. Shared by the Devices Passed
+    Move buttons and, since 2026-11-16 (Pankaj), the Pass decision itself.
+    The Pass Hold StageMovement written before this is kept: reports
+    (parts changed, WorkID status, spare parts) read it as "passed Final QC".
+    Does not commit."""
+    device.current_stage = DeviceStage.ready_to_sale
+    device.updated_at = app_now()
+    db.add(StageMovement(
+        device_id=device.id, from_stage=DeviceStage.final_qc_pass_hold, to_stage=DeviceStage.ready_to_sale,
+        moved_by=current_user.username, notes=notes,
+    ))
+    await ensure_stage_location(db, device, DeviceStage.ready_to_sale, current_user)
+
+
 @router.post("/final-qc/move-failed")
 async def fqc_move_failed(
     barcodes: str = Form(...),
@@ -1312,38 +1379,11 @@ async def fqc_move_failed(
         if not device or device.current_stage != DeviceStage.final_qc_fail_hold:
             skipped.append({"barcode": code, "reason": "No longer awaiting Final QC Fail routing."})
             continue
-        reason = (device.fqc_failure_reason or "").strip()
-        department = FAIL_REASON_TO_DEPT.get(reason)
-        if not department:
-            skipped.append({"barcode": code, "reason": "No recognized Failure Reason to route by."})
-            continue
-
-        engineer_info = await _resolve_fail_engineer(db, device.id, reason)
-        engineer = None
-        if engineer_info and engineer_info.get("user_id"):
-            engineer = (await db.execute(
-                select(User).where(User.id == engineer_info["user_id"], User.status == True)
-            )).scalar_one_or_none()
-
-        if not engineer and reason == "Hardware":
-            # Hardware only: nobody resolved to hand it to — park it in
-            # Production Manager's Tag Number Allocation queue instead of
-            # moving it to L1/L2 Repair with no owner.
-            device.current_stage = DeviceStage.trc_production
-            device.updated_at = app_now()
-            db.add(StageMovement(
-                device_id=device.id, from_stage=DeviceStage.final_qc_fail_hold,
-                to_stage=DeviceStage.trc_production, moved_by=current_user.username,
-                notes=f"Final QC Fail — {reason}: no engineer resolved, sent to Tag Number Allocation",
-            ))
-            moved.append(code)
-            continue
-
-        moved_ok = await _apply_department_move(db, device, department, engineer, current_user)
-        if moved_ok:
-            moved.append(code)
+        why = await _route_failed_device(db, device, current_user)
+        if why:
+            skipped.append({"barcode": code, "reason": why})
         else:
-            skipped.append({"barcode": code, "reason": "Could not resolve a destination stage."})
+            moved.append(code)
 
     if moved:
         await db.commit()
@@ -1379,13 +1419,7 @@ async def fqc_move_passed(
         if not device or device.current_stage != DeviceStage.final_qc_pass_hold:
             skipped.append({"barcode": code, "reason": "No longer awaiting Final QC Pass Hold."})
             continue
-        device.current_stage = DeviceStage.ready_to_sale
-        device.updated_at = app_now()
-        db.add(StageMovement(
-            device_id=device.id, from_stage=DeviceStage.final_qc_pass_hold, to_stage=DeviceStage.ready_to_sale,
-            moved_by=current_user.username, notes="Moved to Inventory from Final QC Pass",
-        ))
-        await ensure_stage_location(db, device, DeviceStage.ready_to_sale, current_user)
+        await _release_passed_device(db, device, current_user)
         moved.append(code)
 
     if moved:

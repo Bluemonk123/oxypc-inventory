@@ -1026,13 +1026,13 @@
          wrapper carry no overflow of their own) the same way #sidebar
          already does via its own position:sticky in app.css. -->
     <nav class="navbar navbar-expand topbar px-3 sticky-top">
-      <button class="btn btn-link me-3" id="sidebarToggle"><i class="bi bi-list fs-5"></i></button>
+      <button class="btn btn-link me-2" id="sidebarToggle"><i class="bi bi-list"></i></button>
       {# Mirrors routers/auth.py's _first_landing() — where login itself drops
          each role — not routers/dashboard.py's bare "/" redirect, which sends
          admin to /devices instead and is a separate, pre-existing mismatch. #}
       {% set _home_path = '/dashboard' if role == 'admin' else '/attendance' %}
       {% if request.url.path != _home_path %}
-      <div class="nav-history-group me-3" role="group" aria-label="Page navigation history">
+      <div class="nav-history-group me-2" role="group" aria-label="Page navigation history">
         <button type="button" class="nav-history-btn" id="navHistoryBack" title="Go back" aria-label="Go back" disabled>
           <i class="bi bi-caret-left-fill"></i>
         </button>
@@ -1077,7 +1077,7 @@
         {% set _qa = quick_add_menu(current_user) %}
         {% if _qa %}
         <div class="dropdown" id="quickAddWrap">
-          {# Same shape as Raise Ticket (btn-sm, standard rounded corners), blue (2026-11-09). #}
+          {# Round blue "+" (2026-11-16; was Raise Ticket's btn-sm shape) — app.css #quickAddWrap .qa-btn. #}
           <button type="button" class="btn btn-primary btn-sm fw-semibold qa-btn" id="quickAddBtn"
                   data-bs-toggle="dropdown" aria-expanded="false"
                   title="Add" aria-label="Add new">

@@ -190,6 +190,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/master/{item_id}/toggle'): None,  # toggle_master_value: admin-only master data
     ('POST', '/admin/master/{item_id}/delete'): None,  # delete_master_value: admin-only master data
     ('POST', '/admin/master/product-model-names/reload'): None,  # reload_product_model_names: admin-only master data (Product Model Names from tags), 2026-11-06
+    ('POST', '/admin/master/brands/reload'): None,  # reload_device_brands: admin-only master data (Device Brands from tags), 2026-11-16
     ('POST', '/admin/master/bulk-upload/{category}'): None,  # bulk_upload_category: admin-only master data
     ('POST', '/admin/master/permissions/save'): None,  # save_role_permissions: permission matrix itself
     ('POST', '/admin/master/permissions/save-additional'): None,  # save_additional_permissions: permission matrix itself

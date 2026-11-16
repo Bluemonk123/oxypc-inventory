@@ -152,6 +152,26 @@ def _submit_fail(app_client, barcode, failure_reason, bucket_name, notes=""):
     assert r.status_code == 302, r.text[:400]
 
 
+def _park_in_fail_hold(barcode):
+    """Put a tag back in Final QC — Fail Hold, like one failed before the
+    Fail decision started routing straight on (2026-11-16)."""
+    _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import update
+from database import AsyncSessionLocal
+from models.device import Device, DeviceStage
+
+async def main():
+    async with AsyncSessionLocal() as db:
+        await db.execute(update(Device).where(Device.barcode == "{barcode}")
+                         .values(current_stage=DeviceStage.final_qc_fail_hold))
+        await db.commit()
+
+asyncio.run(main())
+""")
+
+
 def _move_failed(app_client, barcodes):
     csrf = app_client.cookies.get("csrf_token") or "dummy"
     return app_client.post("/cosmetic/final-qc/move-failed", data={
@@ -171,6 +191,11 @@ def test_devices_failed_table_lists_each_tag_as_its_own_row_with_move_button(app
     _login(app_client, admin_username, admin_password)
     try:
         _submit_fail(app_client, barcode, "Hardware", bucket_name, notes="Cracked hinge, keeps rebooting")
+        # Routed on straight away (2026-11-16) — not listed in Devices Failed.
+        assert _device_state(barcode)["stage"] == "l1"
+        assert barcode not in app_client.get("/cosmetic/final_qc", follow_redirects=True).text
+        # A tag still waiting in Fail Hold (failed before the change) keeps its row + Move button.
+        _park_in_fail_hold(barcode)
 
         html = app_client.get("/cosmetic/final_qc", follow_redirects=True).text
         assert 'id="fqcFailedSearch"' in html
@@ -185,6 +210,10 @@ def test_devices_failed_table_lists_each_tag_as_its_own_row_with_move_button(app
         assert 'class="fqc-assign-bkt' not in html
         assert barcode in html
         assert bucket_name in html
+        # ...and its Move button still routes it.
+        r = _move_failed(app_client, [barcode])
+        assert r.json()["moved"] == [barcode]
+        assert _device_state(barcode)["stage"] == "l1"
     finally:
         _cleanup_device(barcode)
 
@@ -202,11 +231,7 @@ def test_move_hardware_reason_goes_to_l1_with_resolved_engineer(app_client, make
     try:
         _submit_fail(app_client, barcode, "Hardware", bucket_name)
 
-        r = _move_failed(app_client, [barcode])
-        assert r.status_code == 200, r.text[:400]
-        body = r.json()
-        assert body["moved"] == [barcode]
-        assert body["skipped"] == []
+        # The Fail decision routes the tag on by itself (2026-11-16, no Fail Hold wait).
 
         after = _device_state(barcode)
         assert after["stage"] == "l1"
@@ -228,9 +253,7 @@ def test_move_software_reason_goes_to_stress_test_when_engineer_resolved(app_cli
     try:
         _submit_fail(app_client, barcode, "Software", bucket_name)
 
-        r = _move_failed(app_client, [barcode])
-        assert r.status_code == 200, r.text[:400]
-        assert r.json()["moved"] == [barcode]
+        # The Fail decision routes the tag on by itself (2026-11-16, no Fail Hold wait).
 
         after = _device_state(barcode)
         assert after["stage"] == "qc_check"
@@ -252,9 +275,7 @@ def test_move_cosmetic_reason_goes_to_cosmetic_received_when_engineer_resolved(a
     try:
         _submit_fail(app_client, barcode, "Cosmetic", bucket_name)
 
-        r = _move_failed(app_client, [barcode])
-        assert r.status_code == 200, r.text[:400]
-        assert r.json()["moved"] == [barcode]
+        # The Fail decision routes the tag on by itself (2026-11-16, no Fail Hold wait).
 
         after = _device_state(barcode)
         assert after["stage"] == "cosmetic_received"
@@ -277,9 +298,7 @@ def test_move_software_blank_engineer_still_moves_to_stress_test(app_client, mak
     try:
         _submit_fail(app_client, barcode, "Software", bucket_name)
 
-        r = _move_failed(app_client, [barcode])
-        assert r.status_code == 200, r.text[:400]
-        assert r.json()["moved"] == [barcode]
+        # The Fail decision routes the tag on by itself (2026-11-16, no Fail Hold wait).
 
         after = _device_state(barcode)
         assert after["stage"] == "qc_check"
@@ -301,9 +320,7 @@ def test_move_cosmetic_blank_engineer_still_moves_to_cosmetic_received(app_clien
     try:
         _submit_fail(app_client, barcode, "Cosmetic", bucket_name)
 
-        r = _move_failed(app_client, [barcode])
-        assert r.status_code == 200, r.text[:400]
-        assert r.json()["moved"] == [barcode]
+        # The Fail decision routes the tag on by itself (2026-11-16, no Fail Hold wait).
 
         after = _device_state(barcode)
         assert after["stage"] == "cosmetic_received"
@@ -324,9 +341,7 @@ def test_move_hardware_blank_engineer_parks_in_trc_production(app_client, make_u
     try:
         _submit_fail(app_client, barcode, "Hardware", bucket_name)
 
-        r = _move_failed(app_client, [barcode])
-        assert r.status_code == 200, r.text[:400]
-        assert r.json()["moved"] == [barcode]
+        # The Fail decision routes the tag on by itself (2026-11-16, no Fail Hold wait).
 
         after = _device_state(barcode)
         assert after["stage"] == "trc_production"
@@ -353,11 +368,7 @@ def test_bulk_move_routes_each_tag_independently_even_sharing_a_bucket_name(app_
         _submit_fail(app_client, barcode_1, "Hardware", bucket_name)
         _submit_fail(app_client, barcode_2, "Software", bucket_name)
 
-        r = _move_failed(app_client, [barcode_1, barcode_2])
-        assert r.status_code == 200, r.text[:400]
-        body = r.json()
-        assert set(body["moved"]) == {barcode_1, barcode_2}
-        assert body["skipped"] == []
+        # Each Fail routes its own tag on straight away (2026-11-16).
 
         assert _device_state(barcode_1)["stage"] == "l1"
         assert _device_state(barcode_1)["assigned_username"] == eng_username
@@ -380,8 +391,7 @@ def test_move_skips_tag_no_longer_in_fail_hold_and_reports_it(app_client, make_u
     _login(app_client, admin_username, admin_password)
     try:
         _submit_fail(app_client, barcode, "Software", bucket_name)
-        first = _move_failed(app_client, [barcode])
-        assert first.json()["moved"] == [barcode]
+        # The Fail already routed it on to qc_check (2026-11-16).
 
         # Already moved on to qc_check — a second Move on the same barcode
         # must be reported as skipped, not silently re-moved or errored.
