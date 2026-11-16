@@ -288,6 +288,12 @@ body {
    that so every card-body containing a table gets p-3-equivalent padding. */
 .card-body:has(table) { padding: 1rem !important; }
 .card-body table { border-radius: 12px; overflow: hidden; }  /* inside a 16px card (2026-11-08) */
+/* Opt-out (2026-11-16, Pankaj): a card-body marked .card-body-flush keeps its
+   table edge to edge — no padding, square table corners (Supplier Deal card). */
+.card-body.card-body-flush:has(table) { padding: 0 !important; }
+.card-body.card-body-flush table { border-radius: 0; }
+.card-body.card-body-flush table :is(th, td):first-child { padding-left: .75rem; }
+.card-body.card-body-flush table :is(th, td):last-child { padding-right: .75rem; }
 
 /* P&L colors */
 .profit-positive { color: var(--oxy-forest); font-weight: 600; }

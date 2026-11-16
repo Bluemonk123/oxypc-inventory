@@ -195,6 +195,7 @@ async def contact_admin(
     request: Request,
     raised_by: str = Form(...),
     feedback: str = Form(...),
+    email: str = Form(""),
     photos: list[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_db),
 ):
@@ -207,7 +208,7 @@ async def contact_admin(
     sent = form.get("csrf_token", "") or request.headers.get("X-CSRF-Token", "")
     if not cookie_token or not secrets.compare_digest(sent, cookie_token):
         return JSONResponse({"error": "Session expired — please refresh the page and try again."}, status_code=403)
-    return await create_public_ticket(db, raised_by, feedback, photos, source="partner login page")
+    return await create_public_ticket(db, raised_by, feedback, photos, source="partner login page", email=email)
 
 
 @router.post("/logout")
@@ -1636,6 +1637,7 @@ async def raise_my_ticket(
     request: Request,
     raised_by: str = Form(...),
     feedback: str = Form(...),
+    email: str = Form(""),
     photos: list[UploadFile] = File(default=[]),
     _csrf=Depends(verify_partner_csrf),
     dealer: Dealer = Depends(get_current_partner),
@@ -1643,7 +1645,39 @@ async def raise_my_ticket(
 ):
     from routers.tickets import create_public_ticket
     return await create_public_ticket(db, raised_by, feedback, photos,
-                                      source="partner portal", tag=_ticket_tag(dealer))
+                                      source="partner portal", tag=_ticket_tag(dealer),
+                                      email=email or (dealer.email or ""))
+
+
+@router.get("/tickets/{ticket_id}/thread")
+async def my_ticket_thread(ticket_id: str, dealer: Dealer = Depends(get_current_partner),
+                           db: AsyncSession = Depends(get_db)):
+    """One of this partner's tickets as they see it (2026-11-16): public
+    replies and the activity log, never internal notes."""
+    from models.ticket import Ticket
+    from services.ticket_board import requester_thread
+    t = (await db.execute(select(Ticket).where(Ticket.ticket_id == ticket_id))).scalar_one_or_none()
+    if not t or not (t.raised_by or "").startswith(_ticket_tag(dealer)):
+        return JSONResponse({"error": "Ticket not found."}, status_code=404)
+    return JSONResponse(await requester_thread(db, t))
+
+
+@router.post("/tickets/{ticket_id}/reply")
+@limiter.limit("30/hour", key_func=ip_key_func)
+async def my_ticket_reply(request: Request, ticket_id: str, body: str = Form(""),
+                          _csrf=Depends(verify_partner_csrf),
+                          dealer: Dealer = Depends(get_current_partner), db: AsyncSession = Depends(get_db)):
+    """The partner replies in their ticket's conversation (2026-11-16)."""
+    from models.ticket import Ticket
+    from services.ticket_board import add_requester_reply, requester_thread
+    t = (await db.execute(select(Ticket).where(Ticket.ticket_id == ticket_id))).scalar_one_or_none()
+    if not t or not (t.raised_by or "").startswith(_ticket_tag(dealer)):
+        return JSONResponse({"error": "Ticket not found."}, status_code=404)
+    if not (body or "").strip():
+        return JSONResponse({"error": "Write a reply first."}, status_code=400)
+    name = (t.raised_by or "").split("] ", 1)[-1] or dealer.business_name
+    await add_requester_reply(db, t, None, f"{name} ({dealer.business_name})", body)
+    return JSONResponse({"ok": True})
 
 
 @router.get("/profile", response_class=HTMLResponse)

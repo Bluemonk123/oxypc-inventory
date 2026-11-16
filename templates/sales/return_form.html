@@ -514,8 +514,11 @@
             msg.innerHTML = '<div class="alert alert-warning py-2 px-3 small mb-0">Device is out of warranty and will cost the basic repair charge of Rs{{ '%.0f'|format(default_paid_repair if default_paid_repair is defined else 1500) }} (Default Paid Repair Cost), excluding spare parts cost — choose Payment Due or Waive Off below.' + stageNote + '</div>';
             paidRepairRow.classList.remove('d-none');
           } else {
-            msg.innerHTML = '<div class="alert alert-info py-2 px-3 small mb-0">Device found.' + stageNote + '</div>';
-            paidRepairRow.classList.add('d-none');
+            // No active warranty (No Warranty / not known): the server charges
+            // the Default Paid Repair Cost here too, so the Payment Due /
+            // Waive Off choice must be shown (2026-11-16).
+            msg.innerHTML = '<div class="alert alert-warning py-2 px-3 small mb-0">Device has no active warranty and will cost the basic repair charge of Rs{{ '%.0f'|format(default_paid_repair if default_paid_repair is defined else 1500) }} (Default Paid Repair Cost), excluding spare parts cost — choose Payment Due or Waive Off below.' + stageNote + '</div>';
+            paidRepairRow.classList.remove('d-none');
           }
         } else {
           clearBrief();

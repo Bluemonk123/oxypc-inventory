@@ -76,6 +76,7 @@ ROUTE_ACTIONS = {
     ('POST', '/stock/flag'): ('stock', 'edit'),  # stock_flag_save: form action=save adds/edits flag, action=remove clears flag (flag only, not a record delete)
     ('POST', '/stock/return-stock/assign-bucket'): ('stock', 'edit'),  # return_stock_assign_bucket
     ('POST', '/stock/return-stock/{barcode}/verify'): ('stock', 'edit'),  # return_stock_verify
+    ('POST', '/stock/return-stock/{barcode}/waive'): ('stock', 'edit'),  # return_stock_waive: Waive Off a payment-due return (also needs Stock Pricing, checked inside) 2026-11-16
     ('POST', '/stock/return-stock/{barcode}/complete'): ('stock', 'edit'),  # return_stock_complete
     ('POST', '/stock/return-stock/move-l1l2'): ('stock', 'edit'),  # return_stock_move_l1l2 (2026-11-05)
     ('POST', '/stock/return-stock/{barcode}/stock-in-only'): ('stock', 'edit'),  # return_stock_in_only (2026-11-05)
@@ -586,6 +587,7 @@ ROUTE_ACTIONS = {
     ('POST', '/assign-dealer-leads/export'): ('assign_dealer_leads', 'export'),  # export_dealer_leads: export
     # ===== routers/tickets.py =====
     ('POST', '/tickets/raise'): None,  # raise_ticket: ticket raise (any user)
+    ('POST', '/tickets/{ticket_id}/reply'): None,  # ticket_requester_reply: raiser answers in the conversation (2026-11-16)
     ('POST', '/tickets/{ticket_id}/close'): None,  # close_ticket: internal support tickets; no PERM_MODULES entry (see notes s3)
     # ===== routers/settings.py =====
     ('POST', '/settings'): ('company_settings', 'edit'),  # save_company: Company Setting page (/settings, label key company_settings); add when new company
@@ -654,6 +656,7 @@ ROUTE_ACTIONS = {
     # ===== routers/partner_portal.py =====
     ('POST', '/partner/logout'): None,  # logout: partner portal
     ('POST', '/partner/notifications/read'): None,  # partner_notifications_read: partner bell (external, 2026-11-15)
+    ('POST', '/partner/tickets/{ticket_id}/reply'): None,  # my_ticket_reply: partner answers in the conversation (2026-11-16)
     ('POST', '/partner/tickets'): None,  # raise_my_ticket: partner portal My Tickets (external, 2026-11-11)
     ('POST', '/partner/listings/{listing_id}/bid'): None,  # place_bid: partner portal (external)
     ('POST', '/partner/listings/{listing_id}/custom-price'): None,  # request_custom_price: partner portal (external)

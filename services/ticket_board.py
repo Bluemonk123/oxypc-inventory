@@ -212,3 +212,124 @@ def age_info(t, now=None) -> dict:
     d, h = secs // 86400, (secs % 86400) // 3600
     text = f"{d}d {h}h" if d else (f"{h}h" if h else f"{max(1, secs // 60)}m")
     return {"text": text, "seconds": secs, "stopped": stopped}
+
+
+# ── Requester side (2026-11-16, Pankaj) ─────────────────────────────────────
+# The person who raised a ticket can read its conversation (public replies and
+# the activity log, never internal notes) on Tickets Raised / the partner
+# portal's My Tickets, and is alerted on every change made by someone else:
+#   staff requester   -> bell (also emailed to their user email when SMTP is set)
+#   partner requester -> partner portal bell, plus email to the ticket's email
+#   login-page ticket -> email to the address typed on the ticket form
+# Alerts are best effort: they never fail the change itself.
+
+def is_valid_email(v: str) -> bool:
+    import re
+    return bool(re.fullmatch(r"[^@\s<>\"']{1,64}@[^@\s<>\"']{1,190}\.[A-Za-z]{2,24}", (v or "").strip()))
+
+
+async def requester_thread(db, t) -> dict:
+    """What the requester may see of a ticket: no internal notes."""
+    from routers.tickets import attachment_kind
+    msgs = (await db.execute(select(TicketMessage).where(
+        TicketMessage.ticket_id == t.id, TicketMessage.is_internal == False)  # noqa: E712
+        .order_by(TicketMessage.created_at))).scalars().all()
+    users = await user_map(db, {t.assignee})
+    a = users.get(t.assignee)
+    return {
+        "can_reply": True,
+        "ticket_id": t.ticket_id, "subject": t.display_subject,
+        "status": t.status, "status_label": STATUS_LABEL.get(t.status, t.status),
+        "status_color": STATUS_COLOR.get(t.status, "#6c757d"),
+        "priority": priority_of(t).capitalize(), "group": t.group_name or DEFAULT_GROUP,
+        "assignee": (a.full_name or a.username) if a else ("" if not t.assignee else t.assignee),
+        "raised_on": t.raised_on.isoformat() if t.raised_on else "",
+        "description": t.feedback or "",
+        "files": [{"path": p, "kind": attachment_kind(p), "name": p.rsplit("/", 1)[-1]}
+                  for p in (t.photo1_path, t.photo2_path) if p],
+        "messages": [{"kind": "event" if m.author_type == "system" else ("me" if m.author_type == "requester" else "reply"),
+                      "who": m.author_name or m.author_username or "", "body": m.body or "",
+                      "at": m.created_at.isoformat() if m.created_at else ""} for m in msgs],
+    }
+
+
+def _partner_code(raised_by: str):
+    raw = raised_by or ""
+    return raw[1:].split("] ", 1)[0] if raw.startswith("[") and "] " in raw else None
+
+
+async def _email(to: str, title: str, message: str, details: dict):
+    """Send in the background through the company mailbox; silent if not set up."""
+    import asyncio
+    import logging
+    from services import email_notify as en
+    if not to or not is_valid_email(to) or not en.is_configured():
+        return
+
+    async def _go():
+        try:
+            await en.send_now([to.strip()], title, message, details)
+        except Exception as e:   # noqa: BLE001
+            try:
+                await en.send_now([to.strip()], title, message, details, box="backup")
+            except Exception:    # noqa: BLE001
+                logging.getLogger("tickets").warning("Ticket email to requester failed: %s", e)
+    asyncio.create_task(_go())
+
+
+async def notify_requester(db, t, actor, title: str, message: str) -> None:
+    """Alert whoever raised ticket t about a change made by `actor`.
+    Call after the change is committed."""
+    actor_name = getattr(actor, "username", None)
+    if not t or not t.raised_by or t.raised_by == actor_name:
+        return
+    details = {"Ticket": t.ticket_id, "Subject": t.display_subject,
+               "Status": STATUS_LABEL.get(t.status, t.status)}
+    try:
+        u = (await db.execute(select(User).where(User.username == t.raised_by, User.status == True))).scalar_one_or_none()  # noqa: E712
+        if u is not None:
+            from services.notifications import create_notification
+            await create_notification(db, user_id=u.id, title=title, message=message,
+                                      notification_type="info", copies=False)
+            return
+        code = _partner_code(t.raised_by)
+        if code:
+            from models.dealers import Dealer
+            from models.partner import PartnerNotification
+            d = (await db.execute(select(Dealer).where(Dealer.dealer_code == code))).scalars().first()
+            if d is not None:
+                db.add(PartnerNotification(dealer_id=d.id, title=title[:200], message=message[:1000] or None,
+                                           kind="info", link="/partner/tickets"))
+                await db.commit()
+        await _email(t.requester_email, title, message, details)
+    except Exception:   # noqa: BLE001
+        await db.rollback()
+
+
+async def add_requester_reply(db, t, author_username: str, author_name: str, text: str) -> None:
+    """The requester answers in the conversation (2026-11-16, Pankaj): saved as
+    a requester message; a Pending or Solved ticket goes back to Open; the
+    assignee (or, while unassigned, every active admin) is alerted. Commits."""
+    from types import SimpleNamespace
+    text = (text or "").strip()[:5000]
+    db.add(TicketMessage(ticket_id=t.id, author_type="requester", author_username=(author_username or None) and author_username[:50],
+                         author_name=(author_name or "")[:100] or None, body=text))
+    who = SimpleNamespace(username=author_username, full_name=author_name)
+    if t.status in ("pending", "solved"):
+        set_status(db, t, "open", who)
+    t.updated_at = app_now()
+    await db.commit()
+    try:
+        from services.notifications import create_notification
+        from models.user import UserRole
+        if t.assignee:
+            ids = (await db.execute(select(User.id).where(User.username == t.assignee, User.status == True))).scalars().all()  # noqa: E712
+        else:
+            ids = (await db.execute(select(User.id).where(User.role == UserRole.admin, User.status == True))).scalars().all()  # noqa: E712
+        preview = text if len(text) <= 300 else text[:297] + "..."
+        for uid in ids:
+            await create_notification(db, user_id=uid, title=f"Requester replied on ticket {t.ticket_id}",
+                                      message=f"{author_name or 'Requester'}: {preview}", notification_type="info",
+                                      copies=False)
+    except Exception:   # noqa: BLE001
+        await db.rollback()

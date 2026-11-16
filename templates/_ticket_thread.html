@@ -1,0 +1,115 @@
+{# Ticket conversation for the person who raised it (2026-11-16, Pankaj).
+   Shared by Tickets Raised (/tickets) and the partner portal's My Tickets.
+   Open with openTicketThread(url) — url returns services/ticket_board.requester_thread
+   as JSON (public replies + activity log; internal notes are never included). #}
+<style>
+  #tkThreadModal .tkt-head { display:flex; flex-wrap:wrap; gap:.4rem .75rem; align-items:center; font-size:.85rem; }
+  #tkThreadModal .tkt-pill { color:#fff; border-radius:999px; padding:.1rem .6rem; font-size:.75rem; font-weight:600; }
+  #tkThreadModal .tkt-list { display:flex; flex-direction:column; gap:.6rem; max-height:60vh; overflow-y:auto; padding:.25rem; }
+  #tkThreadModal .tkt-msg { border:1px solid var(--bs-border-color, #dee2e6); border-radius:10px; padding:.55rem .75rem; background:var(--bs-body-bg, #fff); }
+  #tkThreadModal .tkt-msg.first { background:var(--bs-tertiary-bg, #f8f9fa); }
+  #tkThreadModal .tkt-msg .who { font-weight:600; font-size:.85rem; }
+  #tkThreadModal .tkt-msg .when { color:var(--bs-secondary-color, #6c757d); font-size:.75rem; margin-left:.5rem; }
+  #tkThreadModal .tkt-msg .body { white-space:pre-wrap; word-break:break-word; margin-top:.25rem; font-size:.9rem; }
+  #tkThreadModal .tkt-event { text-align:center; color:var(--bs-secondary-color, #6c757d); font-size:.78rem; }
+  #tkThreadModal .tkt-files { display:flex; flex-wrap:wrap; gap:.4rem; margin-top:.4rem; }
+  #tkThreadModal .tkt-files img { width:56px; height:56px; object-fit:cover; border-radius:6px; border:1px solid #dee2e6; }
+</style>
+<div class="modal fade" id="tkThreadModal" tabindex="-1" aria-labelledby="tkThreadTitle">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="tkThreadTitle"><i class="bi bi-chat-left-text me-2"></i>Ticket</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="tkt-head mb-3" id="tkThreadHead"></div>
+        <div class="tkt-list" id="tkThreadList"><div class="text-muted small">Loading…</div></div>
+        <div id="tkThreadReply" class="mt-3 d-none">
+          <label class="form-label small fw-semibold mb-1" for="tkThreadBody">Your reply</label>
+          <textarea id="tkThreadBody" class="form-control form-control-sm" rows="3" maxlength="5000" placeholder="Add more details or answer the support team…"></textarea>
+          <div class="d-flex align-items-center gap-2 mt-2">
+            <button type="button" class="btn btn-sm btn-primary" id="tkThreadSend"><i class="bi bi-send me-1"></i>Send reply</button>
+            <span id="tkThreadErr" class="text-danger small"></span>
+          </div>
+        </div>
+        <p class="small text-muted mt-3 mb-0">You get an alert whenever the support team replies or changes this ticket. Replying re-opens a Pending or Solved ticket.</p>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  function esc(s) { var d = document.createElement('div'); d.textContent = s == null ? '' : String(s); return d.innerHTML; }
+  function when(iso) {
+    if (!iso) return '';
+    var d = new Date(iso); if (isNaN(d)) return '';
+    return d.toLocaleString(undefined, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  }
+  function files(list) {
+    if (!list || !list.length) return '';
+    return '<div class="tkt-files">' + list.map(function (f) {
+      return f.kind === 'image'
+        ? '<a href="' + esc(f.path) + '" target="_blank" rel="noopener"><img src="' + esc(f.path) + '" alt="Attachment"></a>'
+        : '<a href="' + esc(f.path) + '" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary"><i class="bi bi-paperclip me-1"></i>' + esc(f.name) + '</a>';
+    }).join('') + '</div>';
+  }
+  var cur = { url: '', id: '' };
+  function csrf(partner) {
+    var name = partner ? 'partner_csrf_token' : 'csrf_token';
+    var m = document.cookie.match(new RegExp('(?:^|;\\s*)' + name + '=([^;]+)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+  document.addEventListener('click', async function (e) {
+    if (!e.target.closest('#tkThreadSend')) return;
+    var btn = document.getElementById('tkThreadSend'), body = document.getElementById('tkThreadBody'),
+        err = document.getElementById('tkThreadErr');
+    err.textContent = '';
+    if (!body.value.trim()) { err.textContent = 'Write a reply first.'; return; }
+    var partner = cur.url.indexOf('/partner/') === 0, token = csrf(partner);
+    var fd = new FormData(); fd.append('body', body.value); fd.append('csrf_token', token);
+    btn.disabled = true;
+    try {
+      var r = await fetch(cur.url.replace(/\/thread$/, '/reply'), { method: 'POST', headers: { 'X-CSRF-Token': token }, body: fd });
+      var d = {}; try { d = await r.json(); } catch (x) {}
+      if (!r.ok || !d.ok) { err.textContent = d.error || (r.status === 429 ? 'Too many replies, try again later.' : 'Could not send the reply.'); }
+      else { body.value = ''; await window.openTicketThread(cur.url, cur.id, true); }
+    } catch (x) { err.textContent = 'Network error, please try again.'; }
+    btn.disabled = false;
+  });
+  window.openTicketThread = async function (url, ticketId, keepOpen) {
+    cur = { url: url, id: ticketId };
+    document.getElementById('tkThreadReply').classList.add('d-none');
+    var el = document.getElementById('tkThreadModal');
+    document.getElementById('tkThreadTitle').innerHTML = '<i class="bi bi-chat-left-text me-2"></i>Ticket ' + esc(ticketId || '');
+    document.getElementById('tkThreadHead').innerHTML = '';
+    var list = document.getElementById('tkThreadList');
+    list.innerHTML = '<div class="text-muted small">Loading…</div>';
+    if (!keepOpen) bootstrap.Modal.getOrCreateInstance(el).show();
+    try {
+      var r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      var d = await r.json();
+      if (!r.ok) { list.innerHTML = '<div class="text-danger small">' + esc(d.error || 'Could not load the ticket.') + '</div>'; return; }
+      document.getElementById('tkThreadTitle').innerHTML = '<i class="bi bi-chat-left-text me-2"></i>#' + esc(d.ticket_id) + ' · ' + esc(d.subject);
+      document.getElementById('tkThreadHead').innerHTML =
+        '<span class="tkt-pill" style="background:' + esc(d.status_color) + '">' + esc(d.status_label) + '</span>' +
+        '<span><span class="text-muted">Priority</span> ' + esc(d.priority) + '</span>' +
+        '<span><span class="text-muted">Team</span> ' + esc(d.group) + '</span>' +
+        '<span><span class="text-muted">Handled by</span> ' + esc(d.assignee || 'Not assigned yet') + '</span>';
+      var html = '<div class="tkt-msg first"><span class="who">Your request</span><span class="when">' + when(d.raised_on) + '</span>' +
+                 '<div class="body">' + esc(d.description) + '</div>' + files(d.files) + '</div>';
+      d.messages.forEach(function (m) {
+        if (m.kind === 'event') html += '<div class="tkt-event">' + esc(m.body) + ' · ' + when(m.at) + '</div>';
+        else html += '<div class="tkt-msg"><span class="who">' + esc(m.kind === 'me' ? 'You' : (m.who || 'Support')) + '</span>' +
+                     '<span class="when">' + when(m.at) + '</span><div class="body">' + esc(m.body) + '</div></div>';
+      });
+      if (!d.messages.length) html += '<div class="tkt-event">No replies yet — the support team will reply here.</div>';
+      list.innerHTML = html;
+      list.scrollTop = list.scrollHeight;
+      document.getElementById('tkThreadReply').classList.toggle('d-none', !d.can_reply);
+    } catch (e) {
+      list.innerHTML = '<div class="text-danger small">Network error — please try again.</div>';
+    }
+  };
+})();
+</script>

@@ -242,6 +242,7 @@ async def reply(request: Request, ticket_id: str, body: str = Form(""), is_inter
     if not text and (not submit_status or submit_status == t.status):
         return _back(ticket_id, "Write a reply or change the status", ok=False)
     me = current_user.full_name or current_user.username
+    old_status = t.status
     if text:
         db.add(TicketMessage(ticket_id=t.id, author_type="user", author_username=current_user.username,
                              author_name=me, body=text, is_internal=internal))
@@ -252,9 +253,18 @@ async def reply(request: Request, ticket_id: str, body: str = Form(""), is_inter
     tb.set_status(db, t, target, current_user)
     t.updated_at = app_now()
     await db.commit()
-    if text and not internal and t.raised_by != current_user.username:
-        await _notify(db, t.raised_by, f"Reply on ticket {t.ticket_id}",
-                      f"{me}: " + (text if len(text) <= 160 else text[:157] + "..."))
+    # Requester alert (2026-11-16): a public reply and / or a status change.
+    # Internal notes never reach the requester.
+    status_changed = target != old_status
+    if (text and not internal) or status_changed:
+        parts = []
+        if text and not internal:
+            parts.append(f"{me} replied: " + (text if len(text) <= 500 else text[:497] + "..."))
+        if status_changed:
+            parts.append(f"Status is now {tb.STATUS_LABEL[t.status]}.")
+        await tb.notify_requester(db, t, current_user,
+                                  f"Reply on ticket {t.ticket_id}" if text and not internal
+                                  else f"Ticket {t.ticket_id} is {tb.STATUS_LABEL[t.status]}", " ".join(parts))
     kind = "Internal note added" if internal and text else ("Reply sent" if text else "Ticket updated")
     return _back(ticket_id, f"{kind} — {tb.STATUS_LABEL[t.status]}")
 
@@ -301,6 +311,14 @@ async def update_field(request: Request, ticket_id: str, field: str = Form(...),
     await audit(db, action="TICKET_UPDATED", user=current_user, table_name="tickets", record_id=str(t.id),
                 old_value={field: old}, new_value={field: value}, request=request)
     await db.commit()
+    # Requester alert on any field change (2026-11-16).
+    if field == "assignee":
+        nm = (users[value].full_name or value) if value in users else "nobody"
+        await tb.notify_requester(db, t, current_user, f"Ticket {t.ticket_id} updated",
+                                  f"Your ticket is now assigned to {nm}." if value else "Your ticket is unassigned.")
+    else:
+        await tb.notify_requester(db, t, current_user, f"Ticket {t.ticket_id} updated",
+                                  f"{label} changed from {old or '—'} to {value}.")
     if field == "assignee" and value and value != current_user.username:
         await _notify(db, value, f"Ticket {t.ticket_id} assigned to you",
                       f"{current_user.full_name or current_user.username} assigned you: {t.display_subject}")

@@ -230,7 +230,7 @@ async def raise_ticket(
 #   - rate-limited per IP so the open form can't be used to flood admins.
 # The ticket is a normal Ticket row — it appears on /tickets for admins and
 # every active admin is notified, exactly like a signed-in ticket.
-async def create_public_ticket(db, raised_by, feedback, photos, source="login page", tag=""):
+async def create_public_ticket(db, raised_by, feedback, photos, source="login page", tag="", email=""):
     """A ticket from someone who can't sign in — the staff login page or
     (2026-11-11 PM) the Trade Partner login page. Lands on /tickets for admins
     and notifies them; source goes in the feedback prefix and the notification."""
@@ -243,6 +243,11 @@ async def create_public_ticket(db, raised_by, feedback, photos, source="login pa
     name = (tag + name)[:50]
     if not (feedback or "").strip():
         return JSONResponse({"error": "Please describe your issue."}, status_code=400)
+    # Email (2026-11-16): where replies and status changes are sent.
+    from services.ticket_board import is_valid_email
+    email = (email or "").strip()
+    if email and not is_valid_email(email):
+        return JSONResponse({"error": "Please enter a valid email address."}, status_code=400)
     tid = await _next_ticket_id(db)
     saved = []
     for i, photo in enumerate((photos or [])[:MAX_PHOTOS], start=1):
@@ -253,6 +258,7 @@ async def create_public_ticket(db, raised_by, feedback, photos, source="login pa
         ticket_id=tid,
         status="open", channel="web", group_name=DEFAULT_GROUP,
         raised_by=name,
+        requester_email=email[:150] or None,
         feedback=f"[From {source}] " + feedback.strip()[:5000],
         photo1_path=saved[0] if len(saved) > 0 else None,
         photo2_path=saved[1] if len(saved) > 1 else None,
@@ -284,11 +290,50 @@ async def raise_ticket_public(
     request: Request,
     raised_by: str = Form(...),
     feedback: str = Form(...),
+    email: str = Form(""),
     photos: list[UploadFile] = File(default=[]),
     _csrf=Depends(verify_csrf),
     db: AsyncSession = Depends(get_db),
 ):
-    return await create_public_ticket(db, raised_by, feedback, photos, source="login page")
+    return await create_public_ticket(db, raised_by, feedback, photos, source="login page", email=email)
+
+
+# ── CONVERSATION for the requester (2026-11-16, Pankaj) ──────────────────────
+
+@router.get("/{ticket_id}/thread")
+async def ticket_thread(
+    ticket_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The ticket's conversation as the requester sees it: public replies and
+    the activity log, never internal notes. The raiser and admins only."""
+    from services.ticket_board import requester_thread
+    t = (await db.execute(select(Ticket).where(Ticket.ticket_id == ticket_id))).scalar_one_or_none()
+    if not t or (current_user.role.value != "admin" and t.raised_by != current_user.username):
+        return JSONResponse({"error": "Ticket not found."}, status_code=404)
+    d = await requester_thread(db, t)
+    d["can_reply"] = t.raised_by == current_user.username   # admins answer on the Ticket Board
+    return JSONResponse(d)
+
+
+@router.post("/{ticket_id}/reply")
+async def ticket_requester_reply(
+    ticket_id: str,
+    body: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """The person who raised the ticket replies in its conversation
+    (2026-11-16, Pankaj). Agents reply on the Ticket Board."""
+    from services.ticket_board import add_requester_reply, requester_thread
+    t = (await db.execute(select(Ticket).where(Ticket.ticket_id == ticket_id))).scalar_one_or_none()
+    if not t or t.raised_by != current_user.username:
+        return JSONResponse({"error": "Ticket not found."}, status_code=404)
+    if not (body or "").strip():
+        return JSONResponse({"error": "Write a reply first."}, status_code=400)
+    await add_requester_reply(db, t, current_user.username, current_user.full_name or current_user.username, body)
+    return JSONResponse({"ok": True})
 
 
 # ── CLOSE ────────────────────────────────────────────────────────────────────
@@ -300,9 +345,11 @@ async def close_ticket(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    conditions = [Ticket.ticket_id == ticket_id]
+    # Close is admin only (2026-11-16, Pankaj); requesters follow the ticket's
+    # conversation instead (GET /tickets/{id}/thread).
     if current_user.role.value != "admin":
-        conditions.append(Ticket.raised_by == current_user.username)
+        return JSONResponse({"error": "Only an admin can close a ticket."}, status_code=403)
+    conditions = [Ticket.ticket_id == ticket_id]
     result = await db.execute(select(Ticket).where(*conditions))
     ticket = result.scalar_one_or_none()
     if not ticket:

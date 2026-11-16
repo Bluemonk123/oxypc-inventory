@@ -188,6 +188,11 @@
           <label class="form-label small fw-semibold">Raised By (your name) <span class="text-danger">*</span></label>
           <input type="text" id="ltName" class="form-control form-control-sm" maxlength="50" placeholder="Enter your full name">
         </div>
+        <div class="mb-3">
+          <label class="form-label small fw-semibold" for="ltEmail">Email</label>
+          <input type="email" id="ltEmail" class="form-control form-control-sm" maxlength="150" placeholder="name@company.com">
+          <div class="form-text small">Optional — replies and status changes on this ticket are sent here.</div>
+        </div>
         <div class="mb-2">
           <label class="form-label small fw-semibold">Issue / Request <span class="text-danger">*</span></label>
           <textarea id="ltFeedback" class="form-control" rows="5" maxlength="5000"
@@ -235,7 +240,9 @@
       if (files[k].size > 5 * 1024 * 1024) { err.textContent = files[k].name + ' is over 5 MB.'; return; }
     }
     var fd = new FormData();
-    fd.append('raised_by', name); fd.append('feedback', fb); fd.append('csrf_token', csrf());
+    var em = document.getElementById('ltEmail').value.trim();
+    if (em && !/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(em)) { err.textContent = 'Please enter a valid email address.'; return; }
+    fd.append('raised_by', name); fd.append('feedback', fb); fd.append('email', em); fd.append('csrf_token', csrf());
     for (var i = 0; i < files.length; i++) fd.append('photos', files[i]);
     btn.disabled = true;
     try {

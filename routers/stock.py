@@ -1609,6 +1609,44 @@ async def return_stock_verify(
                          "paid": bool(ret.paid_at), "payment_reference": ret.payment_reference or ""})
 
 
+@router.post("/stock/return-stock/{barcode}/waive")
+async def return_stock_waive(
+    request: Request,
+    barcode: str,
+    reason: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Waive Off (2026-11-16, Pankaj): clear the Paid Repair charge of a
+    payment-due return from the Return table — for returns saved without a
+    Payment Due / Waive Off choice (before 2026-10-29) or saved as Payment Due
+    by mistake. Same result as choosing Waive Off on the return form: the tag
+    moves on to Dispatch Pending once repair is done. Needs Pricing on Stock."""
+    from models.role_permissions import has_perm
+    rv = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+    if not has_perm(rv, "stock", "pricing"):
+        return JSONResponse({"ok": False, "detail": "You need Pricing on Inventory Manager to waive a charge."}, status_code=403)
+    device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
+    if not device:
+        raise HTTPException(404, f"Device {barcode} not found")
+    ret = await _latest_return_for_device(db, device.id)
+    if not ret:
+        raise HTTPException(404, "No return found for this tag")
+    if ret.paid_at:
+        return JSONResponse({"ok": False, "detail": "This return is already paid."}, status_code=400)
+    if not _return_payment_due(ret):
+        return JSONResponse({"ok": False, "detail": "Nothing is due on this return."}, status_code=400)
+    old = ret.charge_decision
+    ret.charge_decision = "waive_off"
+    ret.waiver_reason = (reason or "").strip()[:300] or None
+    await audit(db, user=current_user, action="RETURN_CHARGE_WAIVED", table_name="returns", record_id=str(ret.id),
+                old_value={"charge_decision": old, "amount": str(ret.refund_amount)},
+                new_value={"charge_decision": "waive_off", "waiver_reason": ret.waiver_reason, "barcode": barcode},
+                request=request)
+    await db.commit()
+    return JSONResponse({"ok": True})
+
+
 RETURN_STOCK_IN_ONLY = "stock_in_only"   # Return.action_taken for "Only Stock In" (2026-11-05)
 
 

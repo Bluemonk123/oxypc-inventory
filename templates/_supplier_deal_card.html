@@ -16,7 +16,7 @@
         <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#stkSdRecv">Received</button>{# " - N" added by static/js/pill-counts.js #}</li>
       </ul>
     </div>
-    <div class="card-body p-0 tab-content" style="max-height:640px;overflow-y:auto">
+    <div class="card-body card-body-flush p-0 tab-content" style="max-height:640px;overflow-y:auto">
       {% for pane, rows, empty, acts in [('stkSdPend', sd_pending, 'Nothing pending', sd_can_act), ('stkSdRecv', sd_received, 'Nothing received yet', false)] %}
       <div class="tab-pane fade{% if loop.first %} show active{% endif %}" id="{{ pane }}">
         <table class="table table-sm table-hover mb-0 small align-middle">

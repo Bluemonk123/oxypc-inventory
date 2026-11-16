@@ -76,9 +76,15 @@
               <span class="text-muted small fst-italic">No notes yet</span>
               {% endif %}
             </td>
-            <td>
-              {% if t.status == 'Open' %}
-              {% if current_user.role.value == 'admin' %}
+            <td class="text-nowrap">
+              {# Conversation (2026-11-16): replies and changes, for the raiser and admins. #}
+              <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 me-1"
+                      onclick="openTicketThread('/tickets/{{ t.ticket_id }}/thread', '{{ t.ticket_id }}')"
+                      title="See the replies and updates on this ticket">
+                <i class="bi bi-chat-left-text me-1"></i>View
+              </button>
+              {# Close is admin only (2026-11-16, Pankaj). #}
+              {% if t.status == 'Open' and current_user.role.value == 'admin' %}
               {# Admins record why the ticket is being closed; the note is
                  appended to any existing notes, never replacing them. #}
               <button class="btn btn-sm btn-outline-danger py-0 px-2"
@@ -86,15 +92,6 @@
                       title="Add a note and close">
                 <i class="bi bi-x-circle me-1"></i>Close
               </button>
-              {% else %}
-              <button class="btn btn-sm btn-outline-danger py-0 px-2"
-                      onclick="closeTicket('{{ t.ticket_id }}')"
-                      title="Mark as Closed">
-                <i class="bi bi-x-circle me-1"></i>Close
-              </button>
-              {% endif %}
-              {% else %}
-              <span class="text-muted small">—</span>
               {% endif %}
             </td>
           </tr>
@@ -125,6 +122,7 @@
   </div>
 </div>
 
+{% include "_ticket_thread.html" %}
 <!-- Admin close: capture a closing note before the ticket is closed -->
 <div class="modal fade" id="closeTicketModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-sm">
@@ -198,21 +196,5 @@ document.getElementById('ctSubmit')?.addEventListener('click', async function ()
   btn.disabled = false;
 });
 
-async function closeTicket(ticketId) {
-  if (!confirm('Mark ticket ' + ticketId + ' as Closed?')) return;
-  const fd = new FormData();
-  fd.append('csrf_token', csrfToken());
-  const resp = await fetch(`/tickets/${ticketId}/close`, {
-    method: 'POST',
-    headers: { 'X-CSRF-Token': csrfToken() },
-    body: fd,
-  });
-  if (resp.ok) {
-    location.reload();
-  } else {
-    const data = await resp.json().catch(() => ({}));
-    alert(data.error || 'Failed to close ticket.');
-  }
-}
 </script>
 {% endblock %}

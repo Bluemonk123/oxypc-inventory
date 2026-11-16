@@ -342,6 +342,9 @@
                       data-labour-cost="{{ row.labour_cost if (row.labour_cost is not none and can(current_user, 'stock', 'pricing')) else '' }}"
                       data-part-cost="{{ row.part_cost if (row.part_cost is not none and can(current_user, 'stock', 'pricing')) else '' }}"
                       data-receipt="{{ ret.payment_reference or '' }}">Verify Payment</button>
+              {# Waive Off (2026-11-16): clear the charge instead of collecting it. #}
+              <button type="button" class="btn btn-xs btn-outline-warning btn-sm py-0 px-2 me-1 rs-waive-btn"
+                      data-barcode="{{ d.barcode }}" title="Waive the Paid Repair charge on this return">Waive Off</button>
               {% endif %}
               {% if can(current_user, 'stock', 'edit') and row.can_stock_in %}
               <button type="button" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-2 me-1 rs-stockin-btn"
@@ -379,6 +382,27 @@
 </style>
 
 <!-- Return Stock: Verify modal -->
+<div class="modal fade" id="rsWaiveModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title">Waive Off charge — <span id="rsWaiveTag" class="font-monospace"></span></h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small mb-2">The Paid Repair charge on this return is waived: no payment is collected, and the tag moves on to
+          Dispatch Pending once repair is done. This is recorded in the audit log.</p>
+        <label class="form-label small mb-1" for="rsWaiveReason">Waiver Reason <span class="text-muted">(optional)</span></label>
+        <input type="text" id="rsWaiveReason" class="form-control form-control-sm" maxlength="300" placeholder="Why is the charge waived?">
+        <div id="rsWaiveError" class="text-danger small mt-2"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-warning" id="rsWaiveSubmit">Waive Off</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal fade" id="rsVerifyModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-sm">
     <div class="modal-content">
@@ -598,6 +622,22 @@
 
 <script src="/static/js/tag-scan-autocheck.js?v={{ ASSET_VERSION }}"></script>
 <script>
+document.addEventListener('DOMContentLoaded', function () {
+  var b = document.getElementById('rsWaiveSubmit'); if (!b) return;
+  b.addEventListener('click', function () {
+    var bc = b.dataset.barcode, err = document.getElementById('rsWaiveError');
+    var fd = new FormData(); fd.append('csrf_token', getCsrf()); fd.append('reason', document.getElementById('rsWaiveReason').value);
+    b.disabled = true; err.textContent = '';
+    fetch('/stock/return-stock/' + encodeURIComponent(bc) + '/waive', {method: 'POST', body: fd})
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) { err.textContent = d.detail || 'Could not waive the charge.'; b.disabled = false; return; }
+        location.href = '/stock?success=' + encodeURIComponent('Charge waived for ' + bc);
+      })
+      .catch(function () { err.textContent = 'Network error, please try again.'; b.disabled = false; });
+  });
+});
+
 function getCsrf(){ var c=document.cookie.split('; ').find(function(r){return r.startsWith('csrf_token=');}); return c ? c.split('=')[1] : ''; }
 
 // Selection persists across pages/searches as a Set of barcodes rather than
@@ -1198,6 +1238,15 @@ document.getElementById('returnStockTable').addEventListener('click', function(e
     document.getElementById('rsVerifyPartCost').value = vBtn.dataset.partCost || '';
     document.getElementById('rsVerifyReceipt').value = vBtn.dataset.receipt || '';
     new bootstrap.Modal(document.getElementById('rsVerifyModal')).show();
+    return;
+  }
+  var wBtn = e.target.closest('.rs-waive-btn');
+  if(wBtn){
+    document.getElementById('rsWaiveTag').textContent = wBtn.dataset.barcode;
+    document.getElementById('rsWaiveReason').value = '';
+    document.getElementById('rsWaiveError').textContent = '';
+    document.getElementById('rsWaiveSubmit').dataset.barcode = wBtn.dataset.barcode;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('rsWaiveModal')).show();
     return;
   }
   var sBtn = e.target.closest('.rs-stockin-btn');
