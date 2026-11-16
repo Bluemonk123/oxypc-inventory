@@ -34,10 +34,7 @@
     <span class="dash-kpi-l">{{ k.l }}</span>
     <span class="dash-kpi-v">{{ k.v }}</span>
     {% if k.d %}<span class="dash-kpi-d" style="background: {{ k.dbg }}; color: {{ k.dfg }}">{{ k.d }}</span>{% endif %}
-    {% if k.p %}<svg viewBox="0 0 120 36" preserveAspectRatio="none" class="dash-kpi-spark" aria-hidden="true">
-      <path d="{{ k.a }}" fill="{{ k.sc }}" fill-opacity="0.18"></path>
-      <path d="{{ k.p }}" fill="none" stroke="{{ k.sc }}" stroke-width="2" vector-effect="non-scaling-stroke"></path>
-    </svg>{% endif %}
+    {% if k.i %}<i class="bi {{ k.i }} dash-kpi-wm" style="color: {{ k.ic }}" aria-hidden="true"></i>{% endif %}
   </div>
   {% endfor %}
 </div>

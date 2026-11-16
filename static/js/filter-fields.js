@@ -848,6 +848,13 @@
     tidyHeader(h);
   };
 
+  // A page that swaps its content in after load (e.g. the Overall Inventory
+  // Dashboard, fetched behind a skeleton) calls this once the new HTML is in
+  // place, so its filter bar gets the same global design (2026-11-16).
+  window.reinitFilterFields = function () {
+    initDateRanges(); initMsSearch(); initSsSearch(); initHeaders(); tidyFilterBars();
+  };
+
   function init() {
     initDateRanges(); initMsSearch(); initSsSearch();
     initHeaders(); tidyFilterBars(); tidyPageTop();

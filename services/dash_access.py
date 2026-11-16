@@ -34,9 +34,13 @@ DASH_PAGES = {   # path: (matrix module, page is only a dashboard)
     "/reports/business-pl": ("report_bizpl", False),
     "/reports/lot-pl": ("reports", False),
     "/reports/sales": ("report_sales", False),
+    # 2026-11-16 (Pankaj): these three also follow the Dashboard View tick.
+    "/activity-board": ("activity_board", False),
+    "/product-master": ("pm_product_master", False),
+    "/trade-partner/partners": ("trade_partner_partners", False),
 }
 DASH_MODULES = frozenset(m for m, _ in DASH_PAGES.values())
-DASH_KEYS = ("dash_kpis", "dash_widgets", "dash_top", "dash_bottom")
+DASH_KEYS = ("dash_kpis", "dash_widgets", "dash_top", "dash_bottom", "dash_pipe", "ab_kpis")
 
 
 def _role(user):

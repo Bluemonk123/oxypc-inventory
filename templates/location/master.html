@@ -25,8 +25,10 @@
     {% set _ = zone_counts[loc.zone.value].update({"total": zone_counts[loc.zone.value].total + 1}) %}
   {% endfor %}
 
+  {# Inactive locations are hidden by default (2026-11-16), so the cards count active ones. #}
+  {% set active_locs = locations | selectattr("is_active") | list %}
   {% for zone_val, zone_name in zone_labels.items() %}
-  {% set zone_locs = locations | selectattr("zone.value", "equalto", zone_val.value) | list %}
+  {% set zone_locs = active_locs | selectattr("zone.value", "equalto", zone_val.value) | list %}
   {% if zone_locs and zone_val.value in active_zone_values %}
   <div class="col-md-3 col-6">
     <div class="card border-0 shadow-sm h-100">
@@ -72,25 +74,15 @@
 <div class="card border-0 shadow-sm">
   <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
     <span class="fw-semibold"><i class="bi bi-geo-alt me-2"></i>Storage Locations</span>
-  </div>
-  <div class="card-body">
-    {% set removed = locations | rejectattr("zone.value", "in", active_zone_values) | list %}
-    {% if removed %}
-    {% set rz = namespace(names=[]) %}
-    {% for l in removed %}{% if zone_labels[l.zone] not in rz.names %}{% set rz.names = rz.names + [zone_labels[l.zone]] %}{% endif %}{% endfor %}
-    <div class="alert alert-warning py-2 small d-flex align-items-center gap-2 flex-wrap">
-      <i class="bi bi-exclamation-triangle"></i>
-      <span><b>{{ removed | length }}</b> location{{ '' if removed | length == 1 else 's' }} still use{{ 's' if removed | length == 1 else '' }}
-        a zone removed from Master Data ({{ rz.names | join(', ') }}). Removing a zone there only hides it from the dropdowns —
-        tick these rows and use <b>Change Zone</b>, <b>Deactivate</b> or <b>Delete</b>.</span>
-      <button type="button" class="btn btn-sm btn-outline-dark py-0 ms-auto" onclick="locSelectRemoved()">Select them</button>
+    <div class="form-check form-switch mb-0 ms-auto small" style="text-transform:none">
+      <input class="form-check-input" type="checkbox" role="switch" id="locShowInactive">
+      <label class="form-check-label" for="locShowInactive">Show inactive ({{ locations | rejectattr('is_active') | list | length }})</label>
     </div>
-    {% endif %}
     {% set can_bulk_edit = can(current_user, 'location_master', 'edit') %}
     {% set can_bulk_del = can(current_user, 'location_master', 'delete') %}
     {% if can_bulk_edit or can_bulk_del %}
     <form id="locBulkForm" action="/locations/master/bulk" method="post"
-          class="d-none align-items-center gap-2 flex-wrap mb-2 p-2 rounded border bg-light">
+          class="d-none align-items-center gap-2 flex-wrap mb-0 ms-3">
       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
       <input type="hidden" name="ids" id="locBulkIds">
       <input type="hidden" name="action" id="locBulkAction">
@@ -109,8 +101,22 @@
       {% if can_bulk_del %}
       <button type="button" class="btn btn-sm btn-outline-danger" onclick="locBulk('delete')"><i class="bi bi-trash3 me-1"></i>Delete</button>
       {% endif %}
-      <button type="button" class="btn btn-sm btn-link text-muted ms-auto" onclick="locClearSel()">Clear selection</button>
+      <button type="button" class="btn btn-sm btn-link text-muted px-1" onclick="locClearSel()" title="Clear selection"><i class="bi bi-x-lg"></i></button>
     </form>
+    {% endif %}
+  </div>
+  <div class="card-body">
+    {% set removed = locations | selectattr("is_active") | rejectattr("zone.value", "in", active_zone_values) | list %}
+    {% if removed %}
+    {% set rz = namespace(names=[]) %}
+    {% for l in removed %}{% if zone_labels[l.zone] not in rz.names %}{% set rz.names = rz.names + [zone_labels[l.zone]] %}{% endif %}{% endfor %}
+    <div class="alert alert-warning py-2 small d-flex align-items-center gap-2 flex-wrap">
+      <i class="bi bi-exclamation-triangle"></i>
+      <span><b>{{ removed | length }}</b> active location{{ '' if removed | length == 1 else 's' }} still use{{ 's' if removed | length == 1 else '' }}
+        a zone removed from Master Data ({{ rz.names | join(', ') }}). Removing a zone there only hides it from the dropdowns —
+        tick these rows and use <b>Change Zone</b>, <b>Deactivate</b> or <b>Delete</b>.</span>
+      <button type="button" class="btn btn-sm btn-outline-dark py-0 ms-auto" onclick="locSelectRemoved()">Select them</button>
+    </div>
     {% endif %}
     <table class="table table-hover align-middle mb-0" id="locTable">
       <thead>
@@ -130,7 +136,7 @@
       <tbody>
         {% for loc in locations %}
         {% set zone_gone = loc.zone.value not in active_zone_values %}
-        <tr class="{% if not loc.is_active %}table-secondary text-muted{% endif %}">
+        <tr class="{% if not loc.is_active %}table-secondary text-muted{% endif %}" data-inactive="{{ 0 if loc.is_active else 1 }}">
           {% if can_bulk_edit or can_bulk_del %}<td><input type="checkbox" class="form-check-input loc-chk" value="{{ loc.id }}" data-removed="{{ 1 if zone_gone else 0 }}"></td>{% endif %}
           <td><span class="badge bg-dark">{{ loc.unit_id }}</span></td>
           <td>{{ zone_labels[loc.zone] }}{% if zone_gone %} <span class="badge text-bg-warning" title="This zone was removed from Master Data → Dropdown Configuration. Change the zone, deactivate or delete this location.">removed</span>{% endif %}</td>
@@ -304,6 +310,19 @@
 {{ dz.script(input_id='locCsvFile', zone_id='locDropZone', icon_id='locDropIcon', status_id='locDropStatus') }}
 <script>
 $(document).ready(function(){
+  // Inactive locations hidden unless "Show inactive" is on (remembered per browser).
+  var sw = document.getElementById('locShowInactive');
+  try { sw.checked = localStorage.getItem('locShowInactive') === '1'; } catch (e) {}
+  $.fn.dataTable.ext.search.push(function (settings, data, idx) {
+    if (settings.nTable.id !== 'locTable' || sw.checked) return true;
+    var tr = settings.aoData[idx].nTr;
+    return !tr || tr.getAttribute('data-inactive') !== '1';
+  });
+  sw.addEventListener('change', function () {
+    try { localStorage.setItem('locShowInactive', sw.checked ? '1' : '0'); } catch (e) {}
+    if (!sw.checked) $(locDT().rows().nodes()).filter('[data-inactive="1"]').find('input.loc-chk').prop('checked', false);
+    locDT().draw(); locSync();
+  });
   var hasChk = !!document.getElementById('locChkAll');
   initGlobalTable('#locTable', {
     order: [[hasChk ? 1 : 0, 'asc']],
@@ -331,7 +350,8 @@ $(document).on('change', '#locChkAll', function(){
 $(document).on('change', 'input.loc-chk', locSync);
 function locClearSel(){ locDT().$('input.loc-chk').prop('checked', false); locSync(); }
 function locSelectRemoved(){
-  locDT().$('input.loc-chk').each(function(){ this.checked = this.dataset.removed === '1'; });
+  locDT().$('input.loc-chk').prop('checked', false);
+  $(locDT().rows({search:'applied'}).nodes()).find('input.loc-chk').each(function(){ this.checked = this.dataset.removed === '1'; });
   locSync();
 }
 function locBulk(action){

@@ -706,9 +706,9 @@ async def cosmetic_stage_list(stage_name: str, request: Request, db: AsyncSessio
             # flat Labour Rate: Labor Rate by device type (With L3/L4 when the
             # tag had L3/L4) + Packing + Freight where they apply. Still
             # informational — not folded into After Repair / Updated Price.
-            from services.repair_cost import load_repair_rates, worked_and_l34_ids
+            from services.repair_cost import load_repair_rates, worked_l34_paint_ids
             _rr = await load_repair_rates(db)
-            _worked, _l34 = await worked_and_l34_ids(db, [d.id for d, _ in devices])
+            _worked, _l34, _paint = await worked_l34_paint_ids(db, [d.id for d, _ in devices])
 
             for d, _ in devices:
                 if d.device_price is not None:
@@ -730,8 +730,9 @@ async def cosmetic_stage_list(stage_name: str, request: Request, db: AsyncSessio
                     "updated_price": after_repair_price,
                     # At Final QC a tag has been worked on by definition.
                     **{"repair_" + k: float(v) for k, v in _rr.breakdown(
-                        d, True, str(d.id) in _l34).items()},
+                        d, True, str(d.id) in _l34, had_paint=str(d.id) in _paint).items()},
                     "had_l34": str(d.id) in _l34,
+                    "had_paint": str(d.id) in _paint,
                 }
 
         bucket_ids_for_page = {d.bucket_id for d, _ in devices if d.bucket_id}

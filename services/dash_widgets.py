@@ -396,18 +396,56 @@ def kv(title, span, rows, big='', foot='', **kw):
     return d
 
 
-def kpi(label, value, delta='', good=True, color='blue', trend=None, style='gradient'):
-    """A KPI tile. trend: list of numbers for the sparkline (optional)."""
-    p = a = ''
-    if trend and len(trend) > 1 and max(trend) != min(trend):
-        p, a = spark(trend)
+# Watermark icon in the tile's bottom-right corner, like the global tiles
+# (_tiles.html .oxt-wm) — 2026-11-16, Pankaj. Picked from the label when the
+# builder doesn't pass one; first match wins.
+_KPI_ICONS = [
+    (r"scrap", "bi-recycle"), (r"refund|return", "bi-arrow-return-left"),
+    (r"deal|opportunit", "bi-briefcase"),
+    (r"partner|buyer|customer|people|inspectors|logged|login|portal", "bi-people"),
+    (r"profit|margin", "bi-graph-up-arrow"),
+    (r"ready", "bi-check2-circle"),
+    (r"revenue|value|money|cost|price|paid|collected|receivable|payable|invoice|payment|deal size|avg (order|per|selling|invoice)|gross", "bi-currency-rupee"),
+    (r"sold|sale|sell|order", "bi-cart-check"),
+    (r"book|bid", "bi-bookmark-check"),
+    (r"overdue|ageing|due|waiting|pending|queue|awaiting|follow", "bi-hourglass-split"),
+    (r"repair|work in progress|workid|pna|part", "bi-tools"),
+    (r"qc|grade|graded|inspect|pass rate", "bi-clipboard-check"),
+    (r"grn|received|stock in", "bi-box-arrow-in-down"),
+    (r"showroom", "bi-shop"),
+    (r"move|moving|transfer", "bi-arrow-left-right"),
+    (r"call", "bi-telephone"), (r"quote|estimate", "bi-file-earmark-text"),
+    (r"win|won|target|conversion|reached|on time|best", "bi-trophy"),
+    (r"pipeline", "bi-briefcase"),
+    (r"lot", "bi-boxes"),
+    (r"stock|units|device|records|inventory|as-is|for sale|excess|short", "bi-box-seam"),
+    (r"inactive|never", "bi-slash-circle"), (r"active|done|completed|matched", "bi-check-circle"),
+    (r"score|rate|days|avg|turns|top", "bi-speedometer2"),
+]
+
+
+def kpi_icon(label):
+    import re as _re
+    t = (label or "").lower()
+    for pat, ic in _KPI_ICONS:
+        if _re.search(pat, t):
+            return ic
+    return "bi-bar-chart"
+
+
+def kpi(label, value, delta='', good=True, color='blue', trend=None, style='gradient', icon=None):
+    """A KPI tile. `trend` is accepted for old callers but no longer drawn
+    (2026-11-16, Pankaj: no graphs inside tiles); a watermark icon sits in
+    the bottom-right corner instead (`icon`, else picked from the label)."""
+    ic = icon or kpi_icon(label)
     if style == 'gradient':
         k1, k2 = GRAD.get(color, GRAD['blue'])
         return dict(l=label, v=value, d=delta, bg='linear-gradient(135deg, %s, %s)' % (k1, k2), bd=k1, fg='#ffffff',
-                    dbg='rgba(255,255,255,0.18)', dfg='#ffffff', sc='#ffffff', p=p, a=a)
+                    dbg='rgba(255,255,255,0.18)', dfg='#ffffff', i=ic, ic='rgba(255,255,255,.2)')
     col = C.get(color, color)
     return dict(l=label, v=value, d=delta, bg='var(--dk-card)', bd='var(--dk-border)', fg='var(--dk-text)',
-                dbg='rgba(22,163,74,.14)' if good else 'rgba(225,29,72,.13)', dfg='#15803d' if good else '#be123c', sc=col, p=p, a=a)
+                dbg='rgba(22,163,74,.14)' if good else 'rgba(225,29,72,.13)', dfg='#15803d' if good else '#be123c',
+                i=ic, ic='color-mix(in srgb, %s 14%%, transparent)' % col)
 
 
 def layout(rows):

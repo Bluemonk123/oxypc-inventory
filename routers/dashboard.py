@@ -249,12 +249,16 @@ async def dashboard(
     device_type_vals = [d.strip() for d in (device_type or "").split(",") if d.strip()]
     _dtype = [Device.device_type.in_(device_type_vals)] if device_type_vals else []
 
-    zone_val = None
-    if zone:
+    # Zone and Stage are multi-selects (2026-11-16, Pankaj): comma-separated,
+    # like Entity / Device Type.
+    zone_vals = []
+    for z in (zone or "").split(","):
         try:
-            zone_val = ZoneType(zone)
+            zv = ZoneType(z.strip())
         except ValueError:
-            zone_val = None
+            continue
+        if zv not in zone_vals:
+            zone_vals.append(zv)
     # Device.location_id is essentially unpopulated for real devices (only a
     # handful of records ever get it set directly) — every page that shows a
     # device's actual current Location ID reads it from the LATEST
@@ -266,8 +270,8 @@ async def dashboard(
     # approach here, just matched against any StorageLocation belonging to
     # the selected zone rather than one specific location id.
     _loc = []
-    if zone_val:
-        _zone_location_ids = select(StorageLocation.id).where(StorageLocation.zone == zone_val)
+    if zone_vals:
+        _zone_location_ids = select(StorageLocation.id).where(StorageLocation.zone.in_(zone_vals))
         # DISTINCT ON (2026-10-16): one pass over the log instead of
         # max()-per-device then a join back — ~6x faster on a large log.
         _latest_log = (
@@ -294,7 +298,7 @@ async def dashboard(
     # Per filter combination since 2026-11-02 (see _cache_for): Device Type /
     # Zone views are cached too, each in its own slot.
     _cache_key = (tuple(sorted(entity_vals)), tuple(sorted(device_type_vals)),
-                  zone_val.value if zone_val else "")
+                  ",".join(sorted(z.value for z in zone_vals)))
     _AGG = _cache_for(_cache_key)
 
     # ── P&L From/To — scoped by each device's own "stage completed" date ────
@@ -1310,8 +1314,9 @@ async def dashboard(
     admin_charts: dict = {}
     _mark("analytics")
     # ── Apply stage filter to stage_counts display ───────────────────────────
-    if stage_filter:
-        filtered_stage_counts = {stage_filter: stage_counts.get(stage_filter, 0)}
+    stage_vals = [x.strip() for x in (stage_filter or "").split(",") if x.strip()]
+    if stage_vals:
+        filtered_stage_counts = {k: stage_counts.get(k, 0) for k in stage_vals}
     else:
         filtered_stage_counts = stage_counts
 

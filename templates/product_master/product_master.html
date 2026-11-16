@@ -202,7 +202,7 @@
 </div>
 
 {% if dash_kpis and dash_widgets|length > 2 %}
-<div class="dash mt-3">{{ dash.grid(dash_widgets[2:]) }}</div>
+{% if dash_widgets[2:] %}<div class="dash mt-3">{{ dash.grid(dash_widgets[2:]) }}</div>{% endif %}
 {% endif %}
 
 {# Competitive List modal #}

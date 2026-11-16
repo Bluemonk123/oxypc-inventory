@@ -557,7 +557,7 @@ async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=
     from models.device import STAGE_LABELS, StageMovement, DeviceStage
     from models.grn_import import GRNImport
     from services.pna_lookup import active_pna_parts
-    from services.repair_cost import load_repair_rates, worked_and_l34_ids, device_category
+    from services.repair_cost import load_repair_rates, worked_l34_paint_ids, device_category
     from utils.device_spec import ram_text, storage_text
     from routers.devices import _build_location_map
 
@@ -591,7 +591,7 @@ async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=
         loc_map.update(await _build_location_map(db, chunk))
         pna.update(await active_pna_parts(db, set(chunk)))
     rates = await load_repair_rates(db)
-    worked, l34 = await worked_and_l34_ids(db, dev_ids)
+    worked, l34, paint = await worked_l34_paint_ids(db, dev_ids)
 
     n_parts = max((len(parts_by_device.get(d, ())) for d in dev_ids), default=0)
     head = ["Tag Number", "GRN", "Invoice Number", "Entity", "Device Type", "Grade", "Make", "Model", "CPU",
@@ -620,7 +620,7 @@ async def build_repair_summary_xlsx(db, device_ids, parts_by_device, ready_pass=
             continue
         parts = parts_by_device.get(did, [])
         sid = str(did)
-        bd = rates.breakdown(d, sid in worked, sid in l34)
+        bd = rates.breakdown(d, sid in worked, sid in l34, had_paint=sid in paint)
         parts_total = round(sum(float(p["total_price"]) for p in parts), 2)
         engineers = sorted({e for p in parts for e in p.get("engineers", ())})
         loc = (loc_map.get(sid) or {}).get("unit_id") or ""

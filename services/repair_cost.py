@@ -4,7 +4,8 @@ Lot P&L, Final QC and the Ready for Sale Min Selling Price.
     repair cost = labour + Packing Charges (if it applies) + Freight Charges (if it applies)
 
 Labour (Additional Rates page, Labor Rates panel): the tag's device category
-rate — "With L3/L4" when the tag has L3/L4 history, else "Without L3/L4". Only
+rate — "With L3/L4" when the tag has L3/L4 history, else "Without L3/L4" —
+plus "With Painting" when it went through any of the 6 cosmetic work stages. Only
 tags that were worked on (went through L1/L2, L3/L4, Stress, any Cosmetic stage
 or any Final QC stage) carry labour; a "With L3/L4" rate of 0 means 0 (not yet
 filled in), and a category with no rate set costs 0.
@@ -22,6 +23,10 @@ Everything is stored in cost_config (key / value), no schema change:
   freight_apply        0 / 1 / 2 / 3, as above
   labour_wo_<cat>      Without L3/L4 (Rs) for a device category
   labour_w_<cat>       With L3/L4 (Rs)
+  labour_p_<cat>       With Painting (Rs) — added on top of the Without / With
+                       L3/L4 rate when the tag went through any of the 6
+                       cosmetic work stages (PAINT_STAGES), counted once
+                       however many it went through (2026-11-16, Pankaj)
 Rates never saved fall back to LABOUR_DEFAULTS (the 2026-10-29 Labor Structure
 sheet), so the pages work before anyone presses Save.
 """
@@ -36,6 +41,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from models.cost_config import CostConfig
 
 _ZERO = Decimal("0")
+
+
+def _paint_stages():
+    """The 6 cosmetic work stages (not Cosmetic Received / Completed). A tag
+    moved into any of them gets the "With Painting" labour once."""
+    from models.device import DeviceStage
+    return [DeviceStage.cleaning, DeviceStage.putty, DeviceStage.dry_sanding,
+            DeviceStage.masking, DeviceStage.painting, DeviceStage.water_sanding]
 
 # (category, Without L3/L4, With L3/L4) — Labor Structure sheet, 2026-10-29.
 LABOUR_DEFAULTS = [
@@ -74,15 +87,16 @@ def _applies(code: int, as_is: bool) -> bool:
 
 @dataclass(frozen=True)
 class RepairRates:
-    labour: dict = field(default_factory=dict)        # slug -> (without, with)
+    labour: dict = field(default_factory=dict)        # slug -> (without, with, painting)
     packing: Decimal = _ZERO
     packing_apply: int = APPLY_TAGS
     freight: Decimal = _ZERO
     freight_apply: int = APPLY_NONE
 
-    def labour_for(self, device, had_l34: bool) -> Decimal:
-        wo, w = self.labour.get(cat_slug(device_category(device)), (_ZERO, _ZERO))
-        return w if had_l34 else wo
+    def labour_for(self, device, had_l34: bool, had_paint: bool = False) -> Decimal:
+        r = tuple(self.labour.get(cat_slug(device_category(device)), ())) + (_ZERO, _ZERO, _ZERO)
+        wo, w, p = r[0], r[1], r[2]      # (without, with) pairs still accepted
+        return (w if had_l34 else wo) + (p if had_paint else _ZERO)
 
     def packing_for(self, device) -> Decimal:
         return self.packing if _applies(self.packing_apply, is_as_is(device)) else _ZERO
@@ -90,13 +104,15 @@ class RepairRates:
     def freight_for(self, device) -> Decimal:
         return self.freight if _applies(self.freight_apply, is_as_is(device)) else _ZERO
 
-    def breakdown(self, device, worked: bool, had_l34: bool, labour_ok: bool = True) -> dict:
-        lab = self.labour_for(device, had_l34) if (worked and labour_ok) else _ZERO
+    def breakdown(self, device, worked: bool, had_l34: bool, labour_ok: bool = True,
+                  had_paint: bool = False) -> dict:
+        lab = self.labour_for(device, had_l34, had_paint) if (worked and labour_ok) else _ZERO
         pk, fr = self.packing_for(device), self.freight_for(device)
         return {"labour": lab, "packing": pk, "freight": fr, "total": lab + pk + fr}
 
-    def cost(self, device, worked: bool, had_l34: bool, labour_ok: bool = True) -> Decimal:
-        return self.breakdown(device, worked, had_l34, labour_ok)["total"]
+    def cost(self, device, worked: bool, had_l34: bool, labour_ok: bool = True,
+             had_paint: bool = False) -> Decimal:
+        return self.breakdown(device, worked, had_l34, labour_ok, had_paint)["total"]
 
 
 def labour_categories(extra_names: Iterable[str] = ()) -> list:
@@ -118,17 +134,19 @@ async def load_repair_rates(db: AsyncSession) -> RepairRates:
     rows = dict((await db.execute(select(CostConfig.key, CostConfig.value).where(or_(
         CostConfig.key.in_(["packing_rate", "packing_apply", "freight_rate", "freight_apply"]),
         CostConfig.key.like("labour_wo_%"), CostConfig.key.like("labour_w_%"),
+        CostConfig.key.like("labour_p_%"),
     )))).all())
-    labour = {cat_slug(n): (Decimal(wo), Decimal(w)) for n, wo, w in LABOUR_DEFAULTS}
+    labour = {cat_slug(n): (Decimal(wo), Decimal(w), _ZERO) for n, wo, w in LABOUR_DEFAULTS}
     for k, v in rows.items():
         if v is None:
             continue
-        if k.startswith("labour_wo_"):
-            s = k[len("labour_wo_"):]
-            labour[s] = (Decimal(v), labour.get(s, (_ZERO, _ZERO))[1])
-        elif k.startswith("labour_w_"):
-            s = k[len("labour_w_"):]
-            labour[s] = (labour.get(s, (_ZERO, _ZERO))[0], Decimal(v))
+        for pre, pos in (("labour_wo_", 0), ("labour_w_", 1), ("labour_p_", 2)):
+            if k.startswith(pre):
+                s = k[len(pre):]
+                cur = list(labour.get(s, (_ZERO, _ZERO, _ZERO)))
+                cur[pos] = Decimal(v)
+                labour[s] = tuple(cur)
+                break
     return RepairRates(
         labour=labour,
         packing=Decimal(rows.get("packing_rate") or 0),
@@ -139,16 +157,23 @@ async def load_repair_rates(db: AsyncSession) -> RepairRates:
 
 
 async def worked_and_l34_ids(db: AsyncSession, device_ids=None) -> tuple[set, set]:
-    """(worked, had_l34) device ids (as str). Worked = moved into a labour stage
-    (services/business_pl.LABOUR_STAGES). L3/L4 history = moved to L3/L4 or has
-    an L3/L4 WorkID. device_ids None = every device."""
+    """(worked, had_l34) device ids (as str) — see worked_l34_paint_ids."""
+    w, l, _p = await worked_l34_paint_ids(db, device_ids)
+    return w, l
+
+
+async def worked_l34_paint_ids(db: AsyncSession, device_ids=None) -> tuple[set, set, set]:
+    """(worked, had_l34, had_paint) device ids (as str). Worked = moved into a
+    labour stage (services/business_pl.LABOUR_STAGES). L3/L4 history = moved to
+    L3/L4 or has an L3/L4 WorkID. Painting = moved into any of the 6 cosmetic
+    work stages (_paint_stages). device_ids None = every device."""
     from models.device import DeviceStage, StageMovement
     from models.work_order import WorkOrder
     from services.business_pl import LABOUR_STAGES
     ids = None if device_ids is None else [d for d in device_ids if d]
     if ids is not None and not ids:
-        return set(), set()
-    worked, l34 = set(), set()
+        return set(), set(), set()
+    worked, l34, paint = set(), set(), set()
 
     def chunks():
         if ids is None:
@@ -160,18 +185,22 @@ async def worked_and_l34_ids(db: AsyncSession, device_ids=None) -> tuple[set, se
     for part in chunks():
         mw = [StageMovement.to_stage.in_(LABOUR_STAGES)]
         lw = [StageMovement.to_stage == DeviceStage.l3]
+        pw = [StageMovement.to_stage.in_(_paint_stages())]
         ww = [or_(WorkOrder.work_id.like("L3L4-%"), WorkOrder.stage == "l3")]
         if part is not None:
             mw.append(StageMovement.device_id.in_(part))
             lw.append(StageMovement.device_id.in_(part))
             ww.append(WorkOrder.device_id.in_(part))
+            pw.append(StageMovement.device_id.in_(part))
         worked.update(str(d) for d in (await db.execute(
             select(StageMovement.device_id).where(*mw).distinct())).scalars().all())
         l34.update(str(d) for d in (await db.execute(
             select(StageMovement.device_id).where(*lw).distinct())).scalars().all())
         l34.update(str(d) for d in (await db.execute(
             select(WorkOrder.device_id).where(*ww).distinct())).scalars().all() if d)
-    return worked, l34
+        paint.update(str(d) for d in (await db.execute(
+            select(StageMovement.device_id).where(*pw).distinct())).scalars().all())
+    return worked, l34, paint
 
 
 async def lot_repair_costs(db: AsyncSession, device_where=(), lot_ids=None) -> dict:
@@ -194,7 +223,7 @@ async def lot_repair_costs(db: AsyncSession, device_where=(), lot_ids=None) -> d
     rates = await load_repair_rates(db)
     ids = [d.id for d in devs]
     one_lot = lot_ids is not None and len(list(lot_ids)) <= 5
-    worked, l34 = await worked_and_l34_ids(db, ids if one_lot else None)
+    worked, l34, paint = await worked_l34_paint_ids(db, ids if one_lot else None)
     sold = set()
     for i in range(0, len(ids), 5000) if one_lot else [None]:
         q = select(Sale.device_id).distinct()
@@ -204,7 +233,7 @@ async def lot_repair_costs(db: AsyncSession, device_where=(), lot_ids=None) -> d
     out: dict = {}
     for d in devs:
         sid = str(d.id)
-        lab = rates.labour_for(d, sid in l34) if sid in worked else _ZERO
+        lab = rates.labour_for(d, sid in l34, sid in paint) if sid in worked else _ZERO
         pf = (rates.packing_for(d) + rates.freight_for(d)) if sid in sold else _ZERO
         cur = out.get(d.lot_id, (_ZERO, _ZERO, _ZERO))
         # (labour, packing + freight, labour of the sold tags only)

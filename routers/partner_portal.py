@@ -28,6 +28,7 @@ from models.partner import (
     PartnerBid, min_next_bid,
 )
 from decimal import Decimal, InvalidOperation
+from models.master import EXTERNAL_PARTNER_TEST_LOT_PREFIX
 from models.lot import Lot
 from models.device import Device, DeviceStage
 from models.iqc_inspection import IQCInspection
@@ -339,6 +340,9 @@ async def catalog(
             select(Lot).order_by(Lot.purchase_date.desc())
         )).scalars().all()
         if not getattr(l, "is_restricted", False) or l.id in granted_ids
+        # Manage Lots test lots (EPT-) are open to every partner (2026-11-16,
+        # Pankaj) — older ones were saved Restricted.
+        or (l.lot_number or "").upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper())
     ]
     # A lot reaches the partner catalog only once EVERY one of its tags is at
     # Ready to Sale. A lot still part-way through refurbishment cannot be sold

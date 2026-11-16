@@ -517,9 +517,9 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
 
     # Repair cost per tag (2026-10-29, services/repair_cost.py) for the Min
     # Selling Price: Labor Rate by device type + Packing + Freight.
-    from services.repair_cost import load_repair_rates, worked_and_l34_ids
+    from services.repair_cost import load_repair_rates, worked_l34_paint_ids
     _rr = await load_repair_rates(db)
-    _worked, _l34 = await worked_and_l34_ids(db, device_ids)
+    _worked, _l34, _paint = await worked_l34_paint_ids(db, device_ids)
 
     if psiqc:
         from routers.pre_sale_iqc import (psiqc_state_map, psiqc_parts_cell, psiqc_action_cell,
@@ -543,7 +543,7 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
         # Min Selling Price = unit price + repair cost + margin for each item
         # (services/ready_pricing.py, services/repair_cost.py). A price saved
         # via "Set price" is an explicit override and always wins.
-        auto_min = tag_min_price(unit, rates, _rr.cost(d, did in _worked, did in _l34))
+        auto_min = tag_min_price(unit, rates, _rr.cost(d, did in _worked, did in _l34, had_paint=did in _paint))
         gv = getattr(d.grade, "value", d.grade) if d.grade else ""
         gcls = ("success" if gv == "A" else "warning text-dark" if gv == "B" else
                 "danger" if gv in ("C", "D", "scrap") else "secondary")
@@ -738,9 +738,9 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
     #                       Tag table: unit price + Other Rates + margin)
     summary_rates = await load_ready_rates(db)
     # Repair cost per tag for the summaries' Min Selling Price (2026-10-29).
-    from services.repair_cost import load_repair_rates, worked_and_l34_ids
+    from services.repair_cost import load_repair_rates, worked_l34_paint_ids
     _rr = await load_repair_rates(db)
-    _worked, _l34 = await worked_and_l34_ids(db, [r[0].id for r in devices])
+    _worked, _l34, _paint = await worked_l34_paint_ids(db, [r[0].id for r in devices])
 
     # Storage is one text (2026-10-29, utils/device_spec.storage_display): it
     # was Storage GB + Storage Type, and a size typed into Storage Type showed
@@ -786,7 +786,8 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
                 _did = str(device.id)
                 _auto = tag_min_price(unit, summary_rates,
                                       _rr.cost(device, _did in _worked, _did in _l34,
-                                               labour_ok=not (device.sub_lot_number or "").strip()))
+                                               labour_ok=not (device.sub_lot_number or "").strip(),
+                                               had_paint=_did in _paint))
                 tag_min = float(_auto) if _auto is not None else None
             key = _cfg_key(device.model, device.brand, device.cpu, device.ram_gb,
                            storage_display(device), device.generation)

@@ -1418,11 +1418,15 @@ async def _return_cutoffs(db: AsyncSession, pairs) -> dict:
     return {d.id: (sold_at.get(r.sale_id) or r.return_date or datetime.min) for d, r in pairs}
 
 
-async def _return_repair_moves(db: AsyncSession, cut: dict):
+async def _return_repair_moves(db: AsyncSession, cut: dict, paint: bool = False):
     """(started, l12_done, l34_done) device-id sets from movements after each
     device's cut-off: started = moved into L1/L2 or L3/L4; l12_done = left
-    L1/L2 for another stage; l34_done = left L3/L4 for another stage."""
-    started, l12, l34 = set(), set(), set()
+    L1/L2 for another stage; l34_done = left L3/L4 for another stage.
+    With paint=True also returns painted = moved into any of the 6 cosmetic
+    work stages (the Labor Rates "With Painting" rate, 2026-11-16)."""
+    from services.repair_cost import _paint_stages
+    _ps = set(_paint_stages())
+    started, l12, l34, painted = set(), set(), set(), set()
     ids = list(cut)
     for i in range(0, len(ids), 5000):
         for m in (await db.execute(
@@ -1437,7 +1441,9 @@ async def _return_repair_moves(db: AsyncSession, cut: dict):
                 l12.add(m.device_id)                      # completed L1/L2
             if m.from_stage == DeviceStage.l3 and m.to_stage != DeviceStage.l3:
                 l34.add(m.device_id)                      # passed L3/L4
-    return started, l12, l34
+            if m.to_stage in _ps:
+                painted.add(m.device_id)
+    return (started, l12, l34, painted) if paint else (started, l12, l34)
 
 
 async def _return_progress(db: AsyncSession, pairs) -> dict:
@@ -1459,7 +1465,7 @@ async def _return_charge_defaults(db: AsyncSession, pairs) -> dict:
         return {}
     cut = await _return_cutoffs(db, due)
     ids = list(cut)
-    _started, l12, l34 = await _return_repair_moves(db, cut)
+    _started, l12, l34, painted = await _return_repair_moves(db, cut, paint=True)
     prs = (await db.execute(
         select(PartRequest.device_id, PartRequest.part_id, PartRequest.part_name, PartRequest.part_make,
                PartRequest.part_model, PartRequest.qty_handed_over, PartRequest.created_at)
@@ -1494,9 +1500,9 @@ async def _return_charge_defaults(db: AsyncSession, pairs) -> dict:
     out = {}
     for d, r in due:
         if d.id in l34:
-            lab, had = rates.labour_for(d, True), True
+            lab, had = rates.labour_for(d, True, d.id in painted), True
         elif d.id in l12:
-            lab, had = rates.labour_for(d, False), False
+            lab, had = rates.labour_for(d, False, d.id in painted), False
         else:
             lab, had = Decimal("0"), None
         out[d.id] = {"repair": Decimal(str(r.refund_amount)), "labour": lab,

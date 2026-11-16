@@ -6,8 +6,6 @@
    one row on a normal desktop viewport instead of the old col-md-* grid
    wrapping onto a second line once Device Type + Location ID were added. #}
 <style>
-  .dash-filter-sm{width:130px}
-  .dash-filter-md{width:150px}
   /* Stage Pipeline card watermark (2026-10-15): faint icon bottom-right,
      behind the card body. */
   .dash-wm-card { position: relative; overflow: hidden; }
@@ -99,7 +97,7 @@
   var url = new URL(location.href); url.searchParams.set('_part', '1');
   function fail() { document.getElementById('dashLoadErr').classList.remove('d-none'); }
   function runScripts(list, i) {
-    if (i >= list.length) { window.dispatchEvent(new Event('resize')); return; }
+    if (i >= list.length) { if (window.reinitFilterFields) window.reinitFilterFields(); window.dispatchEvent(new Event('resize')); return; }
     var old = list[i], s = document.createElement('script');
     for (var a = 0; a < old.attributes.length; a++) s.setAttribute(old.attributes[a].name, old.attributes[a].value);
     if (old.src) { s.onload = s.onerror = function () { runScripts(list, i + 1); }; document.body.appendChild(s); }
@@ -136,16 +134,10 @@
 {% call dash.hero('Overall Inventory Dashboard', 'Home', 'Stock, repair, sales and money on one screen', view_data=False) %}
 <form method="get" action="/dashboard" class="filter-bar">
 <div class="filter-bar-row">
-  <div class="dash-filter-md">
-    <select name="stage_filter" title="Filter by Stage" class="form-select form-select-sm">
-      <option value="">All Stages</option>
-      {% for stage in all_stages %}
-      <option value="{{ stage.value }}" {% if stage_filter == stage.value %}selected{% endif %}>
-        {{ stage_labels.get(stage, stage.value.replace('_',' ').title()) }}
-      </option>
-      {% endfor %}
-    </select>
-  </div>
+  {# Stage and Zone are multi-selects (2026-11-16, Pankaj). #}
+  {% set _stage_opts = [] %}
+  {% for stage in all_stages %}{% set _ = _stage_opts.append((stage.value, stage_labels.get(stage, stage.value.replace('_',' ').title()))) %}{% endfor %}
+  <div class="dash-filter-md" title="Stage">{{ ms.multiselect_inline('stage_filter', 'Stages', _stage_opts, stage_filter) }}</div>
   {# Entity is a checkbox multi-select like All Inventory's, and it narrows the
      stage counts below as well as the links under them. #}
   <div class="dash-filter-md" title="Entity">{{ ms.multiselect_inline('entity', 'Entity', entity_choices, f_entity) }}</div>
@@ -158,19 +150,14 @@
      DeviceLocationLog-first / Device.location_id-fallback resolution as
      the Change Floor tabs and /transfers list) sits in a StorageLocation
      belonging to this zone (models/location.py ZoneType/ZONE_LABELS). #}
-  <div class="dash-filter-md">
-    <select name="zone" title="Zone" class="form-select form-select-sm">
-      <option value="">All Zones</option>
-      {% for z in zone_choices %}
-      <option value="{{ z.value }}" {% if f_zone == z.value %}selected{% endif %}>{{ zone_labels[z] }}</option>
-      {% endfor %}
-    </select>
+  {% set _zone_opts = [] %}
+  {% for z in zone_choices %}{% set _ = _zone_opts.append((z.value, zone_labels[z])) %}{% endfor %}
+  <div class="dash-filter-md" title="Zone">{{ ms.multiselect_inline('zone', 'Zones', _zone_opts, f_zone) }}</div>
+  <div class="dash-filter-sm">
+    <input type="date" name="pl_from" title="P&amp;L Date From" class="form-control form-control-sm" value="{{ pl_from }}">
   </div>
   <div class="dash-filter-sm">
-    <input type="date" name="pl_from" title="P&amp;L From" class="form-control form-control-sm" value="{{ pl_from }}">
-  </div>
-  <div class="dash-filter-sm">
-    <input type="date" name="pl_to" title="P&amp;L To" class="form-control form-control-sm" value="{{ pl_to }}">
+    <input type="date" name="pl_to" title="P&amp;L Date To" class="form-control form-control-sm" value="{{ pl_to }}">
   </div>
   {# The Financial Year picker lives on the Financial Summary card itself
      (2026-10-15) — it only ever scoped that card. Kept here as a hidden

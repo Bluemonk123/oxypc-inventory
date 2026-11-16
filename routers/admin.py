@@ -559,7 +559,8 @@ async def cost_config_view(
     from utils.master_data import master_values
     rr = await load_repair_rates(db)
     labour_rows = [{"label": lbl, "slug": sl,
-                    "wo": rr.labour.get(sl, (0, 0))[0], "w": rr.labour.get(sl, (0, 0))[1]}
+                    "wo": rr.labour.get(sl, (0, 0, 0))[0], "w": rr.labour.get(sl, (0, 0, 0))[1],
+                    "p": rr.labour.get(sl, (0, 0, 0))[2]}
                    for lbl, sl, _wo, _w in labour_categories(await master_values(db, "device_type"))]
     return templates.TemplateResponse("admin/cost_config.html", {
         "request": request,
@@ -604,12 +605,12 @@ async def cost_config_save(
             await _upsert_cost_config(db, apply_key, Decimal(raw), current_user.username)
             audited_apply[apply_key] = raw
 
-    # Labor Rates panel: one Without / With L3/L4 rate per device category.
+    # Labor Rates panel: Without / With L3/L4 / With Painting per device category.
     from services.repair_cost import labour_categories
     from utils.master_data import master_values
     audited_labour = {}
     for _lbl, slug, _wo, _w in labour_categories(await master_values(db, "device_type")):
-        for kind in ("wo", "w"):
+        for kind in ("wo", "w", "p"):
             key = f"labour_{kind}_{slug}"
             raw = (form.get(key) or "").strip()
             if raw == "":

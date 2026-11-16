@@ -26,17 +26,17 @@ LABOUR_STAGES = [DeviceStage.l1, DeviceStage.l2, DeviceStage.l3, DeviceStage.qc_
 async def _repair_cost_by(db: AsyncSession, keyed_devices) -> dict:
     """{key: repair cost} summed over (key, Device) pairs, each tag counted
     once per key (services/repair_cost.py)."""
-    from services.repair_cost import load_repair_rates, worked_and_l34_ids
+    from services.repair_cost import load_repair_rates, worked_l34_paint_ids
     rates = await load_repair_rates(db)
     seen, pairs = set(), []
     for k, d in keyed_devices:
         if (k, d.id) not in seen:
             seen.add((k, d.id))
             pairs.append((k, d))
-    worked, l34 = await worked_and_l34_ids(db, list({d.id for _k, d in pairs}))
+    worked, l34, paint = await worked_l34_paint_ids(db, list({d.id for _k, d in pairs}))
     out: dict = {}
     for k, d in pairs:
-        out[k] = out.get(k, 0.0) + float(rates.cost(d, str(d.id) in worked, str(d.id) in l34))
+        out[k] = out.get(k, 0.0) + float(rates.cost(d, str(d.id) in worked, str(d.id) in l34, had_paint=str(d.id) in paint))
     return out
 
 

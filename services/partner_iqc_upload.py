@@ -5,6 +5,11 @@ creates test tags: Entity External Partner Test, stage IQC, lot EPT-<LOT
 Number> (created automatically when missing, restricted from the live
 catalog), plus each tag's IQC record with the part conditions word-for-word.
 Kept apart from live GRN / Lot / IQC like the rest of Manage Lots.
+
+2026-11-16 (Pankaj): uploaded tags go straight to Ready for Sale and their
+lots are open to every partner (not Restricted), so an upload shows on the
+partner Catalog at once. Optional GRN / Invoice columns: either value finds a
+test GRN (GRN & Lot tab) — the lot is linked to it and the tag mapped to it.
 """
 import csv
 import io
@@ -15,9 +20,11 @@ from decimal import Decimal
 from sqlalchemy import select, func
 
 from models.device import Device, DeviceStage, DeviceGrade, StageMovement
+from models.grn_import import GRNImport, GRNLot
 from models.iqc_inspection import IQCInspection
 from models.lot import Lot
-from models.master import EXTERNAL_PARTNER_TEST_ENTITY, EXTERNAL_PARTNER_TEST_LOT_PREFIX
+from models.master import (EXTERNAL_PARTNER_TEST_ENTITY, EXTERNAL_PARTNER_TEST_LOT_PREFIX,
+                           EXTERNAL_PARTNER_TEST_GRN_SOURCE)
 from utils.timezone import app_now
 
 # (Excel header, where it goes, kind). kind: device = Device column,
@@ -60,6 +67,8 @@ COLUMNS = [
     ("DVD Flap", "cover_dvd", "iqc"),
     ("Inspector", "inspector_name", "iqc"),
     ("Remarks", "remarks", "iqc"),
+    ("GRN", "grn", "special"),          # optional: test GRN number (2026-11-16)
+    ("Invoice", "invoice", "special"),  # optional: that GRN's invoice number
 ]
 HEADERS = [c[0] for c in COLUMNS]
 
@@ -159,10 +168,33 @@ def _yes(text) -> bool:
     return str(text or "").strip().lower() in ("yes", "y", "true", "1")
 
 
+async def _find_test_grn(db, cache: dict, grn_no: str, invoice: str):
+    """The test GRN (Manage Lots → GRN & Lot) whose GRN number or invoice
+    number matches; None when neither is filled or nothing matches."""
+    from sqlalchemy import or_
+    key = (grn_no.lower(), invoice.lower())
+    if key in cache:
+        return cache[key]
+    conds = []
+    if grn_no:
+        conds.append(func.lower(GRNImport.grn_number) == grn_no.lower())
+    if invoice:
+        conds.append(func.lower(GRNImport.invoice_number) == invoice.lower())
+    g = None
+    if conds:
+        g = (await db.execute(select(GRNImport).where(
+            GRNImport.source == EXTERNAL_PARTNER_TEST_GRN_SOURCE, GRNImport.is_deleted == False,  # noqa: E712
+            or_(*conds)).order_by(GRNImport.created_at.desc()))).scalars().first()
+    cache[key] = g
+    return g
+
+
 async def import_rows(db, rows: list[dict], user) -> dict:
-    """Create the test tags. Returns counts, the lots created, and per-row
-    errors / skips. Caller commits."""
+    """Create the test tags (straight to Ready for Sale). Returns counts, the
+    lots created, the GRNs linked, and per-row errors / skips. Caller commits."""
+    from services.location_defaults import ensure_stage_location
     created_lots, inserted, skipped, errors = [], 0, [], []
+    grn_cache, linked, unmatched, touched_lots, new_devs, lot_grn = {}, set(), [], {}, [], {}
     seen = set()
     existing = set()
     tags = [r.get("barcode", "") for r in rows if r.get("barcode")]
@@ -185,6 +217,10 @@ async def import_rows(db, rows: list[dict], user) -> dict:
             errors.append(f"Row {n}: {tag} has no LOT Number")
             continue
         lot_no = raw_lot if raw_lot.upper().startswith(pre.upper()) else pre + raw_lot
+        grn_no, invoice = (r.get("grn") or "").strip(), (r.get("invoice") or "").strip()
+        grn = await _find_test_grn(db, grn_cache, grn_no, invoice)
+        if (grn_no or invoice) and grn is None:
+            unmatched.append(f"Row {n}: {tag} — GRN / Invoice '{grn_no or invoice}' not found")
         lot = lot_cache.get(lot_no.lower())
         if lot is None:
             lot = (await db.execute(select(Lot).where(func.lower(Lot.lot_number) == lot_no.lower()))).scalars().first()
@@ -193,12 +229,26 @@ async def import_rows(db, rows: list[dict], user) -> dict:
                 continue
             if lot is None:
                 lot = Lot(lot_number=lot_no[:50], supplier_name="External Partner Test", buying_price=Decimal("0"),
-                          qty=1, purchase_date=now, is_restricted=True, created_by=user.username,
+                          qty=1, purchase_date=now, is_restricted=False, created_by=user.username,
                           notes="Created by Manage Lots → Asset IQC upload")
                 db.add(lot)
                 await db.flush()
                 created_lots.append(lot.lot_number)
+            lot.is_restricted = False          # open to every partner (2026-11-16)
             lot_cache[lot_no.lower()] = lot
+        touched_lots[lot.id] = lot
+        if grn is not None:
+            if (grn.id, lot.id) not in linked:
+                have = (await db.execute(select(GRNLot.id).where(GRNLot.grn_id == grn.id,
+                                                                 GRNLot.lot_id == lot.id))).scalar_one_or_none()
+                if have is None:
+                    db.add(GRNLot(grn_id=grn.id, lot_id=lot.id, created_by=user.username))
+                linked.add((grn.id, lot.id))
+            lot_grn.setdefault(lot.id, grn.grn_number)
+            if not lot.grn_system_number:
+                lot.grn_system_number = grn.grn_number
+            if grn.lot_id is None:
+                grn.lot_id, grn.lot_number = lot.id, lot.lot_number[:60]
         g = (r.get("grade") or "").strip()
         grade = next((x for x in DeviceGrade if x.value.lower() == g.lower()), None)
         ssd = _num(r.get("storage_gb"))
@@ -209,11 +259,17 @@ async def import_rows(db, rows: list[dict], user) -> dict:
             ram_gb=_num(r.get("ram_gb")) if _yes(r.get("ram_flag")) or (not r.get("ram_flag") and r.get("ram_gb")) else None,
             hdd_capacity_gb=_num(r.get("hdd_capacity_gb")) if _yes(r.get("hdd_flag")) else None,
             storage_gb=ssd, storage_type="SSD" if ssd else None,
-            screen_size=r.get("screen_size") or None, grade=grade, current_stage=DeviceStage.iqc, qty=1,
+            screen_size=r.get("screen_size") or None, grade=grade, current_stage=DeviceStage.ready_to_sale, qty=1,
+            grn_number=grn.grn_number if grn is not None else None,
         )
         db.add(dev)
-        db.add(StageMovement(device_id=dev.id, from_stage=None, to_stage=DeviceStage.iqc,
-                             moved_by=user.username, notes="Manage Lots — Asset IQC upload"))
+        new_devs.append(dev)
+        db.add(StageMovement(device_id=dev.id, from_stage=None, to_stage=DeviceStage.ready_to_sale,
+                             moved_by=user.username, notes="Manage Lots — Asset IQC upload, straight to Ready for Sale"))
+        try:
+            await ensure_stage_location(db, dev, DeviceStage.ready_to_sale, user)
+        except Exception:
+            pass   # a missing default location must not block the upload
         iqc = {f: (r.get(f) or None) for h, f, k in COLUMNS if k == "iqc"}
         iqc = {f: (v[:40] if v and f not in ("remarks", "inspector_name") else v) for f, v in iqc.items()}
         if iqc.get("inspector_name"):
@@ -222,7 +278,25 @@ async def import_rows(db, rows: list[dict], user) -> dict:
                              **{**iqc, "inspector_name": iqc.get("inspector_name") or (user.full_name or user.username)}))
         seen.add(tag.lower())
         inserted += 1
-    return {"inserted": inserted, "created_lots": created_lots, "skipped": skipped, "errors": errors}
+    # A row with GRN / Invoice blank, in a lot this upload linked to a GRN, is
+    # mapped to that GRN too (one filled row per lot is enough).
+    for dev in new_devs:
+        if not dev.grn_number and dev.lot_id in lot_grn:
+            dev.grn_number = lot_grn[dev.lot_id]
+    # Lot quantity = its test tags, so a booking's per-unit price (lot price ÷
+    # lot qty) is right; an auto-created lot starts at 1.
+    if touched_lots:
+        await db.flush()
+        counts = dict((await db.execute(
+            select(Device.lot_id, func.count(Device.id)).where(
+                Device.lot_id.in_(list(touched_lots)), Device.is_active == True,  # noqa: E712
+                Device.is_trashed.isnot(True)).group_by(Device.lot_id))).all())
+        for lid, lot in touched_lots.items():
+            if counts.get(lid):
+                lot.qty = counts[lid]
+    grns = sorted({g.grn_number for g in grn_cache.values() if g is not None})
+    return {"inserted": inserted, "created_lots": created_lots, "skipped": skipped, "errors": errors,
+            "grns": grns, "unmatched": unmatched}
 
 
 # Human-readable "Saved as" for the Column mapping table on the Asset IQC tab.
@@ -243,5 +317,7 @@ _LABELS = {
     "cover_ram": "IQC · RAM cover", "wifi_status": "IQC · WiFi", "battery_cable": "IQC · Battery cable",
     "dvd_drive": "IQC · DVD drive", "cover_dvd": "IQC · DVD cover", "inspector_name": "IQC · Inspector",
     "remarks": "IQC · Remarks",
+    "grn": "Optional — test GRN number: links the lot to that GRN and maps its tags (one filled row per lot is enough)",
+    "invoice": "Optional — that GRN's invoice number (used when GRN is blank)",
 }
 MAPPING = [(h, _LABELS.get(f, f)) for h, f, k in COLUMNS]

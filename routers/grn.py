@@ -1023,7 +1023,8 @@ async def _map_lots_to_grn(db: AsyncSession, g: GRNImport, numbers: list[str],
                 notes=g.notes,
                 # Older readers (Product IQC Lot tab, Edit Lot) still read this.
                 grn_system_number=g.grn_number,
-                is_restricted=number.upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper()),
+                # Test lots are open to every partner (2026-11-16, Pankaj).
+                is_restricted=False,
                 created_by=username,
             )
             db.add(lot)
@@ -1033,7 +1034,7 @@ async def _map_lots_to_grn(db: AsyncSession, g: GRNImport, numbers: list[str],
             if not lot.grn_system_number:
                 lot.grn_system_number = g.grn_number
             if number.upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper()):
-                lot.is_restricted = True
+                lot.is_restricted = False      # test lots: open to every partner (2026-11-16)
             linked.append(lot.lot_number)
         if lot.id not in have:
             db.add(GRNLot(grn_id=g.id, lot_id=lot.id, created_by=username))

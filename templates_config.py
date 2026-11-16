@@ -528,10 +528,10 @@ _orig_template_response = templates.TemplateResponse
 def _dash_aware_template_response(*args, **kwargs):
     try:
         ctx = args[1] if len(args) > 1 and isinstance(args[1], dict) else kwargs.get("context")
-        if isinstance(ctx, dict) and any(k in ctx for k in ("dash_kpis", "dash_widgets")):
+        from services.dash_access import dashboard_allowed, DASH_KEYS
+        if isinstance(ctx, dict) and any(k in ctx for k in DASH_KEYS):
             req, user = ctx.get("request"), ctx.get("current_user")
             if req is not None and user is not None:
-                from services.dash_access import dashboard_allowed, DASH_KEYS
                 if not dashboard_allowed(user, req.url.path):
                     for k in DASH_KEYS:
                         if k in ctx:

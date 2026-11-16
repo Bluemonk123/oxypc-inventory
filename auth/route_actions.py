@@ -689,6 +689,7 @@ ROUTE_ACTIONS = {
     ('POST', '/trade-partner/manage-lots/asset-iqc-upload'): ('trade_partner_manage_lots', 'upload'),  # Asset IQC upload: External Partner IQC format sheet (2026-11-13)
     ('GET', '/trade-partner/manage-lots/asset-iqc-sample'): ('trade_partner_manage_lots', 'export'),  # Asset IQC upload sample (.xlsx)
     ('POST', '/trade-partner/manage-lots/move-ready-for-sale'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_move_ready_for_sale
+    ('POST', '/trade-partner/manage-lots/set-price'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_set_price: test lot Base Price (also needs Pricing Add, checked inside) 2026-11-16
     ('POST', '/trade-partner/manage-lots/edit-device'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_edit_device
     ('POST', '/trade-partner/manage-lots/assign-visibility'): ('trade_partner_manage_lots', 'edit'),  # assign_lot_visibility_bulk
     ('POST', '/trade-partner/manage-lots/set-restricted'): ('trade_partner_manage_lots', 'edit'),  # set_lots_restricted

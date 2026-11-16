@@ -1520,13 +1520,16 @@ async def manage_lots(
 
     # ── Tab 2: Asset IQC ─────────────────────────────────────────────────
     device_rows = (await db.execute(
-        select(Device, Lot.lot_number)
+        select(Device, Lot.lot_number, Lot.id, Lot.buying_price)
         .join(Lot, Device.lot_id == Lot.id, isouter=True)
         .where(Device.entity == EXTERNAL_PARTNER_TEST_ENTITY)
         .order_by(Device.created_at.desc())
     )).all()
-    test_devices = [{"device": d, "lot_number": ln,
-                     "matched_grn": lot_number_to_grn.get(ln)} for d, ln in device_rows]
+    from utils.price_export import can_view_prices, can_add_prices
+    _see_price = can_view_prices(current_user, "trade_partner_manage_lots")
+    test_devices = [{"device": d, "lot_number": ln, "lot_id": str(lid) if lid else "",
+                     "lot_price": (float(lp) if lp else 0.0) if _see_price else None,
+                     "matched_grn": lot_number_to_grn.get(ln)} for d, ln, lid, lp in device_rows]
 
     total_lots = sum(len(lots) for lots in lots_by_grn.values())
 
@@ -1544,6 +1547,9 @@ async def manage_lots(
         "iqc_mapping": __import__("services.partner_iqc_upload", fromlist=["MAPPING"]).MAPPING,
         "test_grn_source": EXTERNAL_PARTNER_TEST_GRN_SOURCE,
         "stage_labels": STAGE_LABELS,
+        # Set Price (2026-11-16): Edit + Pricing Add on Manage Lots.
+        "can_set_price": can_add_prices(current_user, "trade_partner_manage_lots"),
+        "see_price": _see_price,
         "success": request.query_params.get("success"),
         "error": request.query_params.get("error"),
     })
@@ -1626,7 +1632,11 @@ async def manage_lots_asset_iqc_upload(
                 new_value={"file": file.filename, "inserted": res["inserted"], "lots_created": res["created_lots"],
                            "skipped": len(res["skipped"]), "errors": len(res["errors"])}, request=request)
     await db.commit()
-    msg = f"Asset IQC upload: {res['inserted']} tag(s) added"
+    msg = f"Asset IQC upload: {res['inserted']} tag(s) added to Ready for Sale"
+    if res.get("grns"):
+        msg += f" · Linked to GRN {', '.join(res['grns'])}"
+    if res.get("unmatched"):
+        msg += f" · {len(res['unmatched'])} not linked to a GRN: " + "; ".join(res["unmatched"][:5])
     if res["created_lots"]:
         msg += f" · New lot(s) created: {', '.join(res['created_lots'])}"
     if res["skipped"]:
@@ -1638,6 +1648,45 @@ async def manage_lots_asset_iqc_upload(
         msg += " · " + notes[0]
     kind = "success" if res["inserted"] else "error"
     return RedirectResponse(url=f"{back}&{kind}=" + quote_plus(msg[:1800]), status_code=302)
+
+
+@router.post("/manage-lots/set-price")
+async def manage_lots_set_price(
+    request: Request,
+    lot_id: str = Form(...),
+    price: str = Form(...),
+    _csrf=Depends(verify_csrf),
+    current_user: User = Depends(require_module_perm("trade_partner_manage_lots", "edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Asset IQC tab → Action → Set Price (2026-11-16, Pankaj): the test lot's
+    price (Lot.buying_price), which the partner Catalog shows as the lot's
+    Base Price and bids start from. Needs Pricing Add on Manage Lots."""
+    from utils.price_export import can_add_prices
+    back = "/trade-partner/manage-lots?tab=asset"
+    if not can_add_prices(current_user, "trade_partner_manage_lots"):
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("You don't have Pricing Add on Manage Lots."), status_code=302)
+    try:
+        val = Decimal(str(price).replace(",", "").strip())
+    except Exception:
+        val = None
+    if val is None or val < 0:
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("Enter a price of 0 or more."), status_code=302)
+    try:
+        lid = uuid_mod.UUID(lot_id)
+    except ValueError:
+        lid = None
+    lot = (await db.execute(select(Lot).where(Lot.id == lid))).scalar_one_or_none() if lid else None
+    if lot is None or not (lot.lot_number or "").upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper()):
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("Test lot not found."), status_code=302)
+    old = lot.buying_price
+    lot.buying_price = val.quantize(Decimal("0.01"))
+    await audit(db, action="MANAGE_LOTS_PRICE_SET", user=current_user, table_name="lots", record_id=str(lot.id),
+                old_value={"lot": lot.lot_number, "price": str(old) if old is not None else None},
+                new_value={"lot": lot.lot_number, "price": str(lot.buying_price)}, request=request)
+    await db.commit()
+    return RedirectResponse(url=f"{back}&success=" + quote_plus(f"{lot.lot_number} price set to ₹{lot.buying_price:,.2f}"),
+                            status_code=302)
 
 
 @router.post("/manage-lots/move-ready-for-sale")

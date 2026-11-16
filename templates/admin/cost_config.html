@@ -19,7 +19,7 @@
       <div class="card-body">
         <p class="text-muted small mb-4">
           <strong>Repair cost per tag</strong> = Labour (Labor Rates panel →, "With L3/L4" when the tag has
-          L3/L4 history; only tags that were worked on) + Packing Charges + Freight Charges (each only on the
+          L3/L4 history, plus "With Painting" when it went through a Cosmetic stage; only tags that were worked on) + Packing Charges + Freight Charges (each only on the
           tags ticked below). Used by Business P&amp;L, Lot P&amp;L, Final QC and the Ready for Sale Min
           Selling Price. GST rates are used on invoices.
         </p>
@@ -106,10 +106,12 @@
       <div class="card-body">
         <p class="text-muted small mb-3">Labour charged per worked-on tag by its Device Type.
           <strong>With L3/L4</strong> is used when the tag has L3/L4 history; 0 = not set yet (that tag's labour is 0).
+          <strong>With Painting</strong> is added on top when the tag went through any of the 6 Cosmetic stages
+          (Cleaning, Putty, Dry Sanding, Masking, Painting, Water Sanding) — once, however many of them.
           Device types not listed here carry no labour.</p>
         <table class="table table-sm align-middle mb-0">
           <thead class="table-light">
-            <tr><th>Device Category</th><th style="width:30%">Without L3/L4 (Rs)</th><th style="width:30%">With L3/L4 (Rs)</th></tr>
+            <tr><th>Device Category</th><th style="width:24%">Without L3/L4 (Rs)</th><th style="width:24%">With L3/L4 (Rs)</th><th style="width:24%">With Painting (Rs)</th></tr>
           </thead>
           <tbody>
             {% for r in labour_rows %}
@@ -119,6 +121,9 @@
                          name="labour_wo_{{ r.slug }}" value="{{ '%.2f'|format(r.wo|float) }}"></td>
               <td><input type="number" step="0.01" min="0" class="form-control form-control-sm"
                          name="labour_w_{{ r.slug }}" value="{{ '%.2f'|format(r.w|float) }}"></td>
+              <td><input type="number" step="0.01" min="0" class="form-control form-control-sm"
+                         name="labour_p_{{ r.slug }}" value="{{ '%.2f'|format(r.p|float) }}"
+                         title="Added on top when the tag went through any Cosmetic stage"></td>
             </tr>
             {% endfor %}
           </tbody>
