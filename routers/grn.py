@@ -1205,7 +1205,10 @@ async def grn_create_manual(
     if source == EXTERNAL_PARTNER_TEST_GRN_SOURCE:
         entity = EXTERNAL_PARTNER_TEST_ENTITY   # Manage Lots test GRN (2026-11-13)
     elif (getattr(current_user, "entity", None) or "").strip():
-        entity = current_user.entity.strip()
+        # Several profile entities (2026-11-17): keep the one picked if it is
+        # one of the user's; otherwise (or with one entity) the Primary.
+        mine = getattr(current_user, "all_entities", None) or [current_user.entity.strip()]
+        entity = next((e for e in mine if e.lower() == entity.lower()), current_user.entity.strip())
     if entity and entity != EXTERNAL_PARTNER_TEST_ENTITY and entity not in await entity_values(db):
         return RedirectResponse(url=f"{base}?error=" + quote(f"Unknown entity '{entity}'."),
                                 status_code=302)

@@ -369,7 +369,7 @@ async def _context(db, user, entity, date_from, date_to, category, sales_person)
     Entity: the user's profile Entity until they pick another (an empty
     value in the URL means all entities)."""
     if entity is None:
-        entity = user.entity or ""
+        entity = ",".join(getattr(user, "all_entities", None) or [user.entity or ""])   # all profile entities (2026-11-17)
     f = Filters(entity, date_from, date_to, category, sales_person)
     admin = _is_admin(user)
     moves = await _showroom_moves(db, None if admin else user.username)

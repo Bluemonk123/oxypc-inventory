@@ -16,13 +16,30 @@
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') if request else '' }}">
           {% set cur_entity = edit_user.entity if edit_user else '' %}
           <div class="mb-3">
-            <label class="form-label fw-semibold">Entity <span class="text-danger">*</span></label>
-            <select name="entity" class="form-select" required>
+            <label class="form-label fw-semibold">Primary Entity <span class="text-danger">*</span></label>
+            <select name="entity" id="ufPrimaryEntity" class="form-select" required>
               <option value="">— Select Entity —</option>
               {% for e in entity_options %}
               <option value="{{ e }}" {% if cur_entity == e %}selected{% endif %}>{{ e }}</option>
               {% endfor %}
             </select>
+            <div class="form-text">Pre-filled on documents. On Add GRN and quotations the user can pick another of their entities; Parts GRN tax uses this one.</div>
+          </div>
+          {# Additional Entities (2026-11-17, Pankaj): managers and above work for
+             several entities. Filters open on all of them. #}
+          {% set cur_extra = edit_user.extra_entities if edit_user else [] %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold">Additional Entities</label>
+            <div class="border rounded px-3 py-2" id="ufExtraEntities">
+              {% for e in entity_options %}
+              <div class="form-check form-check-inline uf-extra" data-entity="{{ e }}">
+                <input class="form-check-input" type="checkbox" name="entities" value="{{ e }}" id="ufEnt{{ loop.index }}"
+                       {% if e in cur_extra %}checked{% endif %}>
+                <label class="form-check-label" for="ufEnt{{ loop.index }}">{{ e }}</label>
+              </div>
+              {% endfor %}
+            </div>
+            <div class="form-text">Optional. Tick every other entity this user works for.</div>
           </div>
           {% if not edit_user %}
           <div class="mb-3">
@@ -147,5 +164,18 @@
 {% block scripts %}
 <script>
 $(function () { if (window.initGlobalTable) initGlobalTable('#rolesTable', { order: [[0, 'asc']], pageLength: 50, language: { emptyTable: 'No roles found.' } }); });
+// Additional Entities: the Primary Entity isn't offered again (2026-11-17).
+(function () {
+  var prim = document.getElementById('ufPrimaryEntity');
+  if (!prim) return;
+  function sync() {
+    document.querySelectorAll('#ufExtraEntities .uf-extra').forEach(function (w) {
+      var same = w.getAttribute('data-entity') === prim.value;
+      w.classList.toggle('d-none', same);
+      if (same) w.querySelector('input').checked = false;
+    });
+  }
+  prim.addEventListener('change', sync); sync();
+})();
 </script>
 {% endblock %}

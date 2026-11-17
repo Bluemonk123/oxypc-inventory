@@ -115,16 +115,23 @@ async def _next_sale_number(db: AsyncSession) -> str:
 
 
 async def _profile_entity(db, user) -> str:
-    """The user's profile Entity spelled as the Entity filter's option
-    (capitals / spaces ignored), or "" when unset or not an option."""
+    """The user's profile entities (Primary + Additional, 2026-11-17) spelled
+    as the Entity filter's options (capitals / spaces ignored), comma-joined;
+    "" when none is set or matches an option."""
     from utils.master_data import entity_values
-    mine = "".join((getattr(user, "entity", "") or "").lower().split())
+    key = lambda v: "".join((v or "").lower().split())  # noqa: E731
+    mine = {key(e) for e in _user_entities(user)}
     if not mine:
         return ""
-    for e in await entity_values(db):
-        if "".join((e or "").lower().split()) == mine:
-            return e
-    return ""
+    return ",".join(e for e in await entity_values(db) if key(e) in mine)
+
+
+def _user_entities(user) -> list:
+    """Primary + Additional Entities of a user (models.user.User.all_entities)."""
+    ents = getattr(user, "all_entities", None)
+    if ents is None:
+        ents = [getattr(user, "entity", None) or ""]
+    return [e for e in ents if (e or "").strip()]
 
 
 def _entity_values(raw: str) -> list:
@@ -1461,7 +1468,9 @@ async def upload_ready_tags(
     # entity must match the current user's entity (a user with no entity
     # set gets every tag as Incorrect Entity). Each failing group comes back
     # as downloadable rows in DETAIL_HEADER's columns.
-    user_entity = (getattr(current_user, "entity", None) or "").strip()
+    # Any of the user's entities counts (Primary + Additional, 2026-11-17).
+    _mine = {e.strip().lower() for e in _user_entities(current_user)}
+    user_entity = ", ".join(_user_entities(current_user))
 
     def detail_row(d):
         stage = getattr(d.current_stage, "value", d.current_stage)
@@ -1481,7 +1490,7 @@ async def upload_ready_tags(
             continue
         for d in matches:
             # Echo the barcode as STORED — the page ticks rows by exact string.
-            if not user_entity or (d.entity or "").strip().lower() != user_entity.lower():
+            if not _mine or (d.entity or "").strip().lower() not in _mine:
                 incorrect_entity.append(d.barcode)
                 detail["incorrect_entity"].append(detail_row(d))
             else:
@@ -1641,13 +1650,13 @@ async def _sale_new_response(request: Request, barcode: str, barcodes: str, qty:
             lot = lot_result.scalar_one_or_none()
             # Any stage may be sold (2026-10-19); warn only on the entity rule
             # create_sale enforces — tag entity must match the seller's.
-            u_ent = (getattr(current_user, "entity", None) or "").strip()
+            u_ents = _user_entities(current_user)   # Primary + Additional (2026-11-17)
             d_ent = (device.entity or "").strip()
-            if not u_ent:
+            if not u_ents:
                 stage_error = "Your user profile has no entity set, so you can't sell tags."
-            elif d_ent.lower() != u_ent.lower():
+            elif d_ent.lower() not in {e.lower() for e in u_ents}:
                 stage_error = (f"Incorrect entity — this tag belongs to '{d_ent or 'no entity'}', "
-                               f"your entity is '{u_ent}'.")
+                               f"your {'entities are' if len(u_ents) > 1 else 'entity is'} '{', '.join(u_ents)}'.")
             # Prefill qty from the latest approved telecaller dispatch request
             appr = (await db.execute(
                 select(TelecallerDispatchRequest)
@@ -1959,14 +1968,17 @@ async def create_sale(
     # user with no entity on their profile can't sell — every tag counts as
     # Incorrect Entity until an admin sets one. Block Tags hold still applies
     # (waived for the block's own tags when sold from that block).
-    user_entity = (getattr(current_user, "entity", None) or "").strip()
+    # Any of the seller's entities counts (Primary + Additional, 2026-11-17).
+    _ents = _user_entities(current_user)
+    _mine = {e.strip().lower() for e in _ents}
+    user_entity = ", ".join(_ents)
 
     async def _check_sellable(d):
         dev_entity = (d.entity or "").strip()
-        if not user_entity or dev_entity.lower() != user_entity.lower():
+        if not _mine or dev_entity.lower() not in _mine:
             raise HTTPException(status_code=403, detail=(
                 f"Incorrect entity — tag {d.barcode} belongs to '{dev_entity or 'no entity'}'"
-                + (f", your entity is '{user_entity}'." if user_entity
+                + (f", your {'entities are' if len(_ents) > 1 else 'entity is'} '{user_entity}'." if user_entity
                    else "; your user profile has no entity set, so you can't sell tags.")))
         if d.id in block_items:
             return  # Block hold waived for this block's own tags.

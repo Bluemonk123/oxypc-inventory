@@ -19,7 +19,8 @@
 {%- endmacro %}
 {# Add / Edit GRN fields (2026-10-31): one layout for both modals.
    p = id prefix ('a_' Add, 'e_' Edit). Entity is locked to the signed-in
-   user's Entity (Edit: the GRN's own Entity, locked). #}
+   user's Entity, or picked from their entities when they have several
+   (2026-11-17) (Edit: the GRN's own Entity, locked). #}
 {% macro grn_fields(p) -%}
 {# Manage Lots test GRN (2026-11-13, Pankaj): every field optional. #}
 {% set R = '' if piq.test else '<span class="text-danger">*</span>' %}
@@ -29,6 +30,11 @@
     {% if p == 'a_' and piq.test %}
     <select class="form-select" disabled><option>{{ piq.test_entity }}</option></select>
     <input type="hidden" name="entity" id="a_entity_val" value="{{ piq.test_entity }}">
+    {% elif p == 'a_' and current_user.all_entities|length > 1 %}
+    {# Several entities on the profile (2026-11-17): pick one, Primary pre-filled. #}
+    <select name="entity" id="a_entity_val" class="form-select" required>
+      {% for e in current_user.all_entities %}<option value="{{ e }}" {% if loop.first %}selected{% endif %}>{{ e }}</option>{% endfor %}
+    </select>
     {% elif p == 'a_' and (current_user.entity or '') %}
     <select class="form-select" disabled><option>{{ current_user.entity }}</option></select>
     <input type="hidden" name="entity" id="a_entity_val" value="{{ current_user.entity }}">

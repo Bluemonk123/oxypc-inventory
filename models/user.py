@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from utils.timezone import app_now
-from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Enum as SAEnum, UniqueConstraint
+from sqlalchemy import Column, String, Boolean, DateTime, ForeignKey, Enum as SAEnum, UniqueConstraint, Text
 from sqlalchemy.types import TypeDecorator
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -105,8 +105,31 @@ class User(Base):
     # users load; the Add/Edit User form makes it required. Added by
     # db_validator (ADD COLUMN IF NOT EXISTS) at startup.
     entity = Column(String(50), nullable=True, index=True)
+    # Additional Entities (2026-11-17, Pankaj; schema approved): managers and
+    # above work for several entities. Comma-separated Master Data entity
+    # names (they never contain a comma), NOT including the primary `entity`
+    # above. Read through all_entities. Added by db_validator at startup.
+    entities = Column(Text, nullable=True)
 
     login_logs = relationship("LoginLog", back_populates="user", lazy="select")
+
+    @property
+    def extra_entities(self) -> list:
+        """Additional Entities, in saved order, without the primary."""
+        prim = (self.entity or "").strip().lower()
+        out, seen = [], {prim}
+        for e in (self.entities or "").split(","):
+            e = e.strip()
+            if e and e.lower() not in seen:
+                seen.add(e.lower())
+                out.append(e)
+        return out
+
+    @property
+    def all_entities(self) -> list:
+        """Primary Entity first, then the Additional Entities."""
+        prim = (self.entity or "").strip()
+        return ([prim] if prim else []) + self.extra_entities
 
     @property
     def role_label(self):

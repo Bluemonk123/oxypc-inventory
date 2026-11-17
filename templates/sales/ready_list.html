@@ -380,8 +380,8 @@
         <label class="form-label fw-semibold">Tag Numbers CSV</label>
         <input type="file" id="bulkTagFile" class="form-control" accept=".csv">
         <div class="form-text small">One column with header <code>tag_number</code>, <code>barcode</code>, <code>Tag No</code>, or <code>Tag Number</code>, one tag per row.</div>
-        <div class="form-text small">Tags in <strong>any stage</strong> are selected for sale, as long as they belong to your entity
-          (<strong>{{ current_user.entity or 'not set on your profile' }}</strong>). Tags not found and tags of another entity are listed afterwards with a download.</div>
+        <div class="form-text small">Tags in <strong>any stage</strong> are selected for sale, as long as they belong to {{ 'one of your entities' if current_user.all_entities|length > 1 else 'your entity' }}
+          (<strong>{{ current_user.all_entities|join(', ') or 'not set on your profile' }}</strong>). Tags not found and tags of another entity are listed afterwards with a download.</div>
         <div id="bulkTagStatus" class="small mt-2"></div>
       </div>
       <div class="modal-footer">

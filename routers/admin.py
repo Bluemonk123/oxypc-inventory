@@ -125,6 +125,19 @@ async def _entity_options(db: AsyncSession, current: str | None = None) -> list[
     return opts
 
 
+async def _clean_extra_entities(db: AsyncSession, picked: list, primary: str, current: str | None = None) -> str | None:
+    """Additional Entities as saved on users.entities (2026-11-17): valid
+    Master Data entities only, without the primary, de-duplicated, comma-joined."""
+    opts = await _entity_options(db, current)
+    out, seen = [], {(primary or "").strip().lower()}
+    for e in picked or []:
+        e = (e or "").strip()
+        if e in opts and e.lower() not in seen:
+            seen.add(e.lower())
+            out.append(e)
+    return ",".join(out) or None
+
+
 @router.get("/users", response_class=HTMLResponse)
 async def list_users(
     request: Request,
@@ -191,6 +204,7 @@ async def new_user_form(request: Request, db: AsyncSession = Depends(get_db), cu
 async def create_user(
     request: Request,
     entity: str = Form(""),
+    entities: list[str] = Form(default=[]),
     username: str = Form(...),
     full_name: str = Form(...),
     role: str = Form(...),
@@ -217,8 +231,9 @@ async def create_user(
             "edit_user": None, "error": entity_error or "Username already exists",
             "users": users_list,
         })
+    extra = await _clean_extra_entities(db, entities, entity)
     user = User(
-        username=username, full_name=full_name, entity=entity,
+        username=username, full_name=full_name, entity=entity, entities=extra,
         role=role, password_hash=await hash_password_async(password),
         whatsapp_number=(whatsapp_number.strip() or None),
         email=(email.strip() or None),
@@ -230,7 +245,8 @@ async def create_user(
     await db.flush()   # get user.id before audit
     await audit(db, action="USER_CREATED", user=current_user,
                 table_name="users", record_id=str(user.id),
-                new_value={"username": username, "role": role, "full_name": full_name, "entity": entity},
+                new_value={"username": username, "role": role, "full_name": full_name, "entity": entity,
+                           "entities": extra},
                 request=request)
     await db.commit()
     return RedirectResponse(url="/admin/users?success=User+created", status_code=302)
@@ -262,6 +278,7 @@ async def update_user(
     role: str = Form(...),
     username: str = Form(...),
     entity: str = Form(""),
+    entities: list[str] = Form(default=[]),
     status: str = Form(None),
     whatsapp_number: str = Form(""),
     email: str = Form(""),
@@ -311,7 +328,8 @@ async def update_user(
         user.username = new_username
 
     old_vals = {"full_name": user.full_name, "role": user.role.value, "status": user.status,
-                "entity": user.entity}
+                "entity": user.entity, "entities": user.entities}
+    user.entities = await _clean_extra_entities(db, entities, entity, user.entity)
     user.entity = entity
     user.full_name = full_name
     user.role = role
@@ -325,7 +343,8 @@ async def update_user(
     await audit(db, action=action, user=current_user,
                 table_name="users", record_id=str(user.id),
                 old_value=old_vals,
-                new_value={"full_name": full_name, "role": role, "status": new_status, "entity": entity})
+                new_value={"full_name": full_name, "role": role, "status": new_status, "entity": entity,
+                           "entities": user.entities})
     await db.commit()
     return RedirectResponse(url="/admin/users?success=User+updated", status_code=302)
 
