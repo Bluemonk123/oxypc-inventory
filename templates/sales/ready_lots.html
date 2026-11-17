@@ -40,14 +40,19 @@
    GRADES > AS-IS LOTS (the lots' tags by grade), all counted from the As-Is
    Lot table below — its filters and its search box. #}
 {% call rt.tiles('tags in the As-Is Lot table') %}
+  {# 2026-11-17 (Pankaj): Available / Blocked moved to their own Availability
+     tile; Grades and Touch Types splits on one line. #}
   {{ rt.tint('As-Is Stock', '#6f42c1', 'bi-boxes',
-             [[('Total Quantity', 'lots')], [('Available', 'open'), ('Blocked', 'blocked')]],
+             [[('Total Quantity', 'lots')]],
              href='/sales/lots', title='Ready for Sale - As-Is Lots') }}
+  {{ rt.tint('Availability', '#d63384', 'bi-check2-circle',
+             [[('Available', 'open'), ('Blocked', 'blocked')]],
+             title='Available = lots not assigned; Blocked = assigned') }}
   {{ rt.tint('Grades > As-Is Lots', '#fd7e14', 'bi-award',
-             [[('A', 'g_A'), ('B', 'g_B')], [('C', 'g_C'), ('D', 'g_D')]],
+             [[('A', 'g_A'), ('B', 'g_B'), ('C', 'g_C'), ('D', 'g_D')]],
              title="Grades of the tags in these As-Is lots") }}
   {{ rt.tint('Touch Types', '#0aa2c0', 'bi-hand-index',
-             [[('Normal', 'non_touch')], [('Touch', 'touch')]],
+             [[('Normal', 'non_touch'), ('Touch', 'touch')]],
              title='Normal = non-touch tags in these lots; Touch = tags Final QC marked Touch') }}
 {% endcall %}
 
@@ -191,8 +196,7 @@
       {{ ms.multiselect_inline('am_dtype', 'Device Types', device_type_options, f.am_dtype) }}
       {{ ms.multiselect_inline('am_grade', 'Grades', summary_grade_options, f.am_grade) }}
       {{ ms.multiselect_inline('am_make', 'Make', make_options, f.am_make) }}
-      {{ touch_select('amTouch', f.am_touch) }}
-      {{ ms.multiselect_inline('am_stock', 'Stock Type', stock_type_options, f.am_stock) }}
+      {# Touch Type + Stock Type removed from Model Summary (2026-11-17, Pankaj). #}
       {{ ms.multiselect_inline('am_loc', 'Locations', location_options, f.am_loc) }}
       {{ avail_select('amAvail', f.am_avail) }}
       {% if can(current_user, 'sales', 'export') %}<button type="button" id="amExportBtn" class="btn btn-primary btn-sm text-nowrap" title="Export the tags of the rows shown (filters and search) — All Inventory format"><i class="bi bi-file-earmark-arrow-down me-1"></i><span class="ms-export-count">0</span></button>{% endif %}
@@ -400,7 +404,8 @@ function readyPageUrl(){
    ['al_grade','ms_val_al_grade'],['al_avail','alAvail'],
    ['am_touch','amTouch'],['am_entity','ms_val_am_entity'],['am_dtype','ms_val_am_dtype'],
    ['am_make','ms_val_am_make'],['am_stock','ms_val_am_stock'],['am_loc','ms_val_am_loc'],['am_avail','amAvail']].forEach(function(x){
-    if (v(x[1])) p.set(x[0], v(x[1]));
+    // Entity always sent: empty = all entities, absent = profile Entity (2026-11-17).
+    if (v(x[1]) || /_entity$/.test(x[0])) p.set(x[0], v(x[1]));
   });
   var q = p.toString();
   return window.location.pathname + (q ? '?' + q : '');

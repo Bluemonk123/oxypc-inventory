@@ -327,7 +327,8 @@
           <label for="roleSelector" class="fw-semibold small mb-0"><i class="bi bi-person-badge me-1"></i>Select Role</label>
           <select id="roleSelector" class="form-select form-select-sm" style="max-width:280px"
                   onchange="location.href='/admin/master?main_tab=permissions&role='+this.value">
-            {% for rval, rlabel in all_roles %}
+            {# A–Z by display name (2026-11-17, Pankaj) #}
+            {% for rval, rlabel in all_roles|sort(attribute='1') %}
             <option value="{{ rval }}" {{ 'selected' if rval == sel_role else '' }}>{{ rlabel }}</option>
             {% endfor %}
           </select>

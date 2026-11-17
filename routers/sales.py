@@ -114,6 +114,19 @@ async def _next_sale_number(db: AsyncSession) -> str:
     return f"SALE-{seq:04d}"
 
 
+async def _profile_entity(db, user) -> str:
+    """The user's profile Entity spelled as the Entity filter's option
+    (capitals / spaces ignored), or "" when unset or not an option."""
+    from utils.master_data import entity_values
+    mine = "".join((getattr(user, "entity", "") or "").lower().split())
+    if not mine:
+        return ""
+    for e in await entity_values(db):
+        if "".join((e or "").lower().split()) == mine:
+            return e
+    return ""
+
+
 def _entity_values(raw: str) -> list:
     """Entity multi-select posts one comma-separated value (see
     templates/_multiselect_filter.html); entity names never contain a comma."""
@@ -672,8 +685,11 @@ async def ready_list(request: Request, db: AsyncSession = Depends(get_db),
     # Tag Wise Table opens with OxyPC Computers + Renew Circuits ticked (2026-11-04),
     # same default as the Dashboard / All Inventory.
     from utils.master_data import default_entity_selection
+    # Entity (2026-11-17, Pankaj): the user's profile Entity when set, else
+    # the OxyPC + Renew Circuits default.
     return await _ready_page(request, db, current_user, "sales/ready_list.html",
-                             extra={"entity_default": await default_entity_selection(db),
+                             extra={"entity_default": (await _profile_entity(db, current_user)
+                                                       or await default_entity_selection(db)),
                                     # Counter Sales opens on the Tags tab; everyone
                                     # else on Model Summary (2026-11-12, Pankaj).
                                     "tags_first": getattr(current_user.role, "value", current_user.role) == "counter_sales"})
@@ -694,9 +710,13 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
     # ms_* = Ready for Sale Model Summary, al_* = As-Is Lot, am_* = As-Is
     # Model Summary. The Tag table filters through /sales/ready/data instead.
     qp = request.query_params
-    ms_touch, ms_entities = qp.get("ms_touch", ""), _entity_values(qp.get("ms_entity", ""))
-    al_touch, al_entities = qp.get("al_touch", ""), _entity_values(qp.get("al_entity", ""))
-    am_touch, am_entities = qp.get("am_touch", ""), _entity_values(qp.get("am_entity", ""))
+    # Entity (2026-11-17, Pankaj): each tab opens on the user's profile Entity;
+    # a present-but-empty value (filter cleared) means all entities.
+    _pe = await _profile_entity(db, current_user)
+    ent = {k: (qp.get(k, "") if k in qp else _pe) for k in ("ms_entity", "al_entity", "am_entity")}
+    ms_touch, ms_entities = qp.get("ms_touch", ""), _entity_values(ent["ms_entity"])
+    al_touch, al_entities = qp.get("al_touch", ""), _entity_values(ent["al_entity"])
+    am_touch, am_entities = qp.get("am_touch", ""), _entity_values(ent["am_entity"])
     # Grades filter on the two Model Summary tabs: A/B/C/D/E, "NG" = no grade.
     ms_grades = set(_entity_values(qp.get("ms_grade", "")))
     am_grades = set(_entity_values(qp.get("am_grade", "")))
@@ -1057,10 +1077,10 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
         "interested_dealers": interested_dealers,
         "model_summary_ready": model_summary_ready,
         "model_summary_as_is": model_summary_as_is,
-        "f": {"ms_touch": ms_touch, "ms_avail": ms_avail, "ms_entity": qp.get("ms_entity", ""),
-              "al_touch": al_touch, "al_entity": qp.get("al_entity", ""),
+        "f": {"ms_touch": ms_touch, "ms_avail": ms_avail, "ms_entity": ent["ms_entity"],
+              "al_touch": al_touch, "al_entity": ent["al_entity"],
               "al_grade": qp.get("al_grade", ""), "al_avail": al_avail,
-              "am_touch": am_touch, "am_entity": qp.get("am_entity", ""),
+              "am_touch": am_touch, "am_entity": ent["am_entity"],
               "ms_dtype": qp.get("ms_dtype", ""), "al_dtype": qp.get("al_dtype", ""),
               "am_dtype": qp.get("am_dtype", ""),
               "ms_grade": qp.get("ms_grade", ""), "am_grade": qp.get("am_grade", ""),

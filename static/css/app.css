@@ -729,6 +729,13 @@ fieldset:disabled .btn {
 .card-header .ms-filter .btn { height: 31px !important; min-height: 31px; padding-top: .25rem; padding-bottom: .25rem;
   background-color: var(--oxy-surface) !important; border: 1px solid var(--oxy-border) !important; border-radius: 8px !important; line-height: 1.5; }
 .card-header .input-group > .form-control, .card-header .input-group > .form-select { border-radius: 0 !important; }
+/* Card-header multi-selects fit their "All …" text (2026-11-17, Pankaj; was a
+   fixed 150px minimum): the label reserves that text's width invisibly
+   (data-ph from templates/_multiselect_filter.html), so "2 selected" doesn't
+   shrink the box. A page that sets its own width keeps it. */
+.card-header .ms-filter > .btn { min-width: 0 !important; }
+.card-header .ms-filter .ms-label[data-ph] { display: inline-grid; overflow: visible; text-overflow: clip; white-space: nowrap; text-align: left; }
+.card-header .ms-filter .ms-label[data-ph]::after { content: attr(data-ph); visibility: hidden; height: 0; grid-area: 1 / 1; overflow: hidden; }
 .card-header .input-group > :first-child { border-top-left-radius: 8px !important; border-bottom-left-radius: 8px !important; }
 .card-header .input-group > :last-child { border-top-right-radius: 8px !important; border-bottom-right-radius: 8px !important; }
 .filter-bar .ms-label { overflow: hidden; text-overflow: ellipsis; }

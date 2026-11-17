@@ -9,10 +9,11 @@
   #devicesTable tbody td { white-space: nowrap; vertical-align: middle; }
   #devicesTable tbody td .gtable-clamp2 { white-space: nowrap; }
   /* Model Based Summary header: filters shrink to fit beside the title. */
-  #msFilters { flex: 1 1 auto; min-width: 0; justify-content: flex-end; }
-  #msFilters > div { flex: 1 1 0; min-width: 0; max-width: 160px; }
-  #msFilters .ms-filter .btn { min-width: 0 !important; width: 100%; background-color: #fff; color: #212529; }
-  #msFilters .ms-label { overflow: hidden; text-overflow: ellipsis; }
+  /* Filters fit their "All …" text (global card-header rule in app.css,
+     2026-11-17) and wrap to a second line on narrow screens. */
+  #msFilters { flex: 1 1 auto; min-width: 0; justify-content: flex-end; flex-wrap: wrap; row-gap: .4rem; }
+  #msFilters > div { flex: 0 0 auto; }
+  #msFilters .ms-filter .btn { background-color: #fff; color: #212529; }
 </style>
 {% endblock %}
 {% block page_title %}Inventory Search{% endblock %}
@@ -281,7 +282,9 @@
    Storage (words together or alone); the Total row (tfoot) sums only the rows
    that search leaves visible. #}
 <div class="card border-0 shadow-sm">
-  <div class="card-header bg-white py-2">
+  {# data-hdr-keep: this header lays out its own ↻ Reset (filter-fields.js
+     added a second one beside the old text button, 2026-11-17). #}
+  <div class="card-header bg-white py-2" data-hdr-keep>
     {# Title, the 6 filters and Reset stay on ONE line: the filters share the
        space left after the title and shrink together (text ends in "…"). #}
     <div class="d-flex justify-content-between align-items-center flex-nowrap gap-2">
@@ -296,7 +299,7 @@
         {{ ms.multiselect_inline('s_stock', 'Stock Type', [('finish_good', 'Finish Good'), ('as_is', 'As-Is'), ('in_progress', 'In Progress')], '') }}
         {{ ms.multiselect_inline('s_loc', 'Location', ms_loc_options, '') }}
         {{ ms.multiselect_inline('s_avail', 'Availability', [('open', 'Open'), ('blocked', 'Blocked')], '') }}
-        <button type="button" id="msResetBtn" class="btn btn-sm btn-outline-secondary bg-white flex-shrink-0" title="Clear these filters">Reset</button>
+        <button type="button" id="msResetBtn" class="btn btn-sm btn-outline-secondary bg-white flex-shrink-0 hdr-reset" title="Reset filters" aria-label="Reset filters"><i class="bi bi-arrow-counterclockwise"></i></button>
         {# Export (2026-11-16): every tag of the rows shown (filters + search), All Inventory format #}
         {% if can(current_user, 'devices', 'export') %}<button type="button" id="msExportAllBtn" class="btn btn-sm btn-primary text-nowrap flex-shrink-0" title="Export the tags of the rows shown — All Inventory format"><i class="bi bi-file-earmark-arrow-down me-1"></i><span class="ms-export-count">0</span></button>{% endif %}
       </div>
@@ -786,9 +789,8 @@ $(document).ready(function() {
       return msBadge(k + '-' + m[k], k === 'As-Is' ? 'warning text-dark' : (k === 'In Progress' ? 'secondary' : 'success'));
     }).join('') + '</span>';
   }
-  function msTotalHtml(total, m, dl) {
-    // Download icon (2026-11-16, Pankaj): every tag of this row, All Inventory format.
-    return '<span class="text-nowrap">' + (dl && MS_EXPORT ? '<button type="button" class="btn btn-link p-0 me-1 align-baseline ms-row-dl" title="Download all ' + total + ' tags of this model"><i class="bi bi-download"></i></button>' : '') +
+  function msTotalHtml(total, m) {
+    return '<span class="text-nowrap">' +
       '<strong class="me-1">' + total + '</strong>' +
       msOrdered(m).map(function (k) {
         return msBadge((MS.abbr[k] || k) + '-' + m[k], 'light text-dark border', k);
@@ -802,13 +804,17 @@ $(document).ready(function() {
   function msMoney(v) { return '₹' + Math.round(Number(v || 0)).toLocaleString('en-IN'); }
 
   var msColumns = [
-    { data: 'model', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
+    // Download icon before the Model name (2026-11-17, Pankaj; was in Total Quantity).
+    { data: 'model', render: function (d, t, row) {
+      if (t !== 'display') return d;
+      return (MS_EXPORT ? '<button type="button" class="btn btn-link p-0 me-1 align-baseline ms-row-dl" title="Download all ' + row.total + ' tags of this model"><i class="bi bi-download"></i></button>' : '') + msEsc(d);
+    } },
     { data: 'make', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
     { data: 'cpu', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
     { data: 'gen', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
     { data: 'ram', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
     { data: 'storage', render: function (d, t) { return t === 'display' ? msEsc(d) : d; } },
-    { data: 'total', render: function (d, t, row) { return t === 'display' ? msTotalHtml(d, row.entity, true) : d; } },
+    { data: 'total', render: function (d, t, row) { return t === 'display' ? msTotalHtml(d, row.entity) : d; } },
     { data: 'touch', orderable: false, render: function (d, t) { return t === 'display' ? msTouchHtml(d) : ''; } },
     { data: 'grade', orderable: false, render: function (d, t) { return t === 'display' ? msGradeHtml(d) : ''; } },
     { data: 'dtype', orderable: false, render: function (d, t) { return t === 'display' ? msListHtml(d) : ''; } },

@@ -85,13 +85,18 @@
 {# Pre-Sale IQC shows no tiles (2026-10-29). #}
 {% if not _ps %}
 {% call rt.tiles('in the Ready for Sale Tags table') %}
+  {# 2026-11-17 (Pankaj): same layout as Ready for Sale - Lots — Availability
+     tile of its own; Grades and Touch Types splits on one line. #}
   {{ rt.tint('Inventory Stock', '#0d6efd', 'bi-box-seam',
-             [[('Total Quantity', 'total')], [('Available', 'open'), ('Blocked', 'blocked')]],
+             [[('Total Quantity', 'total')]],
              href=('/pre-sale-iqc' if _ps else '/sales/ready'), title='Ready for Sale - Tags') }}
+  {{ rt.tint('Availability', '#d63384', 'bi-check2-circle',
+             [[('Available', 'open'), ('Blocked', 'blocked')]],
+             title='Available = not blocked; Blocked = blocked for a customer') }}
   {{ rt.tint('Grades > Tags', '#0F7A37', 'bi-award',
-             [[('A', 'g_A'), ('B', 'g_B')], [('C', 'g_C'), ('D', 'g_D')]]) }}
+             [[('A', 'g_A'), ('B', 'g_B'), ('C', 'g_C'), ('D', 'g_D')]]) }}
   {{ rt.tint('Touch Types', '#0aa2c0', 'bi-hand-index',
-             [[('Normal', 'non_touch')], [('Touch', 'touch')]],
+             [[('Normal', 'non_touch'), ('Touch', 'touch')]],
              title='Normal = non-touch tags; Touch = tags Final QC marked Touch') }}
 {% endcall %}
 {% else %}
@@ -266,8 +271,7 @@
       {{ ms.multiselect_inline('ms_dtype', 'Device Types', device_type_options, f.ms_dtype) }}
       {{ ms.multiselect_inline('ms_grade', 'Grades', summary_grade_options, f.ms_grade) }}
       {{ ms.multiselect_inline('ms_make', 'Make', make_options, f.ms_make) }}
-      {{ touch_select('msTouch', f.ms_touch) }}
-      {{ ms.multiselect_inline('ms_stock', 'Stock Type', stock_type_options, f.ms_stock) }}
+      {# Touch Type + Stock Type removed from Model Summary (2026-11-17, Pankaj). #}
       {% if location_options is defined %}{{ ms.multiselect_inline('ms_loc', 'Locations', location_options, f.ms_loc) }}{% endif %}
       {{ avail_select('msAvail', f.ms_avail) }}
       {# Export (2026-10-27): the tags of every row the summary shows. #}
@@ -1045,7 +1049,8 @@ function readyPageUrl(){
   function v(id){ return (document.getElementById(id) || {}).value || ''; }
   [['ms_touch','msTouch'],['ms_avail','msAvail'],['ms_entity','ms_val_ms_entity'],['ms_dtype','ms_val_ms_dtype'],
    ['ms_grade','ms_val_ms_grade'],['ms_loc','ms_val_ms_loc'],['ms_make','ms_val_ms_make'],['ms_stock','ms_val_ms_stock']].forEach(function(x){
-    if (v(x[1])) p.set(x[0], v(x[1]));
+    // Entity always sent: empty = all entities, absent = profile Entity (2026-11-17).
+    if (v(x[1]) || /_entity$/.test(x[0])) p.set(x[0], v(x[1]));
   });
   var q = p.toString();
   return window.location.pathname + (q ? '?' + q : '');
