@@ -291,6 +291,12 @@ body {
 .tab-pane .card > .card-header:is(.fw-semibold, .fw-bold) {
   text-transform: none; letter-spacing: normal; font-size: .875rem;
 }
+/* ...and no icon before that title (2026-11-17, Pankaj): the tab above
+   already shows one. Only the title's leading icon — buttons, badges and
+   filters in the header keep theirs. */
+.tab-pane .card > .card-header > :is(.fw-semibold, h5, h6, strong, .card-title):not(.badge):not(.btn) > .bi:first-child,
+.tab-pane .card > .card-header > div:first-child > :is(.fw-semibold, strong):first-child:not(.badge):not(.btn) > .bi:first-child,
+.tab-pane .card > .card-header:is(.fw-semibold, .fw-bold) > .bi:first-child { display: none; }
 .card > .card-header .badge { display: inline-flex; align-items: center; justify-content: center; line-height: 1; padding: .4em .65em .3em; }
 .card > .card-header .form-switch { display: inline-flex; align-items: center; gap: .5rem; padding-left: 0; margin: 0; min-height: 0; white-space: nowrap; }
 .card > .card-header .form-switch .form-check-input { float: none; margin: 0; flex-shrink: 0; }
