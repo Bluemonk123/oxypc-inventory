@@ -523,7 +523,8 @@
 
 
       {# ── SALES & CRM (Overdue Orders removed — now on Sales List page) ─ #}
-      {% if any_perm(role,'dealers','telecalling','quotations','model_requests','whatsapp','assign_dealer_leads','telesales_dashboard') %}
+      {# sales_coordinator added 2026-11-17: a role with only Sales Coordinator ticked got no SALES & CRM section, so no link. #}
+      {% if any_perm(role,'dealers','telecalling','quotations','model_requests','whatsapp','assign_dealer_leads','telesales_dashboard','sales_coordinator') %}
       <li class="nav-section" data-sb="sec:SALES & CRM" style="order: {{ sb_order('sec:SALES & CRM') }}">SALES & CRM</li>
       {% if has_perm(role,'telesales_dashboard','enable') and not module_hidden('telesales_dashboard') %}
       <li data-sb="/telesales-dashboard" style="order: {{ sb_order('/telesales-dashboard') }}"><a href="/telesales-dashboard" class="nav-link {% if request.url.path.startswith('/telesales-dashboard') %}active{% endif %}">
