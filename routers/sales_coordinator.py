@@ -1,9 +1,12 @@
 """Sales Coordinator (2026-11-14, Pankaj): one page with four cards that
 follow a showroom tag from Floor Movement to the gate.
 
-  1 Moved to Showroom    tags whose latest Floor Movement (Move Device,
-                         routers/transfers.py) sent them to the Showroom.
-                         Pending until sold, then Done. "Send to Pre-Sale"
+  1 Moved to Showroom    one row per Floor Movement (Move Device,
+                         routers/transfers.py) that sent a tag to the
+                         Showroom. Done once sold after that move — kept
+                         even if the tag is later returned / repaired;
+                         Pending while unsold, still there, and no stage
+                         change since (2026-11-17). "Send to Pre-Sale"
                          (notes modal) queues the tag for Pre-Sale IQC through
                          /pre-sale-iqc/assign; while that WorkID is open the
                          button reads "Waiting at Pre-Sale".
@@ -17,6 +20,8 @@ follow a showroom tag from Floor Movement to the gate.
 Who sees what (2026-11-14): a user sees only the tags Floor Movement
 assigned to them (the movement's Assigned To employee, its "asgn" WorkID) —
 those tags through Pre-Sale QC, Sales and Exits. Admin sees every tag.
+Since 2026-11-17 any showroom move assigned to them counts, not only the
+tag's latest move, so a later move elsewhere doesn't hide their past sales.
 
 Filters (GET): entity (default: the user's profile Entity), date_from /
 date_to, category, sales_person — multi-selects are comma-separated.
@@ -35,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth.dependencies import require_module_perm
 from database import get_db
-from models.device import Device, DeviceStage
+from models.device import Device, DeviceStage, StageMovement
 from models.location import StorageLocation, ZoneType
 from models.sales import Sale
 from models.stock_transfer import StockTransfer
@@ -117,30 +122,49 @@ def _showroom_cond():
 
 
 async def _showroom_moves(db, me: str | None):
-    """{device_id: (StockTransfer, assignee username)} — each tag's LATEST
-    device Floor Movement, kept only when it went to the Showroom (and, for
-    a non-admin, was assigned to `me`). Three simple queries instead of one
-    big join: the join on work_orders.source_transfer_id took ~13 s on
-    production-size data (2026-11-14)."""
-    latest = (await db.execute(
-        select(StockTransfer)
-        .where(StockTransfer.move_kind == "device", StockTransfer.device_id.isnot(None))
-        .order_by(StockTransfer.device_id, desc(StockTransfer.transfer_date), desc(StockTransfer.created_at))
-        .distinct(StockTransfer.device_id))).scalars().all()
+    """{device_id: [(StockTransfer, assignee, next_move_at), ...]} — EVERY
+    device Floor Movement that sent the tag to the Showroom (2026-11-17,
+    Pankaj; was only the tag's latest move), kept for a non-admin only when
+    it was assigned to `me`. next_move_at is when the tag's next Floor
+    Movement (anywhere) happened, None while this one is still its latest.
+    Each showroom move is its own record, so a tag sold, returned and moved
+    again keeps the first coordinator's sale in their history. Simple
+    queries instead of one big join: the join on
+    work_orders.source_transfer_id took ~13 s on production-size data."""
     show_locs = set((await db.execute(
         select(StorageLocation.id).where(StorageLocation.zone == ZoneType.showroom))).scalars().all())
-    moves = [t for t in latest
-             if t.transfer_type == "trc_to_showroom" or "showroom" in (t.to_warehouse or "").lower()
-             or (t.to_location_id and t.to_location_id in show_locs)]
+    show_cond = or_(StockTransfer.transfer_type == "trc_to_showroom",
+                    func.lower(StockTransfer.to_warehouse).contains("showroom"),
+                    *([StockTransfer.to_location_id.in_(show_locs)] if show_locs else []))
+    shows = (await db.execute(
+        select(StockTransfer)
+        .where(StockTransfer.move_kind == "device", StockTransfer.device_id.isnot(None), show_cond))).scalars().all()
+    if not shows:
+        return {}
     assignee = {}
-    ids = [t.id for t in moves]
+    ids = [t.id for t in shows]
     for k in range(0, len(ids), 5000):
         for tid, user in (await db.execute(
                 select(WorkOrder.source_transfer_id, WorkOrder.assigned_username)
                 .where(WorkOrder.source_transfer_id.in_(ids[k:k + 5000]), WorkOrder.stage == "asgn"))).all():
             assignee[tid] = user
-    return {t.device_id: (t, assignee.get(t.id)) for t in moves
-            if me is None or assignee.get(t.id) == me}
+    mine = [t for t in shows if me is None or assignee.get(t.id) == me]
+    # Every Floor Movement time of those tags, to find each showroom move's next move.
+    times: dict = {}
+    dids = list({t.device_id for t in mine})
+    for k in range(0, len(dids), 5000):
+        for did, tid, at, ca in (await db.execute(
+                select(StockTransfer.device_id, StockTransfer.id, StockTransfer.transfer_date, StockTransfer.created_at)
+                .where(StockTransfer.move_kind == "device", StockTransfer.device_id.in_(dids[k:k + 5000])))).all():
+            times.setdefault(did, []).append(((at or ca or datetime.min), (ca or at or datetime.min), tid))
+    for v in times.values():
+        v.sort()
+    out: dict = {}
+    for t in mine:
+        key = ((t.transfer_date or t.created_at or datetime.min), (t.created_at or t.transfer_date or datetime.min), t.id)
+        later = [x for x in times.get(t.device_id, ()) if x > key]
+        out.setdefault(t.device_id, []).append((t, assignee.get(t.id), later[0][0] if later else None))
+    return out
 
 
 async def _psiqc_latest(db, device_ids) -> dict:
@@ -163,8 +187,44 @@ def _in_scope(col, scope):
     return [col.in_(list(scope) or [None])]
 
 
+async def _stage_changes(db, device_ids) -> dict:
+    """{device_id: latest stage change time} — a real stage change
+    (from != to) that isn't a sale. Used so a tag sent back to repair / QC /
+    cosmetic after its showroom move (no new Floor Movement) leaves Pending
+    (2026-11-17, Pankaj)."""
+    out = {}
+    ids = list(device_ids)
+    for k in range(0, len(ids), 5000):
+        for did, last in (await db.execute(
+                select(StageMovement.device_id, func.max(StageMovement.moved_at))
+                .where(StageMovement.device_id.in_(ids[k:k + 5000]),
+                       StageMovement.from_stage.isnot(None),
+                       StageMovement.from_stage != StageMovement.to_stage,
+                       StageMovement.to_stage != DeviceStage.sold)
+                .group_by(StageMovement.device_id))).all():
+            out[did] = last
+    return out
+
+
+async def _sold_times(db, device_ids) -> dict:
+    """{device_id: [sold_at, ...]} from the Sale rows (a return keeps them)."""
+    out = {}
+    ids = list(device_ids)
+    for k in range(0, len(ids), 5000):
+        for did, at in (await db.execute(
+                select(Sale.device_id, Sale.sold_at).where(Sale.device_id.in_(ids[k:k + 5000])))).all():
+            if at:
+                out.setdefault(did, []).append(at)
+    return out
+
+
 async def _showroom_rows(db, moves, f: Filters):
-    """Card 1."""
+    """Card 1, one row per showroom move (2026-11-17, Pankaj):
+      Done    — the tag was sold after this move (before its next Floor
+                Movement). Kept for good: a later return / repair doesn't
+                undo the coordinator's sale.
+      Pending — not sold since, still the tag's latest Floor Movement, and
+                no stage change since (else it has left the showroom)."""
     if not moves:
         return [], []
     devs = {}
@@ -172,22 +232,32 @@ async def _showroom_rows(db, moves, f: Filters):
     for k in range(0, len(ids), 5000):
         for d in (await db.execute(select(Device).where(Device.id.in_(ids[k:k + 5000]), *f.device()))).scalars():
             devs[d.id] = d
-    rows = []
-    for did, (t, assignee) in moves.items():
+    changed = await _stage_changes(db, devs)
+    sold = await _sold_times(db, devs)
+    pending, done = [], []
+    for did, recs in moves.items():
         d = devs.get(did)
         if not d:
             continue
-        if f.date_from and (not t.transfer_date or t.transfer_date < f.date_from):
-            continue
-        if f.date_to and (not t.transfer_date or t.transfer_date >= f.date_to + timedelta(days=1)):
-            continue
-        rows.append({"d": d, "spec": spec_line(d), "category": category_of(d),
-                     "location": t.to_warehouse if t.to_warehouse and t.to_warehouse != "—" else "",
-                     "moved_at": t.transfer_date, "moved_by": t.transferred_by or t.created_by,
-                     "assignee": assignee})
-    rows.sort(key=lambda r: r["moved_at"] or datetime.min, reverse=True)
-    pending = [r for r in rows if r["d"].current_stage != DeviceStage.sold]
-    done = [r for r in rows if r["d"].current_stage == DeviceStage.sold]
+        for t, assignee, next_at in recs:
+            at = t.transfer_date or t.created_at
+            if f.date_from and (not at or at < f.date_from):
+                continue
+            if f.date_to and (not at or at >= f.date_to + timedelta(days=1)):
+                continue
+            row = {"d": d, "spec": spec_line(d), "category": category_of(d),
+                   "location": t.to_warehouse if t.to_warehouse and t.to_warehouse != "—" else "",
+                   "moved_at": t.transfer_date, "moved_by": t.transferred_by or t.created_by,
+                   "assignee": assignee}
+            sales = [x for x in sold.get(did, ()) if at and x >= at and (next_at is None or x < next_at)]
+            if sales:
+                row["sold_at"] = min(sales)
+                done.append(row)
+            elif (next_at is None and d.current_stage != DeviceStage.sold
+                  and not (changed.get(did) and at and changed[did] > at)):
+                pending.append(row)
+    pending.sort(key=lambda r: r["moved_at"] or datetime.min, reverse=True)
+    done.sort(key=lambda r: r.get("sold_at") or r["moved_at"] or datetime.min, reverse=True)
     _showroom_rows.last_counts = (len(pending), len(done))      # dashboard tiles (before the row cap)
     pending, done = pending[:ROW_CAP], done[:ROW_CAP]
     wos = await _psiqc_latest(db, [r["d"].id for r in pending])
