@@ -1618,9 +1618,13 @@ span.hf { display: inline-block; vertical-align: middle; }
 .mcd-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; padding:12px; align-items:stretch; }
 .mcd-grid.mcd-busy { opacity:.55; pointer-events:none; }
 .mcd-empty { padding:24px; text-align:center; color:#6c757d; font-size:.875rem; }
-.mcd-card { background:var(--oxy-surface); border:1px solid var(--oxy-border); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; color:var(--oxy-text-main); }
+.mcd-card { background:var(--oxy-surface); border:1px solid var(--oxy-border); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; color:var(--oxy-text-main); transition:box-shadow .15s ease, border-color .15s ease; }
+/* Hover (2026-11-18): dark highlight shadow. */
+.mcd-card:hover { box-shadow:0 4px 16px 12px rgba(14,30,60,.4); border-color:#b8c4d4; }
+[data-bs-theme=dark] .mcd-card:hover { box-shadow:0 8px 24px rgba(255,255,255,.7); border-color:#4a5563; }
+#mcdModalBody .mcd-card:hover { box-shadow:none; }
 .mcd-hd { padding:12px 14px 18px; position:relative; }
-.mcd-cat { position:absolute; right:-14px; top:0; font-size:70px; line-height:1; color:var(--brand-blue); opacity:.14; pointer-events:none; }
+.mcd-cat { position:absolute; right:-14px; top:0; font-size:70px; line-height:1; color:var(--brand-blue); opacity:.1; pointer-events:none; }
 [data-bs-theme=dark] .mcd-cat { color:#dbe6f5; }
 .mcd-mk { font-size:11px; color:#6c757d; position:relative; }
 .mcd-nm { font-weight:600; font-size:14px; line-height:1.25; color:var(--brand-blue); position:relative; padding-right:46px; }
