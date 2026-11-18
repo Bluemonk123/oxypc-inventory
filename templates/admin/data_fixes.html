@@ -10,6 +10,11 @@
 {# Layout (2026-11-05, Pankaj): cards side by side in a row are the same height
    (.h-100), and every list shows at most 20 rows, then scrolls (header stays). #}
 <style>
+  /* Sortable headers (2026-11-18): Product Model Name and Make tables. */
+  .df-sort th[data-sort] { cursor:pointer; user-select:none; white-space:nowrap; }
+  .df-sort th[data-sort]::after { content:"\2195"; opacity:.35; margin-left:.3rem; font-size:.8em; }
+  .df-sort th[data-sort].asc::after { content:"\2191"; opacity:1; }
+  .df-sort th[data-sort].desc::after { content:"\2193"; opacity:1; }
   .df-card .card-header{flex-wrap:wrap; gap:.5rem}
   .df-scroll{overflow:auto}
   .df-chev{transition:transform .15s}
@@ -68,7 +73,7 @@
         </div>
         <div style="max-height:520px;overflow:auto">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light" style="position:sticky;top:0"><tr><th style="width:12%">Make</th><th style="width:9%">Category</th><th style="width:31%">Spellings now (tags)</th><th>Save as</th><th class="text-end">Tags to change</th></tr></thead>
+          <thead class="table-light df-sort" style="position:sticky;top:0;z-index:2"><tr><th style="width:12%" data-sort="text">Make</th><th style="width:9%" data-sort="text">Category</th><th style="width:31%" data-sort="spell">Spellings now (tags)</th><th data-sort="input">Save as</th><th class="text-end" data-sort="num">Tags to change</th></tr></thead>
           <tbody>
           {# One row per Model + Make (2026-11-06): the same model saved under
              another Make gets its own row. ⬇ downloads that spelling's tags. #}
@@ -148,7 +153,7 @@
         </div>
         <div style="max-height:460px;overflow:auto">
         <table class="table table-sm align-middle mb-0">
-          <thead class="table-light" style="position:sticky;top:0"><tr><th style="width:38%">Spellings now (tags)</th><th>Save as</th><th class="text-end">Tags to change</th></tr></thead>
+          <thead class="table-light df-sort" style="position:sticky;top:0;z-index:2"><tr><th style="width:38%" data-sort="spell">Spellings now (tags)</th><th data-sort="input">Save as</th><th class="text-end" data-sort="num">Tags to change</th></tr></thead>
           <tbody>
           {% for g in mk_groups %}
             <tr class="mk-row" data-fix="{{ 1 if g.to_change else 0 }}" data-master="{{ 1 if g.master else 0 }}"
@@ -1198,6 +1203,36 @@
 
 {% block scripts %}
 <script>
+// Sortable columns (2026-11-18, Pankaj): click a header to sort, again to reverse.
+// Spellings = total tags of the row; Save as = the box's text; numbers sort as numbers.
+(function () {
+  function key(tr, i, kind) {
+    var td = tr.children[i]; if (!td) return '';
+    if (kind === 'spell') {
+      var n = 0; td.querySelectorAll('[data-n]').forEach(function (e) { n += +e.dataset.n || 0; });
+      if (!n) (td.textContent.match(/\(([\d,]+)\)/g) || []).forEach(function (m) { n += +m.replace(/[^\d]/g, '') || 0; });
+      return n;
+    }
+    if (kind === 'input') { var inp = td.querySelector('input'); return ((inp ? inp.value : td.textContent) || '').trim().toLowerCase(); }
+    if (kind === 'num') return +(td.textContent.replace(/[^\d.-]/g, '')) || 0;
+    return td.textContent.trim().toLowerCase();
+  }
+  document.querySelectorAll('thead.df-sort th[data-sort]').forEach(function (th) {
+    th.title = 'Sort';
+    th.addEventListener('click', function () {
+      var table = th.closest('table'), body = table.tBodies[0], i = Array.prototype.indexOf.call(th.parentNode.children, th);
+      var dir = th.classList.contains('asc') ? -1 : 1, kind = th.dataset.sort;
+      th.parentNode.querySelectorAll('th').forEach(function (x) { x.classList.remove('asc', 'desc'); });
+      th.classList.add(dir === 1 ? 'asc' : 'desc');
+      var rows = Array.prototype.slice.call(body.rows);
+      rows.sort(function (a, b) {
+        var x = key(a, i, kind), y = key(b, i, kind);
+        return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true })) * dir;
+      });
+      rows.forEach(function (r) { body.appendChild(r); });
+    });
+  });
+})();
 $(document).ready(function () {
   // Two-click confirm instead of confirm(): the desktop app's browser pane
   // blocks confirm() pop-ups silently, which left the button doing nothing.
