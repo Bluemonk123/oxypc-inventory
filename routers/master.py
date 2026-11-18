@@ -55,7 +55,7 @@ ACCORDION_SECTIONS = [
             "floor", "warehouse", "location_zone", "location_unit_type", "supplier",
             "data_destruction_method",
             "transfer_type", "po_category", "spare_parts_ram_action", "spare_parts_ram_gb",
-            "spare_parts_consume_stage", "report_year",
+            "spare_parts_consume_stage", "report_year", "holiday",
         ],
     },
     {
@@ -508,6 +508,9 @@ CATEGORIES = [
     ("spare_parts_ram_gb",  "Spare Parts: RAM Capacity (GB)", "inventory"),
     ("spare_parts_consume_stage", "Spare Parts: Consumption Stage", "inventory"),
     ("report_year",         "Reports: Year Options (Dashboard/Business P&L)", "inventory"),
+    # Holidays (2026-11-18, Pankaj): left out of the All Inventories export's
+    # Ageing days, like Sundays. Value = the date (26-Jan-2026 or 2026-01-26), Description = its name.
+    ("holiday",             "Ageing: Holidays (Value = date e.g. 26-Jan-2026, Description = name)", "inventory"),
     # ── Sales / Returns ──────────────────────────────────────────
     ("payment_mode",        "Payment Modes",                "sales"),
     ("transport_mode",      "Sales: Transport Mode",        "sales"),

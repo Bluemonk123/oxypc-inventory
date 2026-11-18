@@ -62,8 +62,14 @@ def _run_export(monkeypatch, devices, pna_ids):
 
 
 def test_header_ends_with_pna_and_stock():
-    assert _EXPORT_HEADER[-2:] == ["PNA", "Stock"]
-    assert _EXPORT_HEADER[-4:-2] == ["Created", "Updated"]
+    # PNA / Stock, then the 14 Ageing columns (2026-11-18).
+    i = _EXPORT_HEADER.index("PNA")
+    assert _EXPORT_HEADER[i:i + 2] == ["PNA", "Stock"]
+    assert _EXPORT_HEADER[i - 2:i] == ["Created", "Updated"]
+    assert _EXPORT_HEADER[i + 2:] == [
+        "Stock In (Date)", "Stock In (Days)", "L1/L2 (Date)", "L1/L2 (Days)", "L3/L4 (Date)", "L3/L4 (Days)",
+        "Stress (Date)", "Stress (Days)", "Cosmetic (Date)", "Cosmetic (Days)", "Final QC (Date)", "Final QC (Days)",
+        "Ready for Sale (Date)", "Ready for Sale (Days)"]
 
 
 def test_stock_label_rules():
@@ -110,7 +116,7 @@ def test_export_rows_end_to_end_values(monkeypatch):
         [pna_l2, l2_no_pna, pna_other_stage, rts_plain, rts_sublot, iqc_dev, sold_dev],
         pna_ids,
     )
-    assert header[-2:] == ["PNA", "Stock"]
+    assert header[header.index("PNA"):header.index("PNA") + 2] == ["PNA", "Stock"]   # Ageing columns follow (2026-11-18)
     pna_i, stock_i = header.index("PNA"), header.index("Stock")
 
     def cells(b):

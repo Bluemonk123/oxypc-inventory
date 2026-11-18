@@ -1663,6 +1663,106 @@ _EXPORT_HEADER = [
     "PNA", "Stock",
 ]
 
+# Ageing columns (2026-11-18, Pankaj) — appended to the same export row.
+# A stage's Date = when the tag entered it on its LATEST visit; Days = working
+# days (no Sundays / Master Data holidays) from then until it moved to a
+# different stage (today while it is still there).
+# Stock In (Days) = Stock In date to today (the tag's age since stock-in); with
+# no Stock In step, from its IQC date, else its GRN date, else its created date.
+# Consecutive moves inside one group (e.g. the Cosmetic sub-stages) are one visit.
+_AGE_GROUPS = [
+    ("Stock In", {DeviceStage.stock_in}),
+    ("L1/L2", {DeviceStage.l1, DeviceStage.l2}),
+    ("L3/L4", {DeviceStage.l3}),
+    ("Stress", {DeviceStage.qc_check}),
+    ("Cosmetic", {DeviceStage.cosmetic_received, DeviceStage.cleaning, DeviceStage.putty, DeviceStage.dry_sanding,
+                  DeviceStage.masking, DeviceStage.painting, DeviceStage.water_sanding, DeviceStage.cosmetic_completed}),
+    ("Final QC", {DeviceStage.final_qc, DeviceStage.final_qc_pass_hold, DeviceStage.final_qc_fail_hold}),
+    ("Ready for Sale", {DeviceStage.ready_to_sale}),
+]
+_AGE_OF = {st: i for i, (_n, sts) in enumerate(_AGE_GROUPS) for st in sts}
+_EXPORT_HEADER += [c for name, _s in _AGE_GROUPS for c in (f"{name} (Date)", f"{name} (Days)")]
+
+
+async def _working_days_fn(db, today):
+    """Ageing days count working days only (2026-11-18, Pankaj): Sundays and
+    the holidays in Master Data → "holiday" (Value = YYYY-MM-DD) are left out
+    (the team works Saturdays). Returns days(start_date, end_date): working
+    days after start up to and including end — via a running count, so a
+    full export stays fast."""
+    from datetime import date as _date, datetime as _dt, timedelta as _td
+    from models.master import MasterData
+    hol = set()
+    for v in (await db.execute(select(MasterData.value).where(
+            MasterData.category == "holiday", MasterData.is_active.isnot(False)))).scalars().all():
+        v = (v or "").strip()
+        # 26-Jan-2026 is the recommended spelling (no day/month mix-up); Excel
+        # may save it as 26-Jan-26. ISO 2026-01-26 and 26-01-2026 also work.
+        for fmt in ("%Y-%m-%d", "%d-%b-%Y", "%d-%b-%y", "%d %b %Y", "%d %B %Y", "%d-%m-%Y", "%Y/%m/%d"):
+            try:
+                hol.add(_dt.strptime(v, fmt).date())
+                break
+            except ValueError:
+                pass
+    start0, end0 = _date(2018, 1, 1), today.date()
+    cum, n, d = {}, 0, start0
+    while d <= end0:
+        if d.weekday() != 6 and d not in hol:
+            n += 1
+        cum[d] = n
+        d += _td(days=1)
+
+    def days(a, b):
+        if b < a:
+            return 0
+        if a < start0 or b > end0:            # outside the table: plain count without Sundays / holidays
+            return sum(1 for k in range((b - a).days) if (a + _td(days=k + 1)).weekday() != 6
+                       and (a + _td(days=k + 1)) not in hol)
+        return cum[b] - cum[a]
+    return days
+
+
+def _ageing_cols(device, moves, today, wdays=None) -> list:
+    """[Date, Days] per _AGE_GROUPS group from the tag's stage movements
+    (to_stage, moved_at), oldest first. wdays(start, end) counts working days
+    (no Sundays / holidays); without it, calendar days."""
+    last = {}                     # group index -> (entered, left or None)
+    cur, entered = None, None
+    for to_stage, at in (moves or ()):
+        g = _AGE_OF.get(to_stage)
+        if g == cur:
+            continue              # still the same visit (e.g. Cosmetic sub-stage)
+        if cur is not None and entered is not None:
+            last[cur] = (entered, at)
+        cur, entered = g, at
+    if cur is not None and entered is not None:
+        still = _AGE_OF.get(device.current_stage) == cur
+        last[cur] = (entered, None if still else False)   # open visit: to today; False = log out of step, Days blank
+    # Stock In fallback (2026-11-18): many tags go IQC -> repair / Ready to Sale
+    # with no Stock In step; the tag's age then counts from its IQC date, else
+    # its GRN date, else when the tag was created.
+    if 0 not in last:     # order (Pankaj): Stock In, else IQC date, else GRN date, else created date
+        first = (next((at for st, at in (moves or ()) if st == DeviceStage.iqc and at), None)
+                 or next((at for st, at in (moves or ()) if st == DeviceStage.grn and at), None)
+                 or getattr(device, "created_at", None))
+        if first:
+            last[0] = (first, None)
+    out = []
+    for i, (name, _s) in enumerate(_AGE_GROUPS):
+        v = last.get(i)
+        if not v or not v[0]:
+            out += ["", ""]
+            continue
+        start, end = v
+        if name == "Stock In" or end is None:
+            end = today
+        if end is False or not hasattr(end, "date"):
+            days = ""
+        else:
+            days = wdays(start.date(), end.date()) if wdays else max(0, (end.date() - start.date()).days)
+        out += [start.strftime("%Y-%m-%d"), days]
+    return out
+
 
 def _pna_label(device, pna_device_ids) -> str:
     """"Yes" iff the tag is in the Production Manager PNA summary: it has an
@@ -1788,6 +1888,9 @@ async def _export_rows(db: AsyncSession, rows) -> Response:
             return [""] * len(cosmetic_parts)
         return [fn(iqc, None) for _name, fn in cosmetic_parts]
 
+    from utils.timezone import app_now as _app_now
+    _today = _app_now()
+    _wdays = await _working_days_fn(db, _today)
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(_EXPORT_HEADER)
@@ -1821,6 +1924,7 @@ async def _export_rows(db: AsyncSession, rows) -> Response:
             device.updated_at.strftime("%Y-%m-%d %H:%M") if device.updated_at else "",
             _pna_label(device, pna_device_ids),
             _stock_label(device),
+            *_ageing_cols(device, movements_by_device.get(device.id), _today, _wdays),
         ]
         # A silent column-count mismatch (e.g. an IQC/cosmetic helper
         # returning the wrong placeholder count for a device missing that
