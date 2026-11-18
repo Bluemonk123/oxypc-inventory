@@ -247,7 +247,7 @@ asyncio.run(main())
         r = app_client.get("/admin/system/model-name-fix/export", params={"model": model, "make": "Dell"})
         assert r.status_code == 200 and "attachment" in r.headers["content-disposition"]
         lines = r.content.decode("utf-8-sig").strip().splitlines()
-        assert lines[0].startswith("Tag Number,Make,Model") and "PNA" in lines[0] and "Scrap" in lines[0]
+        assert lines[0].startswith("barcode,Make,Model") and "PNA" in lines[0] and "Scrap" in lines[0]
         assert len(lines) == 3                                   # the 2 Dell tags only
         assert any(",Yes," in ln for ln in lines[1:])            # the scrapped one says Scrap = Yes
         # Apply on the Dell row renames only the Dell tags

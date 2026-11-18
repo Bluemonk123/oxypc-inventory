@@ -1330,7 +1330,7 @@ async def spec_check(csv: int = 0, current_user: User = Depends(admin_only)):
     from fastapi.responses import Response
     buf = io.StringIO()
     w = _csv.writer(buf)
-    w.writerow(["Tag", "Brand", "Model", "Stage", "Issues", "RAM GB", "RAM", "Total RAM Count",
+    w.writerow(["barcode", "Brand", "Model", "Stage", "Issues", "RAM GB", "RAM", "Total RAM Count",
                 "Total RAM Size", "SSD GB", "Hard Drive", "Total HDD Count", "Total HDD Size", "HDD GB"])
     for r in rows:
         w.writerow([r["tag"], r["brand"], r["model"], r["stage"], "; ".join(r["issues"]),
@@ -2164,7 +2164,8 @@ async def _devices_csv(db, devs) -> str:
             pna.setdefault(did, []).append(part)
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["Tag Number", "Make", "Model", "Sub-Category", "CPU", "CPU Gen", "RAM (GB)", "RAM", "Storage (GB)",
+    # Tag column header "barcode" (2026-11-18, Pankaj) — same in all Data Fixes downloads.
+    w.writerow(["barcode", "Make", "Model", "Sub-Category", "CPU", "CPU Gen", "RAM (GB)", "RAM", "Storage (GB)",
                 "Storage Type", "HDD (GB)", "Hard Drive", "Screen Size", "Touch", "Grade", "Current Stage",
                 "PNA", "PNA Parts", "Return", "Return Status", "Scrap", "Entity"])
     for d in devs:
