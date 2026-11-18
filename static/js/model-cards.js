@@ -98,15 +98,11 @@
       grades.map(function (k) {
         return '<div class="mcd-gc ' + gcls(k) + (c.sel === k ? ' on' : '') + '" data-i="' + i + '" data-g="' + esc(k) + '"><span>' + esc(k) + '</span><span>' + fmt(c.grades[k]) + '</span></div>';
       }).join('') + '</div>';
-    var rows = c.variants.map(function (v, j) { return { j: j, label: v.label, n: c.sel ? (v.grades[c.sel] || 0) : v.total }; })
-      .filter(function (r) { return r.n > 0; }).sort(function (a, b) { return b.n - a.n; });   // zero hidden
-    var sum = rows.reduce(function (s, r) { return s + r.n; }, 0);
-    var vis = full ? rows : rows.slice(0, 3), extra = rows.length - vis.length;
+    var rows = variantRows(i), sum = rows.reduce(function (s, r) { return s + r.n; }, 0);
+    // On the grid the rows sit in .mcd-vbox and fitCard() decides how many
+    // fit beside the grade column (2026-11-18); the pop-up shows them all.
     var list = '<div class="mcd-vl"><div class="mcd-hcell mcd-vh"><span>' + (c.sel ? 'Grade ' + c.sel + ' · variants' : 'Variants') + '</span><b>' + fmt(sum) + '</b></div>' +
-      vis.map(function (r) {
-        return '<div class="mcd-vrow" data-i="' + i + '" data-j="' + r.j + '" title="' + esc(r.label) + ' — open these ' + fmt(r.n) + ' tags"><span>' + esc(r.label) + '</span><b>' + fmt(r.n) + '</b></div>';
-      }).join('') +
-      (extra > 0 ? '<div class="mcd-vrow mcd-more" data-more="' + i + '">+' + extra + ' more</div>' : '') + '</div>';
+      (full ? rowsHtml(i, rows, rows.length) : '<div class="mcd-vbox"><div class="mcd-vrows">' + rowsHtml(i, rows, 3) + '</div></div>') + '</div>';
     return '<div class="mcd-card" data-card="' + i + '"><div class="mcd-hd"><i class="bi ' + esc(c.icon) + ' mcd-cat" aria-hidden="true"></i>' +
       (c.kind === 'lot'
         ? '<div class="mcd-mk" title="Lot ' + esc((c.lots || []).join(', ')) + '">' + lotsLine(c.lots) + '</div>'
@@ -117,6 +113,32 @@
       (c.blocked ? '<span class="mcd-blk" title="Blocked tags (Block Tags hold or assigned to a user)">Blocked ' + fmt(c.blocked) + '</span>' : '') + '</div>' +
       '</div><div class="mcd-body">' + stack + list + '</div></div>';
   }
+  function variantRows(i) {
+    var c = S.cards[i];
+    return c.variants.map(function (v, j) { return { j: j, label: v.label, n: c.sel ? (v.grades[c.sel] || 0) : v.total }; })
+      .filter(function (r) { return r.n > 0; }).sort(function (a, b) { return b.n - a.n; });   // zero hidden
+  }
+  // Up to `fit` rows: all rows if they fit, else fit-1 rows + "+N more".
+  function rowsHtml(i, rows, fit) {
+    var vis = rows.length <= fit ? rows : rows.slice(0, Math.max(1, fit - 1)), extra = rows.length - vis.length;
+    return vis.map(function (r) {
+      return '<div class="mcd-vrow" data-i="' + i + '" data-j="' + r.j + '" title="' + esc(r.label) + ' — open these ' + fmt(r.n) + ' tags"><span>' + esc(r.label) + '</span><b>' + fmt(r.n) + '</b></div>';
+    }).join('') + (extra > 0 ? '<div class="mcd-vrow mcd-more" data-more="' + i + '">+' + extra + ' more</div>' : '');
+  }
+  // Dynamic variant count (2026-11-18, Pankaj): as many rows as fit in the
+  // space beside the grade column (the card is as tall as its grid row), the
+  // last one "+N more" when some don't fit. Rows are 30px; at least 4 fit.
+  var ROW_H = 30;
+  function fitCard(el) {
+    var box = el.querySelector('.mcd-vbox'); if (!box) return;
+    var i = +el.dataset.card, fit = Math.max(1, Math.floor((box.clientHeight + 1) / ROW_H));
+    if (+box.dataset.fit === fit) return;
+    box.dataset.fit = fit;
+    box.firstChild.innerHTML = rowsHtml(i, variantRows(i), fit);
+  }
+  function fitAll() { grid.querySelectorAll('.mcd-card').forEach(fitCard); }
+  var fitTimer;
+  window.addEventListener('resize', function () { clearTimeout(fitTimer); fitTimer = setTimeout(fitAll, 150); });
   function draw() {
     grid.innerHTML = S.cards.map(function (c, i) { return cardHtml(i, false); }).join('');
     document.getElementById('mcdEmpty').classList.toggle('d-none', S.cards.length > 0);
@@ -126,10 +148,11 @@
     var left = S.total - S.cards.length;
     more.classList.toggle('d-none', left <= 0);
     more.innerHTML = '<i class="bi bi-chevron-double-down me-1"></i>Load more (' + fmt(Math.min(left, cols() * 6)) + ' of ' + fmt(left) + ')';
+    requestAnimationFrame(fitAll);
   }
   function redrawCard(i) {
     var el = grid.querySelector('[data-card="' + i + '"]');
-    if (el) el.outerHTML = cardHtml(i, false);
+    if (el) { el.outerHTML = cardHtml(i, false); requestAnimationFrame(fitAll); }   // its row's height can change
     if (modal.kind === 'card' && modal.idx === i) document.getElementById('mcdModalBody').innerHTML = cardHtml(i, true);
   }
 

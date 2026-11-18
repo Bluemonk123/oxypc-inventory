@@ -100,6 +100,9 @@
       <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-3">
         <span class="fw-semibold"><i class="bi bi-clipboard2-check me-2"></i>Pre-Sale QC</span>
         {{ tabs('scPsqc', [('pending', 'Pending'), ('pass', 'Pass'), ('fail', 'Fail')]) }}
+        {# Add Tags (2026-11-18): tags that reached the coordinator without a Floor Movement. #}
+        <button type="button" class="btn btn-sm btn-primary ms-auto text-nowrap" id="scAddBtn"
+                title="Send tags that came without a Floor Movement to Pre-Sale QC"><i class="bi bi-plus-lg me-1"></i>Add Tags</button>
       </div>
       <div class="card-body p-0 tab-content">
         {% for key in ('pending', 'pass', 'fail') %}
@@ -109,7 +112,7 @@
             <tbody>
             {% for r in psqc[key] %}
               <tr>
-                <td>{{ tag_cell(r.d, r.spec) }}</td>
+                <td>{{ tag_cell(r.d, r.spec) }}{% if r.d.id not in moved_ids %}<div><span class="badge bg-light text-secondary border mt-1" title="Added with Add Tags — no Floor Movement">No floor movement</span></div>{% endif %}</td>
                 <td><div class="sc-notes">{{ r.notes or '—' }}</div></td>
                 <td class="text-nowrap">
                   {% if r.wo.status == 'pending' %}<span class="badge bg-secondary">Queued</span>
@@ -212,6 +215,34 @@
       <div class="modal-footer py-2">
         <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
         <button type="button" class="btn btn-sm btn-primary" id="scSendOk"><i class="bi bi-send me-1"></i>Send to Pre-Sale</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# Add Tags (2026-11-18): search + select Ready for Sale tags and send them to
+   Pre-Sale QC without a Floor Movement (/pre-sale-iqc/assign). #}
+<div class="modal fade" id="scAddModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header py-2"><h6 class="modal-title"><i class="bi bi-plus-lg me-2"></i>Add Tags to Pre-Sale QC</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold" for="scAddSearch">Search + Select Tags (multiple allowed)
+          <span id="scAddCount" class="badge bg-secondary ms-1">0 selected</span></label>
+        <input type="text" id="scAddSearch" class="form-control" autocomplete="off" placeholder="Scan or search Tag Number / Model">
+        <div id="scAddMsg" class="small mt-1" style="min-height:1.2em"></div>
+        <div id="scAddResults" class="list-group mt-1" style="max-height:200px;overflow-y:auto"></div>
+        <div id="scAddSel" class="d-flex flex-wrap gap-1 mt-2" style="max-height:140px;overflow-y:auto"></div>
+        <label class="form-label small fw-semibold mt-3" for="scAddNotes">Notes</label>
+        <textarea id="scAddNotes" class="form-control form-control-sm" rows="3" maxlength="2000"
+                  placeholder="What should Pre-Sale QC check? e.g. customer wants keyboard and battery checked"></textarea>
+        <div class="small text-muted mt-1">Only Ready for Sale tags can be added. No Floor Movement is made.</div>
+        <div class="text-danger small mt-1" id="scAddErr"></div>
+      </div>
+      <div class="modal-footer py-2">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-sm btn-primary" id="scAddOk"><i class="bi bi-send me-1"></i>Send to Pre-Sale QC</button>
       </div>
     </div>
   </div>
@@ -321,6 +352,84 @@
       }
     }).catch(function () { document.getElementById('scSendErr').textContent = 'Could not send. Please try again.'; btn.disabled = false; });
   });
+
+  // Add Tags → Pre-Sale QC without a Floor Movement (2026-11-18). Scanner
+  // friendly: an exact Tag Number is picked at once and the box keeps focus.
+  (function () {
+    var modal = document.getElementById('scAddModal'), inp = document.getElementById('scAddSearch');
+    var sel = new Map(), timer, seq = 0;
+    function msg(t, k) { var el = document.getElementById('scAddMsg'); el.textContent = t || '';
+      el.className = 'small mt-1 ' + (k === 'ok' ? 'text-success' : k === 'warn' ? 'text-danger' : 'text-muted'); }
+    function draw() {
+      var box = document.getElementById('scAddSel'); box.innerHTML = '';
+      sel.forEach(function (t, bc) {
+        var s = document.createElement('span'); s.className = 'badge bg-secondary'; s.textContent = bc + ' ';
+        var x = document.createElement('i'); x.className = 'bi bi-x ms-1'; x.style.cursor = 'pointer'; x.title = 'Remove';
+        x.onclick = function () { sel.delete(bc); draw(); inp.focus(); };
+        s.appendChild(x); box.appendChild(s);
+      });
+      var c = document.getElementById('scAddCount'); c.textContent = sel.size + ' selected';
+      c.className = 'badge ms-1 ' + (sel.size ? 'bg-primary' : 'bg-secondary');
+    }
+    function pick(t) {
+      if (t.queued) { msg(t.barcode + ' is already waiting at Pre-Sale QC', 'warn'); inp.value = ''; return; }
+      sel.set(t.barcode, t); draw(); inp.value = '';
+      document.getElementById('scAddResults').innerHTML = ''; msg('Added ' + t.barcode, 'ok'); inp.focus();
+    }
+    function search(q, enter) {
+      var term = q.trim(), box = document.getElementById('scAddResults');
+      if (!term) { box.innerHTML = ''; return; }
+      var my = ++seq;
+      fetch('/sales-coordinator/search-tags?q=' + encodeURIComponent(term), { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); }).then(function (d) {
+          if (my !== seq) return;
+          var list = d.data || [], ex = list.find(function (t) { return t.barcode.toLowerCase() === term.toLowerCase(); });
+          if (ex) { if (sel.has(ex.barcode)) { msg(ex.barcode + ' is already selected', 'warn'); inp.value = ''; box.innerHTML = ''; } else pick(ex); return; }
+          var avail = list.filter(function (t) { return !sel.has(t.barcode); });
+          if (enter && !avail.length) { inp.value = ''; box.innerHTML = '';
+            msg(d.exact_unavailable ? term + ' ' + d.exact_unavailable : 'No Ready for Sale tag found for "' + term + '"', 'warn'); return; }
+          if (enter && avail.length === 1) { pick(avail[0]); return; }
+          msg(d.exact_unavailable ? term + ' ' + d.exact_unavailable : '', 'warn');
+          box.innerHTML = '';
+          avail.forEach(function (t) {
+            var a = document.createElement('a'); a.href = '#';
+            a.className = 'list-group-item list-group-item-action py-1 small' + (t.queued ? ' text-muted' : '');
+            a.innerHTML = '<span class="font-monospace">' + esc(t.barcode) + '</span> — ' + esc(t.spec) +
+              (t.queued ? ' <span class="badge bg-warning text-dark ms-1">Waiting at Pre-Sale</span>' : '') +
+              (t.blocked ? ' <span class="badge bg-danger ms-1">Blocked</span>' : '');
+            a.onclick = function (e) { e.preventDefault(); pick(t); };
+            box.appendChild(a);
+          });
+        });
+    }
+    inp.addEventListener('input', function () { clearTimeout(timer); var q = this.value; timer = setTimeout(function () { search(q, false); }, 300); });
+    inp.addEventListener('keydown', function (e) { if (e.key !== 'Enter') return; e.preventDefault(); clearTimeout(timer); search(this.value, true); });
+    document.getElementById('scAddBtn').addEventListener('click', function () {
+      sel.clear(); draw(); inp.value = ''; msg('');
+      document.getElementById('scAddResults').innerHTML = ''; document.getElementById('scAddNotes').value = '';
+      document.getElementById('scAddErr').textContent = '';
+      bootstrap.Modal.getOrCreateInstance(modal).show();
+    });
+    modal.addEventListener('shown.bs.modal', function () { inp.focus(); });
+    document.getElementById('scAddOk').addEventListener('click', function () {
+      var err = document.getElementById('scAddErr'); err.textContent = '';
+      if (!sel.size) { err.textContent = 'Select at least one tag.'; return; }
+      var btn = this, fd = new FormData();
+      fd.append('barcodes', Array.from(sel.keys()).join(',')); fd.append('notes', document.getElementById('scAddNotes').value.trim());
+      btn.disabled = true;
+      post('/pre-sale-iqc/assign', fd).then(function (r) { return r.json(); }).then(function (d) {
+        if (d.ok && (d.assigned || d.already)) {
+          var t = d.assigned + ' tag' + (d.assigned === 1 ? '' : 's') + ' sent to Pre-Sale QC' +
+                  (d.already ? ', ' + d.already + ' already waiting' : '') + (d.not_ready ? ', ' + d.not_ready + ' not Ready for Sale' : '') + '.';
+          if (window.showTopToast) window.showTopToast('success', t);
+          setTimeout(function () { location.reload(); }, 600);
+        } else {
+          err.textContent = d.error || d.detail || (d.not_ready ? 'These tags are not in Ready for Sale.' : 'Could not send these tags.');
+          btn.disabled = false;
+        }
+      }).catch(function () { err.textContent = 'Could not send. Please try again.'; btn.disabled = false; });
+    });
+  })();
 
   // Sales IDs → invoice modal
   document.addEventListener('click', function (e) {

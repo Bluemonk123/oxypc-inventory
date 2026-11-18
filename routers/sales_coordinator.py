@@ -14,6 +14,10 @@ follow a showroom tag from Floor Movement to the gate.
                          opens the invoice's tags (/sales-coordinator/invoice).
   3 Pre-Sale QC          each tag's latest Pre-Sale IQC WorkID with the notes
                          sent with it (WorkOrder.notes): Pending / Pass / Fail.
+                         "Add Tags" (2026-11-18): search + select Ready for Sale
+                         tags that came without a Floor Movement and send them
+                         to Pre-Sale QC; they then count as the user's tags here,
+                         in Sales Records and in Waiting for Customer.
   4 Waiting for Customer the Gate Pass list: sold tags not yet exited
                          (Pending) / exited (Completed), with DC + Confirm Exit.
 
@@ -373,7 +377,19 @@ async def _context(db, user, entity, date_from, date_to, category, sales_person)
     f = Filters(entity, date_from, date_to, category, sales_person)
     admin = _is_admin(user)
     moves = await _showroom_moves(db, None if admin else user.username)
-    return entity, f, admin, moves, (None if admin else set(moves))
+    return entity, f, admin, moves, (None if admin else set(moves) | await _direct_ids(db, user.username))
+
+
+async def _direct_ids(db, username: str) -> set:
+    """Tags this user sent to Pre-Sale QC themselves (2026-11-18, Pankaj):
+    tags that reach the coordinator without a Floor Movement are added with
+    "Add Tags" on the Pre-Sale QC card (/pre-sale-iqc/assign, which records
+    created_by), so they count as theirs in Pre-Sale QC, Sales and Waiting
+    for Customer."""
+    from routers.pre_sale_iqc import STAGE_CODE
+    return set((await db.execute(
+        select(WorkOrder.device_id).where(WorkOrder.stage == STAGE_CODE, WorkOrder.created_by == username)
+        .distinct())).scalars().all())
 
 
 async def _dashboard(db, scope, f: Filters, show_pending, show_done, psqc, gate_pending, sales):
@@ -506,6 +522,7 @@ async def sales_coordinator(request: Request,
         "sales": sales,
         "psqc": psqc,
         "gate_pending": gate_pending, "gate_done": gate_done,
+        "moved_ids": set(moves),        # Pre-Sale QC rows outside it show "No floor movement"
         "entity_opts": await entity_values(db), "category_opts": DEVICE_TYPES_12, "person_opts": persons,
         "f_entity": entity, "f_category": category, "f_person": sales_person,
         "f_from": date_from, "f_to": date_to,
@@ -519,7 +536,8 @@ async def sales_coordinator_invoice(no: str = Query(...), db: AsyncSession = Dep
     only their own Floor Movement tags on it)."""
     q = select(Sale, Device).join(Device, Device.id == Sale.device_id).where(Sale.invoice_no == no)
     if not _is_admin(current_user):
-        q = q.where(Sale.device_id.in_(list(await _showroom_moves(db, current_user.username)) or [None]))
+        mine = set(await _showroom_moves(db, current_user.username)) | await _direct_ids(db, current_user.username)
+        q = q.where(Sale.device_id.in_(list(mine) or [None]))
     rows = (await db.execute(q.order_by(Sale.sale_number))).all()
     return JSONResponse({"invoice": no, "rows": [{
         "sale_id": s.sale_number, "customer": s.customer_name or "", "category": category_of(d),
@@ -528,6 +546,41 @@ async def sales_coordinator_invoice(no: str = Query(...), db: AsyncSession = Dep
         "storage": gb_text_spaced(d.storage_gb) or "",
         "grade": (getattr(d.grade, "value", d.grade) or "") if d.grade else "",
     } for s, d in rows]})
+
+
+@router.get("/sales-coordinator/search-tags")
+async def sales_coordinator_search_tags(q: str = Query(default=""), db: AsyncSession = Depends(get_db),
+                                        current_user: User = Depends(view_perm)):
+    """Add Tags modal (2026-11-18): Ready for Sale tags to send straight to
+    Pre-Sale QC when they reached the coordinator without a Floor Movement.
+    A non-admin sees tags of their own entities. Exact tag number first."""
+    from routers.pre_sale_iqc import STAGE_CODE
+    term = q.strip()
+    if not term:
+        return JSONResponse({"data": []})
+    like = f"%{term}%"
+    exact = func.lower(Device.barcode) == term.lower()
+    w = [Device.current_stage == DeviceStage.ready_to_sale, Device.is_trashed.isnot(True),
+         or_(Device.barcode.ilike(like), Device.model.ilike(like), Device.brand.ilike(like))]
+    ents = [e for e in (getattr(current_user, "all_entities", None) or [current_user.entity or ""]) if e]
+    if not _is_admin(current_user) and ents:
+        w.append(Device.entity.in_(ents))
+    devs = (await db.execute(select(Device).where(*w).order_by(exact.desc(), Device.barcode).limit(30))).scalars().all()
+    queued = set((await db.execute(select(WorkOrder.device_id).where(
+        WorkOrder.device_id.in_([d.id for d in devs] or [None]), WorkOrder.stage == STAGE_CODE,
+        WorkOrder.status.in_(["pending", "in_progress"])))).scalars().all()) if devs else set()
+    note = None
+    if not any((d.barcode or "").lower() == term.lower() for d in devs):
+        dev = (await db.execute(select(Device).where(exact).limit(1))).scalar_one_or_none()
+        if dev is not None:
+            stage = getattr(dev.current_stage, "value", dev.current_stage) or "unknown"
+            note = ("is in trash" if dev.is_trashed else
+                    f"is not in Ready for Sale (stage: {str(stage).replace('_', ' ')})"
+                    if dev.current_stage != DeviceStage.ready_to_sale else "belongs to another entity")
+    return JSONResponse({"data": [{
+        "barcode": d.barcode, "spec": spec_line(d), "entity": d.entity or "",
+        "queued": d.id in queued, "blocked": bool(d.is_blocked),
+    } for d in devs], "exact_unavailable": note})
 
 
 @router.get("/sales-coordinator/export-data")

@@ -17,7 +17,8 @@
 {% macro model_cards(scope, entity_options, dtype_options, make_options, loc_options,
                      can_export=False, can_sell=False, entity_default='', inventory=False) %}
 {% set _can_block = can(current_user, 'block_tags', 'add') %}
-<div class="card mcd mt-4" id="mcd" data-scope="{{ scope }}"
+{# Card header style 8 on every page (2026-11-18): white + blue line along the bottom. #}
+<div class="card mcd mt-4 mcd-hs8" id="mcd" data-scope="{{ scope }}"
      data-can-export="{{ 1 if can_export else 0 }}" data-can-sell="{{ 1 if can_sell else 0 }}"
      data-can-block="{{ 1 if _can_block else 0 }}">
   <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2" data-hdr-keep>

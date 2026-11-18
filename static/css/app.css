@@ -1623,14 +1623,27 @@ span.hf { display: inline-block; vertical-align: middle; }
 .mcd-card:hover { box-shadow:0 4px 16px 12px rgba(14,30,60,.4); border-color:#b8c4d4; }
 [data-bs-theme=dark] .mcd-card:hover { box-shadow:0 8px 24px rgba(255,255,255,.7); border-color:#4a5563; }
 #mcdModalBody .mcd-card:hover { box-shadow:none; }
+/* Card header (2026-11-18, Pankaj): option 8 on all three pages — white header
+   with a faint tint and a 4px blue line along its bottom edge. */
+.mcd-hs8 .mcd-hd { background:#F7FAFD; border-bottom:4px solid #185FA5; }
+.mcd-hs8 .mcd-nm, .mcd-hs8 .mcd-tot-sub { color:#0C447C; }
+.mcd-hs8 .mcd-tot { color:#042C53; }
+[data-bs-theme=dark] .mcd-hs8 .mcd-hd { background:#1b2533; border-bottom-color:#378ADD; }
+[data-bs-theme=dark] .mcd-hs8 .mcd-nm, [data-bs-theme=dark] .mcd-hs8 .mcd-tot, [data-bs-theme=dark] .mcd-hs8 .mcd-tot-sub { color:#dbe6f5; }
+/* Hover (2026-11-18): the header turns into option 1 — solid navy, white text. */
+.mcd-hs8 .mcd-hd { transition:background-color .15s ease, border-color .15s ease; }
+.mcd-hs8 .mcd-card:hover .mcd-hd, [data-bs-theme=dark] .mcd-hs8 .mcd-card:hover .mcd-hd { background:#0C447C; border-bottom-color:#0C447C; }
+.mcd-hs8 .mcd-card:hover .mcd-mk, .mcd-hs8 .mcd-card:hover .mcd-tot span { color:#B5D4F4 !important; }
+.mcd-hs8 .mcd-card:hover .mcd-nm, .mcd-hs8 .mcd-card:hover .mcd-tot, .mcd-hs8 .mcd-card:hover .mcd-tot-sub { color:#fff !important; }
+.mcd-hs8 .mcd-card:hover .mcd-cat { color:#fff !important; opacity:.12; }
 .mcd-hd { padding:12px 14px 18px; position:relative; }
 .mcd-cat { position:absolute; right:-14px; top:0; font-size:70px; line-height:1; color:var(--brand-blue); opacity:.1; pointer-events:none; }
 [data-bs-theme=dark] .mcd-cat { color:#dbe6f5; }
 .mcd-mk { font-size:11px; color:#6c757d; position:relative; }
-.mcd-nm { font-weight:600; font-size:14px; line-height:1.25; color:var(--brand-blue); position:relative; padding-right:46px; }
+.mcd-nm { font-weight:600; font-size:16px; line-height:1.25; color:var(--brand-blue); position:relative; padding-right:46px; }
 [data-bs-theme=dark] .mcd-nm { color:#dbe6f5; }
 .mcd-trow { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px; position:relative; z-index:1; }
-.mcd-tot { font-size:26px; font-weight:600; line-height:1.1; white-space:nowrap; }
+.mcd-tot { font-size:22px; font-weight:600; line-height:1.1; white-space:nowrap; }
 .mcd-tot span { font-size:11px; font-weight:400; color:#6c757d; }
 .mcd-tot-sub { white-space:normal; overflow-wrap:anywhere; line-height:1.15; min-width:0; color:var(--brand-blue); }
 [data-bs-theme=dark] .mcd-tot-sub { color:#dbe6f5; }
@@ -1639,11 +1652,15 @@ span.hf { display: inline-block; vertical-align: middle; }
 .mcd-body { display:grid; grid-template-columns:66px minmax(0,1fr); border-top:1px solid var(--oxy-border); flex:1; }
 .mcd-gs, .mcd-vl { display:flex; flex-direction:column; }
 .mcd-vl { border-left:1px solid var(--oxy-border); }
+/* Dynamic variant rows (2026-11-18): the rows box takes no height of its own
+   (absolute inside), so the card's height comes from the grade column / its
+   grid row, at least header + 4 rows; model-cards.js fills what fits. */
+.mcd-vbox { flex:1; position:relative; min-height:120px; }
+.mcd-vrows { position:absolute; inset:0; overflow:hidden; }
 .mcd-hcell { flex:none; height:32px; display:flex; justify-content:space-between; align-items:center; padding:0 14px; font-size:12px; background:var(--oxy-light); border-bottom:1px solid var(--oxy-border); }
 .mcd-hcell b { font-weight:600; }
 .mcd-vh span { color:#6c757d; }
 .mcd-all { cursor:pointer; font-weight:600; }
-.mcd-all.on { box-shadow:inset 3px 0 0 var(--sidebar-active, #0377c2); }
 /* Grade cells stretch to the card's height; variant rows keep a fixed height (top-aligned). */
 .mcd-gc { flex:1 0 30px; display:flex; justify-content:space-between; align-items:center; padding:0 14px; font-size:12px; font-weight:600; color:#fff; cursor:pointer; position:relative; }
 .mcd-gs.picked .mcd-gc:not(.on) { opacity:.4; }
