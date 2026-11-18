@@ -159,7 +159,7 @@
          href="/devices/export?q={{ q | urlencode }}&stage={{ stage | urlencode }}&lot={{ lot | urlencode }}&grade={{ grade | urlencode }}&category={{ category | urlencode }}&device_type={{ device_type | urlencode }}&entity={{ entity | urlencode }}&stock_type={{ stock_type | urlencode }}&pna={{ pna | urlencode }}&zone={{ zone | urlencode }}&date_from={{ date_from | urlencode }}&date_to={{ date_to | urlencode }}&exclude_sold={{ '1' if exclude_sold else '' }}&fs=1"
          class="btn btn-sm btn-outline-success" onclick="return submitExport(event)"
          title="Exports the selected Tag Numbers, or every filtered result if none are ticked">
-        <i class="bi bi-download me-1"></i><span id="exportCsvLabel">Export CSV</span>
+        <i class="bi bi-download me-1"></i><span id="exportCsvLabel">Export Excel</span>
       </a>
       {# After Export, solid primary (2026-10-26). #}
       <button type="button" class="btn btn-sm btn-primary text-nowrap" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
@@ -691,7 +691,7 @@ $(document).ready(function() {
     var n = devicesSelected.size;
     $('#selCount').text(n);
     if (!devicesSelecting) {
-      $('#exportCsvLabel').text(n ? 'Export CSV (' + n.toLocaleString('en-IN') + ')' : 'Export CSV');
+      $('#exportCsvLabel').text(n ? 'Export Excel (' + n.toLocaleString('en-IN') + ')' : 'Export Excel');
     }
     $('#bulkDeleteBtn').prop('disabled', n === 0);
     $('#customiseCount').text(n);
@@ -1117,7 +1117,7 @@ function runExport(url, init){
     if (!r.ok) throw new Error('Export failed (HTTP ' + r.status + ')');
     var cd = r.headers.get('Content-Disposition') || '';
     var m = /filename="?([^";]+)"?/i.exec(cd);
-    var name = m ? m[1] : 'devices_export.csv';
+    var name = m ? m[1] : 'devices_export.xlsx';
     return r.blob().then(function(b){ return { blob: b, name: name }; });
   }).then(function(res){
     var a = document.createElement('a');

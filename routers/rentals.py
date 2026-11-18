@@ -877,9 +877,9 @@ async def rental_tags_csv(rental_id: str, db: AsyncSession = Depends(get_db),
         rows += (await db.execute(
             select(Device, Lot.lot_number).outerjoin(Lot, Device.lot_id == Lot.id)
             .where(Device.id.in_(ids[i:i + 20000])).order_by(Device.barcode))).all()
-    resp = await _export_rows(db, rows)
-    resp = await _strip_prices(resp, current_user, "rentals", ["Device Price"])   # Pricing Export (2026-11-03)
-    resp.headers["Content-Disposition"] = f"attachment; filename={r.rental_number}_tags.csv"
+    from utils.price_export import can_export_prices
+    resp = await _export_rows(db, rows, hide=() if can_export_prices(current_user, "rentals") else ["Device Price"])   # Pricing Export (2026-11-03)
+    resp.headers["Content-Disposition"] = f"attachment; filename={r.rental_number}_tags.xlsx"   # Excel since 2026-11-18
     return resp
 
 

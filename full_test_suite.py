@@ -164,7 +164,7 @@ FUNCTIONAL_ENDPOINTS = [
     ("F-DEV-02",  "GET", "/devices?q=OXY-TEST",                "Inventory Search"),
     ("F-DEV-03",  "GET", "/devices?stage=l1",                  "Inventory Search"),
     ("F-DEV-04",  "GET", "/devices?grade=A",                   "Inventory Search"),
-    ("F-DEV-05",  "GET", "/devices/export",                    "Barcode"),
+    ("F-DEV-05",  "GET", "/devices/export",                    None),       # Excel (zipped) since 2026-11-18: status only
     # LOTS / GRN
     ("F-LOT-01",  "GET", "/lots",                              "Lot"),
     ("F-LOT-02",  "GET", "/lots/new",                          "Lot"),
@@ -1190,7 +1190,7 @@ async def section_performance(session):
         ("/reports/sales",              "Sales report",         8.0),
         ("/stage-control/aging",        "Aging dashboard",      8.0),
         ("/locations/dashboard",        "Location dashboard",   8.0),
-        ("/devices/export",             "CSV export",          15.0),
+        ("/devices/export",             "Excel export",        15.0),
     ]
     slow_pages = []
     for path, label, max_t in page_tests:

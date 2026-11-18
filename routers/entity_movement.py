@@ -4,8 +4,8 @@ Computers / Renew Circuits) plus the bulk "Change Entities" tool.
 Since 2026-10-21 (Flow 2 — ReGRN) Change Entities moves the submitted Tag
 Numbers onto a selected GRN: each tag takes that GRN's grn_number, invoice
 number and entity (and its Location ID, with zone / location type from
-Location master, when the GRN has one). Tags in Sold go back to Ready to Sale (the old sale record
-is kept as history); every other stage is left as it is. Only the submitted
+Location master, when the GRN has one). The stage is left as it is — Sold
+included (2026-11-18; until then Sold went back to Ready to Sale). Only the submitted
 tags move — the rest of their lot keeps its original GRN. Replaces the old
 SOLD TO / SEND TO rules."""
 import os
@@ -211,24 +211,9 @@ async def change_entities(
         d.grn_number = g.grn_number
         d.invoice_number = g.invoice_number
         d.entity = g.entity
-        if d.current_stage == DeviceStage.sold:
-            # Sold -> Ready to Sale under the new entity. The Sale row is NOT
-            # touched: it stays as history; the tag simply leaves sold counts
-            # and can be sold again.
-            prev = (await db.execute(
-                select(StageMovement).where(
-                    StageMovement.device_id == d.id, StageMovement.to_stage == DeviceStage.sold,
-                    StageMovement.exited_at.is_(None),
-                ).order_by(StageMovement.moved_at.desc())
-            )).scalars().first()
-            if prev:
-                prev.exited_at = now
-            db.add(StageMovement(
-                device_id=d.id, from_stage=DeviceStage.sold, to_stage=DeviceStage.ready_to_sale,
-                moved_by=current_user.username,
-                notes=f"ReGRN to GRN {g.grn_number} ({g.entity}) — back to Ready to Sale"))
-            d.current_stage = DeviceStage.ready_to_sale
-            back_to_rts += 1
+        # Stage left as it is (2026-11-18, Pankaj) — Sold tags stay Sold too. With
+        # Internal Only sales (inter-company, tag kept in stock) a sister company
+        # ReGRNs the tag onto its GRN and sells it on; no Sold -> Ready to Sale.
         d.updated_at = now
         new = {"grn_number": d.grn_number, "invoice_number": d.invoice_number,
                "entity": d.entity, "stage": d.current_stage.value if d.current_stage else None}

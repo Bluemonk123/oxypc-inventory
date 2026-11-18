@@ -5,12 +5,13 @@
     "Internal Only" (2026-11-18, Pankaj): ticked, the sale's Sales Person is the
     text "Internal Only" (sales_person, not linked to a user) and the dropdown is
     cleared and hidden — resolve_sales_person() keeps the typed text when no
-    user is picked. -#}
-<div class="d-flex align-items-center justify-content-between gap-2">
-  <label class="form-label mb-1">Sales person</label>
+    user is picked. It also makes it an inter-company sale: the tag is NOT marked
+    Sold and gets no warranty (create_sale; utils/sales_person.is_internal_sale). -#}
+<div class="d-flex flex-wrap align-items-center justify-content-between column-gap-2">
+  <label class="form-label mb-1 text-nowrap">Sales person</label>
   <div class="form-check form-check-inline small mb-1 me-0">
     <input class="form-check-input sp-internal" type="checkbox" name="sales_person" value="Internal Only" id="spInternal">
-    <label class="form-check-label" for="spInternal">Internal Only</label>
+    <label class="form-check-label text-nowrap" for="spInternal">Internal Only</label>
   </div>
 </div>
 <div class="sp-pick">
@@ -20,11 +21,13 @@
   </select>
 </div>
 <input type="text" class="form-control sp-internal-box d-none" value="Internal Only" readonly tabindex="-1" aria-label="Sales person: Internal Only">
+<div class="form-text small text-muted sp-internal-help d-none">Internal sale, don't mark Sold</div>
 <script>
 (function () {
   var cb = document.getElementById('spInternal'); if (!cb) return;
   var pick = cb.closest('div').parentNode.parentNode.querySelector('.sp-pick');
   var box = pick.parentNode.querySelector('.sp-internal-box');
+  var help = pick.parentNode.querySelector('.sp-internal-help');
   var sel = pick.querySelector('select');
   cb.addEventListener('change', function () {
     if (cb.checked) {
@@ -33,6 +36,7 @@
     }
     pick.classList.toggle('d-none', cb.checked);
     box.classList.toggle('d-none', !cb.checked);
+    help.classList.toggle('d-none', !cb.checked);
   });
 })();
 </script>

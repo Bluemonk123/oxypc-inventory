@@ -42,7 +42,8 @@ allowed = require_roles(UserRole.admin, UserRole.sales_manager, UserRole.sales,
 def _gate_pass_filters(sale_date_from, sale_date_to, lot_number):
     """Filter clauses shared by the page and its data endpoint, so the two
     can never disagree about what the filters mean."""
-    w = []
+    from utils.sales_person import not_internal_sale
+    w = [not_internal_sale()]   # Internal Only (inter-company) sales never leave the gate (2026-11-18)
     apply_date_range(w, Sale.sold_at, sale_date_from, sale_date_to)
     if lot_number:
         w.append(Lot.lot_number.ilike(f"%{lot_number}%"))

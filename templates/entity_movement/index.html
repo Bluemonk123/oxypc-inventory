@@ -90,8 +90,8 @@
       <div class="modal-body">
         <div class="mb-2"><span class="text-muted small" id="ce_count">0 tag(s) selected</span></div>
         {# ReGRN (2026-10-21): the submitted tags take this GRN's GRN number,
-           invoice number and entity. Sold tags go back to Ready to Sale;
-           every other stage is unchanged. #}
+           invoice number and entity. Every stage is unchanged — Sold included
+           since 2026-11-18 (Internal Only sales keep tags in stock). #}
         <div class="mb-3">
           <label class="form-label fw-semibold">Move tags to GRN <span class="text-danger">*</span></label>
           <input type="text" class="form-control form-control-sm mb-1" id="ce_grn_filter" placeholder="Filter GRNs — number, invoice, entity or vendor">
@@ -104,8 +104,7 @@
             {% endfor %}
           </select>
           <div class="form-text">Each tag gets this GRN's GRN number, invoice number, entity and Location ID (with its Zone and Location Type).
-            Tags in <strong>Sold</strong> go back to <strong>Ready to Sale</strong> (the old sale stays as history);
-            tags in any other stage keep their stage. The rest of their lot is not changed.</div>
+            Every tag keeps its stage (Sold included). The rest of their lot is not changed.</div>
         </div>
         <label class="form-label">Upload Invoice PDF <span class="text-muted small">(optional)</span></label>
         <input type="file" name="invoice_pdf" accept=".pdf" class="form-control">

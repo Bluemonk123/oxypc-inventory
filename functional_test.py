@@ -18,7 +18,7 @@ TESTS = [
     ("DEV-04 Grade filter", "GET", "http://localhost:8000/devices?grade=A", None, "Inventory Search"),
     ("DEV-05 Device detail", "GET", f"http://localhost:8000/devices/{DEVICE_BARCODE}", None, DEVICE_BARCODE),
     ("DEV-06 Device edit form", "GET", f"http://localhost:8000/devices/{DEVICE_BARCODE}/edit", None, "Edit Device"),
-    ("DEV-07 CSV export", "GET", "http://localhost:8000/devices/export", None, "Barcode"),
+    ("DEV-07 Excel export", "GET", "http://localhost:8000/devices/export", None, None),   # .xlsx (zipped) since 2026-11-18
     ("LOT-01 Lots list", "GET", "http://localhost:8000/lots", None, "Lots"),
     ("LOT-02 Lot detail", "GET", f"http://localhost:8000/lots/{LOT_ID}", None, "LOT-TEST-001"),
     ("LOT-03 New lot form", "GET", "http://localhost:8000/lots/new", None, "Lot"),

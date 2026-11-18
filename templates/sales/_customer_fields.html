@@ -1,0 +1,91 @@
+{#- Customer Name / Phone / Address / State row, shared by Record Sale
+    (sales/new.html) and Tag Sale (sales/new_tag_sale.html).
+    Internal Only ticked (2026-11-18, Pankaj): Customer Name becomes an Entity
+    dropdown (the buyer sister company) and Phone, Address and State fill from
+    that entity's Company Settings row and turn read-only. The dropdown posts
+    as customer_name (company name, else the entity) — the text box is disabled
+    meanwhile so only one customer_name is sent. Options: internal_buyers from
+    utils/sales_person.internal_buyer_options. -#}
+<div class="row g-3 mt-0 cust-row">
+  <div class="col-md-3">
+    <label class="form-label cust-name-lbl">Customer Name</label>
+    <input type="text" name="customer_name" class="form-control cust-name" placeholder="Customer name">
+    <select name="customer_name" class="form-select cust-entity d-none" disabled>
+      <option value="">— Select entity —</option>
+      {% for b in internal_buyers | default([]) %}
+      <option value="{{ b.name }}" data-phone="{{ b.phone }}" data-address="{{ b.address }}" data-state="{{ b.state }}">{{ b.entity }}</option>
+      {% endfor %}
+    </select>
+    <div class="form-text small text-muted cust-entity-help d-none">Details fill from Company Settings</div>
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Customer Phone</label>
+    <input type="tel" name="customer_phone" class="form-control cust-phone" placeholder="Phone number">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label">Customer Address</label>
+    <input type="text" name="customer_address" class="form-control cust-address" placeholder="Customer address">
+  </div>
+  <div class="col-md-3">
+    <label class="form-label fw-semibold">Customer State</label>
+    {% include "sales/_customer_state_select.html" %}
+  </div>
+</div>
+<script>
+(function () {
+  var row = document.currentScript.previousElementSibling;
+  var cb = document.getElementById('spInternal');
+  if (!cb || !row) return;
+  var name = row.querySelector('.cust-name'), ent = row.querySelector('.cust-entity');
+  var help = row.querySelector('.cust-entity-help'), lbl = row.querySelector('.cust-name-lbl');
+  var phone = row.querySelector('.cust-phone'), addr = row.querySelector('.cust-address');
+  var state = row.querySelector('select[name="customer_state"]');
+  var saved = null;   // what the user had typed before ticking Internal Only
+
+  function setState(v) {
+    if (!state) return;
+    v = (v || '').trim().toLowerCase();
+    if (!v) return;
+    var opts = Array.prototype.slice.call(state.options), hit = null;
+    opts.forEach(function (o) { if (!hit && o.value.trim().toLowerCase() === v) hit = o; });
+    if (!hit && v !== 'haryana')
+      opts.forEach(function (o) { if (!hit && o.value.toLowerCase().indexOf('other') !== -1) hit = o; });
+    if (hit) state.value = hit.value;
+  }
+  function fill() {
+    var o = ent.options[ent.selectedIndex];
+    phone.value = (o && o.value) ? (o.dataset.phone || '') : '';
+    addr.value = (o && o.value) ? (o.dataset.address || '') : '';
+    if (o && o.value) setState(o.dataset.state);
+  }
+  function lockState(on) {
+    if (!state) return;
+    // A <select> can't be readonly and a disabled one isn't posted: block
+    // clicks/keyboard instead, so the autofilled value still submits.
+    state.classList.toggle('pe-none', on);
+    state.classList.toggle('bg-body-secondary', on);
+    if (on) { state.setAttribute('tabindex', '-1'); state.setAttribute('aria-disabled', 'true'); }
+    else { state.removeAttribute('tabindex'); state.removeAttribute('aria-disabled'); }
+  }
+  function apply() {
+    var on = cb.checked;
+    if (on && !saved) saved = { phone: phone.value, addr: addr.value, state: state ? state.value : '' };
+    name.classList.toggle('d-none', on); name.disabled = on;
+    ent.classList.toggle('d-none', !on); ent.disabled = !on; ent.required = on;
+    help.classList.toggle('d-none', !on);
+    lbl.textContent = on ? 'Entity' : 'Customer Name';
+    [phone, addr].forEach(function (el) {
+      el.readOnly = on; el.classList.toggle('bg-body-secondary', on);
+    });
+    lockState(on);
+    if (on) fill();
+    else if (saved) {
+      phone.value = saved.phone; addr.value = saved.addr; if (state) state.value = saved.state;
+      saved = null;
+    }
+  }
+  ent.addEventListener('change', fill);
+  cb.addEventListener('change', apply);
+  apply();
+})();
+</script>

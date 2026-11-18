@@ -1686,11 +1686,12 @@ async def _sale_new_response(request: Request, barcode: str, barcodes: str, qty:
                 approved_qty = appr.qty_requested
             stock_price = _unit_stock_price(device, lot)
     next_num = await _next_sale_number(db)
-    from utils.sales_person import sales_person_options, sales_person_user_options
+    from utils.sales_person import sales_person_options, sales_person_user_options, internal_buyer_options
     return templates.TemplateResponse(template, {
         "request": request, "device": device, "lot": lot,
         "sales_person_options": await sales_person_options(db),
         "sales_person_users": await sales_person_user_options(db),
+        "internal_buyers": await internal_buyer_options(db),
         "next_sale_number": next_num, "current_user": current_user,
         "error": stage_error, "approved_qty": approved_qty,
         "stock_price": stock_price, "prefill_barcode": prefill_barcode,
@@ -1839,7 +1840,7 @@ async def create_sale(
     # Ordinary form posts are unaffected and still redirect/render as before.
     xhr = request.headers.get("x-requested-with", "").lower() == "xmlhttprequest"
     # Sales Person: the picked user (name + username), else old typed text.
-    from utils.sales_person import resolve_sales_person, sales_person_user_options
+    from utils.sales_person import resolve_sales_person, sales_person_user_options, internal_buyer_options
     sp_name, sp_username = await resolve_sales_person(db, sales_person_username, sales_person)
 
     # Sold from Block Tags "Sell": tags still blocked under THIS block may be
@@ -1863,6 +1864,7 @@ async def create_sale(
             "current_user": current_user, "error": message,
             "today": app_today().isoformat(),
             "sales_person_users": await sales_person_user_options(db),
+            "internal_buyers": await internal_buyer_options(db),
             # New Tag Sale keeps the tags on the form after an error: re-picking
             # thousands of tags would be a punishing way to report "no price".
             "prefill_barcode": (barcode or None) if sale_page == "tag" else None,
@@ -2002,8 +2004,27 @@ async def create_sale(
             return  # Block hold waived for this block's own tags.
         await validate_sale_allowed(d)
 
+    # Internal Only (2026-11-18): inter-company sale — the tag is not marked
+    # Sold and gets no warranty. A tag already sold internally by the entity
+    # that still owns it (no ReGRN to the buyer since) is skipped.
+    from utils.sales_person import INTERNAL_SALES_PERSON
+    internal = (sp_name or "").strip() == INTERNAL_SALES_PERSON and not sp_username
+    if internal:
+        wtype, warranty_days_selected = "none", 0
+    internal_done = set()
+    if internal and found:
+        _owner_co = {d.id: getattr(company_by_entity.get(d.entity, fallback_company), "id", None) for d in found}
+        for did, cid in (await db.execute(
+                select(Sale.device_id, Sale.company_id).where(
+                    Sale.device_id.in_(list(_owner_co)), func.trim(Sale.sales_person) == INTERNAL_SALES_PERSON,
+                    Sale.sales_person_username.is_(None)))).all():
+            if cid and cid == _owner_co.get(did):
+                internal_done.add(did)
+
     eligible = 0
     for d in found:
+        if d.id in internal_done:
+            continue   # skipped below — don't burn a SALE- number on it
         try:
             await _check_sellable(d)
             eligible += 1
@@ -2038,6 +2059,13 @@ async def create_sale(
                            else f"{code} (blocked)")
             continue
 
+        if device.id in internal_done:
+            msg = f"{code} already has an Internal Only sale from {device.entity} — ReGRN it to the buyer's GRN first"
+            if not is_multi:
+                return await _fail(msg, device=device)
+            skipped.append(f"{code} (already sold internally)")
+            continue
+
         # ── Cost Engine: below-cost warning (first one reported) ─────────
         price = price_by_code.get(code, price)
         w = below_cost_warning_for(costings.get(device.id), price)
@@ -2070,11 +2098,11 @@ async def create_sale(
         db.add(sale)
 
         prev = device.current_stage
-        prev_mv = open_moves.get((device.id, prev))
-        if prev_mv:
-            prev_mv.exited_at = app_now()
-
-        device.current_stage = DeviceStage.sold
+        if not internal:      # Internal Only: the tag stays in its stage (inter-company sale)
+            prev_mv = open_moves.get((device.id, prev))
+            if prev_mv:
+                prev_mv.exited_at = app_now()
+            device.current_stage = DeviceStage.sold
         device.updated_at    = app_now()
         # Sale's Invoice Number replaces the tag's Invoice Number (Pankaj,
         # 2026-10-21). The previous (purchase/GRN) invoice is kept in the
@@ -2092,8 +2120,9 @@ async def create_sale(
             block_item.status_changed_by_user_id = current_user.id
             block_item.status_changed_at = datetime.utcnow()
             block_item.notes = SOLD_NOTE_PREFIX + sale_num
-        db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=DeviceStage.sold,
-                             moved_by=current_user.username, notes=f"Sold — {sale_num}"))
+        if not internal:
+            db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=DeviceStage.sold,
+                                 moved_by=current_user.username, notes=f"Sold — {sale_num}"))
 
         await audit(db, user=current_user, action="SALE_CREATED",
                     table_name="sales", record_id=str(device.id),
@@ -2101,7 +2130,8 @@ async def create_sale(
                     new_value={"sale_number": sale_num, "price": str(price),
                                "below_cost": bool(w),
                                **({"invoice_number": _sale_inv} if _sale_inv else {}),
-                               **({"block_id": block_rec.block_id} if block_item is not None else {})},
+                               **({"block_id": block_rec.block_id} if block_item is not None else {}),
+                               **({"internal_only": True, "stage_kept": prev.value if prev else None} if internal else {})},
                     notes=w, request=request)
 
         sold.append(sale_num)
@@ -2111,6 +2141,7 @@ async def create_sale(
             "price": str(price),
             "customer_name": customer_name or None,
             "sold_by": current_user.username,
+            "internal_only": internal,
             "_source": "sales_html",
         })
 
@@ -2123,9 +2154,9 @@ async def create_sale(
         publish(EventType.SALE_COMPLETED, payload, background_tasks)
 
     if is_multi:
-        redirect = f"/sales?success={len(sold)}+devices+sold"
+        redirect = f"/sales?success={len(sold)}+devices+sold" + ("+(Internal+Only+—+tags+stay+in+stock)" if internal else "")
     else:
-        redirect = f"/sales?success=Sale+{sold[0]}+recorded"
+        redirect = f"/sales?success=Sale+{sold[0]}+recorded" + ("+(Internal+Only+—+tag+stays+in+stock)" if internal else "")
     warn_parts = []
     if warn:
         warn_parts.append(warn)
@@ -2781,7 +2812,9 @@ async def sales_list_data(
             # Linked → the user's full name only (username on hover); typed
             # text only for sales not linked yet (2026-11-12, Pankaj).
             (f'<span title="@{esc(s.sales_person_username)}">{esc(_sp_display(s, _sp_names))}</span>' if s.sales_person_username
-             else (esc(s.sales_person.strip()) + ('' if s.sales_person.strip() == "Internal Only" else  # Internal Only: no user by design (2026-11-18)
+             else (esc(s.sales_person.strip()) + ('<div><span class="badge bg-info-subtle text-info-emphasis" style="font-size:.62rem" '
+                                                       'title="Inter-company sale — the tag was not marked Sold">inter-company</span></div>'
+                                                       if s.sales_person.strip() == "Internal Only" else  # Internal Only: no user by design (2026-11-18)
                    '<div><span class="badge bg-warning-subtle text-warning-emphasis" style="font-size:.62rem">not linked</span></div>')
                    if (s.sales_person or "").strip() else '—')),
             (f'<a href="/sales/{s.id}/download-invoice" class="btn btn-outline-secondary btn-sm py-0 px-1" '

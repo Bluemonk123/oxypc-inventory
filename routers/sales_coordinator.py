@@ -79,6 +79,11 @@ def _multi(v: str) -> list:
     return [x.strip() for x in (v or "").split(",") if x.strip()]
 
 
+def _not_internal():
+    from utils.sales_person import not_internal_sale
+    return not_internal_sale()
+
+
 def _is_admin(user) -> bool:
     return getattr(user.role, "value", user.role) == UserRole.admin.value
 
@@ -216,7 +221,8 @@ async def _sold_times(db, device_ids) -> dict:
     ids = list(device_ids)
     for k in range(0, len(ids), 5000):
         for did, at in (await db.execute(
-                select(Sale.device_id, Sale.sold_at).where(Sale.device_id.in_(ids[k:k + 5000])))).all():
+                select(Sale.device_id, Sale.sold_at).where(Sale.device_id.in_(ids[k:k + 5000]),
+                                                           _not_internal()))).all():   # Internal Only isn't a real sale-out
             if at:
                 out.setdefault(did, []).append(at)
     return out
@@ -333,7 +339,8 @@ async def _gate_rows(db, scope, f: Filters):
     """Card 4: Gate Pass rows — not yet exited / exited."""
     base = (select(Sale, Device.barcode, Device.brand, Device.model)
             .join(Device, Device.id == Sale.device_id)
-            .where(*_in_scope(Sale.device_id, scope), *f.device(), *f.sale(), *f.dates(Sale.sold_at)))
+            .where(*_in_scope(Sale.device_id, scope), *f.device(), *f.sale(), *f.dates(Sale.sold_at),
+                   _not_internal()))       # Internal Only sales don't wait at the gate (2026-11-18)
     exited = Sale.delivery_status.in_(_EXITED)
     pending = (await db.execute(base.where(or_(~exited, Sale.delivery_status.is_(None)))
                                 .order_by(desc(Sale.sold_at)).limit(ROW_CAP))).all()
@@ -408,7 +415,8 @@ async def _dashboard(db, scope, f: Filters, show_pending, show_done, psqc, gate_
     wait_dates = f.dates(Sale.sold_at) if (f.date_from or f.date_to) else [
         Sale.sold_at >= datetime.combine(today - timedelta(days=30), datetime.min.time())]
     n_wait = (await db.execute(select(func.count(Sale.id)).join(Device, Device.id == Sale.device_id)
-                               .where(*base, *wait_dates, or_(~exited, Sale.delivery_status.is_(None))))).scalar() or 0
+                               .where(*base, *wait_dates, _not_internal(),
+                                      or_(~exited, Sale.delivery_status.is_(None))))).scalar() or 0
     n_invoices = (await db.execute(select(func.count(func.distinct(Sale.invoice_no))).join(Device, Device.id == Sale.device_id)
                                    .where(*base, *f.dates(Sale.sold_at), Sale.invoice_no.isnot(None), Sale.invoice_no != ""))).scalar() or 0
     days = [today - timedelta(days=13 - i) for i in range(14)]

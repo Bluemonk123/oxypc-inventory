@@ -1681,7 +1681,42 @@ _AGE_GROUPS = [
     ("Ready for Sale", {DeviceStage.ready_to_sale}),
 ]
 _AGE_OF = {st: i for i, (_n, sts) in enumerate(_AGE_GROUPS) for st in sts}
-_EXPORT_HEADER += [c for name, _s in _AGE_GROUPS for c in (f"{name} (Date)", f"{name} (Days)")]
+_EXPORT_HEADER += [c for name, _s in _AGE_GROUPS for c in (f"{name} (Date)", f"{name} (Ageing)")]
+
+# Excel header colours (2026-11-18, Pankaj): (fill, font colour) by column.
+_HDR_LIGHT_BLUE, _HDR_BLUE = ("DDEBF7", "1F3864"), ("2F75B5", "FFFFFF")
+_HDR_NAVY, _HDR_GREEN = ("1F3864", "FFFFFF"), ("548235", "FFFFFF")
+_HDR_MAROON_LT, _HDR_MAROON_DK = ("E6B8B7", "632523"), ("7B1F2B", "FFFFFF")
+_HDR_DEFAULT = ("F2F2F2", "000000")
+
+
+def _xl(v):
+    """A cell value for the Excel export: blanks as empty cells, enums as their value."""
+    import enum
+    from decimal import Decimal
+    if v is None or v == "":
+        return None
+    if isinstance(v, enum.Enum):
+        return v.value
+    if isinstance(v, Decimal):
+        return float(v)
+    return v
+
+
+def _header_style(i: int, name: str):
+    if i < 9:                                   # Barcode … Device Type
+        return _HDR_LIGHT_BLUE
+    if i < 15:                                  # Serial No … Storage
+        return _HDR_BLUE
+    if name in ("Zone", "Location ID", "Grade", "Stage"):
+        return _HDR_NAVY
+    if name == "Stock":
+        return _HDR_GREEN
+    if name.endswith("(Date)"):
+        return _HDR_MAROON_LT
+    if name.endswith("(Ageing)"):
+        return _HDR_MAROON_DK
+    return _HDR_DEFAULT
 
 
 async def _working_days_fn(db, today):
@@ -1760,7 +1795,7 @@ def _ageing_cols(device, moves, today, wdays=None) -> list:
             days = ""
         else:
             days = wdays(start.date(), end.date()) if wdays else max(0, (end.date() - start.date()).days)
-        out += [start.strftime("%Y-%m-%d"), days]
+        out += [start.date(), days]
     return out
 
 
@@ -1786,7 +1821,7 @@ def _stock_label(device) -> str:
 from utils.device_spec import ram_text, storage_text  # noqa: E402  (RAM / Storage export, 2026-10-22)
 
 
-async def _export_rows(db: AsyncSession, rows) -> Response:
+async def _export_rows(db: AsyncSession, rows, hide=()) -> Response:
     """Shared CSV builder for both the filtered export and the selected-tags
     export — same header, same columns, same cosmetic/hardware lookups,
     so a selection export can never show fewer fields than a full one.
@@ -1891,9 +1926,34 @@ async def _export_rows(db: AsyncSession, rows) -> Response:
     from utils.timezone import app_now as _app_now
     _today = _app_now()
     _wdays = await _working_days_fn(db, _today)
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(_EXPORT_HEADER)
+    # Excel file (2026-11-18, Pankaj — coloured headers need .xlsx; was CSV).
+    # Write-only workbook: ~13 s for a full 37k-tag export. `hide` = column
+    # names left out (Device Price without Pricing Export).
+    from openpyxl import Workbook
+    from openpyxl.cell import WriteOnlyCell
+    from openpyxl.styles import Alignment, Font, PatternFill
+    from openpyxl.utils import get_column_letter
+    want_hide = {h.strip().lower() for h in (hide or ())}
+    keep = [j for j, h in enumerate(_EXPORT_HEADER) if h.lower() not in want_hide]
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet("Inventory")
+    ws.freeze_panes = "B2"
+    for k, j in enumerate(keep):
+        name = _EXPORT_HEADER[j]
+        ws.column_dimensions[get_column_letter(k + 1)].width = (
+            18 if j < 15 else 60 if name == "Stage History" else 14 if name.endswith(("(Date)", "(Ageing)")) else 13)
+    hdr = []
+    for j in keep:
+        name = _EXPORT_HEADER[j]
+        fill, font = _header_style(j, name)
+        c = WriteOnlyCell(ws, value=name)
+        c.fill = PatternFill("solid", fgColor=fill)
+        c.font = Font(bold=True, color=font)
+        c.alignment = Alignment(vertical="center", wrap_text=True)
+        hdr.append(c)
+    ws.append(hdr)
+    n_rows = 0
+    keep_set = set(keep)
     for device, lot_number in rows:
         iqc = iqc_by_device.get(device.id)
         loc_info = location_map.get(str(device.id)) or {}
@@ -1920,8 +1980,8 @@ async def _export_rows(db: AsyncSession, rows) -> Response:
             device.bin_location or loc_info.get("slot") or "",
             zone_display, device.warehouse, device.notes,
             # Year-first so Excel reads real dates on any PC locale (2026-10-21).
-            device.created_at.strftime("%Y-%m-%d %H:%M") if device.created_at else "",
-            device.updated_at.strftime("%Y-%m-%d %H:%M") if device.updated_at else "",
+            device.created_at.replace(second=0, microsecond=0) if device.created_at else "",
+            device.updated_at.replace(second=0, microsecond=0) if device.updated_at else "",
             _pna_label(device, pna_device_ids),
             _stock_label(device),
             *_ageing_cols(device, movements_by_device.get(device.id), _today, _wdays),
@@ -1935,10 +1995,14 @@ async def _export_rows(db: AsyncSession, rows) -> Response:
             f"Export row for {device.barcode} has {len(row)} columns, "
             f"expected {len(_EXPORT_HEADER)} — column mapping is out of sync with _EXPORT_HEADER."
         )
-        writer.writerow(row)
-    _mark("csv")
-    body = output.getvalue().encode("utf-8-sig")
-    _mark("encode")
+        ws.append([_xl(v) for j, v in enumerate(row) if j in keep_set])
+        n_rows += 1
+    _mark("rows")
+    ws.auto_filter.ref = f"A1:{get_column_letter(len(keep))}{n_rows + 1}"
+    buf = io.BytesIO()
+    wb.save(buf)
+    body = buf.getvalue()
+    _mark("xlsx")
     # Server-Timing (2026-10-19): per-step milliseconds, visible in the
     # browser's network panel — how slow exports were tracked down.
     timing = ", ".join(f"{k};dur={v * 1000:.0f}" for k, v in _phase.items())
@@ -1947,8 +2011,8 @@ async def _export_rows(db: AsyncSession, rows) -> Response:
     # ~11,700 separate writes — about 10 of the 17 seconds the export took.
     return Response(
         content=body,
-        media_type="text/csv",
-        headers={"Content-Disposition": "attachment; filename=devices_export.csv",
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": "attachment; filename=devices_export.xlsx",
                  "Server-Timing": timing},
     )
 
@@ -1998,8 +2062,8 @@ async def export_devices(
     import time as _time
     t0 = _time.perf_counter()
     rows = (await db.execute(query)).all()
-    resp = await _export_rows(db, rows)
-    resp = await _strip_prices(resp, current_user, "devices", ["Device Price"])   # Pricing Export (2026-11-03)
+    from utils.price_export import can_export_prices
+    resp = await _export_rows(db, rows, hide=() if can_export_prices(current_user, "devices") else ["Device Price"])   # Pricing Export (2026-11-03)
     resp.headers["Server-Timing"] = (f"total;dur={(_time.perf_counter() - t0) * 1000:.0f}, "
                                      + resp.headers.get("Server-Timing", ""))
     return resp
@@ -2034,7 +2098,8 @@ async def export_devices_selected(
             .order_by(Device.updated_at.desc())
         )
         rows.extend((await db.execute(chunk_query)).all())
-    return await _strip_prices(await _export_rows(db, rows), current_user, "devices", ["Device Price"])
+    from utils.price_export import can_export_prices
+    return await _export_rows(db, rows, hide=() if can_export_prices(current_user, "devices") else ["Device Price"])   # Pricing Export
 
 
 # ── 2. DEVICE DETAIL ─────────────────────────────────────────────────────────

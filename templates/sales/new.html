@@ -118,24 +118,8 @@
               </select>
             </div>
           </div>
-          <div class="row g-3 mt-0">
-            <div class="col-md-3">
-              <label class="form-label">Customer Name</label>
-              <input type="text" name="customer_name" class="form-control" placeholder="Customer name">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Customer Phone</label>
-              <input type="tel" name="customer_phone" class="form-control" placeholder="Phone number">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Customer Address</label>
-              <input type="text" name="customer_address" class="form-control" placeholder="Customer address">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label fw-semibold">Customer State</label>
-              {% include "sales/_customer_state_select.html" %}
-            </div>
-          </div>
+          {# Customer row — becomes Entity + autofilled read-only details when Internal Only is ticked. #}
+          {% include "sales/_customer_fields.html" %}
           <div class="row g-3 mt-0">
             <div class="col-12">
               <label class="form-label">Notes</label>

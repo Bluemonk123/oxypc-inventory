@@ -71,7 +71,10 @@ def test_export_header_has_location_id_not_floor(app_client, make_user):  # noqa
         r = app_client.get(f"/devices/export?q={suffix}", follow_redirects=True)
         assert r.status_code == 200, r.text[:400]
 
-        reader = csv.reader(io.StringIO(r.content.decode("utf-8-sig")))
+        # Excel since 2026-11-18 (coloured headers); read it back row by row.
+        from openpyxl import load_workbook
+        _ws = load_workbook(io.BytesIO(r.content), read_only=True).active
+        reader = ([("" if c is None else str(c)) for c in row] for row in _ws.iter_rows(values_only=True))
         rows = list(reader)
         header = rows[0]
         assert "Location ID" in header, header
