@@ -1,0 +1,87 @@
+{#- Model cards (2026-11-18, Pankaj) — the card listing at the bottom of Ready
+    for Sale - Tags, Ready for Sale - Lots and All Inventories.
+
+    {% from "_model_cards.html" import model_cards with context %}
+    {{ model_cards('ready', entity_options, device_type_options, make_options, location_options,
+                   can_export=..., can_sell=..., entity_default=f.ms_entity) }}
+
+    Grade tabs (All, A, B …) above the cards. One card per Make + Model — per As-Is sub-lot on the Lots page (total,
+    blocked pill), then a
+    grade stack (click to filter) beside its variants (CPU Gen · RAM ·
+    Storage). Up to 3 variants on the card (the 4th row is "+N more"), "+N more" opens it expanded in a
+    pop-up; a variant opens its tags (Export, Block, and Sell where the page sells).
+    6 rows of cards per load; filters / search / sort run on the server
+    (routers/model_cards.py). Script: static/js/model-cards.js.
+    Class names use the "mcd-" prefix (Bootstrap already has .vr etc.). -#}
+{% import "_multiselect_filter.html" as ms %}
+{% macro model_cards(scope, entity_options, dtype_options, make_options, loc_options,
+                     can_export=False, can_sell=False, entity_default='', inventory=False) %}
+{% set _can_block = can(current_user, 'block_tags', 'add') %}
+<div class="card mcd mt-4" id="mcd" data-scope="{{ scope }}"
+     data-can-export="{{ 1 if can_export else 0 }}" data-can-sell="{{ 1 if can_sell else 0 }}"
+     data-can-block="{{ 1 if _can_block else 0 }}">
+  <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2" data-hdr-keep>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <span class="fw-semibold">{{ 'As-Is Lots' if scope == 'lots' else 'Models' }}</span>
+      <select id="mcdSort" class="form-select form-select-sm" style="width:auto" title="Sort">
+        <option value="stock">Sort: Most in stock</option>
+        <option value="a">Sort: Most grade A</option>
+        <option value="az">Sort: A–Z</option>
+      </select>
+      <span class="small text-muted" id="mcdCount"></span>
+    </div>
+    <div class="d-flex flex-wrap gap-2 align-items-center justify-content-end mcd-filters">
+      <input type="search" id="mcdSearch" class="form-control form-control-sm" placeholder="{{ 'Search Lot, Model, RAM, Storage…' if scope == 'lots' else 'Search Model, CPU, RAM, Storage…' }}" title="Make, Model, CPU, Gen, RAM, Storage{{ ', Lot / Sub-Lot' if scope == 'lots' }} — e.g. 8gb 256" style="width:200px" autocomplete="off">
+      {{ ms.multiselect_inline('mc_entity', 'Entity', entity_options, entity_default) }}
+      {{ ms.multiselect_inline('mc_dtype', 'Device Types', dtype_options, '') }}
+      {{ ms.multiselect_inline('mc_make', 'Make', make_options, '') }}
+      {% if inventory %}
+      {{ ms.multiselect_inline('mc_touch', 'Touch Type', [('touch', 'Touch (T)'), ('non_touch', 'Non-Touch (NT)')], '') }}
+      {{ ms.multiselect_inline('mc_stock', 'Stock Type', [('finish_good', 'Finish Good'), ('as_is', 'As-Is'), ('in_progress', 'In Progress')], '') }}
+      {% endif %}
+      {{ ms.multiselect_inline('mc_loc', 'Locations', loc_options, '') }}
+      <select id="mcdAvail" class="form-select form-select-sm" style="width:auto" title="Availability">
+        <option value="">All Availability</option><option value="open">Open</option><option value="blocked">Blocked</option>
+      </select>
+      <button type="button" id="mcdReset" class="btn btn-sm btn-outline-secondary bg-white hdr-reset" title="Reset filters" aria-label="Reset filters"><i class="bi bi-arrow-counterclockwise"></i></button>
+      {% if can_export %}
+      {# Export (2026-11-18): every tag under these filters, search and grade tab. #}
+      <button type="button" id="mcdExportAll" class="btn btn-sm btn-primary text-nowrap" title="Export these tags" aria-label="Export these tags"><i class="bi bi-file-earmark-arrow-down me-1"></i><span id="mcdExportN">0</span></button>
+      {% endif %}
+    </div>
+  </div>
+  <div class="card-body p-0">
+    {# Grade tabs (2026-11-18): All <count>, then one per grade; drawn by model-cards.js
+       (ms-card.js writes the picked grade into #mcdGrade and fires ms:change). #}
+    <input type="hidden" id="mcdGrade" value="">
+    <ul class="nav nav-pills ms-gtabs px-3 pt-3 gap-1" id="mcdGTabs" data-hidden="mcdGrade"></ul>
+    <div class="mcd-grid" id="mcdGrid"></div>
+    <div class="mcd-empty d-none" id="mcdEmpty">No models match these filters.</div>
+    <div class="mcd-lm"><button type="button" id="mcdMore" class="d-none"><i class="bi bi-chevron-double-down me-1"></i>Load more</button></div>
+  </div>
+</div>
+{# Pop-up: a card expanded ("+N more"), or a variant's tags. #}
+<div class="modal fade" id="mcdModal" tabindex="-1" aria-labelledby="mcdModalTitle">
+  <div class="modal-dialog modal-dialog-scrollable" id="mcdModalDialog">
+    <div class="modal-content">
+      <div class="modal-header py-2">
+        <h6 class="modal-title" id="mcdModalTitle">Model</h6>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0" id="mcdModalBody"></div>
+      <div class="modal-footer py-2 d-none" id="mcdModalFoot"></div>
+    </div>
+  </div>
+</div>
+<form method="post" action="/devices/export" id="mcdExportForm" class="d-none">
+  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+  <input type="hidden" name="barcodes_csv" id="mcdExportTags">
+</form>
+{# Block (2026-11-18): the Block Tags page's New Block Tags modal, with the
+   variant's open Ready-for-Sale tags already selected. #}
+{% if _can_block %}
+{% from "block_tags/_new_block_modal.html" import new_block_modal with context %}
+{{ new_block_modal() }}
+{% endif %}
+<script src="/static/js/model-cards.js?v={{ ASSET_VERSION }}"></script>
+{% endmacro %}

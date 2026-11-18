@@ -773,9 +773,12 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
     # was Storage GB + Storage Type, and a size typed into Storage Type showed
     # twice ("256 GB 256 GB") and split one configuration into two rows.
     def _cfg_key(model, brand, cpu, ram_gb, storage, generation=None):
-        return ((model or "Unknown Model"), (brand or "Unknown Make"), (cpu or "").strip(),
+        # CPU / Gen as one label each (2026-11-17, Pankaj): "I7", "i7" and
+        # "i7 10th" (Gen 10th) were separate rows of the same configuration.
+        from utils.device_spec import cpu_label, gen_label
+        return ((model or "Unknown Model"), (brand or "Unknown Make"), cpu_label(cpu, generation),
                 ram_gb or 0, storage or "", "",
-                (generation or "").strip())
+                gen_label(generation))
 
     # Entity short names for the Model Summary entity pills (2026-10-27).
     _ENTITY_SHORT = {"oxypc computers": "OXY", "renew circuits": "RC", "deshwal": "DES"}
@@ -888,20 +891,34 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
         if stocks and _stk(d.current_stage, d.sub_lot_number) not in stocks:
             return False
         return True
-    model_summary_ready = _build_model_summary(
-        [r for r in devices if not (r[0].sub_lot_number or "").strip()
-         and _row_passes(r[0], ms_touch, ms_entities, ms_dtypes)
-         and _grade_passes(r[0], ms_grades)
-         and _avail_passes(r[0], ms_avail)
-         and (not ms_locs or _zone_label(r[0]) in ms_locs)
-         and _ms_extra(r[0], ms_makes, ms_stocks)])
-    model_summary_as_is = _build_model_summary(
-        [r for r in devices if (r[0].sub_lot_number or "").strip()
-         and _row_passes(r[0], am_touch, am_entities, am_dtypes)
-         and _grade_passes(r[0], am_grades)
-         and _avail_passes(r[0], am_avail)
-         and (not am_locs or _zone_label(r[0]) in am_locs)
-         and _ms_extra(r[0], am_makes, am_stocks)])
+    # Rows passing every Model Summary filter except Grade — the grade tabs'
+    # counts (2026-11-17, Pankaj) come from these, the table from the grade-filtered ones.
+    _ms_base = [r for r in devices if not (r[0].sub_lot_number or "").strip()
+                and _row_passes(r[0], ms_touch, ms_entities, ms_dtypes)
+                and _avail_passes(r[0], ms_avail)
+                and (not ms_locs or _zone_label(r[0]) in ms_locs)
+                and _ms_extra(r[0], ms_makes, ms_stocks)]
+    _am_base = [r for r in devices if (r[0].sub_lot_number or "").strip()
+                and _row_passes(r[0], am_touch, am_entities, am_dtypes)
+                and _avail_passes(r[0], am_avail)
+                and (not am_locs or _zone_label(r[0]) in am_locs)
+                and _ms_extra(r[0], am_makes, am_stocks)]
+    model_summary_ready = _build_model_summary([r for r in _ms_base if _grade_passes(r[0], ms_grades)])
+    model_summary_as_is = _build_model_summary([r for r in _am_base if _grade_passes(r[0], am_grades)])
+
+    def _grade_tabs(rows):
+        """[(code, label, tags)] for the Model Summary grade tabs: All, then
+        each grade that has tags (A..E, then No grade)."""
+        c: dict = {}
+        for r in rows:
+            g = getattr(r[0].grade, "value", r[0].grade) if r[0].grade else ""
+            c[g or "NG"] = c.get(g or "NG", 0) + 1
+        order = [code or "NG" for code, _l, _c in _SUMMARY_GRADES]
+        tabs = [("", "All", len(rows))]
+        tabs += [(k, ("No grade" if k == "NG" else k), c[k]) for k in order if c.get(k)]
+        tabs += [(k, k, n) for k, n in c.items() if k not in order and n]
+        return tabs
+    ms_grade_tabs, am_grade_tabs = _grade_tabs(_ms_base), _grade_tabs(_am_base)
 
 
     # Dispatch-request state (approved/requested/rejected) and warranty used to
@@ -1083,6 +1100,7 @@ async def _ready_page(request: Request, db: AsyncSession, current_user: User, te
         "request": request, "devices": devices, "current_user": current_user,
         "interested_dealers": interested_dealers,
         "model_summary_ready": model_summary_ready,
+        "ms_grade_tabs": ms_grade_tabs, "am_grade_tabs": am_grade_tabs,
         "model_summary_as_is": model_summary_as_is,
         "f": {"ms_touch": ms_touch, "ms_avail": ms_avail, "ms_entity": ent["ms_entity"],
               "al_touch": al_touch, "al_entity": ent["al_entity"],

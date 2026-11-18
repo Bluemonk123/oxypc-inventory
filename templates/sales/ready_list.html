@@ -10,7 +10,11 @@
 {% set _ps = psiqc is defined and psiqc %}{% set _pm = pm if pm is defined else 'sales' %}
 {# Opening tab (2026-11-12, Pankaj): Model Summary first; Counter Sales users
    (they sell tag by tag) and Pre-Sale IQC open on the Tags tab. #}
-{% set _ms_first = not _ps and not (tags_first is defined and tags_first) %}
+{% set _ms_first = False %}{# Tags tab opens first (2026-11-18) #}
+{# Tags / Tags Model Summary tabs only for Counter Sales and Admin (2026-11-18,
+   Pankaj) — role_allowed also lets admin-created custom roles through (project
+   rule). Hidden, not removed, so the page's scripts still find their elements. #}
+{% set _show_tabs = _ps or role_allowed(current_user.role, 'counter_sales', 'admin') %}
 <style>
   /* Tab sets on this page — same look as Final QC's Devices Passed/Failed
      tabs: tabs sit on the page, the active one joins a white bordered panel. */
@@ -71,7 +75,7 @@
 {# Two tab sets (2026-10-10): Ready for Sale Tags + its Model Summary, then
    As-Is Lot + its Model Summary. Each summary is built only from the tags of
    the table beside it (routers/sales.py _build_model_summary). #}
-{% from "sales/_ready_macros.html" import touch_select, avail_select, model_summary_table with context %}
+{% from "sales/_ready_macros.html" import touch_select, avail_select, model_summary_table, grade_tabs, header_search with context %}
 
 {# Shared form behind the Model Summary row export buttons: posts the row's
    Tag Numbers to All Inventory's export (POST /devices/export). #}
@@ -139,32 +143,21 @@
   </li>
 </ul>
 {% endif %}
-<ul class="nav nav-tabs ready-tabs{{ ' d-none' if _ps else '' }}" id="readyTabs" role="tablist">
-{% if _ms_first %}
-  <li class="nav-item" role="presentation">
-    <button class="nav-link{{ ' active' if _ms_first else '' }}" data-bs-toggle="tab" data-bs-target="#readyModelSumPane" type="button" role="tab">
-      <i class="bi bi-collection me-1"></i>Ready for Sale - Model Summary <span class="badge rounded-pill bg-secondary ms-1" id="msCountBadge">{{ model_summary_ready|length }}</span>
-    </button>
-  </li>
+<ul class="nav nav-tabs ready-tabs{{ ' d-none' if (_ps or not _show_tabs) else '' }}" id="readyTabs" role="tablist">
+  {# 2026-11-18 (Pankaj): Tags tab first (and open by default), renamed "Tags"
+     and "Tags Model Summary". #}
   <li class="nav-item" role="presentation">
     <button class="nav-link{{ '' if _ms_first else ' active' }}" data-bs-toggle="tab" data-bs-target="#readyTagsPane" type="button" role="tab">
-      <i class="bi bi-upc-scan me-1"></i>Ready for Sale - Tags <span class="badge rounded-pill bg-success ms-1">{{ ready_tag_count }}</span>
-    </button>
-  </li>
-{% else %}
-  <li class="nav-item" role="presentation">
-    <button class="nav-link{{ '' if _ms_first else ' active' }}" data-bs-toggle="tab" data-bs-target="#readyTagsPane" type="button" role="tab">
-      <i class="bi bi-upc-scan me-1"></i>Ready for Sale - Tags <span class="badge rounded-pill bg-success ms-1">{{ ready_tag_count }}</span>
+      <i class="bi bi-upc-scan me-1"></i>Tags <span class="badge rounded-pill bg-success ms-1">{{ ready_tag_count }}</span>
     </button>
   </li>
   <li class="nav-item" role="presentation">
     <button class="nav-link{{ ' active' if _ms_first else '' }}" data-bs-toggle="tab" data-bs-target="#readyModelSumPane" type="button" role="tab">
-      <i class="bi bi-collection me-1"></i>Ready for Sale - Model Summary <span class="badge rounded-pill bg-secondary ms-1" id="msCountBadge">{{ model_summary_ready|length }}</span>
+      <i class="bi bi-collection me-1"></i>Tags Model Summary <span class="badge rounded-pill bg-secondary ms-1" id="msCountBadge">{{ model_summary_ready|length }}</span>
     </button>
   </li>
-{% endif %}
 </ul>
-<div class="tab-content ready-tab-content">
+<div class="tab-content ready-tab-content{{ '' if _show_tabs else ' d-none' }}">
   <div class="tab-pane fade{{ '' if _ms_first else ' show active' }}" id="readyTagsPane" role="tabpanel">
   <div class="card">
     {# Filters sit on the right of the card header (2026-10-16). Each filter
@@ -267,9 +260,10 @@
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
       {# Same 8 filters, same order, on All Inventory / Tags / Lots (2026-11-16, Pankaj):
          Entity, Device Type, Grades, Make, Touch Type, Stock Type, Location, Availability. #}
+      {{ header_search('readyModelSummaryTable') }}
       {{ ms.multiselect_inline('ms_entity', 'Entity', entity_options, f.ms_entity) }}
       {{ ms.multiselect_inline('ms_dtype', 'Device Types', device_type_options, f.ms_dtype) }}
-      {{ ms.multiselect_inline('ms_grade', 'Grades', summary_grade_options, f.ms_grade) }}
+      {# Grades: the tabs inside the card (2026-11-17, Pankaj). #}
       {{ ms.multiselect_inline('ms_make', 'Make', make_options, f.ms_make) }}
       {# Touch Type + Stock Type removed from Model Summary (2026-11-17, Pankaj). #}
       {% if location_options is defined %}{{ ms.multiselect_inline('ms_loc', 'Locations', location_options, f.ms_loc) }}{% endif %}
@@ -281,6 +275,7 @@
       </button>
       </div>
     </div>
+    {{ grade_tabs('msGradeTabs', 'ms_val_ms_grade', 'ms_grade', ms_grade_tabs, f.ms_grade) }}
     <div class="card-body px-0 pb-0">
     {{ model_summary_table('readyModelSummaryTable', model_summary_ready, true, 'No Ready for Sale tags.') }}
     </div>
@@ -555,6 +550,12 @@
 {% from "_tag_spec_edit.html" import spec_edit_modal %}
 {{ spec_edit_modal() }}
 <script>window.specEditRefresh = function () { return new Promise(function (res) { if (window.readyDt) readyDt.ajax.reload(function () { res(true); }, false); else res(false); }); };</script>
+{% endif %}
+{# Model cards at the bottom of the page (2026-11-18, Pankaj) — templates/_model_cards.html. #}
+{% if not _ps %}
+{% from "_model_cards.html" import model_cards with context %}
+{{ model_cards('ready', entity_options, device_type_options, make_options, location_options,
+               can_export=can(current_user, _pm, 'export'), can_sell=True, entity_default=f.ms_entity) }}
 {% endif %}
 {% endblock %}
 {% block scripts %}
@@ -1036,6 +1037,7 @@ function summaryFooter() {
 function buildSummaryTable(id){
   if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();
   initGlobalTable('#' + id, $.extend(true, { footerCallback: summaryFooter }, SUMMARY_OPTS[id]));
+  if (window.msCardReapply) msCardReapply(id);   // card-header search (2026-11-17)
 }
 buildSummaryTable('readyModelSummaryTable');
 
@@ -1069,6 +1071,7 @@ function refreshSummaryTable(id, badgeId){
       if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();
       document.querySelector('#' + id + ' tbody').innerHTML = fresh.innerHTML;
       copyBadge(doc, badgeId);
+      if (window.msCardSwapTabs) msCardSwapTabs(doc, 'msGradeTabs');   // grade tab counts (2026-11-17)
       buildSummaryTable(id);
       if (id === 'readyModelSummaryTable') {
         var all = document.getElementById('modelSumSelectAll'); if (all) all.checked = false;

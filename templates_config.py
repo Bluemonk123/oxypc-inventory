@@ -50,6 +50,14 @@ _VERSIONED_ASSETS = [
     # dash.css after an update.
     os.path.join(BASE_DIR, "static", "css", "dash.css"),
     os.path.join(BASE_DIR, "static", "js", "dash.js"),
+    # Model Summary card tabs / header search and the Model cards (2026-11-18):
+    # also tagged ?v=; missing here, so a changed script stayed cached.
+    os.path.join(BASE_DIR, "static", "js", "ms-card.js"),
+    os.path.join(BASE_DIR, "static", "js", "model-cards.js"),
+    # Same gap found for these (tagged ?v= but not listed).
+    os.path.join(BASE_DIR, "static", "js", "deal-account-link.js"),
+    os.path.join(BASE_DIR, "static", "js", "pill-counts.js"),
+    os.path.join(BASE_DIR, "static", "js", "secondary-table.js"),
 ]
 try:
     ASSET_VERSION = str(int(max(

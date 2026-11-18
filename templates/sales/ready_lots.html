@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% import "_multiselect_filter.html" as ms %}
 {% import "sales/_ready_tiles.html" as rt %}
-{% from "sales/_ready_macros.html" import touch_select, avail_select, model_summary_table with context %}
+{% from "sales/_ready_macros.html" import touch_select, avail_select, model_summary_table, grade_tabs, header_search with context %}
 {% block title %}Ready for Sale - Lots — OxyPC{% endblock %}
 {% block page_title %}Ready for Sale - Lots{% endblock %}
 {% block content %}
@@ -56,7 +56,11 @@
              title='Normal = non-touch tags in these lots; Touch = tags Final QC marked Touch') }}
 {% endcall %}
 
-<ul class="nav nav-tabs ready-tabs" id="asIsTabs" role="tablist">
+{# Main tabs only for Counter Sales and Admin (2026-11-18, Pankaj) — same rule as
+   Ready for Sale - Tags; role_allowed also lets admin-created custom roles through.
+   Hidden, not removed, so the page's scripts still find their elements. #}
+{% set _show_tabs = role_allowed(current_user.role, 'counter_sales', 'admin') %}
+<ul class="nav nav-tabs ready-tabs{{ '' if _show_tabs else ' d-none' }}" id="asIsTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#asIsLotPane" type="button" role="tab">
       <i class="bi bi-box-seam me-1"></i>As-Is Lot <span class="badge rounded-pill bg-warning text-dark ms-1" id="alCountBadge">{{ as_is_lots|length }}</span>
@@ -68,7 +72,7 @@
     </button>
   </li>
 </ul>
-<div class="tab-content ready-tab-content">
+<div class="tab-content ready-tab-content{{ '' if _show_tabs else ' d-none' }}">
   <div class="tab-pane fade show active" id="asIsLotPane" role="tabpanel">
   <div class="card">
     <div class="card-header bg-transparent px-0 pt-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
@@ -192,9 +196,10 @@
       <span class="fw-semibold"><i class="bi bi-collection me-1"></i>Model Table</span>
       <div class="d-flex justify-content-end align-items-center flex-wrap gap-2">
       {# Same 8 filters, same order, on All Inventory / Tags / Lots (2026-11-16, Pankaj) #}
+      {{ header_search('asIsModelSummaryTable') }}
       {{ ms.multiselect_inline('am_entity', 'Entity', entity_options, f.am_entity) }}
       {{ ms.multiselect_inline('am_dtype', 'Device Types', device_type_options, f.am_dtype) }}
-      {{ ms.multiselect_inline('am_grade', 'Grades', summary_grade_options, f.am_grade) }}
+      {# Grades: the tabs inside the card (2026-11-17, Pankaj). #}
       {{ ms.multiselect_inline('am_make', 'Make', make_options, f.am_make) }}
       {# Touch Type + Stock Type removed from Model Summary (2026-11-17, Pankaj). #}
       {{ ms.multiselect_inline('am_loc', 'Locations', location_options, f.am_loc) }}
@@ -202,6 +207,7 @@
       {% if can(current_user, 'sales', 'export') %}<button type="button" id="amExportBtn" class="btn btn-primary btn-sm text-nowrap" title="Export the tags of the rows shown (filters and search) — All Inventory format"><i class="bi bi-file-earmark-arrow-down me-1"></i><span class="ms-export-count">0</span></button>{% endif %}
       </div>
     </div>
+    {{ grade_tabs('amGradeTabs', 'ms_val_am_grade', 'am_grade', am_grade_tabs, f.am_grade) }}
     <div class="card-body px-0 pb-0">
     {{ model_summary_table('asIsModelSummaryTable', model_summary_as_is, false, 'No As-Is tags.') }}
     </div>
@@ -368,6 +374,10 @@
   <input type="hidden" name="barcodes" id="tagSaleBarcodes">
   <input type="hidden" name="qty" id="tagSaleQty">
 </form>
+{# Model cards at the bottom of the page (2026-11-18, Pankaj) — templates/_model_cards.html. #}
+{% from "_model_cards.html" import model_cards with context %}
+{{ model_cards('lots', entity_options, device_type_options, make_options, location_options,
+               can_export=can(current_user, 'sales', 'export'), can_sell=True, entity_default=f.am_entity) }}
 {% endblock %}
 {% block scripts %}
 {{ rt.script() }}
@@ -695,6 +705,7 @@ function summaryFooter() {
 function buildSummaryTable(id){
   if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();
   initGlobalTable('#' + id, $.extend(true, { footerCallback: summaryFooter }, SUMMARY_OPTS[id]));
+  if (window.msCardReapply) msCardReapply(id);   // card-header search (2026-11-17)
 }
 buildSummaryTable('asIsModelSummaryTable');
 function refreshSummaryTable(id, badgeId){
@@ -707,6 +718,7 @@ function refreshSummaryTable(id, badgeId){
       if ($.fn.dataTable.isDataTable('#' + id)) $('#' + id).DataTable().destroy();
       document.querySelector('#' + id + ' tbody').innerHTML = fresh.innerHTML;
       copyBadge(doc, badgeId);
+      if (window.msCardSwapTabs) msCardSwapTabs(doc, 'amGradeTabs');   // grade tab counts (2026-11-17)
       buildSummaryTable(id);
     });
 }

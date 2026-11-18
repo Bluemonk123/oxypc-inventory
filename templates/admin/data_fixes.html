@@ -111,6 +111,71 @@
     </div>
   </div>
 
+  {# ── Make name consistency (2026-11-17, Pankaj) — like Product Model Name:
+       one row per Make, its spellings now and the name it is saved as
+       (Device Brands spelling, else the best-cased one; type or pick to
+       rename / merge). ── #}
+  <div class="col-12" data-df="make-name-consistency">
+    <div class="card border-0 shadow-sm h-100 df-card{% if mk_total %} border-start border-warning border-3{% endif %}">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-tags me-2"></i>Make — one spelling per make
+          <span class="badge {% if mk_total %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ "{:,}".format(mk_total) }}</span></span>
+        {% if mk_groups %}
+        <form method="post" action="/admin/system/make-name-fix" class="df-confirm" id="mkForm" data-confirm="Click again to apply">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-warning"><i class="bi bi-magic me-1"></i>Apply{% if mk_total %} ({{ "{:,}".format(mk_total) }} tags){% endif %}</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not mk_groups %}
+        <p class="mb-0 text-muted">No tags have a Make yet.</p>
+        {% else %}
+        <p class="text-muted mb-2">Spellings that are the same Make (same letters and numbers, ignoring capitals, spaces and punctuation — "HP", "hp", "H.P.") become one name.
+          The <strong>Save as</strong> box is filled in automatically: the spelling in Master Data → Device Brands when there is one, otherwise normal capitals ("Dell", not "DELL").
+          <strong>Type in the box or pick a Device Brand to change it</strong> — a different name renames (merges) every spelling in that row, e.g. "Hewlett Packard" → "HP".
+          A new name is added to Device Brands. <i class="bi bi-download"></i> downloads a spelling's tags.
+          {% if mk_total %}<strong>{{ "{:,}".format(mk_fix) }}</strong> makes to fix.{% else %}<span class="text-success"><i class="bi bi-check-circle me-1"></i>Every Make has one spelling — rename any of them below if you need to.</span>{% endif %}</p>
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
+          <input type="search" id="mkSearch" class="form-control form-control-sm" style="max-width:260px" placeholder="Search make…">
+          <select id="mkShow" class="form-select form-select-sm" style="width:auto">
+            <option value="">All makes ({{ "{:,}".format(mk_groups | length) }})</option>
+            <option value="fix">Spellings to fix ({{ "{:,}".format(mk_fix) }})</option>
+            <option value="nomaster">Not in Device Brands ({{ "{:,}".format(mk_groups | rejectattr('master') | list | length) }})</option>
+          </select>
+          <span class="text-muted" id="mkShown"></span>
+        </div>
+        <div style="max-height:460px;overflow:auto">
+        <table class="table table-sm align-middle mb-0">
+          <thead class="table-light" style="position:sticky;top:0"><tr><th style="width:38%">Spellings now (tags)</th><th>Save as</th><th class="text-end">Tags to change</th></tr></thead>
+          <tbody>
+          {% for g in mk_groups %}
+            <tr class="mk-row" data-fix="{{ 1 if g.to_change else 0 }}" data-master="{{ 1 if g.master else 0 }}"
+                data-q="{{ (g.spellings | map('first') | join(' ')) | lower }}">
+              <td>{% for sp, n in g.spellings %}<div class="d-flex align-items-center gap-1">
+                <a href="/admin/system/make-name-fix/export?make={{ sp | urlencode }}" class="btn btn-link btn-sm p-0 lh-1" title="Download these {{ n }} tags (CSV)"><i class="bi bi-download"></i></a>
+                <code>{{ sp }}</code> <span class="text-muted">({{ "{:,}".format(n) }})</span>{% if sp == g.final %} <span class="badge bg-light text-success border">kept</span>{% endif %}</div>{% endfor %}
+                {% if not g.master %}<div class="text-warning-emphasis" style="font-size:.72rem"><i class="bi bi-exclamation-triangle me-1"></i>Not in Device Brands</div>{% endif %}</td>
+              <td><div class="d-flex align-items-start gap-2 flex-nowrap">
+                  <input type="text" class="form-control form-control-sm mk-name" form="mkForm" name="mk_{{ g.key }}"
+                         value="{{ g.final }}" data-key="{{ g.key }}" maxlength="100" style="max-width:260px">
+                  <select class="form-select form-select-sm mk-pick" style="max-width:220px" title="Pick from Device Brands (Master Data)">
+                    <option value="">Pick from Device Brands…</option>
+                    {% for b in brand_master %}<option value="{{ b }}">{{ b }}</option>{% endfor %}
+                  </select></div>
+                  <div class="text-warning-emphasis mk-warn d-none" style="font-size:.75rem"><i class="bi bi-pencil-square me-1"></i>Different name — every spelling in this row will be renamed to it</div></td>
+              <td class="text-end">{{ "{:,}".format(g.to_change) }}</td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {# ── RAM / Storage fill ── #}
   <div class="col-lg-6" data-df="ram-storage-fill">
     <div class="card border-0 shadow-sm h-100 df-card">
@@ -1173,6 +1238,14 @@ $(document).ready(function () {
       });
       fd.append('mn_json', JSON.stringify(edited));
     }
+    if (f.id === 'mkForm') {          // Make card (2026-11-17): edited boxes as one JSON field
+      var mkEd = {};
+      document.querySelectorAll('.mk-name').forEach(function (i) {
+        fd.delete(i.name);
+        if (i.value !== i.defaultValue) mkEd[i.name] = i.value;
+      });
+      fd.append('mk_json', JSON.stringify(mkEd));
+    }
     try {
       var r = await fetch(f.action, { method: 'POST', body: fd, credentials: 'same-origin',
                                       headers: { 'X-Requested-With': 'XMLHttpRequest' } });
@@ -1327,5 +1400,35 @@ $(document).ready(function () {
     initGlobalTable('#specCheckTable', { order: [], pageLength: 25, columnDefs: [{ orderable: false, targets: [10] }] });
   }
 });
+
+// Make card (2026-11-17, Pankaj): search / show filter, Device Brand pick,
+// and a warning when a typed name renames (different letters / numbers).
+(function () {
+  function key(v) { return (v || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+  function mkFilter() {
+    var q = ((document.getElementById('mkSearch') || {}).value || '').toLowerCase().trim();
+    var show = (document.getElementById('mkShow') || {}).value || '', n = 0;
+    document.querySelectorAll('.mk-row').forEach(function (r) {
+      var ok = (!q || r.dataset.q.indexOf(q) >= 0) &&
+               (!show || (show === 'fix' && r.dataset.fix === '1') || (show === 'nomaster' && r.dataset.master === '0'));
+      r.style.display = ok ? '' : 'none'; if (ok) n++;
+    });
+    var out = document.getElementById('mkShown'); if (out) out.textContent = n.toLocaleString('en-US') + ' shown';
+  }
+  function mkWarn(i) {
+    var w = i.closest('td').querySelector('.mk-warn');
+    if (w) w.classList.toggle('d-none', !i.value.trim() || key(i.value) === i.dataset.key);
+  }
+  document.addEventListener('input', function (e) {
+    if (e.target.id === 'mkSearch') { mkFilter(); return; }
+    if (e.target.classList && e.target.classList.contains('mk-name')) mkWarn(e.target);
+  });
+  document.addEventListener('change', function (e) {
+    if (e.target.id === 'mkShow') { mkFilter(); return; }
+    var sel = e.target.closest && e.target.closest('select.mk-pick');
+    if (sel && sel.value) { var i = sel.closest('td').querySelector('.mk-name'); i.value = sel.value; mkWarn(i); sel.value = ''; }
+  });
+  if (document.getElementById('mkSearch')) mkFilter();
+})();
 </script>
 {% endblock %}

@@ -334,3 +334,36 @@ def fill_defaults(d) -> dict:
             n = max(n, len(drives))
         ch["total_hdd_count"] = str(max(n, 1))
     return ch
+
+
+# ── Model Summary grouping (2026-11-17, Pankaj) ──────────────────────────────
+# The same configuration typed differently ("I7", "i7", "i7 10th" with Gen
+# 10th) made separate Model Summary rows. These give one label per value.
+_GEN_TAIL = re.compile(r"[\s\-_/]*(\d{1,2})\s*(?:st|nd|rd|th)?\s*(?:gen(?:eration)?)?\.?\s*$", re.I)
+_INTEL = re.compile(r"^(?:intel\s*)?(?:core\s*)?i\s*-?\s*([3579])$", re.I)
+
+
+def gen_label(gen) -> str:
+    """CPU Gen as one label: " 10th " / "10TH" / "10th Gen" -> "10TH"."""
+    s = re.sub(r"\s+", " ", str(gen or "")).strip()
+    m = re.match(r"^(\d{1,2})\s*(?:st|nd|rd|th)?\s*(?:gen(?:eration)?)?\.?$", s, re.I)
+    if m:
+        n = int(m.group(1))
+        suf = "TH" if 10 <= n % 100 <= 20 else {1: "ST", 2: "ND", 3: "RD"}.get(n % 10, "TH")
+        return f"{n}{suf}"
+    return s.upper()
+
+
+def cpu_label(cpu, gen=None) -> str:
+    """CPU as one label: "I7" / "i7" / "Core i7" -> "i7"; a trailing
+    generation that repeats the CPU Gen ("i7 10th" with Gen 10th) is dropped.
+    Anything else keeps its text with spaces tidied."""
+    s = re.sub(r"\s+", " ", str(cpu or "")).strip()
+    if not s:
+        return ""
+    m = _GEN_TAIL.search(s)
+    g = re.match(r"^(\d{1,2})", gen_label(gen))
+    if m and m.start() > 0 and g and m.group(1) == g.group(1):
+        s = s[:m.start()].strip()
+    im = _INTEL.match(s)
+    return f"i{im.group(1)}" if im else s

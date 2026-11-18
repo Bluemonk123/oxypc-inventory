@@ -70,12 +70,7 @@ async def build(db, filters, sold_filters):
              if parts else dw.insight("Where every device in stock is", 12, [("i", "No devices for these filters.", "slate")]))
 
     in_stock_where = [Device.current_stage.notin_([DeviceStage(s) for s in GONE])]
-    cats = (await db.execute(base(CATEGORY, func.count()).where(*in_stock_where).group_by(CATEGORY)
-                             .order_by(desc(func.count())))).all()
-    cat_cols = ["blue", "cyan", "violet", "amber", "teal", "pink", "grey"]
-    top_cats = cats[:5] + ([("Other", sum(c for _, c in cats[5:]))] if len(cats) > 5 else [])
-    donut = (dw.donut("By device type", 4, [(n or "Other", c, cat_cols[i % 7]) for i, (n, c) in enumerate(top_cats)],
-                      dw.num(in_stock), "in stock") if top_cats else dw.insight("By device type", 4, [("i", "Nothing in stock.", "slate")]))
+    # By device type / Brand x grade cards hidden (2026-11-18, Pankaj).
     brands = (await db.execute(base(BRAND, func.count()).where(*in_stock_where)
                                .group_by(BRAND).order_by(desc(func.count())).limit(6))).all()
     brand_w = (dw.hbars("Top brands", 3, [(b, c) for b, c in brands], color="blue", lw="80px", sub="In stock")
@@ -88,21 +83,11 @@ async def build(db, filters, sold_filters):
         base_all(Device.sub_lot_number, func.max(Lot.supplier_name), func.count(Device.id),
              func.count().filter(Device.current_stage == DeviceStage.sold))
         .where(AS_IS).group_by(Device.sub_lot_number).order_by(desc(func.max(Device.created_at))).limit(7))).all()
-    asis_table = dw.table("As-Is lots", 5, [("As-Is lot", 0.9), ("Supplier", 1.4), ("Units", 0.6), ("Sold", 0.6), ("Status", 0.9)],
+    asis_table = dw.table("As-Is lots", 4, [("As-Is lot", 0.9), ("Supplier", 1.4), ("Units", 0.6), ("Sold", 0.6), ("Status", 0.9)],
                           [[ln or "—", sup or "—", dw.num(n), dw.num(s or 0),
                             ("Sold out", "green") if (s or 0) >= n else (("Selling", "blue") if s else ("Not sold yet", "amber"))]
                            for ln, sup, n, s in asis_rows] or [["—", "No As-Is lots", "", "", ""]],
                           sub="Sold in the same condition as bought — no repair", tag="As-Is", tagc="amber")
-
-    grades = ["A", "B", "C", "D", "E"]
-    gb = (await db.execute(base(BRAND, Device.grade, func.count()).where(*in_stock_where)
-                           .group_by(BRAND, Device.grade))).all()
-    bmap = {}
-    for b, g, c in gb:
-        bmap.setdefault(b, {})[_sv(g) or ""] = c
-    top_b = [b for b, _ in brands][:6]
-    heat = (dw.heat("Brand × grade", 5, grades, [(b, [bmap.get(b, {}).get(g, 0) for g in grades]) for b in top_b],
-                    color="indigo", lw="70px", sub="In-stock devices") if top_b else dw.insight("Brand × grade", 5, [("i", "No data.", "slate")]))
 
     since = now - timedelta(days=1)
     recent = (await db.execute(
@@ -125,8 +110,9 @@ async def build(db, filters, sold_filters):
                      STAGE_LABELS.get(st, _sv(st) or "—") if st is not None else "—",
                      {"x": "View", "kind": "btn", "modal": "#recentTagsModal",
                       "data": {"model": model or "", "grade": gv, "since": since.strftime("%Y-%m-%dT%H:%M:%S")}}])
-    recent_w = dw.table("Recently added", 7, [("Model", 1.7), ("Tags", 0.6), ("Grade", 0.6), ("Stage", 0.9), ("", 0.7)],
+    recent_w = dw.table("Recently added", 5, [("Model", 1.7), ("Tags", 0.6), ("Grade", 0.6), ("Stage", 0.9), ("", 0.7)],
                         rows or [["Nothing added recently", "", "", "", ""]],
                         sub="Since %s · one row per model + grade" % since.strftime("%d %b %H:%M"))
-    widgets = dw.layout([(170, [stack]), (380, [donut, brand_w, asis_table]), (430, [heat, recent_w])])
+    # One row: Top brands | As-Is lots | Recently added (2026-11-18).
+    widgets = dw.layout([(170, [stack]), (430, [brand_w, asis_table, recent_w])])
     return kpis, widgets

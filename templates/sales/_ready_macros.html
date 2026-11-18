@@ -18,6 +18,24 @@
   <option value="blocked" {{ 'selected' if value == 'blocked' }}>Blocked</option>
 </select>
 {% endmacro %}
+{# Model Summary grade tabs (2026-11-17, Pankaj): All + one tab per grade that
+   has tags, with counts (the other filters apply, the grade itself not).
+   A tab sets the hidden grade input (hidden_id) and fires ms:change, which
+   the page already listens to for a refresh; the tabs replace the Grades
+   dropdown. Shared JS: static/js/ms-card.js. #}
+{% macro grade_tabs(tabs_id, hidden_id, name, tabs, current='') %}
+<input type="hidden" id="{{ hidden_id }}" name="{{ name }}" value="{{ current }}">
+<ul class="nav nav-pills ms-gtabs px-3 pt-2 gap-1" id="{{ tabs_id }}" data-hidden="{{ hidden_id }}">
+  {% for code, label, n in tabs %}
+  <li class="nav-item"><button type="button" class="nav-link py-1 px-3 ms-gtab{{ ' active' if code == (current or '') }}" data-grade="{{ code }}">{{ label }} <span class="badge rounded-pill ms-1">{{ "{:,}".format(n) }}</span></button></li>
+  {% endfor %}
+</ul>
+{% endmacro %}
+{# Card-header search (2026-11-17, Pankaj): drives the summary table's own
+   DataTables search; the table's built-in box is hidden (ms-card.js). #}
+{% macro header_search(table_id, placeholder='Search Make, Model, CPU…') %}
+<input type="search" class="form-control form-control-sm ms-hdr-search" data-table="{{ table_id }}" placeholder="{{ placeholder }}" style="width:220px" autocomplete="off">
+{% endmacro %}
 {% macro model_summary_table(table_id, rows, selectable, empty_text, show_location=true) %}
 {# Columns (2026-11-16, Pankaj) — same order as All Inventory's Model Summary:
    Model, Make, CPU, CPU Gen, RAM, Storage, Total Quantity, Touch Type, Grades,

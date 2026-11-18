@@ -414,6 +414,21 @@ async def block_items(record_id: str, db: AsyncSession = Depends(get_db),
 
 # ── New Block Tags modal: tag search + create ────────────────────────────────
 
+@router.get("/form-options")
+async def block_form_options(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_module_perm("block_tags", "add")),
+):
+    """Dropdowns for the shared New Block Tags modal when it is opened outside
+    the Block Tags page (Model cards' variant pop-up, 2026-11-18)."""
+    return JSONResponse({
+        "today": _date.today().isoformat(),
+        "locations": await _block_location_options(db),
+        "containers": _block_container_options(),
+        "block_for": await _block_for_options(db),
+    })
+
+
 @router.get("/search-tags")
 async def search_tags(
     q: str = Query(default=""),

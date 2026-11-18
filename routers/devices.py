@@ -1415,8 +1415,10 @@ def _ms_key2(model, brand, cpu, gen, ram_summary, ram_gb, hdd_summary, storage_g
     """Model Summary row (2026-11-16, Pankaj): Model + Make + CPU + CPU Gen +
     RAM + Storage — the same grouping as Ready for Sale Tags / Lots; Device
     Type, Touch, Grade, Location and Stock Type are counts inside a row."""
-    return (model or MS_UNKNOWN_MODEL, brand or MS_UNKNOWN_MAKE, (cpu or "").strip() or MS_NONE,
-            (gen or "").strip() or MS_NONE, _ms_ram_text(ram_summary, ram_gb),
+    # CPU / Gen as one label each (2026-11-17): "I7" / "i7" / "i7 10th" = one row.
+    from utils.device_spec import cpu_label, gen_label
+    return (model or MS_UNKNOWN_MODEL, brand or MS_UNKNOWN_MAKE, cpu_label(cpu, gen) or MS_NONE,
+            gen_label(gen) or MS_NONE, _ms_ram_text(ram_summary, ram_gb),
             _ms_storage_text(hdd_summary, storage_gb, storage_type))
 
 
@@ -1529,9 +1531,23 @@ async def model_summary_data(
                 entities.append(e)
     if "Unassigned" not in entities:
         entities.append("Unassigned")
+    # Grade tabs (2026-11-17, Pankaj): tag counts per grade under every filter
+    # except the Grade one — so the tabs keep their numbers while one is picked.
+    own_ng = _ms_own_filters(s_entity, s_make, s_device_type, s_touch, s_stock, "") + _ms_loc_avail_filters(s_loc, s_avail)
+    gcount = {}
+    for gr, n in (await db.execute(
+            select(Device.grade, func.count(Device.id)).select_from(Device).join(Lot, Device.lot_id == Lot.id)
+            .outerjoin(StorageLocation, Device.location_id == StorageLocation.id)
+            .where(*scope, *own_ng).group_by(Device.grade))).all():
+        k = getattr(gr, "value", gr) or "NA"
+        gcount[k] = gcount.get(k, 0) + int(n or 0)
+    grade_tabs = [["", "All", sum(gcount.values())]]
+    grade_tabs += [[k, ("No grade" if k == "NA" else k), gcount[k]] for k in MS_GRADE_ORDER if gcount.get(k)]
+    grade_tabs += [[k, k, n] for k, n in gcount.items() if k not in MS_GRADE_ORDER and n]
     from utils.grades import grade_options as _grade_options
     return JSONResponse({
         "rows": out,
+        "grade_tabs": grade_tabs,
         "show_pricing": show_pricing,
         "entity_abbr": {e: entity_abbr(e) for e in entities},
         "grade_order": MS_GRADE_ORDER,

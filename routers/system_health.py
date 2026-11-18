@@ -2149,29 +2149,19 @@ async def _model_name_fix(request: Request, current_user: User):
     return back or JSONResponse({"ok": True, "updated": total, "spellings": len(ids_by), "renamed": renamed})
 
 
-@router.get("/model-name-fix/export")
-async def model_name_export(model: str = "", make: str = "", current_user: User = Depends(admin_only)):
-    """Product Model Name card (2026-11-06, Pankaj): the tags saved with one
-    spelling (and Make) — Make, Model, hardware, current stage, PNA, Return,
-    Scrap — as a CSV."""
+async def _devices_csv(db, devs) -> str:
+    """CSV of tags for the Data Fixes downloads: Make, Model, hardware, stage,
+    PNA, Return, Scrap (shared by Product Model Name and Make, 2026-11-17)."""
     import csv
     import io
-    from fastapi.responses import Response
-    from sqlalchemy import func, or_, select
-    from database import AsyncSessionLocal
-    from models.device import Device, STAGE_LABELS
+    from sqlalchemy import select
+    from models.device import STAGE_LABELS
     from models.pna_part import DevicePNAPart
-    from utils.model_name import tidy
-    from utils.model_name import make_key
-    mk = make_key(make)
-    async with AsyncSessionLocal() as db:
-        devs = (await db.execute(select(Device).where(Device.model == model, _make_cond(mk))
-                                 .order_by(Device.barcode))).scalars().all()
-        pna = {}
-        if devs:
-            for did, part in (await db.execute(select(DevicePNAPart.device_id, DevicePNAPart.part_name).where(
-                    DevicePNAPart.device_id.in_([d.id for d in devs]), DevicePNAPart.is_active.isnot(False)))).all():
-                pna.setdefault(did, []).append(part)
+    pna = {}
+    if devs:
+        for did, part in (await db.execute(select(DevicePNAPart.device_id, DevicePNAPart.part_name).where(
+                DevicePNAPart.device_id.in_([d.id for d in devs]), DevicePNAPart.is_active.isnot(False)))).all():
+            pna.setdefault(did, []).append(part)
     buf = io.StringIO()
     w = csv.writer(buf)
     w.writerow(["Tag Number", "Make", "Model", "Sub-Category", "CPU", "CPU Gen", "RAM (GB)", "RAM", "Storage (GB)",
@@ -2188,10 +2178,173 @@ async def model_name_export(model: str = "", make: str = "", current_user: User 
                     "Yes" if d.id in pna else "No", "; ".join(pna.get(d.id, [])),
                     "Yes" if d.return_status else "No", d.tag_return_status or "",
                     "Yes" if (st and st.value.startswith("scrap")) or d.scrap_verified else "No", d.entity or ""])
+
+    return "\ufeff" + buf.getvalue()
+
+
+@router.get("/model-name-fix/export")
+async def model_name_export(model: str = "", make: str = "", current_user: User = Depends(admin_only)):
+    """Product Model Name card (2026-11-06, Pankaj): the tags saved with one
+    spelling (and Make) — Make, Model, hardware, current stage, PNA, Return,
+    Scrap — as a CSV."""
+    from fastapi.responses import Response
+    from sqlalchemy import select
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from utils.model_name import make_key
+    mk = make_key(make)
+    async with AsyncSessionLocal() as db:
+        devs = (await db.execute(select(Device).where(Device.model == model, _make_cond(mk))
+                                 .order_by(Device.barcode))).scalars().all()
+        body = await _devices_csv(db, devs)
     import re as _re
     fname = "Model_" + (_re.sub(r"[^A-Za-z0-9]+", "_", f"{make} {model}").strip("_") or "blank") + ".csv"
-    return Response("\ufeff" + buf.getvalue(), media_type="text/csv",
+    return Response(body, media_type="text/csv",
                     headers={"Content-Disposition": f'attachment; filename="{fname}"'})
+
+
+# ── Make name consistency (2026-11-17, Pankaj) ───────────────────────────────
+# Same idea as Product Model Name: spellings of one Make that match ignoring
+# capitals / spaces / punctuation ("HP", "hp", "H.P.") become one name. The
+# name is the Device Brands (Master Data) spelling when there is one, else the
+# best-cased spelling (utils/model_name.choose). Any Make can be renamed /
+# merged by typing or picking a Device Brand.
+
+async def _make_name_groups(db):
+    """Card rows, one per Make key: {key, auto, final, master, spellings
+    [(spelling, tags)], to_change, total} — rows to fix first."""
+    from sqlalchemy import func, select
+    from models.device import Device
+    from models.master import MasterData
+    import re
+    from utils.model_name import _case_rank, make_key, tidy
+    rows = (await db.execute(select(Device.brand, func.count()).where(Device.brand.isnot(None))
+                             .group_by(Device.brand))).all()
+    master = {}
+    for v in (await db.execute(select(MasterData.value).where(
+            MasterData.category == "brand", MasterData.is_active.isnot(False)))).scalars().all():
+        k = make_key(v)
+        if k and k not in master:
+            master[k] = tidy(v)
+    groups: dict = {}
+    for b, n in rows:
+        t = tidy(b)
+        k = make_key(t)
+        if not k:
+            continue
+        g = groups.setdefault(k, {})
+        g[b] = g.get(b, 0) + int(n or 0)           # keep the stored text: Apply matches it exactly
+    out = []
+    for k, sp in groups.items():
+        tidied: dict = {}
+        for b, n in sp.items():
+            tidied[tidy(b)] = tidied.get(tidy(b), 0) + n
+        # Device Brands spelling, else normal capitals ("Dell" over "DELL" /
+        # "dell"), then the most-used, then the plainest ("HP" over "H.P.").
+        auto = master.get(k) or min(tidied, key=lambda x: (_case_rank(x), -tidied[x],
+                                                          len(re.findall(r"[^A-Za-z0-9]", x)), x))
+        if k not in master and _case_rank(auto):    # only SHOUTED / lower-case spellings: "DELL" -> "Dell"
+            auto = " ".join(w if len(w) <= 3 and w.isupper() else w.capitalize() for w in auto.split(" "))
+        change = sum(n for b, n in sp.items() if b != auto)
+        out.append({"key": k, "auto": auto, "final": auto, "master": k in master,
+                    "spellings": sorted(sp.items(), key=lambda x: -x[1]),
+                    "to_change": change, "total": sum(sp.values())})
+    return sorted(out, key=lambda g: (-(g["to_change"] > 0), -g["to_change"], -g["total"]))
+
+
+async def _brand_master_values() -> list:
+    from sqlalchemy import select
+    from database import AsyncSessionLocal
+    from models.master import MasterData
+    async with AsyncSessionLocal() as db:
+        return list((await db.execute(select(MasterData.value).where(
+            MasterData.category == "brand", MasterData.is_active.isnot(False))
+            .order_by(MasterData.value))).scalars().all())
+
+
+@router.post("/make-name-fix")
+async def make_name_fix(request: Request, current_user: User = Depends(admin_only)):
+    """Apply: every spelling of each Make becomes the name in its row's box
+    (edited boxes arrive as one JSON field "mk_json" {"mk_<key>": name}). A
+    name not yet in Master Data → Device Brands is added there. Audited with
+    every tag id per spelling, so it can be reversed."""
+    import json as _json
+    from sqlalchemy import select, update
+    from database import AsyncSessionLocal
+    from models.device import Device
+    from models.master import MasterData
+    from services.audit_engine import audit
+    from utils.model_name import make_key, tidy
+    from utils.timezone import app_now
+    form = await request.form()
+    try:
+        boxes = {str(k): str(v) for k, v in (_json.loads(form.get("mk_json") or "{}") or {}).items()}
+    except (ValueError, TypeError, AttributeError):
+        boxes = {}
+    now = app_now()
+    async with AsyncSessionLocal() as db:
+        groups = await _make_name_groups(db)
+        ids_by, total, renamed = {}, 0, []
+        finals = set()
+        for g in groups:
+            final = (tidy(boxes.get(f"mk_{g['key']}")) or g["final"])[:100]
+            if make_key(final) != g["key"]:
+                renamed.append(f"{g['final']} -> {final}")
+            finals.add(final)
+            for old, _n in g["spellings"]:
+                if old == final:
+                    continue
+                ids = (await db.execute(select(Device.id).where(Device.brand == old))).scalars().all()
+                if not ids:
+                    continue
+                ids_by[f"{old} -> {final}"[:200]] = [str(i) for i in ids]
+                total += len(ids)
+                for k in range(0, len(ids), 5000):     # IN (...) capped at 32,767 values
+                    await db.execute(update(Device).where(Device.id.in_(ids[k:k + 5000]))
+                                     .values(brand=final, updated_at=now).execution_options(synchronize_session=False))
+        have = {make_key(v) for v in (await db.execute(
+            select(MasterData.value).where(MasterData.category == "brand"))).scalars().all()}
+        added = []
+        for f in sorted(finals):
+            if make_key(f) and make_key(f) not in have and any(f in k.split(" -> ")[1:] for k in ids_by):
+                db.add(MasterData(category="brand", value=f[:200], is_active=True))
+                have.add(make_key(f))
+                added.append(f)
+        await audit(db, user=current_user, action="MAKE_NAME_FIX", table_name="devices",
+                    record_id=f"{total} tags",
+                    new_value={"count": total, "spellings": len(ids_by), "renamed": renamed,
+                               "added_to_device_brands": added, "device_ids": ids_by},
+                    notes="Make name: each spelling set to the name in its row's Save-as box. "
+                          "Reverse: put each group's old spelling back for the listed ids.",
+                    request=request)
+        await db.commit()
+    if added:
+        from utils.master_data import refresh_master_cache as _rmc
+        async with AsyncSessionLocal() as db2:
+            await _rmc(db2)
+    msg = f"Make names updated: {total:,} tags, {len(ids_by):,} spellings."
+    if renamed:
+        msg += f" Renamed: {'; '.join(renamed[:5])}" + (f" (+{len(renamed) - 5} more)" if len(renamed) > 5 else "") + "."
+    if added:
+        msg += f" Added to Device Brands: {', '.join(added)}."
+    back = _back_to_page(form, msg)
+    return back or JSONResponse({"ok": True, "updated": total, "spellings": len(ids_by), "renamed": renamed})
+
+
+@router.get("/make-name-fix/export")
+async def make_name_export(make: str = "", current_user: User = Depends(admin_only)):
+    """Make name card: the tags saved with one Make spelling, as a CSV (same
+    columns as the Product Model Name download)."""
+    from fastapi.responses import Response
+    from sqlalchemy import select
+    from database import AsyncSessionLocal
+    from models.device import Device
+    async with AsyncSessionLocal() as db:
+        devs = (await db.execute(select(Device).where(Device.brand == make).order_by(Device.barcode))).scalars().all()
+        body = await _devices_csv(db, devs)
+    import re as _re
+    fname = "Make_" + (_re.sub(r"[^A-Za-z0-9]+", "_", make).strip("_") or "blank") + ".csv"
+    return Response(body, media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
 # ── Stale open returns (2026-11-05, Pankaj) ──────────────────────────────────
@@ -2295,6 +2448,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         pname = await _part_name_changes(db)
         mname = await _model_name_changes(db)
         mgroups = await _model_name_groups(db)
+        mkgroups = await _make_name_groups(db)         # Make name card (2026-11-17)
         from services.parts_stock import crate_fix_plan
         pcrate = await crate_fix_plan(db)
         from services.parts_stock import cleanup_plan, crates_with_several_parts
@@ -2365,6 +2519,9 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "mname_total": sum(c for _o, _n, c in mname), "mname_spellings": len(mname),
         "mname_models": len({n for _o, n, _c in mname}),
         "mname_groups": mgroups,
+        "mk_groups": mkgroups, "mk_total": sum(g["to_change"] for g in mkgroups),
+        "mk_fix": sum(1 for g in mkgroups if g["to_change"]),
+        "brand_master": await _brand_master_values(),
         # Product Names list for the per-row pick dropdown (2026-11-16, Pankaj):
         # Master Data -> Dropdown Configuration -> Product Model Names (+ Make)
         "pm_names": await _product_model_names(),

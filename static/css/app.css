@@ -1599,3 +1599,68 @@ span.hf { display: inline-block; vertical-align: middle; }
    when it actually holds a message, so an empty area leaves no gap above the
    page (e.g. the full-width dashboard header). */
 #flashMessages:not(:has(.alert)) { display: none !important; }
+/* Model Summary grade tabs (2026-11-17, Pankaj) — static/js/ms-card.js. */
+.ms-gtabs { margin: 0; }
+.ms-gtabs .nav-link { font-size: .8rem; font-weight: 600; color: var(--brand-blue); border: 1px solid var(--oxy-border); background: var(--oxy-surface); border-radius: 999px; }
+.ms-gtabs .nav-link .badge { background: #e7eef6; color: var(--brand-blue); font-weight: 600; }
+/* 2026-11-18: label and count centred vertically, with a gap between them. */
+.ms-gtabs .nav-link { display: inline-flex; align-items: center; gap: 8px; line-height: 1.25; }
+.ms-gtabs .nav-link .badge { margin-left: 0 !important; line-height: 1; padding: .3em .6em; display: inline-flex; align-items: center; }
+.ms-gtabs .nav-link.active { background: var(--brand-blue); border-color: var(--brand-blue); color: #fff; }
+.ms-gtabs .nav-link.active .badge { background: rgba(255,255,255,.25); color: #fff; }
+/* ── Model cards (2026-11-18, Pankaj) — templates/_model_cards.html ────────
+   "mcd-" prefix: Bootstrap already owns .vr and friends. Grade colours are
+   the darker shades in light theme, one step brighter in dark theme. */
+.mcd, #mcdModal { --mcd-Scrap:#72243E; --mcd-A:#0F6E56; --mcd-B:#185FA5; --mcd-C:#854F0B; --mcd-D:#993C1D; --mcd-E:#534AB7; --mcd-NG:#5F5E5A; }
+[data-bs-theme=dark] .mcd, [data-bs-theme=dark] #mcdModal { --mcd-Scrap:#D4537E; --mcd-A:#1D9E75; --mcd-B:#378ADD; --mcd-C:#BA7517; --mcd-D:#D85A30; --mcd-E:#7F77DD; --mcd-NG:#888780; }
+.mcd-g-A{background:var(--mcd-A)} .mcd-g-B{background:var(--mcd-B)} .mcd-g-C{background:var(--mcd-C)}
+.mcd-g-D{background:var(--mcd-D)} .mcd-g-Scrap{background:var(--mcd-Scrap)} .mcd-g-E{background:var(--mcd-E)} .mcd-g-NG{background:var(--mcd-NG)}
+.mcd-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(250px, 1fr)); gap:12px; padding:12px; align-items:stretch; }
+.mcd-grid.mcd-busy { opacity:.55; pointer-events:none; }
+.mcd-empty { padding:24px; text-align:center; color:#6c757d; font-size:.875rem; }
+.mcd-card { background:var(--oxy-surface); border:1px solid var(--oxy-border); border-radius:12px; overflow:hidden; display:flex; flex-direction:column; color:var(--oxy-text-main); }
+.mcd-hd { padding:12px 14px 18px; position:relative; }
+.mcd-cat { position:absolute; right:-14px; top:0; font-size:70px; line-height:1; color:var(--brand-blue); opacity:.14; pointer-events:none; }
+[data-bs-theme=dark] .mcd-cat { color:#dbe6f5; }
+.mcd-mk { font-size:11px; color:#6c757d; position:relative; }
+.mcd-nm { font-weight:600; font-size:14px; line-height:1.25; color:var(--brand-blue); position:relative; padding-right:46px; }
+[data-bs-theme=dark] .mcd-nm { color:#dbe6f5; }
+.mcd-trow { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-top:4px; position:relative; z-index:1; }
+.mcd-tot { font-size:26px; font-weight:600; line-height:1.1; white-space:nowrap; }
+.mcd-tot span { font-size:11px; font-weight:400; color:#6c757d; }
+.mcd-tot-sub { white-space:normal; overflow-wrap:anywhere; line-height:1.15; min-width:0; color:var(--brand-blue); }
+[data-bs-theme=dark] .mcd-tot-sub { color:#dbe6f5; }
+.mcd-blk { flex:none; white-space:nowrap; font-size:11px; font-weight:600; color:#fff; background:var(--bs-danger, #dc3545); border-radius:999px; padding:2px 9px; }
+.mcd-gb { display:flex; height:8px; border-radius:4px; overflow:hidden; margin-top:8px; position:relative; }
+.mcd-body { display:grid; grid-template-columns:66px minmax(0,1fr); border-top:1px solid var(--oxy-border); flex:1; }
+.mcd-gs, .mcd-vl { display:flex; flex-direction:column; }
+.mcd-vl { border-left:1px solid var(--oxy-border); }
+.mcd-hcell { flex:none; height:32px; display:flex; justify-content:space-between; align-items:center; padding:0 14px; font-size:12px; background:var(--oxy-light); border-bottom:1px solid var(--oxy-border); }
+.mcd-hcell b { font-weight:600; }
+.mcd-vh span { color:#6c757d; }
+.mcd-all { cursor:pointer; font-weight:600; }
+.mcd-all.on { box-shadow:inset 3px 0 0 var(--sidebar-active, #0377c2); }
+/* Grade cells stretch to the card's height; variant rows keep a fixed height (top-aligned). */
+.mcd-gc { flex:1 0 30px; display:flex; justify-content:space-between; align-items:center; padding:0 14px; font-size:12px; font-weight:600; color:#fff; cursor:pointer; position:relative; }
+.mcd-gs.picked .mcd-gc:not(.on) { opacity:.4; }
+.mcd-gs .mcd-hcell, .mcd-gc { padding:0 9px; }
+.mcd-gc.on::after { content:""; position:absolute; right:-1px; top:50%; margin-top:-6px; border:6px solid transparent; border-right-color:var(--oxy-surface); }
+.mcd-vrow { flex:none; height:30px; display:flex; justify-content:space-between; align-items:center; gap:10px; padding:0 14px; font-size:12px; border-bottom:1px solid var(--oxy-border); cursor:pointer; }
+.mcd-vrow:hover { background:var(--oxy-hover, #eef5fb); }
+.mcd-vrow:hover span { color:var(--sidebar-active, #0377c2); }
+.mcd-vrow span { color:#495057; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+[data-bs-theme=dark] .mcd-vrow span, [data-bs-theme=dark] .mcd-vh span, [data-bs-theme=dark] .mcd-mk, [data-bs-theme=dark] .mcd-tot span { color:#9aa3ad; }
+.mcd-vrow b { font-weight:600; }
+.mcd-more { color:var(--sidebar-active, #0377c2); font-weight:600; justify-content:center; }
+/* Load more floats at the bottom of the screen while the cards are in view. */
+.mcd-lm { position:sticky; bottom:16px; display:flex; justify-content:center; padding:0 0 14px; pointer-events:none; z-index:5; }
+.mcd-lm button { pointer-events:auto; background:var(--brand-blue); color:#fff; border:0; border-radius:999px; padding:8px 20px; font-size:13px; font-weight:600; box-shadow:0 4px 12px rgba(14,58,122,.35); }
+.mcd-lm button:disabled { opacity:.7; }
+#mcdModalBody .mcd-card { border:0; border-radius:0; }
+.mcd-ttabs { display:flex; flex-wrap:wrap; gap:6px; padding:10px 12px; border-bottom:1px solid var(--oxy-border); position:sticky; top:0; background:var(--oxy-surface); z-index:2; }
+.mcd-tt { border:0; border-radius:999px; padding:3px 12px; font-size:12px; font-weight:600; color:#fff; opacity:.45; }
+.mcd-tt b { font-weight:600; margin-left:4px; }
+.mcd-tt.on, .mcd-tt:hover { opacity:1; }
+.mcd-tt.on { box-shadow:0 0 0 2px var(--oxy-surface), 0 0 0 3.5px #6c757d; }
+.mcd-tt-all { background:var(--oxy-light); color:var(--oxy-text-main); border:1px solid var(--oxy-border); }
+.mcd-gpill { display:inline-block; min-width:26px; text-align:center; color:#fff; font-weight:600; font-size:11px; border-radius:4px; padding:1px 6px; }
