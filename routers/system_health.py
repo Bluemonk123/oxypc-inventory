@@ -2253,6 +2253,21 @@ async def _make_name_groups(db):
     return sorted(out, key=lambda g: (-(g["to_change"] > 0), -g["to_change"], -g["total"]))
 
 
+def _blank_make_cond():
+    """Device has no Make: empty, or only punctuation ("-", "—") — what the
+    Make card skips and the Product Model Name card shows as "—"."""
+    from sqlalchemy import func, or_
+    from models.device import Device
+    return or_(Device.brand.is_(None), func.regexp_replace(Device.brand, r"[^A-Za-z0-9]", "", "g") == "")
+
+
+async def _blank_make_count(db) -> int:
+    """Tags with no Make (2026-11-18, Pankaj) — the Make card's "No make" row."""
+    from sqlalchemy import func, select
+    from models.device import Device
+    return int((await db.execute(select(func.count(Device.id)).where(_blank_make_cond()))).scalar() or 0)
+
+
 async def _brand_master_values() -> list:
     from sqlalchemy import select
     from database import AsyncSessionLocal
@@ -2333,18 +2348,20 @@ async def make_name_fix(request: Request, current_user: User = Depends(admin_onl
 
 
 @router.get("/make-name-fix/export")
-async def make_name_export(make: str = "", current_user: User = Depends(admin_only)):
+async def make_name_export(make: str = "", blank: int = 0, current_user: User = Depends(admin_only)):
     """Make name card: the tags saved with one Make spelling, as a CSV (same
-    columns as the Product Model Name download)."""
+    columns as the Product Model Name download). blank=1: the tags with no
+    Make (the "No make" row, 2026-11-18)."""
     from fastapi.responses import Response
     from sqlalchemy import select
     from database import AsyncSessionLocal
     from models.device import Device
     async with AsyncSessionLocal() as db:
-        devs = (await db.execute(select(Device).where(Device.brand == make).order_by(Device.barcode))).scalars().all()
+        cond = _blank_make_cond() if blank else (Device.brand == make)
+        devs = (await db.execute(select(Device).where(cond).order_by(Device.barcode))).scalars().all()
         body = await _devices_csv(db, devs)
     import re as _re
-    fname = "Make_" + (_re.sub(r"[^A-Za-z0-9]+", "_", make).strip("_") or "blank") + ".csv"
+    fname = "Make_" + ("No_make" if blank else (_re.sub(r"[^A-Za-z0-9]+", "_", make).strip("_") or "blank")) + ".csv"
     return Response(body, media_type="text/csv", headers={"Content-Disposition": f'attachment; filename="{fname}"'})
 
 
@@ -2450,6 +2467,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         mname = await _model_name_changes(db)
         mgroups = await _model_name_groups(db)
         mkgroups = await _make_name_groups(db)         # Make name card (2026-11-17)
+        mk_blank = await _blank_make_count(db)         # "No make" row (2026-11-18)
         from services.parts_stock import crate_fix_plan
         pcrate = await crate_fix_plan(db)
         from services.parts_stock import cleanup_plan, crates_with_several_parts
@@ -2522,6 +2540,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "mname_groups": mgroups,
         "mk_groups": mkgroups, "mk_total": sum(g["to_change"] for g in mkgroups),
         "mk_fix": sum(1 for g in mkgroups if g["to_change"]),
+        "mk_blank": mk_blank,
         "brand_master": await _brand_master_values(),
         # Product Names list for the per-row pick dropdown (2026-11-16, Pankaj):
         # Master Data -> Dropdown Configuration -> Product Model Names (+ Make)

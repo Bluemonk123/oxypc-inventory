@@ -155,6 +155,19 @@
         <table class="table table-sm align-middle mb-0">
           <thead class="table-light df-sort" style="position:sticky;top:0;z-index:2"><tr><th style="width:38%" data-sort="spell">Spellings now (tags)</th><th data-sort="input">Save as</th><th class="text-end" data-sort="num">Tags to change</th></tr></thead>
           <tbody>
+          {# "No make" (2026-11-18, Pankaj): tags with an empty Make — the Product Model
+             Name card shows them as "—". Download only: one name can't fit them all,
+             set their Make per model or per tag. Kept at the top, not sorted. #}
+          {% if mk_blank %}
+            <tr class="mk-blank table-warning">
+              <td><div class="d-flex align-items-center gap-1">
+                <a href="/admin/system/make-name-fix/export?blank=1" class="btn btn-link btn-sm p-0 lh-1" title="Download these {{ mk_blank }} tags (CSV)"><i class="bi bi-download"></i></a>
+                <em>No make</em> <span class="text-muted">({{ "{:,}".format(mk_blank) }})</span></div>
+                <div class="text-warning-emphasis" style="font-size:.72rem"><i class="bi bi-exclamation-triangle me-1"></i>Make is empty or only "-"</div></td>
+              <td class="small text-muted">Set these per model (Product Model Name card / Customise → Model Name) or per tag — download the list to see which.</td>
+              <td class="text-end">—</td>
+            </tr>
+          {% endif %}
           {% for g in mk_groups %}
             <tr class="mk-row" data-fix="{{ 1 if g.to_change else 0 }}" data-master="{{ 1 if g.master else 0 }}"
                 data-q="{{ (g.spellings | map('first') | join(' ')) | lower }}">
@@ -1224,7 +1237,7 @@
       var dir = th.classList.contains('asc') ? -1 : 1, kind = th.dataset.sort;
       th.parentNode.querySelectorAll('th').forEach(function (x) { x.classList.remove('asc', 'desc'); });
       th.classList.add(dir === 1 ? 'asc' : 'desc');
-      var rows = Array.prototype.slice.call(body.rows);
+      var rows = Array.prototype.slice.call(body.rows).filter(function (r) { return !r.classList.contains('mk-blank'); });
       rows.sort(function (a, b) {
         var x = key(a, i, kind), y = key(b, i, kind);
         return (typeof x === 'number' ? x - y : String(x).localeCompare(String(y), undefined, { numeric: true })) * dir;
