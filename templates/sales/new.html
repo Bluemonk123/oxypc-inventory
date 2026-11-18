@@ -3,7 +3,8 @@
 {% block page_title %}New Sale{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
-  <div class="col-lg-7">
+  {# Same width as Tag Sale (2026-11-18): col-lg-8. #}
+  <div class="col-lg-8">
     <!-- PDF Invoice/PO Import — hidden 2026-10-19 (director's request); markup
          and importPDF() kept so it can be switched back on by removing d-none. -->
     <div class="card border-0 shadow-sm mb-3 d-none" id="pdfImportCard">
@@ -48,19 +49,26 @@
           </div>
           {% if device %}
           <div class="alert alert-success py-2 mb-3 small">
-            <strong>{{ device.brand }} {{ device.model }}</strong> &bull; Grade: {{ device.grade }} &bull;
+            <strong>{{ device.brand }} {{ device.model }}</strong> &bull; Grade: {{ (device.grade.value if device.grade and device.grade.value is defined else device.grade) or '—' }} &bull;
             RAM: {{ device.ram_gb }} GB &bull; Storage: {{ device.storage_gb }} GB {{ device.storage_type }}
             {% if lot %} &bull; Lot: {{ lot.lot_number }} ({% if can(current_user, 'sales', 'pricing') %}₹{{ ((lot.buying_price/lot.qty if lot.qty else 0) | inr) }}{% else %}—{% endif %}/unit cost){% endif %}
           </div>
           {% endif %}
+          {# Field order = Tag Sale (2026-11-18, Pankaj): Sale Date, Invoice No., Quantity,
+             Sales person / Sale Price, Total, Payment Mode, Warranty / Customer Name,
+             Phone, Address, State. #}
           <div class="row g-3">
             <div class="col-md-3">
-              <label class="form-label fw-semibold">Sale Date</label>
+              <label class="form-label fw-semibold">Invoice Date</label>
               <input type="date" name="sale_date" class="form-control" value="{{ today }}" max="{{ today }}">
               <div class="form-text small text-muted">Defaults to today</div>
             </div>
             <div class="col-md-3">
-              <label class="form-label">Quantity</label>
+              <label class="form-label">Invoice Number</label>
+              <input type="text" name="invoice_no" class="form-control" placeholder="Invoice number">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Invoice Quantity</label>
               {% if approved_qty %}
               <input type="number" id="qtyInput" class="form-control" value="{{ approved_qty }}" disabled
                      title="Quantity locked to approved telecaller request">
@@ -69,11 +77,17 @@
               {% else %}
               <input type="number" name="qty" id="qtyInput" class="form-control" value="{{ prefill_qty if prefill_qty is defined and prefill_qty else 1 }}" min="1"
                      title="Number of units (for bulk sale record). Each device still needs individual barcode.">
-              <div class="form-text small text-muted">Units in this sale (informational — each device still tracked by barcode)</div>
+              <div class="form-text small text-muted">Sold Units in below Invoice</div>
               {% endif %}
             </div>
+            {# Who gets credit for the sale: a user, or "Internal Only" (sales/_sales_person_field.html). #}
             <div class="col-md-3">
-              <label class="form-label fw-semibold">Sale Price (₹) <span class="text-danger">*</span></label>
+              {% include "sales/_sales_person_field.html" %}
+            </div>
+          </div>
+          <div class="row g-3 mt-0">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Unit Price (₹) <span class="text-danger">*</span></label>
               <div class="input-group">
                 <span class="input-group-text">₹</span>
                 <input type="number" name="sale_price" id="salePrice" class="form-control" placeholder="0" min="0" step="0.01" required>
@@ -81,61 +95,21 @@
               <div class="form-text small text-muted">Per-unit price</div>
             </div>
             <div class="col-md-3">
-              <label class="form-label">Total Sale Price (₹)</label>
+              <label class="form-label">Total Invoice Price (₹)</label>
               <div class="input-group">
                 <span class="input-group-text">₹</span>
                 <input type="number" id="totalSalePrice" class="form-control" placeholder="0" min="0" step="0.01">
               </div>
               <div class="form-text small text-muted">Either field fills the other</div>
             </div>
-          </div>
-          <div class="row g-3 mt-0">
-            <div class="col-md-4">
+            <div class="col-md-3">
               <label class="form-label">Payment Mode</label>
               <select name="payment_mode" class="form-select">
                 {# "Cash" pre-selected (2026-10-19); a PDF autofill can still change it. #}
                 {% for p in master_options('payment_mode') %}<option value="{{ p }}"{{ ' selected' if (p or '')|trim|lower == 'cash' }}>{{ p }}</option>{% endfor %}
               </select>
             </div>
-            {# Who gets credit for the sale. Deliberately free text and separate
-               from the logged-in user recorded in sold_by: counter and floor
-               staff are credited but do not all have platform logins. #}
-            <div class="col-md-4">
-              <label class="form-label">Sales Person Name</label>
-              {# Sales Person = a user (2026-11-12): search + select; saved with the sale as
-                 sales_person_username so reports can track each person's sales. #}
-              <select name="sales_person_username" class="form-select" data-search>
-                <option value="">— Select sales person —</option>
-                {% for u, lbl in sales_person_users | default([]) %}<option value="{{ u }}"{% if u == current_user.username %} data-me="1"{% endif %}>{{ lbl }}</option>{% endfor %}
-              </select>
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Invoice No.</label>
-              <input type="text" name="invoice_no" class="form-control" placeholder="Invoice number">
-            </div>
-          </div>
-          <div class="row g-3 mt-0">
-            <div class="col-md-4">
-              <label class="form-label">Customer Name</label>
-              <input type="text" name="customer_name" class="form-control" placeholder="Customer name">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Customer Phone</label>
-              <input type="tel" name="customer_phone" class="form-control" placeholder="Phone number">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label fw-semibold">Customer State</label>
-              <select name="customer_state" class="form-select">
-                <option value="">Delhi (default)</option>
-                {% for s in master_options('customer_state') %}
-                <option value="{{ s }}">{{ 'Other State (IGST)' if s == 'Other State' else s }}</option>
-                {% endfor %}
-              </select>
-              <div class="form-text small">Select non-Delhi state for IGST; leave blank for Delhi (CGST+SGST)</div>
-            </div>
-          </div>
-          <div class="row g-3 mt-0">
-            <div class="col-md-6">
+            <div class="col-md-3">
               <label class="form-label fw-semibold">Warranty</label>
               <select name="warranty_type" class="form-select">
                 {% for w in master_options('sale_warranty_type') %}
@@ -143,9 +117,23 @@
                 {% endfor %}
               </select>
             </div>
-            <div class="col-md-6">
-              <label class="form-label">Address</label>
+          </div>
+          <div class="row g-3 mt-0">
+            <div class="col-md-3">
+              <label class="form-label">Customer Name</label>
+              <input type="text" name="customer_name" class="form-control" placeholder="Customer name">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Customer Phone</label>
+              <input type="tel" name="customer_phone" class="form-control" placeholder="Phone number">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label">Customer Address</label>
               <input type="text" name="customer_address" class="form-control" placeholder="Customer address">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Customer State</label>
+              {% include "sales/_customer_state_select.html" %}
             </div>
           </div>
           <div class="row g-3 mt-0">

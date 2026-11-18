@@ -1,0 +1,14 @@
+{#- Customer State (GST), shared by Record Sale and Tag Sale (2026-11-18, Pankaj).
+    Defaults to Haryana. The master list can hold the same state twice (e.g. an
+    old "Other State (IGST)" entry beside "Other State", shown with the same
+    label), so options are de-duplicated by their label. -#}
+{% set _seen = [] %}
+<select name="customer_state" class="form-select">
+  {% for s in master_options('customer_state') %}
+  {% set _lbl = 'Other State (IGST)' if s in ('Other State', 'Other State (IGST)') else s %}
+  {% if (_lbl|lower) not in _seen %}{% set _ = _seen.append(_lbl|lower) %}
+  <option value="{{ s }}" {% if s == 'Haryana' %}selected{% endif %}>{{ _lbl }}</option>
+  {% endif %}
+  {% endfor %}
+</select>
+<div class="form-text small">For Haryana (GST) else for others (IGST+CGST)</div>

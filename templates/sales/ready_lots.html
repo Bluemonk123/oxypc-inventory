@@ -377,7 +377,7 @@
 {# Model cards at the bottom of the page (2026-11-18, Pankaj) — templates/_model_cards.html. #}
 {% from "_model_cards.html" import model_cards with context %}
 {{ model_cards('lots', entity_options, device_type_options, make_options, location_options,
-               can_export=can(current_user, 'sales', 'export'), can_sell=True, entity_default=f.am_entity) }}
+               can_export=can(current_user, 'sales', 'export'), can_sell=True) }}
 {% endblock %}
 {% block scripts %}
 {{ rt.script() }}

@@ -555,7 +555,7 @@
 {% if not _ps %}
 {% from "_model_cards.html" import model_cards with context %}
 {{ model_cards('ready', entity_options, device_type_options, make_options, location_options,
-               can_export=can(current_user, _pm, 'export'), can_sell=True, entity_default=f.ms_entity) }}
+               can_export=can(current_user, _pm, 'export'), can_sell=True) }}
 {% endif %}
 {% endblock %}
 {% block scripts %}

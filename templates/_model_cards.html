@@ -3,7 +3,8 @@
 
     {% from "_model_cards.html" import model_cards with context %}
     {{ model_cards('ready', entity_options, device_type_options, make_options, location_options,
-                   can_export=..., can_sell=..., entity_default=f.ms_entity) }}
+                   can_export=..., can_sell=...) }}
+    Entity starts at the user's profile entities on every page.
 
     Grade tabs (All, A, B …) above the cards. One card per Make + Model — per As-Is sub-lot on the Lots page (total,
     blocked pill), then a
@@ -17,6 +18,12 @@
 {% macro model_cards(scope, entity_options, dtype_options, make_options, loc_options,
                      can_export=False, can_sell=False, entity_default='', inventory=False) %}
 {% set _can_block = can(current_user, 'block_tags', 'add') %}
+{#- Entity (2026-11-18, Pankaj): starts at the user's profile entities (Primary +
+    Additional) on every page, matched to the options ignoring capitals / spaces;
+    all entities when none is set or matches. -#}
+{% set _mine = [] %}{% for e in (current_user.all_entities or []) %}{% set _ = _mine.append(e|lower|replace(' ', '')) %}{% endfor %}
+{% set _ent = [] %}{% for o in entity_options %}{% set _v = o if o is string else o[0] %}{% if (_v|lower|replace(' ', '')) in _mine %}{% set _ = _ent.append(_v) %}{% endif %}{% endfor %}
+{% set entity_default = _ent | join(',') %}
 {# Card header style 8 on every page (2026-11-18): white + blue line along the bottom. #}
 <div class="card mcd mt-4 mcd-hs8" id="mcd" data-scope="{{ scope }}"
      data-can-export="{{ 1 if can_export else 0 }}" data-can-sell="{{ 1 if can_sell else 0 }}"

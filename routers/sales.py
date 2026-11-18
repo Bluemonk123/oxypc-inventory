@@ -2781,7 +2781,8 @@ async def sales_list_data(
             # Linked → the user's full name only (username on hover); typed
             # text only for sales not linked yet (2026-11-12, Pankaj).
             (f'<span title="@{esc(s.sales_person_username)}">{esc(_sp_display(s, _sp_names))}</span>' if s.sales_person_username
-             else (esc(s.sales_person.strip()) + '<div><span class="badge bg-warning-subtle text-warning-emphasis" style="font-size:.62rem">not linked</span></div>'
+             else (esc(s.sales_person.strip()) + ('' if s.sales_person.strip() == "Internal Only" else  # Internal Only: no user by design (2026-11-18)
+                   '<div><span class="badge bg-warning-subtle text-warning-emphasis" style="font-size:.62rem">not linked</span></div>')
                    if (s.sales_person or "").strip() else '—')),
             (f'<a href="/sales/{s.id}/download-invoice" class="btn btn-outline-secondary btn-sm py-0 px-1" '
              f'title="Download Invoice"><i class="bi bi-download"></i></a>'
