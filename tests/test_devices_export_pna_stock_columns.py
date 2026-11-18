@@ -27,15 +27,25 @@ def _dev(barcode, stage, sub_lot=None, is_active=True, is_trashed=False):
 
 
 class _EmptyResult:
+    def __init__(self, items=()):
+        self._items = list(items)
+
     def scalars(self):
         return self
 
     def all(self):
-        return []
+        return self._items
 
 
 class _StubDB:
-    async def execute(self, *_a, **_k):
+    """Every lookup comes back empty except the active-PNA-part query, which
+    returns pna_ids (the export queries device_pna_parts directly)."""
+    def __init__(self, pna_ids=()):
+        self.pna_ids = pna_ids
+
+    async def execute(self, stmt, *_a, **_k):
+        if "device_pna_parts" in str(stmt):
+            return _EmptyResult(self.pna_ids)
         return _EmptyResult()
 
 
@@ -50,33 +60,34 @@ def _run_export(monkeypatch, devices, pna_ids):
     monkeypatch.setattr(devices_router, "_build_location_map", fake_locmap)
 
     async def go():
-        resp = await _export_rows(_StubDB(), [(d, "LOT-1") for d in devices])
-        body = b""
-        async for chunk in resp.body_iterator:
-            body += chunk
-        return body
+        resp = await _export_rows(_StubDB(pna_ids), [(d, "LOT-1") for d in devices])
+        return resp.body
 
-    text = asyncio.run(go()).decode("utf-8-sig")
-    rows = list(csv.reader(io.StringIO(text)))
+    import openpyxl   # the export is .xlsx (2026-11-18)
+    wb = openpyxl.load_workbook(io.BytesIO(asyncio.run(go())))
+    rows = [["" if v is None else v for v in r] for r in wb.active.iter_rows(values_only=True)]
     return rows[0], {r[0]: r for r in rows[1:]}
 
 
-def test_header_ends_with_pna_and_stock():
-    # PNA / Stock, then the 14 Ageing columns (2026-11-18): (Date) and (Ageing).
-    i = _EXPORT_HEADER.index("PNA")
-    assert _EXPORT_HEADER[i:i + 2] == ["PNA", "Stock"]
-    assert _EXPORT_HEADER[i - 2:i] == ["Created", "Updated"]
-    assert _EXPORT_HEADER[i + 2:] == [
+def test_header_sequence_matches_pankaj_sheet():
+    # Column order of the export (2026-11-18, Pankaj's devices_export.xlsx).
+    i = _EXPORT_HEADER.index("Device Price")
+    assert _EXPORT_HEADER[i:i + 13] == [
+        "Device Price", "PNA", "Stock", "Grade", "Stage", "Final QC Status",
+        "Location ID", "Bin Location", "Zone", "Notes", "Created", "Updated", "Stage History"]
+    assert "Warehouse" not in _EXPORT_HEADER
+    assert _EXPORT_HEADER[i + 13:] == [
         "Stock In (Date)", "Stock In (Ageing)", "L1/L2 (Date)", "L1/L2 (Ageing)", "L3/L4 (Date)", "L3/L4 (Ageing)",
         "Stress (Date)", "Stress (Ageing)", "Cosmetic (Date)", "Cosmetic (Ageing)", "Final QC (Date)", "Final QC (Ageing)",
         "Ready for Sale (Date)", "Ready for Sale (Ageing)"]
+    assert len(_EXPORT_HEADER) == 73
 
 
 def test_stock_label_rules():
     assert _stock_label(_dev("A", DeviceStage.ready_to_sale)) == "Finish Good"
     assert _stock_label(_dev("B", DeviceStage.ready_to_sale, sub_lot="  ")) == "Finish Good"
     assert _stock_label(_dev("C", DeviceStage.ready_to_sale, sub_lot="SL-9")) == "As-Is"
-    assert _stock_label(_dev("D", DeviceStage.l2, sub_lot="SL-9")) == "In Progress"
+    assert _stock_label(_dev("D", DeviceStage.l2, sub_lot="SL-9")) == "As-Is"   # a sub-lot is As-Is at any stage (stock_type_key)
     assert _stock_label(_dev("E", DeviceStage.iqc)) == "In Progress"
     # sold items carry the same Finish Good / As-Is label (never "In Progress")
     assert _stock_label(_dev("F", DeviceStage.sold)) == "Finish Good"
@@ -116,7 +127,7 @@ def test_export_rows_end_to_end_values(monkeypatch):
         [pna_l2, l2_no_pna, pna_other_stage, rts_plain, rts_sublot, iqc_dev, sold_dev],
         pna_ids,
     )
-    assert header[header.index("PNA"):header.index("PNA") + 2] == ["PNA", "Stock"]   # Ageing columns follow (2026-11-18)
+    assert header == _EXPORT_HEADER
     pna_i, stock_i = header.index("PNA"), header.index("Stock")
 
     def cells(b):

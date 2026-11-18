@@ -1644,7 +1644,12 @@ async def model_summary_tags(
     return JSONResponse({"tags": tags})
 
 
-_EXPORT_HEADER = [
+# _ROW_ORDER = the order export_rows BUILDS each row's values in (one per
+# name, positional). The file's column order is _EXPORT_HEADER below: each row
+# is turned into {name: value} and written in _EXPORT_HEADER order, so the
+# columns can be re-sequenced without any value landing under the wrong
+# header (the 2026-10 shifted-columns bug).
+_ROW_ORDER = [
     "Barcode", "Lot", "GRN", "Invoice No", "Entity", "Sub-Category", "Brand", "Model", "Device Type",
     # RAM / Storage only (2026-10-22) — replaced RAM GB, RAM, Total RAM
     # Count/Size, SSD GB, Storage Type, Hard Drive, HDD GB, Total HDD Count/Size.
@@ -1681,13 +1686,34 @@ _AGE_GROUPS = [
     ("Ready for Sale", {DeviceStage.ready_to_sale}),
 ]
 _AGE_OF = {st: i for i, (_n, sts) in enumerate(_AGE_GROUPS) for st in sts}
-_EXPORT_HEADER += [c for name, _s in _AGE_GROUPS for c in (f"{name} (Date)", f"{name} (Ageing)")]
+_ROW_ORDER += [c for name, _s in _AGE_GROUPS for c in (f"{name} (Date)", f"{name} (Ageing)")]
 
-# Excel header colours (2026-11-18, Pankaj): (fill, font colour) by column.
-_HDR_LIGHT_BLUE, _HDR_BLUE = ("DDEBF7", "1F3864"), ("2F75B5", "FFFFFF")
-_HDR_NAVY, _HDR_GREEN = ("1F3864", "FFFFFF"), ("548235", "FFFFFF")
+# Column sequence of the Excel file (2026-11-18, Pankaj's sheet). Warehouse is
+# left out of the file (still built in _ROW_ORDER).
+_EXPORT_HEADER = [
+    "Barcode", "Lot", "GRN", "Invoice No", "Entity", "Sub-Category", "Brand", "Model", "Device Type",
+    "Serial No", "CPU", "CPU Make", "Generation", "RAM", "Storage",
+    "Screen Size", "Battery %", "BIOS Pwd", "Color",
+    "Power On", "Power Status", "HDD Connector", "HDD Casing", "Battery Present", "Battery Cable",
+    "Charging Port", "DVD Drive", "Wi-Fi", "Web Cam", "Speaker", "Fan Working",
+    "Keyboard Working", "Touchpad Working", "HDMI Port", "USB Port", "Audio Jack",
+    "USB A Ports", "USB C Ports", "Ethernet Ports",
+    "Display Panel Cosmetic", "Bezel Frame Cosmetic", "Screen Cosmetic", "Hinge Cosmetic",
+    "Touchpad Cosmetic", "Bottom Base Cosmetic", "Palmrest Cosmetic",
+    "Device Price", "PNA", "Stock", "Grade", "Stage", "Final QC Status",
+    "Location ID", "Bin Location", "Zone", "Notes", "Created", "Updated", "Stage History",
+] + [c for name, _s in _AGE_GROUPS for c in (f"{name} (Date)", f"{name} (Ageing)")]
+assert len(set(_ROW_ORDER)) == len(_ROW_ORDER), "duplicate name in _ROW_ORDER"
+assert set(_EXPORT_HEADER) <= set(_ROW_ORDER), set(_EXPORT_HEADER) - set(_ROW_ORDER)
+
+# Excel header colours (2026-11-18, Pankaj's sheet): (fill, font colour).
+_HDR_DARK_BLUE = ("17375E", "FFFFFF")     # Barcode … Serial No
+_HDR_LIGHT_BLUE = ("DDEBF7", "000000")    # specs / IQC / cosmetics / Device Price, Notes … Stage History
+_HDR_RED = ("C00000", "FFFFFF")           # PNA
+_HDR_GREEN = ("00B050", "FFFFFF")         # Stock, Final QC Status
+_HDR_NAVY = ("1F3864", "FFFFFF")          # Grade, Stage, Location ID, Bin Location, Zone
 _HDR_MAROON_LT, _HDR_MAROON_DK = ("E6B8B7", "632523"), ("7B1F2B", "FFFFFF")
-_HDR_DEFAULT = ("F2F2F2", "000000")
+_HDR_FIRST10 = set(_EXPORT_HEADER[:10])
 
 
 def _xl(v):
@@ -1703,20 +1729,20 @@ def _xl(v):
     return v
 
 
-def _header_style(i: int, name: str):
-    if i < 9:                                   # Barcode … Device Type
-        return _HDR_LIGHT_BLUE
-    if i < 15:                                  # Serial No … Storage
-        return _HDR_BLUE
-    if name in ("Zone", "Location ID", "Grade", "Stage"):
-        return _HDR_NAVY
-    if name == "Stock":
+def _header_style(name: str):
+    if name in _HDR_FIRST10:
+        return _HDR_DARK_BLUE
+    if name == "PNA":
+        return _HDR_RED
+    if name in ("Stock", "Final QC Status"):
         return _HDR_GREEN
+    if name in ("Grade", "Stage", "Location ID", "Bin Location", "Zone"):
+        return _HDR_NAVY
     if name.endswith("(Date)"):
         return _HDR_MAROON_LT
     if name.endswith("(Ageing)"):
         return _HDR_MAROON_DK
-    return _HDR_DEFAULT
+    return _HDR_LIGHT_BLUE
 
 
 async def _working_days_fn(db, today):
@@ -1927,33 +1953,40 @@ async def _export_rows(db: AsyncSession, rows, hide=()) -> Response:
     _today = _app_now()
     _wdays = await _working_days_fn(db, _today)
     # Excel file (2026-11-18, Pankaj — coloured headers need .xlsx; was CSV).
-    # Write-only workbook: ~13 s for a full 37k-tag export. `hide` = column
-    # names left out (Device Price without Pricing Export).
-    from openpyxl import Workbook
-    from openpyxl.cell import WriteOnlyCell
-    from openpyxl.styles import Alignment, Font, PatternFill
-    from openpyxl.utils import get_column_letter
+    # Written by utils/xlsx_fast (sheet XML as text): openpyxl's per-cell
+    # objects took ~75% of a 37k-tag export. `hide` = column names left out
+    # (Device Price without Pricing Export).
+    from utils.xlsx_fast import build_xlsx
     want_hide = {h.strip().lower() for h in (hide or ())}
-    keep = [j for j, h in enumerate(_EXPORT_HEADER) if h.lower() not in want_hide]
-    wb = Workbook(write_only=True)
-    ws = wb.create_sheet("Inventory")
-    ws.freeze_panes = "B2"
-    for k, j in enumerate(keep):
-        name = _EXPORT_HEADER[j]
-        ws.column_dimensions[get_column_letter(k + 1)].width = (
-            18 if j < 15 else 60 if name == "Stage History" else 14 if name.endswith(("(Date)", "(Ageing)")) else 13)
-    hdr = []
-    for j in keep:
-        name = _EXPORT_HEADER[j]
-        fill, font = _header_style(j, name)
-        c = WriteOnlyCell(ws, value=name)
-        c.fill = PatternFill("solid", fgColor=fill)
-        c.font = Font(bold=True, color=font)
-        c.alignment = Alignment(vertical="center", wrap_text=True)
-        hdr.append(c)
-    ws.append(hdr)
+    cols = [h for h in _EXPORT_HEADER if h.lower() not in want_hide]
+    widths = [18 if name == "Barcode" else 15 if name == "Stage History"
+              else 14 if name.endswith(("(Date)", "(Ageing)")) else 13 for name in cols]
+    out_rows = []
+    # Global export format (utils/export_format) applied here, cell by cell,
+    # instead of by main.py's _export_format middleware — that one re-opens
+    # and re-saves the whole file with openpyxl, ~20 s of a 37k-tag export.
+    # The response says X-Export-Raw: 1 so the middleware leaves it alone.
+    from utils.export_format import normalize_value, is_money_header, QTY_HDR, TIME_HDR
+    import datetime as _dt_mod
+    from decimal import Decimal
+    _money = [is_money_header(h) or bool(QTY_HDR.search(h)) for h in cols]
+    _timec = [bool(TIME_HDR.search(h)) for h in cols]
+    _may_change = set("0123456789-\u2212\u20b9")   # a date / amount string starts with one of these
+
+    def _norm(i, v):
+        if v is None:
+            return v
+        if isinstance(v, str):
+            t = v.lstrip()
+            if not t or t[0] not in _may_change:
+                return v
+        elif not isinstance(v, (_dt_mod.date,)):
+            return v
+        nv = normalize_value(v, cols[i], _money[i], _timec[i])
+        if isinstance(nv, Decimal):
+            return int(nv) if nv == nv.to_integral_value() else float(nv)
+        return nv
     n_rows = 0
-    keep_set = set(keep)
     for device, lot_number in rows:
         iqc = iqc_by_device.get(device.id)
         loc_info = location_map.get(str(device.id)) or {}
@@ -1991,17 +2024,15 @@ async def _export_rows(db: AsyncSession, rows, hide=()) -> Response:
         # data) shifts every later column right for just THAT row — hard to
         # spot in the file itself, since CSV columns are positional, not
         # name-matched. Fail loudly instead of exporting misaligned data.
-        assert len(row) == len(_EXPORT_HEADER), (
+        assert len(row) == len(_ROW_ORDER), (
             f"Export row for {device.barcode} has {len(row)} columns, "
-            f"expected {len(_EXPORT_HEADER)} — column mapping is out of sync with _EXPORT_HEADER."
+            f"expected {len(_ROW_ORDER)} — column mapping is out of sync with _ROW_ORDER."
         )
-        ws.append([_xl(v) for j, v in enumerate(row) if j in keep_set])
+        vals = dict(zip(_ROW_ORDER, row))   # by name, then written in file order
+        out_rows.append([_norm(i, _xl(vals[h])) for i, h in enumerate(cols)])
         n_rows += 1
     _mark("rows")
-    ws.auto_filter.ref = f"A1:{get_column_letter(len(keep))}{n_rows + 1}"
-    buf = io.BytesIO()
-    wb.save(buf)
-    body = buf.getvalue()
+    body = build_xlsx("Inventory", cols, [_header_style(h) for h in cols], widths, out_rows, freeze="B2")
     _mark("xlsx")
     # Server-Timing (2026-10-19): per-step milliseconds, visible in the
     # browser's network panel — how slow exports were tracked down.
@@ -2013,7 +2044,7 @@ async def _export_rows(db: AsyncSession, rows, hide=()) -> Response:
         content=body,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=devices_export.xlsx",
-                 "Server-Timing": timing},
+                 "Server-Timing": timing, "X-Export-Raw": "1"},
     )
 
 
