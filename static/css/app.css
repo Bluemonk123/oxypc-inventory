@@ -1523,9 +1523,10 @@ table.gtable tbody td .gtable-clamp2 {
    Received / Completed); use the Global Tabs (.nav-tabs) to switch between
    different panels. The page decides — nothing applies it on its own. */
 .nav.pill-tabs .nav-link .badge { margin-left: .35rem; }
-.nav.pill-tabs { gap: .25rem; flex-wrap: wrap; }
-.nav.pill-tabs .nav-link { padding: .25rem 1rem; border: 0; border-radius: var(--bs-border-radius); background: transparent;
-  color: var(--bs-primary); font-weight: 500; line-height: 1.5; transition: background-color .15s, color .15s; }
+/* Compact everywhere (2026-11-19, Pankaj): smaller padding and text. */
+.nav.pill-tabs { gap: .15rem; flex-wrap: wrap; }
+.nav.pill-tabs .nav-link { padding: .1rem .6rem; font-size: .8rem; border: 0; border-radius: var(--bs-border-radius); background: transparent;
+  color: var(--bs-primary); font-weight: 500; line-height: 1.35; transition: background-color .15s, color .15s; }
 .nav.pill-tabs .nav-link:hover:not(.active) { background: rgba(var(--bs-primary-rgb), .08); }
 .nav.pill-tabs .nav-link.active, .nav.pill-tabs .nav-item.show .nav-link { background: var(--bs-primary); color: #fff; }
 .nav.pill-tabs .nav-link:focus-visible { box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .25); }

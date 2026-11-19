@@ -46,7 +46,7 @@
 {% endmacro %}
 {# one-line card headers (2026-11-11): tighter pills so title + 3 pills fit #}
 <style>
-  .acc-head .pill-tabs .nav-link { padding: .2rem .55rem; white-space: nowrap; font-size: .85rem; }
+  .acc-head .pill-tabs .nav-link { white-space: nowrap; }   /* size = the global compact pills (2026-11-19) */
 </style>
 {% macro verify_btn(action, label) %}
 <button type="button" class="btn btn-sm btn-success py-0 text-nowrap acc-verify" data-action="{{ action }}" data-label="{{ label }}"><i class="bi bi-check2-circle me-1"></i>Verify</button>

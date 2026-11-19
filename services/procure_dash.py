@@ -96,7 +96,9 @@ async def build(db, overdue_count, today_count, all_due, pending_parts, sp=True,
     latest = dw.table("Latest deals", 6, [("Deal", 0.9), ("Account", 1.4), ("Type", 0.8), ("Value", 0.7), ("Stage", 0.9)],
                       [[no or "—", (acct or title or "—"), (typ, SD if typ == "Supplier" else CD), (sm if typ == "Supplier" else cm)(float(v or 0)),
                         (slabel if typ == "Supplier" else clabel).get(st, st or "—")]
-                       for typ, (no, title, acct, v, st, _at) in mixed] or [["No deals yet", "", "", "", ""]], sub="Both deal types, newest first")
+                       for typ, (no, title, acct, v, st, _at) in mixed] or [["No deals yet", "", "", "", ""]], sub="Both deal types, newest first",
+                      # Won = dark green row, Lost = maroon row, white text (2026-11-19, Pankaj).
+                      row_colors=[{"won": ("#14532d", "#ffffff"), "lost": ("#7b1f2b", "#ffffff")}.get(st) for _t, (_n, _ti, _a, _v, st, _x) in mixed])
 
     so = (await db.execute(select(func.coalesce(CRMSourcingDeal.assigned_to, CRMSourcingDeal.created_by), (func.sum(SVAL) if sp else func.count(CRMSourcingDeal.id)))
                            .where(CRMSourcingDeal.stage.notin_(["lost"]))

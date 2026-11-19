@@ -229,7 +229,9 @@ def stack(title, span, parts, kind='n', **kw):
     return d
 
 
-def table(title, span, cols, rows, **kw):
+def table(title, span, cols, rows, row_colors=None, **kw):
+    """row_colors (2026-11-19): optional list, one per row, of (background,
+    text colour) or None — paints the whole row (pills keep their own look)."""
     d = base('Table', title, span, **kw)
     d['gtc'] = ' '.join('minmax(0, %sfr)' % cc[1] for cc in cols)
     d['cols'] = [{'x': cc[0]} for cc in cols]
@@ -251,7 +253,8 @@ def table(title, span, cols, rows, **kw):
             else:
                 cell['nb'] = True
             cells.append(cell)
-        trs.append({'cells': cells})
+        rc = (row_colors or [])[len(trs)] if row_colors and len(trs) < len(row_colors) else None
+        trs.append({'cells': cells, 'bg': rc[0] if rc else '', 'fg': rc[1] if rc else ''})
     d['trs'] = trs
     return d
 

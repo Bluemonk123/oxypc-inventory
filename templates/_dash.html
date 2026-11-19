@@ -215,10 +215,10 @@
                 {% for c in w.cols %}<span style="padding: 8px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{c.x}}</span>{% endfor %}
               </div>
               {% for r in w.trs %}
-                <div style="display: grid; grid-template-columns: {{w.gtc}}; border-top: 1px solid {{w.grid}}; align-items: center">
+                <div style="display: grid; grid-template-columns: {{w.gtc}}; border-top: 1px solid {{w.grid}}; align-items: center{% if r.bg %}; background: {{ r.bg }}; color: {{ r.fg }}{% endif %}">
                   {% for c in r.cells %}
                     <span style="padding: 8px 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: {{c.fw}}">
-                      {% if c.b %}<span style="display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: {{c.bc}}; color: {{c.bt}}">{{c.x}}</span>{% endif %}
+                      {% if c.b %}<span style="display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; font-weight: 600; background: {% if r.bg %}linear-gradient({{c.bc}}, {{c.bc}}), #ffffff{% else %}{{c.bc}}{% endif %}; color: {{c.bt}}">{{c.x}}</span>{% endif %}
                       {% if c.nb %}{{c.x}}{% endif %}
                       {% if c.lk %}<a href="{{ c.href or '#' }}" {% if c.modal %}data-bs-toggle="modal" data-bs-target="{{ c.modal }}" {% endif %}{% for k, v in (c.data or {}).items() %}data-{{ k }}="{{ v }}" {% endfor %}class="dash-link">{{c.x}}</a>{% endif %}
                       {% if c.bt2 %}<a href="{{ c.href or '#' }}" {% if c.modal %}data-bs-toggle="modal" data-bs-target="{{ c.modal }}" {% endif %}{% for k, v in (c.data or {}).items() %}data-{{ k }}="{{ v }}" {% endfor %}class="dash-view-btn"><i class="bi bi-eye"></i> {{c.x}}</a>{% endif %}
