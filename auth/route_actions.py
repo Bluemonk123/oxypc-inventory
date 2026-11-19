@@ -590,6 +590,7 @@ ROUTE_ACTIONS = {
     ('POST', '/assign-dealer-leads/export'): ('assign_dealer_leads', 'export'),  # export_dealer_leads: export
     # ===== routers/tickets.py =====
     ('POST', '/tickets/raise'): None,  # raise_ticket: ticket raise (any user)
+    ('GET', '/tickets/convert-to-task'): None,  # convert_to_task: Task Tracker export; admin only like close, no PERM_MODULES entry (see notes s3)
     ('POST', '/tickets/{ticket_id}/reply'): None,  # ticket_requester_reply: raiser answers in the conversation (2026-11-16)
     ('POST', '/tickets/{ticket_id}/close'): None,  # close_ticket: internal support tickets; no PERM_MODULES entry (see notes s3)
     # ===== routers/settings.py =====

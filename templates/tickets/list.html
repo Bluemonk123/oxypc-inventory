@@ -111,9 +111,38 @@
         <li class="nav-item"><button type="button" class="nav-link" data-bs-toggle="tab" data-bs-target="#tkClosedPane" data-tk="closed">Closed</button></li>
       </ul>
     </div>
-    <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#raiseTicketModal"
-            title="Raise a support ticket"><i class="bi bi-plus-lg me-1"></i>Add Ticket</button>
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      {% if current_user.role.value == 'admin' %}
+      {# Convert to Task (2026-11-19, Pankaj): the tickets shown (filters applied)
+         as a Project Task Tracker upload sheet. #}
+      <a class="btn btn-sm btn-outline-primary" href="/tickets/convert-to-task{{ '?' ~ flt_qs if flt_qs }}"
+         title="Download these tickets in the Task Tracker upload format"><i class="bi bi-file-earmark-arrow-down me-1"></i>Convert to Task</a>
+      {% endif %}
+      <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#raiseTicketModal"
+              title="Raise a support ticket"><i class="bi bi-plus-lg me-1"></i>Add Ticket</button>
+    </div>
   </div>
+  {# Filters (2026-11-19): Raised On from/to and Raised By — the tiles, both
+     tabs and Convert to Task all follow them. #}
+  <form method="get" action="/tickets" class="d-flex align-items-end gap-2 flex-wrap px-3 py-2 border-bottom bg-body-tertiary">
+    <div>
+      <label class="form-label small mb-0">Raised On (from)</label>
+      <input type="date" name="raised_from" value="{{ flt.raised_from }}" class="form-control form-control-sm">
+    </div>
+    <div>
+      <label class="form-label small mb-0">Raised On (to)</label>
+      <input type="date" name="raised_to" value="{{ flt.raised_to }}" class="form-control form-control-sm">
+    </div>
+    <div style="min-width:200px">
+      <label class="form-label small mb-0">Raised By</label>
+      <select name="raised_by" class="form-select form-select-sm">
+        <option value="">All</option>
+        {% for u, n in raiser_opts %}<option value="{{ u }}"{{ ' selected' if u == flt.raised_by }}>{{ n }}</option>{% endfor %}
+      </select>
+    </div>
+    <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-funnel me-1"></i>Apply</button>
+    {% if flt_qs %}<a href="/tickets" class="btn btn-sm btn-outline-secondary">Clear</a>{% endif %}
+  </form>
   <div class="card-body p-0">
     <div class="tab-content">
       <div class="tab-pane fade show active" id="tkOpenPane">{{ ticket_table('tkOpenTable', open_items) }}</div>

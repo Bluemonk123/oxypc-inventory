@@ -20,7 +20,10 @@ from utils.timezone import app_now
 # "payment_due" / "complete" come from Rental Return (2026-10-24).
 RENTAL_STATUSES = [("active", "Active"), ("payment_due", "Payment Due"), ("complete", "Complete"),
                    ("returned", "Returned"), ("cancelled", "Cancelled")]
-RETURN_DECISIONS = [("payment_due", "Payment Due"), ("waive_off", "Waive Off")]
+RETURN_DECISIONS = [("payment_due", "Payment Due"), ("custom_price", "Custom Price"), ("waive_off", "Waive Off")]
+# Decisions that leave money owed until Mark Paid (2026-11-19: Custom Price =
+# Payment Due with an amount typed at return instead of the calculated one).
+DUE_DECISIONS = ("payment_due", "custom_price")
 DURATION_UNITS = [("days", "Days"), ("months", "Months"), ("years", "Years")]
 BILL_TYPES = [("business", "Business"), ("individual", "Individual")]
 
@@ -109,6 +112,9 @@ class RentalReturn(Base):
     # Return Reason (2026-11-05, approved by Pankaj): optional, same list as
     # Internal Tag / External Tag returns (Master Data product_return_reason).
     return_reason = Column(String(100), nullable=True)
+    # Condition on Return (2026-11-19, approved by Pankaj): optional, same
+    # choices as the Internal Tag return form.
+    condition_on_return = Column(String(50), nullable=True)
     notes = Column(Text, nullable=True)                      # shown as "Complaint Description" (2026-11-05)
     created_by = Column(String(50), nullable=True)
     created_at = Column(DateTime, nullable=False, default=app_now)

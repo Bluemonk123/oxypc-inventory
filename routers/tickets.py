@@ -1,4 +1,5 @@
 """Ticket raising system — users log feedback, can see own tickets."""
+import re
 import shutil
 import time
 from pathlib import Path
@@ -134,21 +135,57 @@ def _ticket_ctx(t: Ticket, names: dict | None = None) -> dict:
 
 # ── LIST ─────────────────────────────────────────────────────────────────────
 
-@router.get("", response_class=HTMLResponse)
-async def list_tickets(
-    request: Request,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
+def _parse_day(v: str):
+    from datetime import datetime as _d
+    try:
+        return _d.strptime((v or "").strip(), "%Y-%m-%d")
+    except ValueError:
+        return None
+
+
+async def _filtered_tickets(db, current_user, raised_from: str, raised_to: str, raised_by: str):
+    """Tickets for the list and for Convert to Task (2026-11-19, Pankaj):
+    non-admins see only their own; Raised On from/to (inclusive days) and
+    Raised By (username) filter both the same way."""
+    from datetime import timedelta
     query = select(Ticket).order_by(Ticket.raised_on.desc())
     if current_user.role.value != "admin":
         query = query.where(Ticket.raised_by == current_user.username)
-    rows = (await db.execute(query)).scalars().all()
-    usernames = {t.raised_by for t in rows if t.raised_by}
-    names = {}
-    if usernames:
-        names = {u: n for u, n in (await db.execute(
-            select(User.username, User.full_name).where(User.username.in_(usernames)))).all()}
+    d_from, d_to = _parse_day(raised_from), _parse_day(raised_to)
+    if d_from:
+        query = query.where(Ticket.raised_on >= d_from)
+    if d_to:
+        query = query.where(Ticket.raised_on < d_to + timedelta(days=1))
+    if (raised_by or "").strip():
+        query = query.where(Ticket.raised_by == raised_by.strip())
+    return (await db.execute(query)).scalars().all()
+
+
+async def _user_names(db, usernames) -> dict:
+    usernames = {u for u in usernames if u}
+    if not usernames:
+        return {}
+    return {u: n for u, n in (await db.execute(
+        select(User.username, User.full_name).where(User.username.in_(usernames)))).all()}
+
+
+@router.get("", response_class=HTMLResponse)
+async def list_tickets(
+    request: Request,
+    raised_from: str = "",
+    raised_to: str = "",
+    raised_by: str = "",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    rows = await _filtered_tickets(db, current_user, raised_from, raised_to, raised_by)
+    # Raised By filter options: everyone who has raised a ticket this user can see.
+    by_q = select(Ticket.raised_by).distinct()
+    if current_user.role.value != "admin":
+        by_q = by_q.where(Ticket.raised_by == current_user.username)
+    raisers = [u for u in (await db.execute(by_q)).scalars().all() if u]
+    names = await _user_names(db, set(raisers) | {t.raised_by for t in rows})
+    raiser_opts = sorted(((u, names.get(u) or u) for u in raisers), key=lambda x: x[1].lower())
     tickets = [_ticket_ctx(t, names) for t in rows]
     # Dark tiles (2026-11-10, Pankaj): Total / Open / Closed / Average Aging.
     # Average Aging = mean days since raised, over the tickets still Open.
@@ -159,12 +196,118 @@ async def list_tickets(
         "closed": len(tickets) - len(open_t),
         "avg_age": round(sum(t["age_days"] for t in open_t) / len(open_t), 1) if open_t else 0,
     }
+    from urllib.parse import urlencode
+    flt = {"raised_from": raised_from, "raised_to": raised_to, "raised_by": raised_by}
     return templates.TemplateResponse("tickets/list.html", {
         "request": request,
         "current_user": current_user,
         "tickets": tickets,
         "stats": stats,
+        "flt": flt,
+        "flt_qs": urlencode({k: v for k, v in flt.items() if v}),
+        "raiser_opts": raiser_opts,
     })
+
+
+# ── CONVERT TO TASK ──────────────────────────────────────────────────────────
+# Project Task Tracker upload format (2026-11-19, Pankaj's task-upload-template).
+TASK_HEADER = ["Subject", "Project", "Type", "Priority", "Module", "Problem", "Solution",
+               "Stage", "Location", "Requested by", "Assignee", "Estimated hours",
+               "Start date", "Due date"]
+TASK_PROJECT = "OxyPc Inventory"
+_TASK_TYPE = {"issue": "Bug", "feature": "Feature", "task": "Task", "feedback": "Enhancement"}
+_TASK_PRIORITY = {"urgent": "P1 - Immediate", "high": "P2 - High", "normal": "P3 - Normal", "low": "P4 - Low"}
+_TASK_STAGE = {"open": "New", "pending": "In Progress", "hold": "In Progress",
+               "solved": "Closed", "closed": "Closed"}
+
+
+_GREETING = re.compile(r"^(hi|hello|hey|dear|good (morning|afternoon|evening))\b[\w\s.,!-]{0,30}$", re.I)
+
+
+def _task_subject(t: Ticket) -> str:
+    """The ticket's subject, else its first real line — greeting lines like
+    "Hi Vipin," and a leading "As discussed," are skipped."""
+    if (t.subject or "").strip():
+        return t.subject.strip()
+    text = (t.feedback or "").strip()
+    if text.startswith("[From ") and "] " in text:
+        text = text.split("] ", 1)[1]
+    for line in text.splitlines():
+        line = line.strip()
+        if not line or _GREETING.match(line):
+            continue
+        return re.sub(r"^as discussed[,:]?\s*", "", line, flags=re.I).strip() or line
+    return "(no subject)"
+
+
+def ticket_task_row(t: Ticket, names: dict) -> list:
+    """One ticket as a Task Tracker row (TASK_HEADER order)."""
+    stage = _TASK_STAGE.get((t.status or "").strip().lower(), "New")
+    subject = _task_subject(t)
+    if len(subject) > 90:
+        subject = subject[:87].rstrip() + "..."
+    return [
+        f"{subject} (#{t.ticket_id})",
+        TASK_PROJECT,
+        _TASK_TYPE.get((t.ticket_type or "").strip().lower(), "Bug"),
+        _TASK_PRIORITY.get((t.priority or "").strip().lower(), "P3 - Normal"),
+        (t.group_name or "").strip() or None,
+        (t.feedback or "").strip() or None,
+        (t.notes or "").strip() or None,
+        stage,
+        "On Production" if stage == "Closed" else None,
+        names.get(t.raised_by) or t.raised_by,
+        (names.get(t.assignee) or t.assignee) if t.assignee else None,
+        None,
+        t.raised_on.date() if t.raised_on else None,
+        t.sla_due_at.date() if t.sla_due_at else None,
+    ]
+
+
+@router.get("/convert-to-task")
+async def convert_to_task(
+    raised_from: str = "",
+    raised_to: str = "",
+    raised_by: str = "",
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Download the (filtered) tickets in the Task Tracker upload format.
+    Admin only, like Close."""
+    import io
+    from fastapi.responses import Response
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Font, PatternFill
+    if current_user.role.value != "admin":
+        return JSONResponse({"error": "Only an admin can convert tickets to tasks."}, status_code=403)
+    rows = await _filtered_tickets(db, current_user, raised_from, raised_to, raised_by)
+    names = await _user_names(db, {t.raised_by for t in rows} | {t.assignee for t in rows})
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Tasks"
+    ws.append(TASK_HEADER)
+    for c in ws[1]:
+        c.font = Font(bold=True, color="FFFFFF")
+        c.fill = PatternFill("solid", fgColor="1F3864")
+        c.alignment = Alignment(vertical="center", wrap_text=True)
+    for t in rows:
+        ws.append(ticket_task_row(t, names))
+    for r in ws.iter_rows(min_row=2):
+        for c in (r[5], r[6]):
+            c.alignment = Alignment(wrap_text=True, vertical="top")
+        for c in (r[12], r[13]):
+            c.number_format = "dd-mmm-yyyy"
+    for col, w in zip("ABCDEFGHIJKLMN", (40, 18, 13, 13, 20, 50, 35, 12, 15, 18, 16, 10, 13, 13)):
+        ws.column_dimensions[col].width = w
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = f"A1:N{len(rows) + 1}"
+    buf = io.BytesIO()
+    wb.save(buf)
+    stamp = app_now().strftime("%Y%m%d")
+    return Response(buf.getvalue(),
+                    media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename=tickets_as_tasks_{stamp}.xlsx",
+                             "X-Export-Raw": "1"})
 
 
 # ── RAISE ────────────────────────────────────────────────────────────────────

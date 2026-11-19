@@ -139,6 +139,9 @@
   function fitAll() { grid.querySelectorAll('.mcd-card').forEach(fitCard); }
   var fitTimer;
   window.addEventListener('resize', function () { clearTimeout(fitTimer); fitTimer = setTimeout(fitAll, 150); });
+  // Cards in a tab (Ready for Sale, 2026-11-19): drawn while the tab is hidden
+  // they measure 0 high, so re-fit when it is shown.
+  document.addEventListener('shown.bs.tab', function () { fitAll(); });
   function draw() {
     grid.innerHTML = S.cards.map(function (c, i) { return cardHtml(i, false); }).join('');
     document.getElementById('mcdEmpty').classList.toggle('d-none', S.cards.length > 0);

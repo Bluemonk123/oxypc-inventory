@@ -383,7 +383,8 @@
             <div id="rrList" class="mt-2 d-flex flex-wrap gap-1"></div>
           </div>
 
-          <div id="rrDetails" class="d-none">
+          {# Always shown (2026-11-19, Pankaj); fills in when the first tag is added. #}
+          <div id="rrDetails">
             <div class="row g-2 mb-3">
               <div class="col-sm-4">
                 <label class="form-label fw-semibold small">Rental Start Date</label>
@@ -400,7 +401,7 @@
             </div>
 
             <div class="card bg-light border-0 mb-3">
-              <div class="card-body py-2 small" id="rrCustomer"></div>
+              <div class="card-body py-2 small" id="rrCustomer"><span class="text-muted">Rental and customer details appear here after a tag is added.</span></div>
             </div>
 
             <table class="table table-sm mb-3 small">
@@ -409,11 +410,25 @@
               <tr><td>Extra Days (after Stop Date)</td><td class="text-end" id="rrExtra">0</td></tr>
               <tr class="table-warning"><td class="fw-semibold">Outstanding Price</td><td class="text-end fw-bold" id="rrOutstanding">—</td></tr>
             </table>
+            {# Custom Price amount sits under Outstanding Price (2026-11-19, Pankaj). #}
+            <div class="d-none mb-3" id="rrCustomWrap" style="max-width:340px">
+                <label class="form-label small mb-1">Custom Price (₹) <span class="text-danger">*</span></label>
+                <div class="input-group input-group-sm">
+                  <span class="input-group-text">₹</span>
+                  <input type="number" name="custom_price" id="rrCustomPrice" class="form-control" min="0.01" step="0.01" placeholder="Amount to collect">
+                </div>
+                <div class="form-text small text-muted">Collected in place of the Outstanding Price</div>
+              </div>
 
             <div class="mb-3 charge-choice">
               <div class="form-check form-check-inline">
                 <input class="form-check-input" type="radio" name="decision" id="rrDue" value="payment_due" checked>
                 <label class="form-check-label fw-semibold" for="rrDue">Payment Due</label>
+              </div>
+              {# Custom Price (2026-11-19, Pankaj): Payment Due with a typed amount. #}
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="decision" id="rrCustom" value="custom_price">
+                <label class="form-check-label fw-semibold" for="rrCustom">Custom Price</label>
               </div>
               <div class="form-check form-check-inline">
                 <input class="form-check-input" type="radio" name="decision" id="rrWaive" value="waive_off">
@@ -435,6 +450,14 @@
                 {% for r in master_options('product_return_reason') %}
                 <option>{{ r }}</option>
                 {% endfor %}
+              </select>
+            </div>
+            {# Condition on Return (2026-11-19, Pankaj): same choices as Internal Tag. #}
+            <div class="mb-3">
+              <label class="form-label fw-semibold">Condition on Return</label>
+              <select name="condition_on_return" class="form-select">
+                <option value="">-- Select --</option>
+                <option>As sold</option><option>Minor damage</option><option>Major damage</option><option>Non-functional</option>
               </select>
             </div>
             <div class="mb-3">
@@ -725,7 +748,13 @@
     });
     document.getElementById('rrBarcodes').value = tags.map(function (t) { return t.barcode; }).join(',');
     if (!tags.length) rental = null;
-    details.classList.toggle('d-none', !rental);
+    if (!rental) {   // no tag yet / all removed: form stays visible, emptied
+      document.getElementById('rrStart').value = '';
+      document.getElementById('rrStop').value = '';
+      document.getElementById('rrCustomer').innerHTML = '<span class="text-muted">Rental and customer details appear here after a tag is added.</span>';
+      ['rrTagCount', 'rrQty', 'rrDays', 'rrExtra'].forEach(function (id) { document.getElementById(id).textContent = '0'; });
+      ['rrPrice', 'rrDaily', 'rrOutstanding'].forEach(function (id) { document.getElementById(id).textContent = '—'; });
+    }
     if (rental) {
       document.getElementById('rrStart').value = rental.start_text;
       document.getElementById('rrStop').value = rental.stop_text;
@@ -785,14 +814,22 @@
                           : '<i class="bi bi-receipt me-2"></i>Generate and Submit';
     btn.className = 'btn px-4 ' + (waive ? 'btn-success' : 'btn-primary');
   }
-  document.getElementById('rrDue').addEventListener('change', syncBtn);
-  document.getElementById('rrWaive').addEventListener('change', syncBtn);
   // Optional waiver reason (2026-10-29)
   function syncRrReason() {
     document.getElementById('rrWaiverReasonWrap').classList.toggle('d-none', !document.getElementById('rrWaive').checked);
   }
-  document.getElementById('rrWaive').addEventListener('change', syncRrReason);
-  document.getElementById('rrDue').addEventListener('change', syncRrReason);
+  // Custom Price: show + require the amount box only when it's picked.
+  function syncRrCustom() {
+    var on = document.getElementById('rrCustom').checked, inp = document.getElementById('rrCustomPrice');
+    document.getElementById('rrCustomWrap').classList.toggle('d-none', !on);
+    inp.required = on;
+    if (on) inp.focus();
+  }
+  ['rrDue', 'rrCustom', 'rrWaive'].forEach(function (id) {
+    document.getElementById(id).addEventListener('change', syncRrCustom);
+    document.getElementById(id).addEventListener('change', syncRrReason);
+    document.getElementById(id).addEventListener('change', syncBtn);
+  });
   syncBtn();
   document.getElementById('rrForm').addEventListener('submit', function (e) {
     if (!tags.length) { e.preventDefault(); msg('Scan at least one Tag Number.'); return; }

@@ -110,7 +110,7 @@
                   {% for x in row.returns %}
                   {% if loop.first %}<li><hr class="dropdown-divider"></li>{% endif %}
                   <li><a class="dropdown-item" href="/rentals/returns/{{ x.id }}/receipt" target="_blank">
-                    <i class="bi bi-receipt me-2"></i>{{ 'Payment Due Receipt' if x.decision == 'payment_due' else 'Return Receipt' }} {{ x.return_number }}</a></li>
+                    <i class="bi bi-receipt me-2"></i>{{ 'Payment Due Receipt' if x.decision in ('payment_due', 'custom_price') else 'Return Receipt' }} {{ x.return_number }}</a></li>
                   {% endfor %}
                 </ul>
               </div>{% endif %}

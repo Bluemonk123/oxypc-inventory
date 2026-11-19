@@ -56,17 +56,23 @@
              title='Normal = non-touch tags in these lots; Touch = tags Final QC marked Touch') }}
 {% endcall %}
 
-{# Main tabs only for Counter Sales and Admin (2026-11-18, Pankaj) — same rule as
-   Ready for Sale - Tags; role_allowed also lets admin-created custom roles through.
-   Hidden, not removed, so the page's scripts still find their elements. #}
-{% set _show_tabs = role_allowed(current_user.role, 'counter_sales', 'admin') %}
+{# Tabs shown to everyone again (2026-11-19, Pankaj): the Counter Sales / Admin
+   gating from 2026-11-18 is removed. #}
+{% set _show_tabs = True %}
 <ul class="nav nav-tabs ready-tabs{{ '' if _show_tabs else ' d-none' }}" id="asIsTabs" role="tablist">
   <li class="nav-item" role="presentation">
     <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#asIsLotPane" type="button" role="tab">
       <i class="bi bi-box-seam me-1"></i>As-Is Lot <span class="badge rounded-pill bg-warning text-dark ms-1" id="alCountBadge">{{ as_is_lots|length }}</span>
     </button>
   </li>
+  {# Model Cards tab (2026-11-19, Pankaj): cards moved here from the bottom of the
+     page; the old As-Is Model Summary tab is hidden (kept for its scripts). #}
   <li class="nav-item" role="presentation">
+    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#asIsModelCardsPane" type="button" role="tab">
+      <i class="bi bi-grid-3x2-gap me-1"></i>Model Cards
+    </button>
+  </li>
+  <li class="nav-item d-none" role="presentation">
     <button class="nav-link" data-bs-toggle="tab" data-bs-target="#asIsModelSumPane" type="button" role="tab">
       <i class="bi bi-collection me-1"></i>As-Is Model Summary <span class="badge rounded-pill bg-secondary ms-1" id="amCountBadge">{{ model_summary_as_is|length }}</span>
     </button>
@@ -212,6 +218,13 @@
     {{ model_summary_table('asIsModelSummaryTable', model_summary_as_is, false, 'No As-Is tags.') }}
     </div>
   </div>{# /card #}
+  </div>
+  <div class="tab-pane fade" id="asIsModelCardsPane" role="tabpanel">
+  <style>#asIsModelCardsPane > .mcd { margin-top: 0 !important; }</style>
+  {# Model cards (templates/_model_cards.html) — in their own tab since 2026-11-19. #}
+  {% from "_model_cards.html" import model_cards with context %}
+  {{ model_cards('lots', entity_options, device_type_options, make_options, location_options,
+                 can_export=can(current_user, 'sales', 'export'), can_sell=True) }}
   </div>
 </div>{# /tab-content #}
 
@@ -374,10 +387,6 @@
   <input type="hidden" name="barcodes" id="tagSaleBarcodes">
   <input type="hidden" name="qty" id="tagSaleQty">
 </form>
-{# Model cards at the bottom of the page (2026-11-18, Pankaj) — templates/_model_cards.html. #}
-{% from "_model_cards.html" import model_cards with context %}
-{{ model_cards('lots', entity_options, device_type_options, make_options, location_options,
-               can_export=can(current_user, 'sales', 'export'), can_sell=True) }}
 {% endblock %}
 {% block scripts %}
 {{ rt.script() }}

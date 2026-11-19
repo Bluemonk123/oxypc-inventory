@@ -36,7 +36,7 @@ from database import get_db
 from models.company import Company
 from models.device import STAGE_LABELS, Device, DeviceStage, StageMovement
 from models.lot import Lot
-from models.rental import (BILL_TYPES, DURATION_UNITS, RENTAL_STATUSES, RETURN_DECISIONS, RentalItem,
+from models.rental import (BILL_TYPES, DURATION_UNITS, RENTAL_STATUSES, RETURN_DECISIONS, DUE_DECISIONS, RentalItem,
                            RentalRecord, RentalReturn, RentalReturnItem)
 from models.user import User
 from services.audit_engine import audit
@@ -72,7 +72,7 @@ def _grade(d) -> str:
 
 def _tag_json(d, min_price, rented_in=None) -> dict:
     return {
-        "barcode": d.barcode, "make": d.brand or "", "model": d.model or "",
+        "barcode": d.barcode, "serial": d.serial_no or "", "make": d.brand or "", "model": d.model or "",
         "cpu": (d.cpu or "").strip(), "gen": (d.generation or "").strip(),
         "ram": _ram(d), "storage": _storage(d), "grade": _grade(d),
         "min_price": float(min_price) if min_price is not None else None,
@@ -299,7 +299,7 @@ async def rental_records(request: Request, tab: str = Query(default="active"),
     for r in rentals:
         its = items.get(r.id, [])
         rets = returns.get(r.id, [])
-        due = [x for x in rets if x.decision == "payment_due" and x.paid_at is None]
+        due = [x for x in rets if x.decision in DUE_DECISIONS and x.paid_at is None]
         ent = _entity(r, companies.get(r.billing_company_id))
         summary = _model_summary([_item_dict(i) for i in its])
         rows.append({"r": r, "ent": ent, "duration": _duration_text(r), "models": summary,
@@ -576,7 +576,7 @@ async def _refresh_status(db, r: RentalRecord, username: str, now) -> None:
     if r.status == "cancelled":
         return
     rets = (await _returns_of(db, [r.id])).get(r.id, [])
-    unpaid = any(x.decision == "payment_due" and x.paid_at is None for x in rets)
+    unpaid = any(x.decision in DUE_DECISIONS and x.paid_at is None for x in rets)
     item_ids = {it.device_id for it in (await _items_of(db, [r.id])).get(r.id, [])}
     remaining = item_ids - (await _returned_device_ids(db, [r.id])).get(r.id, set())
     new = "payment_due" if unpaid else ("active" if remaining else "complete")
@@ -662,14 +662,24 @@ async def rental_return_submit(
     decision: str = Form(""),
     notes: str = Form(""),                   # "Complaint Description" on the form (2026-11-05)
     return_reason: str = Form(""),           # optional (2026-11-05)
+    condition_on_return: str = Form(""),     # optional (2026-11-19)
     waiver_reason: str = Form(""),
+    custom_price: str = Form(""),            # Custom Price decision (2026-11-19)
     db: AsyncSession = Depends(get_db), current_user: User = Depends(allowed),
 ):
     def back(msg):
         return RedirectResponse(url="/returns/new?active_tab=rental&error=" + quote(msg), status_code=302)
 
     if decision not in dict(RETURN_DECISIONS):
-        return back("Choose Payment Due or Waive Off.")
+        return back("Choose Payment Due, Custom Price or Waive Off.")
+    custom_amt = None
+    if decision == "custom_price":
+        try:
+            custom_amt = Decimal((custom_price or "").replace(",", "").strip()).quantize(Decimal("0.01"))
+        except (InvalidOperation, ValueError):
+            custom_amt = None
+        if custom_amt is None or custom_amt <= 0:
+            return back("Enter the Custom Price (more than ₹0), or choose Waive Off.")
     try:
         received = date.fromisoformat(received_date)
     except ValueError:
@@ -707,10 +717,14 @@ async def rental_return_submit(
         ret = RentalReturn(
             return_number=await _next_return_number(db), rental_id=rental.id, received_date=received,
             stop_date=rental.end_date, rental_price=amt["rental_price"], daily_rate=amt["daily_rate"],
-            extra_days=amt["extra_days"], outstanding_amount=amt["outstanding"], decision=decision,
+            extra_days=amt["extra_days"], decision=decision,
+            # Custom Price: the typed amount is what's owed; the calculated
+            # one stays in the audit row (calculated_outstanding).
+            outstanding_amount=custom_amt if custom_amt is not None else amt["outstanding"],
             # optional reason when waived (2026-10-29, same as Customer / External returns)
             waiver_reason=(waiver_reason.strip() or None) if decision == "waive_off" else None,
             return_reason=(return_reason.strip()[:100] or None),
+            condition_on_return=(condition_on_return.strip()[:50] or None),
             notes=notes.strip() or None, created_by=current_user.username)
         db.add(ret)
         try:
@@ -737,13 +751,17 @@ async def rental_return_submit(
                            "rental_price": str(amt["rental_price"]), "daily_rate": str(amt["daily_rate"]),
                            "extra_days": amt["extra_days"], "outstanding": str(amt["outstanding"]),
                            "decision": decision, "rental_status": rental.status,
+                           "calculated_outstanding": str(amt["outstanding"]),
+                           "condition_on_return": ret.condition_on_return,
+                           "custom_price": str(custom_amt) if custom_amt is not None else None,
                            "waiver_reason": ret.waiver_reason},
                 request=request)
     await db.commit()
     tab = "payment_due" if rental.status == "payment_due" else ("complete" if rental.status == "complete" else "active")
     msg = (f"{ret.return_number}: {len(devices)} tag(s) of {rental.rental_number} received back — "
-           + ((f"₹{amt['outstanding']:,.2f} Payment Due" if _cvp_r(current_user, "rentals") else "Payment Due")
-              if decision == "payment_due" else "Waived Off")
+           + ((f"₹{ret.outstanding_amount:,.2f} Payment Due" if _cvp_r(current_user, "rentals") else "Payment Due")
+              + (" (Custom Price)" if decision == "custom_price" else "")
+              if decision in DUE_DECISIONS else "Waived Off")
            + (f". {rental.rental_number} is still Active (tags still out)." if rental.status == "active" else "."))
     return RedirectResponse(url=f"/rentals?tab={tab}&success=" + quote(msg), status_code=302)
 
@@ -784,7 +802,7 @@ async def rental_mark_paid(request: Request, rental_id: str, payment_reference: 
         return RedirectResponse(url="/rentals?tab=payment_due&error=" + quote("Enter the Invoice or UTR number."),
                                 status_code=302)
     unpaid = [x for x in (await _returns_of(db, [r.id])).get(r.id, [])
-              if x.decision == "payment_due" and x.paid_at is None]
+              if x.decision in DUE_DECISIONS and x.paid_at is None]
     if not unpaid:
         return RedirectResponse(url="/rentals?tab=payment_due&error=" + quote(f"{r.rental_number} has nothing due."),
                                 status_code=302)

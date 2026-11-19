@@ -54,7 +54,7 @@
       </div>
     </div>
     <div class="doc-title">
-      <h2>{{ 'PAYMENT DUE RECEIPT' if ret.decision == 'payment_due' else 'RENTAL RETURN RECEIPT' }}</h2>
+      <h2>{{ 'PAYMENT DUE RECEIPT' if ret.decision in ('payment_due', 'custom_price') else 'RENTAL RETURN RECEIPT' }}</h2>
       <div class="num">{{ ret.return_number }}</div>
       <div class="muted" style="font-size:9pt">Rental: {{ r.rental_number }} · Date: {{ ret.created_at | ist_date }}</div>
       <div class="status">{% if ret.decision == 'waive_off' %}Waived Off{% elif ret.paid_at %}Paid{% else %}Payment Due{% endif %}</div>
@@ -105,7 +105,7 @@
       <tr><td>Rental Price ({{ lines | length }} tag(s))</td><td class="r">{% if can(current_user, 'rentals', 'pricing') %}₹{{ ret.rental_price | inr(2) }}{% else %}—{% endif %}</td></tr>
       <tr><td>Daily Rate (per tag, {{ rental_days }} day(s))</td><td class="r">{% if can(current_user, 'rentals', 'pricing') %}₹{{ ret.daily_rate | inr(2) }}{% else %}—{% endif %}</td></tr>
       <tr><td>Extra Days</td><td class="r">{{ ret.extra_days }}</td></tr>
-      <tr class="grand"><td>{{ 'Outstanding Due' if ret.decision == 'payment_due' else 'Outstanding (Waived Off)' }}</td>
+      <tr class="grand"><td>{{ 'Outstanding Due (Custom Price)' if ret.decision == 'custom_price' else ('Outstanding Due' if ret.decision == 'payment_due' else 'Outstanding (Waived Off)') }}</td>
         <td class="r">{% if can(current_user, 'rentals', 'pricing') %}₹{{ ret.outstanding_amount | inr(2) }}{% else %}—{% endif %}</td></tr>
       {% if ret.paid_at %}<tr><td>Paid ({{ ret.payment_reference }})</td><td class="r">{{ ret.paid_at | ist_date }}</td></tr>{% endif %}
       {% if ret.decision == 'waive_off' and ret.waiver_reason %}<tr><td>Waiver Reason</td><td class="r">{{ ret.waiver_reason }}</td></tr>{% endif %}
@@ -113,6 +113,7 @@
   </div>
 
   {% if ret.return_reason %}<div class="notes"><strong>Return Reason:</strong> {{ ret.return_reason }}</div>{% endif %}
+  {% if ret.condition_on_return %}<div class="notes"><strong>Condition on Return:</strong> {{ ret.condition_on_return }}</div>{% endif %}
   {% if ret.notes %}<div class="notes"><strong>Complaint Description:</strong> {{ ret.notes }}</div>{% endif %}
 
   <div class="footer">

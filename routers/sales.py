@@ -3433,11 +3433,9 @@ async def process_return(
                 "sale": sale,
             })
 
-    # Return Received By shows as Sales Person on the /sales rows this return
-    # creates: the placeholder sale above (only when it was just created) and
-    # the Replace Now sale below. A tag's real original sale is never changed.
-    if placeholder_created:
-        sale.sales_person = received_by
+    # Sales Person is recorded only by New Sale / Tag Sale (2026-11-19, Pankaj):
+    # the placeholder sale above and the Replace Now sale below get none — the
+    # receiver is kept on the return itself (Return Received By).
     # Determine intended re-entry stage (used once approved)
     if action_taken == "scrap":
         reentered_stage = "scrapped"
@@ -3546,7 +3544,7 @@ async def process_return(
             sale_number=sale_num, device_id=replacement_device.id, sale_price=Decimal("0"),
             customer_name=sale.customer_name, customer_phone=sale.customer_phone,
             customer_address=sale.customer_address, sold_by=current_user.username,
-            sold_at=app_now(), warranty_type="none", sales_person=received_by,
+            sold_at=app_now(), warranty_type="none",
             notes=f"Replacement for returned tag {barcode}",
         )
         db.add(replacement_sale)
@@ -3770,8 +3768,7 @@ async def process_external_return(
         customer_name=customer_name.strip() or None, customer_phone=customer_phone.strip() or None,
         customer_address=customer_address.strip() or None, payment_mode=None,
         sold_by=current_user.username, sold_at=app_now(), warranty_type="none",
-        sales_person=received_by,
-        notes="Placeholder sale — External Tag return, no prior sale in system",
+        notes="Placeholder sale — External Tag return, no prior sale in system",   # no Sales Person (2026-11-19)
     )
     db.add(placeholder_sale)
     await db.flush()
