@@ -464,6 +464,103 @@
     </div>
   </div>
 
+  {# ── Copy existing notes into Notes History (2026-11-23, Pankaj) ── #}
+  <div class="col-xxl-3 col-md-6" data-df="notes-history">
+    <div class="card border-0 shadow-sm h-100 df-card">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-journal-text me-2"></i>Copy existing notes
+          <span class="badge {% if nh_done %}bg-success{% else %}bg-warning text-dark{% endif %} ms-1">{{ 'Done' if nh_done else 'To do' }}</span></span>
+        {% if not nh_done %}
+        <form method="post" action="/admin/system/notes-history-backfill" class="df-confirm"
+              data-confirm="Click again to copy the existing notes">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Copy</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if nh_done %}
+        <div class="text-muted">Existing notes are in <a href="/notes-history">Notes History</a>. Every new note is added there automatically.</div>
+        {% else %}
+        <p class="text-muted mb-0">Notes History records every note from now on. This copies the notes already saved (each one's current value, marked <em>existing</em>) so older tags and records show them too. Only adds rows; runs once.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Rebuild old IQC history (2026-11-22, Pankaj) ── #}
+  {% set _ih = (iqc_hist.new if iqc_hist else 0) + (iqc_hist.sold if iqc_hist else 0) %}
+  <div class="col-xxl-3 col-md-6" data-df="iqc-history">
+    <div class="card border-0 shadow-sm h-100 df-card">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-layout-three-columns me-2"></i>Rebuild old IQC history
+          <span class="badge {% if _ih %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ "{:,}".format(_ih) }}</span></span>
+        {% if _ih %}
+        <form method="post" action="/admin/system/iqc-history-rebuild" class="df-confirm"
+              data-confirm="Click again to rebuild {{ "{:,}".format(_ih) }} IQC copies">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Rebuild</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not _ih %}
+        <div class="text-muted">Nothing to rebuild — every tag with an IQC has its NEW IQC, and every sale its SOLD IQC.</div>
+        {% else %}
+        <p class="text-muted mb-2"><strong>{{ "{:,}".format(iqc_hist.new) }}</strong> tags have no NEW IQC and <strong>{{ "{:,}".format(iqc_hist.sold) }}</strong> sales have no SOLD IQC (from before IQC Compare existed).
+        Rebuild works back from today's IQC: changes with a saved old value (RAM / Hard Drive part changes, quick spec edits) are undone — all of them for NEW, those after the sale date for SOLD.
+        Fields changed by Final QC "Revalidate IQC" show <em>Not recorded</em>. Edits that keep no log stay as today.</p>
+        <p class="text-muted mb-0">Only adds copies, marked <em>Rebuilt from history</em> in IQC Compare — nothing existing is changed.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ── Old PNA marks (2026-11-22, Pankaj) ── #}
+  <div class="col-xxl-3 col-md-6" data-df="old-pna-marks">
+    <div class="card border-0 shadow-sm h-100 df-card">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-exclamation-triangle me-2"></i>Old PNA marks
+          <span class="badge {% if pna_old_total %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ "{:,}".format(pna_old_total) }}</span></span>
+        {% if pna_old_total %}
+        <form method="post" action="/admin/system/pna-stale-clear" class="df-confirm"
+              data-confirm="Click again to clear {{ "{:,}".format(pna_old_total) }} PNA marks">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Clear {{ "{:,}".format(pna_old_total) }} marks</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not pna_old_total %}
+        <div class="text-muted">Nothing to fix — no PNA mark is left on a tag past repair or from before its last sale.</div>
+        {% else %}
+        <p class="text-muted mb-2">{{ "{:,}".format(pna_old_total) }} PNA marks on {{ "{:,}".format(pna_old_tags) }} tags that are already past repair (Stress onward), or that were marked before the tag's last sale (a returned tag's old PNA). They are <strong>cleared, not deleted</strong> — PNA History keeps them, cleared by "&lt;you&gt; (auto: cleanup)". From now on PNA clears itself when a tag passes L1/L2, reaches Ready for Sale or is sold.</p>
+        <div class="table-responsive" style="max-height:320px">
+        <table class="table table-sm table-bordered mb-0" style="font-size:.78rem">
+          <thead class="table-light"><tr><th>Tag</th><th>Stage now</th><th>Part</th><th>Marked</th><th>By</th><th>Why</th></tr></thead>
+          <tbody>
+            {% for r in pna_old %}
+            <tr>
+              <td><a href="/devices/{{ r.tag }}" target="_blank">{{ r.tag }}</a></td>
+              <td>{{ r.stage }}</td>
+              <td>{{ r.part }}</td>
+              <td class="text-nowrap">{{ r.marked_at.strftime('%d-%m-%Y') if r.marked_at else '—' }}</td>
+              <td>{{ r.marked_by or '—' }}</td>
+              <td>{{ r.reason }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        </div>
+        {% if pna_old_total > pna_old|length %}<div class="text-muted mt-1">Showing {{ pna_old|length }} of {{ "{:,}".format(pna_old_total) }}.</div>{% endif %}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {# ── Scrapped tags whose L1/L2 WorkID is still open (2026-10-27) ── #}
   <div class="col-xxl-3 col-md-6" data-df="scrapped-tags-whose-l1-l2-workid-is-stil">
     <div class="card border-0 shadow-sm h-100 df-card">

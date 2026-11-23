@@ -2493,6 +2493,11 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         audit_pna = await _audit_pna_preview(db, await _audit_pna_candidates(db))
         hold_rel = await _hold_release_candidates(db)
         stale_ret = await _stale_returns(db)
+        pna_old = await _pna_stale(db)          # Old PNA marks card (2026-11-22)
+        from services.iqc_backfill import counts as _iqc_hist_counts
+        iqc_hist = await _iqc_hist_counts(db)    # Rebuild old IQC history card (2026-11-22)
+        from services.notes_history import backfill_done as _nh_done
+        nh_done = await _nh_done(db)              # Copy existing notes card (2026-11-23)
         miss_list = _split_tag_list(missing_tags)
         miss_found = [{k: v for k, v in f.items() if k != "item"}
                       for f in await _audit_missing_matches(db, miss_list)]
@@ -2521,6 +2526,10 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "stress_open": stress_open[:200], "stress_open_total": len(stress_open),
         "cosm_open": cosm_open[:200], "cosm_open_total": len(cosm_open),
         "stale_ret": stale_ret[:300], "stale_ret_total": len(stale_ret),
+        "pna_old": pna_old[:300], "pna_old_total": len(pna_old),
+        "pna_old_tags": len({r["tag"] for r in pna_old}),
+        "iqc_hist": iqc_hist,
+        "nh_done": nh_done,
         "rts_open": rts_open[:200], "rts_open_total": len(rts_open),
         "rts_asgn": rts_asgn[:200], "rts_asgn_total": len(rts_asgn),
         "stype_total": len(stype), "stype_examples": [{"tag": t, "ch": ch} for _d, t, ch in stype[:15]],
@@ -2571,3 +2580,123 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
                          "hdd_summary": "Hard Drive", "total_hdd_count": "Total HDD Count",
                          "total_hdd_size": "Total HDD Size", "hdd_capacity_gb": "HDD GB"},
     })
+
+
+# ── Old PNA marks (2026-11-22, Pankaj) ──
+# PNA used to stay until someone unticked it. services/pna_autoclear.py now
+# clears it when a tag passes L1/L2, reaches Ready for Sale or is Sold; this
+# one-time fix clears the marks left from before: active PNA on a tag that is
+# already past repair (Stress onward), or marked before the tag's last sale
+# (a returned tag's PNA from its earlier cycle).
+_PNA_PAST_REPAIR = ("qc_check", "cosmetic_received", "cleaning", "putty", "dry_sanding", "masking",
+                    "painting", "water_sanding", "cosmetic_completed", "final_qc", "final_qc_pass_hold",
+                    "final_qc_fail_hold", "ready_to_sale", "sold", "returned", "scrapped", "scrap_for_sale",
+                    "scrap", "on_rent")
+
+
+async def _pna_stale(db):
+    """[{id, tag, stage, part, marked_at, marked_by, reason}] — active PNA marks to clear."""
+    from sqlalchemy import func, select
+    from models.device import Device, DeviceStage, StageMovement, STAGE_LABELS
+    from models.pna_part import DevicePNAPart
+    last_sold = (select(func.max(StageMovement.moved_at))
+                 .where(StageMovement.device_id == DevicePNAPart.device_id,
+                        StageMovement.to_stage == DeviceStage.sold)
+                 .correlate(DevicePNAPart).scalar_subquery())
+    rows = (await db.execute(
+        select(DevicePNAPart.id, Device.barcode, Device.current_stage, DevicePNAPart.part_name,
+               DevicePNAPart.marked_at, DevicePNAPart.marked_by, last_sold.label("sold_at"))
+        .join(Device, Device.id == DevicePNAPart.device_id)
+        .where(DevicePNAPart.is_active.is_(True))
+        .order_by(Device.barcode, DevicePNAPart.part_name))).all()
+    out = []
+    for pid, tag, st, part, at, by, sold_at in rows:
+        sv = getattr(st, "value", st) or ""
+        if sv in _PNA_PAST_REPAIR:
+            reason = "Tag already at " + STAGE_LABELS.get(st, sv)
+        elif sold_at and (at is None or at < sold_at):
+            reason = "Marked before its last sale (" + sold_at.strftime("%d-%m-%Y") + ")"
+        else:
+            continue
+        out.append({"id": pid, "tag": tag, "stage": STAGE_LABELS.get(st, sv), "part": part,
+                    "marked_at": at, "marked_by": by or "", "reason": reason})
+    return out
+
+
+@router.post("/iqc-history-rebuild")
+async def iqc_history_rebuild(request: Request, current_user: User = Depends(admin_only)):
+    """Data Fixes → Rebuild old IQC history (2026-11-22, Pankaj): NEW / SOLD IQC
+    copies for tags and sales from before iqc_snapshots existed, worked back
+    from the live IQC and its logged changes (services/iqc_backfill.py).
+    Adds rows only (backfilled = true); existing copies are never touched."""
+    from database import AsyncSessionLocal
+    from services.audit_engine import audit
+    from services.iqc_backfill import rebuild
+    async with AsyncSessionLocal() as db:
+        n = await rebuild(db)
+        await audit(db, user=current_user, action="IQC_HISTORY_REBUILT", table_name="iqc_snapshots",
+                    record_id=f"{n['new']} NEW / {n['sold']} SOLD"[:50], new_value=n,
+                    notes="Old IQC history rebuilt from the live IQC and its logged changes. "
+                          "Reverse: delete from iqc_snapshots where backfilled = true.",
+                    request=request)
+        await db.commit()
+    msg = (f"IQC history rebuilt: {n['new']:,} NEW and {n['sold']:,} SOLD copies"
+           f" ({n['rolled_back']:,} tags had changes undone, {n['not_recorded']:,} with a field not recorded).")
+    back = _back_to_page(await request.form(), msg)
+    if back:
+        return back
+    return JSONResponse({"ok": True, **n})
+
+
+@router.post("/notes-history-backfill")
+async def notes_history_backfill(request: Request, current_user: User = Depends(admin_only)):
+    """Data Fixes → Copy existing notes into Notes History (2026-11-23, Pankaj):
+    every note's current value, marked "existing", once. Adds rows only."""
+    from database import AsyncSessionLocal
+    from services.audit_engine import audit
+    from services.notes_history import backfill
+    async with AsyncSessionLocal() as db:
+        n = await backfill(db)
+        if not n["done_before"]:
+            await audit(db, user=current_user, action="NOTES_HISTORY_BACKFILLED", table_name="notes_history",
+                        record_id=f"{n['rows']} notes", new_value=n,
+                        notes="Existing notes copied into Notes History. Reverse: delete from notes_history "
+                              "where backfilled = true.", request=request)
+        await db.commit()
+    msg = ("Existing notes were already copied." if n["done_before"]
+           else f"Copied {n['rows']:,} existing notes into Notes History.")
+    back = _back_to_page(await request.form(), msg)
+    if back:
+        return back
+    return JSONResponse({"ok": True, **n})
+
+
+@router.post("/pna-stale-clear")
+async def pna_stale_clear(request: Request, current_user: User = Depends(admin_only)):
+    from sqlalchemy import update
+    from database import AsyncSessionLocal
+    from models.pna_part import DevicePNAPart
+    from services.audit_engine import audit
+    from utils.timezone import app_now
+    async with AsyncSessionLocal() as db:
+        rows = await _pna_stale(db)
+        ids = [r["id"] for r in rows]
+        who = f"{current_user.full_name or current_user.username} (auto: cleanup)"[:50]
+        now = app_now()
+        for i in range(0, len(ids), 5000):
+            await db.execute(update(DevicePNAPart).where(DevicePNAPart.id.in_(ids[i:i + 5000]))
+                             .values(is_active=False, cleared_at=now, cleared_by=who)
+                             .execution_options(synchronize_session=False))
+        await audit(db, user=current_user, action="PNA_STALE_CLEAR", table_name="device_pna_parts",
+                    record_id=f"{len(ids)} PNA marks",
+                    new_value={"count": len(ids),
+                               "parts": {str(r["id"]): {"tag": r["tag"], "part": r["part"], "reason": r["reason"]}
+                                         for r in rows}},
+                    notes="Old PNA marks cleared (tag past repair, or marked before its last sale). "
+                          "Reverse: set is_active true and cleared_at / cleared_by NULL for the listed ids.",
+                    request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Old PNA marks cleared: {len(ids):,}.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "cleared": len(ids)})

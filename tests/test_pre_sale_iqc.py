@@ -120,20 +120,8 @@ asyncio.run(main())
             assert r.status_code in (200, 400), r.text[:300]
             return r.json()
 
-        # WorkID Status, Pre-Sale IQC tile "Moved" (2026-10-30) = tags in the
-        # Assigned table; Assigned hidden on that tile
-        def ps_tile(k, **params):          # Moved / Started follow Work Date (default: today)
-            ws = app_client.get("/workid-status", params=params).text
-            tile = ws.split('data-group="pre_sale_iqc"', 1)[1].split("oxt-wm", 1)[0]
-            # Moved hidden, Pass | Fail added (2026-11-03)
-            assert ">Moved<" not in tile and ">Completed<" not in tile
-            # 2026-11-04: Received hidden, Pending above Started
-            assert ">Received<" not in tile
-            assert tile.index(">Pending<") < tile.index(">Started<") < tile.index(">Pass<")
-            assert ">Assigned<" not in tile
-            return int(tile.split(f'data-k="{k}" data-server="', 1)[1].split('"', 1)[0])
-
-        started0, pass0, pend0 = ps_tile("started"), ps_tile("ps_pass"), ps_tile("ps_pending")
+        # WorkID Status Pre-Sale QC card removed (2026-11-22, Pankaj: replaced
+        # by the Returned card), so its count checks are gone from this test.
 
         # Queue (2026-10-29): only tags assigned from Ready for Sale show here
         assert feed()["recordsFiltered"] == 0
@@ -149,14 +137,12 @@ asyncio.run(main())
         assert _wo(bc).endswith("|pending")
         d = feed()
         assert d["psiqc_tiles"] == {"assigned": 1, "completed": 0, "requested": 0, "verified": 0}
-        assert ps_tile("ps_pending") == pend0 + 1           # Pending = in the Assigned table now
         r = row()
         assert "psiqc-start-btn" in r[-1] and r[-2].endswith("—</span>")
         assert post("/pre-sale-iqc/start")["ok"]
         assert post("/pre-sale-iqc/start")["ok"]                          # double click: still one WorkID
         wos = _wo(bc).split(";")
         assert len(wos) == 1 and wos[0].startswith("PSQC-") and wos[0].endswith("|in_progress")
-        assert ps_tile("started") == started0 + 1
         r = row()
         assert "psiqc-complete-btn" in r[-1] and "psiqc-cancel-btn" in r[-1] and f'/devices/{bc}#parts' in r[-1]
 
@@ -177,10 +163,10 @@ asyncio.run(main())
         assert bc in psq and bc not in prq
 
         # WorkID Status shows it as stage Pre-Sale IQC (and the Stage filter finds it)
-        ws = app_client.get("/workid-status", params={"tag": bc, "work_from": "", "work_to": ""}).text
+        ws = app_client.get("/workid-status", params={"tag": bc, "work_from": "", "work_to": "", "exclude_admin": "0"}).text
         rows = json.loads(ws.split('id="workidRows">', 1)[1].split("</script>", 1)[0])
         assert [x["s"] for x in rows] == ["Pre-Sale QC"]
-        ws = app_client.get("/workid-status", params={"tag": bc, "work_from": "", "work_to": "",
+        ws = app_client.get("/workid-status", params={"tag": bc, "work_from": "", "work_to": "", "exclude_admin": "0",
                                                      "cosmetic_stage": "pre_sale_iqc"}).text
         assert len(json.loads(ws.split('id="workidRows">', 1)[1].split("</script>", 1)[0])) == 1
 
@@ -200,15 +186,15 @@ asyncio.run(main())
         assert {p["part_name"] for p in pre["to_verify"]} == {"Battery", "Screen"} and pre["pna"] == []
         # Pass / Fail required (2026-11-03); Fail needs a reason
         assert post("/pre-sale-iqc/complete")["error"] == "Pick Pass or Fail."
-        assert post("/pre-sale-iqc/complete", result="fail")["error"] == "Enter the Fail reason."
+        assert post("/pre-sale-iqc/complete", result="fail")["error"] == "Pick the Fail category (Hardware, Software or Cosmetic)."
         d = post("/pre-sale-iqc/complete", result="pass")
         assert d["ok"] and d["verified"] == 2 and d["result"] == "pass"
         assert _wo(bc).split(";")[-1].endswith("|completed")
-        assert ps_tile("ps_pass") == pass0 + 1 and ps_tile("ps_pending") == pend0
         done = feed(view="completed")                       # Completed tab: Status after Tag
-        assert done["recordsFiltered"] == 1 and "bg-success\">Pass<" in done["data"][0][2], done["data"][0][:3]
+        # Status sits after Tag and Notes (Notes column added 2026-11-14)
+        assert done["recordsFiltered"] == 1 and any("bg-success\">Pass<" in c for c in done["data"][0][:5]), done["data"][0][:5]
         ready_html = app_client.get("/pre-sale-iqc").text
-        assert 'name="psqc_result" value="pass"' in ready_html and "psqc_reason" in ready_html
+        assert 'name="psqc_result" value="pass"' in ready_html and "psqc_reason" in ready_html and "psqc_category" in ready_html
         assert _prs(bc) == "Battery|received;RAM|cancelled;Screen|received"
         # Part colours (2026-10-29): the Pre-Sale IQC Mark Complete counts as the
         # "pass" — the parts it verified turn green (passed), not orange.
@@ -258,6 +244,7 @@ async def main():
     async with AsyncSessionLocal() as db:
         await db.execute(text("delete from part_requests where barcode = '{bc}'"))
         await db.execute(text("delete from work_orders where barcode = '{bc}'"))
+        await db.execute(text("delete from device_location_logs where device_id in (select id from devices where barcode = '{bc}')"))
         await db.execute(text("delete from devices where barcode = '{bc}'"))
         await db.commit()
 asyncio.run(main())
@@ -322,11 +309,13 @@ asyncio.run(main())
         assert not d["ok"] and d["error"] == "Pick Pass or Fail."
         d = app_client.post("/pre-sale-iqc/bulk-complete", data={"csrf_token": csrf, "barcodes": both, "result": "fail"},
                             headers={"X-CSRF-Token": csrf}).json()
-        assert not d["ok"] and d["error"] == "Enter the Fail reason."
+        assert not d["ok"] and d["error"] == "Pick the Fail category (Hardware, Software or Cosmetic)."
         d = app_client.post("/pre-sale-iqc/bulk-complete",
-                            data={"csrf_token": csrf, "barcodes": both, "result": "fail", "reason": "Dent on lid"},
+                            data={"csrf_token": csrf, "barcodes": both, "result": "fail", "reason": "Dent on lid",
+                                  "category": "Cosmetic"},
                             headers={"X-CSRF-Token": csrf}).json()
         assert d["ok"] and d["result"] == "fail" and d["completed"] == 1 and d["verified"] == 2 and d["not_started"] == 1
+        assert d["kept"] == [] and sum(d["moved"].values()) == 1, d          # Cosmetic fail -> Cosmetic
         assert _wo(a).endswith("|completed") and _wo(b).endswith("|pending")
         assert _prs(a) == "Keyboard|received;RAM|received"
         # verified RAM written onto the tag's spec (no Final QC pass is coming)
@@ -353,6 +342,9 @@ async def main():
         for bc in ("{a}", "{b}"):
             await db.execute(text(f"delete from part_requests where barcode = '{{bc}}'"))
             await db.execute(text(f"delete from work_orders where barcode = '{{bc}}'"))
+            await db.execute(text(f"delete from device_location_logs where device_id in (select id from devices where barcode = '{{bc}}')"))
+            for t in ("stage_movements", "stock_transfers", "iqc_snapshots"):     # Cosmetic fail moves it (2026-11-23)
+                await db.execute(text(f"delete from {{t}} where device_id in (select id from devices where barcode = '{{bc}}')"))
             await db.execute(text(f"delete from devices where barcode = '{{bc}}'"))
         await db.commit()
 asyncio.run(main())
@@ -398,6 +390,7 @@ from sqlalchemy import text
 from database import AsyncSessionLocal
 async def main():
     async with AsyncSessionLocal() as db:
+        await db.execute(text("delete from device_location_logs where device_id in (select id from devices where barcode = '{bc}')"))
         await db.execute(text("delete from devices where barcode = '{bc}'"))
         await db.commit()
 asyncio.run(main())

@@ -300,11 +300,10 @@ STAGE_GROUPS = [
     ("cosmetic", "Cosmetic", ("cosmetic_received", "cleaning", "putty", "dry_sanding", "masking",
                               "painting", "water_sanding", "cosmetic_completed"), "#0aa2c0", "bi-droplet"),
     ("final_qc", "Final QC", ("final_qc", "final_qc_pass_hold", "final_qc_fail_hold"), "#0F7A37", "bi-patch-check"),
-    # Pre-Sale IQC (2026-10-29, routers/pre_sale_iqc.py): WorkIDs with stage
-    # code "psiqc" — work on Ready for Sale tags, no stage movement of their
-    # own, so the Stage column always shows the WorkID's own stage.
-    ("pre_sale_iqc", "Pre-Sale QC", (PSIQC_STAGE,), "#b02a37", "bi-clipboard2-check"),
+    # Pre-Sale QC card removed, Returned card added (2026-11-21, Pankaj) —
+    # Returned is built from Return records (_returned_card), not WorkIDs.
 ]
+RETURNED_GROUP = ("returned", "Returned", (), "#6c757d", "bi-arrow-return-left")
 _GROUP_BY_STAGE = {sv: key for key, _l, svs, _c, _i in STAGE_GROUPS for sv in svs}
 
 
@@ -536,57 +535,284 @@ def _qc_result(wo, dev_movements, group) -> str:
             and getattr(m.to_stage, "value", m.to_stage) != src
             and abs((m.moved_at - wo.completed_at).total_seconds()) <= 600]
     if not outs:
-        return ""
+        # No move out within 10 minutes (2026-11-21): the tag's first move out
+        # of that stage after the WorkID closed. None yet = still there, the
+        # card counts it as Started (the tag hasn't left with a result).
+        later = [m for m in dev_movements
+                 if getattr(m.from_stage, "value", m.from_stage) == src and m.moved_at
+                 and getattr(m.to_stage, "value", m.to_stage) != src and m.moved_at >= wo.completed_at]
+        if not later:
+            return ""
+        return _qc_verdict(group, min(later, key=lambda m: m.moved_at).to_stage)
     m = min(outs, key=lambda m: abs((m.moved_at - wo.completed_at).total_seconds()))
     return _qc_verdict(group, m.to_stage)
 
 
+# Stage members per card (2026-11-21, Pankaj): users who can work the stage —
+# same rule as the Change Engineer list (stock._CE_STAGE_ROLES / modules) —
+# and marked attendance in the date range. Admins are not counted.
+_PEOPLE_STAGE = {"l1l2": "l1", "l3l4": "l3", "stress": "qc_check",
+                 "cosmetic": "cosmetic_received", "final_qc": "final_qc"}
+
+
+async def _stage_members(db, d_lo, d_hi) -> dict:
+    """{group: {username: name}} — each stage's members who marked attendance
+    (not absent) in the range. One list for the cards' Team and the Team
+    Productivity Stage / Staff Summary (2026-11-22, Pankaj). Built-in roles by
+    stock._CE_STAGE_ROLES; a custom role by its Permission Matrix — explicitly
+    enabled for that stage's pages. A role enabled for more than 2 stages is a
+    manager / broad role, not a stage member, so it isn't counted. Returned:
+    users whose Designation is "Return Engineer". Admins never count."""
+    from models.attendance import Attendance
+    from models.role_permissions import has_explicit_perm
+    from routers.stock import _CE_STAGE_ROLES, _CE_STAGE_MODULES
+    present = select(Attendance.user_id).where(Attendance.date >= d_lo, Attendance.date <= d_hi,
+                                               func.coalesce(Attendance.status, "present") != "absent")
+    users = (await db.execute(select(User.username, User.full_name, User.role, User.designation)
+                              .where(User.id.in_(present), User.status.isnot(False)))).all()
+    builtin = {r.value for r in UserRole}
+    out = {g: {} for g, *_ in STAGE_GROUPS}
+    out["returned"] = {}
+    cache: dict = {}
+    for un, fn, role, desig in users:
+        rv = role.value if hasattr(role, "value") else str(role or "")
+        if not rv or rv == "admin":
+            continue
+        if rv not in cache:
+            groups = set()
+            for g, sv in _PEOPLE_STAGE.items():
+                if rv in _CE_STAGE_ROLES.get(sv, ()):
+                    groups.add(g)
+                elif rv not in builtin and any(has_explicit_perm(rv, m) for m in _CE_STAGE_MODULES.get(sv, ())):
+                    groups.add(g)
+            if rv not in builtin and has_explicit_perm(rv, "pre_sale_iqc"):
+                groups.add("pre_sale_iqc")
+            if rv not in builtin and len(groups) > 2:
+                groups = set()
+            cache[rv] = groups
+        for g in cache[rv]:
+            out.setdefault(g, {})[un] = (fn or "").strip() or un
+        if (desig or "").strip().lower() == "return engineer":
+            out["returned"][un] = (fn or "").strip() or un
+    return out
+
+
+async def _stage_people(db, d_lo, d_hi) -> dict:
+    """{group: number of members present} — see _stage_members."""
+    return {g: len(m) for g, m in (await _stage_members(db, d_lo, d_hi)).items()}
+
+
+# Cards whose Completed line is their Pass | Fail (2026-11-21, Pankaj).
+_RESULT_GROUPS = ("stress", "cosmetic", "final_qc", "pre_sale_iqc")
+
+
+def _tag_day_keep(entries) -> set:
+    """Tags, once per day (2026-11-21, Pankaj): of (key, group, tag, when)
+    entries keep one per (group, tag, day) — the latest, so a tag back from a
+    Fail the same day counts once, with its latest state."""
+    best = {}
+    for k, g, t, w in entries:
+        kk = (g, t, w.date() if w else None)
+        ww = w or datetime.min
+        if kk not in best or ww >= best[kk][1]:
+            best[kk] = (k, ww)
+    return {v[0] for v in best.values()}
+
+
+def _day_range(w_range):
+    """(start, end) of the Work Date range; today when there is none. The end
+    is capped at now (a range running into the future means 'as of now')."""
+    now = app_now()
+    if w_range:
+        lo, hi = w_range
+        # A single date (only From, or only To filled in) means that one day.
+        if hi.year >= 2999:
+            hi = datetime(lo.year, lo.month, lo.day, 23, 59, 59)
+        elif lo.year <= 1900:
+            lo = datetime(hi.year, hi.month, hi.day)
+    else:
+        lo = datetime(now.year, now.month, now.day)
+        hi = lo.replace(hour=23, minute=59, second=59)
+    return lo, min(hi, now)
+
+
+async def _stages_at(db, when, device_ids=None) -> dict:
+    """{device_id: stage value} as of `when` — the current stage when `when` is
+    now, else the last Asset History move on or before it. Trashed lots left out."""
+    from models.lot import Lot as _Lot
+    live = select(Device.id).outerjoin(_Lot, Device.lot_id == _Lot.id).where(_Lot.is_trashed.isnot(True))
+    if when >= app_now() - timedelta(seconds=5):
+        q = select(Device.id, Device.current_stage).where(Device.id.in_(live))
+        if device_ids is not None:
+            q = q.where(Device.id.in_(list(device_ids)))
+    else:
+        q = (select(StageMovement.device_id, StageMovement.to_stage)
+             .where(StageMovement.moved_at <= when, StageMovement.device_id.in_(live))
+             .distinct(StageMovement.device_id)
+             .order_by(StageMovement.device_id, StageMovement.moved_at.desc()))
+        if device_ids is not None:
+            q = q.where(StageMovement.device_id.in_(list(device_ids)))
+    return {d: _sv(st) for d, st in (await db.execute(q)).all()}
+
+
+async def _dark_tiles(db, w_range, stage_tiles, items) -> dict:
+    """The four dark tiles (2026-11-22, Pankaj) — totals of the cards below:
+      Total Pending  = Pending of every stage card — tags sitting on each
+                       stage on the last date (not Returned: those tags are
+                       already on the L1/L2, L3/L4 cards)
+      Total PNA      = tags on the L1/L2 / L3/L4 cards holding a PNA part on
+                       the last date
+      Total Repaired = the Final QC card's Pass
+      Total Scrap    = tags scrapped on the L1/L2 / L3/L4 cards, each tag once"""
+    from sqlalchemy import and_, or_
+    from models.pna_part import DevicePNAPart
+    lo, hi = _day_range(w_range)
+    card = lambda g, k: int((stage_tiles.get(g) or {}).get(k, 0) or 0)  # noqa: E731
+    lx_ids = {it.get("device_id") for it in items
+              if _stage_group(it.get("stage_value")) in ("l1l2", "l3l4")
+              and _count_status(it) != "reassigned" and it.get("device_id")}
+    pna = 0
+    for c in _chunks(lx_ids):
+        pna += len(set((await db.execute(
+            select(DevicePNAPart.device_id).distinct()
+            .where(DevicePNAPart.device_id.in_(c), DevicePNAPart.marked_at <= hi,
+                   or_(and_(DevicePNAPart.cleared_at.is_(None), DevicePNAPart.is_active.is_(True)),
+                       DevicePNAPart.cleared_at > hi)))).scalars().all()))
+    _d = lambda x: x.strftime("%d-%b-%Y")  # noqa: E731
+    span = _d(lo) if lo.date() == hi.date() else "%s to %s" % (_d(lo), _d(hi))
+    return {"on": _d(hi), "span": span,
+            # Each card's Pending is every tag sitting on that stage on the
+            # last date (Started included), 2026-11-22.
+            "pending": sum(card(g, "pending") for g, *_ in STAGE_GROUPS),
+            "pna": pna,
+            "repaired": card("final_qc", "pass"),
+            # Scrap: tags on the L1/L2 / L3/L4 cards closed by a scrap decision,
+            # each tag once even when both stages scrapped it (2026-11-22).
+            "scrap": len({it.get("device_id") or it.get("barcode") for it in items
+                          if it.get("scrap") and _count_status(it) != "reassigned"
+                          and _stage_group(it.get("stage_value")) in ("l1l2", "l3l4")})}
+
+
+async def _returned_card(db, w_range, items) -> dict:
+    """Returned card (2026-11-22, Pankaj): the L1/L2 and L3/L4 card rows whose
+    tag has a customer return (not rejected) logged in the Work Date range /
+    on the single date — a tag once per day, its latest WorkID that day:
+      Replace = the customer got a replacement or credit note (Tag Return
+                Status "Replaced by ..." / "Return for Credit Note")
+      Pending / Started / Pass = that WorkID not picked up / in progress /
+                completed (scrap decisions left out)."""
+    from models.sales import Return
+    lo, hi = _day_range(w_range)
+    rows = [(i, it) for i, it in enumerate(items)
+            if _stage_group(it.get("stage_value")) in ("l1l2", "l3l4")
+            and _count_status(it) != "reassigned" and it.get("device_id")]
+    out = {"assigned": 0, "pending": 0, "started": 0, "pass": 0, "replace": 0}
+    dids = {it["device_id"] for _i, it in rows}
+    if not dids:
+        return out
+    returned, trs = set(), {}
+    for c in _chunks(dids):
+        returned.update((await db.execute(
+            select(Return.device_id).distinct()
+            .where(Return.device_id.in_(c), Return.return_date >= lo, Return.return_date <= hi,
+                   func.coalesce(Return.approval_status, "pending") != "rejected"))).scalars().all())
+        trs.update(dict((await db.execute(
+            select(Device.id, Device.tag_return_status).where(Device.id.in_(c)))).all()))
+    rows = [(i, it) for i, it in rows if it["device_id"] in returned]
+    keep = _tag_day_keep((i, "returned", it["device_id"], it.get("moved_at")) for i, it in rows)
+    for i, it in rows:
+        if i not in keep or it.get("scrap"):
+            continue
+        t = trs.get(it["device_id"]) or ""
+        cs = _count_status(it)
+        key = ("replace" if t.startswith("Replaced by") or t == "Return for Credit Note"
+               else "pass" if _is_done(cs) else "started" if cs == "in_progress" else "pending")
+        out[key] += 1
+        out["assigned"] += 1
+    return out
+
+
 def _stage_tile_counts_from_items(items) -> dict:
-    """{group: {"assigned", "completed", ...}} — WorkIDs (2026-10-28, Pankaj:
-    the tiles count the same rows the table and Tag Summary list; were
-    distinct tags), grouped by the table's own Stage column (stage_value).
-    Assigned = every WorkID in that stage; Completed = the completed ones
-    (scrap decisions apart), so Assigned = Completed + open + Scrap."""
-    counts = {key: {"assigned": 0, "completed": 0, "scrap": 0, "waiting": 0, "pass": 0, "fail": 0}
+    """{group: {"assigned", "pending", "started", "completed", "scrap", ...}}
+    in WorkIDs, grouped by the table's own Stage column (stage_value).
+
+    2026-11-20 (Pankaj): every card adds up —
+      assigned (shown as "Moved") = pending + started + completed + scrap
+      pending   = moved to the stage, not picked up yet (WorkID pending)
+      started   = picked up, work going on (in progress)
+      completed = done (scrap decisions apart)
+    Reassigned WorkIDs count nowhere (they are listed only with Show
+    Reassigned). Cosmetic is re-counted per visit (_cosmetic_as_tags and the
+    Work Date move counts)."""
+    counts = {key: {"assigned": 0, "pending": 0, "started": 0, "completed": 0, "scrap": 0,
+                    "waiting": 0, "pass": 0, "fail": 0}
               for key, *_ in STAGE_GROUPS}
-    cos_tags: dict = {}      # Cosmetic tile counts TAGS (2026-11-02): tag -> [has open, has done]
-    for it in items:
+    cos_tags: dict = {}      # Cosmetic: tag -> [has open, has done]
+    # Tags once per day per card (2026-11-21): keep each tag's latest WorkID of the day.
+    keep = _tag_day_keep((i, _stage_group(it.get("stage_value")), it.get("device_id") or it.get("barcode"),
+                          it.get("moved_at")) for i, it in enumerate(items)
+                         if _count_status(it) != "reassigned")
+    for i, it in enumerate(items):
+        if i not in keep:
+            continue
         grp = _stage_group(it.get("stage_value"))
         g = counts.get(grp)
         if g is None:
             continue
+        _cs = _count_status(it)
+        if _cs == "reassigned":
+            continue
         if grp == "cosmetic":
             t = cos_tags.setdefault(it.get("barcode"), [False, False])
-            _cs = _count_status(it)
             if _is_done(_cs):
                 t[1] = True
-            elif _cs != "reassigned":       # reassigned = closed, neither open nor done
+            else:
                 t[0] = True
         g["assigned"] += 1
         if it.get("waiting"):
             g["waiting"] += 1
+        _res = it.get("qc_result")
         if it.get("scrap"):
             g["scrap"] += 1                 # scrap decision: counted apart from Completed
-        elif _is_done(_count_status(it)):
+        elif grp in _RESULT_GROUPS and grp != "cosmetic":
+            # Stress / Final QC / Pre-Sale QC (2026-11-21): Completed IS Pass +
+            # Fail; a completed WorkID without a result yet (the tag hasn't
+            # left the stage) counts as Started.
+            if _is_done(_cs) and _res in ("pass", "fail"):
+                g["completed"] += 1
+                g[_res] += 1
+            elif _is_done(_cs) or _cs == "in_progress":
+                g["started"] += 1
+            else:
+                g["pending"] += 1
+        elif _is_done(_cs):
             g["completed"] += 1
-        # Stress / Final QC / Cosmetic: Pass / Fail (2026-10-28). Set only on
-        # rows that count (in the date range, when there is one).
-        if it.get("qc_result") in ("pass", "fail"):
-            g[it["qc_result"]] += 1
+        elif _cs == "in_progress":
+            g["started"] += 1
+        else:
+            g["pending"] += 1
+        if grp == "cosmetic" and _res in ("pass", "fail"):
+            g[_res] += 1
     _cosmetic_as_tags(counts, cos_tags)
     return counts
 
 
 def _cosmetic_as_tags(counts, cos_tags):
-    """Cosmetic tile in TAGS, not WorkIDs (2026-11-02, Pankaj): every Cosmetic
-    sub-stage (Cleaning, Putty, Painting, Water Sanding...) opens its own
-    WorkID, so one tag added 4+ to the tile. Assigned = distinct tags with a
-    Cosmetic WorkID in this view; Completed = those with no Cosmetic WorkID
-    still open. Pass / Fail already count one exit per tag. The table still
-    lists every sub-stage WorkID."""
+    """Cosmetic per laptop visit, not per WorkID (2026-11-02; 2026-11-20 lines):
+    every Cosmetic sub-step (Cleaning, Putty, Painting, Water Sanding...)
+    opens its own WorkID, so one laptop would add 4+. Moved = laptops with a
+    Cosmetic WorkID in this view; Started = those with one still open;
+    Completed = those with none open; Pending = the rest (0 here — with a
+    Work Date range Moved / Completed / Pending come from the moves)."""
     if "cosmetic" in counts:
-        counts["cosmetic"]["assigned"] = len(cos_tags)
-        counts["cosmetic"]["completed"] = sum(1 for o, d in cos_tags.values() if d and not o)
+        c = counts["cosmetic"]
+        # Completed = Pass + Fail (left Cosmetic); the rest still in it = Started
+        # (2026-11-21). With a Work Date range the moves recount all lines.
+        c["completed"] = c.get("pass", 0) + c.get("fail", 0)
+        c["started"] = max(0, len(cos_tags) - c["completed"])
+        c["pending"] = 0
+        c["assigned"] = c["started"] + c["completed"]
+        c["scrap"] = 0
 
 
 def _rows_json(items) -> str:
@@ -624,8 +850,10 @@ def _rows_json(items) -> str:
             "rt": it.get("reassigned_to") or "",
             "x": it.get("scrap") or "",
             # Tile filters (2026-10-24): status for Assigned / Ongoing /
-            # Completed, and whether a customer ever returned the tag.
+            # Completed, and whether the tag's customer return falls in the Work Date range.
             "st": _count_status(it), "cr": bool(it.get("cust_return")),
+            # Moved date / time: cards count a tag once per day (2026-11-21).
+            "md": _fmt(it.get("moved_at"), "%Y-%m-%d"), "mt": _fmt(it.get("moved_at"), "%Y%m%d%H%M%S"),
             "sv": it.get("stage_value") or "", "sr": it.get("qc_result") or "",
         })
     # "</" escaped so a value can never close the <script> block it sits in.
@@ -705,7 +933,7 @@ async def _sql_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_admin, 
         func.count().filter(eff == "pending"),
         _tags.filter(eff.notin_(["completed", "reassigned"])),
         _tags.filter(and_(eff == "completed", ~func.coalesce(sub.c.scr, False))),
-        func.count().filter(has_pna),
+        func.count().filter(and_(has_pna, eff.notin_(["completed", "reassigned"]))),
         _tags,
         func.count().filter(and_(sub.c.st.notin_(["completed", "reassigned"]),
                                  sub.c.au.is_(None),
@@ -756,6 +984,10 @@ def _qc_next_stage_py(mvs, completed_at, from_value):
         d = abs((m.moved_at - completed_at).total_seconds())
         if d <= 600 and (best_d is None or d < best_d):
             best, best_d = m, d
+    if best is None:            # first move out after it closed (2026-11-21)
+        later = [m for m in mvs if m.moved_at is not None and m.moved_at >= completed_at
+                 and _sv(m.from_stage) == from_value and _sv(m.to_stage) != from_value]
+        best = min(later, key=lambda m: m.moved_at) if later else None
     return best.to_stage if best is not None else None
 
 
@@ -801,9 +1033,11 @@ async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_a
     now = app_now()
     exit_end = timedelta(minutes=10)
     # WorkIDs, not distinct tags (2026-10-28) — same as _stage_tile_counts_from_items.
-    counts = {key: {"assigned": 0, "completed": 0, "scrap": 0, "waiting": 0, "pass": 0, "fail": 0}
+    counts = {key: {"assigned": 0, "pending": 0, "started": 0, "completed": 0, "scrap": 0,
+                    "waiting": 0, "pass": 0, "fail": 0}
               for key, *_ in STAGE_GROUPS}
     enriched = []
+    starts = []
     dev_cache = {}
     for code, st, wid, bc, ca, scr, au, an, did, start in rows:
         mvs = mv_by_dev.get(did, ())
@@ -826,30 +1060,42 @@ async def _sql_stage_tile_counts(db, full_stmt, *, stage_vals, cf, ct, exclude_a
                     cx, cx_at = m.to_stage, m.moved_at
                     break
         enriched.append((code, st, wid, bc, ca, scr, au, an, mvs, grp, cx, cx_at))
+        starts.append((did or bc, start))
+    # Tags once per day per card (2026-11-21), latest WorkID of the day.
+    day_keep = _tag_day_keep((i, r[9], starts[i][0], starts[i][1]) for i, r in enumerate(enriched)
+                             if r[1] != "reassigned")
     keep = _cosmetic_exit_owners((i, r[3], r[11], r[4]) for i, r in enumerate(enriched)
                                  if r[9] == "cosmetic" and r[10] is not None and r[11] is not None)
     cos_tags: dict = {}
     for i, (code, st, wid, bc, ca, scr, au, an, mvs, grp, cx, cx_at) in enumerate(enriched):
         g = counts.get(grp)
-        if g is None:
+        if g is None or st == "reassigned" or i not in day_keep:     # reassigned: counted nowhere (2026-11-20)
             continue
+        _done_in = _is_done(st) and not (w_range and ca and not (w_range[0] <= ca <= w_range[1]))
         if grp == "cosmetic":
             t = cos_tags.setdefault(bc, [False, False])
-            if _is_done(st) and not (w_range and not (ca and w_range[0] <= ca <= w_range[1])):
+            if _done_in:
                 t[1] = True
-            elif not _is_done(st) and st != "reassigned":
+            else:
                 t[0] = True
         g["assigned"] += 1
         if au is None and not (an or "").strip() and st not in ("completed", "reassigned"):
             g["waiting"] += 1
         if scr:
             g["scrap"] += 1                 # scrap decision: counted apart from Completed
-        elif _is_done(st) and not (w_range and not (ca and w_range[0] <= ca <= w_range[1])):
+        elif not _done_in:
+            # completed outside the Work Date range counts as in progress
+            g["started" if st in ("in_progress", "completed") else "pending"] += 1
+        elif grp in ("stress", "final_qc"):
+            # Completed = Pass + Fail; no result yet = Started (2026-11-21)
+            nxt = _qc_next_stage_py(mvs, ca, _QC_GROUP_FROM[grp])
+            if nxt is not None:
+                g["completed"] += 1
+                g[_qc_verdict(grp, nxt)] += 1
+            else:
+                g["started"] += 1
+        else:
             g["completed"] += 1
-            if grp in ("stress", "final_qc"):
-                nxt = _qc_next_stage_py(mvs, ca, _QC_GROUP_FROM[grp])
-                if nxt is not None:
-                    g[_qc_verdict(grp, nxt)] += 1
         if cx is not None and grp == "cosmetic" and i in keep and not (
                 w_range and not (cx_at and w_range[0] <= cx_at <= w_range[1])):
             g["pass" if _sv(cx) == "final_qc" else "fail"] += 1
@@ -870,6 +1116,8 @@ async def _ready_pass_map(db, current_user, *, work_from="", work_to="", workid=
     the same rules as the table. Used by the Final QC tile's
     "(Ready for Sale - N)" and the Repair Summary export, so they agree."""
     wf, wt = _parse_date(work_from), _parse_date(work_to)
+    # A single Work Date (only From or only To) means that one day (2026-11-22).
+    wf, wt = (wf or wt), (wt or wf)
     q = (select(StageMovement.device_id, StageMovement.moved_at, StageMovement.from_stage)
          .where(StageMovement.to_stage == DeviceStage.ready_to_sale,
                 StageMovement.from_stage.isnot(None),
@@ -926,6 +1174,15 @@ async def workid_status(request: Request, db: AsyncSession = Depends(get_db),
     if not any(k in qp for k in ("work_from", "work_to", "completed_from", "completed_to",
                                  "workid", "tag", "highlight")):
         work_from = work_to = app_now().date().isoformat()
+    # Exclude Admin ticked by default (2026-11-22, Pankaj): no exclude_admin in
+    # the address = ticked; the form sends "0" when it is unticked.
+    if "exclude_admin" not in qp:
+        exclude_admin = "1"
+    elif exclude_admin.strip() in ("0", ""):
+        exclude_admin = ""
+    # "Show Reassigned" checkbox removed (2026-11-22): reassigned WorkIDs stay
+    # out of the table (a ?highlight= link to one still finds it).
+    show_reassigned = ""
     return await _workid_status_page(
         request=request, db=db, current_user=current_user, workid=workid, tag=tag,
         engineer=engineer, completed_from=completed_from, completed_to=completed_to,
@@ -1004,6 +1261,8 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     # tags include the ones still waiting for parts. In SQL before the row
     # cap, so the table, tiles and Export all follow it.
     wf, wt = _parse_date(work_from), _parse_date(work_to)
+    # A single Work Date (only From or only To) means that one day (2026-11-22).
+    wf, wt = (wf or wt), (wt or wf)
     if wf or wt:
         from sqlalchemy import and_, exists, or_
         from models.pna_part import DevicePNAPart
@@ -1015,13 +1274,20 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                   - timedelta(minutes=1),
                   or_(WorkOrder.completed_at.is_(None),
                       DevicePNAPart.marked_at <= WorkOrder.completed_at + timedelta(minutes=1))]
+        # Opened (moved to the stage) in the range too (2026-11-20, Pankaj): the
+        # cards count Moved = Pending + Started + Completed, so a WorkID opened
+        # in the range and not finished yet is listed and counted as well —
+        # before, only WorkIDs completed in the range (or with a PNA) showed.
+        opened_in = [func.coalesce(WorkOrder.assigned_at, WorkOrder.created_at).isnot(None)]
         if wf:
             done_in.append(WorkOrder.completed_at >= wf)
             pna_in.append(DevicePNAPart.marked_at >= wf)
+            opened_in.append(func.coalesce(WorkOrder.assigned_at, WorkOrder.created_at) >= wf)
         if w_end:
             done_in.append(WorkOrder.completed_at <= w_end)
             pna_in.append(DevicePNAPart.marked_at <= w_end)
-        stmt = stmt.where(or_(and_(*done_in), exists().where(*pna_in)))
+            opened_in.append(func.coalesce(WorkOrder.assigned_at, WorkOrder.created_at) <= w_end)
+        stmt = stmt.where(or_(and_(*done_in), and_(*opened_in), exists().where(*pna_in)))
 
     # Stage filter in SQL, BEFORE the row cap (2026-10-27): same rule as the
     # table's Stage column (_displayed_stage_clause), so a Stage-only view
@@ -1356,7 +1622,9 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
             "reassigned_to": successor_by_wo.get(wo.id, ""),
             "scrap": scrap_by_wo.get(wo.id, ""),
             "notes": (dev.notes if dev else None),
-            "engineer": movement_engineer,
+            # No engineer ever held it (closed when the tag moved on, or never
+            # picked): "Not picked", not "—" (2026-11-22, Pankaj).
+            "engineer": movement_engineer if (movement_engineer or "").strip() not in ("", "—") else "Not picked",
             "engineer_username": engineer_username,
         })
 
@@ -1409,6 +1677,29 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     if ct:
         ct_end = ct.replace(hour=23, minute=59, second=59)
         items = [it for it in items if it["completed_at"] and it["completed_at"] <= ct_end]
+    # Pre-Sale QC rows: Pass / Fail per WorkID (2026-11-21) — the result picked
+    # in Mark Complete, from that WorkID's PRE_SALE_IQC_COMPLETED audit entry.
+    _ps_done = {str(it.get("device_id")): it for it in items
+                if _stage_group(it.get("stage_value")) == "pre_sale_iqc" and it.get("wo_status") == "completed"}
+    if _ps_done:
+        import json as _json
+        from models.engines import AuditLog
+        _by_wid = {}
+        for it in _ps_done.values():
+            _by_wid.setdefault(it.get("workid") or it.get("work_id"), it)
+        _keys = list(_ps_done)
+        for _i in range(0, len(_keys), 2000):
+            for _rid, _nv in (await db.execute(
+                    select(AuditLog.record_id, AuditLog.new_value)
+                    .where(AuditLog.action == "PRE_SALE_IQC_COMPLETED", AuditLog.record_id.in_(_keys[_i:_i + 2000])))).all():
+                try:
+                    _v = _json.loads(_nv or "{}") or {}
+                except (TypeError, ValueError):
+                    continue
+                _it = _by_wid.get(_v.get("work_id"))
+                if _it is not None and _v.get("result") in ("pass", "fail"):
+                    _it["qc_result"] = _v["result"]
+                    _it["qc_at"] = _it.get("completed_at") or _it.get("wo_completed_at")
     _w_range = ((wf or datetime(1900, 1, 1)),
                 (wt.replace(hour=23, minute=59, second=59) if wt else datetime(2999, 1, 1))) if (wf or wt) else None
     if wf or wt:
@@ -1417,7 +1708,9 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         for it in items:
             if it.get("wo_status") == "completed":
                 done_at = it.get("completed_at") or it.get("wo_completed_at")
-                if not (done_at and w_lo <= done_at <= w_hi):
+                # completed AFTER the range = still in progress then (a completed
+                # WorkID with no date stays completed, 2026-11-20)
+                if done_at and not (w_lo <= done_at <= w_hi):
                     it["count_status"] = "in_progress"
             if it.get("qc_result") and not (it.get("qc_at") and w_lo <= it["qc_at"] <= w_hi):
                 it["qc_result"] = ""      # Pass / Fail happened outside the range
@@ -1466,21 +1759,33 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                             stage_vals, cf, ct, bool(exclude_admin), _code_stage).subquery()
     # WorkIDs (2026-10-28; were distinct tags), like the Scrap rows in the table.
     total_scrap = (await db.execute(select(func.count()).select_from(scrap_q))).scalar() or 0
+    # Customer Return (2026-11-21, Pankaj): TAGS (laptops, distinct) on the
+    # page's WorkIDs whose customer return (not rejected) was logged on the
+    # selected Work Date / within the range — sold-again tags included.
+    # No Work Date filter → any return on file. Reassigned WorkIDs never count.
+    from models.sales import Return as _Ret
+
+    async def _returned_in_range(dids):
+        out = set()
+        for c in _chunks({d for d in dids if d}):
+            q = select(_Ret.device_id).where(
+                _Ret.device_id.in_(c), func.coalesce(_Ret.approval_status, "pending") != "rejected")
+            if _w_range:
+                q = q.where(_Ret.return_date >= _w_range[0], _Ret.return_date <= _w_range[1])
+            out.update((await db.execute(q.distinct())).scalars().all())
+        return out
     if main_truncated:
         cr_q = _sql_filtered(full_stmt, stage_vals, cf, ct, bool(exclude_admin), _code_stage).subquery()
-        total_cust_return = (await db.execute(
-            select(func.count())
-            .select_from(cr_q).where(select(Return.id).where(Return.device_id == cr_q.c.did).exists())
-        )).scalar() or 0
-    _dids = {it["device_id"] for it in items if it.get("device_id")}
-    _ret = set()
-    for _c in _chunks(_dids):
-        _ret.update((await db.execute(select(Return.device_id).where(Return.device_id.in_(_c)).distinct())
-                     ).scalars().all())
+        _all_dids = (await db.execute(
+            select(WorkOrder.device_id).where(WorkOrder.id.in_(select(cr_q.c.id)),
+                                              WorkOrder.status != "reassigned").distinct())).scalars().all()
+        total_cust_return = len(await _returned_in_range(_all_dids))
+    _ret_set = await _returned_in_range(it.get("device_id") for it in items)
     for it in items:
-        it["cust_return"] = it.get("device_id") in _ret
+        it["cust_return"] = it.get("device_id") in _ret_set
     if not main_truncated:
-        total_cust_return = sum(1 for it in items if it.get("device_id") in _ret)
+        total_cust_return = len({it.get("device_id") for it in items
+                                 if it["cust_return"] and _count_status(it) != "reassigned"})
 
     tile_counts = tile_counts or {
         "open_workids": sum(1 for it in items if _count_status(it) not in ("completed", "reassigned")),
@@ -1506,7 +1811,9 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         # Tags whose PNA column shows the PNA badge (active PNA part), after
         # the same filters as the table — tags, like every other tile
         # (2026-10-28; was rows, so it could exceed Assigned Tags).
-        "total_pna": sum(1 for it in items if it.get("pna")),
+        # Open WorkIDs waiting on a part — a part of Ongoing (2026-11-20).
+        "total_pna": sum(1 for it in items if it.get("pna")
+                         and _count_status(it) not in ("completed", "reassigned")),
     }
     tile_counts["total_scrap"] = total_scrap
     tile_counts["total_cust_return"] = total_cust_return
@@ -1526,16 +1833,9 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     # there before Final QC, so most passes were missed. Engineer / Tag /
     # WorkID / Stage filters and a non-admin's visibility narrow it to the
     # tags of this view.
-    # Cosmetic "Pending" (2026-11-03): tags in Cosmetic right now — anywhere
-    # from Cosmetic Received to Cosmetic Completed, the same set as the
-    # Cosmetic All Tags page. A live count: not filtered by this page.
-    if "cosmetic" in stage_tiles:
-        from routers.cosmetic import COSMETIC_NAV_STAGES
-        stage_tiles["cosmetic"]["completed"] = (await db.execute(
-            select(func.count(Device.id)).join(Lot, Device.lot_id == Lot.id)
-            .where(Device.current_stage.in_(COSMETIC_NAV_STAGES)))).scalar() or 0
-        stage_tiles["cosmetic"]["pending_now"] = True
-
+    # Cosmetic "Pending" used to be a live count of tags in Cosmetic right now,
+    # unfiltered (2026-11-03). Since 2026-11-20 every card line follows the
+    # page's filters and adds up: Moved = Pending + Started + Completed.
     if _w_range and "cosmetic" in stage_tiles:
         from sqlalchemy import distinct as _distinct
         mq = (select(StageMovement.to_stage, func.count(_distinct(StageMovement.device_id)))
@@ -1591,6 +1891,7 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         credit: dict = {}          # work_id (or "dev:<id>") -> verdict, for the Tag Summary
         credit_nowid: dict = {}    # device_id -> (verdict, mover, moved_at): no Cosmetic WorkID
         _pass = _fail = 0
+        _exited: set = set()        # laptops that left Cosmetic in the range (2026-11-21)
         for (did, _to), (at, mover, v, frm_v) in _last.items():
             prior = [w for w in _wos.get(did, ()) if w[0] and w[0] <= at]
             top = max(prior, key=lambda w: w[0]) if prior else None
@@ -1609,6 +1910,7 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                 _pass += 1
             else:
                 _fail += 1
+            _exited.add(did)
         # Tags Assigned / Tags Completed (2026-11-03): tags that ARRIVED in
         # Cosmetic (moved into Cosmetic Received) and tags that FINISHED it
         # (moved into Cosmetic Completed) in the Work Date range, one per tag.
@@ -1662,24 +1964,92 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                     continue
                 seen.add(did)
                 n += 1
-            return n
-        stage_tiles["cosmetic"]["assigned"] = _flow_count(_arr, True, "cosmetic_received")
-        stage_tiles["cosmetic"]["finished"] = _flow_count(_fin, False, "cosmetic_completed")
-        stage_tiles["cosmetic"]["moves"] = True
+            return seen
+        _c = stage_tiles["cosmetic"]
+        # Per laptop visit (2026-11-21, Pankaj): Moved = Pending + Started +
+        # Pass + Fail. Pass / Fail = left Cosmetic in the range (to Final QC /
+        # back to repair); of the laptops that arrived and haven't left,
+        # Started = a Cosmetic step WorkID open or already at Cosmetic
+        # Completed, Pending = not picked up yet.
+        _in = _flow_count(_arr, True, "cosmetic_received")
+        _done = _flow_count(_fin, False, "cosmetic_completed")
+        _still = (_in | _done) - _exited     # arrived or finished in the range, not left yet
+        _open_cos = {it.get("device_id") for it in items
+                     if _stage_group(it.get("stage_value")) == "cosmetic"
+                     and _count_status(it) not in ("completed", "reassigned")}
+        _c["finished"] = len(_done)
+        _c["started"] = len(_still & (_open_cos | _done))
+        _c["pending"] = len(_still) - _c["started"]
+        _c["completed"] = _pass + _fail
+        _c["assigned"] = _c["pending"] + _c["started"] + _pass + _fail
+        _c["moves"] = True
         stage_tiles["cosmetic"]["pass"] = _pass
         stage_tiles["cosmetic"]["fail"] = _fail
         stage_tiles["cosmetic"]["by_mover"] = by_mover
         stage_tiles["cosmetic"]["credit"] = credit
         stage_tiles["cosmetic"]["credit_nowid"] = credit_nowid
 
+    # Cosmetic card (2026-11-22, Pankaj): tags sitting in Cosmetic on the last
+    # date — Pending = any Cosmetic stage (Received .. Completed), Started =
+    # Cleaning .. Water Sanding; Pass = moved out of Water Sanding (below). Fail stays: tags
+    # sent back from Cosmetic to L1/L2 / L3/L4 in the range.
+    # Started (2026-11-22, Pankaj — the table's Start Date logic): tags whose
+    # WorkID has an engineer (picked / assigned) and a Start Date in the
+    # selected date / range — finished or not (Pass / Fail / Scrap is what
+    # happened after the start, so they overlap); a tag once per start day.
+    # Not Cosmetic (its own rule below) or Returned.
+    _s_lo, _s_hi = _day_range(_w_range)
+    _started = {}
+    for it in items:
+        _g = _stage_group(it.get("stage_value"))
+        _sd = it.get("assigned_date")
+        if (_g in ("l1l2", "l3l4", "stress", "final_qc") and not it.get("waiting")
+                and _count_status(it) != "reassigned" and _sd and _s_lo <= _sd <= _s_hi):
+            _started.setdefault(_g, set()).add((it.get("device_id") or it.get("barcode"), _sd.date()))
+    for _g in ("l1l2", "l3l4", "stress", "final_qc"):
+        if _g in stage_tiles:
+            stage_tiles[_g]["started"] = len(_started.get(_g, ()))
+    if "cosmetic" in stage_tiles:
+        _tag_ids = None
+        if (tag or "").strip():       # Tag search narrows it to that tag
+            _tag_ids = (await db.execute(select(Device.id).where(
+                Device.barcode.ilike(f"%{tag.strip()}%")))).scalars().all()
+        _st_at = await _stages_at(db, _day_range(_w_range)[1], _tag_ids)
+        _cv = list(_st_at.values())
+        stage_tiles["cosmetic"]["pending"] = sum(1 for v in _cv if v in _COSMETIC_VALUES)
+        stage_tiles["cosmetic"]["started"] = sum(1 for v in _cv if v in _COSMETIC_VALUES
+                                                 and v not in ("cosmetic_received", "cosmetic_completed"))
+        # Pass (2026-11-22, Pankaj): tags moved out of Water Sanding to
+        # Cosmetic Completed / Final QC in the range, a tag once per day
+        # (Water Sanding -> Painting is a paint fail, not counted).
+        _lo, _hi = _day_range(_w_range)
+        _pq = (select(StageMovement.device_id, StageMovement.moved_at)
+               .where(StageMovement.from_stage == DeviceStage.water_sanding,
+                      StageMovement.to_stage.in_([DeviceStage.cosmetic_completed, DeviceStage.final_qc]),
+                      StageMovement.moved_at >= _lo, StageMovement.moved_at <= _hi))
+        if _tag_ids is not None:
+            _pq = _pq.where(StageMovement.device_id.in_(list(_tag_ids)))
+        stage_tiles["cosmetic"]["pass"] = len({(d, t.date()) for d, t in (await db.execute(_pq)).all() if t})
+        # The other cards' Pending (2026-11-22, Pankaj): tags sitting on that
+        # stage's page on the last date — L1/L2, L3/L4, Stress, Final QC.
+        for _g, _svs in (("l1l2", ("l1", "l2")), ("l3l4", ("l3",)), ("stress", ("qc_check",)),
+                         ("final_qc", ("final_qc",))):
+            if _g in stage_tiles:
+                stage_tiles[_g]["pending"] = sum(1 for v in _cv if v in _svs)
+
+    # Dark tiles = the stage cards added up (2026-11-20, Pankaj), all WorkIDs
+    # (Cosmetic per visit, as on its card): Assigned = Completed + Ongoing +
+    # Scrap, and each equals the sum across the cards.
+    # 2026-11-21 (Pankaj): four dark tiles, all tags — see _dark_tiles.
+    tile_counts["dark"] = await _dark_tiles(db, _w_range, stage_tiles, items)
+    stage_tiles["returned"] = await _returned_card(db, _w_range, items)
+
     # Final QC tile "(Ready for Sale - N)" (2026-10-29): tags moved into
     # Ready for Sale from production in the Work Date range — the same count
     # as the Repair Summary export. Page view only (not the exports).
+    # Removed from the table's count line (2026-11-22, Pankaj); the Repair
+    # Summary export still lists these tags (_ready_pass_map).
     ready_pass_count = None
-    if row_cap is not None:
-        ready_pass_count = len(await _ready_pass_map(
-            db, current_user, work_from=work_from or completed_from, work_to=work_to or completed_to,
-            workid=workid, tag=tag, engineer=engineer))
 
     # Repeat Tags (2026-10-28): Tag Numbers on more than one row (WorkID) of
     # this view — over every matching WorkID when the table is capped.
@@ -1754,7 +2124,13 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         "items": items, "rows_json": _rows_json(items),
         "engineers": engineers, "is_admin": is_admin,
         "tile_counts": tile_counts, "cosmetic_stage_choices": cosmetic_stage_choices,
-        "stage_tiles": stage_tiles, "stage_groups": STAGE_GROUPS,
+        "stage_tiles": stage_tiles, "stage_groups": STAGE_GROUPS + [RETURNED_GROUP],
+        # One members list (present in the range) for the cards' Team and the
+        # Team Productivity export (2026-11-22).
+        "stage_members": (_sm := await _stage_members(
+            db, (_w_range[0].date() if _w_range else app_now().date()),
+            (_w_range[1].date() if _w_range and _w_range[1].year < 2999 else app_now().date()))),
+        "stage_people": {g: len(m) for g, m in _sm.items()},
         "ready_pass_count": ready_pass_count,
         "psiqc": await _psiqc_tile_counts(
             db, _w_range, None if is_admin else (set(await managed_usernames(db, current_user.username))
@@ -1762,6 +2138,10 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         "f_workid": workid, "f_tag": tag, "f_engineer": engineer,
         "f_completed_from": completed_from, "f_completed_to": completed_to,
         "f_work_from": work_from, "f_work_to": work_to,
+        # More than one day selected: cards hide Pending / Started (2026-11-22).
+        "multi_day": bool(wf and wt and wf.date() != wt.date()),
+        # Started's date window, for the page's live recount (2026-11-22).
+        "start_window": [d.strftime("%Y%m%d") for d in _day_range(_w_range)],
         "f_cosmetic_stage": cosmetic_stage, "f_exclude_admin": exclude_admin,
         "f_show_reassigned": show_reassigned,
         "f_scrap_type": scrap_type,
@@ -1808,7 +2188,9 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
                                      completed_from=completed_from, completed_to=completed_to,
                                      work_from=work_from, work_to=work_to,
                                      cosmetic_stage=cosmetic_stage, exclude_admin=exclude_admin,
-                                     show_reassigned=show_reassigned, scrap_type=scrap_type,
+                                     # Reassigned WorkIDs are listed only here, in the
+                                     # Team Productivity export (2026-11-22, Pankaj).
+                                     show_reassigned="1", scrap_type=scrap_type,
                                      highlight="", row_cap=None)
     items = page.context["items"]
     # Cosmetic Pass / Fail = the moves out of Cosmetic in the Work Date range
@@ -1824,6 +2206,8 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
         cos_by_eng: dict = {}
         for u, v in cos_moves["by_mover"].items():
             k = (_disp.get(u) or "").strip() or u
+            if (k or "").strip() in ("", "—"):
+                k = "Not picked"
             b = cos_by_eng.setdefault(k, {"pass": 0, "fail": 0})
             b["pass"] += v["pass"]
             b["fail"] += v["fail"]
@@ -1866,9 +2250,11 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
         return "Completed" if _count_status(it) == "completed" else "Open"
 
     wb = Workbook()
-    # ── Sheet 1: Tag Summary (the former CSV) ──
-    ws = wb.active
-    ws.title = "Tag Summary"
+    # ── Sheet 1: Tag Summary (2026-11-22) — one row per tag, filled below.
+    # Sheet 2: All Tags — every WorkID (the former Tag Summary / CSV). ──
+    ws_tags = wb.active
+    ws_tags.title = "Tag Summary"
+    ws = wb.create_sheet("All Tags")
     tag_rows = []
     for it in items:
         tag_rows.append([
@@ -1880,7 +2266,8 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
             it.get("stage_label") or "",
             it.get("moved_at"),
             it.get("assigned_date"),
-            it.get("completed_at"),
+            # A reassigned WorkID has no Completed Date: "Reassigned" (2026-11-22).
+            "Reassigned" if it.get("reassigned_at") else it.get("completed_at"),
             "Waiting (not picked)" if it.get("waiting") else
             (("Reassigned " + it["reassigned_at"].strftime("%Y-%m-%d %H:%M")
               + (f" ({it['reassigned_to']})" if it.get("reassigned_to") else ""))
@@ -1952,6 +2339,52 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     for row in ws.iter_rows(min_row=2, min_col=7, max_col=9):
         for c in row:
             c.number_format = "yyyy-mm-dd hh:mm"
+    # Tag Summary: each Tag Number once — its latest row (by Movement Date),
+    # a reassigned row only when the tag has nothing else (2026-11-22).
+    _one = {}
+    for r in tag_rows:
+        k = r[0] or ""
+        rank = (not str(r[9]).startswith("Reassigned"), r[6] or datetime.min)
+        if k not in _one or rank >= _one[k][0]:
+            _one[k] = (rank, r)
+    _sheet(ws_tags, [c.value for c in ws[1]],
+           [v[1] for v in sorted(_one.values(), key=lambda v: v[0][1], reverse=True)])
+    for row in ws_tags.iter_rows(min_row=2, min_col=7, max_col=9):
+        for c in row:
+            c.number_format = "yyyy-mm-dd hh:mm"
+
+    # Attendance (2026-11-22, Pankaj): the same members as the cards' Team —
+    # each stage's members who marked attendance in the selected date / range.
+    _members = page.context.get("stage_members") or {}
+    _all_members = {}
+    for _m in _members.values():
+        _all_members.update(_m)
+    _eng_user = {}
+    for it in items:
+        if it.get("engineer") and it.get("engineer_username"):
+            _eng_user.setdefault(it["engineer"], it["engineer_username"])
+    _member_names = set(_all_members.values())
+
+    def _attended(eng):
+        return "Yes" if (_eng_user.get(eng) in _all_members or (eng or "").strip() in _member_names) else "No"
+
+    # Staff Summary "Stage" (2026-11-22): the stage(s) the person is a member of.
+    _glabel = {key: lbl for key, lbl, *_ in STAGE_GROUPS}
+    _glabel["returned"] = "Returned"
+    _name_user = {v: k for k, v in _all_members.items()}
+
+    def _member_stage(eng):
+        un = _eng_user.get(eng) or _name_user.get((eng or "").strip())
+        return ", ".join(_glabel.get(g, g) for g, m in _members.items() if un and un in m)
+
+    # Each Cosmetic stage row (2026-11-22): present Cosmetic members who have a
+    # WorkID at that stage (one person can work at several stages).
+    _stage_workers = {}
+    for it in items:
+        u = it.get("engineer_username") or _name_user.get((it.get("engineer") or "").strip())
+        if u:
+            _stage_workers.setdefault((_stage_group(it.get("stage_value")), it.get("stage_label") or "—"), set()).add(u)
+    _people = {g: len(m) for g, m in _members.items()}
 
     # Both summaries count WorkIDs (2026-10-28, Pankaj; were distinct tags),
     # so they add up to the Tag Summary sheet's rows: Total = Open + Completed
@@ -2015,31 +2448,34 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
         return ["", ""]
 
     def _stage_row(g, lbl, b, group_row=False):
-        return ([group_label[g], lbl, _n(b, "total"), _n(b, "tags"), _n(b, "assigned"), _n(b, "completed")]
+        # Attendance: the stage's members present in the range — on the
+        # group's own row (one stage) or its "All ... stages" row.
+        att = (_people.get(g, 0) if group_row
+               else len(_stage_workers.get((g, lbl), set()) & set((_members.get(g) or {}))))
+        return ([group_label[g], lbl, att, _n(b, "total"), _n(b, "tags"), _n(b, "assigned"), _n(b, "completed")]
                 + _pf(b, g, group_row) + [_n(b, "scrap"), _n(b, "reassigned"), _n(b, "pna"), _avg(b["days"])])
     stage_rows = []
     _ordered = sorted(by_stage.items(), key=lambda kv: (group_order.index(kv[0][0]), kv[0][1]))
     for gi, g in enumerate(group_order):
         part = [(lbl, b) for (gg, lbl), b in _ordered if gg == g]
         for lbl, b in part:
-            stage_rows.append(_stage_row(g, lbl, b))
-        # A group spread over several stages (Cosmetic: Cleaning, Putty,
-        # Painting...) gets an "All stages" row (2026-11-02): its WorkIDs, and
-        # its distinct Tags — the number the page's Cosmetic tile shows.
-        if len(part) > 1:
-            gb = _bucket()
-            for it in items:
-                if _stage_group(it.get("stage_value")) == g:
-                    _add(gb, it)
-            stage_rows.append(_stage_row(g, f"All {group_label[g]} stages", gb, group_row=True))
-        elif len(part) == 1 and g == "cosmetic" and cos_moves is not None:
-            stage_rows[-1] = _stage_row(g, part[0][0], part[0][1], group_row=True)
+            stage_rows.append(_stage_row(g, lbl, b, group_row=(len(part) == 1)))
+        # No "All <group> stages" subtotal row (2026-11-22, Pankaj: it repeats
+        # the stage rows). Cosmetic's Pass / Fail (moves out of Cosmetic) sits
+        # on its Water Sanding row — Pass is the move out of Water Sanding —
+        # or its last row when there is none.
+        if g == "cosmetic" and part and cos_moves is not None:
+            i = next((k for k, (lbl, _b) in enumerate(part) if lbl == "Water Sanding"), len(part) - 1)
+            row = stage_rows[len(stage_rows) - len(part) + i]
+            row[7], row[8] = cos_moves["pass"], cos_moves["fail"]
     _sheet(wb.create_sheet("Stage Summary"),
-           ["Stage Group", "Stage", "Total WorkIDs", "Tags", "Open WorkIDs", "Completed WorkIDs",
+           ["Stage Group", "Stage", "Attendance", "Total WorkIDs", "Tags", "Open WorkIDs", "Completed WorkIDs",
             "Pass", "Fail",
             "Scrap WorkIDs", "Reassigned WorkIDs", "WorkIDs with PNA", "Avg Days to Complete"],
            stage_rows,
-           ["Total", "", _n(total_b, "total"), _n(total_b, "tags"), _n(total_b, "assigned"), _n(total_b, "completed"),
+           # Total: every member present, each once (= Staff Summary's Yes count)
+           ["Total", "", len(_all_members),
+            _n(total_b, "total"), _n(total_b, "tags"), _n(total_b, "assigned"), _n(total_b, "completed"),
             _n(total_b, "stress_pass") + _n(total_b, "fqc_pass")
             + (cos_moves["pass"] if cos_moves is not None else _n(total_b, "cos_pass")),
             _n(total_b, "stress_fail") + _n(total_b, "fqc_fail")
@@ -2050,7 +2486,7 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     by_eng = {}
     for it in items:
         _add(by_eng.setdefault(it.get("engineer") or "—", _bucket()), it)
-    staff_rows = [[eng, _n(b, "total"), _n(b, "tags"), _n(b, "assigned"), _n(b, "completed"), _n(b, "scrap"),
+    staff_rows = [[eng, _attended(eng), _member_stage(eng), _n(b, "total"), _n(b, "tags"), _n(b, "assigned"), _n(b, "completed"), _n(b, "scrap"),
                    _n(b, "reassigned")]
                   + [b["groups"].get(g, 0) for g in group_order] + [len(b["cos_tags"])]
                   + [_n(b, "stress_pass"), _n(b, "stress_fail")]
@@ -2064,16 +2500,24 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     if cos_moves is not None:
         for eng, v in sorted(cos_by_eng.items()):
             if eng not in by_eng and (v["pass"] or v["fail"]):
-                staff_rows.append([eng, 0, 0, 0, 0, 0, 0] + [0 for _g in group_order] + [0]
+                staff_rows.append([eng, _attended(eng), _member_stage(eng), 0, 0, 0, 0, 0, 0] + [0 for _g in group_order] + [0]
                                   + [0, 0, v["pass"], v["fail"], 0, 0] + [0, ""])
+    # Members present with no WorkID in this view still get a row (Yes, 0s),
+    # so Staff Summary's Yes count = the members present (2026-11-22).
+    _listed_users = {_eng_user.get(r[0]) for r in staff_rows} | {r[0] for r in staff_rows}
+    for un, nm in sorted(_all_members.items(), key=lambda kv: kv[1].lower()):
+        if un not in _listed_users and nm not in _listed_users:
+            staff_rows.append([nm, "Yes", _member_stage(nm), 0, 0, 0, 0, 0, 0] + [0 for _g in group_order] + [0]
+                              + [0, 0, 0, 0, 0, 0] + [0, ""])
     _sheet(wb.create_sheet("Staff Summary"),
-           ["Engineer", "Total WorkIDs", "Tags", "Open WorkIDs", "Completed WorkIDs", "Scrap WorkIDs",
+           ["Engineer", "Attendance", "Stage", "Total WorkIDs", "Tags", "Open WorkIDs", "Completed WorkIDs", "Scrap WorkIDs",
             "Reassigned WorkIDs"]
            + [group_label[g] + " WorkIDs" for g in group_order] + ["Cosmetic Tags"]
            + ["Stress Pass", "Stress Fail", "Cosmetic Pass", "Cosmetic Fail", "Final QC Pass", "Final QC Fail"]
            + ["WorkIDs with PNA", "Avg Days to Complete"],
            staff_rows,
-           ["Total", _n(total_b, "total"), _n(total_b, "tags"), _n(total_b, "assigned"), _n(total_b, "completed"),
+           ["Total", sum(1 for r in staff_rows if r[1] == "Yes"), "",
+            _n(total_b, "total"), _n(total_b, "tags"), _n(total_b, "assigned"), _n(total_b, "completed"),
             _n(total_b, "scrap"), _n(total_b, "reassigned")]
            + [total_b["groups"].get(g, 0) for g in group_order] + [len(total_b["cos_tags"])]
            + [_n(total_b, "stress_pass"), _n(total_b, "stress_fail")]
@@ -2212,6 +2656,8 @@ async def workid_status_final_qc_pass(request: Request, db: AsyncSession = Depen
                                      show_reassigned=show_reassigned, scrap_type=scrap_type,
                                      highlight="", row_cap=None)
     wf, wt = _parse_date(work_from), _parse_date(work_to)
+    # A single Work Date (only From or only To) means that one day (2026-11-22).
+    wf, wt = (wf or wt), (wt or wf)
     lo = wf or datetime(1900, 1, 1)
     hi = wt.replace(hour=23, minute=59, second=59) if wt else datetime(2999, 1, 1)
     passes = []

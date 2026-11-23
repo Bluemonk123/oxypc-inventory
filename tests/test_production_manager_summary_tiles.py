@@ -3,7 +3,7 @@
 Total Tags at You (stage=trc_production), Total Tags in L1/L2 (stage in
 l1/l2), Total Tags in L3/L4 (stage=l3), Total Tags in PNA (stage in l1/l2
 AND any active device_pna_parts row), Total Tags in Stress (stage=qc_check),
-Total Tags in Final QC (stage in final_qc/final_qc_pass_hold/final_qc_fail_hold).
+Total Tags in Final QC (stage final_qc only, 2026-11-22 — as WorkID Status).
 
 2026-09-19: added "Total Tags in Cosmetic" (stage in the paint-line stages
 + Putty, models.device.COSMETIC_STAGES -- the same grouping Dashboard's own
@@ -105,7 +105,7 @@ def test_summary_tiles_reflect_stage_counts(app_client, make_user):  # noqa: F81
         _seed(barcodes["l3"], "l3")
         _seed(barcodes["pna"], "l2", mark_pna=True)
         _seed(barcodes["stress"], "qc_check")
-        _seed(barcodes["fqc"], "final_qc_pass_hold")
+        _seed(barcodes["fqc"], "final_qc")
         _seed(barcodes["cosmetic"], "painting")
 
         username, password = make_user("admin")

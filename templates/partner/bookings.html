@@ -57,7 +57,7 @@
   {% set lot = lots_by_id.get(lb.lot_id|string) %}
   <div class="list-group-item d-flex justify-content-between align-items-center">
     <div>
-      <div class="fw-semibold font-monospace">{{ lot.lot_number if lot else '—' }}</div>
+      <div class="fw-semibold font-monospace">{{ (lot_labels or {}).get(lb.lot_id|string, lot.lot_number) if lot else '—' }}</div>
       <div class="small text-muted">Qty requested: {{ lb.qty_requested }}</div>
     </div>
     <div class="d-flex flex-wrap align-items-center gap-1 justify-content-end">

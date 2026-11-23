@@ -3479,7 +3479,9 @@ async def process_return(
         refund_amount=paid_repair_amount,
         **charge,
         notes=notes or None,
-        approval_status='pending',
+        # No approval step (2026-11-21, Pankaj): a return is approved as it is
+        # logged — the tag is already in Stock In and goes on through repair.
+        approval_status='approved', approved_by=current_user.username, approved_at=app_now(),
         return_type=rtype,
         serial_captured=barcode or None,
         warranty_status=warranty_status,
@@ -3529,7 +3531,7 @@ async def process_return(
     await audit(db, user=current_user, action="RETURN_SUBMITTED",
                 table_name="returns", record_id=str(device.id),
                 new_value={"sale": sale.sale_number, "reason": reason,
-                           "action": action_taken, "approval_status": "pending",
+                           "action": action_taken, "approval_status": "approved",
                            "return_type": rtype, "warranty_status": warranty_status,
                            "complaint_text": complaint_text or None,
                            "return_received_by": received_by,
@@ -3781,7 +3783,9 @@ async def process_external_return(
         refund_amount=paid_repair_amount,
         **_charge_fields(paid_repair_amount, charge_decision, waiver_reason),
         notes=(f"Qty: {qty}. {notes.strip()}" if notes.strip() else f"Qty: {qty}"),
-        approval_status="pending", return_type="customer",
+        # No approval step (2026-11-21): approved as logged.
+        approval_status="approved", approved_by=current_user.username, approved_at=app_now(),
+        return_type="customer",
         serial_captured=serial_number.strip() or None,
         warranty_status="no_warranty",
         customer_email=customer_email.strip() or None,
@@ -3793,7 +3797,7 @@ async def process_external_return(
     await audit(db, user=current_user, action="EXTERNAL_RETURN_SUBMITTED",
                 table_name="returns", record_id=str(device.id),
                 new_value={"tag_number": tag_number, "reason": reason, "quantity": qty,
-                           "paid_repair": str(paid_repair_amount), "approval_status": "pending",
+                           "paid_repair": str(paid_repair_amount), "approval_status": "approved",
                            "return_received_by": received_by,
                            "charge_decision": ret.charge_decision, "waiver_reason": ret.waiver_reason},
                 request=request)

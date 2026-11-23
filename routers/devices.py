@@ -230,6 +230,48 @@ async def quick_search(q: str = "", db: AsyncSession = Depends(get_db),
     return JSONResponse({"results": results})
 
 
+@router.get("/api/iqc-compare")
+async def device_iqc_compare(barcode: str, db: AsyncSession = Depends(get_db),
+                             current_user: User = Depends(view_allowed)):
+    """Device Detail → IQC Compare (2026-11-22, Pankaj): the tag's NEW IQC
+    (as it came in), TRC IQC (the live record the repair flow keeps updating)
+    and every SOLD IQC (one per sale, newest first). See models/iqc_snapshot.py."""
+    from models.iqc_snapshot import IQCSnapshot
+    from services.iqc_snapshot import _context, _iqc_payload, _js
+    from routers.iqc import _EXPORT_DEVICE_FIELDS
+    device = (await db.execute(select(Device).where(Device.barcode == barcode.strip()))).scalars().first()
+    if device is None:
+        return JSONResponse({"ok": False, "error": "Tag not found"}, status_code=404)
+    insp = (await db.execute(select(IQCInspection).where(IQCInspection.device_id == device.id))).scalars().first()
+    snaps = (await db.execute(select(IQCSnapshot).where(IQCSnapshot.device_id == device.id)
+                              .order_by(IQCSnapshot.taken_at.desc()))).scalars().all()
+    sale_ids = [s.sale_id for s in snaps if s.sale_id]
+    sales = {}
+    if sale_ids:
+        sales = {s.id: s for s in (await db.execute(select(Sale).where(Sale.id.in_(sale_ids)))).scalars().all()}
+
+    def _snap(s):
+        sale = sales.get(s.sale_id) if s.sale_id else None
+        return {"taken_at": _js(s.taken_at), "taken_by": s.taken_by, "source": s.source,
+                "backfilled": bool(s.backfilled), "iqc": s.iqc or {}, "context": s.context or {},
+                "sale_number": sale.sale_number if sale else None,
+                "sold_at": _js(sale.sold_at) if sale else None,
+                "customer": (sale.customer_name if sale else None)}
+    new = next((s for s in snaps if s.kind == "NEW"), None)
+    # Same fields as the NEW / SOLD copies (Lot, supplier, GRN, invoice, location).
+    trc_ctx = await db.run_sync(lambda ss: _context(ss, device))
+    spec_keys = [k for k in _EXPORT_DEVICE_FIELDS if k not in (
+        "barcode", "grn_number", "invoice_number", "po_number", "floor", "warehouse", "qty", "device_price", "notes")]
+    insp_keys = [c.key for c in IQCInspection.__table__.columns if c.key not in ("id", "device_id")]
+    return JSONResponse({
+        "ok": True, "barcode": device.barcode,
+        "spec_keys": spec_keys, "inspection_keys": insp_keys,
+        "new": _snap(new) if new else None,
+        "trc": {"iqc": _iqc_payload(device, insp), "context": trc_ctx},
+        "sold": [_snap(s) for s in snaps if s.kind == "SOLD"],
+    })
+
+
 @router.get("/api/asset-history")
 async def device_asset_history(barcode: str, db: AsyncSession = Depends(get_db),
                                current_user: User = Depends(view_allowed)):

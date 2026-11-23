@@ -3,6 +3,8 @@
 {% block page_title %}{{ contact.company_name }}{% endblock %}
 {# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ contact.contact_code or contact.company_name }}{% endblock %}{% block record_parent %}/crm/contacts{% endblock %}{% block record_parent_label %}CRM Contacts{% endblock %}
 {% block content %}
+{# Notes History (2026-11-23, Pankaj): every note on this record, never overwritten. #}
+<div class="d-flex justify-content-end mb-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-notes-history data-record-type="contact" data-record-id="{{ contact.id }}" data-title="{{ contact.company_name or '' }}"><i class="bi bi-journal-text me-1"></i>Notes History</button></div>
 
 <div class="row g-4">
   <!-- Left: Contact Info -->
@@ -382,4 +384,5 @@
 {# History card (2026-11-09, Pankaj) #}
 {% include "_history_card.html" %}
 {% include "_doc_preview.html" %}
+{% include "_notes_history_modal.html" %}
 {% endblock %}

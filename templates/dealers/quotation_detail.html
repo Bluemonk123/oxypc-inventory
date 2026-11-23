@@ -3,6 +3,8 @@
 {% block page_title %}Quotation {{ q.quote_number }}{% endblock %}
 {# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ q.quote_number }}{% endblock %}{% block record_parent %}/quotations{% endblock %}{% block record_parent_label %}Quotations{% endblock %}
 {% block content %}
+{# Notes History (2026-11-23, Pankaj): every note on this record, never overwritten. #}
+<div class="d-flex justify-content-end mb-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-notes-history data-record-type="quotation" data-record-id="{{ q.id }}" data-title="{{ q.quote_number or '' }}"><i class="bi bi-journal-text me-1"></i>Notes History</button></div>
 {# Telecalling Quotation detail (2026-11-10, Pankaj). Opened from the Quote No
    link on the Quotations page, Dealer Management (Quotation Shared tab and the
    Status column), Dealer Detail and the TeleSales Dashboard.
@@ -121,4 +123,5 @@
 {% endif %}
 
 {% include "_history_card.html" %}
+{% include "_notes_history_modal.html" %}
 {% endblock %}

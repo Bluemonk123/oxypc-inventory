@@ -71,7 +71,7 @@ async def main():
         # picking your own tag: no-op
         out["own"] = list(await swo.pick(db, d, DeviceStage.l1, a)) == [None, []]
 
-        # someone else picks: a's closes COMPLETED, new one for b
+        # someone else picks: a's closes REASSIGNED (2026-11-22; was completed), new one for b
         p2, prev2 = await swo.pick(db, d, DeviceStage.l1, b)
         out["take"] = [w1.status, w1.completed_at is not None, p2 is not w1, p2.assigned_username,
                        [x[2] for x in prev2]]
@@ -114,8 +114,8 @@ asyncio.run(main())
     assert o["arrive"] == ["pending", None, True, True, True]
     assert o["claim"] == [True, "eng_a", True, True, []]
     assert o["own"] is True
-    assert o["take"] == ["completed", True, True, "eng_b", ["Eng_A"]]
-    assert o["reassign"] == ["completed", "eng_c", "pending"]
+    assert o["take"] == ["reassigned", True, True, "eng_b", ["Eng_A"]]   # taken over: reassigned (2026-11-22)
+    assert o["reassign"] == ["reassigned", "eng_c", "pending"]   # bucket / Change Engineer: same rule
     assert o["finish"] == [True, "completed", "eng_c"]
     assert o["stress"] == [True, True, "completed", "eng_b"]
     assert o["fqc"] == [True, "completed", "eng_a", True, "completed", "eng_c"]

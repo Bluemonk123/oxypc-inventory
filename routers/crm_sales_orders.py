@@ -61,6 +61,33 @@ async def sales_order_detail(
     })
 
 
+@router.post("/{so_id}/notes")
+async def sales_order_notes(
+    request: Request, so_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Sales Order Notes (2026-11-23, Pankaj). Edit on Customer Deals; every
+    change is kept in Notes History (services/notes_history.py)."""
+    from fastapi import HTTPException
+    from models.role_permissions import has_perm
+    from services.audit_engine import audit
+    role = getattr(current_user.role, "value", current_user.role)
+    if not has_perm(role, "crm_sales_opp", "edit"):
+        raise HTTPException(403, "Your role does not have Edit permission for Customer Deals.")
+    so = (await db.execute(select(CRMSalesOrder).where(CRMSalesOrder.id == so_id))).scalar_one_or_none()
+    if not so:
+        return RedirectResponse(url="/crm/sales-orders?error=Sales+Order+not+found", status_code=302)
+    form = await request.form()
+    old = so.notes
+    so.notes = (form.get("notes") or "").strip()[:5000] or None
+    if so.notes != old:
+        await audit(db, action="CRM_SO_NOTES_UPDATED", user=current_user, table_name="crm_sales_orders",
+                    record_id=str(so.id), old_value={"notes": old}, new_value={"notes": so.notes}, request=request)
+        await db.commit()
+    return RedirectResponse(url=f"/crm/sales-orders/{so.id}?success=Notes+saved", status_code=302)
+
+
 @router.get("/{so_id}/print", response_class=HTMLResponse)
 async def print_sales_order(
     request: Request, so_id: str,

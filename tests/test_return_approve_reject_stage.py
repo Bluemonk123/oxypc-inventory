@@ -59,30 +59,16 @@ def test_approve_keeps_stock_in_and_reject_goes_back_to_sold(app_client, make_us
                 "cpu": "0", "generation": "0", "ram": "0", "storage": "0"}, headers=h, follow_redirects=False)
             assert r.status_code == 302 and "error" not in r.headers["location"], r.headers.get("location")
 
-        # Approve -> stays at Stock In (not IQC)
+        # No approval step (2026-11-21, Pankaj): every return is approved as
+        # it is logged, and Approve / Reject no longer apply to it.
+        for tag in (ok_tag, rej_tag, late_tag):
+            st = _state(tag)
+            assert st[3] == "approved", st
         st = _state(ok_tag)
-        _set_stage(ok_tag, "stock_in")      # the internal-return path puts it here on submit
         r = app_client.post(f"/returns/{st[4]}/approve", data={"csrf_token": csrf}, headers=h, follow_redirects=False)
-        assert "success" in r.headers["location"]
-        st = _state(ok_tag)
-        assert st[0] == "stock_in" and st[3] == "approved", st
-
-        # Reject -> back to Sold, off Return Stock
-        st = _state(rej_tag)
-        _set_stage(rej_tag, "stock_in")
-        r = app_client.post(f"/returns/{st[4]}/reject", data={"csrf_token": csrf, "rejection_reason": "No fault found"},
-                            headers=h, follow_redirects=False)
-        assert "success" in r.headers["location"]
-        st = _state(rej_tag)
-        assert st[0] == "sold" and st[1] == "False" and st[2] == "Return Rejected" and st[3] == "rejected", st
-
-        # Repair already started -> reject refused, tag untouched
-        st = _state(late_tag)
-        _set_stage(late_tag, "l1")
+        assert "already+approved" in r.headers["location"]
         r = app_client.post(f"/returns/{st[4]}/reject", data={"csrf_token": csrf, "rejection_reason": "x"},
                             headers=h, follow_redirects=False)
-        assert "error" in r.headers["location"]
-        st = _state(late_tag)
-        assert st[0] == "l1" and st[3] == "pending", st
+        assert "already+approved" in r.headers["location"]
     finally:
         _cleanup([ok_tag, rej_tag, late_tag])

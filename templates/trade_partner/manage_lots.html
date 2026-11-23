@@ -2,7 +2,11 @@
 {% block title %}Manage Lots — External Partner{% endblock %}
 {% block page_title %}Manage Lots{% endblock %}
 {% block content %}
-
+{# Manage Lots (rebuilt 2026-11-23, Pankaj): no GRN step — upload the Asset
+   IQC sheet, pick the Device Category for the uploaded tags, then Lots /
+   Models / Tags. Set Price (with Sub-lot Number) on the Lots tab only;
+   partners see the Sub-lot Number instead of the real lot number. #}
+{% set _csrf = request.cookies.get('csrf_token', '') %}
 {% if success %}
 <div class="alert alert-success py-2"><i class="bi bi-check-circle me-2"></i>{{ success }}</div>
 {% endif %}
@@ -11,138 +15,160 @@
 {% endif %}
 
 <div class="alert alert-info py-2 small mb-3">
-  <i class="bi bi-flask me-2"></i>Test data for External Partner testing. GRNs and Lots created here
-  never appear on the live GRN Records / GRN with Invoice pages, and Lot Numbers
-  (auto-prefixed <code>{{ test_lot_prefix }}</code>) are open to every External Partner: an uploaded
-  lot shows on the partner Catalog straight away, priced with <b>Set Price</b>. Devices uploaded on Tab 2 must use Entity
-  <code>{{ test_entity_name }}</code> to stay isolated from live dashboards and reports.
+  <i class="bi bi-flask me-2"></i>Test data for External Partner testing. Upload the Asset IQC sheet — no GRN needed. Tags get Entity
+  <code>{{ test_entity_name }}</code> (kept out of live dashboards and reports) and lots are numbered <code>{{ test_lot_prefix }}…</code>.
+  Each lot gets a <b>Sub-lot Number</b> (Lot-001, Lot-002, …) automatically — partners see only that. Set the price and Device Category with <b>Set Price</b> on the Lots tab.
 </div>
 
 <div class="d-flex flex-wrap gap-2 mb-3">
+  {% for label, val, cls in [('Total LOTs', total_lots, 'text-info'), ('Total Models', total_models, 'text-primary'), ('Total TAGs', total_tags, 'text-success')] %}
   <div class="flex-fill" style="min-width:160px">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-2">
-        <div class="small text-muted mb-1">Total GRNs</div>
-        <div class="fs-4 fw-bold text-primary">{{ total_grns }}</div>
-      </div>
+    <div class="card border-0 shadow-sm h-100"><div class="card-body text-center py-2">
+      <div class="small text-muted mb-1">{{ label }}</div><div class="fs-4 fw-bold {{ cls }}">{{ val }}</div>
+    </div></div>
+  </div>
+  {% endfor %}
+</div>
+
+{# Asset IQC upload: the External Partner "IQC Formats" sheet. Mapping: services/partner_iqc_upload.py COLUMNS. #}
+{% if can(current_user, 'trade_partner_manage_lots', 'upload') %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
+    <span class="fw-semibold"><i class="bi bi-upload me-2"></i>Upload Asset IQC</span>
+    <div class="ms-auto d-flex gap-2">
+      <button type="button" class="btn btn-sm btn-outline-secondary bg-white" data-bs-toggle="collapse" data-bs-target="#iqcMapCollapse" aria-expanded="false" aria-controls="iqcMapCollapse">
+        <i class="bi bi-diagram-3 me-1"></i>Column mapping</button>
+      {% if can(current_user, 'trade_partner_manage_lots', 'export') %}
+      <a href="/trade-partner/manage-lots/asset-iqc-sample" class="btn btn-sm btn-outline-success bg-white"><i class="bi bi-download me-1"></i>Download sample</a>
+      {% endif %}
     </div>
   </div>
-  <div class="flex-fill" style="min-width:160px">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-2">
-        <div class="small text-muted mb-1">Total LOTs</div>
-        <div class="fs-4 fw-bold text-info">{{ total_lots }}</div>
-      </div>
-    </div>
-  </div>
-  <div class="flex-fill" style="min-width:160px">
-    <div class="card border-0 shadow-sm h-100">
-      <div class="card-body text-center py-2">
-        <div class="small text-muted mb-1">Total TAGs</div>
-        <div class="fs-4 fw-bold text-success">{{ total_tags }}</div>
-      </div>
+  <div class="card-body">
+    <p class="small mb-3">Upload the IQC format (.xlsx, sheet <strong>IQC Formats</strong>, or .csv). Each tag goes straight to
+      <strong>Ready for Sale</strong>. <strong>LOT Number</strong> 4782 is saved as <code>{{ test_lot_prefix }}4782</code>; a lot that
+      doesn't exist yet is created. Tags that already exist are skipped. After the upload you pick the <strong>Device Category</strong> for the new tags.</p>
+    <form action="/trade-partner/manage-lots/asset-iqc-upload" method="post" enctype="multipart/form-data" class="row g-2 align-items-end">
+      <input type="hidden" name="csrf_token" value="{{ _csrf }}">
+      <div class="col-md-6"><input type="file" name="file" class="form-control" accept=".xlsx,.xlsm,.csv" required></div>
+      <div class="col-auto"><button type="submit" class="btn btn-primary"><i class="bi bi-upload me-2"></i>Upload</button></div>
+    </form>
+    <div class="collapse mt-3" id="iqcMapCollapse">
+      <table class="table table-sm table-bordered small mb-0 align-middle">
+        <thead class="table-light"><tr><th style="width:40px">#</th><th>Sheet column</th><th>Saved as</th></tr></thead>
+        <tbody>
+        {% for h, label in iqc_mapping %}
+          <tr><td class="text-muted">{{ loop.index }}</td><td class="fw-semibold">{{ h }}</td><td>{{ label }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
     </div>
   </div>
 </div>
+{% endif %}
 
 <ul class="nav nav-tabs mb-3" id="manageLotsTabs">
-  <li class="nav-item">
-    <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#grnLotTab" type="button">
-      <i class="bi bi-receipt me-1"></i>GRN &amp; Lot
-    </button>
-  </li>
-  <li class="nav-item">
-    <button class="nav-link" data-bs-toggle="tab" data-bs-target="#assetIqcTab" type="button">
-      <i class="bi bi-upload me-1"></i>Asset IQC
-    </button>
-  </li>
+  <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#lotsTab" data-tab="lots" type="button">
+    <i class="bi bi-box-seam me-1"></i>Lots <span class="badge bg-secondary-subtle text-dark">{{ total_lots }}</span></button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#modelsTab" data-tab="models" type="button">
+    <i class="bi bi-laptop me-1"></i>Models <span class="badge bg-secondary-subtle text-dark">{{ total_models }}</span></button></li>
+  <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#assetIqcTab" data-tab="tags" type="button">
+    <i class="bi bi-upc-scan me-1"></i>Tags <span class="badge bg-secondary-subtle text-dark">{{ total_tags }}</span></button></li>
 </ul>
 
 <div class="tab-content">
-<div class="tab-pane fade show active" id="grnLotTab">
-{# GRN & Lot (2026-11-13, Pankaj): the GRN post IQC page itself, scoped to
-   test data — test GRNs (source ext_partner_test), test lots (EPT- prefix)
-   and test tags (Entity External Partner Test). templates/grn/_post_iqc_body.html #}
-{% include "grn/_post_iqc_body.html" %}
+{# ── Lots ── #}
+<div class="tab-pane fade show active" id="lotsTab">
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body p-0"><div class="table-responsive" style="max-height:560px">
+    <table class="table table-hover mb-0 small align-middle">
+      <thead class="table-dark" style="position:sticky;top:0;z-index:1"><tr>
+        <th class="ps-3">Lot Number</th><th>Sub-lot Number <i class="bi bi-eye" title="What partners see"></i></th><th>Category</th>
+        <th class="text-end">Tags</th><th class="text-end">Ready for Sale</th>{% if see_price %}<th class="text-end">Price</th>{% endif %}
+        <th>Last Upload</th><th>Action</th></tr></thead>
+      <tbody>
+      {% for l in lots %}
+        <tr>
+          <td class="ps-3 font-monospace">{{ l.lot_number }}</td>
+          <td class="font-monospace">{% if l.sub_lot %}<span class="badge bg-primary-subtle text-dark border">{{ l.sub_lot }}</span>{% else %}<span class="text-muted">Not set</span>{% endif %}</td>
+          <td>{% for c, n in l.categories %}<span class="badge bg-light text-dark border me-1">{{ c }} {{ n }}</span>{% else %}<span class="text-muted">—</span>{% endfor %}</td>
+          <td class="text-end">{{ l.tags }}</td>
+          <td class="text-end">{{ l.ready }}</td>
+          {% if see_price %}<td class="text-end">{{ '₹{:,.2f}'.format(l.price) if l.price else 'Not set' }}</td>{% endif %}
+          <td class="text-muted">{{ l.uploaded.strftime('%d-%m-%Y') if l.uploaded else '—' }}</td>
+          <td class="text-nowrap">
+            {% if can_set_price and can(current_user, 'trade_partner_manage_lots', 'edit') %}
+            <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 set-price-btn"
+                    data-lot-id="{{ l.id }}" data-lot="{{ l.lot_number }}" data-sub="{{ l.sub_lot }}"
+                    data-cat="{{ l.categories[0][0] if l.categories else '' }}"
+                    data-price="{{ '%.2f'|format(l.price) if l.price is not none else '' }}">
+              <i class="bi bi-currency-rupee"></i> Set Price</button>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="8" class="text-center text-muted py-4">No test lots yet — upload an Asset IQC sheet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div></div></div>
 </div>
+
+{# ── Models ── #}
+<div class="tab-pane fade" id="modelsTab">
+  <div class="mb-2" style="max-width:320px"><input type="search" class="form-control form-control-sm ml-search" data-target="#modelsTab" placeholder="Search model, lot, CPU…"></div>
+  <div class="card border-0 shadow-sm mb-3"><div class="card-body p-0"><div class="table-responsive" style="max-height:560px">
+    <table class="table table-hover mb-0 small align-middle">
+      <thead class="table-dark" style="position:sticky;top:0;z-index:1"><tr>
+        <th class="ps-3">Lot Number</th><th>Sub-lot</th><th>Category</th><th>Brand</th><th>Model</th><th>CPU</th><th>Gen</th>
+        <th>RAM</th><th>Storage</th><th class="text-end">Qty</th></tr></thead>
+      <tbody>
+      {% for m in models %}
+        <tr data-search="{{ (m.lot_number ~ ' ' ~ m.sub_lot ~ ' ' ~ (m.brand or '') ~ ' ' ~ (m.model or '') ~ ' ' ~ (m.cpu or '') ~ ' ' ~ m.category) | lower }}">
+          <td class="ps-3 font-monospace">{{ m.lot_number }}</td>
+          <td class="font-monospace">{{ m.sub_lot or '—' }}</td>
+          <td>{{ m.category or '—' }}</td><td>{{ m.brand or '—' }}</td><td>{{ m.model or '—' }}</td>
+          <td>{{ m.cpu or '—' }}</td><td>{{ m.generation or '—' }}</td>
+          <td>{{ (m.ram_gb ~ ' GB') if m.ram_gb else '—' }}</td>
+          <td>{{ (m.storage_gb ~ ' GB' ~ (' ' ~ m.storage_type if m.storage_type else '')) if m.storage_gb else '—' }}</td>
+          <td class="text-end fw-semibold">{{ m.qty }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="10" class="text-center text-muted py-4">No models yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div></div></div>
+</div>
+
+{# ── Tags ── #}
 <div class="tab-pane fade" id="assetIqcTab">
-
-  {# Asset IQC upload (2026-11-13, Pankaj): the External Partner "IQC Formats"
-     sheet. Mapping: services/partner_iqc_upload.py COLUMNS. #}
-  {% if can(current_user, 'trade_partner_manage_lots', 'upload') %}
-  <div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-transparent d-flex align-items-center flex-wrap gap-2">
-      <span class="fw-semibold"><i class="bi bi-upload me-2"></i>Upload Asset IQC</span>
-      <div class="ms-auto d-flex gap-2">
-        <button type="button" class="btn btn-sm btn-outline-secondary bg-white" data-bs-toggle="collapse" data-bs-target="#iqcMapCollapse" aria-expanded="false" aria-controls="iqcMapCollapse">
-          <i class="bi bi-diagram-3 me-1"></i>Column mapping</button>
-        {% if can(current_user, 'trade_partner_manage_lots', 'export') %}
-        <a href="/trade-partner/manage-lots/asset-iqc-sample" class="btn btn-sm btn-outline-success bg-white"><i class="bi bi-download me-1"></i>Download sample</a>
-        {% endif %}
-      </div>
-    </div>
-    <div class="card-body">
-      <p class="small mb-3">Upload the IQC format (.xlsx, sheet <strong>IQC Formats</strong>, or .csv). Each tag gets Entity
-        <code>{{ test_entity_name }}</code> and goes straight to <strong>Ready for Sale</strong>, so its lot shows on the partner Catalog.
-        <strong>LOT Number</strong> 4782 is saved as <code>{{ test_lot_prefix }}4782</code>; a lot that doesn't exist yet is
-        created and named in the result. Optional <strong>GRN</strong> or <strong>Invoice</strong> column: either value
-        links the lot to that GRN from the GRN &amp; Lot tab and maps the lot's tags to it (one filled row per lot is enough). Tags that already exist are skipped.
-        Use <strong>Set Price</strong> in the Action column to give the lot its Base Price.</p>
-      <form action="/trade-partner/manage-lots/asset-iqc-upload" method="post" enctype="multipart/form-data" class="row g-2 align-items-end">
-        <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
-        <div class="col-md-6">
-          <input type="file" name="file" class="form-control" accept=".xlsx,.xlsm,.csv" required>
-        </div>
-        <div class="col-auto">
-          <button type="submit" class="btn btn-primary"><i class="bi bi-upload me-2"></i>Upload</button>
-        </div>
-      </form>
-      <div class="collapse mt-3" id="iqcMapCollapse">
-        <table class="table table-sm table-bordered small mb-0 align-middle">
-          <thead class="table-light"><tr><th style="width:40px">#</th><th>Sheet column</th><th>Saved as</th></tr></thead>
-          <tbody>
-          {% for h, label in iqc_mapping %}
-            <tr><td class="text-muted">{{ loop.index }}</td><td class="fw-semibold">{{ h }}</td><td>{{ label }}</td></tr>
-          {% endfor %}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>
-  {% endif %}
-
   <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
     <div style="max-width:320px" class="flex-fill">
-      <input type="text" id="assetSearchInput" class="form-control form-control-sm"
-             placeholder="Search Tag Number or Lot Number...">
+      <input type="text" id="assetSearchInput" class="form-control form-control-sm" placeholder="Search Tag Number or Lot Number...">
     </div>
     <button {% if not can(current_user, 'trade_partner_manage_lots', 'edit') %}hidden {% endif %}type="button" id="moveReadyForSaleBtn" class="btn btn-sm btn-outline-success" disabled>
       <i class="bi bi-box-arrow-in-right me-1"></i>Move to Ready for Sale
     </button>
   </div>
-
   <form id="bulkReadyForm" method="post" action="/trade-partner/manage-lots/move-ready-for-sale" style="display:none">
-    <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+    <input type="hidden" name="csrf_token" value="{{ _csrf }}">
   </form>
-
   <div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-transparent fw-semibold"><i class="bi bi-list-check me-2"></i>Test Assets ({{ test_entity_name }})</div>
+    <div class="card-header bg-transparent fw-semibold"><i class="bi bi-list-check me-2"></i>Test Tags ({{ test_entity_name }})</div>
     <div class="card-body p-0">
       <div class="table-responsive" style="max-height:520px; overflow-y:auto">
         <table class="table table-hover mb-0 small align-middle">
           <thead class="table-dark">
             <tr>
               <th class="ps-3" style="width:32px"><input type="checkbox" id="assetSelectAllChk" class="form-check-input" title="Select all"></th>
-              <th>Tag Number</th><th>Lot Number</th><th>Brand / Model</th>
+              <th>Tag Number</th><th>Lot Number</th><th>Sub-lot</th><th>Category</th><th>Brand / Model</th>
               <th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th>
-              <th>Stage</th><th>Uploaded</th><th>GRN</th><th>Action</th>
+              <th>Stage</th><th>Uploaded</th><th>Action</th>
             </tr>
           </thead>
           <tbody>
             {% for row in test_devices %}
             {% set d = row.device %}
-            {% set _mapped = row.matched_grn and d.grn_number == row.matched_grn %}
-            <tr data-search="{{ (d.barcode ~ ' ' ~ (row.lot_number or '')) | lower }}">
+            <tr data-search="{{ (d.barcode ~ ' ' ~ (row.lot_number or '') ~ ' ' ~ (d.sub_lot_number or '')) | lower }}">
               <td class="ps-3"><input type="checkbox" class="form-check-input asset-row-chk" value="{{ d.barcode }}"></td>
               <td>
                 <button type="button" class="btn btn-link p-0 font-monospace text-decoration-none device-details-btn"
@@ -156,6 +182,8 @@
                 </button>
               </td>
               <td class="font-monospace small">{{ row.lot_number or '—' }}</td>
+              <td class="font-monospace small">{{ d.sub_lot_number or '—' }}</td>
+              <td>{{ row.category or '—' }}</td>
               <td>{{ d.brand or '—' }} {{ d.model or '' }}</td>
               <td>{{ d.cpu or '—' }}</td>
               <td>{{ d.generation or '—' }}</td>
@@ -163,27 +191,7 @@
               <td>{{ (d.storage_gb ~ ' GB' ~ (' ' ~ d.storage_type if d.storage_type else '')) if d.storage_gb else '—' }}</td>
               <td><span class="badge bg-secondary">{{ stage_labels.get(d.current_stage, d.current_stage.value) }}</span></td>
               <td class="text-muted small">{{ d.created_at.strftime('%d-%m-%Y') if d.created_at else '—' }}</td>
-              <td>
-                {% if row.matched_grn %}
-                <div class="font-monospace small">{{ row.matched_grn }}</div>
-                <span class="badge bg-{{ 'success' if _mapped else 'secondary' }}">{{ 'Mapped' if _mapped else 'Unmapped' }}</span>
-                {% else %}
-                <span class="text-muted">—</span>
-                {% endif %}
-              </td>
               <td class="text-nowrap">
-                {% if row.matched_grn and not _mapped %}
-                {% if can(current_user, 'trade_partner_manage_lots', 'edit') %}
-                <form method="post" action="/trade-partner/manage-lots/map-grn" class="d-inline">
-                  <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-                  <input type="hidden" name="barcode" value="{{ d.barcode }}">
-                  <input type="hidden" name="grn_number" value="{{ row.matched_grn }}">
-                  <button type="submit" class="btn btn-sm btn-outline-primary py-0 px-2">
-                    <i class="bi bi-link-45deg"></i> Map
-                  </button>
-                </form>
-                {% endif %}
-                {% endif %}
                 <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 device-details-btn"
                         data-edit="1"
                         data-barcode="{{ d.barcode }}" data-lot="{{ row.lot_number or '' }}"
@@ -194,33 +202,24 @@
                         data-device-type="{{ d.device_type or '' }}" data-grade="{{ d.grade.value if d.grade else '' }}" data-notes="{{ d.notes or '' }}">
                   <i class="bi bi-pencil"></i> Edit
                 </button>
-                {# Set Price (2026-11-16, Pankaj): the lot's Base Price on the partner Catalog. #}
-                {% if row.lot_id and can_set_price and can(current_user, 'trade_partner_manage_lots', 'edit') %}
-                <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 set-price-btn"
-                        data-lot-id="{{ row.lot_id }}" data-lot="{{ row.lot_number }}"
-                        data-price="{{ '%.2f'|format(row.lot_price) if row.lot_price is not none else '' }}">
-                  <i class="bi bi-currency-rupee"></i> Set Price
-                </button>
-                {% endif %}
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="12" class="text-center text-muted py-4">No test assets uploaded yet.</td></tr>
+            <tr><td colspan="13" class="text-center text-muted py-4">No test tags uploaded yet.</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     </div>
   </div>
-
 </div>
 </div>
 
-<!-- Set Price modal (2026-11-16): one test lot's price = its Base Price on the partner Catalog. -->
+<!-- Set Price (Lots tab only): the lot's Base Price + Sub-lot Number partners see. -->
 <div class="modal fade" id="setPriceModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <form method="post" action="/trade-partner/manage-lots/set-price" class="modal-content">
-      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <input type="hidden" name="csrf_token" value="{{ _csrf }}">
       <input type="hidden" name="lot_id" id="spLotId">
       <div class="modal-header">
         <h5 class="modal-title"><i class="bi bi-currency-rupee me-1"></i>Set Price — <span id="spLotNo" class="font-monospace"></span></h5>
@@ -229,30 +228,70 @@
       <div class="modal-body">
         <p class="small text-muted mb-3">The price of the whole lot. Partners see it as the lot's <b>Base Price</b> on the
           Catalog; bids must be at least 10% above it (or above the highest bid), and a booking is priced at
-          Base Price × booked qty ÷ lot qty.</p>
+          Base Price × booked qty ÷ lot qty. Partners see the lot by its <b>Sub-lot Number</b>, not the real lot number.</p>
         <div class="row g-2 align-items-end">
           <div class="col-sm-6">
             <label class="form-label small mb-1">Current price</label>
             <div class="form-control form-control-sm bg-light" id="spCurrent">—</div>
           </div>
           <div class="col-sm-6">
-            <label class="form-label small mb-1" for="spPrice">New price (₹)</label>
+            <label class="form-label small mb-1" for="spPrice">New price (₹) <span class="text-danger">*</span></label>
             <input type="number" step="0.01" min="0" name="price" id="spPrice" class="form-control form-control-sm" required>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label small mb-1" for="spSub">Sub-lot Number <span class="text-muted">(auto)</span></label>
+            <input type="text" id="spSub" class="form-control form-control-sm bg-light" readonly>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label small mb-1" for="spCat">Device Category</label>
+            <select name="category" id="spCat" class="form-select form-select-sm">
+              <option value="">Keep as is</option>
+              {% for c in categories %}<option>{{ c }}</option>{% endfor %}
+            </select>
           </div>
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="submit" class="btn btn-sm btn-success">Save Price</button>
+        <button type="submit" class="btn btn-sm btn-success">Save</button>
       </div>
     </form>
   </div>
 </div>
+
+{# Device Category — asked right after a successful Asset IQC upload (2026-11-23). #}
+{% if ask_category %}
+<div class="modal fade" id="askCategoryModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" action="/trade-partner/manage-lots/set-category" class="modal-content">
+      <input type="hidden" name="csrf_token" value="{{ _csrf }}">
+      <input type="hidden" name="upload_id" value="{{ ask_category }}">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-tags me-1"></i>Device Category</h5>
+      </div>
+      <div class="modal-body">
+        <p class="small mb-2">Upload done: <b>{{ ask_count }}</b> new tag(s). Which Device Category are they? They are saved under it,
+          and partners see it in the Catalog's Category column.</p>
+        <select name="category" class="form-select" required>
+          <option value="">Select…</option>
+          {% for c in categories %}<option>{{ c }}</option>{% endfor %}
+        </select>
+      </div>
+      <div class="modal-footer">
+        <a href="/trade-partner/manage-lots?tab=lots" class="btn btn-sm btn-outline-secondary">Later</a>
+        <button type="submit" class="btn btn-sm btn-primary">Save Category</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 <script>
 document.addEventListener('click', function (e) {
   var b = e.target.closest('.set-price-btn'); if (!b) return;
   document.getElementById('spLotId').value = b.dataset.lotId;
   document.getElementById('spLotNo').textContent = b.dataset.lot;
+  document.getElementById('spSub').value = b.dataset.sub || 'Given on Save';
+  document.getElementById('spCat').value = b.dataset.cat || '';
   var cur = b.dataset.price;
   document.getElementById('spCurrent').textContent = cur === '' ? 'Hidden (no Pricing View)' :
     (parseFloat(cur) ? '₹' + parseFloat(cur).toLocaleString('en-IN', {minimumFractionDigits: 2}) : 'Not set');
@@ -321,14 +360,23 @@ document.addEventListener('click', function (e) {
 
 {% endblock %}
 {% block scripts %}
-{% include "grn/_post_iqc_scripts.html" %}
 <script>
-// Land back on Asset IQC after an action there (map-grn/edit-device redirect
-// with ?tab=asset) instead of always resetting to the default GRN & Lot tab.
-if (new URLSearchParams(location.search).get('tab') === 'asset') {
-  var assetTabBtn = document.querySelector('#manageLotsTabs button[data-bs-target="#assetIqcTab"]');
-  if (assetTabBtn) new bootstrap.Tab(assetTabBtn).show();
-}
+// Open the tab named in ?tab= (lots / models / tags) after an action redirect.
+(function () {
+  var t = new URLSearchParams(location.search).get('tab');
+  var btn = t && document.querySelector('#manageLotsTabs button[data-tab="' + t + '"]');
+  if (btn) new bootstrap.Tab(btn).show();
+  var ask = document.getElementById('askCategoryModal');
+  if (ask) bootstrap.Modal.getOrCreateInstance(ask).show();
+  document.querySelectorAll('.ml-search').forEach(function (inp) {
+    inp.addEventListener('input', function () {
+      var q = this.value.trim().toLowerCase();
+      document.querySelectorAll(this.dataset.target + ' tbody tr[data-search]').forEach(function (tr) {
+        tr.style.display = (!q || tr.getAttribute('data-search').indexOf(q) !== -1) ? '' : 'none';
+      });
+    });
+  });
+})();
 
 // Device Details modal — Tag Number click opens read-only (inputs disabled,
 // Save hidden); Edit button opens the same modal with inputs editable. Both

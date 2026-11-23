@@ -59,9 +59,14 @@
               <label class="form-label small">Move to Stage</label>
               <select name="to_stage" class="form-select form-select-sm">
                 <option value="">— No change —</option>
-                {% for value, label in stage_options %}
+                {# Final QC Pass / Fail Hold left out (2026-11-22, Pankaj): tags pass
+                   through them on their own, nobody moves a tag there. #}
+                {% for value, label in stage_options if value not in ('final_qc_pass_hold', 'final_qc_fail_hold') %}
                 <option value="{{ value }}">{{ label }}</option>
                 {% endfor %}
+                {# Pre-Sale QC (2026-11-22): Ready for Sale + Showroom + queued for
+                   Pre-Sale QC (routers/pre_sale_iqc.queue_for_pre_sale). #}
+                <option value="pre_sale_iqc">Pre-Sale QC</option>
                 {# Admin only (2026-10-22): each tag also gets a basic sale with no
                    customer or price — routers/iqc.py _customise_sale. #}
                 {% if current_user and current_user.role.value == 'admin' %}

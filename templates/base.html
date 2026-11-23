@@ -787,7 +787,7 @@
       {% if admin_settings_visible %}
       <li class="nav-section" data-sb="sec:ADMIN" style="order: {{ sb_order('sec:ADMIN') }}">ADMIN</li>
 
-      {% set admin_settings_active = '/admin/users' in request.url.path or '/admin/master' in request.url.path or '/admin/extra-settings' in request.url.path or '/admin/company-settings' in request.url.path or '/admin/attendance-config' in request.url.path %}
+      {% set admin_settings_active = '/admin/users' in request.url.path or '/admin/master' in request.url.path or '/admin/extra-settings' in request.url.path or '/admin/company-settings' in request.url.path or '/admin/attendance-config' in request.url.path or '/admin/system/data-fixes' in request.url.path or request.url.path.startswith('/notes-history') %}
       <li class="nav-item" data-sb="#adminSettingsCollapse" style="order: {{ sb_order('#adminSettingsCollapse') }}">
         <a href="#adminSettingsCollapse" class="nav-link d-flex align-items-center {% if admin_settings_active %}active{% endif %}"
            data-bs-toggle="collapse" role="button"
@@ -825,6 +825,16 @@
             {% if has_explicit_perm(role, 'attendance_config') and not module_hidden('attendance_config') %}
             <li data-sb="/admin/attendance-config" style="order: {{ sb_order('/admin/attendance-config') }}"><a href="/admin/attendance-config" class="nav-link py-1 small {% if '/admin/attendance-config' in request.url.path %}active{% endif %}">
               <i class="bi bi-people me-2"></i> {{ sidebar_label('attendance_config', 'Group Config') }}
+            </a></li>
+            {% endif %}
+            {# Data Fixes (2026-11-22, Pankaj): one-click data repairs (Old PNA marks,
+               Rebuild old IQC history, ...). Admin only, like the page itself. #}
+            {% if role == 'admin' %}
+            <li data-sb="/admin/system/data-fixes" style="order: {{ sb_order('/admin/system/data-fixes') }}"><a href="/admin/system/data-fixes" class="nav-link py-1 small {% if '/admin/system/data-fixes' in request.url.path %}active{% endif %}">
+              <i class="bi bi-wrench-adjustable me-2"></i> {{ sidebar_label('data_fixes', 'Data Fixes') }}
+            </a></li>
+            <li data-sb="/notes-history" style="order: {{ sb_order('/notes-history') }}"><a href="/notes-history" class="nav-link py-1 small {% if request.url.path.startswith('/notes-history') %}active{% endif %}">
+              <i class="bi bi-journal-text me-2"></i> {{ sidebar_label('notes_history', 'Notes History') }}
             </a></li>
             {% endif %}
           </ul>
@@ -1048,7 +1058,7 @@
          Management's "Today Login"). Empty on every other page. #}
       {% block page_title_extra %}{% endblock %}
       <div class="ms-auto d-flex align-items-center gap-3">
-        {# Order (2026-11-10, Pankaj): status, search, bell, "+", Raise Ticket. #}
+        {# Order (2026-11-22, Pankaj): status, search, bell, Raise Ticket, "+", Change Stage. #}
         <!-- Server connection status — real /health polling, see watchdog
              script near the closing </body>. Not a decorative indicator. -->
         <span id="serverStatusBadge" style="color:#6c757d" title="Live connection to the application server">
@@ -1073,6 +1083,12 @@
             </span>
           </button>
         </div>
+        {# Order (2026-11-22, Pankaj): bell, Raise Ticket, "+", Change Stage. #}
+        <button type="button" class="btn btn-warning btn-sm fw-semibold"
+                data-bs-toggle="modal" data-bs-target="#raiseTicketModal"
+                title="Raise a support ticket">
+          Raise Ticket
+        </button>
         {# Quick Add "+" (2026-11-08): every Add this user's Permission Matrix
            allows (services/quick_add.py). Hidden when there is none. #}
         {% set _qa = quick_add_menu(current_user) %}
@@ -1104,12 +1120,13 @@
           </div>
         </div>
         {% endif %}
-        <!-- Raise Ticket last, after "+" (2026-11-10) -->
-        <button type="button" class="btn btn-warning btn-sm fw-semibold"
-                data-bs-toggle="modal" data-bs-target="#raiseTicketModal"
-                title="Raise a support ticket">
-          Raise Ticket
-        </button>
+        {# Change Stage (2026-11-22, Pankaj): last, no icon — Admin, Inventory
+           Manager, Production Manager only (can_change_stage). Opens the
+           shared modal (_change_stage_modal.html, included near </body>). #}
+        {% if can_change_stage(current_user) %}
+        <button type="button" class="btn btn-primary btn-sm fw-semibold text-nowrap" id="tbChangeStageBtn"
+                onclick="openChangeEngineerModal()" title="Change the stage of one or more tags">Change Stage</button>
+        {% endif %}
         <!-- Username + role, stacked (role badge below the name). Since
              2026-10-19 the name opens a menu with My Profile and Logout —
              Logout moved here from its own button in the header. -->
@@ -2028,5 +2045,8 @@ function closeNotifPanel() {
   });
 })();
 </script>
+{# Change Stage modal (2026-11-22): for the top-bar button (can_change_stage)
+   and the Production Manager page's own button (change_stage_page). #}
+{% if can_change_stage(current_user) or (change_stage_page is defined and change_stage_page) %}{% include "_change_stage_modal.html" %}{% endif %}
 </body>
 </html>

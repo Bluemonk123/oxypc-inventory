@@ -3,6 +3,8 @@
 {% block page_title %}{{ dealer.business_name }}{% endblock %}
 {# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ dealer.dealer_code or dealer.business_name }}{% endblock %}{% block record_parent %}/dealers{% endblock %}{% block record_parent_label %}Dealer Management{% endblock %}
 {% block content %}
+{# Notes History (2026-11-23, Pankaj): every note on this record, never overwritten. #}
+<div class="d-flex justify-content-end mb-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-notes-history data-record-type="dealer" data-record-id="{{ dealer.id }}" data-title="{{ dealer.business_name or '' }}"><i class="bi bi-journal-text me-1"></i>Notes History</button></div>
 
 <div class="row g-4">
   <!-- Left: Dealer Info -->
@@ -328,6 +330,7 @@
 {% set qc_mode = 'dealer' %}{% include "dealers/_quotation_modal.html" %}
 {% include "dealers/_call_log_modal.html" %}
 
+{% include "_notes_history_modal.html" %}
 {% endblock %}
 {% block scripts %}
 <script>

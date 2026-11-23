@@ -127,6 +127,14 @@
     </div>
   </div>
   <div class="d-flex gap-2">
+    {# IQC Compare (2026-11-22): NEW / TRC / SOLD IQC side by side. #}
+    <button type="button" class="btn btn-sm btn-outline-primary text-nowrap" id="iqcCompareBtn" data-barcode="{{ device.barcode }}">
+      <i class="bi bi-layout-three-columns me-1"></i>IQC Compare
+    </button>
+    {# Notes History (2026-11-23): every note on this tag, never overwritten. #}
+    <button type="button" class="btn btn-sm btn-outline-secondary text-nowrap" data-notes-history data-barcode="{{ device.barcode }}">
+      <i class="bi bi-journal-text me-1"></i>Notes History
+    </button>
     {% if not _floor_only %}
     {% if can(current_user, 'devices', 'edit') %}
     <a href="/devices/{{ device.barcode }}/edit" class="btn btn-sm btn-primary">
@@ -1399,4 +1407,106 @@
   </div><!-- /col-lg-7 -->
 </div><!-- /row -->
 </div><!-- /#deviceDetail -->
+{# IQC Compare (2026-11-22, Pankaj): NEW IQC (as the tag came in), TRC IQC
+   (the live record the repair flow updates) and SOLD IQC (one per sale; the
+   dropdown picks the sale, newest first). Data: /devices/api/iqc-compare. #}
+<div class="modal fade" id="iqcCompareModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-layout-three-columns me-2"></i>IQC Compare — <span class="font-monospace">{{ device.barcode }}</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex flex-wrap align-items-center gap-3 mb-2">
+          <div class="d-flex align-items-center gap-2">
+            <label class="small fw-semibold text-muted mb-0" for="iqcCmpSale">SOLD IQC of</label>
+            <select id="iqcCmpSale" class="form-select form-select-sm" style="min-width:260px"></select>
+          </div>
+          <div class="form-check mb-0">
+            <input class="form-check-input" type="checkbox" id="iqcCmpOnlyDiff">
+            <label class="form-check-label small" for="iqcCmpOnlyDiff">Show only differences</label>
+          </div>
+          <span class="small text-muted ms-auto"><span class="badge bg-warning-subtle text-dark border">highlighted</span> = not the same in all three</span>
+        </div>
+        <div id="iqcCmpBody" class="table-responsive"><div class="text-muted small">Loading…</div></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  var btn = document.getElementById('iqcCompareBtn');
+  if (!btn) return;
+  var data = null;
+  var CTX = [['lot_number', 'Lot'], ['sub_lot_number', 'Sub-lot'], ['supplier', 'Supplier'],
+             ['grn_number', 'GRN'], ['lot_grn_number', 'Lot GRN'], ['grn_date', 'GRN Date'],
+             ['invoice_number', 'Invoice'], ['lot_invoice_no', 'Lot Invoice'], ['invoice_date', 'Invoice Date'],
+             ['location', 'Location'], ['location_zone', 'Location Zone'], ['stage', 'Stage']];
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function label(k) { return k.replace(/_/g, ' ').replace(/\b(\w)/g, function (m) { return m.toUpperCase(); })
+      .replace(/\bPct\b/, '%').replace(/\bGb\b/, 'GB').replace(/\bCpu\b/, 'CPU').replace(/\bRam\b/, 'RAM')
+      .replace(/\bHdd\b/, 'HDD').replace(/\bUsb\b/, 'USB').replace(/\bHdmi\b/, 'HDMI').replace(/\bDba\b/, 'dBA'); }
+  function fmt(v) { if (v === null || v === undefined || v === '') return ''; if (v === true) return 'Yes'; if (v === false) return 'No'; if (typeof v === 'string' && /^\d{4}-\d\d-\d\dT/.test(v)) return v.slice(0, 16).replace('T', ' '); return String(v); }
+  function val(snap, part, k) {
+    if (!snap) return null;
+    var unk = (snap.context || {}).unknown_fields || {};
+    if (part !== 'context' && unk[k]) return 'Not recorded (' + unk[k] + ')';   // rebuilt copy: old value never logged
+    var src = part === 'context' ? snap.context : (snap.iqc || {})[part]; return src ? fmt(src[k]) : ''; }
+  function head(title, snap, sub) {
+    if (!snap) return '<th>' + title + '<div class="small fw-normal text-muted">Not recorded</div></th>';
+    return '<th>' + title + '<div class="small fw-normal text-muted">' + esc(sub) + '</div></th>';
+  }
+  function render() {
+    var sold = data.sold[parseInt(document.getElementById('iqcCmpSale').value || '0', 10)] || null;
+    var only = document.getElementById('iqcCmpOnlyDiff').checked;
+    var cols = [data.new, data.trc, sold];
+    var rows = '', groups = [['Purchase & Location', 'context', CTX],
+                             ['Specs', 'device', data.spec_keys.map(function (k) { return [k, label(k)]; })],
+                             ['Inspection', 'inspection', data.inspection_keys.map(function (k) { return [k, label(k)]; })]];
+    groups.forEach(function (g) {
+      var body = '';
+      g[2].forEach(function (f) {
+        var vals = cols.map(function (c) { return val(c, g[1], f[0]); });
+        var present = vals.filter(function (v) { return v !== null; });
+        var differ = present.some(function (v) { return v !== present[0]; });
+        if (only && !differ) return;
+        if (!only && present.every(function (v) { return v === ''; })) return;     // empty everywhere
+        body += '<tr' + (differ ? ' class="table-warning"' : '') + '><td class="small text-muted text-nowrap">' + esc(f[1]) + '</td>' +
+          vals.map(function (v) { return '<td class="small">' + (v === null ? '<span class="text-muted">—</span>' : esc(v || '—')) + '</td>'; }).join('') + '</tr>';
+      });
+      if (body) rows += '<tr class="table-light"><th colspan="4" class="small text-uppercase">' + g[0] + '</th></tr>' + body;
+    });
+    var n = data.new, s = sold;
+    document.getElementById('iqcCmpBody').innerHTML =
+      '<table class="table table-sm table-bordered align-middle mb-0"><thead class="table-light"><tr><th style="width:22%">Field</th>' +
+      head('NEW IQC', n, n ? ('Added ' + fmt(n.taken_at) + (n.taken_by ? ' · ' + n.taken_by : '') + (n.backfilled ? ' · Rebuilt from history' : '')) : '') +
+      head('TRC IQC', data.trc, 'Current (repair line)') +
+      head('SOLD IQC', s, s ? ((s.sale_number || '') + ' · ' + fmt(s.sold_at || s.taken_at) + (s.customer ? ' · ' + s.customer : '') + (s.backfilled ? ' · Rebuilt from history' : '')) : '') +
+      '</tr></thead><tbody>' + (rows || '<tr><td colspan="4" class="text-muted small">No differences.</td></tr>') + '</tbody></table>';
+  }
+  btn.addEventListener('click', function () {
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('iqcCompareModal')).show();
+    fetch('/devices/api/iqc-compare?barcode=' + encodeURIComponent(btn.dataset.barcode))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || 'Could not load the IQC records.');
+        data = d;
+        var sel = document.getElementById('iqcCmpSale');
+        sel.innerHTML = d.sold.length ? d.sold.map(function (s, i) {
+          return '<option value="' + i + '">' + esc((s.sale_number || 'Sale') + ' — ' + fmt(s.sold_at || s.taken_at) + (s.customer ? ' — ' + s.customer : '')) + '</option>';
+        }).join('') : '<option value="0">No sale recorded</option>';
+        sel.disabled = !d.sold.length;
+        render();
+      })
+      .catch(function (e) { document.getElementById('iqcCmpBody').innerHTML = '<div class="alert alert-danger small">' + esc(e.message) + '</div>'; });
+  });
+  document.getElementById('iqcCmpSale').addEventListener('change', function () { if (data) render(); });
+  document.getElementById('iqcCmpOnlyDiff').addEventListener('change', function () { if (data) render(); });
+})();
+</script>
+{% include "_notes_history_modal.html" %}
 {% endblock %}

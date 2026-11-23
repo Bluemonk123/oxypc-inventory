@@ -1983,11 +1983,20 @@ async def _move_device_to_l1l2(db: AsyncSession, device: Device, current_user: U
     )).scalars().first()
     if prev_mv:
         prev_mv.exited_at = app_now()
+    # Every open L1/L2 and L3/L4 WorkID closes first (2026-11-22, Pankaj:
+    # "reset Pick This always", Stock table and Return table alike). It used
+    # to close only stage "l1", so an old open "l2" / "L1L2-" / L3/L4 WorkID
+    # stayed and the tag came back showing its old engineer, not Pick This.
+    from sqlalchemy import or_ as _or
+    from services.stage_work_orders import stage_clause as _stage_clause
     await db.execute(
         update(WorkOrder)
-        .where(WorkOrder.device_id == device.id, WorkOrder.stage == "l1",
-               wo_open())
-        .values(status="completed", completed_at=app_now())
+        .where(WorkOrder.device_id == device.id, wo_open(),
+               _or(_stage_clause(DeviceStage.l1), _stage_clause(DeviceStage.l3)))
+        # "reassigned" (2026-11-22): taken off before it was finished, so it is
+        # no Pass / Completed for anyone (it was "completed").
+        .values(status="reassigned", completed_at=app_now())
+        .execution_options(synchronize_session=False)
     )
     device.current_stage = DeviceStage.l1
     reset_repair_cycle_on_entry(device, prev_stage, DeviceStage.l1)
@@ -2041,14 +2050,31 @@ async def bulk_move_to_l1l2(
     return JSONResponse({"ok": True, "moved": moved, "requested": len(bc_list)})
 
 
-def _prod_tile_criteria():
+def _prod_tile_criteria(r_lo=None, r_hi=None):
     """Single source of truth for the Production Manager summary tiles:
     tile key -> (label, where-clause). Used by BOTH the tile counts in
     trc_production_list and the per-tile CSV (trc_production_tile_summary),
     so a tile's number and its export can never disagree. Ignores the
     page's date filter, like the tile counts."""
     active = and_(Device.is_active == True, Device.is_trashed == False)
-    final_qc_stages = [DeviceStage.final_qc, DeviceStage.final_qc_pass_hold, DeviceStage.final_qc_fail_hold]
+    # 2026-11-22 (Pankaj): the same rules as the WorkID Status cards —
+    # Final QC = tags at Final QC only (not the Pass / Fail Hold stages);
+    # Tags Returned = tags with an L1/L2 or L3/L4 WorkID whose customer return
+    # (not rejected) was logged on the selected date (today by default).
+    final_qc_stages = [DeviceStage.final_qc]
+    from models.sales import Return as _Ret
+    from models.work_order import WorkOrder as _WO
+    from services.stage_work_orders import stage_clause as _sc
+    from sqlalchemy import or_ as _or
+    _now = app_now()
+    r_lo = r_lo or datetime.combine(_now.date(), datetime.min.time())
+    r_hi = r_hi or datetime.combine(_now.date(), datetime.max.time())
+    _returned_in = select(_Ret.device_id).where(
+        _Ret.return_date >= r_lo, _Ret.return_date <= r_hi,
+        func.coalesce(_Ret.approval_status, "pending") != "rejected")
+    _on_repair_card = select(_WO.device_id).where(
+        _or(_sc(DeviceStage.l1), _sc(DeviceStage.l3)), _WO.status != "reassigned",
+        _WO.created_at <= r_hi, _or(_WO.completed_at.is_(None), _WO.completed_at >= r_lo))
     returned_pipeline_stages = (
         [DeviceStage.trc_production, DeviceStage.l1, DeviceStage.l2, DeviceStage.l3, DeviceStage.qc_check]
         + list(COSMETIC_STAGES) + final_qc_stages
@@ -2063,8 +2089,7 @@ def _prod_tile_criteria():
         # Internal Tag tab devices sent for repair, anywhere across the
         # pipeline the other tiles cover (At You through Final QC).
         "returned": ("Tags Returned", and_(
-            Device.tag_return_status == "Return for Repair",
-            Device.current_stage.in_(returned_pipeline_stages), active)),
+            Device.id.in_(_returned_in), Device.id.in_(_on_repair_card), active)),
     }
 
 
@@ -2292,7 +2317,13 @@ async def trc_production_list(
     #    / Final QC") — simple stage-scoped counts, each is_active-filtered
     #    to match every other count on this page. ─────────────────────────
     tiles_active = and_(Device.is_active == True, Device.is_trashed == False)
-    tile_criteria = _prod_tile_criteria()
+    # Tags Returned follows the page's Date filter (a single date = that day;
+    # none = today), like the WorkID Status Returned card (2026-11-22).
+    from utils.date_filter import parse_date_range as _pdr
+    _r_lo, _r_end = _pdr(date_from, date_to)
+    _r_lo = _r_lo or (_r_end - timedelta(days=1) if _r_end else None)
+    _r_end = _r_end or (_r_lo + timedelta(days=1) if _r_lo else None)
+    tile_criteria = _prod_tile_criteria(_r_lo, _r_end - timedelta(microseconds=1) if _r_end else None)
 
     async def _tile_count(key):
         return (await db.execute(
@@ -2302,10 +2333,11 @@ async def trc_production_list(
     tags_at_you = await _tile_count("at-you")
     tags_l1l2 = await _tile_count("l1-l2")
     tags_l3l4 = await _tile_count("l3-l4")
+    # PNA (2026-11-22, as WorkID Status): L1/L2 and L3/L4 tags holding a PNA part.
     tags_pna = (await db.execute(
         select(func.count(func.distinct(Device.id)))
         .join(DevicePNAPart, DevicePNAPart.device_id == Device.id)
-        .where(Device.current_stage.in_([DeviceStage.l1, DeviceStage.l2]),
+        .where(Device.current_stage.in_([DeviceStage.l1, DeviceStage.l2, DeviceStage.l3]),
                tiles_active, DevicePNAPart.is_active == True)
     )).scalar() or 0
     tags_stress = await _tile_count("stress")
@@ -2339,7 +2371,12 @@ async def trc_production_list(
         "tags_at_you": tags_at_you, "tags_l1l2": tags_l1l2, "tags_l3l4": tags_l3l4,
         "tags_pna": tags_pna, "tags_stress": tags_stress, "tags_final_qc": tags_final_qc,
         "tags_cosmetic": tags_cosmetic, "tags_returned": tags_returned,
-        "change_engineer_stages": [(s.value, label) for s, label in CHANGE_ENGINEER_STAGES],
+        # Move to Stage options; "Pre-Sale QC" before TRC Production (2026-11-22).
+        "change_stage_page": True,   # base.html includes the shared Change Stage modal (2026-11-22)
+        "change_engineer_stages": [opt for s, label in CHANGE_ENGINEER_STAGES
+                                   for opt in ((([("pre_sale_iqc", "Pre-Sale QC")]
+                                                 if s == DeviceStage.trc_production else [])
+                                                + [(s.value, label)]))],
     })
 
 
@@ -2348,10 +2385,17 @@ async def trc_production_tile_summary(
     tile: str,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
+    date_from: str = Query(default=""),
+    date_to: str = Query(default=""),
 ):
     """CSV for a Production Manager summary tile's "Summary" button — exactly
-    the tags that tile counts (shared criterion via _prod_tile_criteria)."""
-    criteria = _prod_tile_criteria().get(tile)
+    the tags that tile counts (shared criterion via _prod_tile_criteria; the
+    page's Date filter for Tags Returned, 2026-11-22)."""
+    from utils.date_filter import parse_date_range as _pdr
+    _r_lo, _r_end = _pdr(date_from, date_to)
+    _r_lo = _r_lo or (_r_end - timedelta(days=1) if _r_end else None)
+    _r_end = _r_end or (_r_lo + timedelta(days=1) if _r_lo else None)
+    criteria = _prod_tile_criteria(_r_lo, _r_end - timedelta(microseconds=1) if _r_end else None).get(tile)
     if criteria is None:
         raise HTTPException(status_code=404, detail="Unknown tile")
     is_returned = tile == "returned"
@@ -2390,12 +2434,9 @@ async def trc_production_pna_summary(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(allowed),
 ):
-    """CSV for the Production Manager PNA tile's "Summary" button — every
-    active PNA-marked part for devices currently in L1/L2 or L3/L4 Repair,
-    one row per (tag, part). Deliberately broader than the tile's own count
-    above (tags_pna is L1/L2 only) since L3/L4 was explicitly asked for
-    here — the tile's number and this export's tag count won't match 1:1,
-    that's intended scope, not a bug."""
+    """CSV for the Production Manager PNA tile's "Summary" button — devices
+    currently in L1/L2 or L3/L4 Repair with an active PNA-marked part, one row
+    per Tag Number (2026-11-22; was one row per part). Same tags as the tile."""
     result = await db.execute(
         select(DevicePNAPart, Device.barcode, Device.brand, Device.model,
                Device.current_stage, Lot.lot_number)
@@ -2409,16 +2450,35 @@ async def trc_production_pna_summary(
         .order_by(Device.barcode, DevicePNAPart.part_name)
     )
 
+    # One row per Tag Number (2026-11-22, Pankaj): its parts in one cell
+    # joined by " / ", Parts Count before them; Marked Date = the oldest mark
+    # (how long the tag has waited); Marked By = each person once.
+    rows = result.all()
+    _who = {r[0].marked_by for r in rows if r[0].marked_by}
+    _names = dict((await db.execute(select(User.username, User.full_name)
+                                    .where(User.username.in_(_who)))).all()) if _who else {}
+    tags: dict = {}
+    for pna, barcode, brand, model, stage, lot_number in rows:
+        key = barcode or pna.barcode or ""
+        t = tags.setdefault(key, {"lot": lot_number or "", "brand": brand or "", "model": model or "",
+                                  "stage": STAGE_LABELS.get(stage, stage.value if stage else ""),
+                                  "at": None, "by": [], "parts": []})
+        if pna.marked_at and (t["at"] is None or pna.marked_at < t["at"]):
+            t["at"] = pna.marked_at
+        who = ((_names.get(pna.marked_by) or "").strip() or pna.marked_by or "") if pna.marked_by else ""
+        if who and who not in t["by"]:
+            t["by"].append(who)
+        if pna.part_name:
+            t["parts"].append(pna.part_name)
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Tag Number", "Brand", "Model", "Lot Number", "Stage",
-                      "Part Name", "Part Category", "Marked By", "Marked At"])
-    for pna, barcode, brand, model, stage, lot_number in result.all():
+    writer.writerow(["Tag Number", "Lot", "Brand", "Model", "Stage", "Marked Date", "Marked By",
+                     "Parts Count", "Part Name"])
+    for key, t in tags.items():
         writer.writerow([
-            barcode or pna.barcode or "", brand or "", model or "", lot_number or "",
-            STAGE_LABELS.get(stage, stage.value if stage else ""),
-            pna.part_name, pna.part_category or "",
-            pna.marked_by or "", pna.marked_at.strftime("%Y-%m-%d %H:%M") if pna.marked_at else "",
+            key, t["lot"], t["brand"], t["model"], t["stage"],
+            t["at"].strftime("%Y-%m-%d %H:%M") if t["at"] else "",
+            " / ".join(t["by"]), len(t["parts"]), " / ".join(t["parts"]),
         ])
     output.seek(0)
     return Response(
@@ -2624,6 +2684,8 @@ async def _move_to_stage_unassigned(db, device, target_stage: str, current_user)
     Customise / manual move); at L1/L2, L3/L4, Stress and Final QC one pending,
     unassigned WorkID opens for the visit, to be taken with Pick This."""
     from services.stage_work_orders import open_for_stage
+    if target_stage == "pre_sale_iqc":
+        return await _move_to_pre_sale_qc(db, device, current_user)
     new_stage = next((st for st, _ in CHANGE_ENGINEER_STAGES if st.value == target_stage), None)
     if not new_stage:
         raise HTTPException(400, "Invalid target stage")
@@ -2660,6 +2722,46 @@ async def _move_to_stage_unassigned(db, device, target_stage: str, current_user)
                            "work_id": wo.work_id if wo else None})
     await db.commit()
     return JSONResponse({"ok": True, "work_id": wo.work_id if wo else None, "stage": label})
+
+
+async def _move_to_pre_sale_qc(db, device, current_user):
+    """Move to Stage -> Pre-Sale QC (2026-11-22, Pankaj). Pre-Sale QC works on
+    Ready for Sale tags, so the tag moves to Ready for Sale (when it isn't
+    there) and is queued for Pre-Sale QC — one pending, unassigned PSQC-
+    WorkID, the same as Ready for Sale's "Assign to Pre-Sale"; the Pre-Sale QC
+    engineer takes it with Start. Other open WorkIDs close as reassigned."""
+    from routers.pre_sale_iqc import STAGE_CODE as _PS, WID_PREFIX as _PSP
+    from routers.repair import _create_work_order_with_unique_id
+    queued = (await db.execute(select(WorkOrder.id).where(
+        WorkOrder.device_id == device.id, WorkOrder.stage == _PS,
+        WorkOrder.status.in_(["pending", "in_progress"])))).scalars().first()
+    prev_stage = device.current_stage
+    if prev_stage == DeviceStage.ready_to_sale and queued:
+        return JSONResponse({"ok": False, "error": "The tag is already in Pre-Sale QC."}, status_code=400)
+    now = app_now()
+    # Ready for Sale + Showroom location — the same check as every way into
+    # Pre-Sale QC (2026-11-22, routers/pre_sale_iqc.prepare_for_pre_sale).
+    from routers.pre_sale_iqc import prepare_for_pre_sale
+    ok, why, _changes = await prepare_for_pre_sale(db, device, current_user, "Production Manager")
+    if not ok:
+        return JSONResponse({"ok": False, "error": why + " — it can't go to Pre-Sale QC."}, status_code=400)
+    wo = None
+    if not queued:
+        wo = await _create_work_order_with_unique_id(
+            db, _PSP, device_id=device.id, barcode=device.barcode, stage=_PS,
+            status="pending", assigned_at=now,
+            requested_by_name=current_user.full_name or current_user.username,
+            created_by=current_user.username)
+        await db.flush()
+    keep = wo.id if wo is not None else queued
+    await reassign_open_work_orders(db, device.id, keep_id=keep)
+    await audit(db, action="move_to_stage", user=current_user, table_name="devices",
+                record_id=str(device.id),
+                old_value={"stage": prev_stage.value if prev_stage else None},
+                new_value={"stage": "ready_to_sale", "pre_sale_qc": True,
+                           "work_id": wo.work_id if wo is not None else None})
+    await db.commit()
+    return JSONResponse({"ok": True, "work_id": wo.work_id if wo is not None else None, "stage": "Pre-Sale QC"})
 
 
 # "Scrap Products from Repair Line" (Production Manager) and its two actions —

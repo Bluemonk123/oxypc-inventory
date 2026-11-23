@@ -100,10 +100,10 @@ def test_filter_row_labels_tiles_and_new_filters_render(app_client, make_user): 
     assert 'name="work_from"' in html and 'name="completed_from"' not in html
     assert 'name="work_to"' in html
     assert 'name="cosmetic_stage"' in html
-    # Tiles (renamed 2026-10-24 / 2026-10-26): tag counts.
-    for label in ("Assigned Tags", "Completed Tags", "Ongoing Tags",
-                  "Total Customer Return", "Total Scrap", "Total PNA"):
+    # Tiles (2026-11-21): four tag tiles, Returned card replaces Pre-Sale QC.
+    for label in ("Total Repaired", "Total Repair Line Pending", "Total PNA", "Total Scrap"):
         assert label in html, label
+    assert 'data-group="returned"' in html and 'data-group="pre_sale_iqc"' not in html
     # Export link carries every filter param, including the 3 new ones.
     assert "/workid-status/export?" in html
     assert "work_from=" in html and "work_to=" in html

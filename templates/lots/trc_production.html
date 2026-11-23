@@ -36,13 +36,12 @@
   {{ tl.single(tags_at_you, 'Total Tags at You', '#6f42c1', 'bi-person-workspace', download=('/trc-production/summary/at-you' if can_export else None), download_label='Summary') }}
   {{ tl.single(tags_l1l2, 'Total Tags in L1/L2', '#0d6efd', 'bi-tools', download=('/trc-production/summary/l1-l2' if can_export else None), download_label='Summary') }}
   {{ tl.single(tags_l3l4, 'Total Tags in L3/L4', '#fd7e14', 'bi-wrench-adjustable', download=('/trc-production/summary/l3-l4' if can_export else None), download_label='Summary') }}
-  {# PNA parts for L1/L2 + L3/L4 tags — broader than the tile's own count
-     (L1/L2 only), by design; see the router's docstring on this export. #}
+  {# PNA: L1/L2 + L3/L4 tags (2026-11-22, same as the tile and WorkID Status). #}
   {{ tl.single(tags_pna, 'Total Tags in PNA', '#dc3545', 'bi-exclamation-triangle', download=('/trc-production/pna-summary' if can_export else None), download_label='Summary') }}
   {{ tl.single(tags_stress, 'Total Tags in Stress', '#20c997', 'bi-activity', download=('/trc-production/summary/stress' if can_export else None), download_label='Summary') }}
   {{ tl.single(tags_cosmetic, 'Total Tags in Cosmetic', '#e83e8c', 'bi-palette', download=('/trc-production/summary/cosmetic' if can_export else None), download_label='Summary') }}
   {{ tl.single(tags_final_qc, 'Total Tags in Final QC', '#0F7A37', 'bi-patch-check', download=('/trc-production/summary/final-qc' if can_export else None), download_label='Summary') }}
-  {{ tl.single(tags_returned, 'Tags Returned', '#6c757d', 'bi-arrow-return-left', download=('/trc-production/summary/returned' if can_export else None), download_label='Summary') }}
+  {{ tl.single(tags_returned, 'Tags Returned', '#6c757d', 'bi-arrow-return-left', download=(('/trc-production/summary/returned?date_from=' ~ (request.query_params.get('date_from', '') | urlencode) ~ '&date_to=' ~ (request.query_params.get('date_to', '') | urlencode)) if can_export else None), download_label='Summary') }}
 </div>
 {# Filters below the count tiles (2026-11-09, Pankaj: tiles first, then filters, on every page). #}
 {# This page has no other server-side filters, so the date range gets its own
@@ -70,7 +69,7 @@
 </ul>
 <div class="tab-content border border-top-0 rounded-bottom bg-white">
   <div class="tab-pane fade show active p-0" id="tagAllocTab">
-    {# Card header added (2026-11-08): title + Move to Stage. #}
+    {# Card header added (2026-11-08): title + Change Stage. #}
     <div class="card border-0 shadow-sm">
     {# 2026-11-09: Bulk Assign moved here from the table toolbar, before Move to
        Stage; Move to Stage is the primary button (data-hdr-keep keeps these
@@ -82,7 +81,7 @@
                 class="btn btn-sm btn-outline-primary bg-white text-nowrap" disabled><i class="bi bi-person-check me-1"></i>Bulk Assign</button>
         {% if can(current_user, 'production_manager', 'edit') %}
         <button type="button" class="btn btn-sm btn-primary text-nowrap" onclick="openChangeEngineerModal()">
-          <i class="bi bi-signpost-split me-1"></i>Move to Stage</button>
+          <i class="bi bi-signpost-split me-1"></i>Change Stage</button>
         {% endif %}
       </div>
     </div>
@@ -390,63 +389,6 @@
 
 {# Search Tags modal is included once by base.html (2026-11-08). #}
 
-{# Change Engineer — search a tag from ANY stage (same system-wide lookup as
-   Search Tags above), pick a User + target Stage (default L1), submit moves
-   the tag to that stage and creates a WorkOrder assigning it to that user —
-   see routers/stock.py's change_engineer / change_engineer_users. #}
-<div class="modal fade" id="changeEngineerModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered modal-lg">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title"><i class="bi bi-signpost-split me-2"></i>Move to Stage</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <label class="form-label fw-semibold">Search Tag Number</label>
-        <input type="text" id="ceModal_search" class="form-control font-monospace"
-               placeholder="Type at least 2 characters…" autocomplete="off">
-        <div id="ceModal_results" class="list-group mt-1" style="max-height:180px; overflow-y:auto;"></div>
-
-        <div id="ceModal_selected" class="d-none mt-3">
-          <div class="d-flex align-items-center gap-2 mb-2">
-            <span class="text-muted small">Selected Tag:</span>
-            <span class="font-monospace fw-semibold" id="ceModal_barcode">—</span>
-            <span class="text-muted small">Current Stage:</span>
-            <span class="badge bg-secondary" id="ceModal_currentStage">—</span>
-          </div>
-          <div class="small fw-semibold text-muted mb-1">Asset History <small class="text-muted">(2 most recent)</small></div>
-          <table class="table table-sm mb-3">
-            <thead class="table-light">
-              <tr><th>From</th><th>To</th><th>By</th><th>When</th></tr>
-            </thead>
-            <tbody id="ceModal_history"></tbody>
-          </table>
-          {# Move to Stage (2026-11-02): only the Stage is picked — the tag arrives
-             there unassigned and the engineer takes it with Pick This. #}
-          <div class="row g-2">
-            <div class="col-md-6">
-              <label class="form-label fw-semibold">Move to Stage</label>
-              <select id="ceModal_stage" class="form-select">
-                {% for value, label in change_engineer_stages %}
-                <option value="{{ value }}" {% if value == 'l1' %}selected{% endif %}>{{ label }}</option>
-                {% endfor %}
-              </select>
-            </div>
-            <div class="col-md-6 d-flex align-items-end">
-              <div class="small text-muted">The tag moves unassigned; the engineer of that stage picks it with <strong>Pick This</strong>. The previous engineer's WorkID closes as Reassigned.</div>
-            </div>
-          </div>
-        </div>
-        <div id="ceModal_msg" class="mt-2"></div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-        <button type="button" id="ceModal_submit" class="btn btn-primary" disabled>
-          <i class="bi bi-check-lg me-1"></i>Move</button>
-      </div>
-    </div>
-  </div>
-</div>
 </div>{# .dash-data #}
 </div>{# .dash #}
 
@@ -775,137 +717,7 @@ document.getElementById('asgDevSubmit').addEventListener('click', function(){
 // Users are listed per target stage (2026-10-23): only those who can work
 // the chosen stage. Reloaded whenever the Stage changes; a selection that is
 // still eligible is kept.
-// Move to Stage (2026-11-02): no user / role pick — the tag moves to the
-// chosen stage unassigned (routers/stock.py _move_to_stage_unassigned).
-var ceSelectedBarcode = null;
-
-function openChangeEngineerModal() {
-  ceSelectedBarcode = null;
-  document.getElementById('ceModal_search').value = '';
-  document.getElementById('ceModal_results').innerHTML = '';
-  document.getElementById('ceModal_selected').classList.add('d-none');
-  document.getElementById('ceModal_history').innerHTML = '';
-  document.getElementById('ceModal_msg').innerHTML = '';
-  document.getElementById('ceModal_submit').disabled = true;
-  new bootstrap.Modal(document.getElementById('changeEngineerModal')).show();
-  setTimeout(function(){ document.getElementById('ceModal_search').focus(); }, 300);
-}
-
-(function(){
-  var input = document.getElementById('ceModal_search');
-  var resultsBox = document.getElementById('ceModal_results');
-  var debounceTimer = null;
-  if (!input) return;
-
-  function esc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-  function doSearch() {
-    var q = input.value.trim();
-    resultsBox.innerHTML = '';
-    if (q.length < 2) return;
-    fetch('/devices/api/search-tags?q=' + encodeURIComponent(q))
-      .then(function(r){ return r.json(); })
-      .then(function(d){ renderResults(d.results || []); })
-      .catch(function(){ resultsBox.innerHTML = ''; });
-  }
-
-  function renderResults(results) {
-    if (!results.length) {
-      resultsBox.innerHTML = '<div class="list-group-item small text-muted">No matching tags.</div>';
-      return;
-    }
-    resultsBox.innerHTML = results.map(function(r){
-      return '<button type="button" class="list-group-item list-group-item-action small ce-result-item" data-barcode="' + esc(r.barcode) + '" data-stage="' + esc(r.stage) + '">' +
-        '<span class="font-monospace fw-semibold">' + esc(r.barcode) + '</span> ' +
-        '<span class="text-muted">— ' + esc(r.stage || '') + '</span></button>';
-    }).join('');
-  }
-
-  function pickResult(barcode, stage) {
-    resultsBox.innerHTML = '';
-    input.value = barcode;
-    ceSelectedBarcode = barcode;
-    document.getElementById('ceModal_barcode').textContent = barcode;
-    document.getElementById('ceModal_currentStage').textContent = stage || '—';
-    document.getElementById('ceModal_selected').classList.remove('d-none');
-    updateCeSubmitState();
-    loadCeHistory(barcode);
-  }
-
-  // Current Stage + the 2 most recent Asset History rows for the selected
-  // tag — same /devices/api/asset-history endpoint _search_tags_modal.html
-  // uses, just capped to 2 rows instead of the full recent-20 list.
-  function loadCeHistory(barcode) {
-    var tbody = document.getElementById('ceModal_history');
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-2 small">Loading…</td></tr>';
-    fetch('/devices/api/asset-history?barcode=' + encodeURIComponent(barcode))
-      .then(function(r){ return r.json(); })
-      .then(function(d){
-        if (!d.found) {
-          tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-2 small">No history found</td></tr>';
-          return;
-        }
-        if (d.current_stage) document.getElementById('ceModal_currentStage').textContent = d.current_stage;
-        var rows = (d.movements || []).slice(0, 2);
-        if (!rows.length) {
-          tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-2 small">No stage movements recorded</td></tr>';
-          return;
-        }
-        tbody.innerHTML = rows.map(function(mv){
-          return '<tr>' +
-            '<td class="small text-muted">' + esc(mv.from_stage) + '</td>' +
-            '<td class="small fw-semibold">' + esc(mv.to_stage) + '</td>' +
-            '<td class="small">' + esc(mv.moved_by) + '</td>' +
-            '<td class="small text-muted">' + esc(mv.moved_at) + '</td>' +
-          '</tr>';
-        }).join('');
-      })
-      .catch(function(){
-        tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger py-2 small">Failed to load history</td></tr>';
-      });
-  }
-
-  resultsBox.addEventListener('click', function(e){
-    var btn = e.target.closest('.ce-result-item');
-    if (!btn) return;
-    pickResult(btn.dataset.barcode, btn.dataset.stage);
-  });
-  input.addEventListener('input', function(){ clearTimeout(debounceTimer); debounceTimer = setTimeout(doSearch, 300); });
-  input.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); doSearch(); } });
-})();
-
-function updateCeSubmitState() {
-  document.getElementById('ceModal_submit').disabled = !ceSelectedBarcode;
-}
-
-document.getElementById('ceModal_submit').addEventListener('click', function(){
-  if (!ceSelectedBarcode) return;
-  var stage = document.getElementById('ceModal_stage').value;
-  var btn = this;
-  var msg = document.getElementById('ceModal_msg');
-  msg.innerHTML = '';
-  btn.disabled = true;
-  var fd = new FormData();
-  fd.append('csrf_token', getCsrf());
-  fd.append('barcode', ceSelectedBarcode);
-  fd.append('target_stage', stage);
-  fetch('/devices/change-engineer', {method:'POST', body:fd}).then(function(r){
-    if (!r.ok) return r.text().then(function(t){
-      var m; try { m = JSON.parse(t); } catch (e) {}
-      throw new Error((m && (m.error || m.detail)) || ('Could not assign (HTTP ' + r.status + ')'));
-    });
-    return r.json();
-  }).then(function(d){
-    if (d.ok) {
-      bootstrap.Modal.getInstance(document.getElementById('changeEngineerModal')).hide();
-      alert('Moved ' + ceSelectedBarcode + ' to ' + (d.stage || 'the stage') + ' — unassigned, ready for Pick This' + (d.work_id ? ' (WorkID: ' + d.work_id + ')' : '') + '.');
-      window.location.reload();
-    }
-  }).catch(function(e){
-    msg.innerHTML = '<div class="alert alert-danger py-2 px-3 small mb-0">' + (e.message || 'Failed to assign').slice(0, 200) + '</div>';
-    btn.disabled = false;
-  });
-});
+// Change Stage modal: shared, templates/_change_stage_modal.html (base.html includes it).
 
 // Bootstrap tooltips (Location hover — Batch D Task 1)
 document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el){ new bootstrap.Tooltip(el); });

@@ -352,6 +352,7 @@ async def create_quote(
     valid_until:        str = Form(default=None),
     payment_terms:      str = Form(default=None),
     special_conditions: str = Form(default=None),
+    notes: str = Form(default=None),
     from_entity:        str = Form(default=""),
     # line items sent as repeating fields
     device_type:        list = Form(default=[]),
@@ -389,6 +390,7 @@ async def create_quote(
         valid_until=_d(valid_until),
         payment_terms=payment_terms or None,
         special_conditions=special_conditions or None,
+        notes=(notes or "").strip() or None,
         status="added",
         created_by=current_user.username,
     )
@@ -692,6 +694,7 @@ async def update_quote(
     valid_until:        str = Form(default=None),
     payment_terms:      str = Form(default=None),
     special_conditions: str = Form(default=None),
+    notes: str = Form(default=None),
     from_entity:        str = Form(default=""),
     device_type:        list = Form(default=[]),
     grade:              list = Form(default=[]),
@@ -761,6 +764,8 @@ async def update_quote(
     quote.valid_until = _d(valid_until)
     quote.payment_terms = (payment_terms or "").strip() or None
     quote.special_conditions = (special_conditions or "").strip() or None
+    if notes is not None:
+        quote.notes = notes.strip() or None
 
     # audit first (old items are in old_value), then replace the line items
     grand_total = round(sum(q * u for _m, _g, _c, q, u in lines), 2)

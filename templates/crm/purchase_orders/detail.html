@@ -3,6 +3,8 @@
 {% block page_title %}Purchase Order: {{ po.po_number }}{% endblock %}
 {# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ po.po_number }}{% endblock %}{% block record_parent %}/crm/purchase-orders{% endblock %}{% block record_parent_label %}Purchase Orders{% endblock %}
 {% block content %}
+{# Notes History (2026-11-23, Pankaj): every note on this record, never overwritten. #}
+<div class="d-flex justify-content-end mb-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-notes-history data-record-type="purchase_order" data-record-id="{{ po.id }}" data-title="{{ po.po_number or '' }}"><i class="bi bi-journal-text me-1"></i>Notes History</button></div>
 {# Purchase Order detail (2026-11-10, Pankaj): same layout as Quotation Detail —
    header card (number, status, Accounts verification, Print / Issue, back to
    the Supplier Deal), supplier on the left, dates / amounts on the right;
@@ -99,4 +101,5 @@
 
 {# History card (2026-11-09, Pankaj) #}
 {% include "_history_card.html" %}
+{% include "_notes_history_modal.html" %}
 {% endblock %}

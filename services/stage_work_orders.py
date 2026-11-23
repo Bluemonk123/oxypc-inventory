@@ -88,6 +88,15 @@ def _complete(wo, at):
     wo.completed_at = at
 
 
+def _reassign(wo, at):
+    """Taken off its engineer before they finished (2026-11-22, Pankaj):
+    "reassigned", not "completed" — so a Pick This take-over is no Pass /
+    Completed for the first engineer (WorkID Status counts it nowhere; the
+    Team Productivity export lists it as Reassigned)."""
+    wo.status = "reassigned"
+    wo.completed_at = at
+
+
 async def open_for_stage(db: AsyncSession, device, stage, *, assignee=None, created_by=None,
                          at=None, requested_by_name=None, source_transfer_id=None):
     """The tag has arrived at `stage` (or is being handed to `assignee` there):
@@ -98,7 +107,8 @@ async def open_for_stage(db: AsyncSession, device, stage, *, assignee=None, crea
         assigned_at = now, when one is given);
       - an open WorkID held by `assignee` already: reuse it unchanged;
       - an open WorkID held by someone else and a new `assignee`: that one
-        closes as completed and a new WorkID opens for `assignee`;
+        closes as reassigned (2026-11-22; was completed) and a new WorkID
+        opens for `assignee`;
       - none open: a new pending WorkID (Movement Date = now)."""
     stage = pick_stage_of(stage)
     if stage is None:
@@ -119,7 +129,7 @@ async def open_for_stage(db: AsyncSession, device, stage, *, assignee=None, crea
         if cur.assigned_user_id == assignee.id or (
                 cur.assigned_user_id is None and cur.assigned_username == assignee.username):
             return cur
-        _complete(cur, at)
+        _reassign(cur, at)
     code, prefix, _c, _p, role = _SPEC[stage]
     wo = WorkOrder(
         work_id=await _new_work_id(db, prefix), device_id=device.id, barcode=device.barcode,
@@ -139,7 +149,7 @@ async def open_for_stage(db: AsyncSession, device, stage, *, assignee=None, crea
 async def pick(db: AsyncSession, device, stage, user, at=None, requested_by_name=None):
     """Pick This: `user` takes the tag at `stage`. Returns (work_order,
     previous) — previous = [(work_id, user_id, name)] of WorkIDs taken from
-    someone else (closed as completed), empty when the pending WorkID was
+    someone else (closed as reassigned), empty when the pending WorkID was
     simply claimed. (None, []) when the tag is already this user's."""
     stage = pick_stage_of(stage)
     at = at or app_now()

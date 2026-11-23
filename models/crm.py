@@ -487,6 +487,7 @@ class CRMQuote(Base):
     valid_until     = Column(Date,        nullable=True)
     payment_terms   = Column(String(200), nullable=True)
     special_conditions = Column(Text,     nullable=True)
+    notes           = Column(Text, nullable=True)        # Notes (2026-11-23, Pankaj — approved)
     total_amount    = Column(Numeric(14, 2), default=0)
     status          = Column(String(20),  default="draft")  # draft/sent/negotiating/accepted/rejected/expired
     sent_at         = Column(DateTime,    nullable=True)
@@ -743,6 +744,7 @@ class CRMSalesOrder(Base):
     contact_id    = Column(UUID(as_uuid=True), ForeignKey("crm_contacts.id"), nullable=True, index=True)
     so_date       = Column(Date, default=app_now)
     payment_terms = Column(String(200), nullable=True)
+    notes         = Column(Text, nullable=True)          # Notes (2026-11-23, Pankaj — approved)
     total_amount  = Column(Numeric(14, 2), default=0)
     status        = Column(String(20), nullable=False, default="open", server_default="open")  # open / cancelled
     verified      = Column(Boolean, nullable=False, default=False, server_default="false")

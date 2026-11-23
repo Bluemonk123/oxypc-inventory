@@ -350,6 +350,10 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/rts-asgn-reopen'): None,  # rts_asgn_reopen_apply: system health internals (admin-only), 2026-10-28
     ('POST', '/admin/system/storage-type-fix'): None,  # storage_type_fix_apply: system health data fix (admin-only), 2026-10-29
     ('POST', '/admin/system/part-name-fix'): None,  # part_name_fix: system health data fix (admin-only) — Part Name to the Parts Consumption names, 2026-10-31
+    ('POST', '/admin/system/pna-stale-clear'): None,  # pna_stale_clear: system health data fix (admin-only) — old PNA marks, 2026-11-22
+    ('POST', '/admin/system/iqc-history-rebuild'): None,  # iqc_history_rebuild: system health data fix (admin-only) — old IQC history, 2026-11-22
+    ('POST', '/admin/system/notes-history-backfill'): None,  # notes_history_backfill: system health data fix (admin-only) — 2026-11-23
+    ('GET', '/notes-history/export'): None,  # notes_history_export: admin-only page export (require_roles admin) — 2026-11-23
     ('POST', '/admin/system/model-name-fix'): None,  # model_name_fix: system health data fix (admin-only) — Product Model Name one spelling per model, 2026-11-05
     ('POST', '/admin/system/make-name-fix'): None,  # make_name_fix: admin-only Data Fixes — Make one spelling per make, 2026-11-17
     ('GET', '/admin/system/make-name-fix/export'): None,  # make_name_export: admin-only Data Fixes download (tags of one Make spelling), 2026-11-17
@@ -629,6 +633,7 @@ ROUTE_ACTIONS = {
     ('POST', '/dealer-quotations/{quotation_id}/status'): (('dealers', 'quotations'), 'edit'),  # set_dealer_quotation_status (2026-11-10, replaces /confirm): Negotiation / Expired from the shared quotation table
     ('POST', '/dealer-quotations/{quotation_id}/decision'): None,  # decide_dealer_quotation: Level 1 Approve / Reject on TeleSales Dashboard - gated in code by the creator's Report To hierarchy (or admin), not the matrix
     ('GET', '/dealer-quotations/{quotation_id}/print'): (('dealers', 'quotations'), 'export'),
+    ('POST', '/crm/sales-orders/{so_id}/notes'): ('crm_sales_opp', 'edit'),  # sales_order_notes (2026-11-23): Sales Order Notes, Customer Deals edit
     ('GET', '/crm/sales-orders/{so_id}/print'): ('crm_sales_opp', 'export'),  # print_sales_order (2026-11-10): Download column on Sales Orders (no own module key - Customer Deals export)  # print_dealer_quotation: Download "Quote" of an approved quotation
     ('POST', '/dealer-quotations/{quotation_id}/delete'): (('dealers', 'quotations'), 'delete'),  # delete_dealer_quotation: same as confirm
     # ===== routers/sidebar_config.py =====
@@ -697,6 +702,7 @@ ROUTE_ACTIONS = {
     ('GET', '/trade-partner/manage-lots/asset-iqc-sample'): ('trade_partner_manage_lots', 'export'),  # Asset IQC upload sample (.xlsx)
     ('POST', '/trade-partner/manage-lots/move-ready-for-sale'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_move_ready_for_sale
     ('POST', '/trade-partner/manage-lots/set-price'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_set_price: test lot Base Price (also needs Pricing Add, checked inside) 2026-11-16
+    ('POST', '/trade-partner/manage-lots/set-category'): ('trade_partner_manage_lots', 'upload'),  # manage_lots_set_category: Device Category asked after an Asset IQC upload, 2026-11-23
     ('POST', '/trade-partner/manage-lots/edit-device'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_edit_device
     ('POST', '/trade-partner/manage-lots/assign-visibility'): ('trade_partner_manage_lots', 'edit'),  # assign_lot_visibility_bulk
     ('POST', '/trade-partner/manage-lots/set-restricted'): ('trade_partner_manage_lots', 'edit'),  # set_lots_restricted

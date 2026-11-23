@@ -43,7 +43,7 @@
         <tr>
           <th>Return Date</th><th>Tag Number</th><th>Serial Number</th><th>Device</th><th>Sale No.</th>
           <th>Sale Price</th><th>Paid Repair</th><th>Reason</th><th>Condition</th>
-          <th>Status</th><th>Processed By</th><th>Receipt</th>
+          <th>Type</th><th>Processed By</th><th>Receipt</th>
         </tr>
       </thead>
       <tbody>
@@ -82,13 +82,12 @@
             {% else %}—{% endif %}
           </td>
           <td>
-            {% set status = ret.approval_status or 'pending' %}
-            {% if status == 'approved' %}
-            <span class="badge bg-success">Approved</span>
-            {% elif status == 'rejected' %}
+            {#- Type (2026-11-21, was approval Status): returns are approved when
+                logged, so only old rejected rows show anything other than Return. -#}
+            {% if ret.approval_status == 'rejected' %}
             <span class="badge bg-danger" title="{{ ret.rejection_reason or '' }}">Rejected</span>
             {% else %}
-            <span class="badge bg-warning text-dark">Pending</span>
+            <span class="badge bg-warning text-dark">Return</span>
             {% endif %}
           </td>
           <td class="text-muted">{{ ret.processed_by }}</td>

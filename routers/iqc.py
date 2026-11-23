@@ -1059,7 +1059,12 @@ async def iqc_bulk_apply_grade_type(
     new_stage = None
     skipped_moves = []
     sold_sales = []   # sale numbers created by an admin "Move to Sold"
-    if to_stage:
+    # "Pre-Sale QC" (2026-11-22, Pankaj): not a DeviceStage — each tag goes to
+    # Ready for Sale + Showroom and is queued for Pre-Sale QC, the same as
+    # every other way in (routers/pre_sale_iqc.queue_for_pre_sale).
+    to_pre_sale = to_stage == "pre_sale_iqc"
+    pre_sale_queued = 0
+    if to_stage and not to_pre_sale:
         try:
             new_stage = DeviceStage(to_stage)
         except ValueError:
@@ -1214,6 +1219,10 @@ async def iqc_bulk_apply_grade_type(
             device.total_hdd_size = total_hdd_size.strip()
         if hdd_summary.strip():
             device.hdd_summary = hdd_summary.strip()
+        if to_pre_sale:
+            from routers.pre_sale_iqc import queue_for_pre_sale
+            q, _ch = await queue_for_pre_sale(db, device, current_user, "Bulk Customise")
+            pre_sale_queued += 1 if q else 0
         if new_stage is not None:
             if new_stage == DeviceStage.sold and device.current_stage == DeviceStage.sold:
                 continue   # already Sold — never a second sale for the same tag
@@ -1278,6 +1287,8 @@ async def iqc_bulk_apply_grade_type(
                 request=request)
     await db.commit()
     msg = f"{len(devices)}+device(s)+updated"
+    if to_pre_sale:
+        msg += f"+-+{pre_sale_queued}+queued+for+Pre-Sale+QC+(Ready+for+Sale,+Showroom)"
     if sold_sales:
         msg += f"+-+{len(sold_sales)}+sale(s)+created+({sold_sales[0]}"
         msg += (f"+to+{sold_sales[-1]})" if len(sold_sales) > 1 else ")")

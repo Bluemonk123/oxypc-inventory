@@ -18,6 +18,8 @@ from .engines import RepairAttempt, DeviceCosting, SparePartsLedger, DeviceAging
 from .location import StorageLocation, DeviceLocationLog, InventoryAudit, AuditScanItem
 # Previously missing from __init__ — Alembic needs ALL models imported to manage their tables
 from .iqc_inspection import IQCInspection
+from .iqc_snapshot import IQCSnapshot  # NEW / SOLD IQC copies (2026-11-22)
+from .notes_history import NotesHistory  # every note, kept as history (2026-11-23)
 from .stock_transfer import StockTransfer
 from .work_order import WorkOrder
 from .part_request import PartRequest, PartSourcingRequest

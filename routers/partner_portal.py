@@ -69,6 +69,23 @@ def _login_page(request: Request, error: str = None, **extra):
     return resp
 
 
+
+async def partner_lot_labels(db, lot_ids) -> dict:
+    """{lot_id: what the partner sees} (2026-11-23, Pankaj): the lot's Sub-lot
+    Number (set with Manage Lots → Set Price, kept on its tags), never the
+    real lot number; a lot with no Sub-lot yet shows the lot number as before."""
+    ids = [i for i in set(lot_ids) if i]
+    if not ids:
+        return {}
+    out = {lid: ln for lid, ln in (await db.execute(select(Lot.id, Lot.lot_number).where(Lot.id.in_(ids)))).all()}
+    for lid, sub, _n in (await db.execute(
+            select(Device.lot_id, Device.sub_lot_number, func.count(Device.id))
+            .where(Device.lot_id.in_(ids), Device.sub_lot_number.isnot(None), Device.sub_lot_number != "")
+            .group_by(Device.lot_id, Device.sub_lot_number)
+            .order_by(func.count(Device.id)))).all():
+        out[lid] = sub              # most-used Sub-lot wins (ordered by count)
+    return out
+
 @router.get("/login", response_class=HTMLResponse)
 async def login_page(request: Request):
     return _login_page(request)
@@ -336,15 +353,14 @@ async def catalog(
         select(LotDealerVisibility.lot_id)
         .where(LotDealerVisibility.dealer_id == dealer.id)
     )).all()}
-    vis_rows = [
-        l for l in (await db.execute(
-            select(Lot).order_by(Lot.purchase_date.desc())
-        )).scalars().all()
-        if not getattr(l, "is_restricted", False) or l.id in granted_ids
-        # Manage Lots test lots (EPT-) are open to every partner (2026-11-16,
-        # Pankaj) — older ones were saved Restricted.
-        or (l.lot_number or "").upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper())
-    ]
+    # 2026-11-23 (Pankaj): the catalog shows ONLY the lots uploaded on Manage
+    # Lots (EPT-), and only once they have a Sub-lot Number — partners see the
+    # lot by that Sub-lot, never the real lot number. Other lots stay off.
+    _ept = (await db.execute(
+        select(Lot).where(Lot.lot_number.ilike(EXTERNAL_PARTNER_TEST_LOT_PREFIX + "%"))
+        .order_by(Lot.purchase_date.desc()))).scalars().all()
+    _lab = await partner_lot_labels(db, [l.id for l in _ept])
+    vis_rows = [l for l in _ept if _lab.get(l.id) and _lab[l.id] != l.lot_number]   # has a Sub-lot
     # A lot reaches the partner catalog only once EVERY one of its tags is at
     # Ready to Sale. A lot still part-way through refurbishment cannot be sold
     # as a lot, so showing it invites bids on stock that is not there yet.
@@ -392,10 +408,11 @@ async def catalog(
             if t:
                 d = types_by_lot.setdefault(str(lid_), {})
                 d[t] = d.get(t, 0) + n
+        _labels = await partner_lot_labels(db, lot_ids)
         for lot in vis_rows:
             lid = str(lot.id)
             visible_lots.append({
-                "id": lid, "lot_number": lot.lot_number,
+                "id": lid, "lot_number": _labels.get(lot.id, lot.lot_number),
                 "purchase_date": lot.purchase_date,
                 "categories": sorted(types_by_lot.get(lid, {}).items(), key=lambda kv: (-kv[1], kv[0])),
                 "available_quantity": avail_map.get(lid, 0),
@@ -422,7 +439,7 @@ async def catalog(
     # table scrolls in both directions to carry the width and the depth.
     lot_stock = []
     if vis_rows:
-        lot_no = {l.id: l.lot_number for l in vis_rows}
+        lot_no = await partner_lot_labels(db, [l.id for l in vis_rows])   # Sub-lot, not the real lot no.
         srows = (await db.execute(
             select(Device, IQCInspection)
             .join(IQCInspection, IQCInspection.device_id == Device.id, isouter=True)
@@ -818,8 +835,10 @@ async def _visible_lot_or_none(db: AsyncSession, lot_id: str, dealer_id):
         return None
     if not lot:
         return None
-    if not getattr(lot, "is_restricted", False):
-        return lot
+    # Only Manage Lots lots (EPT-) are open to partners (2026-11-23, Pankaj).
+    if not (lot.lot_number or "").upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper()):
+        return None
+    return lot
     granted = (await db.execute(select(LotDealerVisibility).where(
         LotDealerVisibility.lot_id == lot.id,
         LotDealerVisibility.dealer_id == dealer_id,
@@ -882,7 +901,7 @@ async def lot_model_summary(
     } for r in rows]
 
     return JSONResponse({
-        "lot_number": lot.lot_number,
+        "lot_number": (await partner_lot_labels(db, [lot.id])).get(lot.id, lot.lot_number),
         "total": sum(m["qty"] for m in models),
         "models": models,
     })
@@ -917,7 +936,7 @@ async def place_lot_bid(
     if existing:
         await db.rollback()
         return RedirectResponse(
-            url=f"{back}?error=You+have+already+bid+on+{quote_plus(lot.lot_number)}"
+            url=f"{back}?error=You+have+already+bid+on+{quote_plus((await partner_lot_labels(db, [lot.id])).get(lot.id, lot.lot_number))}"
                 f"+({quote_plus(existing.bid_number)}).+Only+one+bid+per+lot+is+allowed",
             status_code=302)
 
@@ -955,7 +974,7 @@ async def place_lot_bid(
                            "dealer": dealer.business_name},
                 notes=f"dealer:{dealer.business_name}", request=request)
     await db.commit()
-    return RedirectResponse(url=f"{back}?success=Bid+placed+on+{lot.lot_number}",
+    return RedirectResponse(url=f"{back}?success=Bid+placed+on+{quote_plus((await partner_lot_labels(db, [lot.id])).get(lot.id, lot.lot_number))}",
                             status_code=302)
 
 
@@ -981,7 +1000,7 @@ async def request_lot_custom_price(
     existing = await _existing_lot_bid(db, lot.id, dealer.id)
     if existing:
         return RedirectResponse(
-            url=f"{back}?error=You+have+already+bid+on+{quote_plus(lot.lot_number)}"
+            url=f"{back}?error=You+have+already+bid+on+{quote_plus((await partner_lot_labels(db, [lot.id])).get(lot.id, lot.lot_number))}"
                 f"+({quote_plus(existing.bid_number)}).+Only+one+bid+per+lot+is+allowed",
             status_code=302)
 
@@ -1127,6 +1146,7 @@ async def my_bookings(
     for lb in lot_bookings:
         if str(lb.lot_id) not in lots_by_id:
             lots_by_id[str(lb.lot_id)] = await db.get(Lot, lb.lot_id)
+    lot_labels = {str(k): v for k, v in (await partner_lot_labels(db, [lb.lot_id for lb in lot_bookings])).items()}
 
     # Quotation / Sales Order of an approved booking's Customer Deal (2026-11-16)
     from services.partner_deals import deal_docs
@@ -1139,7 +1159,7 @@ async def my_bookings(
     return templates.TemplateResponse("partner/bookings.html", {
         "request": request, "dealer": dealer, "bookings": bookings,
         "listings": listings, "lot_docs": lot_docs,
-        "lot_bookings": lot_bookings, "lots_by_id": lots_by_id,
+        "lot_bookings": lot_bookings, "lots_by_id": lots_by_id, "lot_labels": lot_labels,
         "partner_csrf": request.cookies.get(PARTNER_CSRF_COOKIE, ""),
     })
 
@@ -1241,6 +1261,7 @@ async def my_bids_analysis(
     if lot_ids:
         lots = {l.id: l for l in (await db.execute(
             select(Lot).where(Lot.id.in_(lot_ids)))).scalars().all()}
+    _labels = await partner_lot_labels(db, lot_ids)
     listing_ids = {b.listing_id for b in bids if b.listing_id}
     listings = {}
     if listing_ids:
@@ -1260,7 +1281,7 @@ async def my_bids_analysis(
             "bid": b,
             # No lot link: /lots/<id> is a staff route. Dealers get the number
             # for reference only.
-            "target": (lot.lot_number if lot
+            "target": (_labels.get(lot.id, lot.lot_number) if lot
                        else (listing.title if listing else "—")),
             "base_amount": base, "diff": diff, "diff_pct": pct,
         }

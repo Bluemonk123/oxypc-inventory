@@ -54,34 +54,15 @@ asyncio.run(main())
         _login(app_client, u, p)
         import re
         html = app_client.get(f"/workid-status?tag={tag}&work_from=2026-10-27&work_to=2026-10-27").text
-        cos = html.split('data-group="cosmetic"', 1)[1].split('data-group="final_qc"', 1)[0]
-        got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">(Pass|Fail)', cos))
-        assert got == {"Pass": "1", "Fail": "0"}, got
         def lines(day):
             h = app_client.get(f"/workid-status?tag={tag}&work_from={day}&work_to={day}").text
             c = h.split('data-group="cosmetic"', 1)[1].split('data-group="final_qc"', 1)[0]
-            return dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">([^<]+)', c))
-        # Received = arrived in Cosmetic Received in the range; Pending = tags in
-        # Cosmetic right now (Cosmetic All Tags page), not by date (2026-11-03).
-        _pending_now = _run(f"""
-import asyncio, sys
-sys.path.insert(0, r"{ROOT}")
-from sqlalchemy import select, func
-from database import AsyncSessionLocal
-from models.device import Device
-from models.lot import Lot
-from routers.cosmetic import COSMETIC_NAV_STAGES
-async def main():
-    async with AsyncSessionLocal() as db:
-        print((await db.execute(select(func.count(Device.id)).join(Lot, Device.lot_id == Lot.id)
-                                .where(Device.current_stage.in_(COSMETIC_NAV_STAGES)))).scalar())
-asyncio.run(main())
-""")
-        d25 = lines("2026-10-25")
-        assert d25["Received"] == "1" and d25["Pending"] == _pending_now, d25
-        assert lines("2026-10-26")["Received"] == "0"
-        d27 = lines("2026-10-27")
-        assert d27["Received"] == "0" and d27["Pending"] == _pending_now and d27["Pass"] == "1", d27
+            return dict((k, int(v)) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">([^<]+)', c))
+        # 2026-11-22: tags sitting in Cosmetic on the date — Pending = any
+        # Cosmetic stage, Started = Cleaning..Water Sanding; Pass = moved out of Water Sanding in the range.
+        assert lines("2026-10-25") == {"Pending": 1, "Started": 0, "Pass": 0, "Fail": 0}
+        assert lines("2026-10-26") == {"Pending": 1, "Started": 0, "Pass": 1, "Fail": 0}     # out of Water Sanding that day
+        assert lines("2026-10-27") == {"Pending": 0, "Started": 0, "Pass": 0, "Fail": 0}     # moved on to Final QC
         from tests.workid_helpers import export_sheet
         x = app_client.get("/workid-status/export?engineer=ccr_eng&work_from=2026-10-27&work_to=2026-10-27")
         rows = export_sheet(x.content)

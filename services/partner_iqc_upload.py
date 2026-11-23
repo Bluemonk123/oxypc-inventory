@@ -296,7 +296,7 @@ async def import_rows(db, rows: list[dict], user) -> dict:
                 lot.qty = counts[lid]
     grns = sorted({g.grn_number for g in grn_cache.values() if g is not None})
     return {"inserted": inserted, "created_lots": created_lots, "skipped": skipped, "errors": errors,
-            "grns": grns, "unmatched": unmatched}
+            "grns": grns, "unmatched": unmatched, "new_barcodes": [d.barcode for d in new_devs]}
 
 
 # Human-readable "Saved as" for the Column mapping table on the Asset IQC tab.

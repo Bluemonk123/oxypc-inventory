@@ -69,8 +69,11 @@ asyncio.run(main())
         # Completed counts only what was completed on the day
         assert rows[done]["st"] == "completed" and rows[late]["st"] == "in_progress"
         import re
-        m = re.search(r'oxt-count"[^>]*>([\d,]+)</div>\s*<div class="oxt-label"[^>]*>Completed Tags', html)
-        assert m and m.group(1) == "1"
+        # L1/L2 card counts a tag once per day, its latest WorkID that day
+        # (2026-11-21): {tag}'s done + PNA WorkIDs -> one tag, latest = pending.
+        l12 = html.split('data-group="l1l2"', 1)[1].split('data-group="l3l4"', 1)[0]
+        got = dict((k, int(v)) for k, v in re.findall(r'data-k="(moved|pending|started|completed)" data-server="(\d+)"', l12))
+        assert got == {"moved": 1, "pending": 1, "started": 1, "completed": 0}, got   # PNA WorkID: engineer, started that day
         assert 'name="completed_from"' not in html          # old date range hidden
         assert rows[pna]["s"] == "L1/L2 Repair"          # open: its own stage, not "Stress Test"
         allrows = rows_by_workid(app_client.get(f"/workid-status?tag={tag}&show_reassigned=1").text)
@@ -135,12 +138,13 @@ asyncio.run(main())
         import re
         got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">(Pass|Fail)', stress))
         assert got == {"Pass": "1", "Fail": "1"}, got
-        fqc = html.split('data-group="final_qc"', 1)[1].split('data-group="pre_sale_iqc"', 1)[0]
+        fqc = html.split('data-group="final_qc"', 1)[1].split('data-group="returned"', 1)[0]
         got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">(Pass|Fail)', fqc))
         assert got == {"Pass": "1", "Fail": "1"}, got
         cos = html.split('data-group="cosmetic"', 1)[1].split('data-group="final_qc"', 1)[0]
         got = dict((k, v) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">(Pass|Fail)', cos))
-        assert got == {"Pass": "1", "Fail": "1"}, got          # Paint Fail (Water Sanding -> Painting) not counted
+        assert got["Fail"] == "1", got          # Paint Fail (Water Sanding -> Painting) not counted
+        # (Cosmetic Pass = tags at Cosmetic Completed on the date, whole factory — 2026-11-22)
         assert 'name="workid"' not in html and 'name="tag"' not in html      # search boxes hidden
         from tests.workid_helpers import export_sheet
         x = app_client.get("/workid-status/export?engineer=sp_eng&work_from=2026-10-27&work_to=2026-10-27")

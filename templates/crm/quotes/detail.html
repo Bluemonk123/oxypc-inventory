@@ -3,6 +3,8 @@
 {% block page_title %}Quote {{ quote.quote_number }}{% endblock %}
 {# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ quote.quote_number }}{% endblock %}{% block record_parent %}/crm/quotes{% endblock %}{% block record_parent_label %}Quotes{% endblock %}
 {% block content %}
+{# Notes History (2026-11-23, Pankaj): every note on this record, never overwritten. #}
+<div class="d-flex justify-content-end mb-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-notes-history data-record-type="quotation" data-record-id="{{ quote.id }}" data-title="{{ quote.quote_number or '' }}"><i class="bi bi-journal-text me-1"></i>Notes History</button></div>
 
 {% set status_colors = QUOTE_STATUS_COLORS %}
 
@@ -158,6 +160,14 @@
   </div>
 </div>
 
+<!-- Notes (2026-11-23) -->
+{% if quote.notes %}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-journal-text me-1 text-muted"></i>Notes</div>
+  <div class="card-body"><p class="mb-0 small" style="white-space:pre-wrap">{{ quote.notes }}</p></div>
+</div>
+{% endif %}
+
 <!-- Special Conditions -->
 {% if quote.special_conditions %}
 <div class="card border-0 shadow-sm mb-3">
@@ -242,4 +252,5 @@ OxyPC Team</textarea>
 
 {# History card (2026-11-09, Pankaj) #}
 {% include "_history_card.html" %}
+{% include "_notes_history_modal.html" %}
 {% endblock %}

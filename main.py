@@ -189,6 +189,9 @@ from routers.master import router as master_router
 import models.role_permissions  # ensures tables are in Base.metadata for db_validator
 import models.ticket  # ensures tickets table is created on startup
 import services.repair_location  # noqa: F401  repair stages -> TRC Floor location (2026-10-31)
+import services.pna_autoclear  # noqa: F401  PNA clears once the repair is past (2026-11-22)
+import services.iqc_snapshot  # noqa: F401  NEW / SOLD IQC copies (2026-11-22)
+import services.notes_history  # noqa: F401  every note kept as history (2026-11-23)
 import services.email_notify as _email_notify   # every notification also emailed (2026-11-09)
 _email_notify.install()
 from routers.bulk_upload import router as bulk_upload_router
@@ -322,6 +325,8 @@ app.include_router(pre_sale_iqc_router)
 app.include_router(sales_coordinator_router)   # Sales Coordinator (2026-11-14)
 app.include_router(model_cards_router)   # Model cards (2026-11-18)
 app.include_router(system_health_router)   # /admin/system/health (2026-10-22)
+from routers.notes_history import router as notes_history_router
+app.include_router(notes_history_router)   # /notes-history (2026-11-23)
 app.include_router(extended_warranty_router)
 app.include_router(parts_grn_router)
 app.include_router(stage_control_router)

@@ -1,0 +1,53 @@
+{# Notes History window (2026-11-23, Pankaj) — shared. Put a button with
+   data-notes-history and either data-barcode="<tag>" or
+   data-record-type="dealer" data-record-id="<id>"; it opens this window
+   with that record's every note (/notes-history/api), newest first. #}
+<div class="modal fade" id="notesHistoryModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-journal-text me-2"></i>Notes History <span id="nhTitle" class="font-monospace small text-muted"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="search" id="nhSearch" class="form-control form-control-sm mb-2" placeholder="Filter these notes…" style="max-width:320px">
+        <div id="nhBody" class="table-responsive"><div class="text-muted small">Loading…</div></div>
+      </div>
+      <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button></div>
+    </div>
+  </div>
+</div>
+<script>
+(function () {
+  if (window._nhBound) return; window._nhBound = true;
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  var rows = [];
+  function draw() {
+    var q = (document.getElementById('nhSearch').value || '').toLowerCase();
+    var list = rows.filter(function (r) { return !q || (r.note + ' ' + r.note_type + ' ' + r.by + ' ' + r.category + ' ' + r.stage).toLowerCase().indexOf(q) >= 0; });
+    document.getElementById('nhBody').innerHTML = list.length ?
+      '<table class="table table-sm table-bordered align-middle mb-0" style="font-size:.82rem"><thead class="table-light"><tr>' +
+      '<th>Written At</th><th>Note Type</th><th style="min-width:260px">Note</th><th>Category</th><th>Stage</th><th>Written By</th></tr></thead><tbody>' +
+      list.map(function (r) {
+        return '<tr><td class="text-nowrap">' + esc(r.at) + (r.backfilled ? ' <span class="badge bg-secondary-subtle text-dark border" title="Copied from the note saved before Notes History existed">existing</span>' : '') +
+          '</td><td>' + esc(r.note_type) + '</td><td style="white-space:pre-wrap">' + esc(r.note) + '</td><td>' + esc(r.category || '—') +
+          '</td><td>' + esc(r.stage || '—') + '</td><td>' + esc(r.by || '—') + '</td></tr>';
+      }).join('') + '</tbody></table>' : '<div class="text-muted small">No notes yet.</div>';
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-notes-history]');
+    if (!b) return;
+    e.preventDefault();
+    var qs = b.dataset.barcode ? 'barcode=' + encodeURIComponent(b.dataset.barcode)
+      : 'record_type=' + encodeURIComponent(b.dataset.recordType || '') + '&record_id=' + encodeURIComponent(b.dataset.recordId || '');
+    document.getElementById('nhTitle').textContent = b.dataset.title || b.dataset.barcode || '';
+    document.getElementById('nhSearch').value = '';
+    document.getElementById('nhBody').innerHTML = '<div class="text-muted small">Loading…</div>';
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('notesHistoryModal')).show();
+    fetch('/notes-history/api?' + qs, { credentials: 'same-origin' }).then(function (r) { return r.json(); })
+      .then(function (d) { if (!d.ok) throw new Error(d.error || 'Could not load notes.'); rows = d.rows; draw(); })
+      .catch(function (err) { document.getElementById('nhBody').innerHTML = '<div class="alert alert-danger small">' + esc(err.message) + '</div>'; });
+  });
+  document.getElementById('nhSearch').addEventListener('input', draw);
+})();
+</script>

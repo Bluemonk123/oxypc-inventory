@@ -104,3 +104,21 @@ def test_exclude_admin_param_threaded_through_export_link(app_client, make_user)
     assert "exclude_admin=1" in html
     assert 'id="excludeAdminChk"' in html
     assert "checked" in html.split('id="excludeAdminChk"', 1)[1].split(">", 1)[0]
+
+
+def test_exclude_admin_ticked_by_default_and_no_show_reassigned(app_client, make_user):  # noqa: F811
+    """2026-11-22 (Pankaj): Exclude Admin is ticked when the page opens; the
+    form's hidden "0" unticks it; the Show Reassigned checkbox is gone."""
+    username, password = make_user("admin")
+    _login(app_client, username, password)
+
+    def ticked(html):
+        return "checked" in html.split('id="excludeAdminChk"', 1)[1].split(">", 1)[0]
+    fresh = app_client.get("/workid-status").text
+    assert ticked(fresh) and "exclude_admin=1" in fresh
+    assert 'name="exclude_admin" value="0"' in fresh
+    assert "showReassignedChk" not in fresh and "Show Reassigned" not in fresh
+    off = app_client.get("/workid-status?exclude_admin=0").text
+    assert not ticked(off) and "exclude_admin=&" in off
+    on = app_client.get("/workid-status?exclude_admin=0&exclude_admin=1").text   # hidden 0 + ticked box
+    assert ticked(on)

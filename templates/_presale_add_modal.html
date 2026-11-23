@@ -1,0 +1,190 @@
+{#- Add Tags to Pre-Sale QC (2026-11-22, Pankaj): one modal for the Pre-Sale QC
+    page's "Add Tag" and Sales Coordinator's "Add Tags". Any button with
+    data-presale-add opens it. Set ps_add_notes = True for the Notes box. -#}
+<!-- Add Tag (2026-11-22): tags picked here are queued for Pre-Sale QC (/pre-sale-iqc/assign) -->
+<div class="modal fade" id="psAddModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-plus-lg me-2"></i>Add Tags to Pre-Sale QC</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label fw-semibold">Scan or Search Tag Numbers</label>
+        <input type="text" id="psAdd_search" class="form-control font-monospace"
+               placeholder="Scan tags one after another, paste a list, or type 2+ characters…" autocomplete="off">
+        <div id="psAdd_results" class="list-group mt-1" style="max-height:180px; overflow-y:auto;"></div>
+        <div id="psAdd_scanmsg" class="small mt-1"></div>
+        <div id="psAdd_selected" class="d-none mt-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="small fw-semibold text-muted">Selected Tags <span class="badge bg-primary ms-1" id="psAdd_count">0</span></span>
+            <button type="button" class="btn btn-sm btn-link text-danger p-0" id="psAdd_clear">Clear all</button>
+          </div>
+          <div class="table-responsive" style="max-height:260px">
+          <table class="table table-sm mb-0">
+            <thead class="table-light">
+              <tr><th>Tag Number</th><th>Lot</th><th>Make</th><th>Model</th><th>Last Stage</th><th>Current Stage</th><th>Changed By</th><th>Changed Date</th><th></th></tr>
+            </thead>
+            <tbody id="psAdd_list"></tbody>
+          </table>
+          </div>
+          {% if ps_add_notes %}
+          <label class="form-label small fw-semibold mt-3" for="psAdd_notes">Notes</label>
+          <textarea id="psAdd_notes" class="form-control form-control-sm" rows="3" maxlength="2000"
+                    placeholder="What should Pre-Sale QC check? e.g. customer wants keyboard and battery checked"></textarea>
+          {% endif %}
+          <div class="small text-muted mt-2">Tags not in <strong>Ready for Sale</strong> are moved there and tags not in the <strong>Showroom</strong> are moved to the Showroom; they join Pre-Sale QC with no engineer, to be taken with Start. Both moves are recorded in the tag's history.</div>
+        </div>
+        <div id="psAdd_msg" class="mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="psAdd_submit" class="btn btn-primary" disabled>
+          <i class="bi bi-plus-lg me-1"></i>Add Tags (<span id="psAdd_n">0</span>)</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+// Add Tags to Pre-Sale QC (2026-11-22, Pankaj) — one modal for the Pre-Sale
+// QC page's Add Tag and Sales Coordinator's Add Tags. Same picking as the
+// Production Manager's Move to Stage modal (scan / paste adds exact tags on
+// their own, partial text lists matches), no Stage dropdown. Add Tags queues
+// them through /pre-sale-iqc/assign (which first puts each tag in Ready for
+// Sale and the Showroom); then window.onPresaleAdded(d), else a reload.
+(function () {
+  var openBtns = document.querySelectorAll('[data-presale-add]');
+  if (!openBtns.length) return;
+  var modalEl = document.getElementById('psAddModal'), input = document.getElementById('psAdd_search'),
+      resultsBox = document.getElementById('psAdd_results'), submit = document.getElementById('psAdd_submit');
+  var sel = [], info = {}, timer = null;
+  function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
+  function say(html) { document.getElementById('psAdd_scanmsg').innerHTML = html; }
+  function render() {
+    document.getElementById('psAdd_selected').classList.toggle('d-none', !sel.length);
+    document.getElementById('psAdd_count').textContent = sel.length;
+    document.getElementById('psAdd_n').textContent = sel.length;
+    submit.disabled = !sel.length;
+    document.getElementById('psAdd_list').innerHTML = sel.map(function (t, i) {
+      var w = function (v) { return esc(v || (t.loaded ? '—' : '…')); };
+      var row = '<tr' + (t.err ? ' class="table-danger"' : '') + '>' +
+        '<td class="font-monospace small fw-semibold text-nowrap">' + esc(t.barcode) + '</td>' +
+        '<td class="small">' + esc(t.lot || '—') + '</td><td class="small">' + esc(t.make || '—') + '</td>' +
+        '<td class="small">' + esc(t.model || '—') + '</td><td class="small text-muted">' + w(t.last_stage) + '</td>' +
+        '<td><span class="badge bg-secondary">' + esc(t.stage || '—') + '</span></td>' +
+        '<td class="small">' + w(t.by) + '</td><td class="small text-nowrap">' + w(t.at) + '</td>' +
+        '<td class="text-end"><button type="button" class="btn btn-sm btn-link text-danger p-0 ps-remove" data-i="' + i + '" title="Delete"><i class="bi bi-trash"></i></button></td></tr>';
+      if (t.err) row += '<tr class="table-danger"><td colspan="9" class="small text-danger py-1">' + esc(t.barcode) + ': ' + esc(t.err) + '</td></tr>';
+      return row;
+    }).join('');
+  }
+  function add(barcode, stage) {
+    var key = String(barcode).toUpperCase();
+    if (sel.some(function (t) { return t.barcode.toUpperCase() === key; })) { say('<span class="text-muted">' + esc(barcode) + ' is already in the list.</span>'); return; }
+    var x = info[barcode] || {};
+    var t = { barcode: barcode, stage: stage, lot: x.lot_number, make: x.make, model: x.model };
+    sel.unshift(t);
+    say('<span class="text-success"><i class="bi bi-check-circle me-1"></i>Added ' + esc(barcode) + '</span>');
+    render();
+    fetch('/devices/api/asset-history?barcode=' + encodeURIComponent(barcode)).then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d.current_stage) t.stage = d.current_stage;
+        var mv = (d.movements || [])[0];
+        if (mv) { t.last_stage = mv.from_stage; t.by = mv.moved_by; t.at = mv.moved_at; }
+        t.loaded = true; render();
+      }).catch(function () { t.loaded = true; render(); });
+  }
+  function lookup(q) {
+    return fetch('/devices/api/search-tags?q=' + encodeURIComponent(q)).then(function (r) { return r.json(); })
+      .then(function (d) { (d.results || []).forEach(function (x) { info[x.barcode] = x; }); return d.results || []; });
+  }
+  function exact(res, q) { q = q.toUpperCase(); return res.find(function (r) { return String(r.barcode).toUpperCase() === q; }); }
+  function addTokens(text) {
+    var toks = String(text).split(/[\s,;]+/).map(function (x) { return x.trim(); }).filter(Boolean);
+    if (!toks.length) return;
+    input.value = ''; resultsBox.innerHTML = '';
+    var missing = [], chain = Promise.resolve();
+    toks.forEach(function (tok) {
+      chain = chain.then(function () {
+        return lookup(tok).then(function (res) { var h = exact(res, tok); if (h) add(h.barcode, h.stage); else missing.push(tok); })
+          .catch(function () { missing.push(tok); });
+      });
+    });
+    chain.then(function () {
+      if (missing.length) say('<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Not found: ' + esc(missing.join(', ')) + '</span>');
+      input.focus();
+    });
+  }
+  function doSearch() {
+    var q = input.value.trim(); resultsBox.innerHTML = '';
+    if (q.length < 2) return;
+    lookup(q).then(function (res) {
+      if (input.value.trim() !== q) return;
+      var h = exact(res, q);
+      if (h && q.length >= 8) { input.value = ''; add(h.barcode, h.stage); return; }
+      resultsBox.innerHTML = res.length ? res.map(function (r) {
+        return '<button type="button" class="list-group-item list-group-item-action small ps-result" data-barcode="' + esc(r.barcode) + '" data-stage="' + esc(r.stage) + '">' +
+          '<span class="font-monospace fw-semibold">' + esc(r.barcode) + '</span> <span class="text-muted">— ' + esc(r.stage || '') + '</span></button>';
+      }).join('') : '<div class="list-group-item small text-muted">No matching tags.</div>';
+    }).catch(function () { resultsBox.innerHTML = ''; });
+  }
+  openBtns.forEach(function (openBtn) {
+    openBtn.addEventListener('click', function () {
+      sel = []; input.value = ''; resultsBox.innerHTML = ''; say(''); document.getElementById('psAdd_msg').innerHTML = '';
+      var n = document.getElementById('psAdd_notes'); if (n) n.value = '';
+      render(); bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    });
+  });
+  modalEl.addEventListener('shown.bs.modal', function () { input.focus(); });
+  resultsBox.addEventListener('click', function (e) {
+    var b = e.target.closest('.ps-result'); if (!b) return;
+    add(b.dataset.barcode, b.dataset.stage); resultsBox.innerHTML = ''; input.value = ''; input.focus();
+  });
+  input.addEventListener('input', function () { clearTimeout(timer); timer = setTimeout(doSearch, 300); });
+  input.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); addTokens(input.value); } });
+  input.addEventListener('paste', function (e) {
+    var text = (e.clipboardData || window.clipboardData).getData('text');
+    if (/[\s,;]/.test(text.trim())) { e.preventDefault(); addTokens(text); }
+  });
+  document.getElementById('psAdd_list').addEventListener('click', function (e) {
+    var b = e.target.closest('.ps-remove'); if (!b) return;
+    sel.splice(parseInt(b.dataset.i, 10), 1); render();
+  });
+  document.getElementById('psAdd_clear').addEventListener('click', function () { sel = []; render(); say(''); input.focus(); });
+  submit.addEventListener('click', function () {
+    if (!sel.length) return;
+    submit.disabled = true;
+    var m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/), tok = m ? decodeURIComponent(m[1]) : '';
+    var fd = new FormData(); fd.append('csrf_token', tok);
+    fd.append('barcodes', sel.map(function (t) { return t.barcode; }).join(','));
+    var notesEl = document.getElementById('psAdd_notes'); if (notesEl) fd.append('notes', notesEl.value.trim());
+    fetch('/pre-sale-iqc/assign', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': tok } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d.ok) throw new Error(d.error || d.detail || 'Could not add the tags.');
+        var why = {};
+        (d.not_ready_tags || []).forEach(function (b) { why[b] = ((d.not_ready_reasons || {})[b] || 'Not allowed') + ' — it can\'t go to Pre-Sale QC'; });
+        (d.not_found_tags || []).forEach(function (b) { why[b] = 'Tag not found'; });
+        (d.already_tags || []).forEach(function (b) { why[b] = 'Already in Pre-Sale QC'; });
+        if (window.showTopToast && d.assigned) {
+          var extra = [];
+          if ((d.moved_tags || []).length) extra.push(d.moved_tags.length + ' moved to Ready for Sale');
+          if ((d.relocated_tags || []).length) extra.push(d.relocated_tags.length + ' moved to the Showroom');
+          window.showTopToast('success', d.assigned + ' tag(s) added to Pre-Sale QC' + (extra.length ? ' (' + extra.join(', ') + ')' : '') + '.');
+        }
+        var done = function () { if (window.onPresaleAdded) window.onPresaleAdded(d); else setTimeout(function () { location.reload(); }, 600); };
+        sel = sel.filter(function (t) { if (why[t.barcode]) { t.err = why[t.barcode]; return true; } return false; });
+        if (!sel.length) { bootstrap.Modal.getOrCreateInstance(modalEl).hide(); if (d.assigned) done(); return; }
+        if (d.assigned) modalEl.addEventListener('hidden.bs.modal', done, { once: true });
+        render();
+        document.getElementById('psAdd_msg').innerHTML = '<div class="alert alert-' + (d.assigned ? 'warning' : 'danger') + ' py-2 px-3 small mb-0">' +
+          (d.assigned ? 'Added ' + d.assigned + ' tag(s). ' : '') + sel.length + ' could not be added — see the list.</div>';
+      })
+      .catch(function (e) {
+        document.getElementById('psAdd_msg').innerHTML = '<div class="alert alert-danger py-2 px-3 small mb-0">' + esc(e.message || 'Could not add the tags.') + '</div>';
+        submit.disabled = false;
+      });
+  });
+})();
+
+</script>

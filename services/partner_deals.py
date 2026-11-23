@@ -115,6 +115,12 @@ async def _quote_from_lines(db, *, opp, lines, user, status="added"):
     return q
 
 
+async def _partner_label(db, lot):
+    """What the partner sees for a lot: its Sub-lot Number when set (2026-11-23)."""
+    from routers.partner_portal import partner_lot_labels
+    return (await partner_lot_labels(db, [lot.id])).get(lot.id, lot.lot_number)
+
+
 async def _lines_for(db, lot, listing, *, qty=None, total=None, unit=None):
     from services.quote_lines import lot_lines
     if lot is not None:
@@ -125,7 +131,8 @@ async def _lines_for(db, lot, listing, *, qty=None, total=None, unit=None):
     q = int(qty or (listing.qty_available if listing else (lot.qty if lot else 1)) or 1)
     t = _money(total) if total is not None else _money(Decimal(str(unit or 0)) * q)
     return [{"device_category": None, "make": listing.brand if listing else None,
-             "model_name": (listing.title if listing else f"Lot {lot.lot_number}")[:100],
+             # partners see the Sub-lot Number, not the real lot number (2026-11-23)
+             "model_name": (listing.title if listing else f"Lot {await _partner_label(db, lot)}")[:100],
              "cpu": None, "cpu_gen": None, "ram": None, "storage": None,
              "grade": (listing.grade_summary or "")[:10] or None if listing else None,
              "quantity": q, "unit_price": _money(t / q), "total_price": t}]
@@ -170,7 +177,7 @@ async def deal_from_booking(db, booking, lot, dealer, user, request=None):
                 record_id=str(booking.id), new_value={"lot": lot.lot_number, "qty": qty, "deal": opp.opp_number,
                                                       "quote": quote.quote_number, "total": str(total)},
                 request=request)
-    await notify_partner(db, dealer.id, f"Booking approved — Lot {lot.lot_number}",
+    await notify_partner(db, dealer.id, f"Booking approved — Lot {await _partner_label(db, lot)}",
                          f"Your booking of {qty} unit(s) is approved. Quotation {quote.quote_number} "
                          f"for ₹{total:,.2f} is ready to download in My Bookings.",
                          "success", "/partner/bookings")

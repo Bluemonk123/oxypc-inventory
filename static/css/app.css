@@ -1344,6 +1344,12 @@ table.gtable tbody td .gtable-clamp2 {
 .oxt-multi .oxt-title{font-size:.85rem; font-weight:700}
 .oxt-tint.oxt-multi .oxt-title{color:var(--tc)}
 .oxt-mline{display:flex; align-items:baseline; gap:.35rem; position:relative; z-index:1; white-space:nowrap}
+/* Tiles with a footer band (WorkID Status, 2026-11-21): roomier title / lines /
+   footer spacing, and the watermark icon sits above the footer. */
+.oxt-has-foot .oxt-title{margin-bottom:.65rem}
+.oxt-has-foot .oxt-mline + .oxt-mline{margin-top:.2rem}
+.oxt-has-foot .oxt-mline:has(+ .oxt-mfoot){margin-bottom:.85rem}
+.oxt-has-foot .oxt-wm{bottom:2.15rem}
 .oxt-mline + .oxt-mline{margin-top:.15rem}
 .oxt-mcount{font-size:1.45rem; font-weight:700; line-height:1.15; letter-spacing:-1px}
 .oxt-mlabel{font-size:.72rem}

@@ -277,8 +277,9 @@ def test_change_engineer_modal_has_asset_history_table(app_client, make_user):  
     username, password = make_user("admin")
     _login(app_client, username, password)
     html = app_client.get("/trc-production", follow_redirects=True).text
-    assert 'id="ceModal_history"' in html
-    assert "loadCeHistory" in html
+    # 2026-11-22: several tags at once — each selected tag's row shows its
+    # Current Stage and last Asset History move (same endpoint).
+    assert 'id="ceModal_list"' in html and "<th>Last Stage</th>" in html and "<th>Changed By</th>" in html
+    assert "bi-trash" in html                                     # Delete icon, not a cross
     assert "/devices/api/asset-history?barcode=" in html
-    # Capped to 2 rows client-side.
-    assert "slice(0, 2)" in html
+    assert "addCeTag" in html and "addTokens" in html          # scan / paste adds tags on its own

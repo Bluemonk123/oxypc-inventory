@@ -284,11 +284,88 @@ async def pre_sale_iqc_data(request: Request, draw: int = 1, start: int = 0, len
 
 
 # ── Assign to Pre-Sale (Ready for Sale Tags bulk action, 2026-10-29) ────────
+# Every way into Pre-Sale QC (2026-11-22, Pankaj) - Ready for Sale "Assign to
+# Pre-Sale", Sales Coordinator "Send to Pre-Sale" / "Add Tags", Production
+# Manager Move to Stage, this page's Add Tag - checks the tag is in Ready for
+# Sale and in the Showroom, and puts it there when it isn't. A tag from ANY
+# stage or location is accepted (Pankaj: work must not stop); the stage move
+# and the location move are each recorded in the tag's history.
+async def _showroom_location_id(db):
+    """SHOWROOM-FLOOR (the Ready for Sale default), else any active Showroom location."""
+    from models.location import StorageLocation, ZoneType
+    sid = (await db.execute(select(StorageLocation.id).where(
+        StorageLocation.unit_id == "SHOWROOM-FLOOR"))).scalar()
+    if sid is None:
+        sid = (await db.execute(select(StorageLocation.id).where(
+            StorageLocation.zone == ZoneType.showroom, StorageLocation.is_active.isnot(False))
+            .limit(1))).scalar()
+    return sid
+
+
+async def prepare_for_pre_sale(db, device, user, via: str) -> tuple:
+    """Put `device` in Ready for Sale and in the Showroom before it is queued.
+    Returns (ok, reason, changes) - changes lists "stage" / "location" when
+    either was changed. Any stage is accepted, so ok is always True."""
+    from models.device import StageMovement
+    from models.location import DeviceLocationLog, LocationAction, StorageLocation, ZoneType
+    from services.work_order_close import reassign_open_work_orders
+    st = device.current_stage
+    now = app_now()
+    changes = []
+    if st != DeviceStage.ready_to_sale:
+        prev_mv = (await db.execute(select(StageMovement).where(
+            StageMovement.device_id == device.id, StageMovement.to_stage == st,
+            StageMovement.exited_at.is_(None)).order_by(StageMovement.moved_at.desc()))).scalars().first()
+        if prev_mv:
+            prev_mv.exited_at = now
+        device.current_stage = DeviceStage.ready_to_sale
+        device.updated_at = now
+        db.add(StageMovement(device_id=device.id, from_stage=st, to_stage=DeviceStage.ready_to_sale,
+                             moved_by=user.username, notes=f"Moved to Ready for Sale for Pre-Sale QC ({via})"))
+        await reassign_open_work_orders(db, device.id)      # taken off its repair engineer
+        changes.append("stage")
+    # Location: the latest location log, else Device.location_id.
+    cur = (await db.execute(select(DeviceLocationLog.location_id).where(
+        DeviceLocationLog.device_id == device.id).order_by(DeviceLocationLog.logged_at.desc()).limit(1))).scalar()
+    cur = cur or device.location_id
+    zone = (await db.execute(select(StorageLocation.zone).where(StorageLocation.id == cur))).scalar() if cur else None
+    if zone != ZoneType.showroom:
+        sid = await _showroom_location_id(db)
+        if sid:
+            db.add(DeviceLocationLog(device_id=device.id, location_id=sid, action=LocationAction.moved,
+                                     actor_id=user.id, actor_name=user.full_name or user.username,
+                                     notes=f"Moved to Showroom for Pre-Sale QC ({via})"))
+            device.location_id = sid
+            changes.append("location")
+    return True, "", changes
+
+
+async def queue_for_pre_sale(db, device, user, via: str, notes=None) -> tuple:
+    """Ready for Sale + Showroom (prepare_for_pre_sale), then one pending,
+    unassigned PSQC- WorkID unless the tag is already queued. Returns
+    (queued_now, changes). Used by the Customise modal (2026-11-22)."""
+    from routers.repair import _create_work_order_with_unique_id
+    _ok, _why, changes = await prepare_for_pre_sale(db, device, user, via)
+    already = (await db.execute(select(WorkOrder.id).where(
+        WorkOrder.device_id == device.id, WorkOrder.stage == STAGE_CODE,
+        WorkOrder.status.in_(["pending", "in_progress"])))).scalars().first()
+    if already:
+        return False, changes
+    await _create_work_order_with_unique_id(
+        db, WID_PREFIX, device_id=device.id, barcode=device.barcode, stage=STAGE_CODE,
+        status="pending", assigned_at=app_now(), notes=notes,
+        requested_by_name=user.full_name or user.username, created_by=user.username)
+    return True, changes
+
+
 @router.post("/pre-sale-iqc/assign", dependencies=[Depends(verify_csrf)])
 async def pre_sale_iqc_assign(request: Request, barcodes: str = Form(""), notes: str = Form(""),
                               db: AsyncSession = Depends(get_db),
                               current_user: User = Depends(get_current_user)):
-    """Open to everyone who can see Ready for Sale (2026-10-30 — that page
+    """2026-11-22: a tag not in Ready for Sale is moved there and a tag not in
+    the Showroom is moved to the Showroom first (prepare_for_pre_sale) - from
+    any stage or location, nothing is refused.
+    Open to everyone who can see Ready for Sale (2026-10-30 — that page
     is itself any signed-in user), not only Pre-Sale IQC roles.
     Queue the ticked Ready for Sale tags for Pre-Sale IQC: one pending,
     unassigned PSQC- WorkID each. Tags already queued (pending / in
@@ -310,14 +387,23 @@ async def pre_sale_iqc_assign(request: Request, barcodes: str = Form(""), notes:
             WorkOrder.device_id.in_(ids[i:i + 5000]), WorkOrder.stage == STAGE_CODE,
             WorkOrder.status.in_(["pending", "in_progress"])))).scalars().all())
     now = app_now()
-    out = {"assigned": [], "already": [], "not_ready": [], "not_found": []}
+    out = {"assigned": [], "already": [], "not_ready": [], "not_found": [], "moved": [], "relocated": []}
+    reasons = {}
     for bc in bcs:
         d = devs.get(bc)
         if d is None:
             out["not_found"].append(bc)
-        elif d.current_stage != DeviceStage.ready_to_sale:
+            continue
+        ok, why, changes = await prepare_for_pre_sale(db, d, current_user, "Pre-Sale queue")
+        if not ok:
             out["not_ready"].append(bc)
-        elif d.id in queued:
+            reasons[bc] = why
+            continue
+        if "stage" in changes:
+            out["moved"].append(bc)
+        if "location" in changes:
+            out["relocated"].append(bc)
+        if d.id in queued:
             out["already"].append(bc)
         else:
             await _create_work_order_with_unique_id(
@@ -334,7 +420,11 @@ async def pre_sale_iqc_assign(request: Request, barcodes: str = Form(""), notes:
                                **({"notes": notes} if notes else {})}, request=request)
     await db.commit()
     return JSONResponse({"ok": True, **{k: len(v) for k, v in out.items()},
-                         "not_ready_tags": out["not_ready"][:50], "not_found_tags": out["not_found"][:50]})
+                         "not_ready_tags": out["not_ready"][:50], "not_found_tags": out["not_found"][:50],
+                         # for the Pre-Sale page's Add Tag modal (2026-11-22)
+                         "already_tags": out["already"][:200], "assigned_tags": out["assigned"][:500],
+                         "moved_tags": out["moved"][:500], "relocated_tags": out["relocated"][:500],
+                         "not_ready_reasons": reasons})
 
 
 @router.get("/pre-sale-iqc/parts")
@@ -412,9 +502,13 @@ async def pre_sale_iqc_precheck(barcode: str = Query(...), db: AsyncSession = De
 
 
 async def _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, now,
-                        result=None, reason=None):
+                        result=None, reason=None, category=None):
     """Close one tag's Pre-Sale IQC (no commit): verify handed-over parts,
-    cancel never-handed-over requests, complete the WorkID, audit."""
+    cancel never-handed-over requests, complete the WorkID, audit.
+    Fail (2026-11-23, Pankaj): routed by its category exactly like Final QC
+    Fail — Hardware -> L1/L2 (its last L1/L2 engineer, else Production
+    Manager / trc_production), Software -> Stress, Cosmetic -> Cosmetic.
+    Returns None, or why a failed tag stayed in Ready for Sale."""
     for pr in to_verify:
         pr.status, pr.actioned_at, pr.actioned_by = "received", now, current_user.username
     for pr in to_cancel:
@@ -440,13 +534,37 @@ async def _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, 
                                                 # Pre-Sale QC result (2026-11-03): Pass / Fail picked
                                                 # in Mark Complete, and the reason when Fail.
                                                 **({"result": result} if result else {}),
+                                                **({"category": category} if category else {}),
                                                 **({"reason": reason} if reason else {})},
                 request=request)
+    if result == "fail" and category:
+        from routers.cosmetic import _route_failed_device
+        await db.flush()
+        return await _route_failed_device(
+            db, d, current_user, f" — {reason}" if reason else "", reason=category, label="Pre-Sale QC Fail")
+    return None
+
+
+def _fail_check(result, category):
+    """Pass / Fail required; Fail needs one of Final QC's fail categories
+    (Hardware / Software / Cosmetic). Returns an error text or None."""
+    from routers.cosmetic import FAIL_REASON_TO_DEPT
+    if result not in ("pass", "fail"):
+        return "Pick Pass or Fail."
+    if result == "fail" and category not in FAIL_REASON_TO_DEPT:
+        return "Pick the Fail category (Hardware, Software or Cosmetic)."
+    return None
+
+
+def _moved_label(d):
+    from models.device import STAGE_LABELS
+    return STAGE_LABELS.get(d.current_stage, str(getattr(d.current_stage, "value", d.current_stage)))
 
 
 @router.post("/pre-sale-iqc/complete", dependencies=[Depends(verify_csrf)])
 async def pre_sale_iqc_complete(request: Request, barcode: str = Form(...),
                                 result: str = Form(default=""), reason: str = Form(default=""),
+                                category: str = Form(default=""),
                                 db: AsyncSession = Depends(get_db),
                                 current_user: User = Depends(edit_perm)):
     """Same rules as L1/L2 Mark Complete (routers/repair.py
@@ -458,11 +576,10 @@ async def pre_sale_iqc_complete(request: Request, barcode: str = Form(...),
     # Pass / Fail is required (2026-11-03); Fail needs a reason. The tag stays
     # in Ready for Sale either way; the result goes on the audit entry.
     result = (result or "").strip().lower()
-    reason = (reason or "").strip()
-    if result not in ("pass", "fail"):
-        return JSONResponse({"ok": False, "error": "Pick Pass or Fail."}, status_code=400)
-    if result == "fail" and not reason:
-        return JSONResponse({"ok": False, "error": "Enter the Fail reason."}, status_code=400)
+    reason, category = (reason or "").strip(), (category or "").strip()
+    err = _fail_check(result, category)
+    if err:
+        return JSONResponse({"ok": False, "error": err}, status_code=400)
     d = await _device(db, barcode)
     wo = await _open_wo(db, d.id)
     if wo is None:
@@ -474,10 +591,12 @@ async def pre_sale_iqc_complete(request: Request, barcode: str = Form(...),
             f"{d.barcode} has open PNA parts ({', '.join(sorted(pna))}) — remove them on the tag's "
             "detail page before Mark Complete.")}, status_code=400)
     to_verify, to_cancel = await _mark_complete_open_parts(db, d.id)
-    await _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, app_now(),
-                        result=result, reason=reason[:500] if result == "fail" else None)
+    stuck = await _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, app_now(),
+                                result=result, reason=reason[:500] if result == "fail" and reason else None,
+                                category=category if result == "fail" else None)
     await db.commit()
-    return JSONResponse({"ok": True, "result": result, "verified": len(to_verify), "cancelled": len(to_cancel)})
+    return JSONResponse({"ok": True, "result": result, "verified": len(to_verify), "cancelled": len(to_cancel),
+                         **({"moved_to": _moved_label(d), "kept": stuck} if result == "fail" else {})})
 
 
 # ── Bulk Complete (2026-10-29): the ticked tags, same rules and prompt ─────
@@ -540,6 +659,7 @@ async def pre_sale_iqc_bulk_precheck(barcodes: str = Form(""), db: AsyncSession 
 @router.post("/pre-sale-iqc/bulk-complete", dependencies=[Depends(verify_csrf)])
 async def pre_sale_iqc_bulk_complete(request: Request, barcodes: str = Form(""),
                                      result: str = Form(default=""), reason: str = Form(default=""),
+                                     category: str = Form(default=""),
                                      db: AsyncSession = Depends(get_db),
                                      current_user: User = Depends(edit_perm)):
     """Complete every ticked tag that is started and has no open PNA part —
@@ -547,21 +667,28 @@ async def pre_sale_iqc_bulk_complete(request: Request, barcodes: str = Form(""),
     listed. Pass / Fail (2026-11-03) is required and applies to every tag
     completed; Fail needs a reason."""
     result = (result or "").strip().lower()
-    reason = (reason or "").strip()
-    if result not in ("pass", "fail"):
-        return JSONResponse({"ok": False, "error": "Pick Pass or Fail."}, status_code=400)
-    if result == "fail" and not reason:
-        return JSONResponse({"ok": False, "error": "Enter the Fail reason."}, status_code=400)
+    reason, category = (reason or "").strip(), (category or "").strip()
+    err = _fail_check(result, category)
+    if err:
+        return JSONResponse({"ok": False, "error": err}, status_code=400)
     plan = await _bulk_plan(db, _barcode_list(barcodes))
     now = app_now()
     verified = cancelled = 0
+    moved, kept = {}, []
     for d, wo, to_verify, to_cancel in plan["ready"]:
-        await _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, now,
-                            result=result, reason=reason[:500] if result == "fail" else None)
+        stuck = await _complete_one(db, request, current_user, d, wo, to_verify, to_cancel, now,
+                                    result=result, reason=reason[:500] if result == "fail" and reason else None,
+                                    category=category if result == "fail" else None)
+        if result == "fail":
+            if stuck:
+                kept.append(d.barcode)
+            else:
+                moved[_moved_label(d)] = moved.get(_moved_label(d), 0) + 1
         verified += len(to_verify)
         cancelled += len(to_cancel)
     await db.commit()
     return JSONResponse({"ok": True, "result": result, "completed": len(plan["ready"]), "verified": verified,
+                         "moved": moved, "kept": kept,
                          "cancelled": cancelled, "not_started": len(plan["not_started"]),
                          "pna": len(plan["pna"]), "not_found": len(plan["not_found"])})
 

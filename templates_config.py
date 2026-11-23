@@ -455,6 +455,37 @@ def _role_display(role):
 
 
 templates.env.globals["role_display"] = _role_display
+
+
+def _can_change_stage(user) -> bool:
+    """Global top-bar "Change Stage" (2026-11-22, Pankaj): Admin, Inventory
+    Manager and Production Manager only. Production Manager is not a
+    built-in role, so it is matched by its name ('production_manager' / a
+    custom role shown as "Production Manager") — role_allowed() would let
+    every custom role through, which is wider than asked."""
+    if not user:
+        return False
+    val = str(getattr(getattr(user, "role", None), "value", getattr(user, "role", "")) or "")
+    if val in ("admin", "inventory_manager", "production_manager"):
+        return True
+    return _role_display(val).strip().lower() == "production manager"
+
+
+def _change_stage_options():
+    """Change Stage modal options: the Production Manager move list with
+    "Pre-Sale QC" just before TRC Production (routers/stock.py)."""
+    from models.device import DeviceStage as _DS
+    from routers.stock import CHANGE_ENGINEER_STAGES
+    out = []
+    for s, label in CHANGE_ENGINEER_STAGES:
+        if s == _DS.trc_production:
+            out.append(("pre_sale_iqc", "Pre-Sale QC"))
+        out.append((s.value, label))
+    return out
+
+
+templates.env.globals["can_change_stage"] = _can_change_stage
+templates.env.globals["change_stage_options"] = _change_stage_options
 templates.env.globals["ROLE_DISPLAY_MAP"] = _ROLE_DISPLAY
 
 # ── Master Data dropdown options — usable in any template ──

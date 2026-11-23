@@ -147,7 +147,7 @@ async def main():
 asyncio.run(main())
 """)
 
-        html = app_client.get(f"/workid-status?workid={work_id}", follow_redirects=True).text
+        html = app_client.get(f"/workid-status?workid={work_id}&exclude_admin=0", follow_redirects=True).text
         # work_id also appears earlier in the page, as the filter form's own
         # search-box value= — rfind so `row` is sliced from the actual table
         # row (the LAST occurrence), not that filter input.
@@ -300,7 +300,7 @@ async def main():
 
 asyncio.run(main())
 """)
-        assert status == "completed"
+        assert status == "reassigned"     # taken off before finished: no Pass for anyone (2026-11-22)
     finally:
         _cleanup(barcode)
 

@@ -8,12 +8,13 @@ trade_partner_* module permission (split 2026-09-22 from one shared
 default disabled for every role, see migrate_seed_trade_partner_split_perms.py).
 Payment verification stays finance/admin-gated.
 """
+import re
 import json
 import os
 import secrets
 import string
 import uuid as uuid_mod
-from datetime import timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 from urllib.parse import quote_plus
 
@@ -1454,99 +1455,125 @@ async def settings_save(
 # is needed here.
 # ─────────────────────────────────────────────────────────────────────────
 
+
+# ── Sub-lot Numbers (2026-11-23, Pankaj): auto "Lot-NNN", one per Manage Lots
+# lot, kept on its tags (Device.sub_lot_number). Partners see only this. ──
+_SUB_RE = re.compile(r"^Lot-(\d+)$", re.I)
+
+
+async def _next_sub_lot_no(db) -> int:
+    used = (await db.execute(select(Device.sub_lot_number).where(
+        Device.sub_lot_number.ilike("Lot-%")).distinct())).scalars().all()
+    nums = [int(m.group(1)) for v in used if v and (m := _SUB_RE.match(v.strip()))]
+    return (max(nums) + 1) if nums else 1
+
+
+async def ensure_sub_lots(db, lot_ids=None) -> int:
+    """Give every Manage Lots lot (EPT-) that has no Sub-lot yet the next
+    Lot-NNN, on all its tags. Returns how many lots got one. No commit."""
+    from sqlalchemy import update as _upd
+    q = (select(Lot.id).join(Device, Device.lot_id == Lot.id)
+         .where(Lot.lot_number.ilike(EXTERNAL_PARTNER_TEST_LOT_PREFIX + "%"), Device.is_trashed.isnot(True))
+         .group_by(Lot.id, Lot.lot_number)
+         .having(func.count(Device.sub_lot_number) == 0)
+         .order_by(Lot.lot_number))
+    if lot_ids is not None:
+        if not lot_ids:
+            return 0
+        q = q.where(Lot.id.in_(list(lot_ids)))
+    missing = (await db.execute(q)).scalars().all()
+    if not missing:
+        return 0
+    n = await _next_sub_lot_no(db)
+    for lid in missing:
+        await db.execute(_upd(Device).where(Device.lot_id == lid, Device.is_trashed.isnot(True))
+                         .values(sub_lot_number=f"Lot-{n:03d}").execution_options(synchronize_session=False))
+        n += 1
+    return len(missing)
+
+
 @router.get("/manage-lots", response_class=HTMLResponse)
 async def manage_lots(
     request: Request,
     current_user: User = Depends(require_module_perm("trade_partner_manage_lots")),
     db: AsyncSession = Depends(get_db),
 ):
-    from routers.grn import _stocked_map
-
-    # ── Tab 1: GRN & Lot ──────────────────────────────────────────────────
-    test_grns = (await db.execute(
-        select(GRNImport).where(GRNImport.source == EXTERNAL_PARTNER_TEST_GRN_SOURCE,
-                                GRNImport.is_deleted == False)
-        .order_by(GRNImport.created_at.desc())
-    )).scalars().all()
-
-    grn_numbers = [g.grn_number for g in test_grns if g.grn_number]
-    lots_by_grn: dict = {}
-    if grn_numbers:
-        lot_rows = (await db.execute(
-            select(Lot).where(Lot.grn_system_number.in_(grn_numbers)).order_by(Lot.lot_number)
-        )).scalars().all()
-        for l in lot_rows:
-            lots_by_grn.setdefault(l.grn_system_number, []).append(l)
-
-    stocked = await _stocked_map(db, test_grns)
-
-    # Per-lot mapped-device count, for the Lot Number(s) popup — a breakdown
-    # of the aggregate Stocked figure above by which specific Lot each mapped
-    # device actually belongs to (Device.lot_id), not just "any lot under
-    # this GRN". "Mapped" = grn_number is set at all, same definition the
-    # Asset IQC tab's own Mapped/Unmapped badge uses.
-    all_lot_ids = [l.id for lots in lots_by_grn.values() for l in lots]
-    lot_mapped_counts: dict = {}
-    if all_lot_ids:
-        mapped_rows = (await db.execute(
-            select(Device.lot_id, func.count(Device.id))
-            .where(Device.lot_id.in_(all_lot_ids),
-                   Device.grn_number.isnot(None), Device.grn_number != "",
-                   Device.is_active == True, Device.is_trashed == False)
-            .group_by(Device.lot_id)
-        )).all()
-        lot_mapped_counts = {str(lid): c for lid, c in mapped_rows}
-
-    # JSON-serializable form for the "N Lots" popup — id + lot_number + mapped
-    # count only (Lot itself isn't JSON-safe to dump into a data attribute).
-    lots_json = {
-        grn_number: [
-            {"id": str(l.id), "lot_number": l.lot_number,
-             "mapped": lot_mapped_counts.get(str(l.id), 0)}
-            for l in lots
-        ]
-        for grn_number, lots in lots_by_grn.items()
-    }
-
-    # Reverse of lots_by_grn — which GRN (if any) a given Lot Number is
-    # mapped to, for the Asset IQC tab's GRN column. A Lot Number could in
-    # theory be listed under more than one GRN row; last-write-wins here is
-    # fine since Add/Edit Lot itself only ever lets one GRN claim a given
-    # Lot Number at a time (create-or-merge, not multi-assign).
-    lot_number_to_grn = {}
-    for grn_number, lots in lots_by_grn.items():
-        for l in lots:
-            lot_number_to_grn[l.lot_number] = grn_number
-
-    # ── Tab 2: Asset IQC ─────────────────────────────────────────────────
-    device_rows = (await db.execute(
-        select(Device, Lot.lot_number, Lot.id, Lot.buying_price)
-        .join(Lot, Device.lot_id == Lot.id, isouter=True)
-        .where(Device.entity == EXTERNAL_PARTNER_TEST_ENTITY)
-        .order_by(Device.created_at.desc())
-    )).all()
+    """Manage Lots (rebuilt 2026-11-23, Pankaj): no GRN step — upload the
+    Asset IQC sheet straight away, pick the Device Category for the uploaded
+    tags, then three tabs fed by the test tags (Entity External Partner Test):
+      Lots   — one row per test lot; Set Price (with Sub-lot Number) here only
+      Models — model-wise count per lot
+      Tags   — every test tag (edit, Move to Ready for Sale)
+    Partners see a lot by its Sub-lot Number (Device.sub_lot_number on the
+    lot's tags), not the real lot number (routers/partner_portal.py)."""
+    from collections import Counter
+    from utils.master_data import master_options
     from utils.price_export import can_view_prices, can_add_prices
     _see_price = can_view_prices(current_user, "trade_partner_manage_lots")
-    test_devices = [{"device": d, "lot_number": ln, "lot_id": str(lid) if lid else "",
-                     "lot_price": (float(lp) if lp else 0.0) if _see_price else None,
-                     "matched_grn": lot_number_to_grn.get(ln)} for d, ln, lid, lp in device_rows]
-
-    total_lots = sum(len(lots) for lots in lots_by_grn.values())
-
-    # GRN & Lot tab = the GRN post IQC page scoped to test data (2026-11-13).
-    from routers.grn import post_iqc_context
-    piq_ctx = await post_iqc_context(db, current_user, "test")
+    if await ensure_sub_lots(db):            # older lots get their Lot-NNN once
+        await db.commit()
+    device_rows = (await db.execute(
+        select(Device, Lot)
+        .join(Lot, Device.lot_id == Lot.id, isouter=True)
+        .where(Device.entity == EXTERNAL_PARTNER_TEST_ENTITY, Device.is_trashed.isnot(True))
+        .order_by(Device.created_at.desc())
+    )).all()
+    lots, models, test_devices = {}, {}, []
+    for d, lot in device_rows:
+        cat = (d.sub_category or d.device_type or "").strip()
+        lid = str(lot.id) if lot else ""
+        test_devices.append({"device": d, "lot_number": lot.lot_number if lot else None, "lot_id": lid,
+                             "category": cat})
+        if lot is None:
+            continue
+        L = lots.setdefault(lid, {"id": lid, "lot_number": lot.lot_number, "tags": 0, "ready": 0,
+                                  "cats": Counter(), "subs": Counter(), "uploaded": d.created_at,
+                                  "price": (float(lot.buying_price) if lot.buying_price else 0.0) if _see_price else None})
+        L["tags"] += 1
+        L["ready"] += d.current_stage == DeviceStage.ready_to_sale
+        if cat:
+            L["cats"][cat] += 1
+        if d.sub_lot_number:
+            L["subs"][d.sub_lot_number] += 1
+        if d.created_at and (L["uploaded"] is None or d.created_at > L["uploaded"]):
+            L["uploaded"] = d.created_at
+        key = (lid, cat, d.brand or "", d.model or "", d.cpu or "", d.generation or "",
+               d.ram_gb or 0, d.storage_gb or 0, d.storage_type or "")
+        M = models.setdefault(key, {"lot_number": lot.lot_number, "category": cat, "brand": d.brand, "model": d.model,
+                                    "cpu": d.cpu, "generation": d.generation, "ram_gb": d.ram_gb,
+                                    "storage_gb": d.storage_gb, "storage_type": d.storage_type, "qty": 0})
+        M["qty"] += 1
+    lot_list = []
+    for L in lots.values():
+        L["sub_lot"] = L["subs"].most_common(1)[0][0] if L["subs"] else ""
+        L["categories"] = sorted(L["cats"].items(), key=lambda kv: (-kv[1], kv[0]))
+        lot_list.append(L)
+    lot_list.sort(key=lambda x: x["uploaded"] or datetime.min, reverse=True)
+    sub_by_lot = {L["lot_number"]: L["sub_lot"] for L in lot_list}
+    model_list = sorted(models.values(), key=lambda m: (m["lot_number"] or "", -m["qty"], m["model"] or ""))
+    for m in model_list:
+        m["sub_lot"] = sub_by_lot.get(m["lot_number"], "")
+    categories = list(master_options("sub_category") or []) or ["Laptop", "Desktop", "Monitor"]
+    ask = request.query_params.get("ask_category") or ""
+    ask_count = 0
+    if ask:
+        from models.engines import AuditLog
+        try:
+            al = (await db.execute(select(AuditLog).where(AuditLog.id == uuid_mod.UUID(ask)))).scalar_one_or_none()
+            ask_count = len((json.loads(al.new_value or "{}") or {}).get("barcodes") or []) if al else 0
+        except (ValueError, TypeError):
+            ask_count = 0
+        if not ask_count:
+            ask = ""
     return templates.TemplateResponse("trade_partner/manage_lots.html", {
         "request": request, "current_user": current_user,
-        **piq_ctx,
-        "test_grns": test_grns,
-        "test_devices": test_devices,
-        "total_grns": len(test_grns), "total_lots": total_lots, "total_tags": len(test_devices),
+        "lots": lot_list, "models": model_list, "test_devices": test_devices,
+        "total_lots": len(lot_list), "total_models": len(model_list), "total_tags": len(test_devices),
         "test_entity_name": EXTERNAL_PARTNER_TEST_ENTITY,
         "test_lot_prefix": EXTERNAL_PARTNER_TEST_LOT_PREFIX,
         "iqc_mapping": __import__("services.partner_iqc_upload", fromlist=["MAPPING"]).MAPPING,
-        "test_grn_source": EXTERNAL_PARTNER_TEST_GRN_SOURCE,
         "stage_labels": STAGE_LABELS,
+        "categories": categories, "ask_category": ask, "ask_count": ask_count,
         # Set Price (2026-11-16): Edit + Pricing Add on Manage Lots.
         "can_set_price": can_add_prices(current_user, "trade_partner_manage_lots"),
         "see_price": _see_price,
@@ -1586,7 +1613,7 @@ async def manage_lots_map_grn(
                 request=request)
     await db.commit()
     return RedirectResponse(
-        url=f"/trade-partner/manage-lots?tab=asset&success={quote_plus(f'{device.barcode} mapped to GRN {grn_number.strip()}')}",
+        url=f"/trade-partner/manage-lots?tab=tags&success={quote_plus(f'{device.barcode} mapped to GRN {grn_number.strip()}')}",
         status_code=302)
 
 
@@ -1613,7 +1640,7 @@ async def manage_lots_asset_iqc_upload(
     db: AsyncSession = Depends(get_db),
 ):
     from services.partner_iqc_upload import read_rows, import_rows
-    back = "/trade-partner/manage-lots?tab=asset"
+    back = "/trade-partner/manage-lots?tab=tags"
     data = await file.read()
     if len(data) > 20 * 1024 * 1024:
         return RedirectResponse(url=f"{back}&error=" + quote_plus("File is over 20 MB."), status_code=302)
@@ -1627,11 +1654,20 @@ async def manage_lots_asset_iqc_upload(
     if not rows:
         return RedirectResponse(url=f"{back}&error=" + quote_plus("The sheet has no rows to upload."), status_code=302)
     res = await import_rows(db, rows, current_user)
-    await audit(db, action="PARTNER_ASSET_IQC_UPLOAD", user=current_user, table_name="devices",
-                record_id=f"upload:{res['inserted']}",
-                new_value={"file": file.filename, "inserted": res["inserted"], "lots_created": res["created_lots"],
-                           "skipped": len(res["skipped"]), "errors": len(res["errors"])}, request=request)
+    if res.get("new_barcodes"):              # new lots get their Lot-NNN (2026-11-23)
+        await db.flush()
+        _lids = set((await db.execute(select(Device.lot_id).where(
+            Device.barcode.in_(res["new_barcodes"])))).scalars().all())
+        await ensure_sub_lots(db, {x for x in _lids if x})
+    al = await audit(db, action="PARTNER_ASSET_IQC_UPLOAD", user=current_user, table_name="devices",
+                     record_id=f"upload:{res['inserted']}",
+                     new_value={"file": file.filename, "inserted": res["inserted"], "lots_created": res["created_lots"],
+                                "skipped": len(res["skipped"]), "errors": len(res["errors"]),
+                                # Device Category is asked right after the upload (2026-11-23)
+                                "barcodes": res.get("new_barcodes", [])}, request=request)
     await db.commit()
+    if res["inserted"] and getattr(al, "id", None):
+        back = f"{back}&ask_category={al.id}"
     msg = f"Asset IQC upload: {res['inserted']} tag(s) added to Ready for Sale"
     if res.get("grns"):
         msg += f" · Linked to GRN {', '.join(res['grns'])}"
@@ -1655,15 +1691,19 @@ async def manage_lots_set_price(
     request: Request,
     lot_id: str = Form(...),
     price: str = Form(...),
+    sub_lot: str = Form(default=""),
+    category: str = Form(default=""),
     _csrf=Depends(verify_csrf),
     current_user: User = Depends(require_module_perm("trade_partner_manage_lots", "edit")),
     db: AsyncSession = Depends(get_db),
 ):
     """Asset IQC tab → Action → Set Price (2026-11-16, Pankaj): the test lot's
     price (Lot.buying_price), which the partner Catalog shows as the lot's
-    Base Price and bids start from. Needs Pricing Add on Manage Lots."""
+    Base Price and bids start from. Needs Pricing Add on Manage Lots.
+    2026-11-23 (Pankaj): Lots tab only, with the Sub-lot Number — written on
+    every tag of the lot (Device.sub_lot_number); partners see the lot by it."""
     from utils.price_export import can_add_prices
-    back = "/trade-partner/manage-lots?tab=asset"
+    back = "/trade-partner/manage-lots?tab=lots"
     if not can_add_prices(current_user, "trade_partner_manage_lots"):
         return RedirectResponse(url=f"{back}&error=" + quote_plus("You don't have Pricing Add on Manage Lots."), status_code=302)
     try:
@@ -1679,14 +1719,67 @@ async def manage_lots_set_price(
     lot = (await db.execute(select(Lot).where(Lot.id == lid))).scalar_one_or_none() if lid else None
     if lot is None or not (lot.lot_number or "").upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper()):
         return RedirectResponse(url=f"{back}&error=" + quote_plus("Test lot not found."), status_code=302)
+    # Sub-lot is generated (Lot-NNN), not typed (2026-11-23, Pankaj).
+    await ensure_sub_lots(db, {lot.id})
+    await db.flush()
+    sub = (await db.execute(select(Device.sub_lot_number).where(
+        Device.lot_id == lot.id, Device.sub_lot_number.isnot(None)).limit(1))).scalar() or ""
+    cat = (category or "").strip()[:20]
     old = lot.buying_price
+    old_sub = (await db.execute(select(Device.sub_lot_number).where(
+        Device.lot_id == lot.id, Device.sub_lot_number.isnot(None)).limit(1))).scalar()
     lot.buying_price = val.quantize(Decimal("0.01"))
+    if cat:                                  # Device Category for the whole lot
+        from sqlalchemy import update as _upd
+        await db.execute(_upd(Device).where(Device.lot_id == lot.id, Device.is_trashed.isnot(True))
+                         .values(sub_category=cat).execution_options(synchronize_session=False))
     await audit(db, action="MANAGE_LOTS_PRICE_SET", user=current_user, table_name="lots", record_id=str(lot.id),
-                old_value={"lot": lot.lot_number, "price": str(old) if old is not None else None},
-                new_value={"lot": lot.lot_number, "price": str(lot.buying_price)}, request=request)
+                old_value={"lot": lot.lot_number, "price": str(old) if old is not None else None, "sub_lot": old_sub},
+                new_value={"lot": lot.lot_number, "price": str(lot.buying_price), "sub_lot": sub,
+                           **({"category": cat} if cat else {})}, request=request)
     await db.commit()
-    return RedirectResponse(url=f"{back}&success=" + quote_plus(f"{lot.lot_number} price set to ₹{lot.buying_price:,.2f}"),
-                            status_code=302)
+    return RedirectResponse(url=f"{back}&success=" + quote_plus(
+        f"{sub or lot.lot_number}: price ₹{lot.buying_price:,.2f}" + (f", category {cat}" if cat else "")),
+        status_code=302)
+
+
+@router.post("/manage-lots/set-category")
+async def manage_lots_set_category(
+    request: Request,
+    upload_id: str = Form(...),
+    category: str = Form(...),
+    _csrf=Depends(verify_csrf),
+    current_user: User = Depends(require_module_perm("trade_partner_manage_lots", "upload")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Asked right after an Asset IQC upload (2026-11-23, Pankaj): the Device
+    Category (Master Data → Device Sub-Categories) for the tags that upload
+    added — saved as each tag's Sub-Category, which the partner Catalog's
+    Category column shows."""
+    from models.engines import AuditLog
+    back = "/trade-partner/manage-lots?tab=lots"
+    cat = (category or "").strip()[:20]
+    if not cat:
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("Pick a Device Category."), status_code=302)
+    try:
+        al = (await db.execute(select(AuditLog).where(AuditLog.id == uuid_mod.UUID(upload_id),
+                                                      AuditLog.action == "PARTNER_ASSET_IQC_UPLOAD"))).scalar_one_or_none()
+    except ValueError:
+        al = None
+    tags = (json.loads(al.new_value or "{}") or {}).get("barcodes") or [] if al else []
+    if not tags:
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("Upload not found."), status_code=302)
+    from sqlalchemy import update as _upd
+    n = 0
+    for i in range(0, len(tags), 5000):
+        r = await db.execute(_upd(Device).where(Device.barcode.in_(tags[i:i + 5000]),
+                                               Device.entity == EXTERNAL_PARTNER_TEST_ENTITY)
+                             .values(sub_category=cat).execution_options(synchronize_session=False))
+        n += r.rowcount or 0
+    await audit(db, action="MANAGE_LOTS_CATEGORY_SET", user=current_user, table_name="devices",
+                record_id=str(al.id), new_value={"category": cat, "tags": n}, request=request)
+    await db.commit()
+    return RedirectResponse(url=f"{back}&success=" + quote_plus(f"{n} tag(s) saved under {cat}."), status_code=302)
 
 
 @router.post("/manage-lots/move-ready-for-sale")
@@ -1701,14 +1794,14 @@ async def manage_lots_move_ready_for_sale(
     stage straight to Ready to Sale."""
     codes = [b.strip().upper() for b in barcode if b.strip()]
     if not codes:
-        return RedirectResponse(url="/trade-partner/manage-lots?tab=asset&error=Select+at+least+one+tag", status_code=302)
+        return RedirectResponse(url="/trade-partner/manage-lots?tab=tags&error=Select+at+least+one+tag", status_code=302)
 
     devices = (await db.execute(
         select(Device).where(func.upper(Device.barcode).in_(codes),
                              Device.entity == EXTERNAL_PARTNER_TEST_ENTITY)
     )).scalars().all()
     if not devices:
-        return RedirectResponse(url="/trade-partner/manage-lots?tab=asset&error=No+matching+test+devices+found", status_code=302)
+        return RedirectResponse(url="/trade-partner/manage-lots?tab=tags&error=No+matching+test+devices+found", status_code=302)
 
     for device in devices:
         from_stage = device.current_stage
@@ -1725,7 +1818,7 @@ async def manage_lots_move_ready_for_sale(
                 request=request)
     await db.commit()
     return RedirectResponse(
-        url=f"/trade-partner/manage-lots?tab=asset&success={quote_plus(f'{len(devices)} tag(s) moved to Ready for Sale')}",
+        url=f"/trade-partner/manage-lots?tab=tags&success={quote_plus(f'{len(devices)} tag(s) moved to Ready for Sale')}",
         status_code=302)
 
 
@@ -1783,7 +1876,7 @@ async def manage_lots_edit_device(
                 request=request)
     await db.commit()
     return RedirectResponse(
-        url=f"/trade-partner/manage-lots?success={quote_plus(f'{device.barcode} updated')}&tab=asset",
+        url=f"/trade-partner/manage-lots?success={quote_plus(f'{device.barcode} updated')}&tab=tags",
         status_code=302)
 
 

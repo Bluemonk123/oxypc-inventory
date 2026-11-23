@@ -1284,13 +1284,17 @@ async def fqc_pick(
     return JSONResponse({"ok": True, "work_id": wo.work_id})
 
 
-async def _route_failed_device(db, device, current_user, note_suffix: str = ""):
+async def _route_failed_device(db, device, current_user, note_suffix: str = "",
+                               reason: str | None = None, label: str = "Final QC Fail"):
     """Final QC — Fail Hold -> the stage the tag's Failure Reason routes to
     (FAIL_REASON_TO_DEPT; see fqc_move_failed). Shared by the Devices Failed
     Move buttons and, since 2026-11-16 (Pankaj), the Fail decision itself so
     a failed tag no longer waits in Fail Hold. Returns None when moved, else
-    the reason it stayed in Fail Hold. Does not commit."""
-    reason = (device.fqc_failure_reason or "").strip()
+    the reason it stayed in Fail Hold. Does not commit.
+    Pre-Sale QC Fail (2026-11-23, Pankaj) uses the same routing: it passes
+    the picked category as `reason` and label "Pre-Sale QC Fail"; the tag
+    moves from wherever it is (Ready for Sale)."""
+    reason = (reason if reason is not None else (device.fqc_failure_reason or "")).strip()
     department = FAIL_REASON_TO_DEPT.get(reason)
     if not department:
         return "No recognized Failure Reason to route by."
@@ -1306,12 +1310,13 @@ async def _route_failed_device(db, device, current_user, note_suffix: str = ""):
         # Hardware only: nobody resolved to hand it to — park it in
         # Production Manager's Tag Number Allocation queue instead of
         # moving it to L1/L2 Repair with no owner.
+        _from = device.current_stage
         device.current_stage = DeviceStage.trc_production
         device.updated_at = app_now()
         db.add(StageMovement(
-            device_id=device.id, from_stage=DeviceStage.final_qc_fail_hold,
+            device_id=device.id, from_stage=_from,
             to_stage=DeviceStage.trc_production, moved_by=current_user.username,
-            notes=f"Final QC Fail — {reason}: no engineer resolved, sent to Tag Number Allocation{note_suffix}",
+            notes=f"{label} — {reason}: no engineer resolved, sent to Tag Number Allocation{note_suffix}",
         ))
         return None
 

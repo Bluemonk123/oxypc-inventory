@@ -191,6 +191,14 @@
       <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#bulkTagModal">
         <i class="bi bi-upload me-1"></i>Upload Tags
       </button>
+      {# Add Tag (2026-11-22, Pankaj): scan / paste / search Ready for Sale tags
+         and add them to Pre-Sale QC — the Production Manager Move to Stage
+         modal without the Stage dropdown. #}
+      {% if _ps %}
+      <button type="button" class="btn btn-primary btn-sm text-nowrap" id="psAddTagBtn" data-presale-add>
+        <i class="bi bi-plus-lg me-1"></i>Add Tag
+      </button>
+      {% endif %}
       </div>
     </div>
     {# Bulk buttons: moved into the table toolbar, just before the search box,
@@ -379,6 +387,8 @@
   <input type="hidden" name="qty" id="tagSaleQty">
 </form>
 
+{% if _ps %}{% set ps_add_notes = False %}{% include "_presale_add_modal.html" %}{% endif %}
+
 <!-- Bulk Upload Tags modal: CSV of tag numbers → ticks the matching ready rows -->
 <div class="modal fade" id="bulkTagModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
@@ -548,9 +558,8 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <label class="form-label small fw-semibold" for="assignPsiqcNotes">Notes <span class="text-muted fw-normal">(optional)</span></label>
-        <textarea id="assignPsiqcNotes" class="form-control form-control-sm" rows="3" maxlength="2000"
-                  placeholder="What should Pre-Sale QC check? e.g. customer wants keyboard and battery checked"></textarea>
+        {# Notes box removed (2026-11-23, Pankaj: Pre-Sale QC notes not required). #}
+        <div class="small">Send the ticked tag(s) to Pre-Sale QC? They join the queue with no engineer, to be taken with Start.</div>
       </div>
       <div class="modal-footer py-2">
         <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -676,7 +685,8 @@ $(document).ready(function(){
          QC Report hidden. #}
       {# Notes (col 2, 2026-11-14); Status (col 3, 2026-11-03) shows on the Completed tab only (psiqcSetView). #}
       { orderable: false, targets: [0, 2, 3, -3, -2, -1] },
-      { visible: false, targets: [{{ '3, 4, 5, 13, 14, 15, 16, 17, 18' if can(current_user, _pm, 'pricing') else '3, 4, 5, 13, 14, 15, 16, 17' }}] },
+      {# Notes (col 2) hidden (2026-11-23, Pankaj: Pre-Sale QC notes not required). #}
+      { visible: false, targets: [{{ '2, 3, 4, 5, 13, 14, 15, 16, 17, 18' if can(current_user, _pm, 'pricing') else '2, 3, 4, 5, 13, 14, 15, 16, 17' }}] },
       {% else %}
       { orderable: false, targets: [0, -2, -1] },
       { visible: false, targets: [{{ 10 if can(current_user, _pm, 'pricing') else 9 }}] },
@@ -892,6 +902,9 @@ document.getElementById('bulkQcBtn').addEventListener('click', async function(){
     delete btn.dataset.busy;
   }
 });
+// Add Tag (2026-11-22): the shared modal (_presale_add_modal.html) refreshes this table.
+window.onPresaleAdded = function () { if (window.readyDt) readyDt.ajax.reload(null, false); };
+
 // Assign to Pre-Sale (2026-10-29): queue the ticked tags for Pre-Sale IQC.
 // Nothing changes on this page; a toast reports the result.
 (function () {
@@ -903,10 +916,10 @@ document.getElementById('bulkQcBtn').addEventListener('click', async function(){
   b.addEventListener('click', function () {
     pending = selectedReadyBarcodes();
     if (!pending.length || b.dataset.busy) return;
-    notesEl.value = ''; document.getElementById('assignPsiqcN').textContent = pending.length;
+    if (notesEl) notesEl.value = ''; document.getElementById('assignPsiqcN').textContent = pending.length;
     bootstrap.Modal.getOrCreateInstance(modalEl).show();
   });
-  modalEl.addEventListener('shown.bs.modal', function () { notesEl.focus(); });
+  modalEl.addEventListener('shown.bs.modal', function () { (notesEl || okBtn).focus(); });
   okBtn.addEventListener('click', function () {
     var bcs = pending;
     if (!bcs.length || b.dataset.busy) return;
@@ -914,14 +927,15 @@ document.getElementById('bulkQcBtn').addEventListener('click', async function(){
     bootstrap.Modal.getOrCreateInstance(modalEl).hide();
     var m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/), tok = m ? decodeURIComponent(m[1]) : '';
     var fd = new FormData(); fd.append('csrf_token', tok); fd.append('barcodes', bcs.join(','));
-    fd.append('notes', notesEl.value.trim());
+    if (notesEl) fd.append('notes', notesEl.value.trim());
     fetch('/pre-sale-iqc/assign', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'X-CSRF-Token': tok } })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (!d.ok) { if (window.showTopToast) window.showTopToast('danger', d.error || d.detail || 'Could not assign.'); return; }
         var parts = [d.assigned + ' tag(s) moved to Pre-Sale IQC'];
         if (d.already) parts.push(d.already + ' already in the queue');
-        if (d.not_ready) parts.push(d.not_ready + ' not in Ready for Sale');
+        if (d.not_ready) parts.push(d.not_ready + ' can\'t go (sold / returned / scrapped / on rent)');
+        if ((d.relocated_tags || []).length) parts.push(d.relocated_tags.length + ' moved to the Showroom');
         if (d.not_found) parts.push(d.not_found + ' not found');
         if (window.showTopToast) window.showTopToast(d.assigned ? 'success' : 'warning', parts.join('; ') + '.');
         readySelected.clear();
@@ -1317,6 +1331,9 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
   }
   // Pre-Sale QC result cards (2026-11-03): Mark Complete stays disabled until
   // Pass, or Fail with a reason, is filled in.
+  {# Only the 3 categories that route (Hardware / Software / Cosmetic), in Master Data order. #}
+  {% set _fc = (master_options('qc_failure_reason') or []) | select('in', ['Hardware', 'Software', 'Cosmetic']) | list %}
+  var PSQC_FAIL_CATS = {{ (_fc or ['Hardware', 'Software', 'Cosmetic']) | tojson }};
   function psqcCardsHtml(passSub, failSub) {
     return '<div class="fw-semibold mb-2">Pre-Sale QC result <span class="text-danger">*</span></div>' +
       '<div class="row g-3 mb-3">' +
@@ -1325,7 +1342,14 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
       '<div class="col-6"><label class="psqc-res fail w-100"><input class="form-check-input" type="radio" name="psqc_result" value="fail">' +
       '<i class="bi bi-x-circle-fill"></i><div class="ttl">Fail</div><div class="sub">' + failSub + '</div></label></div>' +
       '</div>' +
-      '<div id="psqc_reason_wrap" class="mb-3 d-none"><label class="form-label fw-semibold mb-1" for="psqc_reason">Fail reason <span class="text-danger">*</span></label>' +
+      // Fail (2026-11-23, Pankaj): Final QC's 3 Fail categories, same routing —
+      // Hardware -> L1/L2 (else Production Manager), Software -> Stress, Cosmetic -> Cosmetic.
+      '<div id="psqc_reason_wrap" class="mb-3 d-none">' +
+      '<label class="form-label fw-semibold mb-1" for="psqc_category">Fail category <span class="text-danger">*</span></label>' +
+      '<select id="psqc_category" class="form-select form-select-sm mb-1"><option value="">Select…</option>' +
+      PSQC_FAIL_CATS.map(function (c) { return '<option>' + esc(c) + '</option>'; }).join('') + '</select>' +
+      '<div class="small text-muted mb-2">Hardware → L1/L2 (its last L1/L2 engineer, else Production Manager) · Software → Stress Test · Cosmetic → Cosmetic</div>' +
+      '<label class="form-label fw-semibold mb-1" for="psqc_reason">Notes</label>' +
       '<textarea id="psqc_reason" class="form-control form-control-sm" rows="2" maxlength="500" placeholder="What is wrong with the tag?"></textarea></div>';
   }
   function psqcResultSync() {
@@ -1336,8 +1360,8 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
     var fail = !!pick && pick.value === 'fail';
     var wrap = document.getElementById('psqc_reason_wrap');
     if (wrap) wrap.classList.toggle('d-none', !fail);
-    var reason = ((document.getElementById('psqc_reason') || {}).value || '').trim();
-    ok.disabled = !pick || (fail && !reason);
+    var cat = ((document.getElementById('psqc_category') || {}).value || '').trim();
+    ok.disabled = !pick || (fail && !cat);
     ok.className = 'btn btn-sm ' + (fail ? 'btn-danger' : 'btn-success');
     var base = ok.getAttribute('data-base') || 'Mark Complete';
     ok.textContent = fail ? base + ' — Fail' : base;
@@ -1373,12 +1397,18 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
         // reason. The picked card fills dark green / dark red.
         var html = psqcCardsHtml('Tag is fine to sell', 'Tag has an issue') +
           '<div class="psqc-parts">' + (lines.length ? lines.join('<br>') : 'No open part requests.') + '</div>' +
-          '<div class="text-muted mt-2">The tag stays in Ready for Sale.</div>';
+          '<div class="text-muted mt-2">Pass: the tag stays in Ready for Sale. Fail: it moves by the Fail category.</div>';
         confirmBox('Mark Complete — ' + bc, html, 'Mark Complete', 'btn-success', function () {
           var pick = document.querySelector('input[name="psqc_result"]:checked');
           var reason = ((document.getElementById('psqc_reason') || {}).value || '').trim();
-          post('/pre-sale-iqc/complete', bc, btn, { result: pick ? pick.value : '', reason: reason })
-            .then(function (r) { if (r && r.ok) toast('success', 'Pre-Sale QC ' + (r.result === 'fail' ? 'failed' : 'passed') + ' on ' + bc + '.'); });
+          var cat = ((document.getElementById('psqc_category') || {}).value || '').trim();
+          post('/pre-sale-iqc/complete', bc, btn, { result: pick ? pick.value : '', reason: reason, category: cat })
+            .then(function (r) {
+              if (!r || !r.ok) return;
+              if (r.result !== 'fail') { toast('success', 'Pre-Sale QC passed on ' + bc + '.'); return; }
+              if (r.kept) toast('warning', 'Pre-Sale QC failed on ' + bc + ' — stayed in Ready for Sale: ' + r.kept);
+              else toast('success', 'Pre-Sale QC failed on ' + bc + ' — moved to ' + r.moved_to + '.');
+            });
         });
         psqcResultSync();
       })
@@ -1409,7 +1439,7 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
           d.pna.map(function (t) { return '<span class="font-monospace">' + esc(t.barcode) + '</span> (' + t.parts.map(esc).join(', ') + ')'; }).join(', '));
         if ((d.not_started || []).length) html.push('<span class="text-muted">Skipped — not started (' + d.not_started.length + '):</span> ' + tags(d.not_started));
         if ((d.not_found || []).length) html.push('<span class="text-muted">Skipped — not found (' + d.not_found.length + '):</span> ' + tags(d.not_found));
-        html.push('The tags stay in Ready for Sale.');
+        html.push('Pass: the tags stay in Ready for Sale. Fail: they move by the Fail category.');
         // Pass / Fail for all of them (2026-11-03), same cards as Mark Complete.
         confirmBox('Complete — ' + bcs.length + ' tag(s)',
           (ready.length ? psqcCardsHtml('All ' + ready.length + ' tag(s) fine to sell', 'All ' + ready.length + ' tag(s) have an issue') : '') +
@@ -1420,14 +1450,18 @@ document.getElementById('modelReqForm').addEventListener('submit', function(e){
             f2.append('barcodes', ready.map(function (t) { return t.barcode; }).join(','));
             f2.append('result', pick ? pick.value : '');
             f2.append('reason', ((document.getElementById('psqc_reason') || {}).value || '').trim());
+            f2.append('category', ((document.getElementById('psqc_category') || {}).value || '').trim());
             fetch('/pre-sale-iqc/bulk-complete', { method: 'POST', body: f2, credentials: 'same-origin',
                                                    headers: { 'X-CSRF-Token': tok() } })
               .then(function (r) { return r.json(); })
               .then(function (x) {
                 if (!x.ok) { toast('danger', x.error || x.detail || 'Could not complete.'); return; }
+                var mv = Object.keys(x.moved || {}).map(function (k) { return x.moved[k] + ' to ' + k; }).join(', ');
                 toast('success', 'Pre-Sale QC ' + (x.result === 'fail' ? 'failed' : 'passed') + ' on ' + x.completed + ' tag(s)' +
+                  (mv ? ' — moved ' + mv : '') +
                   (x.verified ? '; ' + x.verified + ' part(s) verified' : '') +
                   (x.cancelled ? '; ' + x.cancelled + ' request(s) cancelled' : '') + '.');
+                if ((x.kept || []).length) toast('warning', 'Stayed in Ready for Sale (could not route): ' + x.kept.join(', '));
                 readySelected.clear();
                 var all = document.getElementById('readySelectAll'); if (all) all.checked = false;
                 readyDt.ajax.reload(null, false);

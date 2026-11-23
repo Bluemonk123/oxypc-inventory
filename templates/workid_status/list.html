@@ -73,19 +73,14 @@
     </div>
     <div class="filter-bar-check">
       <div class="form-check text-nowrap mb-0">
+        {# Ticked by default (2026-11-22); the hidden "0" is sent when unticked. #}
+        <input type="hidden" name="exclude_admin" value="0">
         <input type="checkbox" class="form-check-input" id="excludeAdminChk" name="exclude_admin"
                value="1" {% if f_exclude_admin %}checked{% endif %} title="Exclude Admin">
         <label class="form-check-label small fw-semibold" for="excludeAdminChk">Exclude Admin</label>
       </div>
     </div>
-    <div class="filter-bar-check">
-      <div class="form-check text-nowrap mb-0">
-        <input type="checkbox" class="form-check-input" id="showReassignedChk" name="show_reassigned"
-               value="1" {% if f_show_reassigned %}checked{% endif %}
-               title="Also show WorkIDs taken off an engineer by Pick This, Change Engineer or a stage move">
-        <label class="form-check-label small fw-semibold" for="showReassignedChk">Show Reassigned</label>
-      </div>
-    </div>
+    {# "Show Reassigned" checkbox removed 2026-11-22 (Pankaj). #}
     {# Apply button (2026-11-08): filters apply only when it is pressed. #}
     <div>
       <button type="submit" class="btn btn-primary btn-sm text-nowrap">Apply</button>
@@ -107,16 +102,21 @@
      Assigned = Completed + Ongoing + Scrap (+ Reassigned when shown). #}
   {# Assigned / Completed / Ongoing count distinct tags (2026-10-30); a tag
      can be both Completed and Ongoing. Clicking still shows their WorkID rows. #}
-  {% for key, label, n, bg, icon in [('assigned', 'Assigned Tags', tile_counts.assigned_tags, '#0d6efd', 'bi-tag'),
-      ('completed', 'Completed Tags', tile_counts.completed_tags, '#0F7A37', 'bi-check-circle'),
-      ('ongoing', 'Ongoing Tags', tile_counts.ongoing_tags, '#f0ad00', 'bi-hourglass-split'),
-      ('cr', 'Total Customer Return', tile_counts.total_cust_return, '#6c757d', 'bi-arrow-return-left'),
-      ('scrap', 'Total Scrap', tile_counts.total_scrap, '#343a40', 'bi-recycle'),
-      ('pna', 'Total PNA', tile_counts.total_pna, '#dc3545', 'bi-exclamation-triangle')] %}
-  {{ tl.single(n, label, bg, icon, variant='dark', cls='wid-tile',
-               title_attr='Show only these rows (click again to clear)',
-               extra='data-tile="' ~ key ~ '" role="button" tabindex="0"',
-               count_attrs='data-server="' ~ n ~ '"') }}
+  {# 2026-11-20 (Pankaj): every tile counts WorkIDs and they add up —
+     Assigned = Completed + Ongoing + Scrap, each the sum of the stage cards
+     below (Cosmetic once per laptop visit). Customer Return and PNA are parts
+     of Assigned / Ongoing. #}
+  {# 2026-11-22 (Pankaj): four tiles, the totals of the stage cards below
+     (routers/workid_status.py _dark_tiles). Counts only, no click filter. #}
+  {% set _dk = tile_counts.dark or {} %}
+  {# The date each tile is for shows as its title (2026-11-21). Order and
+     "Total Repair Line Pending" name: 2026-11-22, Pankaj. #}
+  {% for label, n, bg, icon, tip, when in [
+      ('Total Repaired', _dk.repaired, '#0F7A37', 'bi-check-circle', 'Same as the Final QC card Pass', _dk.span),
+      ('Total Repair Line Pending', _dk.pending, '#f0ad00', 'bi-hourglass-split', 'Pending of all the stage cards below — tags sitting on each stage on this date', _dk.span),
+      ('Total Scrap', _dk.scrap, '#343a40', 'bi-recycle', 'Tags scrapped on the L1/L2 and L3/L4 cards, each tag counted once', _dk.span),
+      ('Total PNA', _dk.pna, '#dc3545', 'bi-exclamation-triangle', 'Tags on the L1/L2 and L3/L4 cards holding a PNA part on this date', 'On ' ~ _dk.on)] %}
+  {{ tl.single(n or 0, label, bg, icon, variant='dark', cls='wid-kpi', title=when, title_attr=tip) }}
   {% endfor %}
 </div>
 
@@ -134,43 +134,61 @@
   {# Each tile opens its stage's page (2026-11-03). #}
   {% set _tile_href = {'l1l2': '/repair/l1', 'l3l4': '/repair/l3l4', 'stress': '/qc',
                        'cosmetic': '/cosmetic/all_tags', 'final_qc': '/cosmetic/final_qc',
-                       'pre_sale_iqc': '/pre-sale-iqc'}.get(key) %}
+                       'returned': '/returns'}.get(key) %}
     {# Stage name, then Assigned and Completed counts, stacked (2026-10-27;
        no total). #}
     {# "(Waiting - N)" removed from the tiles (2026-10-28). #}
     {# "Move to Ready" count moved off the Final QC tile to the table's
        count line, next to Repeat Tags (2026-10-29). #}
+  {# 2026-11-20 (Pankaj): WorkIDs (Cosmetic: laptop visits), and each card adds
+     up — Moved = Pending + Started + Completed (+ Scrap on L1/L2, L3/L4).
+     Pending = moved to the stage, not picked up; Started = picked up, in
+     progress; Completed = done. Pass | Fail unchanged. #}
   {% set _ln = [] %}
-  {% if key == 'pre_sale_iqc' %}
-    {# Pre-Sale IQC (2026-10-30/11-04): Pending first, then Started, then Pass | Fail;
-       Pending = the Pre-Sale QC page's Assigned table now (not filtered by this page). #}
-    {% set _pc = psiqc if psiqc is defined else {'moved': 0, 'started': 0, 'pass': 0, 'fail': 0, 'pending': 0} %}
-    {% set _ = _ln.append({'title': "Tags in the Pre-Sale QC page's Assigned table right now (not filtered by this page)",
-                           'parts': [(_pc.pending, 'Pending', 'data-k="ps_pending" data-server="' ~ _pc.pending ~ '"')]}) %}
-    {% set _ = _ln.append({'title': 'Pre-Sale QC WorkIDs started (Start pressed) in the Work Date range',
-                           'parts': [(_pc.started, 'Started', 'data-k="started" data-server="' ~ _pc.started ~ '"')]}) %}
-    {# Pass | Fail (2026-11-03): the result picked in Mark Complete, completions in the Work Date range. #}
-    {% set _ = _ln.append({'title': 'Pre-Sale QC completed in the Work Date range: Pass / Fail as picked in Mark Complete',
-                           'parts': [(_pc.pass, 'Pass', 'data-k="ps_pass" data-server="' ~ _pc.pass ~ '"'),
-                                     (_pc.fail, 'Fail', 'data-k="ps_fail" data-server="' ~ _pc.fail ~ '"')]}) %}
-  {% else %}
-    {% set _ = _ln.append({'title': (('Tags that came into Cosmetic (moved to Cosmetic Received) in the Work Date range' if t.moves else 'Tags with a Cosmetic WorkID in this view (each Cosmetic sub-stage has its own WorkID; the table lists them all)') if key == 'cosmetic' else 'WorkIDs in this stage (open or completed)'),
-                           'parts': [(t.assigned, 'Received' if key == 'cosmetic' else 'Started', 'data-k="assigned" data-server="' ~ t.assigned ~ '"')]}) %}
-    {% set _ = _ln.append({'title': ('Tags in Cosmetic right now, any step from Cosmetic Received to Cosmetic Completed (same as the Cosmetic All Tags page; not filtered by this page)' if key == 'cosmetic' else 'Completed WorkIDs (scrap decisions not included)'),
-                           'parts': [(t.completed, 'Pending' if key == 'cosmetic' else 'Completed', 'data-k="completed" data-server="' ~ t.completed ~ '"')]}) %}
-    {% if key in ('stress', 'final_qc', 'cosmetic') %}
-    {# Pass | Fail (2026-10-28): completed WorkIDs by where the tag went next. #}
-    {% set _ = _ln.append({'title': ('Completed Stress tests: Pass = sent on to Cosmetic; Fail = sent back to L1/L2 or L3/L4' if key == 'stress' else ('Cosmetic, tags moved in the Work Date range: Pass = from Cosmetic to Final QC; Fail = from Cosmetic back to L1/L2 or L3/L4 (Paint Fail inside Cosmetic not counted)' if key == 'cosmetic' else 'Completed Final QC: Pass = Final QC Pass Hold / Ready to Sale; Fail = Fail Hold or sent back')),
-                           'parts': [(t.pass, 'Pass', 'data-k="pass" data-server="' ~ t.pass ~ '"'),
-                                     (t.fail, 'Fail', 'data-k="fail" data-server="' ~ t.fail ~ '"')]}) %}
-    {% endif %}
-    {% if key in ('l1l2', 'l3l4') %}
-    {# Scrap decisions, counted apart from Completed (2026-10-27). #}
-    {% set _ = _ln.append({'title': 'WorkIDs here closed by a scrap step (L3/L4 scrap decision, or L1/L2 Back to Inventory)',
-                           'parts': [(t.scrap, 'Scrap', 'data-k="scrap" data-server="' ~ t.scrap ~ '"')]}) %}
-    {% endif %}
+  {# Moved shows beside the title ("L1/L2 - 109"), 2026-11-21. #}
+  {% set _moved_title = ('L1/L2 and L3/L4 tags with a customer return in the range = Pending + Started + Pass + Replace' if key == 'returned' else 'Laptop visits to Cosmetic in the range = Pending + Started + Pass + Fail' if key == 'cosmetic' else ('WorkIDs moved to this stage = Pending + Started + Pass + Scrap' if key in ('l1l2', 'l3l4') else 'WorkIDs moved to this stage = Pending + Started + Pass + Fail')) %}
+  {# Pending, then Started below it (2026-11-21). #}
+  {# More than one day selected: no Pending / Started lines (2026-11-22); Moved In unchanged. #}
+  {% if not multi_day %}
+  {% set _ = _ln.append({'title': ('Pending = tags in any Cosmetic stage (Received to Completed) on the last date' if key == 'cosmetic' else 'Pending = tags sitting on the ' ~ label ~ ' page on the last date'),
+                         'parts': [(t.pending, 'Pending', 'data-k="pending" data-server="' ~ t.pending ~ '"')]}) %}
+  {% set _ = _ln.append({'title': ('Started = tags in Cleaning to Water Sanding on the last date' if key == 'cosmetic' else 'Started = tags an engineer started on this date (finished or not — Pass / Fail / Scrap is the result after the start)'),
+                         'parts': [(t.started, 'Started', 'data-k="started" data-server="' ~ t.started ~ '"')]}) %}
   {% endif %}
+  {% if key == 'returned' %}
+  {# Returned (2026-11-22): the L1/L2 / L3/L4 rows with a customer return in
+     the range, by WorkID status; Replace = replacement / credit note given. #}
+  {% set _ln = [] %}
+  {% if not multi_day %}
+  {% set _ = _ln.append({'title': 'Pending = L1/L2 or L3/L4 WorkID not picked up yet',
+                         'parts': [(t.pending, 'Pending', 'data-k="pending" data-server="' ~ t.pending ~ '"')]}) %}
+  {% set _ = _ln.append({'title': 'Started = L1/L2 or L3/L4 repair going on',
+                         'parts': [(t.started, 'Started', 'data-k="started" data-server="' ~ t.started ~ '"')]}) %}
+  {% endif %}
+  {% set _ = _ln.append({'title': 'Pass = L1/L2 or L3/L4 repair done | Replace = customer got a replacement or credit note',
+                         'parts': [(t.pass, 'Pass', 'data-k="pass" data-server="' ~ t.pass ~ '"'),
+                                   (t.replace, 'Replace', 'data-k="replace" data-server="' ~ t.replace ~ '"')]}) %}
+  {% elif key in ('l1l2', 'l3l4') %}
+  {% set _ = _ln.append({'title': 'Pass = repair done | Scrap = closed by a scrap decision',
+                         'parts': [(t.completed, 'Pass', 'data-k="completed" data-server="' ~ t.completed ~ '"'),
+                                   (t.scrap, 'Scrap', 'data-k="scrap" data-server="' ~ t.scrap ~ '"')]}) %}
+  {% else %}
+  {# Stress / Cosmetic / Final QC / Pre-Sale QC (2026-11-21, Pankaj): Completed
+     is their Pass + Fail, so no separate Completed line. #}
+  {% set _ = _ln.append({'title': ('Completed Stress tests: Pass = sent on to Cosmetic; Fail = sent back to L1/L2 or L3/L4' if key == 'stress'
+                                   else ('Pass = moved out of Water Sanding to Cosmetic Completed in the range | Fail = sent back to L1/L2 or L3/L4 in the range' if key == 'cosmetic'
+                                   else 'Completed Final QC: Pass = Final QC Pass Hold / Ready to Sale; Fail = Fail Hold or sent back')),
+                         'parts': [(t.pass, 'Pass', 'data-k="pass" data-server="' ~ t.pass ~ '"'),
+                                   (t.fail, 'Fail', 'data-k="fail" data-server="' ~ t.fail ~ '"')]}) %}
+  {% endif %}
+  {# People (2026-11-21): this stage's members who marked attendance in the range. #}
+  {# More than one day selected: no Moved In count in the footer (2026-11-22). #}
+  {% set _ppl = (stage_people or {}).get(key, 0) %}
   {{ tl.multi(label, _ln, color, icon, cls='wid-stage', href=_tile_href,
+               footer=('<span></span>' if multi_day else
+                       '<span title="' ~ _moved_title ~ '"><span class="text-muted">' ~ ('Returned' if key == 'returned' else 'Moved In') ~ '</span> <b data-k="moved" data-server="' ~ t.assigned ~ '">' ~ t.assigned ~ '</b></span>'
+                       ~ '<span class="text-muted opacity-50">|</span>')
+                      ~ '<span title="' ~ ('Return Engineers (Designation) who marked attendance in this date range' if key == 'returned' else label ~ ' members who marked attendance in this date range') ~ '"><i class="bi bi-person-fill text-muted"></i> <span class="text-muted">Team</span> <b>' ~ _ppl ~ '</b></span>',
                title_attr=('Open ' ~ label) if _tile_href else '',
                extra='data-group="' ~ key ~ '" data-stages="' ~ (_stages | join(',')) ~ '"'
                      ~ (' data-moves="1"' if t.moves else '') ~ (' data-pending="1"' if t.pending_now else '')) }}
@@ -190,7 +208,7 @@
        with a filter applied or without one. #}
     <div class="d-flex gap-2">
     {% if can(current_user, 'workid_status', 'export') %}<a class="btn btn-outline-success btn-sm text-nowrap"
-       href="/workid-status/export?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&work_from={{ f_work_from | urlencode }}&work_to={{ f_work_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&show_reassigned={{ f_show_reassigned | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}">
+       href="/workid-status/export?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&work_from={{ f_work_from | urlencode }}&work_to={{ f_work_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}">
       <i class="bi bi-download me-1"></i>Team Productivity
     </a>{% endif %}
     {# Repair Summary (2026-10-29): tags moved into Ready for Sale from
@@ -198,7 +216,7 @@
        (sold later still counts), each with all its parts + Labour /
        Packing / Freight. #}
     {% if can(current_user, 'workid_status', 'export') %}<a class="btn btn-outline-primary btn-sm text-nowrap"
-       href="/workid-status/repair-summary?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&work_from={{ f_work_from | urlencode }}&work_to={{ f_work_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&show_reassigned={{ f_show_reassigned | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}"
+       href="/workid-status/repair-summary?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&work_from={{ f_work_from | urlencode }}&work_to={{ f_work_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}"
        title="Tags moved into Ready for Sale from production between the Work Date From/To (including ones sold since; not Stock In or returns): the parts of this refurbishment (since its last sale), Labour, Packing, Freight and Grand Total">
       <i class="bi bi-receipt me-1"></i>Repair Summary
     </a>{% endif %}
@@ -206,7 +224,7 @@
        Pass in the Work Date From/To — same WorkIDs as the Final QC tile's
        Pass — in the Repair Summary layout. #}
     {% if can(current_user, 'workid_status', 'export') %}<a class="btn btn-outline-primary btn-sm text-nowrap"
-       href="/workid-status/final-qc-pass?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&work_from={{ f_work_from | urlencode }}&work_to={{ f_work_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&show_reassigned={{ f_show_reassigned | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}"
+       href="/workid-status/final-qc-pass?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&work_from={{ f_work_from | urlencode }}&work_to={{ f_work_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}"
        title="Tags marked Final QC Pass (to Pass Hold or Ready for Sale) between the Work Date From/To — the Final QC card's Pass — with the parts of this refurbishment (since its last sale), Labour, Packing, Freight and Grand Total">
       <i class="bi bi-patch-check me-1"></i>Final QC Pass
     </a>{% endif %}
@@ -250,7 +268,6 @@ $(document).ready(function(){
   var REPEAT_TAGS = {{ (repeat_tags | default(0)) | tojson }};
   // Tags moved into Ready for Sale from production in the Work Date range
   // (same tags as Repair Summary), shown on the count line (2026-10-29).
-  var READY_PASS = {{ (ready_pass_count if ready_pass_count is defined else none) | tojson }};
   var repeatOnly = false;
   function repeatCount(list) {
     var c = {}, n = 0;
@@ -372,16 +389,14 @@ $(document).ready(function(){
       // server's count (all matching WorkIDs) with no table search / tile;
       // otherwise counted from the rows left. Click: show only those rows.
       var rep = (total === max) ? REPEAT_TAGS : repeatCount(new $.fn.dataTable.Api(settings).rows({ search: 'applied' }).data().toArray());
-      // Count badge | Repeat Tags | Moved to Ready (2026-10-29): plain text
+      // Count badge | Repeat Tags (2026-10-29; Moved to Ready removed 2026-11-22): plain text
       // with spaced separators; Repeat Tags still filters on click (bold +
       // underlined while on).
       var sep = '<span class="text-muted mx-2" style="font-size:1rem">|</span>';
       return '<span class="badge text-bg-warning gtable-count-badge"' + tip + '>' + n.toLocaleString('en-IN') + '</span>' +
              sep + '<span style="font-size:.95rem" class="text-danger wid-repeat-badge' + (repeatOnly ? ' fw-bold text-decoration-underline' : ' fw-semibold') +
              '" role="button" title="Tag Numbers with more than one WorkID here \u2014 click to show only their rows (click again to clear)">' +
-             'Repeat Tags - ' + rep.toLocaleString('en-IN') + '</span>' +
-             (READY_PASS == null ? '' : sep + '<span style="font-size:.95rem" class="fw-semibold text-success" title="Tags moved into Ready for Sale between the Work Date From/To: TRC flow (Final QC Pass) + bypass (moved straight from other production stages). Sold since still counts; Stock In and returns not counted. Same tags as Repair Summary.">' +
-             'Moved to Ready - ' + READY_PASS.toLocaleString('en-IN') + '</span>');
+             'Repeat Tags - ' + rep.toLocaleString('en-IN') + '</span>';
     }
   });
 
@@ -409,16 +424,15 @@ $(document).ready(function(){
 
   // ── Tile filters (2026-10-24) ─────────────────────────────────────────
   var TILE_TEST = {
-    scrap: function (r) { return !!r.x; },
-    cr: function (r) { return !!r.cr; },
-    // Every WorkID in this view (2026-10-28: tiles count WorkIDs, not tags).
-    assigned: function () { return true; },
-    // Every open WorkID: not started, started or waiting on a PNA part.
+    // WorkIDs, reassigned ones counted nowhere (2026-11-20).
+    scrap: function (r) { return !!r.x && r.st !== 'reassigned'; },
+    cr: function (r) { return !!r.cr && r.st !== 'reassigned'; },
+    assigned: function (r) { return r.st !== 'reassigned'; },
     ongoing: function (r) { return r.st !== 'completed' && r.st !== 'reassigned'; },
     waiting: function (r) { return !!r.wt; },
-    // Scrap decisions are counted under Scrap, not Completed (2026-10-27).
     completed: function (r) { return r.st === 'completed' && !r.x; },
-    pna: function (r) { return !!r.p; },
+    // PNA = open WorkIDs waiting on a part (part of Ongoing).
+    pna: function (r) { return !!r.p && r.st !== 'completed' && r.st !== 'reassigned'; },
   };
   var activeTile = '';
 
@@ -446,35 +460,47 @@ $(document).ready(function(){
       if (!num) return;
       // Server value is thousands-formatted like the tile macro (2026-11-06).
       if (useServer || !TILE_TEST[key]) { num.textContent = Number(num.getAttribute('data-server')).toLocaleString('en-US'); return; }
-      num.textContent = (key === 'assigned' || key === 'completed' || key === 'ongoing')   // distinct tags (2026-10-30)
-        ? new Set(list.filter(TILE_TEST[key]).map(function (r) { return r.b; })).size
-        : _tagSet(list, TILE_TEST[key]);
+      // Customer Return counts tags, not WorkIDs (2026-11-21).
+      num.textContent = key === 'cr'
+        ? new Set(list.filter(TILE_TEST.cr).map(function (r) { return r.b; })).size
+        : _tagSet(list, TILE_TEST[key]);   // WorkIDs (2026-11-20)
     });
     document.querySelectorAll('#widStageTiles [data-group]').forEach(function (g) {
       var stages = (g.getAttribute('data-stages') || '').split(',');
-      var mine = useServer ? [] : list.filter(function (r) { return stages.indexOf(r.sv) >= 0; });
-      var isCos = g.getAttribute('data-group') === 'cosmetic';
+      var mine = useServer ? [] : list.filter(function (r) { return stages.indexOf(r.sv) >= 0 && r.st !== 'reassigned'; });
+      // Started (2026-11-22): engineer on the WorkID, Start Date in the window,
+      // finished or not — a tag once per start day, from every row (not deduped).
+      var startedN = (function () {
+        var seen = {};
+        mine.forEach(function (r) {
+          var d = (r.as || '').slice(0, 8);
+          if (!r.wt && d && d >= START_WIN[0] && d <= START_WIN[1]) seen[r.b + '|' + d] = 1;
+        });
+        return Object.keys(seen).length;
+      })();
+      // A tag once per day, its latest WorkID of the day (2026-11-21).
+      var _best = {};
+      mine.forEach(function (r) { var k = r.b + '|' + r.md; if (!_best[k] || r.mt >= _best[k].mt) _best[k] = r; });
+      mine = Object.keys(_best).map(function (k) { return _best[k]; });
+      var isCos = g.getAttribute('data-group') === 'cosmetic' || g.getAttribute('data-group') === 'returned';
+      var isLx = g.getAttribute('data-group') === 'l1l2' || g.getAttribute('data-group') === 'l3l4';
       g.querySelectorAll('[data-k]').forEach(function (el) {
         var k = el.getAttribute('data-k');
-        if (useServer || k === 'moved' || k === 'started' || k === 'ps_pass' || k === 'ps_fail' || k === 'ps_pending') { el.textContent = el.getAttribute('data-server'); return; }   // Moved: never recounted
-        if (isCos && (k === 'pass' || k === 'fail')) { el.textContent = el.getAttribute('data-server'); return; }   // from the moves, server-side (2026-11-02)
-        // With a Work Date range Cosmetic Assigned / Completed come from the
-        // moves (arrived / finished, 2026-11-03): server value, not recounted.
-        if (isCos && g.getAttribute('data-moves') && (k === 'assigned' || k === 'completed')) { el.textContent = el.getAttribute('data-server'); return; }
-        if (isCos && g.getAttribute('data-pending') && k === 'completed') { el.textContent = el.getAttribute('data-server'); return; }   // Pending: live count (2026-11-03)
-        if (isCos && (k === 'assigned' || k === 'completed')) {      // Cosmetic counts TAGS (2026-11-02)
-          var byTag = {};
-          mine.forEach(function (r) { var t = byTag[r.b] = byTag[r.b] || [false, false];
-            if (r.st === 'completed') t[1] = true; else if (r.st !== 'reassigned') t[0] = true; });
-          var keys = Object.keys(byTag);
-          el.textContent = k === 'assigned' ? keys.length
-            : keys.filter(function (b) { return byTag[b][1] && !byTag[b][0]; }).length;
-          return;
-        }
-        el.textContent = _tagSet(mine, k === 'scrap' ? function (r) { return !!r.x; }
-                                    : k === 'completed' ? TILE_TEST.completed
-                                    : (k === 'pass' || k === 'fail') ? function (r) { return r.sr === k; }
-                                    : function () { return true; });
+        // Cosmetic (laptop visits, from the moves) and Pre-Sale QC Pass / Fail
+        // stay as the server counted them.
+        // Pending = tags sitting on the stage on the date: not from the rows (2026-11-22).
+        if (useServer || isCos || k === 'pending') { el.textContent = el.getAttribute('data-server'); return; }
+        if (k === 'started') { el.textContent = startedN; return; }
+        var live = function (r) { return r.st !== 'reassigned'; };
+        var test = k === 'moved' ? live
+          : k === 'pending' ? function (r) { return live(r) && !r.x && r.st === 'pending'; }
+          // completed without a Pass / Fail yet counts as Started on result cards
+          : k === 'started' ? function (r) { return live(r) && !r.x && (r.st === 'in_progress' || (r.st === 'completed' && !r.sr && !isLx)); }
+          : k === 'completed' ? TILE_TEST.completed
+          : k === 'scrap' ? TILE_TEST.scrap
+          : (k === 'pass' || k === 'fail') ? function (r) { return live(r) && r.st === 'completed' && r.sr === k; }
+          : live;
+        el.textContent = _tagSet(mine, test);
       });
     });
   }
@@ -493,6 +519,7 @@ $(document).ready(function(){
     if (dt) dt.draw();
   }
   var SCRAP_TYPE = {{ f_scrap_type | tojson }};
+  var START_WIN = {{ (start_window or ['', '']) | tojson }};
   function tileClick(key) {
     if (key === activeTile) { setTile(''); return; }
     // Scrap WorkIDs are hidden while Scrap Type = No Scrap: reload with All.

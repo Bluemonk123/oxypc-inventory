@@ -3,6 +3,8 @@
 {% block page_title %}Sales Order {{ so.so_number }}{% endblock %}
 {# Page name "<list page name> > <record id>" (2026-11-10): see base.html #}{% block record_id %}{{ so.so_number }}{% endblock %}{% block record_parent %}/crm/sales-orders{% endblock %}{% block record_parent_label %}Sales Orders{% endblock %}
 {% block content %}
+{# Notes History (2026-11-23, Pankaj): every note on this record, never overwritten. #}
+<div class="d-flex justify-content-end mb-2"><button type="button" class="btn btn-sm btn-outline-secondary" data-notes-history data-record-type="sales_order" data-record-id="{{ so.id }}" data-title="{{ so.so_number or '' }}"><i class="bi bi-journal-text me-1"></i>Notes History</button></div>
 {# Sales Order detail (2026-11-10, Pankaj): same layout as Quotation Detail —
    header card (number, status, Accounts verification, Print, back to the deal),
    buyer on the left, dates / links on the right; Line Items; History. #}
@@ -83,5 +85,22 @@
   </div>
 </div>
 
+{# Notes (2026-11-23, Pankaj): editable; every change kept in Notes History. #}
+<div class="card border-0 shadow-sm mb-3">
+  <div class="card-header bg-white border-0 fw-semibold"><i class="bi bi-journal-text me-1 text-muted"></i>Notes</div>
+  <div class="card-body">
+    {% if can(current_user, 'crm_sales_opp', 'edit') %}
+    <form method="post" action="/crm/sales-orders/{{ so.id }}/notes">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token', '') }}">
+      <textarea name="notes" class="form-control form-control-sm mb-2" rows="3" maxlength="5000"
+                placeholder="Internal notes about this sales order">{{ so.notes or '' }}</textarea>
+      <button class="btn btn-sm btn-primary"><i class="bi bi-save me-1"></i>Save Notes</button>
+    </form>
+    {% else %}
+    <p class="mb-0 small" style="white-space:pre-wrap">{{ so.notes or '—' }}</p>
+    {% endif %}
+  </div>
+</div>
 {% include "_history_card.html" %}
+{% include "_notes_history_modal.html" %}
 {% endblock %}

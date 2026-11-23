@@ -1,0 +1,277 @@
+{#- Change Stage (2026-11-22, Pankaj; was Production Manager's "Move to Stage"):
+    one modal for the Production Manager page button and the global top-bar
+    button. base.html includes it for can_change_stage() users and on the
+    Production Manager page (change_stage_page). Posts each tag to
+    /devices/change-engineer (routers/stock.py) with the chosen stage. -#}
+{# Change Engineer — search a tag from ANY stage (same system-wide lookup as
+   Search Tags above), pick a User + target Stage (default L1), submit moves
+   the tag to that stage and creates a WorkOrder assigning it to that user —
+   see routers/stock.py's change_engineer / change_engineer_users. #}
+<div class="modal fade" id="changeEngineerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-signpost-split me-2"></i>Change Stage</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {# Several tags at once (2026-11-22, Pankaj): scan / type / paste tags —
+           an exact Tag Number is added on its own (scanner Enter, paste of a
+           list); a partial one shows matches to click. Each is moved in turn. #}
+        <label class="form-label fw-semibold">Scan or Search Tag Numbers</label>
+        <input type="text" id="ceModal_search" class="form-control font-monospace"
+               placeholder="Scan tags one after another, paste a list, or type 2+ characters…" autocomplete="off">
+        <div id="ceModal_results" class="list-group mt-1" style="max-height:180px; overflow-y:auto;"></div>
+        <div id="ceModal_scanmsg" class="small mt-1"></div>
+
+        <div id="ceModal_selected" class="d-none mt-3">
+          <div class="d-flex align-items-center justify-content-between mb-1">
+            <span class="small fw-semibold text-muted">Selected Tags <span class="badge bg-primary ms-1" id="ceModal_count">0</span></span>
+            <button type="button" class="btn btn-sm btn-link text-danger p-0" id="ceModal_clear">Clear all</button>
+          </div>
+          <div class="table-responsive mb-3" style="max-height:240px">
+          <table class="table table-sm mb-0">
+            <thead class="table-light">
+              <tr><th>Tag Number</th><th>Lot</th><th>Make</th><th>Model</th><th>Last Stage</th><th>Current Stage</th><th>Changed By</th><th>Changed Date</th><th></th></tr>
+            </thead>
+            <tbody id="ceModal_list"></tbody>
+          </table>
+          </div>
+          {# Move to Stage (2026-11-02): only the Stage is picked — the tag arrives
+             there unassigned and the engineer takes it with Pick This. #}
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label fw-semibold">Change to Stage</label>
+              <select id="ceModal_stage" class="form-select">
+                {% for value, label in change_stage_options() %}
+                <option value="{{ value }}" {% if value == 'l1' %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="col-md-6 d-flex align-items-end">
+              <div class="small text-muted">This change stage with no engineer and open workid with previous engineer is closed as <strong>Reassigned</strong> (not counted as done)</div>
+            </div>
+          </div>
+        </div>
+        <div id="ceModal_msg" class="mt-2"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" id="ceModal_submit" class="btn btn-primary" disabled>
+          <i class="bi bi-check-lg me-1"></i>Change Stage</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+function ceCsrf() { var m = document.cookie.match(/(?:^|; )csrf_token=([^;]*)/); return m ? decodeURIComponent(m[1]) : ''; }
+// Move to Stage (2026-11-02): no user / role pick — the tag moves to the
+// chosen stage unassigned (routers/stock.py _move_to_stage_unassigned).
+// Several tags (2026-11-22): scanned / pasted exact Tag Numbers are added on
+// their own; each selected tag is moved in turn with the same endpoint.
+var ceSelected = [];          // [{barcode, lot, make, model, stage, last_stage, by, at, err}]
+var ceInfo = {};              // barcode -> search-tags row (Lot, Make, Model, Stage)
+
+function openChangeEngineerModal() {
+  ceSelected = [];
+  document.getElementById('ceModal_search').value = '';
+  document.getElementById('ceModal_results').innerHTML = '';
+  document.getElementById('ceModal_scanmsg').innerHTML = '';
+  document.getElementById('ceModal_msg').innerHTML = '';
+  renderCeList();
+  new bootstrap.Modal(document.getElementById('changeEngineerModal')).show();
+  setTimeout(function(){ document.getElementById('ceModal_search').focus(); }, 300);
+}
+
+function ceEsc(s) { return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+function renderCeList() {
+  var box = document.getElementById('ceModal_selected');
+  box.classList.toggle('d-none', !ceSelected.length);
+  document.getElementById('ceModal_count').textContent = ceSelected.length;
+  document.getElementById('ceModal_list').innerHTML = ceSelected.map(function(t, i){
+    // Columns (2026-11-22): Tag, Lot, Make, Model, Last Stage, Current Stage,
+    // Changed By / Changed Date (the most recent Asset History move).
+    var row = '<tr' + (t.err ? ' class="table-danger"' : '') + '>' +
+      '<td class="font-monospace small fw-semibold text-nowrap">' + ceEsc(t.barcode) + '</td>' +
+      '<td class="small">' + ceEsc(t.lot || '—') + '</td>' +
+      '<td class="small">' + ceEsc(t.make || '—') + '</td>' +
+      '<td class="small">' + ceEsc(t.model || '—') + '</td>' +
+      '<td class="small text-muted">' + ceEsc(t.last_stage || (t.loaded ? '—' : '…')) + '</td>' +
+      '<td><span class="badge bg-secondary">' + ceEsc(t.stage || '—') + '</span></td>' +
+      '<td class="small">' + ceEsc(t.by || (t.loaded ? '—' : '…')) + '</td>' +
+      '<td class="small text-nowrap">' + ceEsc(t.at || (t.loaded ? '—' : '…')) + '</td>' +
+      '<td class="text-end"><button type="button" class="btn btn-sm btn-link text-danger p-0 ce-remove" data-i="' + i + '" title="Delete"><i class="bi bi-trash"></i></button></td>' +
+    '</tr>';
+    if (t.err) row += '<tr class="table-danger"><td colspan="9" class="small text-danger py-1">' + ceEsc(t.barcode) + ': ' + ceEsc(t.err) + '</td></tr>';
+    return row;
+  }).join('');
+  document.getElementById('ceModal_submit').disabled = !ceSelected.length;
+  var b = document.getElementById('ceModal_submit');
+  b.innerHTML = '<i class="bi bi-check-lg me-1"></i>Change Stage' + (ceSelected.length ? ' (' + ceSelected.length + ')' : '');
+}
+
+function ceScanMsg(html) { document.getElementById('ceModal_scanmsg').innerHTML = html; }
+
+function addCeTag(barcode, stage) {
+  var key = String(barcode).toUpperCase();
+  if (ceSelected.some(function(t){ return t.barcode.toUpperCase() === key; })) {
+    ceScanMsg('<span class="text-muted">' + ceEsc(barcode) + ' is already in the list.</span>');
+    return;
+  }
+  var info = ceInfo[barcode] || {};
+  var t = {barcode: barcode, stage: stage, lot: info.lot_number, make: info.make, model: info.model};
+  ceSelected.unshift(t);
+  ceScanMsg('<span class="text-success"><i class="bi bi-check-circle me-1"></i>Added ' + ceEsc(barcode) + '</span>');
+  renderCeList();
+  // Current Stage + last Asset History move (same /devices/api/asset-history the Search Tags modal uses)
+  fetch('/devices/api/asset-history?barcode=' + encodeURIComponent(barcode))
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      if (d.current_stage) t.stage = d.current_stage;
+      var mv = (d.movements || [])[0];          // most recent move
+      if (mv) { t.last_stage = mv.from_stage; t.by = mv.moved_by; t.at = mv.moved_at; }
+      t.loaded = true;
+      renderCeList();
+    }).catch(function(){ t.loaded = true; renderCeList(); });
+}
+
+(function(){
+  var input = document.getElementById('ceModal_search');
+  var resultsBox = document.getElementById('ceModal_results');
+  var debounceTimer = null;
+  if (!input) return;
+
+  function lookup(q) {
+    return fetch('/devices/api/search-tags?q=' + encodeURIComponent(q))
+      .then(function(r){ return r.json(); }).then(function(d){
+        (d.results || []).forEach(function(x){ ceInfo[x.barcode] = x; });
+        return d.results || [];
+      });
+  }
+  function exact(results, q) {
+    q = q.toUpperCase();
+    return results.find(function(r){ return String(r.barcode).toUpperCase() === q; });
+  }
+
+  // Enter (a scanner sends it) or a pasted list: add every exact Tag Number.
+  function addTokens(text) {
+    var tokens = String(text).split(/[\s,;]+/).map(function(x){ return x.trim(); }).filter(Boolean);
+    if (!tokens.length) return;
+    input.value = '';
+    resultsBox.innerHTML = '';
+    var missing = [];
+    var chain = Promise.resolve();
+    tokens.forEach(function(tok){
+      chain = chain.then(function(){
+        return lookup(tok).then(function(res){
+          var hit = exact(res, tok);
+          if (hit) addCeTag(hit.barcode, hit.stage); else missing.push(tok);
+        }).catch(function(){ missing.push(tok); });
+      });
+    });
+    chain.then(function(){
+      if (missing.length) ceScanMsg('<span class="text-danger"><i class="bi bi-x-circle me-1"></i>Not found: ' + ceEsc(missing.join(', ')) + '</span>');
+      input.focus();
+    });
+  }
+
+  function doSearch() {
+    var q = input.value.trim();
+    resultsBox.innerHTML = '';
+    if (q.length < 2) return;
+    lookup(q).then(function(results){
+      if (input.value.trim() !== q) return;          // typed on meanwhile
+      var hit = exact(results, q);
+      if (hit && q.length >= 8) {                     // a full Tag Number: select it on its own
+        input.value = '';
+        addCeTag(hit.barcode, hit.stage);
+        return;
+      }
+      if (!results.length) {
+        resultsBox.innerHTML = '<div class="list-group-item small text-muted">No matching tags.</div>';
+        return;
+      }
+      resultsBox.innerHTML = results.map(function(r){
+        return '<button type="button" class="list-group-item list-group-item-action small ce-result-item" data-barcode="' + ceEsc(r.barcode) + '" data-stage="' + ceEsc(r.stage) + '">' +
+          '<span class="font-monospace fw-semibold">' + ceEsc(r.barcode) + '</span> ' +
+          '<span class="text-muted">— ' + ceEsc(r.stage || '') + '</span></button>';
+      }).join('');
+    }).catch(function(){ resultsBox.innerHTML = ''; });
+  }
+
+  resultsBox.addEventListener('click', function(e){
+    var btn = e.target.closest('.ce-result-item');
+    if (!btn) return;
+    addCeTag(btn.dataset.barcode, btn.dataset.stage);
+    resultsBox.innerHTML = '';
+    input.value = '';
+    input.focus();
+  });
+  input.addEventListener('input', function(){ clearTimeout(debounceTimer); debounceTimer = setTimeout(doSearch, 300); });
+  input.addEventListener('keydown', function(e){
+    if (e.key === 'Enter') { e.preventDefault(); clearTimeout(debounceTimer); addTokens(input.value); }
+  });
+  input.addEventListener('paste', function(e){
+    var text = (e.clipboardData || window.clipboardData).getData('text');
+    if (/[\s,;]/.test(text.trim())) { e.preventDefault(); addTokens(text); }   // a list: add them all
+  });
+  document.getElementById('ceModal_list').addEventListener('click', function(e){
+    var b = e.target.closest('.ce-remove');
+    if (!b) return;
+    ceSelected.splice(parseInt(b.dataset.i, 10), 1);
+    renderCeList();
+  });
+  document.getElementById('ceModal_clear').addEventListener('click', function(){
+    ceSelected = []; renderCeList(); ceScanMsg(''); input.focus();
+  });
+})();
+
+document.getElementById('ceModal_submit').addEventListener('click', function(){
+  if (!ceSelected.length) return;
+  var stage = document.getElementById('ceModal_stage').value;
+  var stageLabel = document.getElementById('ceModal_stage').selectedOptions[0].textContent.trim();
+  var btn = this;
+  var msg = document.getElementById('ceModal_msg');
+  msg.innerHTML = '';
+  btn.disabled = true;
+  var tags = ceSelected.slice(), ok = [], failed = [];
+  var chain = Promise.resolve();
+  tags.forEach(function(t, i){
+    chain = chain.then(function(){
+      btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Moving ' + (i + 1) + ' of ' + tags.length + '…';
+      var fd = new FormData();
+      fd.append('csrf_token', ceCsrf());
+      fd.append('barcode', t.barcode);
+      fd.append('target_stage', stage);
+      return fetch('/devices/change-engineer', {method:'POST', body:fd}).then(function(r){
+        return r.text().then(function(txt){
+          var d; try { d = JSON.parse(txt); } catch (e) {}
+          if (r.ok && d && d.ok) { ok.push(t.barcode); return; }
+          t.err = (d && (d.error || d.detail)) || ('HTTP ' + r.status);
+          failed.push(t);
+        });
+      }).catch(function(e){ t.err = e.message || 'Failed'; failed.push(t); });
+    });
+  });
+  chain.then(function(){
+    if (!failed.length) {
+      bootstrap.Modal.getInstance(document.getElementById('changeEngineerModal')).hide();
+      alert('Moved ' + ok.length + ' tag' + (ok.length === 1 ? '' : 's') + ' to ' + stageLabel + ' — unassigned, ready for Pick This.');
+      window.location.reload();
+      return;
+    }
+    // Keep only the tags that failed, with their reason; the rest moved.
+    ceSelected = failed;
+    renderCeList();
+    msg.innerHTML = '<div class="alert alert-' + (ok.length ? 'warning' : 'danger') + ' py-2 px-3 small mb-0">' +
+      (ok.length ? 'Moved ' + ok.length + ' tag' + (ok.length === 1 ? '' : 's') + '. ' : '') +
+      failed.length + ' could not be moved — see the list (fix or remove them and press Move again).</div>';
+    if (ok.length) btn.dataset.reload = '1';
+  });
+});
+document.getElementById('changeEngineerModal').addEventListener('hidden.bs.modal', function(){
+  if (document.getElementById('ceModal_submit').dataset.reload === '1') window.location.reload();
+});
+
+</script>

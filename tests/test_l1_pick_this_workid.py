@@ -144,7 +144,7 @@ asyncio.run(main())
         assert work_id in row
 
         # Same WorkID visible on /workid-status.
-        wid_html = app_client.get(f"/workid-status?workid={work_id}", follow_redirects=True).text
+        wid_html = app_client.get(f"/workid-status?workid={work_id}&exclude_admin=0", follow_redirects=True).text
         assert work_id in wid_html
         assert barcode in wid_html
     finally:

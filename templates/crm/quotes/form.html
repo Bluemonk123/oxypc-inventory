@@ -67,6 +67,12 @@
         <textarea name="special_conditions" class="form-control" rows="2"
           placeholder="Any special terms, warranty, delivery conditions…">{{ quote.special_conditions or '' if quote else '' }}</textarea>
       </div>
+      {# Notes (2026-11-23, Pankaj) — internal; every change kept in Notes History. #}
+      <div class="col-12">
+        <label class="form-label fw-semibold">Notes</label>
+        <textarea name="notes" class="form-control" rows="2" maxlength="5000"
+          placeholder="Internal notes about this quotation">{{ quote.notes or '' if quote else '' }}</textarea>
+      </div>
     </div>
   </div>
 </div>

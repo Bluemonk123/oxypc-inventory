@@ -217,10 +217,11 @@ asyncio.run(main())
         assert inv_no not in app_client.get("/grn/post-iqc").text
         assert inv_no not in app_client.get("/grn").text
 
-        # 3. Shows on Manage Lots (GRN & Lot tab).
+        # 3. Manage Lots no longer has a GRN step (2026-11-23, Pankaj): it shows
+        # Lots / Models / Tags from the uploaded test tags only.
         ml_html = app_client.get("/trade-partner/manage-lots").text
-        assert inv_no in ml_html
-        assert grn_number in ml_html
+        assert 'data-bs-target="#lotsTab"' in ml_html and 'data-bs-target="#modelsTab"' in ml_html
+        assert "grn/_post_iqc" not in ml_html and inv_no not in ml_html
 
         # 4. Add Lot via the same real endpoint used elsewhere — must
         # auto-restrict immediately.

@@ -74,9 +74,20 @@
 {{ _close(href) }}</div>
 {%- endmacro %}
 
-{% macro multi(title, lines, color, icon='', variant='tint', download=None, download_label='Download', href=None, title_attr='', extra='', cls='') -%}
-<div>{{ _open(href, 'oxt-tile oxt-multi oxt-' ~ variant ~ (' ' ~ cls if cls else ''), color, title_attr, extra) }}
+{#- title_count (2026-11-21): a count shown after the title ("L1/L2 - 109"),
+    title_count_attr its attributes; title_right: markup at the right end of
+    the title row (e.g. a people count); footer: markup in a footer row at the
+    bottom of the card (2026-11-21). All optional. -#}
+{% macro multi(title, lines, color, icon='', variant='tint', download=None, download_label='Download', href=None, title_attr='', extra='', cls='', title_count=None, title_count_attr='', title_right='', footer='') -%}
+<div>{{ _open(href, 'oxt-tile oxt-multi oxt-' ~ variant ~ (' oxt-has-foot' if footer else '') ~ (' ' ~ cls if cls else ''), color, title_attr, extra) }}
+  {%- if title_count is not none or title_right %}
+  <div class="oxt-title" style="display:flex;justify-content:space-between;align-items:center;gap:8px">
+    <span>{{ title }}{% if title_count is not none %} - <span class="oxt-tcount" {{ title_count_attr | safe }}>{{ _fmt(title_count) }}</span>{% endif %}</span>
+    {%- if title_right %}<span class="oxt-tright">{{ title_right | safe }}</span>{% endif %}
+  </div>
+  {%- else %}
   <div class="oxt-title">{{ title }}</div>
+  {%- endif %}
   {%- for line in lines %}
   {%- set parts = line.parts if line is mapping else line %}
   <div class="oxt-mline"{% if line is mapping and line.title %} title="{{ line.title }}"{% endif %}>
@@ -87,6 +98,8 @@
   </div>
   {%- endfor %}
   {%- if download %}<div class="oxt-actions">{{ _download(download, download_label) }}</div>{% endif %}
+  {#- full-width light grey footer band (bleeds over the tile's 1rem / .8rem padding) #}
+  {%- if footer %}<div class="oxt-mfoot" style="margin:auto -1rem -.8rem;padding:.45rem 1rem;background:var(--bs-secondary-bg,#e9ecef);border-top:1px solid #dddddd;font-size:.78rem;position:relative;z-index:1;display:flex;justify-content:space-between;align-items:center">{{ footer | safe }}</div>{% endif %}
   {%- if icon %}<i class="bi {{ icon }} oxt-wm" aria-hidden="true"></i>{% endif %}
 {{ _close(href) }}</div>
 {%- endmacro %}

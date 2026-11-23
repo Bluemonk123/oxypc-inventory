@@ -1,10 +1,12 @@
 """Returns (/returns) — Option C dashboard (2026-11-14, Pankaj).
 
-Return rows (models.sales.Return) with their device and sale. Board lanes:
-Pending approval (same rule as /returns/pending, credit notes in their own lane) · Credit note in progress (cn_stage before "CN Complete") ·
-Approved, CN complete and Rejected in the last 30 days. Return rate = returns
-this month / tags sold this month. Days to resolve = approved_at - return_date
-(last 90 days). Refunds need the Sales List Pricing tick.
+Return rows (models.sales.Return) with their device and sale. 2026-11-21
+(Pankaj): returns no longer need approval (approved when logged), so the
+approval tiles and lanes are gone and rejected returns (old data) are left
+out everywhere. Board lanes: Returned in the last 30 days (no credit note) ·
+Credit note in progress (cn_stage before "CN Complete") · CN complete in the
+last 30 days. Return rate = returns this month / tags sold this month.
+Refunds need the Sales List Pricing tick.
 """
 from datetime import datetime, timedelta
 
@@ -33,19 +35,16 @@ async def build(db, can_price=True):
                                     Return.cn_stage, Return.refund_amount, Return.action_taken, Device.barcode, Device.brand,
                                     Device.model, Sale.customer_name)
                              .join(Device, Return.device_id == Device.id).outerjoin(Sale, Return.sale_id == Sale.id)
-                             .where(Return.return_date >= min(y0, d90)))).all()
-    pend_all = (await db.execute(select(Return.return_date, Device.barcode, Device.model, Sale.customer_name, Return.reason, Return.cn_stage)
-                                 .join(Device, Return.device_id == Device.id).outerjoin(Sale, Return.sale_id == Sale.id)
-                                 .where(func.coalesce(Return.approval_status, "pending") == "pending")
-                                 .order_by(Return.return_date.asc()))).all()
+                             .where(Return.return_date >= min(y0, d90),
+                                    func.coalesce(Return.approval_status, "pending") != "rejected"))).all()
     cn_open = (await db.execute(select(Return.return_date, Device.barcode, Device.model, Return.cn_stage)
                                 .join(Device, Return.device_id == Device.id)
-                                .where(Return.cn_stage.isnot(None), Return.cn_stage != "CN Complete")
+                                .where(Return.cn_stage.isnot(None), Return.cn_stage != "CN Complete",
+                                       func.coalesce(Return.approval_status, "pending") != "rejected")
                                 .order_by(Return.return_date.asc()))).all()
     mtd = [r for r in rows if r[1] and r[1] >= month0]
     sold_m = (await db.execute(select(func.count(Sale.id)).where(Sale.sold_at >= month0))).scalar() or 0
-    old7 = sum(1 for p in pend_all if p[0] and p[0] < now - timedelta(days=7))
-    res = [(r[4] - r[1]).total_seconds() / 86400 for r in rows if r[4] and r[1] and r[1] >= d90 and r[4] >= r[1]]
+    r90 = [r for r in rows if r[1] and r[1] >= d90]
     refunds = sum(float(r[6] or 0) for r in mtd)
     cust90 = {}
     for r in rows:
@@ -56,24 +55,20 @@ async def build(db, can_price=True):
     kpis = [dw.kpi("Returns this month", dw.num(len(mtd)), "tags", not mtd, "red"),
             dw.kpi("Return rate", ("%.1f%%" % (len(mtd) * 100 / sold_m)) if sold_m else "—", "of %s sold this month" % dw.num(sold_m),
                    not sold_m or len(mtd) * 100 / sold_m < 3, "orange"),
-            dw.kpi("Pending approval", dw.num(len(pend_all)), "%d over 7 days" % old7, not old7, "amber"),
-            dw.kpi("Avg days to resolve", ("%.1f" % (sum(res) / len(res))) if res else "—", "approved, last 90 days", True, "green"),
-            dw.kpi("Refunds this month", dw.inr(refunds) if can_price else "—", "%d credit notes open" % len(cn_open), True, "violet"),
+            dw.kpi("Returns last 90 days", dw.num(len(r90)), "tags", not r90, "amber"),
+            dw.kpi("Credit notes open", dw.num(len(cn_open)), "not yet CN Complete", not cn_open, "violet"),
+            dw.kpi("Refunds this month", dw.inr(refunds) if can_price else "—", "on returns logged this month", True, "green"),
             dw.kpi("Repeat-return customers", dw.num(repeat), "2+ returns in 90 days", not repeat, "slate")]
 
     def chip(bc, model, sub):
         return ("%s · %s" % (bc or "—", (model or "")[:18]), sub)
-    appr = [r for r in rows if (r[3] or "") == "approved" and r[4] and r[4] >= d30]
+    recent = sorted([r for r in rows if not r[5] and r[1] and r[1] >= d30], key=lambda r: r[1], reverse=True)
     cn_done = [r for r in rows if r[5] == "CN Complete" and r[1] and r[1] >= d30]
-    rej = [r for r in rows if (r[3] or "") == "rejected" and r[1] and r[1] >= d30]
-    pend_lane = [p for p in pend_all if not p[5]]      # credit-note returns sit in their own lane
-    lanes = [("Pending approval", "red", len(pend_lane), [chip(p[1], p[2], "%s · %s" % ((p[3] or "—")[:16], _reason(p[4]))) for p in pend_lane[:2]]),
+    lanes = [("Returned", "red", len(recent), [chip(r[8], r[10], "%s · %s" % ((r[11] or "—")[:16], _reason(r[2]))) for r in recent[:2]]),
              ("Credit note in progress", "violet", len(cn_open), [chip(c[1], c[2], c[3] or "") for c in cn_open[:2]]),
-             ("Approved", "green", len(appr), [chip(r[8], r[10], (r[7] or "approved").title()) for r in sorted(appr, key=lambda r: r[4], reverse=True)[:2]]),
-             ("CN complete", "blue", len(cn_done), [chip(r[8], r[10], "Credit note closed") for r in cn_done[:2]]),
-             ("Rejected", "slate", len(rej), [chip(r[8], r[10], _reason(r[2])) for r in rej[:2]])]
-    board = dw.lanes("Return board", 12, lanes, sub="Open now · approved, completed and rejected in the last 30 days",
-                     tag="%d open" % (len(pend_lane) + len(cn_open)), tagc="red")
+             ("CN complete", "blue", len(cn_done), [chip(r[8], r[10], "Credit note closed") for r in cn_done[:2]])]
+    board = dw.lanes("Return board", 12, lanes, sub="Returned and CN complete: last 30 days · credit notes: open now",
+                     tag="%d credit notes open" % len(cn_open), tagc="violet")
 
     months = []
     y, m = y0.year, y0.month
