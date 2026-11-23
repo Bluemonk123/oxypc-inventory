@@ -99,6 +99,8 @@ async def grn_list(request: Request, db: AsyncSession = Depends(get_db),
     return templates.TemplateResponse("spare_parts/parts_grn_list.html", {
         "request": request, "current_user": current_user, "grns": grns,
         "error": error, "success": success, "added_by": await added_by_display_map(db),
+        # Parts dropdown cards under the table (2026-11-23) — the same Master Data rows
+        "parts_lists": await __import__("routers.parts_master", fromlist=["parts_lists"]).parts_lists(db),
     })
 
 
@@ -384,6 +386,10 @@ async def grn_detail(grn_id: str, request: Request, db: AsyncSession = Depends(g
             "part_names": await master_values(db, "part_category"),
             "part_brands": await master_values(db, "spare_part_brand"),
             "categories": await master_values(db, "iqc_part_category"),
+            # Edit Part laid out like Add Line Item (2026-11-23): Low Stock Alert lives on the crate row
+            "min_alert": {code: m for code, m in (await db.execute(select(SparePart.part_code, SparePart.min_stock_alert)
+                          .where(SparePart.part_code.in_([li.part_id for li in line_items if li.part_id]),
+                                 SparePart.is_trashed.isnot(True)))).all()},
         })
     return templates.TemplateResponse("spare_parts/parts_grn_form.html", {
         "request": request, "current_user": current_user,
@@ -477,7 +483,11 @@ async def grn_item_edit(grn_id: str, item_id: str, request: Request, db: AsyncSe
                         part_name: str = Form(""), part_brand: str = Form(""), part_model: str = Form(""),
                         category: str = Form(""), crate_number: str = Form(""),
                         invoice_qty: str = Form(""), physical_qty: str = Form(""),
-                        price: str = Form(""), remarks: str = Form("")):
+                        price: str = Form(""), remarks: str = Form(""),
+                        # Edit Part = Add Line Item fields (2026-11-23)
+                        lot_number: str = Form(None), po_number: str = Form(None), vendor_name: str = Form(None),
+                        invoice_number: str = Form(None), product_description: str = Form(None),
+                        vehicle_number: str = Form(None), min_stock_alert: str = Form(None)):
     """Edit one part line of a Parts GRN (2026-11-04). Stock follows the change:
     a different Physical Qty moves the difference in / out of the line's crate
     row; a different Part Name / Make / Model / Crate takes the old qty out of
@@ -521,7 +531,9 @@ async def grn_item_edit(grn_id: str, item_id: str, request: Request, db: AsyncSe
     before = {"part_id": li.part_id, "part_name": li.part_name, "make": li.part_brand, "model": li.part_model,
               "category": li.category, "crate": li.crate_number, "invoice_qty": li.invoice_qty,
               "physical_qty": li.physical_qty, "price": str(li.price) if li.price is not None else None,
-              "remarks": li.remarks}
+              "remarks": li.remarks, "lot_number": li.lot_number, "po_number": li.po_number,
+              "vendor_name": li.vendor_name, "invoice_number": li.invoice_number,
+              "product_description": li.product_description, "vehicle_number": li.vehicle_number}
     if same:
         if old_row is not None:
             old_row.qty_in_stock = int(old_row.qty_in_stock or 0) + (new_phys - old_qty)
@@ -547,6 +559,18 @@ async def grn_item_edit(grn_id: str, item_id: str, request: Request, db: AsyncSe
     li.category, li.crate_number = _f(category), new_crate
     li.invoice_qty, li.physical_qty = _i(invoice_qty), new_phys
     li.remarks = _f(remarks)
+    for _k, _v in (("lot_number", lot_number), ("po_number", po_number), ("vendor_name", vendor_name),
+                   ("invoice_number", invoice_number), ("product_description", product_description),
+                   ("vehicle_number", vehicle_number)):
+        if _v is not None:                    # field sent by the form
+            setattr(li, _k, _f(_v))
+    _alert = _i(min_stock_alert) if min_stock_alert not in (None, "") else None
+    if _alert is not None and _alert >= 0:    # Low Stock Alert sits on the crate row
+        await db.flush()
+        _row = (await db.execute(select(SparePart).where(SparePart.part_code == li.part_id,
+                                                         SparePart.is_trashed.isnot(True)))).scalars().first()
+        if _row is not None:
+            _row.min_stock_alert = _alert
     if not price_unchanged(current_user, "spare_parts_purchase", price):
         li.price = _d(price)
     await db.flush()
@@ -557,7 +581,10 @@ async def grn_item_edit(grn_id: str, item_id: str, request: Request, db: AsyncSe
                 new_value={"part_id": li.part_id, "part_name": li.part_name, "make": li.part_brand,
                            "model": li.part_model, "category": li.category, "crate": li.crate_number,
                            "invoice_qty": li.invoice_qty, "physical_qty": li.physical_qty,
-                           "price": str(li.price) if li.price is not None else None, "remarks": li.remarks},
+                           "price": str(li.price) if li.price is not None else None, "remarks": li.remarks,
+                           "lot_number": li.lot_number, "po_number": li.po_number, "vendor_name": li.vendor_name,
+                           "invoice_number": li.invoice_number, "product_description": li.product_description,
+                           "vehicle_number": li.vehicle_number, "min_stock_alert": _alert},
                 request=request)
     await db.commit()
     return _back(grn.id, ok=f"Part line {li.part_id} saved.")

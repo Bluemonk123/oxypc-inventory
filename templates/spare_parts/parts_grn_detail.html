@@ -151,7 +151,11 @@
               {% if can(current_user, 'spare_parts_purchase', 'edit') %}<td class="text-center"><button type="button" class="btn btn-sm btn-outline-primary py-0 px-1 pg-item-edit" title="Edit part"
                   data-item='{{ {"id": li.id|string, "part_name": li.part_name or li.item_name or "", "part_brand": li.part_brand or "", "part_model": li.part_model or "",
                                   "category": li.category or "", "crate_number": li.crate_number or "", "invoice_qty": li.invoice_qty, "physical_qty": li.physical_qty,
-                                  "price": (li.price|string) if (li.price is not none and _pricing) else "", "remarks": li.remarks or "", "part_id": li.part_id} | tojson }}'><i class="bi bi-pencil"></i></button></td>{% endif %}
+                                  "price": (li.price|string) if (li.price is not none and _pricing) else "", "remarks": li.remarks or "", "part_id": li.part_id,
+                                  "lot_number": li.lot_number or "", "po_number": li.po_number or "", "grn_number": li.grn_number or grn.grn_number or "",
+                                  "vendor_name": li.vendor_name or "", "invoice_number": li.invoice_number or "",
+                                  "product_description": li.product_description or "", "vehicle_number": li.vehicle_number or "",
+                                  "min_stock_alert": (min_alert or {}).get(li.part_id)} | tojson }}'><i class="bi bi-pencil"></i></button></td>{% endif %}
             </tr>
             {% endfor %}
           </tbody>
@@ -193,26 +197,65 @@
   </form>
 </div></div></div>
 
-{# Edit one part line (2026-11-04). Stock moves with the change. #}
-<div class="modal fade" id="pgItemModal" tabindex="-1"><div class="modal-dialog modal-lg"><div class="modal-content">
+{# Edit one part line (2026-11-04). Stock moves with the change.
+   2026-11-23 (Pankaj): same fields and layout as the New Parts GRN "Add Line Item" window. #}
+<div class="modal fade" id="pgItemModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-xl"><div class="modal-content">
   <form method="post" id="pgItemForm">
     <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
-    <div class="modal-header"><h5 class="modal-title"><i class="bi bi-pencil me-2"></i>Edit Part <span class="small text-muted fw-normal font-monospace" id="pgItemCode"></span></h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-    <div class="modal-body"><div class="row g-2 small">
-      <div class="col-md-4"><label class="form-label fw-semibold">Part Name *</label><input name="part_name" id="pgiName" class="form-control form-control-sm" list="pgPartNames" required></div>
-      <div class="col-md-4"><label class="form-label fw-semibold">Make</label><input name="part_brand" id="pgiMake" class="form-control form-control-sm" list="pgPartBrands"></div>
-      <div class="col-md-4"><label class="form-label fw-semibold">Model</label><input name="part_model" id="pgiModel" class="form-control form-control-sm"></div>
-      <div class="col-md-4"><label class="form-label fw-semibold">Category</label><input name="category" id="pgiCat" class="form-control form-control-sm" list="pgCats"></div>
-      <div class="col-md-4"><label class="form-label fw-semibold">Crate Number</label><input name="crate_number" id="pgiCrate" class="form-control form-control-sm"></div>
-      <div class="col-md-4"><label class="form-label fw-semibold">Remarks</label><input name="remarks" id="pgiRemarks" class="form-control form-control-sm"></div>
-      <div class="col-md-4"><label class="form-label fw-semibold">Invoice Qty</label><input type="number" min="0" name="invoice_qty" id="pgiInvQty" class="form-control form-control-sm"></div>
-      <div class="col-md-4"><label class="form-label fw-semibold">Physical Qty *</label><input type="number" min="0" name="physical_qty" id="pgiPhysQty" class="form-control form-control-sm" required></div>
-      {% if can(current_user, 'spare_parts_purchase', 'pricing_add') %}<div class="col-md-4"><label class="form-label fw-semibold">Unit Price (₹)</label><input type="number" step="0.01" min="0" name="price" id="pgiPrice" class="form-control form-control-sm"
-          placeholder="{{ '' if _pricing else 'Hidden — type a new price to change it' }}"></div>{% endif %}
+    <div class="modal-header"><h5 class="modal-title">Edit Part</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body"><div class="row g-3">
+      <div class="col-md-3"><label class="form-label small fw-semibold">Part ID <span class="text-muted">(auto)</span></label>
+        <input type="text" id="pgiPartId" class="form-control form-control-sm" readonly></div>
+      <div class="col-md-3"><label class="form-label small fw-semibold">Lot Number</label>
+        <input type="text" name="lot_number" id="pgiLot" class="form-control form-control-sm"></div>
+      <div class="col-md-3"><label class="form-label small fw-semibold">PO Number</label>
+        <input type="text" name="po_number" id="pgiPo" class="form-control form-control-sm"></div>
+      <div class="col-md-3"><label class="form-label small fw-semibold">GRN Number</label>
+        <input type="text" id="pgiGrn" class="form-control form-control-sm" readonly></div>
+
+      <div class="col-md-3"><label class="form-label small fw-semibold">Vendor Name</label>
+        <input type="text" name="vendor_name" id="pgiVendor" class="form-control form-control-sm"></div>
+      <div class="col-md-3"><label class="form-label small fw-semibold">Invoice Number</label>
+        <input type="text" name="invoice_number" id="pgiInvoice" class="form-control form-control-sm"></div>
+      <div class="col-md-6"><label class="form-label small fw-semibold">Product Description</label>
+        <input type="text" name="product_description" id="pgiDesc" class="form-control form-control-sm"></div>
+
+      <div class="col-md-3"><label class="form-label small fw-semibold">Part Category</label>
+        <select name="category" id="pgiCat" class="form-select form-select-sm"><option value="">— Select —</option>
+          {% for c in categories %}<option>{{ c }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><label class="form-label small fw-semibold">Part Name <span class="text-danger">*</span></label>
+        <select name="part_name" id="pgiName" class="form-select form-select-sm" required><option value="">— Select —</option>
+          {% for n in part_names %}<option>{{ n }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><label class="form-label small fw-semibold">Part Brand</label>
+        <select name="part_brand" id="pgiMake" class="form-select form-select-sm"><option value="">— Select —</option>
+          {% for b in part_brands %}<option>{{ b }}</option>{% endfor %}</select></div>
+      <div class="col-md-3"><label class="form-label small fw-semibold">Part Model</label>
+        <input type="text" name="part_model" id="pgiModel" class="form-control form-control-sm"></div>
+
+      <div class="col-md-3"><label class="form-label small fw-semibold">Crate Number</label>
+        <input type="text" name="crate_number" id="pgiCrate" class="form-control form-control-sm" placeholder="e.g. C-12" autocomplete="off"></div>
+      <div class="col-md-2"><label class="form-label small fw-semibold">Low Stock Alert</label>
+        <input type="number" name="min_stock_alert" id="pgiAlert" class="form-control form-control-sm" min="0"></div>
+      <div class="col-md-2"><label class="form-label small fw-semibold">Invoice Qty</label>
+        <input type="number" min="0" name="invoice_qty" id="pgiInvQty" class="form-control form-control-sm"></div>
+      <div class="col-md-2"><label class="form-label small fw-semibold">Physical Qty <span class="text-danger">*</span></label>
+        <input type="number" min="0" name="physical_qty" id="pgiPhysQty" class="form-control form-control-sm" required></div>
+      <div class="col-md-2"><label class="form-label small fw-semibold">Price (₹)</label>
+        <input type="number" step="0.01" min="0" name="price" id="pgiPrice" class="form-control form-control-sm"
+          {% if not can(current_user, 'spare_parts_purchase', 'pricing_add') %}disabled placeholder="No Pricing Add"{% elif not _pricing %}placeholder="Hidden — type to change"{% endif %}></div>
+
+      <div class="col-md-3"><label class="form-label small fw-semibold">Vehicle Number</label>
+        <input type="text" name="vehicle_number" id="pgiVehicle" class="form-control form-control-sm"></div>
+      <div class="col-md-6"><label class="form-label small fw-semibold">Remarks</label>
+        <input type="text" name="remarks" id="pgiRemarks" class="form-control form-control-sm"></div>
+
       <div class="col-12"><div class="form-text">Stock moves with the change: a new Physical Qty adds / removes the difference in this crate row;
-        a different Part Name, Make, Model or Crate moves the qty to the matching crate row (a new row when there is none). Not allowed if the parts were already handed over or sold.</div></div>
+        a different Part Name, Brand, Model or Crate moves the qty to the matching crate row (a new row when there is none). Not allowed if the parts were already handed over or sold.</div></div>
     </div></div>
-    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary"><i class="bi bi-save me-1"></i>Save</button></div>
+    <div class="modal-footer">
+      <button type="submit" class="btn btn-success"><i class="bi bi-save me-1"></i>Save</button>
+      <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+    </div>
   </form>
 </div></div></div>
 <datalist id="pgPartNames">{% for v in part_names %}<option value="{{ v }}">{% endfor %}</datalist>
@@ -228,9 +271,14 @@ $(function () {
   $(document).on('click', '.pg-item-edit', function () {
     var d = $(this).data('item');
     $('#pgItemForm').attr('action', '/parts-grn/{{ grn.id }}/items/' + d.id + '/edit');
-    $('#pgItemCode').text(d.part_id);
-    $('#pgiName').val(d.part_name); $('#pgiMake').val(d.part_brand); $('#pgiModel').val(d.part_model);
-    $('#pgiCat').val(d.category); $('#pgiCrate').val(d.crate_number); $('#pgiRemarks').val(d.remarks);
+    // a saved value that is not in the Master list still shows (added as an option)
+    function pick(sel, v) { var $s = $(sel); if (v && !$s.find('option').filter(function () { return this.value === v; }).length) $s.append($('<option>').text(v)); $s.val(v || ''); }
+    $('#pgiPartId').val(d.part_id || ''); $('#pgiGrn').val(d.grn_number || '');
+    $('#pgiLot').val(d.lot_number); $('#pgiPo').val(d.po_number); $('#pgiVendor').val(d.vendor_name);
+    $('#pgiInvoice').val(d.invoice_number); $('#pgiDesc').val(d.product_description); $('#pgiVehicle').val(d.vehicle_number);
+    $('#pgiAlert').val(d.min_stock_alert == null ? '' : d.min_stock_alert);
+    pick('#pgiCat', d.category); pick('#pgiName', d.part_name); pick('#pgiMake', d.part_brand);
+    $('#pgiModel').val(d.part_model); $('#pgiCrate').val(d.crate_number); $('#pgiRemarks').val(d.remarks);
     $('#pgiInvQty').val(d.invoice_qty == null ? '' : d.invoice_qty); $('#pgiPhysQty').val(d.physical_qty == null ? '' : d.physical_qty);
     $('#pgiPrice').val(d.price || '');
     bootstrap.Modal.getOrCreateInstance(document.getElementById('pgItemModal')).show();

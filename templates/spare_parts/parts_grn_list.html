@@ -91,6 +91,117 @@
   </div>
 </div>
 
+{# ── Parts dropdowns (2026-11-23, Pankaj): Spare Part Brands / Spare Part Names /
+   Parts: Part Category — the SAME Master Data lists, so a change here or on
+   Master Data shows on both. Routes: routers/parts_master.py. #}
+{% set _pa = can(current_user, 'spare_parts_purchase', 'add') %}
+{% set _pe = can(current_user, 'spare_parts_purchase', 'edit') %}
+{% set _pd = can(current_user, 'spare_parts_purchase', 'delete') %}
+{% set _px = can(current_user, 'spare_parts_purchase', 'export') %}
+{% set _csrf = request.cookies.get('csrf_token', '') %}
+<div class="card border-0 shadow-sm mt-3" id="partsLists">
+  <div class="card-header bg-transparent fw-semibold d-flex align-items-center flex-wrap gap-2">
+    <span><i class="bi bi-tools me-2"></i>Parts Dropdowns</span>
+    <span class="small text-muted fw-normal">Same lists as Master Data → Repair &amp; QC — a change here or there shows in both places.</span>
+  </div>
+  <div class="card-body">
+    <div class="row g-3">
+      {% for cat in parts_lists %}
+      <div class="col-lg-6 col-xl-4 pl-card" data-cat="{{ cat.key }}">
+        <div class="card border shadow-sm h-100">
+          <div class="card-header bg-transparent d-flex justify-content-between align-items-center py-2">
+            <span class="fw-semibold small"><i class="bi bi-tag me-1 text-primary"></i>{{ cat.label }}</span>
+            <div class="d-flex align-items-center gap-1">
+              <span class="badge bg-secondary">{{ cat['items']|length }}</span>
+              {% if _px %}<a href="/parts-grn/master/export/{{ cat.key }}" class="btn btn-sm py-0 px-1 btn-outline-secondary" title="Export CSV"><i class="bi bi-download"></i></a>{% endif %}
+              {# Bulk Import hidden here (2026-11-23, Pankaj) — still on Master Data #}
+              {% if _pa %}<button type="button" class="btn btn-sm py-0 px-2 btn-primary pl-add" data-cat="{{ cat.key }}" data-label="{{ cat.label }}" title="Add Value"><i class="bi bi-plus-lg me-1"></i>Add</button>{% endif %}
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <div class="list-group list-group-flush" style="max-height:280px;overflow-y:auto">
+              {% for item in cat['items'] %}
+              <div class="list-group-item px-3 py-1 d-flex align-items-center {{ 'text-muted bg-light' if not item.is_active else '' }}">
+                <div class="flex-grow-1">
+                  <span class="small {{ 'text-decoration-line-through' if not item.is_active else '' }}">{{ item.value }}</span>
+                  {% if item.description %}<small class="text-muted d-block" style="font-size:.72rem">{{ item.description }}</small>{% endif %}
+                </div>
+                <div class="d-flex gap-1 ms-2 flex-shrink-0">
+                  {% if _pe %}
+                  <button type="button" class="btn btn-sm py-0 px-1 btn-outline-secondary pl-edit" title="Edit"
+                          data-id="{{ item.id }}" data-value="{{ item.value }}" data-desc="{{ item.description or '' }}" data-label="{{ cat.label }}">
+                    <i class="bi bi-pencil" style="font-size:.7rem"></i></button>
+                  {# Hide / Show button hidden here (2026-11-23, Pankaj) — still on Master Data #}
+                  {% endif %}
+                  {% if _pd %}
+                  <form action="/parts-grn/master/{{ item.id }}/delete" method="post" class="d-inline" onsubmit="return confirm('Delete ' + {{ item.value|tojson }} + '?')">
+                    <input type="hidden" name="csrf_token" value="{{ _csrf }}">
+                    <button type="submit" class="btn btn-sm py-0 px-1 btn-outline-danger" title="Delete"><i class="bi bi-trash" style="font-size:.7rem"></i></button>
+                  </form>
+                  {% endif %}
+                </div>
+              </div>
+              {% else %}
+              <div class="list-group-item small text-muted">No values yet.</div>
+              {% endfor %}
+            </div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+</div>
+
+{# Add / Edit value #}
+<div class="modal fade" id="plValueModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <form method="post" id="plValueForm">
+    <input type="hidden" name="csrf_token" value="{{ _csrf }}">
+    <input type="hidden" name="category" id="plCat">
+    <div class="modal-header"><h5 class="modal-title" id="plTitle">Add Value</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body">
+      <label class="form-label small fw-semibold" for="plValue">Value <span class="text-danger">*</span></label>
+      <input type="text" name="value" id="plValue" class="form-control form-control-sm mb-2" maxlength="200" required>
+      <label class="form-label small fw-semibold" for="plDesc">Description</label>
+      <input type="text" name="description" id="plDesc" class="form-control form-control-sm">
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Save</button></div>
+  </form>
+</div></div></div>
+{# Bulk import #}
+<div class="modal fade" id="plUploadModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+  <form method="post" id="plUploadForm" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ _csrf }}">
+    <div class="modal-header"><h5 class="modal-title" id="plUpTitle">Bulk Import</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body">
+      <p class="small text-muted mb-2">CSV with a <code>value</code> column (and optional <code>description</code>). Values already in the list are skipped.</p>
+      <input type="file" name="file" class="form-control form-control-sm" accept=".csv" required>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button type="submit" class="btn btn-primary">Upload</button></div>
+  </form>
+</div></div></div>
+<script>
+document.addEventListener('click', function (e) {
+  var a = e.target.closest('.pl-add, .pl-edit, .pl-upload');
+  if (!a) return;
+  if (a.classList.contains('pl-upload')) {
+    document.getElementById('plUploadForm').action = '/parts-grn/master/bulk-upload/' + a.dataset.cat;
+    document.getElementById('plUpTitle').textContent = 'Bulk Import — ' + a.dataset.label;
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('plUploadModal')).show();
+    return;
+  }
+  var add = a.classList.contains('pl-add');
+  var f = document.getElementById('plValueForm');
+  f.action = add ? '/parts-grn/master/add' : '/parts-grn/master/' + a.dataset.id + '/edit';
+  document.getElementById('plCat').value = add ? a.dataset.cat : '';
+  document.getElementById('plTitle').textContent = (add ? 'Add to ' : 'Edit — ') + a.dataset.label;
+  document.getElementById('plValue').value = add ? '' : a.dataset.value;
+  document.getElementById('plDesc').value = add ? '' : a.dataset.desc;
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('plValueModal')).show();
+  setTimeout(function () { document.getElementById('plValue').focus(); }, 300);
+});
+</script>
+
 {% endblock %}
 
 {# In the scripts block (2026-10-17): inside the content block this ran before

@@ -328,6 +328,8 @@ app.include_router(system_health_router)   # /admin/system/health (2026-10-22)
 from routers.notes_history import router as notes_history_router
 app.include_router(notes_history_router)   # /notes-history (2026-11-23)
 app.include_router(extended_warranty_router)
+from routers.parts_master import router as parts_master_router
+app.include_router(parts_master_router)   # parts dropdown cards on Parts GRN (2026-11-23)
 app.include_router(parts_grn_router)
 app.include_router(stage_control_router)
 app.include_router(market_router)

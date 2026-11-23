@@ -68,6 +68,24 @@ def test_parts_grn_edit_header_and_item(app_client, make_user):  # noqa: F811
         assert "success=" in r.headers["location"], r.headers["location"]
         new_code = _q("select part_id from parts_grn_line_items where id = :i", i=li_id)[0][0]
         assert new_code != code and stock(code) == 0 and stock(new_code) == 8
+
+        # Edit Part = Add Line Item fields (2026-11-23): the line's own fields + the crate row's Low Stock Alert
+        page = app_client.get(f"/parts-grn/{gid}").text
+        modal = page.split('id="pgItemModal"', 1)[1].split("</form>", 1)[0]
+        for f in ("Part ID", "Lot Number", "PO Number", "GRN Number", "Vendor Name", "Invoice Number",
+                  "Product Description", "Low Stock Alert", "Vehicle Number"):
+            assert f in modal, f
+        assert '<select name="part_name"' in modal and '<select name="part_brand"' in modal and '<select name="category"' in modal
+        r = app_client.post(f"/parts-grn/{gid}/items/{li_id}/edit", follow_redirects=False, data={
+            **base, "crate_number": crate2, "lot_number": "LT-9", "po_number": "PO-77", "vendor_name": "V Co",
+            "invoice_number": "INV-5", "product_description": "Bottom base", "vehicle_number": "DL1AB1234",
+            "min_stock_alert": "3"})
+        assert "success=" in r.headers["location"], r.headers["location"]
+        assert _q("select lot_number, po_number, vendor_name, invoice_number, product_description, vehicle_number "
+                  "from parts_grn_line_items where id = :i", i=li_id)[0] == \
+            ("LT-9", "PO-77", "V Co", "INV-5", "Bottom base", "DL1AB1234")
+        assert _q("select min_stock_alert from spare_parts where part_code = :c", c=new_code)[0][0] == 3
+        assert stock(new_code) == 8                 # nothing moved
     finally:
         codes = [c for (c,) in _q("select part_id from parts_grn_line_items where grn_id = :i", i=gid)]
         _q("delete from parts_grn_line_items where grn_id = :i", i=gid)

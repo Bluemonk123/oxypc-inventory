@@ -44,8 +44,8 @@ class _StubDB:
         self.pna_ids = pna_ids
 
     async def execute(self, stmt, *_a, **_k):
-        if "device_pna_parts" in str(stmt):
-            return _EmptyResult(self.pna_ids)
+        if "device_pna_parts" in str(stmt):     # (device_id, part_name) rows (Part Name column, 2026-11-23)
+            return _EmptyResult([(i, n) for i in self.pna_ids for n in ("Camera", "Screen")])
         return _EmptyResult()
 
 
@@ -72,15 +72,15 @@ def _run_export(monkeypatch, devices, pna_ids):
 def test_header_sequence_matches_pankaj_sheet():
     # Column order of the export (2026-11-18, Pankaj's devices_export.xlsx).
     i = _EXPORT_HEADER.index("Device Price")
-    assert _EXPORT_HEADER[i:i + 13] == [
-        "Device Price", "PNA", "Stock", "Grade", "Stage", "Final QC Status",
+    assert _EXPORT_HEADER[i:i + 14] == [
+        "Device Price", "PNA", "Part Name", "Stock", "Grade", "Stage", "Final QC Status",
         "Location ID", "Bin Location", "Zone", "Notes", "Created", "Updated", "Stage History"]
     assert "Warehouse" not in _EXPORT_HEADER
-    assert _EXPORT_HEADER[i + 13:] == [
+    assert _EXPORT_HEADER[i + 14:] == [
         "Stock In (Date)", "Stock In (Ageing)", "L1/L2 (Date)", "L1/L2 (Ageing)", "L3/L4 (Date)", "L3/L4 (Ageing)",
         "Stress (Date)", "Stress (Ageing)", "Cosmetic (Date)", "Cosmetic (Ageing)", "Final QC (Date)", "Final QC (Ageing)",
         "Ready for Sale (Date)", "Ready for Sale (Ageing)"]
-    assert len(_EXPORT_HEADER) == 73
+    assert len(_EXPORT_HEADER) == 74   # + Part Name (2026-11-23)
 
 
 def test_stock_label_rules():
@@ -141,3 +141,8 @@ def test_export_rows_end_to_end_values(monkeypatch):
     assert cells("T-IQC") == ("No", "In Progress")
     assert cells("T-SOLD") == ("No", "Finish Good")
     assert all(len(r) == len(header) for r in by_barcode.values())
+    # Part Name right after PNA: the PNA parts " / " joined, only when PNA = Yes (like the PNA Summary)
+    part_i = header.index("Part Name")
+    assert part_i == pna_i + 1
+    assert by_barcode["T-PNA-L2"][part_i] == "Camera / Screen"
+    assert by_barcode["T-PNA-RTS"][part_i] == "" and by_barcode["T-L2-CLEAN"][part_i] == ""

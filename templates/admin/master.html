@@ -139,9 +139,10 @@
                           onclick="openBulkUpload('{{ cat.key }}','{{ cat.label }}')" title="Bulk Import">
                     <i class="bi bi-upload"></i>
                   </button>
-                  <button class="btn btn-xs btn-sm py-0 px-1 btn-outline-success"
+                  {# "+ Add" primary button (2026-11-23, Pankaj) #}
+                  <button class="btn btn-xs btn-sm py-0 px-2 btn-primary"
                           onclick="openAddInline('{{ cat.key }}','{{ cat.label }}')" title="Add Value">
-                    <i class="bi bi-plus"></i>
+                    <i class="bi bi-plus-lg me-1"></i>Add
                   </button>
                   {% if cat.key == 'brand' %}{# Reload from All Inventories (2026-11-16, Pankaj) #}
                   <form action="/admin/master/brands/reload" method="post" class="d-inline"

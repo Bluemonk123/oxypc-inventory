@@ -1707,7 +1707,7 @@ _ROW_ORDER = [
     "Touchpad Cosmetic", "Bottom Base Cosmetic", "Palmrest Cosmetic",
     "Device Price", "Grade", "Stage", "Final QC Status", "Stage History",
     "Location ID", "Bin Location", "Zone", "Warehouse", "Notes", "Created", "Updated",
-    "PNA", "Stock",
+    "PNA", "Part Name", "Stock",      # Part Name = the PNA parts, as in the PNA Summary (2026-11-23)
 ]
 
 # Ageing columns (2026-11-18, Pankaj) — appended to the same export row.
@@ -1742,7 +1742,7 @@ _EXPORT_HEADER = [
     "USB A Ports", "USB C Ports", "Ethernet Ports",
     "Display Panel Cosmetic", "Bezel Frame Cosmetic", "Screen Cosmetic", "Hinge Cosmetic",
     "Touchpad Cosmetic", "Bottom Base Cosmetic", "Palmrest Cosmetic",
-    "Device Price", "PNA", "Stock", "Grade", "Stage", "Final QC Status",
+    "Device Price", "PNA", "Part Name", "Stock", "Grade", "Stage", "Final QC Status",
     "Location ID", "Bin Location", "Zone", "Notes", "Created", "Updated", "Stage History",
 ] + [c for name, _s in _AGE_GROUPS for c in (f"{name} (Date)", f"{name} (Ageing)")]
 assert len(set(_ROW_ORDER)) == len(_ROW_ORDER), "duplicate name in _ROW_ORDER"
@@ -1774,7 +1774,7 @@ def _xl(v):
 def _header_style(name: str):
     if name in _HDR_FIRST10:
         return _HDR_DARK_BLUE
-    if name == "PNA":
+    if name in ("PNA", "Part Name"):
         return _HDR_RED
     if name in ("Stock", "Final QC Status"):
         return _HDR_GREEN
@@ -1922,17 +1922,21 @@ async def _export_rows(db: AsyncSession, rows, hide=()) -> Response:
 
     movements_by_device, iqc_by_device, location_map = {}, {}, {}
     pna_device_ids = set()
+    pna_parts = {}          # device_id -> [part names] (Part Name column, 2026-11-23)
     for chunk in id_chunks:
         # Chunked like the lookups below (active_pna_parts also chunks
         # internally, but this keeps each call well under the param cap).
         # Speed (2026-10-19): only the columns each lookup needs, as plain
         # rows — loading every StageMovement / PNA part as a full ORM object
         # made an ~11,700-tag export take 20+ seconds.
-        pna_device_ids.update((await db.execute(
-            select(DevicePNAPart.device_id).where(
+        for _did, _pn in (await db.execute(
+            select(DevicePNAPart.device_id, DevicePNAPart.part_name).where(
                 DevicePNAPart.device_id.in_(chunk), DevicePNAPart.is_active == True)  # noqa: E712
-            .distinct()
-        )).scalars().all())
+            .order_by(DevicePNAPart.device_id, DevicePNAPart.part_name)
+        )).all():
+            pna_device_ids.add(_did)
+            if _pn:
+                pna_parts.setdefault(_did, []).append(_pn)
         _mark("pna")
 
         mv_result = await db.execute(
@@ -2058,6 +2062,8 @@ async def _export_rows(db: AsyncSession, rows, hide=()) -> Response:
             device.created_at.replace(second=0, microsecond=0) if device.created_at else "",
             device.updated_at.replace(second=0, microsecond=0) if device.updated_at else "",
             _pna_label(device, pna_device_ids),
+            # PNA parts in one cell, " / " between them — same as the PNA Summary's Part Name
+            " / ".join(pna_parts.get(device.id, [])) if _pna_label(device, pna_device_ids) == "Yes" else "",
             _stock_label(device),
             *_ageing_cols(device, movements_by_device.get(device.id), _today, _wdays),
         ]

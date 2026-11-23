@@ -352,6 +352,13 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/part-name-fix'): None,  # part_name_fix: system health data fix (admin-only) — Part Name to the Parts Consumption names, 2026-10-31
     ('POST', '/admin/system/pna-stale-clear'): None,  # pna_stale_clear: system health data fix (admin-only) — old PNA marks, 2026-11-22
     ('POST', '/admin/system/iqc-history-rebuild'): None,  # iqc_history_rebuild: system health data fix (admin-only) — old IQC history, 2026-11-22
+    # Parts dropdown cards on Parts GRN (2026-11-23): same Master Data rows, Parts GRN permissions
+    ('POST', '/parts-grn/master/add'): ('spare_parts_purchase', 'add'),
+    ('POST', '/parts-grn/master/{item_id}/edit'): ('spare_parts_purchase', 'edit'),
+    ('POST', '/parts-grn/master/{item_id}/toggle'): ('spare_parts_purchase', 'edit'),
+    ('POST', '/parts-grn/master/{item_id}/delete'): ('spare_parts_purchase', 'delete'),
+    ('POST', '/parts-grn/master/bulk-upload/{category}'): ('spare_parts_purchase', 'upload'),
+    ('GET', '/parts-grn/master/export/{category}'): ('spare_parts_purchase', 'export'),
     ('POST', '/admin/system/notes-history-backfill'): None,  # notes_history_backfill: system health data fix (admin-only) — 2026-11-23
     ('GET', '/notes-history/export'): None,  # notes_history_export: admin-only page export (require_roles admin) — 2026-11-23
     ('POST', '/admin/system/model-name-fix'): None,  # model_name_fix: system health data fix (admin-only) — Product Model Name one spelling per model, 2026-11-05
