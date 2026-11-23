@@ -63,7 +63,7 @@ asyncio.run(main())
         page = app_client.get("/admin/system/data-fixes").text
         assert 'data-df="iqc-history"' in page and "/admin/system/iqc-history-rebuild" in page
         csrf = app_client.cookies.get("csrf_token", "")
-        r = app_client.post("/admin/system/iqc-history-rebuild", data={"csrf_token": csrf},
+        r = app_client.post("/admin/system/iqc-history-rebuild", data={"csrf_token": csrf, "wait": "1"},
                             headers={"x-csrf-token": csrf})
         assert r.status_code == 200 and r.json()["ok"], r.text
         d = app_client.get(f"/devices/api/iqc-compare?barcode={tag}").json()
@@ -76,7 +76,7 @@ asyncio.run(main())
         assert s["cpu"] == "i7" and s["ram_gb"] == 8           # quick edit before the sale kept; RAM change after it undone
         assert "unknown_fields" not in sold[0]["context"]
         assert trc["iqc"]["device"]["ram_gb"] == 16
-        again = app_client.post("/admin/system/iqc-history-rebuild", data={"csrf_token": csrf},
+        again = app_client.post("/admin/system/iqc-history-rebuild", data={"csrf_token": csrf, "wait": "1"},
                                 headers={"x-csrf-token": csrf}).json()
         assert again["ok"]
         cnt = _run(f"""

@@ -2496,6 +2496,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         pna_old = await _pna_stale(db)          # Old PNA marks card (2026-11-22)
         from services.iqc_backfill import counts as _iqc_hist_counts
         iqc_hist = await _iqc_hist_counts(db)    # Rebuild old IQC history card (2026-11-22)
+        from services.iqc_backfill import STATE as _iqc_state
+        iqc_run = dict(_iqc_state)
         from services.notes_history import backfill_done as _nh_done
         nh_done = await _nh_done(db)              # Copy existing notes card (2026-11-23)
         miss_list = _split_tag_list(missing_tags)
@@ -2528,7 +2530,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "stale_ret": stale_ret[:300], "stale_ret_total": len(stale_ret),
         "pna_old": pna_old[:300], "pna_old_total": len(pna_old),
         "pna_old_tags": len({r["tag"] for r in pna_old}),
-        "iqc_hist": iqc_hist,
+        "iqc_hist": iqc_hist, "iqc_run": iqc_run,
         "nh_done": nh_done,
         "rts_open": rts_open[:200], "rts_open_total": len(rts_open),
         "rts_asgn": rts_asgn[:200], "rts_asgn_total": len(rts_asgn),
@@ -2623,29 +2625,36 @@ async def _pna_stale(db):
     return out
 
 
+_BG_TASKS = set()
+
+
 @router.post("/iqc-history-rebuild")
 async def iqc_history_rebuild(request: Request, current_user: User = Depends(admin_only)):
     """Data Fixes → Rebuild old IQC history (2026-11-22, Pankaj): NEW / SOLD IQC
     copies for tags and sales from before iqc_snapshots existed, worked back
     from the live IQC and its logged changes (services/iqc_backfill.py).
-    Adds rows only (backfilled = true); existing copies are never touched."""
-    from database import AsyncSessionLocal
-    from services.audit_engine import audit
-    from services.iqc_backfill import rebuild
-    async with AsyncSessionLocal() as db:
-        n = await rebuild(db)
-        await audit(db, user=current_user, action="IQC_HISTORY_REBUILT", table_name="iqc_snapshots",
-                    record_id=f"{n['new']} NEW / {n['sold']} SOLD"[:50], new_value=n,
-                    notes="Old IQC history rebuilt from the live IQC and its logged changes. "
-                          "Reverse: delete from iqc_snapshots where backfilled = true.",
-                    request=request)
-        await db.commit()
-    msg = (f"IQC history rebuilt: {n['new']:,} NEW and {n['sold']:,} SOLD copies"
-           f" ({n['rolled_back']:,} tags had changes undone, {n['not_recorded']:,} with a field not recorded).")
-    back = _back_to_page(await request.form(), msg)
+    Adds rows only (backfilled = true); existing copies are never touched.
+    2026-11-23: runs in the BACKGROUND in batches (one app worker — a single
+    pass blocked everyone and was cut off by the proxy). The click returns at
+    once; the card shows progress and its counts drop as batches are saved.
+    wait=1 (tests) runs it to the end before answering."""
+    import asyncio
+    from services.iqc_backfill import STATE, run_rebuild
+    form = await request.form()
+    if STATE["running"]:
+        msg = f"IQC history rebuild is already running: {STATE['done']:,} of {STATE['total']:,} tags done."
+    elif form.get("wait") == "1":
+        await run_rebuild(current_user.username, pause=0)
+        msg = f"IQC history rebuilt: {STATE['new']:,} NEW and {STATE['sold']:,} SOLD copies."
+    else:
+        _t = asyncio.create_task(run_rebuild(current_user.username))
+        _BG_TASKS.add(_t)                      # keep a reference until it finishes
+        _t.add_done_callback(_BG_TASKS.discard)
+        msg = "IQC history rebuild started in the background — refresh this page to see the counts go down."
+    back = _back_to_page(form, msg)
     if back:
         return back
-    return JSONResponse({"ok": True, **n})
+    return JSONResponse({"ok": True, **{k: v for k, v in STATE.items() if k not in ("started_at", "finished_at")}})
 
 
 @router.post("/notes-history-backfill")

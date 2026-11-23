@@ -121,71 +121,129 @@ def _ctx(session, device, unknown, stage):
     return ctx
 
 
-def _work(session, apply: bool):
-    """Runs on a sync Session (AsyncSession.run_sync). Returns the counts."""
+def _plan(session):
+    """Runs on a sync Session: what is left to rebuild (re-read on every run,
+    so a stopped or repeated run carries on where it left off)."""
+    from sqlalchemy import func
     have_new = set(session.execute(select(IQCSnapshot.device_id).where(IQCSnapshot.kind == "NEW")).scalars())
     have_sold = set(session.execute(select(IQCSnapshot.sale_id).where(IQCSnapshot.kind == "SOLD")).scalars())
     insp_rows = session.execute(select(IQCInspection.id, IQCInspection.device_id)).all()
     insp_dev = {str(i): str(d) for i, d in insp_rows}
     with_iqc = {d for _i, d in insp_rows}
     sales = defaultdict(list)
-    for s in session.execute(select(Sale).order_by(Sale.sold_at)).scalars():
-        if s.id not in have_sold and s.device_id in with_iqc:
-            sales[s.device_id].append(s)
+    for sid, did, sold_at, sno in session.execute(
+            select(Sale.id, Sale.device_id, Sale.sold_at, Sale.sale_number).order_by(Sale.sold_at)).all():
+        if sid not in have_sold and did in with_iqc:
+            sales[did].append((sid, sold_at, sno))
     todo = sorted({d for d in with_iqc if d not in have_new} | set(sales), key=str)
     ev = _events(session.execute(
         select(AuditLog.action, AuditLog.record_id, AuditLog.old_value, AuditLog.new_value, AuditLog.timestamp)
         .where(AuditLog.action.in_(_ACTIONS))).all(), insp_dev)
-    from sqlalchemy import func
     left = dict(session.execute(       # when each tag first left intake
         select(StageMovement.device_id, func.min(StageMovement.moved_at))
         .where(StageMovement.to_stage.notin_(list(_INTAKE)))
         .group_by(StageMovement.device_id)).all())
-    n = {"tags": len(todo), "new": 0, "sold": 0, "not_recorded": 0, "rolled_back": 0}
-    for i in range(0, len(todo), _CHUNK):
-        ids = todo[i:i + _CHUNK]
-        devs = {d.id: d for d in session.execute(select(Device).where(Device.id.in_(ids))).scalars()}
-        insps = {x.device_id: x for x in session.execute(
-            select(IQCInspection).where(IQCInspection.device_id.in_(ids))).scalars()}
-        for did in ids:
-            device, insp = devs.get(did), insps.get(did)
-            if device is None or insp is None:
+    return {"todo": todo, "sales": sales, "ev": ev, "left": left,
+            "new_left": len(with_iqc - have_new), "sold_left": sum(len(v) for v in sales.values())}
+
+
+def _chunk(session, ids, plan, apply: bool):
+    """Rebuild one batch of tags (sync Session). Re-checks what already
+    exists, so nothing is ever written twice."""
+    n = {"new": 0, "sold": 0, "not_recorded": 0, "rolled_back": 0}
+    have_new = set(session.execute(select(IQCSnapshot.device_id).where(
+        IQCSnapshot.kind == "NEW", IQCSnapshot.device_id.in_(ids))).scalars())
+    have_sold = set(session.execute(select(IQCSnapshot.sale_id).where(
+        IQCSnapshot.kind == "SOLD", IQCSnapshot.device_id.in_(ids))).scalars())
+    devs = {d.id: d for d in session.execute(select(Device).where(Device.id.in_(ids))).scalars()}
+    insps = {x.device_id: x for x in session.execute(
+        select(IQCInspection).where(IQCInspection.device_id.in_(ids))).scalars()}
+    for did in ids:
+        device, insp = devs.get(did), insps.get(did)
+        if device is None or insp is None:
+            continue
+        events = plan["ev"].get(str(did), [])
+        if did not in have_new:
+            payload = _iqc_payload(device, insp)
+            cut = plan["left"].get(did)      # None = never left intake: live IQC is the NEW one
+            unknown = _roll_back(payload, events, cut) if cut else {}
+            n["new"] += 1
+            n["not_recorded"] += bool(unknown)
+            n["rolled_back"] += bool(cut) and any(e[0] > cut for e in events)
+            if apply:
+                session.add(IQCSnapshot(
+                    device_id=did, kind="NEW", taken_at=insp.inspected_at or device.created_at or app_now(),
+                    taken_by=None, source="Rebuilt from history", backfilled=True,
+                    iqc=payload, context=_ctx(session, device, unknown, "iqc")))
+        for sid, sold_at, sno in plan["sales"].get(did, []):
+            if sid in have_sold:
                 continue
-            events = ev.get(str(did), [])
-            if did not in have_new:
-                payload = _iqc_payload(device, insp)
-                cut = left.get(did)          # None = never left intake: live IQC is the NEW one
-                unknown = _roll_back(payload, events, cut) if cut else {}
-                n["new"] += 1
-                n["not_recorded"] += bool(unknown)
-                n["rolled_back"] += bool(cut) and any(e[0] > cut for e in events)
-                if apply:
-                    session.add(IQCSnapshot(
-                        device_id=did, kind="NEW", taken_at=insp.inspected_at or device.created_at or app_now(),
-                        taken_by=None, source="Rebuilt from history", backfilled=True,
-                        iqc=payload, context=_ctx(session, device, unknown, "iqc")))
-            for s in sales.get(did, []):
-                payload = _iqc_payload(device, insp)
-                unknown = _roll_back(payload, events, s.sold_at) if s.sold_at else {}
-                n["sold"] += 1
-                if apply:
-                    session.add(IQCSnapshot(
-                        device_id=did, kind="SOLD", sale_id=s.id, taken_at=s.sold_at or app_now(),
-                        taken_by=None, source=("Rebuilt " + (s.sale_number or ""))[:40], backfilled=True,
-                        iqc=payload, context=_ctx(session, device, unknown, "sold")))
-        if apply:
-            session.flush()
-        session.expunge_all()     # keep memory flat on a big run
+            payload = _iqc_payload(device, insp)
+            unknown = _roll_back(payload, events, sold_at) if sold_at else {}
+            n["sold"] += 1
+            if apply:
+                session.add(IQCSnapshot(
+                    device_id=did, kind="SOLD", sale_id=sid, taken_at=sold_at or app_now(),
+                    taken_by=None, source=("Rebuilt " + (sno or ""))[:40], backfilled=True,
+                    iqc=payload, context=_ctx(session, device, unknown, "sold")))
+    if apply:
+        session.flush()
     return n
 
 
+# ── Background run (2026-11-23): production has ONE app worker, so a single
+# 89k-record pass inside the click blocked every user and was cut off by the
+# proxy after 2 minutes (rolled back). Now it runs as a background task in
+# batches of 300 tags, each saved on its own and followed by a pause, so the
+# app keeps serving and the card's counts drop as it goes. ──
+_BATCH = 300
+STATE = {"running": False, "done": 0, "total": 0, "new": 0, "sold": 0, "not_recorded": 0,
+         "rolled_back": 0, "error": None, "started_at": None, "finished_at": None, "by": None}
+
+
+async def run_rebuild(by: str = "system", pause: float = 0.2):
+    """The whole rebuild, batch by batch (each batch committed). Safe to run
+    again: it only adds copies that are still missing."""
+    import asyncio
+    from database import AsyncSessionLocal
+    if STATE["running"]:
+        return STATE
+    STATE.update(running=True, done=0, total=0, new=0, sold=0, not_recorded=0, rolled_back=0,
+                 error=None, started_at=app_now(), finished_at=None, by=by)
+    try:
+        async with AsyncSessionLocal() as db:
+            plan = await db.run_sync(_plan)
+        todo = plan["todo"]
+        STATE["total"] = len(todo)
+        for i in range(0, len(todo), _BATCH):
+            ids = todo[i:i + _BATCH]
+            async with AsyncSessionLocal() as db:
+                n = await db.run_sync(lambda s: _chunk(s, ids, plan, True))
+                await db.commit()
+            for k in ("new", "sold", "not_recorded", "rolled_back"):
+                STATE[k] += n[k]
+            STATE["done"] = min(i + _BATCH, len(todo))
+            await asyncio.sleep(pause)          # let other requests run
+        async with AsyncSessionLocal() as db:
+            from services.audit_engine import audit
+            await audit(db, action="IQC_HISTORY_REBUILT", table_name="iqc_snapshots",
+                        record_id=f"{STATE['new']} NEW / {STATE['sold']} SOLD"[:50],
+                        new_value={k: STATE[k] for k in ("new", "sold", "not_recorded", "rolled_back", "total")},
+                        notes=f"Old IQC history rebuilt by {by} (background, batches of {_BATCH}). "
+                              "Reverse: delete from iqc_snapshots where backfilled = true.")
+            await db.commit()
+    except Exception as e:                       # keep what was saved; show the error on the card
+        STATE["error"] = f"{type(e).__name__}: {e}"[:300]
+        print(f"[IQC rebuild] stopped: {STATE['error']}")
+    finally:
+        STATE["running"] = False
+        STATE["finished_at"] = app_now()
+    return STATE
+
+
 async def preview(db):
-    return await db.run_sync(lambda s: _work(s, False))
-
-
-async def rebuild(db):
-    """Writes the copies (caller commits)."""
-    return await db.run_sync(lambda s: _work(s, True))
+    plan = await db.run_sync(_plan)
+    return {"tags": len(plan["todo"]), "new": plan["new_left"], "sold": plan["sold_left"]}
 
 
 async def counts(db):

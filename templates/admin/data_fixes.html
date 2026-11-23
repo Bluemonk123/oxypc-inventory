@@ -496,7 +496,9 @@
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-layout-three-columns me-2"></i>Rebuild old IQC history
           <span class="badge {% if _ih %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ "{:,}".format(_ih) }}</span></span>
-        {% if _ih %}
+        {% if iqc_run and iqc_run.running %}
+        <span class="badge bg-info text-dark"><span class="spinner-border spinner-border-sm me-1"></span>Running</span>
+        {% elif _ih %}
         <form method="post" action="/admin/system/iqc-history-rebuild" class="df-confirm"
               data-confirm="Click again to rebuild {{ "{:,}".format(_ih) }} IQC copies">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
@@ -506,6 +508,15 @@
         {% endif %}
       </div>
       <div class="card-body small">
+        {% if iqc_run and iqc_run.running %}
+        <div class="alert alert-info py-1 px-2 mb-2">Rebuilding in the background: <b>{{ "{:,}".format(iqc_run.done) }}</b> of
+          <b>{{ "{:,}".format(iqc_run.total) }}</b> tags done ({{ "{:,}".format(iqc_run.new) }} NEW, {{ "{:,}".format(iqc_run.sold) }} SOLD so far).
+          Refresh to update; the app keeps working meanwhile.</div>
+        {% elif iqc_run and iqc_run.error %}
+        <div class="alert alert-warning py-1 px-2 mb-2">Last run stopped after {{ "{:,}".format(iqc_run.done) }} tags (saved): {{ iqc_run.error }}. Click Rebuild to carry on.</div>
+        {% elif iqc_run and iqc_run.finished_at %}
+        <div class="alert alert-success py-1 px-2 mb-2">Last run added {{ "{:,}".format(iqc_run.new) }} NEW and {{ "{:,}".format(iqc_run.sold) }} SOLD copies.</div>
+        {% endif %}
         {% if not _ih %}
         <div class="text-muted">Nothing to rebuild — every tag with an IQC has its NEW IQC, and every sale its SOLD IQC.</div>
         {% else %}
@@ -1042,7 +1053,7 @@
   </div>
 
   {# ── Physical Audit: split one-per-date rows (2026-10-24) ── #}
-  <div class="col-xxl-3 col-md-6" data-df="physical-audit-split-one-per-date-rows">
+  <div class="col-md-4" data-df="physical-audit-split-one-per-date-rows">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-clipboard-check me-2"></i>Physical Audit rows to split by Stage + Location
@@ -1074,41 +1085,9 @@
     </div>
   </div>
 
-  {# ── Physical Audit: Scrapped + Scrap for Sale rows (2026-10-24) ── #}
-  <div class="col-xxl-3 col-md-6" data-df="physical-audit-scrapped-scrap-for-sale-r">
-    <div class="card border-0 shadow-sm h-100 df-card">
-      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
-        <span class="fw-semibold"><i class="bi bi-recycle me-2"></i>Physical Audit Scrapped / Scrap for Sale rows to recount
-          <span class="badge {% if audit_scrap %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ audit_scrap | length }}</span></span>
-        {% if audit_scrap %}
-        <form method="post" action="/admin/system/audit-scrap-fix" class="df-confirm"
-              data-confirm="Click again to fix {{ audit_scrap | length }} row(s)">
-          <input type="hidden" name="csrf_token" value="{{ csrf }}">
-          <input type="hidden" name="back" value="1">
-          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Fix {{ audit_scrap | length }} row(s)</button>
-        </form>
-        {% endif %}
-      </div>
-      <div class="card-body small">
-        <p class="text-muted mb-2">Scrapped and Scrap for Sale are one audit stage now. Rows saved before counted only the stage picked. Fix joins the two scrap rows of the same date + location into one and recounts Current Count across both stages. Logged.</p>
-        {% if audit_scrap %}
-        <table class="table table-sm table-bordered mb-0 align-middle" style="font-size:.78rem;max-width:640px">
-          <thead class="table-dark"><tr><th>Report Date</th><th>Location</th><th>Rows</th><th>Current Count now</th><th>Becomes</th></tr></thead>
-          <tbody>
-            {% for a in audit_scrap %}
-            <tr><td>{{ a.date }}</td><td>{{ a.location }}</td><td>{{ a.rows }}</td><td>{{ a.current_before }}</td><td>{{ a.current_now }}</td></tr>
-            {% endfor %}
-          </tbody>
-        </table>
-        {% else %}
-        <div class="text-success"><i class="bi bi-check-circle me-1"></i>None.</div>
-        {% endif %}
-      </div>
-    </div>
-  </div>
-
+  {# Physical Audit: Scrapped + Scrap for Sale rows card removed (2026-11-23, Pankaj: not required). #}
   {# ── Physical Audit: plain L1/L2 + L3/L4 rows -> PNA / Line (2026-10-24) ── #}
-  <div class="col-xxl-3 col-md-6" data-df="physical-audit-plain-l1-l2-l3-l4-rows-pn">
+  <div class="col-md-4" data-df="physical-audit-plain-l1-l2-l3-l4-rows-pn">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-exclamation-triangle me-2"></i>Physical Audit L1/L2 / L3/L4 rows to split into PNA / Line
@@ -1141,7 +1120,7 @@
   </div>
 
   {# ── Physical Audit: remove listed Missing tags (2026-10-24) ── #}
-  <div class="col-xxl-3 col-md-6" data-df="physical-audit-remove-listed-missing-tag" id="auditMissingRemove">
+  <div class="col-md-4" data-df="physical-audit-remove-listed-missing-tag" id="auditMissingRemove">
     <div class="card border-0 shadow-sm h-100 df-card">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
         <span class="fw-semibold"><i class="bi bi-x-octagon me-2"></i>Physical Audit: remove Missing tags
