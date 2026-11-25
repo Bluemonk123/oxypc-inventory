@@ -17,6 +17,7 @@ __pycache__
 uploads/*
 backups/*
 static/stress_reports/*
+private_uploads
 !uploads/.gitkeep
 !backups/.gitkeep
 !static/stress_reports/.gitkeep

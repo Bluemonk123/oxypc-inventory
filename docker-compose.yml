@@ -29,6 +29,10 @@ services:
       - ./uploads:/app/uploads
       - ./backups:/app/backups
       - ./static/stress_reports:/app/static/stress_reports
+      # Partner payment proofs (services/partner_service.py PROOFS_DIR) — kept
+      # outside the public uploads/ tree. Mounted 2026-11-25: before this they
+      # lived inside the container and were lost on every rebuild/deploy.
+      - ./private_uploads:/app/private_uploads
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=3).status==200 else 1)"]
       interval: 30s

@@ -64,6 +64,10 @@ git merge --ff-only origin/main --quiet || { echo "FATAL: fast-forward failed"; 
 # only need to be uid 1000 once, not on every deploy (set during the Docker
 # cutover on 2026-10-01 — see docs/superpowers/specs/2026-10-01-docker-containerization-design.md).
 
+# private_uploads (partner payment proofs) is bind-mounted since 2026-11-25 and
+# must be owned by the container's appuser (uid 1000), or new proofs can't be saved.
+mkdir -p private_uploads && chown 1000:1000 private_uploads
+
 echo "building image"
 docker compose build || { echo "FATAL: docker build failed"; exit 1; }
 
