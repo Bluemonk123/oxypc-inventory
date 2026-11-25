@@ -810,7 +810,10 @@ async def _email_ctx(db: AsyncSession) -> dict:
                                     ("backup", "Backup mailbox", "OXYPC_SMTP2", en.backup_settings())):
         boxes.append({"key": key, "label": label, "prefix": prefix, "ready": en.is_configured(cfg),
                       "host": cfg["host"], "port": cfg["port"], "user": cfg["user"], "from": cfg["from"],
-                      "security": cfg["security"], "has_password": bool(cfg["password"])})
+                      "security": cfg["security"], "has_password": bool(cfg["password"]),
+                      "reply_to": cfg["reply_to"], "method": cfg["method"],
+                      "tenant_id": cfg["tenant_id"], "client_id": cfg["client_id"],
+                      "has_secret": bool(cfg["client_secret"])})
     return {"em_configured": en.is_configured(), "em_boxes": boxes,
             "em_public_url": en.settings()["public_url"],
             "em_active": active, "em_with_email": with_email}
@@ -838,7 +841,7 @@ async def send_test_email(
                           f"{current_user.full_name or current_user.username}. "
                           "If you can read this, email notifications are working.", box=box)
     except Exception as e:
-        return RedirectResponse(url=back + "&error=" + quote_plus(f"Test email ({box} mailbox) not sent: {e}"[:300]),
+        return RedirectResponse(url=back + "&error=" + quote_plus(f"Test email ({box} mailbox) not sent: {en.friendly(e)}"[:500]),
                                 status_code=302)
     return RedirectResponse(url=back + "&success=" + quote_plus(f"Test email sent to {to} through the {box} mailbox"),
                             status_code=302)
@@ -863,31 +866,59 @@ async def save_email_settings(
     back = "/admin/extra-settings?tab=email"
     g = lambda k: (form.get(k) or "").strip()  # noqa: E731
     host, port, security, user, sender = g("host"), g("port"), g("security").lower(), g("user"), g("from")
+    reply_to = g("reply_to")
+    # Sending method (2026-11-24): smtp (Gmail / any mail server) or graph
+    # (Microsoft 365 app: Tenant ID, Client ID, Client Secret — no password).
+    method = "graph" if g("method") == "graph" else "smtp"
+    tenant_id, client_id = g("tenant_id"), g("client_id")
     if form.get("turn_off") == "1":
-        host = port = security = user = sender = ""
+        host = port = security = user = sender = reply_to = tenant_id = client_id = ""
+        method = ""
+    elif method == "graph":
+        from email.utils import parseaddr as _pa
+        has_secret = bool(form.get("client_secret") or os.environ.get(f"{prefix}_CLIENT_SECRET"))
+        if not (tenant_id and client_id and has_secret):
+            return RedirectResponse(url=back + "&error=" + quote_plus(
+                "Microsoft 365 needs the Tenant ID, Client ID and Client Secret from your admin"), status_code=302)
+        if "@" not in _pa(sender)[1]:
+            return RedirectResponse(url=back + "&error=" + quote_plus(
+                "Enter the Sent from mailbox, e.g. admin.alerts@oxypc.com"), status_code=302)
+        host = port = security = user = ""          # not used by Graph
+    else:
+        tenant_id = client_id = ""
+    if reply_to and ("@" not in reply_to or " " in reply_to):
+        return RedirectResponse(url=back + "&error=" + quote_plus("Reply to must be one email address, e.g. info@oxypc.com"), status_code=302)
     if port and not (port.isdigit() and 0 < int(port) < 65536):
         return RedirectResponse(url=back + "&error=" + quote_plus("Port must be a number, e.g. 587 or 465"), status_code=302)
     if security not in ("", "starttls", "ssl", "none"):
         security = ""
-    if host and not (user or sender):
+    if method == "smtp" and host and not (user or sender):
         return RedirectResponse(url=back + "&error=" + quote_plus("Enter the mailbox (login) or Sent from address"), status_code=302)
     changes = {f"{prefix}_HOST": host, f"{prefix}_PORT": port, f"{prefix}_SECURITY": security,
-               f"{prefix}_USER": user, f"{prefix}_FROM": sender}
+               f"{prefix}_USER": user, f"{prefix}_FROM": sender, f"{prefix}_REPLY_TO": reply_to,
+               f"{prefix}_METHOD": "graph" if method == "graph" else "",
+               f"{prefix}_TENANT_ID": tenant_id, f"{prefix}_CLIENT_ID": client_id}
     pw = form.get("password") or ""
-    if form.get("turn_off") == "1" or form.get("clear_password") == "1":
+    if form.get("turn_off") == "1" or form.get("clear_password") == "1" or method == "graph":
         changes[f"{prefix}_PASSWORD"] = ""
     elif pw:
         changes[f"{prefix}_PASSWORD"] = pw
+    secret = form.get("client_secret") or ""
+    if form.get("turn_off") == "1" or method == "smtp":
+        changes[f"{prefix}_CLIENT_SECRET"] = ""
+    elif secret:
+        changes[f"{prefix}_CLIENT_SECRET"] = secret
     if box == "main" and "public_url" in form:
         changes["OXYPC_PUBLIC_URL"] = g("public_url").rstrip("/")
-    old = {k: ("(set)" if k.endswith("_PASSWORD") and os.environ.get(k) else os.environ.get(k) or "") for k in changes}
+    _secret = lambda k: k.endswith("_PASSWORD") or k.endswith("_CLIENT_SECRET")  # noqa: E731
+    old = {k: ("(set)" if _secret(k) and os.environ.get(k) else os.environ.get(k) or "") for k in changes}
     try:
         changed = update_env(changes)
     except (ValueError, OSError) as e:
         return RedirectResponse(url=back + "&error=" + quote_plus(f"Not saved: {e}"[:300]), status_code=302)
     if not changed:
         return RedirectResponse(url=back + "&success=" + quote_plus("Nothing changed"), status_code=302)
-    new = {k: ("(set)" if k.endswith("_PASSWORD") and v else v) for k, v in changes.items()}
+    new = {k: ("(set)" if _secret(k) and v else v) for k, v in changes.items()}
     await audit(db, action="EMAIL_SETTINGS_SAVED", user=current_user, table_name=".env",
                 record_id=box, old_value={k: old[k] for k in changed},
                 new_value={k: new[k] for k in changed}, request=request)   # never the password itself

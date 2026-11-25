@@ -1643,6 +1643,19 @@ async def iqc_create(
         lot_line_item_id=lot_line_item_id or None,
         qty=_safe_qty(qty),
     )
+    # RAM / Hard Drive (2026-11-24): any of the three left blank is filled from
+    # the others (same as the page's autofill, for a save without it).
+    # Counts start at 0 on the page: a 0 count is filled from the sizes like a
+    # blank one, and stays 0 when there is no size.
+    from utils.device_spec import fill_defaults
+    for _c in ("total_ram_count", "total_hdd_count"):
+        if (getattr(device, _c) or "").strip() == "0":
+            setattr(device, _c, None)
+    for _k, _v in fill_defaults(device).items():
+        setattr(device, _k, _v)
+    for _c in ("total_ram_count", "total_hdd_count"):
+        if not (getattr(device, _c) or "").strip():
+            setattr(device, _c, "0")
 
     # Auto-set device_price from LotLineItem unit_price (or lot average as fallback)
     if lot_line_item_id:

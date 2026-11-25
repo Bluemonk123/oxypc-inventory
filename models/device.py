@@ -1,9 +1,10 @@
+import re
 import uuid
 from datetime import datetime
 from utils.timezone import app_now
 from sqlalchemy import Column, String, DateTime, Date, Integer, Float, Boolean, ForeignKey, Enum as SAEnum, Text, Numeric, text, event
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 import enum
 from database import Base
 
@@ -137,11 +138,28 @@ STAGE_COLORS = {
 }
 
 
+_TAG_JUNK = re.compile(r"[\s\u200b\u200c\u200d\u2060\ufeff\u00a0]+")
+
+
+def clean_tag(value):
+    """A Tag Number without spaces, tabs, line breaks or invisible characters."""
+    if value is None:
+        return value
+    return _TAG_JUNK.sub("", str(value))
+
+
 class Device(Base):
     __tablename__ = "devices"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     barcode = Column(String(100), unique=True, nullable=False, index=True)
+
+    # 2026-11-24: Tag Numbers never contain spaces. A TAB / space / invisible
+    # character pasted in from Excel made a tag impossible to open (its page
+    # link drops the character). Every save — any screen or upload — cleans it.
+    @validates("barcode")
+    def _clean_barcode(self, _key, value):
+        return clean_tag(value)
     lot_id = Column(UUID(as_uuid=True), ForeignKey("lots.id"), nullable=False, index=True)
     brand = Column(String(50), nullable=True, index=True)
     entity = Column(String(50), nullable=True, index=True)  # OxyPC Computers / Renew Circuits — additive, auto-provisioned by db_validator (widened 30 -> 50, 2026-10-21)

@@ -37,16 +37,22 @@
 
           <!-- ── Section 1: Identity ── -->
           <p class="fw-bold small text-uppercase mb-2 border-bottom pb-1 sec-hd">Identity</p>
+          {# 2026-11-24 (Pankaj): same two rows as Register Device — IQC:
+               Tag Number · Lot Number · Color
+               GRN Number · Invoice Number · Location ID · Entity
+             Each starts on the tag's saved value. Changing the Tag Number picks
+             the Lot from its first 4–6 characters (when no Lot is set); a Lot
+             fills GRN + Invoice; a GRN fills Invoice + Location ID. #}
           <div class="row g-3 mb-3">
-            <div class="col-md-4">
+            <div class="col-md-6">
               <label class="form-label fw-semibold">Tag Number <span class="text-danger">*</span></label>
               <input type="text" name="barcode_new" id="editBarcode" maxlength="100"
                      data-original="{{ device.barcode }}"
                      class="form-control font-monospace" value="{{ device.barcode }}" required>
               <div id="editBarcodeErr" class="text-danger small mt-1 d-none">Duplicate Tag Number — this tag already exists.</div>
             </div>
-            <div class="col-md-4">
-              <label class="form-label fw-semibold">Lot</label>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Lot Number</label>
               <select name="lot_id" id="lot_id" class="form-select">
                 <option value="">-- Select Lot --</option>
                 {% for lot in lots %}
@@ -56,15 +62,8 @@
                 {% endfor %}
               </select>
             </div>
-            <input type="hidden" name="grn_number" maxlength="100" value="{{ device.grn_number or '' }}">
-            <div class="col-md-4">
-              <label class="form-label">Invoice No.</label>
-              <input type="text" class="form-control font-monospace bg-light"
-                     value="{{ current_lot.invoice_no if current_lot and current_lot.invoice_no else '' }}"
-                     placeholder="—" readonly tabindex="-1">
-            </div>
-            <div class="col-md-4">
-              <label class="form-label">Color</label>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Color</label>
               <input type="text" name="color" maxlength="30" class="form-control" value="{{ device.color or '' }}" placeholder="Black / Silver / Dark Grey">
             </div>
             <div class="col-md-4 d-none">
@@ -74,6 +73,38 @@
                 {% for opt in ['Laptop','Desktop','TFT / Monitor','All-in-One','Workstation','Mini PC','Tablet'] %}
                 <option {% if device.sub_category == opt %}selected{% endif %}>{{ opt }}</option>
                 {% endfor %}
+              </select>
+            </div>
+          </div>
+          <div class="row g-3 mb-3">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">GRN Number</label>
+              <select name="grn_number" id="grn_number" class="form-select" data-prefill="{{ device.grn_number or '' }}">
+                <option value="">-- Select GRN --</option>
+                {% if device.grn_number %}<option value="{{ device.grn_number }}" selected>{{ device.grn_number }}</option>{% endif %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Invoice Number</label>
+              <input type="text" name="invoice_number" id="invoice_number" maxlength="100" class="form-control font-monospace"
+                     value="{{ device.invoice_number or (current_lot.invoice_no if current_lot and current_lot.invoice_no else '') }}"
+                     placeholder="Auto-fills from GRN">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Location ID</label>
+              {% set _cur_loc = current_location_id or device.location_id %}
+              <select name="location_id" id="iqcLocation" class="form-select" data-prefill="{{ _cur_loc or '' }}">
+                <option value="">-- Select Location --</option>
+                {# the tag's location (same as Device Detail) is there from the start, so saving before the list loads keeps it #}
+                {% if _cur_loc %}<option value="{{ _cur_loc }}" selected>{{ current_location_name or 'Current location' }}</option>{% endif %}
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Entity</label>
+              {% set _ents = master_options('entity') %}
+              <select name="entity" id="iqcEntity" class="form-select">
+                {% if device.entity and device.entity not in _ents %}<option selected>{{ device.entity }}</option>{% endif %}
+                {% for e in _ents %}<option value="{{ e }}" {% if e == device.entity %}selected{% endif %}>{{ e }}</option>{% endfor %}
               </select>
             </div>
           </div>
@@ -129,38 +160,43 @@
             {% macro _gbtb(n) %}{% if n %}{% if n >= 1024 and n % 1024 == 0 %}{{ n // 1024 }} TB{% elif n >= 1000 and n % 1000 == 0 %}{{ n // 1000 }} TB{% else %}{{ n }} GB{% endif %}{% endif %}{% endmacro %}
             {# RAM / Hard Drive (2026-10-22): the eight spec fields only. Storage
                Type and HDD Capacity are no longer shown (values are kept). #}
+            {# Rows match Register Device (2026-11-24): RAM · Total RAM Size · Total RAM
+               Count (+ Summary), same for Hard Drive. Fill RAM or Total Size and the
+               rest fill in (data-spec script below); counts start at 0. #}
+            <div class="w-100"></div>
             <div class="col-md-3">
               <label class="form-label small">RAM</label>
-              <input type="text" name="ram_gb" maxlength="20" class="form-control form-control-sm" value="{{ _gbtb(device.ram_gb) if device.ram_gb else '' }}" placeholder="e.g. 16">
+              <input type="text" name="ram_gb" maxlength="20" class="form-control form-control-sm" data-spec="ram_gb" value="{{ _gbtb(device.ram_gb) if device.ram_gb else '' }}" placeholder="e.g. 16GB or 1TB">
             </div>
             <div class="col-md-3">
               <label class="form-label small">Total RAM Size</label>
-              <input type="text" name="total_ram_size" maxlength="50" class="form-control form-control-sm" value="{{ device.total_ram_size or '' }}" placeholder="e.g. 16GB">
+              <input type="text" name="total_ram_size" maxlength="50" class="form-control form-control-sm" data-spec="total_ram_size" value="{{ device.total_ram_size or '' }}" placeholder="e.g. 8GB, 8GB">
             </div>
             <div class="col-md-3">
               <label class="form-label small">Total RAM Count</label>
-              <input type="text" name="total_ram_count" maxlength="50" class="form-control form-control-sm" value="{{ device.total_ram_count or '' }}" placeholder="e.g. 1">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label small">Hard Drive / Storage</label>
-              <input type="text" name="storage_gb" maxlength="20" class="form-control form-control-sm" value="{{ _gbtb(device.storage_gb) if device.storage_gb else '' }}" placeholder="e.g. 512 or 1TB">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label small">Total Hard Drive Size</label>
-              <input type="text" name="total_hdd_size" maxlength="50" class="form-control form-control-sm" value="{{ device.total_hdd_size or '' }}" placeholder="e.g. 512GB">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label small">Total Hard Drive Count</label>
-              <input type="text" name="total_hdd_count" maxlength="50" class="form-control form-control-sm" value="{{ device.total_hdd_count or '' }}" placeholder="e.g. 1">
+              <input type="text" name="total_ram_count" maxlength="50" class="form-control form-control-sm" data-spec="total_ram_count" value="{{ device.total_ram_count or '0' }}"{% if not device.total_ram_count %} data-auto="1"{% endif %} placeholder="e.g. 2">
             </div>
             <div class="col-md-3">
               <label class="form-label small">Total RAM Summary</label>
-              <input type="text" name="ram_summary" maxlength="255" class="form-control form-control-sm" value="{{ device.ram_summary or '' }}" placeholder="e.g. 8GB_DDR4_Samsung, 8GB_DDR4_Crucial">
+              <input type="text" name="ram_summary" maxlength="255" class="form-control form-control-sm" data-spec="ram_summary" value="{{ device.ram_summary or '' }}" placeholder="e.g. 16GB">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">Hard Drive</label>
+              <input type="text" name="storage_gb" maxlength="20" class="form-control form-control-sm" data-spec="storage_gb" value="{{ _gbtb(device.storage_gb) if device.storage_gb else '' }}" placeholder="e.g. 512GB or 1TB">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">Total Hard Drive Size</label>
+              <input type="text" name="total_hdd_size" maxlength="50" class="form-control form-control-sm" data-spec="total_hdd_size" value="{{ device.total_hdd_size or '' }}" placeholder="e.g. 256GB SSD, 1TB HDD">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">Total Hard Drive Count</label>
+              <input type="text" name="total_hdd_count" maxlength="50" class="form-control form-control-sm" data-spec="total_hdd_count" value="{{ device.total_hdd_count or '0' }}"{% if not device.total_hdd_count %} data-auto="1"{% endif %} placeholder="e.g. 1">
             </div>
             <div class="col-md-3">
               <label class="form-label small">Total Hard Drive Summary</label>
-              <input type="text" name="hdd_summary" maxlength="255" class="form-control form-control-sm" value="{{ device.hdd_summary or '' }}" placeholder="e.g. 512GB_SSD_Samsung">
+              <input type="text" name="hdd_summary" maxlength="255" class="form-control form-control-sm" data-spec="hdd_summary" value="{{ device.hdd_summary or '' }}" placeholder="e.g. 512GB SSD">
             </div>
+            <div class="w-100"></div>
             <div class="col-md-3">
               <label class="form-label small">Screen Size</label>
               <select name="screen_size" class="form-select form-select-sm">
@@ -177,10 +213,16 @@
             <div class="col-md-3"><label class="form-label small">Charging Port</label>{{ isel('charging_port', ['Yes','No']) }}</div>
             <div class="col-md-3"><label class="form-label small">Does the Laptop Switch On?</label>{{ isel('power_on', yn) }}</div>
             <div class="col-md-3"><label class="form-label small">Power Status</label>{{ isel('status', ['Power On','No Display','No Power/Power Cut(Motherboard)']) }}</div>
-            <div class="col-md-3"><label class="form-label small">Keyboard Working?</label>{{ isel('keyboard_working', yn3) }}</div>
-            <div class="col-md-3"><label class="form-label small">Click Function Working?</label>{{ isel('touchpad_click_working', ['Yes','No']) }}</div>
-            <div class="col-md-3"><label class="form-label small">Touchpad Working?</label>{{ isel('touchpad_working', yn3) }}</div>
+            <div class="col-md-3"><label class="form-label small">Speaker Status</label>{{ isel('speaker_status', ['Both speakers working','Both speakers faulty','Left speaker faulty','Right speaker faulty']) }}</div>
+            {# Same order and play-button tests as Register Device (2026-11-24) #}
+            <div class="col-md-3"><label class="form-label small d-flex align-items-center gap-1">Keyboard Working? <button type="button" id="kbClickTestBtn" class="btn btn-link p-0 lh-1 text-success border-0" data-bs-toggle="modal" data-bs-target="#kbClickTestModal" title="Run the keyboard test"><i class="bi bi-play-circle-fill fs-6"></i></button></label>{{ isel('keyboard_working', yn3) }}</div>
+            <div class="col-md-3">
+              <label class="form-label small">Storage Health (%)</label>
+              <input type="number" name="storage_health_pct" class="form-control form-control-sm" value="{{ ii.storage_health_pct if ii and ii.storage_health_pct is not none else '' }}" min="0" max="100" placeholder="—">
+            </div>
+            <div class="col-md-3"><label class="form-label small d-flex align-items-center gap-1">Touchpad Working? <button type="button" id="tpTestBtn" class="btn btn-link p-0 lh-1 text-success border-0" data-bs-toggle="modal" data-bs-target="#tpTestModal" title="Run the touchpad &amp; click test"><i class="bi bi-play-circle-fill fs-6"></i></button></label>{{ isel('touchpad_working', yn3) }}</div>
             <div class="col-md-3"><label class="form-label small">Touchpad Missing</label>{{ isel('touchpad_missing', ['Yes','No']) }}</div>
+            <div class="col-md-3"><label class="form-label small">Click Function Working?</label>{{ isel('touchpad_click_working', ['Yes','No']) }}</div>
             <div class="col-md-3"><label class="form-label small">HDMI Port Working?</label>{{ isel('port_hdmi', yn3) }}</div>
             <div class="col-md-3"><label class="form-label small">USB Ports Working?</label>{{ isel('port_usb_working', yn3) }}</div>
             <div class="col-md-3"><label class="form-label small">Audio Jack Working?</label>{{ isel('port_audio_jack', yn3) }}</div>
@@ -196,16 +238,11 @@
               <label class="form-label small">Ethernet Ports</label>
               <input type="number" name="ethernet_ports" class="form-control form-control-sm" value="{{ ii.ethernet_ports if ii and ii.ethernet_ports is not none else '' }}" min="0" max="8" placeholder="count">
             </div>
-            <div class="col-md-3"><label class="form-label small">Speaker Status</label>{{ isel('speaker_status', ['Both speakers working','Both speakers faulty','Left speaker faulty','Right speaker faulty']) }}</div>
             <div class="col-md-3"><label class="form-label small">Wi-Fi</label>{{ isel('wifi_status', ['Working','Faulty','Not Checked']) }}</div>
             <div class="col-md-3"><label class="form-label small">Web Cam</label>{{ isel('webcam_status', ['Ok','Faulty','Not Checked']) }}</div>
             <div class="col-md-3"><label class="form-label small">HDD Connector</label>{{ isel('hdd_connector', yn3) }}</div>
             <div class="col-md-3"><label class="form-label small">HDD Casing</label>{{ isel('hdd_casing', yn3) }}</div>
             <div class="col-md-3"><label class="form-label small">DVD Drive</label>{{ isel('dvd_drive', ['Yes','No','NA']) }}</div>
-            <div class="col-md-3">
-              <label class="form-label small">Storage Health (%)</label>
-              <input type="number" name="storage_health_pct" class="form-control form-control-sm" value="{{ ii.storage_health_pct if ii and ii.storage_health_pct is not none else '' }}" min="0" max="100" placeholder="—">
-            </div>
             <div class="col-md-3">
               <label class="form-label small">Fan Sound (in dBA)</label>
               <input type="number" name="fan_sound_dba" class="form-control form-control-sm" value="{{ ii.fan_sound_dba if ii and ii.fan_sound_dba is not none else '' }}" min="0" max="100" placeholder="—">
@@ -213,8 +250,8 @@
             <div class="col-md-3"><label class="form-label small">Fan Working</label>{{ isel('fan_working', ['Yes','No']) }}</div>
           </div>
 
-          <!-- ── Body Panels (mirrors IQC Entry's exact section breakdown) ── -->
-          <p class="fw-bold small text-uppercase mb-2 border-bottom pb-1 sec-hd">Body Panels</p>
+          <!-- ── Cosmetics, renamed from Body Panels 2026-11-24 (mirrors IQC Entry's exact section breakdown) ── -->
+          <p class="fw-bold small text-uppercase mb-2 border-bottom pb-1 sec-hd">Cosmetics</p>
 
           <!-- 1. Covers and Casing -->
           <div class="card border bg-light mb-2"><div class="card-body py-2">
@@ -396,6 +433,8 @@
             </button>
             <a href="/devices/{{ device.barcode }}" class="btn btn-outline-secondary">Cancel</a>
           </div>
+          {# Keyboard / Touchpad play-button tests, same as Register Device #}
+          {% include "iqc/_function_tests.html" %}
         </form>
       </div>
     </div>
@@ -468,6 +507,64 @@
 {% endblock %}
 {% block scripts %}
 <script src="/static/vendor/tom-select/js/tom-select.complete.min.js"></script>
+<script>
+/* Identity rows (2026-11-24): GRN + Location dropdowns, Lot from the tag's
+   first 4–6 characters, Lot -> GRN + Invoice, GRN -> Invoice + Location ID. */
+(function () {
+  var grnEl = document.getElementById('grn_number'), locEl = document.getElementById('iqcLocation');
+  var invEl = document.getElementById('invoice_number'), lotEl = document.getElementById('lot_id');
+  var tagEl = document.getElementById('editBarcode');
+  if (!grnEl || !locEl) return;
+  var byGrn = {}, grnTs = null, locTs = null;
+  function setLoc(id) { if (!id) return; if (locTs) locTs.setValue(id, true); else locEl.value = id; }
+  function setGrn(g) {
+    if (!g) return;
+    if (grnTs) { if (!grnTs.options[g]) grnTs.addOption({ value: g, text: g }); grnTs.setValue(g); }
+    else { if (![...grnEl.options].some(function (o) { return o.value === g; })) grnEl.add(new Option(g, g)); grnEl.value = g; grnEl.dispatchEvent(new Event('change')); }
+  }
+  grnEl.addEventListener('change', function () {
+    var d = byGrn[grnEl.value]; if (!d) return;
+    if (d.invoice && invEl) invEl.value = d.invoice;
+    setLoc(d.location_id);
+  });
+  if (lotEl) lotEl.addEventListener('change', function () {
+    if (!lotEl.value) return;
+    fetch('/api/lot-meta?lot_id=' + encodeURIComponent(lotEl.value)).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d.found) return;
+      if (d.grn_number) setGrn(d.grn_number);
+      if (d.invoice_number && invEl && !invEl.value) invEl.value = d.invoice_number;
+    }).catch(function () {});
+  });
+  if (tagEl && lotEl) {
+    var t, last = '';
+    tagEl.addEventListener('input', function () {
+      clearTimeout(t);
+      t = setTimeout(function () {
+        var p = (tagEl.value || '').trim().slice(0, 6);
+        if (p.length < 4 || p === last || lotEl.value) return;     // never override a chosen Lot
+        last = p;
+        fetch('/api/lot-meta?tag_prefix=' + encodeURIComponent(p)).then(function (r) { return r.json(); }).then(function (d) {
+          if (d.found && d.lot_id) { lotEl.value = d.lot_id; if (window.lotSelect && lotSelect.setValue) lotSelect.setValue(d.lot_id, true); lotEl.dispatchEvent(new Event('change')); }
+        }).catch(function () {});
+      }, 300);
+    });
+  }
+  fetch('/api/iqc-form-options', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (o) {
+    var pre = grnEl.dataset.prefill || '', preLoc = locEl.dataset.prefill || '';
+    (o.grns || []).forEach(function (g) { byGrn[g.grn] = g; if (g.grn !== pre) grnEl.add(new Option(g.grn + (g.vendor ? ' — ' + g.vendor : ''), g.grn)); });
+    (o.locations || []).forEach(function (l) {
+      var label = l.unit_id + (l.zone ? ' (' + l.zone + ')' : '');
+      var have = [...locEl.options].find(function (x) { return x.value === l.id; });
+      if (have) { have.textContent = label; return; }        // the saved one, already selected
+      locEl.add(new Option(label, l.id));
+    });
+    if (window.TomSelect) {
+      grnTs = new TomSelect(grnEl, { maxOptions: 500, allowEmptyOption: true, create: true, plugins: ['clear_button'], placeholder: '— Search GRN number —' });
+      locTs = new TomSelect(locEl, { maxOptions: 1000, allowEmptyOption: true, plugins: ['clear_button'], placeholder: '— Search Location ID —' });
+    }
+  }).catch(function () { /* offline: the saved location option is already selected */ });
+})();
+</script>
 <script>
 async function loadMasterOptions(category, selectId, currentVal) {
   try {
@@ -602,4 +699,5 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 })();
 </script>
+{% include "iqc/_spec_autofill.html" %}
 {% endblock %}

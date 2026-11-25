@@ -6,7 +6,7 @@ All routes require an authenticated session.
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import DBAPIError
 
 from database import get_db
@@ -89,11 +89,18 @@ async def get_lot_meta(
         except (ValueError, DBAPIError):
             lot = None          # malformed UUID — treat as "no match", not a 500
     elif tag_prefix:
-        p = tag_prefix.strip()
-        lot = (await db.execute(select(Lot).where(Lot.lot_number == p))).scalars().first()
-        if not lot:
+        # 2026-11-24 (Pankaj): the lot is the first 4 to 6 characters of the
+        # tag — the LONGEST exact lot number match wins (6, then 5, then 4),
+        # so "448421…" picks lot 448421 over 4484 when both exist.
+        p = tag_prefix.strip()[:6]
+        for n in range(len(p), 3, -1):
+            lot = (await db.execute(select(Lot).where(func.upper(Lot.lot_number) == p[:n].upper())
+                                    .where(Lot.is_trashed.isnot(True)))).scalars().first()
+            if lot:
+                break
+        if not lot and len(p) >= 4:          # older behaviour: a lot that starts with the first 4
             lot = (await db.execute(
-                select(Lot).where(Lot.lot_number.ilike(f"{p}%")).limit(1)
+                select(Lot).where(Lot.lot_number.ilike(f"{p[:4]}%"), Lot.is_trashed.isnot(True)).limit(1)
             )).scalars().first()
     if not lot:
         return JSONResponse({"found": False})
@@ -118,6 +125,27 @@ async def get_lot_meta(
         "grn_number": (grn.grn_number if grn else "") or "",
         "invoice_number": (grn.invoice_number if grn else None)
                           or getattr(lot, "invoice_number", None) or "",
+    })
+
+
+@router.get("/iqc-form-options")
+async def iqc_form_options(db: AsyncSession = Depends(get_db),
+                           current_user: User = Depends(get_current_user)):
+    """Register Device — IQC dropdowns (2026-11-24, Pankaj): GRN records
+    (newest first, each with its Invoice Number and Location ID, so picking a
+    GRN fills both) and every active Location ID."""
+    from models.location import StorageLocation
+    grns = (await db.execute(
+        select(GRNImport.grn_number, GRNImport.invoice_number, GRNImport.location_id, GRNImport.sender_name)
+        .where(GRNImport.is_deleted == False)  # noqa: E712
+        .order_by(GRNImport.created_at.desc()).limit(3000))).all()
+    locs = (await db.execute(select(StorageLocation).order_by(StorageLocation.unit_id))).scalars().all()
+    return JSONResponse({
+        "grns": [{"grn": g, "invoice": inv or "", "location_id": str(loc) if loc else "", "vendor": v or ""}
+                 for g, inv, loc, v in grns],
+        "locations": [{"id": str(l.id), "unit_id": l.unit_id,
+                       "zone": getattr(getattr(l, "zone", None), "value", getattr(l, "zone", "")) or ""}
+                      for l in locs if getattr(l, "is_active", True) is not False],
     })
 
 

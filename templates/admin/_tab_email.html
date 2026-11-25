@@ -25,10 +25,18 @@
       <div class="card-body">
         {% if b.ready %}
         <table class="table table-sm mb-3">
+          {% if b.method == 'graph' %}
+          <tr><th class="text-muted fw-normal" style="width:40%">Method</th><td>Microsoft 365 (Graph) — no password / OTP</td></tr>
+          <tr><th class="text-muted fw-normal">Tenant ID</th><td class="text-break">{{ b.tenant_id }}</td></tr>
+          <tr><th class="text-muted fw-normal">Client ID</th><td class="text-break">{{ b.client_id }}</td></tr>
+          <tr><th class="text-muted fw-normal">Client Secret</th><td>{{ 'Set' if b.has_secret else 'Not set' }}</td></tr>
+          {% else %}
           <tr><th class="text-muted fw-normal" style="width:40%">Mail server</th><td>{{ b.host }}:{{ b.port }} · {{ b.security | upper }}</td></tr>
           <tr><th class="text-muted fw-normal">Mailbox (login)</th><td>{{ b.user or '—' }}</td></tr>
           <tr><th class="text-muted fw-normal">Password</th><td>{{ 'Set' if b.has_password else 'Not set' }}</td></tr>
+          {% endif %}
           <tr><th class="text-muted fw-normal">Sent from</th><td>{{ b.from }}</td></tr>
+          <tr><th class="text-muted fw-normal">Replies go to</th><td>{{ b.reply_to or 'Sent from address' }}</td></tr>
         </table>
         <form method="post" action="/admin/master/email/test" class="d-flex flex-wrap gap-2 align-items-center">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
@@ -45,19 +53,37 @@
         <form method="post" action="/admin/master/email/settings" class="{{ 'collapse mt-3' if b.ready else '' }} border-top pt-3" id="emEdit_{{ b.key }}" autocomplete="off">
           <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
           <input type="hidden" name="box" value="{{ b.key }}">
+          {# Sending method (2026-11-24): SMTP (Gmail / any server) or Microsoft 365 (Graph, no password / OTP) #}
+          <div class="mb-2"><label class="form-label small fw-semibold mb-0">Sending method</label>
+            <select name="method" class="form-select form-select-sm" data-em-method="{{ b.key }}">
+              <option value="smtp" {{ 'selected' if b.method != 'graph' else '' }}>Mail server (SMTP) — Gmail App Password or any mail server</option>
+              <option value="graph" {{ 'selected' if b.method == 'graph' else '' }}>Microsoft 365 (Graph) — Tenant ID / Client ID / Client Secret</option>
+            </select></div>
+          <div class="row g-2 mb-2 {{ '' if b.method == 'graph' else 'd-none' }}" data-em-graph="{{ b.key }}">
+            <div class="col-6"><label class="form-label small fw-semibold mb-0">Tenant ID</label>
+              <input type="text" name="tenant_id" class="form-control form-control-sm" value="{{ b.tenant_id }}" placeholder="Directory (tenant) ID" autocomplete="off"></div>
+            <div class="col-6"><label class="form-label small fw-semibold mb-0">Client ID</label>
+              <input type="text" name="client_id" class="form-control form-control-sm" value="{{ b.client_id }}" placeholder="Application (client) ID" autocomplete="off"></div>
+            <div class="col-12"><label class="form-label small fw-semibold mb-0">Client Secret</label>
+              <input type="password" name="client_secret" class="form-control form-control-sm" autocomplete="new-password"
+                     placeholder="{{ 'Leave empty to keep the current one' if b.has_secret else 'Client secret Value from your admin' }}"></div>
+            <div class="col-12"><p class="small text-muted mb-0">From your Microsoft 365 admin: App registration "OxyPC ERP" with the Mail.Send permission. Sent from below = the mailbox it sends as.</p></div>
+          </div>
           <div class="row g-2">
-            <div class="col-8"><label class="form-label small fw-semibold mb-0">Mail server</label>
-              <input type="text" name="host" class="form-control form-control-sm" value="{{ b.host }}" list="emHosts" placeholder="smtp.office365.com / smtp.gmail.com" required></div>
-            <div class="col-4"><label class="form-label small fw-semibold mb-0">Port</label>
+            <div class="col-8" data-em-smtp="{{ b.key }}"><label class="form-label small fw-semibold mb-0">Mail server</label>
+              <input type="text" name="host" class="form-control form-control-sm" value="{{ b.host }}" list="emHosts" placeholder="smtp.gmail.com / smtp.office365.com"></div>
+            <div class="col-4" data-em-smtp="{{ b.key }}"><label class="form-label small fw-semibold mb-0">Port</label>
               <input type="number" name="port" class="form-control form-control-sm" value="{{ b.port if b.host else 587 }}" min="1" max="65535"></div>
-            <div class="col-6"><label class="form-label small fw-semibold mb-0">Mailbox (login)</label>
+            <div class="col-6" data-em-smtp="{{ b.key }}"><label class="form-label small fw-semibold mb-0">Mailbox (login)</label>
               <input type="text" name="user" class="form-control form-control-sm" value="{{ b.user }}" placeholder="erp@oxypc.in" autocomplete="off"></div>
-            <div class="col-6"><label class="form-label small fw-semibold mb-0">Password</label>
+            <div class="col-6" data-em-smtp="{{ b.key }}"><label class="form-label small fw-semibold mb-0">Password</label>
               <input type="password" name="password" class="form-control form-control-sm" autocomplete="new-password"
                      placeholder="{{ 'Leave empty to keep the current one' if b.has_password else 'Mailbox / App Password' }}"></div>
             <div class="col-8"><label class="form-label small fw-semibold mb-0">Sent from</label>
               <input type="text" name="from" class="form-control form-control-sm" value="{{ b.from if b.from != b.user else '' }}" placeholder="OxyPC ERP &lt;erp@oxypc.in&gt; (optional)"></div>
-            <div class="col-4"><label class="form-label small fw-semibold mb-0">Security</label>
+            <div class="col-8"><label class="form-label small fw-semibold mb-0">Reply to</label>
+              <input type="email" name="reply_to" class="form-control form-control-sm" value="{{ b.reply_to }}" placeholder="info@oxypc.com (optional — where replies go)"></div>
+            <div class="col-4" data-em-smtp="{{ b.key }}"><label class="form-label small fw-semibold mb-0">Security</label>
               <select name="security" class="form-select form-select-sm">
                 {% for v, l in [('', 'Auto'), ('starttls', 'STARTTLS'), ('ssl', 'SSL'), ('none', 'None')] %}
                 <option value="{{ v }}" {{ 'selected' if b.host and v == b.security else '' }}>{{ l }}</option>{% endfor %}
@@ -74,11 +100,24 @@
             {% if b.ready %}<button type="submit" name="turn_off" value="1" formnovalidate class="btn btn-sm btn-outline-danger"><i class="bi bi-power me-1"></i>Turn off</button>{% endif %}
             <span class="small text-muted">Saved in the server's .env file; the password is never shown again.</span>
           </div>
-          <p class="small text-muted mb-0 mt-2">Microsoft 365: smtp.office365.com · Gmail / Google Workspace: smtp.gmail.com with an App Password. Port 465 uses SSL automatically.</p>
+          <p class="small text-muted mb-0 mt-2">Gmail: smtp.gmail.com, port 587, STARTTLS, with a 16-letter App Password. Microsoft 365: choose the Microsoft 365 (Graph) method — no password or OTP needed.</p>
         </form>
       </div>
     </div>
   </div>
   {% endfor %}
 </div>
+<script>
+/* Show the fields of the chosen sending method (2026-11-24) */
+document.querySelectorAll('[data-em-method]').forEach(function (sel) {
+  var key = sel.getAttribute('data-em-method');
+  function apply() {
+    var graph = sel.value === 'graph';
+    document.querySelectorAll('[data-em-graph="' + key + '"]').forEach(function (el) { el.classList.toggle('d-none', !graph); });
+    document.querySelectorAll('[data-em-smtp="' + key + '"]').forEach(function (el) { el.classList.toggle('d-none', graph); });
+  }
+  sel.addEventListener('change', apply);
+  apply();
+});
+</script>
 <datalist id="emHosts"><option value="smtp.office365.com"><option value="smtp.gmail.com"></datalist>

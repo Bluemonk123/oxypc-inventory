@@ -83,6 +83,9 @@ async def main():
                     select(IQCInspection).where(IQCInspection.device_id == dev.id))).scalars().all():
                 await db.delete(insp)
             await db.flush()
+            # everything else linked to the tag (IQC copies, history, …) — same cleanup the app uses
+            from utils.fk_purge import purge_references
+            await purge_references(db, "devices", [dev.id])
             await db.delete(dev)
         await db.commit()
 
@@ -99,6 +102,9 @@ def test_device_edit_form_has_maxlength_on_every_bounded_field(app_client, make_
         _login(app_client, username, password)
         html = app_client.get(f"/devices/{barcode}/edit", follow_redirects=True).text
         for field, maxlen in EXPECTED_MAXLENGTHS.items():
+            if field == "grn_number":      # a dropdown of GRN records on Edit too since 2026-11-24
+                assert '<select name="grn_number"' in html
+                continue
             assert f'name="{field}" maxlength="{maxlen}"' in html, field
     finally:
         _cleanup(barcode)
@@ -109,6 +115,9 @@ def test_iqc_new_form_has_maxlength_on_every_bounded_field(app_client, make_user
     _login(app_client, username, password)
     html = app_client.get("/iqc/new", follow_redirects=True).text
     for field, maxlen in EXPECTED_MAXLENGTHS.items():
+        if field == "grn_number":      # a dropdown of GRN records on IQC since 2026-11-24
+            assert '<select name="grn_number"' in html
+            continue
         assert f'maxlength="{maxlen}"' in html.split(f'name="{field}"', 1)[1][:40], field
 
 

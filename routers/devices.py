@@ -464,6 +464,16 @@ async def _get_device_or_404(barcode: str, db: AsyncSession) -> Device:
     )
     device = result.scalar_one_or_none()
     if not device:
+        # 2026-11-24: a tag saved with a TAB / space / invisible character
+        # (pasted from Excel) — match it with those characters ignored, so it
+        # opens; saving it from Edit then stores the clean Tag Number.
+        from sqlalchemy import func as _f
+        from models.device import clean_tag
+        rows = (await db.execute(select(Device).where(
+            _f.regexp_replace(Device.barcode, r"[\s\u200b\u200c\u200d\u2060\ufeff\u00a0]", "", "g") == clean_tag(barcode)
+        ).limit(2))).scalars().all()
+        device = rows[0] if len(rows) == 1 else None
+    if not device:
         raise HTTPException(404, f"Device '{barcode}' not found")
     return device
 
@@ -2636,7 +2646,19 @@ async def device_edit_form(
     )).scalar_one_or_none()
     current_lot = next((l for l in lots if l.id == device.lot_id), None)
     current_loc = next((l for l in storage_locations if l.id == device.location_id), None)
+    # Location ID dropdown starts on the tag's location (2026-11-24). Same
+    # source as Device Detail's "Location ID" row: the latest location log
+    # entry first, then device.location_id — tags placed through the
+    # pickup / place-back flow only have the log entry (2026-11-25).
+    current_location_name = None
+    _log_loc = (await _build_location_map(db, [device.id])).get(str(device.id)) or {}
+    current_location_id = _log_loc.get("location_id") or device.location_id
+    if current_location_id:
+        from models.location import StorageLocation as _SL
+        current_location_name = (await db.execute(select(_SL.unit_id).where(_SL.id == current_location_id))).scalar()
     return templates.TemplateResponse("devices/edit.html", {
+        "current_location_name": current_location_name,
+        "current_location_id": current_location_id,
         "request": request, "current_user": current_user,
         "device": device, "lots": lots,
         "current_lot": current_lot,
@@ -2680,9 +2702,12 @@ async def device_edit_save(
     bios_password: str = Form("no"),
     color: str = Form(""),
     grade: str = Form(""),
-    floor: str = Form(""),
+    floor: Optional[str] = Form(None),          # not on the form: None keeps the stored floor
     warehouse: str = Form(""),
-    location_id: str = Form(""),
+    location_id: Optional[str] = Form(None),    # None (not sent) keeps the stored Location ID
+    # Identity rows (2026-11-24, Pankaj): editable Invoice Number + Entity
+    invoice_number: Optional[str] = Form(None),
+    entity: Optional[str] = Form(None),
     notes: str = Form(""),
     qty: str = Form(""),
     device_price_input: str = Form(""),
@@ -2759,12 +2784,23 @@ async def device_edit_save(
     device.ram_gb = _gb_from_form(ram_gb, device.ram_gb)
     device.storage_gb = _gb_from_form(storage_gb, device.storage_gb)
     # IQC-style hardware fields (plain summed size in RAM / Hard Drive)
-    device.total_ram_count = total_ram_count.strip() or None
     device.total_ram_size = total_ram_size.strip() or None
     device.ram_summary = ram_summary.strip() or None
-    device.total_hdd_count = total_hdd_count.strip() or None
     device.total_hdd_size = total_hdd_size.strip() or None
     device.hdd_summary = hdd_summary.strip() or None
+    # Counts start at 0 on the form (2026-11-24, same as Register Device): a
+    # 0 / blank count is worked out from Total Size (parts split by "," / "+"),
+    # else 1 when there is a RAM / Hard Drive size, else 0.
+    from utils.device_spec import part_count
+
+    def _count(posted, size_text, *others):
+        posted = (posted or "").strip()
+        if posted and posted != "0":
+            return posted
+        n = part_count(size_text) or (1 if any(others) else 0)
+        return str(n)
+    device.total_ram_count = _count(total_ram_count, device.total_ram_size, device.ram_gb, device.ram_summary)
+    device.total_hdd_count = _count(total_hdd_count, device.total_hdd_size, device.storage_gb, device.hdd_summary)
     # Storage Type / HDD Capacity left the Edit form (2026-10-22) — only
     # changed when a value is actually posted, so a save never wipes them.
     if (storage_type or "").strip():
@@ -2782,10 +2818,16 @@ async def device_edit_save(
             device.grade = None
     else:
         device.grade = None
-    device.floor = floor or None
+    if floor is not None:
+        device.floor = floor or None
     # ── Resolve Location ID -> StorageLocation (Floor/Zone -> Location ID cascade). ──
     # warehouse is legacy free-text; best-effort mirror the resolved location's
     # display_name into it for backward-compat display in older reports/exports.
+    # 2026-11-24: Location ID was not on the Edit form, so every save blanked
+    # it. It is now a dropdown filled with the current value; a request that
+    # doesn't send it at all keeps the stored location.
+    _keep_loc = location_id is None
+    location_id = location_id or ""
     resolved_location_id = None
     resolved_warehouse = warehouse or None
     if location_id:
@@ -2799,8 +2841,19 @@ async def device_edit_save(
                 resolved_warehouse = loc.display_name
         except ValueError:
             pass
-    device.location_id = resolved_location_id
-    device.warehouse = resolved_warehouse
+    if not _keep_loc:
+        device.location_id = resolved_location_id
+        device.warehouse = resolved_warehouse
+    if invoice_number is not None:
+        device.invoice_number = invoice_number.strip()[:100] or None
+    if entity is not None and entity.strip() and entity.strip() != (device.entity or ""):
+        from utils.master_data import entity_values
+        _ent = entity.strip()
+        if _ent in (entity_values() or [_ent]):
+            await audit(db, action="DEVICE_ENTITY_EDITED", user=current_user, table_name="devices",
+                        record_id=str(device.id), old_value={"entity": device.entity},
+                        new_value={"entity": _ent, "barcode": device.barcode}, request=request)
+            device.entity = _ent
     device.notes = notes or None
     if qty:
         try:

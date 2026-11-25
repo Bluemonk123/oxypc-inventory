@@ -67,6 +67,9 @@ async def main():
                     select(IQCInspection).where(IQCInspection.device_id == dev.id))).scalars().all():
                 await db.delete(insp)
             await db.flush()
+            # everything else linked to the tag (IQC copies, history, …) — same cleanup the app uses
+            from utils.fk_purge import purge_references
+            await purge_references(db, "devices", [dev.id])
             await db.delete(dev)
         await db.commit()
 

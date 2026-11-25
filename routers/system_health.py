@@ -2494,6 +2494,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         hold_rel = await _hold_release_candidates(db)
         stale_ret = await _stale_returns(db)
         pna_old = await _pna_stale(db)          # Old PNA marks card (2026-11-22)
+        dirty_tags = await _dirty_tags(db)       # Tag Numbers with hidden characters (2026-11-24)
         from services.iqc_backfill import counts as _iqc_hist_counts
         iqc_hist = await _iqc_hist_counts(db)    # Rebuild old IQC history card (2026-11-22)
         from services.iqc_backfill import STATE as _iqc_state
@@ -2530,6 +2531,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "stale_ret": stale_ret[:300], "stale_ret_total": len(stale_ret),
         "pna_old": pna_old[:300], "pna_old_total": len(pna_old),
         "pna_old_tags": len({r["tag"] for r in pna_old}),
+        "dirty_tags": dirty_tags[:300], "dirty_total": len(dirty_tags),
+        "dirty_fixable": sum(1 for r in dirty_tags if not r["clash"]),
         "iqc_hist": iqc_hist, "iqc_run": iqc_run,
         "nh_done": nh_done,
         "rts_open": rts_open[:200], "rts_open_total": len(rts_open),
@@ -2594,6 +2597,30 @@ _PNA_PAST_REPAIR = ("qc_check", "cosmetic_received", "cleaning", "putty", "dry_s
                     "painting", "water_sanding", "cosmetic_completed", "final_qc", "final_qc_pass_hold",
                     "final_qc_fail_hold", "ready_to_sale", "sold", "returned", "scrapped", "scrap_for_sale",
                     "scrap", "on_rent")
+
+
+_TAG_JUNK_SQL = r"[\s\u200b\u200c\u200d\u2060\ufeff\u00a0]"
+
+
+async def _dirty_tags(db):
+    """Tags saved with a space / TAB / invisible character (2026-11-24):
+    [{id, tag, clean, clash}] — clash = the clean Tag Number already belongs
+    to another tag, so that one is left for a person to decide."""
+    from sqlalchemy import select, text
+    from models.device import Device, clean_tag
+    rows = (await db.execute(select(Device.id, Device.barcode).where(
+        Device.barcode.op("~")(_TAG_JUNK_SQL)).order_by(Device.barcode))).all()
+    if not rows:
+        return []
+    cleans = {clean_tag(b) for _i, b in rows}
+    taken = set((await db.execute(select(Device.barcode).where(Device.barcode.in_(list(cleans))))).scalars().all())
+    seen, out = set(), []
+    for did, bc in rows:
+        c = clean_tag(bc)
+        clash = c in taken or c in seen or not c
+        seen.add(c)
+        out.append({"id": did, "tag": bc, "shown": repr(bc)[1:-1], "clean": c, "clash": clash})
+    return out
 
 
 async def _pna_stale(db):
@@ -2678,6 +2705,39 @@ async def notes_history_backfill(request: Request, current_user: User = Depends(
     if back:
         return back
     return JSONResponse({"ok": True, **n})
+
+
+@router.post("/tag-clean")
+async def tag_clean(request: Request, current_user: User = Depends(admin_only)):
+    """Data Fixes → Tag Numbers with hidden characters (2026-11-24): store the
+    clean Tag Number, and the same on every table that keeps a copy of the
+    tag next to its device_id (WorkIDs, part requests, …). Tags whose clean
+    number already exists are skipped and listed. Logged."""
+    from sqlalchemy import text
+    from database import AsyncSessionLocal
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        rows = [r for r in await _dirty_tags(db) if not r["clash"]]
+        copies = (await db.execute(text(
+            "select c1.table_name from information_schema.columns c1 "
+            "join information_schema.columns c2 on c2.table_name = c1.table_name and c2.column_name = 'device_id' "
+            "and c2.table_schema = c1.table_schema "
+            "where c1.column_name = 'barcode' and c1.table_schema = 'public' and c1.table_name <> 'devices'"))).scalars().all()
+        for r in rows:
+            await db.execute(text("update devices set barcode = :c where id = :i"), {"c": r["clean"], "i": r["id"]})
+            for t in copies:
+                await db.execute(text(f'update "{t}" set barcode = :c where device_id = :i and barcode = :old'),
+                                 {"c": r["clean"], "i": r["id"], "old": r["tag"]})
+        await audit(db, user=current_user, action="TAG_NUMBERS_CLEANED", table_name="devices",
+                    record_id=f"{len(rows)} tags",
+                    new_value={"count": len(rows), "tables": copies,
+                               "tags": {str(r["id"]): {"old": r["shown"], "new": r["clean"]} for r in rows}},
+                    notes="Spaces / tabs / invisible characters removed from Tag Numbers.", request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Tag Numbers cleaned: {len(rows):,}.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "cleaned": len(rows)})
 
 
 @router.post("/pna-stale-clear")

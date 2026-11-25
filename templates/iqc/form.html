@@ -42,50 +42,8 @@
             </div>
           </div>
 
-          <!-- ── Keyboard & Click Test Modal ──────────────────────────────────
-               Interactive test: technician presses every key on the physical
-               keyboard and clicks left/right on the touchpad/mouse. Only if
-               ALL expected keys register does Keyboard Working get set to
-               "Yes" (any missing key -> "No"); same pass/fail logic for
-               Click Functional (touchpad_click_working). ── -->
-          <div class="modal fade" id="kbClickTestModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
-            <div class="modal-dialog modal-lg modal-dialog-centered">
-              <div class="modal-content">
-                <div class="modal-header">
-                  <h6 class="modal-title"><i class="bi bi-keyboard me-2"></i>Keyboard &amp; Click Test</h6>
-                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                  <p class="small text-muted mb-2">
-                    Click into the box below, then press <strong>every key</strong> on the keyboard —
-                    each one turns green as it registers. Then left- and right-click inside the click box.
-                  </p>
-                  <div id="kbTestArea" tabindex="0"
-                       class="border rounded p-2 mb-2" style="outline:none; background:#f8f9fa;">
-                    <div id="kbTestGrid" class="d-flex flex-wrap gap-1"></div>
-                  </div>
-                  <div class="d-flex align-items-center justify-content-between mb-2">
-                    <span class="small"><span id="kbTestProgress">0 / 0</span> keys detected</span>
-                    <button type="button" id="kbTestResetBtn" class="btn btn-sm btn-outline-secondary">Reset</button>
-                  </div>
-                  <div id="kbClickArea" class="border rounded d-flex align-items-center justify-content-center text-muted small mb-2"
-                       style="height:70px; background:#f8f9fa; user-select:none;">
-                    Left-click and right-click here
-                  </div>
-                  <div class="d-flex gap-3 small">
-                    <span>Left click: <span id="kbLeftClickStatus" class="badge bg-secondary">Not yet</span></span>
-                    <span>Right click: <span id="kbRightClickStatus" class="badge bg-secondary">Not yet</span></span>
-                  </div>
-                </div>
-                <div class="modal-footer">
-                  <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                  <button type="button" id="kbTestFinishBtn" class="btn btn-sm btn-success">
-                    <i class="bi bi-check-circle me-1"></i>Finish &amp; Fill Results
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          {# Keyboard test + Touchpad & Click test (modals and their scripts), shared with Device Edit #}
+          {% include "iqc/_function_tests.html" %}
 
           <!-- ── Storage Health (SMART) modal ──
                Per-drive SMART / NVMe counters read through the local agent's
@@ -173,6 +131,13 @@
           </div>
 
           <!-- ── Section 1: Identity ── -->
+          {# 2026-11-24 (Pankaj): two rows —
+               Tag Number · Lot · Color
+               GRN Number · Invoice Number · Location ID · Entity
+             Scanning a tag picks the Lot from its first 4–6 characters (longest
+             lot number that matches); the Lot fills GRN + Invoice; picking a
+             GRN fills Invoice + Location ID from the GRN record. Entity starts
+             on the user's own entity (user profile). All stay editable. #}
           <p class="fw-bold small text-uppercase mb-2 border-bottom pb-1 sec-hd">Identity</p>
           <div class="row g-3 mb-3">
             <div class="col-md-6">
@@ -180,16 +145,18 @@
               <input type="text" name="barcode" id="iqcBarcode" maxlength="100" class="form-control barcode-field font-monospace" placeholder="Scan or type" autofocus required>
               <div id="iqcBarcodeErr" class="invalid-feedback d-block text-danger small d-none">Duplicate Tag Number — this tag already exists.</div>
             </div>
-            <div class="col-md-6">
-              <label class="form-label fw-semibold d-block">Select Entity</label>
-              <div class="d-flex gap-3 pt-2 flex-wrap">
-                {% for e in master_options('entity') %}
-                <div class="form-check">
-                  <input class="form-check-input" type="radio" name="entity" id="entity_{{ loop.index }}" value="{{ e }}" {% if loop.first %}checked{% endif %}>
-                  <label class="form-check-label small" for="entity_{{ loop.index }}">{{ e }}</label>
-                </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Lot Number</label>
+              <select name="lot_id" id="lot_id" class="form-select">
+                <option value="">-- Select Lot --</option>
+                {% for lot in lots %}
+                <option value="{{ lot.id }}" {% if prefill_lot_id is defined and prefill_lot_id and prefill_lot_id|string == lot.id|string %}selected{% endif %}>{{ lot.lot_number }} — {{ lot.supplier_name }}</option>
                 {% endfor %}
-              </div>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Color</label>
+              <input type="text" name="color" maxlength="30" class="form-control" placeholder="Black / Silver / Dark Grey">
             </div>
             <div class="col-md-3 d-none">
               <label class="form-label">Lot Line Item <small class="text-muted">(auto-fills specs)</small></label>
@@ -207,35 +174,36 @@
             </div>
           </div>
 
-          {# Lot / GRN / Invoice / Colour sit on their own row directly under the
-             Tag Number. Scanning a tag selects the Lot from the tag's first four
-             characters, and the Lot in turn fills GRN + Invoice from the GRN
-             wired to it — both stay editable when nothing is wired. #}
           <div class="row g-3 mb-3">
             <div class="col-md-3">
-              <label class="form-label fw-semibold">Lot</label>
-              <select name="lot_id" id="lot_id" class="form-select">
-                <option value="">-- Select Lot --</option>
-                {% for lot in lots %}
-                <option value="{{ lot.id }}" {% if prefill_lot_id is defined and prefill_lot_id and prefill_lot_id|string == lot.id|string %}selected{% endif %}>{{ lot.lot_number }} — {{ lot.supplier_name }}</option>
-                {% endfor %}
+              <label class="form-label fw-semibold">GRN Number</label>
+              {% set _pgrn = prefill_grn if prefill_grn is defined and prefill_grn else (device.grn_number if device and device.grn_number else '') %}
+              <select name="grn_number" id="grn_number" class="form-select" data-prefill="{{ _pgrn }}">
+                <option value="">-- Select GRN --</option>
+                {% if _pgrn %}<option value="{{ _pgrn }}" selected>{{ _pgrn }}</option>{% endif %}
               </select>
             </div>
             <div class="col-md-3">
-              <label class="form-label">GRN Number</label>
-              <input type="text" name="grn_number" id="grn_number" maxlength="100" class="form-control font-monospace"
-                     value="{{ prefill_grn if prefill_grn is defined and prefill_grn else (device.grn_number if device and device.grn_number else '') }}"
-                     placeholder="Auto-fills from Lot">
-            </div>
-            <div class="col-md-3">
-              <label class="form-label">Invoice Number</label>
+              <label class="form-label fw-semibold">Invoice Number</label>
               <input type="text" name="invoice_number" id="invoice_number" maxlength="100" class="form-control"
                      value="{{ device.invoice_number if device and device.invoice_number else '' }}"
-                     placeholder="Auto-fills from Lot">
+                     placeholder="Auto-fills from GRN">
             </div>
             <div class="col-md-3">
-              <label class="form-label">Color</label>
-              <input type="text" name="color" maxlength="30" class="form-control" placeholder="Black / Silver / Dark Grey">
+              <label class="form-label fw-semibold">Location ID</label>
+              <select name="location_id" id="iqcLocation" class="form-select">
+                <option value="">-- Select Location --</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold">Entity</label>
+              {% set _ents = master_options('entity') %}
+              {% set _my = (current_user.entity or '') if current_user else '' %}
+              <select name="entity" id="iqcEntity" class="form-select">
+                {% for e in _ents %}
+                <option value="{{ e }}" {% if (_my and e == _my) or (not _my or _my not in _ents) and loop.first %}selected{% endif %}>{{ e }}</option>
+                {% endfor %}
+              </select>
             </div>
           </div>
 
@@ -297,35 +265,35 @@
             </div>
           </div>
 
-          <!-- ── Row 2: Total RAM Count | Total RAM Size | RAM ── -->
+          <!-- ── Row 2: RAM | Total RAM Size | Total RAM Count (fill one, the others fill in) ── -->
           <div class="row g-2 mb-2">
             <div class="col-md-4">
-              <label class="form-label small">Total RAM Count</label>
-              <input type="text" name="total_ram_count" maxlength="50" class="form-control form-control-sm" value="{{ device.total_ram_count if device and device.total_ram_count else '' }}" placeholder="e.g. 2">
+              <label class="form-label small">RAM</label>
+              <input type="text" name="ram_summary" maxlength="255" class="form-control form-control-sm" data-spec="ram_summary" value="{{ device.ram_summary if device and device.ram_summary else '' }}" placeholder="e.g. 16GB or 1TB">
             </div>
             <div class="col-md-4">
               <label class="form-label small">Total RAM Size</label>
-              <input type="text" name="total_ram_size" maxlength="50" class="form-control form-control-sm" value="{{ device.total_ram_size if device and device.total_ram_size else '' }}" placeholder="e.g. 16GB_DDR4_2300_Samsung">
+              <input type="text" name="total_ram_size" maxlength="50" class="form-control form-control-sm" data-spec="total_ram_size" value="{{ device.total_ram_size if device and device.total_ram_size else '' }}" placeholder="e.g. 8GB, 8GB">
             </div>
             <div class="col-md-4">
-              <label class="form-label small">RAM</label>
-              <input type="text" name="ram_summary" maxlength="255" class="form-control form-control-sm" value="{{ device.ram_summary if device and device.ram_summary else '' }}" placeholder="e.g. 16GB or 1TB">
+              <label class="form-label small">Total RAM Count</label>
+              <input type="text" name="total_ram_count" maxlength="50" class="form-control form-control-sm" data-spec="total_ram_count" value="{{ device.total_ram_count if device and device.total_ram_count else '0' }}"{% if not (device and device.total_ram_count) %} data-auto="1"{% endif %} placeholder="e.g. 2">
             </div>
           </div>
 
-          <!-- ── Row 3: Total Hard Drive Count | Total Hard Drive Size | Hard Drive ── -->
+          <!-- ── Row 3: Hard Drive | Total Hard Drive Size | Total Hard Drive Count ── -->
           <div class="row g-2 mb-3">
             <div class="col-md-4">
-              <label class="form-label small">Total Hard Drive Count</label>
-              <input type="text" name="total_hdd_count" maxlength="50" class="form-control form-control-sm" value="{{ device.total_hdd_count if device and device.total_hdd_count else '' }}" placeholder="e.g. 1">
+              <label class="form-label small">Hard Drive</label>
+              <input type="text" name="hdd_summary" maxlength="255" class="form-control form-control-sm" data-spec="hdd_summary" value="{{ device.hdd_summary if device and device.hdd_summary else '' }}" placeholder="e.g. 512GB or 1TB">
             </div>
             <div class="col-md-4">
               <label class="form-label small">Total Hard Drive Size</label>
-              <input type="text" name="total_hdd_size" maxlength="50" class="form-control form-control-sm" value="{{ device.total_hdd_size if device and device.total_hdd_size else '' }}" placeholder="e.g. 520GB_SSD_7400_Samsung">
+              <input type="text" name="total_hdd_size" maxlength="50" class="form-control form-control-sm" data-spec="total_hdd_size" value="{{ device.total_hdd_size if device and device.total_hdd_size else '' }}" placeholder="e.g. 256GB SSD, 1TB HDD">
             </div>
             <div class="col-md-4">
-              <label class="form-label small">Hard Drive</label>
-              <input type="text" name="hdd_summary" maxlength="255" class="form-control form-control-sm" value="{{ device.hdd_summary if device and device.hdd_summary else '' }}" placeholder="e.g. 512GB or 1TB">
+              <label class="form-label small">Total Hard Drive Count</label>
+              <input type="text" name="total_hdd_count" maxlength="50" class="form-control form-control-sm" data-spec="total_hdd_count" value="{{ device.total_hdd_count if device and device.total_hdd_count else '0' }}"{% if not (device and device.total_hdd_count) %} data-auto="1"{% endif %} placeholder="e.g. 1">
             </div>
           </div>
 
@@ -386,13 +354,23 @@
               </select>
             </div>
             <div class="col-md-3">
+              <label class="form-label small">Speaker Status</label>
+              <select name="speaker_status" class="form-select form-select-sm">
+                <option value="">—</option>
+                <option>Both speakers working</option>
+                <option>Both speakers faulty</option>
+                <option>Left speaker faulty</option>
+                <option>Right speaker faulty</option>
+              </select>
+            </div>
+            <div class="col-md-3">
               {# Play button runs the interactive key-by-key test and writes the
                  verdict back into this dropdown, so the technician never types it. #}
               <label class="form-label small d-flex align-items-center gap-1">
                 Keyboard Working?
-                <button type="button" class="btn btn-link p-0 lh-1 text-success border-0"
+                <button type="button" id="kbClickTestBtn" class="btn btn-link p-0 lh-1 text-success border-0"
                         data-bs-toggle="modal" data-bs-target="#kbClickTestModal"
-                        title="Run the keyboard &amp; click test">
+                        title="Run the keyboard test">
                   <i class="bi bi-play-circle-fill fs-6"></i>
                 </button>
               </label>
@@ -401,13 +379,28 @@
               </select>
             </div>
             <div class="col-md-3">
-              <label class="form-label small">Click Function Working?</label>
-              <select name="touchpad_click_working" class="form-select form-select-sm">
-                <option value="">—</option><option>Yes</option><option>No</option>
-              </select>
+              {# Play button reads SMART / NVMe counters via the local agent and
+                 fills this field from the worst drive in the machine. #}
+              <label class="form-label small d-flex align-items-center gap-1">
+                Storage Health (%)
+                <button type="button" id="smartTestBtn" class="btn btn-link p-0 lh-1 text-success border-0"
+                        title="Read SMART health from the drives in this station">
+                  <i class="bi bi-play-circle-fill fs-6"></i>
+                </button>
+              </label>
+              <input type="number" name="storage_health_pct" id="storage_health_pct" class="form-control form-control-sm" min="0" max="100" placeholder="—">
             </div>
             <div class="col-md-3">
-              <label class="form-label small">Touchpad Working?</label>
+              {# Play button runs the touchpad test (2026-11-24): fills Touchpad
+                 Working, Click Function Working and Touchpad Missing. #}
+              <label class="form-label small d-flex align-items-center gap-1">
+                Touchpad Working?
+                <button type="button" id="tpTestBtn" class="btn btn-link p-0 lh-1 text-success border-0"
+                        data-bs-toggle="modal" data-bs-target="#tpTestModal"
+                        title="Run the touchpad &amp; click test">
+                  <i class="bi bi-play-circle-fill fs-6"></i>
+                </button>
+              </label>
               <select name="touchpad_working" class="form-select form-select-sm">
                 <option value="">—</option>{% for o in yn3 %}<option>{{o}}</option>{% endfor %}
               </select>
@@ -415,6 +408,12 @@
             <div class="col-md-3">
               <label class="form-label small">Touchpad Missing</label>
               <select name="touchpad_missing" class="form-select form-select-sm">
+                <option value="">—</option><option>Yes</option><option>No</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small">Click Function Working?</label>
+              <select name="touchpad_click_working" class="form-select form-select-sm">
                 <option value="">—</option><option>Yes</option><option>No</option>
               </select>
             </div>
@@ -449,16 +448,6 @@
               <input type="number" name="ethernet_ports" class="form-control form-control-sm" tabindex="-1" min="0" max="8" placeholder="—">
             </div>
             <div class="col-md-3">
-              <label class="form-label small">Speaker Status</label>
-              <select name="speaker_status" class="form-select form-select-sm">
-                <option value="">—</option>
-                <option>Both speakers working</option>
-                <option>Both speakers faulty</option>
-                <option>Left speaker faulty</option>
-                <option>Right speaker faulty</option>
-              </select>
-            </div>
-            <div class="col-md-3">
               <label class="form-label small">Wi-Fi</label>
               <select name="wifi_status" class="form-select form-select-sm">
                 <option value="">—</option>
@@ -490,18 +479,6 @@
                 <option value="">—</option>
                 <option>Yes</option><option>No</option><option>NA</option>
               </select>
-            </div>
-            <div class="col-md-3">
-              {# Play button reads SMART / NVMe counters via the local agent and
-                 fills this field from the worst drive in the machine. #}
-              <label class="form-label small d-flex align-items-center gap-1">
-                Storage Health (%)
-                <button type="button" id="smartTestBtn" class="btn btn-link p-0 lh-1 text-success border-0"
-                        title="Read SMART health from the drives in this station">
-                  <i class="bi bi-play-circle-fill fs-6"></i>
-                </button>
-              </label>
-              <input type="number" name="storage_health_pct" id="storage_health_pct" class="form-control form-control-sm" min="0" max="100" placeholder="—">
             </div>
             <div class="col-md-3 d-none">
               <label class="form-label small">Fan Working</label>
@@ -768,10 +745,10 @@
             </div>
           </div>
 
-          <!-- 9. Palmrest (Panel D) -->
+          <!-- 9. Touchpad (Panel D) — renamed from Palmrest 2026-11-24 -->
           <div class="card border bg-light mb-3">
             <div class="card-body py-2">
-              <p class="small fw-semibold text-uppercase mb-2 text-danger">Palmrest</p>
+              <p class="small fw-semibold text-uppercase mb-2 text-danger">Touchpad</p>
               <div class="row g-2">
                 <div class="col-md-2">
                   <label class="form-label small">Scratch</label>
@@ -900,6 +877,7 @@
   });
 })();
 </script>
+{% include "iqc/_spec_autofill.html" %}
 {% endblock %}
 {% block scripts %}
 <script src="/static/vendor/tom-select/js/tom-select.complete.min.js"></script>
@@ -979,7 +957,7 @@ document.querySelector('[name="barcode"]').addEventListener('change', function()
         if (el) el.value = val;
       }
       if (d.lot_id) setSelect('lot_id', d.lot_id);
-      setInput('grn_number', d.grn_number);
+      if (d.grn_number && window.setGrnValue) window.setGrnValue(d.grn_number); else setInput('grn_number', d.grn_number);
       setInput('serial_no', d.serial_no);
       setSelect('sub_category', d.sub_category);
       setSelect('device_type', d.device_type);
@@ -1062,7 +1040,7 @@ document.querySelector('[name="barcode"]').addEventListener('change', function()
       if (!res.ok) return;
       var d = await res.json();
       if (!d.found) return;
-      if (d.grn_number && grnEl) grnEl.value = d.grn_number;
+      if (d.grn_number && grnEl) { if (window.setGrnValue) window.setGrnValue(d.grn_number); else grnEl.value = d.grn_number; }
       if (d.invoice_number && invEl) invEl.value = d.invoice_number;
     } catch (e) { /* offline / transient — leave the fields as typed */ }
   }
@@ -1074,7 +1052,7 @@ document.querySelector('[name="barcode"]').addEventListener('change', function()
     tagEl.addEventListener('input', function () {
       clearTimeout(t);
       t = setTimeout(async function () {
-        var pfx = (tagEl.value || '').trim().slice(0, 4);
+        var pfx = (tagEl.value || '').trim().slice(0, 6);   // lot = first 4–6 characters (2026-11-24)
         // Only look up once per distinct prefix — a scanner types the whole tag
         // character by character and would otherwise fire a request per keystroke.
         if (pfx.length < 4 || pfx === lastPrefix) return;
@@ -1093,6 +1071,55 @@ document.querySelector('[name="barcode"]').addEventListener('change', function()
 
   // Prefilled lot (e.g. arriving from a lot page) should fill GRN/Invoice too.
   if (lotSel.value) fillFromLot(lotSel.value);
+})();
+
+/* ── GRN Number + Location ID dropdowns (2026-11-24, Pankaj) ──
+   GRN list = GRN records (newest first); picking one fills Invoice Number and
+   Location ID from that GRN. Both dropdowns are searchable. */
+(function () {
+  var grnEl = document.getElementById('grn_number');
+  var locEl = document.getElementById('iqcLocation');
+  var invEl = document.getElementById('invoice_number');
+  if (!grnEl || !locEl) return;
+  var byGrn = {}, grnTs = null, locTs = null;
+  function setLoc(id) {
+    if (!id) return;
+    if (locTs) locTs.setValue(id, true); else locEl.value = id;
+  }
+  window.setGrnValue = function (g) {
+    if (!g) return;
+    if (grnTs) {
+      if (!grnTs.options[g]) grnTs.addOption({ value: g, text: g });
+      grnTs.setValue(g);
+    } else {
+      if (![...grnEl.options].some(function (o) { return o.value === g; })) grnEl.add(new Option(g, g));
+      grnEl.value = g; grnEl.dispatchEvent(new Event('change'));
+    }
+  };
+  function onGrn() {
+    var d = byGrn[grnEl.value];
+    if (!d) return;
+    if (d.invoice && invEl) invEl.value = d.invoice;
+    setLoc(d.location_id);
+  }
+  grnEl.addEventListener('change', onGrn);
+  fetch('/api/iqc-form-options', { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (o) {
+    var pre = grnEl.dataset.prefill || '';
+    (o.grns || []).forEach(function (g) {
+      byGrn[g.grn] = g;
+      if (g.grn !== pre) grnEl.add(new Option(g.grn + (g.vendor ? ' — ' + g.vendor : ''), g.grn));
+    });
+    (o.locations || []).forEach(function (l) {
+      locEl.add(new Option(l.unit_id + (l.zone ? ' (' + l.zone + ')' : ''), l.id));
+    });
+    if (window.TomSelect) {
+      grnTs = new TomSelect(grnEl, { maxOptions: 500, allowEmptyOption: true, create: true, plugins: ['clear_button'],
+                                     placeholder: '— Search GRN number —' });
+      locTs = new TomSelect(locEl, { maxOptions: 1000, allowEmptyOption: true, plugins: ['clear_button'],
+                                     placeholder: '— Search Location ID —' });
+    }
+    if (pre) onGrn();
+  }).catch(function () { /* offline: the selects still post what is chosen */ });
 })();
 
 /* ── Lot → load line items ── */
@@ -1592,127 +1619,6 @@ async function applyPortProfile(brand, model) {
 })();
 </script>
 <script>
-/* ── Keyboard & Click Test: interactive, real per-key + per-click detection.
-      keyboard_working = "Yes" only if EVERY expected key registered a keydown.
-      touchpad_click_working = "Yes" only if BOTH left and right click registered. ── */
-(function(){
-  var modalEl = document.getElementById('kbClickTestModal');
-  if (!modalEl) return;
-
-  // KeyboardEvent.code values (layout-independent) + a friendly label per key.
-  var KEY_SPEC = [
-    ['Backquote','`'],['Digit1','1'],['Digit2','2'],['Digit3','3'],['Digit4','4'],['Digit5','5'],
-    ['Digit6','6'],['Digit7','7'],['Digit8','8'],['Digit9','9'],['Digit0','0'],['Minus','-'],['Equal','='],['Backspace','Bksp'],
-    ['Tab','Tab'],['KeyQ','Q'],['KeyW','W'],['KeyE','E'],['KeyR','R'],['KeyT','T'],['KeyY','Y'],['KeyU','U'],
-    ['KeyI','I'],['KeyO','O'],['KeyP','P'],['BracketLeft','['],['BracketRight',']'],['Backslash','\\'],
-    ['CapsLock','Caps'],['KeyA','A'],['KeyS','S'],['KeyD','D'],['KeyF','F'],['KeyG','G'],['KeyH','H'],
-    ['KeyJ','J'],['KeyK','K'],['KeyL','L'],['Semicolon',';'],['Quote','\''],['Enter','Enter'],
-    ['ShiftLeft','LShift'],['KeyZ','Z'],['KeyX','X'],['KeyC','C'],['KeyV','V'],['KeyB','B'],['KeyN','N'],
-    ['KeyM','M'],['Comma',','],['Period','.'],['Slash','/'],['ShiftRight','RShift'],
-    ['ControlLeft','LCtrl'],['AltLeft','LAlt'],['Space','Space'],['AltRight','RAlt'],['ControlRight','RCtrl'],
-    ['ArrowLeft','◄'],['ArrowUp','▲'],['ArrowDown','▼'],['ArrowRight','►'],
-    ['F1','F1'],['F2','F2'],['F3','F3'],['F4','F4'],['F5','F5'],['F6','F6'],
-    ['F7','F7'],['F8','F8'],['F9','F9'],['F10','F10'],['F11','F11'],['F12','F12'],['Escape','Esc'],
-    ['PageUp','PgUp'],['PageDown','PgDn'],['Home','Home'],['End','End'],['Delete','Del'],['Insert','Ins'],
-  ];
-
-  var pressed = {};
-  var leftClicked = false, rightClicked = false;
-
-  var grid = document.getElementById('kbTestGrid');
-  var progressEl = document.getElementById('kbTestProgress');
-  var testArea = document.getElementById('kbTestArea');
-  var clickArea = document.getElementById('kbClickArea');
-  var leftStatus = document.getElementById('kbLeftClickStatus');
-  var rightStatus = document.getElementById('kbRightClickStatus');
-
-  function buildGrid(){
-    grid.innerHTML = KEY_SPEC.map(function(k){
-      return '<span class="badge bg-secondary" data-code="' + k[0] + '" style="min-width:34px">' + k[1] + '</span>';
-    }).join('');
-  }
-
-  function updateProgress(){
-    var count = Object.keys(pressed).length;
-    progressEl.textContent = count + ' / ' + KEY_SPEC.length;
-  }
-
-  function resetTest(){
-    pressed = {};
-    leftClicked = false; rightClicked = false;
-    buildGrid();
-    updateProgress();
-    leftStatus.textContent = 'Not yet'; leftStatus.className = 'badge bg-secondary';
-    rightStatus.textContent = 'Not yet'; rightStatus.className = 'badge bg-secondary';
-  }
-
-  function onKeyDown(e){
-    var badge = grid.querySelector('[data-code="' + e.code + '"]');
-    if (badge && !pressed[e.code]){
-      pressed[e.code] = true;
-      badge.classList.remove('bg-secondary');
-      badge.classList.add('bg-success');
-      updateProgress();
-    }
-    // Prevent typing from leaking into the page / triggering browser shortcuts
-    // while testing. Tab included — otherwise focus leaves the test area and the
-    // remaining keys stop registering. Escape included via stopPropagation so
-    // Bootstrap's document-level handler can never dismiss the modal mid-test.
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  testArea.addEventListener('keydown', onKeyDown);
-
-  clickArea.addEventListener('mousedown', function(e){
-    if (e.button === 0){
-      leftClicked = true;
-      leftStatus.textContent = 'OK'; leftStatus.className = 'badge bg-success';
-    } else if (e.button === 2){
-      rightClicked = true;
-      rightStatus.textContent = 'OK'; rightStatus.className = 'badge bg-success';
-    }
-  });
-  clickArea.addEventListener('contextmenu', function(e){ e.preventDefault(); });
-
-  document.getElementById('kbTestResetBtn').addEventListener('click', resetTest);
-
-  modalEl.addEventListener('shown.bs.modal', function(){
-    resetTest();
-    testArea.focus();
-  });
-
-  document.getElementById('kbTestFinishBtn').addEventListener('click', function(){
-    var totalKeys = KEY_SPEC.length;
-    var pressedCount = Object.keys(pressed).length;
-    var allKeysOk = pressedCount === totalKeys;
-    var clickOk = leftClicked && rightClicked;
-
-    var kbSel = document.querySelector('select[name="keyboard_working"]');
-    var clickSel = document.querySelector('select[name="touchpad_click_working"]');
-    if (kbSel) kbSel.value = allKeysOk ? 'Yes' : 'No';
-    if (clickSel) clickSel.value = clickOk ? 'Yes' : 'No';
-
-    var missing = KEY_SPEC.filter(function(k){ return !pressed[k[0]]; }).map(function(k){ return k[1]; });
-    var status = document.getElementById('diagnoseStatus');
-    if (status){
-      var parts = [];
-      parts.push('Keyboard: <strong>' + (allKeysOk ? 'Yes' : 'No') + '</strong> (' + pressedCount + '/' + totalKeys + ' keys)');
-      parts.push('Click: <strong>' + (clickOk ? 'Yes' : 'No') + '</strong>');
-      var cls = (allKeysOk && clickOk) ? 'text-success' : 'text-warning';
-      var msg = '<span class="' + cls + '">' + parts.join(' &middot; ') + '</span>';
-      if (!allKeysOk && missing.length) {
-        msg += '<div class="small text-muted">Missing keys: ' + missing.slice(0, 15).join(', ') + (missing.length > 15 ? '…' : '') + '</div>';
-      }
-      status.innerHTML = msg;
-    }
-
-    var bsModal = bootstrap.Modal.getInstance(modalEl);
-    if (bsModal) bsModal.hide();
-  });
-})();
-</script>
-<script>
 /* ── No Power / No Display gating ──
    When the unit doesn't switch on (power_on = No) or Power Status is
    "No Display" / "No Power/Power Cut(Motherboard)", the functional tests
@@ -1728,6 +1634,7 @@ async function applyPortProfile(brand, model) {
     'screen_discoloration','screen_colour_spread','screen_patch','screen_flickering',
     'screen_keyboard_mark','dvd_drive'];
   var kbBtn = document.getElementById('kbClickTestBtn');
+  var tpBtn = document.getElementById('tpTestBtn');
   function applyGate(){
     var noPower = powerSel.value === 'No' ||
                   statusSel.value === 'No Display' ||
@@ -1739,6 +1646,7 @@ async function applyPortProfile(brand, model) {
       if (noPower) el.value = '';
     });
     if (kbBtn) kbBtn.disabled = noPower;
+    if (tpBtn) tpBtn.disabled = noPower;
   }
   powerSel.addEventListener('change', applyGate);
   statusSel.addEventListener('change', applyGate);
@@ -1758,5 +1666,7 @@ async function applyPortProfile(brand, model) {
     el.value = cur;
   });
 })();
+
 </script>
+{% include "iqc/_spec_autofill.html" %}
 {% endblock %}

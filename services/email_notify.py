@@ -13,7 +13,16 @@ server in .env (never stored in the database):
     OXYPC_SMTP_PASSWORD  its password / app password
     OXYPC_SMTP_FROM      optional "OxyPC ERP <erp@oxypc.in>" (default: USER)
     OXYPC_SMTP_SECURITY  optional starttls (default) | ssl | none
+    OXYPC_SMTP_REPLY_TO  optional address that gets the replies, e.g. info@oxypc.com
+                         (2026-11-24: the email still comes From the mailbox)
     OXYPC_PUBLIC_URL     optional link in the email, e.g. http://192.168.1.100:8000
+
+Microsoft 365 without a password (2026-11-24): OXYPC_SMTP_METHOD="graph"
+sends through Microsoft Graph (services/email_graph.py) instead of SMTP, with
+    OXYPC_SMTP_TENANT_ID, OXYPC_SMTP_CLIENT_ID, OXYPC_SMTP_CLIENT_SECRET
+from the app the Microsoft 365 admin registered (Mail.Send), and
+OXYPC_SMTP_FROM = the mailbox it sends as. HOST / PORT / USER / PASSWORD are
+not used then. No OTP, not affected by Microsoft ending SMTP password sign-in.
 
 Backup mailbox (optional, 2026-11-09): the same six settings with SMTP2 —
 OXYPC_SMTP2_HOST, OXYPC_SMTP2_PORT, OXYPC_SMTP2_USER, OXYPC_SMTP2_PASSWORD,
@@ -58,13 +67,19 @@ def settings(prefix: str = "OXYPC_SMTP") -> dict:
     if not security:
         security = "ssl" if port == 465 else "starttls"
     user = g("USER").strip()
+    method = g("METHOD").strip().lower()
     return {
+        "method": "graph" if method == "graph" else "smtp",
+        "tenant_id": g("TENANT_ID").strip(),
+        "client_id": g("CLIENT_ID").strip(),
+        "client_secret": g("CLIENT_SECRET"),
         "host": g("HOST").strip(),
         "port": port,
         "user": user,
         "password": g("PASSWORD"),
         "from": g("FROM").strip() or user,
         "security": security if security in ("starttls", "ssl", "none") else "starttls",
+        "reply_to": g("REPLY_TO").strip(),
         "public_url": (os.environ.get("OXYPC_PUBLIC_URL") or "").strip().rstrip("/"),
     }
 
@@ -74,6 +89,8 @@ def backup_settings() -> dict:
 
 
 def _ready(cfg: dict) -> bool:
+    if cfg.get("method") == "graph":
+        return bool(cfg["tenant_id"] and cfg["client_id"] and cfg["client_secret"] and parseaddr(cfg["from"])[1])
     return bool(cfg["host"] and cfg["from"])
 
 
@@ -119,6 +136,8 @@ def _build(cfg: dict, to: list, bcc: list, title: str, message: str, details: di
         msg["To"] = formataddr((name or "OxyPC ERP", addr or cfg["from"]))  # broadcast: recipients in BCC
     if bcc:
         msg["Bcc"] = ", ".join(bcc)
+    if cfg.get("reply_to"):
+        msg["Reply-To"] = cfg["reply_to"]
     msg["Subject"] = f"[OxyPC] {title}"
     rows = [(k, v) for k, v in details.items() if v]
     text = [message, ""] + [f"{k}: {v}" for k, v in rows]
@@ -145,6 +164,10 @@ def _send_sync(cfg: dict, messages: list) -> None:
     """Blocking send of several messages over one SMTP connection."""
     if not messages:
         return
+    if cfg.get("method") == "graph":
+        from services import email_graph
+        email_graph.send({**cfg, "sender": parseaddr(cfg["from"])[1]}, messages)
+        return
     timeout = 20
     if cfg["security"] == "ssl":
         server = smtplib.SMTP_SSL(cfg["host"], cfg["port"], timeout=timeout,
@@ -165,6 +188,47 @@ def _send_sync(cfg: dict, messages: list) -> None:
             server.quit()
         except Exception:
             pass
+
+
+# ── Plain-words errors for the admin (2026-11-24) ────────────────────────────
+_FRIENDLY = (
+    # Microsoft 365 SMTP
+    (("5.7.139", "smtpclientauthentication is disabled"),
+     "Microsoft 365 blocked the sign-in: the admin must turn on \"Authenticated SMTP\" for this mailbox "
+     "(admin.microsoft.com → Users → the mailbox → Mail → Manage email apps) and allow it without MFA, "
+     "or use the Microsoft 365 (Graph) method instead."),
+    (("5.7.3", "535", "authentication unsuccessful", "username and password not accepted", "badcredentials"),
+     "Wrong mailbox name or password. For Gmail use a 16-letter App Password, not the normal password."),
+    (("5.7.60", "sendasdenied", "send as"),
+     "The Sent from address is not the signed-in mailbox. Make Sent from the same as the mailbox (login)."),
+    (("wrong version number", "ssl", "certificate", "tls"),
+     "The Security setting does not match the port: 587 = STARTTLS, 465 = SSL."),
+    (("timed out", "timeout", "etimedout", "connection refused", "econnrefused", "name or service not known",
+      "nodename nor servname", "getaddrinfo", "enotfound", "network is unreachable"),
+     "Could not reach the mail server: check the server name and port, or the server's outgoing internet/port."),
+    # Microsoft Graph
+    (("aadsts7000215", "aadsts7000222", "invalid client secret", "client secret keys", "expired"),
+     "The Client Secret is wrong or has expired: ask the admin for a new one (App registrations → Certificates & secrets)."),
+    (("aadsts700016", "application with identifier"),
+     "The Client ID is wrong, or the app is not in this Microsoft 365 tenant."),
+    (("aadsts90002", "aadsts900023", "tenant"),
+     "The Tenant ID is wrong."),
+    (("erroraccessdenied", "access is denied", "403"),
+     "Microsoft refused to send: the app needs the Mail.Send permission with admin consent, and (if the admin "
+     "limited it) this Sent from mailbox must be in its allowed group."),
+    (("errorinvaliduser", "mailboxnotenabledforrestapi", "resourcenotfound", "404"),
+     "The Sent from mailbox was not found in Microsoft 365: check the address."),
+)
+
+
+def friendly(err) -> str:
+    """One plain sentence for a send error, followed by the server's own text."""
+    raw = str(err) or type(err).__name__
+    low = raw.lower()
+    for keys, words in _FRIENDLY:
+        if any(k in low for k in keys):
+            return f"{words} (Server said: {raw[:160]})"
+    return raw
 
 
 async def send_now(to: list, title: str, message: str, details: dict | None = None,

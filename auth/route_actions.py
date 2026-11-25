@@ -359,6 +359,7 @@ ROUTE_ACTIONS = {
     ('POST', '/parts-grn/master/{item_id}/delete'): ('spare_parts_purchase', 'delete'),
     ('POST', '/parts-grn/master/bulk-upload/{category}'): ('spare_parts_purchase', 'upload'),
     ('GET', '/parts-grn/master/export/{category}'): ('spare_parts_purchase', 'export'),
+    ('POST', '/admin/system/tag-clean'): None,  # tag_clean: system health data fix (admin-only) — hidden characters in Tag Numbers, 2026-11-24
     ('POST', '/admin/system/notes-history-backfill'): None,  # notes_history_backfill: system health data fix (admin-only) — 2026-11-23
     ('GET', '/notes-history/export'): None,  # notes_history_export: admin-only page export (require_roles admin) — 2026-11-23
     ('POST', '/admin/system/model-name-fix'): None,  # model_name_fix: system health data fix (admin-only) — Product Model Name one spelling per model, 2026-11-05

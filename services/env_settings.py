@@ -17,7 +17,8 @@ from config import BASE_DIR
 
 ENV_PATH = os.path.join(BASE_DIR, ".env")
 
-_FIELDS = ("HOST", "PORT", "SECURITY", "USER", "PASSWORD", "FROM")
+_FIELDS = ("HOST", "PORT", "SECURITY", "USER", "PASSWORD", "FROM", "REPLY_TO",
+           "METHOD", "TENANT_ID", "CLIENT_ID", "CLIENT_SECRET")
 EDITABLE_KEYS = tuple(f"{p}_{f}" for p in ("OXYPC_SMTP", "OXYPC_SMTP2") for f in _FIELDS) + ("OXYPC_PUBLIC_URL",)
 
 _LINE = re.compile(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=")

@@ -529,6 +529,42 @@
     </div>
   </div>
 
+  {# ── Tag Numbers with hidden characters (2026-11-24, Pankaj) ── #}
+  <div class="col-xxl-3 col-md-6" data-df="tag-clean">
+    <div class="card border-0 shadow-sm h-100 df-card">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-upc me-2"></i>Tag Numbers with hidden characters
+          <span class="badge {% if dirty_total %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ dirty_total or 0 }}</span></span>
+        {% if dirty_fixable %}
+        <form method="post" action="/admin/system/tag-clean" class="df-confirm" data-confirm="Click again to clean {{ dirty_fixable }} Tag Number(s)">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Clean {{ dirty_fixable }}</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not dirty_total %}
+        <div class="text-muted">Nothing to fix — no Tag Number has a space, TAB or invisible character.</div>
+        {% else %}
+        <p class="text-muted mb-2">These tags were saved with a space, TAB or invisible character (usually pasted from Excel), so their page can't be opened from a link.
+          Clean removes it from the tag and from every record that keeps a copy of the tag (WorkIDs, part requests, …). Logged.</p>
+        <div class="table-responsive" style="max-height:220px">
+          <table class="table table-sm table-bordered mb-0">
+            <thead class="table-light"><tr><th>Saved as</th><th>Becomes</th><th></th></tr></thead>
+            <tbody>
+              {% for r in dirty_tags %}
+              <tr><td class="font-monospace">{{ r.shown }}</td><td class="font-monospace">{{ r.clean }}</td>
+                <td>{% if r.clash %}<span class="badge bg-danger" title="The clean Tag Number already belongs to another tag — fix this one by hand">already exists</span>{% endif %}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {# ── Old PNA marks (2026-11-22, Pankaj) ── #}
   <div class="col-xxl-3 col-md-6" data-df="old-pna-marks">
     <div class="card border-0 shadow-sm h-100 df-card">
