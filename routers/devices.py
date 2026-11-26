@@ -1702,7 +1702,7 @@ async def model_summary_tags(
 # columns can be re-sequenced without any value landing under the wrong
 # header (the 2026-10 shifted-columns bug).
 _ROW_ORDER = [
-    "Barcode", "Lot", "GRN", "Invoice No", "Entity", "Sub-Category", "Brand", "Model", "Device Type",
+    "Barcode", "Lot", "GRN", "GRN Date", "Invoice No", "Entity", "Sub-Category", "Brand", "Model", "Device Type",
     # RAM / Storage only (2026-10-22) — replaced RAM GB, RAM, Total RAM
     # Count/Size, SSD GB, Storage Type, Hard Drive, HDD GB, Total HDD Count/Size.
     "Serial No", "CPU", "CPU Make", "Generation", "RAM", "Storage",
@@ -1724,8 +1724,7 @@ _ROW_ORDER = [
 # A stage's Date = when the tag entered it on its LATEST visit; Days = working
 # days (no Sundays / Master Data holidays) from then until it moved to a
 # different stage (today while it is still there).
-# Stock In (Days) = Stock In date to today (the tag's age since stock-in); with
-# no Stock In step, from its IQC date, else its GRN date, else its created date.
+# Stock In (Date) = the tag's Registered (created) date (2026-11-26); Stock In (Days) = from it to today.
 # Consecutive moves inside one group (e.g. the Cosmetic sub-stages) are one visit.
 _AGE_GROUPS = [
     ("Stock In", {DeviceStage.stock_in}),
@@ -1743,7 +1742,7 @@ _ROW_ORDER += [c for name, _s in _AGE_GROUPS for c in (f"{name} (Date)", f"{name
 # Column sequence of the Excel file (2026-11-18, Pankaj's sheet). Warehouse is
 # left out of the file (still built in _ROW_ORDER).
 _EXPORT_HEADER = [
-    "Barcode", "Lot", "GRN", "Invoice No", "Entity", "Sub-Category", "Brand", "Model", "Device Type",
+    "Barcode", "Lot", "GRN", "GRN Date", "Invoice No", "Entity", "Sub-Category", "Brand", "Model", "Device Type",
     "Serial No", "CPU", "CPU Make", "Generation", "RAM", "Storage",
     "Screen Size", "Battery %", "BIOS Pwd", "Color",
     "Power On", "Power Status", "HDD Connector", "HDD Casing", "Battery Present", "Battery Cable",
@@ -1765,7 +1764,7 @@ _HDR_RED = ("C00000", "FFFFFF")           # PNA
 _HDR_GREEN = ("00B050", "FFFFFF")         # Stock, Final QC Status
 _HDR_NAVY = ("1F3864", "FFFFFF")          # Grade, Stage, Location ID, Bin Location, Zone
 _HDR_MAROON_LT, _HDR_MAROON_DK = ("E6B8B7", "632523"), ("7B1F2B", "FFFFFF")
-_HDR_FIRST10 = set(_EXPORT_HEADER[:10])
+_HDR_FIRST10 = set(_EXPORT_HEADER[:11])   # Barcode … Serial No (GRN Date added 2026-11-26)
 
 
 def _xl(v):
@@ -1851,10 +1850,14 @@ def _ageing_cols(device, moves, today, wdays=None) -> list:
     if cur is not None and entered is not None:
         still = _AGE_OF.get(device.current_stage) == cur
         last[cur] = (entered, None if still else False)   # open visit: to today; False = log out of step, Days blank
-    # Stock In fallback (2026-11-18): many tags go IQC -> repair / Ready to Sale
-    # with no Stock In step; the tag's age then counts from its IQC date, else
-    # its GRN date, else when the tag was created.
-    if 0 not in last:     # order (Pankaj): Stock In, else IQC date, else GRN date, else created date
+    # Stock In (Date) = the tag's Registered date (2026-11-26, Pankaj) — the
+    # created date Device Detail shows as "Registered". Stage-log Stock In
+    # dates could be older than the GRN (e.g. imported history). Only when a
+    # tag has no created date does the old order apply: Stock In step, else
+    # IQC date, else GRN date.
+    if getattr(device, "created_at", None):
+        last[0] = (device.created_at, None)
+    if 0 not in last:
         first = (next((at for st, at in (moves or ()) if st == DeviceStage.iqc and at), None)
                  or next((at for st, at in (moves or ()) if st == DeviceStage.grn and at), None)
                  or getattr(device, "created_at", None))
@@ -1972,6 +1975,19 @@ async def _export_rows(db: AsyncSession, rows, hide=()) -> Response:
         location_map.update(await _build_location_map(db, [str(did) for did in chunk]))
         _mark("loc")
 
+    # GRN Date column (2026-11-26, after GRN): the GRN record's own GRN Date
+    # for the tag's current GRN number; blank when that GRN has none.
+    from models.grn_import import GRNImport as _GRNImport
+    _grn_nums = sorted({(d.grn_number or "").strip() for d, _l in rows} - {""})
+    grn_date_map = {}
+    for i in range(0, len(_grn_nums), 5000):
+        for _gn, _gd in (await db.execute(
+                select(_GRNImport.grn_number, _GRNImport.grn_date).where(
+                    _GRNImport.grn_number.in_(_grn_nums[i:i + 5000]),
+                    _GRNImport.is_deleted == False))).all():  # noqa: E712
+            if _gd:
+                grn_date_map[_gn] = _gd
+
     cosmetic_parts = next(p for g, _h, _f, _s, p in PART_GROUPS if g == "cosmetic")
 
     def _stage_history(device):
@@ -2052,7 +2068,9 @@ async def _export_rows(db: AsyncSession, rows, hide=()) -> Response:
         location_display = loc_info.get("unit_id") or device.warehouse or device.floor or ""
         zone_display = ZONE_LABELS.get(loc_info.get("zone"), "") if loc_info.get("zone") else ""
         row = [
-            device.barcode, lot_number, device.grn_number, device.invoice_number, device.entity,
+            device.barcode, lot_number, device.grn_number,
+            grn_date_map.get((device.grn_number or "").strip(), ""),
+            device.invoice_number, device.entity,
             device.sub_category, device.brand, device.model, device.device_type, device.serial_no,
             device.cpu, device.cpu_make, device.generation,
             ram_text(device), storage_text(device), device.screen_size,

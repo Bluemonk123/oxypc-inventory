@@ -2495,6 +2495,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         stale_ret = await _stale_returns(db)
         pna_old = await _pna_stale(db)          # Old PNA marks card (2026-11-22)
         dirty_tags = await _dirty_tags(db)       # Tag Numbers with hidden characters (2026-11-24)
+        grn_nodate = await _grn_missing_dates(db)  # GRNs with no GRN Date (2026-11-26)
         from services.iqc_backfill import counts as _iqc_hist_counts
         iqc_hist = await _iqc_hist_counts(db)    # Rebuild old IQC history card (2026-11-22)
         from services.iqc_backfill import STATE as _iqc_state
@@ -2533,6 +2534,8 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "pna_old_tags": len({r["tag"] for r in pna_old}),
         "dirty_tags": dirty_tags[:300], "dirty_total": len(dirty_tags),
         "dirty_fixable": sum(1 for r in dirty_tags if not r["clash"]),
+        "grn_nodate": grn_nodate[:300], "grn_nodate_total": len(grn_nodate),
+        "grn_nodate_fixable": sum(1 for r in grn_nodate if r["created"]),
         "iqc_hist": iqc_hist, "iqc_run": iqc_run,
         "nh_done": nh_done,
         "rts_open": rts_open[:200], "rts_open_total": len(rts_open),
@@ -2600,6 +2603,19 @@ _PNA_PAST_REPAIR = ("qc_check", "cosmetic_received", "cleaning", "putty", "dry_s
 
 
 _TAG_JUNK_SQL = r"[\s\u200b\u200c\u200d\u2060\ufeff\u00a0]"
+
+
+async def _grn_missing_dates(db):
+    """GRNs with no GRN Date (2026-11-26, Pankaj): [{id, grn, created, invoice_date}],
+    newest first. The fix fills GRN Date with the date the GRN was created."""
+    from sqlalchemy import select
+    from models.grn_import import GRNImport
+    rows = (await db.execute(
+        select(GRNImport.id, GRNImport.grn_number, GRNImport.created_at, GRNImport.invoice_date)
+        .where(GRNImport.grn_date.is_(None), GRNImport.is_deleted == False)  # noqa: E712
+        .order_by(GRNImport.created_at.desc().nullslast()))).all()
+    return [{"id": r.id, "grn": r.grn_number, "created": r.created_at, "invoice_date": r.invoice_date}
+            for r in rows]
 
 
 async def _dirty_tags(db):
@@ -2738,6 +2754,32 @@ async def tag_clean(request: Request, current_user: User = Depends(admin_only)):
     if back:
         return back
     return JSONResponse({"ok": True, "cleaned": len(rows)})
+
+
+@router.post("/grn-date-fill")
+async def grn_date_fill(request: Request, current_user: User = Depends(admin_only)):
+    """Data Fixes → GRNs with no GRN Date (2026-11-26): set GRN Date to the
+    date the GRN was created. Only empty GRN Dates are filled. Logged."""
+    from sqlalchemy import update
+    from database import AsyncSessionLocal
+    from models.grn_import import GRNImport
+    from services.audit_engine import audit
+    async with AsyncSessionLocal() as db:
+        rows = [r for r in await _grn_missing_dates(db) if r["created"]]
+        for r in rows:
+            await db.execute(update(GRNImport).where(GRNImport.id == r["id"], GRNImport.grn_date.is_(None))
+                             .values(grn_date=r["created"].date()))
+        await audit(db, user=current_user, action="GRN_DATES_FILLED", table_name="grn_imports",
+                    record_id=f"{len(rows)} GRNs",
+                    new_value={"count": len(rows),
+                               "grns": {r["grn"]: r["created"].date().isoformat() for r in rows}},
+                    notes="Empty GRN Date filled with the GRN's created date. "
+                          "Reverse: set grn_date NULL for the listed GRN numbers.", request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"GRN Dates filled: {len(rows):,}.")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "filled": len(rows)})
 
 
 @router.post("/pna-stale-clear")

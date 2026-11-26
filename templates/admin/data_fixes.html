@@ -565,6 +565,42 @@
     </div>
   </div>
 
+  {# ── GRNs with no GRN Date (2026-11-26, Pankaj) ── #}
+  <div class="col-xxl-3 col-md-6" data-df="grn-date-fill">
+    <div class="card border-0 shadow-sm h-100 df-card">
+      <div class="card-header bg-transparent d-flex justify-content-between align-items-center">
+        <span class="fw-semibold"><i class="bi bi-calendar-x me-2"></i>GRNs with no GRN Date
+          <span class="badge {% if grn_nodate_total %}bg-warning text-dark{% else %}bg-success{% endif %} ms-1">{{ grn_nodate_total or 0 }}</span></span>
+        {% if grn_nodate_fixable %}
+        <form method="post" action="/admin/system/grn-date-fill" class="df-confirm" data-confirm="Click again to fill {{ grn_nodate_fixable }} GRN Date(s)">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="back" value="1">
+          <button class="btn btn-sm btn-primary"><i class="bi bi-play-fill me-1"></i>Fill {{ grn_nodate_fixable }}</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body small">
+        {% if not grn_nodate_total %}
+        <div class="text-muted">Nothing to fix — every GRN has a GRN Date.</div>
+        {% else %}
+        <p class="text-muted mb-2">These GRNs have no GRN Date, so the All Inventory export's GRN Date column is blank for their tags.
+          Fill sets GRN Date to the date the GRN was created. Only empty GRN Dates change. Logged.</p>
+        <div class="table-responsive" style="max-height:220px">
+          <table class="table table-sm table-bordered mb-0">
+            <thead class="table-light"><tr><th>GRN</th><th>Invoice Date</th><th>GRN Date becomes</th></tr></thead>
+            <tbody>
+              {% for r in grn_nodate %}
+              <tr><td class="font-monospace">{{ r.grn }}</td><td>{{ r.invoice_date or '—' }}</td>
+                <td>{% if r.created %}{{ r.created.strftime('%d-%m-%Y') }}{% else %}<span class="text-muted">no created date — fix by hand</span>{% endif %}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
   {# ── Old PNA marks (2026-11-22, Pankaj) ── #}
   <div class="col-xxl-3 col-md-6" data-df="old-pna-marks">
     <div class="card border-0 shadow-sm h-100 df-card">

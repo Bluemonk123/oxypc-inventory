@@ -1586,9 +1586,18 @@ async def _grn_tabs_ctx(db, g, current_user) -> dict:
     models_rows = sorted(groups.values(), key=lambda x: x["total"], reverse=True)
     for m in models_rows:
         m["grade"] = sorted(m["grade"].items(), key=lambda kv: MS_GRADE_ORDER.index(kv[0]) if kv[0] in MS_GRADE_ORDER else 99)
+    # Tags counted here stay counted after ReGRN (add-only), so mark the ones
+    # whose current GRN is now a different one (2026-11-26): this is why
+    # All Inventory's GRN search can show fewer tags than this list.
+    this_grn = (g.grn_number or "").strip()
+    moved_map = {}
+    for d in devices:
+        cur = (d.grn_number or "").strip()
+        if cur != this_grn:
+            moved_map[str(d.id)] = cur
     return {"devices": devices, "repair_map": repair_map, "qc_map": qc_map, "iqc_set": iqc_set,
             "sold_set": sold_set, "models_rows": models_rows, "show_pricing": show_pricing,
-            "entity_abbr": entity_abbr}
+            "entity_abbr": entity_abbr, "moved_map": moved_map}
 
 
 async def _grn_or_404(db, grn_id):

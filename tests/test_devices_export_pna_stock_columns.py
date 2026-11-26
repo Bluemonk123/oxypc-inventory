@@ -80,7 +80,8 @@ def test_header_sequence_matches_pankaj_sheet():
         "Stock In (Date)", "Stock In (Ageing)", "L1/L2 (Date)", "L1/L2 (Ageing)", "L3/L4 (Date)", "L3/L4 (Ageing)",
         "Stress (Date)", "Stress (Ageing)", "Cosmetic (Date)", "Cosmetic (Ageing)", "Final QC (Date)", "Final QC (Ageing)",
         "Ready for Sale (Date)", "Ready for Sale (Ageing)"]
-    assert len(_EXPORT_HEADER) == 74   # + Part Name (2026-11-23)
+    assert len(_EXPORT_HEADER) == 75   # + Part Name (2026-11-23), + GRN Date (2026-11-26)
+    assert _EXPORT_HEADER[2:4] == ["GRN", "GRN Date"]
 
 
 def test_stock_label_rules():
@@ -146,3 +147,19 @@ def test_export_rows_end_to_end_values(monkeypatch):
     assert part_i == pna_i + 1
     assert by_barcode["T-PNA-L2"][part_i] == "Camera / Screen"
     assert by_barcode["T-PNA-RTS"][part_i] == "" and by_barcode["T-L2-CLEAN"][part_i] == ""
+
+
+def test_stock_in_date_is_registered_date():
+    # 2026-11-26 (Pankaj): Stock In (Date) = the tag's Registered (created)
+    # date, even when the stage log has an older Stock In entry.
+    from datetime import datetime
+    from routers.devices import _ageing_cols
+    d = _dev("R1", DeviceStage.ready_to_sale)
+    d.created_at = datetime(2026, 8, 10, 12, 32)
+    moves = [(DeviceStage.stock_in, datetime(2025, 1, 5)), (DeviceStage.ready_to_sale, datetime(2026, 9, 1))]
+    cols = _ageing_cols(d, moves, datetime(2026, 11, 26))
+    assert cols[0] == datetime(2026, 8, 10).date()
+    assert cols[1] == (datetime(2026, 11, 26) - datetime(2026, 8, 10)).days
+    # no created date: old order (Stock In step) still applies
+    d.created_at = None
+    assert _ageing_cols(d, moves, datetime(2026, 11, 26))[0] == datetime(2025, 1, 5).date()

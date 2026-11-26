@@ -12,6 +12,13 @@
     <div class="card border-0 shadow-sm border-top-0">
       <div class="card-header bg-transparent d-flex justify-content-between align-items-center flex-wrap gap-2">
         <span class="fw-semibold"><i class="bi bi-laptop me-2"></i>Device Tags</span>
+        {% set _moved_n = (moved_map or {}) | length %}
+        {% if _moved_n %}
+        <span title="Tags received under this GRN that were later given a different GRN (ReGRN). All Inventory searches by a tag's current GRN.">
+          <span class="badge bg-success">{{ (devices | length) - _moved_n }} still in this GRN</span>
+          <span class="badge bg-warning text-dark">{{ _moved_n }} moved to another GRN</span>
+        </span>
+        {% endif %}
       </div>
       <div class="card-body">
           <table id="{{ tab_prefix }}DeviceTable" class="table table-hover align-middle mb-0 grn-dev-table">
@@ -31,7 +38,11 @@
               {% set did = d.id | string %}
               <tr>
                 <td><a href="/devices/{{ d.barcode }}" class="font-monospace text-decoration-none fw-semibold">{{ d.barcode }}</a>
-                  <div style="color:#999;font-size:12px">{{ d.entity or '—' }}</div></td>
+                  <div style="color:#999;font-size:12px">{{ d.entity or '—' }}</div>
+                  {% if moved_map and did in moved_map %}
+                  <span class="badge bg-warning-subtle text-warning-emphasis border border-warning-subtle fw-normal mt-1">
+                    <i class="bi bi-arrow-right-circle me-1"></i>{% if moved_map[did] %}Moved to GRN {{ moved_map[did] }}{% else %}Removed from this GRN{% endif %}</span>
+                  {% endif %}</td>
                 <td>{{ d.device_type or '—' }}</td>
                 <td>{{ d.brand or '—' }}</td>
                 <td>{{ d.model or '—' }}</td>
