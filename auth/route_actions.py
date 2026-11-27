@@ -369,6 +369,7 @@ ROUTE_ACTIONS = {
     ('POST', '/admin/system/tag-clean'): None,  # tag_clean: system health data fix (admin-only) — hidden characters in Tag Numbers, 2026-11-24
     ('POST', '/admin/system/grn-date-fill'): None,  # grn_date_fill: system health data fix (admin-only) — GRNs with no GRN Date, 2026-11-26
     ('POST', '/admin/system/l2-to-stock-in'): None,  # l2_to_stock_in: system health data fix (admin-only) — tags in the retired L2 stage, 2026-11-26
+    ('POST', '/admin/system/l1-returns-to-rma'): None,  # l1_returns_to_rma: system health data fix (admin-only) — customer returns from L1/L2 to RMA Devices, 2026-11-27
     ('POST', '/admin/system/notes-history-backfill'): None,  # notes_history_backfill: system health data fix (admin-only) — 2026-11-23
     ('GET', '/notes-history/export'): None,  # notes_history_export: admin-only page export (require_roles admin) — 2026-11-23
     ('POST', '/admin/system/model-name-fix'): None,  # model_name_fix: system health data fix (admin-only) — Product Model Name one spelling per model, 2026-11-05

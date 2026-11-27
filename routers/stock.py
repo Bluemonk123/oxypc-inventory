@@ -1227,9 +1227,13 @@ async def stock_in_list(
         .join(Lot, Device.lot_id == Lot.id)
         .join(Return, Return.device_id == Device.id)
         .where(Device.return_status == True, Device.is_active == True,  # noqa: E712
+               # Credit Note returns (2026-11-27, Pankaj) stay Sold and are
+               # tracked on the Credit Note page — never repaired or
+               # dispatched back, so not Return Stock.
                or_(Device.tag_return_status.is_(None),
                    and_(Device.tag_return_status.notlike('Replaced by %'),
-                        Device.tag_return_status.notlike(RMA_REPLACEMENT_PREFIX + '%'))))
+                        Device.tag_return_status.notlike(RMA_REPLACEMENT_PREFIX + '%'),
+                        Device.tag_return_status != 'Return for Credit Note')))
         .order_by(Return.return_date.desc())
     )).all()
     return_stock_by_device = {}

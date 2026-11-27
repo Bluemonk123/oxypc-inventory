@@ -2497,6 +2497,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         dirty_tags = await _dirty_tags(db)       # Tag Numbers with hidden characters (2026-11-24)
         grn_nodate = await _grn_missing_dates(db)  # GRNs with no GRN Date (2026-11-26)
         l2_tags = await _l2_tags(db)             # tags in the retired L2 stage (2026-11-26)
+        l1_ret = await _l1_return_tags(db)       # customer returns still in L1/L2 (2026-11-27)
         from services.iqc_backfill import counts as _iqc_hist_counts
         iqc_hist = await _iqc_hist_counts(db)    # Rebuild old IQC history card (2026-11-22)
         from services.iqc_backfill import STATE as _iqc_state
@@ -2538,6 +2539,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "grn_nodate": grn_nodate[:300], "grn_nodate_total": len(grn_nodate),
         "grn_nodate_fixable": sum(1 for r in grn_nodate if r["created"]),
         "l2_tags": l2_tags[:300], "l2_total": len(l2_tags),
+        "l1_ret": l1_ret[:300], "l1_ret_total": len(l1_ret),
         "iqc_hist": iqc_hist, "iqc_run": iqc_run,
         "nh_done": nh_done,
         "rts_open": rts_open[:200], "rts_open_total": len(rts_open),
@@ -2631,6 +2633,40 @@ async def _l2_tags(db):
             .group_by(WorkOrder.device_id))).all())
     return [{"id": d.id, "barcode": d.barcode, "entity": d.entity,
              "since": since.get(d.id), "wos": wos.get(d.id, 0)} for d in devs]
+
+
+async def _l1_return_tags(db):
+    """Customer-return tags still in the L1/L2 queue (2026-11-27, Pankaj) —
+    sent there by the old Move to L1/L2; RMA engineers work only from RMA
+    Devices. [{id, barcode, entity, status, picked}]. Replaced and Credit Note
+    tags are our stock, not customer repairs, so they stay in L1/L2."""
+    from sqlalchemy import select, or_, and_
+    from models.device import Device, DeviceStage
+    from models.lot import Lot
+    from models.work_order import WorkOrder
+    from services.stage_work_orders import stage_clause
+    from services.work_order_close import wo_open
+    from utils.stage_page_filters import live_tag_filters
+    devs = (await db.execute(
+        select(Device.id, Device.barcode, Device.entity, Device.l1l2_status)
+        .outerjoin(Lot, Device.lot_id == Lot.id)
+        .where(Device.current_stage == DeviceStage.l1, Device.return_status == True,  # noqa: E712
+               or_(Device.tag_return_status.is_(None),
+                   and_(Device.tag_return_status.notlike("Replaced by%"),
+                        Device.tag_return_status != "Return for Credit Note")),
+               *live_tag_filters())
+        .order_by(Device.barcode))).all()
+    ids = [d.id for d in devs]
+    picked = {}
+    if ids:
+        for did, nm, un in (await db.execute(
+                select(WorkOrder.device_id, WorkOrder.assigned_name, WorkOrder.assigned_username)
+                .where(WorkOrder.device_id.in_(ids), wo_open(), stage_clause(DeviceStage.l1))
+                .order_by(WorkOrder.created_at))).all():
+            if nm or un:
+                picked[did] = nm or un
+    return [{"id": d.id, "barcode": d.barcode, "entity": d.entity, "status": d.l1l2_status or "New",
+             "picked": picked.get(d.id)} for d in devs]
 
 
 async def _grn_missing_dates(db):
@@ -2822,6 +2858,61 @@ async def l2_to_stock_in(request: Request, current_user: User = Depends(admin_on
                     request=request)
         await db.commit()
     back = _back_to_page(await request.form(), f"Moved to Stock In: {len(devs):,} tag(s).")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "moved": len(devs), "workids_closed": closed})
+
+
+@router.post("/l1-returns-to-rma")
+async def l1_returns_to_rma(request: Request, current_user: User = Depends(admin_only)):
+    """Data Fixes → Customer returns still in L1/L2 (2026-11-27, Pankaj): move
+    them to RMA Devices, where the RMA engineers work. Their L1/L2 WorkIDs
+    close as "reassigned" and a pending RMA WorkID opens (Pick This on RMA
+    Devices); Repair Started / PNA / part requests stay as they are. Logged."""
+    from sqlalchemy import select, update
+    from database import AsyncSessionLocal
+    from models.device import Device, DeviceStage, StageMovement
+    from models.repair import RepairJob, RepairStatus
+    from models.work_order import WorkOrder
+    from services.audit_engine import audit
+    from services.stage_work_orders import stage_clause, open_for_stage
+    from services.work_order_close import wo_open
+    from utils.timezone import app_now
+    async with AsyncSessionLocal() as db:
+        rows = await _l1_return_tags(db)
+        now = app_now()
+        devs = (await db.execute(select(Device).where(
+            Device.id.in_([r["id"] for r in rows]), Device.current_stage == DeviceStage.l1))).scalars().all() if rows else []
+        ids = [d.id for d in devs]
+        closed = 0
+        if ids:
+            for mv in (await db.execute(select(StageMovement).where(
+                    StageMovement.device_id.in_(ids), StageMovement.exited_at.is_(None),
+                    StageMovement.to_stage == DeviceStage.l1))).scalars().all():
+                mv.exited_at = now
+            closed = (await db.execute(
+                update(WorkOrder).where(WorkOrder.device_id.in_(ids), wo_open(), stage_clause(DeviceStage.l1))
+                .values(status="reassigned", completed_at=now)
+                .execution_options(synchronize_session=False))).rowcount or 0
+            # an open L1/L2 repair job carries on as the RMA one
+            await db.execute(update(RepairJob).where(RepairJob.device_id.in_(ids), RepairJob.stage.in_(["L1", "L2"]),
+                                                     RepairJob.status == RepairStatus.in_progress)
+                             .values(stage="RMA").execution_options(synchronize_session=False))
+        for d in devs:
+            db.add(StageMovement(device_id=d.id, from_stage=DeviceStage.l1, to_stage=DeviceStage.rma,
+                                 moved_by=current_user.username,
+                                 notes="Data fix — customer return moved from L1/L2 to RMA Devices"))
+            d.current_stage = DeviceStage.rma
+            d.updated_at = now
+            await open_for_stage(db, d, DeviceStage.rma, created_by=current_user.username)
+        await audit(db, user=current_user, action="L1_RETURNS_TO_RMA", table_name="devices",
+                    record_id=f"{len(devs)} tags",
+                    new_value={"count": len(devs), "workids_closed": closed,
+                               "tags": {r["barcode"]: r["picked"] for r in rows if r["id"] in set(ids)}},
+                    notes="Customer-return tags moved from L1/L2 to RMA Devices; L1/L2 WorkIDs closed as "
+                          "reassigned, pending RMA WorkIDs opened.", request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Moved to RMA Devices: {len(devs):,} tag(s).")
     if back:
         return back
     return JSONResponse({"ok": True, "moved": len(devs), "workids_closed": closed})
