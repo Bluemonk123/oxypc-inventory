@@ -513,6 +513,7 @@ async def request_l3l4(
     # requested-out tag kept sitting in the L1/L2 table showing a stale
     # Status badge and a "Start Repair" button it had no business offering.
     prev_stage = device.current_stage
+    back = "/repair/rma" if prev_stage == DeviceStage.rma else "/repair/l1"   # RMA Devices too (2026-11-27)
     await _close_open_movement(db, device)
     device.current_stage = DeviceStage.l3
     db.add(StageMovement(device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.l3,
@@ -539,7 +540,7 @@ async def request_l3l4(
                 table_name="work_orders", record_id=str(device.id),
                 new_value={"work_id": work_id, "assigned": eng.username}, request=request)
     await db.commit()
-    return RedirectResponse(url="/repair/l1?success=Requested+to+L3/L4", status_code=302)
+    return RedirectResponse(url=back + "?success=Requested+to+L3/L4", status_code=302)
 
 
 async def _mark_complete_open_parts(db: AsyncSession, device_id):
@@ -824,6 +825,14 @@ async def back_to_production(
 
 
 # ── L3/L4 Repair page (WorkOrder-driven, per assigned engineer) ────────────────
+def _open_customer_return(device) -> bool:
+    """A customer's tag back for repair (2026-11-27): returned, not replaced
+    and not a Credit Note return. Its repairs are RMA Devices' work — L3/L4
+    sends it back there, and L3/L4 shows it the "Customer Return" badge."""
+    trs = device.tag_return_status or ""
+    return bool(device.return_status) and not trs.startswith("Replaced by") and trs != "Return for Credit Note"
+
+
 async def _customer_return_ids(db: AsyncSession, device_ids) -> set:
     """Device ids (as str) that a customer has ever returned — any Return row,
     the same rule as the "Customer Return" label on Gate Pass (2026-10-24)."""
@@ -940,6 +949,8 @@ async def l3l4_list(request: Request,
         "items": items, "total": len(items), "full_queue": full_queue,
         "pna_map": await _pna_map(db, [it["device_id"] for it in items]),
         "cust_return_ids": await _customer_return_ids(db, [dev.id for _w, dev, _l in rows] + [d.id for d in unassigned]),
+        # "Customer Return" badge (2026-11-27): goes back to RMA Devices on Mark Complete.
+        "open_return_ids": {str(d.id) for d in [dev for _w, dev, _l in rows] + list(unassigned) if _open_customer_return(d)},
         "unassigned_count": len(unassigned),
         "parts_badges": await parts_badge_map(db, [it["device_id"] for it in items]),
     })
@@ -1096,17 +1107,19 @@ async def l3l4_complete(
     # Move the tag's stage back to L1 — request_l3l4 moved it to L3 while it
     # was away, so without this the row would stay hidden from /repair/l1
     # forever even though L3/L4 work is done and it needs a next action there.
+    # A customer return goes back to RMA Devices instead (2026-11-27, Pankaj).
+    back_to = DeviceStage.rma if _open_customer_return(device) else DeviceStage.l1
     prev_stage = device.current_stage
     await _close_open_movement(db, device)
-    device.current_stage = DeviceStage.l1
-    db.add(StageMovement(device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.l1,
+    device.current_stage = back_to
+    db.add(StageMovement(device_id=device.id, from_stage=prev_stage, to_stage=back_to,
                          moved_by=current_user.username,
-                         notes="L3/L4 completed — returned to L1/L2"))
-    # Back at L1/L2: its L1/L2 WorkID normally stayed open while the tag was
+                         notes="L3/L4 completed — returned to " + ("RMA Devices" if back_to == DeviceStage.rma else "L1/L2")))
+    # Back at L1/L2 (or RMA): its WorkID normally stayed open while the tag was
     # away; if there is none (e.g. it reached L3/L4 by a Customise move), a
     # pending one opens so it can be picked (2026-10-27).
     from services.stage_work_orders import open_for_stage as _open_for_stage
-    await _open_for_stage(db, device, DeviceStage.l1, created_by=current_user.username)
+    await _open_for_stage(db, device, back_to, created_by=current_user.username)
     await audit(db, user=current_user, action="L3L4_COMPLETE",
                 table_name="devices", record_id=str(device.id),
                 notes=f"L3/L4 completed on {device.barcode}", request=request)
@@ -1528,6 +1541,7 @@ async def repair_list(stage: str, request: Request,
         "request": request, "devices": devices, "open_jobs": open_jobs,
         # RMA Devices (2026-11-27) renders the same page: Q = its links / permission module.
         "Q": {**QUEUES.get(stage, QUEUES["l1"]), "key": stage if stage in QUEUES else "l1"},
+        "rma_info": await _rma_return_info(db, [d for d, _l in devices]) if stage == "rma" else {},
         "parts_badges": await parts_badge_map(db, [d.id for d, *_ in devices]),
         "cust_return_ids": await _customer_return_ids(db, [d.id for d, *_ in devices]),
         "l3l4_engineers": l3l4_engineers, "stress_engineers": stress_engineers,
@@ -2092,6 +2106,49 @@ def _rma_stock_filters():
     trashed / External Partner Test / inactive), not sold, out on rent,
     scrapped or in RMA, and not itself an open customer return."""
     return (*live_tag_filters(), Device.current_stage.notin_(_RMA_NOT_STOCK), Device.return_status.isnot(True))
+
+
+async def _rma_return_info(db, devices) -> dict:
+    """RMA Devices columns (2026-11-27, Pankaj): {device id: Return Reason,
+    Condition, Complaint, Sales Person, Warranty} from the tag's latest
+    return — for a replacement tag, the customer tag's return."""
+    from models.sales import Return, Sale
+    from utils.sales_person import linked_name_map, sales_person_display
+    from utils.warranty import effective_warranty_for_sale
+    src = {}
+    for d in devices:
+        trs = d.tag_return_status or ""
+        src[d.id] = trs[len("Replacement for "):].strip() if trs.startswith("Replacement for ") else None
+    orig = {}
+    want = [b for b in src.values() if b]
+    if want:
+        orig = dict((await db.execute(select(Device.barcode, Device.id).where(Device.barcode.in_(want)))).all())
+    key = {did: (orig.get(b) if b else did) for did, b in src.items()}
+    ids = [k for k in key.values() if k]
+    rets = {}
+    if ids:
+        for r in (await db.execute(select(Return).where(Return.device_id.in_(ids))
+                                   .order_by(Return.device_id, Return.return_date.desc().nullslast())
+                                   .distinct(Return.device_id))).scalars().all():
+            rets[r.device_id] = r
+    sids = [r.sale_id for r in rets.values() if r.sale_id]
+    sales = {x.id: x for x in (await db.execute(select(Sale).where(Sale.id.in_(sids)))).scalars().all()} if sids else {}
+    names = await linked_name_map(db) if rets else {}
+    out = {}
+    for did, k in key.items():
+        r = rets.get(k)
+        if r is None:
+            continue
+        sale = sales.get(r.sale_id)
+        w = effective_warranty_for_sale(sale)
+        out[str(did)] = {
+            "reason": r.reason or "", "condition": r.condition_on_return or "", "complaint": r.complaint_text or "",
+            "sales_person": (sales_person_display(sale, names) if sale else "") or "",
+            "warranty": ("In Warranty" if w and w["status"] == "active" else "Out of Warranty" if w else "No Warranty"),
+            "w_cls": ("bg-success" if w and w["status"] == "active" else "bg-danger" if w else "bg-secondary"),
+            "w_till": w["expiry"] if w else None,
+        }
+    return out
 
 
 def _rma_allowed(user, action):

@@ -1506,6 +1506,9 @@ async def _return_progress(db: AsyncSession, pairs) -> dict:
         return {}
     started, l12, l34 = await _return_repair_moves(db, await _return_cutoffs(db, pairs))
     done = l12 | l34
+    # Still on L1/L2, L3/L4 or RMA (e.g. back from L3/L4) = not repaired yet (2026-11-27).
+    _line = (DeviceStage.l1, DeviceStage.l2, DeviceStage.l3, DeviceStage.rma)
+    done -= {d.id for d, _r in pairs if d.current_stage in _line}
     # An RMA replacement tag is Ready as it arrives (2026-11-27).
     done |= {d.id for d, _r in pairs if d.current_stage == DeviceStage.rma and d.l1l2_status == "Ready"}
     return {d.id: (d.id in started or d.id in done, d.id in done) for d, _r in pairs}

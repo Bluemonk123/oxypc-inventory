@@ -103,13 +103,20 @@ asyncio.run(main())
         r = post("/stock/return-stock/move-rma", barcodes=f"{a},{b}")
         assert r.json()["moved"] == 2, r.text
         page = app_client.get("/repair/rma").text
-        assert "Devices in RMA" in page and a in page and b in page and "request-l3l4-btn\"" not in page
+        assert "Devices in RMA" in page and a in page and b in page
         for did in (ida, idb):
             assert post("/repair/rma/pick", device_id=did).status_code == 302
             assert post("/repair/rma/start", device_id=did).status_code == 302
         page = app_client.get("/repair/rma").text
         row = re.search(r'<tr data-device-id="%s".*?</tr>' % ida, page, re.S).group(0)
         assert "/repair/rma/ready" in row and "rma-replace-btn" in row
+        # RMA columns (2026-11-27): header and row cell counts agree; return details shown
+        head = re.search(r'<table id="l1Table".*?<thead.*?</thead>', page, re.S).group(0)
+        ths = re.findall(r"<th>([^<]*)</th>", head)
+        assert ths == ["Tag Number", "WorkID", "Date Assigned", "Bucket", "Parts", "PNA", "Return Reason", "Condition",
+                       "Complaint", "Sales Person", "Warranty", "Repair Notes", "L3/L4 Status", "Aging", "Action"], ths
+        assert len(re.findall(r"<td[\s>]", row)) == len(ths)
+        assert "Not working" in row and "As sold" in row
         assert rs_status(a)[0] == "Repair Pending"
 
         # Ready = Mark Complete: customer return -> Sold, Return Stock Dispatch Pending.
@@ -191,3 +198,94 @@ def test_return_badge_html_and_rules():
     html = return_badge_html({"1": ("RS", "Sold and Replaced for TAGB")}, "1")
     assert ">RS<" in html and 'title="Sold and Replaced for TAGB"' in html
     assert return_badge_html({}, "1") == ""
+
+
+def test_rma_request_l3l4_round_trip_and_cosmetic_complete(app_client, make_user):  # noqa: F811
+    """RMA Devices has Request to L3/L4 (2026-11-27); L3/L4 shows the customer
+    tag a "Customer Return" badge and Mark Complete sends it back to RMA
+    Devices. Cleaning's Cosmetic Complete moves a tag to Cosmetic Completed."""
+    sfx = uuid.uuid4().hex[:6].upper()
+    c, k = f"ITRMA{sfx}C", f"ITRMA{sfx}K"
+    ids = _run(f"""
+import asyncio, sys, uuid
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import select
+from database import AsyncSessionLocal
+from models.lot import Lot
+from models.device import Device, DeviceStage
+from models.sales import Return
+from utils.timezone import app_now
+async def main():
+    async with AsyncSessionLocal() as db:
+        lot = (await db.execute(select(Lot).where(Lot.is_trashed.isnot(True)).limit(1))).scalars().first()
+        d = Device(id=uuid.uuid4(), barcode="{c}", lot_id=lot.id, current_stage=DeviceStage.rma, return_status=True,
+                   tag_return_status="Return for Repair", l1l2_status="Repair Started", is_active=True)
+        k = Device(id=uuid.uuid4(), barcode="{k}", lot_id=lot.id, current_stage=DeviceStage.cleaning, is_active=True)
+        db.add_all([d, k]); await db.flush()
+        db.add(Return(device_id=d.id, processed_by="t", return_date=app_now()))
+        await db.commit()
+        print(d.id)
+asyncio.run(main())
+""")
+    try:
+        u, p = make_user("admin")
+        _login(app_client, u, p)
+        csrf = app_client.cookies.get("csrf_token") or "x"
+        H = {"X-CSRF-Token": csrf}
+        page = app_client.get("/repair/rma").text
+        row = re.search(r'<tr data-device-id="%s".*?</tr>' % ids, page, re.S).group(0)
+        assert "request-l3l4-btn" in row and "rma-replace-btn" in row and "/repair/rma/ready" in row
+        eng = _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        print((await db.execute(text("select username from users where status is not false limit 1"))).scalar())
+asyncio.run(main())
+""")
+        r = app_client.post("/repair/request-l3l4", data={"csrf_token": csrf, "device_id": ids,
+                                                          "assigned_l3l4_username": eng}, headers=H, follow_redirects=False)
+        assert r.status_code == 302 and r.headers["location"].startswith("/repair/rma"), r.headers.get("location")
+        l34 = app_client.get("/repair/l3l4").text
+        cell = l34[l34.index(f">{c}</a>"):][:600]
+        assert "Customer Return</span>" in cell
+        r = app_client.post("/repair/l3l4-complete", data={"csrf_token": csrf, "device_id": ids}, headers=H,
+                            follow_redirects=False)
+        assert r.status_code == 302
+        cl = app_client.get("/cosmetic/cleaning").text
+        assert f"cosmeticComplete('{k}'" in cl and "Cosmetic Complete" in cl
+        r = app_client.post("/cosmetic/cosmetic-complete", data={"csrf_token": csrf, "barcode": k}, headers=H)
+        assert r.status_code == 200 and r.json()["moved_to"] == "cosmetic_completed", r.text
+        out = _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        for bc in ("{c}", "{k}"):
+            print((await db.execute(text("select current_stage from devices where barcode=:b"), {{"b": bc}})).scalar())
+asyncio.run(main())
+""").splitlines()
+        assert out == ["rma", "cosmetic_completed"], out
+        assert c in app_client.get("/repair/rma").text
+    finally:
+        _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        ids = "select id from devices where barcode in ('{c}','{k}')"
+        fk = "select c.conrelid::regclass::text, a.attname from pg_constraint c join pg_attribute a " \\
+             "on a.attrelid = c.conrelid and a.attnum = c.conkey[1] where c.contype = 'f' and c.confrelid = 'devices'::regclass"
+        for t, col in (await db.execute(text(fk))).all():
+            if t != "devices":
+                await db.execute(text(f"delete from {{t}} where {{col}} in ({{ids}})"))
+        await db.execute(text(f"delete from devices where id in ({{ids}})"))
+        await db.commit()
+asyncio.run(main())
+""")

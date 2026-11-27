@@ -84,7 +84,12 @@
       <div class="card-body p-0">
           <table id="l1Table" class="table table-hover mb-0 small">
             <thead class="table-dark">
+              {% if RMA %}
+              {# RMA Devices columns (2026-11-27, Pankaj) #}
+              <tr><th>Tag Number</th><th>WorkID</th><th>Date Assigned</th><th>Bucket</th><th>Parts</th><th>PNA</th><th>Return Reason</th><th>Condition</th><th>Complaint</th><th>Sales Person</th><th>Warranty</th><th>Repair Notes</th><th>L3/L4 Status</th><th>Aging</th><th>Action</th></tr>
+              {% else %}
               <tr><th>Tag Number</th><th>WorkID</th><th>Date Assigned</th><th>Bucket</th><th>Parts Required</th><th>Parts Requested</th><th>PNA Parts</th><th>Repair Notes</th><th>Stress Notes</th><th>Aging</th><th>Status</th><th>L3/L4 Status</th><th>Action</th></tr>
+              {% endif %}
             </thead>
             <tbody>
               {% for device, lot_number in devices %}
@@ -126,8 +131,14 @@
                   {% else %}<span class="text-muted">—</span>{% endif %}
                 </td>
                 <td>{% set bkt = bucket_map.get(device.id|string) if bucket_map is defined else None %}{% if bkt %}<span class="badge bg-warning text-dark font-monospace">{{ bkt }}</span>{% else %}<span class="text-muted">—</span>{% endif %}</td>
-                <td class="text-center">{% set pr = parts_required_map.get(device.id|string, 0) if parts_required_map is defined else 0 %}<span class="badge bg-{{ 'warning text-dark' if pr else 'light text-muted border' }}">{{ pr }}</span></td>
-                <td class="text-center">{% set pq = parts_requested_map.get(device.id|string, 0) if parts_requested_map is defined else 0 %}<span class="badge bg-{{ 'primary' if pq else 'light text-muted border' }}">{{ pq }}</span></td>
+                {% set pr = parts_required_map.get(device.id|string, 0) if parts_required_map is defined else 0 %}
+                {% set pq = parts_requested_map.get(device.id|string, 0) if parts_requested_map is defined else 0 %}
+                {% if RMA %}
+                <td class="text-center text-nowrap"><span class="badge bg-{{ 'warning text-dark' if pr else 'light text-muted border' }}" title="Parts required">{{ pr }}</span> / <span class="badge bg-{{ 'primary' if pq else 'light text-muted border' }}" title="Parts requested">{{ pq }}</span></td>
+                {% else %}
+                <td class="text-center"><span class="badge bg-{{ 'warning text-dark' if pr else 'light text-muted border' }}">{{ pr }}</span></td>
+                <td class="text-center"><span class="badge bg-{{ 'primary' if pq else 'light text-muted border' }}">{{ pq }}</span></td>
+                {% endif %}
                 {# PNA count for this tag — Parts Consumption marks plus any
                    raised on the L3/L4 board. Hover lists the actual parts, so
                    a supervisor does not have to open the tag to see what is
@@ -139,9 +150,22 @@
                         title="{{ pna | join(', ') }}">{{ pna | length }}</span>
                   {% else %}<span class="badge bg-light text-muted border">0</span>{% endif %}
                 </td>
+                {% if RMA %}
+                {% set ri = rma_info.get(device.id|string, {}) if rma_info is defined else {} %}
+                <td class="small">{{ ri.reason or '—' }}</td>
+                <td class="small">{{ ri.condition or '—' }}</td>
+                <td class="small text-muted">{{ ri.complaint or '—' }}</td>
+                <td class="small">{{ ri.sales_person or '—' }}</td>
+                <td class="text-nowrap">{% if ri %}<span class="badge {{ ri.w_cls }}">{{ ri.warranty }}</span>{% if ri.w_till %}<div class="text-muted" style="font-size:.72rem">{{ 'till' if ri.warranty == 'In Warranty' else 'ended' }} {{ ri.w_till.strftime('%d-%m-%Y') }}</div>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                <td class="text-muted">{{ device.repair_notes or '—' }}</td>
+                {% set _rma_l34 %}{% if device.l34_status %}<span class="badge bg-{{ 'success' if device.l34_status == 'Completed' else ('danger' if 'Scrap' in device.l34_status else 'info') }}">{{ device.l34_status }}</span>{% else %}<span class="text-muted">—</span>{% endif %}{% endset %}
+                <td>{{ _rma_l34 }}</td>
+                {% else %}
                 <td class="text-muted">{{ device.repair_notes or '—' }}</td>
                 <td class="text-muted small">{{ device.stress_notes or '—' }}</td>
+                {% endif %}
                 <td>{% if wo %}<span class="badge bg-{{ 'danger' if wo.days_pending >= 3 else ('warning text-dark' if wo.days_pending >= 1 else 'secondary') }}">{{ wo.days_pending }} day{{ 's' if wo.days_pending != 1 else '' }}</span>{% if wo.paused %}<span class="badge bg-secondary ms-1" title="Frozen — a required part is out of stock"><i class="bi bi-pause-fill"></i> Paused</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
+                {% if not RMA %}
                 <td>
                   {% set st = device.l1l2_status or 'New' %}
                   <span class="badge bg-{{ 'success' if st == 'Ready' else 'info' if st == 'Repair Started' else ('primary' if st == 'Requested to L3/L4' else 'warning text-dark' if st == 'Returned from L3/L4' else 'secondary') }}">{{ st }}</span>
@@ -151,6 +175,7 @@
                   <span class="badge bg-{{ 'success' if device.l34_status == 'Completed' else ('danger' if 'Scrap' in device.l34_status else 'info') }}">{{ device.l34_status }}</span>
                   {% else %}<span class="text-muted">—</span>{% endif %}
                 </td>
+                {% endif %}
                 <td class="text-nowrap">
                   {% if RMA and device.l1l2_status == 'Ready' %}
                     {# RMA replacement tag: Ready as it arrives — dispatched from Return Stock. #}
@@ -188,15 +213,14 @@
                     {% endif %}
                     {% endif %}
                     {% if can(current_user, PM, 'edit') %}
+                    <button type="button" class="btn btn-sm btn-outline-primary request-l3l4-btn"
+                            data-device="{{ device.id }}" data-barcode="{{ device.barcode }}">
+                      <i class="bi bi-arrow-up-right-circle"></i> Request to L3/L4</button>
                     {% if RMA %}
                     {# Replace (2026-11-27): give the customer another tag in stock. #}
                     <button type="button" class="btn btn-sm btn-outline-primary rma-replace-btn"
                             data-device="{{ device.id }}" data-barcode="{{ device.barcode }}">
                       <i class="bi bi-arrow-left-right"></i> Replace</button>
-                    {% else %}
-                    <button type="button" class="btn btn-sm btn-outline-primary request-l3l4-btn"
-                            data-device="{{ device.id }}" data-barcode="{{ device.barcode }}">
-                      <i class="bi bi-arrow-up-right-circle"></i> Request to L3/L4</button>
                     {% endif %}
                     {% endif %}
                   {% else %}

@@ -46,7 +46,7 @@
               <tr data-device-id="{{ it.device_id }}" data-pna="{{ (pna_map.get(it.device_id|string, []) | length) if pna_map is defined else 0 }}"
                   data-as-is="{{ '1' if it.as_is else '0' }}" data-fqc-fail="{{ '1' if it.fqc_fail else '0' }}"
                   data-cust-return="{{ '1' if it.device_id in cust_return_ids else '0' }}">
-                <td class="text-nowrap"><a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a>{{ parts_badge(parts_badges, it.device_id) }}</td>
+                <td class="text-nowrap"><a href="/devices/{{ it.barcode }}" class="font-monospace text-decoration-none">{{ it.barcode }}</a>{{ parts_badge(parts_badges, it.device_id) }}{% if it.device_id in (open_return_ids or []) %}<br><span class="badge bg-warning text-dark" title="Customer return — Mark Complete sends it back to RMA Devices">Customer Return</span>{% endif %}</td>
                 {# Owner + Pick This on every tag that isn't yours (2026-10-19). #}
                 <td>{% if it.unassigned %}<span class="badge bg-warning text-dark" title="Moved to L3/L4 without a WorkID — Pick This to take it">Unassigned</span>{% else %}<span class="font-monospace fw-bold">{{ it.work_id }}</span><br><small class="text-muted">{{ it.assigned_name }}</small>{% endif %}
                   {% if not it.mine and has_perm(current_user.role.value, 'repair_l3', 'enable') %}

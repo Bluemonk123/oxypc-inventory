@@ -100,7 +100,7 @@ ROUTE_ACTIONS = {
     ('POST', '/repair/l1l2-start'): (('repair_l1', 'repair_l2'), 'edit'),  # l1l2_start: module = 'repair_' + device.current_stage (l1|l2)
     ('POST', '/repair/l1/pick'): ('repair_l1', 'edit'),  # l1_pick: already has_perm(repair_l1,'add') in body
     ('POST', '/repair/bulk-part-request'): (('repair_l1', 'repair_l2'), 'add'),  # bulk_part_request: raises part requests from L1/L2 page; module by device stage (l1|l2)
-    ('POST', '/repair/request-l3l4'): (('repair_l1', 'repair_l2'), 'add'),  # request_l3l4: creates L3/L4 WorkOrder from L1/L2 page; module by device.current_stage
+    ('POST', '/repair/request-l3l4'): (('repair_l1', 'repair_l2', 'rma_devices'), 'add'),  # request_l3l4: creates L3/L4 WorkOrder from L1/L2 page; module by device.current_stage
     ('POST', '/repair/l1l2-complete-to-stress'): (('repair_l1', 'repair_l2'), 'edit'),  # l1l2_complete_to_stress: module by device.current_stage (l1|l2)
     # RMA Devices (2026-11-27)
     ('POST', '/repair/rma/pick'): ('rma_devices', 'edit'),  # rma_pick: also has_perm(rma_devices,'add') in body, like L1/L2
@@ -217,6 +217,7 @@ ROUTE_ACTIONS = {
     # ===== routers/cosmetic.py =====
     ('POST', '/cosmetic/flow-data/save'): None,  # cosmetic_flow_data_save: Flow Data config; hardcoded admin/cosmetic_manager only, no matrix module (see notes s3)
     ('POST', '/cosmetic/flow-data/delete'): None,  # cosmetic_flow_data_delete: Flow Data config; hardcoded admin/cosmetic_manager only
+    ('POST', '/cosmetic/cosmetic-complete'): None,  # cosmetic_complete: Cleaning's Cosmetic Complete — everyone with the page (checks the stage page's Enable in the route), 2026-11-27
     ('POST', '/cosmetic/advance'): (('cosmetic_received', 'cosmetic_cleaning', 'cosmetic_putty', 'cosmetic_dry_sanding', 'cosmetic_masking', 'cosmetic_painting', 'cosmetic_water_sanding', 'cosmetic_completed', 'cosmetic_finalqc'), 'edit'),  # advance_stage: module = PERM_MODULE_BY_STAGE[device.current_stage], or cosmetic_finalqc when current_stage == final_qc
     ('POST', '/cosmetic/final-qc/move-failed'): ('cosmetic_finalqc', 'edit'),  # fqc_move_failed
     ('POST', '/cosmetic/final-qc/move-passed'): ('cosmetic_finalqc', 'edit'),  # fqc_move_passed

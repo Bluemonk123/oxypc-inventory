@@ -70,6 +70,14 @@
                   <i class="bi bi-check2 me-1"></i>Move to {{ next_stage_label }}
                 </button>
                 {% endif %}
+                {% if stage.value == 'cleaning' %}
+                {# Cosmetic Complete (2026-11-27, Pankaj): straight to Cosmetic
+                   Completed; everyone with this page sees it. #}
+                <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 ms-1 text-nowrap"
+                        onclick="cosmeticComplete('{{ device.barcode }}', this)">
+                  <i class="bi bi-check2-all me-1"></i>Cosmetic Complete
+                </button>
+                {% endif %}
                 {% if stage.value == 'water_sanding' %}
                 {# Paint Fail (2026-10-24): back to Painting, to the painter the
                    Cosmetic Flow gives. Click twice to confirm. #}
@@ -196,6 +204,26 @@ async function directMoveOrManual(barcode, targetLabel, btn) {
     alert('Network error: ' + e.message);
     btn.disabled = false;
   }
+}
+
+// Cosmetic Complete (Cleaning, 2026-11-27): straight to Cosmetic Completed.
+async function cosmeticComplete(barcode, btn) {
+  if (!confirm('Move ' + barcode + ' straight to Cosmetic Completed?')) return;
+  btn.disabled = true;
+  try {
+    const r = await fetch('/cosmetic/cosmetic-complete', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded', 'X-CSRF-Token': CSRF},
+      body: 'barcode=' + encodeURIComponent(barcode) + '&csrf_token=' + encodeURIComponent(CSRF),
+    });
+    if (r.ok) { window.location.reload(); return; }
+    let msg = '';
+    try { msg = (await r.json()).detail || ''; } catch (e) { msg = ''; }
+    alert('Not moved' + (msg ? ': ' + msg : ''));
+  } catch (e) {
+    alert('Network error: ' + e.message);
+  }
+  btn.disabled = false;
 }
 
 // Paint Fail (Water Sanding, 2026-10-24): first click asks to confirm,

@@ -895,6 +895,27 @@ async def cosmetic_stage_list(stage_name: str, request: Request, db: AsyncSessio
     })
 
 
+# Cosmetic work stages a tag can leave with "Cosmetic Complete" (2026-11-27).
+_WORK_STAGES = (DeviceStage.cleaning, DeviceStage.putty, DeviceStage.dry_sanding, DeviceStage.masking,
+                DeviceStage.painting, DeviceStage.water_sanding)
+
+
+@router.post("/cosmetic-complete")
+async def cosmetic_complete(
+    barcode: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Cleaning's "Cosmetic Complete" (2026-11-27, Pankaj): straight to
+    Cosmetic Completed. Shown to everyone with the page (needs the page's
+    Enable, not Edit) — the same move as /advance with that target."""
+    return await advance_stage(
+        barcode=barcode, notes="", target="cosmetic_completed", engineer_user_id="", final_qc_status="pass",
+        failure_reason="", pass_notes="", bucket_name="", grade="", warehouse="", updated_make="",
+        updated_model="", updated_cpu="", updated_generation="", updated_ram="", updated_hdd="",
+        touch_type="", db=db, current_user=current_user)
+
+
 @router.post("/advance")
 async def advance_stage(
     barcode: str = Form(...),
@@ -933,6 +954,10 @@ async def advance_stage(
     # "Skip Cosmetic" — jump straight to Final QC from any cosmetic stage
     if target == "final_qc" and current in COSMETIC_PIPELINE and current != DeviceStage.final_qc:
         next_stage = DeviceStage.final_qc
+    # "Cosmetic Complete" (2026-11-27, Pankaj) — from a cosmetic work stage
+    # straight to Cosmetic Completed (no assignee, like Water Sanding's move).
+    if target == "cosmetic_completed" and current in _WORK_STAGES:
+        next_stage = DeviceStage.cosmetic_completed
 
     # Final QC: apply spec corrections + handle fail
     if current == DeviceStage.final_qc:
@@ -1156,8 +1181,10 @@ async def advance_stage(
     # whether this particular Move needs an assignee. ──────────────────────
     if current in PERM_MODULE_BY_STAGE:
         module_key = PERM_MODULE_BY_STAGE[current]
-        if not has_perm(role_val, module_key, "edit"):
-            raise HTTPException(403, f"Your role ({role_val}) does not have 'edit' permission for the {module_key} module.")
+        # Cosmetic Complete: anyone with the page (2026-11-27, Pankaj).
+        need = "enable" if (target == "cosmetic_completed" and next_stage == DeviceStage.cosmetic_completed) else "edit"
+        if not has_perm(role_val, module_key, need):
+            raise HTTPException(403, f"Your role ({role_val}) does not have '{need}' permission for the {module_key} module.")
 
     # ── Assignment required for every Move EXCEPT one that lands on Final QC
     # or Cosmetic Completed (Cosmetic Completed's normal "Move to Final QC",
