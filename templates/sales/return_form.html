@@ -100,19 +100,24 @@
           <div id="deviceBrief" class="card border-0 bg-light mb-3 d-none">
             <div class="card-body py-2 px-3 small">
               <div class="row g-2">
-                <div class="col-6"><span class="text-muted">Brand:</span> <strong id="br_make">—</strong></div>
+                {# Brief in 2 columns (2026-11-27, Pankaj). #}
+                <div class="col-6"><span class="text-muted">Make:</span> <strong id="br_make">—</strong></div>
                 <div class="col-6"><span class="text-muted">Model:</span> <strong id="br_model">—</strong></div>
+                <div class="col-6"><span class="text-muted">CPU:</span> <strong id="br_cpu">—</strong></div>
                 <div class="col-6"><span class="text-muted">RAM:</span> <strong id="br_ram">—</strong></div>
                 <div class="col-6"><span class="text-muted">Storage:</span> <strong id="br_storage">—</strong></div>
                 <div class="col-6"><span class="text-muted">Sold Grade:</span> <strong id="br_sold_grade">—</strong></div>
-                <div class="col-6"><span class="text-muted">Sold On:</span> <strong id="br_sold_on">—</strong></div>
+                <div class="col-6"><span class="text-muted">Sold Date:</span> <strong id="br_sold_on">—</strong></div>
                 <div class="col-6"><span class="text-muted">Current Stage:</span> <strong id="br_stage">—</strong></div>
-                <div class="col-12"><span class="text-muted">Warranty Status:</span> <strong id="br_warranty_status">—</strong></div>
-                <div class="col-12"><span class="text-muted">RMA Warranty:</span> <strong id="br_rma_warranty_status">—</strong> <span id="br_rma_warranty_expiry" class="text-muted"></span></div>
+                <div class="col-6"><span class="text-muted">Warranty Status:</span> <strong id="br_warranty_status">—</strong></div>
+                <div class="col-6"><span class="text-muted">RMA Warranty:</span> <strong id="br_rma_warranty_status">—</strong> <span id="br_rma_warranty_expiry" class="text-muted"></span></div>
               </div>
             </div>
           </div>
-          <div class="mb-3">
+          {# Replace Now hidden (2026-11-27, Pankaj): replacement is done by the
+             RMA engineer on RMA Devices (Replace). Kept in the page, not
+             removed — "No" stays selected, so every return goes for repair. #}
+          <div class="mb-3 d-none" id="replaceNowField">
             <label class="form-label fw-semibold d-block">Replace Now</label>
             <div class="form-check form-check-inline">
               <input class="form-check-input" type="radio" name="replace_now" id="replaceNowNo" value="no" checked>
@@ -517,6 +522,9 @@
           barcodeHidden.value = d.barcode;
           document.getElementById('br_make').textContent = d.make;
           document.getElementById('br_model').textContent = d.model;
+          var _cpu = (d.cpu && d.cpu !== '—') ? d.cpu : '';
+          var _gen = d.generation && _cpu.toLowerCase().indexOf(String(d.generation).toLowerCase()) === -1 ? d.generation : '';
+          document.getElementById('br_cpu').textContent = [_cpu, _gen].filter(Boolean).join(' · ') || '—';
           document.getElementById('br_ram').textContent = d.ram;
           document.getElementById('br_storage').textContent = d.storage;
           document.getElementById('br_sold_grade').textContent = d.sold_grade || '—';

@@ -171,6 +171,7 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
+<script src="/static/js/tag-scan-autocheck.js?v={{ ASSET_VERSION }}"></script>
 <script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
 
 <script>
@@ -331,6 +332,10 @@ $(document).ready(function(){
     // delegation) rather than a hand-rolled '#cosmeticSelectAll' bind.
     selectAll: { headerSelector: '#cosmeticSelectAll', rowSelector: '.cosmeticRowCheck', onChange: updateAssignButtonState },
     {% endif %}
+    // Scan + search + auto-select (2026-11-27): ticks the row where there are
+    // checkboxes (admin); otherwise finds and highlights it, ready for the next scan.
+    scan: { inputId: 'cosmeticScanInput', checkboxSelector: '.cosmeticRowCheck', onChange: updateAssignButtonState,
+            placeholder: 'Scan Tag/Serial, or search…' },
   });
 });
 

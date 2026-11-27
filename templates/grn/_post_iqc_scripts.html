@@ -28,13 +28,15 @@ $(document).ready(function(){
       refreshCards(dt.rows({search: 'applied'}).nodes().toArray());
     });
     refreshCards(dt.rows({search: 'applied'}).nodes().toArray());
-    $.fn.dataTable.ext.search.push(function(settings, data){
+    $.fn.dataTable.ext.search.push(function(settings, data, idx){
       if (settings.nTable.id !== 'grnTable') return true;
       var from = document.getElementById('fFrom').value;
       var to   = document.getElementById('fTo').value;
       if (!from && !to) return true;
-      // Global Table shows '04 Nov 2026' (2026-11-04); read it back as YYYY-MM-DD.
-      var d = window.gtIsoDate ? window.gtIsoDate(data[3] || '') : (data[3] || '').trim();  // Date of Invoice — column 3 (GRN, Lot, Invoice before it)
+      // Date of Invoice now sits under the Invoice Number (2026-11-27): read the row's own value.
+      var tr = settings.aoData[idx] && settings.aoData[idx].nTr;
+      var raw = tr ? (tr.getAttribute('data-inv-date') || '') : '';
+      var d = window.gtIsoDate ? window.gtIsoDate(raw) : raw.trim();
       if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) return false;
       if (from && d < from) return false;
       if (to && d > to) return false;
@@ -44,7 +46,7 @@ $(document).ready(function(){
     // Enter in a text box counts as Apply.
     function grnApplyFilters() {
       dt.column(0).search(document.getElementById('fGrn').value)
-        .column(2).search(document.getElementById('fInvoice').value)
+        .column(1).search(document.getElementById('fInvoice').value)
         .column(4).search(document.getElementById('fVendor').value).draw();
     }
     document.getElementById('fApply').addEventListener('click', grnApplyFilters);
@@ -67,7 +69,7 @@ $(document).ready(function(){
     dt.on('draw.dt', grnExportCount);
     grnExportCount();
     document.getElementById('grnExportBtn').addEventListener('click', function () {
-      var cols = [['GRN', function (tr) { return tr.id.replace(/^grn-/, ''); }],
+      var cols = [['GRN', function (tr) { return tr.id.replace(/^grn-/, ''); }], ['GRN Date', 'grn-date'],
                   ['Entity', 'entity'], ['Location ID', 'location'], ['Added By', 'added-by'],
                   ['Lot Number(s)', 'lots'], ['Invoice Number', 'inv'], ['Date of Invoice', 'inv-date'],
                   ['Vendor Name', 'vendor'], ['Quantity', 'qty'], ['Stocked', 'stocked'],
@@ -88,7 +90,7 @@ $(document).ready(function(){
     });
     document.getElementById('fReset').addEventListener('click', function(){
       ['fGrn','fInvoice','fVendor','fFrom','fTo','fEntity'].forEach(function(id){ document.getElementById(id).value=''; });
-      dt.column(0).search('').column(2).search('').column(4).search('').draw();
+      dt.column(0).search('').column(1).search('').column(4).search('').draw();
     });
   }
   // Server-side: the Invoice/PO/Device Type filters used to run as a

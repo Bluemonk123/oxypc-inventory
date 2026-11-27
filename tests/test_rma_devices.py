@@ -31,7 +31,9 @@ def test_rma_stage_permission_and_sidebar_registered():
     from services.stage_work_orders import _SPEC
     from auth.route_actions import ROUTE_ACTIONS
     assert DeviceStage.rma.value == "rma" and STAGE_LABELS[DeviceStage.rma] == "RMA Devices"
-    assert DeviceStage.rma not in DROPDOWN_STAGES
+    assert DeviceStage.rma in DROPDOWN_STAGES           # Customise stage choice (2026-11-27)
+    from routers.stock import CHANGE_ENGINEER_STAGES
+    assert (DeviceStage.rma, "RMA Devices") in CHANGE_ENGINEER_STAGES   # Change Stage modal
     assert _SPEC[DeviceStage.rma][:2] == ("rma", "RMA-")
     assert "rma_devices" in DEFAULT_DISABLED_MODULES
     keys = [k for k, _ in PERM_MODULES]
@@ -280,6 +282,73 @@ from database import AsyncSessionLocal
 async def main():
     async with AsyncSessionLocal() as db:
         ids = "select id from devices where barcode in ('{c}','{k}')"
+        fk = "select c.conrelid::regclass::text, a.attname from pg_constraint c join pg_attribute a " \\
+             "on a.attrelid = c.conrelid and a.attnum = c.conkey[1] where c.contype = 'f' and c.confrelid = 'devices'::regclass"
+        for t, col in (await db.execute(text(fk))).all():
+            if t != "devices":
+                await db.execute(text(f"delete from {{t}} where {{col}} in ({{ids}})"))
+        await db.execute(text(f"delete from devices where id in ({{ids}})"))
+        await db.commit()
+asyncio.run(main())
+""")
+
+
+def test_change_stage_and_customise_move_to_rma(app_client, make_user):  # noqa: F811
+    """Change Stage and Customise list RMA Devices (2026-11-27): the tag lands on
+    RMA Devices with a pending RMA WorkID, status New."""
+    sfx = uuid.uuid4().hex[:6].upper()
+    t1, t2 = f"ITRMA{sfx}S", f"ITRMA{sfx}U"
+    _run(f"""
+import asyncio, sys, uuid
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import select
+from database import AsyncSessionLocal
+from models.lot import Lot
+from models.device import Device, DeviceStage
+async def main():
+    async with AsyncSessionLocal() as db:
+        lot = (await db.execute(select(Lot).where(Lot.is_trashed.isnot(True)).limit(1))).scalars().first()
+        for bc in ("{t1}", "{t2}"):
+            db.add(Device(id=uuid.uuid4(), barcode=bc, lot_id=lot.id, current_stage=DeviceStage.stock_in, is_active=True))
+        await db.commit()
+asyncio.run(main())
+""")
+    try:
+        u, p = make_user("admin")
+        _login(app_client, u, p)
+        csrf = app_client.cookies.get("csrf_token") or "x"
+        H = {"X-CSRF-Token": csrf}
+        page = app_client.get("/repair/l1").text
+        assert '<option value="rma"' in page            # Change Stage modal (top bar)
+        r = app_client.post("/devices/change-engineer", data={"csrf_token": csrf, "barcode": t1, "target_stage": "rma"},
+                            headers=H)
+        assert r.status_code == 200 and r.json()["ok"], r.text
+        r = app_client.post("/iqc/bulk-apply-grade-type", data={"csrf_token": csrf, "barcodes": t2, "to_stage": "rma"},
+                            headers=H, follow_redirects=False)
+        assert r.status_code in (200, 302, 303), r.text
+        out = _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        for bc in ("{t1}", "{t2}"):
+            print((await db.execute(text("select current_stage||'|'||coalesce(l1l2_status,'') from devices where barcode=:b"), {{"b": bc}})).scalar(),
+                  sorted((await db.execute(text("select stage||':'||status from work_orders where barcode=:b"), {{"b": bc}})).scalars().all()))
+asyncio.run(main())
+""").splitlines()
+        assert out[0] == "rma|New ['rma:pending']", out
+        assert out[1].startswith("rma|New"), out
+    finally:
+        _run(f"""
+import asyncio, sys
+sys.path.insert(0, r"{ROOT}")
+from sqlalchemy import text
+from database import AsyncSessionLocal
+async def main():
+    async with AsyncSessionLocal() as db:
+        ids = "select id from devices where barcode in ('{t1}','{t2}')"
         fk = "select c.conrelid::regclass::text, a.attname from pg_constraint c join pg_attribute a " \\
              "on a.attrelid = c.conrelid and a.attnum = c.conkey[1] where c.contype = 'f' and c.confrelid = 'devices'::regclass"
         for t, col in (await db.execute(text(fk))).all():

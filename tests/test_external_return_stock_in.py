@@ -64,7 +64,8 @@ asyncio.run(main())
 """).split()
         # 2026-11-05: External Tag "Complaint" (was Notes) is saved as the Complaint
         # 2026-11-05: a new tag gets its IQC record and lands at Stock In too
-        assert out == ["stock_in", "Screen_flickers", "stock_in", "Screen_flickers"], out
+        # 2026-11-27: then straight on to RMA Devices
+        assert out == ["rma", "Screen_flickers", "rma", "Screen_flickers"], out
     finally:
         _run(f"""
 import asyncio, sys

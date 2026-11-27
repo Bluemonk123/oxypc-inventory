@@ -106,7 +106,7 @@
     return '<div class="mcd-card" data-card="' + i + '"><div class="mcd-hd"><i class="bi ' + esc(c.icon) + ' mcd-cat" aria-hidden="true"></i>' +
       (c.kind === 'lot'
         ? '<div class="mcd-mk" title="Lot ' + esc((c.lots || []).join(', ')) + '">' + lotsLine(c.lots) + '</div>'
-        : '<div class="mcd-mk">' + esc(c.make) + ' · ' + esc(c.category) + '</div><div class="mcd-nm">' + esc(c.model) + '</div>') +
+        : '<div class="mcd-mk">' + esc(c.make) + ' · ' + esc(c.category) + '</div><div class="mcd-nm" title="' + esc(c.model).replace(/"/g, '&quot;') + '">' + esc(c.model) + '</div>') +
       '<div class="mcd-trow">' + (c.kind === 'lot'
         ? '<div class="mcd-tot mcd-tot-sub" title="Sub-Lot ' + esc(c.model) + ' · ' + fmt(c.total) + ' in stock">' + esc(c.model) + '</div>'
         : '<div class="mcd-tot">' + fmt(c.total) + ' <span>in stock</span></div>') +

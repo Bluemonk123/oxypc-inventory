@@ -95,6 +95,23 @@ function initScanSelect({ inputId, dt, tableSelector, checkboxSelector, selectio
     // Serial numbers aren't carried on every page's checkbox, so fall back to
     // "the search resolved to exactly one row" — that row is the scan.
     if (!chk && boxes.length === 1) chk = boxes[0];
+    // No checkbox on the row (a page or role without selection, 2026-11-27):
+    // the scan still narrows to the tag, highlights its row and re-arms the
+    // box so the next scan replaces it.
+    if (!chk && !boxes.length) {
+      var rows = document.querySelectorAll(tableSelector + ' tbody tr:not(.dataTables_empty)');
+      var hit = null;
+      for (var r = 0; r < rows.length; r++) {
+        if ((' ' + (rows[r].textContent || '').toUpperCase().replace(/\s+/g, ' ') + ' ').indexOf(' ' + up + ' ') !== -1) { hit = rows[r]; break; }
+      }
+      if (!hit && rows.length === 1) hit = rows[0];
+      if (hit) {
+        exact = true;
+        hit.classList.add('table-active');
+        setTimeout(function () { hit.classList.remove('table-active'); }, 1500);
+        hit.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
 
     if (chk) {
       if (!chk.checked) {

@@ -395,6 +395,7 @@
       list.innerHTML = '';
       Array.prototype.forEach.call(sel.options, function (o, i) {
         if (o.disabled && o.value === '') return;
+        if (o.hidden) return;   // options a page hides (e.g. Return Stock's per-tab stages, 2026-11-27)
         var it = document.createElement('div');
         it.className = 'ss-item' + (i === sel.selectedIndex ? ' ss-sel' : '');
         it.textContent = o.text;

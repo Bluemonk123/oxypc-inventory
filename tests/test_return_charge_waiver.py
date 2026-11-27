@@ -48,6 +48,8 @@ async def main():
         for t in {list(tags)!r}:
             ids = f"(select id from devices where barcode = '{{t}}')"
             await db.execute(text(f"delete from returns where device_id in {{ids}}"))
+            await db.execute(text(f"delete from iqc_snapshots where device_id in {{ids}}"))
+            await db.execute(text(f"delete from work_orders where device_id in {{ids}}"))   # RMA WorkID (2026-11-27)
             await db.execute(text(f"delete from stage_movements where device_id in {{ids}}"))
             await db.execute(text(f"delete from device_location_logs where device_id in {{ids}}"))
             await db.execute(text(f"delete from sales where device_id in {{ids}}"))

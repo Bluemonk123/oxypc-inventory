@@ -2483,7 +2483,7 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     for _ws in (wb["Stage Summary"], wb["Staff Summary"]):
         for row in _ws.iter_rows(min_row=2, min_col=3 if _ws.title == "Staff Summary" else 3, max_col=3):
             for c in row:
-                c.number_format = "yyyy-mm-dd"
+                c.number_format = "yyyy-mm-dd"   # real date cells: Excel filter groups Year > Month > Day
 
     out = _io.BytesIO()
     wb.save(out)

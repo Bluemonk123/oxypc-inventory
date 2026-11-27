@@ -189,8 +189,9 @@
       <table id="grnTable" class="table table-hover mb-0 small align-middle">
         <thead class="table-dark">
           <tr>
-            <th class="ps-3">GRN</th><th>LOT</th><th>Invoice Number</th><th>Date of Invoice</th>
-            <th>Vendor Name</th><th>Quantity</th><th>Stocked</th><th>Amount</th><th>As-Is Lot</th><th>Download</th><th>Added By</th><th>Action</th>
+            {# Columns (2026-11-27, Pankaj): GRN + GRN Date, Invoice + date, Location (Entity + Location ID). #}
+            <th class="ps-3">GRN</th><th>Invoice</th><th>Location</th><th>Lots</th>
+            <th>Vendor Name</th><th>Quantity</th><th>Stocked</th><th>As-Is Lot</th><th>Download</th><th>Amount</th><th>Added By</th><th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -204,13 +205,16 @@
               data-added-by="{{ (user_names.get(g.created_by) if user_names is defined else None) or g.created_by or '' }}"
               data-lots="{{ _lots | map(attribute='lot_number') | join(', ') }}"
               data-inv="{{ g.invoice_number or '' }}" data-inv-date="{{ g.invoice_date or '' }}"
+              data-grn-date="{{ g.grn_date.isoformat() if g.grn_date else '' }}"
               data-vendor="{{ g.sender_name or '' }}" data-qty="{{ g.quantity if g.quantity is not none else '' }}"
               data-stocked="{{ _st0 }}" data-amount="{{ g.amount if (g.amount is not none and can(current_user, piq.mod, 'pricing')) else '' }}"
               data-asis="{{ _as0 or '' }}">
             <td class="ps-3"><a href="/grn/view/{{ g.id }}" class="font-monospace fw-bold text-decoration-none" title="Open GRN details">{{ g.grn_number }}</a>
-              {% if g.entity %}<div class="small text-muted text-nowrap">{{ g.entity }}</div>{% endif %}
-              {% set _gl = location_by_id.get(g.location_id|string) if (location_by_id is defined and g.location_id) else None %}
-              {% if _gl %}<div class="small text-muted text-nowrap"><i class="bi bi-geo-alt"></i> {{ _gl.unit_id }}</div>{% endif %}</td>
+              <div class="small text-muted text-nowrap">{{ g.grn_date.strftime('%d-%m-%Y') if g.grn_date else '—' }}</div></td>
+            <td>{{ g.invoice_number or '—' }}
+              <div class="small text-muted text-nowrap">{{ g.invoice_date or '—' }}</div></td>
+            <td class="text-nowrap">{{ g.entity or '—' }}
+              <div class="small text-muted"><i class="bi bi-geo-alt"></i> {{ _gl0.unit_id if _gl0 else '—' }}</div></td>
             <td>
               {% if _lots %}
               <button type="button" class="btn btn-sm btn-link p-0 fw-semibold text-decoration-none lot-count-btn"
@@ -221,8 +225,6 @@
               <span class="text-muted">—</span>
               {% endif %}
             </td>
-            <td>{{ g.invoice_number or '—' }}</td>
-            <td>{{ g.invoice_date or '—' }}</td>
             <td>{{ g.sender_name or '—' }}</td>
             <td>{{ g.quantity if g.quantity is not none else '—' }}</td>
             {# Stocked (2026-10-21) = tags mapped to this GRN. Add-only: a tag stays
@@ -234,7 +236,6 @@
               <a href="#" class="badge text-decoration-none grn-stocked-open bg-{{ 'success' if g.quantity and _st >= g.quantity else ('warning text-dark' if _st else 'secondary') }}"
                  data-grn-id="{{ g.id }}" data-grn="{{ g.grn_number }}" title="Show the stocked tags">{{ _st }}</a>
             </td>
-            <td>{% if can(current_user, piq.mod, 'pricing') %}{% if g.amount is not none %}₹{{ ((g.amount) | inr(2)) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
             <td>
               {% set _asIs = as_is_lot.get(g.grn_number) if as_is_lot is defined else None %}
               {% if _asIs %}
@@ -253,6 +254,7 @@
               {% if can(current_user, piq.mod, 'export') %}<a href="/grn/download/{{ g.id }}" class="btn btn-sm btn-outline-secondary py-0 px-2"><i class="bi bi-download"></i></a>{% endif %}
               {% else %}—{% endif %}
             </td>
+            <td>{% if can(current_user, piq.mod, 'pricing') %}{% if g.amount is not none %}₹{{ ((g.amount) | inr(2)) }}{% else %}—{% endif %}{% else %}—{% endif %}</td>
             {# Added By (moved before Action 2026-11-02): display name of the user who created this GRN (created_by holds the username). #}
             <td class="text-nowrap">{{ (user_names.get(g.created_by) if user_names is defined else None) or g.created_by or '—' }}</td>
             <td class="text-nowrap">

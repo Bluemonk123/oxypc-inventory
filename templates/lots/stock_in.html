@@ -262,10 +262,21 @@
     <div class="d-flex align-items-center gap-2 flex-wrap">
       {# Search box is moved by JS into the table toolbar, before the pagination.
          Move to RMA (2026-11-27, was Move to L1/L2) shows the selected count. #}
+      {# Return stage filter (2026-11-27, Pankaj): in the card header, next to
+         Move to RMA; options follow the open tab. #}
+      <select id="rsStatusFilter" class="form-select form-select-sm" style="width:180px;" title="Filter by return stage">
+        <option value="">All return stages</option>
+        <option value="Repair Pending" data-tab="received">Repair Pending</option>
+        <option value="Payment Pending" data-tab="received">Payment Pending</option>
+        <option value="Dispatch Pending" data-tab="received">Dispatch Pending</option>
+        <option value="Ready at Gate Pass" data-tab="received">Ready at Gate Pass</option>
+        <option value="Return Complete" data-tab="completed" hidden>Return Complete</option>
+        <option value="Stocked In" data-tab="completed" hidden>Stocked In</option>
+      </select>
       <input type="text" id="rsSearchBox" class="form-control form-control-sm" style="width:220px;"
              placeholder="Search Tag / Serial / Model">
       <button {% if not can(current_user, 'stock', 'edit') %}hidden {% endif %}type="button" id="rsMoveL12Btn" class="btn btn-sm btn-primary text-nowrap" disabled
-              title="Send the ticked Received tags to RMA Devices (unassigned — an engineer uses Pick This)">
+              title="Send ticked tags still at Stock In (older returns) to RMA Devices — new returns go there automatically">
         <i class="bi bi-arrow-repeat me-1"></i>Move to RMA (<span id="rsSelectedCount">0</span>)
       </button>
     </div>
@@ -285,6 +296,7 @@
           {% for row in return_stock_rows %}
           {% set d = row.device %}{% set ret = row.ret %}
           <tr data-rs-search="{{ (d.barcode or '') ~ ' ' ~ (d.serial_no or '') ~ ' ' ~ (d.model or '') }}"
+              data-rs-status="{{ row.status }}"
               data-rs-tab="{{ 'completed' if row.status in ('Return Complete', 'Stocked In') else 'received' }}">
             <td>{% if row.can_move_l12 %}<input type="checkbox" class="rs-row-check" value="{{ d.barcode }}">{% endif %}</td>
             <td>
@@ -1196,18 +1208,25 @@ var rsTab = 'received';
 $.fn.dataTable.ext.search.push(function(settings, data, idx){
   if(settings.nTable.id !== 'returnStockTable') return true;
   var tr = settings.aoData[idx].nTr;
-  return !tr || (tr.getAttribute('data-rs-tab') || 'received') === rsTab;
+  if(!tr) return true;
+  if((tr.getAttribute('data-rs-tab') || 'received') !== rsTab) return false;
+  var st = document.getElementById('rsStatusFilter').value;
+  return !st || tr.getAttribute('data-rs-status') === st;
 });
+document.getElementById('rsStatusFilter').addEventListener('change', function(){ dtReturnStock.draw(); });
 document.querySelectorAll('#rsTabs [data-rs-tab]').forEach(function(b){
   b.addEventListener('click', function(){
     rsTab = b.getAttribute('data-rs-tab');
+    var sel = document.getElementById('rsStatusFilter');
+    sel.value = '';
+    sel.querySelectorAll('option[data-tab]').forEach(function(o){ o.hidden = o.dataset.tab !== rsTab; });
     document.querySelectorAll('#rsTabs .nav-link').forEach(function(x){ x.classList.toggle('active', x === b); });
     dtReturnStock.draw();
   });
 });
 dtReturnStock.draw();
 // Search box sits in the toolbar's right group, before pagination.
-$('#returnStockTable_wrapper .dataTables_paginate').before($('#rsSearchBox'));
+$('#returnStockTable_wrapper .dataTables_paginate').before($('#rsSearchBox'));   // stage filter stays in the card header
 function rsSelectedBarcodes(){
   return dtReturnStock.$('.rs-row-check:checked').toArray().map(function(c){ return c.value; });
 }

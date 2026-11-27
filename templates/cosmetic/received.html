@@ -215,9 +215,8 @@
 {% block scripts %}
 <script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
 
-{% if current_user.role.value in ('admin', 'cosmetic_manager') %}
+{# Loaded for everyone: scan + search + auto-select works for every role (2026-11-27). #}
 <script src="/static/js/tag-scan-autocheck.js?v={{ ASSET_VERSION }}"></script>
-{% endif %}
 <script>
 let _moveBarcode = null;
 let _cosmeticFailBarcode = null;
@@ -402,8 +401,11 @@ $(document).ready(function(){
     // typing a tag number and hitting Enter auto-ticks that row and adds it
     // to cosmeticRecvSelected — same mechanism as Devices' devicesScanInput.
     // Previously this page had no scan wiring at all, only free-text search.
-    scan: { inputId: 'cosmeticRecvScanInput', selection: cosmeticRecvSelected, checkboxSelector: '.cosmeticRecvRowCheck', onChange: updateCosmeticRecvAssignButtonState },
     {% endif %}
+    // Scan + search + auto-select for everyone with the page (2026-11-27):
+    // rows tick where the role has checkboxes; otherwise the row is found
+    // and highlighted and the box re-arms for the next scan.
+    scan: { inputId: 'cosmeticRecvScanInput', selection: cosmeticRecvSelected, checkboxSelector: '.cosmeticRecvRowCheck', onChange: updateCosmeticRecvAssignButtonState },
   });
 
   // Fail Note tooltip on the "Failed from Final QC" badge's info icon —

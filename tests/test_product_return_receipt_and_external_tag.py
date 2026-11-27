@@ -214,7 +214,7 @@ asyncio.run(main())
         assert state[3] == "0.00" or state[3] == "0"
         # 2026-11-05: new External tag -> Lot CUST, IQC record, lands at Stock In
         assert state[4] == "CUST"
-        assert state[5] == "stock_in"
+        assert state[5] == "rma"   # 2026-11-27: straight to RMA Devices
         assert state[6] == "i5-8350U|8th|16|512"
         assert state[7] == "True"
     finally:

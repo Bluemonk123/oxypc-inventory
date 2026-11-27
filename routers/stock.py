@@ -1345,10 +1345,10 @@ async def stock_in_list(
             status = "Return Complete"
         elif _done:
             status = "Payment Pending" if (due and not ret.paid_at) else "Dispatch Pending"
-        elif _started:
-            status = "Repair Pending"
         else:
-            status = "Received"
+            # No "Received" step (2026-11-27, Pankaj): a return lands straight
+            # in RMA Devices, so it starts as Repair Pending.
+            status = "Repair Pending"
         return_stock_rows.append({
             "device": dev, "lot_number": lot_num, "ret": ret, "part_cost": part_cost,
             "labour_cost": labour_cost, "repair_cost": repair_cost,
@@ -1358,9 +1358,9 @@ async def stock_in_list(
             "sold_again": status == "Return Complete" and resale is None,
             # Buttons (2026-11-05): Only Stock In while Received at Stock In;
             # Ready to Dispatch once repair is done (Dispatch Pending).
-            "can_stock_in": status == "Received" and dev.current_stage == DeviceStage.stock_in,
+            "can_stock_in": not _started and status == "Repair Pending" and dev.current_stage == DeviceStage.stock_in,
             "can_dispatch": status == "Dispatch Pending",
-            "can_move_l12": status == "Received" and dev.current_stage == DeviceStage.stock_in,
+            "can_move_l12": not _started and status == "Repair Pending" and dev.current_stage == DeviceStage.stock_in,
             "replaced_with": ((dev.tag_return_status or "")[len(RMA_REPLACEMENT_PREFIX):].strip()
                               if (dev.tag_return_status or "").startswith(RMA_REPLACEMENT_PREFIX) else None),
             "labour_basis": (None if not due else ("With L3/L4" if ch["l34"] else
@@ -2631,6 +2631,7 @@ async def trc_production_pna_summary(
 CHANGE_ENGINEER_STAGES = [
     (DeviceStage.l1, STAGE_LABELS[DeviceStage.l1]),
     (DeviceStage.l3, STAGE_LABELS[DeviceStage.l3]),
+    (DeviceStage.rma, STAGE_LABELS[DeviceStage.rma]),      # RMA Devices (2026-11-27)
     (DeviceStage.qc_check, "Stress Test"),
     # "Cosmetic" targets the first of the 8 combined cosmetic stages
     # (cosmetic_received) — same simplification already used for L1/L2 (->
@@ -2655,7 +2656,7 @@ _CE_STAGE_ROLES = {
     "l1": ("l1_engineer", "l2_engineer"), "l3": ("l3_engineer",),
     "qc_check": ("qc_inspector",), "cosmetic_received": ("cosmetic_manager",),
     "final_qc": ("qc_inspector", "cosmetic_manager"), "stock_in": ("inventory_manager",),
-    "trc_production": ("inventory_manager",),
+    "trc_production": ("inventory_manager",), "rma": ("l1_engineer", "l2_engineer"),
 }
 _CE_STAGE_MODULES = {
     "l1": ("repair_l1", "repair_l2"), "l3": ("repair_l3",), "qc_check": ("qc_check",),
@@ -2663,6 +2664,7 @@ _CE_STAGE_MODULES = {
                           "cosmetic_dry_sanding", "cosmetic_masking", "cosmetic_painting",
                           "cosmetic_water_sanding", "cosmetic_completed"),
     "final_qc": ("cosmetic_finalqc",), "stock_in": ("stock",), "trc_production": ("production_manager",),
+    "rma": ("rma_devices",),
 }
 
 
@@ -2759,7 +2761,7 @@ async def change_engineer(
 
     device.current_stage = new_stage
     reset_repair_cycle_on_entry(device, prev_stage, new_stage)
-    if new_stage == DeviceStage.l1:
+    if new_stage in (DeviceStage.l1, DeviceStage.rma):
         device.l1l2_status = "New"   # new engineer hasn't started (2026-10-23)
     device.updated_at = app_now()
     db.add(StageMovement(
@@ -2838,7 +2840,7 @@ async def _move_to_stage_unassigned(db, device, target_stage: str, current_user)
         prev_mv.exited_at = app_now()
     device.current_stage = new_stage
     reset_repair_cycle_on_entry(device, prev_stage, new_stage)
-    if new_stage == DeviceStage.l1:
+    if new_stage in (DeviceStage.l1, DeviceStage.rma):
         device.l1l2_status = "New"
     device.updated_at = app_now()
     label = dict(CHANGE_ENGINEER_STAGES).get(new_stage, new_stage.value)

@@ -99,6 +99,15 @@ DEFAULT_TRANSITIONS = [
     ("rma",           "iqc"),
     ("rma",           "stock_in"),
     ("ready_to_sale", "rma"),
+    # Customise / Change Stage can move a tag to or from RMA Devices (2026-11-27).
+    ("iqc",           "rma"),
+    ("l1",            "rma"),
+    ("rma",           "l1"),
+    ("l3",            "rma"),
+    ("rma",           "l3"),
+    ("qc_check",      "rma"),
+    ("final_qc",      "rma"),
+    ("rma",           "ready_to_sale"),
     # QC to cosmetic refurb
     ("qc_check",      "cleaning"),
     ("qc_check",      "ready_to_sale"),   # for mint-condition devices

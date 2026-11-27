@@ -129,6 +129,7 @@ async def device_brief(barcode: str, require_stage: str = "", db: AsyncSession =
         "make": device.brand or "—",
         "model": device.model or "—",
         "cpu": device.cpu or "—",
+        "generation": device.generation or "",   # Return form CPU (with Gen), 2026-11-27
         "lot_number": lot_number,
         # Stock Type (2026-11-08) — Extended Warranty shows it after Lot Number.
         "stock_type": STOCK_TYPE_LABELS.get(stock_type_key(device.current_stage, device.sub_lot_number), "—"),

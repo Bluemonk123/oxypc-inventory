@@ -3536,6 +3536,12 @@ async def process_return(
                          moved_by=current_user.username,
                          notes="Internal Tag return submitted — back in Stock In pending approval"))
     await ensure_stage_location(db, device, DeviceStage.stock_in, current_user)
+    # Straight to RMA Devices (2026-11-27, Pankaj): a return for repair lands
+    # on RMA Devices (unassigned, Pick This) as Repair Pending. A tag replaced
+    # at return time is our stock again and stays in Stock In.
+    if not do_replace and action_taken != "scrap":
+        from routers.stock import _move_device_to_rma
+        await _move_device_to_rma(db, device, current_user)
 
     await audit(db, user=current_user, action="RETURN_SUBMITTED",
                 table_name="returns", record_id=str(device.id),
@@ -3802,6 +3808,9 @@ async def process_external_return(
     )
     db.add(ret)
     device.return_status = True
+    # Straight to RMA Devices (2026-11-27, Pankaj), as Internal Tag returns.
+    from routers.stock import _move_device_to_rma
+    await _move_device_to_rma(db, device, current_user)
 
     await audit(db, user=current_user, action="EXTERNAL_RETURN_SUBMITTED",
                 table_name="returns", record_id=str(device.id),

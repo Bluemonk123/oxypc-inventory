@@ -182,7 +182,7 @@ def test_return_stock_table_renders_row(app_client, make_user):  # noqa: F811
         row = _row(html, barcode)
         assert "rs-verify-btn" not in row
         # 2026-11-05: Received (not repaired) -> no Ready to Dispatch yet
-        assert ">Received<" in row and "rs-complete-btn" not in row
+        assert ">Repair Pending<" in row and "rs-complete-btn" not in row   # 2026-11-27: no Received step
         _mark_repaired(barcode)
         row = _row(app_client.get("/stock", follow_redirects=True).text, barcode)
         assert ">Dispatch Pending<" in row and "rs-complete-btn" in row and "Ready to Dispatch" in row

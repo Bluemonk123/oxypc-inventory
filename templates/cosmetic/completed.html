@@ -122,6 +122,7 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script src="/static/js/tag-scan-autocheck.js?v={{ ASSET_VERSION }}"></script>
 <script>document.addEventListener('DOMContentLoaded', function () { if (window.flashAsToast) window.flashAsToast(); });  /* success message as a top-right toast (2026-10-19) */</script>
 
 <script>
@@ -199,6 +200,11 @@ $(document).ready(function(){
   var dt = initGlobalTable('#cosmeticCompletedTable', {
     order: [[0, 'asc']],
     columnDefs: [{ orderable: false, targets: [-1] }],
+  }, {
+    // Scan + search + auto-select (2026-11-27): no checkboxes here, so the
+    // scanned tag's row is found and highlighted, ready for the next scan.
+    scan: { inputId: 'cosmeticCompletedScanInput', checkboxSelector: '.cosmeticCompletedRowCheck',
+            placeholder: 'Scan Tag/Serial, or search…' },
   });
 })
 </script>

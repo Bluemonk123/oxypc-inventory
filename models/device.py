@@ -90,8 +90,8 @@ STAGE_LABELS = {
 # for a tag that was never really sold. Selling only ever happens through the
 # real Sale-creation flow (routers/sales.py mark_sold), which sets this stage
 # itself alongside the Sale row — it doesn't need this dropdown at all.
-# rma (2026-11-27) is entered only from Return Stock -> Move to RMA.
-DROPDOWN_STAGES = [s for s in DeviceStage if s not in (DeviceStage.l2, DeviceStage.sold, DeviceStage.rma)]
+# RMA Devices is a stage choice too (Customise / Change Stage, 2026-11-27).
+DROPDOWN_STAGES = [s for s in DeviceStage if s not in (DeviceStage.l2, DeviceStage.sold)]
 
 # The paint-line stages plus Putty, grouped as "Cosmetic" wherever the app
 # needs one count/filter for that whole phase (Dashboard's Stage Pipeline,
@@ -367,6 +367,11 @@ def reset_repair_cycle_on_entry(device, prev_stage, new_stage) -> bool:
     sending a tag back to L1, keep their status. Returns True when reset."""
     repair = (DeviceStage.l1, DeviceStage.l2)
     if new_stage in repair and prev_stage not in repair:
+        device.l1l2_status = "New"
+        device.l34_status = None
+        return True
+    # RMA Devices works the same way (2026-11-27).
+    if new_stage == DeviceStage.rma and prev_stage != DeviceStage.rma:
         device.l1l2_status = "New"
         device.l34_status = None
         return True
