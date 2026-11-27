@@ -19,10 +19,11 @@
       <input type="date" id="retDateFrom" class="form-control form-control-sm" style="max-width:135px;">
       <label class="text-muted small mb-0 text-nowrap">To</label>
       <input type="date" id="retDateTo" class="form-control form-control-sm" style="max-width:135px;">
+      {# Tag badge filter (2026-11-27): Replaced = "Replaced with …" rows, Returned = the returned tags. #}
       <select id="retReplacementFilter" class="form-select form-select-sm text-nowrap" style="max-width:150px;">
-        <option value="all" selected>Replacement: All</option>
-        <option value="yes">Replacement: Yes</option>
-        <option value="no">Replacement: No</option>
+        <option value="all" selected>All</option>
+        <option value="yes">Replaced</option>
+        <option value="no">Returned</option>
       </select>
       <button type="button" id="retResetBtn" class="btn btn-sm btn-outline-secondary text-nowrap">
         <i class="bi bi-arrow-counterclockwise me-1"></i>Reset
@@ -41,23 +42,36 @@
     <table id="returnsTable" class="table table-hover mb-0 small">
       <thead class="table-dark">
         <tr>
-          <th>Return Date</th><th>Tag Number</th><th>Serial Number</th><th>Device</th><th>Sale No.</th>
-          <th>Sale Price</th><th>Paid Repair</th><th>Reason</th><th>Condition</th>
-          <th>Type</th><th>Processed By</th><th>Receipt</th>
+          {# Columns (2026-11-27, Pankaj); Type removed. #}
+          <th>Return Date</th><th>Tag No</th><th>Serial No</th><th>Make</th><th>Model</th>
+          <th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th>
+          <th>Sale Date</th><th>Sale No</th><th>Sales Person</th><th>Return By</th>
+          <th>Paid Repair</th><th>Reason</th><th>Condition</th><th>Receipt</th>
         </tr>
       </thead>
       <tbody>
         {# returned tag -> its Replace Now replacement tag, for the export's "Replaced Tag" column #}
         {% set repl_map = {} %}
-        {% for r in replacements %}{% set _ = repl_map.update({ (r[4] or '')[14:].strip(): r[0] }) %}{% endfor %}
-        {% for ret, barcode, brand, model, entity, serial_no, sale_price, sale_number, customer_name, customer_phone, customer_address in returns %}
+        {% for d, s in replacements %}{% set _ = repl_map.update({ (d.replaced or '')[14:].strip(): d.barcode }) %}{% endfor %}
+        {% macro spec(d) -%}
+          <td>{{ d.cpu or '—' }}</td><td>{{ d.generation or '—' }}</td>
+          <td>{{ (d.ram_gb ~ ' GB') if d.ram_gb else '—' }}</td>
+          <td>{{ (d.storage_gb ~ ' GB' ~ (' ' ~ d.storage_type if d.storage_type else '')) if d.storage_gb else '—' }}</td>
+        {%- endmacro %}
+        {% for ret, d, sale in returns %}
+        {% set barcode = d.barcode %}
         <tr data-replacement="no" data-return-date="{{ ret.return_date.strftime('%Y-%m-%d') if ret.return_date else '' }}">
           <td>{{ ret.return_date.strftime('%d-%b-%Y') if ret.return_date else '—' }}</td>
-          <td data-export="{{ barcode }}" data-replaced-tag="{{ repl_map.get(barcode, '') }}"><code>{{ barcode }}</code></td>
-          <td>{{ serial_no or '—' }}</td>
-          <td>{{ brand }} {{ model }}</td>
-          <td><code>{{ sale_number }}</code></td>
-          <td>{% if can(current_user, 'returns', 'pricing') %}&#8377;{{ ((sale_price) | inr) }}{% else %}—{% endif %}</td>
+          <td data-export="{{ barcode }}" data-replaced-tag="{{ repl_map.get(barcode, '') }}"><code>{{ barcode }}</code><br>
+            {% if ret.approval_status == 'rejected' %}<span class="badge bg-danger" title="{{ ret.rejection_reason or '' }}">Rejected</span>
+            {% else %}<span class="badge bg-warning text-dark">Returned</span>{% endif %}</td>
+          <td>{{ d.serial_no or '—' }}</td>
+          <td>{{ d.brand or '—' }}</td><td>{{ d.model or '—' }}</td>
+          {{ spec(d) }}
+          <td data-order="{{ sale.sold_at.strftime('%Y-%m-%d') if sale and sale.sold_at else '' }}">{{ sale.sold_at.strftime('%d-%b-%Y') if sale and sale.sold_at else '—' }}</td>
+          <td><code>{{ sale.sale_number if sale else '—' }}</code></td>
+          <td>{{ (sales_person.get(sale.id|string) if sale else '') or '—' }}</td>
+          <td class="text-muted">{{ ret.processed_by or '—' }}</td>
           <td>{% if can(current_user, 'returns', 'pricing') %}{{ ('₹' ~ ((ret.refund_amount) | inr)) if ret.refund_amount else '—' }}{% else %}—{% endif %}
             {# Charge status (2026-10-29): Payment Due / Paid / Waived Off, same as Rental Return #}
             {% if ret.charge_decision == 'waive_off' %}
@@ -82,30 +96,20 @@
             {% else %}—{% endif %}
           </td>
           <td>
-            {#- Type (2026-11-21, was approval Status): returns are approved when
-                logged, so only old rejected rows show anything other than Return. -#}
-            {% if ret.approval_status == 'rejected' %}
-            <span class="badge bg-danger" title="{{ ret.rejection_reason or '' }}">Rejected</span>
-            {% else %}
-            <span class="badge bg-warning text-dark">Return</span>
-            {% endif %}
-          </td>
-          <td class="text-muted">{{ ret.processed_by }}</td>
-          <td>
             <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2 view-receipt-btn"
                     data-bs-toggle="modal" data-bs-target="#receiptModal"
                     data-id="{{ ret.id }}"
-                    data-entity="{{ entity or '—' }}"
-                    data-customer-name="{{ customer_name or '—' }}"
-                    data-customer-phone="{{ customer_phone or '—' }}"
+                    data-entity="{{ d.entity or '—' }}"
+                    data-customer-name="{{ (sale.customer_name if sale else '') or '—' }}"
+                    data-customer-phone="{{ (sale.customer_phone if sale else '') or '—' }}"
                     data-customer-email="{{ ret.customer_email or '—' }}"
-                    data-customer-address="{{ customer_address or '—' }}"
+                    data-customer-address="{{ (sale.customer_address if sale else '') or '—' }}"
                     data-reason="{{ ret.reason or '—' }}"
                     data-condition="{{ ret.condition_on_return or '—' }}"
                     data-tag-number="{{ barcode }}"
                     data-serial-number="{{ ret.serial_captured or '—' }}"
-                    data-make="{{ brand or '—' }}"
-                    data-model="{{ model or '—' }}"
+                    data-make="{{ d.brand or '—' }}"
+                    data-model="{{ d.model or '—' }}"
                     data-paid-repair="{{ ('%.2f'|format(ret.refund_amount) if ret.refund_amount is not none else '0.00') if can(current_user, 'returns', 'pricing') else '' }}"
                     data-charge="{% if ret.charge_decision == 'waive_off' %}Waived Off{% if ret.waiver_reason %} — {{ ret.waiver_reason }}{% endif %}{% elif ret.charge_decision == 'payment_due' and ret.paid_at %}Paid ({{ ret.payment_reference }}){% elif ret.charge_decision == 'payment_due' %}Payment Due{% else %}—{% endif %}">
               <i class="bi bi-receipt me-1"></i>Receipt
@@ -113,19 +117,20 @@
           </td>
         </tr>
         {% endfor %}
-        {% for barcode, brand, model, entity, replaced, serial_no, sale_price, sale_number, sold_at, sold_by, customer_name, customer_phone, customer_address in replacements %}
-        <tr data-replacement="yes" data-return-date="{{ sold_at.strftime('%Y-%m-%d') if sold_at else '' }}">
-          <td>{{ sold_at.strftime('%d-%b-%Y') if sold_at else '—' }}</td>
-          <td data-export="{{ barcode }}" data-replaced-tag="{{ (replaced or '')[14:].strip() }}"><code>{{ barcode }}</code><br><span class="badge bg-info text-dark">{{ replaced }}</span></td>
-          <td>{{ serial_no or '—' }}</td>
-          <td>{{ brand }} {{ model }}</td>
-          <td><code>{{ sale_number }}</code></td>
-          <td>{% if can(current_user, 'returns', 'pricing') %}&#8377;{{ ((sale_price) | inr) }}{% else %}—{% endif %}</td>
+        {% for d, sale in replacements %}
+        <tr data-replacement="yes" data-return-date="{{ sale.sold_at.strftime('%Y-%m-%d') if sale.sold_at else '' }}">
+          <td>{{ sale.sold_at.strftime('%d-%b-%Y') if sale.sold_at else '—' }}</td>
+          <td data-export="{{ d.barcode }}" data-replaced-tag="{{ (d.replaced or '')[14:].strip() }}"><code>{{ d.barcode }}</code><br><span class="badge bg-info text-dark">{{ d.replaced }}</span></td>
+          <td>{{ d.serial_no or '—' }}</td>
+          <td>{{ d.brand or '—' }}</td><td>{{ d.model or '—' }}</td>
+          {{ spec(d) }}
+          <td data-order="{{ sale.sold_at.strftime('%Y-%m-%d') if sale.sold_at else '' }}">{{ sale.sold_at.strftime('%d-%b-%Y') if sale.sold_at else '—' }}</td>
+          <td><code>{{ sale.sale_number }}</code></td>
+          <td>{{ sales_person.get(sale.id|string) or '—' }}</td>
+          <td class="text-muted">{{ sale.sold_by or '—' }}</td>
           <td>—</td>
           <td>—</td>
           <td>—</td>
-          <td><span class="badge bg-secondary">Replacement</span></td>
-          <td class="text-muted">{{ sold_by or '—' }}</td>
           <td>—</td>
         </tr>
         {% endfor %}
@@ -209,7 +214,7 @@ document.getElementById('returnPaidModal').addEventListener('show.bs.modal', fun
 $(document).ready(function(){
   var dt = initGlobalTable('#returnsTable', { order: [[0, 'desc']] });
 
-  // Date Range (Return Date column) + Replacement (All/Yes/No) filter bar,
+  // Date Range (Return Date column) + tag badge (All / Replaced / Returned) filter bar,
   // server-rendered in the card header per the Global Table convention —
   // one search hook so paging/sorting never undoes the filter. Replacement
   // reads off data-replacement, stamped "yes" only on the replacement-tag

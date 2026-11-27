@@ -3,8 +3,15 @@ OxyPC Warranty Utility
 ======================
 Single source of truth for device warranty derivation.
 
-Policy: warranty runs for WARRANTY_DAYS (30) days from the most recent Sale date
-(Sale.sold_at) of a device. A device that was never sold has no warranty.
+Policy (2026-11-27, Pankaj — one rule everywhere): a tag is in warranty only
+when a warranty was picked on its sale (Sale.warranty_type, with
+Sale.warranty_expires_at, pushed forward by Extended Warranty) and today is on
+or before that end date. No warranty picked = No Warranty. There is no longer
+a 30-days-from-sale default; use effective_warranty_for_sale /
+warranty_status_for_sale (and latest_sale_map for lists).
+
+warranty_from_sold_at below is the old 30-day rule, kept only for callers
+outside this app's pages; nothing on a page should use it.
 
 Definition (per spec):
   - Active   -> "Warranty Left: <N> days"  where N = 30 - days_passed_since_sale
@@ -138,13 +145,16 @@ def effective_warranty_for_sale(sale) -> dict | None:
     on Process Return's "Warranty Status" field while RMA Warranty correctly
     said "In Warranty" for the same tag, and Process Return's paid-repair-
     charge banner keyed off the stale one.
+
+    2026-11-27 (Pankaj): no 30-day default any more — a sale with no warranty
+    picked has no warranty (None), the same as warranty_status_for_sale.
     """
     if not sale:
         return None
     wtype = getattr(sale, "warranty_type", None) or "none"
     expires_at = getattr(sale, "warranty_expires_at", None)
     if wtype == "none" or not expires_at:
-        return warranty_from_sold_at(getattr(sale, "sold_at", None))
+        return None
     now = app_now()
     if now <= expires_at:
         days_left = max((expires_at.date() - now.date()).days, 0)
@@ -193,4 +203,23 @@ async def latest_sold_at_map(db, device_ids) -> dict:
     )).all()
     for did, sold_at in rows:
         out[str(did)] = sold_at
+    return out
+
+
+async def latest_sale_map(db, device_ids) -> dict:
+    """{device_id(str): latest Sale} for the given device ids — for list pages
+    that show each tag's warranty with effective_warranty_for_sale (2026-11-27)."""
+    from sqlalchemy import select
+    from models.sales import Sale
+
+    out: dict = {}
+    ids = list(device_ids or [])
+    for i in range(0, len(ids), 5000):
+        rows = (await db.execute(
+            select(Sale).where(Sale.device_id.in_(ids[i:i + 5000]))
+            .order_by(Sale.device_id, Sale.sold_at.desc().nullslast())
+            .distinct(Sale.device_id)
+        )).scalars().all()
+        for s in rows:
+            out[str(s.device_id)] = s
     return out

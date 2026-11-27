@@ -34,9 +34,10 @@ _SPEC = {
     DeviceStage.l3: ("l3", "L3L4-", ("l3",), ("L3L4-",), "l3_engineer"),
     DeviceStage.qc_check: ("qc", "STRS-", ("qc", "qc_ch"), ("STRS-",), "qc_inspector"),
     DeviceStage.final_qc: ("fqc", None, ("fqc", "final"), (), "qc_inspector"),
+    DeviceStage.rma: ("rma", "RMA-", ("rma",), ("RMA-",), "l1_engineer"),   # RMA Devices (2026-11-27)
 }
 PICK_STAGES = tuple(_SPEC)
-_OTHER_PREFIXES = ("L3L4-", "STRS-")
+_OTHER_PREFIXES = ("L3L4-", "STRS-", "RMA-")
 
 
 def pick_stage_of(stage):

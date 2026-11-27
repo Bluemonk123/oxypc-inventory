@@ -72,15 +72,17 @@ def _run_export(monkeypatch, devices, pna_ids):
 def test_header_sequence_matches_pankaj_sheet():
     # Column order of the export (2026-11-18, Pankaj's devices_export.xlsx).
     i = _EXPORT_HEADER.index("Device Price")
-    assert _EXPORT_HEADER[i:i + 14] == [
+    assert _EXPORT_HEADER[i:i + 20] == [
         "Device Price", "PNA", "Part Name", "Stock", "Grade", "Stage", "Final QC Status",
+        "L3/L4 Scrap Reason", "L3/L4 Scrap Notes", "Final QC Fail Reason", "Final QC Fail Notes",
+        "Pre-Sale QC Fail Reason", "Pre-Sale QC Fail Notes",   # 2026-11-27
         "Location ID", "Bin Location", "Zone", "Notes", "Created", "Updated", "Stage History"]
     assert "Warehouse" not in _EXPORT_HEADER
-    assert _EXPORT_HEADER[i + 14:] == [
+    assert _EXPORT_HEADER[i + 20:] == [
         "Stock In (Date)", "Stock In (Ageing)", "L1/L2 (Date)", "L1/L2 (Ageing)", "L3/L4 (Date)", "L3/L4 (Ageing)",
         "Stress (Date)", "Stress (Ageing)", "Cosmetic (Date)", "Cosmetic (Ageing)", "Final QC (Date)", "Final QC (Ageing)",
         "Ready for Sale (Date)", "Ready for Sale (Ageing)"]
-    assert len(_EXPORT_HEADER) == 75   # + Part Name (2026-11-23), + GRN Date (2026-11-26)
+    assert len(_EXPORT_HEADER) == 81   # + 6 Scrap / Fail Reason + Notes (2026-11-27)   # + Part Name (2026-11-23), + GRN Date (2026-11-26)
     assert _EXPORT_HEADER[2:4] == ["GRN", "GRN Date"]
 
 

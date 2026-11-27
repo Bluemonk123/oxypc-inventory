@@ -79,6 +79,7 @@ ROUTE_ACTIONS = {
     ('POST', '/stock/return-stock/{barcode}/waive'): ('stock', 'edit'),  # return_stock_waive: Waive Off a payment-due return (also needs Stock Pricing, checked inside) 2026-11-16
     ('POST', '/stock/return-stock/{barcode}/complete'): ('stock', 'edit'),  # return_stock_complete
     ('POST', '/stock/return-stock/move-l1l2'): ('stock', 'edit'),  # return_stock_move_l1l2 (2026-11-05)
+    ('POST', '/stock/return-stock/move-rma'): ('stock', 'edit'),  # return_stock_move_rma: Move to RMA (2026-11-27)
     ('POST', '/stock/return-stock/{barcode}/stock-in-only'): ('stock', 'edit'),  # return_stock_in_only (2026-11-05)
     ('POST', '/stock/validate'): ('stock', 'edit'),  # stock_validate: records qty received / validates stock-in (a write, not validate-only)
     ('POST', '/stock/bulk-transfer'): ('stock', 'edit'),  # stock_bulk_transfer
@@ -101,6 +102,12 @@ ROUTE_ACTIONS = {
     ('POST', '/repair/bulk-part-request'): (('repair_l1', 'repair_l2'), 'add'),  # bulk_part_request: raises part requests from L1/L2 page; module by device stage (l1|l2)
     ('POST', '/repair/request-l3l4'): (('repair_l1', 'repair_l2'), 'add'),  # request_l3l4: creates L3/L4 WorkOrder from L1/L2 page; module by device.current_stage
     ('POST', '/repair/l1l2-complete-to-stress'): (('repair_l1', 'repair_l2'), 'edit'),  # l1l2_complete_to_stress: module by device.current_stage (l1|l2)
+    # RMA Devices (2026-11-27)
+    ('POST', '/repair/rma/pick'): ('rma_devices', 'edit'),  # rma_pick: also has_perm(rma_devices,'add') in body, like L1/L2
+    ('POST', '/repair/rma/start'): ('rma_devices', 'edit'),  # rma_start
+    ('POST', '/repair/rma/ready'): ('rma_devices', 'edit'),  # rma_ready: L1/L2 Mark Complete renamed
+    ('POST', '/repair/rma/bulk-part-request'): ('rma_devices', 'add'),  # rma_bulk_part_request
+    ('POST', '/repair/rma/replace'): ('rma_devices', 'edit'),  # rma_replace: customer tag to IQC, replacement tag Ready
     ('POST', '/repair/back-to-production'): (('repair_l1', 'repair_l2'), 'edit'),  # back_to_production: module by device.current_stage (l1|l2)
     ('POST', '/repair/l3l4-start'): ('repair_l3', 'edit'),  # l3l4_start: L3/L4 page; repair_l3 is the permission key (repair_l3l4 is label-only)
     ('POST', '/repair/l3l4-pick'): ('repair_l3', 'edit'),  # l3l4_pick: repair_l3 is the L3/L4 permission key
@@ -361,6 +368,7 @@ ROUTE_ACTIONS = {
     ('GET', '/parts-grn/master/export/{category}'): ('spare_parts_purchase', 'export'),
     ('POST', '/admin/system/tag-clean'): None,  # tag_clean: system health data fix (admin-only) — hidden characters in Tag Numbers, 2026-11-24
     ('POST', '/admin/system/grn-date-fill'): None,  # grn_date_fill: system health data fix (admin-only) — GRNs with no GRN Date, 2026-11-26
+    ('POST', '/admin/system/l2-to-stock-in'): None,  # l2_to_stock_in: system health data fix (admin-only) — tags in the retired L2 stage, 2026-11-26
     ('POST', '/admin/system/notes-history-backfill'): None,  # notes_history_backfill: system health data fix (admin-only) — 2026-11-23
     ('GET', '/notes-history/export'): None,  # notes_history_export: admin-only page export (require_roles admin) — 2026-11-23
     ('POST', '/admin/system/model-name-fix'): None,  # model_name_fix: system health data fix (admin-only) — Product Model Name one spelling per model, 2026-11-05
@@ -711,6 +719,9 @@ ROUTE_ACTIONS = {
     ('GET', '/trade-partner/manage-lots/asset-iqc-sample'): ('trade_partner_manage_lots', 'export'),  # Asset IQC upload sample (.xlsx)
     ('POST', '/trade-partner/manage-lots/move-ready-for-sale'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_move_ready_for_sale
     ('POST', '/trade-partner/manage-lots/set-price'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_set_price: test lot Base Price (also needs Pricing Add, checked inside) 2026-11-16
+    ('POST', '/trade-partner/manage-lots/bulk-set-price'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_bulk_set_price: Lots tab Bulk Set Price (also needs Pricing Add) 2026-11-27
+    ('POST', '/trade-partner/manage-lots/tag-set-price'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_tag_set_price: Tags tab row Set Price (also needs Pricing Add) 2026-11-27
+    ('POST', '/trade-partner/manage-lots/tags-bulk-set-price'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_tags_bulk_set_price: Tags tab Bulk Set Price (also needs Pricing Add) 2026-11-27
     ('POST', '/trade-partner/manage-lots/set-category'): ('trade_partner_manage_lots', 'upload'),  # manage_lots_set_category: Device Category asked after an Asset IQC upload, 2026-11-23
     ('POST', '/trade-partner/manage-lots/edit-device'): ('trade_partner_manage_lots', 'edit'),  # manage_lots_edit_device
     ('POST', '/trade-partner/manage-lots/assign-visibility'): ('trade_partner_manage_lots', 'edit'),  # assign_lot_visibility_bulk

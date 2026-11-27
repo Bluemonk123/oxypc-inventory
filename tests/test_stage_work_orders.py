@@ -21,7 +21,7 @@ def test_every_path_uses_the_shared_helpers():
     import routers.iqc as iqc
     import routers.repair as rep
     import routers.stress_api as sa
-    assert "_pick(db, device, DeviceStage.l1, current_user)" in inspect.getsource(rep.l1_pick)
+    assert "_pick(db, device, Q[\"stage\"], current_user)" in inspect.getsource(rep._queue_pick)   # L1/L2 + RMA (2026-11-27)
     assert "_pick(db, device, DeviceStage.l3, current_user)" in inspect.getsource(rep.l3l4_pick)
     assert inspect.getsource(sa).count("_finish_stage(db, device, DeviceStage.qc_check, current_user)") == 2
     assert "_pick(db, device, DeviceStage.qc_check, current_user)" in inspect.getsource(sa.stress_pick)

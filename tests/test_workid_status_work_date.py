@@ -73,7 +73,7 @@ asyncio.run(main())
         # (2026-11-21): {tag}'s done + PNA WorkIDs -> one tag, latest = pending.
         l12 = html.split('data-group="l1l2"', 1)[1].split('data-group="l3l4"', 1)[0]
         got = dict((k, int(v)) for k, v in re.findall(r'data-k="(moved|pending|started|completed)" data-server="(\d+)"', l12))
-        assert got == {"moved": 1, "pending": 1, "started": 1, "completed": 0}, got   # PNA WorkID: engineer, started that day
+        assert got == {"pending": 1, "completed": 0}, got   # PNA WorkID; Started + Moved In removed (2026-11-27)
         assert 'name="completed_from"' not in html          # old date range hidden
         assert rows[pna]["s"] == "L1/L2 Repair"          # open: its own stage, not "Stress Test"
         allrows = rows_by_workid(app_client.get(f"/workid-status?tag={tag}&show_reassigned=1").text)
@@ -155,9 +155,15 @@ asyncio.run(main())
         assert by_tag[tp + "Q"] == (None, "Pass") and by_tag[tf + "Q"] == (None, "Fail")
         staff = export_sheet(x.content, "Staff Summary")
         h = staff[0]
-        row = [r for r in staff if r[0] == "sp_eng"][0]
-        assert [row[h.index(c)] for c in ("Stress Pass", "Stress Fail", "Cosmetic Pass", "Cosmetic Fail",
-                                          "Final QC Pass", "Final QC Fail")] == [1, 1, 1, 1, 1, 1]
+        # per Stage and Date Completed (2026-11-27): Passed / Failed Quantity
+        got = {}
+        for r in staff:
+            if r[0] == "sp_eng":
+                b = got.setdefault(r[h.index("Stage")], [0, 0])
+                b[0] += r[h.index("Passed Quantity")]
+                b[1] += r[h.index("Failed Quantity")]
+        assert {k: got.get(k) for k in ("Stress", "Cosmetic", "Final QC")} == \
+            {"Stress": [1, 1], "Cosmetic": [1, 1], "Final QC": [1, 1]}, got
         ci = tag_rows[0].index("Cosmetic Result")
         assert {r[0]: r[ci] for r in tag_rows[1:]}[tp + "C"] == "Pass"
     finally:

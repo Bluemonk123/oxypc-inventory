@@ -56,6 +56,7 @@ STAGE_SEQUENCE = [
     ("l1",            "L1 Repair",            3),
     ("l2",            "L2 Repair",            4),
     ("l3",            "L3 Repair",            5),
+    ("rma",           "RMA Devices",          5),
     ("qc_check",      "QC Check",             6),
     ("cleaning",      "Cleaning",             7),
     ("dry_sanding",   "Dry Sanding",          8),
@@ -90,6 +91,14 @@ DEFAULT_TRANSITIONS = [
     ("l3",            "qc_check"),
     ("l3",            "scrapped"),
     ("l3",            "stock_in"),
+    # RMA Devices (2026-11-27): Return Stock -> RMA; Ready -> Sold (customer
+    # return) or Stress; Replace -> the customer tag goes to IQC.
+    ("stock_in",      "rma"),
+    ("rma",           "sold"),
+    ("rma",           "qc_check"),
+    ("rma",           "iqc"),
+    ("rma",           "stock_in"),
+    ("ready_to_sale", "rma"),
     # QC to cosmetic refurb
     ("qc_check",      "cleaning"),
     ("qc_check",      "ready_to_sale"),   # for mint-condition devices

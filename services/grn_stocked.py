@@ -41,6 +41,8 @@ _OLD_MARKERS = ("grn_stocked_audit_recovery_2026_10_21",
 # Random uuid without needing pgcrypto / PG13's gen_random_uuid().
 _NEW_ID = "md5(random()::text || clock_timestamp()::text || d.id::text)::uuid"
 _LIVE_TAG = "d.is_active IS TRUE AND d.is_trashed IS NOT TRUE"
+# + no External Partner Test tags / lots on pages and exports (2026-11-27)
+from utils.hidden_tags import live_tag_sql  # noqa: E402
 _LIVE_GRN = "g.is_deleted IS NOT TRUE"
 
 _SQL_MATCH = f"""
@@ -156,7 +158,7 @@ async def stocked_counts(db, grns) -> dict:
     await db.commit()
     stmt = text(f"""
         SELECT s.grn_id, count(*) FROM grn_stocked_tags s JOIN devices d ON d.id = s.device_id
-        WHERE s.grn_id IN :ids AND {_LIVE_TAG}
+        WHERE s.grn_id IN :ids AND {_LIVE_TAG} AND {live_tag_sql('d')}
         GROUP BY s.grn_id
     """).bindparams(bindparam("ids", expanding=True))
     return {by_id[gid]: c for gid, c in (await db.execute(stmt, {"ids": list(by_id)})).all()}
@@ -168,6 +170,6 @@ async def stocked_device_ids(db, grn_id) -> list:
     await remember_tags(db)
     rows = (await db.execute(text(f"""
         SELECT d.id FROM grn_stocked_tags s JOIN devices d ON d.id = s.device_id
-        WHERE s.grn_id = :gid AND {_LIVE_TAG}
+        WHERE s.grn_id = :gid AND {_LIVE_TAG} AND {live_tag_sql('d')}
     """), {"gid": grn_id})).all()
     return [r[0] for r in rows]

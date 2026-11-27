@@ -63,6 +63,21 @@ app.add_middleware(
 # Loop-safety: we only redirect when the resolved scheme is exactly "http", so the
 # redirected HTTPS request (scheme "https") never redirects again. /health is exempt
 # so Railway's health check is never bounced. 307 keeps method/body and is not cached.
+# Hide External Partner Test tags / lots, trashed and inactive tags from every
+# page and export (2026-11-27, Pankaj) — see utils/hidden_tags.py for the
+# rule and which sections still see everything.
+from utils.hidden_tags import hide_for_request as _hide_for_request, set_hide as _set_hide, reset_hide as _reset_hide
+
+
+@app.middleware("http")
+async def _hidden_tags_mode(request: Request, call_next):
+    _tok = _set_hide(_hide_for_request(request.method, request.url.path))
+    try:
+        return await call_next(request)
+    finally:
+        _reset_hide(_tok)
+
+
 @app.middleware("http")
 async def _force_https(request: Request, call_next):
     # Only a proxy in front of us sets X-Forwarded-Proto; when it is absent (local dev,
@@ -977,6 +992,12 @@ async def startup_event():
     #    no longer counts everything while the user waits ──────────────────────
     try:
         from services.dashboard_warmup import loop as _dash_warm
+        # Not under the test suite (tests/conftest.py sets OXYPC_DB_NULLPOOL=1):
+        # a warm-up still running when a test's app shuts down left its DB
+        # transaction open, and the next test's start-up ALTER TABLE waited on
+        # it forever (2026-11-27).
+        if os.environ.get("OXYPC_DB_NULLPOOL") == "1":
+            raise RuntimeError("disabled under tests")
         asyncio.create_task(_dash_warm(app))
         print("  [DashWarmup] Dashboard warm-up scheduled (15s after start, then every 10 min)")
     except Exception as _dwe:          # never block startup

@@ -232,6 +232,7 @@ DEFAULT_DISABLED_MODULES = frozenset({
     "scrap_sale_report",   # Scrap Sale Report page (2026-10-16)
     "rentals",             # Rentals (2026-10-22)
     "pre_sale_iqc",        # Pre-Sale IQC (2026-10-29)
+    "rma_devices",         # RMA Devices (2026-11-27)
     "qa", "qa_uat", "qa_ux",   # Product Management pages — admin only unless ticked (2026-11-05)
     "crm_pickups",             # Pickup Process (2026-11-11)
     "ticket_board",            # Ticket Board (2026-11-13) — admin only unless ticked

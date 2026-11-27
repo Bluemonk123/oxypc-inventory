@@ -53,6 +53,7 @@ CANONICAL_STAGES = [
     ("l1",            "L1 Repair",           3),
     ("l2",            "L2 Repair",           4),
     ("l3",            "L3 Repair",           5),
+    ("rma",           "RMA Devices",         5),
     ("qc_check",      "QC Check",            6),
     ("cosmetic_received", "Cosmetic Received", 7),
     ("cleaning",      "Cleaning",            8),
@@ -91,6 +92,14 @@ CANONICAL_TRANSITIONS = [
     ("l3",            "qc_check"),
     ("l3",            "scrapped"),
     ("l3",            "stock_in"),
+    # RMA Devices (2026-11-27): Return Stock -> RMA; Ready -> Sold (customer
+    # return) or Stress; Replace -> the customer tag goes to IQC.
+    ("stock_in",      "rma"),
+    ("rma",           "sold"),
+    ("rma",           "qc_check"),
+    ("rma",           "iqc"),
+    ("rma",           "stock_in"),
+    ("ready_to_sale", "rma"),
     # QC
     ("qc_check",      "cosmetic_received"),
     ("qc_check",      "ready_to_sale"),

@@ -134,7 +134,7 @@
   {# Each tile opens its stage's page (2026-11-03). #}
   {% set _tile_href = {'l1l2': '/repair/l1', 'l3l4': '/repair/l3l4', 'stress': '/qc',
                        'cosmetic': '/cosmetic/all_tags', 'final_qc': '/cosmetic/final_qc',
-                       'returned': '/returns'}.get(key) %}
+                       'returned': '/repair/rma'}.get(key) %}
     {# Stage name, then Assigned and Completed counts, stacked (2026-10-27;
        no total). #}
     {# "(Waiting - N)" removed from the tiles (2026-10-28). #}
@@ -146,26 +146,25 @@
      progress; Completed = done. Pass | Fail unchanged. #}
   {% set _ln = [] %}
   {# Moved shows beside the title ("L1/L2 - 109"), 2026-11-21. #}
-  {% set _moved_title = ('L1/L2 and L3/L4 tags with a customer return in the range = Pending + Started + Pass + Replace' if key == 'returned' else 'Laptop visits to Cosmetic in the range = Pending + Started + Pass + Fail' if key == 'cosmetic' else ('WorkIDs moved to this stage = Pending + Started + Pass + Scrap' if key in ('l1l2', 'l3l4') else 'WorkIDs moved to this stage = Pending + Started + Pass + Fail')) %}
+  {% set _moved_title = ('Tags moved to RMA Devices in the range' if key == 'returned' else 'Laptop visits to Cosmetic in the range = Pending + Started + Pass + Fail' if key == 'cosmetic' else ('WorkIDs moved to this stage = Pending + Started + Pass + Scrap' if key in ('l1l2', 'l3l4') else 'WorkIDs moved to this stage = Pending + Started + Pass + Fail')) %}
   {# Pending, then Started below it (2026-11-21). #}
   {# More than one day selected: no Pending / Started lines (2026-11-22); Moved In unchanged. #}
   {% if not multi_day %}
   {% set _ = _ln.append({'title': ('Pending = tags in any Cosmetic stage (Received to Completed) on the last date' if key == 'cosmetic' else 'Pending = tags sitting on the ' ~ label ~ ' page on the last date'),
                          'parts': [(t.pending, 'Pending', 'data-k="pending" data-server="' ~ t.pending ~ '"')]}) %}
-  {% set _ = _ln.append({'title': ('Started = tags in Cleaning to Water Sanding on the last date' if key == 'cosmetic' else 'Started = tags an engineer started on this date (finished or not — Pass / Fail / Scrap is the result after the start)'),
-                         'parts': [(t.started, 'Started', 'data-k="started" data-server="' ~ t.started ~ '"')]}) %}
+  {# Started line hidden on every card (2026-11-26, Pankaj). #}
   {% endif %}
   {% if key == 'returned' %}
-  {# Returned (2026-11-22): the L1/L2 / L3/L4 rows with a customer return in
-     the range, by WorkID status; Replace = replacement / credit note given. #}
+  {# Customer Return (2026-11-27, Pankaj): counted from the RMA Devices page —
+     Pending, then Pass | Replace (routers/workid_status.py _returned_card). #}
+  {# Like the other cards (2026-11-27): Pending = tags on the RMA Devices page,
+     single date only; no Started line. #}
   {% set _ln = [] %}
   {% if not multi_day %}
-  {% set _ = _ln.append({'title': 'Pending = L1/L2 or L3/L4 WorkID not picked up yet',
+  {% set _ = _ln.append({'title': 'Pending = tags on the RMA Devices page on the last date',
                          'parts': [(t.pending, 'Pending', 'data-k="pending" data-server="' ~ t.pending ~ '"')]}) %}
-  {% set _ = _ln.append({'title': 'Started = L1/L2 or L3/L4 repair going on',
-                         'parts': [(t.started, 'Started', 'data-k="started" data-server="' ~ t.started ~ '"')]}) %}
   {% endif %}
-  {% set _ = _ln.append({'title': 'Pass = L1/L2 or L3/L4 repair done | Replace = customer got a replacement or credit note',
+  {% set _ = _ln.append({'title': 'Pass = tags made Ready for dispatch in the range | Replace = replacement tags given in the range (Replaced with <tag>)',
                          'parts': [(t.pass, 'Pass', 'data-k="pass" data-server="' ~ t.pass ~ '"'),
                                    (t.replace, 'Replace', 'data-k="replace" data-server="' ~ t.replace ~ '"')]}) %}
   {% elif key in ('l1l2', 'l3l4') %}
@@ -184,11 +183,10 @@
   {# People (2026-11-21): this stage's members who marked attendance in the range. #}
   {# More than one day selected: no Moved In count in the footer (2026-11-22). #}
   {% set _ppl = (stage_people or {}).get(key, 0) %}
+  {# No footer (2026-11-27, Pankaj): Moved In / Returned count removed; Team
+     shows on the right of the card title as <user icon> - <count>. #}
   {{ tl.multi(label, _ln, color, icon, cls='wid-stage', href=_tile_href,
-               footer=('<span></span>' if multi_day else
-                       '<span title="' ~ _moved_title ~ '"><span class="text-muted">' ~ ('Returned' if key == 'returned' else 'Moved In') ~ '</span> <b data-k="moved" data-server="' ~ t.assigned ~ '">' ~ t.assigned ~ '</b></span>'
-                       ~ '<span class="text-muted opacity-50">|</span>')
-                      ~ '<span title="' ~ ('Return Engineers (Designation) who marked attendance in this date range' if key == 'returned' else label ~ ' members who marked attendance in this date range') ~ '"><i class="bi bi-person-fill text-muted"></i> <span class="text-muted">Team</span> <b>' ~ _ppl ~ '</b></span>',
+               title_right='<span class="text-muted fw-normal" title="' ~ ('Return Engineers (Designation) who marked attendance in this date range' if key == 'returned' else label ~ ' members who marked attendance in this date range') ~ '"><i class="bi bi-person-fill"></i> - <b>' ~ _ppl ~ '</b></span>',
                title_attr=('Open ' ~ label) if _tile_href else '',
                extra='data-group="' ~ key ~ '" data-stages="' ~ (_stages | join(',')) ~ '"'
                      ~ (' data-moves="1"' if t.moves else '') ~ (' data-pending="1"' if t.pending_now else '')) }}
@@ -220,14 +218,7 @@
        title="Tags moved into Ready for Sale from production between the Work Date From/To (including ones sold since; not Stock In or returns): the parts of this refurbishment (since its last sale), Labour, Packing, Freight and Grand Total">
       <i class="bi bi-receipt me-1"></i>Repair Summary
     </a>{% endif %}
-    {# Final QC Pass (2026-11-05): tags whose Final QC WorkID was completed as
-       Pass in the Work Date From/To — same WorkIDs as the Final QC tile's
-       Pass — in the Repair Summary layout. #}
-    {% if can(current_user, 'workid_status', 'export') %}<a class="btn btn-outline-primary btn-sm text-nowrap"
-       href="/workid-status/final-qc-pass?workid={{ f_workid | urlencode }}&tag={{ f_tag | urlencode }}&engineer={{ f_engineer | urlencode }}&completed_from={{ f_completed_from | urlencode }}&completed_to={{ f_completed_to | urlencode }}&work_from={{ f_work_from | urlencode }}&work_to={{ f_work_to | urlencode }}&cosmetic_stage={{ f_cosmetic_stage | urlencode }}&exclude_admin={{ f_exclude_admin | urlencode }}&scrap_type={{ f_scrap_type | urlencode }}"
-       title="Tags marked Final QC Pass (to Pass Hold or Ready for Sale) between the Work Date From/To — the Final QC card's Pass — with the parts of this refurbishment (since its last sale), Labour, Packing, Freight and Grand Total">
-      <i class="bi bi-patch-check me-1"></i>Final QC Pass
-    </a>{% endif %}
+    {# Final QC Pass download button removed (2026-11-27, Pankaj). #}
     </div>
   </div>
   <div>

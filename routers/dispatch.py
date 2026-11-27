@@ -253,11 +253,11 @@ async def dispatch_list(request: Request, db: AsyncSession = Depends(get_db),
             ready_at_map[str(did)] = moved_at
     _now = app_now()
 
-    # ── Warranty (item 1): 30 days from most recent sale ─────────────────────
-    sold_map = await latest_sold_at_map(db, device_ids)
+    # ── Warranty (2026-11-27): only the warranty picked on the latest sale ───
+    from utils.warranty import latest_sale_map, effective_warranty_for_sale
     warranty_map = {}
-    for did, sold_at in sold_map.items():
-        w = warranty_from_sold_at(sold_at)
+    for did, _sale in (await latest_sale_map(db, device_ids)).items():
+        w = effective_warranty_for_sale(_sale)
         if w:
             warranty_map[did] = w
 
@@ -339,7 +339,14 @@ async def dispatch_list(request: Request, db: AsyncSession = Depends(get_db),
     returned_within_warranty = []
     returned_out_of_warranty = []
     for device, sale, ret in ret_rows:
-        _w = warranty_from_sold_at(sale.sold_at if sale else None)
+        # In warranty when returned (2026-11-27): the status saved on the
+        # return (picked warranty at return time), else worked out now.
+        _ws = getattr(ret, "warranty_status", None) if ret else None
+        if _ws in ("in_warranty", "out_of_warranty", "no_warranty"):
+            _w = {"status": "active"} if _ws == "in_warranty" else None
+        else:
+            from utils.warranty import effective_warranty_for_sale
+            _w = effective_warranty_for_sale(sale)
         entry = {
             "barcode": device.barcode,
             "brand": device.brand or "",

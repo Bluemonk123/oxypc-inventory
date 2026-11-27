@@ -1228,12 +1228,22 @@ async def stock_in_list(
         .join(Return, Return.device_id == Device.id)
         .where(Device.return_status == True, Device.is_active == True,  # noqa: E712
                or_(Device.tag_return_status.is_(None),
-                   Device.tag_return_status.notlike('Replaced by %')))
+                   and_(Device.tag_return_status.notlike('Replaced by %'),
+                        Device.tag_return_status.notlike(RMA_REPLACEMENT_PREFIX + '%'))))
         .order_by(Return.return_date.desc())
     )).all()
     return_stock_by_device = {}
     for dev, lot_num, ret in return_join_rows:
         return_stock_by_device.setdefault(dev.id, (dev, lot_num, ret))
+    # RMA Replace (2026-11-27): the replacement tag stands in for the customer's
+    # returned tag — listed with that tag's return (Reason, charge, customer).
+    for dev, lot_num in (await db.execute(
+            select(Device, Lot.lot_number).join(Lot, Device.lot_id == Lot.id)
+            .where(Device.return_status == True, Device.is_active == True,  # noqa: E712
+                   Device.tag_return_status.like(RMA_REPLACEMENT_PREFIX + '%')))).all():
+        ret = await _stock_return(db, dev)
+        if ret is not None:
+            return_stock_by_device[dev.id] = (dev, lot_num, ret)
 
     # Ready to Dispatch re-sales (2026-10-30): the tag leaves return_status
     # but stays in Return Stock — Received tab as "Dispatch Pending" until
@@ -1252,11 +1262,20 @@ async def stock_in_list(
                 _rids.append(uuid.UUID(rid))
             except ValueError:
                 pass
-        for dev, lot_num, ret in (await db.execute(
-                select(Device, Lot.lot_number, Return)
-                .join(Lot, Device.lot_id == Lot.id).join(Return, Return.device_id == Device.id)
-                .where(Return.id.in_(_rids), Device.is_active == True)  # noqa: E712
-                .order_by(Return.return_date.desc()))).all():
+        # The tag that was re-sold (the re-sale's own tag — an RMA replacement
+        # tag differs from the returned tag, 2026-11-27) with that return.
+        _rets = {r.id: r for r in (await db.execute(select(Return).where(Return.id.in_(_rids)))).scalars().all()}
+        _sold_dev = {}
+        for rid, sale in resale_by_return.items():
+            try:
+                _sold_dev[sale.device_id] = _rets[uuid.UUID(rid)]
+            except (ValueError, KeyError):
+                pass
+        _resold = (await db.execute(
+            select(Device, Lot.lot_number).join(Lot, Device.lot_id == Lot.id)
+            .where(Device.id.in_(list(_sold_dev)), Device.is_active == True))).all() if _sold_dev else []  # noqa: E712
+        for dev, lot_num, ret in sorted(((d, ln, _sold_dev[d.id]) for d, ln in _resold),
+                                        key=lambda x: x[2].return_date or datetime.min, reverse=True):
             cur = return_stock_by_device.get(dev.id)
             if cur is None or (cur[2].return_date or datetime.min) < (ret.return_date or datetime.min):
                 return_stock_by_device[dev.id] = (dev, lot_num, ret)
@@ -1288,8 +1307,18 @@ async def stock_in_list(
                 select(Sale.device_id, func.max(Sale.sold_at)).where(Sale.device_id.in_(_rs_ids))
                 .group_by(Sale.device_id))).all():
             _later_sale[s_dev] = s_at
+    # Warranty column (2026-11-27, Pankaj): the warranty picked on the sale the
+    # tag was returned from (same end date after Ready to Dispatch).
+    from utils.warranty import effective_warranty_for_sale
+    _ret_sale_ids = [r.sale_id for _d, _l, r in return_stock_by_device.values() if r.sale_id]
+    _ret_sales = {s.id: s for s in (await db.execute(
+        select(Sale).where(Sale.id.in_(_ret_sale_ids)))).scalars().all()} if _ret_sale_ids else {}
     for dev, lot_num, ret in return_stock_by_device.values():
         ch = _charges.get(dev.id)
+        _wr = effective_warranty_for_sale(_ret_sales.get(ret.sale_id))
+        warranty = ({"text": "In Warranty", "cls": "bg-success", "till": _wr["expiry"]} if _wr and _wr["status"] == "active"
+                    else {"text": "Out of Warranty", "cls": "bg-danger", "till": _wr["expiry"]} if _wr
+                    else {"text": "No Warranty", "cls": "bg-secondary", "till": None})
         due = ch is not None
         resale = resale_by_return.get(str(ret.id))
         repair_cost = ret.repair_cost if ret.repair_cost is not None else (ch["repair"] if due else None)
@@ -1320,7 +1349,7 @@ async def stock_in_list(
             "device": dev, "lot_number": lot_num, "ret": ret, "part_cost": part_cost,
             "labour_cost": labour_cost, "repair_cost": repair_cost,
             "payment_due": due, "paid": bool(ret.paid_at),
-            "resold": resale is not None, "status": status,
+            "resold": resale is not None, "status": status, "warranty": warranty,
             "stocked_in": status == "Stocked In",
             "sold_again": status == "Return Complete" and resale is None,
             # Buttons (2026-11-05): Only Stock In while Received at Stock In;
@@ -1328,6 +1357,8 @@ async def stock_in_list(
             "can_stock_in": status == "Received" and dev.current_stage == DeviceStage.stock_in,
             "can_dispatch": status == "Dispatch Pending",
             "can_move_l12": status == "Received" and dev.current_stage == DeviceStage.stock_in,
+            "replaced_with": ((dev.tag_return_status or "")[len(RMA_REPLACEMENT_PREFIX):].strip()
+                              if (dev.tag_return_status or "").startswith(RMA_REPLACEMENT_PREFIX) else None),
             "labour_basis": (None if not due else ("With L3/L4" if ch["l34"] else
                              ("Without L3/L4" if ch["l34"] is False else "Not repaired yet"))),
             "stage_label": STAGE_LABELS.get(dev.current_stage, dev.current_stage.value if dev.current_stage else "—"),
@@ -1380,6 +1411,22 @@ async def stock_in_list(
         "fqc_pass_buckets": fqc_pass_buckets,
         "return_stock_rows": return_stock_rows,
     })
+
+
+# RMA Replace (2026-11-27): Device.tag_return_status of the tag given to the
+# customer in place of their returned tag — "Replacement for <returned tag>".
+RMA_REPLACEMENT_PREFIX = "Replacement for "
+
+
+async def _stock_return(db: AsyncSession, device) -> "Return | None":
+    """The return a Return Stock row acts on: the tag's own latest return, or
+    for an RMA replacement tag the returned tag's latest return."""
+    trs = (device.tag_return_status or "")
+    if trs.startswith(RMA_REPLACEMENT_PREFIX):
+        orig = (await db.execute(select(Device.id).where(
+            Device.barcode == trs[len(RMA_REPLACEMENT_PREFIX):].strip()))).scalar_one_or_none()
+        return await _latest_return_for_device(db, orig) if orig else None
+    return await _latest_return_for_device(db, device.id)
 
 
 async def _latest_return_for_device(db: AsyncSession, device_id) -> "Return | None":
@@ -1435,10 +1482,12 @@ async def _return_repair_moves(db: AsyncSession, cut: dict, paint: bool = False)
                 .where(StageMovement.device_id.in_(ids[i:i + 5000])))).all():
             if not m.moved_at or m.moved_at < cut[m.device_id]:
                 continue
-            if m.to_stage in (DeviceStage.l1, DeviceStage.l2, DeviceStage.l3):
+            # RMA Devices (2026-11-27) counts as L1/L2.
+            if m.to_stage in (DeviceStage.l1, DeviceStage.l2, DeviceStage.l3, DeviceStage.rma):
                 started.add(m.device_id)
-            if m.from_stage in (DeviceStage.l1, DeviceStage.l2) and m.to_stage not in (DeviceStage.l1, DeviceStage.l2):
-                l12.add(m.device_id)                      # completed L1/L2
+            if (m.from_stage in (DeviceStage.l1, DeviceStage.l2, DeviceStage.rma)
+                    and m.to_stage not in (DeviceStage.l1, DeviceStage.l2, DeviceStage.rma)):
+                l12.add(m.device_id)                      # completed L1/L2 / RMA Ready
             if m.from_stage == DeviceStage.l3 and m.to_stage != DeviceStage.l3:
                 l34.add(m.device_id)                      # passed L3/L4
             if m.to_stage in _ps:
@@ -1453,6 +1502,8 @@ async def _return_progress(db: AsyncSession, pairs) -> dict:
         return {}
     started, l12, l34 = await _return_repair_moves(db, await _return_cutoffs(db, pairs))
     done = l12 | l34
+    # An RMA replacement tag is Ready as it arrives (2026-11-27).
+    done |= {d.id for d, _r in pairs if d.current_stage == DeviceStage.rma and d.l1l2_status == "Ready"}
     return {d.id: (d.id in started or d.id in done, d.id in done) for d, _r in pairs}
 
 
@@ -1463,6 +1514,13 @@ async def _return_charge_defaults(db: AsyncSession, pairs) -> dict:
     due = [(d, r) for d, r in pairs if _return_payment_due(r)]
     if not due:
         return {}
+    # RMA replacement tag (2026-11-27, Pankaj): labour and parts come from the
+    # repair done on the customer's returned tag (the return's own device).
+    _other = [r.device_id for d, r in due if r.device_id != d.id]
+    _orig = {x.id: x for x in (await db.execute(select(Device).where(Device.id.in_(_other)))).scalars().all()} \
+        if _other else {}
+    shown = {r.device_id: d.id for d, r in due}
+    due = [(_orig.get(r.device_id, d), r) for d, r in due]
     cut = await _return_cutoffs(db, due)
     ids = list(cut)
     _started, l12, l34, painted = await _return_repair_moves(db, cut, paint=True)
@@ -1505,8 +1563,8 @@ async def _return_charge_defaults(db: AsyncSession, pairs) -> dict:
             lab, had = rates.labour_for(d, False, d.id in painted), False
         else:
             lab, had = Decimal("0"), None
-        out[d.id] = {"repair": Decimal(str(r.refund_amount)), "labour": lab,
-                     "part": part.get(d.id, Decimal("0")), "l34": had}
+        out[shown.get(d.id, d.id)] = {"repair": Decimal(str(r.refund_amount)), "labour": lab,
+                                      "part": part.get(d.id, Decimal("0")), "l34": had}
     return out
 
 
@@ -1578,7 +1636,7 @@ async def return_stock_verify(
     device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
     if not device:
         raise HTTPException(404, f"Device {barcode} not found")
-    ret = await _latest_return_for_device(db, device.id)
+    ret = await _stock_return(db, device)
     if not ret:
         raise HTTPException(404, "No return found for this tag")
 
@@ -1629,7 +1687,7 @@ async def return_stock_waive(
     device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
     if not device:
         raise HTTPException(404, f"Device {barcode} not found")
-    ret = await _latest_return_for_device(db, device.id)
+    ret = await _stock_return(db, device)
     if not ret:
         raise HTTPException(404, "No return found for this tag")
     if ret.paid_at:
@@ -1648,6 +1706,69 @@ async def return_stock_waive(
 
 
 RETURN_STOCK_IN_ONLY = "stock_in_only"   # Return.action_taken for "Only Stock In" (2026-11-05)
+
+
+@router.post("/stock/return-stock/move-rma")
+async def return_stock_move_rma(
+    request: Request,
+    barcodes: str = Form(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(allowed),
+):
+    """Return Stock -> Move to RMA (2026-11-27, Pankaj; was Move to L1/L2):
+    the ticked returned tags go to RMA Devices unassigned — whoever has the
+    RMA Devices page takes them with Pick This. Only tags still at Stock In
+    move; the rest are reported."""
+    from services.audit_engine import audit
+    bc_list = [b.strip() for b in barcodes.split(",") if b.strip()]
+    if not bc_list:
+        return JSONResponse({"ok": False, "detail": "No tags selected"}, status_code=400)
+    devices = (await db.execute(select(Device).where(Device.barcode.in_(bc_list),
+                                                     Device.return_status == True))).scalars().all()  # noqa: E712
+    moved, skipped = [], []
+    for device in devices:
+        (moved if await _move_device_to_rma(db, device, current_user) else skipped).append(device.barcode)
+    skipped += [b for b in bc_list if b not in {d.barcode for d in devices}]
+    if moved:
+        await audit(db, user=current_user, action="RETURN_STOCK_MOVE_RMA", table_name="devices",
+                    record_id=f"bulk:{len(moved)}", new_value={"moved": moved, "skipped": skipped},
+                    request=request)
+    await db.commit()
+    return JSONResponse({"ok": True, "moved": len(moved), "skipped": skipped})
+
+
+async def _move_device_to_rma(db: AsyncSession, device: Device, current_user: User) -> bool:
+    """Stock In -> RMA Devices, unassigned: every open L1/L2, L3/L4 and RMA
+    WorkID closes (reassigned) and one pending RMA WorkID opens for Pick This
+    — the same as _move_device_to_l1l2. False (no-op) when not at Stock In."""
+    if device.current_stage != DeviceStage.stock_in:
+        return False
+    prev_stage = device.current_stage
+    prev_mv = (await db.execute(
+        select(StageMovement).where(
+            StageMovement.device_id == device.id,
+            StageMovement.to_stage == prev_stage,
+            StageMovement.exited_at == None,  # noqa: E711
+        ).order_by(StageMovement.moved_at.desc())
+    )).scalars().first()
+    if prev_mv:
+        prev_mv.exited_at = app_now()
+    from services.stage_work_orders import stage_clause as _stage_clause, open_for_stage as _open_for_stage
+    await db.execute(
+        update(WorkOrder)
+        .where(WorkOrder.device_id == device.id, wo_open(),
+               or_(_stage_clause(DeviceStage.l1), _stage_clause(DeviceStage.l3), _stage_clause(DeviceStage.rma)))
+        .values(status="reassigned", completed_at=app_now())
+        .execution_options(synchronize_session=False)
+    )
+    device.current_stage = DeviceStage.rma
+    device.l1l2_status = "New"
+    device.l34_status = None
+    device.updated_at = app_now()
+    db.add(StageMovement(device_id=device.id, from_stage=prev_stage, to_stage=DeviceStage.rma,
+                         moved_by=current_user.username, notes="Moved to RMA Devices"))
+    await _open_for_stage(db, device, DeviceStage.rma, created_by=current_user.username)
+    return True
 
 
 @router.post("/stock/return-stock/move-l1l2")
@@ -1695,7 +1816,7 @@ async def return_stock_in_only(
     device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
     if not device:
         raise HTTPException(404, f"Device {barcode} not found")
-    ret = await _latest_return_for_device(db, device.id)
+    ret = await _stock_return(db, device)
     if not ret or not device.return_status:
         return JSONResponse({"ok": False, "detail": "This tag has no open return"}, status_code=400)
     if device.current_stage != DeviceStage.stock_in:
@@ -1740,7 +1861,7 @@ async def return_stock_complete(
     device = (await db.execute(select(Device).where(Device.barcode == barcode))).scalar_one_or_none()
     if not device:
         raise HTTPException(404, f"Device {barcode} not found")
-    ret = await _latest_return_for_device(db, device.id)
+    ret = await _stock_return(db, device)
     if not ret:
         raise HTTPException(404, "No return found for this tag")
     if not device.return_status:                          # already Ready to Dispatch-ed (2026-10-30)
@@ -1758,23 +1879,30 @@ async def return_stock_complete(
         raise HTTPException(404, "Original sale record not found for this return")
 
     sold_at = app_now()
-    # orig_sale.warranty_days already holds the exact day count for whatever
-    # Master Data label was picked at the original sale — compute_warranty_expiry
-    # only understands the 3 legacy slugs (30_days/6_months/1_year), so any
-    # other admin-added duration (e.g. "60 Days") would silently compute no
-    # expiry at all if re-derived from warranty_type here instead.
-    warranty_expires_at = (sold_at + timedelta(days=orig_sale.warranty_days)
-                           if orig_sale.warranty_days else None)
+    # Warranty end date stays the same (2026-11-27, Pankaj): the re-sale
+    # carries the original sale's warranty and its end date (including any
+    # Extended Warranty) — the warranty does not restart from today.
+    warranty_expires_at = orig_sale.warranty_expires_at
+    # RMA replacement tag (2026-11-27): goes to the customer at ₹0 in place of
+    # the returned tag (same as Process Return's Replace Now) and carries the
+    # customer's invoice number.
+    _repl_for = ((device.tag_return_status or "")[len(RMA_REPLACEMENT_PREFIX):].strip()
+                 if (device.tag_return_status or "").startswith(RMA_REPLACEMENT_PREFIX) else None)
+    if _repl_for and (orig_sale.invoice_no or "").strip():
+        from routers.sales import _remember_grn_stock
+        await _remember_grn_stock(db, [device.id])
+        device.invoice_number = orig_sale.invoice_no.strip()
     sale_num = await _gen_sale_number(db)
     new_sale = Sale(
-        sale_number=sale_num, device_id=device.id, sale_price=orig_sale.sale_price,
+        sale_number=sale_num, device_id=device.id,
+        sale_price=Decimal("0") if _repl_for else orig_sale.sale_price,
         customer_name=orig_sale.customer_name, customer_phone=orig_sale.customer_phone,
         customer_state=orig_sale.customer_state, customer_address=orig_sale.customer_address,
         payment_mode=orig_sale.payment_mode, sold_by=current_user.username,
         # No Sales Person (2026-11-19, Pankaj): only New Sale / Tag Sale record
         # one; the original sale keeps its own, so the person isn't counted twice.
         sold_at=sold_at,
-        notes=f"Re-sale after customer return (Return {ret.id})",
+        notes=f"Re-sale after customer return (Return {ret.id})" + (f" — replacement for {_repl_for}" if _repl_for else ""),
         warranty_type=orig_sale.warranty_type, warranty_days=orig_sale.warranty_days,
         warranty_expires_at=warranty_expires_at,
         company_id=orig_sale.company_id, company_name=orig_sale.company_name,

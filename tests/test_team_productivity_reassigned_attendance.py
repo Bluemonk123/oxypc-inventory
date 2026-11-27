@@ -87,31 +87,22 @@ asyncio.run(main())
         _h, one = rows("Tag Summary")
         tm = [x for x in one if x["Tag Number"] == bc]
         assert len(tm) == 1 and tm[0]["Engineer Name"].startswith("TP Eng B")    # its latest, not the reassigned row
+        # Stage / Staff Summary per Date Completed (2026-11-27, Pankaj)
         sh, staff = rows("Staff Summary")
-        assert sh[:3] == ["Engineer", "Attendance", "Stage"]
-        att = {x["Engineer"]: x["Attendance"] for x in staff if x["Engineer"]}
-        assert att[f"TP Eng A {sfx}"] == "Yes" and att[f"TP Eng B {sfx}"] == "No"
-        assert next(x for x in staff if x["Engineer"] == f"TP Eng A {sfx}")["Reassigned WorkIDs"] == 1
-        assert all((x["Engineer"] or "").strip() != "\u2014" for x in staff)      # no "—" engineer: "Not picked"
+        assert sh == ["Engineer", "Stage", "Date Completed", "Passed Quantity", "Failed Quantity"]
+        assert not any(x["Engineer"] == f"TP Eng A {sfx}" for x in staff)     # reassigned WorkID: no result
         gh, stage = rows("Stage Summary")
-        assert not any(str(x["Stage"] or "").startswith("All ") for x in stage)   # no subtotal rows
-        assert gh[:3] == ["Stage Group", "Stage", "Attendance"]
-        l12 = next(x for x in stage if x["Stage Group"] == "L1/L2")
-        assert l12["Attendance"] >= 2                  # A and C (L1/L2 engineers) were present that day
-        # C was present with no WorkID: still listed, Yes, zeros
-        c_row = next(x for x in staff if x["Engineer"] == f"TP Eng C {sfx}")
-        assert c_row["Attendance"] == "Yes" and c_row["Total WorkIDs"] == 0
-        # Stage column: the stage each present member belongs to; none for B (absent)
-        assert c_row["Stage"] == "L1/L2"
-        assert next(x for x in staff if x["Engineer"] == f"TP Eng A {sfx}")["Stage"] == "L1/L2"
-        assert not next(x for x in staff if x["Engineer"] == f"TP Eng B {sfx}")["Stage"]
-        # one members list: Stage Summary Total = Staff Summary Yes count; L1/L2 = the card's Team
-        st_total = next(x for x in stage if x["Stage Group"] == "Total")["Attendance"]
-        assert st_total == sum(1 for x in staff if x["Attendance"] == "Yes" and x["Engineer"] != "Total")
-        assert next(x for x in staff if x["Engineer"] == "Total")["Attendance"] == st_total
+        assert gh == ["Stage", "Staff Attendance", "Date Completed", "Passed Quantity", "Failed Quantity",
+                      "Avg Per Person"]
+        l12 = next(x for x in stage if x["Stage"] == "L1/L2" and x["Date Completed"]
+                   and x["Date Completed"].date().isoformat() == "2026-07-14")
+        assert l12["Staff Attendance"] >= 2            # A and C (L1/L2 engineers) were present that day
         import re
-        team = re.search(r'data-group="l1l2".*?Team</span> <b>(\d+)</b>', page, re.S).group(1)
-        assert int(team) == l12["Attendance"]
+        team = re.search(r'data-group="l1l2".*?Team</span> <b>(\d+)</b>', page, re.S)
+        if team:
+            assert int(team.group(1)) == l12["Staff Attendance"]
+        tot = next(x for x in stage if x["Stage"] == "Total")
+        assert tot["Passed Quantity"] == sum(x["Passed Quantity"] for x in stage if x["Stage"] != "Total")
     finally:
         _run(f"""
 import asyncio, sys

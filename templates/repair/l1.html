@@ -1,7 +1,13 @@
 {% extends "base.html" %}
 {% from "_tag_spec_edit.html" import spec_edit_btn, spec_edit_modal %}
-{% block title %}L1/L2 Repair — OxyPC{% endblock %}
-{% block page_title %}L1/L2 Repair Stage{% endblock %}
+{# RMA Devices (2026-11-27) renders this same page: Q = the queue's links and
+   permission module (routers/repair.py QUEUES); RMA = Mark Complete is "Ready"
+   and Replace takes the place of Request to L3/L4. #}
+{% set Q = Q if Q is defined else {'key': 'l1', 'perm': PM, 'url': '/repair/l1', 'label': 'L1/L2'} %}
+{% set RMA = Q.key == 'rma' %}
+{% set PM = Q.perm %}
+{% block title %}{{ 'RMA Devices' if RMA else 'L1/L2 Repair' }} — OxyPC{% endblock %}
+{% block page_title %}{{ 'RMA Devices' if RMA else 'L1/L2 Repair Stage' }}{% endblock %}
 {% block content %}
 
 
@@ -35,7 +41,7 @@
          initGlobalTable's own toolbar controls (which DataTables injects
          after init). #}
       <div class="card-header bg-transparent d-flex flex-wrap align-items-center justify-content-between gap-2">
-        <span class="fw-semibold">Devices in L1/L2</span>
+        <span class="fw-semibold">Devices in {{ Q.label }}</span>
         <div class="d-flex flex-wrap align-items-center gap-2">
           {# Search box + Lot filter hidden (2026-10-26) — left in the DOM empty so
              applyL1Filters keeps working; the table's own search still filters. #}
@@ -67,7 +73,7 @@
           <select id="l1CustRetFilter" class="form-select form-select-sm" style="width:190px" title="Customer Return">
             <option value="">Customer Return: All</option><option value="1">Customer Return: Yes</option><option value="0">Customer Return: No</option>
           </select>
-          <button {% if not can(current_user, 'repair_l1', 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l1ExportBtn"
+          <button {% if not can(current_user, PM, 'export') %}hidden {% endif %}type="button" class="btn btn-sm btn-outline-success text-nowrap" id="l1ExportBtn"
                   title="Export the rows shown (current filters / search) to CSV">
             <i class="bi bi-download me-1"></i>Export (<span id="l1ExportBtnCount">0</span>)</button>
           {# Search Tags button removed (2026-11-09): the top-bar search opens the same modal. #}
@@ -97,7 +103,8 @@
                   data-lot="{{ lot_number or '' }}">
                 <td>
                   {# Tag Number + parts-changed icon kept on one line (2026-10-17). #}
-                  <span class="text-nowrap"><a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none">{{ device.barcode }}</a>{{ parts_badge(parts_badges, device.id) }}{{ spec_edit_btn(device, can(current_user, 'repair_l1', 'edit')) }}</span>
+                  <span class="text-nowrap"><a href="/devices/{{ device.barcode }}" class="font-monospace text-decoration-none">{{ device.barcode }}</a>{{ parts_badge(parts_badges, device.id) }}{{ spec_edit_btn(device, can(current_user, PM, 'edit')) }}</span>
+                  {% if RMA and (device.replaced or '').startswith('Replaced with ') %}<br><span class="badge bg-info text-dark">{{ device.replaced }}</span>{% endif %}
                   {% if failed_fqc %}<br><span class="text-nowrap"><span class="badge bg-danger">Failed from Final QC</span>
                   <i class="bi bi-info-circle text-danger ms-1" style="cursor:help"
                      data-bs-toggle="tooltip" data-bs-placement="top"
@@ -106,7 +113,7 @@
                 {# Pick This on every tag that isn't already yours (2026-10-19):
                    closes the tag's open WorkID(s) and opens a new one for you —
                    lets anyone take over an absent colleague's tag. #}
-                <td>{% if wo %}<span class="font-monospace fw-bold">{{ wo.work_id }}</span><br><small class="text-muted">{{ wo.assigned_name }}</small>{% endif %}{% if (not wo or not wo.mine) and has_perm(current_user.role.value, 'repair_l1', 'add') %}{% if wo %}<br>{% endif %}<form method="post" action="/repair/l1/pick" class="d-inline ajax-pick-form"{% if wo and not wo.unpicked %} onsubmit="return confirm('Take over this tag? Its current WorkID will be closed and a new WorkID opened for you.')"{% endif %}>
+                <td>{% if wo %}<span class="font-monospace fw-bold">{{ wo.work_id }}</span><br><small class="text-muted">{{ wo.assigned_name }}</small>{% endif %}{% if (not wo or not wo.mine) and has_perm(current_user.role.value, PM, 'add') and not (RMA and device.l1l2_status == 'Ready') %}{% if wo %}<br>{% endif %}<form method="post" action="{{ Q.url }}/pick" class="d-inline ajax-pick-form"{% if wo and not wo.unpicked %} onsubmit="return confirm('Take over this tag? Its current WorkID will be closed and a new WorkID opened for you.')"{% endif %}>
                   <input type="hidden" name="device_id" value="{{ device.id }}">
                   <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                   <button type="submit" class="btn btn-sm btn-outline-success py-0 px-2 text-nowrap{% if wo %} mt-1{% endif %}"><i class="bi bi-hand-index-thumb me-1"></i>Pick This</button>
@@ -137,7 +144,7 @@
                 <td>{% if wo %}<span class="badge bg-{{ 'danger' if wo.days_pending >= 3 else ('warning text-dark' if wo.days_pending >= 1 else 'secondary') }}">{{ wo.days_pending }} day{{ 's' if wo.days_pending != 1 else '' }}</span>{% if wo.paused %}<span class="badge bg-secondary ms-1" title="Frozen — a required part is out of stock"><i class="bi bi-pause-fill"></i> Paused</span>{% endif %}{% else %}<span class="text-muted">—</span>{% endif %}</td>
                 <td>
                   {% set st = device.l1l2_status or 'New' %}
-                  <span class="badge bg-{{ 'info' if st == 'Repair Started' else ('primary' if st == 'Requested to L3/L4' else 'warning text-dark' if st == 'Returned from L3/L4' else 'secondary') }}">{{ st }}</span>
+                  <span class="badge bg-{{ 'success' if st == 'Ready' else 'info' if st == 'Repair Started' else ('primary' if st == 'Requested to L3/L4' else 'warning text-dark' if st == 'Returned from L3/L4' else 'secondary') }}">{{ st }}</span>
                 </td>
                 <td>
                   {% if device.l34_status %}
@@ -145,10 +152,13 @@
                   {% else %}<span class="text-muted">—</span>{% endif %}
                 </td>
                 <td class="text-nowrap">
-                  {% if wo and not wo.mine and not full_queue %}
+                  {% if RMA and device.l1l2_status == 'Ready' %}
+                    {# RMA replacement tag: Ready as it arrives — dispatched from Return Stock. #}
+                    <span class="text-muted small">In Return Stock</span>
+                  {% elif wo and not wo.mine and not full_queue %}
                     {# Someone else's tag — Pick This (WorkID column) first. #}
                   {% elif device.l34_status in ['Normal Scrap', 'Replacement Scrap'] %}
-                    {% if can(current_user, 'repair_l1', 'edit') %}
+                    {% if can(current_user, PM, 'edit') %}
                     <form method="post" action="/repair/back-to-production" class="d-inline">
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ device.id }}">
@@ -159,32 +169,39 @@
                     {% if pna %}
                     {# Open PNA parts: shown disabled, but still clickable so it can
                        explain why (a real disabled button gets no click). #}
-                    {% if can(current_user, 'repair_l1', 'edit') %}
+                    {% if can(current_user, PM, 'edit') %}
                     <button type="button" class="btn btn-sm btn-success mark-complete-pna-btn opacity-50"
                             aria-disabled="true" style="cursor:not-allowed"
                             data-barcode="{{ device.barcode }}" data-pna="{{ pna | join(', ') }}"
-                            title="Open PNA parts — unselect them first">Mark Complete</button>
+                            title="Open PNA parts — unselect them first">{{ 'Ready' if RMA else 'Mark Complete' }}</button>
                     {% endif %}
                     {% else %}
-                    {% if can(current_user, 'repair_l1', 'edit') %}
+                    {% if can(current_user, PM, 'edit') %}
                     {# Customer return (2026-10-30): Mark Complete moves it to Sold
                        (no new sale) instead of Stress Test — confirmed in JS. #}
-                    <form method="post" action="/repair/l1l2-complete-to-stress" class="d-inline mark-complete-form"
-                          {% if device.return_status and not (device.tag_return_status or '').startswith('Replaced by') and device.tag_return_status != 'Return for Credit Note' %}data-customer-return="{{ device.barcode }}"{% endif %}>
+                    <form method="post" action="{{ '/repair/rma/ready' if RMA else '/repair/l1l2-complete-to-stress' }}" class="d-inline mark-complete-form"
+                          {% if RMA %}data-rma="1" {% endif %}{% if device.return_status and not (device.tag_return_status or '').startswith('Replaced by') and device.tag_return_status != 'Return for Credit Note' %}data-customer-return="{{ device.barcode }}"{% endif %}>
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ device.id }}">
-                      <button type="submit" class="btn btn-sm btn-success mark-complete-btn">Mark Complete</button>
+                      <button type="submit" class="btn btn-sm btn-success mark-complete-btn">{% if RMA %}<i class="bi bi-check2-circle"></i> Ready{% else %}Mark Complete{% endif %}</button>
                     </form>
                     {% endif %}
                     {% endif %}
-                    {% if can(current_user, 'repair_l1', 'edit') %}
+                    {% if can(current_user, PM, 'edit') %}
+                    {% if RMA %}
+                    {# Replace (2026-11-27): give the customer another tag in stock. #}
+                    <button type="button" class="btn btn-sm btn-outline-primary rma-replace-btn"
+                            data-device="{{ device.id }}" data-barcode="{{ device.barcode }}">
+                      <i class="bi bi-arrow-left-right"></i> Replace</button>
+                    {% else %}
                     <button type="button" class="btn btn-sm btn-outline-primary request-l3l4-btn"
                             data-device="{{ device.id }}" data-barcode="{{ device.barcode }}">
                       <i class="bi bi-arrow-up-right-circle"></i> Request to L3/L4</button>
                     {% endif %}
+                    {% endif %}
                   {% else %}
-                    {% if can(current_user, 'repair_l1', 'edit') %}
-                    <form method="post" action="/repair/l1l2-start" class="d-inline">
+                    {% if can(current_user, PM, 'edit') %}
+                    <form method="post" action="{{ '/repair/rma/start' if RMA else '/repair/l1l2-start' }}" class="d-inline">
                       <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
                       <input type="hidden" name="device_id" value="{{ device.id }}">
                       <button type="submit" class="btn btn-sm btn-primary"><i class="bi bi-play-fill"></i> Start Repair</button>
@@ -241,7 +258,7 @@
                 <td class="text-center"><span class="badge bg-{{ 'success' if bp.changed else 'light text-muted border' }}">{{ bp.changed }}</span></td>
                 <td>
                   <div class="d-flex gap-1 flex-wrap">
-                    {% if can(current_user, 'repair_l1', 'add') %}
+                    {% if can(current_user, PM, 'add') %}
                     <button type="button" class="btn btn-sm btn-outline-primary py-0 px-2"
                             onclick="openBulkPartRequest('new', '{{ bp.label | e }}', '{{ bp.category | e }}', {{ bp.qty }}, {{ bp.requested }})">
                       <i class="bi bi-plus-circle"></i> Add Request</button>
@@ -272,7 +289,7 @@
      New/Replace Request modal, but applied to every tag in the queue. -->
 <div class="modal fade" id="bulkPartModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog">
-    <form method="post" action="/repair/bulk-part-request" id="bulkPartForm">
+    <form method="post" action="{{ '/repair/rma/bulk-part-request' if RMA else '/repair/bulk-part-request' }}" id="bulkPartForm">
       <div class="modal-content">
         <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
         <input type="hidden" name="request_type" id="bp_request_type" value="new">
@@ -409,6 +426,51 @@
   </div>
 </div>
 {# Pencil next to the Tag Number: quick spec edit (2026-10-26). #}
+{% if RMA %}
+<!-- RMA Replace (2026-11-27): search / scan / pick a tag in stock; the
+     customer tag's return and the picked tag show side by side. Submit moves
+     the customer tag to IQC and puts the picked tag here as Ready. -->
+<div class="modal fade" id="rmaReplaceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl">
+    <form method="post" action="/repair/rma/replace" class="modal-content" id="rmaReplaceForm">
+      <input type="hidden" name="csrf_token" value="{{ request.cookies.get('csrf_token','') }}">
+      <input type="hidden" name="device_id" id="rr_device">
+      <input type="hidden" name="replacement_barcode" id="rr_repl">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-arrow-left-right me-2"></i>Replace <span class="font-monospace" id="rr_barcode"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <label class="form-label small fw-semibold" for="rr_search">Replacement Tag</label>
+        <div class="input-group input-group-sm">
+          <span class="input-group-text"><i class="bi bi-upc-scan"></i></span>
+          <input type="text" id="rr_search" class="form-control" autocomplete="off"
+                 placeholder="Search or scan Tag / Serial Number of a tag in stock">
+        </div>
+        <div class="list-group small mt-1" id="rr_results" style="max-height:220px;overflow:auto"></div>
+        <div class="row g-3 mt-1">
+          <div class="col-md-6">
+            <div class="border rounded p-2 h-100">
+              <div class="fw-semibold small mb-1 text-danger"><i class="bi bi-person me-1"></i>Customer Tag (goes to IQC)</div>
+              <table class="table table-sm small mb-0"><tbody id="rr_cust"><tr><td class="text-muted">Loading…</td></tr></tbody></table>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="border rounded p-2 h-100">
+              <div class="fw-semibold small mb-1 text-success"><i class="bi bi-laptop me-1"></i>Replacement Tag (goes to the customer)</div>
+              <table class="table table-sm small mb-0"><tbody id="rr_new"><tr><td class="text-muted">Search and pick a tag above.</td></tr></tbody></table>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" id="rr_submit" disabled><i class="bi bi-check2 me-1"></i>Replace</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
 {{ spec_edit_modal() }}
 {# Search Tags modal is included once by base.html (2026-11-08). #}
 {% endblock %}
@@ -479,7 +541,7 @@ $(document).ready(function(){
   }
   var ynFlag = function (attr) { return function (tr) { return tr.getAttribute(attr) === '1' ? 'Yes' : 'No'; }; };
   $('#l1ExportBtn').on('click', function () {
-    exportRepairTable(dt, 'l1l2_repair', [
+    exportRepairTable(dt, '{{ 'rma_devices' if RMA else 'l1l2_repair' }}', [
       ['Model', function (tr) { return (tr.getAttribute('data-search') || '').split(' ').slice(2).join(' ').trim(); }],
       ['CPU', function (tr) { return tr.getAttribute('data-cpu') || ''; }],
       ['RAM (GB)', function (tr) { return tr.getAttribute('data-ram') || ''; }],
@@ -586,7 +648,7 @@ function rebuildBulkPartsTable(visibleIds) {
       '<td class="text-center"><span class="badge bg-' + (bp.requested ? 'primary' : 'light text-muted border') + '">' + bp.requested + '</span></td>' +
       '<td class="text-center"><span class="badge bg-' + (bp.changed ? 'success' : 'light text-muted border') + '">' + bp.changed + '</span></td>' +
       '<td><div class="d-flex gap-1 flex-wrap">' +
-{% if can(current_user, 'repair_l1', 'add') %}        '<button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" onclick="openBulkPartRequest(\'new\', ' + args + ')">' +
+{% if can(current_user, PM, 'add') %}        '<button type="button" class="btn btn-sm btn-outline-primary py-0 px-2" onclick="openBulkPartRequest(\'new\', ' + args + ')">' +
         '<i class="bi bi-bag-plus"></i> New Request</button>' +
         '<button type="button" class="btn btn-sm btn-outline-warning py-0 px-2" onclick="openBulkPartRequest(\'replace\', ' + args + ')">' +
         '<i class="bi bi-arrow-repeat"></i> Replace Request</button>' +
@@ -755,8 +817,10 @@ function _openBulkPartRequest(requestType, partLabel, category, qty, requested) 
     var form = this;
     e.preventDefault();
     var cr = form.getAttribute('data-customer-return');
-    if (cr && !confirm(cr + ' is a customer return.\n\nMark Complete will move it straight to Sold (no new sale, no Stress Test). ' +
-                       'Its dispatch is done from Inventory Manager \u2192 Return Stock. Continue?')) return;
+    if (cr && !confirm(form.getAttribute('data-rma')
+          ? (cr + ' is ready?\n\nIt moves to Sold (no new sale) and Return Stock shows it for dispatch. Continue?')
+          : (cr + ' is a customer return.\n\nMark Complete will move it straight to Sold (no new sale, no Stress Test). ' +
+             'Its dispatch is done from Inventory Manager \u2192 Return Stock. Continue?'))) return;
     var deviceId = $(form).find('input[name="device_id"]').val();
     fetch('/repair/l1l2-complete-precheck?device_id=' + encodeURIComponent(deviceId))
       .then(function(r){ return r.ok ? r.json() : { to_verify: [], to_cancel: [] }; })
@@ -791,5 +855,76 @@ function _openBulkPartRequest(requestType, partLabel, category, qty, requested) 
   });
 })();
 </script>
+{% if RMA %}
+<script>
+// RMA Replace modal (2026-11-27). Delegated: DataTables redraws rows.
+(function(){
+  var el = document.getElementById('rmaReplaceModal');
+  if (!el) return;
+  var modal = new bootstrap.Modal(el), timer = null, cur = '';
+  var $s = document.getElementById('rr_search'), $res = document.getElementById('rr_results');
+  function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function rows(tb, pairs){
+    document.getElementById(tb).innerHTML = pairs.map(function(p){
+      return '<tr><th class="text-muted fw-normal text-nowrap" style="width:38%">' + p[0] + '</th><td>' + (esc(p[1]) || '—') + '</td></tr>';
+    }).join('');
+  }
+  function spec(d){ return [['Serial No', d.serial_no], ['Make', d.make], ['Model', d.model], ['CPU', d.cpu],
+                            ['Gen', d.gen], ['RAM', d.ram], ['Storage', d.storage]]; }
+  function pick(d){
+    document.getElementById('rr_repl').value = d.barcode;
+    rows('rr_new', [['Tag No', d.barcode]].concat(spec(d), [['Current Stage', d.stage]]));
+    document.getElementById('rr_submit').disabled = false;
+    $res.innerHTML = ''; $s.value = d.barcode;
+  }
+  function search(q, exactPick){
+    q = (q || '').trim();
+    if (q.length < 2) { $res.innerHTML = ''; return; }
+    fetch('/repair/rma/replace-search?q=' + encodeURIComponent(q) + '&exclude=' + encodeURIComponent(cur))
+      .then(function(r){ return r.ok ? r.json() : {items: []}; })
+      .then(function(d){
+        var items = d.items || [];
+        var exact = items.filter(function(i){ return i.barcode.toUpperCase() === q.toUpperCase(); })[0];
+        if (exactPick && exact) { pick(exact); return; }
+        $res.innerHTML = items.length ? items.map(function(i, k){
+          return '<button type="button" class="list-group-item list-group-item-action py-1" data-k="' + k + '">' +
+                 '<span class="font-monospace fw-semibold">' + esc(i.barcode) + '</span> · ' + esc(i.make) + ' ' + esc(i.model) +
+                 ' · ' + esc(i.cpu) + ' ' + esc(i.ram) + ' <span class="badge bg-light text-dark border ms-1">' + esc(i.stage) + '</span></button>';
+        }).join('') : '<div class="list-group-item text-muted py-1">No tag in stock matches.</div>';
+        $res.querySelectorAll('[data-k]').forEach(function(b){ b.addEventListener('click', function(){ pick(items[+b.dataset.k]); }); });
+      });
+  }
+  $s.addEventListener('input', function(){
+    document.getElementById('rr_submit').disabled = true; document.getElementById('rr_repl').value = '';
+    clearTimeout(timer); var v = this.value; timer = setTimeout(function(){ search(v, false); }, 250);
+  });
+  // A scanner ends with Enter: pick the exact tag straight away.
+  $s.addEventListener('keydown', function(e){ if (e.key === 'Enter') { e.preventDefault(); clearTimeout(timer); search(this.value, true); } });
+  $(document).on('click', '.rma-replace-btn', function(){
+    cur = this.dataset.barcode;
+    document.getElementById('rr_device').value = this.dataset.device;
+    document.getElementById('rr_barcode').textContent = cur;
+    document.getElementById('rr_repl').value = ''; document.getElementById('rr_submit').disabled = true;
+    $s.value = ''; $res.innerHTML = '';
+    rows('rr_new', [['', 'Search and pick a tag above.']]);
+    rows('rr_cust', [['', 'Loading…']]);
+    fetch('/repair/rma/return-info?device_id=' + encodeURIComponent(this.dataset.device))
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(d){
+        if (!d) { rows('rr_cust', [['', 'Could not load the return.']]); return; }
+        rows('rr_cust', [['Tag No', d.barcode], ['Reason', d.reason], ['Condition', d.condition], ['Notes', d.notes]]
+          .concat(spec(d), [['Return Date', d.return_date], ['Sale Date', d.sale_date], ['Warranty', d.warranty],
+                            ['Sales Person', d.sales_person], ['Return By', d.return_by], ['Action', d.action]]));
+      });
+    modal.show();
+    setTimeout(function(){ $s.focus(); }, 400);
+  });
+  document.getElementById('rmaReplaceForm').addEventListener('submit', function(e){
+    var r = document.getElementById('rr_repl').value;
+    if (!r || !confirm('Replace ' + cur + ' with ' + r + '?\n\n' + cur + ' moves to IQC; ' + r + ' comes here as Ready and shows in Return Stock for dispatch.')) e.preventDefault();
+  });
+})();
+</script>
+{% endif %}
 {% include "_ajax_row_refresh.html" %}
 {% endblock %}

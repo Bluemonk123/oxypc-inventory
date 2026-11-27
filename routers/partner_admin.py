@@ -1503,7 +1503,7 @@ async def manage_lots(
     tags, then three tabs fed by the test tags (Entity External Partner Test):
       Lots   — one row per test lot; Set Price (with Sub-lot Number) here only
       Models — model-wise count per lot
-      Tags   — every test tag (edit, Move to Ready for Sale)
+      Tags   — every test tag (edit, Set Price; uploads start in Ready for Sale)
     Partners see a lot by its Sub-lot Number (Device.sub_lot_number on the
     lot's tags), not the real lot number (routers/partner_portal.py)."""
     from collections import Counter
@@ -1550,6 +1550,19 @@ async def manage_lots(
         lot_list.append(L)
     lot_list.sort(key=lambda x: x["uploaded"] or datetime.min, reverse=True)
     sub_by_lot = {L["lot_number"]: L["sub_lot"] for L in lot_list}
+    # Tag price (2026-11-27, Pankaj): the lot's price split evenly over its
+    # tags, unless the tag has its own price (Device.device_price) set with
+    # the Tags tab's Set Price / Bulk Set Price.
+    for row in test_devices:
+        row["price"], row["price_src"] = None, ""
+        if not _see_price:
+            continue
+        own = row["device"].device_price
+        L = lots.get(row["lot_id"])
+        if own is not None:
+            row["price"], row["price_src"] = float(own), "tag"
+        elif L and L["price"] and L["tags"]:
+            row["price"], row["price_src"] = round(L["price"] / L["tags"], 2), "split"
     model_list = sorted(models.values(), key=lambda m: (m["lot_number"] or "", -m["qty"], m["model"] or ""))
     for m in model_list:
         m["sub_lot"] = sub_by_lot.get(m["lot_number"], "")
@@ -1741,6 +1754,115 @@ async def manage_lots_set_price(
     return RedirectResponse(url=f"{back}&success=" + quote_plus(
         f"{sub or lot.lot_number}: price ₹{lot.buying_price:,.2f}" + (f", category {cat}" if cat else "")),
         status_code=302)
+
+
+def _price_or_none(raw: str):
+    """'' -> None (clear); else a Decimal >= 0, or False when invalid."""
+    raw = (raw or "").replace(",", "").strip()
+    if raw == "":
+        return None
+    try:
+        val = Decimal(raw)
+    except Exception:
+        return False
+    return val.quantize(Decimal("0.01")) if val >= 0 else False
+
+
+@router.post("/manage-lots/bulk-set-price")
+async def manage_lots_bulk_set_price(
+    request: Request,
+    lot_ids: str = Form(...),
+    price: str = Form(...),
+    _csrf=Depends(verify_csrf),
+    current_user: User = Depends(require_module_perm("trade_partner_manage_lots", "edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lots tab → Bulk Set Price (2026-11-27, Pankaj): one price for every
+    selected test lot (Lot.buying_price = the Catalog's Base Price). Each lot
+    gets its Sub-lot Number as with the single Set Price."""
+    from utils.price_export import can_add_prices
+    back = "/trade-partner/manage-lots?tab=lots"
+    if not can_add_prices(current_user, "trade_partner_manage_lots"):
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("You don't have Pricing Add on Manage Lots."), status_code=302)
+    val = _price_or_none(price)
+    if val is None or val is False:
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("Enter a price of 0 or more."), status_code=302)
+    ids = []
+    for x in (lot_ids or "").split(","):
+        try:
+            ids.append(uuid_mod.UUID(x.strip()))
+        except ValueError:
+            pass
+    lots = (await db.execute(select(Lot).where(Lot.id.in_(ids)))).scalars().all() if ids else []
+    lots = [l for l in lots if (l.lot_number or "").upper().startswith(EXTERNAL_PARTNER_TEST_LOT_PREFIX.upper())]
+    if not lots:
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("Select at least one test lot."), status_code=302)
+    await ensure_sub_lots(db, {l.id for l in lots})
+    old = {l.lot_number: (str(l.buying_price) if l.buying_price is not None else None) for l in lots}
+    for l in lots:
+        l.buying_price = val
+    await audit(db, action="MANAGE_LOTS_PRICE_BULK_SET", user=current_user, table_name="lots",
+                record_id=f"bulk:{len(lots)}_lots", old_value={"prices": old},
+                new_value={"price": str(val), "lots": sorted(old)}, request=request)
+    await db.commit()
+    return RedirectResponse(url=f"{back}&success=" + quote_plus(f"{len(lots)} lot(s): price ₹{val:,.2f}"), status_code=302)
+
+
+async def _set_tag_prices(request, db, current_user, barcodes, price, action):
+    from utils.price_export import can_add_prices
+    back = "/trade-partner/manage-lots?tab=tags"
+    if not can_add_prices(current_user, "trade_partner_manage_lots"):
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("You don't have Pricing Add on Manage Lots."), status_code=302)
+    val = _price_or_none(price)
+    if val is False:
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("Enter a price of 0 or more, or leave it blank."), status_code=302)
+    bcs = [b.strip() for b in (barcodes or "").split(",") if b.strip()]
+    devs = (await db.execute(select(Device).where(
+        Device.barcode.in_(bcs), Device.entity == EXTERNAL_PARTNER_TEST_ENTITY,
+        Device.is_trashed.isnot(True)))).scalars().all() if bcs else []
+    if not devs:
+        return RedirectResponse(url=f"{back}&error=" + quote_plus("Select at least one test tag."), status_code=302)
+    old = {d.barcode: (str(d.device_price) if d.device_price is not None else None) for d in devs}
+    for d in devs:
+        d.device_price = val
+    await audit(db, action=action, user=current_user, table_name="devices",
+                record_id=(str(devs[0].id) if len(devs) == 1 else f"bulk:{len(devs)}_tags"),
+                old_value={"prices": old},
+                new_value={"price": str(val) if val is not None else None,
+                           "tags": sorted(old)[:500]}, request=request)
+    await db.commit()
+    msg = (f"{len(devs)} tag(s): price ₹{val:,.2f}" if val is not None
+           else f"{len(devs)} tag(s): back to the lot's split price")
+    return RedirectResponse(url=f"{back}&success=" + quote_plus(msg), status_code=302)
+
+
+@router.post("/manage-lots/tag-set-price")
+async def manage_lots_tag_set_price(
+    request: Request,
+    barcode: str = Form(...),
+    price: str = Form(default=""),
+    _csrf=Depends(verify_csrf),
+    current_user: User = Depends(require_module_perm("trade_partner_manage_lots", "edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Tags tab → row Set Price (2026-11-27, Pankaj): the tag's own price
+    (Device.device_price), which replaces its share of the lot price. Blank =
+    back to the lot's split price."""
+    return await _set_tag_prices(request, db, current_user, barcode, price, "MANAGE_LOTS_TAG_PRICE_SET")
+
+
+@router.post("/manage-lots/tags-bulk-set-price")
+async def manage_lots_tags_bulk_set_price(
+    request: Request,
+    barcodes: str = Form(...),
+    price: str = Form(default=""),
+    _csrf=Depends(verify_csrf),
+    current_user: User = Depends(require_module_perm("trade_partner_manage_lots", "edit")),
+    db: AsyncSession = Depends(get_db),
+):
+    """Tags tab → Bulk Set Price (2026-11-27, Pankaj): one own price for every
+    selected tag. Blank = back to the lot's split price."""
+    return await _set_tag_prices(request, db, current_user, barcodes, price, "MANAGE_LOTS_TAG_PRICE_BULK_SET")
 
 
 @router.post("/manage-lots/set-category")

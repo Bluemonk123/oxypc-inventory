@@ -30,6 +30,7 @@ from models.role_permissions import has_perm, is_narrowly_scoped_to, is_cosmetic
 from models.cosmetic_flow import CosmeticFlowRow
 from models.cost_config import CostConfig
 from models.master import EXTERNAL_PARTNER_TEST_ENTITY
+from utils.stage_page_filters import live_tag_filters
 from utils.master_data import entity_values
 from utils.attendance_groups import is_group_manager, managed_usernames
 from routers.transfers import _gen_work_id
@@ -310,16 +311,12 @@ async def _resolve_fail_engineer(db: AsyncSession, device_id, failure_reason: st
 
 
 async def _get_devices_at_stage(db: AsyncSession, stage: DeviceStage, entity: str = ""):
-    where = [Device.current_stage == stage, Device.is_trashed == False]
+    # No trashed (tag or lot) / External Partner Test / inactive tags, even
+    # when an Entity is picked (2026-11-26, Pankaj: ETP tags go back through
+    # L1/L2 first).
+    where = [Device.current_stage == stage, *live_tag_filters()]
     if entity:
         where.append(Device.entity == entity)
-    else:
-        # No explicit Entity filter -> exclude the External Partner test-data
-        # entity by default, same convention as routers/dashboard.py,
-        # devices.py, stock.py and entity_movement.py. NULL-safe: `entity !=
-        # X` alone silently drops every entity-less device too, since SQL
-        # NULL != X evaluates to NULL, not TRUE.
-        where.append(or_(Device.entity.is_(None), Device.entity != EXTERNAL_PARTNER_TEST_ENTITY))
     result = await db.execute(
         select(Device, Lot.lot_number)
         .join(Lot, Device.lot_id == Lot.id)
@@ -424,7 +421,8 @@ async def cosmetic_all_tags(request: Request, db: AsyncSession = Depends(get_db)
     result = await db.execute(
         select(Device, Lot.lot_number)
         .join(Lot, Device.lot_id == Lot.id)
-        .where(Device.current_stage.in_(COSMETIC_NAV_STAGES))
+        .where(Device.current_stage.in_(COSMETIC_NAV_STAGES),
+               *live_tag_filters())   # no trashed / External Partner Test / inactive (2026-11-26)
         .order_by(Device.updated_at.desc())
     )
     devices = result.all()

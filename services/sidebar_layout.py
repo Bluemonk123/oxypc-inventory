@@ -127,10 +127,16 @@ def sb_order(nid: str) -> int:
         return n["idx"] * 1000
     h = _heading_order(g)
     if nid in saved:
-        return h + 1 + saved.index(nid)
-    # an item added after the order was saved: after the saved ones, base.html order
-    rank = [x for x in _ORDERED if nodes[x]["group"] == g and x not in saved].index(nid)
-    return h + 500 + rank
+        return h + 2 + 2 * saved.index(nid)
+    # An item added after the order was saved (2026-11-27): just above the
+    # saved item that follows it in base.html (RMA Devices above Pre-Sale QC);
+    # with none after it, after the saved ones in base.html order.
+    sibs = [x for x in _ORDERED if nodes[x]["group"] == g]
+    for x in sibs[sibs.index(nid) + 1:]:
+        if x in saved:
+            return h + 1 + 2 * saved.index(x)
+    rank = [x for x in sibs if x not in saved].index(nid)
+    return h + 900 + rank
 
 
 def groups():

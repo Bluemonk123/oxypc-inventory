@@ -53,7 +53,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, Form, Request, Query
 from fastapi.responses import HTMLResponse, StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 
 from templates_config import templates
 from database import get_db
@@ -62,6 +62,7 @@ from models.user import User, UserRole
 from models.device import Device, DeviceStage, StageMovement, STAGE_LABELS, DROPDOWN_STAGES
 from models.work_order import WorkOrder
 from models.lot import Lot
+from utils.stage_page_filters import live_tag_filters
 from utils.attendance_groups import managed_usernames
 from services.pna_lookup import active_pna_parts, pna_history
 from auth.dependencies import get_current_user, verify_csrf
@@ -655,6 +656,35 @@ async def _stages_at(db, when, device_ids=None) -> dict:
     return {d: _sv(st) for d, st in (await db.execute(q)).all()}
 
 
+# Each card's Pending (2026-11-26, Pankaj) = tags sitting on that stage on the
+# date, never counting trashed tags (tag or its lot), External Partner Test
+# tags or inactive tags. Device flags are as of now.
+#   L1/L2 = L1 (L2 is retired; its leftovers go via Data Fixes) · L3/L4 = L3
+#   Stress = Stress Test · Cosmetic = Cosmetic Received .. Cosmetic Completed
+#   Final QC = Final QC
+_PAGE_PENDING_STAGES = {
+    "l1l2": ("l1",), "l3l4": ("l3",), "stress": ("qc_check",),
+    "cosmetic": _COSMETIC_VALUES, "final_qc": ("final_qc",),
+}
+
+
+async def _page_pending(db, when, device_ids=None) -> dict:
+    """{group: Pending} — see _PAGE_PENDING_STAGES."""
+    from models.master import EXTERNAL_PARTNER_TEST_ENTITY
+    st_at = await _stages_at(db, when, device_ids)      # trashed lots left out
+    want = {v for vals in _PAGE_PENDING_STAGES.values() for v in vals}
+    ids = [d for d, v in st_at.items() if v in want]
+    ok = set()
+    for c in _chunks(ids):
+        for did, active, trashed, ent in (await db.execute(
+                select(Device.id, Device.is_active, Device.is_trashed, Device.entity)
+                .where(Device.id.in_(c)))).all():
+            if active is not False and trashed is not True and ent != EXTERNAL_PARTNER_TEST_ENTITY:
+                ok.add(did)
+    return {g: sum(1 for d in ids if d in ok and st_at[d] in vals)
+            for g, vals in _PAGE_PENDING_STAGES.items()}
+
+
 async def _dark_tiles(db, w_range, stage_tiles, items) -> dict:
     """The four dark tiles (2026-11-22, Pankaj) — totals of the cards below:
       Total Pending  = Pending of every stage card — tags sitting on each
@@ -694,42 +724,49 @@ async def _dark_tiles(db, w_range, stage_tiles, items) -> dict:
 
 
 async def _returned_card(db, w_range, items) -> dict:
-    """Returned card (2026-11-22, Pankaj): the L1/L2 and L3/L4 card rows whose
-    tag has a customer return (not rejected) logged in the Work Date range /
-    on the single date — a tag once per day, its latest WorkID that day:
-      Replace = the customer got a replacement or credit note (Tag Return
-                Status "Replaced by ..." / "Return for Credit Note")
-      Pending / Started / Pass = that WorkID not picked up / in progress /
-                completed (scrap decisions left out)."""
-    from models.sales import Return
+    """Customer Return card (2026-11-27, Pankaj): counted from the RMA Devices
+    page (/repair/rma), each tag once:
+      Pending = tags on RMA Devices on the last date (replacement tags, Ready
+                as they arrive, left out)
+      Started = tags picked (Pick This) on RMA Devices in the range
+      Pass    = tags made Ready (Return Stock: ready for dispatch) in the range
+      Replace = replacement tags put on RMA Devices in the range — the ones
+                with the "Replaced with <tag>" badge
+      assigned (Moved) = tags moved to RMA Devices in the range."""
     lo, hi = _day_range(w_range)
-    rows = [(i, it) for i, it in enumerate(items)
-            if _stage_group(it.get("stage_value")) in ("l1l2", "l3l4")
-            and _count_status(it) != "reassigned" and it.get("device_id")]
-    out = {"assigned": 0, "pending": 0, "started": 0, "pass": 0, "replace": 0}
-    dids = {it["device_id"] for _i, it in rows}
-    if not dids:
-        return out
-    returned, trs = set(), {}
-    for c in _chunks(dids):
-        returned.update((await db.execute(
-            select(Return.device_id).distinct()
-            .where(Return.device_id.in_(c), Return.return_date >= lo, Return.return_date <= hi,
-                   func.coalesce(Return.approval_status, "pending") != "rejected"))).scalars().all())
-        trs.update(dict((await db.execute(
-            select(Device.id, Device.tag_return_status).where(Device.id.in_(c)))).all()))
-    rows = [(i, it) for i, it in rows if it["device_id"] in returned]
-    keep = _tag_day_keep((i, "returned", it["device_id"], it.get("moved_at")) for i, it in rows)
-    for i, it in rows:
-        if i not in keep or it.get("scrap"):
+    rma = DeviceStage.rma
+    moves = (await db.execute(
+        select(StageMovement.device_id, StageMovement.from_stage, StageMovement.to_stage,
+               StageMovement.moved_at, StageMovement.notes)
+        .where(or_(StageMovement.to_stage == rma, StageMovement.from_stage == rma),
+               StageMovement.moved_at <= hi)
+        .order_by(StageMovement.moved_at))).all()
+    last, arrival, moved, ready, repl = {}, {}, set(), set(), set()
+    for did, fr, to, at, notes in moves:
+        last[did] = to
+        if to == rma and fr != rma:
+            arrival[did] = (notes or "").startswith("RMA Replace")
+        if at < lo:
             continue
-        t = trs.get(it["device_id"]) or ""
-        cs = _count_status(it)
-        key = ("replace" if t.startswith("Replaced by") or t == "Return for Credit Note"
-               else "pass" if _is_done(cs) else "started" if cs == "in_progress" else "pending")
-        out[key] += 1
-        out["assigned"] += 1
-    return out
+        if to == rma and fr != rma:
+            (repl if arrival[did] else moved).add(did)
+        elif fr == rma and to not in (rma, DeviceStage.iqc) and not arrival.get(did):
+            ready.add(did)      # Ready (a replacement tag leaving at dispatch is a Replace, not a Pass)
+    pending = {did for did, to in last.items() if to == rma and not arrival.get(did)}
+    if pending:
+        live = set()
+        for c in _chunks(pending):
+            live.update((await db.execute(
+                select(Device.id).outerjoin(Lot, Device.lot_id == Lot.id)
+                .where(Device.id.in_(c), *live_tag_filters()))).scalars().all())
+        pending &= live
+    started = set((await db.execute(
+        select(WorkOrder.device_id).distinct()
+        .where(or_(WorkOrder.stage == "rma", WorkOrder.work_id.like("RMA-%")),
+               WorkOrder.assigned_user_id.isnot(None),
+               WorkOrder.assigned_at >= lo, WorkOrder.assigned_at <= hi))).scalars().all())
+    return {"assigned": len(moved), "pending": len(pending), "started": len(started),
+            "pass": len(ready), "replace": len(repl)}
 
 
 def _stage_tile_counts_from_items(items) -> dict:
@@ -2016,7 +2053,9 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
                 Device.barcode.ilike(f"%{tag.strip()}%")))).scalars().all()
         _st_at = await _stages_at(db, _day_range(_w_range)[1], _tag_ids)
         _cv = list(_st_at.values())
-        stage_tiles["cosmetic"]["pending"] = sum(1 for v in _cv if v in _COSMETIC_VALUES)
+        # Pending = the stage page's own count (2026-11-26) — see _page_pending.
+        _pp = await _page_pending(db, _day_range(_w_range)[1], _tag_ids)
+        stage_tiles["cosmetic"]["pending"] = _pp["cosmetic"]
         stage_tiles["cosmetic"]["started"] = sum(1 for v in _cv if v in _COSMETIC_VALUES
                                                  and v not in ("cosmetic_received", "cosmetic_completed"))
         # Pass (2026-11-22, Pankaj): tags moved out of Water Sanding to
@@ -2032,10 +2071,9 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         stage_tiles["cosmetic"]["pass"] = len({(d, t.date()) for d, t in (await db.execute(_pq)).all() if t})
         # The other cards' Pending (2026-11-22, Pankaj): tags sitting on that
         # stage's page on the last date — L1/L2, L3/L4, Stress, Final QC.
-        for _g, _svs in (("l1l2", ("l1", "l2")), ("l3l4", ("l3",)), ("stress", ("qc_check",)),
-                         ("final_qc", ("final_qc",))):
+        for _g in ("l1l2", "l3l4", "stress", "final_qc"):
             if _g in stage_tiles:
-                stage_tiles[_g]["pending"] = sum(1 for v in _cv if v in _svs)
+                stage_tiles[_g]["pending"] = _pp[_g]
 
     # Dark tiles = the stage cards added up (2026-11-20, Pankaj), all WorkIDs
     # (Cosmetic per visit, as on its card): Assigned = Completed + Ongoing +
@@ -2112,7 +2150,7 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
     # Option C dashboard (2026-11-14, Pankaj) — services/workid_dash.py
     from services.workid_dash import build as _build_dash
     try:
-        dash_kpis, dash_widgets = await _build_dash(db)
+        dash_kpis, dash_widgets = await _build_dash(db, stage_tiles)   # Pending = the cards (2026-11-27)
     except Exception:
         import logging
         logging.getLogger(__name__).exception("workid dashboard failed")
@@ -2127,6 +2165,7 @@ async def _workid_status_page(*, request, db, current_user, workid="", tag="", e
         "stage_tiles": stage_tiles, "stage_groups": STAGE_GROUPS + [RETURNED_GROUP],
         # One members list (present in the range) for the cards' Team and the
         # Team Productivity export (2026-11-22).
+        "w_range": _w_range,   # Team Productivity export (2026-11-27)
         "stage_members": (_sm := await _stage_members(
             db, (_w_range[0].date() if _w_range else app_now().date()),
             (_w_range[1].date() if _w_range and _w_range[1].year < 2999 else app_now().date()))),
@@ -2368,163 +2407,83 @@ async def workid_status_export(request: Request, db: AsyncSession = Depends(get_
     def _attended(eng):
         return "Yes" if (_eng_user.get(eng) in _all_members or (eng or "").strip() in _member_names) else "No"
 
-    # Staff Summary "Stage" (2026-11-22): the stage(s) the person is a member of.
+    # ── Stage Summary / Staff Summary (2026-11-27, Pankaj) — per Date Completed:
+    #   Passed / Failed: Stress, Final QC, Cosmetic = their Pass / Fail
+    #   results; L1/L2, L3/L4, Returned (RMA Devices) = Completed / Scrap.
+    #   Staff Attendance = the stage's members present that day (as the cards'
+    #   Team); Avg Per Person = Passed Quantity / Staff Attendance.
+    # Built from the All Tags rows, so they add up to that sheet.
     _glabel = {key: lbl for key, lbl, *_ in STAGE_GROUPS}
-    _glabel["returned"] = "Returned"
-    _name_user = {v: k for k, v in _all_members.items()}
+    _glabel.update({"returned": "Returned", "other": "Other"})
+    _gorder = [key for key, *_ in STAGE_GROUPS] + ["returned", "other"]
 
-    def _member_stage(eng):
-        un = _eng_user.get(eng) or _name_user.get((eng or "").strip())
-        return ", ".join(_glabel.get(g, g) for g, m in _members.items() if un and un in m)
-
-    # Each Cosmetic stage row (2026-11-22): present Cosmetic members who have a
-    # WorkID at that stage (one person can work at several stages).
-    _stage_workers = {}
+    def _grp(sv):
+        return "returned" if sv == "rma" else _stage_group(sv)
+    _label_grp = {}
     for it in items:
-        u = it.get("engineer_username") or _name_user.get((it.get("engineer") or "").strip())
-        if u:
-            _stage_workers.setdefault((_stage_group(it.get("stage_value")), it.get("stage_label") or "—"), set()).add(u)
-    _people = {g: len(m) for g, m in _members.items()}
+        _label_grp.setdefault(it.get("stage_label") or "", _grp(it.get("stage_value")))
 
-    # Both summaries count WorkIDs (2026-10-28, Pankaj; were distinct tags),
-    # so they add up to the Tag Summary sheet's rows: Total = Open + Completed
-    # + Scrap + Reassigned. "Tags" is the distinct Tag Numbers among them.
-    _KEYS = ("total", "assigned", "completed", "reassigned", "scrap", "pna",
-             "stress_pass", "stress_fail", "fqc_pass", "fqc_fail", "cos_pass", "cos_fail")
+    def _result(r):
+        status = str(r[9] or "")
+        if status.startswith("Reassigned"):
+            return None
+        g = _label_grp.get(r[5] or "") or ("cosmetic" if r[13] else "other")
+        res = {"stress": r[11], "final_qc": r[12], "cosmetic": r[13]}.get(g)
+        if g not in ("stress", "final_qc", "cosmetic"):
+            res = "Pass" if status.startswith("Completed") else ("Fail" if status == "Scrap" else "")
+        if res not in ("Pass", "Fail"):
+            return None
+        when = r[8] if isinstance(r[8], datetime) else r[6]
+        return g, (when.date() if isinstance(when, datetime) else None), res == "Pass"
 
-    def _bucket():
-        b = {k: 0 for k in _KEYS}
-        b.update({"tags": set(), "days": [], "groups": {}, "cos_tags": set()})
-        return b
+    by_staff, by_stage = {}, {}
+    for r in tag_rows:
+        res = _result(r)
+        if not res:
+            continue
+        g, day, ok = res
+        for key, book in (((r[4] or "—", g, day), by_staff), ((g, day), by_stage)):
+            b = book.setdefault(key, [0, 0])
+            b[0 if ok else 1] += 1
 
-    def _add(b, it):
-        st = _status(it)
-        b["total"] += 1
-        b["assigned" if st == "Open" else st.lower()] += 1
-        if it.get("barcode") and it["barcode"] != "—":
-            b["tags"].add(it["barcode"])
-        if it.get("pna"):
-            b["pna"] += 1
-        grp = _stage_group(it.get("stage_value"))
-        if it.get("qc_result") in ("pass", "fail"):
-            pre = {"stress": "stress_", "final_qc": "fqc_", "cosmetic": "cos_"}.get(grp)
-            if pre:
-                b[pre + it["qc_result"]] += 1
-        if st == "Completed" and it.get("days") is not None:
-            b["days"].append(it["days"])
-        b["groups"][grp] = b["groups"].get(grp, 0) + 1
-        if grp == "cosmetic" and it.get("barcode") and it["barcode"] != "—":
-            b["cos_tags"].add(it["barcode"])      # Cosmetic Tags (2026-11-02), like the page tile
+    # Staff present per stage per day (one day at a time, at most a year).
+    # Days: the Work Date range (today when none), plus any day with results.
+    _lo, _hi = _day_range(page.context.get("w_range"))
+    _days = []
+    d = _lo.date()
+    while d <= _hi.date() and len(_days) < 366:
+        _days.append(d)
+        d += timedelta(days=1)
+    _days = sorted(set(_days) | {k[1] for k in by_stage if k[1]})[-366:]
+    att = {}
+    for d in _days:
+        for g, m in (await _stage_members(db, d, d)).items():
+            if m:
+                att[(g, d)] = len(m)
+                by_stage.setdefault((g, d), [0, 0])
 
-    def _avg(days):
-        return round(sum(days) / len(days), 1) if days else ""
+    def _per(p, n):
+        return round(p / n, 1) if n else ""
 
-    def _n(b, k):
-        return len(b[k]) if k == "tags" else b[k]
-
-    group_label = {key: lbl for key, lbl, *_ in STAGE_GROUPS}
-    group_label["other"] = "Other"
-    group_order = [key for key, *_ in STAGE_GROUPS] + ["other"]
-
-    # ── Sheet 2: Stage Summary — one row per stage, grouped ──
-    by_stage = {}
-    for it in items:
-        # Grouped by the table's Stage column (2026-10-27), same as the tiles.
-        key = (_stage_group(it.get("stage_value")), it.get("stage_label") or "—")
-        _add(by_stage.setdefault(key, _bucket()), it)
-    total_b = _bucket()
-    for it in items:
-        _add(total_b, it)
-
-    def _pf(b, g, group_row=False):
-        if g == "stress":
-            return [_n(b, "stress_pass"), _n(b, "stress_fail")]
-        if g == "final_qc":
-            return [_n(b, "fqc_pass"), _n(b, "fqc_fail")]
-        if g == "cosmetic":
-            if cos_moves is not None:      # moves out of Cosmetic: one figure for the group
-                return [cos_moves["pass"], cos_moves["fail"]] if group_row else ["", ""]
-            return [_n(b, "cos_pass"), _n(b, "cos_fail")]
-        return ["", ""]
-
-    def _stage_row(g, lbl, b, group_row=False):
-        # Attendance: the stage's members present in the range — on the
-        # group's own row (one stage) or its "All ... stages" row.
-        att = (_people.get(g, 0) if group_row
-               else len(_stage_workers.get((g, lbl), set()) & set((_members.get(g) or {}))))
-        return ([group_label[g], lbl, att, _n(b, "total"), _n(b, "tags"), _n(b, "assigned"), _n(b, "completed")]
-                + _pf(b, g, group_row) + [_n(b, "scrap"), _n(b, "reassigned"), _n(b, "pna"), _avg(b["days"])])
-    stage_rows = []
-    _ordered = sorted(by_stage.items(), key=lambda kv: (group_order.index(kv[0][0]), kv[0][1]))
-    for gi, g in enumerate(group_order):
-        part = [(lbl, b) for (gg, lbl), b in _ordered if gg == g]
-        for lbl, b in part:
-            stage_rows.append(_stage_row(g, lbl, b, group_row=(len(part) == 1)))
-        # No "All <group> stages" subtotal row (2026-11-22, Pankaj: it repeats
-        # the stage rows). Cosmetic's Pass / Fail (moves out of Cosmetic) sits
-        # on its Water Sanding row — Pass is the move out of Water Sanding —
-        # or its last row when there is none.
-        if g == "cosmetic" and part and cos_moves is not None:
-            i = next((k for k, (lbl, _b) in enumerate(part) if lbl == "Water Sanding"), len(part) - 1)
-            row = stage_rows[len(stage_rows) - len(part) + i]
-            row[7], row[8] = cos_moves["pass"], cos_moves["fail"]
+    stage_rows = [[_glabel.get(g, g), att.get((g, d), 0), d, v[0], v[1], _per(v[0], att.get((g, d), 0))]
+                  for (g, d), v in sorted(by_stage.items(), key=lambda kv: (
+                      _gorder.index(kv[0][0]) if kv[0][0] in _gorder else 99, kv[0][1] or _date.min))]
+    _tp, _tf, _ta = (sum(r[3] for r in stage_rows), sum(r[4] for r in stage_rows), sum(r[1] for r in stage_rows))
     _sheet(wb.create_sheet("Stage Summary"),
-           ["Stage Group", "Stage", "Attendance", "Total WorkIDs", "Tags", "Open WorkIDs", "Completed WorkIDs",
-            "Pass", "Fail",
-            "Scrap WorkIDs", "Reassigned WorkIDs", "WorkIDs with PNA", "Avg Days to Complete"],
-           stage_rows,
-           # Total: every member present, each once (= Staff Summary's Yes count)
-           ["Total", "", len(_all_members),
-            _n(total_b, "total"), _n(total_b, "tags"), _n(total_b, "assigned"), _n(total_b, "completed"),
-            _n(total_b, "stress_pass") + _n(total_b, "fqc_pass")
-            + (cos_moves["pass"] if cos_moves is not None else _n(total_b, "cos_pass")),
-            _n(total_b, "stress_fail") + _n(total_b, "fqc_fail")
-            + (cos_moves["fail"] if cos_moves is not None else _n(total_b, "cos_fail")),
-            _n(total_b, "scrap"), _n(total_b, "reassigned"), _n(total_b, "pna"), _avg(total_b["days"])])
+           ["Stage", "Staff Attendance", "Date Completed", "Passed Quantity", "Failed Quantity", "Avg Per Person"],
+           stage_rows, ["Total", _ta, "", _tp, _tf, _per(_tp, _ta)])
 
-    # ── Sheet 3: Staff Summary — one row per engineer ──
-    by_eng = {}
-    for it in items:
-        _add(by_eng.setdefault(it.get("engineer") or "—", _bucket()), it)
-    staff_rows = [[eng, _attended(eng), _member_stage(eng), _n(b, "total"), _n(b, "tags"), _n(b, "assigned"), _n(b, "completed"), _n(b, "scrap"),
-                   _n(b, "reassigned")]
-                  + [b["groups"].get(g, 0) for g in group_order] + [len(b["cos_tags"])]
-                  + [_n(b, "stress_pass"), _n(b, "stress_fail")]
-                  + ([cos_by_eng.get(eng, {}).get("pass", 0), cos_by_eng.get(eng, {}).get("fail", 0)]
-                     if cos_moves is not None else [_n(b, "cos_pass"), _n(b, "cos_fail")])
-                  + [_n(b, "fqc_pass"), _n(b, "fqc_fail")]
-                  + [_n(b, "pna"), _avg(b["days"])]
-                  for eng, b in sorted(by_eng.items(), key=lambda kv: (-kv[1]["total"], kv[0].lower()))]
-    # Someone who moved tags out of Cosmetic but has no WorkID in this view
-    # still gets a row, so the Cosmetic Pass / Fail rows add up to the Total.
-    if cos_moves is not None:
-        for eng, v in sorted(cos_by_eng.items()):
-            if eng not in by_eng and (v["pass"] or v["fail"]):
-                staff_rows.append([eng, _attended(eng), _member_stage(eng), 0, 0, 0, 0, 0, 0] + [0 for _g in group_order] + [0]
-                                  + [0, 0, v["pass"], v["fail"], 0, 0] + [0, ""])
-    # Members present with no WorkID in this view still get a row (Yes, 0s),
-    # so Staff Summary's Yes count = the members present (2026-11-22).
-    _listed_users = {_eng_user.get(r[0]) for r in staff_rows} | {r[0] for r in staff_rows}
-    for un, nm in sorted(_all_members.items(), key=lambda kv: kv[1].lower()):
-        if un not in _listed_users and nm not in _listed_users:
-            staff_rows.append([nm, "Yes", _member_stage(nm), 0, 0, 0, 0, 0, 0] + [0 for _g in group_order] + [0]
-                              + [0, 0, 0, 0, 0, 0] + [0, ""])
+    staff_rows = [[eng, _glabel.get(g, g), d, v[0], v[1]]
+                  for (eng, g, d), v in sorted(by_staff.items(), key=lambda kv: (
+                      kv[0][0].lower(), _gorder.index(kv[0][1]) if kv[0][1] in _gorder else 99,
+                      kv[0][2] or _date.min))]
     _sheet(wb.create_sheet("Staff Summary"),
-           ["Engineer", "Attendance", "Stage", "Total WorkIDs", "Tags", "Open WorkIDs", "Completed WorkIDs", "Scrap WorkIDs",
-            "Reassigned WorkIDs"]
-           + [group_label[g] + " WorkIDs" for g in group_order] + ["Cosmetic Tags"]
-           + ["Stress Pass", "Stress Fail", "Cosmetic Pass", "Cosmetic Fail", "Final QC Pass", "Final QC Fail"]
-           + ["WorkIDs with PNA", "Avg Days to Complete"],
-           staff_rows,
-           ["Total", sum(1 for r in staff_rows if r[1] == "Yes"), "",
-            _n(total_b, "total"), _n(total_b, "tags"), _n(total_b, "assigned"), _n(total_b, "completed"),
-            _n(total_b, "scrap"), _n(total_b, "reassigned")]
-           + [total_b["groups"].get(g, 0) for g in group_order] + [len(total_b["cos_tags"])]
-           + [_n(total_b, "stress_pass"), _n(total_b, "stress_fail")]
-           + ([cos_moves["pass"], cos_moves["fail"]] if cos_moves is not None
-              else [_n(total_b, "cos_pass"), _n(total_b, "cos_fail")])
-           + [_n(total_b, "fqc_pass"), _n(total_b, "fqc_fail")]
-           + [_n(total_b, "pna"), _avg(total_b["days"])])
+           ["Engineer", "Stage", "Date Completed", "Passed Quantity", "Failed Quantity"],
+           staff_rows, ["Total", "", "", sum(r[3] for r in staff_rows), sum(r[4] for r in staff_rows)])
+    for _ws in (wb["Stage Summary"], wb["Staff Summary"]):
+        for row in _ws.iter_rows(min_row=2, min_col=3 if _ws.title == "Staff Summary" else 3, max_col=3):
+            for c in row:
+                c.number_format = "yyyy-mm-dd"
 
     out = _io.BytesIO()
     wb.save(out)

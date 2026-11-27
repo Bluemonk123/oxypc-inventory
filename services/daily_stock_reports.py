@@ -110,7 +110,10 @@ async def scheduler_loop() -> None:
     await asyncio.sleep(30)                    # let startup finish first
     while True:
         try:
-            await generate_missing()
+            # Same rule as the pages (2026-11-27): no ETP / trashed / inactive tags.
+            from utils.hidden_tags import hidden_tags_scope
+            with hidden_tags_scope():
+                await generate_missing()
         except Exception as exc:               # noqa: BLE001
             print(f"  [DailyReport] scheduler error: {exc}")
         await asyncio.sleep(_CHECK_EVERY_SECONDS)

@@ -48,10 +48,9 @@
    filter row card — same shape as every other page's filter bar. #}
 
 {# Search Tags button removed (2026-11-09): the top-bar search opens the same modal. #}
-{# Supplier Deal card (2026-11-15, Pankaj): col-lg-4 on the left of the tabs, same
+{# Supplier Deal card (2026-11-15, Pankaj; on the right since 2026-11-27), same
    card as Inventory Manager / Parts Manager (services/supplier_deals.py, page="production"). #}
 <div class="row g-3 mb-3">
-{% if sd_enabled %}<div class="col-lg-3">{% set sd_return_to = '/trc-production' %}{% include "_supplier_deal_card.html" %}</div>{% endif %}
 <div class="{{ 'col-lg-9' if sd_enabled else 'col-12' }}">
 <!-- Tag Number Allocation / Bucket Allocation tabs -->
 <ul class="nav nav-tabs" id="prodTabs" role="tablist">
@@ -182,6 +181,8 @@
   </div>
 </div>
 </div>{# /tabs column #}
+{# Supplier Deal card on the right of the tabs (2026-11-27, Pankaj). #}
+{% if sd_enabled %}<div class="col-lg-3">{% set sd_return_to = '/trc-production' %}{% include "_supplier_deal_card.html" %}</div>{% endif %}
 </div>{# /row with Supplier Deal card #}
 
 <div class="accordion mb-3 mt-4" id="repairLineAccordion">

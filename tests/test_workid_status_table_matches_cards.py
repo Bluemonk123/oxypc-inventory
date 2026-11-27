@@ -133,8 +133,8 @@ asyncio.run(main())
             assert dk["Total Scrap"] <= cards["l1l2"]["scrap"] + cards["l3l4"]["scrap"], (q, dk)
         # spot values: the 10th
         h10 = _cards(app_client.get(f"/workid-status?engineer={eng}&work_from=2026-08-10&work_to=2026-08-10").text)
-        assert h10["l1l2"][1]["moved"] == 2 and h10["l1l2"][1]["completed"] == 0       # A once (latest: pending), B
-        assert h10["l1l2"][1]["started"] == 2      # A (started twice that day: once) and B
+        assert "moved" not in h10["l1l2"][1] and h10["l1l2"][1]["completed"] == 0       # no Moved In footer (2026-11-27)
+        assert "started" not in h10["l1l2"][1]     # Started line hidden on the cards (2026-11-27)
         assert h10["stress"][1]["fail"] == 1 and h10["final_qc"][1]["pass"] == 1
         # range 10th-11th: E scrapped on both cards, counted once in Total Scrap
         hr = app_client.get(f"/workid-status?engineer={eng}&work_from=2026-08-10&work_to=2026-08-11").text

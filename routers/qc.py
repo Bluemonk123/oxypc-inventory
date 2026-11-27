@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Form, Request, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, desc
+from utils.stage_page_filters import live_tag_filters
 from models.location import DeviceLocationLog, StorageLocation
 from models.stress import StressTestResult
 
@@ -45,8 +46,8 @@ async def qc_list(request: Request, db: AsyncSession = Depends(get_db),
     result = await db.execute(
         select(Device, Lot.lot_number)
         .join(Lot, Device.lot_id == Lot.id)
-        .where(Device.current_stage == DeviceStage.qc_check, Device.is_active == True,
-               Device.is_trashed == False)
+        .where(Device.current_stage == DeviceStage.qc_check,
+               *live_tag_filters())   # no trashed / External Partner Test / inactive (2026-11-26)
         .order_by(Device.updated_at.desc())
     )
     devices = result.all()

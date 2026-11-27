@@ -74,7 +74,7 @@ asyncio.run(main())
         assert sub in lots_tab and "Desktop 2" in lots_tab and "set-price-btn" in lots_tab
         assert 'id="spCat"' in page and 'id="spSub"' in page
         tags_tab = page.split('id="assetIqcTab"', 1)[1]
-        assert t1 in tags_tab and "set-price-btn" not in tags_tab.split("setPriceModal")[0]   # Set Price: Lots tab only
+        assert t1 in tags_tab and "tag-set-price-btn" in tags_tab.split("setPriceModal")[0]   # tag Set Price too (2026-11-27)
         models_tab = page.split('id="modelsTab"', 1)[1].split('id="assetIqcTab"', 1)[0]
         assert "Latitude 5490" in models_tab
         out = _run(f"""

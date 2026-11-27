@@ -76,23 +76,23 @@ async def main():
             db.add(WorkOrder(work_id=wid, device_id=s.id, barcode="DKS{sfx}", stage=code, status="completed",
                              created_at=D(15, 8), assigned_at=D(15, 8), completed_at=at,
                              assigned_username="dk_eng", assigned_name="dk_eng"))
-        # Returned on the 15th: one still in Stock In, one repaired back to Sold,
-        # one replaced, one rejected (not counted)
-        for bc, frm_now, trs, appr, path in (
-                ("RTP", DeviceStage.stock_in, "Return for Repair", "approved", [DeviceStage.stock_in]),
-                ("RTS", DeviceStage.sold, "Return for Repair", "approved", [DeviceStage.stock_in, DeviceStage.l1, DeviceStage.sold]),
-                ("RTR", DeviceStage.qc_check, "Replaced by X1", "approved", [DeviceStage.stock_in, DeviceStage.l1]),
-                ("RTX", DeviceStage.stock_in, "Return for Repair", "rejected", [DeviceStage.stock_in])):
-            d = dev(bc, frm_now, trs); await db.flush()
-            prev = DeviceStage.sold
-            for h, st in enumerate(path):
-                mv(d, prev, st, D(15, 9 + h)); prev = st
-            db.add(Return(device_id=d.id, return_date=D(15, 8), approval_status=appr, processed_by="t"))
-            st = {{"RTP": "pending", "RTS": "completed", "RTR": "in_progress", "RTX": "pending"}}[bc]
-            db.add(WorkOrder(work_id="W" + bc + "{sfx}", device_id=d.id, barcode=bc + "{sfx}", stage="l1",
-                             status=st, created_at=D(15, 10), assigned_at=D(15, 10),
-                             completed_at=D(15, 11) if st == "completed" else None,
-                             assigned_username="dk_eng", assigned_name="dk_eng"))
+        # Customer Return card (2026-11-27): from RMA Devices on the 15th — one
+        # still there (Pending), one picked and made Ready (Started, Pass), one
+        # replaced: customer tag to IQC, replacement tag onto RMA (Replace).
+        uid = (await db.execute(text("select id from users limit 1"))).scalar()
+        a = dev("RMP", DeviceStage.rma, "Return for Repair"); await db.flush()
+        mv(a, DeviceStage.stock_in, DeviceStage.rma, D(15, 9), "Moved to RMA Devices")
+        b = dev("RMS", DeviceStage.sold, "Return for Repair"); await db.flush()
+        mv(b, DeviceStage.stock_in, DeviceStage.rma, D(15, 9), "Moved to RMA Devices")
+        mv(b, DeviceStage.rma, DeviceStage.sold, D(15, 12), "RMA Ready \u2014 customer return, moved to Sold (no new sale)")
+        db.add(WorkOrder(work_id="RMA-S{sfx}"[:12], device_id=b.id, barcode="RMS{sfx}", stage="rma", status="completed",
+                         created_at=D(15, 9), assigned_at=D(15, 10), completed_at=D(15, 12), assigned_user_id=uid,
+                         assigned_username="dk_eng", assigned_name="dk_eng"))
+        c = dev("RMR", DeviceStage.iqc, "Replaced by RMY{sfx}"); await db.flush()
+        mv(c, DeviceStage.stock_in, DeviceStage.rma, D(15, 9), "Moved to RMA Devices")
+        mv(c, DeviceStage.rma, DeviceStage.iqc, D(15, 13), "RMA Replace \u2014 customer given RMY{sfx}; tag back to IQC")
+        y = dev("RMY", DeviceStage.rma, "Replacement for RMR{sfx}"); await db.flush()
+        mv(y, DeviceStage.ready_to_sale, DeviceStage.rma, D(15, 13), "RMA Replace \u2014 replacement for customer tag RMR{sfx}, Ready")
         await db.commit()
 asyncio.run(main())
 """)
@@ -113,7 +113,7 @@ asyncio.run(main())
         assert _card(one, "l1l2")["scrap"] == 1 and _card(one, "l3l4")["scrap"] == 1
         assert _dark(one)["Total Scrap"] == 1
         ret = _card(html, "returned")
-        assert ret == {"pending": 1, "started": 0, "pass": 1, "replace": 1, "moved": 3}, ret
+        assert ret == {"pending": 1, "pass": 1, "replace": 1}, ret   # from RMA Devices (2026-11-27), no Started line
         assert 'data-group="pre_sale_iqc"' not in html
         # More than one day: no Pending / Started lines and no Moved In count
         multi = app_client.get("/workid-status?work_from=2026-09-14&work_to=2026-09-15").text
@@ -121,9 +121,10 @@ asyncio.run(main())
             v = _card(multi, g)
             assert "pending" not in v and "started" not in v and "moved" not in v, (g, v)
         assert "Pending</span>" in html     # single day still shows them
-        # Returned card footer: Team = present users with Designation "Return Engineer"
-        ret_card = html.split('data-group="returned"', 1)[1]
-        assert "Team" in ret_card.split("</div>\n</div>", 1)[0] or "Team" in ret_card[:4000]
+        # Returned card: Team (present Return Engineers) beside the title, no footer (2026-11-27)
+        ret_card = html.split('data-group="returned"', 1)[1][:4000]
+        assert "Return Engineers (Designation)" in ret_card and "bi-person-fill" in ret_card
+        assert "oxt-mfoot" not in ret_card
         # A single date (only From filled in) = that one day, not "until now"
         single = app_client.get("/workid-status?work_from=2026-09-15").text
         assert _dark(single) == dk and _card(single, "returned") == ret

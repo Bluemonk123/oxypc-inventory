@@ -12,12 +12,13 @@ from fastapi import APIRouter, Depends, Form, Request, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_, or_
+from utils.stage_page_filters import live_tag_filters
 from sqlalchemy.exc import IntegrityError
 from models.location import DeviceLocationLog, StorageLocation
 
 from database import get_db
 from models.user import User, UserRole
-from models.device import Device, DeviceStage, DeviceGrade, StageMovement, STAGE_LABELS, DROPDOWN_STAGES
+from models.device import Device, DeviceStage, DeviceGrade, StageMovement, STAGE_LABELS, DROPDOWN_STAGES, clean_tag
 from models.lot import Lot
 from models.repair import RepairJob, RepairStatus
 from models.engines import RepairAttempt, DeviceCosting
@@ -43,7 +44,18 @@ router = APIRouter(prefix="/repair", tags=["repair"], dependencies=[Depends(veri
 # "l2"/"l3" retired: the /repair/l2 and /repair/l3 pages are withdrawn, so the
 # catch-all GET /{stage} 404s on them. L1 work now completes straight to Stress
 # Test; deeper repair is handled by the separate /repair/l3l4 endpoints.
-STAGE_MAP  = {"l1": DeviceStage.l1}
+STAGE_MAP  = {"l1": DeviceStage.l1, "rma": DeviceStage.rma}
+
+# The two pages built on the L1/L2 queue (2026-11-27): /repair/l1 and RMA
+# Devices (/repair/rma — customer returns sent from Return Stock). Same table,
+# Pick This / Start Repair / part requests; RMA's Mark Complete is "Ready" and
+# it has Replace instead of Request to L3/L4.
+QUEUES = {
+    "l1": {"stage": DeviceStage.l1, "perm": "repair_l1", "url": "/repair/l1", "label": "L1/L2",
+           "wo_codes": ("l1", "l2"), "job": ("L1", "L2")},
+    "rma": {"stage": DeviceStage.rma, "perm": "rma_devices", "url": "/repair/rma", "label": "RMA",
+            "wo_codes": ("rma",), "job": ("RMA",)},
+}
 
 # Roles that see the entire repair queue instead of just their own work.
 # Everyone else sees the tags assigned to them plus the unclaimed pool — an
@@ -173,6 +185,22 @@ async def l1l2_start(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    return await _queue_start(request, device_id, db, current_user, "l1")
+
+
+@router.post("/rma/start")
+async def rma_start(
+    request: Request,
+    device_id: str = Form(...),
+    csrf_token: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """RMA Devices Start Repair (2026-11-27) — same as L1/L2's."""
+    return await _queue_start(request, device_id, db, current_user, "rma")
+
+
+async def _queue_start(request, device_id, db, current_user, queue):
     """Lightweight status-only Start Repair for the reworked L1/L2 page.
 
     Also creates a RepairJob for the device at its current L1/L2 stage so it
@@ -190,7 +218,7 @@ async def l1l2_start(
     from sqlalchemy import update as sa_update
     await db.execute(
         sa_update(WorkOrder)
-        .where(WorkOrder.device_id == device.id, WorkOrder.stage.in_(["l1", "l2"]),
+        .where(WorkOrder.device_id == device.id, WorkOrder.stage.in_(list(QUEUES[queue]["wo_codes"])),
                WorkOrder.status == "pending")
         .values(status="in_progress", started_at=app_now())
     )
@@ -214,9 +242,9 @@ async def l1l2_start(
         ))
     await audit(db, user=current_user, action="L1L2_REPAIR_STARTED",
                 table_name="devices", record_id=str(device.id),
-                notes=f"L1/L2 repair started on {device.barcode}", request=request)
+                notes=f"{QUEUES[queue]['label']} repair started on {device.barcode}", request=request)
     await db.commit()
-    return RedirectResponse(url="/repair/l1?success=Repair+started", status_code=302)
+    return RedirectResponse(url=QUEUES[queue]["url"] + "?success=Repair+started", status_code=302)
 
 
 @router.post("/l1/pick")
@@ -227,6 +255,22 @@ async def l1_pick(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    return await _queue_pick(request, device_id, db, current_user, "l1")
+
+
+@router.post("/rma/pick")
+async def rma_pick(
+    request: Request,
+    device_id: str = Form(...),
+    csrf_token: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """RMA Devices Pick This (2026-11-27) — same as L1/L2's."""
+    return await _queue_pick(request, device_id, db, current_user, "rma")
+
+
+async def _queue_pick(request, device_id, db, current_user, queue):
     """"Pick This" — the clicking user takes the tag (2026-10-19: from anyone,
     not only from the unclaimed pool). Every open WorkID of the tag is closed
     (an absent engineer's included) and a new plain L1/L2 WorkID (stage "l1",
@@ -238,26 +282,27 @@ async def l1_pick(
     the latest StageMovement) updates. Picking a tag that is already yours is
     a no-op (double-click / page not refreshed)."""
     from services.work_order_close import reassign_open_work_orders
-    if not has_perm(current_user.role.value, "repair_l1", "add"):
-        raise HTTPException(403, "You do not have permission to pick L1/L2 repairs")
+    Q = QUEUES[queue]
+    if not has_perm(current_user.role.value, Q["perm"], "add"):
+        raise HTTPException(403, f"You do not have permission to pick {Q['label']} repairs")
 
     device = (await db.execute(select(Device).where(Device.id == device_id))).scalar_one_or_none()
     if not device:
         raise HTTPException(404, "Device not found")
-    if device.current_stage != DeviceStage.l1:
-        raise HTTPException(400, "Tag is not in the L1/L2 queue")
+    if device.current_stage != Q["stage"]:
+        raise HTTPException(400, f"Tag is not in the {Q['label']} queue")
 
     # One WorkID per visit (2026-10-27, services/stage_work_orders.py): an
     # unpicked pending WorkID is claimed (assigned date = now, movement date
     # kept); one held by someone else closes as completed and a new one opens
     # for the picker. Picking your own tag is a no-op.
     from services.stage_work_orders import pick as _pick
-    wo, previous = await _pick(db, device, DeviceStage.l1, current_user)
+    wo, previous = await _pick(db, device, Q["stage"], current_user)
     _ajax = request.headers.get("x-requested-with") == "XMLHttpRequest"   # Pick This without reload (2026-10-28)
     if wo is None:
         if _ajax:
             return JSONResponse({"ok": True, "already_yours": True})
-        return RedirectResponse(url="/repair/l1", status_code=302)
+        return RedirectResponse(url=Q["url"], status_code=302)
     await _close_open_movement(db, device)
     device.l1l2_status = "New"   # the picker hasn't started yet — Start Repair is theirs to click
 
@@ -265,7 +310,7 @@ async def l1_pick(
     picker = current_user.full_name or current_user.username
     prev_txt = (", closed " + ", ".join(f"{w} ({n})" for w, _u, n in previous)) if previous else ""
     db.add(StageMovement(
-        device_id=device.id, from_stage=DeviceStage.l1, to_stage=DeviceStage.l1,
+        device_id=device.id, from_stage=Q["stage"], to_stage=Q["stage"],
         moved_by=current_user.username,
         notes=f"Picked by {picker} (WorkID: {work_id}{prev_txt})",
     ))
@@ -275,17 +320,17 @@ async def l1_pick(
                 db, user_id=uid, title="Tag picked by another engineer",
                 message=f"{device.barcode} was picked by {picker} (new WorkID: {work_id}).",
                 notification_type="info", barcode=device.barcode,
-                brand=device.brand, model=device.model, stage="l1",
+                brand=device.brand, model=device.model, stage=queue,
             )
 
-    await audit(db, user=current_user, action="L1L2_PICKED",
+    await audit(db, user=current_user, action="L1L2_PICKED" if queue == "l1" else "RMA_PICKED",
                 table_name="devices", record_id=str(device.id),
                 notes=f"{device.barcode} picked by {picker} (WorkID: {work_id}{prev_txt})",
                 request=request)
     await db.commit()
     if _ajax:
         return JSONResponse({"ok": True, "work_id": work_id})
-    return RedirectResponse(url="/repair/l1?success=Tag+picked", status_code=302)
+    return RedirectResponse(url=Q["url"] + "?success=Tag+picked", status_code=302)
 
 
 @router.post("/bulk-part-request")
@@ -302,6 +347,32 @@ async def bulk_part_request(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    return await _queue_bulk_part_request(request, part_label, part_category, request_type, part_name,
+                                          part_make, part_model, downgrade_type, db, current_user, "l1")
+
+
+@router.post("/rma/bulk-part-request")
+async def rma_bulk_part_request(
+    request: Request,
+    part_label: str = Form(...),
+    part_category: str = Form(""),
+    request_type: str = Form("new"),
+    part_name: str = Form(""),
+    part_make: str = Form(""),
+    part_model: str = Form(""),
+    downgrade_type: str = Form(""),
+    csrf_token: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """RMA Devices Bulk Part Request (2026-11-27) — same as L1/L2's, for the
+    RMA queue; the requests land in Parts Manager like any other."""
+    return await _queue_bulk_part_request(request, part_label, part_category, request_type, part_name,
+                                          part_make, part_model, downgrade_type, db, current_user, "rma")
+
+
+async def _queue_bulk_part_request(request, part_label, part_category, request_type, part_name,
+                                   part_make, part_model, downgrade_type, db, current_user, queue):
     """Bulk Part Request table on L1/L2 — raise one PartRequest per tag in the
     L1 queue that still needs `part_label`, instead of opening each tag.
 
@@ -309,12 +380,13 @@ async def bulk_part_request(
     A tag that already has an open request for this part is skipped, so the
     action is safe to press twice.
     """
+    Q = QUEUES[queue]
     devices = (await db.execute(
-        select(Device).where(Device.current_stage == DeviceStage.l1, Device.is_active == True,
+        select(Device).where(Device.current_stage == Q["stage"], Device.is_active == True,
                               Device.is_trashed == False)
     )).scalars().all()
     if not devices:
-        return RedirectResponse(url="/repair/l1?error=No+devices+in+the+queue", status_code=302)
+        return RedirectResponse(url=Q["url"] + "?error=No+devices+in+the+queue", status_code=302)
 
     device_ids = [d.id for d in devices]
     iqc_rows = (await db.execute(
@@ -378,7 +450,7 @@ async def bulk_part_request(
         db.add(PartRequest(
             work_order_id=wo.id if wo else None,
             work_id=wo.work_id if wo else None,
-            device_id=dev.id, barcode=dev.barcode, stage="l1",
+            device_id=dev.id, barcode=dev.barcode, stage=queue,
             part_id=sp_match.id if sp_match else None,
             part_name=part_label,
             part_category=part_category.strip() or None,
@@ -400,10 +472,10 @@ async def bulk_part_request(
     await db.commit()
     if not raised:
         return RedirectResponse(
-            url="/repair/l1?success=No+new+requests+needed+for+" + part_label.replace(" ", "+"),
+            url=Q["url"] + "?success=No+new+requests+needed+for+" + part_label.replace(" ", "+"),
             status_code=302)
     return RedirectResponse(
-        url=f"/repair/l1?success={raised}+request(s)+raised+for+" + part_label.replace(" ", "+"),
+        url=Q["url"] + f"?success={raised}+request(s)+raised+for+" + part_label.replace(" ", "+"),
         status_code=302)
 
 
@@ -530,6 +602,30 @@ async def l1l2_complete_to_stress(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    return await _queue_complete(request, device_id, stress_engineer_username, db, current_user, "l1")
+
+
+@router.post("/rma/ready")
+async def rma_ready(
+    request: Request,
+    device_id: str = Form(...),
+    csrf_token: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """RMA Devices "Ready" (2026-11-27) — L1/L2's Mark Complete renamed: a
+    customer return goes to Sold and Return Stock shows it Dispatch Pending
+    (or Payment Pending when a charge is due)."""
+    device = (await db.execute(select(Device).where(Device.id == device_id))).scalar_one_or_none()
+    if not device:
+        raise HTTPException(404, "Device not found")
+    if device.current_stage != DeviceStage.rma:
+        return RedirectResponse(url="/repair/rma?error=" + quote_plus(f"{device.barcode} is not in RMA Devices"),
+                                status_code=302)
+    return await _queue_complete(request, device_id, "", db, current_user, "rma")
+
+
+async def _queue_complete(request, device_id, stress_engineer_username, db, current_user, queue):
     """Complete L1/L2: move the device to Stress Test (qc_check). An engineer is
     optional — with none the STRS- WorkOrder is still raised, unassigned, so the
     WorkID Status board keeps full traceability.
@@ -557,7 +653,7 @@ async def l1l2_complete_to_stress(
     if open_pna:
         from urllib.parse import quote
         return RedirectResponse(
-            url="/repair/l1?error=" + quote(
+            url=QUEUES[queue]["url"] + "?error=" + quote(
                 f"{device.barcode} has open PNA parts ({', '.join(sorted(open_pna))}) — "
                 "remove them on the tag's detail page before Mark Complete"),
             status_code=302)
@@ -601,7 +697,8 @@ async def l1l2_complete_to_stress(
     await db.execute(
         sa_update(WorkOrder)
         .where(WorkOrder.device_id == device.id,
-               or_(WorkOrder.work_id.like("L1L2-%"), WorkOrder.stage.in_(["l1", "l2"])),
+               or_(WorkOrder.work_id.like("L1L2-%"), WorkOrder.work_id.like("RMA-%"),
+                   WorkOrder.stage.in_(["l1", "l2", "rma"])),
                wo_open())
         .values(status="completed", completed_at=app_now())
     )
@@ -635,13 +732,15 @@ async def l1l2_complete_to_stress(
         device.updated_at = app_now()
         db.add(StageMovement(device_id=device.id, from_stage=prev, to_stage=DeviceStage.sold,
                              moved_by=current_user.username,
-                             notes="L1/L2 completed — customer return, moved to Sold (no new sale)"))
+                             notes=("RMA Ready" if queue == "rma" else "L1/L2 completed")
+                             + " — customer return, moved to Sold (no new sale)"))
         await audit(db, user=current_user, action="L1L2_COMPLETE_RETURN_TO_SOLD",
                     table_name="devices", record_id=str(device.id),
                     new_value={"barcode": device.barcode}, request=request)
         await db.commit()
-        return RedirectResponse(url="/repair/l1?success=" + quote_plus(
-            f"{device.barcode} is a customer return — moved to Sold"), status_code=302)
+        return RedirectResponse(url=QUEUES[queue]["url"] + "?success=" + quote_plus(
+            f"{device.barcode} is ready — Return Stock shows it for dispatch" if queue == "rma"
+            else f"{device.barcode} is a customer return — moved to Sold"), status_code=302)
 
     device.current_stage = DeviceStage.qc_check
     device.l1l2_status = "Completed"
@@ -673,7 +772,7 @@ async def l1l2_complete_to_stress(
                 table_name="devices", record_id=str(device.id),
                 new_value={"assigned": eng.username if eng else None}, request=request)
     await db.commit()
-    return RedirectResponse(url="/repair/l1?success=Moved+to+Stress+Test", status_code=302)
+    return RedirectResponse(url=QUEUES[queue]["url"] + "?success=Moved+to+Stress+Test", status_code=302)
 
 
 @router.post("/back-to-production")
@@ -747,7 +846,7 @@ async def l3l4_list(request: Request,
             .join(Lot, Device.lot_id == Lot.id, isouter=True)
             .where(WorkOrder.work_id.like("L3L4-%"),
                    wo_open(),
-                   Device.is_trashed == False,
+                   *live_tag_filters(),   # no trashed / External Partner Test / inactive (2026-11-26)
                    # A device whose WorkOrder is still open but has already
                    # moved on (Ready to Sale, Scrap for Sale, ...) via some
                    # other action path is stale here, not a real L3/L4 item —
@@ -785,8 +884,8 @@ async def l3l4_list(request: Request,
     open_l3l4 = (select(WorkOrder.id).where(WorkOrder.device_id == Device.id,
                                              WorkOrder.work_id.like("L3L4-%"), wo_open()).exists())
     unassigned = (await db.execute(
-        select(Device).where(Device.current_stage == DeviceStage.l3, Device.is_trashed == False,  # noqa: E712
-                             ~open_l3l4)
+        select(Device).outerjoin(Lot, Device.lot_id == Lot.id)
+        .where(Device.current_stage == DeviceStage.l3, *live_tag_filters(), ~open_l3l4)
         .order_by(Device.updated_at.desc())
     )).scalars().all()
     unassigned = [d for d in unassigned if d.id not in _seen_device_ids]
@@ -1078,12 +1177,14 @@ async def repair_list(stage: str, request: Request,
     if stage not in STAGE_MAP:
         raise HTTPException(404)
     device_stage = STAGE_MAP[stage]
+    if stage == "rma" and not has_perm(getattr(current_user.role, "value", current_user.role), "rma_devices", "enable"):
+        raise HTTPException(403, "You do not have access to RMA Devices")
 
     result = await db.execute(
         select(Device, Lot.lot_number)
         .join(Lot, Device.lot_id == Lot.id)
-        .where(Device.current_stage == device_stage, Device.is_active == True,
-               Device.is_trashed == False)
+        .where(Device.current_stage == device_stage,
+               *live_tag_filters())   # no trashed / External Partner Test / inactive (2026-11-26)
         .order_by(Device.updated_at.desc())
     )
     devices = result.all()
@@ -1098,7 +1199,7 @@ async def repair_list(stage: str, request: Request,
     # /repair/l1 shows the whole queue to every engineer (2026-10-19) so an
     # absent colleague's tag can be "Pick This"-ed; legacy stage pages keep
     # the own-bench scope.
-    if stage != "l1" and not _sees_full_queue(current_user):
+    if stage not in QUEUES and not _sees_full_queue(current_user):
         dev_ids = [d.id for d, _ in devices]
         current_owner: dict[str, object] = {}
         if dev_ids:
@@ -1423,8 +1524,10 @@ async def repair_list(stage: str, request: Request,
         .order_by(User.full_name)
     )).scalars().all()
 
-    return templates.TemplateResponse(f"repair/{stage}.html", {
+    return templates.TemplateResponse("repair/l1.html" if stage in QUEUES else f"repair/{stage}.html", {
         "request": request, "devices": devices, "open_jobs": open_jobs,
+        # RMA Devices (2026-11-27) renders the same page: Q = its links / permission module.
+        "Q": {**QUEUES.get(stage, QUEUES["l1"]), "key": stage if stage in QUEUES else "l1"},
         "parts_badges": await parts_badge_map(db, [d.id for d, *_ in devices]),
         "cust_return_ids": await _customer_return_ids(db, [d.id for d, *_ in devices]),
         "l3l4_engineers": l3l4_engineers, "stress_engineers": stress_engineers,
@@ -1965,3 +2068,150 @@ async def move_device(
                 old_value={"stage": str(prev)}, new_value={"stage": to_stage}, request=request)
     await db.commit()
     return RedirectResponse(url=f"/repair/move/form?success=Device+moved+to+{to_stage}", status_code=302)
+
+
+# ── RMA Devices: Replace (2026-11-27, Pankaj) ─────────────────────────────────
+# The customer gets another laptop instead of their repaired one. The customer
+# tag goes to IQC as our stock ("Replaced by <tag>", off RMA Devices and Return
+# Stock); the replacement tag (any tag in stock) comes onto RMA Devices as
+# Ready ("Replaced with <tag>") and Return Stock lists it with the customer
+# tag's return — Dispatch Pending, or Payment Pending while a charge is due.
+_RMA_NOT_STOCK = (DeviceStage.sold, DeviceStage.rma, DeviceStage.returned, DeviceStage.scrapped,
+                  DeviceStage.scrap_for_sale, DeviceStage.on_rent, DeviceStage.grn)
+
+
+def _rma_spec(d) -> dict:
+    return {"barcode": d.barcode, "serial_no": d.serial_no or "", "make": d.brand or "", "model": d.model or "",
+            "cpu": d.cpu or "", "gen": d.generation or "", "ram": (f"{d.ram_gb} GB" if d.ram_gb else ""),
+            "storage": d.hdd_summary or ((f"{d.storage_gb}GB {d.storage_type or ''}".strip()) if d.storage_gb else ""),
+            "stage": STAGE_LABELS.get(d.current_stage, d.current_stage.value if d.current_stage else "")}
+
+
+def _rma_stock_filters():
+    """A tag in stock that can replace a customer's tag: a live tag (no
+    trashed / External Partner Test / inactive), not sold, out on rent,
+    scrapped or in RMA, and not itself an open customer return."""
+    return (*live_tag_filters(), Device.current_stage.notin_(_RMA_NOT_STOCK), Device.return_status.isnot(True))
+
+
+def _rma_allowed(user, action):
+    return has_perm(getattr(user.role, "value", user.role), "rma_devices", action)
+
+
+@router.get("/rma/replace-search")
+async def rma_replace_search(q: str = Query(""), exclude: str = Query(""),
+                             db: AsyncSession = Depends(get_db),
+                             current_user: User = Depends(get_current_user)):
+    """Replace modal search / scan: tags in stock matching Tag or Serial."""
+    if not _rma_allowed(current_user, "enable"):
+        raise HTTPException(403, "You do not have access to RMA Devices")
+    q = (q or "").strip()
+    if len(q) < 2:
+        return JSONResponse({"items": []})
+    like = f"%{q}%"
+    rows = (await db.execute(
+        select(Device).outerjoin(Lot, Device.lot_id == Lot.id)
+        .where(*_rma_stock_filters(), or_(Device.barcode.ilike(like), Device.serial_no.ilike(like)),
+               Device.barcode != (exclude or "").strip())
+        .order_by((func.upper(Device.barcode) == q.upper()).desc(), Device.barcode)
+        .limit(20)
+    )).scalars().all()
+    return JSONResponse({"items": [_rma_spec(d) for d in rows]})
+
+
+@router.get("/rma/return-info")
+async def rma_return_info(device_id: str = Query(...), db: AsyncSession = Depends(get_db),
+                          current_user: User = Depends(get_current_user)):
+    """Replace modal: the customer tag's return and spec."""
+    if not _rma_allowed(current_user, "enable"):
+        raise HTTPException(403, "You do not have access to RMA Devices")
+    from models.sales import Return, Sale
+    from utils.sales_person import linked_name_map, sales_person_display
+    from utils.warranty import effective_warranty_for_sale
+    d = (await db.execute(select(Device).where(Device.id == device_id))).scalar_one_or_none()
+    if not d:
+        raise HTTPException(404, "Device not found")
+    ret = (await db.execute(select(Return).where(Return.device_id == d.id)
+                            .order_by(Return.return_date.desc()).limit(1))).scalars().first()
+    sale = (await db.execute(select(Sale).where(Sale.id == ret.sale_id))).scalar_one_or_none() if ret and ret.sale_id else None
+    w = effective_warranty_for_sale(sale)
+    warranty = ((("In Warranty till " if w["status"] == "active" else "Out of Warranty, ended ")
+                 + w["expiry"].strftime("%d-%m-%Y")) if w else "No Warranty")
+    fmt = lambda x: x.strftime("%d-%m-%Y") if x else ""   # noqa: E731
+    return JSONResponse({**_rma_spec(d), "reason": (ret.reason if ret else "") or "",
+                         "condition": (ret.condition_on_return if ret else "") or "",
+                         "notes": (ret.notes if ret else "") or "",
+                         "action": (ret.action_taken if ret else "") or "",
+                         "return_date": fmt(ret.return_date if ret else None),
+                         "sale_date": fmt(sale.sold_at if sale else None), "warranty": warranty,
+                         "sales_person": sales_person_display(sale, await linked_name_map(db)) if sale else "",
+                         "return_by": (ret.processed_by if ret else "") or ""})
+
+
+@router.post("/rma/replace")
+async def rma_replace(
+    request: Request,
+    device_id: str = Form(...),
+    replacement_barcode: str = Form(...),
+    csrf_token: str = Form(""),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    from routers.stock import RMA_REPLACEMENT_PREFIX
+    from services.work_order_close import reassign_open_work_orders
+    from sqlalchemy import update as sa_update
+    back = lambda kind, msg: RedirectResponse(url=f"/repair/rma?{kind}=" + quote_plus(msg), status_code=302)  # noqa: E731
+    cust = (await db.execute(select(Device).where(Device.id == device_id))).scalar_one_or_none()
+    if not cust:
+        raise HTTPException(404, "Device not found")
+    if cust.current_stage != DeviceStage.rma or not cust.return_status \
+            or (cust.tag_return_status or "").startswith(("Replaced by", RMA_REPLACEMENT_PREFIX)):
+        return back("error", f"{cust.barcode} is not a customer return waiting in RMA Devices")
+    rbc = clean_tag((replacement_barcode or "").strip())
+    repl = (await db.execute(
+        select(Device).outerjoin(Lot, Device.lot_id == Lot.id)
+        .where(func.upper(Device.barcode) == rbc.upper(), *_rma_stock_filters())
+    )).scalars().first()
+    if not repl or repl.id == cust.id:
+        return back("error", f"{rbc or 'The replacement tag'} is not a tag in stock")
+    now = app_now()
+
+    # Customer tag -> IQC, our stock again (drops off RMA Devices + Return Stock).
+    await _close_open_movement(db, cust)
+    await db.execute(
+        sa_update(WorkOrder)
+        .where(WorkOrder.device_id == cust.id, wo_open(),
+               or_(WorkOrder.work_id.like("RMA-%"), WorkOrder.stage == "rma"))
+        .values(status="completed", completed_at=now))
+    await db.execute(
+        sa_update(RepairJob)
+        .where(RepairJob.device_id == cust.id, RepairJob.status == RepairStatus.in_progress)
+        .values(status=RepairStatus.completed, completed_at=now))
+    cust.current_stage = DeviceStage.iqc
+    cust.tag_return_status = f"Replaced by {repl.barcode}"
+    cust.l1l2_status = None
+    cust.updated_at = now
+    db.add(StageMovement(device_id=cust.id, from_stage=DeviceStage.rma, to_stage=DeviceStage.iqc,
+                         moved_by=current_user.username,
+                         notes=f"RMA Replace — customer given {repl.barcode}; tag back to IQC"))
+    await ensure_stage_location(db, cust, DeviceStage.iqc, current_user)
+
+    # Replacement tag -> RMA Devices as Ready.
+    prev = repl.current_stage
+    await _close_open_movement(db, repl)
+    await reassign_open_work_orders(db, repl.id, at=now)
+    repl.current_stage = DeviceStage.rma
+    repl.return_status = True
+    repl.tag_return_status = f"{RMA_REPLACEMENT_PREFIX}{cust.barcode}"
+    repl.replaced = f"Replaced with {cust.barcode}"
+    repl.l1l2_status = "Ready"
+    repl.l34_status = None
+    repl.updated_at = now
+    db.add(StageMovement(device_id=repl.id, from_stage=prev, to_stage=DeviceStage.rma,
+                         moved_by=current_user.username,
+                         notes=f"RMA Replace — replacement for customer tag {cust.barcode}, Ready"))
+    await audit(db, user=current_user, action="RMA_REPLACED", table_name="devices", record_id=str(cust.id),
+                new_value={"customer_tag": cust.barcode, "replacement_tag": repl.barcode,
+                           "replacement_from_stage": prev.value if prev else None}, request=request)
+    await db.commit()
+    return back("success", f"{cust.barcode} replaced with {repl.barcode} — {cust.barcode} moved to IQC")

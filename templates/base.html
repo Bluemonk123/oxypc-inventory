@@ -244,7 +244,7 @@
       {% endif %}
 
       {# ── REPAIR (merged with former COSMETIC REFURB section) ──────────── #}
-      {% if any_perm(role,'repair_l1','repair_l2','repair_l3','qc_check','cosmetic_received','cosmetic_cleaning','cosmetic_putty','cosmetic_dry_sanding','cosmetic_masking','cosmetic_painting','cosmetic_water_sanding','cosmetic_completed','cosmetic_finalqc','workid_status') %}
+      {% if any_perm(role,'repair_l1','repair_l2','repair_l3','qc_check','cosmetic_received','cosmetic_cleaning','cosmetic_putty','cosmetic_dry_sanding','cosmetic_masking','cosmetic_painting','cosmetic_water_sanding','cosmetic_completed','cosmetic_finalqc','rma_devices','workid_status') %}
       <li class="nav-section" data-sb="sec:REPAIR" style="order: {{ sb_order('sec:REPAIR') }}">REPAIR</li>
       {% endif %}
       {% if has_perm(role,'repair_l1','enable') and not module_hidden('repair_l1') %}
@@ -317,6 +317,12 @@
       {% if has_perm(role,'cosmetic_finalqc','enable') and not module_hidden('cosmetic_finalqc') %}
       <li data-sb="/cosmetic/final_qc" style="order: {{ sb_order('/cosmetic/final_qc') }}"><a href="/cosmetic/final_qc" class="nav-link {% if request.url.path == '/cosmetic/final_qc' %}active{% endif %}">
         <i class="bi bi-shield-check me-2"></i> {{ sidebar_label('cosmetic_finalqc', 'Final QC') }}
+      </a></li>
+      {% endif %}
+      {# RMA Devices (2026-11-27): OFF by default (DEFAULT_DISABLED_MODULES). #}
+      {% if has_perm(role,'rma_devices','enable') and not module_hidden('rma_devices') %}
+      <li data-sb="/repair/rma" style="order: {{ sb_order('/repair/rma') }}"><a href="/repair/rma" class="nav-link {% if request.url.path == '/repair/rma' %}active{% endif %}">
+        <i class="bi bi-arrow-repeat me-2"></i> {{ sidebar_label('rma_devices', 'RMA Devices') }}
       </a></li>
       {% endif %}
       {# Pre-Sale IQC (2026-10-29): OFF by default (DEFAULT_DISABLED_MODULES). #}

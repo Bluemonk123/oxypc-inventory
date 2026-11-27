@@ -731,6 +731,10 @@ async def iqc_list_data(
     # Row Trash button only with Product IQC -> Delete (2026-11-04)
     from models.role_permissions import has_perm as _hp_del
     _can_trash = _hp_del(getattr(current_user.role, "value", current_user.role), "iqc", "delete")
+    # Customer Return badge under the Tag Number (2026-11-27): a returned tag
+    # (repaired, or replaced — RMA Replace sends it here), hover for details.
+    from utils.return_badges import return_badge_map, return_badge_html
+    ret_badges = {k: v for k, v in (await return_badge_map(db, [d for d, _ in rows])).items() if v[0] in ("RMA", "RR")}
     data = []
     for d, lot_number in rows:
         stage_val = getattr(d.current_stage, "value", d.current_stage)
@@ -741,7 +745,8 @@ async def iqc_list_data(
         data.append([
             f'<input type="checkbox" class="form-check-input iqcRowChk" value="{esc(d.barcode)}">',
             f'<span class="font-monospace small">{esc(d.serial_no or "—")}</span>',
-            f'<a href="/devices/{esc(d.barcode)}" class="text-decoration-none"><code>{esc(d.barcode)}</code></a>',
+            f'<a href="/devices/{esc(d.barcode)}" class="text-decoration-none"><code>{esc(d.barcode)}</code></a>'
+            + (f'<br>{return_badge_html(ret_badges, d.id, "Customer Return")}' if str(d.id) in ret_badges else ''),
             (f'<a href="/devices?lot={esc(lot_number)}" class="text-decoration-none">'
              f'<span class="badge bg-info text-dark">{esc(lot_number)}</span></a>'),
             f'<span class="badge bg-secondary">{esc(STAGE_LABELS.get(d.current_stage, stage_val))}</span>',

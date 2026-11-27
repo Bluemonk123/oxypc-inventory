@@ -78,15 +78,28 @@
 <div class="tab-content">
 {# ── Lots ── #}
 <div class="tab-pane fade show active" id="lotsTab">
+  {# Search + Bulk Set Price (2026-11-27, Pankaj): one price for every ticked lot. #}
+  <div class="d-flex justify-content-between align-items-center mb-2 gap-2 flex-wrap">
+    <div style="max-width:320px" class="flex-fill">
+      <input type="search" class="form-control form-control-sm ml-search" data-target="#lotsTab" placeholder="Search lot, sub-lot, category…">
+    </div>
+    {% if can_set_price and can(current_user, 'trade_partner_manage_lots', 'edit') %}
+    <button type="button" class="btn btn-sm btn-outline-success bulk-price-btn" data-scope="lots" disabled>
+      <i class="bi bi-pencil-square me-1"></i>Bulk Set Price</button>
+    {% endif %}
+  </div>
   <div class="card border-0 shadow-sm mb-3"><div class="card-body p-0"><div class="table-responsive" style="max-height:560px">
     <table class="table table-hover mb-0 small align-middle">
       <thead class="table-dark" style="position:sticky;top:0;z-index:1"><tr>
+        {% if can_set_price and can(current_user, 'trade_partner_manage_lots', 'edit') %}<th class="ps-3" style="width:32px"><input type="checkbox" class="form-check-input price-all-chk" data-scope="lots" title="Select all"></th>{% endif %}
         <th class="ps-3">Lot Number</th><th>Sub-lot Number <i class="bi bi-eye" title="What partners see"></i></th><th>Category</th>
         <th class="text-end">Tags</th><th class="text-end">Ready for Sale</th>{% if see_price %}<th class="text-end">Price</th>{% endif %}
         <th>Last Upload</th><th>Action</th></tr></thead>
       <tbody>
       {% for l in lots %}
-        <tr>
+        <tr data-search="{{ (l.lot_number ~ ' ' ~ (l.sub_lot or '') ~ ' ' ~ (l.categories | map('first') | join(' '))) | lower }}">
+          {% if can_set_price and can(current_user, 'trade_partner_manage_lots', 'edit') %}<td class="ps-3"><input type="checkbox" class="form-check-input price-row-chk" data-scope="lots"
+              value="{{ l.id }}" data-price="{{ '%.2f'|format(l.price) if l.price is not none else '' }}"></td>{% endif %}
           <td class="ps-3 font-monospace">{{ l.lot_number }}</td>
           <td class="font-monospace">{% if l.sub_lot %}<span class="badge bg-primary-subtle text-dark border">{{ l.sub_lot }}</span>{% else %}<span class="text-muted">Not set</span>{% endif %}</td>
           <td>{% for c, n in l.categories %}<span class="badge bg-light text-dark border me-1">{{ c }} {{ n }}</span>{% else %}<span class="text-muted">—</span>{% endfor %}</td>
@@ -100,12 +113,12 @@
                     data-lot-id="{{ l.id }}" data-lot="{{ l.lot_number }}" data-sub="{{ l.sub_lot }}"
                     data-cat="{{ l.categories[0][0] if l.categories else '' }}"
                     data-price="{{ '%.2f'|format(l.price) if l.price is not none else '' }}">
-              <i class="bi bi-currency-rupee"></i> Set Price</button>
+              <i class="bi bi-pencil-square"></i> Set Price</button>
             {% endif %}
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="8" class="text-center text-muted py-4">No test lots yet — upload an Asset IQC sheet.</td></tr>
+        <tr><td colspan="9" class="text-center text-muted py-4">No test lots yet — upload an Asset IQC sheet.</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -143,17 +156,18 @@
 <div class="tab-pane fade" id="assetIqcTab">
   <div class="d-flex justify-content-between align-items-center mb-3 gap-2 flex-wrap">
     <div style="max-width:320px" class="flex-fill">
-      <input type="text" id="assetSearchInput" class="form-control form-control-sm" placeholder="Search Tag Number or Lot Number...">
+      <input type="search" id="assetSearchInput" class="form-control form-control-sm" placeholder="Search tag, lot, sub-lot, brand, model…">
     </div>
-    <button {% if not can(current_user, 'trade_partner_manage_lots', 'edit') %}hidden {% endif %}type="button" id="moveReadyForSaleBtn" class="btn btn-sm btn-outline-success" disabled>
-      <i class="bi bi-box-arrow-in-right me-1"></i>Move to Ready for Sale
-    </button>
+    <div class="d-flex gap-2">
+    {% if can_set_price and can(current_user, 'trade_partner_manage_lots', 'edit') %}
+    <button type="button" class="btn btn-sm btn-outline-success bulk-price-btn" data-scope="tags" disabled>
+      <i class="bi bi-pencil-square me-1"></i>Bulk Set Price</button>
+    {% endif %}
+    </div>
   </div>
-  <form id="bulkReadyForm" method="post" action="/trade-partner/manage-lots/move-ready-for-sale" style="display:none">
-    <input type="hidden" name="csrf_token" value="{{ _csrf }}">
-  </form>
+  {# "Move to Ready for Sale" removed (2026-11-27, Pankaj): uploaded test tags
+     already start in Ready for Sale (services/partner_iqc_upload.py). #}
   <div class="card border-0 shadow-sm mb-3">
-    <div class="card-header bg-transparent fw-semibold"><i class="bi bi-list-check me-2"></i>Test Tags ({{ test_entity_name }})</div>
     <div class="card-body p-0">
       <div class="table-responsive" style="max-height:520px; overflow-y:auto">
         <table class="table table-hover mb-0 small align-middle">
@@ -162,14 +176,15 @@
               <th class="ps-3" style="width:32px"><input type="checkbox" id="assetSelectAllChk" class="form-check-input" title="Select all"></th>
               <th>Tag Number</th><th>Lot Number</th><th>Sub-lot</th><th>Category</th><th>Brand / Model</th>
               <th>CPU</th><th>Gen</th><th>RAM</th><th>Storage</th>
-              <th>Stage</th><th>Uploaded</th><th>Action</th>
+              <th>Stage</th>{% if see_price %}<th class="text-end" title="The lot's price split over its tags, unless the tag has its own price">Price</th>{% endif %}<th>Uploaded</th><th>Action</th>
             </tr>
           </thead>
           <tbody>
             {% for row in test_devices %}
             {% set d = row.device %}
-            <tr data-search="{{ (d.barcode ~ ' ' ~ (row.lot_number or '') ~ ' ' ~ (d.sub_lot_number or '')) | lower }}">
-              <td class="ps-3"><input type="checkbox" class="form-check-input asset-row-chk" value="{{ d.barcode }}"></td>
+            <tr data-search="{{ (d.barcode ~ ' ' ~ (row.lot_number or '') ~ ' ' ~ (d.sub_lot_number or '') ~ ' ' ~ (d.brand or '') ~ ' ' ~ (d.model or '') ~ ' ' ~ (row.category or '') ~ ' ' ~ (d.cpu or '')) | lower }}">
+              <td class="ps-3"><input type="checkbox" class="form-check-input asset-row-chk" value="{{ d.barcode }}"
+                  data-price="{{ '%.2f'|format(row.price) if row.price is not none else '' }}"></td>
               <td>
                 <button type="button" class="btn btn-link p-0 font-monospace text-decoration-none device-details-btn"
                         data-barcode="{{ d.barcode }}" data-lot="{{ row.lot_number or '' }}"
@@ -190,6 +205,9 @@
               <td>{{ (d.ram_gb ~ ' GB') if d.ram_gb else '—' }}</td>
               <td>{{ (d.storage_gb ~ ' GB' ~ (' ' ~ d.storage_type if d.storage_type else '')) if d.storage_gb else '—' }}</td>
               <td><span class="badge bg-secondary">{{ stage_labels.get(d.current_stage, d.current_stage.value) }}</span></td>
+              {% if see_price %}<td class="text-end text-nowrap">{% if row.price is not none %}₹{{ '{:,.2f}'.format(row.price) }}
+                {% if row.price_src == 'split' %}<div class="text-muted" style="font-size:11px">lot split</div>{% else %}<div class="text-success" style="font-size:11px">tag price</div>{% endif %}
+                {% else %}<span class="text-muted">Not set</span>{% endif %}</td>{% endif %}
               <td class="text-muted small">{{ d.created_at.strftime('%d-%m-%Y') if d.created_at else '—' }}</td>
               <td class="text-nowrap">
                 <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2 device-details-btn"
@@ -202,10 +220,16 @@
                         data-device-type="{{ d.device_type or '' }}" data-grade="{{ d.grade.value if d.grade else '' }}" data-notes="{{ d.notes or '' }}">
                   <i class="bi bi-pencil"></i> Edit
                 </button>
+                {% if can_set_price and can(current_user, 'trade_partner_manage_lots', 'edit') %}
+                <button type="button" class="btn btn-sm btn-outline-success py-0 px-2 tag-set-price-btn"
+                        data-barcode="{{ d.barcode }}" data-own="{{ '1' if row.price_src == 'tag' else '' }}"
+                        data-price="{{ '%.2f'|format(row.price) if row.price is not none else '' }}">
+                  <i class="bi bi-pencil-square"></i> Set Price</button>
+                {% endif %}
               </td>
             </tr>
             {% else %}
-            <tr><td colspan="13" class="text-center text-muted py-4">No test tags uploaded yet.</td></tr>
+            <tr><td colspan="14" class="text-center text-muted py-4">No test tags uploaded yet.</td></tr>
             {% endfor %}
           </tbody>
         </table>
@@ -218,15 +242,18 @@
 <!-- Set Price (Lots tab only): the lot's Base Price + Sub-lot Number partners see. -->
 <div class="modal fade" id="setPriceModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
-    <form method="post" action="/trade-partner/manage-lots/set-price" class="modal-content">
+    <form method="post" action="/trade-partner/manage-lots/set-price" class="modal-content" id="setPriceForm">
       <input type="hidden" name="csrf_token" value="{{ _csrf }}">
       <input type="hidden" name="lot_id" id="spLotId">
+      <input type="hidden" name="barcode" id="spBarcode" disabled>
       <div class="modal-header">
         <h5 class="modal-title"><i class="bi bi-currency-rupee me-1"></i>Set Price — <span id="spLotNo" class="font-monospace"></span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p class="small text-muted mb-3">The price of the whole lot. Partners see it as the lot's <b>Base Price</b> on the
+        <p class="small text-muted mb-3 sp-tag-only d-none">This tag's own price. It replaces the tag's share of the
+          lot price (the lot's price split evenly over its tags). Leave New price blank to go back to the split price.</p>
+        <p class="small text-muted mb-3 sp-lot-only">The price of the whole lot. Partners see it as the lot's <b>Base Price</b> on the
           Catalog; bids must be at least 10% above it (or above the highest bid), and a booking is priced at
           Base Price × booked qty ÷ lot qty. Partners see the lot by its <b>Sub-lot Number</b>, not the real lot number.</p>
         <div class="row g-2 align-items-end">
@@ -235,14 +262,14 @@
             <div class="form-control form-control-sm bg-light" id="spCurrent">—</div>
           </div>
           <div class="col-sm-6">
-            <label class="form-label small mb-1" for="spPrice">New price (₹) <span class="text-danger">*</span></label>
+            <label class="form-label small mb-1" for="spPrice">New price (₹) <span class="text-danger sp-lot-only">*</span></label>
             <input type="number" step="0.01" min="0" name="price" id="spPrice" class="form-control form-control-sm" required>
           </div>
-          <div class="col-sm-6">
+          <div class="col-sm-6 sp-lot-only">
             <label class="form-label small mb-1" for="spSub">Sub-lot Number <span class="text-muted">(auto)</span></label>
             <input type="text" id="spSub" class="form-control form-control-sm bg-light" readonly>
           </div>
-          <div class="col-sm-6">
+          <div class="col-sm-6 sp-lot-only">
             <label class="form-label small mb-1" for="spCat">Device Category</label>
             <select name="category" id="spCat" class="form-select form-select-sm">
               <option value="">Keep as is</option>
@@ -286,8 +313,33 @@
 </div>
 {% endif %}
 <script>
+function spMode(tag) {               // same Set Price modal for a lot or a tag (2026-11-27)
+  var f = document.getElementById('setPriceForm');
+  f.action = tag ? '/trade-partner/manage-lots/tag-set-price' : '/trade-partner/manage-lots/set-price';
+  document.getElementById('spLotId').disabled = !!tag;
+  document.getElementById('spBarcode').disabled = !tag;
+  document.getElementById('spCat').disabled = !!tag;
+  document.getElementById('spPrice').required = !tag;
+  f.querySelectorAll('.sp-lot-only').forEach(function (x) { x.classList.toggle('d-none', !!tag); });
+  f.querySelectorAll('.sp-tag-only').forEach(function (x) { x.classList.toggle('d-none', !tag); });
+}
+function fmtPrice(cur) {
+  return cur === '' ? 'Not set' : (parseFloat(cur) ? '₹' + parseFloat(cur).toLocaleString('en-IN', {minimumFractionDigits: 2}) : 'Not set');
+}
+document.addEventListener('click', function (e) {
+  var t = e.target.closest('.tag-set-price-btn'); if (!t) return;
+  spMode(true);
+  document.getElementById('spBarcode').value = t.dataset.barcode;
+  document.getElementById('spLotNo').textContent = t.dataset.barcode;
+  document.getElementById('spCurrent').textContent = fmtPrice(t.dataset.price) +
+    (t.dataset.price !== '' ? (t.dataset.own ? ' (tag price)' : ' (lot split)') : '');
+  document.getElementById('spPrice').value = t.dataset.own ? t.dataset.price : '';
+  bootstrap.Modal.getOrCreateInstance(document.getElementById('setPriceModal')).show();
+  setTimeout(function () { document.getElementById('spPrice').focus(); }, 300);
+});
 document.addEventListener('click', function (e) {
   var b = e.target.closest('.set-price-btn'); if (!b) return;
+  spMode(false);
   document.getElementById('spLotId').value = b.dataset.lotId;
   document.getElementById('spLotNo').textContent = b.dataset.lot;
   document.getElementById('spSub').value = b.dataset.sub || 'Given on Save';
@@ -299,6 +351,79 @@ document.addEventListener('click', function (e) {
   bootstrap.Modal.getOrCreateInstance(document.getElementById('setPriceModal')).show();
   setTimeout(function () { document.getElementById('spPrice').focus(); }, 300);
 });
+</script>
+
+{# Bulk Set Price (2026-11-27, Pankaj): Current Price + New Price only, for the
+   ticked lots (Lots tab) or ticked tags (Tags tab). #}
+<div class="modal fade" id="bulkPriceModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <form method="post" action="/trade-partner/manage-lots/bulk-set-price" class="modal-content" id="bulkPriceForm">
+      <input type="hidden" name="csrf_token" value="{{ _csrf }}">
+      <input type="hidden" name="lot_ids" id="bpLotIds">
+      <input type="hidden" name="barcodes" id="bpBarcodes" disabled>
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="bi bi-pencil-square me-1"></i>Bulk Set Price — <span id="bpLabel"></span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-2 align-items-end">
+          <div class="col-sm-6">
+            <label class="form-label small mb-1">Current Price</label>
+            <div class="form-control form-control-sm bg-light" id="bpCurrent">—</div>
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label small mb-1" for="bpPrice">New Price (₹) <span class="text-danger bp-req">*</span></label>
+            <input type="number" step="0.01" min="0" name="price" id="bpPrice" class="form-control form-control-sm">
+          </div>
+        </div>
+        <div class="form-text bp-tag-note d-none">Blank = the tags go back to their lot's split price.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-sm btn-success">Save</button>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  function ticked(scope) {
+    return Array.prototype.slice.call(document.querySelectorAll(
+      scope === 'lots' ? '#lotsTab .price-row-chk:checked' : '#assetIqcTab .asset-row-chk:checked'));
+  }
+  function refresh() {
+    document.querySelectorAll('.bulk-price-btn').forEach(function (b) { b.disabled = ticked(b.dataset.scope).length === 0; });
+  }
+  document.addEventListener('change', function (e) {
+    var all = e.target.closest('.price-all-chk');
+    if (all) {
+      document.querySelectorAll('#lotsTab tbody tr:not([style*="display: none"]) .price-row-chk').forEach(function (c) { c.checked = all.checked; });
+    }
+    if (all || e.target.closest('.price-row-chk') || e.target.closest('.asset-row-chk') || e.target.id === 'assetSelectAllChk') {
+      setTimeout(refresh, 0);
+    }
+  });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.bulk-price-btn'); if (!b) return;
+    var scope = b.dataset.scope, rows = ticked(scope);
+    if (!rows.length) return;
+    var lots = scope === 'lots', f = document.getElementById('bulkPriceForm');
+    f.action = lots ? '/trade-partner/manage-lots/bulk-set-price' : '/trade-partner/manage-lots/tags-bulk-set-price';
+    document.getElementById('bpLotIds').disabled = !lots;
+    document.getElementById('bpBarcodes').disabled = lots;
+    document.getElementById(lots ? 'bpLotIds' : 'bpBarcodes').value = rows.map(function (c) { return c.value; }).join(',');
+    document.getElementById('bpLabel').textContent = rows.length + (lots ? ' lot(s)' : ' tag(s)');
+    var prices = rows.map(function (c) { return c.dataset.price || ''; });
+    var same = prices.every(function (p) { return p === prices[0]; });
+    document.getElementById('bpCurrent').textContent = same ? fmtPrice(prices[0]) : 'Different prices';
+    var inp = document.getElementById('bpPrice');
+    inp.value = ''; inp.required = lots;
+    f.querySelector('.bp-req').classList.toggle('d-none', !lots);
+    f.querySelector('.bp-tag-note').classList.toggle('d-none', lots);
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('bulkPriceModal')).show();
+    setTimeout(function () { inp.focus(); }, 300);
+  });
+})();
 </script>
 
 <!-- Device Details modal — Tag Number click opens read-only; Edit button
@@ -422,36 +547,12 @@ if (assetSearch) {
   });
 }
 
-// Asset IQC tab — multi-select checkboxes + bulk "Move to Ready for Sale".
+// Tags tab — select all (visible rows) for Bulk Set Price.
 var assetSelectAll = document.getElementById('assetSelectAllChk');
-var moveReadyBtn = document.getElementById('moveReadyForSaleBtn');
-function assetUpdateSelState() {
-  var checked = document.querySelectorAll('#assetIqcTab .asset-row-chk:checked');
-  moveReadyBtn.disabled = checked.length === 0;
-}
-document.querySelectorAll('#assetIqcTab .asset-row-chk').forEach(function(chk){
-  chk.addEventListener('change', assetUpdateSelState);
-});
 if (assetSelectAll) {
   assetSelectAll.addEventListener('change', function(){
-    var visible = document.querySelectorAll('#assetIqcTab tbody tr:not([style*="display: none"]) .asset-row-chk');
-    visible.forEach(function(chk){ chk.checked = assetSelectAll.checked; });
-    assetUpdateSelState();
-  });
-}
-if (moveReadyBtn) {
-  moveReadyBtn.addEventListener('click', function(){
-    var checked = document.querySelectorAll('#assetIqcTab .asset-row-chk:checked');
-    if (!checked.length) return;
-    if (!confirm('Move ' + checked.length + ' selected tag(s) to Ready for Sale?')) return;
-    var form = document.getElementById('bulkReadyForm');
-    form.querySelectorAll('input[name="barcode"]').forEach(function(i){ i.remove(); });
-    checked.forEach(function(chk){
-      var inp = document.createElement('input');
-      inp.type = 'hidden'; inp.name = 'barcode'; inp.value = chk.value;
-      form.appendChild(inp);
-    });
-    form.submit();
+    document.querySelectorAll('#assetIqcTab tbody tr:not([style*="display: none"]) .asset-row-chk')
+      .forEach(function(chk){ chk.checked = assetSelectAll.checked; });
   });
 }
 </script>

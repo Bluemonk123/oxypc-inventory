@@ -2496,6 +2496,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         pna_old = await _pna_stale(db)          # Old PNA marks card (2026-11-22)
         dirty_tags = await _dirty_tags(db)       # Tag Numbers with hidden characters (2026-11-24)
         grn_nodate = await _grn_missing_dates(db)  # GRNs with no GRN Date (2026-11-26)
+        l2_tags = await _l2_tags(db)             # tags in the retired L2 stage (2026-11-26)
         from services.iqc_backfill import counts as _iqc_hist_counts
         iqc_hist = await _iqc_hist_counts(db)    # Rebuild old IQC history card (2026-11-22)
         from services.iqc_backfill import STATE as _iqc_state
@@ -2536,6 +2537,7 @@ async def data_fixes_page(request: Request, done: str = "", missing_tags: str = 
         "dirty_fixable": sum(1 for r in dirty_tags if not r["clash"]),
         "grn_nodate": grn_nodate[:300], "grn_nodate_total": len(grn_nodate),
         "grn_nodate_fixable": sum(1 for r in grn_nodate if r["created"]),
+        "l2_tags": l2_tags[:300], "l2_total": len(l2_tags),
         "iqc_hist": iqc_hist, "iqc_run": iqc_run,
         "nh_done": nh_done,
         "rts_open": rts_open[:200], "rts_open_total": len(rts_open),
@@ -2603,6 +2605,32 @@ _PNA_PAST_REPAIR = ("qc_check", "cosmetic_received", "cleaning", "putty", "dry_s
 
 
 _TAG_JUNK_SQL = r"[\s\u200b\u200c\u200d\u2060\ufeff\u00a0]"
+
+
+async def _l2_tags(db):
+    """Tags still in the retired L2 stage (2026-11-26, Pankaj) — no page lists
+    them (the L1/L2 queue is /repair/l1). [{id, barcode, entity, since, wos}]."""
+    from sqlalchemy import select, func
+    from models.device import Device, DeviceStage, StageMovement
+    from models.work_order import WorkOrder
+    from services.work_order_close import wo_open
+    devs = (await db.execute(
+        select(Device.id, Device.barcode, Device.entity)
+        .where(Device.current_stage == DeviceStage.l2, Device.is_trashed.isnot(True))
+        .order_by(Device.barcode))).all()
+    ids = [d.id for d in devs]
+    since, wos = {}, {}
+    if ids:
+        since = dict((await db.execute(
+            select(StageMovement.device_id, func.max(StageMovement.moved_at))
+            .where(StageMovement.device_id.in_(ids), StageMovement.to_stage == DeviceStage.l2)
+            .group_by(StageMovement.device_id))).all())
+        wos = dict((await db.execute(
+            select(WorkOrder.device_id, func.count())
+            .where(WorkOrder.device_id.in_(ids), wo_open(), WorkOrder.stage != "asgn")
+            .group_by(WorkOrder.device_id))).all())
+    return [{"id": d.id, "barcode": d.barcode, "entity": d.entity,
+             "since": since.get(d.id), "wos": wos.get(d.id, 0)} for d in devs]
 
 
 async def _grn_missing_dates(db):
@@ -2754,6 +2782,49 @@ async def tag_clean(request: Request, current_user: User = Depends(admin_only)):
     if back:
         return back
     return JSONResponse({"ok": True, "cleaned": len(rows)})
+
+
+@router.post("/l2-to-stock-in")
+async def l2_to_stock_in(request: Request, current_user: User = Depends(admin_only)):
+    """Data Fixes → Tags in the old L2 stage (2026-11-26, Pankaj): move them
+    to Stock In. Their open WorkIDs close as "reassigned" (not counted as
+    finished work); Asset History gets an L2 → Stock In move. Logged."""
+    from sqlalchemy import select
+    from database import AsyncSessionLocal
+    from models.device import Device, DeviceStage, StageMovement
+    from services.audit_engine import audit
+    from services.work_order_close import reassign_open_work_orders
+    from utils.timezone import app_now
+    async with AsyncSessionLocal() as db:
+        rows = await _l2_tags(db)
+        now = app_now()
+        devs = (await db.execute(select(Device).where(
+            Device.id.in_([r["id"] for r in rows]), Device.current_stage == DeviceStage.l2))).scalars().all() if rows else []
+        if devs:
+            for mv in (await db.execute(select(StageMovement).where(
+                    StageMovement.device_id.in_([d.id for d in devs]),
+                    StageMovement.exited_at.is_(None),
+                    StageMovement.to_stage == DeviceStage.l2))).scalars().all():
+                mv.exited_at = now
+        closed = 0
+        for d in devs:
+            closed += await reassign_open_work_orders(db, d.id, at=now)
+            db.add(StageMovement(device_id=d.id, from_stage=DeviceStage.l2, to_stage=DeviceStage.stock_in,
+                                 moved_by=current_user.username,
+                                 notes="Data fix — tag was in the retired L2 stage, moved to Stock In"))
+            d.current_stage = DeviceStage.stock_in
+            d.updated_at = now
+        await audit(db, user=current_user, action="L2_TAGS_TO_STOCK_IN", table_name="devices",
+                    record_id=f"{len(devs)} tags",
+                    new_value={"count": len(devs), "workids_closed": closed,
+                               "tags": [d.barcode for d in devs][:500]},
+                    notes="Tags in the retired L2 stage moved to Stock In; open WorkIDs closed as reassigned.",
+                    request=request)
+        await db.commit()
+    back = _back_to_page(await request.form(), f"Moved to Stock In: {len(devs):,} tag(s).")
+    if back:
+        return back
+    return JSONResponse({"ok": True, "moved": len(devs), "workids_closed": closed})
 
 
 @router.post("/grn-date-fill")

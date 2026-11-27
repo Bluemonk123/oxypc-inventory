@@ -144,10 +144,9 @@
    main). The last-open tab is remembered per browser tab (sessionStorage) so
    a filter submit or action reload comes back to it. The filter bar above
    filters Inventory Stock. #}
-{# Supplier Deal card (2026-11-10, Pankaj): col-lg-4 on the left of the tabs
+{# Supplier Deal card (2026-11-10, Pankaj; on the right since 2026-11-27)
    (2026-11-12: shared partial, also on Parts Manager). #}
 <div class="row g-3">
-{% if sd_enabled %}<div class="col-lg-3">{% set sd_return_to = '/stock' %}{% include "_supplier_deal_card.html" %}</div>{% endif %}
 <div class="{{ 'col-lg-9' if sd_enabled else 'col-12' }}">
 <ul class="nav nav-tabs mb-0" id="stkTabs">
   <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#stkInvTab" type="button">
@@ -262,12 +261,12 @@
     </div>
     <div class="d-flex align-items-center gap-2 flex-wrap">
       {# Search box is moved by JS into the table toolbar, before the pagination.
-         Move to L1/L2 (2026-11-05, replaces Assign Bucket) shows the selected count. #}
+         Move to RMA (2026-11-27, was Move to L1/L2) shows the selected count. #}
       <input type="text" id="rsSearchBox" class="form-control form-control-sm" style="width:220px;"
              placeholder="Search Tag / Serial / Model">
       <button {% if not can(current_user, 'stock', 'edit') %}hidden {% endif %}type="button" id="rsMoveL12Btn" class="btn btn-sm btn-primary text-nowrap" disabled
-              title="Send the ticked Received tags to L1/L2 (unassigned — an engineer uses Pick This)">
-        <i class="bi bi-tools me-1"></i>Move to L1/L2 (<span id="rsSelectedCount">0</span>)
+              title="Send the ticked Received tags to RMA Devices (unassigned — an engineer uses Pick This)">
+        <i class="bi bi-arrow-repeat me-1"></i>Move to RMA (<span id="rsSelectedCount">0</span>)
       </button>
     </div>
   </div>
@@ -279,7 +278,7 @@
             <th><input type="checkbox" id="rsSelectAll" class="form-check-input"></th>
             <th>Tag Number</th><th>Serial Number</th><th>Model</th><th>CPU</th><th>RAM</th><th>Storage</th>
             <th>Reason</th><th>Condition</th><th>Complaint</th>
-            <th>Repair Cost</th><th>Labour Cost</th><th>Part Cost</th><th>Current Stage</th><th>Action</th>
+            <th>Repair Cost</th><th>Labour Cost</th><th>Part Cost</th><th>Warranty</th><th>Current Stage</th><th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -292,6 +291,9 @@
               <a href="/devices/{{ d.barcode }}" class="font-monospace text-decoration-none"><code>{{ d.barcode }}</code></a>
               {% if d.tag_return_status and d.tag_return_status.startswith('Replaced by ') %}
               <div class="mt-1"><span class="badge bg-info text-dark">{{ d.tag_return_status }}</span></div>
+              {% elif row.replaced_with %}
+              {# RMA Replace (2026-11-27): this tag goes to the customer in place of their returned tag. #}
+              <div class="mt-1"><span class="badge bg-info text-dark">Replaced with {{ row.replaced_with }}</span></div>
               {% endif %}
             </td>
             <td>{{ d.serial_no or '—' }}</td>
@@ -317,6 +319,9 @@
                               'Payment Pending': 'bg-danger', 'Dispatch Pending': 'bg-primary',
                               'Ready at Gate Pass': 'bg-info text-dark',
                               'Return Complete': 'bg-success', 'Stocked In': 'bg-success'} %}
+            {# Warranty (2026-11-27): the picked warranty on the returned sale. #}
+            <td class="text-nowrap"><span class="badge {{ row.warranty.cls }}">{{ row.warranty.text }}</span>
+              {% if row.warranty.till %}<div class="text-muted" style="font-size:.72rem">{{ 'till' if row.warranty.text == 'In Warranty' else 'ended' }} {{ row.warranty.till.strftime('%d-%m-%Y') }}</div>{% endif %}</td>
             <td class="text-nowrap rs-stage-cell">
               <span class="badge bg-transparent border border-secondary text-secondary">{{ row.stage_label }}</span>
               <div class="mt-1"><span class="badge rs-status {{ _st_cls.get(row.status, 'bg-secondary') }}">{{ row.status }}</span></div>
@@ -366,6 +371,8 @@
 </div>
 </div>{# /.tab-content #}
 </div>{# /.col-lg-8 #}
+{# Supplier Deal card on the right of the tabs (2026-11-27, Pankaj). #}
+{% if sd_enabled %}<div class="col-lg-3">{% set sd_return_to = '/stock' %}{% include "_supplier_deal_card.html" %}</div>{% endif %}
 </div>{# /.row Supplier Deal + tabs #}
 
 
@@ -1172,7 +1179,7 @@ document.querySelectorAll('.si-acc-body').forEach(function (b) {
 });
 var dtReturnStock = initGlobalTable('#returnStockTable', {
   order: [],
-  columnDefs: [{ orderable: false, targets: [0, 14] }],
+  columnDefs: [{ orderable: false, targets: [0, 15] }],
   language: { emptyTable: 'No return stock pending.' },
 }, {
   selectAll: {
@@ -1214,18 +1221,18 @@ document.getElementById('rsSearchBox').addEventListener('keyup', function(){
   dtReturnStock.search(this.value.trim()).draw();
 });
 
-// Move to L1/L2 (2026-11-05, replaces Assign Bucket): ticked Received tags
-// go to L1/L2 unassigned (Pick This); the page reloads with the result.
+// Move to RMA (2026-11-27, was Move to L1/L2): ticked Received tags go to
+// RMA Devices unassigned (Pick This); the page reloads with the result.
 document.getElementById('rsMoveL12Btn').addEventListener('click', function(){
   var bcs = rsSelectedBarcodes();
   if(!bcs.length) return;
-  if(!confirm('Move '+bcs.length+' returned tag(s) to L1/L2? An engineer will take them with Pick This.')) return;
+  if(!confirm('Move '+bcs.length+' returned tag(s) to RMA Devices? An engineer will take them with Pick This.')) return;
   var fd = new FormData();
   fd.append('csrf_token', getCsrf());
   fd.append('barcodes', bcs.join(','));
-  fetch('/stock/return-stock/move-l1l2', {method:'POST', body:fd}).then(function(r){return r.json();}).then(function(d){
+  fetch('/stock/return-stock/move-rma', {method:'POST', body:fd}).then(function(r){return r.json();}).then(function(d){
     if(!d.ok){ alert(d.detail || 'Move failed.'); return; }
-    var msg = d.moved+' tag(s) moved to L1/L2' + (d.skipped && d.skipped.length ? ('; not moved (not at Stock In): '+d.skipped.join(', ')) : '');
+    var msg = d.moved+' tag(s) moved to RMA Devices' + (d.skipped && d.skipped.length ? ('; not moved (not at Stock In): '+d.skipped.join(', ')) : '');
     location.href = '/stock?success=' + encodeURIComponent(msg);
   }).catch(function(){ alert('Network error — please try again.'); });
 });

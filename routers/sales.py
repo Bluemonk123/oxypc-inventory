@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import csv
 import io
 from sqlalchemy import select, func, text, or_, update, case
+from utils.stage_page_filters import live_tag_filters
 from fastapi.responses import StreamingResponse
 
 from database import get_db
@@ -285,6 +286,7 @@ async def ready_list_barcodes(
             Device.current_stage == DeviceStage.ready_to_sale,
             Device.is_trashed == False,
             or_(Device.sub_lot_number.is_(None), Device.sub_lot_number == ""),
+            *live_tag_filters(with_lot=False),   # no ETP / inactive (2026-11-26)
             *([Device.entity.in_(entities)] if entities else []),
             *([_touch_clause(touch)] if _touch_clause(touch) is not None else []),
             *([_device_type_expr.in_(_entity_values(device_type))] if _entity_values(device_type) else []),
@@ -362,6 +364,9 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
     # totals and the paging alike, so the table and its counts always agree.
     entities = _entity_values(entity)
     entity_filter = [Device.entity.in_(entities)] if entities else []
+    # No External Partner Test / inactive tags (2026-11-26, Pankaj): ETP tags
+    # go back through L1/L2 before they can reach Ready for Sale.
+    entity_filter += live_tag_filters(with_lot=False)
     if _touch_clause(touch) is not None:
         entity_filter.append(_touch_clause(touch))
     if _entity_values(device_type):
@@ -483,10 +488,11 @@ async def ready_feed(request, draw, start, length, entity, touch, device_type, a
                 requested_ids.add(str(did))
             elif st == "rejected":
                 rejected_notes_map[str(did)] = notes or ""
-    sold_map = await latest_sold_at_map(db, device_ids)
+    # Warranty (2026-11-27): only the warranty picked on the tag's latest sale.
+    from utils.warranty import latest_sale_map, effective_warranty_for_sale
     warranty_map = {}
-    for did, sold_at in sold_map.items():
-        w = warranty_from_sold_at(sold_at)
+    for did, _sale in (await latest_sale_map(db, device_ids)).items():
+        w = effective_warranty_for_sale(_sale)
         if w:
             warranty_map[did] = w
 
@@ -3136,30 +3142,32 @@ async def returns_list(request: Request, db: AsyncSession = Depends(get_db),
     # Device.entity + the Sale customer fields are pulled in here (not just
     # barcode/brand/model/sale_price/sale_number as before) so the Receipt
     # modal can render entirely from this one row — no per-receipt query.
-    result = await db.execute(
-        select(Return, Device.barcode, Device.brand, Device.model, Device.entity, Device.serial_no,
-               Sale.sale_price, Sale.sale_number, Sale.customer_name,
-               Sale.customer_phone, Sale.customer_address)
+    # Table (2026-11-27, Pankaj): Return Date, Tag No, Serial No, Make, Model,
+    # CPU, Gen, RAM, Storage, Sale Date, Sale No, Sales Person, Return By, Paid
+    # Repair, Reason, Condition, Receipt — whole Device / Sale rows so every
+    # column (and the Receipt modal) renders from this one query.
+    from utils.sales_person import linked_name_map, sales_person_display
+    returns = (await db.execute(
+        select(Return, Device, Sale)
         .join(Device, Return.device_id == Device.id)
         .join(Sale, Return.sale_id == Sale.id, isouter=True)   # Credit Note: no sale before Payment Invoice Done
         .order_by(Return.return_date.desc())
-    )
-    returns = result.all()
+    )).all()
 
     # Replace Now (Product Return) replacement rows — these tags were never
     # "returned" (no Return record exists for them), they were sold at ₹0 as
     # a replacement for a returned tag. Device.replaced, prefixed "Replaced
     # with " by process_return above, flags them; merged into the same
     # table — DataTables re-sorts both blocks together by Return Date on init.
-    repl_result = await db.execute(
-        select(Device.barcode, Device.brand, Device.model, Device.entity, Device.replaced, Device.serial_no,
-               Sale.sale_price, Sale.sale_number, Sale.sold_at, Sale.sold_by,
-               Sale.customer_name, Sale.customer_phone, Sale.customer_address)
+    replacements = (await db.execute(
+        select(Device, Sale)
         .join(Sale, Sale.device_id == Device.id)
         .where(Device.replaced.like('Replaced with %'), Sale.sale_price == 0)
         .order_by(Sale.sold_at.desc())
-    )
-    replacements = repl_result.all()
+    )).all()
+    _names = await linked_name_map(db)
+    sales_person = {str(s.id): sales_person_display(s, _names)
+                    for s in [r[2] for r in returns if r[2]] + [r[1] for r in replacements]}
 
     # Option C dashboard (2026-11-14, Pankaj) — services/returns_dash.py.
     dash_kpis, dash_widgets = [], []
@@ -3173,6 +3181,7 @@ async def returns_list(request: Request, db: AsyncSession = Depends(get_db),
         await db.rollback()
     return templates.TemplateResponse("sales/returns_list.html", {
         "request": request, "returns": returns, "replacements": replacements,
+        "sales_person": sales_person,
         "current_user": current_user, "dash_kpis": dash_kpis, "dash_widgets": dash_widgets,
     })
 

@@ -81,7 +81,8 @@ asyncio.run(main())
         username, password = make_user("admin")
         _login(app_client, username, password)
         today = date.today().isoformat()
-        assert "/workid-status/final-qc-pass" in app_client.get(
+        # Button removed from WorkID Status (2026-11-27, Pankaj); the export itself still works.
+        assert "/workid-status/final-qc-pass" not in app_client.get(
             "/workid-status", params={"work_from": today, "work_to": today}).text
 
         def export(**params):

@@ -60,9 +60,10 @@ asyncio.run(main())
             return dict((k, int(v)) for v, k in re.findall(r'data-server="(\d+)">\d+</span><span class="oxt-mlabel">([^<]+)', c))
         # 2026-11-22: tags sitting in Cosmetic on the date — Pending = any
         # Cosmetic stage, Started = Cleaning..Water Sanding; Pass = moved out of Water Sanding in the range.
-        assert lines("2026-10-25") == {"Pending": 1, "Started": 0, "Pass": 0, "Fail": 0}
-        assert lines("2026-10-26") == {"Pending": 1, "Started": 0, "Pass": 1, "Fail": 0}     # out of Water Sanding that day
-        assert lines("2026-10-27") == {"Pending": 0, "Started": 0, "Pass": 0, "Fail": 0}     # moved on to Final QC
+        # Started line hidden on the cards (2026-11-27, Pankaj).
+        assert lines("2026-10-25") == {"Pending": 1, "Pass": 0, "Fail": 0}
+        assert lines("2026-10-26") == {"Pending": 1, "Pass": 1, "Fail": 0}     # out of Water Sanding that day
+        assert lines("2026-10-27") == {"Pending": 0, "Pass": 0, "Fail": 0}     # moved on to Final QC
         from tests.workid_helpers import export_sheet
         x = app_client.get("/workid-status/export?engineer=ccr_eng&work_from=2026-10-27&work_to=2026-10-27")
         rows = export_sheet(x.content)
@@ -72,8 +73,8 @@ asyncio.run(main())
         assert str(mine[0][h.index("Status")]).startswith("Completed (before")
         staff = export_sheet(x.content, "Staff Summary")
         sh = staff[0]
-        eng = [r for r in staff if r[0] == "ccr_eng"]
-        assert eng and eng[0][sh.index("Cosmetic Pass")] == 1, staff
+        eng = [r for r in staff if r[0] == "ccr_eng" and r[sh.index("Stage")] == "Cosmetic"]
+        assert eng and sum(r[sh.index("Passed Quantity")] for r in eng) == 1, staff   # per Date Completed (2026-11-27)
     finally:
         _run(f"""
 import asyncio, sys

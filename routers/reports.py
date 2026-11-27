@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import extract, select, func, text as sa_text
+from utils.hidden_tags import live_tag_sql   # ETP tags / lots out of reports (2026-11-27)
 from database import get_db
 from models.user import User, UserRole
 from models.device import Device, DeviceStage, StageMovement, STAGE_LABELS, DROPDOWN_STAGES
@@ -312,7 +313,7 @@ async def _stock_as_of(db: AsyncSession, as_of: datetime, exclude_admin: bool = 
         SELECT latest.to_stage, count(*)
         FROM ({_stock_reconstruction_sql(exclude_admin)}) latest
         JOIN devices d ON d.id = latest.device_id
-        WHERE (d.trashed_at IS NULL OR d.trashed_at > :as_of)
+        WHERE (d.trashed_at IS NULL OR d.trashed_at > :as_of) AND {live_tag_sql('d', trash=False)}
         {_stock_scope_sql(exclude_admin, "open_as_of" if open_as_of is not None else None)}
         {_entity_filter_clause(entities)}
         GROUP BY latest.to_stage
@@ -330,7 +331,7 @@ async def _sold_in_day(db: AsyncSession, day_start: datetime, day_end: datetime,
         SELECT count(*)
         FROM ({_stock_reconstruction_sql(exclude_admin)}) latest
         JOIN devices d ON d.id = latest.device_id
-        WHERE latest.to_stage = 'sold'
+        WHERE latest.to_stage = 'sold' AND {live_tag_sql('d', trash=False)}
           AND latest.device_id IN (
               SELECT o.device_id
               FROM ({_stock_reconstruction_sql(exclude_admin, "open_as_of")}) o
@@ -359,7 +360,7 @@ async def _stock_tags_as_of(db: AsyncSession, as_of: datetime, exclude_admin: bo
                d.grade::text AS grade, d.entity
         FROM ({_stock_reconstruction_sql(exclude_admin)}) latest
         JOIN devices d ON d.id = latest.device_id
-        WHERE (d.trashed_at IS NULL OR d.trashed_at > :as_of)
+        WHERE (d.trashed_at IS NULL OR d.trashed_at > :as_of) AND {live_tag_sql('d', trash=False)}
         {_stock_scope_sql(exclude_admin, "open_as_of" if open_as_of is not None else None)}
         {_entity_filter_clause(entities)}
         ORDER BY latest.to_stage, d.barcode
@@ -392,7 +393,7 @@ async def _stock_by_zone_as_of(db: AsyncSession, as_of: datetime, exclude_admin:
         JOIN devices d ON d.id = latest.device_id
         LEFT JOIN latest_loc ON latest_loc.device_id = d.id
         LEFT JOIN storage_locations cur_sl ON cur_sl.id = d.location_id
-        WHERE (d.trashed_at IS NULL OR d.trashed_at > :as_of)
+        WHERE (d.trashed_at IS NULL OR d.trashed_at > :as_of) AND {live_tag_sql('d', trash=False)}
         {_stock_scope_sql(exclude_admin, "open_as_of" if open_as_of is not None else None)}
         {_entity_filter_clause(entities)}
         GROUP BY latest.to_stage, COALESCE(latest_loc.zone::text, cur_sl.zone::text, 'unassigned')

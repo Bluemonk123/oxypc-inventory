@@ -16,6 +16,7 @@ class DeviceStage(str, enum.Enum):
     l1 = "l1"
     l2 = "l2"
     l3 = "l3"
+    rma = "rma"            # RMA Devices — customer returns repaired from Return Stock (2026-11-27)
     trc_production = "trc_production"
     qc_check = "qc_check"
     cosmetic_received = "cosmetic_received"
@@ -53,6 +54,7 @@ STAGE_LABELS = {
     DeviceStage.l1: "L1/L2 Repair",
     DeviceStage.l2: "L2 Repair",
     DeviceStage.l3: "L3/L4 Repair",
+    DeviceStage.rma: "RMA Devices",
     DeviceStage.trc_production: "TRC Production",
     DeviceStage.qc_check: "Stress Test",
     DeviceStage.cosmetic_received: "Cosmetic Received",
@@ -88,7 +90,8 @@ STAGE_LABELS = {
 # for a tag that was never really sold. Selling only ever happens through the
 # real Sale-creation flow (routers/sales.py mark_sold), which sets this stage
 # itself alongside the Sale row — it doesn't need this dropdown at all.
-DROPDOWN_STAGES = [s for s in DeviceStage if s not in (DeviceStage.l2, DeviceStage.sold)]
+# rma (2026-11-27) is entered only from Return Stock -> Move to RMA.
+DROPDOWN_STAGES = [s for s in DeviceStage if s not in (DeviceStage.l2, DeviceStage.sold, DeviceStage.rma)]
 
 # The paint-line stages plus Putty, grouped as "Cosmetic" wherever the app
 # needs one count/filter for that whole phase (Dashboard's Stage Pipeline,
@@ -116,6 +119,7 @@ STAGE_COLORS = {
     DeviceStage.l1: "warning",
     DeviceStage.l2: "warning",
     DeviceStage.l3: "danger",
+    DeviceStage.rma: "warning",
     DeviceStage.trc_production: "info",
     DeviceStage.qc_check: "primary",
     DeviceStage.cosmetic_received: "teal",

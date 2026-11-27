@@ -1351,6 +1351,11 @@ table.gtable tbody td .gtable-clamp2 {
 .oxt-has-foot .oxt-mline:has(+ .oxt-mfoot){margin-bottom:.85rem}
 .oxt-has-foot .oxt-wm{bottom:2.15rem}
 .oxt-mline + .oxt-mline{margin-top:.15rem}
+/* Gap between a single count line and the split (A | B) line below it (2026-11-27,
+   Pankaj): the same gap as under the title, so the rows are evenly spaced like the
+   dark tiles. WorkID Status cards (no footer) also match the dark tiles' height. */
+.oxt-mline:not(.oxt-msplit) + .oxt-mline.oxt-msplit{margin-top:.35rem}
+.wid-stage.oxt-multi .oxt-title{line-height:1.2}
 .oxt-mcount{font-size:1.45rem; font-weight:700; line-height:1.15; letter-spacing:-1px}
 .oxt-mlabel{font-size:.72rem}
 .oxt-msep{font-size:.9rem; margin:0 .15rem; opacity:.5}

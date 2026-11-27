@@ -56,26 +56,24 @@ def test_tiles_and_export_add_up_to_rows(app_client, make_user):  # noqa: F811
     for grp in re.findall(r'data-group="(\w+)"', html):
         card = html.split('data-group="%s"' % grp, 1)[1].split('data-group=', 1)[0]
         v = dict((k, int(n)) for k, n in re.findall(r'data-k="(\w+)" data-server="(\d+)"', card))
-        assert "moved" in v and "pending" in v, (grp, v)
+        assert "pending" in v and "moved" not in v, (grp, v)   # Moved In footer removed (2026-11-27)
 
     r = app_client.get("/workid-status/export")
     assert r.status_code == 200
     wb = load_workbook(io.BytesIO(r.content))
-    n_tag_rows = wb["All Tags"].max_row - 1      # every WorkID (Tag Summary = each tag once, 2026-11-22)
-    for name, col in (("Stage Summary", "Total WorkIDs"), ("Staff Summary", "Total WorkIDs")):
+    # Stage / Staff Summary per Date Completed (2026-11-27): their Totals are
+    # the sums of their rows, and both sheets count the same results.
+    totals = {}
+    for name in ("Stage Summary", "Staff Summary"):
         ws = wb[name]
         hdr = [c.value for c in ws[1]]
         last = [c.value for c in ws[ws.max_row]]
         assert last[0] == "Total"
-        assert last[hdr.index(col)] == n_tag_rows
         body = [[c.value for c in row] for row in ws.iter_rows(min_row=2, max_row=ws.max_row - 1)]
-        # "All <group> stages" rows are subtotals of the stage rows above them
-        body = [b for b in body if not (name == "Stage Summary" and str(b[1] or "").startswith("All "))]
-        assert sum(b[hdr.index(col)] for b in body) == n_tag_rows
-        # Total = Open + Completed + Scrap + Reassigned
-        parts = sum(last[hdr.index(k)] for k in ("Open WorkIDs", "Completed WorkIDs",
-                                                 "Scrap WorkIDs", "Reassigned WorkIDs"))
-        assert parts == n_tag_rows
+        for col in ("Passed Quantity", "Failed Quantity"):
+            assert sum(b[hdr.index(col)] for b in body) == last[hdr.index(col)]
+        totals[name] = (last[hdr.index("Passed Quantity")], last[hdr.index("Failed Quantity")])
+    assert totals["Stage Summary"] == totals["Staff Summary"]
 
 
 def test_default_is_today_and_cleared_dates_mean_all(app_client, make_user):  # noqa: F811

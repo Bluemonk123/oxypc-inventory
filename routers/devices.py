@@ -110,10 +110,11 @@ async def device_brief(barcode: str, require_stage: str = "", db: AsyncSession =
         storage = "—"
     sold_grade = device.grade or "—"
     sold_on = sale.sold_at.strftime("%d-%m-%Y") if sale and sale.sold_at else "—"
+    # One rule (2026-11-27): only a warranty picked on the sale counts.
     if sale and w:
         warranty_status = "Within Warranty" if w["status"] == "active" else "Out of Warranty"
     elif sale:
-        warranty_status = "Out of Warranty"
+        warranty_status = "No Warranty"
     else:
         warranty_status = "Not Sold Yet"
 
@@ -323,7 +324,7 @@ def _warranty_label(device, sale) -> str:
         return "Not Sold Yet"
     if w and w["status"] == "active":
         return "Within Warranty"
-    return "Out of Warranty"
+    return "Out of Warranty" if w else "No Warranty"   # nothing picked on the sale (2026-11-27)
 
 
 def _repair_status(device, repairs):
@@ -843,6 +844,10 @@ async def device_search_data(
         )).all():
             sale_map.setdefault(did, (sid, snum))
 
+    # RMA / RR / RS badge next to the entity name (2026-11-27, utils/return_badges.py).
+    from utils.return_badges import return_badge_map, return_badge_html
+    ret_badges = await return_badge_map(db, [d for d, _ in rows])
+
     def esc(v):
         return escape(str(v)) if v is not None else ""
 
@@ -863,7 +868,8 @@ async def device_search_data(
             (f'<span class="text-nowrap"><a href="/devices/{esc(d.barcode)}" class="font-monospace fw-bold text-decoration-none">{esc(d.barcode)}</a>'
              + touch_badge_html(d.touch_type) + flag_badge_html(d)
              + parts_badges.get(str(d.id), '') + '</span>' +
-             f'<div style="color:#999999;font-size:12px;">{esc(d.entity) if d.entity else "—"}</div>'),
+             f'<div style="color:#999999;font-size:12px;">{esc(d.entity) if d.entity else "—"}'
+             + return_badge_html(ret_badges, d.id) + '</div>'),
             # Lot Number: plain link, no outline (2026-10-22)
             (f'<a href="/devices?lot={esc(lot_number)}" class="text-decoration-none text-nowrap" '
              f'style="color:#6C757D;">{esc(lot_number)}</a>'),
@@ -1718,6 +1724,9 @@ _ROW_ORDER = [
     "Device Price", "Grade", "Stage", "Final QC Status", "Stage History",
     "Location ID", "Bin Location", "Zone", "Warehouse", "Notes", "Created", "Updated",
     "PNA", "Part Name", "Stock",      # Part Name = the PNA parts, as in the PNA Summary (2026-11-23)
+    # Latest of each in the tag's current cycle (2026-11-27): after its last sale, else ever.
+    "L3/L4 Scrap Reason", "L3/L4 Scrap Notes", "Final QC Fail Reason", "Final QC Fail Notes",
+    "Pre-Sale QC Fail Reason", "Pre-Sale QC Fail Notes",
 ]
 
 # Ageing columns (2026-11-18, Pankaj) — appended to the same export row.
@@ -1752,6 +1761,8 @@ _EXPORT_HEADER = [
     "Display Panel Cosmetic", "Bezel Frame Cosmetic", "Screen Cosmetic", "Hinge Cosmetic",
     "Touchpad Cosmetic", "Bottom Base Cosmetic", "Palmrest Cosmetic",
     "Device Price", "PNA", "Part Name", "Stock", "Grade", "Stage", "Final QC Status",
+    "L3/L4 Scrap Reason", "L3/L4 Scrap Notes", "Final QC Fail Reason", "Final QC Fail Notes",
+    "Pre-Sale QC Fail Reason", "Pre-Sale QC Fail Notes",
     "Location ID", "Bin Location", "Zone", "Notes", "Created", "Updated", "Stage History",
 ] + [c for name, _s in _AGE_GROUPS for c in (f"{name} (Date)", f"{name} (Ageing)")]
 assert len(set(_ROW_ORDER)) == len(_ROW_ORDER), "duplicate name in _ROW_ORDER"
@@ -1975,6 +1986,42 @@ async def _export_rows(db: AsyncSession, rows, hide=()) -> Response:
         location_map.update(await _build_location_map(db, [str(did) for did in chunk]))
         _mark("loc")
 
+    # L3/L4 Scrap / Final QC Fail / Pre-Sale QC Fail Reason + Notes
+    # (2026-11-27, Pankaj): the latest of each in the tag's current cycle —
+    # after its last sale when it was ever sold, else the most recent.
+    #   L3/L4 Scrap: the Asset History note "L3/L4 <type> — … — Reason: X — Notes: Y"
+    #   Final QC / Pre-Sale QC Fail: Notes History (category = the Fail reason)
+    import re as _re
+    from models.notes_history import NotesHistory as _NH
+    from models.sales import Sale as _Sale
+    fail_cols = {}          # device_id -> {column: value}
+    _scrap_re = _re.compile(r" — Reason: (.*?)(?: — Notes: (.*))?$", _re.S)
+    for chunk in id_chunks:
+        cut = dict((await db.execute(select(_Sale.device_id, func.max(_Sale.sold_at))
+                                     .where(_Sale.device_id.in_(chunk)).group_by(_Sale.device_id))).all())
+        best = {}
+
+        def _keep(did, kind, at, reason, notes):
+            c = cut.get(did)
+            if c and at and at <= c:
+                return
+            k = (did, kind)
+            if k not in best or (at or datetime.min) >= (best[k][0] or datetime.min):
+                best[k] = (at, reason, notes)
+        for did, at, notes in (await db.execute(
+                select(StageMovement.device_id, StageMovement.moved_at, StageMovement.notes)
+                .where(StageMovement.device_id.in_(chunk), StageMovement.notes.like("L3/L4 %Scrap%")))).all():
+            m = _scrap_re.search(notes or "")
+            _keep(did, "L3/L4 Scrap", at, (m.group(1) if m else "").strip(), ((m.group(2) or "") if m else "").strip())
+        for did, at, ntype, cat, text in (await db.execute(
+                select(_NH.device_id, _NH.written_at, _NH.note_type, _NH.category, _NH.note_text)
+                .where(_NH.device_id.in_(chunk),
+                       _NH.note_type.in_(["Final QC Fail Notes", "Pre-Sale QC Fail Notes"])))).all():
+            _keep(did, ntype.replace(" Notes", ""), at, cat or "", "" if (text or "").strip() == "—" else (text or ""))
+        for (did, kind), (_at, reason, notes) in best.items():
+            fail_cols.setdefault(did, {}).update({f"{kind} Reason": reason, f"{kind} Notes": notes})
+    _mark("fails")
+
     # GRN Date column (2026-11-26, after GRN): the GRN record's own GRN Date
     # for the tag's current GRN number; blank when that GRN has none.
     from models.grn_import import GRNImport as _GRNImport
@@ -2095,6 +2142,10 @@ async def _export_rows(db: AsyncSession, rows, hide=()) -> Response:
             _stock_label(device),
             *_ageing_cols(device, movements_by_device.get(device.id), _today, _wdays),
         ]
+        _fc = fail_cols.get(device.id) or {}
+        row[len(row) - len(_AGE_GROUPS) * 2:len(row) - len(_AGE_GROUPS) * 2] = [
+            _fc.get(c, "") for c in ("L3/L4 Scrap Reason", "L3/L4 Scrap Notes", "Final QC Fail Reason",
+                                     "Final QC Fail Notes", "Pre-Sale QC Fail Reason", "Pre-Sale QC Fail Notes")]
         # A silent column-count mismatch (e.g. an IQC/cosmetic helper
         # returning the wrong placeholder count for a device missing that
         # data) shifts every later column right for just THAT row — hard to

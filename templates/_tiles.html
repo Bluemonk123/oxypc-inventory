@@ -90,7 +90,7 @@
   {%- endif %}
   {%- for line in lines %}
   {%- set parts = line.parts if line is mapping else line %}
-  <div class="oxt-mline"{% if line is mapping and line.title %} title="{{ line.title }}"{% endif %}>
+  <div class="oxt-mline{{ ' oxt-msplit' if parts | length > 1 else '' }}"{% if line is mapping and line.title %} title="{{ line.title }}"{% endif %}>
     {%- for part in parts %}
     {%- if not loop.first %}<span class="oxt-msep">|</span>{% endif -%}
     <span class="oxt-mcount" {{ (part[2] if part | length > 2 else '') | safe }}>{{ _fmt(part[0]) }}</span><span class="oxt-mlabel">{{ part[1] }}</span>
